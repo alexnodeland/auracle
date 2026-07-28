@@ -1,6 +1,6 @@
 [package]
 name = "evosynth-features"
-description = "Standard-phrase headless rendering, loudness normalization, and audio + structural feature extraction"
+description = "Standard-phrase headless rendering, loudness normalization, vetting gate, and audio + structural feature extraction"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,5 +10,11 @@ repository.workspace = true
 [dependencies]
 quiver-dsp.workspace = true
 evosynth-grammar.workspace = true
+rustfft = "6"
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+fugue-ppl.workspace = true
+fugue-evo.workspace = true
+rand.workspace = true
