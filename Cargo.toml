@@ -19,7 +19,9 @@ repository = "https://github.com/alexnodeland/evosynth"
 # In-house foundations (path deps during development).
 # quiver-dsp: the LIBRARY name is `quiver` — imports are `use quiver::...`.
 quiver-dsp = { path = "../quiver" }
-fugue-evo = { path = "../fugue-ecosystem/fugue-evo" }
+# default-features off: `checkpoint`/`parallel` don't compile on wasm32 and
+# nothing here uses them; `ppl` is the layer we build on.
+fugue-evo = { path = "../fugue-ecosystem/fugue-evo", default-features = false, features = ["std", "ppl"] }
 fugue-ppl = { path = "../fugue-ecosystem/fugue" }
 
 # Shared third-party

@@ -1,0 +1,34 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]: EVOSYNTH
+    - generic [ref=f1e6]: taste-learning synthesizer
+    - generic [ref=f1e7]:
+      - generic [ref=f1e8]: duels 0
+      - generic [ref=f1e9]: session 0
+      - button "save profile" [ref=f1e10] [cursor=pointer]
+      - generic "Load a saved taste profile" [ref=f1e11] [cursor=pointer]: load
+  - main [ref=f1e23]:
+    - generic [ref=f1e24]:
+      - generic [ref=f1e25]:
+        - generic [ref=f1e30]: CANDIDATE A
+        - generic [ref=f1e32]: (voice a=0.47 d=0.41 s=0.29 r=0.88 (vco sqr +1 0.24))
+        - generic [ref=f1e33]:
+          - button "▶ play 1" [ref=f1e34] [cursor=pointer]
+          - button "choose A ←" [ref=f1e35] [cursor=pointer]
+      - generic [ref=f1e36]:
+        - generic [ref=f1e41]: CANDIDATE B
+        - generic [ref=f1e43]: (voice a=0.86 d=0.90 s=0.54 r=0.91 (filter SvfLp c=0.39 r=0.44 (lfo sin 0.90) (fold t=0.64 (lfo sqr 0.08) (filter SvfBp c=0.84 r=0.08 nomod (supersaw +1 0.36 0.96)))))
+        - generic [ref=f1e44]:
+          - button "▶ play 2" [ref=f1e45] [cursor=pointer]
+          - button "choose B →" [ref=f1e46] [cursor=pointer]
+      - generic [ref=f1e47]:
+        - generic [ref=f1e52]: TASTE
+        - paragraph [ref=f1e54]: The model’s current belief about your taste — bars are learned weights, whiskers are its uncertainty.
+        - generic [ref=f1e55]:
+          - generic [ref=f1e56]: LEARN
+          - generic [ref=f1e59]: EVOLVE
+          - button "evolve pool" [ref=f1e62] [cursor=pointer]
+    - generic [ref=f1e63]: Listen to both. Keep the one you’d reach for.
+    - generic [ref=f1e64]:
+      - generic [ref=f1e69]: BENCH — winners land here; rate or cut them
+      - generic [ref=f1e70]: No keepers yet.

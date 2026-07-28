@@ -1,0 +1,13 @@
+- generic [ref=f2e2]:
+  - banner [ref=f2e4]:
+    - generic [ref=f2e5]: EVOSYNTH
+    - generic [ref=f2e6]: taste-learning synthesizer
+    - generic [ref=f2e7]:
+      - generic [ref=f2e8]: duels 0
+      - generic [ref=f2e9]: session 0
+      - button "save profile" [ref=f2e10] [cursor=pointer]
+      - generic "Load a saved taste profile" [ref=f2e11] [cursor=pointer]: load
+  - generic [ref=f2e13]:
+    - generic [ref=f2e18]: WARMING UP
+    - generic [ref=f2e19]: evolving, rendering & vetting a starting population
+    - generic [ref=f2e21]: initializing engine…

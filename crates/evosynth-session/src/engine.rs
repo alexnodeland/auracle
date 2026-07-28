@@ -127,8 +127,36 @@ impl Engine {
     /// Fill the pool with vetted prior draws (up to `pool_size`). Fits the
     /// standardizer on the first successful fill.
     pub fn fill_pool<R: Rng>(&mut self, rng: &mut R) {
+        let target = self.cfg.pool_size;
+        while self.pool.len() < target {
+            if self.fill_pool_step(rng, target - self.pool.len()) == 0 {
+                break;
+            }
+        }
+        // Fill fell short (vet failures exhausted the draw budget): fit the
+        // standardizer on what we have rather than leaving φ un-standardized.
+        if self.standardizer.is_none() && !self.pool.is_empty() {
+            let rows: Vec<Vec<f64>> = self.pool.iter().map(|c| c.features.phi()).collect();
+            self.standardizer = Some(Arc::new(Standardizer::fit(&rows)));
+            for c in &mut self.pool {
+                c.phi_std = self
+                    .standardizer
+                    .as_ref()
+                    .unwrap()
+                    .transform(&c.features.phi());
+            }
+        }
+    }
+
+    /// Add up to `max_new` vetted candidates (bounded by `max_draws`
+    /// attempts). Returns how many were added — the incremental unit that
+    /// lets a frontend post progress between batches. Standardization runs
+    /// once the pool first reaches `pool_size` (or on any later addition).
+    pub fn fill_pool_step<R: Rng>(&mut self, rng: &mut R, max_new: usize) -> usize {
         let mut draws = 0;
-        while self.pool.len() < self.cfg.pool_size && draws < self.cfg.max_draws {
+        let mut added = 0;
+        while added < max_new && self.pool.len() < self.cfg.pool_size && draws < self.cfg.max_draws
+        {
             draws += 1;
             let tree = self.prior.sample_with_rng(rng);
             if self.pool.iter().any(|c| c.tree == tree) {
@@ -142,9 +170,10 @@ impl Engine {
                     features: v.features,
                     refined: false,
                 });
+                added += 1;
             }
         }
-        if self.standardizer.is_none() && !self.pool.is_empty() {
+        if self.standardizer.is_none() && self.pool.len() >= self.cfg.pool_size {
             let rows: Vec<Vec<f64>> = self.pool.iter().map(|c| c.features.phi()).collect();
             self.standardizer = Some(Arc::new(Standardizer::fit(&rows)));
         }
@@ -155,6 +184,7 @@ impl Engine {
                 }
             }
         }
+        added
     }
 
     /// Fit (or re-fit) the taste posterior from the observation log.

@@ -1,0 +1,84 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]: EVOSYNTH
+    - generic [ref=f1e6]: taste-learning synthesizer
+    - generic [ref=f1e7]:
+      - generic [ref=f1e8]: duels 5
+      - generic [ref=f1e9]: session 0
+      - button "save profile" [ref=f1e10] [cursor=pointer]
+      - generic "Load a saved taste profile" [ref=f1e11] [cursor=pointer]: load
+  - main [ref=f1e23]:
+    - generic [ref=f1e24]:
+      - generic [ref=f1e25]:
+        - generic [ref=f1e30]: CANDIDATE A
+        - generic [ref=f1e32]: (voice a=0.06 d=0.94 s=0.42 r=0.69 (supersaw +2 0.24 0.62))
+        - generic [ref=f1e33]:
+          - button "▶ play 1" [ref=f1e34] [cursor=pointer]
+          - button "choose A ←" [active] [ref=f1e35] [cursor=pointer]
+      - generic [ref=f1e36]:
+        - generic [ref=f1e41]: CANDIDATE B
+        - generic [ref=f1e43]: (voice a=0.76 d=0.75 s=0.59 r=0.55 (supersaw -1 0.25 0.91))
+        - generic [ref=f1e44]:
+          - button "▶ play 2" [ref=f1e45] [cursor=pointer]
+          - button "choose B →" [ref=f1e46] [cursor=pointer]
+      - generic [ref=f1e47]:
+        - generic [ref=f1e52]: TASTE
+        - paragraph [ref=f1e54]: The model’s current belief about your taste — bars are learned weights, whiskers are its uncertainty.
+        - generic [ref=f1e55]:
+          - generic [ref=f1e56]: LEARN
+          - generic [ref=f1e59]: EVOLVE
+          - button "evolve pool" [ref=f1e62] [cursor=pointer]
+    - generic [ref=f1e63]: Listen to both. Keep the one you’d reach for.
+    - generic [ref=f1e64]:
+      - generic [ref=f1e69]: BENCH — winners land here; rate or cut them
+      - generic [ref=f1e70]:
+        - generic [ref=f1e172]:
+          - generic [ref=f1e173]: (voice a=0.27 d=0.45 s=0.52 r=0.82 (filter…
+          - generic [ref=f1e174]:
+            - button "▶" [ref=f1e175] [cursor=pointer]
+            - button "★" [ref=f1e176] [cursor=pointer]
+            - button "★" [ref=f1e177] [cursor=pointer]
+            - button "★" [ref=f1e178] [cursor=pointer]
+            - button "★" [ref=f1e179] [cursor=pointer]
+            - button "★" [ref=f1e180] [cursor=pointer]
+            - button "cut" [ref=f1e181] [cursor=pointer]
+        - generic [ref=f1e182]:
+          - generic [ref=f1e183]: (voice a=0.86 d=0.90 s=0.54 r=0.91 (filter…
+          - generic [ref=f1e184]:
+            - button "▶" [ref=f1e185] [cursor=pointer]
+            - button "★" [ref=f1e186] [cursor=pointer]
+            - button "★" [ref=f1e187] [cursor=pointer]
+            - button "★" [ref=f1e188] [cursor=pointer]
+            - button "★" [ref=f1e189] [cursor=pointer]
+            - button "★" [ref=f1e190] [cursor=pointer]
+            - button "cut" [ref=f1e191] [cursor=pointer]
+        - generic [ref=f1e192]:
+          - generic [ref=f1e193]: (voice a=0.24 d=0.77 s=0.67 r=0.73 (chorus…
+          - generic [ref=f1e194]:
+            - button "▶" [ref=f1e195] [cursor=pointer]
+            - button "★" [ref=f1e196] [cursor=pointer]
+            - button "★" [ref=f1e197] [cursor=pointer]
+            - button "★" [ref=f1e198] [cursor=pointer]
+            - button "★" [ref=f1e199] [cursor=pointer]
+            - button "★" [ref=f1e200] [cursor=pointer]
+            - button "cut" [ref=f1e201] [cursor=pointer]
+        - generic [ref=f1e202]:
+          - generic [ref=f1e203]: (voice a=0.29 d=0.55 s=0.98 r=0.33 (vco sq…
+          - generic [ref=f1e204]:
+            - button "▶" [ref=f1e205] [cursor=pointer]
+            - button "★" [ref=f1e206] [cursor=pointer]
+            - button "★" [ref=f1e207] [cursor=pointer]
+            - button "★" [ref=f1e208] [cursor=pointer]
+            - button "★" [ref=f1e209] [cursor=pointer]
+            - button "★" [ref=f1e210] [cursor=pointer]
+            - button "cut" [ref=f1e211] [cursor=pointer]
+        - generic [ref=f1e212]:
+          - generic [ref=f1e213]: (voice a=0.47 d=0.41 s=0.29 r=0.88 (vco sq…
+          - generic [ref=f1e214]:
+            - button "▶" [ref=f1e215] [cursor=pointer]
+            - button "★" [ref=f1e216] [cursor=pointer]
+            - button "★" [ref=f1e217] [cursor=pointer]
+            - button "★" [ref=f1e218] [cursor=pointer]
+            - button "★" [ref=f1e219] [cursor=pointer]
+            - button "★" [ref=f1e220] [cursor=pointer]
+            - button "cut" [ref=f1e221] [cursor=pointer]

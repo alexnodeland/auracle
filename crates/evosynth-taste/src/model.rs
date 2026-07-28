@@ -309,6 +309,22 @@ impl TastePosterior {
         m
     }
 
+    /// Per-dimension posterior std of θ for a style (credible-interval
+    /// widths for taste instrumentation).
+    pub fn theta_std(&self, style: usize) -> Vec<f64> {
+        let d = self.cfg.n_features;
+        let mean = self.theta_mean(style);
+        let mut var = vec![0.0; d];
+        for s in &self.samples {
+            for ((v, t), m) in var.iter_mut().zip(&s.theta[style]).zip(&mean) {
+                *v += (t - m) * (t - m);
+            }
+        }
+        var.into_iter()
+            .map(|v| (v / self.samples.len().max(1) as f64).sqrt())
+            .collect()
+    }
+
     /// Posterior mean and std of `u(φ)` under a style.
     pub fn utility(&self, phi: &[f64], style: usize) -> (f64, f64) {
         let us: Vec<f64> = self.samples.iter().map(|s| s.utility(phi, style)).collect();

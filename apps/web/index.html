@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVOSYNTH — taste-learning synthesizer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="rack">
+
+  <!-- top rail -->
+  <div class="rail" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="wordmark">EVO<span>SYNTH</span></div>
+    <div class="tagline">taste-learning synthesizer</div>
+    <div class="topbar-right">
+      <span class="counter"><span class="counter-label">duels</span> <span id="duel-count">0</span></span>
+      <span class="counter"><span class="counter-label">session</span> <span id="session-num">0</span></span>
+      <button id="export-btn" class="util-btn" title="Download your taste profile">save profile</button>
+      <label class="util-btn" title="Load a saved taste profile">load<input id="import-input" type="file" accept=".json" hidden></label>
+    </div>
+  </header>
+
+  <!-- boot screen -->
+  <section id="boot" class="boot">
+    <div class="boot-card panel">
+      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="boot-title">WARMING UP</div>
+      <div class="boot-sub">evolving, rendering &amp; vetting a starting population</div>
+      <div class="boot-meter"><div id="boot-fill" class="boot-fill"></div></div>
+      <div id="boot-status" class="boot-status mono">initializing engine…</div>
+    </div>
+  </section>
+
+  <!-- main surface -->
+  <main id="main" class="main hidden">
+
+    <div class="duel-row">
+      <!-- Candidate A -->
+      <section class="panel duel" id="duel-a">
+        <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="panel-label">CANDIDATE A</div>
+        <canvas class="scope" id="scope-a" width="640" height="180"></canvas>
+        <div class="readout mono" id="readout-a">—</div>
+        <div class="duel-controls">
+          <button class="hw-btn play" id="play-a">▶ play <kbd>1</kbd></button>
+          <button class="hw-btn choose" id="choose-a">choose A <kbd>←</kbd></button>
+        </div>
+      </section>
+
+      <!-- Candidate B -->
+      <section class="panel duel" id="duel-b">
+        <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="panel-label">CANDIDATE B</div>
+        <canvas class="scope" id="scope-b" width="640" height="180"></canvas>
+        <div class="readout mono" id="readout-b">—</div>
+        <div class="duel-controls">
+          <button class="hw-btn play" id="play-b">▶ play <kbd>2</kbd></button>
+          <button class="hw-btn choose" id="choose-b">choose B <kbd>→</kbd></button>
+        </div>
+      </section>
+
+      <!-- Taste CRT -->
+      <section class="panel taste" id="taste-panel">
+        <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="panel-label amber">TASTE</div>
+        <canvas class="crt" id="taste-crt" width="460" height="430"></canvas>
+        <p class="caption">The model’s current belief about your taste — bars are
+        learned weights, whiskers are its uncertainty.</p>
+        <div class="taste-leds">
+          <span class="led-block"><i id="led-learn" class="led"></i><span>LEARN</span></span>
+          <span class="led-block"><i id="led-evolve" class="led"></i><span>EVOLVE</span></span>
+          <button class="hw-btn small" id="evolve-btn" title="Let the engine breed new patches in your taste">evolve pool</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="prompt">Listen to both. Keep the one you’d reach for.</div>
+
+    <!-- bench -->
+    <section class="panel bench">
+      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="panel-label">BENCH <span class="silk-dim">— winners land here; rate or cut them</span></div>
+      <div id="bench-list" class="bench-list">
+        <div class="bench-empty">No keepers yet.</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- bottom rail -->
+  <div class="rail" aria-hidden="true"></div>
+</div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

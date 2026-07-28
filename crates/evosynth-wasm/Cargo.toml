@@ -11,7 +11,19 @@ repository.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-evosynth-session.workspace = true
+evosynth-session = { path = "../evosynth-session", version = "0.1.0" }
+evosynth-features = { path = "../evosynth-features", version = "0.1.0" }
+evosynth-taste = { path = "../evosynth-taste", version = "0.1.0" }
+evosynth-grammar = { path = "../evosynth-grammar", version = "0.1.0" }
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
-serde.workspace = true
+console_error_panic_hook = "0.1"
+# wasm32-unknown-unknown entropy shim (rand → getrandom); we always seed
+# explicitly, but the js feature is required for the crate to compile at all.
+getrandom = { version = "0.2", features = ["js"] }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
