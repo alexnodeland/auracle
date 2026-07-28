@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # Path deps expect sibling checkouts (../quiver,
+      # ../fugue-ecosystem/{fugue,fugue-evo}), so replicate that layout
+      # inside the workspace: this repo in evosynth/, siblings alongside.
+      - uses: actions/checkout@v4
+        with:
+          path: evosynth
+      - uses: actions/checkout@v4
+        with:
+          repository: alexnodeland/quiver
+          path: quiver
+      - uses: actions/checkout@v4
+        with:
+          repository: alexnodeland/fugue
+          path: fugue-ecosystem/fugue
+      - uses: actions/checkout@v4
+        with:
+          repository: alexnodeland/fugue-evo
+          path: fugue-ecosystem/fugue-evo
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: evosynth
+      - run: cargo fmt --all --check
+        working-directory: evosynth
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+        working-directory: evosynth
+      - run: cargo test --workspace
+        working-directory: evosynth

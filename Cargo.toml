@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/evosynth-grammar",
+    "crates/evosynth-features",
+    "crates/evosynth-taste",
+    "crates/evosynth-session",
+    "crates/evosynth-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Nodeland"]
+license = "MIT"
+repository = "https://github.com/alexnodeland/evosynth"
+
+[workspace.dependencies]
+# In-house foundations (path deps during development).
+# quiver-dsp: the LIBRARY name is `quiver` — imports are `use quiver::...`.
+quiver-dsp = { path = "../quiver" }
+fugue-evo = { path = "../fugue-ecosystem/fugue-evo" }
+fugue-ppl = { path = "../fugue-ecosystem/fugue" }
+
+# Shared third-party
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Intra-workspace
+evosynth-grammar = { path = "crates/evosynth-grammar", version = "0.1.0" }
+evosynth-features = { path = "crates/evosynth-features", version = "0.1.0" }
+evosynth-taste = { path = "crates/evosynth-taste", version = "0.1.0" }
+evosynth-session = { path = "crates/evosynth-session", version = "0.1.0" }

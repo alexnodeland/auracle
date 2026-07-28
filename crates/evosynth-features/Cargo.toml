@@ -1,0 +1,14 @@
+[package]
+name = "evosynth-features"
+description = "Standard-phrase headless rendering, loudness normalization, and audio + structural feature extraction"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+quiver-dsp.workspace = true
+evosynth-grammar.workspace = true
+serde.workspace = true
+thiserror.workspace = true

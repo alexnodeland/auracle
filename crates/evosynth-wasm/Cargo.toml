@@ -1,0 +1,17 @@
+[package]
+name = "evosynth-wasm"
+description = "wasm-bindgen surface over evosynth-session for the web app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+evosynth-session.workspace = true
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+serde.workspace = true
