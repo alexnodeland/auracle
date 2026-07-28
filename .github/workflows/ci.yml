@@ -40,5 +40,7 @@ jobs:
         working-directory: evosynth
       - run: cargo clippy --workspace --all-targets -- -D warnings
         working-directory: evosynth
-      - run: cargo test --workspace
+      # Release mode: the grammar/features/session tests render real audio
+      # sample-by-sample; debug-mode DSP is ~20× slower.
+      - run: cargo test --workspace --release
         working-directory: evosynth
