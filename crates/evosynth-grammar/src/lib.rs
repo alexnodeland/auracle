@@ -1,51 +1,209 @@
 //! # evosynth-grammar
 //!
 //! The **patch prior**: a typed probabilistic context-free grammar (PCFG) over
-//! quiver's Layer-1 combinator algebra (`>>>`, `***`, `&&&`), plus the
-//! compiler from sampled terms to playable quiver [`Patch`](quiver) graphs.
+//! quiver-backed synthesizer patch terms, plus the compiler from sampled terms
+//! to playable quiver [`Patch`](quiver) graphs.
 //!
-//! The genome is a *term*, not a raw patch graph. Grammar productions are
-//! typed by quiver signal kinds (Audio / V-Oct / Gate / CV) so that **every
-//! sampled term compiles to a valid, sound-making patch**. All three levels of
-//! evolution live in this one representation:
+//! The genome is a *term* ([`term::PatchTree`]), not a raw patch graph. The
+//! Audio/Mod sort distinction is enforced by the Rust type system — ill-sorted
+//! terms are unrepresentable — and the grammar ([`prior::PatchGrammarPrior`])
+//! is a fugue generative program, so all three levels of evolution live in one
+//! representation:
 //!
 //! - node settings   → leaf parameter sites (`F64`/`Usize` draws per module)
-//! - connectivity    → interior structure (chains, parallel, modulation)
+//! - connectivity    → interior structure (chains, mix, modulation slots)
 //! - node set        → which module productions fire
 //!
-//! The grammar is exposed to fugue-evo as a `GenomePrior` (`Model<PatchTerm>`),
-//! so subtree mutation/crossover are generic trace moves and tempered SMC /
-//! typed MH come for free.
+//! [`PatchTree`](term::PatchTree) implements fugue-evo's genome traits with a
+//! canonical trace encoding that **is** the grammar's address scheme, so
+//! subtree mutation/crossover are generic trace moves and tempered SMC / typed
+//! MH come for free.
 //!
-//! ## v1 constraints (see DESIGN.md §1.1)
+//! ## v1 constraints (DESIGN.md §1.1, §2.1)
 //!
 //! - Acyclic terms only — no feedback combinator productions. Modules with
 //!   *internal* feedback (delay, chorus) are allowed.
-//! - Curated palette (~10 modules): Vco, Supersaw, NoiseGenerator, Svf,
-//!   DiodeLadderFilter, Adsr, Vca, Lfo, DelayLine, Chorus, Wavefolder.
-//! - Every compiled patch gets a hard-wired Limiter before the output.
+//! - Curated palette: Vco, Supersaw, NoiseGenerator, Svf, DiodeLadderFilter,
+//!   Adsr, Vca, Lfo, DelayLine, Chorus, Wavefolder.
+//! - Every compiled patch gets the mandatory voice stage — amp ADSR → VCA →
+//!   **Limiter** → StereoOutput — and bounded parameter mappings (resonance,
+//!   feedback), so the grammar cannot express the most degenerate settings.
 
-pub mod palette {
-    //! The curated v1 module palette and per-module parameter site specs.
-}
+pub mod compile;
+pub mod genome;
+pub mod prior;
+pub mod term;
 
-pub mod term {
-    //! `PatchTerm`: the combinator-term genome (tree) and its trace addressing.
-}
-
-pub mod prior {
-    //! The typed PCFG as a fugue `GenomePrior` — `Model<PatchTerm>`.
-}
-
-pub mod compile {
-    //! `PatchTerm` → `quiver::Patch` compilation (+ output Limiter insertion).
-}
+pub use compile::{compile, CompiledVoice};
+pub use prior::PatchGrammarPrior;
+pub use term::{AudioNode, ModNode, PatchTree};
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use fugue::runtime::handler::run;
+    use fugue::runtime::interpreters::{PriorHandler, ScoreGivenTrace};
+    use fugue::Trace;
+    use fugue_evo::genome::trace_genome::TraceGenome;
+    use fugue_evo::inference::prior::GenomePrior;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    const SR: f64 = 44_100.0;
+
+    fn draw(prior: &PatchGrammarPrior, rng: &mut StdRng) -> (PatchTree, Trace) {
+        run(
+            PriorHandler {
+                rng,
+                trace: Trace::default(),
+            },
+            prior.model(),
+        )
+    }
+
+    /// M1 gate: every prior sample compiles to a valid quiver patch, and any
+    /// wiring warnings stay within the two known-benign classes (constant
+    /// bipolar Offset → unipolar knob, unipolar env → bipolar FM input).
     #[test]
-    fn workspace_smoke() {
-        // Replaced by real tests in M1: sample N terms from the prior and
-        // assert every one compiles to a Patch that `compile()`s in quiver.
+    fn every_prior_sample_compiles() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(1);
+        for i in 0..200 {
+            let (tree, trace) = draw(&prior, &mut rng);
+            assert!(trace.log_prior.is_finite(), "sample {i}: log_prior finite");
+            assert!(trace.log_prior < 0.0, "sample {i}: pays prior mass");
+            let voice = compile(&tree, SR).unwrap_or_else(|e| {
+                panic!("sample {i} failed to compile: {e}\n{}", tree.to_sexpr())
+            });
+            for w in &voice.warnings {
+                assert!(
+                    w.contains("Bipolar/Unipolar CV mismatch")
+                        || w.contains("Unipolar CV to V/Oct")
+                        || w.contains("may need offset adjustment"),
+                    "sample {i}: unexpected warning class: {w}"
+                );
+            }
+        }
+    }
+
+    /// Compiled patches make sound and stay bounded: gate a note, tick a
+    /// second of audio, assert finite output everywhere, a bounded peak, and
+    /// that a healthy fraction of patches are audible.
+    #[test]
+    fn compiled_patches_sound_and_stay_bounded() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(2);
+        let n = 24;
+        let mut audible = 0;
+        for i in 0..n {
+            let (tree, _) = draw(&prior, &mut rng);
+            let mut voice = compile(&tree, SR).expect("compiles");
+            voice.gate.set(5.0);
+            voice.pitch.set(0.0); // C4
+            let mut peak = 0.0f64;
+            let mut sum_sq = 0.0f64;
+            let ticks = SR as usize / 2; // half a second
+            for _ in 0..ticks {
+                let (l, r) = voice.patch.tick();
+                assert!(
+                    l.is_finite() && r.is_finite(),
+                    "sample {i}: non-finite output"
+                );
+                peak = peak.max(l.abs()).max(r.abs());
+                sum_sq += l * l;
+            }
+            // The limiter's ceiling is threshold·5 V ≤ 5 V; leave headroom for
+            // its release-time overshoot but fail on runaway.
+            assert!(peak <= 10.0, "sample {i}: peak {peak} exceeds bound");
+            let rms = (sum_sq / ticks as f64).sqrt();
+            if rms > 1e-3 {
+                audible += 1;
+            }
+        }
+        // Slow attacks and low sustains legitimately produce quiet patches;
+        // the vetting gate (M2) will quarantine them. But most must sound.
+        assert!(
+            audible * 2 > n,
+            "only {audible}/{n} patches audible in 1s — grammar is generating duds"
+        );
+    }
+
+    /// The canonical trace encoding is the exact inverse of the generative
+    /// program: choices match site-for-site, and replay-scoring the encoding
+    /// recovers the same PCFG log-prior. This pins `to_trace` to the grammar —
+    /// they cannot drift apart.
+    #[test]
+    fn to_trace_inverts_generative_run() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(3);
+        for _ in 0..50 {
+            let (tree, gen_trace) = draw(&prior, &mut rng);
+            let enc = tree.to_trace();
+            assert_eq!(enc.choices.len(), gen_trace.choices.len());
+            for (addr, choice) in &gen_trace.choices {
+                assert_eq!(
+                    enc.choices[addr].value, choice.value,
+                    "encoding mismatch at {addr}"
+                );
+            }
+            let (replayed, scored) = run(
+                ScoreGivenTrace {
+                    base: enc,
+                    trace: Trace::default(),
+                },
+                prior.model(),
+            );
+            assert_eq!(replayed, tree);
+            assert!((scored.log_prior - gen_trace.log_prior).abs() < 1e-9);
+        }
+    }
+
+    /// `from_trace(to_trace(t)) == t` for prior draws and for the plain-RNG
+    /// sampler (the two samplers must agree on representable trees).
+    #[test]
+    fn trace_roundtrip() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(4);
+        for _ in 0..50 {
+            let (tree, _) = draw(&prior, &mut rng);
+            let back = PatchTree::from_trace(&tree.to_trace()).expect("roundtrip");
+            assert_eq!(back, tree);
+        }
+        for _ in 0..50 {
+            let tree = prior.sample_with_rng(&mut rng);
+            let back = PatchTree::from_trace(&tree.to_trace()).expect("roundtrip");
+            assert_eq!(back, tree);
+            assert!(compile(&tree, SR).is_ok());
+        }
+    }
+
+    /// Deeper patches pay more prior mass — parsimony is the grammar itself.
+    #[test]
+    fn prior_penalizes_depth() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(5);
+        let mut sized: Vec<(usize, f64)> = Vec::new();
+        for _ in 0..300 {
+            let (tree, trace) = draw(&prior, &mut rng);
+            sized.push((tree.root.size(), trace.log_prior));
+        }
+        let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+        let small: Vec<f64> = sized
+            .iter()
+            .filter(|(s, _)| *s <= 2)
+            .map(|(_, lp)| *lp)
+            .collect();
+        let large: Vec<f64> = sized
+            .iter()
+            .filter(|(s, _)| *s >= 5)
+            .map(|(_, lp)| *lp)
+            .collect();
+        assert!(!small.is_empty() && !large.is_empty());
+        assert!(
+            mean(&small) > mean(&large),
+            "small patches {} should out-mass large ones {}",
+            mean(&small),
+            mean(&large)
+        );
     }
 }
