@@ -1,4 +1,34 @@
-# Continuation notes — updated 2026-07-29 (pass 4: the live surface)
+# Continuation notes — updated 2026-07-29 (pass 5: bulletproofing)
+
+## Pass 5: audio-thread bulletproofing ("no break/skip/crackle")
+
+`LivePoly` became a proper audio-thread state machine:
+- **Zero-alloc render**: `process_ptr(frames)` fills a persistent internal
+  buffer, worklet views wasm memory directly (cached Float32Array view,
+  invalidated on memory growth / ptr change). The Vec-returning `process`
+  is native-tests-only.
+- **Param smoothing**: `set_param` sets a *target*; a one-pole ramp
+  (0.3/quantum, ~25 ms settle) advances the atomics each quantum — no
+  zipper. Smoothers cleared on patch swap.
+- **Click-free patch swaps**: Stage machine Run → FadeOut (1/256 per frame
+  ≈6 ms) → Rebuild (ONE voice compiled per quantum while output is silent —
+  compile overruns drop silent quanta, inaudible) → FadeIn. `held: Vec<u8>`
+  tracked at LivePoly level; held notes are **re-pressed on the new patch**
+  after a swap, so a held chord survives rewiring. Rapid swaps coalesce
+  (Rebuild restarts with the newest pending tree). Compile failure → keeps
+  old voices, EVENT_PATCH_ERROR. Worklet polls `poll_event()` once per
+  quantum and relays patched/patch_error.
+- Tests: gapless-swap (silent gap bordered by ~0 boundary samples, held
+  note survives), smoothing convergence, 600-iteration chaos (random
+  notes/params/junk addrs/patch swaps → always finite, |s| ≤ 1.5).
+- Browser gauntlet: 12 s × 120 rounds of note hammering + knob storms +
+  structural menu ops + bank switches: 0 NaN samples, 0 worklet errors,
+  ctx running. Wire-drag re-entrancy guarded (`if (wire) return`).
+- Test-metric lesson: "no adjacent-sample jump" is a WRONG click test
+  (square waves jump legitimately); assert near-zero *boundary* samples
+  around the silent gap instead.
+
+# (pass 4) — the live surface
 
 ## Pass 4 (playtest-4 response): everything real-time + the wiring surface
 

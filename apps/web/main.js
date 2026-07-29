@@ -1407,6 +1407,7 @@ function buildNodeBank() {
 let wire = null; // {mode, item?, childKey?, key?, kind}
 
 function startWireDrag(spec, ev) {
+  if (wire) return; // one cable at a time — no re-entrant drags
   wire = spec;
   const rackSvg = $("rack-svg");
   rackSvg.classList.add("wiring");

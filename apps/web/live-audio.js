@@ -111,9 +111,16 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
   }
   loadPatch(tree) {
     try {
-      if (this.poly) this.poly.set_patch(tree);
-      else this.poly = new LivePoly(tree, sampleRate, 4);
-      this.port.postMessage({ type: "patched" });
+      if (this.poly) {
+        // Swap is asynchronous: fade → silent per-quantum rebuild → fade-in.
+        // Completion/error arrives via poll_event in process().
+        if (!this.poly.set_patch(tree)) {
+          this.port.postMessage({ type: "patch_error", error: "unreadable patch" });
+        }
+      } else {
+        this.poly = new LivePoly(tree, sampleRate, 4);
+        this.port.postMessage({ type: "patched" });
+      }
     } catch (err) {
       this.port.postMessage({ type: "patch_error", error: String(err) });
     }
@@ -123,11 +130,29 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     const L = out[0];
     const R = out[1] || out[0];
     if (this.poly && L) {
-      const buf = this.poly.process(L.length);
-      for (let i = 0; i < L.length; i++) {
+      const n = L.length;
+      // Zero-allocation render: the synth fills a persistent wasm buffer;
+      // we view its memory directly. The cached view is rebuilt only when
+      // wasm memory grows (buffer identity changes) or the pointer moves.
+      const ptr = this.poly.process_ptr(n);
+      if (
+        !this.view ||
+        this.viewPtr !== ptr ||
+        this.view.length !== n * 2 ||
+        this.view.buffer !== wasm.memory.buffer
+      ) {
+        this.view = new Float32Array(wasm.memory.buffer, ptr, n * 2);
+        this.viewPtr = ptr;
+      }
+      const buf = this.view;
+      for (let i = 0; i < n; i++) {
         L[i] = buf[2 * i];
         R[i] = buf[2 * i + 1];
       }
+      const ev = this.poly.poll_event();
+      if (ev === 1) this.port.postMessage({ type: "patched" });
+      else if (ev === 2)
+        this.port.postMessage({ type: "patch_error", error: this.poly.last_error() });
     }
     return true;
   }
