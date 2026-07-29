@@ -6,7 +6,10 @@
 const $ = (id) => document.getElementById(id);
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const worker = new Worker("./worker.js", { type: "module" });
+// Version-stamp the worker (and, transitively, the wasm module it imports)
+// so a stale browser-cached engine can never run against a newer UI.
+const BUILD = Date.now();
+const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 // ---------- state ----------

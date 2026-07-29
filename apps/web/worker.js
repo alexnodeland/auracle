@@ -1,10 +1,16 @@
 // EVOSYNTH engine worker: owns the wasm engine so rendering and MCMC never
 // block the UI thread. Audio buffers cross as transferable Float32Arrays.
 // Candidates are addressed by stable id everywhere.
+//
+// The wasm glue + binary are imported with the version stamp from this
+// worker's own URL (?v=...), so a rebuilt engine can never be paired with a
+// browser-cached stale module — protocol mismatch between main.js and the
+// engine shows up as blank duel scopes and an empty map.
 
-import init, { WasmEngine } from "./pkg/evosynth_wasm.js";
+const V = new URL(self.location.href).searchParams.get("v") || Date.now();
 
 let engine = null;
+let WasmEngine = null;
 
 const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 
@@ -40,7 +46,11 @@ self.onmessage = async (e) => {
   const m = e.data;
   switch (m.type) {
     case "init": {
-      await init();
+      const mod = await import(`./pkg/evosynth_wasm.js?v=${V}`);
+      await mod.default({
+        module_or_path: new URL(`./pkg/evosynth_wasm_bg.wasm?v=${V}`, self.location.href),
+      });
+      WasmEngine = mod.WasmEngine;
       engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);
       post({ type: "ready" });
       // Fill incrementally so the boot meter can narrate progress.
