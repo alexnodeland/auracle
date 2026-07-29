@@ -18,8 +18,9 @@
     <div class="tagline">taste-learning synthesizer</div>
     <div class="topbar-right">
       <span class="counter"><span class="counter-label">duels</span> <span id="duel-count">0</span></span>
+      <span class="counter"><span class="counter-label">gen</span> <span id="gen-count">0</span></span>
       <span class="counter"><span class="counter-label">session</span> <span id="session-num">0</span></span>
-      <button id="export-btn" class="util-btn" title="Download your taste profile">save profile</button>
+      <button id="export-btn" class="util-btn" title="Download your taste profile (log + standardizer)">save profile</button>
       <label class="util-btn" title="Load a saved taste profile">load<input id="import-input" type="file" accept=".json" hidden></label>
     </div>
   </header>
@@ -42,7 +43,10 @@
       <!-- Candidate A -->
       <section class="panel duel" id="duel-a">
         <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div class="panel-label">CANDIDATE A</div>
+        <div class="panel-head">
+          <div class="panel-label">CANDIDATE A</div>
+          <button class="inspect-btn" id="inspect-a" title="Open this patch on the workbench">⌖ workbench</button>
+        </div>
         <canvas class="scope" id="scope-a" width="640" height="180"></canvas>
         <div class="readout mono" id="readout-a">—</div>
         <div class="duel-controls">
@@ -54,7 +58,10 @@
       <!-- Candidate B -->
       <section class="panel duel" id="duel-b">
         <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div class="panel-label">CANDIDATE B</div>
+        <div class="panel-head">
+          <div class="panel-label">CANDIDATE B</div>
+          <button class="inspect-btn" id="inspect-b" title="Open this patch on the workbench">⌖ workbench</button>
+        </div>
         <canvas class="scope" id="scope-b" width="640" height="180"></canvas>
         <div class="readout mono" id="readout-b">—</div>
         <div class="duel-controls">
@@ -63,13 +70,21 @@
         </div>
       </section>
 
-      <!-- Taste CRT -->
+      <!-- Taste instruments -->
       <section class="panel taste" id="taste-panel">
         <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div class="panel-label amber">TASTE</div>
+        <div class="panel-head">
+          <div class="panel-label amber">TASTE</div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="map" role="tab">map</button>
+            <button class="tab" data-tab="styles" role="tab">styles</button>
+            <button class="tab" data-tab="dir" role="tab">directions</button>
+          </div>
+        </div>
         <canvas class="crt" id="taste-crt" width="460" height="430"></canvas>
-        <p class="caption">The model’s current belief about your taste — bars are
-        learned weights, whiskers are its uncertainty.</p>
+        <p class="caption" id="taste-caption">Every patch you’ve heard, mapped by sound &amp;
+        structure. Glow is how much the model thinks you’d like it — islands are styles.
+        Click a dot to open it on the workbench.</p>
         <div class="taste-leds">
           <span class="led-block"><i id="led-learn" class="led"></i><span>LEARN</span></span>
           <span class="led-block"><i id="led-evolve" class="led"></i><span>EVOLVE</span></span>
@@ -80,10 +95,47 @@
 
     <div class="prompt">Listen to both. Keep the one you’d reach for.</div>
 
+    <!-- workbench: the patch as hardware -->
+    <section class="panel workbench" id="rack-panel">
+      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="panel-head">
+        <div class="panel-label">WORKBENCH <span class="silk-dim" id="rack-subject">— open a candidate to see its full patch</span></div>
+        <div class="rack-tools">
+          <button class="util-btn" id="rack-play" disabled>▶ play</button>
+          <label class="toggle" title="When committed, also teach the model that your edit beat the original">
+            <input type="checkbox" id="improve-check" checked><span>my edit is better</span>
+          </label>
+          <button class="util-btn" id="rack-commit" disabled title="Save the edited patch into the population">commit</button>
+          <span class="tool-sep"></span>
+          <button class="util-btn" id="lock-knobs" disabled title="Lock every knob (evolution may only rewire)">lock knobs</button>
+          <button class="util-btn" id="lock-structure" disabled title="Lock the wiring &amp; module choice (evolution may only turn knobs)">lock wiring</button>
+          <button class="util-btn" id="lock-clear" disabled>clear locks</button>
+          <button class="util-btn amber" id="rack-evolve" disabled title="Evolve everything except the locked controls, seeded from this patch">⚡ evolve from this</button>
+        </div>
+      </div>
+      <div class="rack-scroll" id="rack-scroll">
+        <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="rack-empty" id="rack-empty">Nothing on the bench. Open a duel candidate (⌖), a bench keeper, or click a dot on the taste map.</div>
+      </div>
+      <div class="rack-note mono" id="rack-note"></div>
+    </section>
+
+    <!-- evolution lineage -->
+    <section class="panel lineagep">
+      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="panel-head">
+        <div class="panel-label amber">EVOLUTION <span class="silk-dim">— what each generation actually did</span></div>
+      </div>
+      <div class="lineage-body">
+        <canvas id="lineage-spark" width="260" height="72"></canvas>
+        <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No evolution steps yet — press EVOLVE, or ⚡ evolve from a workbench patch.</span></div>
+      </div>
+    </section>
+
     <!-- bench -->
     <section class="panel bench">
       <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div class="panel-label">BENCH <span class="silk-dim">— winners land here; rate or cut them</span></div>
+      <div class="panel-label">BENCH <span class="silk-dim">— winners land here; rate, open, or cut them</span></div>
       <div id="bench-list" class="bench-list">
         <div class="bench-empty">No keepers yet.</div>
       </div>

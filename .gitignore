@@ -3,3 +3,5 @@ node_modules/
 dist/
 pkg/
 .DS_Store
+.playwright-mcp/
+*.jpeg

@@ -27,8 +27,6 @@ pub struct SurrogateFitness {
     pub standardizer: Arc<Standardizer>,
     /// The audition stimulus (must match the one used for observations).
     pub phrase: PhraseSpec,
-    /// Style component to score under.
-    pub style: usize,
 }
 
 impl Fitness for SurrogateFitness {
@@ -39,7 +37,7 @@ impl Fitness for SurrogateFitness {
         match featurize(genome, &self.phrase) {
             Ok(v) => {
                 let phi = self.standardizer.transform(&v.features.phi());
-                self.posterior.utility(&phi, self.style).0
+                self.posterior.utility_mix(&phi).0
             }
             Err(_) => QUARANTINE_FITNESS,
         }

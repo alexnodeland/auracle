@@ -6,12 +6,20 @@
 //! buffers and draws instrumentation.
 //!
 //! Everything crossing the boundary is either JSON (structures) or a
-//! `Float32Array` (audio). The engine is deterministic given the seed.
+//! `Float32Array` (audio). Candidates are addressed by **stable id** — pool
+//! positions shift on eviction, ids never do. The engine is deterministic
+//! given the seed.
+//!
+//! The **workbench** is the interactive-panel surface: `edit_begin(id)`
+//! clones a candidate's tree; `edit_param` writes one knob (a trace-address
+//! edit) and re-renders; `edit_commit` inserts the result as a new candidate
+//! (optionally logging an "edited beats original" duel);
+//! `refine_from(id, locks)` evolves everything *except* the locked
+//! addresses.
 
-use evosynth_features::Features;
-use evosynth_grammar::PatchGrammarPrior;
-use evosynth_session::{Engine, SessionConfig};
-use evosynth_taste::ObservationLog;
+use evosynth_features::{featurize, Features, PhraseSpec, RenderedPhrase};
+use evosynth_grammar::{describe, set_param, ParamValue, PatchGrammarPrior, PatchTree};
+use evosynth_session::{Engine, Origin, Profile, SessionConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::Serialize;
@@ -20,19 +28,30 @@ use wasm_bindgen::prelude::*;
 /// One row of the ranked-pool summary.
 #[derive(Serialize)]
 struct RankedRow {
-    idx: usize,
+    id: u64,
     mean: f64,
     std: f64,
-    refined: bool,
+    origin: &'static str,
     sexpr: String,
 }
 
-/// One row of the taste-posterior summary.
+/// One θ coordinate of one style.
 #[derive(Serialize)]
 struct ThetaRow {
     name: String,
     mean: f64,
     std: f64,
+}
+
+/// One style lens of the taste posterior.
+#[derive(Serialize)]
+struct StyleRow {
+    /// Fraction of the pool this lens claims (its island's share).
+    share: f64,
+    /// Feature weights of this lens.
+    theta: Vec<ThetaRow>,
+    /// Pool ids this lens scores highest (its exemplar patches).
+    exemplars: Vec<u64>,
 }
 
 /// Engine status snapshot for the UI.
@@ -43,6 +62,20 @@ struct Status {
     observations: usize,
     session: usize,
     has_posterior: bool,
+    generation: usize,
+    k_styles: usize,
+}
+
+fn origin_str(o: Origin) -> &'static str {
+    match o {
+        Origin::Prior => "prior",
+        Origin::Refined => "refined",
+        Origin::Edited => "edited",
+    }
+}
+
+fn to_f32(r: &RenderedPhrase) -> Vec<f32> {
+    r.samples.iter().map(|s| *s as f32).collect()
 }
 
 /// The session engine, wasm-side.
@@ -50,6 +83,10 @@ struct Status {
 pub struct WasmEngine {
     engine: Engine,
     rng: StdRng,
+    bench_tree: Option<PatchTree>,
+    bench_render: Option<RenderedPhrase>,
+    bench_original: Option<u64>,
+    bench_vet_ok: bool,
 }
 
 #[wasm_bindgen]
@@ -71,6 +108,10 @@ impl WasmEngine {
         WasmEngine {
             engine,
             rng: StdRng::seed_from_u64(seed),
+            bench_tree: None,
+            bench_render: None,
+            bench_original: None,
+            bench_vet_ok: false,
         }
     }
 
@@ -88,21 +129,29 @@ impl WasmEngine {
             observations: self.engine.log.len(),
             session: self.engine.session,
             has_posterior: self.engine.posterior.is_some(),
+            generation: self.engine.generation,
+            k_styles: self.engine.cfg.k_styles,
         })
         .unwrap()
     }
 
-    /// Choose the next duel: JSON `[a, b]`, or `null` if the pool is small.
+    /// Choose the next duel: JSON `[idA, idB]`, or `null` if the pool is
+    /// small.
     pub fn next_duel(&mut self) -> String {
-        serde_json::to_string(&self.engine.next_duel(&mut self.rng)).unwrap()
+        let pair = self
+            .engine
+            .next_duel(&mut self.rng)
+            .map(|(a, b)| [self.engine.pool[a].id, self.engine.pool[b].id]);
+        serde_json::to_string(&pair).unwrap()
     }
 
-    /// The audition buffer of pool member `idx` (mono, ±1.0), for WebAudio.
-    pub fn render_of(&self, idx: usize) -> Vec<f32> {
-        self.engine.pool[idx]
-            .render
-            .as_ref()
-            .map(|r| r.samples.iter().map(|s| *s as f32).collect())
+    /// The audition buffer of candidate `id` (mono, ±1.0), for WebAudio.
+    pub fn render_of(&self, id: u32) -> Vec<f32> {
+        let id = id as u64;
+        self.engine
+            .find(id)
+            .and_then(|i| self.engine.pool[i].render.as_ref())
+            .map(to_f32)
             .unwrap_or_default()
     }
 
@@ -111,24 +160,47 @@ impl WasmEngine {
         self.engine.cfg.phrase.sample_rate
     }
 
-    /// Patch term of pool member `idx`, as an s-expression.
-    pub fn sexpr_of(&self, idx: usize) -> String {
-        self.engine.pool[idx].tree.to_sexpr()
+    /// Patch term of candidate `id`, as an s-expression.
+    pub fn sexpr_of(&self, id: u32) -> String {
+        let id = id as u64;
+        self.engine
+            .find(id)
+            .map(|i| self.engine.pool[i].tree.to_sexpr())
+            .unwrap_or_default()
     }
 
-    /// Record a duel outcome.
-    pub fn record_duel(&mut self, a: usize, b: usize, chose_a: bool) {
-        self.engine.record_duel(a, b, chose_a);
+    /// Rack description (modules, knobs with live trace addresses, wires) of
+    /// candidate `id`, as JSON. `null` for an unknown id.
+    pub fn describe_of(&self, id: u32) -> String {
+        let id = id as u64;
+        match self.engine.find(id) {
+            Some(i) => serde_json::to_string(&describe(&self.engine.pool[i].tree)).unwrap(),
+            None => "null".into(),
+        }
     }
 
-    /// Record a keep/kill decision.
-    pub fn record_keep(&mut self, idx: usize, kept: bool) {
-        self.engine.record_keep(idx, kept);
+    /// Record a duel outcome between candidate ids.
+    pub fn record_duel(&mut self, a: u32, b: u32, chose_a: bool) {
+        let (a, b) = (a as u64, b as u64);
+        if let (Some(i), Some(j)) = (self.engine.find(a), self.engine.find(b)) {
+            self.engine.record_duel(i, j, chose_a);
+        }
     }
 
-    /// Record a star rating.
-    pub fn record_stars(&mut self, idx: usize, rating: u8) {
-        self.engine.record_stars(idx, rating);
+    /// Record a keep/kill decision on a candidate id.
+    pub fn record_keep(&mut self, id: u32, kept: bool) {
+        let id = id as u64;
+        if let Some(i) = self.engine.find(id) {
+            self.engine.record_keep(i, kept);
+        }
+    }
+
+    /// Record a star rating on a candidate id.
+    pub fn record_stars(&mut self, id: u32, rating: u8) {
+        let id = id as u64;
+        if let Some(i) = self.engine.find(id) {
+            self.engine.record_stars(i, rating);
+        }
     }
 
     /// Re-fit the taste posterior from the log (seconds of MCMC — worker!).
@@ -141,33 +213,67 @@ impl WasmEngine {
         self.engine.refine(&mut self.rng);
     }
 
-    /// Ranked pool as JSON (`[{idx, mean, std, refined, sexpr}]`).
+    /// Locked refinement from candidate `id`: evolve everything except the
+    /// locked addresses (`locked_json` = JSON array of `key#site` strings).
+    /// Returns the new child id, or 0 if no move was accepted.
+    pub fn refine_from(&mut self, id: u32, locked_json: &str) -> u32 {
+        let id = id as u64;
+        let locked: Vec<String> = serde_json::from_str(locked_json).unwrap_or_default();
+        self.engine
+            .refine_from(&mut self.rng, id, &locked)
+            .unwrap_or(0) as u32
+    }
+
+    /// Ranked pool as JSON (`[{id, mean, std, origin, sexpr}]`).
     pub fn ranked(&self) -> String {
         let rows: Vec<RankedRow> = self
             .engine
             .ranked()
             .into_iter()
             .map(|(idx, mean, std)| RankedRow {
-                idx,
+                id: self.engine.pool[idx].id,
                 mean,
                 std,
-                refined: self.engine.pool[idx].refined,
+                origin: origin_str(self.engine.pool[idx].origin),
                 sexpr: self.engine.pool[idx].tree.to_sexpr(),
             })
             .collect();
         serde_json::to_string(&rows).unwrap()
     }
 
-    /// Taste-posterior summary as JSON (`[{name, mean, std}]` per feature),
-    /// or `null` before the first fit.
-    pub fn taste(&self) -> String {
-        match &self.engine.posterior {
-            None => "null".into(),
-            Some(p) => {
-                let means = p.theta_mean(0);
-                let stds = p.theta_std(0);
-                let rows: Vec<ThetaRow> = Features::phi_names()
-                    .into_iter()
+    /// The 2D taste map (pool + history ghosts) as JSON, or `null` when
+    /// there is too little to project.
+    pub fn taste_map(&self) -> String {
+        let map = self.engine.taste_map();
+        if map.points.is_empty() {
+            "null".into()
+        } else {
+            serde_json::to_string(&map).unwrap()
+        }
+    }
+
+    /// Style lenses of the aligned posterior as JSON
+    /// (`[{share, theta: [{name, mean, std}], exemplars: [ids]}]`), or
+    /// `null` before the first fit. Inactive lenses have share ≈ 0.
+    pub fn styles(&self) -> String {
+        let Some(p) = &self.engine.posterior else {
+            return "null".into();
+        };
+        let names = Features::phi_names();
+        let pool_phis: Vec<Vec<f64>> = self
+            .engine
+            .pool
+            .iter()
+            .filter(|c| !c.phi_std.is_empty())
+            .map(|c| c.phi_std.clone())
+            .collect();
+        let shares = p.style_share(&pool_phis);
+        let rows: Vec<StyleRow> = (0..p.k_styles())
+            .map(|k| {
+                let means = p.theta_mean(k);
+                let stds = p.theta_std(k);
+                let theta = names
+                    .iter()
                     .zip(means)
                     .zip(stds)
                     .map(|((name, mean), std)| ThetaRow {
@@ -176,22 +282,142 @@ impl WasmEngine {
                         std,
                     })
                     .collect();
-                serde_json::to_string(&rows).unwrap()
+                let mut scored: Vec<(u64, f64)> = self
+                    .engine
+                    .pool
+                    .iter()
+                    .filter(|c| !c.phi_std.is_empty())
+                    .map(|c| (c.id, p.utility(&c.phi_std, k).0))
+                    .collect();
+                scored.sort_by(|a, b| b.1.total_cmp(&a.1));
+                StyleRow {
+                    share: shares.get(k).copied().unwrap_or(0.0),
+                    theta,
+                    exemplars: scored.iter().take(3).map(|&(id, _)| id).collect(),
+                }
+            })
+            .collect();
+        serde_json::to_string(&rows).unwrap()
+    }
+
+    /// The lineage log (evolution/edit events, oldest first) as JSON.
+    pub fn lineage(&self) -> String {
+        serde_json::to_string(&self.engine.lineage).unwrap()
+    }
+
+    // ------------------------------------------------------------------
+    // Workbench (the interactive panel)
+    // ------------------------------------------------------------------
+
+    /// Load candidate `id` onto the workbench. Returns false for unknown id.
+    pub fn edit_begin(&mut self, id: u32) -> bool {
+        let id = id as u64;
+        match self.engine.find(id) {
+            Some(i) => {
+                self.bench_tree = Some(self.engine.pool[i].tree.clone());
+                self.bench_render = self.engine.pool[i].render.clone();
+                self.bench_original = Some(id);
+                self.bench_vet_ok = true;
+                true
             }
+            None => false,
         }
     }
 
-    /// Export the observation log (the profile's source of truth) as JSON.
-    pub fn export_log(&self) -> String {
-        serde_json::to_string(&self.engine.log).unwrap()
+    /// Write one knob on the workbench tree (`value` is the normalized
+    /// continuous value, or the index when `is_index`), then re-render and
+    /// re-vet. Returns false if the edit was rejected (structural site,
+    /// unknown address, no workbench).
+    pub fn edit_param(&mut self, addr: &str, value: f64, is_index: bool) -> bool {
+        let Some(tree) = &self.bench_tree else {
+            return false;
+        };
+        let v = if is_index {
+            ParamValue::Index(value.max(0.0) as usize)
+        } else {
+            ParamValue::Continuous(value)
+        };
+        match set_param(tree, addr, v) {
+            Ok(edited) => {
+                match featurize(&edited, &self.phrase()) {
+                    Ok(vetted) => {
+                        self.bench_render = Some(vetted.render);
+                        self.bench_vet_ok = true;
+                    }
+                    Err(_) => {
+                        // Keep the edit (the user asked for it) but flag it:
+                        // the buffer is withheld, never played unvetted.
+                        self.bench_render = None;
+                        self.bench_vet_ok = false;
+                    }
+                }
+                self.bench_tree = Some(edited);
+                true
+            }
+            Err(_) => false,
+        }
     }
 
-    /// Import an observation log, replacing the current one, and start a new
-    /// session on top of it. Returns false on parse failure.
-    pub fn import_log(&mut self, json: &str) -> bool {
-        match serde_json::from_str::<ObservationLog>(json) {
-            Ok(log) => {
-                self.engine.log = log;
+    /// The workbench audition buffer (empty when the current edit failed
+    /// vetting — DESIGN.md §2.1: never play an unvetted patch).
+    pub fn edit_render(&self) -> Vec<f32> {
+        self.bench_render.as_ref().map(to_f32).unwrap_or_default()
+    }
+
+    /// Whether the current workbench state passed vetting.
+    pub fn edit_vet_ok(&self) -> bool {
+        self.bench_vet_ok
+    }
+
+    /// Rack description of the workbench tree as JSON (`null` if empty).
+    pub fn edit_describe(&self) -> String {
+        match &self.bench_tree {
+            Some(t) => serde_json::to_string(&describe(t)).unwrap(),
+            None => "null".into(),
+        }
+    }
+
+    /// Commit the workbench tree as a new candidate. When `as_improvement`,
+    /// also records "edited beats original" as a duel observation. Returns
+    /// the new candidate id, or 0 (duplicate / unvetted / empty bench).
+    pub fn edit_commit(&mut self, as_improvement: bool) -> u32 {
+        let (Some(tree), true) = (self.bench_tree.clone(), self.bench_vet_ok) else {
+            return 0;
+        };
+        self.engine
+            .commit_edit(self.bench_original, tree, as_improvement)
+            .unwrap_or(0) as u32
+    }
+
+    /// Clear the workbench.
+    pub fn edit_cancel(&mut self) {
+        self.bench_tree = None;
+        self.bench_render = None;
+        self.bench_original = None;
+        self.bench_vet_ok = false;
+    }
+
+    fn phrase(&self) -> PhraseSpec {
+        self.engine.cfg.phrase.clone()
+    }
+
+    // ------------------------------------------------------------------
+    // Persistence
+    // ------------------------------------------------------------------
+
+    /// Export the portable profile (observation log + its standardizer — θ
+    /// is only meaningful relative to the standardizer, so they travel
+    /// together) as JSON.
+    pub fn export_profile(&self) -> String {
+        serde_json::to_string(&self.engine.export_profile()).unwrap()
+    }
+
+    /// Import a profile, replacing the log, adopting its standardizer, and
+    /// starting a new session on top. Returns false on parse failure.
+    pub fn import_profile(&mut self, json: &str) -> bool {
+        match serde_json::from_str::<Profile>(json) {
+            Ok(profile) => {
+                self.engine.import_profile(profile);
                 self.engine.begin_session();
                 true
             }

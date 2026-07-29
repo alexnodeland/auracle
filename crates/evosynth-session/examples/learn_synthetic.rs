@@ -72,7 +72,7 @@ fn main() {
         let posterior = engine.posterior.as_ref().unwrap();
         let (mut xs, mut ys) = (Vec::new(), Vec::new());
         for c in &engine.pool {
-            xs.push(posterior.utility(&c.phi_std, 0).0);
+            xs.push(posterior.utility_mix(&c.phi_std).0);
             ys.push(user.utility(&c.phi_std));
         }
         let r = pearson(&xs, &ys);

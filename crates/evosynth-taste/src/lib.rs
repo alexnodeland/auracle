@@ -31,7 +31,7 @@ pub mod synthetic;
 pub use model::{TasteConfig, TasteModel, TastePosterior, TasteSample};
 pub use observe::{Observation, ObservationLog};
 pub use standardize::Standardizer;
-pub use synthetic::SyntheticUser;
+pub use synthetic::{MixtureSyntheticUser, SyntheticUser};
 
 #[cfg(test)]
 mod tests {
@@ -95,7 +95,7 @@ mod tests {
         for _ in 0..n_test {
             let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
             let truth = user.utility(&a) > user.utility(&b);
-            let pred = posterior.prob_prefers(&a, &b, 0) > 0.5;
+            let pred = posterior.prob_prefers(&a, &b) > 0.5;
             if pred == truth {
                 correct += 1;
             }
@@ -232,7 +232,7 @@ mod tests {
     }
 
     /// K = 2 smoke: the mixture path runs end-to-end and returns finite
-    /// summaries (style separation quality is an M6 concern).
+    /// summaries, weights sum to one, and alignment is well-formed.
     #[test]
     fn k2_smoke() {
         let mut rng = StdRng::seed_from_u64(66);
@@ -244,15 +244,84 @@ mod tests {
                 log.push(user.observe_duel(&mut rng, a, b, s));
             }
         }
-        let cfg = TasteConfig {
-            k_styles: 2,
-            ..TasteConfig::linear(D)
-        };
-        let posterior = TasteModel::new(cfg).fit(&mut rng, &log, 4_000, 2_000);
+        let posterior = TasteModel::new(TasteConfig::mixture(D, 2))
+            .fit(&mut rng, &log, 4_000, 2_000)
+            .aligned();
         let phi = random_phi(&mut rng);
         for style in 0..2 {
             let (m, s) = posterior.utility(&phi, style);
             assert!(m.is_finite() && s.is_finite());
         }
+        let (m, s) = posterior.utility_mix(&phi);
+        assert!(m.is_finite() && s.is_finite());
+        let r = posterior.responsibilities(&phi);
+        assert!((r.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+    }
+
+    /// **The M6 mixture gate.** A user whose true taste is bimodal — utility
+    /// = max over two orthogonal-ish component tastes — is a function no
+    /// single linear θ can represent. The K = 2 marginalized mixture must
+    /// (a) predict held-out duels better than K = 1, and (b) recover *both*
+    /// component directions after alignment.
+    #[test]
+    fn mixture_captures_bimodal_taste() {
+        let mut rng = StdRng::seed_from_u64(77);
+        // Mirrored dominant dimension: u* = max(θ_a·φ, θ_b·φ) is V-shaped in
+        // φ₀, which no single linear θ can track (its best move is to zero
+        // out φ₀ entirely).
+        let mut theta_a = vec![0.0; D];
+        theta_a[0] = 2.4;
+        theta_a[1] = 1.2;
+        theta_a[2] = 0.8;
+        let mut theta_b = vec![0.0; D];
+        theta_b[0] = -2.4;
+        theta_b[1] = 1.2;
+        theta_b[3] = 0.8;
+        let user = MixtureSyntheticUser {
+            thetas: vec![theta_a.clone(), theta_b.clone()],
+        };
+
+        let mut log = ObservationLog::new();
+        for _ in 0..350 {
+            let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
+            log.push(user.observe_duel(&mut rng, a, b, 0));
+        }
+
+        let p1 = TasteModel::new(TasteConfig::linear(D)).fit(&mut rng, &log, 25_000, 8_000);
+        let p2 = TasteModel::new(TasteConfig::mixture(D, 2)).fit(&mut rng, &log, 45_000, 15_000);
+
+        // (a) held-out modal accuracy.
+        let mut correct = [0usize; 2];
+        let n_test = 400;
+        for _ in 0..n_test {
+            let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
+            let truth = user.utility(&a) > user.utility(&b);
+            if (p1.prob_prefers(&a, &b) > 0.5) == truth {
+                correct[0] += 1;
+            }
+            if (p2.prob_prefers(&a, &b) > 0.5) == truth {
+                correct[1] += 1;
+            }
+        }
+        let acc1 = correct[0] as f64 / n_test as f64;
+        let acc2 = correct[1] as f64 / n_test as f64;
+        assert!(
+            acc2 > acc1 + 0.02,
+            "mixture ({acc2}) does not beat linear ({acc1}) on a bimodal user"
+        );
+        assert!(acc2 > 0.75, "mixture accuracy {acc2} too low");
+
+        // (b) both true directions are recovered by some aligned style.
+        let aligned = p2.aligned();
+        let best_cos = |truth: &[f64]| -> f64 {
+            (0..2)
+                .map(|k| cosine(&aligned.theta_mean(k), truth))
+                .fold(f64::NEG_INFINITY, f64::max)
+        };
+        let (ca, cb) = (best_cos(&theta_a), best_cos(&theta_b));
+        assert!(
+            ca > 0.6 && cb > 0.6,
+            "style recovery too weak: cos_a={ca:.2} cos_b={cb:.2}"
+        );
     }
 }

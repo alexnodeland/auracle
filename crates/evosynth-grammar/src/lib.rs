@@ -30,11 +30,17 @@
 //!   feedback), so the grammar cannot express the most degenerate settings.
 
 pub mod compile;
+pub mod describe;
+pub mod diff;
+pub mod edit;
 pub mod genome;
 pub mod prior;
 pub mod term;
 
 pub use compile::{compile, CompiledVoice};
+pub use describe::{describe, RackDescription};
+pub use diff::{tree_diff, DiffEntry};
+pub use edit::{set_param, EditError, ParamValue};
 pub use prior::PatchGrammarPrior;
 pub use term::{AudioNode, ModNode, PatchTree};
 
@@ -175,6 +181,85 @@ mod tests {
             assert_eq!(back, tree);
             assert!(compile(&tree, SR).is_ok());
         }
+    }
+
+    /// Every knob address in the rack description is a real trace site, every
+    /// continuous/enum knob is editable through it, and the edit is exactly a
+    /// one-site trace change (the panel cannot drift from the genome).
+    #[test]
+    fn rack_description_addresses_are_live() {
+        use fugue_evo::genome::trace_genome::ChoiceValue;
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(11);
+        for _ in 0..50 {
+            let (tree, _) = draw(&prior, &mut rng);
+            let rack = describe::describe(&tree);
+            let trace = tree.to_trace();
+            for m in &rack.modules {
+                for a in &m.structural_addrs {
+                    assert!(
+                        trace.choices.keys().any(|k| &**k == a.as_str()),
+                        "structural addr {a} not in trace"
+                    );
+                }
+                for knob in &m.knobs {
+                    let found = trace
+                        .choices
+                        .iter()
+                        .find(|(k, _)| &***k == knob.addr.as_str())
+                        .unwrap_or_else(|| panic!("knob addr {} not in trace", knob.addr));
+                    let edited = match knob.kind {
+                        describe::KnobKind::Continuous => {
+                            assert!(matches!(found.1.value, ChoiceValue::F64(_)));
+                            set_param(&tree, &knob.addr, ParamValue::Continuous(0.5)).unwrap()
+                        }
+                        describe::KnobKind::Enum { .. } | describe::KnobKind::Octave => {
+                            assert!(matches!(found.1.value, ChoiceValue::Usize(_)));
+                            set_param(&tree, &knob.addr, ParamValue::Index(0)).unwrap()
+                        }
+                    };
+                    // The edit changes at most that one site.
+                    let d = tree_diff(&tree, &edited);
+                    assert!(d.len() <= 1, "edit at {} touched {:?}", knob.addr, d);
+                    assert!(compile(&edited, SR).is_ok());
+                }
+            }
+            // Wires reference existing modules only.
+            for w in &rack.wires {
+                assert!(rack.modules.iter().any(|m| m.key == w.from) || w.from == "node");
+                assert!(rack.modules.iter().any(|m| m.key == w.to));
+            }
+        }
+    }
+
+    /// Structural sites reject knob edits; unknown addresses error cleanly.
+    #[test]
+    fn edits_reject_structure_and_unknowns() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(12);
+        let (tree, _) = draw(&prior, &mut rng);
+        assert!(matches!(
+            set_param(&tree, "node#leaf", ParamValue::Index(0)),
+            Err(EditError::Structural(_))
+        ));
+        assert!(matches!(
+            set_param(&tree, "nowhere#cut", ParamValue::Continuous(0.5)),
+            Err(EditError::UnknownAddress(_))
+        ));
+    }
+
+    /// tree_diff is empty on identity and localizes a single edit.
+    #[test]
+    fn diff_localizes_edits() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(13);
+        let (tree, _) = draw(&prior, &mut rng);
+        assert!(tree_diff(&tree, &tree).is_empty());
+        let edited = set_param(&tree, "amp#attack", ParamValue::Continuous(0.9)).unwrap();
+        let d = tree_diff(&tree, &edited);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].addr, "amp#attack");
+        assert!(d[0].before.is_some() && d[0].after.is_some());
     }
 
     /// Deeper patches pay more prior mass — parsimony is the grammar itself.

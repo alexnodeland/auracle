@@ -69,7 +69,7 @@ discover screaming resonance.
 A latent utility over patches:
 
 ```
-u(x) = θ_z · φ(x)          z ~ per-session style latent (mixture of linear experts)
+u(x) = max_k θ_k · φ(x)    K style lenses; a patch is as good as its best lens
 φ(x) = [ φ_audio(render(x)) ; φ_struct(term(x)) ]
 ```
 
@@ -78,14 +78,19 @@ u(x) = θ_z · φ(x)          z ~ per-session style latent (mixture of linear ex
   harmonicity, roughness, …). Costs a render; generalizes across topologies.
 - **φ_struct** — free (no render): module histogram, term depth, modulation
   density, parallel-branch count, …
-- **Mixture of experts** — taste is multi-modal ("ambient-me" vs "acid-me").
-  `z` is a **per-session** style latent (a session is one mood; per-observation
-  z would shred both signal and inference budget). Discovered styles are
-  nameable; **pinning a named profile = conditioning on z**. Manual "save
-  preference set" is a UI affordance over the same mechanism.
-- **Staging:** ship **K = 1 first** — a one-component mixture *is* Bayesian
-  linear regression, same code path, trivial inference. Unlock K > 1 after the
-  loop is validated.
+- **Max of experts** — taste is multi-modal ("ambient-me" vs "acid-me").
+  Utility is the **max over K linear lenses**: each island of taste gets its
+  own lens, and every judgment — including a duel *across* islands — compares
+  candidates on the shared scale `u = max_k u_k`. Two rejected designs, for
+  the record: a per-session style latent `z` (one mood per session — cannot
+  represent several islands inside a session) and a per-observation
+  marginalized lens (forces both duel items through the *same* lens, so
+  cross-island duels are unrepresentable; a synthetic bimodal user exposed
+  this — the marginalized mixture failed to beat K = 1). With max-utility
+  there are **no discrete latent sites at all**; K = 1 reduces exactly to
+  Bayesian linear regression. Label permutation is resolved post-hoc
+  (`TastePosterior::aligned`); a lens that claims ≈0% of the pool is idle,
+  so K is an upper bound, not a claim.
 
 The two-part feature space enables a **screening cascade**: a struct-only
 surrogate prunes candidates for free; survivors get rendered and scored in
@@ -288,8 +293,11 @@ learn a fake user in fast-forward").
 | Genome representation | Typed combinator-term PCFG (not raw graph, not NEAT) | Types make every sample valid; reuses fugue-evo grammar machinery; all 3 evolution levels in one rep |
 | Feedback signals | Pairwise duels + stars (ordinal) + keep/kill; **no** implicit signals in v1 | One latent utility, three likelihoods; duels primary |
 | Taste features | φ_audio + φ_struct | Transfer across topologies + free structural screening |
-| Utility form | Mixture of linear experts, shipped at K=1 first | Multi-modal taste by design; zero inference risk at launch |
-| Preference sets | Discovered styles (per-session z), nameable/pinnable | "Saved preferences" = conditioning on z, not separate models |
+| Utility form | **Max of linear experts** `u = max_k θ_k·φ`, K = 3 | Multi-modal taste; handles cross-island duels (per-observation and per-session latent-z designs both fail there); no discrete sites; K=1 ≡ BLR |
+| Preference sets | Discovered style lenses, aligned post-hoc; nameable/pinnable later | A lens claiming ≈0% of the pool is idle — K is an upper bound |
+| Locks / partial evolution | Freeze any set of trace addresses; MH proposals touching them are rejected outside the kernel | Exactly Metropolis-within-Gibbs on the conditional posterior — locking is exact, not heuristic |
+| Hand edits | Knob turn = write at a trace address; commit inserts as new candidate; optional "edit beats original" duel | Panel and genome share one encoding, so edits, locks, and evolution cannot drift |
+| Profile portability | Export = observation log **+ standardizer** | θ is only meaningful relative to its standardizer; they persist together |
 | Palette v1 | ~10 curated modules | Validate pipeline; enough texture axes to learn on |
 | Feedback loops in grammar | Not in v1 (DAG terms only) | Stability; internal-feedback modules still allowed |
 | Audition | Standard mono phrase + free-play; per-style phrases later | Feature comparability requires fixed stimulus |

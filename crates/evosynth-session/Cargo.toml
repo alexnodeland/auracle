@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 fugue-evo.workspace = true
+fugue-ppl.workspace = true
 evosynth-grammar.workspace = true
 evosynth-features.workspace = true
 evosynth-taste.workspace = true
