@@ -102,6 +102,31 @@ pub enum StructOp {
         /// Node key.
         key: String,
     },
+    /// Replace the subtree at `key` with an explicit fragment (the wire
+    /// gesture "plug this staged chain in here, discard what was there" —
+    /// callers park the old subtree client-side).
+    ReplaceTree {
+        /// Node key.
+        key: String,
+        /// The fragment to install.
+        node: AudioNode,
+    },
+    /// Insert an explicit processor/mix fragment into the wire between
+    /// `key` and its parent; the old subtree becomes the fragment's primary
+    /// input (a Mix keeps its own `b` branch).
+    InsertTree {
+        /// Node key.
+        key: String,
+        /// The fragment to graft in (must not be a source).
+        node: AudioNode,
+    },
+    /// Install an explicit modulation fragment on the filter/fold at `key`.
+    SetModTree {
+        /// Node key.
+        key: String,
+        /// The modulation term.
+        m: ModNode,
+    },
 }
 
 /// Why a structural edit was rejected.
@@ -329,8 +354,95 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                 _ => return Err(StructError::Invalid("not a mixer".into())),
             }
         }
+        StructOp::ReplaceTree { key, node } => {
+            let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            let slot = node_at_mut(&mut out.root, &path)
+                .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            *slot = node.clone();
+        }
+        StructOp::InsertTree { key, node } => {
+            let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            let slot = node_at_mut(&mut out.root, &path)
+                .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            let old = take(slot);
+            *slot = graft(node.clone(), old)?;
+        }
+        StructOp::SetModTree { key, m } => {
+            let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            let slot = node_at_mut(&mut out.root, &path)
+                .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
+            match slot {
+                AudioNode::Filter { modulation, .. } | AudioNode::Fold { modulation, .. } => {
+                    *modulation = m.clone();
+                }
+                _ => {
+                    return Err(StructError::Invalid(
+                        "only filters and wavefolders have a modulation slot".into(),
+                    ))
+                }
+            }
+        }
     }
     finish(out)
+}
+
+/// Graft `old` into `frag`'s primary input slot (Mix keeps its `b`).
+fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
+    match frag {
+        AudioNode::Mix { balance, b, .. } => Ok(AudioNode::Mix {
+            balance,
+            a: Box::new(old),
+            b,
+        }),
+        AudioNode::Filter {
+            kind,
+            cutoff,
+            resonance,
+            mod_depth,
+            modulation,
+            ..
+        } => Ok(AudioNode::Filter {
+            kind,
+            cutoff,
+            resonance,
+            mod_depth,
+            modulation,
+            input: Box::new(old),
+        }),
+        AudioNode::Fold {
+            threshold,
+            mod_depth,
+            modulation,
+            ..
+        } => Ok(AudioNode::Fold {
+            threshold,
+            mod_depth,
+            modulation,
+            input: Box::new(old),
+        }),
+        AudioNode::Delay {
+            time,
+            feedback,
+            mix,
+            ..
+        } => Ok(AudioNode::Delay {
+            time,
+            feedback,
+            mix,
+            input: Box::new(old),
+        }),
+        AudioNode::Chorus {
+            rate, depth, mix, ..
+        } => Ok(AudioNode::Chorus {
+            rate,
+            depth,
+            mix,
+            input: Box::new(old),
+        }),
+        AudioNode::Vco { .. } | AudioNode::Supersaw { .. } | AudioNode::Noise { .. } => Err(
+            StructError::Invalid("a source has no input to splice into".into()),
+        ),
+    }
 }
 
 fn finish(tree: PatchTree) -> Result<PatchTree, StructError> {

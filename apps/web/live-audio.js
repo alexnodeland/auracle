@@ -98,6 +98,15 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       case "on": if (this.poly) this.poly.note_on(m.note); break;
       case "off": if (this.poly) this.poly.note_off(m.note); break;
       case "alloff": if (this.poly) this.poly.all_off(); break;
+      case "param": {
+        // Live knob write: straight into the running voices' atomics — no
+        // recompile, state survives, audible next sample. A miss means the
+        // address has no live handle (enum/structural) and the caller must
+        // fall back to set_patch.
+        const ok = this.poly ? this.poly.set_param(m.addr, m.value) : false;
+        if (!ok) this.port.postMessage({ type: "param_miss", addr: m.addr });
+        break;
+      }
     }
   }
   loadPatch(tree) {
@@ -162,6 +171,9 @@ export async function initLiveAudio(audioCtx, build) {
     },
     noteOff(note) {
       node.port.postMessage({ type: "off", note });
+    },
+    param(addr, value) {
+      node.port.postMessage({ type: "param", addr, value });
     },
     allOff() {
       node.port.postMessage({ type: "alloff" });

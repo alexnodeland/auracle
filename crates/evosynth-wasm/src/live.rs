@@ -128,6 +128,21 @@ impl LivePoly {
         }
     }
 
+    /// Write a normalized knob value straight into every running voice —
+    /// **no recompilation**: filters keep ringing, delay tails survive, the
+    /// change is audible on the next sample. Returns false for addresses
+    /// with no live handle (enums, structure) — those need `set_patch`.
+    pub fn set_param(&mut self, addr: &str, value: f64) -> bool {
+        let mut hit = false;
+        for v in &self.voices {
+            if let Some(h) = v.voice.params.get(addr) {
+                h.set_normalized(value);
+                hit = true;
+            }
+        }
+        hit
+    }
+
     /// Release everything.
     pub fn all_off(&mut self) {
         for v in &mut self.voices {
@@ -216,5 +231,42 @@ mod tests {
             poly.voices.iter().all(|v| !v.running),
             "voices never parked after release"
         );
+    }
+
+    /// Live params: turning a knob mid-note changes the sound without
+    /// resetting the voice (the note keeps sounding, but its spectrum/level
+    /// trajectory diverges from an untouched clone).
+    #[test]
+    fn live_params_change_sound_without_retrigger() {
+        // A patch with a guaranteed live knob: filter cutoff.
+        let (_, tree) = evosynth_grammar::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "First Bass")
+            .expect("preset exists");
+        let json = serde_json::to_string(&tree).unwrap();
+        let mut a = LivePoly::new(&json, 44_100.0, 1).unwrap();
+        let mut b = LivePoly::new(&json, 44_100.0, 1).unwrap();
+        a.note_on(48);
+        b.note_on(48);
+        // Settle both identically.
+        let _ = a.process(2048);
+        let _ = b.process(2048);
+        // Sweep cutoff hard on `a` only, mid-note.
+        assert!(a.set_param("node#cut", 1.0), "cutoff handle missing");
+        assert!(
+            !a.set_param("node#wave", 0.5),
+            "enum sites must not be live"
+        );
+        let out_a = a.process(4096);
+        let out_b = b.process(4096);
+        let diff: f64 = out_a
+            .iter()
+            .zip(&out_b)
+            .map(|(x, y)| ((x - y) as f64).abs())
+            .sum();
+        assert!(diff > 1e-3, "cutoff change was inaudible (diff {diff})");
+        // The note is still sounding on `a` (not reset/killed).
+        let energy: f64 = out_a.iter().map(|s| (*s as f64).powi(2)).sum();
+        assert!(energy > 1e-8, "voice died on param change");
     }
 }

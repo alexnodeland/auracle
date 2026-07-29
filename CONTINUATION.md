@@ -1,4 +1,40 @@
-# Continuation notes — updated 2026-07-29 (pass 3: feature-complete)
+# Continuation notes — updated 2026-07-29 (pass 4: the live surface)
+
+## Pass 4 (playtest-4 response): everything real-time + the wiring surface
+
+- **Zero-recompile knobs**: `compile()` now emits every continuous param as
+  an `ExternalInput::cv/cv_bipolar` with an `Arc<AtomicF64>` handle,
+  registered in `CompiledVoice.params` keyed by trace address
+  (`node/0#cut`). `ParamMap` {Unit, Resonance, Feedback, XfadePos} applies
+  the bounded musical mapping at write time. `LivePoly::set_param(addr, x)`
+  writes all voices' atomics — **audible next sample, no recompile, filter/
+  delay state survives** (test: mid-note cutoff sweep diverges from a clone
+  without killing the voice). Knob drags route: sound-first to the worklet
+  (`live.param`) + genome-second to the worker (debounced). Bench replies
+  only re-patch on subject load / structural edit / non-live addr
+  (`param_miss` from the worklet populates `nonLiveAddrs`). Non-live: vco
+  detune/octave, fold threshold, mod_depth (cable attenuation), all enums.
+- **Wiring surface**: labeled jacks on every module (green audio in/out;
+  amber mod; mix has a/b in-jacks; amp in-jack accepts the root), wires
+  land on jacks (mod cables land on the bottom mod jack). **Node bank**
+  (collapsible right panel) stages modules into the **tray** (client-side
+  fragments, serde-shaped JSON mirroring mutate.rs defaults). Drag a tray
+  out-jack → legal jacks pulse → drop: processor/mix = `insert_tree`
+  (grafts old subtree as its input; Mix keeps its own b), source =
+  `replace_tree` (old chain parks in the tray). LFO/env → mod jack =
+  `set_mod_tree`. Dragging an occupied in-jack off = unplug: subtree parks
+  in tray, a default vco holds the socket; mod jack unplug = set_mod none.
+  Rewiring between existing modules = unplug + replug (two gestures, fully
+  general). Wire-drag rubber band lives in a fixed `#wire-overlay` svg.
+- New tree-carrying StructOps: ReplaceTree / InsertTree / SetModTree (+
+  `graft`). Gate test still applies every op everywhere.
+- Verified live: analyser peak changed 0.77→1.5 on a held note with zero
+  worklet re-patch messages; bank→tray→wire→module-count flows; LFO→mod;
+  unplug→tray. Zero console errors.
+- JS/Rust must agree on serde shapes: fragments are externally tagged
+  (`{"Vco":{...}}`, `"None"`), StructOp is `{"op":"insert_tree",...}`.
+
+# (pass 3) — feature-complete
 
 ## Pass 3 (playtest-3 response): toward feature-complete
 

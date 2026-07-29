@@ -39,7 +39,7 @@ pub mod presets;
 pub mod prior;
 pub mod term;
 
-pub use compile::{compile, CompiledVoice};
+pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap};
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};

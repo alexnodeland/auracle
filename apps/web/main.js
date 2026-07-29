@@ -50,6 +50,10 @@ let auditionOnSettle = false;
 let pendingEvolve = false;
 let knobDragging = false;
 
+// Addresses with no live audio handle (enums, structural sites): edits to
+// these need a voice re-patch when the engine confirms them.
+const nonLiveAddrs = new Set();
+
 // ---------- worker protocol ----------
 const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
 
@@ -141,8 +145,20 @@ worker.onmessage = (e) => {
       } else {
         wb.buffer = null;
       }
-      // The keyboard follows the bench: edits are live immediately.
-      if (m.treeJson && m.treeJson !== "null" && wb.vetOk && live) {
+      if (m.treeJson && m.treeJson !== "null") {
+        wb.tree = JSON.parse(m.treeJson);
+      }
+      // The keyboard follows the bench — but continuous knob turns were
+      // already applied live inside the worklet (zero-recompile), so only
+      // subject loads, structural changes, and non-live params re-patch.
+      const structural = m.edited === "structure";
+      const paramNonLive =
+        m.edited !== undefined && !structural && nonLiveAddrs.has(m.edited);
+      const subjectLoad = m.subject !== undefined;
+      if (
+        m.treeJson && m.treeJson !== "null" && live &&
+        (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
+      ) {
         live.setPatch(m.treeJson);
         livePatchId = wb.dirty ? null : wb.subjectId;
         setLiveLabel(wb.dirty ? `${nameOf(wb.subjectId)} (edited)` : nameOf(wb.subjectId));
@@ -342,6 +358,7 @@ async function bootLiveAudio() {
   live.onMessage((m) => {
     (window.__evoLog = window.__evoLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
+    if (m.type === "param_miss") nonLiveAddrs.add(m.addr);
   });
   live.node.onprocessorerror = (e) => {
     (window.__evoLog = window.__evoLog || []).push({ type: "processor_error", e: String(e) });
@@ -715,6 +732,10 @@ function openOnBench(id) {
 }
 
 function sendEdit(addr, value, isIndex) {
+  // Sound first: continuous knobs write straight into the running voices.
+  if (isIndex) nonLiveAddrs.add(addr);
+  else if (live) live.param(addr, value);
+  // Genome second: the worker validates, re-renders the phrase, updates φ.
   if (editInFlight) {
     editQueue = { addr, value, isIndex };
     return;
@@ -851,21 +872,34 @@ function buildRack(svg, rack, opts) {
   // Wires under modules.
   const wireLayer = svgEl("g", {});
   svg.appendChild(wireLayer);
+  const modByKey = new Map(rack.modules.map((m) => [m.key, m]));
   for (const w of rack.wires) {
     const from = pos.get(w.from);
     const to = pos.get(w.to);
     if (!from || !to) continue;
     const x1 = from.x + from.w;
     const y1 = from.y + from.h / 2;
-    const x2 = to.x;
-    const y2 = to.y + to.h / 2;
-    const dx = Math.max(24, (x2 - x1) / 2);
-    const sag = 14 + Math.abs(y2 - y1) * 0.08;
-    const d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
+    let x2, y2, d;
+    if (w.kind === "mod") {
+      // Mod cables land on the target's bottom mod jack.
+      x2 = to.x + to.w / 2;
+      y2 = to.y + to.h;
+      const dx = Math.max(24, (x2 - x1) / 2);
+      d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + 16}, ${x2} ${y2 + 26}, ${x2} ${y2}`;
+    } else {
+      // Audio cables land on the target's in jack (mix: a or b).
+      const toMod = modByKey.get(w.to);
+      x2 = to.x;
+      y2 = to.y + to.h / 2;
+      if (toMod && toMod.kind === "mix") {
+        y2 = to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68);
+      }
+      const dx = Math.max(24, (x2 - x1) / 2);
+      const sag = 14 + Math.abs(y2 - y1) * 0.08;
+      d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
+    }
     wireLayer.appendChild(svgEl("path", { d }, `wire ${w.kind}-glow`));
     wireLayer.appendChild(svgEl("path", { d }, `wire ${w.kind}`));
-    wireLayer.appendChild(svgEl("circle", { cx: x1, cy: y1, r: 3.4 }, "port"));
-    wireLayer.appendChild(svgEl("circle", { cx: x2, cy: y2, r: 3.4 }, "port"));
   }
 
   const isModuleLockedIn = (mod) => {
@@ -913,6 +947,62 @@ function buildRack(svg, rack, opts) {
           renderRack();
         });
         g.appendChild(mlock);
+      }
+    }
+
+    // ---- labeled jacks (green = audio, amber = modulation) ----
+    const addJack = (gx, gy, cls, label, labelSide, data) => {
+      const jg = svgEl("g", { transform: `translate(${gx},${gy})` }, `jack${cls ? " " + cls : ""}`);
+      if (interactive && data) {
+        for (const [dk, dv] of Object.entries(data)) jg.setAttribute(dk, dv);
+      }
+      jg.appendChild(svgEl("circle", { r: 5.5 }));
+      const attrs =
+        labelSide === "right" ? { x: 9, y: 3 } :
+        labelSide === "left" ? { x: -9, y: 3, "text-anchor": "end" } :
+        { x: 0, y: 15, "text-anchor": "middle" };
+      const t = svgEl("text", attrs);
+      t.textContent = label;
+      jg.appendChild(t);
+      g.appendChild(jg);
+      return jg;
+    };
+    const isSource = ["vco", "supersaw", "noise"].includes(m.kind);
+    if (m.is_mod) {
+      addJack(p.w, p.h / 2, "modjack", "out", "left");
+    } else if (m.kind === "amp") {
+      const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" });
+      if (interactive) {
+        j.addEventListener("pointerdown", (ev) => {
+          ev.preventDefault();
+          startWireDrag({ mode: "unplug-audio", childKey: "node", kind: "audio" }, ev);
+        });
+      }
+    } else {
+      if (!isSource) {
+        const ins = m.kind === "mix"
+          ? [[p.h * 0.38, "a", `${m.key}/0`], [p.h * 0.68, "b", `${m.key}/1`]]
+          : [[p.h / 2, "in", `${m.key}/0`]];
+        for (const [jy, lbl, ck] of ins) {
+          const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck });
+          if (interactive) {
+            j.addEventListener("pointerdown", (ev) => {
+              ev.preventDefault();
+              startWireDrag({ mode: "unplug-audio", childKey: ck, kind: "audio" }, ev);
+            });
+          }
+        }
+      }
+      addJack(p.w, p.h / 2, "", "out", "left");
+      if (m.kind === "filter" || m.kind === "fold") {
+        const j = addJack(p.w / 2, p.h, "modjack", "mod", "below", { "data-modkey": m.key });
+        if (interactive) {
+          j.addEventListener("pointerdown", (ev) => {
+            if (!modAtKey(m.key)) return; // empty slot: target only
+            ev.preventDefault();
+            startWireDrag({ mode: "unplug-mod", key: m.key, kind: "mod" }, ev);
+          });
+        }
       }
     }
 
@@ -1160,6 +1250,245 @@ $("lock-clear").onclick = () => {
   wb.locks.clear();
   renderRack();
 };
+
+
+// ---------- patch-tree JSON utils (serde externally-tagged AudioNode) ----------
+const AUDIO_TAGS = ["Vco", "Supersaw", "Noise", "Mix", "Filter", "Fold", "Delay", "Chorus"];
+const SOURCE_TAGS = ["Vco", "Supersaw", "Noise"];
+
+function nodeTag(n) {
+  return typeof n === "string" ? n : Object.keys(n)[0];
+}
+
+function nodeChildrenJSON(n) {
+  const tag = nodeTag(n);
+  const v = n[tag];
+  if (tag === "Mix") return [v.a, v.b];
+  if (["Filter", "Fold", "Delay", "Chorus"].includes(tag)) return [v.input];
+  return [];
+}
+
+function nodeAtKey(key) {
+  if (!wb.tree) return null;
+  let cur = wb.tree.root;
+  if (key !== "node") {
+    for (const i of key.slice(5).split("/").map(Number)) {
+      const ch = nodeChildrenJSON(cur);
+      if (!ch[i]) return null;
+      cur = ch[i];
+    }
+  }
+  return cur;
+}
+
+function modAtKey(key) {
+  const n = nodeAtKey(key);
+  if (!n) return null;
+  const tag = nodeTag(n);
+  if (tag !== "Filter" && tag !== "Fold") return null;
+  const m = n[tag].modulation;
+  return m === "None" ? null : m;
+}
+
+function subtreeSize(n) {
+  return 1 + nodeChildrenJSON(n).reduce((s, c) => s + subtreeSize(c), 0);
+}
+
+// ---------- staged fragments: defaults (must mirror grammar mutate.rs) ----------
+const FRAG_DEFAULTS = {
+  vco: () => ({ Vco: { wave: "Saw", octave: 0, detune: 0.5 } }),
+  supersaw: () => ({ Supersaw: { octave: 0, detune: 0.35, mix: 0.5 } }),
+  noise: () => ({ Noise: { color: "White" } }),
+  mix: () => ({
+    Mix: {
+      balance: 0.5,
+      a: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } },
+      b: { Vco: { wave: "Triangle", octave: 0, detune: 0.5 } },
+    },
+  }),
+  filter: () => ({
+    Filter: {
+      kind: "SvfLp", cutoff: 0.6, resonance: 0.3, mod_depth: 0.3,
+      input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } },
+      modulation: "None",
+    },
+  }),
+  fold: () => ({
+    Fold: {
+      threshold: 0.5, mod_depth: 0.3,
+      input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } },
+      modulation: "None",
+    },
+  }),
+  delay: () => ({
+    Delay: { time: 0.35, feedback: 0.35, mix: 0.35, input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } } },
+  }),
+  chorus: () => ({
+    Chorus: { rate: 0.3, depth: 0.4, mix: 0.35, input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } } },
+  }),
+  lfo: () => ({ Lfo: { wave: "Triangle", rate: 0.4 } }),
+  env: () => ({ Env: { attack: 0.2, decay: 0.5 } }),
+};
+
+// ---------- tray (staged, unwired modules) ----------
+const tray = [];
+let trayUid = 1;
+
+function fragLabel(frag, isMod) {
+  const tag = nodeTag(frag);
+  if (isMod) return tag === "Env" ? "mod env" : tag.toLowerCase();
+  const size = subtreeSize(frag);
+  return tag.toLowerCase() + (size > 1 ? `·${size}` : "");
+}
+
+function stageKind(kind) {
+  const isMod = kind === "lfo" || kind === "env";
+  tray.push({ uid: trayUid++, isMod, frag: FRAG_DEFAULTS[kind](), label: kind === "env" ? "mod env" : kind });
+  renderTray();
+}
+
+function stageFragment(frag, isMod) {
+  if (!frag) return;
+  tray.push({ uid: trayUid++, isMod, frag, label: fragLabel(frag, isMod) });
+  renderTray();
+}
+
+function unstage(uid) {
+  const i = tray.findIndex((t) => t.uid === uid);
+  if (i >= 0) tray.splice(i, 1);
+  renderTray();
+}
+
+function renderTray() {
+  const holder = $("tray-items");
+  holder.innerHTML = "";
+  if (tray.length === 0) {
+    holder.innerHTML = '<span class="tray-hint mono">unwired modules land here — drag a jack to patch them in</span>';
+    return;
+  }
+  for (const t of tray) {
+    const el = document.createElement("div");
+    el.className = "tray-item" + (t.isMod ? " mod" : "");
+    el.innerHTML = `<span class="t-jack" title="Drag onto a ${t.isMod ? "mod" : "in"} jack"></span><span>${t.label}</span><button class="t-x" title="Discard">✕</button>`;
+    el.querySelector(".t-x").onclick = () => unstage(t.uid);
+    el.querySelector(".t-jack").addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      startWireDrag({ mode: t.isMod ? "tray-mod" : "tray-audio", item: t, kind: t.isMod ? "mod" : "audio" }, ev);
+    });
+    holder.appendChild(el);
+  }
+}
+
+// ---------- node bank ----------
+const NB_AUDIO = ["vco", "supersaw", "noise", "mix", "filter", "fold", "delay", "chorus"];
+const NB_MOD = ["lfo", "env"];
+
+function buildNodeBank() {
+  const mk = (holder, kinds, mod) => {
+    for (const k of kinds) {
+      const b = document.createElement("button");
+      b.className = "nb-item" + (mod ? " mod" : "");
+      b.textContent = k === "env" ? "mod env" : k === "fold" ? "wavefolder" : k;
+      b.title = "Stage in the tray";
+      b.onclick = () => stageKind(k);
+      holder.appendChild(b);
+    }
+  };
+  mk($("nb-audio"), NB_AUDIO, false);
+  mk($("nb-mod"), NB_MOD, true);
+  $("nb-collapse").onclick = () => {
+    const nb = $("nodebank");
+    nb.classList.toggle("collapsed");
+    $("nb-collapse").textContent = nb.classList.contains("collapsed") ? "◂" : "▸";
+  };
+}
+
+// ---------- wire drawing ----------
+let wire = null; // {mode, item?, childKey?, key?, kind}
+
+function startWireDrag(spec, ev) {
+  wire = spec;
+  const rackSvg = $("rack-svg");
+  rackSvg.classList.add("wiring");
+  // Light up legal targets.
+  if (spec.mode === "tray-audio") {
+    rackSvg.querySelectorAll('.jack[data-childkey]').forEach((j) => j.classList.add("legal"));
+  } else if (spec.mode === "tray-mod") {
+    rackSvg.querySelectorAll('.jack[data-modkey]').forEach((j) => j.classList.add("legal"));
+  }
+  drawWireBand(ev.clientX, ev.clientY, ev.clientX, ev.clientY, spec.kind);
+  wire.sx = ev.clientX;
+  wire.sy = ev.clientY;
+  document.addEventListener("pointermove", onWireMove);
+  document.addEventListener("pointerup", onWireUp, { once: true });
+}
+
+function drawWireBand(x1, y1, x2, y2, kind) {
+  const dx = Math.max(30, Math.abs(x2 - x1) / 2);
+  $("wire-overlay").innerHTML =
+    `<path class="${kind}" d="M ${x1} ${y1} C ${x1 + dx} ${y1 + 20}, ${x2 - dx} ${y2 + 20}, ${x2} ${y2}"/>`;
+}
+
+function onWireMove(ev) {
+  if (!wire) return;
+  drawWireBand(wire.sx, wire.sy, ev.clientX, ev.clientY, wire.kind);
+}
+
+function endWireDrag() {
+  document.removeEventListener("pointermove", onWireMove);
+  $("wire-overlay").innerHTML = "";
+  const rackSvg = $("rack-svg");
+  rackSvg.classList.remove("wiring");
+  rackSvg.querySelectorAll(".jack.legal").forEach((j) => j.classList.remove("legal"));
+  wire = null;
+}
+
+function onWireUp(ev) {
+  if (!wire) return endWireDrag();
+  const el = document.elementFromPoint(ev.clientX, ev.clientY);
+  const jack = el && el.closest ? el.closest(".jack") : null;
+  const w = wire;
+  endWireDrag();
+
+  if (w.mode === "tray-audio") {
+    const childKey = jack && jack.getAttribute("data-childkey");
+    if (!childKey) return; // dropped on nothing: stays staged
+    const frag = w.item.frag;
+    if (SOURCE_TAGS.includes(nodeTag(frag))) {
+      // A source takes the socket; the old chain parks in the tray.
+      const old = nodeAtKey(childKey);
+      sendStruct({ op: "replace_tree", key: childKey, node: frag });
+      if (old) stageFragment(old, false);
+      note("plugged in — the old chain is parked in the tray");
+    } else {
+      sendStruct({ op: "insert_tree", key: childKey, node: frag });
+      note("patched into the wire");
+    }
+    unstage(w.item.uid);
+  } else if (w.mode === "tray-mod") {
+    const modKey = jack && jack.getAttribute("data-modkey");
+    if (!modKey) return;
+    const old = modAtKey(modKey);
+    sendStruct({ op: "set_mod_tree", key: modKey, m: w.item.frag });
+    if (old) stageFragment(old, true);
+    unstage(w.item.uid);
+    note("modulation connected");
+  } else if (w.mode === "unplug-audio") {
+    if (jack) return; // dropped back on a jack: treat as cancel
+    const old = nodeAtKey(w.childKey);
+    if (!old) return;
+    stageFragment(old, false);
+    sendStruct({ op: "replace_tree", key: w.childKey, node: FRAG_DEFAULTS.vco() });
+    note("unplugged — chain parked in the tray; a fresh vco holds the socket");
+  } else if (w.mode === "unplug-mod") {
+    if (jack) return;
+    const old = modAtKey(w.key);
+    if (!old) return;
+    stageFragment(old, true);
+    sendStruct({ op: "set_mod", key: w.key, kind: "none" });
+    note("modulation unplugged into the tray");
+  }
+}
 
 // ---------- scopes ----------
 function scopeCtx(canvas) {
@@ -1563,8 +1892,10 @@ window.addEventListener("resize", () => {
 
 // ---------- boot ----------
 buildPiano();
+buildNodeBank();
+renderTray();
 bootLiveAudio();
 send({ type: "init", seed: Math.floor(Math.random() * 2 ** 31), poolSize: 40 });
 
 // Debug/testing hook (no UI surface).
-window.__evo = { audioCtx, getLive: () => live };
+window.__evo = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs };

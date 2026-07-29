@@ -25,6 +25,7 @@
 //! resonance 0.85, max delay feedback 0.7) — the grammar cannot express the
 //! most degenerate settings, which is safety layer 3 of DESIGN.md §2.1.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use quiver::modules::{Chorus, DelayLine, Limiter, Supersaw};
@@ -32,6 +33,48 @@ use quiver::prelude::*;
 use quiver::{AtomicF64, ExternalInput};
 
 use crate::term::{AudioNode, FilterKind, ModNode, PatchTree};
+
+/// How a normalized knob value maps to the volts written to its handle.
+#[derive(Clone, Copy, Debug)]
+pub enum ParamMap {
+    /// Pass through (0..1 knob CV).
+    Unit,
+    /// Bounded resonance (`0.85·x`).
+    Resonance,
+    /// Bounded delay feedback (`0.7·x`).
+    Feedback,
+    /// Crossfader position (`(2x−1)·5 V`).
+    XfadePos,
+}
+
+impl ParamMap {
+    /// Map a normalized value to the wire value.
+    pub fn apply(self, x: f64) -> f64 {
+        match self {
+            ParamMap::Unit => x,
+            ParamMap::Resonance => map::resonance(x),
+            ParamMap::Feedback => map::feedback(x),
+            ParamMap::XfadePos => map::xfade_pos(x),
+        }
+    }
+}
+
+/// A live control: the atomic the audio thread reads, plus the knob mapping.
+#[derive(Clone)]
+pub struct ParamHandle {
+    /// Shared with the running patch — writing it changes the sound on the
+    /// next sample, no recompilation.
+    pub value: Arc<AtomicF64>,
+    /// Normalized-to-volts mapping.
+    pub map: ParamMap,
+}
+
+impl ParamHandle {
+    /// Write a normalized (0..1) knob value.
+    pub fn set_normalized(&self, x: f64) {
+        self.value.set(self.map.apply(x.clamp(0.0, 1.0)));
+    }
+}
 
 /// A compiled, playable voice: the patch plus its external control handles.
 pub struct CompiledVoice {
@@ -41,6 +84,10 @@ pub struct CompiledVoice {
     pub pitch: Arc<AtomicF64>,
     /// Gate control (≥ 2.5 V = on). Shared with the patch.
     pub gate: Arc<AtomicF64>,
+    /// Live parameter handles, keyed by the knob's trace address
+    /// (`node/0#cut`, `amp#attack`, …). Continuous knobs only — enum and
+    /// structural changes require recompilation.
+    pub params: HashMap<String, ParamHandle>,
     /// Signal-kind warnings accumulated while wiring (Warn mode).
     pub warnings: Vec<String>,
 }
@@ -77,14 +124,42 @@ struct Compiler {
     patch: Patch,
     pitch_out: PortRef,
     gate_out: PortRef,
+    params: HashMap<String, ParamHandle>,
 }
 
 impl Compiler {
     /// Add an [`Offset`] node emitting the constant `value` and connect it to
-    /// `target`. This is the quiver-tutorial idiom for setting a knob.
+    /// `target`. This is the quiver-tutorial idiom for setting a knob. Used
+    /// only for fixed shape values; user knobs go through [`Self::knob`].
     fn constant(&mut self, name: String, value: f64, target: PortRef) -> Result<(), PatchError> {
         let k = self.patch.add(name, Offset::new(value));
         self.patch.connect(k.out("out"), target)?;
+        Ok(())
+    }
+
+    /// Add a **live** knob: an [`ExternalInput`] whose atomic value the
+    /// audio thread reads every sample, registered under the knob's trace
+    /// address. Turning the knob writes the atomic — the sound changes
+    /// immediately, and all filter/delay state survives.
+    fn knob(
+        &mut self,
+        key: &str,
+        site: &str,
+        raw: f64,
+        pmap: ParamMap,
+        bipolar: bool,
+        target: PortRef,
+    ) -> Result<(), PatchError> {
+        let value = Arc::new(AtomicF64::new(pmap.apply(raw)));
+        let input = if bipolar {
+            ExternalInput::cv_bipolar(Arc::clone(&value))
+        } else {
+            ExternalInput::cv(Arc::clone(&value))
+        };
+        let n = self.patch.add(format!("{key}:{site}!"), input);
+        self.patch.connect(n.out("out"), target)?;
+        self.params
+            .insert(format!("{key}#{site}"), ParamHandle { value, map: pmap });
         Ok(())
     }
 
@@ -101,7 +176,7 @@ impl Compiler {
             ModNode::None => Ok(()),
             ModNode::Lfo { wave, rate } => {
                 let lfo = self.patch.add(format!("{key}:lfo"), Lfo::new(self.sr()));
-                self.constant(format!("{key}:lfo_rate"), *rate, lfo.in_("rate"))?;
+                self.knob(key, "rate", *rate, ParamMap::Unit, false, lfo.in_("rate"))?;
                 self.patch.connect_attenuated(
                     lfo.out(wave.port_name()),
                     target,
@@ -112,8 +187,15 @@ impl Compiler {
             ModNode::Env { attack, decay } => {
                 let env = self.patch.add(format!("{key}:env"), Adsr::new(self.sr()));
                 self.patch.connect(self.gate_out, env.in_("gate"))?;
-                self.constant(format!("{key}:env_a"), *attack, env.in_("attack"))?;
-                self.constant(format!("{key}:env_d"), *decay, env.in_("decay"))?;
+                self.knob(
+                    key,
+                    "att",
+                    *attack,
+                    ParamMap::Unit,
+                    false,
+                    env.in_("attack"),
+                )?;
+                self.knob(key, "dec", *decay, ParamMap::Unit, false, env.in_("decay"))?;
                 // AD shape: no sustain plateau, quick release.
                 self.constant(format!("{key}:env_s"), 0.0, env.in_("sustain"))?;
                 self.constant(format!("{key}:env_r"), 0.1, env.in_("release"))?;
@@ -164,8 +246,15 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:supersaw"), Supersaw::new(self.sr()));
                 self.wire_pitch(key, *octave, 0.5, saw.in_("voct"))?;
-                self.constant(format!("{key}:ss_det"), *detune, saw.in_("detune"))?;
-                self.constant(format!("{key}:ss_mix"), *mix, saw.in_("mix"))?;
+                self.knob(
+                    key,
+                    "det",
+                    *detune,
+                    ParamMap::Unit,
+                    false,
+                    saw.in_("detune"),
+                )?;
+                self.knob(key, "smix", *mix, ParamMap::Unit, false, saw.in_("mix"))?;
                 Ok(saw.out("out"))
             }
             AudioNode::Noise { color } => {
@@ -180,9 +269,12 @@ impl Compiler {
                 let xf = self.patch.add(format!("{key}:mix"), Crossfader::new());
                 self.patch.connect(a_out, xf.in_("a"))?;
                 self.patch.connect(b_out, xf.in_("b"))?;
-                self.constant(
-                    format!("{key}:bal"),
-                    map::xfade_pos(*balance),
+                self.knob(
+                    key,
+                    "bal",
+                    *balance,
+                    ParamMap::XfadePos,
+                    true,
                     xf.in_("pos"),
                 )?;
                 Ok(xf.out("out"))
@@ -214,10 +306,20 @@ impl Compiler {
                     }
                 };
                 self.patch.connect(in_out, filt.in_("in"))?;
-                self.constant(format!("{key}:cut"), *cutoff, filt.in_("cutoff"))?;
-                self.constant(
-                    format!("{key}:res"),
-                    map::resonance(*resonance),
+                self.knob(
+                    key,
+                    "cut",
+                    *cutoff,
+                    ParamMap::Unit,
+                    false,
+                    filt.in_("cutoff"),
+                )?;
+                self.knob(
+                    key,
+                    "res",
+                    *resonance,
+                    ParamMap::Resonance,
+                    false,
                     filt.in_("res"),
                 )?;
                 self.wire_mod(modulation, &format!("{key}/m"), *mod_depth, filt.in_("fm"))?;
@@ -254,13 +356,16 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:delay"), DelayLine::new(self.sr()));
                 self.patch.connect(in_out, dl.in_("in"))?;
-                self.constant(format!("{key}:d_time"), *time, dl.in_("time"))?;
-                self.constant(
-                    format!("{key}:d_fb"),
-                    map::feedback(*feedback),
+                self.knob(key, "time", *time, ParamMap::Unit, false, dl.in_("time"))?;
+                self.knob(
+                    key,
+                    "fb",
+                    *feedback,
+                    ParamMap::Feedback,
+                    false,
                     dl.in_("feedback"),
                 )?;
-                self.constant(format!("{key}:d_mix"), *mix, dl.in_("mix"))?;
+                self.knob(key, "dmix", *mix, ParamMap::Unit, false, dl.in_("mix"))?;
                 Ok(dl.out("out"))
             }
             AudioNode::Chorus {
@@ -274,9 +379,16 @@ impl Compiler {
                     .patch
                     .add(format!("{key}:chorus"), Chorus::new(self.sr()));
                 self.patch.connect(in_out, ch.in_("in"))?;
-                self.constant(format!("{key}:c_rate"), *rate, ch.in_("rate"))?;
-                self.constant(format!("{key}:c_depth"), *depth, ch.in_("depth"))?;
-                self.constant(format!("{key}:c_mix"), *mix, ch.in_("mix"))?;
+                self.knob(key, "crate", *rate, ParamMap::Unit, false, ch.in_("rate"))?;
+                self.knob(
+                    key,
+                    "cdepth",
+                    *depth,
+                    ParamMap::Unit,
+                    false,
+                    ch.in_("depth"),
+                )?;
+                self.knob(key, "cmix", *mix, ParamMap::Unit, false, ch.in_("mix"))?;
                 Ok(ch.out("out"))
             }
         }
@@ -297,6 +409,7 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
         patch,
         pitch_out: pitch_in.out("out"),
         gate_out: gate_in.out("out"),
+        params: HashMap::new(),
     };
 
     // The evolved tree.
@@ -305,10 +418,38 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     // Mandatory voice stage: amp ADSR → VCA → limiter → stereo out.
     let adsr = c.patch.add("voice:adsr", Adsr::new(sample_rate));
     c.patch.connect(c.gate_out, adsr.in_("gate"))?;
-    c.constant("voice:a".into(), tree.amp.attack, adsr.in_("attack"))?;
-    c.constant("voice:d".into(), tree.amp.decay, adsr.in_("decay"))?;
-    c.constant("voice:s".into(), tree.amp.sustain, adsr.in_("sustain"))?;
-    c.constant("voice:r".into(), tree.amp.release, adsr.in_("release"))?;
+    c.knob(
+        "amp",
+        "attack",
+        tree.amp.attack,
+        ParamMap::Unit,
+        false,
+        adsr.in_("attack"),
+    )?;
+    c.knob(
+        "amp",
+        "decay",
+        tree.amp.decay,
+        ParamMap::Unit,
+        false,
+        adsr.in_("decay"),
+    )?;
+    c.knob(
+        "amp",
+        "sustain",
+        tree.amp.sustain,
+        ParamMap::Unit,
+        false,
+        adsr.in_("sustain"),
+    )?;
+    c.knob(
+        "amp",
+        "release",
+        tree.amp.release,
+        ParamMap::Unit,
+        false,
+        adsr.in_("release"),
+    )?;
 
     let vca = c.patch.add("voice:vca", Vca::new());
     c.patch.connect(audio_out, vca.in_("in"))?;
@@ -321,6 +462,7 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     // Right is normalled to left inside StereoOutput.
     c.patch.connect(limiter.out("out"), out.in_("left"))?;
 
+    let params = std::mem::take(&mut c.params);
     let mut patch = c.patch;
     patch.set_output(out.id());
     patch.compile()?;
@@ -330,6 +472,7 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
         patch,
         pitch,
         gate,
+        params,
         warnings,
     })
 }
