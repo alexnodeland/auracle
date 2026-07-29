@@ -36,6 +36,7 @@ function postBench(extra) {
       vetOk: engine.edit_vet_ok(),
       sampleRate: engine.sample_rate(),
       buffer: arr,
+      treeJson: engine.edit_tree_json(),
       ...extra,
     },
     [arr.buffer]
@@ -141,6 +142,10 @@ self.onmessage = async (e) => {
         views: tasteViews(),
         status: status(),
       });
+      break;
+    }
+    case "tree_json": {
+      post({ type: "tree_json", id: m.id, json: engine.tree_json_of(m.id) });
       break;
     }
     // ---- taste instruments ----

@@ -1,11 +1,31 @@
 # EvoSynth web app
 
-Duel mode + the **workbench** (every patch as interactive hardware) + the
-taste instruments (map / styles / directions) + evolution lineage + bench,
-driving `evosynth-wasm` inside a Web Worker so rendering and MCMC never block
-the UI.
+A full instrument (Animoog-Z-style app frame): menu bar with three views,
+patch-bank sidebar, and a **playable keyboard** docked at the bottom — the
+current patch runs live in an AudioWorklet (4-voice poly). No page scrolling;
+everything is visible at once.
+
+- **PLAY** — the patch is the hero: its full rack (modules, cables, knobs at
+  true positions), editable and lockable, playable from the keyboard while
+  you turn knobs.
+- **EVOLVE** — duels (click a card to play that candidate live; ▶ PHRASE for
+  the fixed A/B stimulus), EVOLVE POOL, and the generation lineage.
+- **TASTE** — the model's mind, full-screen: map / styles / directions.
+
+Keyboard: on-screen keys (mouse/touch with glissando) or computer keys
+`a w s e d f t g y h u j k o l p ; '` (Ableton layout), `z`/`x` octave,
+HOLD latches, ◼ panics. Volume top right of the dock.
 
 ## Architecture
+
+- **live-audio.js** builds the AudioWorklet as a blob (wasm-bindgen glue is
+  inlined behind a TextDecoder/TextEncoder polyfill — worklets have neither
+  fetch nor text codecs) and transfers the **raw wasm bytes** for a
+  synchronous in-worklet compile (a transferred `WebAssembly.Module` arrives
+  as a messageerror in some engines). `LivePoly` (evosynth-wasm) holds N
+  compiled copies of the patch — the same `compile()` path evolution uses,
+  limiter included — with oldest-note stealing and silent-tail voice
+  parking. Every workbench edit re-patches the live instrument.
 
 - **worker.js** owns the wasm engine: pool filling (each candidate is
   compiled, rendered, vetted, featurized), posterior fits, refinement, and

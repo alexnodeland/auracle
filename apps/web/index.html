@@ -5,147 +5,156 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EVOSYNTH — taste-learning synthesizer</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?b=7">
 </head>
 <body>
-<div class="rack">
+<div class="app">
 
-  <!-- top rail -->
-  <div class="rail" aria-hidden="true"></div>
-
-  <header class="topbar">
+  <!-- ===================== menu bar ===================== -->
+  <header class="menubar">
     <div class="wordmark">EVO<span>SYNTH</span></div>
-    <div class="tagline">taste-learning synthesizer</div>
-    <div class="topbar-right">
+    <nav class="viewtabs" role="tablist">
+      <button class="viewtab active" data-view="play" role="tab">play</button>
+      <button class="viewtab" data-view="evolve" role="tab">evolve</button>
+      <button class="viewtab" data-view="taste" role="tab">taste</button>
+    </nav>
+    <div class="menubar-right">
       <span class="counter"><span class="counter-label">duels</span> <span id="duel-count">0</span></span>
       <span class="counter"><span class="counter-label">gen</span> <span id="gen-count">0</span></span>
-      <span class="counter"><span class="counter-label">session</span> <span id="session-num">0</span></span>
+      <span class="led-block"><i id="led-learn" class="led"></i><span>learn</span></span>
+      <span class="led-block"><i id="led-evolve" class="led"></i><span>evolve</span></span>
       <button id="export-btn" class="util-btn" title="Download your taste profile (log + standardizer)">save profile</button>
       <label class="util-btn" title="Load a saved taste profile">load<input id="import-input" type="file" accept=".json" hidden></label>
     </div>
   </header>
 
-  <!-- boot screen -->
-  <section id="boot" class="boot">
-    <div class="boot-card panel">
-      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div class="boot-title">WARMING UP</div>
-      <div class="boot-sub">evolving, rendering &amp; vetting a starting population</div>
-      <div class="boot-meter"><div id="boot-fill" class="boot-fill"></div></div>
-      <div id="boot-status" class="boot-status mono">initializing engine…</div>
-    </div>
-  </section>
+  <!-- ===================== deck: bank + stage ===================== -->
+  <div class="deck">
 
-  <!-- main surface -->
-  <main id="main" class="main hidden">
+    <aside class="bank">
+      <div class="bank-head">
+        <span class="panel-label">patch bank</span>
+        <span class="silk-dim mono" id="bank-count"></span>
+      </div>
+      <div class="bank-list" id="bank-list">
+        <div class="bench-empty">Warming up…</div>
+      </div>
+    </aside>
 
-    <div class="duel-row">
-      <!-- Candidate A -->
-      <section class="panel duel" id="duel-a">
-        <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div class="panel-head">
-          <div class="panel-label">CANDIDATE A</div>
-          <button class="inspect-btn" id="inspect-a" title="Open this patch on the workbench">⌖ workbench</button>
+    <main class="stage">
+
+      <!-- ------------- PLAY: the patch is the instrument ------------- -->
+      <section id="view-play" class="view">
+        <div class="stage-toolbar">
+          <span class="panel-label">patch <span class="silk-dim" id="rack-subject">— none loaded</span></span>
+          <div class="rack-tools">
+            <button class="util-btn" id="rack-play" disabled title="Audition the standard 3-note phrase">▶ phrase</button>
+            <label class="toggle" title="When committed, also teach the model that your edit beat the original">
+              <input type="checkbox" id="improve-check" checked><span>my edit is better</span>
+            </label>
+            <button class="util-btn" id="rack-commit" disabled title="Save the edited patch into the bank">commit</button>
+            <span class="tool-sep"></span>
+            <button class="util-btn" id="lock-knobs" disabled title="Lock every knob (evolution may only rewire)">lock knobs</button>
+            <button class="util-btn" id="lock-structure" disabled title="Lock the wiring &amp; module choice (evolution may only turn knobs)">lock wiring</button>
+            <button class="util-btn" id="lock-clear" disabled>clear locks</button>
+            <button class="util-btn amber" id="rack-evolve" disabled title="Evolve everything except the locked controls, seeded from this patch">⚡ evolve from this</button>
+          </div>
         </div>
-        <canvas class="scope" id="scope-a" width="640" height="180"></canvas>
-        <div class="readout mono" id="readout-a">—</div>
-        <div class="duel-controls">
-          <button class="hw-btn play" id="play-a">▶ play <kbd>1</kbd></button>
-          <button class="hw-btn choose" id="choose-a">choose A <kbd>←</kbd></button>
+        <div class="rack-scroll" id="rack-scroll">
+          <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="rack-empty" id="rack-empty">Pick a patch from the bank — then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
+        </div>
+        <div class="rack-note mono" id="rack-note"></div>
+      </section>
+
+      <!-- ------------- EVOLVE: duels + generations ------------- -->
+      <section id="view-evolve" class="view hidden">
+        <div class="duel-row">
+          <section class="duel-card" id="duel-a">
+            <div class="panel-head">
+              <div class="panel-label">candidate a</div>
+              <span class="silk-dim mono duel-hint">click card = play it live</span>
+            </div>
+            <canvas class="scope" id="scope-a"></canvas>
+            <div class="readout mono" id="readout-a">—</div>
+            <div class="duel-controls">
+              <button class="hw-btn play" id="play-a">▶ phrase <kbd>1</kbd></button>
+              <button class="hw-btn choose" id="choose-a">choose a <kbd>←</kbd></button>
+            </div>
+          </section>
+          <div class="duel-mid">
+            <div class="prompt">Play both.<br>Keep the one<br>you’d reach for.</div>
+            <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste">evolve pool</button>
+          </div>
+          <section class="duel-card" id="duel-b">
+            <div class="panel-head">
+              <div class="panel-label">candidate b</div>
+              <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
+            </div>
+            <canvas class="scope" id="scope-b"></canvas>
+            <div class="readout mono" id="readout-b">—</div>
+            <div class="duel-controls">
+              <button class="hw-btn play" id="play-b">▶ phrase <kbd>2</kbd></button>
+              <button class="hw-btn choose" id="choose-b">choose b <kbd>→</kbd></button>
+            </div>
+          </section>
+        </div>
+        <div class="lineage-strip">
+          <div class="panel-label amber">evolution <span class="silk-dim">— what each generation actually did</span></div>
+          <div class="lineage-body">
+            <canvas id="lineage-spark"></canvas>
+            <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No generations yet — duel a little, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span></div>
+          </div>
         </div>
       </section>
 
-      <!-- Candidate B -->
-      <section class="panel duel" id="duel-b">
-        <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div class="panel-head">
-          <div class="panel-label">CANDIDATE B</div>
-          <button class="inspect-btn" id="inspect-b" title="Open this patch on the workbench">⌖ workbench</button>
-        </div>
-        <canvas class="scope" id="scope-b" width="640" height="180"></canvas>
-        <div class="readout mono" id="readout-b">—</div>
-        <div class="duel-controls">
-          <button class="hw-btn play" id="play-b">▶ play <kbd>2</kbd></button>
-          <button class="hw-btn choose" id="choose-b">choose B <kbd>→</kbd></button>
-        </div>
-      </section>
-
-      <!-- Taste instruments -->
-      <section class="panel taste" id="taste-panel">
-        <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-        <div class="panel-head">
-          <div class="panel-label amber">TASTE</div>
+      <!-- ------------- TASTE: the model's mind ------------- -->
+      <section id="view-taste" class="view hidden">
+        <div class="stage-toolbar">
+          <span class="panel-label amber">taste</span>
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="map" role="tab">map</button>
             <button class="tab" data-tab="styles" role="tab">styles</button>
             <button class="tab" data-tab="dir" role="tab">directions</button>
           </div>
+          <p class="caption" id="taste-caption"></p>
         </div>
-        <canvas class="crt" id="taste-crt" width="460" height="430"></canvas>
-        <p class="caption" id="taste-caption">Every patch you’ve heard, mapped by sound &amp;
-        structure. Glow is how much the model thinks you’d like it — islands are styles.
-        Click a dot to open it on the workbench.</p>
-        <div class="taste-leds">
-          <span class="led-block"><i id="led-learn" class="led"></i><span>LEARN</span></span>
-          <span class="led-block"><i id="led-evolve" class="led"></i><span>EVOLVE</span></span>
-          <button class="hw-btn small" id="evolve-btn" title="Let the engine breed new patches in your taste">evolve pool</button>
-        </div>
+        <div class="crt-wrap"><canvas class="crt" id="taste-crt"></canvas></div>
       </section>
+
+    </main>
+  </div>
+
+  <!-- ===================== keyboard dock ===================== -->
+  <footer class="keybar">
+    <div class="key-side">
+      <div class="oct-ctl">
+        <button class="util-btn" id="oct-down" title="Octave down (Z)">−</button>
+        <span class="mono" id="oct-label">oct 0</span>
+        <button class="util-btn" id="oct-up" title="Octave up (X)">+</button>
+      </div>
+      <button class="util-btn" id="hold-btn" title="Latch held notes">hold</button>
+      <button class="util-btn" id="panic-btn" title="Silence all voices">◼</button>
     </div>
-
-    <div class="prompt">Listen to both. Keep the one you’d reach for.</div>
-
-    <!-- workbench: the patch as hardware -->
-    <section class="panel workbench" id="rack-panel">
-      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div class="panel-head">
-        <div class="panel-label">WORKBENCH <span class="silk-dim" id="rack-subject">— open a candidate to see its full patch</span></div>
-        <div class="rack-tools">
-          <button class="util-btn" id="rack-play" disabled>▶ play</button>
-          <label class="toggle" title="When committed, also teach the model that your edit beat the original">
-            <input type="checkbox" id="improve-check" checked><span>my edit is better</span>
-          </label>
-          <button class="util-btn" id="rack-commit" disabled title="Save the edited patch into the population">commit</button>
-          <span class="tool-sep"></span>
-          <button class="util-btn" id="lock-knobs" disabled title="Lock every knob (evolution may only rewire)">lock knobs</button>
-          <button class="util-btn" id="lock-structure" disabled title="Lock the wiring &amp; module choice (evolution may only turn knobs)">lock wiring</button>
-          <button class="util-btn" id="lock-clear" disabled>clear locks</button>
-          <button class="util-btn amber" id="rack-evolve" disabled title="Evolve everything except the locked controls, seeded from this patch">⚡ evolve from this</button>
-        </div>
-      </div>
-      <div class="rack-scroll" id="rack-scroll">
-        <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="rack-empty" id="rack-empty">Nothing on the bench. Open a duel candidate (⌖), a bench keeper, or click a dot on the taste map.</div>
-      </div>
-      <div class="rack-note mono" id="rack-note"></div>
-    </section>
-
-    <!-- evolution lineage -->
-    <section class="panel lineagep">
-      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div class="panel-head">
-        <div class="panel-label amber">EVOLUTION <span class="silk-dim">— what each generation actually did</span></div>
-      </div>
-      <div class="lineage-body">
-        <canvas id="lineage-spark" width="260" height="72"></canvas>
-        <div class="lineage-log mono" id="lineage-log"><span class="silk-dim">No evolution steps yet — press EVOLVE, or ⚡ evolve from a workbench patch.</span></div>
-      </div>
-    </section>
-
-    <!-- bench -->
-    <section class="panel bench">
-      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div class="panel-label">BENCH <span class="silk-dim">— winners land here; rate, open, or cut them</span></div>
-      <div id="bench-list" class="bench-list">
-        <div class="bench-empty">No keepers yet.</div>
-      </div>
-    </section>
-  </main>
-
-  <!-- bottom rail -->
-  <div class="rail" aria-hidden="true"></div>
+    <div class="piano" id="piano"></div>
+    <div class="key-side right">
+      <div class="live-label mono" id="live-label">no patch</div>
+      <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" title="Volume">
+    </div>
+  </footer>
 </div>
 
-<script type="module" src="main.js"></script>
+<!-- boot overlay -->
+<section id="boot" class="boot">
+  <div class="boot-card panel">
+    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="boot-title">WARMING UP</div>
+    <div class="boot-sub">evolving, rendering &amp; vetting a starting population</div>
+    <div class="boot-meter"><div id="boot-fill" class="boot-fill"></div></div>
+    <div id="boot-status" class="boot-status mono">initializing engine…</div>
+  </div>
+</section>
+
+<script type="module" src="main.js?b=7"></script>
 </body>
 </html>

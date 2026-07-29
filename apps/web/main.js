@@ -1,13 +1,13 @@
-// EVOSYNTH web app — main thread: UI, WebAudio playback, instrumentation,
-// and the interactive workbench (the patch as hardware). All engine compute
-// (rendering, MCMC, evolution) lives in worker.js; candidates are addressed
-// by stable id.
+// EVOSYNTH — a full instrument. Main thread: app frame (PLAY/EVOLVE/TASTE),
+// patch bank, the interactive rack, taste instruments, and the live keyboard
+// (AudioWorklet synthesis via live-audio.js). All engine compute (rendering,
+// MCMC, evolution) lives in worker.js; candidates are addressed by stable id.
 
 const $ = (id) => document.getElementById(id);
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// Version-stamp the worker (and, transitively, the wasm module it imports)
-// so a stale browser-cached engine can never run against a newer UI.
+// Version-stamp the worker and all wasm fetches so a stale browser cache can
+// never pair an old engine with a newer UI.
 const BUILD = Date.now();
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -19,25 +19,36 @@ let duelsSinceFit = 0;
 const FIT_EVERY = 6;
 let fitting = false;
 let playingSrc = null;
-const bench = [];          // {id, sexpr, stars}
 
 let views = null;          // {map, styles, lineage, ranked} from the worker
 let tasteTab = "map";
+let currentView = "play";
+
+const starsById = new Map();
+const cutIds = new Set();
+
+// Live instrument state.
+let live = null;             // from initLiveAudio
+let livePatchId = null;      // id whose tree the worklet is playing (null = edited)
+let liveLabelText = "no patch";
+let octShift = 0;
+let hold = false;
+const heldNotes = new Set(); // midi numbers currently sounding
 
 // Workbench state.
 const wb = {
-  subjectId: null,   // pool id the bench was loaded from (stale after edits)
-  rack: null,        // RackDescription
-  buffer: null,      // AudioBuffer of the bench render
+  subjectId: null,
+  rack: null,
+  buffer: null,      // phrase render of the bench state
   vetOk: true,
-  dirty: false,      // edited since load/commit
-  locks: new Set(),  // trace addresses frozen for ⚡ evolve
+  dirty: false,
+  locks: new Set(),
 };
 let editInFlight = false;
-let editQueue = null;      // latest pending {addr, value, isIndex}
+let editQueue = null;
 let auditionOnSettle = false;
-let pendingEvolve = false; // commit-then-evolve chain
-let knobDragging = false;  // suppress rack re-render while a knob is held
+let pendingEvolve = false;
+let knobDragging = false;
 
 // ---------- worker protocol ----------
 const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
@@ -52,10 +63,8 @@ worker.onmessage = (e) => {
     }
     case "filled": {
       $("boot").classList.add("hidden");
-      $("main").classList.remove("hidden");
-      drawTaste();
       send({ type: "duel" });
-      send({ type: "taste_views" }); // the map exists before the first fit
+      send({ type: "taste_views" });
       break;
     }
     case "duel": {
@@ -63,6 +72,7 @@ worker.onmessage = (e) => {
       if (m.pair) {
         loadSide("a", m.pair[0]);
         loadSide("b", m.pair[1]);
+        setDuelSelection(null);
       }
       break;
     }
@@ -75,6 +85,14 @@ worker.onmessage = (e) => {
       }
       break;
     }
+    case "tree_json": {
+      if (m.json && m.json !== "null" && live) {
+        live.setPatch(m.json);
+        livePatchId = m.id;
+        setLiveLabel(`patch #${m.id}`);
+      }
+      break;
+    }
     case "status": {
       applyStatus(m.status);
       break;
@@ -84,8 +102,7 @@ worker.onmessage = (e) => {
       $("led-learn").classList.remove("on");
       views = m.views;
       applyStatus(m.status);
-      drawTaste();
-      drawLineage();
+      refreshInstruments();
       break;
     }
     case "refined": {
@@ -93,8 +110,7 @@ worker.onmessage = (e) => {
       $("evolve-btn").disabled = false;
       views = m.views;
       applyStatus(m.status);
-      drawTaste();
-      drawLineage();
+      refreshInstruments();
       note(`generation ${m.status.generation}: pool evolved`);
       break;
     }
@@ -115,8 +131,15 @@ worker.onmessage = (e) => {
       } else {
         wb.buffer = null;
       }
-      if (!wb.vetOk) note("⚠ this setting fails the safety vet — audio withheld until you turn back");
+      // The keyboard follows the bench: edits are live immediately.
+      if (m.treeJson && m.treeJson !== "null" && wb.vetOk && live) {
+        live.setPatch(m.treeJson);
+        livePatchId = wb.dirty ? null : wb.subjectId;
+        setLiveLabel(wb.dirty ? `#${wb.subjectId} (edited)` : `patch #${wb.subjectId}`);
+      }
+      if (!wb.vetOk) note("⚠ this setting fails the safety vet — audio muted until you turn back");
       if (!knobDragging) renderRack();
+      renderBank();
       editInFlight = false;
       if (editQueue) {
         const q = editQueue;
@@ -124,43 +147,6 @@ worker.onmessage = (e) => {
         sendEdit(q.addr, q.value, q.isIndex);
       } else if (auditionOnSettle) {
         auditionOnSettle = false;
-        playBench();
-      }
-      break;
-    }
-    case "committed": {
-      views = m.views;
-      applyStatus(m.status);
-      if (m.id > 0) {
-        wb.subjectId = m.id;
-        wb.dirty = false;
-        addToBench(m.id, currentSexpr());
-        note(`committed as patch #${m.id}${$("improve-check").checked ? " · taught: your edit beat the original" : ""}`);
-        if (pendingEvolve) {
-          pendingEvolve = false;
-          startEvolveFrom(m.id);
-        }
-      } else {
-        pendingEvolve = false;
-        note("commit failed (duplicate or unvetted state)");
-      }
-      drawTaste();
-      renderRack();
-      break;
-    }
-    case "evolved_from": {
-      $("rack-evolve").disabled = false;
-      $("led-evolve").classList.remove("on");
-      views = m.views;
-      applyStatus(m.status);
-      drawTaste();
-      drawLineage();
-      if (m.childId > 0) {
-        note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench`);
-        send({ type: "edit_begin", id: m.childId });
-        addToBench(m.childId, null);
-      } else {
-        note("⚡ evolution found no accepted move — try again, or loosen some locks");
       }
       break;
     }
@@ -173,10 +159,48 @@ worker.onmessage = (e) => {
       }
       break;
     }
+    case "committed": {
+      views = m.views;
+      applyStatus(m.status);
+      if (m.id > 0) {
+        wb.subjectId = m.id;
+        wb.dirty = false;
+        livePatchId = m.id;
+        setLiveLabel(`patch #${m.id}`);
+        note(`committed as patch #${m.id}${$("improve-check").checked ? " · taught: your edit beat the original" : ""}`);
+        if (pendingEvolve) {
+          pendingEvolve = false;
+          startEvolveFrom(m.id);
+        }
+      } else {
+        pendingEvolve = false;
+        note("commit failed (duplicate or unvetted state)");
+      }
+      refreshInstruments();
+      renderRack();
+      break;
+    }
+    case "evolved_from": {
+      $("rack-evolve").disabled = false;
+      $("led-evolve").classList.remove("on");
+      views = m.views;
+      applyStatus(m.status);
+      refreshInstruments();
+      if (m.childId > 0) {
+        note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench, play it`);
+        send({ type: "edit_begin", id: m.childId });
+      } else {
+        note("⚡ evolution found no accepted move — try again, or loosen some locks");
+      }
+      break;
+    }
     case "taste_views": {
       views = m.views;
-      drawTaste();
-      drawLineage();
+      refreshInstruments();
+      // First arrival: put a patch under the player's fingers immediately.
+      if (wb.subjectId == null && views.ranked && views.ranked.length > 0) {
+        openOnBench(views.ranked[0].id);
+      }
       break;
     }
     case "exported": {
@@ -192,6 +216,7 @@ worker.onmessage = (e) => {
       if (m.ok) {
         applyStatus(m.status);
         note("profile loaded — its standardizer and history are now active");
+        send({ type: "taste_views" });
       } else {
         note("could not read that profile file");
       }
@@ -202,7 +227,6 @@ worker.onmessage = (e) => {
 
 function applyStatus(st) {
   $("duel-count").textContent = st.observations;
-  $("session-num").textContent = st.session;
   $("gen-count").textContent = st.generation;
 }
 
@@ -210,9 +234,243 @@ function note(text) {
   $("rack-note").textContent = text;
 }
 
-function currentSexpr() {
-  return wb.rack ? rackTitle(wb.rack) : null;
+function setLiveLabel(text) {
+  liveLabelText = text;
+  $("live-label").textContent = text;
+  renderBank();
 }
+
+function refreshInstruments() {
+  renderBank();
+  drawTaste();
+  drawLineage();
+}
+
+// ---------- views (tabs) ----------
+function showView(name) {
+  currentView = name;
+  for (const v of ["play", "evolve", "taste"]) {
+    $(`view-${v}`).classList.toggle("hidden", v !== name);
+  }
+  document.querySelectorAll(".viewtab").forEach((t) =>
+    t.classList.toggle("active", t.dataset.view === name)
+  );
+  if (name === "taste") drawTaste();
+  if (name === "evolve") {
+    drawLineage();
+    if (currentDuel) {
+      onRenderArrived(currentDuel[0]);
+      onRenderArrived(currentDuel[1]);
+    }
+  }
+}
+
+document.querySelectorAll(".viewtab").forEach((t) => {
+  t.onclick = () => showView(t.dataset.view);
+});
+
+// ---------- audio helpers ----------
+function ensureAudio() {
+  if (audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function playBuffer(buffer, btn) {
+  if (!buffer) return;
+  ensureAudio();
+  if (playingSrc) { try { playingSrc.stop(); } catch (_) {} }
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(audioCtx.destination);
+  src.start();
+  playingSrc = src;
+  if (btn) {
+    btn.classList.add("playing");
+    src.onended = () => btn.classList.remove("playing");
+  }
+}
+
+function play(id, btn) {
+  const r = renders.get(id);
+  if (r) playBuffer(r.buffer, btn);
+}
+
+// ---------- live instrument ----------
+async function bootLiveAudio() {
+  const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
+  live = await initLiveAudio(audioCtx, BUILD);
+  live.onMessage((m) => {
+    (window.__evoLog = window.__evoLog || []).push(m);
+    if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
+  });
+  live.node.onprocessorerror = (e) => {
+    (window.__evoLog = window.__evoLog || []).push({ type: "processor_error", e: String(e) });
+    note("live audio engine crashed — reload to recover");
+  };
+  // If a patch arrived before audio was ready, load it now.
+  if (wb.subjectId != null) send({ type: "tree_json", id: wb.subjectId });
+}
+
+function liveNoteOn(note_) {
+  if (!live) return;
+  ensureAudio();
+  live.noteOn(note_);
+  heldNotes.add(note_);
+  paintKey(note_, true);
+}
+
+function liveNoteOff(note_) {
+  if (!live) return;
+  if (hold) return; // latched — released on hold-off or panic
+  live.noteOff(note_);
+  heldNotes.delete(note_);
+  paintKey(note_, false);
+}
+
+function panic() {
+  if (live) live.allOff();
+  for (const n of [...heldNotes]) paintKey(n, false);
+  heldNotes.clear();
+}
+
+// ---------- virtual keyboard ----------
+const PIANO_LO = 48; // C3
+const PIANO_HI = 84; // C6
+const BLACK = new Set([1, 3, 6, 8, 10]);
+const KEYMAP = {
+  a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
+  k: 12, o: 13, l: 14, p: 15, ";": 16, "'": 17,
+};
+const keyEls = new Map(); // midi -> element
+
+function buildPiano() {
+  const piano = $("piano");
+  piano.innerHTML = "";
+  keyEls.clear();
+  for (let n = PIANO_LO; n <= PIANO_HI; n++) {
+    if (BLACK.has(n % 12)) continue;
+    const wk = document.createElement("div");
+    wk.className = "pkey";
+    wk.dataset.note = n;
+    wk.innerHTML = `<span class="hint"></span>`;
+    keyEls.set(n, wk);
+    // A black key rides on the white key to its left.
+    if (n + 1 <= PIANO_HI && BLACK.has((n + 1) % 12)) {
+      const bk = document.createElement("div");
+      bk.className = "bkey";
+      bk.dataset.note = n + 1;
+      bk.innerHTML = `<span class="hint"></span>`;
+      keyEls.set(n + 1, bk);
+      wk.appendChild(bk);
+    }
+    piano.appendChild(wk);
+  }
+  attachPianoPointers(piano);
+  paintHints();
+}
+
+function paintHints() {
+  const base = 60 + 12 * octShift;
+  const hintFor = new Map();
+  for (const [key, off] of Object.entries(KEYMAP)) hintFor.set(base + off, key);
+  for (const [midi, el] of keyEls) {
+    const hint = el.querySelector(".hint");
+    hint.textContent = hintFor.get(midi) || "";
+  }
+  $("oct-label").textContent = `oct ${octShift >= 0 ? "+" : ""}${octShift}`;
+}
+
+function paintKey(midi, down) {
+  const el = keyEls.get(midi);
+  if (el) el.classList.toggle("down", down);
+}
+
+function attachPianoPointers(piano) {
+  const pointerNote = new Map(); // pointerId -> midi
+  const noteOf = (target) => {
+    const el = target.closest?.(".bkey") || target.closest?.(".pkey");
+    return el ? Number(el.dataset.note) : null;
+  };
+  piano.addEventListener("pointerdown", (ev) => {
+    const n = noteOf(ev.target);
+    if (n == null) return;
+    ev.preventDefault();
+    pointerNote.set(ev.pointerId, n);
+    liveNoteOn(n);
+  });
+  piano.addEventListener("pointermove", (ev) => {
+    if (!pointerNote.has(ev.pointerId)) return;
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    const n = noteOf(el);
+    const prev = pointerNote.get(ev.pointerId);
+    if (n != null && n !== prev) {
+      liveNoteOff(prev);
+      if (hold) { live.noteOff(prev); heldNotes.delete(prev); paintKey(prev, false); }
+      pointerNote.set(ev.pointerId, n);
+      liveNoteOn(n);
+    }
+  });
+  const release = (ev) => {
+    const n = pointerNote.get(ev.pointerId);
+    if (n == null) return;
+    pointerNote.delete(ev.pointerId);
+    liveNoteOff(n);
+  };
+  piano.addEventListener("pointerup", release);
+  piano.addEventListener("pointercancel", release);
+  piano.addEventListener("pointerleave", (ev) => {
+    if (ev.target === piano) release(ev);
+  });
+}
+
+// Computer keys play notes everywhere (no text inputs in the app).
+const downComputerKeys = new Map(); // event.key -> midi
+document.addEventListener("keydown", (e) => {
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k in KEYMAP) {
+    const midi = 60 + 12 * octShift + KEYMAP[k];
+    if (midi >= 0 && midi <= 127 && !downComputerKeys.has(k)) {
+      downComputerKeys.set(k, midi);
+      liveNoteOn(midi);
+    }
+    return;
+  }
+  if (k === "z") return octave(-1);
+  if (k === "x") return octave(1);
+  if (currentView === "evolve") {
+    if (e.key === "1") $("play-a").click();
+    else if (e.key === "2") $("play-b").click();
+    else if (e.key === "ArrowLeft") $("choose-a").click();
+    else if (e.key === "ArrowRight") $("choose-b").click();
+  }
+});
+document.addEventListener("keyup", (e) => {
+  const k = e.key.toLowerCase();
+  const midi = downComputerKeys.get(k);
+  if (midi !== undefined) {
+    downComputerKeys.delete(k);
+    liveNoteOff(midi);
+  }
+});
+window.addEventListener("blur", () => {
+  downComputerKeys.clear();
+  panic();
+});
+
+function octave(d) {
+  octShift = Math.max(-2, Math.min(2, octShift + d));
+  paintHints();
+}
+
+$("oct-down").onclick = () => octave(-1);
+$("oct-up").onclick = () => octave(1);
+$("hold-btn").onclick = () => {
+  hold = !hold;
+  $("hold-btn").classList.toggle("lit", hold);
+  if (!hold) panic();
+};
+$("panic-btn").onclick = () => panic();
+$("vol").oninput = (e) => live && live.setVolume(Number(e.target.value));
 
 // ---------- duel flow ----------
 function loadSide(side, id) {
@@ -231,33 +489,23 @@ function onRenderArrived(id) {
   drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
 }
 
-function playBuffer(buffer, btn) {
-  if (!buffer) return;
-  if (audioCtx.state === "suspended") audioCtx.resume();
-  if (playingSrc) { try { playingSrc.stop(); } catch (_) {} }
-  const src = audioCtx.createBufferSource();
-  src.buffer = buffer;
-  src.connect(audioCtx.destination);
-  src.start();
-  playingSrc = src;
-  if (btn) {
-    btn.classList.add("playing");
-    src.onended = () => btn.classList.remove("playing");
-  }
+function setDuelSelection(side) {
+  $("duel-a").classList.toggle("live-sel", side === "a");
+  $("duel-b").classList.toggle("live-sel", side === "b");
 }
 
-function play(id, btn) {
-  const r = renders.get(id);
-  if (r) playBuffer(r.buffer, btn);
+function selectDuelSide(side) {
+  if (!currentDuel) return;
+  const id = side === "a" ? currentDuel[0] : currentDuel[1];
+  setDuelSelection(side);
+  send({ type: "tree_json", id });
 }
 
 function choose(side) {
   if (!currentDuel) return;
   const [a, b] = currentDuel;
   const choseA = side === "a";
-  const winner = choseA ? a : b;
   send({ type: "record_duel", a, b, choseA });
-  addToBench(winner, renders.get(winner)?.sexpr);
   duelsSinceFit += 1;
   if (duelsSinceFit >= FIT_EVERY && !fitting) {
     duelsSinceFit = 0;
@@ -269,56 +517,85 @@ function choose(side) {
   send({ type: "duel" });
 }
 
-// ---------- bench ----------
-function addToBench(id, sexpr) {
-  if (bench.some((b) => b.id === id)) return;
-  bench.unshift({ id, sexpr: sexpr || `patch #${id}`, stars: 0 });
-  if (bench.length > 12) bench.pop();
-  renderBench();
-}
+$("duel-a").addEventListener("click", (e) => {
+  if (e.target.closest("button")) return;
+  selectDuelSide("a");
+});
+$("duel-b").addEventListener("click", (e) => {
+  if (e.target.closest("button")) return;
+  selectDuelSide("b");
+});
+$("play-a").onclick = () => currentDuel && play(currentDuel[0], $("play-a"));
+$("play-b").onclick = () => currentDuel && play(currentDuel[1], $("play-b"));
+$("choose-a").onclick = () => choose("a");
+$("choose-b").onclick = () => choose("b");
+$("skip-duel").onclick = () => {
+  currentDuel = null;
+  send({ type: "duel" });
+};
+$("evolve-btn").onclick = () => {
+  $("evolve-btn").disabled = true;
+  $("led-evolve").classList.add("on");
+  send({ type: "refine" });
+};
 
-function renderBench() {
-  const list = $("bench-list");
+// ---------- patch bank ----------
+function renderBank() {
+  const list = $("bank-list");
+  const ranked = (views && views.ranked) || [];
+  const rows = ranked.filter((r) => !cutIds.has(r.id));
+  $("bank-count").textContent = rows.length ? `${rows.length} patches` : "";
   list.innerHTML = "";
-  if (bench.length === 0) {
-    list.innerHTML = '<div class="bench-empty">No keepers yet.</div>';
+  if (rows.length === 0) {
+    list.innerHTML = '<div class="bench-empty">Nothing here yet.</div>';
     return;
   }
-  for (const item of bench) {
+  const maxU = Math.max(0.01, ...rows.map((r) => r.mean));
+  const minU = Math.min(0, ...rows.map((r) => r.mean));
+  const ORIGIN_GLYPH = { prior: "◇", refined: "⚡", edited: "✎" };
+  for (const r of rows) {
     const el = document.createElement("div");
-    el.className = "bench-item";
-    const name = item.sexpr.length > 38 ? item.sexpr.slice(0, 38) + "…" : item.sexpr;
+    el.className = "bank-item" + (r.id === wb.subjectId ? " live" : "");
+    const frac = (r.mean - minU) / Math.max(1e-9, maxU - minU);
+    const stars = starsById.get(r.id) || 0;
     el.innerHTML = `
-      <div class="b-name">${name}</div>
-      <div class="b-row">
-        <button class="b-play" title="Play">▶</button>
-        <button class="b-open" title="Open on the workbench">⌖</button>
+      <div class="bi-top">
+        <span class="bi-origin ${r.origin}" title="${r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
+        <span>#${r.id}</span>
+        <span class="bi-u" title="how much the model thinks you like it"><i style="width:${Math.round(frac * 100)}%"></i></span>
+      </div>
+      <div class="bi-row">
+        <button class="bi-hear" title="Audition phrase">▶</button>
         ${[1, 2, 3, 4, 5]
-          .map((s) => `<button class="star ${item.stars >= s ? "lit" : ""}" data-s="${s}" title="${s} star${s > 1 ? "s" : ""}">★</button>`)
+          .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" title="${s} star${s > 1 ? "s" : ""}">★</button>`)
           .join("")}
-        <button class="b-kill" title="Cut from the bench">cut</button>
+        <button class="bi-kill" title="Cut: teach the model you don't want this">cut</button>
       </div>`;
-    el.querySelector(".b-play").onclick = () => {
-      if (renders.has(item.id)) play(item.id);
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      openOnBench(r.id);
+      showView("play");
+    });
+    el.querySelector(".bi-hear").onclick = () => {
+      if (renders.has(r.id)) play(r.id);
       else {
-        send({ type: "render", id: item.id });
+        send({ type: "render", id: r.id });
         const wait = setInterval(() => {
-          if (renders.has(item.id)) { clearInterval(wait); play(item.id); }
+          if (renders.has(r.id)) { clearInterval(wait); play(r.id); }
         }, 120);
       }
     };
-    el.querySelector(".b-open").onclick = () => openOnBench(item.id);
     el.querySelectorAll(".star").forEach((btn) => {
       btn.onclick = () => {
-        item.stars = Number(btn.dataset.s);
-        send({ type: "record_stars", id: item.id, rating: item.stars });
-        renderBench();
+        starsById.set(r.id, Number(btn.dataset.s));
+        send({ type: "record_stars", id: r.id, rating: Number(btn.dataset.s) });
+        renderBank();
       };
     });
-    el.querySelector(".b-kill").onclick = () => {
-      send({ type: "record_keep", id: item.id, kept: false });
-      bench.splice(bench.indexOf(item), 1);
-      renderBench();
+    el.querySelector(".bi-kill").onclick = () => {
+      send({ type: "record_keep", id: r.id, kept: false });
+      cutIds.add(r.id);
+      renderBank();
     };
     list.appendChild(el);
   }
@@ -341,11 +618,6 @@ function sendEdit(addr, value, isIndex) {
 function playBench() {
   if (wb.buffer) playBuffer(wb.buffer, $("rack-play"));
   else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
-}
-
-function rackTitle(rack) {
-  const kinds = rack.modules.filter((m) => m.kind !== "amp").map((m) => m.title);
-  return kinds.join(" → ") || "empty patch";
 }
 
 // Layout constants.
@@ -400,7 +672,6 @@ function renderRack() {
   enable("lock-clear", hasRack && wb.locks.size > 0);
   if (!hasRack) return;
 
-  // defs: plate + knob gradients.
   const defs = svgEl("defs", {});
   defs.innerHTML = `
     <linearGradient id="plateGrad" x1="0" y1="0" x2="0" y2="1">
@@ -416,25 +687,26 @@ function renderRack() {
   const maxCol = Math.max(...wb.rack.modules.map((m) => m.column));
   const byCol = new Map();
   for (const m of wb.rack.modules) {
-    const cx = maxCol - m.column; // 0 = leftmost (deepest)
+    const cx = maxCol - m.column;
     if (!byCol.has(cx)) byCol.set(cx, []);
     byCol.get(cx).push(m);
   }
   const nCols = maxCol + 1;
-  const pos = new Map(); // key -> {x, y, w, h}
+  const pos = new Map();
   let maxHeight = 0;
-  for (const [cx, mods] of byCol) {
+  for (const [, mods] of byCol) {
     let stack = 0;
     for (const m of mods) stack += moduleHeight(m) + 16;
     maxHeight = Math.max(maxHeight, stack);
   }
-  const svgH = Math.max(240, maxHeight + 24);
-  const svgW = nCols * COL_W + 30;
+  const holderH = $("rack-scroll").clientHeight;
+  const svgH = Math.max(holderH - 4, maxHeight + 24);
+  const svgW = Math.max($("rack-scroll").clientWidth - 4, nCols * COL_W + 30);
   svg.setAttribute("width", svgW);
   svg.setAttribute("height", svgH);
   svg.setAttribute("viewBox", `0 0 ${svgW} ${svgH}`);
   for (const [cx, mods] of byCol) {
-    let total = mods.reduce((s, m) => s + moduleHeight(m) + 16, -16);
+    const total = mods.reduce((s, m) => s + moduleHeight(m) + 16, -16);
     let y = (svgH - total) / 2;
     for (const m of mods) {
       const h = moduleHeight(m);
@@ -443,7 +715,7 @@ function renderRack() {
     }
   }
 
-  // Wires first (under modules).
+  // Wires under modules.
   const wireLayer = svgEl("g", {});
   svg.appendChild(wireLayer);
   for (const w of wb.rack.wires) {
@@ -463,7 +735,6 @@ function renderRack() {
     wireLayer.appendChild(svgEl("circle", { cx: x2, cy: y2, r: 3.4 }, "port"));
   }
 
-  // Modules.
   for (const m of wb.rack.modules) {
     const p = pos.get(m.key);
     const g = svgEl("g", { transform: `translate(${p.x},${p.y})` });
@@ -473,7 +744,6 @@ function renderRack() {
     title.textContent = m.title;
     g.appendChild(title);
 
-    // Module lock (padlock glyph) — locks type + all controls.
     const lockOn = isModuleLocked(m);
     const mlock = svgEl("text", { x: p.w - 16, y: 17 }, `mod-lock${lockOn ? " on" : ""}`);
     mlock.textContent = lockOn ? "▣" : "▢";
@@ -496,7 +766,6 @@ function renderRack() {
       const locked = wb.locks.has(k.addr);
 
       if (k.kind.t === "continuous") {
-        // Rotary knob: −135°..+135°.
         kg.appendChild(svgEl("circle", { r: KNOB_R + 3 }, "knob-ring"));
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
         const tt = svgEl("title", {});
@@ -512,7 +781,6 @@ function renderRack() {
         if (locked) kg.appendChild(svgEl("circle", { r: KNOB_R + 6 }, "knob-locked-halo"));
         attachKnobDrag(body, m, k);
       } else {
-        // Enum / octave selector: click to cycle (shift = backwards).
         const bw = 52;
         const body = svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body");
         const txt = svgEl("text", { y: 4 }, "enum-text");
@@ -525,7 +793,6 @@ function renderRack() {
           const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
           k.value = next;
           txt.textContent = enumDisplay(k);
-          auditionOnSettle = true;
           sendEdit(k.addr, next, true);
         });
         kg.appendChild(body);
@@ -535,7 +802,6 @@ function renderRack() {
         }
       }
 
-      // Per-control lock dot.
       const dot = svgEl("g", { transform: `translate(${KNOB_R + 6},${-KNOB_R - 2})` }, `lock-dot${locked ? " on" : ""}`);
       dot.appendChild(svgEl("circle", { r: 3.4 }, ""));
       const dt = svgEl("title", {});
@@ -560,7 +826,7 @@ function renderRack() {
     svg.appendChild(g);
   }
 
-  const subj = wb.subjectId != null ? `patch #${wb.subjectId}${wb.dirty ? " · edited" : ""}` : "";
+  const subj = wb.subjectId != null ? `#${wb.subjectId}${wb.dirty ? " · edited" : ""}` : "";
   const lockInfo = wb.locks.size ? ` · ${wb.locks.size} locked` : "";
   $("rack-subject").textContent = `— ${subj}${lockInfo}${wb.vetOk ? "" : " · ⚠ UNVETTED"}`;
 }
@@ -597,11 +863,6 @@ function attachKnobDrag(el, mod, knob) {
       el.removeEventListener("pointerup", onUp);
       knobDragging = false;
       renderRack();
-      auditionOnSettle = true;
-      if (!editInFlight && !editQueue) {
-        auditionOnSettle = false;
-        playBench();
-      }
     };
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
@@ -614,6 +875,35 @@ function startEvolveFrom(id) {
   note("⚡ evolving around the locked controls…");
   send({ type: "refine_from", id, locks: [...wb.locks] });
 }
+
+$("rack-play").onclick = () => playBench();
+$("rack-commit").onclick = () => {
+  send({ type: "edit_commit", asImprovement: $("improve-check").checked });
+};
+$("rack-evolve").onclick = () => {
+  if (wb.subjectId == null) return;
+  if (wb.dirty) {
+    pendingEvolve = true;
+    note("committing your edits, then evolving…");
+    send({ type: "edit_commit", asImprovement: $("improve-check").checked });
+  } else {
+    startEvolveFrom(wb.subjectId);
+  }
+};
+$("lock-knobs").onclick = () => {
+  if (!wb.rack) return;
+  for (const m of wb.rack.modules) for (const k of m.knobs) wb.locks.add(k.addr);
+  renderRack();
+};
+$("lock-structure").onclick = () => {
+  if (!wb.rack) return;
+  for (const m of wb.rack.modules) for (const a of m.structural_addrs) wb.locks.add(a);
+  renderRack();
+};
+$("lock-clear").onclick = () => {
+  wb.locks.clear();
+  renderRack();
+};
 
 // ---------- scopes ----------
 function scopeCtx(canvas) {
@@ -642,6 +932,7 @@ function drawGraticule(ctx, w, h, color) {
 function drawWave(canvas, data) {
   const ctx = scopeCtx(canvas);
   const { width: w, height: h } = canvas;
+  if (w === 0) return;
   ctx.clearRect(0, 0, w, h);
   drawGraticule(ctx, w, h, "rgba(142,240,177,0.07)");
   const mid = h / 2;
@@ -681,17 +972,19 @@ const NICE_NAMES = {
 
 const STYLE_COLORS = ["#ffb454", "#8ef0b1", "#7ec8ff", "#ff8fb2", "#d9d4c8"];
 const CAPTIONS = {
-  map: "Every patch you’ve heard, mapped by sound & structure. Glow is how much the model thinks you’d like it — islands are styles. Click a dot to open it on the workbench.",
-  styles: "Your taste as separate styles: each lens claims part of the pool and champions its own exemplar patches. Dim lenses are idle.",
+  map: "Every patch you’ve heard, mapped by sound & structure. Glow is how much the model thinks you’d like it — islands are styles. Click a dot to open it.",
+  styles: "Your taste as separate styles: each lens claims part of the bank and champions its own patches. Dim lenses are idle.",
   dir: "What each style listens for — learned directions in sound, not settings. Longer bar = stronger pull.",
 };
 
-let mapHits = []; // {x, y, id} in canvas coords, for click-to-open
+let mapHits = [];
 
 function drawTaste() {
+  if (currentView !== "taste") return;
   const canvas = $("taste-crt");
   const ctx = scopeCtx(canvas);
   const { width: w, height: h } = canvas;
+  if (w === 0) return;
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
   drawGraticule(ctx, w, h, "rgba(255,180,84,0.06)");
@@ -723,7 +1016,7 @@ function drawMapTab(ctx, w, h, dpr) {
   if (!map || !map.points || map.points.length === 0) return drawNoTaste(ctx, w, h, dpr);
   const pts = map.points;
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-  const pad = 30 * dpr;
+  const pad = 34 * dpr;
   const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
   const [y0, y1] = [Math.min(...ys), Math.max(...ys)];
   const sx = (v) => pad + ((v - x0) / Math.max(1e-9, x1 - x0)) * (w - 2 * pad);
@@ -732,7 +1025,6 @@ function drawMapTab(ctx, w, h, dpr) {
   const [u0, u1] = [Math.min(...us), Math.max(...us)];
   const un = (u) => (u - u0) / Math.max(1e-9, u1 - u0);
 
-  // History ghosts underneath, pool on top.
   const draw = (p) => {
     const cx = sx(p.x), cy = sy(p.y);
     const isPool = p.id != null;
@@ -743,7 +1035,7 @@ function drawMapTab(ctx, w, h, dpr) {
       ctx.shadowBlur = 3 + glow * 16;
       ctx.globalAlpha = 0.35 + 0.65 * glow;
       ctx.fillStyle = color;
-      const r = (p.origin === "edited" ? 5 : p.origin === "refined" ? 4.4 : 3.6) * dpr;
+      const r = (p.origin === "edited" ? 5.5 : p.origin === "refined" ? 4.8 : 4) * dpr;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
@@ -798,7 +1090,6 @@ function drawStylesTab(ctx, w, h, dpr) {
     const active = s.share >= 0.08;
     ctx.globalAlpha = active ? 1 : 0.35;
 
-    // Header: swatch + share.
     ctx.fillStyle = color;
     ctx.shadowColor = color;
     ctx.shadowBlur = active ? 8 : 0;
@@ -808,14 +1099,14 @@ function drawStylesTab(ctx, w, h, dpr) {
     ctx.shadowBlur = 0;
     ctx.fillStyle = "#d9d4c8";
     ctx.textAlign = "left";
-    ctx.fillText(`style ${s.k + 1} — claims ${Math.round(s.share * 100)}% of the pool`, 30 * dpr, y0 + 24 * dpr);
+    ctx.fillText(`style ${s.k + 1} — claims ${Math.round(s.share * 100)}% of the bank`, 30 * dpr, y0 + 24 * dpr);
 
-    // Top-4 features as mini deflection bars.
-    const rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 4);
+    const rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
     const maxAbs = Math.max(0.12, ...rows.map((r) => Math.abs(r.mean)));
-    const cx = w * 0.66, usable = w * 0.26;
+    const cx = w * 0.6, usable = w * 0.3;
     rows.forEach((r, i) => {
-      const y = y0 + (38 + i * 17) * dpr;
+      const y = y0 + (42 + i * 18) * dpr;
+      if (y > y0 + blockH - 8 * dpr) return;
       ctx.fillStyle = "#a08050";
       ctx.textAlign = "right";
       ctx.fillText(NICE_NAMES[r.name] || r.name, cx - usable - 10 * dpr, y + 3 * dpr);
@@ -838,7 +1129,6 @@ function drawStylesTab(ctx, w, h, dpr) {
 function drawDirectionsTab(ctx, w, h, dpr) {
   const styles = activeStyles().filter((s) => s.share >= 0.08);
   if (styles.length === 0) return drawNoTaste(ctx, w, h, dpr);
-  // Union of each active style's top features.
   const chosen = new Map();
   for (const s of styles) {
     [...s.theta]
@@ -889,18 +1179,45 @@ function drawDirectionsTab(ctx, w, h, dpr) {
   });
 }
 
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    tasteTab = tab.dataset.tab;
+    drawTaste();
+  };
+});
+
+$("taste-crt").addEventListener("click", (ev) => {
+  if (tasteTab !== "map" || mapHits.length === 0) return;
+  const rect = ev.target.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const x = (ev.clientX - rect.left) * dpr;
+  const y = (ev.clientY - rect.top) * dpr;
+  let best = null, bestD = 12 * dpr;
+  for (const hit of mapHits) {
+    const d = Math.hypot(hit.x - x, hit.y - y);
+    if (d < bestD) { bestD = d; best = hit; }
+  }
+  if (best) {
+    openOnBench(best.id);
+    showView("play");
+  }
+});
+
 // ---------- lineage ----------
 function drawLineage() {
+  if (currentView !== "evolve") return;
   const lineage = (views && views.lineage) || [];
   const canvas = $("lineage-spark");
   const ctx = scopeCtx(canvas);
   const { width: w, height: h } = canvas;
+  if (w === 0) return;
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
   drawGraticule(ctx, w, h, "rgba(255,180,84,0.05)");
 
   if (lineage.length > 0) {
-    // Champion-utility trajectory across events.
     const us = lineage.map((ev) => ev.child_utility);
     const [u0, u1] = [Math.min(...us, 0), Math.max(...us, 0.001)];
     const sx = (i) => 8 * dpr + (i / Math.max(1, us.length - 1)) * (w - 16 * dpr);
@@ -921,11 +1238,10 @@ function drawLineage() {
     });
   }
 
-  // Log: latest events, humanized.
   const log = $("lineage-log");
   if (lineage.length === 0) return;
   log.innerHTML = lineage
-    .slice(-4)
+    .slice(-3)
     .reverse()
     .map((ev) => {
       const du = ev.child_utility - ev.parent_utility;
@@ -966,85 +1282,32 @@ function humanizeDiff(diff) {
   return parts.join(", ") || `${diff.length} sites rewritten`;
 }
 
-// ---------- controls ----------
-$("play-a").onclick = () => currentDuel && play(currentDuel[0], $("play-a"));
-$("play-b").onclick = () => currentDuel && play(currentDuel[1], $("play-b"));
-$("choose-a").onclick = () => choose("a");
-$("choose-b").onclick = () => choose("b");
-$("inspect-a").onclick = () => currentDuel && openOnBench(currentDuel[0]);
-$("inspect-b").onclick = () => currentDuel && openOnBench(currentDuel[1]);
-$("evolve-btn").onclick = () => {
-  $("evolve-btn").disabled = true;
-  $("led-evolve").classList.add("on");
-  send({ type: "refine" });
-};
+// ---------- profile ----------
 $("export-btn").onclick = () => send({ type: "export" });
 $("import-input").onchange = async (e) => {
   const file = e.target.files[0];
   if (file) send({ type: "import", json: await file.text() });
 };
 
-$("rack-play").onclick = () => playBench();
-$("rack-commit").onclick = () => {
-  send({ type: "edit_commit", asImprovement: $("improve-check").checked });
-};
-$("rack-evolve").onclick = () => {
-  if (wb.subjectId == null) return;
-  if (wb.dirty) {
-    // Uncommitted edits: commit first (respecting the improvement toggle),
-    // then evolve from the committed child.
-    pendingEvolve = true;
-    note("committing your edits, then evolving…");
-    send({ type: "edit_commit", asImprovement: $("improve-check").checked });
-  } else {
-    startEvolveFrom(wb.subjectId);
-  }
-};
-$("lock-knobs").onclick = () => {
-  if (!wb.rack) return;
-  for (const m of wb.rack.modules) for (const k of m.knobs) wb.locks.add(k.addr);
-  renderRack();
-};
-$("lock-structure").onclick = () => {
-  if (!wb.rack) return;
-  for (const m of wb.rack.modules) for (const a of m.structural_addrs) wb.locks.add(a);
-  renderRack();
-};
-$("lock-clear").onclick = () => {
-  wb.locks.clear();
-  renderRack();
-};
-
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.onclick = () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-    tab.classList.add("active");
-    tasteTab = tab.dataset.tab;
+// ---------- resize ----------
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
     drawTaste();
-  };
-});
-
-$("taste-crt").addEventListener("click", (ev) => {
-  if (tasteTab !== "map" || mapHits.length === 0) return;
-  const rect = ev.target.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const x = (ev.clientX - rect.left) * dpr;
-  const y = (ev.clientY - rect.top) * dpr;
-  let best = null, bestD = 12 * dpr;
-  for (const hit of mapHits) {
-    const d = Math.hypot(hit.x - x, hit.y - y);
-    if (d < bestD) { bestD = d; best = hit; }
-  }
-  if (best) openOnBench(best.id);
-});
-
-document.addEventListener("keydown", (e) => {
-  if (e.repeat) return;
-  if (e.key === "1") $("play-a").click();
-  else if (e.key === "2") $("play-b").click();
-  else if (e.key === "ArrowLeft") $("choose-a").click();
-  else if (e.key === "ArrowRight") $("choose-b").click();
+    drawLineage();
+    if (!knobDragging) renderRack();
+    if (currentDuel) {
+      onRenderArrived(currentDuel[0]);
+      onRenderArrived(currentDuel[1]);
+    }
+  }, 120);
 });
 
 // ---------- boot ----------
+buildPiano();
+bootLiveAudio();
 send({ type: "init", seed: Math.floor(Math.random() * 2 ** 31), poolSize: 40 });
+
+// Debug/testing hook (no UI surface).
+window.__evo = { audioCtx, getLive: () => live };

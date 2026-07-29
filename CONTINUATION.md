@@ -1,4 +1,49 @@
-# Continuation notes — updated 2026-07-29 (post-playtest pass 1)
+# Continuation notes — updated 2026-07-29 (post-playtest pass 2: the instrument)
+
+## Pass 2 (playtest-2 response): EvoSynth is now a playable instrument
+
+User feedback: "this is a modular synthesizer — people will want to PLAY it";
+virtual keyboard + computer keys; patch is the main screen; no scrolling;
+sidebars/menus/tabs; Animoog Z inspiration. Decisions (AskUserQuestion):
+**4-voice poly**, **3-tab frame** (PLAY / EVOLVE / TASTE + bank sidebar +
+docked keyboard), **everything live** (duel cards load into the live synth;
+phrase button kept for fair A/B stimulus).
+
+What shipped:
+- `evosynth-wasm/src/live.rs` — `LivePoly`: N compiled copies of one patch
+  (same `compile()` path as evolution, limiter included), MIDI note_on/off
+  with oldest-note stealing, legato steal past N held notes, **silent-tail
+  voice parking** (|L|+|R| < 1e-6 for 4096 frames → stop ticking). Native
+  test `live_poly_plays_and_parks`. Perf: ~11 s of 4-voice audio in 0.14 s
+  native — huge real-time headroom.
+- `apps/web/live-audio.js` — AudioWorklet assembly. **Hard-won gotchas:**
+  worklets have no fetch and no TextDecoder/TextEncoder (polyfill required);
+  static imports inside a worklet would hit the un-versioned browser cache;
+  and a transferred `WebAssembly.Module` silently dies as a `messageerror`.
+  Solution: fetch versioned glue text, strip `export` statements, inline it
+  into a **blob module** (polyfill + glue + processor), transfer **raw wasm
+  bytes**, `initSync` inside the worklet (sync compile is allowed
+  off-main-thread). Debug hooks: `window.__evo`, `window.__evoLog` (worklet
+  posts boot/ready/patched/patch_error/worklet_error).
+- App frame (index.html/style.css/main.js rewritten): menubar (wordmark,
+  PLAY/EVOLVE/TASTE viewtabs, counters, LEDs, profile), 252px patch-bank
+  sidebar (ranked pool: origin glyph ◇⚡✎, utility bar, stars, cut; click →
+  workbench + live), stage views (PLAY = rack full-screen + toolbar;
+  EVOLVE = duel cards + evolve pool + lineage strip; TASTE = full-screen
+  map/styles/directions), docked piano C3–C6 (pointer glissando, key hints,
+  z/x octave, HOLD latch, ◼ panic, volume). 100vh, `overflow: hidden`
+  everywhere. Old bench panel is gone — the bank replaced it.
+- Live-patch routing rule: every worker `bench` message carries `treeJson`;
+  whenever one arrives (open, knob edit, evolved child) the worklet
+  re-patches — **edits are audible on the keyboard in real time**. Duel-card
+  click sends `tree_json` for that id.
+- Verified via playwright incl. **audio RMS through an AnalyserNode** (peak
+  0.41 on a latched C4), edit→"patched" roundtrip, duel-card live load,
+  6 duels → fit, all tabs, zero console errors.
+
+Prior notes (pass 1) follow — still accurate for the engine layer.
+
+# (pass 1) Continuation notes — 2026-07-29
 
 Working doc for resuming after context compaction. Durable design lives in
 `DESIGN.md` (canonical); lineage/decisions pointer in Claude memory

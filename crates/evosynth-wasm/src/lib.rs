@@ -17,6 +17,9 @@
 //! `refine_from(id, locks)` evolves everything *except* the locked
 //! addresses.
 
+mod live;
+pub use live::LivePoly;
+
 use evosynth_features::{featurize, Features, PhraseSpec, RenderedPhrase};
 use evosynth_grammar::{describe, set_param, ParamValue, PatchGrammarPrior, PatchTree};
 use evosynth_session::{Engine, Origin, Profile, SessionConfig};
@@ -167,6 +170,25 @@ impl WasmEngine {
             .find(id)
             .map(|i| self.engine.pool[i].tree.to_sexpr())
             .unwrap_or_default()
+    }
+
+    /// The patch tree of candidate `id` as JSON — the payload the live
+    /// instrument (`LivePoly` in the AudioWorklet) compiles and plays.
+    pub fn tree_json_of(&self, id: u32) -> String {
+        let id = id as u64;
+        match self.engine.find(id) {
+            Some(i) => serde_json::to_string(&self.engine.pool[i].tree).unwrap(),
+            None => "null".into(),
+        }
+    }
+
+    /// The workbench tree as JSON (`null` if the bench is empty), for live
+    /// playing of in-progress edits.
+    pub fn edit_tree_json(&self) -> String {
+        match &self.bench_tree {
+            Some(t) => serde_json::to_string(t).unwrap(),
+            None => "null".into(),
+        }
     }
 
     /// Rack description (modules, knobs with live trace addresses, wires) of
