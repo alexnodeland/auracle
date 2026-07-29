@@ -40,6 +40,16 @@ mod tests {
     use super::*;
     use evosynth_grammar::term::{AmpEnv, AudioNode, ModNode, NoiseColor, Waveform};
     use evosynth_grammar::{PatchGrammarPrior, PatchTree};
+
+    /// Every built-in preset renders and passes the vetting gate — a preset
+    /// that can't be auditioned must never ship.
+    #[test]
+    fn presets_pass_vetting() {
+        let spec = PhraseSpec::default();
+        for (name, tree) in evosynth_grammar::presets() {
+            featurize(&tree, &spec).unwrap_or_else(|e| panic!("preset {name} failed vetting: {e}"));
+        }
+    }
     use fugue::runtime::handler::run;
     use fugue::runtime::interpreters::PriorHandler;
     use fugue::Trace;

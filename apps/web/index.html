@@ -35,7 +35,9 @@
       <div class="bank-head">
         <span class="panel-label">patch bank</span>
         <span class="silk-dim mono" id="bank-count"></span>
+        <button class="util-btn" id="presets-btn" title="Load a hand-made preset — a quick way to seed your taste">presets</button>
       </div>
+      <div class="presets-pop hidden" id="presets-pop"></div>
       <div class="bank-list" id="bank-list">
         <div class="bench-empty">Warming up…</div>
       </div>
@@ -74,8 +76,13 @@
             <div class="panel-head">
               <div class="panel-label">candidate a</div>
               <span class="silk-dim mono duel-hint">click card = play it live</span>
+              <button class="inspect-btn" id="flip-a" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
             <canvas class="scope" id="scope-a"></canvas>
+            <div class="mini-rack hidden" id="mini-a">
+              <svg id="mini-svg-a" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+              <button class="util-btn amber promote" id="promote-a" title="Open on the workbench to edit, lock, and evolve">⌖ promote to play</button>
+            </div>
             <div class="readout mono" id="readout-a">—</div>
             <div class="duel-controls">
               <button class="hw-btn play" id="play-a">▶ phrase <kbd>1</kbd></button>
@@ -89,9 +96,14 @@
           <section class="duel-card" id="duel-b">
             <div class="panel-head">
               <div class="panel-label">candidate b</div>
+              <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
               <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
             </div>
             <canvas class="scope" id="scope-b"></canvas>
+            <div class="mini-rack hidden" id="mini-b">
+              <svg id="mini-svg-b" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+              <button class="util-btn amber promote" id="promote-b" title="Open on the workbench to edit, lock, and evolve">⌖ promote to play</button>
+            </div>
             <div class="readout mono" id="readout-b">—</div>
             <div class="duel-controls">
               <button class="hw-btn play" id="play-b">▶ phrase <kbd>2</kbd></button>
@@ -143,6 +155,9 @@
     </div>
   </footer>
 </div>
+
+<!-- structural-edit context menu -->
+<div class="ctx-menu hidden" id="ctx-menu"></div>
 
 <!-- boot overlay -->
 <section id="boot" class="boot">

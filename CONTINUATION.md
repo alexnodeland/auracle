@@ -1,4 +1,36 @@
-# Continuation notes — updated 2026-07-29 (post-playtest pass 2: the instrument)
+# Continuation notes — updated 2026-07-29 (pass 3: feature-complete)
+
+## Pass 3 (playtest-3 response): toward feature-complete
+
+- **Structural editing** (`grammar/mutate.rs`): StructOp {Replace, Insert,
+  Delete, SetMod, SwapMix} by node key — type-safe by construction on the
+  typed tree ("reconnect nodes" = tree restructuring, not free cables);
+  defaults per NodeKind; MAX_SIZE 24 / MAX_DEPTH 9 caps. Gate test applies
+  every op at every key of 30 random trees: always compilable +
+  trace-roundtrippable, invalid ops reject cleanly. UI: per-module ⋯ menu
+  (replace with / insert after / modulation / swap inputs / delete; amp
+  module = add-at-output); structural edits go through the bench flow (wasm
+  `edit_structure`), re-render, re-patch the live synth, and **clear locks**
+  (addresses shift).
+- **Presets** (`grammar/presets.rs`): 8 hand-designed named patches, all
+  vet-gated by test; bank-header PRESETS popup → `load_preset` inserts with
+  `Origin::Preset` (glyph ▤) and opens it. Seeds taste fast.
+- **Names**: `Candidate.name` + `set_name`; unnamed patches display
+  `PatchTree::signature()` (spine tags like `saw·ladr·dly`) instead of bare
+  numbers; double-click bank name → inline rename (keydown/keyup
+  stopPropagation so typing doesn't play notes!).
+- **Dynamic styles**: fit K = 1 + observations/20, capped at
+  `cfg.k_styles` (now 5). Idle lenses collapse on their own. NOTE: this
+  diluted the closed-loop test's per-lens cosine → that check is now a 0.3
+  sanity floor (predictive asserts are the real gate).
+- **Map click** now selects in place (no tab jump): opens on bench + live +
+  highlights/scrolls the bank item; stays on TASTE.
+- **Duel card flip**: ⇄ circuit flips waveform → read-only mini rack
+  (shared `buildRack(svg, rack, {interactive, fit})` renderer) + "⌖ promote
+  to play". Flips reset on each new duel.
+- 30 tests green; all flows playwright-verified, zero console errors.
+
+# (pass 2) — the instrument
 
 ## Pass 2 (playtest-2 response): EvoSynth is now a playable instrument
 

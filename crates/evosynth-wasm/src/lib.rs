@@ -21,7 +21,10 @@ mod live;
 pub use live::LivePoly;
 
 use evosynth_features::{featurize, Features, PhraseSpec, RenderedPhrase};
-use evosynth_grammar::{describe, set_param, ParamValue, PatchGrammarPrior, PatchTree};
+use evosynth_grammar::{
+    apply_struct_op, describe, presets, set_param, ParamValue, PatchGrammarPrior, PatchTree,
+    StructOp,
+};
 use evosynth_session::{Engine, Origin, Profile, SessionConfig};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -35,6 +38,8 @@ struct RankedRow {
     mean: f64,
     std: f64,
     origin: &'static str,
+    name: String,
+    named: bool,
     sexpr: String,
 }
 
@@ -74,6 +79,7 @@ fn origin_str(o: Origin) -> &'static str {
         Origin::Prior => "prior",
         Origin::Refined => "refined",
         Origin::Edited => "edited",
+        Origin::Preset => "preset",
     }
 }
 
@@ -252,12 +258,17 @@ impl WasmEngine {
             .engine
             .ranked()
             .into_iter()
-            .map(|(idx, mean, std)| RankedRow {
-                id: self.engine.pool[idx].id,
-                mean,
-                std,
-                origin: origin_str(self.engine.pool[idx].origin),
-                sexpr: self.engine.pool[idx].tree.to_sexpr(),
+            .map(|(idx, mean, std)| {
+                let c = &self.engine.pool[idx];
+                RankedRow {
+                    id: c.id,
+                    mean,
+                    std,
+                    origin: origin_str(c.origin),
+                    name: c.name.clone().unwrap_or_else(|| c.tree.signature()),
+                    named: c.name.is_some(),
+                    sexpr: c.tree.to_sexpr(),
+                }
             })
             .collect();
         serde_json::to_string(&rows).unwrap()
@@ -327,6 +338,41 @@ impl WasmEngine {
         serde_json::to_string(&self.engine.lineage).unwrap()
     }
 
+    /// Name (or rename; empty clears) a candidate.
+    pub fn set_name(&mut self, id: u32, name: &str) {
+        self.engine.set_name(id as u64, name);
+    }
+
+    /// The built-in preset bank as JSON (`[{index, name, sig}]`).
+    pub fn preset_list(&self) -> String {
+        #[derive(Serialize)]
+        struct Row {
+            index: usize,
+            name: &'static str,
+            sig: String,
+        }
+        let rows: Vec<Row> = presets()
+            .into_iter()
+            .enumerate()
+            .map(|(index, (name, tree))| Row {
+                index,
+                name,
+                sig: tree.signature(),
+            })
+            .collect();
+        serde_json::to_string(&rows).unwrap()
+    }
+
+    /// Load preset `index` into the bank; returns its id (existing id if the
+    /// identical patch is already there), or 0 on failure.
+    pub fn load_preset(&mut self, index: usize) -> u32 {
+        let all = presets();
+        let Some((name, tree)) = all.into_iter().nth(index) else {
+            return 0;
+        };
+        self.engine.insert_preset(tree, name).unwrap_or(0) as u32
+    }
+
     // ------------------------------------------------------------------
     // Workbench (the interactive panel)
     // ------------------------------------------------------------------
@@ -377,6 +423,37 @@ impl WasmEngine {
                 true
             }
             Err(_) => false,
+        }
+    }
+
+    /// Apply a structural edit (replace/insert/delete/set_mod/swap_mix, as
+    /// JSON — see `evosynth_grammar::StructOp`) to the workbench tree, then
+    /// re-render and re-vet. Returns an empty string on success or the
+    /// rejection reason.
+    pub fn edit_structure(&mut self, op_json: &str) -> String {
+        let Some(tree) = &self.bench_tree else {
+            return "no patch on the bench".into();
+        };
+        let op: StructOp = match serde_json::from_str(op_json) {
+            Ok(op) => op,
+            Err(e) => return format!("bad op: {e}"),
+        };
+        match apply_struct_op(tree, &op) {
+            Ok(edited) => {
+                match featurize(&edited, &self.phrase()) {
+                    Ok(vetted) => {
+                        self.bench_render = Some(vetted.render);
+                        self.bench_vet_ok = true;
+                    }
+                    Err(_) => {
+                        self.bench_render = None;
+                        self.bench_vet_ok = false;
+                    }
+                }
+                self.bench_tree = Some(edited);
+                String::new()
+            }
+            Err(e) => e.to_string(),
         }
     }
 

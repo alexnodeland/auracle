@@ -55,7 +55,9 @@ pub struct SessionConfig {
     pub refine_seeds: usize,
     /// Boltzmann sharpness β of the refinement target.
     pub beta: f64,
-    /// Style components in the taste mixture (max-of-linear-experts).
+    /// Maximum style components in the taste mixture
+    /// (max-of-linear-experts); the fitted K grows with evidence up to this
+    /// cap.
     pub k_styles: usize,
     /// The audition stimulus.
     pub phrase: PhraseSpec,
@@ -76,7 +78,7 @@ impl Default for SessionConfig {
             refine_steps: 12,
             refine_seeds: 3,
             beta: 2.0,
-            k_styles: 3,
+            k_styles: 5,
             phrase: PhraseSpec::default(),
             keep_renders: false,
             mcmc_samples: 30_000,
@@ -95,6 +97,8 @@ pub enum Origin {
     Refined,
     /// Hand-edited on the panel and committed.
     Edited,
+    /// Loaded from the built-in preset bank.
+    Preset,
 }
 
 /// A vetted pool member.
@@ -112,6 +116,8 @@ pub struct Candidate {
     pub render: Option<RenderedPhrase>,
     /// Provenance.
     pub origin: Origin,
+    /// User-given name (frontends fall back to `tree.signature()`).
+    pub name: Option<String>,
 }
 
 /// One recorded evolution/edit step, for the lineage display.
@@ -251,6 +257,7 @@ impl Engine {
                     render: self.cfg.keep_renders.then_some(v.render),
                     features: v.features,
                     origin: Origin::Prior,
+                    name: None,
                 });
                 added += 1;
             }
@@ -279,7 +286,11 @@ impl Engine {
         if self.log.is_empty() {
             return;
         }
-        let model = TasteModel::new(TasteConfig::mixture(d, self.cfg.k_styles));
+        // Style capacity grows with evidence: one lens per ~20 observations,
+        // capped by config. Idle lenses collapse to ~0 share on their own,
+        // so K is an upper bound the data may or may not use.
+        let k = (1 + self.log.len() / 20).min(self.cfg.k_styles).max(1);
+        let model = TasteModel::new(TasteConfig::mixture(d, k));
         let posterior = model.fit(rng, &self.log, self.cfg.mcmc_samples, self.cfg.mcmc_warmup);
         self.posterior = Some(Arc::new(posterior.aligned()));
     }
@@ -400,6 +411,7 @@ impl Engine {
             render: self.cfg.keep_renders.then_some(v.render),
             features: v.features,
             origin,
+            name: None,
         });
         Some(id)
     }
@@ -618,6 +630,26 @@ impl Engine {
             rating,
             session: self.session,
         });
+    }
+
+    /// Name (or rename; empty clears) a candidate.
+    pub fn set_name(&mut self, id: u64, name: &str) {
+        if let Some(i) = self.find(id) {
+            let trimmed = name.trim();
+            self.pool[i].name = (!trimmed.is_empty()).then(|| trimmed.chars().take(40).collect());
+        }
+    }
+
+    /// Insert a named preset into the pool (protected from immediate
+    /// eviction pressure only by its utility, like any candidate). Returns
+    /// the new id.
+    pub fn insert_preset(&mut self, tree: PatchTree, name: &str) -> Option<u64> {
+        if let Some(existing) = self.pool.iter().find(|c| c.tree == tree) {
+            return Some(existing.id);
+        }
+        let id = self.insert_candidate(tree, Origin::Preset, None)?;
+        self.set_name(id, name);
+        Some(id)
     }
 
     /// Export the portable profile (log + standardizer, which only mean

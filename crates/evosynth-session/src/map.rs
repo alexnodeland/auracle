@@ -139,6 +139,7 @@ impl Engine {
                 Origin::Prior => "prior",
                 Origin::Refined => "refined",
                 Origin::Edited => "edited",
+                Origin::Preset => "preset",
             };
             meta.push((Some(c.id), origin.into()));
         }

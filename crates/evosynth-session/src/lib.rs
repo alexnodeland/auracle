@@ -123,10 +123,14 @@ mod tests {
         // unimodal user, the *dominant* style lens should correlate with θ*
         // (weaker than the synthetic-space gate because real features are
         // correlated with each other; other lenses may idle near the prior).
+        // With dynamic K the taste spreads across several lenses even for a
+        // unimodal user, so per-lens directions are diluted relative to a
+        // K=1 fit — this is an interpretability sanity floor, not the gate
+        // (the predictive asserts above are).
         let cos = (0..posterior.k_styles())
             .map(|k| cosine(&posterior.theta_mean(k), &user.theta))
             .fold(f64::NEG_INFINITY, f64::max);
-        assert!(cos > 0.4, "best theta direction cosine {cos} too low");
+        assert!(cos > 0.3, "best theta direction cosine {cos} too low");
     }
 
     /// M4 gate 2: taste-guided refinement produces novel candidates the

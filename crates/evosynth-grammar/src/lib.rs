@@ -34,6 +34,8 @@ pub mod describe;
 pub mod diff;
 pub mod edit;
 pub mod genome;
+pub mod mutate;
+pub mod presets;
 pub mod prior;
 pub mod term;
 
@@ -41,6 +43,8 @@ pub use compile::{compile, CompiledVoice};
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
+pub use mutate::{apply_struct_op, ModKind, NodeKind, StructError, StructOp};
+pub use presets::presets;
 pub use prior::PatchGrammarPrior;
 pub use term::{AudioNode, ModNode, PatchTree};
 
@@ -260,6 +264,77 @@ mod tests {
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].addr, "amp#attack");
         assert!(d[0].before.is_some() && d[0].after.is_some());
+    }
+
+    /// Every preset compiles, and structural edits (replace / insert /
+    /// delete / set-mod / swap) always yield compilable, describable,
+    /// trace-roundtrippable trees — hand rewiring cannot leave the grammar.
+    #[test]
+    fn presets_and_struct_ops_stay_in_grammar() {
+        use mutate::{ModKind, NodeKind, StructOp};
+        for (name, tree) in presets::presets() {
+            assert!(compile(&tree, SR).is_ok(), "preset {name} fails to compile");
+            assert!(!tree.signature().is_empty());
+        }
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(21);
+        let kinds = [
+            NodeKind::Vco,
+            NodeKind::Supersaw,
+            NodeKind::Noise,
+            NodeKind::Mix,
+            NodeKind::Filter,
+            NodeKind::Fold,
+            NodeKind::Delay,
+            NodeKind::Chorus,
+        ];
+        for i in 0..30 {
+            let (tree, _) = draw(&prior, &mut rng);
+            let keys: Vec<String> = describe::describe(&tree)
+                .modules
+                .iter()
+                .filter(|m| m.key != "amp" && !m.is_mod)
+                .map(|m| m.key.clone())
+                .collect();
+            let mut ops: Vec<StructOp> = Vec::new();
+            for key in &keys {
+                for kind in kinds {
+                    ops.push(StructOp::Replace {
+                        key: key.clone(),
+                        kind,
+                    });
+                    if !kind.is_source() {
+                        ops.push(StructOp::Insert {
+                            key: key.clone(),
+                            kind,
+                        });
+                    }
+                }
+                ops.push(StructOp::Delete { key: key.clone() });
+                for mk in [ModKind::None, ModKind::Lfo, ModKind::Env] {
+                    ops.push(StructOp::SetMod {
+                        key: key.clone(),
+                        kind: mk,
+                    });
+                }
+                ops.push(StructOp::SwapMix { key: key.clone() });
+            }
+            for op in ops {
+                match mutate::apply_struct_op(&tree, &op) {
+                    Ok(next) => {
+                        assert!(
+                            compile(&next, SR).is_ok(),
+                            "sample {i}: op {op:?} produced uncompilable tree"
+                        );
+                        assert!(next.root.size() <= mutate::MAX_SIZE);
+                        let back = PatchTree::from_trace(&next.to_trace()).unwrap();
+                        assert_eq!(back, next, "trace roundtrip after {op:?}");
+                        describe::describe(&next); // must not panic
+                    }
+                    Err(_) => {} // invalid ops are allowed to reject, never panic
+                }
+            }
+        }
     }
 
     /// Deeper patches pay more prior mass — parsimony is the grammar itself.

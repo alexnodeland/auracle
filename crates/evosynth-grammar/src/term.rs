@@ -375,10 +375,57 @@ fn mod_sexpr(m: &ModNode) -> String {
     }
 }
 
+fn spine_tags(n: &AudioNode, out: &mut Vec<&'static str>) {
+    match n {
+        AudioNode::Vco { wave, .. } => out.push(wave.port_name()),
+        AudioNode::Supersaw { .. } => out.push("ssaw"),
+        AudioNode::Noise { .. } => out.push("noiz"),
+        AudioNode::Mix { a, .. } => {
+            spine_tags(a, out);
+            out.push("mix");
+        }
+        AudioNode::Filter { kind, input, .. } => {
+            spine_tags(input, out);
+            out.push(match kind {
+                FilterKind::Ladder => "ladr",
+                FilterKind::SvfLp => "lp",
+                FilterKind::SvfBp => "bp",
+                FilterKind::SvfHp => "hp",
+            });
+        }
+        AudioNode::Fold { input, .. } => {
+            spine_tags(input, out);
+            out.push("fold");
+        }
+        AudioNode::Delay { input, .. } => {
+            spine_tags(input, out);
+            out.push("dly");
+        }
+        AudioNode::Chorus { input, .. } => {
+            spine_tags(input, out);
+            out.push("cho");
+        }
+    }
+}
+
 impl PatchTree {
     /// Total probabilistic-choice sites (amp envelope + tree).
     pub fn site_count(&self) -> usize {
         4 + self.root.site_count()
+    }
+
+    /// Short human-readable signature along the main signal spine
+    /// (`saw·ladr·dly`) — the default display name for unnamed patches.
+    pub fn signature(&self) -> String {
+        let mut tags = Vec::new();
+        spine_tags(&self.root, &mut tags);
+        if tags.len() > 4 {
+            let skipped = tags.len() - 4;
+            let tail: Vec<&str> = tags[skipped..].to_vec();
+            format!("{}+·{}", skipped, tail.join("·"))
+        } else {
+            tags.join("·")
+        }
     }
 
     /// Compact s-expression rendering for logs and tests.

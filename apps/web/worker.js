@@ -148,6 +148,30 @@ self.onmessage = async (e) => {
       post({ type: "tree_json", id: m.id, json: engine.tree_json_of(m.id) });
       break;
     }
+    case "describe": {
+      post({ type: "described", id: m.id, rack: JSON.parse(engine.describe_of(m.id)) });
+      break;
+    }
+    case "set_name": {
+      engine.set_name(m.id, m.name);
+      post({ type: "ranked", ranked: JSON.parse(engine.ranked()) });
+      break;
+    }
+    case "presets": {
+      post({ type: "presets", rows: JSON.parse(engine.preset_list()) });
+      break;
+    }
+    case "load_preset": {
+      const id = Number(engine.load_preset(m.index));
+      post({ type: "preset_loaded", id, views: tasteViews(), status: status() });
+      break;
+    }
+    case "edit_structure": {
+      const err = engine.edit_structure(JSON.stringify(m.op));
+      if (err === "") postBench({ edited: "structure" });
+      else post({ type: "edit_rejected", error: err });
+      break;
+    }
     // ---- taste instruments ----
     case "taste_views": {
       post({ type: "taste_views", views: tasteViews() });

@@ -70,6 +70,8 @@ worker.onmessage = (e) => {
     case "duel": {
       currentDuel = m.pair;
       if (m.pair) {
+        setFlip("a", false);
+        setFlip("b", false);
         loadSide("a", m.pair[0]);
         loadSide("b", m.pair[1]);
         setDuelSelection(null);
@@ -89,7 +91,7 @@ worker.onmessage = (e) => {
       if (m.json && m.json !== "null" && live) {
         live.setPatch(m.json);
         livePatchId = m.id;
-        setLiveLabel(`patch #${m.id}`);
+        setLiveLabel(nameOf(m.id));
       }
       break;
     }
@@ -121,9 +123,17 @@ worker.onmessage = (e) => {
         wb.subjectId = m.subject;
         wb.dirty = false;
         wb.locks = new Set();
-        note(`patch #${m.subject} on the bench`);
+        note(`${nameOf(m.subject)} on the bench`);
       }
-      if (m.edited !== undefined) wb.dirty = true;
+      if (m.edited !== undefined) {
+        wb.dirty = true;
+        if (m.edited === "structure" && wb.locks.size > 0) {
+          // Structural edits shift trace addresses; stale locks would pin
+          // the wrong sites.
+          wb.locks.clear();
+          note("structure changed — locks cleared");
+        }
+      }
       if (m.buffer && m.buffer.length > 0) {
         const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
         buf.copyToChannel(m.buffer, 0);
@@ -135,7 +145,7 @@ worker.onmessage = (e) => {
       if (m.treeJson && m.treeJson !== "null" && wb.vetOk && live) {
         live.setPatch(m.treeJson);
         livePatchId = wb.dirty ? null : wb.subjectId;
-        setLiveLabel(wb.dirty ? `#${wb.subjectId} (edited)` : `patch #${wb.subjectId}`);
+        setLiveLabel(wb.dirty ? `${nameOf(wb.subjectId)} (edited)` : nameOf(wb.subjectId));
       }
       if (!wb.vetOk) note("⚠ this setting fails the safety vet — audio muted until you turn back");
       if (!knobDragging) renderRack();
@@ -151,6 +161,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "edit_rejected": {
+      if (m.error) note(`edit rejected: ${m.error}`);
       editInFlight = false;
       if (editQueue) {
         const q = editQueue;
@@ -166,7 +177,7 @@ worker.onmessage = (e) => {
         wb.subjectId = m.id;
         wb.dirty = false;
         livePatchId = m.id;
-        setLiveLabel(`patch #${m.id}`);
+        setLiveLabel(nameOf(m.id));
         note(`committed as patch #${m.id}${$("improve-check").checked ? " · taught: your edit beat the original" : ""}`);
         if (pendingEvolve) {
           pendingEvolve = false;
@@ -203,6 +214,31 @@ worker.onmessage = (e) => {
       }
       break;
     }
+    case "described": {
+      onDescribed(m.id, m.rack);
+      break;
+    }
+    case "ranked": {
+      if (views) views.ranked = m.ranked;
+      renderBank();
+      renderRack(); // subject label may show a new name
+      break;
+    }
+    case "presets": {
+      presetRows = m.rows;
+      renderPresetsPop();
+      break;
+    }
+    case "preset_loaded": {
+      views = m.views;
+      applyStatus(m.status);
+      refreshInstruments();
+      if (m.id > 0) {
+        openOnBench(m.id);
+        note(`preset loaded as ${nameOf(m.id)}`);
+      }
+      break;
+    }
     case "exported": {
       const blob = new Blob([m.json], { type: "application/json" });
       const a = document.createElement("a");
@@ -232,6 +268,11 @@ function applyStatus(st) {
 
 function note(text) {
   $("rack-note").textContent = text;
+}
+
+function nameOf(id) {
+  const r = views && views.ranked && views.ranked.find((x) => x.id === id);
+  return r ? r.name : `#${id}`;
 }
 
 function setLiveLabel(text) {
@@ -540,6 +581,8 @@ $("evolve-btn").onclick = () => {
 };
 
 // ---------- patch bank ----------
+let bankScrollTo = null;
+
 function renderBank() {
   const list = $("bank-list");
   const ranked = (views && views.ranked) || [];
@@ -552,7 +595,7 @@ function renderBank() {
   }
   const maxU = Math.max(0.01, ...rows.map((r) => r.mean));
   const minU = Math.min(0, ...rows.map((r) => r.mean));
-  const ORIGIN_GLYPH = { prior: "◇", refined: "⚡", edited: "✎" };
+  const ORIGIN_GLYPH = { prior: "◇", refined: "⚡", edited: "✎", preset: "▤" };
   for (const r of rows) {
     const el = document.createElement("div");
     el.className = "bank-item" + (r.id === wb.subjectId ? " live" : "");
@@ -561,7 +604,8 @@ function renderBank() {
     el.innerHTML = `
       <div class="bi-top">
         <span class="bi-origin ${r.origin}" title="${r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
-        <span>#${r.id}</span>
+        <span class="bi-name ${r.named ? "custom" : ""}" title="Double-click to rename">${r.name}</span>
+        <span class="bi-id">#${r.id}</span>
         <span class="bi-u" title="how much the model thinks you like it"><i style="width:${Math.round(frac * 100)}%"></i></span>
       </div>
       <div class="bi-row">
@@ -597,9 +641,73 @@ function renderBank() {
       cutIds.add(r.id);
       renderBank();
     };
+    const nameEl = el.querySelector(".bi-name");
+    nameEl.ondblclick = (ev) => {
+      ev.stopPropagation();
+      const input = document.createElement("input");
+      input.className = "bi-rename";
+      input.value = r.named ? r.name : "";
+      input.placeholder = r.name;
+      input.maxLength = 40;
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => send({ type: "set_name", id: r.id, name: input.value });
+      input.onkeydown = (ke) => {
+        ke.stopPropagation(); // typing must not play notes
+        if (ke.key === "Enter") input.blur();
+        if (ke.key === "Escape") { input.oninput = null; input.onblur = null; renderBank(); }
+      };
+      input.onkeyup = (ke) => ke.stopPropagation();
+      input.onblur = commit;
+    };
     list.appendChild(el);
   }
+  if (bankScrollTo != null) {
+    const target = list.querySelector(".bank-item.live");
+    if (target) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    bankScrollTo = null;
+  }
 }
+
+// ---------- presets ----------
+let presetRows = null;
+
+$("presets-btn").onclick = () => {
+  const pop = $("presets-pop");
+  if (!pop.classList.contains("hidden")) {
+    pop.classList.add("hidden");
+    return;
+  }
+  if (presetRows) renderPresetsPop();
+  else send({ type: "presets" });
+};
+
+function renderPresetsPop() {
+  const pop = $("presets-pop");
+  pop.innerHTML = presetRows
+    .map(
+      (r) =>
+        `<button class="pp-item" data-i="${r.index}"><span class="pp-name">${r.name}</span><span class="pp-sig">${r.sig}</span></button>`
+    )
+    .join("");
+  pop.querySelectorAll(".pp-item").forEach((btn) => {
+    btn.onclick = () => {
+      pop.classList.add("hidden");
+      send({ type: "load_preset", index: Number(btn.dataset.i) });
+    };
+  });
+  pop.classList.remove("hidden");
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".presets-pop") && !e.target.closest("#presets-btn")) {
+    $("presets-pop").classList.add("hidden");
+  }
+  if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn")) {
+    $("ctx-menu").classList.add("hidden");
+  }
+});
 
 // ---------- workbench ----------
 function openOnBench(id) {
@@ -660,7 +768,6 @@ function svgEl(tag, attrs, cls) {
 
 function renderRack() {
   const svg = $("rack-svg");
-  svg.innerHTML = "";
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
@@ -670,8 +777,26 @@ function renderRack() {
   enable("lock-knobs", hasRack);
   enable("lock-structure", hasRack);
   enable("lock-clear", hasRack && wb.locks.size > 0);
-  if (!hasRack) return;
+  if (!hasRack) { svg.innerHTML = ""; return; }
 
+  buildRack(svg, wb.rack, {
+    interactive: true,
+    locks: wb.locks,
+    minW: $("rack-scroll").clientWidth - 4,
+    minH: $("rack-scroll").clientHeight - 4,
+  });
+
+  const subjName = wb.subjectId != null ? nameOf(wb.subjectId) : "";
+  const subj = wb.subjectId != null ? `${subjName} (#${wb.subjectId})${wb.dirty ? " · edited" : ""}` : "";
+  const lockInfo = wb.locks.size ? ` · ${wb.locks.size} locked` : "";
+  $("rack-subject").textContent = `— ${subj}${lockInfo}${wb.vetOk ? "" : " · ⚠ UNVETTED"}`;
+}
+
+// Shared rack renderer: the interactive workbench and the read-only duel
+// minis draw through the same code, so the circuit always looks the same.
+function buildRack(svg, rack, opts) {
+  const { interactive = false, locks = new Set(), minW = 0, minH = 0, fit = false } = opts || {};
+  svg.innerHTML = "";
   const defs = svgEl("defs", {});
   defs.innerHTML = `
     <linearGradient id="plateGrad" x1="0" y1="0" x2="0" y2="1">
@@ -684,9 +809,9 @@ function renderRack() {
   svg.appendChild(defs);
 
   // Columns: amp (col 0) sits rightmost; deeper modules leftward.
-  const maxCol = Math.max(...wb.rack.modules.map((m) => m.column));
+  const maxCol = Math.max(...rack.modules.map((m) => m.column));
   const byCol = new Map();
-  for (const m of wb.rack.modules) {
+  for (const m of rack.modules) {
     const cx = maxCol - m.column;
     if (!byCol.has(cx)) byCol.set(cx, []);
     byCol.get(cx).push(m);
@@ -699,15 +824,23 @@ function renderRack() {
     for (const m of mods) stack += moduleHeight(m) + 16;
     maxHeight = Math.max(maxHeight, stack);
   }
-  const holderH = $("rack-scroll").clientHeight;
-  const svgH = Math.max(holderH - 4, maxHeight + 24);
-  const svgW = Math.max($("rack-scroll").clientWidth - 4, nCols * COL_W + 30);
-  svg.setAttribute("width", svgW);
-  svg.setAttribute("height", svgH);
-  svg.setAttribute("viewBox", `0 0 ${svgW} ${svgH}`);
+  const natW = nCols * COL_W + 30;
+  const natH = maxHeight + 24;
+  const svgW = Math.max(minW, natW);
+  const svgH = Math.max(minH, natH);
+  if (fit) {
+    svg.removeAttribute("width");
+    svg.removeAttribute("height");
+    svg.setAttribute("viewBox", `0 0 ${natW} ${natH}`);
+  } else {
+    svg.setAttribute("width", svgW);
+    svg.setAttribute("height", svgH);
+    svg.setAttribute("viewBox", `0 0 ${svgW} ${svgH}`);
+  }
+  const layoutH = fit ? natH : svgH;
   for (const [cx, mods] of byCol) {
     const total = mods.reduce((s, m) => s + moduleHeight(m) + 16, -16);
-    let y = (svgH - total) / 2;
+    let y = (layoutH - total) / 2;
     for (const m of mods) {
       const h = moduleHeight(m);
       pos.set(m.key, { x: 15 + cx * COL_W, y, w: MOD_W, h });
@@ -718,7 +851,7 @@ function renderRack() {
   // Wires under modules.
   const wireLayer = svgEl("g", {});
   svg.appendChild(wireLayer);
-  for (const w of wb.rack.wires) {
+  for (const w of rack.wires) {
     const from = pos.get(w.from);
     const to = pos.get(w.to);
     if (!from || !to) continue;
@@ -735,42 +868,67 @@ function renderRack() {
     wireLayer.appendChild(svgEl("circle", { cx: x2, cy: y2, r: 3.4 }, "port"));
   }
 
-  for (const m of wb.rack.modules) {
+  const isModuleLockedIn = (mod) => {
+    const addrs = moduleLockAddrs(mod);
+    return addrs.length > 0 && addrs.every((a) => locks.has(a));
+  };
+
+  for (const m of rack.modules) {
     const p = pos.get(m.key);
     const g = svgEl("g", { transform: `translate(${p.x},${p.y})` });
-    const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLocked(m) ? " locked" : ""}`;
+    const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}`;
     g.appendChild(svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls));
     const title = svgEl("text", { x: 9, y: 17 }, `mod-title${m.is_mod ? " modside" : ""}`);
     title.textContent = m.title;
     g.appendChild(title);
 
-    const lockOn = isModuleLocked(m);
-    const mlock = svgEl("text", { x: p.w - 16, y: 17 }, `mod-lock${lockOn ? " on" : ""}`);
-    mlock.textContent = lockOn ? "▣" : "▢";
-    const mtitle = svgEl("title", {});
-    mtitle.textContent = lockOn
-      ? "Unlock this module (evolution may change it again)"
-      : "Lock this whole module (evolution keeps it exactly as-is)";
-    mlock.appendChild(mtitle);
-    mlock.addEventListener("click", () => {
-      const addrs = moduleLockAddrs(m);
-      const on = isModuleLocked(m);
-      for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
-      renderRack();
-    });
-    g.appendChild(mlock);
+    if (interactive) {
+      // Structure menu (⋯) — every module; the amp offers insert-at-output.
+      const menuBtn = svgEl("text", { x: p.w - 32, y: 17 }, "mod-menu-btn");
+      menuBtn.textContent = "⋯";
+      const mt = svgEl("title", {});
+      mt.textContent = m.kind === "amp"
+        ? "Add a module at the output"
+        : "Restructure: replace, insert, delete, rewire";
+      menuBtn.appendChild(mt);
+      menuBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        openStructMenu(m, ev.clientX, ev.clientY);
+      });
+      g.appendChild(menuBtn);
+
+      if (m.kind !== "amp") {
+        const lockOn = isModuleLockedIn(m);
+        const mlock = svgEl("text", { x: p.w - 16, y: 17 }, `mod-lock${lockOn ? " on" : ""}`);
+        mlock.textContent = lockOn ? "▣" : "▢";
+        const mtitle = svgEl("title", {});
+        mtitle.textContent = lockOn
+          ? "Unlock this module (evolution may change it again)"
+          : "Lock this whole module (evolution keeps it exactly as-is)";
+        mlock.appendChild(mtitle);
+        mlock.addEventListener("click", () => {
+          const addrs = moduleLockAddrs(m);
+          const on = isModuleLockedIn(m);
+          for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
+          renderRack();
+        });
+        g.appendChild(mlock);
+      }
+    }
 
     m.knobs.forEach((k, i) => {
       const { x, y } = knobPos(m, i);
       const kg = svgEl("g", { transform: `translate(${x},${y})` });
-      const locked = wb.locks.has(k.addr);
+      const locked = locks.has(k.addr);
 
       if (k.kind.t === "continuous") {
         kg.appendChild(svgEl("circle", { r: KNOB_R + 3 }, "knob-ring"));
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
-        const tt = svgEl("title", {});
-        tt.textContent = `${k.label}: ${k.value.toFixed(2)} — drag up/down`;
-        body.appendChild(tt);
+        if (interactive) {
+          const tt = svgEl("title", {});
+          tt.textContent = `${k.label}: ${k.value.toFixed(2)} — drag up/down`;
+          body.appendChild(tt);
+        }
         kg.appendChild(body);
         const ang = (-135 + 270 * k.value) * (Math.PI / 180);
         const ix = Math.sin(ang) * (KNOB_R - 3);
@@ -779,22 +937,24 @@ function renderRack() {
           svgEl("line", { x1: 0, y1: 0, x2: ix, y2: iy }, `knob-ind${m.is_mod ? " modside" : ""}`)
         );
         if (locked) kg.appendChild(svgEl("circle", { r: KNOB_R + 6 }, "knob-locked-halo"));
-        attachKnobDrag(body, m, k);
+        if (interactive) attachKnobDrag(body, m, k);
       } else {
         const bw = 52;
         const body = svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body");
         const txt = svgEl("text", { y: 4 }, "enum-text");
         txt.textContent = enumDisplay(k);
-        const tt = svgEl("title", {});
-        tt.textContent = `${k.label} — click to cycle`;
-        body.appendChild(tt);
-        body.addEventListener("click", (ev) => {
-          const n = k.kind.t === "octave" ? 5 : k.kind.options.length;
-          const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
-          k.value = next;
-          txt.textContent = enumDisplay(k);
-          sendEdit(k.addr, next, true);
-        });
+        if (interactive) {
+          const tt = svgEl("title", {});
+          tt.textContent = `${k.label} — click to cycle`;
+          body.appendChild(tt);
+          body.addEventListener("click", (ev) => {
+            const n = k.kind.t === "octave" ? 5 : k.kind.options.length;
+            const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
+            k.value = next;
+            txt.textContent = enumDisplay(k);
+            sendEdit(k.addr, next, true);
+          });
+        }
         kg.appendChild(body);
         kg.appendChild(txt);
         if (locked) {
@@ -802,16 +962,18 @@ function renderRack() {
         }
       }
 
-      const dot = svgEl("g", { transform: `translate(${KNOB_R + 6},${-KNOB_R - 2})` }, `lock-dot${locked ? " on" : ""}`);
-      dot.appendChild(svgEl("circle", { r: 3.4 }, ""));
-      const dt = svgEl("title", {});
-      dt.textContent = locked ? `Unlock ${k.label}` : `Lock ${k.label} (evolution won't touch it)`;
-      dot.appendChild(dt);
-      dot.addEventListener("click", () => {
-        locked ? wb.locks.delete(k.addr) : wb.locks.add(k.addr);
-        renderRack();
-      });
-      kg.appendChild(dot);
+      if (interactive) {
+        const dot = svgEl("g", { transform: `translate(${KNOB_R + 6},${-KNOB_R - 2})` }, `lock-dot${locked ? " on" : ""}`);
+        dot.appendChild(svgEl("circle", { r: 3.4 }, ""));
+        const dt = svgEl("title", {});
+        dt.textContent = locked ? `Unlock ${k.label}` : `Lock ${k.label} (evolution won't touch it)`;
+        dot.appendChild(dt);
+        dot.addEventListener("click", () => {
+          locked ? wb.locks.delete(k.addr) : wb.locks.add(k.addr);
+          renderRack();
+        });
+        kg.appendChild(dot);
+      }
 
       const lbl = svgEl("text", { y: KNOB_R + 13 }, "knob-label");
       lbl.textContent = k.label;
@@ -825,11 +987,105 @@ function renderRack() {
     });
     svg.appendChild(g);
   }
-
-  const subj = wb.subjectId != null ? `#${wb.subjectId}${wb.dirty ? " · edited" : ""}` : "";
-  const lockInfo = wb.locks.size ? ` · ${wb.locks.size} locked` : "";
-  $("rack-subject").textContent = `— ${subj}${lockInfo}${wb.vetOk ? "" : " · ⚠ UNVETTED"}`;
 }
+
+// ---------- structural edits ----------
+const KIND_LABELS = {
+  vco: "vco", supersaw: "supersaw", noise: "noise", mix: "mix",
+  filter: "filter", fold: "wavefolder", delay: "delay", chorus: "chorus",
+};
+const SOURCE_KINDS = ["vco", "supersaw", "noise"];
+const PROC_KINDS = ["filter", "fold", "delay", "chorus", "mix"];
+
+function sendStruct(op) {
+  send({ type: "edit_structure", op });
+}
+
+function openStructMenu(mod, x, y) {
+  const menu = $("ctx-menu");
+  const items = [];
+  const item = (label, op, danger) =>
+    items.push(`<button class="cm-item${danger ? " danger" : ""}" data-op='${JSON.stringify(op)}'>${label}</button>`);
+  const head = (t) => items.push(`<div class="cm-head">${t}</div>`);
+
+  if (mod.kind === "amp") {
+    head("add at output");
+    for (const k of PROC_KINDS) item(`+ ${KIND_LABELS[k]}`, { op: "insert", key: "node", kind: k });
+  } else if (mod.is_mod) {
+    // LFO / mod-env: swap or remove via the parent's mod slot.
+    const parentKey = mod.key.replace(/\/m$/, "");
+    head("modulation");
+    for (const [label, kind] of [["none (remove)", "none"], ["lfo", "lfo"], ["mod env", "env"]]) {
+      item(label, { op: "set_mod", key: parentKey, kind });
+    }
+  } else {
+    head("replace with");
+    for (const k of [...SOURCE_KINDS, ...PROC_KINDS]) {
+      if (k !== mod.kind) item(KIND_LABELS[k], { op: "replace", key: mod.key, kind: k });
+    }
+    head("insert after (toward output)");
+    for (const k of PROC_KINDS) item(`+ ${KIND_LABELS[k]}`, { op: "insert", key: mod.key, kind: k });
+    if (mod.kind === "filter" || mod.kind === "fold") {
+      head("modulation");
+      for (const [label, kind] of [["none", "none"], ["lfo", "lfo"], ["mod env", "env"]]) {
+        item(label, { op: "set_mod", key: mod.key, kind });
+      }
+    }
+    if (mod.kind === "mix") {
+      head("mixer");
+      item("swap inputs", { op: "swap_mix", key: mod.key });
+    }
+    head("");
+    item("delete", { op: "delete", key: mod.key }, true);
+  }
+
+  menu.innerHTML = items.join("");
+  menu.querySelectorAll(".cm-item").forEach((btn) => {
+    btn.onclick = () => {
+      menu.classList.add("hidden");
+      sendStruct(JSON.parse(btn.dataset.op));
+    };
+  });
+  menu.classList.remove("hidden");
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = `${Math.min(x, window.innerWidth - mw - 8)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - mh - 8)}px`;
+}
+
+// ---------- duel card flip ----------
+const flipped = { a: false, b: false };
+
+function setFlip(side, on) {
+  flipped[side] = on;
+  $(`scope-${side}`).classList.toggle("hidden", on);
+  $(`readout-${side}`).classList.toggle("hidden", on);
+  $(`mini-${side}`).classList.toggle("hidden", !on);
+  $(`flip-${side}`).textContent = on ? "⇄ wave" : "⇄ circuit";
+  if (on && currentDuel) {
+    const id = side === "a" ? currentDuel[0] : currentDuel[1];
+    send({ type: "describe", id });
+  }
+}
+
+function onDescribed(id, rack) {
+  if (!currentDuel || !rack) return;
+  const side = id === currentDuel[0] ? "a" : id === currentDuel[1] ? "b" : null;
+  if (!side || !flipped[side]) return;
+  buildRack($(`mini-svg-${side}`), rack, { fit: true });
+}
+
+$("flip-a").onclick = () => setFlip("a", !flipped.a);
+$("flip-b").onclick = () => setFlip("b", !flipped.b);
+$("promote-a").onclick = () => {
+  if (!currentDuel) return;
+  openOnBench(currentDuel[0]);
+  showView("play");
+};
+$("promote-b").onclick = () => {
+  if (!currentDuel) return;
+  openOnBench(currentDuel[1]);
+  showView("play");
+};
 
 function enumDisplay(k) {
   if (k.kind.t === "octave") {
@@ -973,7 +1229,7 @@ const NICE_NAMES = {
 const STYLE_COLORS = ["#ffb454", "#8ef0b1", "#7ec8ff", "#ff8fb2", "#d9d4c8"];
 const CAPTIONS = {
   map: "Every patch you’ve heard, mapped by sound & structure. Glow is how much the model thinks you’d like it — islands are styles. Click a dot to open it.",
-  styles: "Your taste as separate styles: each lens claims part of the bank and champions its own patches. Dim lenses are idle.",
+  styles: "Your taste as separate styles — new lenses appear as you give the model more to work with (up to 5). Dim lenses are idle.",
   dir: "What each style listens for — learned directions in sound, not settings. Longer bar = stronger pull.",
 };
 
@@ -1201,7 +1457,8 @@ $("taste-crt").addEventListener("click", (ev) => {
   }
   if (best) {
     openOnBench(best.id);
-    showView("play");
+    note(`${nameOf(best.id)} selected — it's on the workbench and under your fingers`);
+    bankScrollTo = best.id;
   }
 });
 

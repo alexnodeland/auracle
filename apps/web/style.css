@@ -631,6 +631,128 @@ body {
 }
 .boot-status { font-size: 11px; color: var(--phos-a); }
 
+/* ---- bank names + presets ---- */
+.bank-item .bi-name {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--silk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  cursor: text;
+}
+.bank-item .bi-name.custom { color: var(--phos-b); }
+.bank-item .bi-id { font-size: 8.5px; color: var(--silk-dim); }
+.bank-item input.bi-rename {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  flex: 1;
+  min-width: 0;
+  color: var(--phos-b);
+  background: var(--bezel);
+  border: 1px solid var(--phos-b-dim);
+  border-radius: 3px;
+  padding: 1px 4px;
+  outline: none;
+}
+.bank-head { position: relative; gap: 8px; }
+.bank-head .util-btn { padding: 4px 8px; font-size: 9px; }
+.presets-pop {
+  position: absolute;
+  top: 42px;
+  left: 8px;
+  right: 8px;
+  z-index: 30;
+  border: 1px solid var(--phos-b-dim);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1c2026, #14161a);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.presets-pop .pp-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+.presets-pop .pp-item:hover { background: rgba(255,180,84,0.08); }
+.presets-pop .pp-name {
+  font-family: var(--font-silk);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--silk);
+}
+.presets-pop .pp-sig { font-family: var(--font-mono); font-size: 9px; color: var(--phos-a-dim); margin-left: auto; }
+
+/* ---- duel card flip ---- */
+.mini-rack {
+  flex: 1;
+  min-height: 90px;
+  position: relative;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #0b0c0f, #0e1013);
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.85), inset 0 0 2px 1px #000;
+  overflow: hidden;
+}
+.mini-rack svg { display: block; width: 100%; height: 100%; }
+.mini-rack .promote {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+
+/* ---- structural-edit context menu ---- */
+.ctx-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1e232a, #14161a);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.65);
+  padding: 5px;
+}
+.ctx-menu .cm-head {
+  font-family: var(--font-silk);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  padding: 6px 8px 3px;
+}
+.ctx-menu .cm-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--silk);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.ctx-menu .cm-item:hover { background: rgba(142,240,177,0.09); color: var(--phos-a); }
+.ctx-menu .cm-item.danger:hover { background: rgba(255,87,71,0.12); color: var(--led-red); }
+.mod-menu-btn { font-family: var(--font-mono); font-size: 10px; fill: var(--silk-dim); cursor: pointer; }
+.mod-menu-btn:hover { fill: var(--phos-a); }
+
 /* ---- responsive ---- */
 @media (max-width: 1080px) {
   .bank { width: 200px; flex-basis: 200px; }
