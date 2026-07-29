@@ -40,7 +40,7 @@ Keyboard: `1`/`2` play A/B, `←`/`→` choose.
 PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/evosynth-wasm --target web --release --out-dir ../../apps/web/pkg
 
 # serve (any static server; module workers require http, not file://)
-cd apps/web && python3 -m http.server 8642
+cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds
 # open http://localhost:8642
 ```
 

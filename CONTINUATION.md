@@ -107,7 +107,7 @@ directions. `responsibilities(φ)` = posterior P(lens k is φ's argmax);
 ```bash
 cargo test --workspace --release
 PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/evosynth-wasm --target web --release --out-dir ../../apps/web/pkg
-cd apps/web && python3 -m http.server 8642
+cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds
 ```
 
 ## Next moves (playtest 2 will decide)
