@@ -39,10 +39,10 @@ generating patches in your style, and able to say why.
 ## 🚧 Project Status
 
 Ricercar is **pre-1.0 and under active development**. There are no published
-releases — build and run it locally (it needs sibling checkouts of its path
-dependencies; see [Quick Start](#-quick-start)). The instrument is fully
-playable and the taste loop is closed, but the public API and the save format
-may change between commits without notice.
+releases of Ricercar itself — build and run it locally (one clone; its
+foundations come from crates.io). The instrument is fully playable and the
+taste loop is closed, but the public API and the save format may change
+between commits without notice.
 
 ## 🤔 Why Ricercar?
 
@@ -115,16 +115,12 @@ Two loops around one observation stream:
 
 ## 🚀 Quick Start
 
-Ricercar uses **path dependencies on sibling checkouts** (no published
-crates yet):
+Ricercar's foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
+[`fugue-ppl`](https://crates.io/crates/fugue-ppl),
+[`fugue-evo`](https://crates.io/crates/fugue-evo)) come from crates.io — one
+clone is all you need:
 
 ```bash
-mkdir synth && cd synth
-git clone https://github.com/alexnodeland/quiver.git
-mkdir fugue-ecosystem && cd fugue-ecosystem
-git clone https://github.com/alexnodeland/fugue.git
-git clone https://github.com/alexnodeland/fugue-evo.git
-cd ..
 git clone https://github.com/alexnodeland/ricercar.git
 cd ricercar
 ```

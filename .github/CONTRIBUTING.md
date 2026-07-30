@@ -13,9 +13,10 @@ Be respectful and constructive.
 
 ## Getting Started
 
-1. **Fork and clone** — note that Ricercar needs sibling checkouts of its
-   path dependencies (`../quiver`, `../fugue-ecosystem/{fugue,fugue-evo}`);
-   see the README's Quick Start for the exact layout.
+1. **Fork and clone** — a single clone builds; the in-house foundations
+   (`quiver-dsp`, `fugue-ppl`, `fugue-evo`) come from crates.io. To change
+   them alongside Ricercar, see the `[patch.crates-io]` note in
+   [`DEVELOPMENT.md`](../DEVELOPMENT.md).
 2. **Install Rust** (stable) via [rustup](https://rustup.rs/), plus
    [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) if you're touching
    the web app.

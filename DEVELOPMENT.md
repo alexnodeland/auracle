@@ -17,13 +17,12 @@ crates/
 apps/web/              the instrument (vanilla JS, no build step)
 ```
 
-Path dependencies expect sibling checkouts:
-
-```
-../quiver
-../fugue-ecosystem/fugue
-../fugue-ecosystem/fugue-evo
-```
+The in-house foundations come from **crates.io** (`quiver-dsp`,
+`fugue-ppl`, `fugue-evo`), so a single clone builds. To hack on them
+alongside Ricercar, put sibling checkouts at `../quiver` and
+`../fugue-ecosystem/{fugue,fugue-evo}` and uncomment the
+`[patch.crates-io]` block at the bottom of the workspace `Cargo.toml`
+(don't commit the uncommented patch).
 
 ## Workflow
 

@@ -10,22 +10,12 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
 
-# Path deps expect sibling checkouts (../quiver,
-# ../fugue-ecosystem/{fugue,fugue-evo}); every job clones them alongside the
-# workspace, mirroring fugue-evo's own CI.
-
 jobs:
   fmt:
     name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Clone sibling path dependencies
-        run: |
-          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
-          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
-          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
-          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -36,12 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Clone sibling path dependencies
-        run: |
-          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
-          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
-          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
-          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -53,12 +37,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Clone sibling path dependencies
-        run: |
-          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
-          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
-          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
-          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # Release mode: the grammar/features/session tests render real audio
@@ -70,12 +48,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Clone sibling path dependencies
-        run: |
-          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
-          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
-          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
-          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

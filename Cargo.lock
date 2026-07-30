@@ -57,6 +57,8 @@ dependencies = [
 [[package]]
 name = "fugue-evo"
 version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79ac6e6020818738ef87ecccf27807ab5aac005846ec95eff099f9ef4adff70c"
 dependencies = [
  "bincode",
  "fugue-ppl",
@@ -74,6 +76,8 @@ dependencies = [
 [[package]]
 name = "fugue-ppl"
 version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0725f073ca34a0d986068abc2ca36822ec21f5a040ce1cd3314d602a07afab44"
 dependencies = [
  "libm",
  "rand",
@@ -291,7 +295,9 @@ dependencies = [
 
 [[package]]
 name = "quiver-dsp"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f228ffb0c3539c44bedd1b1b236dd3018cb80068ad9a15bb8e0cb46eb6f484e6"
 dependencies = [
  "libm",
  "portable-atomic",
