@@ -28,7 +28,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use quiver::modules::{Chorus, DelayLine, Limiter, Supersaw};
+use quiver::modules::{Chorus, DelayLine, Limiter, Reverb, SampleAndHold, Supersaw};
 use quiver::prelude::*;
 use quiver::{AtomicF64, ExternalInput};
 
@@ -182,6 +182,21 @@ impl Compiler {
                     target,
                     map::mod_depth(depth),
                 )?;
+                Ok(())
+            }
+            ModNode::Rand { rate } => {
+                // S&H burble: white noise sampled on an internal square-LFO
+                // clock. The knob drives the clock rate.
+                let clk = self.patch.add(format!("{key}:rclk"), Lfo::new(self.sr()));
+                self.knob(key, "rate", *rate, ParamMap::Unit, false, clk.in_("rate"))?;
+                let noise = self
+                    .patch
+                    .add(format!("{key}:rnoise"), NoiseGenerator::new());
+                let snh = self.patch.add(format!("{key}:snh"), SampleAndHold::new());
+                self.patch.connect(noise.out("white"), snh.in_("in"))?;
+                self.patch.connect(clk.out("sqr"), snh.in_("trig"))?;
+                self.patch
+                    .connect_attenuated(snh.out("out"), target, map::mod_depth(depth))?;
                 Ok(())
             }
             ModNode::Env { attack, decay } => {
@@ -390,6 +405,31 @@ impl Compiler {
                 )?;
                 self.knob(key, "cmix", *mix, ParamMap::Unit, false, ch.in_("mix"))?;
                 Ok(ch.out("out"))
+            }
+            AudioNode::Reverb {
+                size,
+                damp,
+                mix,
+                input,
+            } => {
+                let in_out = self.build(input, &format!("{key}/0"))?;
+                let rv = self
+                    .patch
+                    .add(format!("{key}:reverb"), Reverb::new(self.sr()));
+                self.patch.connect(in_out, rv.in_("in"))?;
+                self.knob(key, "rsize", *size, ParamMap::Unit, false, rv.in_("size"))?;
+                self.knob(
+                    key,
+                    "rdamp",
+                    *damp,
+                    ParamMap::Unit,
+                    false,
+                    rv.in_("damping"),
+                )?;
+                self.knob(key, "rmix", *mix, ParamMap::Unit, false, rv.in_("mix"))?;
+                // The voice chain is mono until StereoOutput; take the left
+                // tank (L/R differ only by decorrelation).
+                Ok(rv.out("left"))
             }
         }
     }

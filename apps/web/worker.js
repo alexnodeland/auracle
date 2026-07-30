@@ -37,6 +37,7 @@ function postBench(extra) {
       sampleRate: engine.sample_rate(),
       buffer: arr,
       treeJson: engine.edit_tree_json(),
+      makeup: engine.edit_makeup(),
       ...extra,
     },
     [arr.buffer]
@@ -54,6 +55,13 @@ self.onmessage = async (e) => {
       WasmEngine = mod.WasmEngine;
       engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);
       post({ type: "ready" });
+      // A saved session restores instead of filling from the prior; the
+      // pool is then topped up if it came back short.
+      let restored = 0;
+      if (m.saved) {
+        post({ type: "fill_progress", pool: 0, target: 1, label: "restoring your bank & taste…" });
+        restored = engine.import_session(m.saved);
+      }
       // Fill incrementally so the boot meter can narrate progress.
       let st = status();
       while (st.pool < st.pool_target) {
@@ -62,7 +70,13 @@ self.onmessage = async (e) => {
         post({ type: "fill_progress", pool: st.pool, target: st.pool_target });
         if (added === 0) break;
       }
-      post({ type: "filled", status: st });
+      post({ type: "filled", status: st, restored });
+      // Taste continuity: re-fit from the restored log so the map and
+      // styles come back with the bank.
+      if (restored > 0 && st.observations > 0) {
+        engine.fit();
+        post({ type: "fitted", views: tasteViews(), status: status() });
+      }
       break;
     }
     case "duel": {
@@ -145,7 +159,27 @@ self.onmessage = async (e) => {
       break;
     }
     case "tree_json": {
-      post({ type: "tree_json", id: m.id, json: engine.tree_json_of(m.id) });
+      post({
+        type: "tree_json",
+        id: m.id,
+        json: engine.tree_json_of(m.id),
+        makeup: engine.makeup_of(m.id),
+      });
+      break;
+    }
+    case "edit_set_tree": {
+      const err = engine.edit_set_tree(m.json);
+      if (err === "") postBench({ edited: "restore" });
+      else post({ type: "edit_rejected", error: err });
+      break;
+    }
+    case "import_patch": {
+      const id = Number(engine.import_patch(m.json, m.name || ""));
+      post({ type: "patch_imported", id, views: tasteViews(), status: status() });
+      break;
+    }
+    case "save": {
+      post({ type: "saved", json: engine.export_session() });
       break;
     }
     case "describe": {

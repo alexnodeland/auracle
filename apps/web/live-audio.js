@@ -91,13 +91,32 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         break;
       }
       case "patch": {
-        if (!this.ready) this.pendingPatch = m.tree;
-        else this.loadPatch(m.tree);
+        if (!this.ready) this.pendingPatch = m;
+        else this.loadPatch(m);
         break;
       }
-      case "on": if (this.poly) this.poly.note_on(m.note); break;
+      case "on": if (this.poly) this.poly.note_on(m.note, m.vel == null ? 1.0 : m.vel); break;
       case "off": if (this.poly) this.poly.note_off(m.note); break;
       case "alloff": if (this.poly) this.poly.all_off(); break;
+      case "bend": if (this.poly) this.poly.set_bend(m.semis); break;
+      case "glide": if (this.poly) this.poly.set_glide(m.amount); break;
+      case "unison": if (this.poly) this.poly.set_unison(m.on, m.detune, m.spread); break;
+      case "arp": if (this.poly) this.poly.set_arp(m.on, m.mode, m.div, m.bpm); break;
+      case "rec": {
+        if (m.on) {
+          this.rec = [];
+        } else if (this.rec) {
+          // Hand the take back as one transferable block.
+          let total = 0;
+          for (const b of this.rec) total += b.length;
+          const all = new Float32Array(total);
+          let o = 0;
+          for (const b of this.rec) { all.set(b, o); o += b.length; }
+          this.rec = null;
+          this.port.postMessage({ type: "rec_done", samples: all, sampleRate }, [all.buffer]);
+        }
+        break;
+      }
       case "param": {
         // Live knob write: straight into the running voices' atomics — no
         // recompile, state survives, audible next sample. A miss means the
@@ -109,16 +128,20 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       }
     }
   }
-  loadPatch(tree) {
+  loadPatch(m) {
     try {
       if (this.poly) {
         // Swap is asynchronous: fade → silent per-quantum rebuild → fade-in.
-        // Completion/error arrives via poll_event in process().
-        if (!this.poly.set_patch(tree)) {
+        // Completion/error arrives via poll_event in process(). Makeup is
+        // set AFTER set_patch so it defers to the incoming patch.
+        if (!this.poly.set_patch(m.tree)) {
           this.port.postMessage({ type: "patch_error", error: "unreadable patch" });
+        } else if (m.makeup != null) {
+          this.poly.set_makeup(m.makeup);
         }
       } else {
-        this.poly = new LivePoly(tree, sampleRate, 4);
+        this.poly = new LivePoly(m.tree, sampleRate, 4);
+        if (m.makeup != null) this.poly.set_makeup(m.makeup);
         this.port.postMessage({ type: "patched" });
       }
     } catch (err) {
@@ -149,6 +172,9 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         L[i] = buf[2 * i];
         R[i] = buf[2 * i + 1];
       }
+      // Recording copies the interleaved block (allocation only while a
+      // take is rolling — never in the steady state).
+      if (this.rec) this.rec.push(buf.slice(0, n * 2));
       const ev = this.poly.poll_event();
       if (ev === 1) this.port.postMessage({ type: "patched" });
       else if (ev === 2)
@@ -188,11 +214,11 @@ export async function initLiveAudio(audioCtx, build) {
     onMessage(fn) {
       node.port.onmessage = (e) => fn(e.data);
     },
-    setPatch(tree) {
-      node.port.postMessage({ type: "patch", tree });
+    setPatch(tree, makeup) {
+      node.port.postMessage({ type: "patch", tree, makeup });
     },
-    noteOn(note) {
-      node.port.postMessage({ type: "on", note });
+    noteOn(note, vel) {
+      node.port.postMessage({ type: "on", note, vel });
     },
     noteOff(note) {
       node.port.postMessage({ type: "off", note });
@@ -202,6 +228,21 @@ export async function initLiveAudio(audioCtx, build) {
     },
     allOff() {
       node.port.postMessage({ type: "alloff" });
+    },
+    bend(semis) {
+      node.port.postMessage({ type: "bend", semis });
+    },
+    glide(amount) {
+      node.port.postMessage({ type: "glide", amount });
+    },
+    unison(on, detune, spread) {
+      node.port.postMessage({ type: "unison", on, detune, spread });
+    },
+    arp(on, mode, div, bpm) {
+      node.port.postMessage({ type: "arp", on, mode, div, bpm });
+    },
+    rec(on) {
+      node.port.postMessage({ type: "rec", on });
     },
     setVolume(v) {
       gain.gain.value = v;

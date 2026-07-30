@@ -151,6 +151,35 @@ pub struct Profile {
     pub standardizer: Option<Standardizer>,
 }
 
+/// One bank entry of a saved session (renders and features are re-derived
+/// on import — trees are the source of truth).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BankEntry {
+    /// The candidate's stable id (preserved so lineage references stay
+    /// meaningful).
+    pub id: u64,
+    /// The patch term.
+    pub tree: PatchTree,
+    /// Provenance.
+    pub origin: Origin,
+    /// User-given name.
+    pub name: Option<String>,
+}
+
+/// A full saved session: everything needed to restore the app across a
+/// reload — the portable profile plus the bank and its history.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SessionState {
+    /// Log + standardizer.
+    pub profile: Profile,
+    /// The patch bank (trees, origins, names).
+    pub bank: Vec<BankEntry>,
+    /// Evolution/edit history.
+    pub lineage: Vec<LineageEvent>,
+    /// Generation counter.
+    pub generation: usize,
+}
+
 /// The session engine.
 pub struct Engine {
     /// Configuration.
@@ -659,6 +688,72 @@ impl Engine {
             log: self.log.clone(),
             standardizer: self.standardizer.as_deref().cloned(),
         }
+    }
+
+    /// Export the full session (profile + bank + lineage) for persistence.
+    /// Renders and features are intentionally omitted — trees re-featurize
+    /// deterministically on import.
+    pub fn export_state(&self) -> SessionState {
+        SessionState {
+            profile: self.export_profile(),
+            bank: self
+                .pool
+                .iter()
+                .map(|c| BankEntry {
+                    id: c.id,
+                    tree: c.tree.clone(),
+                    origin: c.origin,
+                    name: c.name.clone(),
+                })
+                .collect(),
+            lineage: self.lineage.clone(),
+            generation: self.generation,
+        }
+    }
+
+    /// Restore a saved session, replacing pool, log, standardizer, lineage,
+    /// and id allocation. Each bank tree is re-featurized (and re-rendered
+    /// when `keep_renders`); entries that no longer vet are dropped. Returns
+    /// how many bank entries were restored.
+    pub fn import_state(&mut self, state: SessionState) -> usize {
+        self.import_profile(state.profile);
+        self.lineage = state.lineage;
+        self.generation = state.generation;
+        self.pool.clear();
+        let mut max_id = 0;
+        for entry in state.bank {
+            let Ok(v) = featurize(&entry.tree, &self.cfg.phrase) else {
+                continue;
+            };
+            let phi_std = self
+                .standardizer
+                .as_ref()
+                .map(|sz| sz.transform(&v.features.phi()))
+                .unwrap_or_default();
+            max_id = max_id.max(entry.id);
+            self.pool.push(Candidate {
+                id: entry.id,
+                tree: entry.tree,
+                features: v.features,
+                phi_std,
+                render: self.cfg.keep_renders.then_some(v.render),
+                origin: entry.origin,
+                name: entry.name,
+            });
+        }
+        // The standardizer normally comes from the profile; a session saved
+        // before the first fit completes has none — fit one from the
+        // restored bank so φ isn't left raw.
+        if self.standardizer.is_none() && !self.pool.is_empty() {
+            let rows: Vec<Vec<f64>> = self.pool.iter().map(|c| c.features.phi()).collect();
+            let sz = Arc::new(Standardizer::fit(&rows));
+            for c in &mut self.pool {
+                c.phi_std = sz.transform(&c.features.phi());
+            }
+            self.standardizer = Some(sz);
+        }
+        self.next_id = self.next_id.max(max_id + 1);
+        self.pool.len()
     }
 
     /// Import a profile: replaces the log, **and adopts its standardizer**

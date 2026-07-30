@@ -18,7 +18,9 @@ pub mod engine;
 pub mod map;
 pub mod surrogate;
 
-pub use engine::{Candidate, Engine, LineageEvent, Origin, Profile, SessionConfig};
+pub use engine::{
+    BankEntry, Candidate, Engine, LineageEvent, Origin, Profile, SessionConfig, SessionState,
+};
 pub use map::{MapPoint, TasteMap};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
 
@@ -53,6 +55,53 @@ mod tests {
             tau: 0.0,
             cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
         }
+    }
+
+    /// Persistence round-trip: export a session, restore it into a fresh
+    /// engine, and everything that matters survives — bank (ids, trees,
+    /// names, origins), log, standardizer geometry, lineage, and id
+    /// allocation (new ids never collide with restored ones).
+    #[test]
+    fn session_state_roundtrips() {
+        let mut rng = StdRng::seed_from_u64(0x5AFE);
+        let cfg = SessionConfig {
+            pool_size: 8,
+            ..Default::default()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg.clone());
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        assert!(engine.pool.len() >= 4, "pool too small to test");
+        engine.record_duel(0, 1, true);
+        engine.record_keep(2, false);
+        let named_id = engine.pool[0].id;
+        engine.set_name(named_id, "My Bass");
+
+        let json = serde_json::to_string(&engine.export_state()).unwrap();
+        let state: SessionState = serde_json::from_str(&json).unwrap();
+
+        let mut restored = Engine::new(PatchGrammarPrior::default(), cfg);
+        restored.begin_session();
+        let n = restored.import_state(state);
+        assert_eq!(n, engine.pool.len(), "bank entries lost in restore");
+        assert_eq!(restored.log.len(), 2, "observations lost");
+        for (a, b) in engine.pool.iter().zip(&restored.pool) {
+            assert_eq!(a.id, b.id);
+            assert_eq!(a.tree, b.tree);
+            assert_eq!(a.name, b.name);
+            assert_eq!(a.origin, b.origin);
+            // φ must be re-standardized under the SAME standardizer.
+            for (x, y) in a.phi_std.iter().zip(&b.phi_std) {
+                assert!((x - y).abs() < 1e-9, "phi drifted across restore");
+            }
+            assert!(b.render.is_some() == restored.cfg.keep_renders);
+        }
+        // Fresh ids allocated after restore never collide.
+        let max_old = engine.pool.iter().map(|c| c.id).max().unwrap();
+        let new_id = restored
+            .insert_preset(evosynth_grammar::presets()[0].1.clone(), "p")
+            .unwrap();
+        assert!(new_id > max_old, "id allocation collided after restore");
     }
 
     /// M4 gate: the headless closed loop. Fill a pool through the real

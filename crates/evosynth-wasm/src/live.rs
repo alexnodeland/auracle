@@ -48,6 +48,14 @@ struct Voice {
     /// Still worth ticking (held, or release tail not yet silent).
     running: bool,
     silent_run: u32,
+    /// Velocity gain (0..1) applied to this voice's output.
+    vel: f32,
+    /// Equal-power pan gains (unison spread; center by default).
+    pan_l: f32,
+    pan_r: f32,
+    /// Pitch in v/oct, smoothed toward `pitch_tgt` (glide). Excludes bend.
+    pitch_cur: f64,
+    pitch_tgt: f64,
 }
 
 struct Smoother {
@@ -75,8 +83,8 @@ pub struct LivePoly {
     n_voices: usize,
     sample_rate: f64,
     counter: u64,
-    /// Notes physically held right now (survive patch swaps).
-    held: Vec<u8>,
+    /// Notes physically held right now, with velocity (survive patch swaps).
+    held: Vec<(u8, f32)>,
     smoothers: Vec<Smoother>,
     stage: Stage,
     gain: f32,
@@ -84,6 +92,36 @@ pub struct LivePoly {
     out_buf: Vec<f32>,
     event: u32,
     last_error: String,
+    /// Pitch bend in v/oct, one-pole smoothed toward `bend_tgt`.
+    bend: f64,
+    bend_tgt: f64,
+    /// Glide amount 0..1 (0 = off; 1 ≈ 500 ms portamento).
+    glide: f64,
+    /// v/oct of the most recent press — glide start point.
+    last_pitch: f64,
+    /// Unison: all voices play one note, detuned and panned apart.
+    unison: bool,
+    uni_detune: f64,
+    uni_spread: f64,
+    /// Loudness makeup gain (linear); swaps in with the patch it belongs to.
+    makeup: f32,
+    pending_makeup: Option<f32>,
+    // Arpeggiator (sample-accurate, runs on the audio thread).
+    arp_on: bool,
+    /// 0 = up, 1 = down, 2 = up-down, 3 = random.
+    arp_mode: u32,
+    /// Steps per beat (1 = quarters, 2 = eighths, 4 = sixteenths).
+    arp_div: f64,
+    bpm: f64,
+    /// Samples elapsed in the current arp step.
+    arp_phase: f64,
+    arp_idx: usize,
+    /// Direction flag for up-down mode.
+    arp_up: bool,
+    /// The arp note currently gated on.
+    arp_note: Option<u8>,
+    /// xorshift state for random mode (deterministic; no wall clock).
+    rng_state: u64,
 }
 
 fn build_voice(tree: &PatchTree, sample_rate: f64) -> Result<Voice, String> {
@@ -95,6 +133,11 @@ fn build_voice(tree: &PatchTree, sample_rate: f64) -> Result<Voice, String> {
         stamp: 0,
         running: false,
         silent_run: 0,
+        vel: 1.0,
+        pan_l: std::f32::consts::FRAC_1_SQRT_2,
+        pan_r: std::f32::consts::FRAC_1_SQRT_2,
+        pitch_cur: 0.0,
+        pitch_tgt: 0.0,
     })
 }
 
@@ -123,6 +166,24 @@ impl LivePoly {
             out_buf: Vec::new(),
             event: EVENT_NONE,
             last_error: String::new(),
+            bend: 0.0,
+            bend_tgt: 0.0,
+            glide: 0.0,
+            last_pitch: 0.0,
+            unison: false,
+            uni_detune: 0.3,
+            uni_spread: 0.7,
+            makeup: 1.0,
+            pending_makeup: None,
+            arp_on: false,
+            arp_mode: 0,
+            arp_div: 2.0,
+            bpm: 120.0,
+            arp_phase: 0.0,
+            arp_idx: 0,
+            arp_up: true,
+            arp_note: None,
+            rng_state: 0x9E37_79B9_7F4A_7C15,
         })
     }
 
@@ -154,15 +215,73 @@ impl LivePoly {
         self.last_error.clone()
     }
 
-    /// Press a MIDI note (60 = C4). Retriggers if already held; otherwise
-    /// takes a parked voice, else steals the oldest.
-    pub fn note_on(&mut self, note: u8) {
-        self.held.retain(|n| *n != note);
-        self.held.push(note);
-        self.press(note);
+    /// Press a MIDI note (60 = C4) with velocity 0..1. Retriggers if already
+    /// held; otherwise takes a parked voice, else steals the oldest. With
+    /// the arp on, the note joins the held set and the arp presses it.
+    pub fn note_on(&mut self, note: u8, vel: f64) {
+        let vel = (vel.clamp(0.0, 1.0) as f32).max(0.05);
+        self.held.retain(|(n, _)| *n != note);
+        self.held.push((note, vel));
+        if self.arp_on {
+            if self.held.len() == 1 {
+                // First note: fire the arp immediately, not a step later.
+                self.arp_phase = f64::MAX;
+                self.arp_idx = 0;
+                self.arp_up = true;
+            }
+            return;
+        }
+        self.press(note, vel);
     }
 
-    fn press(&mut self, note: u8) {
+    /// Velocity → output level: perceptual-ish curve with a floor so soft
+    /// notes still speak.
+    fn vel_gain(vel: f32) -> f32 {
+        0.15 + 0.85 * vel.powf(1.4)
+    }
+
+    fn press(&mut self, note: u8, vel: f32) {
+        let target = (note as f64 - 60.0) / 12.0;
+        let start = if self.glide > 0.0 {
+            self.last_pitch
+        } else {
+            target
+        };
+        self.last_pitch = target;
+        if self.unison {
+            // All voices, symmetric detune (±uni_detune·30 cents) and
+            // equal-power pan spread. Held gates stay high = legato.
+            let n = self.voices.len().max(1);
+            self.counter += 1;
+            let stamp = self.counter;
+            for i in 0..n {
+                let frac = if n > 1 {
+                    (i as f64 / (n - 1) as f64) * 2.0 - 1.0
+                } else {
+                    0.0
+                };
+                let det = frac * self.uni_detune * 0.025; // v/oct (30 c max)
+                let pan = frac * self.uni_spread;
+                let th = (pan + 1.0) * 0.25 * std::f64::consts::PI;
+                let v = &mut self.voices[i];
+                v.pitch_tgt = target + det;
+                v.pitch_cur = if self.glide > 0.0 {
+                    start + det
+                } else {
+                    v.pitch_tgt
+                };
+                v.voice.pitch.set(v.pitch_cur + self.bend);
+                v.voice.gate.set(GATE_ON);
+                v.note = Some(note);
+                v.stamp = stamp;
+                v.running = true;
+                v.silent_run = 0;
+                v.vel = Self::vel_gain(vel);
+                v.pan_l = th.cos() as f32;
+                v.pan_r = th.sin() as f32;
+            }
+            return;
+        }
         self.counter += 1;
         let stamp = self.counter;
         let idx = self
@@ -179,7 +298,9 @@ impl LivePoly {
             });
         if let Some(i) = idx {
             let v = &mut self.voices[i];
-            v.voice.pitch.set((note as f64 - 60.0) / 12.0);
+            v.pitch_tgt = target;
+            v.pitch_cur = start;
+            v.voice.pitch.set(v.pitch_cur + self.bend);
             // Stealing a *held* voice keeps its gate high (legato steal — the
             // envelope doesn't retrigger). Only happens past N held notes.
             v.voice.gate.set(GATE_ON);
@@ -187,12 +308,13 @@ impl LivePoly {
             v.stamp = stamp;
             v.running = true;
             v.silent_run = 0;
+            v.vel = Self::vel_gain(vel);
+            v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
+            v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
         }
     }
 
-    /// Release a MIDI note (the voice keeps ringing through its tail).
-    pub fn note_off(&mut self, note: u8) {
-        self.held.retain(|n| *n != note);
+    fn release_voices(&mut self, note: u8) {
         for v in &mut self.voices {
             if v.note == Some(note) {
                 v.voice.gate.set(0.0);
@@ -201,13 +323,175 @@ impl LivePoly {
         }
     }
 
+    /// Release a MIDI note (the voice keeps ringing through its tail).
+    pub fn note_off(&mut self, note: u8) {
+        self.held.retain(|(n, _)| *n != note);
+        if self.arp_on {
+            // Only the arp's own gate matters; other held notes were never
+            // pressed.
+            if self.arp_note == Some(note) && !self.held.iter().any(|(n, _)| *n == note) {
+                self.release_voices(note);
+                self.arp_note = None;
+            }
+            return;
+        }
+        self.release_voices(note);
+    }
+
     /// Release everything.
     pub fn all_off(&mut self) {
         self.held.clear();
+        self.arp_note = None;
         for v in &mut self.voices {
             v.voice.gate.set(0.0);
             v.note = None;
         }
+    }
+
+    /// Pitch bend in semitones (smoothed on the audio thread).
+    pub fn set_bend(&mut self, semitones: f64) {
+        self.bend_tgt = semitones.clamp(-24.0, 24.0) / 12.0;
+    }
+
+    /// Portamento amount 0..1 (0 = off, 1 ≈ 500 ms).
+    pub fn set_glide(&mut self, amount: f64) {
+        self.glide = amount.clamp(0.0, 1.0);
+    }
+
+    /// Unison mode: every voice plays the same note, detuned/panned apart.
+    pub fn set_unison(&mut self, on: bool, detune: f64, spread: f64) {
+        self.unison = on;
+        self.uni_detune = detune.clamp(0.0, 1.0);
+        self.uni_spread = spread.clamp(0.0, 1.0);
+        if !on {
+            // Collapse: keep the newest voice, release the clones.
+            let newest = self.voices.iter().map(|v| v.stamp).max().unwrap_or(0);
+            for v in &mut self.voices {
+                if v.note.is_some() && v.stamp != newest {
+                    v.voice.gate.set(0.0);
+                    v.note = None;
+                }
+                v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
+                v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
+            }
+        } else if let Some(&(note, vel)) = self.held.last() {
+            if !self.arp_on {
+                self.press(note, vel);
+            }
+        }
+    }
+
+    /// Configure the arpeggiator. `mode`: 0 up, 1 down, 2 up-down,
+    /// 3 random. `div`: steps per beat. Turning it off re-presses the held
+    /// chord; turning it on hands the held notes to the scheduler.
+    pub fn set_arp(&mut self, on: bool, mode: u32, div: f64, bpm: f64) {
+        self.arp_mode = mode.min(3);
+        self.arp_div = div.clamp(0.5, 8.0);
+        self.bpm = bpm.clamp(30.0, 300.0);
+        if on == self.arp_on {
+            return;
+        }
+        self.arp_on = on;
+        if on {
+            // The scheduler owns the gates now.
+            for &(n, _) in self.held.clone().iter() {
+                self.release_voices(n);
+            }
+            self.arp_note = None;
+            self.arp_phase = f64::MAX; // fire on the next quantum
+            self.arp_idx = 0;
+            self.arp_up = true;
+        } else {
+            if let Some(n) = self.arp_note.take() {
+                self.release_voices(n);
+            }
+            for &(n, v) in self.held.clone().iter() {
+                self.press(n, v);
+            }
+        }
+    }
+
+    fn next_rand(&mut self) -> u64 {
+        // xorshift64* — deterministic, no wall clock on the audio thread.
+        let mut x = self.rng_state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.rng_state = x;
+        x
+    }
+
+    /// Advance the arpeggiator by `frames` samples: half-step gate length,
+    /// step boundaries press the next held note (sorted by pitch).
+    fn tick_arp(&mut self, frames: usize) {
+        if !self.arp_on {
+            return;
+        }
+        if self.held.is_empty() {
+            if let Some(n) = self.arp_note.take() {
+                self.release_voices(n);
+            }
+            return;
+        }
+        let step_len = self.sample_rate * 60.0 / (self.bpm * self.arp_div);
+        self.arp_phase = (self.arp_phase + frames as f64).min(f64::MAX);
+        // Gate off at half the step.
+        if let Some(n) = self.arp_note {
+            if self.arp_phase >= step_len * 0.5 && !self.held.iter().any(|(h, _)| *h == n) {
+                // Note left the chord mid-step: release now.
+                self.release_voices(n);
+                self.arp_note = None;
+            } else if self.arp_phase >= step_len * 0.5 {
+                self.release_voices(n);
+                self.arp_note = None;
+            }
+        }
+        if self.arp_phase < step_len {
+            return;
+        }
+        self.arp_phase = 0.0;
+        let mut notes: Vec<(u8, f32)> = self.held.clone();
+        notes.sort_by_key(|(n, _)| *n);
+        let len = notes.len();
+        let pick = match self.arp_mode {
+            1 => {
+                // Down.
+                self.arp_idx = if self.arp_idx == 0 {
+                    len - 1
+                } else {
+                    (self.arp_idx - 1).min(len - 1)
+                };
+                self.arp_idx
+            }
+            2 => {
+                // Up-down bounce.
+                if len == 1 {
+                    0
+                } else {
+                    if self.arp_up {
+                        self.arp_idx = (self.arp_idx + 1) % len;
+                        if self.arp_idx == len - 1 {
+                            self.arp_up = false;
+                        }
+                    } else {
+                        self.arp_idx = self.arp_idx.saturating_sub(1);
+                        if self.arp_idx == 0 {
+                            self.arp_up = true;
+                        }
+                    }
+                    self.arp_idx.min(len - 1)
+                }
+            }
+            3 => (self.next_rand() as usize) % len,
+            _ => {
+                // Up.
+                self.arp_idx = (self.arp_idx + 1) % len;
+                self.arp_idx
+            }
+        };
+        let (note, vel) = notes[pick.min(len - 1)];
+        self.press(note, vel);
+        self.arp_note = Some(note);
     }
 
     /// Set a normalized knob target. The value ramps in over ~25 ms on the
@@ -230,6 +514,43 @@ impl LivePoly {
             });
         }
         true
+    }
+
+    /// Loudness makeup gain (linear). Applied immediately when idle, or
+    /// deferred to swap completion when a patch swap is pending (so the
+    /// outgoing patch fades at its own level).
+    pub fn set_makeup(&mut self, gain: f64) {
+        let g = gain.clamp(0.1, 8.0) as f32;
+        if self.pending.is_some() {
+            self.pending_makeup = Some(g);
+        } else {
+            self.makeup = g;
+        }
+    }
+
+    /// Advance pitch bend (one-pole) and per-voice glide, then write the
+    /// combined pitch to each sounding voice's atomic.
+    fn advance_pitch(&mut self, frames: usize) {
+        self.bend += (self.bend_tgt - self.bend) * 0.5;
+        if (self.bend - self.bend_tgt).abs() < 1.0e-6 {
+            self.bend = self.bend_tgt;
+        }
+        let dt = frames as f64 / self.sample_rate;
+        let coeff = if self.glide > 0.0 {
+            1.0 - (-dt / (self.glide * 0.5).max(1.0e-3)).exp()
+        } else {
+            1.0
+        };
+        for v in &mut self.voices {
+            if v.note.is_none() && !v.running {
+                continue;
+            }
+            v.pitch_cur += (v.pitch_tgt - v.pitch_cur) * coeff;
+            if (v.pitch_cur - v.pitch_tgt).abs() < 1.0e-6 {
+                v.pitch_cur = v.pitch_tgt;
+            }
+            v.voice.pitch.set(v.pitch_cur + self.bend);
+        }
     }
 
     fn advance_smoothers(&mut self) {
@@ -261,8 +582,8 @@ impl LivePoly {
             let mut tail_silent = 0u32;
             for f in 0..frames {
                 let (l, r) = v.voice.patch.tick();
-                self.out_buf[f * 2] += l as f32;
-                self.out_buf[f * 2 + 1] += r as f32;
+                self.out_buf[f * 2] += l as f32 * v.vel * v.pan_l * std::f32::consts::SQRT_2;
+                self.out_buf[f * 2 + 1] += r as f32 * v.vel * v.pan_r * std::f32::consts::SQRT_2;
                 if !held && l.abs() + r.abs() < SILENCE_EPS {
                     tail_silent += 1;
                 } else {
@@ -291,13 +612,15 @@ impl LivePoly {
             }
             for c in 0..2 {
                 let s = &mut self.out_buf[f * 2 + c];
-                *s = (*s * self.gain).clamp(-1.5, 1.5);
+                *s = (*s * self.gain * self.makeup).clamp(-1.5, 1.5);
             }
         }
     }
 
     fn step(&mut self, frames: usize) {
         self.advance_smoothers();
+        self.tick_arp(frames);
+        self.advance_pitch(frames);
         let rebuilding = matches!(self.stage, Stage::Rebuild { .. });
         if rebuilding {
             // Silent: compile exactly one voice per quantum. Overruns here
@@ -314,8 +637,16 @@ impl LivePoly {
                             self.voices = built;
                             self.pending = None;
                             self.smoothers.clear();
-                            for n in self.held.clone() {
-                                self.press(n);
+                            if let Some(g) = self.pending_makeup.take() {
+                                self.makeup = g;
+                            }
+                            if self.arp_on {
+                                // The scheduler re-presses on its next step.
+                                self.arp_note = None;
+                            } else {
+                                for (n, v) in self.held.clone() {
+                                    self.press(n, v);
+                                }
                             }
                             self.event = EVENT_PATCHED;
                             self.stage = Stage::FadeIn;
@@ -328,6 +659,7 @@ impl LivePoly {
                         self.last_error = e;
                         self.event = EVENT_PATCH_ERROR;
                         self.pending = None;
+                        self.pending_makeup = None;
                         self.stage = Stage::FadeIn;
                     }
                 }
@@ -392,8 +724,8 @@ mod tests {
         let json = tree_json(&mut rng);
         let mut poly = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
 
-        poly.note_on(60);
-        poly.note_on(64);
+        poly.note_on(60, 1.0);
+        poly.note_on(64, 1.0);
         let mut energy = 0.0f64;
         for _ in 0..40 {
             let out = poly.process(512);
@@ -428,8 +760,8 @@ mod tests {
         let json = serde_json::to_string(&tree).unwrap();
         let mut a = LivePoly::new(&json, 44_100.0, 1).unwrap();
         let mut b = LivePoly::new(&json, 44_100.0, 1).unwrap();
-        a.note_on(48);
-        b.note_on(48);
+        a.note_on(48, 1.0);
+        b.note_on(48, 1.0);
         let _ = a.process(2048);
         let _ = b.process(2048);
         assert!(a.set_param("node#cut", 1.0), "cutoff handle missing");
@@ -467,7 +799,7 @@ mod tests {
     fn patch_swap_is_gapless_for_held_notes() {
         let mut rng = StdRng::seed_from_u64(0x5A5A);
         let mut poly = LivePoly::new(&tree_json(&mut rng), 44_100.0, 4).unwrap();
-        poly.note_on(57);
+        poly.note_on(57, 1.0);
         for _ in 0..20 {
             let _ = poly.process(128);
         }
@@ -515,6 +847,60 @@ mod tests {
         );
     }
 
+    /// The arpeggiator steps through a held chord on its own clock, and
+    /// velocity scales output level.
+    #[test]
+    fn arp_steps_and_velocity_scales() {
+        let (_, tree) = evosynth_grammar::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "First Bass")
+            .expect("preset exists");
+        let json = serde_json::to_string(&tree).unwrap();
+
+        // Velocity: same note, soft vs hard, soft must be quieter.
+        let energy_at = |vel: f64| {
+            let mut p = LivePoly::new(&json, 44_100.0, 1).unwrap();
+            p.note_on(60, vel);
+            (0..20)
+                .flat_map(|_| p.process(512))
+                .map(|s| (s as f64) * (s as f64))
+                .sum::<f64>()
+        };
+        let (soft, hard) = (energy_at(0.15), energy_at(1.0));
+        assert!(
+            soft < hard * 0.5,
+            "velocity had no effect: soft {soft}, hard {hard}"
+        );
+
+        // Arp: hold a triad with the arp on; distinct pitches must be
+        // pressed over time, and turning it off restores the chord.
+        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        p.set_arp(true, 0, 4.0, 240.0); // 16ths at 240 BPM ≈ 16 steps/s
+        p.note_on(48, 1.0);
+        p.note_on(52, 1.0);
+        p.note_on(55, 1.0);
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..400 {
+            let out = p.process(128);
+            assert!(out.iter().all(|s| s.is_finite()));
+            for v in &p.voices {
+                if let Some(n) = v.note {
+                    seen.insert(n);
+                }
+            }
+        }
+        assert!(
+            seen.len() >= 3,
+            "arp never cycled the chord: pressed {seen:?}"
+        );
+        // At any instant the arp holds at most one gated note.
+        let gated = p.voices.iter().filter(|v| v.note.is_some()).count();
+        assert!(gated <= 1, "arp gated {gated} notes at once");
+        p.set_arp(false, 0, 4.0, 240.0);
+        let gated: Vec<_> = p.voices.iter().filter_map(|v| v.note).collect();
+        assert_eq!(gated.len(), 3, "chord not re-pressed after arp off");
+    }
+
     /// Chaos: random notes, knob writes (real and junk addresses), and
     /// patch swaps — output must stay finite forever, no panics.
     #[test]
@@ -535,7 +921,19 @@ mod tests {
         ];
         for i in 0..600 {
             match rng.gen_range(0..10) {
-                0 | 1 => poly.note_on(rng.gen_range(36..85)),
+                0 | 1 => poly.note_on(rng.gen_range(36..85), rng.gen_range(0.0..1.2)),
+                6 => poly.set_bend(rng.gen_range(-30.0..30.0)),
+                7 if i % 11 == 0 => poly.set_arp(
+                    rng.gen_bool(0.5),
+                    rng.gen_range(0..5),
+                    rng.gen_range(0.25..9.0),
+                    rng.gen_range(20.0..400.0),
+                ),
+                8 if i % 13 == 0 => {
+                    poly.set_unison(rng.gen_bool(0.5), rng.gen(), rng.gen());
+                    poly.set_glide(rng.gen_range(-0.5..1.5));
+                    poly.set_makeup(rng.gen_range(0.0..10.0));
+                }
                 2 => poly.note_off(rng.gen_range(36..85)),
                 3 => {
                     let _ = poly.set_param(

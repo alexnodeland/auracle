@@ -27,10 +27,14 @@ pub struct StructFeatures {
     pub n_delay: f64,
     /// Number of choruses.
     pub n_chorus: f64,
+    /// Number of reverbs.
+    pub n_reverb: f64,
     /// Number of LFO modulators.
     pub n_lfo: f64,
     /// Number of envelope modulators.
     pub n_env: f64,
+    /// Number of S&H random modulators.
+    pub n_rand: f64,
     /// Tree depth.
     pub depth: f64,
     /// Tree size (audio nodes).
@@ -47,7 +51,7 @@ pub struct StructFeatures {
 
 impl StructFeatures {
     /// Feature names in `to_vec` order.
-    pub const NAMES: [&'static str; 16] = [
+    pub const NAMES: [&'static str; 18] = [
         "n_vco",
         "n_supersaw",
         "n_noise",
@@ -56,8 +60,10 @@ impl StructFeatures {
         "n_fold",
         "n_delay",
         "n_chorus",
+        "n_reverb",
         "n_lfo",
         "n_env",
+        "n_rand",
         "depth",
         "size",
         "mod_density",
@@ -77,8 +83,10 @@ impl StructFeatures {
             self.n_fold,
             self.n_delay,
             self.n_chorus,
+            self.n_reverb,
             self.n_lfo,
             self.n_env,
+            self.n_rand,
             self.depth,
             self.size,
             self.mod_density,
@@ -122,6 +130,10 @@ fn count_mod(m: &ModNode, f: &mut StructFeatures, slots: &mut usize, filled: &mu
             f.n_env += 1.0;
             *filled += 1;
         }
+        ModNode::Rand { .. } => {
+            f.n_rand += 1.0;
+            *filled += 1;
+        }
     }
 }
 
@@ -155,6 +167,10 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, slots: &mut usize, filled: &mut u
         }
         AudioNode::Chorus { input, .. } => {
             f.n_chorus += 1.0;
+            walk(input, f, slots, filled);
+        }
+        AudioNode::Reverb { input, .. } => {
+            f.n_reverb += 1.0;
             walk(input, f, slots, filled);
         }
     }

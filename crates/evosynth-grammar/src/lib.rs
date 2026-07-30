@@ -89,7 +89,14 @@ mod tests {
                 assert!(
                     w.contains("Bipolar/Unipolar CV mismatch")
                         || w.contains("Unipolar CV to V/Oct")
-                        || w.contains("may need offset adjustment"),
+                        || w.contains("may need offset adjustment")
+                        // S&H random wiring: noise (audio) into the CV
+                        // sampler, and the square clock into its trigger.
+                        || w.contains("Audio/CV connection")
+                        || w.contains("Audio to Gate/Trigger")
+                        // ±5 V square clock into the S&H trigger thresholds
+                        // cleanly at the 2.5 V gate level.
+                        || w.contains("Unusual connection: CvBipolar -> Trigger"),
                     "sample {i}: unexpected warning class: {w}"
                 );
             }

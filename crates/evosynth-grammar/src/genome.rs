@@ -71,6 +71,7 @@ fn mod_distance(a: &ModNode, b: &ModNode) -> f64 {
                 decay: db,
             },
         ) => (aa - ab).abs() + (da - db).abs(),
+        (ModNode::Rand { rate: ra }, ModNode::Rand { rate: rb }) => (ra - rb).abs(),
         _ => 2.0,
     }
 }
@@ -192,6 +193,20 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 input: ib,
             },
         ) => (ra - rb).abs() + (da - db).abs() + (ma - mb).abs() + node_distance(ia, ib),
+        (
+            Reverb {
+                size: sa,
+                damp: da,
+                mix: ma,
+                input: ia,
+            },
+            Reverb {
+                size: sb,
+                damp: db,
+                mix: mb,
+                input: ib,
+            },
+        ) => (sa - sb).abs() + (da - db).abs() + (ma - mb).abs() + node_distance(ia, ib),
         // Different constructors: whole-subtree penalty.
         _ => (a.size() + b.size()) as f64,
     }
@@ -233,6 +248,10 @@ fn encode_mod(m: &ModNode, key: &str, t: &mut Trace) {
             put_usize(t, key, "mod", 2);
             put_f64(t, key, "att", *attack);
             put_f64(t, key, "dec", *decay);
+        }
+        ModNode::Rand { rate } => {
+            put_usize(t, key, "mod", 3);
+            put_f64(t, key, "rate", *rate);
         }
     }
 }
@@ -330,6 +349,19 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             put_f64(t, key, "cmix", *mix);
             encode_node(input, &child_key(key, 0), t);
         }
+        Reverb {
+            size,
+            damp,
+            mix,
+            input,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 5);
+            put_f64(t, key, "rsize", *size);
+            put_f64(t, key, "rdamp", *damp);
+            put_f64(t, key, "rmix", *mix);
+            encode_node(input, &child_key(key, 0), t);
+        }
     }
 }
 
@@ -361,6 +393,9 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
         2 => Ok(ModNode::Env {
             attack: get_f64(t, key, "att")?,
             decay: get_f64(t, key, "dec")?,
+        }),
+        3 => Ok(ModNode::Rand {
+            rate: get_f64(t, key, "rate")?,
         }),
         k => Err(GenomeError::InvalidStructure(format!(
             "mod kind {k} out of range at {key}"
@@ -419,6 +454,12 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 rate: get_f64(t, key, "crate")?,
                 depth: get_f64(t, key, "cdepth")?,
                 mix: get_f64(t, key, "cmix")?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            5 => Ok(AudioNode::Reverb {
+                size: get_f64(t, key, "rsize")?,
+                damp: get_f64(t, key, "rdamp")?,
+                mix: get_f64(t, key, "rmix")?,
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             k => Err(GenomeError::InvalidStructure(format!(

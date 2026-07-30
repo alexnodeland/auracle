@@ -54,6 +54,69 @@ let knobDragging = false;
 // these need a voice re-patch when the engine confirms them.
 const nonLiveAddrs = new Set();
 
+// ---------- persistence (IndexedDB autosave) ----------
+// One record: {session: <engine SessionState JSON>, ui: {stars, cut, vol, oct, perf}}.
+function idbOpen() {
+  return new Promise((resolve) => {
+    const req = indexedDB.open("evosynth", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("kv");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(null); // private mode etc: run without saves
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    const tx = db.transaction("kv", "readonly").objectStore("kv").get(key);
+    tx.onsuccess = () => resolve(tx.result || null);
+    tx.onerror = () => resolve(null);
+  });
+}
+async function idbPut(key, value) {
+  const db = await idbOpen();
+  if (!db) return;
+  db.transaction("kv", "readwrite").objectStore("kv").put(value, key);
+}
+
+let saveTimer = null;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => send({ type: "save" }), 2500);
+}
+function uiState() {
+  return {
+    stars: [...starsById],
+    cut: [...cutIds],
+    vol: Number($("vol").value),
+    oct: octShift,
+    perf,
+  };
+}
+
+// ---------- undo/redo (workbench edits) ----------
+const undoStack = [];
+const redoStack = [];
+let restoreInFlight = false;
+function pushUndo() {
+  if (!wb.tree) return;
+  undoStack.push(JSON.stringify(wb.tree));
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+}
+function doUndo() {
+  if (undoStack.length === 0 || !wb.tree) return note("nothing to undo");
+  redoStack.push(JSON.stringify(wb.tree));
+  restoreInFlight = true;
+  send({ type: "edit_set_tree", json: undoStack.pop() });
+}
+function doRedo() {
+  if (redoStack.length === 0 || !wb.tree) return note("nothing to redo");
+  undoStack.push(JSON.stringify(wb.tree));
+  restoreInFlight = true;
+  send({ type: "edit_set_tree", json: redoStack.pop() });
+}
+
 // ---------- worker protocol ----------
 const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
 
@@ -62,13 +125,32 @@ worker.onmessage = (e) => {
   switch (m.type) {
     case "fill_progress": {
       $("boot-fill").style.width = `${(100 * m.pool) / m.target}%`;
-      $("boot-status").textContent = `rendering & vetting candidate ${m.pool} / ${m.target}`;
+      $("boot-status").textContent =
+        m.label || `rendering & vetting candidate ${m.pool} / ${m.target}`;
       break;
     }
     case "filled": {
       $("boot").classList.add("hidden");
       send({ type: "duel" });
       send({ type: "taste_views" });
+      if (m.restored > 0) note(`welcome back — ${m.restored} patches and your taste history restored`);
+      break;
+    }
+    case "saved": {
+      idbPut("state", { session: m.json, ui: uiState() });
+      break;
+    }
+    case "patch_imported": {
+      views = m.views;
+      applyStatus(m.status);
+      refreshInstruments();
+      if (m.id > 0) {
+        openOnBench(m.id);
+        note(`patch imported as ${nameOf(m.id)}`);
+        scheduleSave();
+      } else {
+        note("could not import that patch (duplicate, or it failed the safety vet)");
+      }
       break;
     }
     case "duel": {
@@ -93,7 +175,7 @@ worker.onmessage = (e) => {
     }
     case "tree_json": {
       if (m.json && m.json !== "null" && live) {
-        live.setPatch(m.json);
+        live.setPatch(m.json, m.makeup);
         livePatchId = m.id;
         setLiveLabel(nameOf(m.id));
       }
@@ -101,6 +183,7 @@ worker.onmessage = (e) => {
     }
     case "status": {
       applyStatus(m.status);
+      scheduleSave();
       break;
     }
     case "fitted": {
@@ -109,6 +192,7 @@ worker.onmessage = (e) => {
       views = m.views;
       applyStatus(m.status);
       refreshInstruments();
+      scheduleSave();
       break;
     }
     case "refined": {
@@ -117,6 +201,7 @@ worker.onmessage = (e) => {
       views = m.views;
       applyStatus(m.status);
       refreshInstruments();
+      scheduleSave();
       note(`generation ${m.status.generation}: pool evolved`);
       break;
     }
@@ -127,10 +212,15 @@ worker.onmessage = (e) => {
         wb.subjectId = m.subject;
         wb.dirty = false;
         wb.locks = new Set();
+        undoStack.length = 0;
+        redoStack.length = 0;
         note(`${nameOf(m.subject)} on the bench`);
       }
       if (m.edited !== undefined) {
         wb.dirty = true;
+        if (m.edited === "restore" && wb.locks.size > 0) {
+          wb.locks.clear(); // restored tree may have different addresses
+        }
         if (m.edited === "structure" && wb.locks.size > 0) {
           // Structural edits shift trace addresses; stale locks would pin
           // the wrong sites.
@@ -151,15 +241,16 @@ worker.onmessage = (e) => {
       // The keyboard follows the bench — but continuous knob turns were
       // already applied live inside the worklet (zero-recompile), so only
       // subject loads, structural changes, and non-live params re-patch.
-      const structural = m.edited === "structure";
+      const structural = m.edited === "structure" || m.edited === "restore";
       const paramNonLive =
         m.edited !== undefined && !structural && nonLiveAddrs.has(m.edited);
       const subjectLoad = m.subject !== undefined;
+      if (m.edited === "restore") restoreInFlight = false;
       if (
         m.treeJson && m.treeJson !== "null" && live &&
         (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
       ) {
-        live.setPatch(m.treeJson);
+        live.setPatch(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
         setLiveLabel(wb.dirty ? `${nameOf(wb.subjectId)} (edited)` : nameOf(wb.subjectId));
       }
@@ -205,6 +296,7 @@ worker.onmessage = (e) => {
       }
       refreshInstruments();
       renderRack();
+      scheduleSave();
       break;
     }
     case "evolved_from": {
@@ -216,6 +308,7 @@ worker.onmessage = (e) => {
       if (m.childId > 0) {
         note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench, play it`);
         send({ type: "edit_begin", id: m.childId });
+        scheduleSave();
       } else {
         note("⚡ evolution found no accepted move — try again, or loosen some locks");
       }
@@ -238,6 +331,7 @@ worker.onmessage = (e) => {
       if (views) views.ranked = m.ranked;
       renderBank();
       renderRack(); // subject label may show a new name
+      scheduleSave();
       break;
     }
     case "presets": {
@@ -252,6 +346,7 @@ worker.onmessage = (e) => {
       if (m.id > 0) {
         openOnBench(m.id);
         note(`preset loaded as ${nameOf(m.id)}`);
+        scheduleSave();
       }
       break;
     }
@@ -269,6 +364,7 @@ worker.onmessage = (e) => {
         applyStatus(m.status);
         note("profile loaded — its standardizer and history are now active");
         send({ type: "taste_views" });
+        scheduleSave();
       } else {
         note("could not read that profile file");
       }
@@ -359,7 +455,12 @@ async function bootLiveAudio() {
     (window.__evoLog = window.__evoLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
     if (m.type === "param_miss") nonLiveAddrs.add(m.addr);
+    if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
+      downloadWav(m.samples, m.sampleRate);
+    }
   });
+  live.setVolume(Number($("vol").value));
+  applyPerfUi();
   live.node.onprocessorerror = (e) => {
     (window.__evoLog = window.__evoLog || []).push({ type: "processor_error", e: String(e) });
     note("live audio engine crashed — reload to recover");
@@ -368,10 +469,10 @@ async function bootLiveAudio() {
   if (wb.subjectId != null) send({ type: "tree_json", id: wb.subjectId });
 }
 
-function liveNoteOn(note_) {
+function liveNoteOn(note_, vel = 1.0) {
   if (!live) return;
   ensureAudio();
-  live.noteOn(note_);
+  live.noteOn(note_, vel);
   heldNotes.add(note_);
   paintKey(note_, true);
 }
@@ -483,6 +584,12 @@ function attachPianoPointers(piano) {
 // Computer keys play notes everywhere (no text inputs in the app).
 const downComputerKeys = new Map(); // event.key -> midi
 document.addEventListener("keydown", (e) => {
+  // Undo/redo for workbench edits (knobs, wiring, structure).
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    if (!restoreInFlight) e.shiftKey ? doRedo() : doUndo();
+    return;
+  }
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (k in KEYMAP) {
@@ -529,6 +636,120 @@ $("hold-btn").onclick = () => {
 };
 $("panic-btn").onclick = () => panic();
 $("vol").oninput = (e) => live && live.setVolume(Number(e.target.value));
+
+// ---------- performance controls (arp / unison / glide) ----------
+const perf = { arp: false, arpMode: 0, arpDiv: 2, bpm: 120, uni: false, glide: 0 };
+
+function sendArp() {
+  if (live) live.arp(perf.arp, perf.arpMode, perf.arpDiv, perf.bpm);
+  $("arp-btn").classList.toggle("lit", perf.arp);
+}
+function sendUni() {
+  if (live) live.unison(perf.uni, 0.4, 0.8);
+  $("uni-btn").classList.toggle("lit", perf.uni);
+}
+function applyPerfUi() {
+  $("arp-mode").value = String(perf.arpMode);
+  $("arp-div").value = String(perf.arpDiv);
+  $("bpm").value = String(perf.bpm);
+  $("glide").value = String(perf.glide);
+  sendArp();
+  sendUni();
+  if (live) live.glide(perf.glide);
+}
+$("arp-btn").onclick = () => { perf.arp = !perf.arp; sendArp(); scheduleSave(); };
+$("arp-mode").onchange = (e) => { perf.arpMode = Number(e.target.value); sendArp(); scheduleSave(); };
+$("arp-div").onchange = (e) => { perf.arpDiv = Number(e.target.value); sendArp(); scheduleSave(); };
+$("bpm").onchange = (e) => {
+  perf.bpm = Math.max(30, Math.min(300, Number(e.target.value) || 120));
+  e.target.value = perf.bpm;
+  sendArp();
+  scheduleSave();
+};
+$("uni-btn").onclick = () => { perf.uni = !perf.uni; sendUni(); scheduleSave(); };
+$("glide").oninput = (e) => {
+  perf.glide = Number(e.target.value);
+  if (live) live.glide(perf.glide);
+  scheduleSave();
+};
+// Typing a BPM must not play notes.
+$("bpm").addEventListener("keydown", (e) => e.stopPropagation());
+$("bpm").addEventListener("keyup", (e) => e.stopPropagation());
+
+// ---------- recording (WAV bounce of live playing) ----------
+let recording = false;
+$("rec-btn").onclick = () => {
+  if (!live) return;
+  recording = !recording;
+  $("rec-btn").classList.toggle("lit", recording);
+  $("rec-btn").textContent = recording ? "◼ stop" : "● rec";
+  live.rec(recording);
+  if (recording) note("recording — play something; stop to download the take");
+};
+
+function downloadWav(samples, sampleRate) {
+  // Interleaved stereo float → 16-bit PCM WAV.
+  const nFrames = samples.length / 2;
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const dv = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF");
+  dv.setUint32(4, 36 + samples.length * 2, true);
+  w(8, "WAVEfmt ");
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);      // PCM
+  dv.setUint16(22, 2, true);      // stereo
+  dv.setUint32(24, sampleRate, true);
+  dv.setUint32(28, sampleRate * 4, true);
+  dv.setUint16(32, 4, true);
+  dv.setUint16(34, 16, true);
+  w(36, "data");
+  dv.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    dv.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  const who = (liveLabelText || "take").replace(/[^\w-]+/g, "_").slice(0, 32);
+  a.download = `evosynth-${who}.wav`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`);
+}
+
+// ---------- Web MIDI ----------
+function bootMidi() {
+  if (!navigator.requestMIDIAccess) return;
+  navigator.requestMIDIAccess({ sysex: false }).then((access) => {
+    const wire = () => {
+      let n = 0;
+      for (const input of access.inputs.values()) {
+        n += 1;
+        input.onmidimessage = (ev) => {
+          const [stat, d1, d2] = ev.data;
+          const kind = stat & 0xf0;
+          if (kind === 0x90 && d2 > 0) liveNoteOn(d1, d2 / 127);
+          else if (kind === 0x80 || (kind === 0x90 && d2 === 0)) liveNoteOff(d1);
+          else if (kind === 0xe0 && live) {
+            live.bend((((d2 << 7) | d1) - 8192) / 8192 * 2); // ±2 semitones
+          } else if (kind === 0xb0 && d1 === 64) {
+            // Sustain pedal = hold latch.
+            hold = d2 >= 64;
+            $("hold-btn").classList.toggle("lit", hold);
+            if (!hold) panic();
+          } else if (kind === 0xb0 && d1 === 123) {
+            panic();
+          }
+        };
+      }
+      $("midi-ind").textContent = n > 0 ? `midi ●${n > 1 ? n : ""}` : "midi —";
+      $("midi-ind").classList.toggle("on", n > 0);
+    };
+    wire();
+    access.onstatechange = wire;
+  }).catch(() => {});
+}
 
 // ---------- duel flow ----------
 function loadSide(side, id) {
@@ -1038,6 +1259,7 @@ function buildRack(svg, rack, opts) {
           tt.textContent = `${k.label} — click to cycle`;
           body.appendChild(tt);
           body.addEventListener("click", (ev) => {
+            pushUndo();
             const n = k.kind.t === "octave" ? 5 : k.kind.options.length;
             const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
             k.value = next;
@@ -1083,11 +1305,13 @@ function buildRack(svg, rack, opts) {
 const KIND_LABELS = {
   vco: "vco", supersaw: "supersaw", noise: "noise", mix: "mix",
   filter: "filter", fold: "wavefolder", delay: "delay", chorus: "chorus",
+  reverb: "reverb",
 };
 const SOURCE_KINDS = ["vco", "supersaw", "noise"];
-const PROC_KINDS = ["filter", "fold", "delay", "chorus", "mix"];
+const PROC_KINDS = ["filter", "fold", "delay", "chorus", "reverb", "mix"];
 
 function sendStruct(op) {
+  pushUndo();
   send({ type: "edit_structure", op });
 }
 
@@ -1105,7 +1329,7 @@ function openStructMenu(mod, x, y) {
     // LFO / mod-env: swap or remove via the parent's mod slot.
     const parentKey = mod.key.replace(/\/m$/, "");
     head("modulation");
-    for (const [label, kind] of [["none (remove)", "none"], ["lfo", "lfo"], ["mod env", "env"]]) {
+    for (const [label, kind] of [["none (remove)", "none"], ["lfo", "lfo"], ["mod env", "env"], ["s&h rand", "rand"]]) {
       item(label, { op: "set_mod", key: parentKey, kind });
     }
   } else {
@@ -1117,7 +1341,7 @@ function openStructMenu(mod, x, y) {
     for (const k of PROC_KINDS) item(`+ ${KIND_LABELS[k]}`, { op: "insert", key: mod.key, kind: k });
     if (mod.kind === "filter" || mod.kind === "fold") {
       head("modulation");
-      for (const [label, kind] of [["none", "none"], ["lfo", "lfo"], ["mod env", "env"]]) {
+      for (const [label, kind] of [["none", "none"], ["lfo", "lfo"], ["mod env", "env"], ["s&h rand", "rand"]]) {
         item(label, { op: "set_mod", key: mod.key, kind });
       }
     }
@@ -1189,6 +1413,7 @@ function attachKnobDrag(el, mod, knob) {
   el.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
     el.setPointerCapture(ev.pointerId);
+    pushUndo(); // one undo step per knob gesture
     knobDragging = true;
     const startY = ev.clientY;
     const startV = knob.value;
@@ -1253,7 +1478,7 @@ $("lock-clear").onclick = () => {
 
 
 // ---------- patch-tree JSON utils (serde externally-tagged AudioNode) ----------
-const AUDIO_TAGS = ["Vco", "Supersaw", "Noise", "Mix", "Filter", "Fold", "Delay", "Chorus"];
+const AUDIO_TAGS = ["Vco", "Supersaw", "Noise", "Mix", "Filter", "Fold", "Delay", "Chorus", "Reverb"];
 const SOURCE_TAGS = ["Vco", "Supersaw", "Noise"];
 
 function nodeTag(n) {
@@ -1264,7 +1489,7 @@ function nodeChildrenJSON(n) {
   const tag = nodeTag(n);
   const v = n[tag];
   if (tag === "Mix") return [v.a, v.b];
-  if (["Filter", "Fold", "Delay", "Chorus"].includes(tag)) return [v.input];
+  if (["Filter", "Fold", "Delay", "Chorus", "Reverb"].includes(tag)) return [v.input];
   return [];
 }
 
@@ -1326,8 +1551,12 @@ const FRAG_DEFAULTS = {
   chorus: () => ({
     Chorus: { rate: 0.3, depth: 0.4, mix: 0.35, input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } } },
   }),
+  reverb: () => ({
+    Reverb: { size: 0.5, damp: 0.5, mix: 0.3, input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } } },
+  }),
   lfo: () => ({ Lfo: { wave: "Triangle", rate: 0.4 } }),
   env: () => ({ Env: { attack: 0.2, decay: 0.5 } }),
+  rand: () => ({ Rand: { rate: 0.4 } }),
 };
 
 // ---------- tray (staged, unwired modules) ----------
@@ -1336,14 +1565,14 @@ let trayUid = 1;
 
 function fragLabel(frag, isMod) {
   const tag = nodeTag(frag);
-  if (isMod) return tag === "Env" ? "mod env" : tag.toLowerCase();
+  if (isMod) return tag === "Env" ? "mod env" : tag === "Rand" ? "s&h rand" : tag.toLowerCase();
   const size = subtreeSize(frag);
   return tag.toLowerCase() + (size > 1 ? `·${size}` : "");
 }
 
 function stageKind(kind) {
-  const isMod = kind === "lfo" || kind === "env";
-  tray.push({ uid: trayUid++, isMod, frag: FRAG_DEFAULTS[kind](), label: kind === "env" ? "mod env" : kind });
+  const isMod = kind === "lfo" || kind === "env" || kind === "rand";
+  tray.push({ uid: trayUid++, isMod, frag: FRAG_DEFAULTS[kind](), label: kind === "env" ? "mod env" : kind === "rand" ? "s&h rand" : kind });
   renderTray();
 }
 
@@ -1380,15 +1609,15 @@ function renderTray() {
 }
 
 // ---------- node bank ----------
-const NB_AUDIO = ["vco", "supersaw", "noise", "mix", "filter", "fold", "delay", "chorus"];
-const NB_MOD = ["lfo", "env"];
+const NB_AUDIO = ["vco", "supersaw", "noise", "mix", "filter", "fold", "delay", "chorus", "reverb"];
+const NB_MOD = ["lfo", "env", "rand"];
 
 function buildNodeBank() {
   const mk = (holder, kinds, mod) => {
     for (const k of kinds) {
       const b = document.createElement("button");
       b.className = "nb-item" + (mod ? " mod" : "");
-      b.textContent = k === "env" ? "mod env" : k === "fold" ? "wavefolder" : k;
+      b.textContent = k === "env" ? "mod env" : k === "fold" ? "wavefolder" : k === "rand" ? "s&h rand" : k;
       b.title = "Stage in the tray";
       b.onclick = () => stageKind(k);
       holder.appendChild(b);
@@ -1551,6 +1780,7 @@ const NICE_NAMES = {
   tail_ratio: "long tail", bass_fraction: "bass weight",
   n_vco: "VCOs", n_supersaw: "supersaws", n_noise: "noise srcs", n_mix: "mixers",
   n_filter: "filters", n_fold: "wavefolders", n_delay: "delays", n_chorus: "choruses",
+  n_reverb: "reverbs", n_rand: "S&H mods",
   n_lfo: "LFO mods", n_env: "env mods", depth: "patch depth", size: "patch size",
   mod_density: "mod density", amp_attack: "amp attack", amp_sustain: "amp sustain",
   amp_release: "amp release",
@@ -1847,6 +2077,7 @@ const SITE_NAMES = {
   smix: "stack mix", rate: "lfo rate", att: "mod attack", dec: "mod decay",
   attack: "attack", decay: "decay", sustain: "sustain", release: "release",
   wave: "wave", oct: "octave", color: "color", fkind: "filter mode",
+  rsize: "reverb size", rdamp: "reverb damp", rmix: "reverb mix",
 };
 
 function humanizeDiff(diff) {
@@ -1876,6 +2107,30 @@ $("import-input").onchange = async (e) => {
   if (file) send({ type: "import", json: await file.text() });
 };
 
+// ---------- patch share (single-patch files) ----------
+$("patch-export-btn").onclick = () => {
+  if (!wb.tree) return note("nothing on the bench to export");
+  const name = wb.subjectId != null ? nameOf(wb.subjectId) : "patch";
+  const payload = JSON.stringify({ evosynth_patch: 1, name, tree: wb.tree }, null, 1);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
+  a.download = `${name.replace(/[^\w-]+/g, "_").slice(0, 32)}.evopatch.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$("patch-import-input").onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const tree = data.tree || data; // accept bare trees too
+    send({ type: "import_patch", json: JSON.stringify(tree), name: data.name || "" });
+  } catch (_) {
+    note("that file isn't a patch");
+  }
+};
+
 // ---------- resize ----------
 let resizeTimer = null;
 window.addEventListener("resize", () => {
@@ -1896,7 +2151,25 @@ buildPiano();
 buildNodeBank();
 renderTray();
 bootLiveAudio();
-send({ type: "init", seed: Math.floor(Math.random() * 2 ** 31), poolSize: 40 });
+bootMidi();
+(async () => {
+  const saved = await idbGet("state");
+  if (saved && saved.ui) {
+    // Restore UI prefs before the engine finishes booting.
+    for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);
+    for (const id of saved.ui.cut || []) cutIds.add(id);
+    if (saved.ui.vol != null) $("vol").value = saved.ui.vol;
+    if (saved.ui.oct != null) { octShift = saved.ui.oct; paintHints(); }
+    if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
+    applyPerfUi();
+  }
+  send({
+    type: "init",
+    seed: Math.floor(Math.random() * 2 ** 31),
+    poolSize: 40,
+    saved: saved && saved.session ? saved.session : null,
+  });
+})();
 
 // Debug/testing hook (no UI surface).
 window.__evo = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs };

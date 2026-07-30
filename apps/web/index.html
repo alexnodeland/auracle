@@ -25,6 +25,8 @@
       <span class="led-block"><i id="led-evolve" class="led"></i><span>evolve</span></span>
       <button id="export-btn" class="util-btn" title="Download your taste profile (log + standardizer)">save profile</button>
       <label class="util-btn" title="Load a saved taste profile">load<input id="import-input" type="file" accept=".json" hidden></label>
+      <button id="patch-export-btn" class="util-btn" title="Download the bench patch as a shareable file">patch ⤓</button>
+      <label class="util-btn" title="Load a shared patch into your bank">patch ⤒<input id="patch-import-input" type="file" accept=".json" hidden></label>
     </div>
   </header>
 
@@ -166,9 +168,27 @@
       </div>
       <button class="util-btn" id="hold-btn" title="Latch held notes">hold</button>
       <button class="util-btn" id="panic-btn" title="Silence all voices">◼</button>
+      <div class="perf-ctl">
+        <button class="util-btn" id="arp-btn" title="Arpeggiator: hold a chord, it plays the pattern">arp</button>
+        <select id="arp-mode" class="perf-sel" title="Arp pattern">
+          <option value="0">up</option><option value="1">down</option>
+          <option value="2">up·dn</option><option value="3">rnd</option>
+        </select>
+        <select id="arp-div" class="perf-sel" title="Arp rate (steps per beat)">
+          <option value="1">1/4</option><option value="2" selected>1/8</option>
+          <option value="4">1/16</option><option value="3">1/8t</option>
+        </select>
+        <input type="number" id="bpm" class="perf-num" min="30" max="300" value="120" title="Tempo (BPM)">
+      </div>
     </div>
     <div class="piano" id="piano"></div>
     <div class="key-side right">
+      <div class="perf-ctl">
+        <button class="util-btn" id="uni-btn" title="Unison: all 4 voices on one note, detuned wide">uni</button>
+        <label class="perf-glide mono" title="Glide (portamento)">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0"></label>
+        <button class="util-btn" id="rec-btn" title="Record what you play; stop to download a WAV">● rec</button>
+        <span class="mono midi-ind" id="midi-ind" title="MIDI input">midi —</span>
+      </div>
       <div class="live-label mono" id="live-label">no patch</div>
       <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" title="Volume">
     </div>

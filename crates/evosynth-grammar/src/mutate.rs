@@ -44,6 +44,8 @@ pub enum NodeKind {
     Delay,
     /// Chorus.
     Chorus,
+    /// Algorithmic reverb.
+    Reverb,
 }
 
 impl NodeKind {
@@ -63,6 +65,8 @@ pub enum ModKind {
     Lfo,
     /// Attack/decay envelope.
     Env,
+    /// Sample-and-hold random source.
+    Rand,
 }
 
 /// One structural edit.
@@ -200,6 +204,12 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             mix: 0.35,
             input: boxed(input),
         },
+        NodeKind::Reverb => AudioNode::Reverb {
+            size: 0.5,
+            damp: 0.5,
+            mix: 0.3,
+            input: boxed(input),
+        },
     }
 }
 
@@ -210,7 +220,8 @@ fn primary_input(n: AudioNode) -> Option<AudioNode> {
         AudioNode::Filter { input, .. }
         | AudioNode::Fold { input, .. }
         | AudioNode::Delay { input, .. }
-        | AudioNode::Chorus { input, .. } => Some(*input),
+        | AudioNode::Chorus { input, .. }
+        | AudioNode::Reverb { input, .. } => Some(*input),
     }
 }
 
@@ -236,7 +247,8 @@ fn child_mut(n: &mut AudioNode, i: usize) -> Option<&mut AudioNode> {
         AudioNode::Filter { input, .. }
         | AudioNode::Fold { input, .. }
         | AudioNode::Delay { input, .. }
-        | AudioNode::Chorus { input, .. } => (i == 0).then_some(input),
+        | AudioNode::Chorus { input, .. }
+        | AudioNode::Reverb { input, .. } => (i == 0).then_some(input),
         _ => None,
     }
 }
@@ -340,6 +352,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                     attack: 0.2,
                     decay: 0.5,
                 },
+                ModKind::Rand => ModNode::Rand { rate: 0.4 },
             };
         }
         StructOp::SwapMix { key } => {
@@ -436,6 +449,14 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
         } => Ok(AudioNode::Chorus {
             rate,
             depth,
+            mix,
+            input: Box::new(old),
+        }),
+        AudioNode::Reverb {
+            size, damp, mix, ..
+        } => Ok(AudioNode::Reverb {
+            size,
+            damp,
             mix,
             input: Box::new(old),
         }),

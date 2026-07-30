@@ -140,6 +140,12 @@ pub enum ModNode {
         /// Normalized decay time (0-1).
         decay: f64,
     },
+    /// A random stepped source (noise sampled-and-held on an internal
+    /// clock) — the classic S&H burble.
+    Rand {
+        /// Normalized clock rate (0-1).
+        rate: f64,
+    },
 }
 
 /// An audio-sort term: sources at the leaves, processors and mixers above.
@@ -225,6 +231,17 @@ pub enum AudioNode {
         /// Audio input.
         input: Box<AudioNode>,
     },
+    /// Algorithmic reverb (Freeverb) over an audio term.
+    Reverb {
+        /// Normalized room size (0-1).
+        size: f64,
+        /// Normalized damping (0-1).
+        damp: f64,
+        /// Normalized wet/dry mix (0-1).
+        mix: f64,
+        /// Audio input.
+        input: Box<AudioNode>,
+    },
 }
 
 /// The mandatory amplitude envelope on every voice (ADSR, normalized 0-1).
@@ -254,9 +271,10 @@ impl ModNode {
     /// Number of probabilistic-choice sites this mod term occupies.
     pub fn site_count(&self) -> usize {
         match self {
-            ModNode::None => 1,       // #mod
-            ModNode::Lfo { .. } => 3, // #mod #wave #rate
-            ModNode::Env { .. } => 3, // #mod #att #dec
+            ModNode::None => 1,        // #mod
+            ModNode::Lfo { .. } => 3,  // #mod #wave #rate
+            ModNode::Env { .. } => 3,  // #mod #att #dec
+            ModNode::Rand { .. } => 2, // #mod #rate
         }
     }
 }
@@ -270,7 +288,8 @@ impl AudioNode {
             AudioNode::Filter { input, .. }
             | AudioNode::Fold { input, .. }
             | AudioNode::Delay { input, .. }
-            | AudioNode::Chorus { input, .. } => 1 + input.depth(),
+            | AudioNode::Chorus { input, .. }
+            | AudioNode::Reverb { input, .. } => 1 + input.depth(),
         }
     }
 
@@ -282,7 +301,8 @@ impl AudioNode {
             AudioNode::Filter { input, .. }
             | AudioNode::Fold { input, .. }
             | AudioNode::Delay { input, .. }
-            | AudioNode::Chorus { input, .. } => 1 + input.size(),
+            | AudioNode::Chorus { input, .. }
+            | AudioNode::Reverb { input, .. } => 1 + input.size(),
         }
     }
 
@@ -303,6 +323,7 @@ impl AudioNode {
             } => 2 + 2 + input.site_count() + modulation.site_count(),
             AudioNode::Delay { input, .. } => 2 + 3 + input.site_count(),
             AudioNode::Chorus { input, .. } => 2 + 3 + input.site_count(),
+            AudioNode::Reverb { input, .. } => 2 + 3 + input.site_count(),
         }
     }
 
@@ -363,6 +384,15 @@ impl AudioNode {
                 "(chorus r={rate:.2} d={depth:.2} mix={mix:.2} {})",
                 input.to_sexpr()
             ),
+            AudioNode::Reverb {
+                size,
+                damp,
+                mix,
+                input,
+            } => format!(
+                "(reverb s={size:.2} d={damp:.2} mix={mix:.2} {})",
+                input.to_sexpr()
+            ),
         }
     }
 }
@@ -372,6 +402,7 @@ fn mod_sexpr(m: &ModNode) -> String {
         ModNode::None => "nomod".to_string(),
         ModNode::Lfo { wave, rate } => format!("(lfo {} {rate:.2})", wave.port_name()),
         ModNode::Env { attack, decay } => format!("(env a={attack:.2} d={decay:.2})"),
+        ModNode::Rand { rate } => format!("(rand r={rate:.2})"),
     }
 }
 
@@ -404,6 +435,10 @@ fn spine_tags(n: &AudioNode, out: &mut Vec<&'static str>) {
         AudioNode::Chorus { input, .. } => {
             spine_tags(input, out);
             out.push("cho");
+        }
+        AudioNode::Reverb { input, .. } => {
+            spine_tags(input, out);
+            out.push("rvb");
         }
     }
 }

@@ -45,6 +45,25 @@ pub fn presets() -> Vec<(&'static str, PatchTree)> {
             },
         ),
         (
+            "Cathedral",
+            PatchTree {
+                amp: amp(0.4, 0.4, 0.75, 0.7),
+                root: Reverb {
+                    size: 0.85,
+                    damp: 0.35,
+                    mix: 0.5,
+                    input: Box::new(Filter {
+                        kind: FilterKind::SvfLp,
+                        cutoff: 0.55,
+                        resonance: 0.25,
+                        mod_depth: 0.3,
+                        modulation: ModNode::Rand { rate: 0.35 },
+                        input: Box::new(vco(Waveform::Triangle, 0, 0.55)),
+                    }),
+                },
+            },
+        ),
+        (
             "Glass Pad",
             PatchTree {
                 amp: amp(0.55, 0.4, 0.8, 0.65),

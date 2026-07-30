@@ -31,10 +31,11 @@ use crate::term::{AmpEnv, AudioNode, FilterKind, ModNode, NoiseColor, PatchTree,
 
 /// Source-kind categorical order: Vco, Supersaw, Noise.
 pub const N_SOURCES: usize = 3;
-/// Processor-kind categorical order: Mix, Filter, Fold, Delay, Chorus.
-pub const N_OPS: usize = 5;
-/// Modulation-kind categorical order: None, Lfo, Env.
-pub const N_MODS: usize = 3;
+/// Processor-kind categorical order: Mix, Filter, Fold, Delay, Chorus,
+/// Reverb.
+pub const N_OPS: usize = 6;
+/// Modulation-kind categorical order: None, Lfo, Env, Rand.
+pub const N_MODS: usize = 4;
 
 /// The typed PCFG over patch terms.
 #[derive(Clone, Debug)]
@@ -45,9 +46,10 @@ pub struct PatchGrammarPrior {
     pub max_depth: usize,
     /// Weights over source kinds `[Vco, Supersaw, Noise]`.
     pub source_weights: [f64; N_SOURCES],
-    /// Weights over processor kinds `[Mix, Filter, Fold, Delay, Chorus]`.
+    /// Weights over processor kinds
+    /// `[Mix, Filter, Fold, Delay, Chorus, Reverb]`.
     pub op_weights: [f64; N_OPS],
-    /// Weights over modulation kinds `[None, Lfo, Env]`.
+    /// Weights over modulation kinds `[None, Lfo, Env, Rand]`.
     pub mod_weights: [f64; N_MODS],
 }
 
@@ -58,11 +60,12 @@ impl Default for PatchGrammarPrior {
             max_depth: 5,
             // Noise is a spice, not a staple.
             source_weights: [0.45, 0.35, 0.2],
-            // Filters carry subtractive character; mixing and time-fx follow.
-            op_weights: [0.2, 0.35, 0.15, 0.15, 0.15],
+            // Filters carry subtractive character; mixing and time-fx
+            // follow; reverb is a finishing spice.
+            op_weights: [0.2, 0.33, 0.14, 0.14, 0.11, 0.08],
             // Most processor slots are unmodulated; envelopes slightly beat
-            // LFOs for the classic filter-sweep idiom.
-            mod_weights: [0.5, 0.22, 0.28],
+            // LFOs for the classic filter-sweep idiom; S&H random is rare.
+            mod_weights: [0.48, 0.21, 0.25, 0.06],
         }
     }
 }
@@ -141,7 +144,7 @@ impl PatchGrammarPrior {
                     })
                 })
             }
-            _ => {
+            2 => {
                 let k = key.clone();
                 sample(addr!(k.clone(), "att"), u01()).bind(move |a| {
                     sample(addr!(k.clone(), "dec"), u01()).map(move |d| ModNode::Env {
@@ -150,6 +153,7 @@ impl PatchGrammarPrior {
                     })
                 })
             }
+            _ => sample(addr!(key.clone(), "rate"), u01()).map(|r| ModNode::Rand { rate: r }),
         })
     }
 
@@ -278,7 +282,7 @@ impl PatchGrammarPrior {
                 })
             }
             // Chorus
-            _ => {
+            4 => {
                 let k = key.clone();
                 sample(addr!(k.clone(), "crate"), u01()).bind(move |r| {
                     let k2 = k.clone();
@@ -291,6 +295,27 @@ impl PatchGrammarPrior {
                                 .map(move |input| AudioNode::Chorus {
                                     rate: r,
                                     depth: d,
+                                    mix: mx,
+                                    input: Box::new(input),
+                                })
+                        })
+                    })
+                })
+            }
+            // Reverb
+            _ => {
+                let k = key.clone();
+                sample(addr!(k.clone(), "rsize"), u01()).bind(move |sz| {
+                    let k2 = k.clone();
+                    let cfg2 = cfg.clone();
+                    sample(addr!(k2.clone(), "rdamp"), u01()).bind(move |dp| {
+                        let k3 = k2.clone();
+                        let cfg3 = cfg2.clone();
+                        sample(addr!(k3.clone(), "rmix"), u01()).bind(move |mx| {
+                            cfg3.audio_model(child_key(&k3, 0), depth + 1)
+                                .map(move |input| AudioNode::Reverb {
+                                    size: sz,
+                                    damp: dp,
                                     mix: mx,
                                     input: Box::new(input),
                                 })
@@ -359,9 +384,15 @@ impl PatchGrammarPrior {
                     mix: rng.gen(),
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
-                _ => AudioNode::Chorus {
+                4 => AudioNode::Chorus {
                     rate: rng.gen(),
                     depth: rng.gen(),
+                    mix: rng.gen(),
+                    input: Box::new(self.sample_audio(rng, depth + 1)),
+                },
+                _ => AudioNode::Reverb {
+                    size: rng.gen(),
+                    damp: rng.gen(),
                     mix: rng.gen(),
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
@@ -376,10 +407,11 @@ impl PatchGrammarPrior {
                 wave: Waveform::from_index(rng.gen_range(0..Waveform::ALL.len())),
                 rate: rng.gen(),
             },
-            _ => ModNode::Env {
+            2 => ModNode::Env {
                 attack: rng.gen(),
                 decay: rng.gen(),
             },
+            _ => ModNode::Rand { rate: rng.gen() },
         }
     }
 }

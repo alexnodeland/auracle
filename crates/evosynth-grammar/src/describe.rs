@@ -182,6 +182,22 @@ fn describe_mod(
                 kind: "mod".into(),
             });
         }
+        ModNode::Rand { rate } => {
+            out.modules.push(RackModule {
+                key: key.into(),
+                kind: "rand".into(),
+                title: "s&h rand".into(),
+                column,
+                is_mod: true,
+                knobs: vec![knob_c(key, "rate", "rate", *rate)],
+                structural_addrs: vec![format!("{key}#mod")],
+            });
+            out.wires.push(Wire {
+                from: key.into(),
+                to: parent_key.into(),
+                kind: "mod".into(),
+            });
+        }
     }
 }
 
@@ -384,6 +400,33 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
                     knob_c(key, "crate", "rate", *rate),
                     knob_c(key, "cdepth", "depth", *depth),
                     knob_c(key, "cmix", "mix", *mix),
+                ],
+                structural_addrs: leaf_op,
+            });
+            let child = format!("{key}/0");
+            out.wires.push(Wire {
+                from: child.clone(),
+                to: key.into(),
+                kind: "audio".into(),
+            });
+            describe_node(input, &child, column + 1, out);
+        }
+        AudioNode::Reverb {
+            size,
+            damp,
+            mix,
+            input,
+        } => {
+            out.modules.push(RackModule {
+                key: key.into(),
+                kind: "reverb".into(),
+                title: "reverb".into(),
+                column,
+                is_mod: false,
+                knobs: vec![
+                    knob_c(key, "rsize", "size", *size),
+                    knob_c(key, "rdamp", "damp", *damp),
+                    knob_c(key, "rmix", "mix", *mix),
                 ],
                 structural_addrs: leaf_op,
             });

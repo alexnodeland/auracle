@@ -25,7 +25,7 @@ use evosynth_grammar::{
     apply_struct_op, describe, presets, set_param, ParamValue, PatchGrammarPrior, PatchTree,
     StructOp,
 };
-use evosynth_session::{Engine, Origin, Profile, SessionConfig};
+use evosynth_session::{Engine, Origin, Profile, SessionConfig, SessionState};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::Serialize;
@@ -96,6 +96,13 @@ pub struct WasmEngine {
     bench_render: Option<RenderedPhrase>,
     bench_original: Option<u64>,
     bench_vet_ok: bool,
+    bench_gain_db: f64,
+}
+
+/// LUFS makeup as a linear gain, clamped to ±12 dB so near-silent patches
+/// don't get cranked into the noise floor.
+fn makeup_linear(gain_db: f64) -> f64 {
+    10f64.powf(gain_db.clamp(-12.0, 12.0) / 20.0)
 }
 
 #[wasm_bindgen]
@@ -121,7 +128,22 @@ impl WasmEngine {
             bench_render: None,
             bench_original: None,
             bench_vet_ok: false,
+            bench_gain_db: 0.0,
         }
+    }
+
+    /// Loudness-makeup linear gain for live playback of candidate `id`
+    /// (evens patches out to the audition target). 1.0 for unknown ids.
+    pub fn makeup_of(&self, id: u32) -> f64 {
+        self.engine
+            .find(id as u64)
+            .map(|i| makeup_linear(self.engine.pool[i].features.gain_db))
+            .unwrap_or(1.0)
+    }
+
+    /// Loudness-makeup linear gain for the current workbench tree.
+    pub fn edit_makeup(&self) -> f64 {
+        makeup_linear(self.bench_gain_db)
     }
 
     /// Add up to `max_new` vetted candidates. Returns how many were added,
@@ -377,6 +399,21 @@ impl WasmEngine {
     // Workbench (the interactive panel)
     // ------------------------------------------------------------------
 
+    /// Import a shared patch (tree JSON + optional name) into the bank.
+    /// Returns the new id, or 0 (bad JSON / duplicate / vet failure).
+    pub fn import_patch(&mut self, tree_json: &str, name: &str) -> u32 {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+            return 0;
+        };
+        match self.engine.commit_edit(None, tree, false) {
+            Some(id) => {
+                self.engine.set_name(id, name);
+                id as u32
+            }
+            None => 0,
+        }
+    }
+
     /// Load candidate `id` onto the workbench. Returns false for unknown id.
     pub fn edit_begin(&mut self, id: u32) -> bool {
         let id = id as u64;
@@ -386,6 +423,7 @@ impl WasmEngine {
                 self.bench_render = self.engine.pool[i].render.clone();
                 self.bench_original = Some(id);
                 self.bench_vet_ok = true;
+                self.bench_gain_db = self.engine.pool[i].features.gain_db;
                 true
             }
             None => false,
@@ -409,6 +447,7 @@ impl WasmEngine {
             Ok(edited) => {
                 match featurize(&edited, &self.phrase()) {
                     Ok(vetted) => {
+                        self.bench_gain_db = vetted.features.gain_db;
                         self.bench_render = Some(vetted.render);
                         self.bench_vet_ok = true;
                     }
@@ -442,6 +481,7 @@ impl WasmEngine {
             Ok(edited) => {
                 match featurize(&edited, &self.phrase()) {
                     Ok(vetted) => {
+                        self.bench_gain_db = vetted.features.gain_db;
                         self.bench_render = Some(vetted.render);
                         self.bench_vet_ok = true;
                     }
@@ -455,6 +495,32 @@ impl WasmEngine {
             }
             Err(e) => e.to_string(),
         }
+    }
+
+    /// Replace the whole workbench tree (undo/redo restore path), then
+    /// re-render and re-vet. Returns an empty string on success or the
+    /// rejection reason.
+    pub fn edit_set_tree(&mut self, tree_json: &str) -> String {
+        if self.bench_tree.is_none() {
+            return "no patch on the bench".into();
+        }
+        let tree: PatchTree = match serde_json::from_str(tree_json) {
+            Ok(t) => t,
+            Err(e) => return format!("bad tree: {e}"),
+        };
+        match featurize(&tree, &self.phrase()) {
+            Ok(vetted) => {
+                self.bench_gain_db = vetted.features.gain_db;
+                self.bench_render = Some(vetted.render);
+                self.bench_vet_ok = true;
+            }
+            Err(_) => {
+                self.bench_render = None;
+                self.bench_vet_ok = false;
+            }
+        }
+        self.bench_tree = Some(tree);
+        String::new()
     }
 
     /// The workbench audition buffer (empty when the current edit failed
@@ -503,6 +569,26 @@ impl WasmEngine {
     // ------------------------------------------------------------------
     // Persistence
     // ------------------------------------------------------------------
+
+    /// Export the full session (profile + bank trees/names/origins +
+    /// lineage) as JSON, for autosave.
+    pub fn export_session(&self) -> String {
+        serde_json::to_string(&self.engine.export_state()).unwrap()
+    }
+
+    /// Restore a saved session (replacing pool, log, lineage). Returns the
+    /// number of bank entries restored, 0 on parse failure. Re-featurizes
+    /// every tree — seconds of work; call from the worker.
+    pub fn import_session(&mut self, json: &str) -> usize {
+        match serde_json::from_str::<SessionState>(json) {
+            Ok(state) => {
+                let n = self.engine.import_state(state);
+                self.engine.begin_session();
+                n
+            }
+            Err(_) => 0,
+        }
+    }
 
     /// Export the portable profile (observation log + its standardizer — θ
     /// is only meaningful relative to the standardizer, so they travel

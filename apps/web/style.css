@@ -936,3 +936,17 @@ body {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- performance controls (keybar) ---------- */
+.perf-ctl { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.perf-sel, .perf-num {
+  background: #14171c; color: var(--ink, #d9d4c8);
+  border: 1px solid #2c313a; border-radius: 3px;
+  font: 10px "IBM Plex Mono", monospace; padding: 2px 3px;
+}
+.perf-num { width: 44px; }
+.perf-glide { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--phos-a-dim); }
+.perf-glide input[type="range"] { width: 54px; }
+.midi-ind { font-size: 9px; color: #565d68; }
+.midi-ind.on { color: var(--phos-a); text-shadow: 0 0 6px rgba(142,240,177,0.6); }
+#rec-btn.lit { color: #ff6b6b; border-color: #ff6b6b; text-shadow: 0 0 8px rgba(255,107,107,0.8); }
