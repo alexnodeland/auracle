@@ -327,18 +327,16 @@ mod tests {
                 ops.push(StructOp::SwapMix { key: key.clone() });
             }
             for op in ops {
-                match mutate::apply_struct_op(&tree, &op) {
-                    Ok(next) => {
-                        assert!(
-                            compile(&next, SR).is_ok(),
-                            "sample {i}: op {op:?} produced uncompilable tree"
-                        );
-                        assert!(next.root.size() <= mutate::MAX_SIZE);
-                        let back = PatchTree::from_trace(&next.to_trace()).unwrap();
-                        assert_eq!(back, next, "trace roundtrip after {op:?}");
-                        describe::describe(&next); // must not panic
-                    }
-                    Err(_) => {} // invalid ops are allowed to reject, never panic
+                // Invalid ops are allowed to reject — but never panic.
+                if let Ok(next) = mutate::apply_struct_op(&tree, &op) {
+                    assert!(
+                        compile(&next, SR).is_ok(),
+                        "sample {i}: op {op:?} produced uncompilable tree"
+                    );
+                    assert!(next.root.size() <= mutate::MAX_SIZE);
+                    let back = PatchTree::from_trace(&next.to_trace()).unwrap();
+                    assert_eq!(back, next, "trace roundtrip after {op:?}");
+                    describe::describe(&next); // must not panic
                 }
             }
         }
