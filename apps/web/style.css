@@ -973,3 +973,68 @@ body {
 .duel-pred { font-size: 9px; color: #7a8290; text-align: center; min-height: 12px; }
 .duel-pred.hit { color: var(--phos-a, #8ef0b1); }
 .duel-pred.miss { color: var(--phos-b, #ffb454); }
+
+/* ---------- living modulation (tier 4) ---------- */
+.wire.mod.pulse { animation: modpulse linear infinite; }
+.wire.mod-glow.pulse { animation: modglow linear infinite; }
+.jack.modjack.pulse circle { animation: jackpulse 1.2s ease-in-out infinite; }
+@keyframes modpulse { 0%,100% { stroke-opacity: 0.45; } 50% { stroke-opacity: 1; } }
+@keyframes modglow { 0%,100% { stroke-opacity: 0.10; } 50% { stroke-opacity: 0.45; } }
+@keyframes jackpulse { 0%,100% { fill-opacity: 0.55; } 50% { fill-opacity: 1; } }
+
+/* ---------- duel staging ---------- */
+.duel-card.deal { animation: deal 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+@keyframes deal {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- quick duel strip (PLAY) ---------- */
+.play-duel {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px; font-size: 10px;
+  border-top: 1px solid #262b33; background: #14171cd9;
+}
+.play-duel .pd-label { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+.pd-side {
+  background: #191d24; border: 1px solid #2c313a; border-radius: 3px;
+  color: var(--phos-a, #8ef0b1); font: 10px "IBM Plex Mono", monospace;
+  padding: 2px 8px; cursor: pointer; max-width: 180px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pd-side:hover { border-color: var(--phos-a, #8ef0b1); }
+
+/* ---------- help overlay ---------- */
+.help-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(10, 12, 15, 0.82); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+}
+.help-card { max-width: 720px; width: min(92vw, 720px); padding: 22px 26px; position: relative; }
+.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; font-size: 11px; line-height: 1.55; }
+.help-cols p { margin: 4px 0 10px; color: #b8bec8; }
+.help-cols b { color: var(--phos-a, #8ef0b1); font-weight: 600; }
+.help-h {
+  color: var(--phos-b, #ffb454); font-size: 9px; letter-spacing: 0.14em;
+  text-transform: uppercase; margin-top: 8px;
+}
+.help-cols kbd {
+  background: #1d222a; border: 1px solid #333a45; border-bottom-width: 2px;
+  border-radius: 3px; padding: 0 4px; font-size: 10px;
+}
+#help-close { margin-top: 14px; }
+@media (max-width: 640px) { .help-cols { grid-template-columns: 1fr; } }
+
+/* ---------- touch pass ---------- */
+@media (pointer: coarse) {
+  .util-btn, .inspect-btn, .hw-btn { min-height: 30px; min-width: 30px; }
+  .jack circle { r: 8; }
+  .bank-item .star { font-size: 16px; padding: 4px; }
+  .perf-glide input[type="range"], #vol { min-height: 26px; }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .wire.pulse, .wire.mod.pulse, .wire.mod-glow.pulse,
+  .jack.modjack.pulse circle, .duel-card.deal { animation: none !important; }
+}

@@ -1,4 +1,71 @@
-# Continuation notes — updated 2026-07-29 (pass 5: bulletproofing)
+# Continuation notes — updated 2026-07-30 (pass 6: four-tier panel plan)
+
+## Pass 6: panel critique → all four tiers shipped (commits 4e94345, d12a23b, + tier-4)
+
+A four-persona panel critique (music technologist / creative designer / ML
+researcher / UX) produced a 4-tier plan; the user chose ALL tiers.
+
+**Tier 1 — trust.** IndexedDB autosave/restore of the full session
+(`Engine::export_state/import_state`, `SessionState` = profile + bank +
+lineage + style_names + events; trees re-featurized on import, ids
+preserved, next_id bumped past max). Worker `init` takes `saved`,
+restores, tops up the pool, auto-refits. Main: `idbGet/idbPut("state")`,
+`scheduleSave()` debounce 2.5 s hooked into every mutating reply. Undo/redo:
+snapshot wb.tree on knob-gesture start / enum click / sendStruct;
+`edit_set_tree` wasm restores; ⌘Z/⇧⌘Z. Web MIDI (velocity, bend ±2 st,
+sustain=hold, CC123 panic). LUFS makeup: `Features.gain_db` →
+`makeup_linear` (±12 dB clamp) rides every patch load
+(`live.setPatch(tree, makeup)`; applied at swap completion via
+`pending_makeup`). Worklet recorder (`rec` message, copies interleaved
+blocks only while rolling) → PCM16 WAV encode + download in main.
+`.evopatch.json` export/import (`import_patch` wasm → commit_edit path).
+**Master volume is JS-owned state** (`let volume`), the slider is just a
+view — a phantom DOM zeroing (never reproduced under instrumentation;
+audio was never affected because no input event fired) once poisoned the
+save; never scrape the DOM for persisted state.
+
+**Tier 2 — musicality.** LivePoly grew: velocity (`note_on(note, vel)`,
+gain 0.15+0.85·v^1.4, floor so soft notes speak), pitch bend (one-pole
+smoothed, `advance_pitch` writes pitch_cur+bend to atomics), glide
+(per-voice one-pole toward pitch_tgt; τ = glide·0.5 s), unison
+(all-voice press with ±detune·30c offsets + equal-power pan; render path
+now applies vel·pan·√2 per voice), sample-accurate arp on the audio
+thread (up/down/updown/random via xorshift — NO wall clock; half-step
+gate; held list owns the chord, scheduler owns the gates; arp-off
+re-presses the chord; swap completion skips re-press when arp on).
+Keybar: arp/mode/div/BPM, uni, gld, ●rec, midi indicator; perf state
+persisted. Palette: **Reverb** (quiver Freeverb; mono = take "left";
+rsize/rdamp/rmix live knobs) and **S&H Rand mod** (Noise→SampleAndHold
+clocked by square LFO at `rate`) threaded through term/prior (N_OPS=6,
+N_MODS=4)/trace codec/compile/mutate/describe/features (φ d=30:
+n_reverb, n_rand)/presets ("Cathedral")/JS palette. New warning classes
+allowlisted: Audio/CV, Audio→Trigger, CvBipolar→Trigger.
+
+**Tier 3 — taste loop.** `refine_one` now proposes from a
+**taste-tilted prior**: share-weighted mean structural θ multiplies
+source/op/mod kind weights by exp(η·θ) (η = cfg.proposal_tilt = 0.6,
+multiplier clamped [¼,4]; pure `tilt_weights` fn, unit-tested). Recency:
+obs likelihood weighted 0.5^(age/half_life), cfg 150 obs
+(TasteConfig.recency_half_life, serde-default). Implicit events
+(`ImplicitEvent` kind/id/value/session): play counts flushed with every
+autosave, promote clicks; logged only, not modeled. Style identity:
+engine.style_names (persisted), chips on TASTE (color + editable name +
+share + exemplar ▶), auto-label = top-2 positive θ pulls; best-style
+badges on duel cards (`best_style_of`). Honest forecast: `duel_pred`
+computed BEFORE each vote, shown with running right/wrong calibration.
+
+**Tier 4 — surface.** Mod wires + target jacks pulse at ~the modulator's
+rate (animationDuration from rate/att+dec knobs; prefers-reduced-motion
+respected). Duel cards "deal" in. **Quick-duel strip on PLAY** (pd-a/b
+load live, pick a/b vote, ↻ skip — zero tab switches). Help overlay
+(?, first-run auto-show via localStorage flag) with keymap/gestures.
+Coarse-pointer touch targets.
+
+**Deliberately deferred** (design-heavy): genome-level tempo-synced
+LFO/delay semantics; learned audio embeddings under the linear experts;
+duel loudness is now fair live (makeup) so the remaining confound is
+phrase-vs-noodling mismatch.
+
 
 ## Pass 5: audio-thread bulletproofing ("no break/skip/crackle")
 

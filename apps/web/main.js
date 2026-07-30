@@ -32,6 +32,7 @@ const calib = { n: 0, hits: 0 };
 const playCounts = new Map();
 
 // Live instrument state.
+let volume = 0.8;            // JS-owned master volume (DOM slider is a view)
 let live = null;             // from initLiveAudio
 let livePatchId = null;      // id whose tree the worklet is playing (null = edited)
 let liveLabelText = "no patch";
@@ -95,7 +96,7 @@ function uiState() {
   return {
     stars: [...starsById],
     cut: [...cutIds],
-    vol: Number($("vol").value),
+    vol: volume,
     oct: octShift,
     perf,
   };
@@ -141,6 +142,7 @@ worker.onmessage = (e) => {
       send({ type: "duel" });
       send({ type: "taste_views" });
       if (m.restored > 0) note(`welcome back — ${m.restored} patches and your taste history restored`);
+      else if (!localStorage.getItem("evosynth-helped")) showHelp(true);
       break;
     }
     case "saved": {
@@ -168,7 +170,9 @@ worker.onmessage = (e) => {
         loadSide("a", m.pair[0]);
         loadSide("b", m.pair[1]);
         setDuelSelection(null);
+        dealCards();
       }
+      renderPlayDuel();
       break;
     }
     case "render": {
@@ -477,7 +481,7 @@ async function bootLiveAudio() {
       downloadWav(m.samples, m.sampleRate);
     }
   });
-  live.setVolume(Number($("vol").value));
+  live.setVolume(volume);
   applyPerfUi();
   live.node.onprocessorerror = (e) => {
     (window.__evoLog = window.__evoLog || []).push({ type: "processor_error", e: String(e) });
@@ -665,7 +669,11 @@ $("hold-btn").onclick = () => {
   if (!hold) panic();
 };
 $("panic-btn").onclick = () => panic();
-$("vol").oninput = (e) => live && live.setVolume(Number(e.target.value));
+$("vol").oninput = (e) => {
+  volume = Number(e.target.value);
+  if (live) live.setVolume(volume);
+  scheduleSave();
+};
 
 // ---------- performance controls (arp / unison / glide) ----------
 const perf = { arp: false, arpMode: 0, arpDiv: 2, bpm: 120, uni: false, glide: 0 };
@@ -782,6 +790,35 @@ function bootMidi() {
 }
 
 // ---------- duel flow ----------
+// A fresh pair slides in — the vote is a small ritual, not a settings page.
+function dealCards() {
+  for (const side of ["a", "b"]) {
+    const card = $(`duel-${side}`);
+    card.classList.remove("deal");
+    void card.offsetWidth; // restart the animation
+    card.classList.add("deal");
+  }
+}
+
+// The quick-duel strip on PLAY: vote without leaving the instrument.
+function renderPlayDuel() {
+  const strip = $("play-duel");
+  if (!currentDuel) {
+    strip.classList.add("hidden");
+    return;
+  }
+  strip.classList.remove("hidden");
+  $("pd-a").textContent = `▶ ${nameOf(currentDuel[0])}`;
+  $("pd-b").textContent = `▶ ${nameOf(currentDuel[1])}`;
+}
+$("pd-a").onclick = () => selectDuelSide("a");
+$("pd-b").onclick = () => selectDuelSide("b");
+$("pd-pick-a").onclick = () => choose("a");
+$("pd-pick-b").onclick = () => choose("b");
+$("pd-skip").onclick = () => {
+  currentDuel = null;
+  send({ type: "duel" });
+};
 function loadSide(side, id) {
   $(`readout-${side}`).textContent = "…";
   $(`style-${side}`).innerHTML = "";
@@ -1151,8 +1188,29 @@ function buildRack(svg, rack, opts) {
       const sag = 14 + Math.abs(y2 - y1) * 0.08;
       d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
     }
-    wireLayer.appendChild(svgEl("path", { d }, `wire ${w.kind}-glow`));
-    wireLayer.appendChild(svgEl("path", { d }, `wire ${w.kind}`));
+    const glowEl = svgEl("path", { d }, `wire ${w.kind}-glow`);
+    const wireEl = svgEl("path", { d }, `wire ${w.kind}`);
+    if (w.kind === "mod") {
+      // The wire breathes at (roughly) the modulator's own rate, so the
+      // patch looks alive where it sounds alive.
+      const src = modByKey.get(w.from);
+      let dur = 1.6;
+      if (src) {
+        const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
+        if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
+        else {
+          const att = src.knobs.find((k) => k.addr.endsWith("#att"));
+          const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
+          if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
+        }
+      }
+      for (const el of [glowEl, wireEl]) {
+        el.classList.add("pulse");
+        el.style.animationDuration = `${dur.toFixed(2)}s`;
+      }
+    }
+    wireLayer.appendChild(glowEl);
+    wireLayer.appendChild(wireEl);
   }
 
   const isModuleLockedIn = (mod) => {
@@ -1249,6 +1307,9 @@ function buildRack(svg, rack, opts) {
       addJack(p.w, p.h / 2, "", "out", "left");
       if (m.kind === "filter" || m.kind === "fold") {
         const j = addJack(p.w / 2, p.h, "modjack", "mod", "below", { "data-modkey": m.key });
+        if (rack.wires.some((w) => w.kind === "mod" && w.to === m.key)) {
+          j.classList.add("pulse");
+        }
         if (interactive) {
           j.addEventListener("pointerdown", (ev) => {
             if (!modAtKey(m.key)) return; // empty slot: target only
@@ -2223,6 +2284,23 @@ $("patch-import-input").onchange = async (e) => {
   }
 };
 
+// ---------- help overlay ----------
+function showHelp(on) {
+  $("help").classList.toggle("hidden", !on);
+}
+$("help-btn").onclick = () => showHelp(true);
+$("help-close").onclick = () => {
+  showHelp(false);
+  localStorage.setItem("evosynth-helped", "1");
+};
+$("help").addEventListener("click", (e) => {
+  if (e.target === $("help")) showHelp(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "?" && !e.target.closest("input")) showHelp(true);
+  if (e.key === "Escape") showHelp(false);
+});
+
 // ---------- resize ----------
 let resizeTimer = null;
 window.addEventListener("resize", () => {
@@ -2250,7 +2328,10 @@ bootMidi();
     // Restore UI prefs before the engine finishes booting.
     for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);
     for (const id of saved.ui.cut || []) cutIds.add(id);
-    if (saved.ui.vol != null) $("vol").value = saved.ui.vol;
+    if (saved.ui.vol != null) {
+      volume = saved.ui.vol;
+      $("vol").value = volume;
+    }
     if (saved.ui.oct != null) { octShift = saved.ui.oct; paintHints(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     applyPerfUi();

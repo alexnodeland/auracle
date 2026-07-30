@@ -27,6 +27,7 @@
       <label class="util-btn" title="Load a saved taste profile">load<input id="import-input" type="file" accept=".json" hidden></label>
       <button id="patch-export-btn" class="util-btn" title="Download the bench patch as a shareable file">patch ⤓</button>
       <label class="util-btn" title="Load a shared patch into your bank">patch ⤒<input id="patch-import-input" type="file" accept=".json" hidden></label>
+      <button id="help-btn" class="util-btn" title="Keyboard map &amp; gestures (?)">?</button>
     </div>
   </header>
 
@@ -88,6 +89,15 @@
           </aside>
         </div>
         <div class="rack-note mono" id="rack-note"></div>
+        <div class="play-duel mono hidden" id="play-duel">
+          <span class="pd-label amber">quick duel</span>
+          <button class="pd-side" id="pd-a" title="Load candidate A into the live synth — play it"></button>
+          <span class="silk-dim">vs</span>
+          <button class="pd-side" id="pd-b" title="Load candidate B into the live synth — play it"></button>
+          <button class="util-btn" id="pd-pick-a" title="Vote: A wins">pick a</button>
+          <button class="util-btn" id="pd-pick-b" title="Vote: B wins">pick b</button>
+          <button class="util-btn" id="pd-skip" title="Deal a different pair">↻</button>
+        </div>
       </section>
 
       <!-- ------------- EVOLVE: duels + generations ------------- -->
@@ -204,6 +214,33 @@
 
 <!-- structural-edit context menu -->
 <div class="ctx-menu hidden" id="ctx-menu"></div>
+
+<!-- help overlay -->
+<section id="help" class="help-overlay hidden">
+  <div class="help-card panel">
+    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="boot-title">HOW TO PLAY</div>
+    <div class="help-cols mono">
+      <div>
+        <div class="help-h">keys</div>
+        <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
+        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote</p>
+        <div class="help-h">performance</div>
+        <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> is portamento · <b>● rec</b> bounces your playing to a WAV</p>
+        <p>A MIDI keyboard just works: velocity, pitch bend, sustain pedal.</p>
+      </div>
+      <div>
+        <div class="help-h">the rack</div>
+        <p>Drag knobs — sound changes instantly. Click enum plates to cycle. ⋯ restructures a module; ▢ locks it so evolution can't touch it.</p>
+        <p>Stage modules from the <b>node bank</b>, then drag the tray jack onto a matching <b>in</b>/<b>mod</b> jack. Drag a wired <b>in</b> jack off to unplug into the tray.</p>
+        <div class="help-h">teaching it</div>
+        <p>Vote duels in EVOLVE (or the quick-duel strip in PLAY). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them.</p>
+        <p>Everything autosaves. <b>patch ⤓</b> shares one patch as a file.</p>
+      </div>
+    </div>
+    <button class="hw-btn small" id="help-close">got it</button>
+  </div>
+</section>
 
 <!-- boot overlay -->
 <section id="boot" class="boot">

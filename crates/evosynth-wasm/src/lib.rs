@@ -348,12 +348,7 @@ impl WasmEngine {
                     .collect();
                 scored.sort_by(|a, b| b.1.total_cmp(&a.1));
                 StyleRow {
-                    name: self
-                        .engine
-                        .style_names
-                        .get(k)
-                        .cloned()
-                        .unwrap_or_default(),
+                    name: self.engine.style_names.get(k).cloned().unwrap_or_default(),
                     share: shares.get(k).copied().unwrap_or(0.0),
                     theta,
                     exemplars: scored.iter().take(3).map(|&(id, _)| id).collect(),
