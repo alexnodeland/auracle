@@ -1,4 +1,4 @@
-// EVOSYNTH — a full instrument. Main thread: app frame (PLAY/EVOLVE/TASTE),
+// RICERCAR — a full instrument. Main thread: app frame (PLAY/EVOLVE/TASTE),
 // patch bank, the interactive rack, taste instruments, and the live keyboard
 // (AudioWorklet synthesis via live-audio.js). All engine compute (rendering,
 // MCMC, evolution) lives in worker.js; candidates are addressed by stable id.
@@ -63,7 +63,7 @@ const nonLiveAddrs = new Set();
 // One record: {session: <engine SessionState JSON>, ui: {stars, cut, vol, oct, perf}}.
 function idbOpen() {
   return new Promise((resolve) => {
-    const req = indexedDB.open("evosynth", 1);
+    const req = indexedDB.open("ricercar", 1);
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => resolve(null); // private mode etc: run without saves
@@ -142,7 +142,7 @@ worker.onmessage = (e) => {
       send({ type: "duel" });
       send({ type: "taste_views" });
       if (m.restored > 0) note(`welcome back — ${m.restored} patches and your taste history restored`);
-      else if (!localStorage.getItem("evosynth-helped")) showHelp(true);
+      else if (!localStorage.getItem("ricercar-helped")) showHelp(true);
       break;
     }
     case "saved": {
@@ -376,7 +376,7 @@ worker.onmessage = (e) => {
       const blob = new Blob([m.json], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "evosynth-profile.json";
+      a.download = "ricercar-profile.json";
       a.click();
       URL.revokeObjectURL(a.href);
       break;
@@ -474,7 +474,7 @@ async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD);
   live.onMessage((m) => {
-    (window.__evoLog = window.__evoLog || []).push(m);
+    (window.__ricLog = window.__ricLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
     if (m.type === "param_miss") nonLiveAddrs.add(m.addr);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
@@ -484,7 +484,7 @@ async function bootLiveAudio() {
   live.setVolume(volume);
   applyPerfUi();
   live.node.onprocessorerror = (e) => {
-    (window.__evoLog = window.__evoLog || []).push({ type: "processor_error", e: String(e) });
+    (window.__ricLog = window.__ricLog || []).push({ type: "processor_error", e: String(e) });
     note("live audio engine crashed — reload to recover");
   };
   // If a patch arrived before audio was ready, load it now.
@@ -750,7 +750,7 @@ function downloadWav(samples, sampleRate) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
   const who = (liveLabelText || "take").replace(/[^\w-]+/g, "_").slice(0, 32);
-  a.download = `evosynth-${who}.wav`;
+  a.download = `ricercar-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);
   note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`);
@@ -2264,10 +2264,10 @@ $("import-input").onchange = async (e) => {
 $("patch-export-btn").onclick = () => {
   if (!wb.tree) return note("nothing on the bench to export");
   const name = wb.subjectId != null ? nameOf(wb.subjectId) : "patch";
-  const payload = JSON.stringify({ evosynth_patch: 1, name, tree: wb.tree }, null, 1);
+  const payload = JSON.stringify({ ricercar_patch: 1, name, tree: wb.tree }, null, 1);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
-  a.download = `${name.replace(/[^\w-]+/g, "_").slice(0, 32)}.evopatch.json`;
+  a.download = `${name.replace(/[^\w-]+/g, "_").slice(0, 32)}.ricercar.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 };
@@ -2291,7 +2291,7 @@ function showHelp(on) {
 $("help-btn").onclick = () => showHelp(true);
 $("help-close").onclick = () => {
   showHelp(false);
-  localStorage.setItem("evosynth-helped", "1");
+  localStorage.setItem("ricercar-helped", "1");
 };
 $("help").addEventListener("click", (e) => {
   if (e.target === $("help")) showHelp(false);
@@ -2323,7 +2323,25 @@ renderTray();
 bootLiveAudio();
 bootMidi();
 (async () => {
-  const saved = await idbGet("state");
+  let saved = await idbGet("state");
+  if (!saved) {
+    // One-time migration: this app used to be called EVOSYNTH — adopt any
+    // save left behind under the old name so nobody loses their bank.
+    saved = await new Promise((resolve) => {
+      const req = indexedDB.open("evosynth", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("kv");
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("kv")) return resolve(null);
+        const tx = db.transaction("kv", "readonly").objectStore("kv").get("state");
+        tx.onsuccess = () => resolve(tx.result || null);
+        tx.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    });
+    if (saved) idbPut("state", saved);
+  }
+  if (localStorage.getItem("evosynth-helped")) localStorage.setItem("ricercar-helped", "1");
   if (saved && saved.ui) {
     // Restore UI prefs before the engine finishes booting.
     for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);
@@ -2345,4 +2363,4 @@ bootMidi();
 })();
 
 // Debug/testing hook (no UI surface).
-window.__evo = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs };
+window.__ric = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs };

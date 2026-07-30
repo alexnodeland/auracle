@@ -55,77 +55,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "evosynth-features"
-version = "0.1.0"
-dependencies = [
- "evosynth-grammar",
- "fugue-evo",
- "fugue-ppl",
- "quiver-dsp",
- "rand",
- "rustfft",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "evosynth-grammar"
-version = "0.1.0"
-dependencies = [
- "fugue-evo",
- "fugue-ppl",
- "quiver-dsp",
- "rand",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "evosynth-session"
-version = "0.1.0"
-dependencies = [
- "evosynth-features",
- "evosynth-grammar",
- "evosynth-taste",
- "fugue-evo",
- "fugue-ppl",
- "rand",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "evosynth-taste"
-version = "0.1.0"
-dependencies = [
- "evosynth-features",
- "fugue-evo",
- "fugue-ppl",
- "rand",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "evosynth-wasm"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "evosynth-features",
- "evosynth-grammar",
- "evosynth-session",
- "evosynth-taste",
- "getrandom",
- "rand",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "fugue-evo"
 version = "0.3.1"
 dependencies = [
@@ -427,6 +356,77 @@ name = "rawpointer"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
+
+[[package]]
+name = "ricercar-features"
+version = "0.1.0"
+dependencies = [
+ "fugue-evo",
+ "fugue-ppl",
+ "quiver-dsp",
+ "rand",
+ "ricercar-grammar",
+ "rustfft",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "ricercar-grammar"
+version = "0.1.0"
+dependencies = [
+ "fugue-evo",
+ "fugue-ppl",
+ "quiver-dsp",
+ "rand",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "ricercar-session"
+version = "0.1.0"
+dependencies = [
+ "fugue-evo",
+ "fugue-ppl",
+ "rand",
+ "ricercar-features",
+ "ricercar-grammar",
+ "ricercar-taste",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ricercar-taste"
+version = "0.1.0"
+dependencies = [
+ "fugue-evo",
+ "fugue-ppl",
+ "rand",
+ "ricercar-features",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ricercar-wasm"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom",
+ "rand",
+ "ricercar-features",
+ "ricercar-grammar",
+ "ricercar-session",
+ "ricercar-taste",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "rustfft"

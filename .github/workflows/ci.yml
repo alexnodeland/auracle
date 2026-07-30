@@ -14,10 +14,10 @@ jobs:
     steps:
       # Path deps expect sibling checkouts (../quiver,
       # ../fugue-ecosystem/{fugue,fugue-evo}), so replicate that layout
-      # inside the workspace: this repo in evosynth/, siblings alongside.
+      # inside the workspace: this repo in ricercar/, siblings alongside.
       - uses: actions/checkout@v4
         with:
-          path: evosynth
+          path: ricercar
       - uses: actions/checkout@v4
         with:
           repository: alexnodeland/quiver
@@ -35,12 +35,12 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: evosynth
+          workspaces: ricercar
       - run: cargo fmt --all --check
-        working-directory: evosynth
+        working-directory: ricercar
       - run: cargo clippy --workspace --all-targets -- -D warnings
-        working-directory: evosynth
+        working-directory: ricercar
       # Release mode: the grammar/features/session tests render real audio
       # sample-by-sample; debug-mode DSP is ~20× slower.
       - run: cargo test --workspace --release
-        working-directory: evosynth
+        working-directory: ricercar

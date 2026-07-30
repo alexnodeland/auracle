@@ -1,0 +1,20 @@
+[package]
+name = "ricercar-features"
+description = "Standard-phrase headless rendering, loudness normalization, vetting gate, and audio + structural feature extraction"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+quiver-dsp.workspace = true
+ricercar-grammar.workspace = true
+rustfft = "6"
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+fugue-ppl.workspace = true
+fugue-evo.workspace = true
+rand.workspace = true

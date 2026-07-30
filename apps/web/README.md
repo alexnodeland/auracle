@@ -1,4 +1,4 @@
-# EvoSynth web app
+# Ricercar web app
 
 A full instrument (Animoog-Z-style app frame): menu bar with three views,
 patch-bank sidebar, and a **playable keyboard** docked at the bottom — the
@@ -22,7 +22,7 @@ HOLD latches, ◼ panics. Volume top right of the dock.
   inlined behind a TextDecoder/TextEncoder polyfill — worklets have neither
   fetch nor text codecs) and transfers the **raw wasm bytes** for a
   synchronous in-worklet compile (a transferred `WebAssembly.Module` arrives
-  as a messageerror in some engines). `LivePoly` (evosynth-wasm) holds N
+  as a messageerror in some engines). `LivePoly` (ricercar-wasm) holds N
   compiled copies of the patch — the same `compile()` path evolution uses,
   limiter included — with oldest-note stealing and silent-tail voice
   parking. Every workbench edit re-patches the live instrument.
@@ -57,7 +57,7 @@ Keyboard: `1`/`2` play A/B, `←`/`→` choose.
 
 ```bash
 # build the wasm package into apps/web/pkg (needs rustup's toolchain, not Homebrew's)
-PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/evosynth-wasm --target web --release --out-dir ../../apps/web/pkg
+PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
 
 # serve (any static server; module workers require http, not file://)
 cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds

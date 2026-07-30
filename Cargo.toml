@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/evosynth-grammar",
-    "crates/evosynth-features",
-    "crates/evosynth-taste",
-    "crates/evosynth-session",
-    "crates/evosynth-wasm",
+    "crates/ricercar-grammar",
+    "crates/ricercar-features",
+    "crates/ricercar-taste",
+    "crates/ricercar-session",
+    "crates/ricercar-wasm",
 ]
 
 [workspace.package]
@@ -13,7 +13,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Alex Nodeland"]
 license = "MIT"
-repository = "https://github.com/alexnodeland/evosynth"
+repository = "https://github.com/alexnodeland/ricercar"
 
 [workspace.dependencies]
 # In-house foundations (path deps during development).
@@ -33,7 +33,7 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 
 # Intra-workspace
-evosynth-grammar = { path = "crates/evosynth-grammar", version = "0.1.0" }
-evosynth-features = { path = "crates/evosynth-features", version = "0.1.0" }
-evosynth-taste = { path = "crates/evosynth-taste", version = "0.1.0" }
-evosynth-session = { path = "crates/evosynth-session", version = "0.1.0" }
+ricercar-grammar = { path = "crates/ricercar-grammar", version = "0.1.0" }
+ricercar-features = { path = "crates/ricercar-features", version = "0.1.0" }
+ricercar-taste = { path = "crates/ricercar-taste", version = "0.1.0" }
+ricercar-session = { path = "crates/ricercar-session", version = "0.1.0" }

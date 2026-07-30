@@ -1,4 +1,4 @@
-// EVOSYNTH engine worker: owns the wasm engine so rendering and MCMC never
+// RICERCAR engine worker: owns the wasm engine so rendering and MCMC never
 // block the UI thread. Audio buffers cross as transferable Float32Arrays.
 // Candidates are addressed by stable id everywhere.
 //
@@ -48,9 +48,9 @@ self.onmessage = async (e) => {
   const m = e.data;
   switch (m.type) {
     case "init": {
-      const mod = await import(`./pkg/evosynth_wasm.js?v=${V}`);
+      const mod = await import(`./pkg/ricercar_wasm.js?v=${V}`);
       await mod.default({
-        module_or_path: new URL(`./pkg/evosynth_wasm_bg.wasm?v=${V}`, self.location.href),
+        module_or_path: new URL(`./pkg/ricercar_wasm_bg.wasm?v=${V}`, self.location.href),
       });
       WasmEngine = mod.WasmEngine;
       engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);

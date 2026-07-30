@@ -165,7 +165,7 @@ phrase-vs-noodling mismatch.
 
 # (pass 2) — the instrument
 
-## Pass 2 (playtest-2 response): EvoSynth is now a playable instrument
+## Pass 2 (playtest-2 response): Ricercar is now a playable instrument
 
 User feedback: "this is a modular synthesizer — people will want to PLAY it";
 virtual keyboard + computer keys; patch is the main screen; no scrolling;
@@ -175,7 +175,7 @@ docked keyboard), **everything live** (duel cards load into the live synth;
 phrase button kept for fair A/B stimulus).
 
 What shipped:
-- `evosynth-wasm/src/live.rs` — `LivePoly`: N compiled copies of one patch
+- `ricercar-wasm/src/live.rs` — `LivePoly`: N compiled copies of one patch
   (same `compile()` path as evolution, limiter included), MIDI note_on/off
   with oldest-note stealing, legato steal past N held notes, **silent-tail
   voice parking** (|L|+|R| < 1e-6 for 4096 frames → stop ticking). Native
@@ -212,7 +212,7 @@ Prior notes (pass 1) follow — still accurate for the engine layer.
 
 Working doc for resuming after context compaction. Durable design lives in
 `DESIGN.md` (canonical); lineage/decisions pointer in Claude memory
-(`evosynth-lineage`). This file: exact state, gotchas, next moves. Delete
+(`ricercar-lineage`). This file: exact state, gotchas, next moves. Delete
 when stale.
 
 ## Where things stand
@@ -266,16 +266,16 @@ directions. `responsibilities(φ)` = posterior P(lens k is φ's argmax);
 
 ## What lives where (deltas from M5)
 
-- `evosynth-grammar`: + `describe.rs` (RackDescription: modules/knobs/wires,
+- `ricercar-grammar`: + `describe.rs` (RackDescription: modules/knobs/wires,
   every knob addr is a live trace site — pinned by
   `rack_description_addresses_are_live`), + `edit.rs` (`set_param` via trace
   roundtrip; structural sites rejected), + `diff.rs` (`tree_diff` in
   trace-address terms, display-formatted values).
-- `evosynth-taste`: max-of-experts model (above); `TasteSample` lost
+- `ricercar-taste`: max-of-experts model (above); `TasteSample` lost
   `styles`/`weights` fields; `utility_mix`, `prob_prefers(a,b)` (no style
   arg), `aligned()`, `responsibilities`, `style_share`;
   `MixtureSyntheticUser` (max-utility ground truth).
-- `evosynth-session`: `Candidate.id` (stable, u64) + `find(id)`; `Origin`
+- `ricercar-session`: `Candidate.id` (stable, u64) + `find(id)`; `Origin`
   {Prior,Refined,Edited} replaced `refined: bool`; `LineageEvent` +
   `Engine.lineage`/`generation`; `refine_from(seed_id, locked)`;
   `commit_edit(original, tree, as_improvement)` (edited patches always land,
@@ -284,7 +284,7 @@ directions. `responsibilities(φ)` = posterior P(lens k is φ's argmax);
   re-standardizes the pool); `map.rs` = `taste_map()` (top-2 PCA by power
   iteration, deterministic start, pool + ≤400 history ghosts). K=3 default
   (`SessionConfig.k_styles`).
-- `evosynth-wasm`: id-based API (ids as **u32** over the boundary —
+- `ricercar-wasm`: id-based API (ids as **u32** over the boundary —
   wasm-bindgen maps u64→BigInt, avoid); workbench (`edit_begin/param/
   render/describe/commit/cancel`, vet-withholds audio on failure);
   `refine_from(id, locks_json)`; `taste_map/styles/lineage`;
@@ -316,7 +316,7 @@ directions. `responsibilities(φ)` = posterior P(lens k is φ's argmax);
 
 ```bash
 cargo test --workspace --release
-PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/evosynth-wasm --target web --release --out-dir ../../apps/web/pkg
+PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
 cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds
 ```
 

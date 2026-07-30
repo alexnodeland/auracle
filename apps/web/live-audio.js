@@ -183,11 +183,11 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor("evosynth-voice", EvoVoiceProcessor);
+registerProcessor("ricercar-voice", EvoVoiceProcessor);
 `;
 
 export async function initLiveAudio(audioCtx, build) {
-  const glue = await (await fetch(`./pkg/evosynth_wasm.js?v=${build}`)).text();
+  const glue = await (await fetch(`./pkg/ricercar_wasm.js?v=${build}`)).text();
   const inlined = glue
     .replace(/^export class /gm, "class ")
     .replace(/^export (function|const|let) /gm, "$1 ")
@@ -197,9 +197,9 @@ export async function initLiveAudio(audioCtx, build) {
   await audioCtx.audioWorklet.addModule(blobUrl);
   URL.revokeObjectURL(blobUrl);
 
-  const bytes = await (await fetch(`./pkg/evosynth_wasm_bg.wasm?v=${build}`)).arrayBuffer();
+  const bytes = await (await fetch(`./pkg/ricercar_wasm_bg.wasm?v=${build}`)).arrayBuffer();
 
-  const node = new AudioWorkletNode(audioCtx, "evosynth-voice", {
+  const node = new AudioWorkletNode(audioCtx, "ricercar-voice", {
     numberOfInputs: 0,
     numberOfOutputs: 1,
     outputChannelCount: [2],
