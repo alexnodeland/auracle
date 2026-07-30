@@ -4,43 +4,80 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+# Path deps expect sibling checkouts (../quiver,
+# ../fugue-ecosystem/{fugue,fugue-evo}); every job clones them alongside the
+# workspace, mirroring fugue-evo's own CI.
 
 jobs:
-  check:
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
-      # Path deps expect sibling checkouts (../quiver,
-      # ../fugue-ecosystem/{fugue,fugue-evo}), so replicate that layout
-      # inside the workspace: this repo in ricercar/, siblings alongside.
       - uses: actions/checkout@v4
-        with:
-          path: ricercar
-      - uses: actions/checkout@v4
-        with:
-          repository: alexnodeland/quiver
-          path: quiver
-      - uses: actions/checkout@v4
-        with:
-          repository: alexnodeland/fugue
-          path: fugue-ecosystem/fugue
-      - uses: actions/checkout@v4
-        with:
-          repository: alexnodeland/fugue-evo
-          path: fugue-ecosystem/fugue-evo
+      - name: Clone sibling path dependencies
+        run: |
+          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
+          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
+          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
+          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ricercar
+          components: rustfmt
       - run: cargo fmt --all --check
-        working-directory: ricercar
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone sibling path dependencies
+        run: |
+          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
+          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
+          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
+          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
-        working-directory: ricercar
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone sibling path dependencies
+        run: |
+          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
+          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
+          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
+          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       # Release mode: the grammar/features/session tests render real audio
       # sample-by-sample; debug-mode DSP is ~20× slower.
       - run: cargo test --workspace --release
-        working-directory: ricercar
+
+  wasm:
+    name: Wasm check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone sibling path dependencies
+        run: |
+          git clone --depth 1 https://github.com/alexnodeland/quiver.git "$GITHUB_WORKSPACE/../quiver"
+          mkdir -p "$GITHUB_WORKSPACE/../fugue-ecosystem"
+          git clone --depth 1 https://github.com/alexnodeland/fugue.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue"
+          git clone --depth 1 https://github.com/alexnodeland/fugue-evo.git "$GITHUB_WORKSPACE/../fugue-ecosystem/fugue-evo"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p ricercar-wasm --target wasm32-unknown-unknown --release

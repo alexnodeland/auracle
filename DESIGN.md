@@ -274,6 +274,15 @@ All modes are emitters into the same observation stream:
 | M5 | WASM + web app: duel mode + bench | A human can teach it their taste |
 | M6 | Grid & radio modes; K>1 style discovery; named profiles | Styles discovered & pinnable |
 
+**Status (2026-07-30):** M0–M5 complete; of M6, K>1 style discovery and
+nameable styles have shipped (dynamic K, max-of-experts — see the decisions
+log), grid & radio modes remain open. Since M5 the app has grown well past
+the original scope: a playable instrument (AudioWorklet polyphony, MIDI,
+arpeggiator), an interactive lockable rack with typed rewiring, session
+persistence, taste-tilted evolution proposals, and duel-forecast
+calibration — see [`CHANGELOG.md`](./CHANGELOG.md) for the pass-by-pass
+record.
+
 ### The synthetic user (M3 gate — non-negotiable)
 
 Before any UI exists, the taste crate is validated against a simulated user:

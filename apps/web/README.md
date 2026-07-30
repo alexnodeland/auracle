@@ -3,18 +3,25 @@
 A full instrument (Animoog-Z-style app frame): menu bar with three views,
 patch-bank sidebar, and a **playable keyboard** docked at the bottom — the
 current patch runs live in an AudioWorklet (4-voice poly). No page scrolling;
-everything is visible at once.
+everything is visible at once. The whole session **autosaves to IndexedDB**
+(bank, names, taste history, settings) and restores on reload.
 
 - **PLAY** — the patch is the hero: its full rack (modules, cables, knobs at
-  true positions), editable and lockable, playable from the keyboard while
-  you turn knobs.
+  true positions, mod wires pulsing at their modulator's rate), editable and
+  lockable, playable from the keyboard while you turn knobs. A quick-duel
+  strip votes without leaving the view.
 - **EVOLVE** — duels (click a card to play that candidate live; ▶ PHRASE for
-  the fixed A/B stimulus), EVOLVE POOL, and the generation lineage.
-- **TASTE** — the model's mind, full-screen: map / styles / directions.
+  the fixed A/B stimulus) with the model's pre-vote forecast and running
+  calibration, EVOLVE POOL, and the generation lineage.
+- **TASTE** — the model's mind, full-screen: map / styles / directions, with
+  nameable, color-coded style chips and exemplar audition.
 
-Keyboard: on-screen keys (mouse/touch with glissando) or computer keys
-`a w s e d f t g y h u j k o l p ; '` (Ableton layout), `z`/`x` octave,
-HOLD latches, ◼ panics. Volume top right of the dock.
+Playing: on-screen keys (mouse/touch with glissando), computer keys
+`a w s e d f t g y h u j k o l p ; '` (Ableton layout, `z`/`x` octave), or a
+**MIDI keyboard** (velocity, pitch bend, sustain pedal). HOLD latches,
+◼ panics; the dock also has an **arpeggiator** (pattern / division / BPM),
+**unison**, **glide**, and **● rec** (bounces your playing to a WAV).
+⌘Z / ⇧⌘Z undo and redo workbench edits. Press `?` in-app for the full map.
 
 ## Architecture
 
