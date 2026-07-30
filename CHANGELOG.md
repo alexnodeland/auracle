@@ -2,9 +2,26 @@
 
 All notable changes to Ricercar are documented here, grouped by development
 pass. The format is based on [Keep a Changelog](https://keepachangelog.com/);
-the project is pre-1.0 and has no releases yet.
+the project is pre-1.0.
 
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.1.0] — 2026-07-30
+
+The first tagged release: a playable, taste-learning instrument. The
+attached `ricercar-v0.1.0-web.zip` is the prebuilt web app — unzip,
+`python3 serve.py`, play.
+
+### Changed
+- Dependencies come from crates.io (`quiver-dsp 0.1.1`, `fugue-ppl 0.2.1`,
+  `fugue-evo 0.3.1`) — a single clone builds. The quiver wasm32
+  `SystemTime` panic was fixed upstream and released as `quiver-dsp 0.1.1`.
+- Repository adopted the fugue-ecosystem / quiver OSS standards: MIT
+  license, Makefile (`make check` = the CI gate), DEVELOPMENT.md,
+  contributing + issue/PR templates, CI with separate
+  fmt/clippy/test/wasm jobs under `-D warnings`, and this changelog.
 
 ### Renamed
 - **EvoSynth → Ricercar** (`efceab6`): crates `ricercar-*`, wasm artifacts,
