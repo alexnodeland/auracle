@@ -6,7 +6,7 @@ CARGO := cargo
 WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
 
 .PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
-        wasm serve doc clean
+        wasm serve doc bundle clean
 
 all: check
 
@@ -45,6 +45,13 @@ wasm:
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:
 	cd apps/web && python3 serve.py
+
+## bundle: what the release workflow ships — a runnable web zip in dist/
+bundle: wasm
+	rm -rf dist && mkdir -p dist/ricercar-web
+	cp -r apps/web/. dist/ricercar-web/
+	printf '# Running Ricercar\n\nPrebuilt web instrument — serve statically and open the URL:\n\n    python3 serve.py    # -> http://localhost:8642\n' > dist/ricercar-web/RUNNING.md
+	cd dist && zip -qr ricercar-web.zip ricercar-web
 
 doc:
 	$(CARGO) doc --workspace --no-deps --open

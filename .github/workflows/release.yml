@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build & publish release bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build wasm engine
+        run: wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
+
+      - name: Assemble web bundle
+        run: |
+          BUNDLE="ricercar-${GITHUB_REF_NAME}-web"
+          mkdir -p "dist/$BUNDLE"
+          cp -r apps/web/. "dist/$BUNDLE/"
+          cat > "dist/$BUNDLE/RUNNING.md" <<'EOF'
+          # Running Ricercar
+
+          This is the prebuilt web instrument — no toolchain needed, just a
+          static file server (module workers require http, not file://):
+
+              python3 serve.py        # → http://localhost:8642
+
+          or any equivalent (`npx serve`, `php -S`, …). Then open the URL,
+          wait for the pool to warm up, and play. Press `?` in the app for
+          the key map. Your bank and taste model autosave in the browser.
+          EOF
+          (cd dist && zip -qr "$BUNDLE.zip" "$BUNDLE")
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/ricercar-${GITHUB_REF_NAME}-web.zip" \
+            --title "Ricercar $GITHUB_REF_NAME" \
+            --generate-notes
