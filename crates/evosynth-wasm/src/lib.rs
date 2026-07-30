@@ -54,6 +54,8 @@ struct ThetaRow {
 /// One style lens of the taste posterior.
 #[derive(Serialize)]
 struct StyleRow {
+    /// User-given name ("" = unnamed).
+    name: String,
     /// Fraction of the pool this lens claims (its island's share).
     share: f64,
     /// Feature weights of this lens.
@@ -346,6 +348,12 @@ impl WasmEngine {
                     .collect();
                 scored.sort_by(|a, b| b.1.total_cmp(&a.1));
                 StyleRow {
+                    name: self
+                        .engine
+                        .style_names
+                        .get(k)
+                        .cloned()
+                        .unwrap_or_default(),
                     share: shares.get(k).copied().unwrap_or(0.0),
                     theta,
                     exemplars: scored.iter().take(3).map(|&(id, _)| id).collect(),
@@ -363,6 +371,43 @@ impl WasmEngine {
     /// Name (or rename; empty clears) a candidate.
     pub fn set_name(&mut self, id: u32, name: &str) {
         self.engine.set_name(id as u64, name);
+    }
+
+    /// Name an aligned style index.
+    pub fn set_style_name(&mut self, k: usize, name: &str) {
+        self.engine.set_style_name(k, name);
+    }
+
+    /// Log an implicit preference event (promote, play counts, …).
+    pub fn log_event(&mut self, kind: &str, id: u32, value: f64) {
+        self.engine.log_event(kind, id as u64, value);
+    }
+
+    /// Model's predicted probability that `a` beats `b` (−1 before the
+    /// first fit / unknown ids).
+    pub fn duel_pred(&self, a: u32, b: u32) -> f64 {
+        match (self.engine.find(a as u64), self.engine.find(b as u64)) {
+            (Some(i), Some(j)) => self.engine.predict_duel(i, j).unwrap_or(-1.0),
+            _ => -1.0,
+        }
+    }
+
+    /// The aligned style index that best explains candidate `id`
+    /// (−1 before the first fit / unknown id).
+    pub fn best_style_of(&self, id: u32) -> i32 {
+        let (Some(i), Some(p)) = (self.engine.find(id as u64), &self.engine.posterior) else {
+            return -1;
+        };
+        let phi = &self.engine.pool[i].phi_std;
+        if phi.is_empty() {
+            return -1;
+        }
+        let r = p.responsibilities(phi);
+        r.iter()
+            .enumerate()
+            .max_by(|(_, x), (_, y)| x.total_cmp(y))
+            .map(|(k, _)| k as i32)
+            .unwrap_or(-1)
     }
 
     /// The built-in preset bank as JSON (`[{index, name, sig}]`).

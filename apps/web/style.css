@@ -950,3 +950,26 @@ body {
 .midi-ind { font-size: 9px; color: #565d68; }
 .midi-ind.on { color: var(--phos-a); text-shadow: 0 0 6px rgba(142,240,177,0.6); }
 #rec-btn.lit { color: #ff6b6b; border-color: #ff6b6b; text-shadow: 0 0 8px rgba(255,107,107,0.8); }
+
+/* ---------- taste style chips & duel prediction ---------- */
+.style-chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 14px; }
+.style-chip {
+  display: flex; align-items: center; gap: 6px;
+  background: #14171c; border: 1px solid #2c313a; border-radius: 12px;
+  padding: 3px 8px;
+}
+.style-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.style-chip .sc-name {
+  background: transparent; border: none; outline: none;
+  color: var(--ink, #d9d4c8); font: 10px "IBM Plex Mono", monospace; width: 110px;
+}
+.style-chip .sc-share { font-size: 9px; color: #7a8290; }
+.style-chip .sc-play {
+  background: none; border: none; color: var(--phos-a, #8ef0b1);
+  cursor: pointer; font-size: 10px; padding: 0 2px;
+}
+.style-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; color: #a8b0bc; }
+.style-badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.duel-pred { font-size: 9px; color: #7a8290; text-align: center; min-height: 12px; }
+.duel-pred.hit { color: var(--phos-a, #8ef0b1); }
+.duel-pred.miss { color: var(--phos-b, #ffb454); }

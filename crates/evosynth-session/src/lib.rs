@@ -19,7 +19,8 @@ pub mod map;
 pub mod surrogate;
 
 pub use engine::{
-    BankEntry, Candidate, Engine, LineageEvent, Origin, Profile, SessionConfig, SessionState,
+    tilt_weights, BankEntry, Candidate, Engine, ImplicitEvent, LineageEvent, Origin, Profile,
+    SessionConfig, SessionState,
 };
 pub use map::{MapPoint, TasteMap};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
@@ -54,6 +55,28 @@ mod tests {
             theta,
             tau: 0.0,
             cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
+        }
+    }
+
+    /// The taste→grammar tilt: positive structural θ inflates its kind's
+    /// proposal weight, negative deflates, multipliers are clamped so no
+    /// kind starves, and the result is a normalized distribution.
+    #[test]
+    fn proposal_tilt_follows_taste() {
+        let base = [0.2, 0.35, 0.15, 0.15, 0.15];
+        // Loves delays (idx 3), hates folds (idx 2).
+        let tilts = [0.0, 0.0, -3.0, 3.0, 0.0];
+        let w = tilt_weights(&base, &tilts, 0.6);
+        assert!((w.iter().sum::<f64>() - 1.0).abs() < 1e-12, "normalized");
+        assert!(w[3] > base[3], "loved kind gains mass");
+        assert!(w[2] < base[2], "hated kind loses mass");
+        // Clamp: even an extreme tilt keeps every kind proposable.
+        let extreme = tilt_weights(&base, &[-50.0, 50.0, 0.0, 0.0, 0.0], 1.0);
+        assert!(extreme[0] > 0.01, "clamped kind never starves");
+        // η = 0 is the identity (up to normalization).
+        let id = tilt_weights(&base, &tilts, 0.0);
+        for (a, b) in id.iter().zip(&base) {
+            assert!((a - b).abs() < 1e-12);
         }
     }
 

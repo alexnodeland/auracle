@@ -96,6 +96,7 @@
           <section class="duel-card" id="duel-a">
             <div class="panel-head">
               <div class="panel-label">candidate a</div>
+              <span class="style-badge mono" id="style-a"></span>
               <span class="silk-dim mono duel-hint">click card = play it live</span>
               <button class="inspect-btn" id="flip-a" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
             </div>
@@ -112,11 +113,13 @@
           </section>
           <div class="duel-mid">
             <div class="prompt">Play both.<br>Keep the one<br>you’d reach for.</div>
+            <div class="mono duel-pred" id="duel-pred" title="After each vote: what the model expected, and how often it's been right"></div>
             <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste">evolve pool</button>
           </div>
           <section class="duel-card" id="duel-b">
             <div class="panel-head">
               <div class="panel-label">candidate b</div>
+              <span class="style-badge mono" id="style-b"></span>
               <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
               <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
             </div>
@@ -152,6 +155,7 @@
           </div>
           <p class="caption" id="taste-caption"></p>
         </div>
+        <div class="style-chips hidden" id="style-chips"></div>
         <div class="crt-wrap"><canvas class="crt" id="taste-crt"></canvas></div>
       </section>
 

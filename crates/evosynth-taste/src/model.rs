@@ -50,6 +50,11 @@ pub struct TasteConfig {
     pub n_stars: usize,
     /// Prior std of each θ coordinate. `None` → `1/√n_features`.
     pub theta_prior_std: Option<f64>,
+    /// Recency half-life in observations: an observation `h` places back in
+    /// the log weighs `0.5^(h / half_life)` in the likelihood, so old taste
+    /// fades as new evidence arrives. `None` → no forgetting.
+    #[serde(default)]
+    pub recency_half_life: Option<f64>,
 }
 
 impl TasteConfig {
@@ -60,6 +65,7 @@ impl TasteConfig {
             k_styles: 1,
             n_stars: 6,
             theta_prior_std: None,
+            recency_half_life: None,
         }
     }
 
@@ -186,6 +192,15 @@ impl TasteModel {
     pub fn model(&self, log: &ObservationLog) -> Model<TasteSample> {
         let cfg = self.cfg.clone();
         let obs = std::sync::Arc::new(log.observations.clone());
+        // Per-observation likelihood weights: newest = 1, halving every
+        // `recency_half_life` observations back.
+        let n_obs = log.observations.len();
+        let weights = std::sync::Arc::new(match cfg.recency_half_life {
+            Some(hl) if hl > 0.0 => (0..n_obs)
+                .map(|i| 0.5f64.powf((n_obs - 1 - i) as f64 / hl))
+                .collect(),
+            _ => vec![1.0; n_obs],
+        });
         let n_sessions = log.n_sessions().max(1);
         let sigma = cfg.sigma_theta();
 
@@ -214,6 +229,7 @@ impl TasteModel {
                 })
                 .collect();
             let obs = obs.clone();
+            let weights = weights.clone();
             fugue::sequence_vec(tau_models).bind(move |tau| {
                 // Cutpoint raws: n_stars − 1 Normal sites (ordered by
                 // transform).
@@ -226,6 +242,7 @@ impl TasteModel {
                     })
                     .collect();
                 let obs = obs.clone();
+                let weights = weights.clone();
                 fugue::sequence_vec(cut_models).bind(move |cut_raw| {
                     let theta: Vec<Vec<f64>> = (0..k_styles)
                         .map(|ki| theta_flat[ki * d..(ki + 1) * d].to_vec())
@@ -242,7 +259,11 @@ impl TasteModel {
                         cuts.push(c);
                     }
                     let s = TasteSample { theta, tau, cuts };
-                    let ll: f64 = obs.iter().map(|o| obs_loglik(o, &s)).sum();
+                    let ll: f64 = obs
+                        .iter()
+                        .zip(weights.iter())
+                        .map(|(o, w)| w * obs_loglik(o, &s))
+                        .sum();
                     factor(ll).map(move |_| s)
                 })
             })

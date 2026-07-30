@@ -94,14 +94,18 @@ self.onmessage = async (e) => {
           sampleRate: engine.sample_rate(),
           buffer: arr,
           sexpr: engine.sexpr_of(m.id),
+          bestStyle: engine.best_style_of(m.id),
         },
         [arr.buffer]
       );
       break;
     }
     case "record_duel": {
+      // Prediction is computed BEFORE the vote enters the log — this is the
+      // model's honest forecast, scored against the user's actual choice.
+      const pred = engine.duel_pred(m.a, m.b);
       engine.record_duel(m.a, m.b, m.choseA);
-      post({ type: "status", status: status() });
+      post({ type: "status", status: status(), pred, choseA: m.choseA });
       break;
     }
     case "record_keep": {
@@ -184,6 +188,15 @@ self.onmessage = async (e) => {
     }
     case "describe": {
       post({ type: "described", id: m.id, rack: JSON.parse(engine.describe_of(m.id)) });
+      break;
+    }
+    case "set_style_name": {
+      engine.set_style_name(m.k, m.name);
+      post({ type: "taste_views", views: tasteViews() });
+      break;
+    }
+    case "log_event": {
+      engine.log_event(m.kind, m.id, m.value);
       break;
     }
     case "set_name": {

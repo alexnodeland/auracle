@@ -26,6 +26,10 @@ let currentView = "play";
 
 const starsById = new Map();
 const cutIds = new Set();
+// Model calibration on duels: forecasts made before each vote, scored after.
+const calib = { n: 0, hits: 0 };
+// Implicit play signal: notes played per live patch, flushed on patch switch.
+const playCounts = new Map();
 
 // Live instrument state.
 let live = null;             // from initLiveAudio
@@ -82,7 +86,10 @@ async function idbPut(key, value) {
 let saveTimer = null;
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => send({ type: "save" }), 2500);
+  saveTimer = setTimeout(() => {
+    flushPlayCounts(); // implicit play signal rides along with every save
+    send({ type: "save" });
+  }, 2500);
 }
 function uiState() {
   return {
@@ -168,7 +175,7 @@ worker.onmessage = (e) => {
       if (m.buffer.length > 0) {
         const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
         buf.copyToChannel(m.buffer, 0);
-        renders.set(m.id, { buffer: buf, sexpr: m.sexpr });
+        renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
         onRenderArrived(m.id);
       }
       break;
@@ -183,6 +190,17 @@ worker.onmessage = (e) => {
     }
     case "status": {
       applyStatus(m.status);
+      if (m.pred != null && m.pred >= 0) {
+        const pChosen = m.choseA ? m.pred : 1 - m.pred;
+        const right = pChosen > 0.5;
+        calib.n += 1;
+        if (right) calib.hits += 1;
+        const el = $("duel-pred");
+        el.textContent = `model gave that pick ${Math.round(pChosen * 100)}%`;
+        el.classList.toggle("hit", right);
+        el.classList.toggle("miss", !right);
+        $("duel-pred").title = `Model forecast before your vote. Right ${calib.hits}/${calib.n} so far — surprises are where it's still learning.`;
+      }
       scheduleSave();
       break;
     }
@@ -475,7 +493,19 @@ function liveNoteOn(note_, vel = 1.0) {
   live.noteOn(note_, vel);
   heldNotes.add(note_);
   paintKey(note_, true);
+  if (livePatchId != null) {
+    playCounts.set(livePatchId, (playCounts.get(livePatchId) || 0) + 1);
+  }
 }
+
+// Flush accumulated per-patch play counts into the engine's implicit log.
+function flushPlayCounts() {
+  for (const [id, n] of playCounts) {
+    if (n > 0) send({ type: "log_event", kind: "play", id, value: n });
+  }
+  playCounts.clear();
+}
+setInterval(flushPlayCounts, 45_000);
 
 function liveNoteOff(note_) {
   if (!live) return;
@@ -754,6 +784,7 @@ function bootMidi() {
 // ---------- duel flow ----------
 function loadSide(side, id) {
   $(`readout-${side}`).textContent = "…";
+  $(`style-${side}`).innerHTML = "";
   clearScope($(`scope-${side}`));
   if (renders.has(id)) onRenderArrived(id);
   else send({ type: "render", id });
@@ -765,6 +796,7 @@ function onRenderArrived(id) {
   if (!side) return;
   const r = renders.get(id);
   $(`readout-${side}`).textContent = r.sexpr;
+  styleBadge($(`style-${side}`), r.bestStyle);
   drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
 }
 
@@ -1392,11 +1424,13 @@ $("flip-a").onclick = () => setFlip("a", !flipped.a);
 $("flip-b").onclick = () => setFlip("b", !flipped.b);
 $("promote-a").onclick = () => {
   if (!currentDuel) return;
+  send({ type: "log_event", kind: "promote", id: currentDuel[0], value: 1 });
   openOnBench(currentDuel[0]);
   showView("play");
 };
 $("promote-b").onclick = () => {
   if (!currentDuel) return;
+  send({ type: "log_event", kind: "promote", id: currentDuel[1], value: 1 });
   openOnBench(currentDuel[1]);
   showView("play");
 };
@@ -1787,6 +1821,63 @@ const NICE_NAMES = {
 };
 
 const STYLE_COLORS = ["#ffb454", "#8ef0b1", "#7ec8ff", "#ff8fb2", "#d9d4c8"];
+
+// A style's display name: the user's, or an auto-label from its strongest
+// positive pulls ("bright + punchy").
+function styleName(s, k) {
+  if (s && s.name) return s.name;
+  if (!s || !s.theta) return `style ${k + 1}`;
+  const tops = [...s.theta]
+    .filter((r) => r.mean > 0)
+    .sort((a, b) => b.mean - a.mean)
+    .slice(0, 2)
+    .map((r) => NICE_NAMES[r.name] || r.name);
+  return tops.length ? tops.join(" + ") : `style ${k + 1}`;
+}
+
+function styleBadge(el, k) {
+  if (k == null || k < 0 || !views || !views.styles || !views.styles[k]) {
+    el.innerHTML = "";
+    return;
+  }
+  const color = STYLE_COLORS[k % STYLE_COLORS.length];
+  el.innerHTML = `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>${styleName(views.styles[k], k)}`;
+}
+
+function renderStyleChips() {
+  const holder = $("style-chips");
+  const show = currentView === "taste" && views && views.styles;
+  holder.classList.toggle("hidden", !show);
+  if (!show) return;
+  holder.innerHTML = "";
+  views.styles.forEach((s, k) => {
+    if (s.share < 0.02) return;
+    const color = STYLE_COLORS[k % STYLE_COLORS.length];
+    const chip = document.createElement("div");
+    chip.className = "style-chip";
+    chip.innerHTML =
+      `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>` +
+      `<input class="sc-name" maxlength="24" value="${s.name || ""}" placeholder="${styleName(s, k)}" title="Name this style">` +
+      `<span class="sc-share">${Math.round(s.share * 100)}%</span>` +
+      `<button class="sc-play" title="Audition this style's exemplar">▶</button>`;
+    const input = chip.querySelector(".sc-name");
+    input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
+    input.addEventListener("keyup", (e) => e.stopPropagation());
+    input.onblur = () => send({ type: "set_style_name", k, name: input.value });
+    chip.querySelector(".sc-play").onclick = () => {
+      const ex = s.exemplars && s.exemplars[0];
+      if (ex == null) return;
+      if (renders.has(ex)) play(ex);
+      else {
+        send({ type: "render", id: ex });
+        const wait = setInterval(() => {
+          if (renders.has(ex)) { clearInterval(wait); play(ex); }
+        }, 120);
+      }
+    };
+    holder.appendChild(chip);
+  });
+}
 const CAPTIONS = {
   map: "Every patch you’ve heard, mapped by sound & structure. Glow is how much the model thinks you’d like it — islands are styles. Click a dot to open it.",
   styles: "Your taste as separate styles — new lenses appear as you give the model more to work with (up to 5). Dim lenses are idle.",
@@ -1805,6 +1896,7 @@ function drawTaste() {
   ctx.clearRect(0, 0, w, h);
   drawGraticule(ctx, w, h, "rgba(255,180,84,0.06)");
   $("taste-caption").textContent = CAPTIONS[tasteTab];
+  renderStyleChips();
   mapHits = [];
 
   ctx.font = `${10 * dpr}px "IBM Plex Mono", monospace`;
@@ -1915,7 +2007,7 @@ function drawStylesTab(ctx, w, h, dpr) {
     ctx.shadowBlur = 0;
     ctx.fillStyle = "#d9d4c8";
     ctx.textAlign = "left";
-    ctx.fillText(`style ${s.k + 1} — claims ${Math.round(s.share * 100)}% of the bank`, 30 * dpr, y0 + 24 * dpr);
+    ctx.fillText(`${styleName(s, s.k)} — claims ${Math.round(s.share * 100)}% of the bank`, 30 * dpr, y0 + 24 * dpr);
 
     const rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
     const maxAbs = Math.max(0.12, ...rows.map((r) => Math.abs(r.mean)));

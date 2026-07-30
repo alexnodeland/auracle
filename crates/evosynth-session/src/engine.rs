@@ -68,6 +68,13 @@ pub struct SessionConfig {
     pub mcmc_samples: usize,
     /// MCMC warmup steps.
     pub mcmc_warmup: usize,
+    /// Recency half-life for the taste likelihood, in observations
+    /// (`None` = no forgetting). Tastes drift; old votes should fade.
+    pub recency_half_life: Option<f64>,
+    /// Strength of the taste→grammar proposal tilt (0 disables): structural
+    /// θ components multiply the grammar's kind weights by
+    /// `exp(η·θ)` during refinement.
+    pub proposal_tilt: f64,
 }
 
 impl Default for SessionConfig {
@@ -83,6 +90,8 @@ impl Default for SessionConfig {
             keep_renders: false,
             mcmc_samples: 30_000,
             mcmc_warmup: 10_000,
+            recency_half_life: Some(150.0),
+            proposal_tilt: 0.6,
         }
     }
 }
@@ -151,6 +160,25 @@ pub struct Profile {
     pub standardizer: Option<Standardizer>,
 }
 
+/// Tilt categorical proposal weights by taste: `w'_i ∝ w_i · exp(η·t_i)`,
+/// with each multiplier clamped to `[1/4, 4]` so no kind is ever starved or
+/// monopolized, and the result renormalized. Pure, so the taste→grammar
+/// mapping is testable without an MCMC fit.
+pub fn tilt_weights(base: &[f64], tilts: &[f64], eta: f64) -> Vec<f64> {
+    let mut out: Vec<f64> = base
+        .iter()
+        .zip(tilts)
+        .map(|(w, t)| w * (eta * t).exp().clamp(0.25, 4.0))
+        .collect();
+    let sum: f64 = out.iter().sum();
+    if sum > 0.0 {
+        for w in &mut out {
+            *w /= sum;
+        }
+    }
+    out
+}
+
 /// One bank entry of a saved session (renders and features are re-derived
 /// on import — trees are the source of truth).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -166,6 +194,21 @@ pub struct BankEntry {
     pub name: Option<String>,
 }
 
+/// An implicit preference signal, logged but (for now) not modeled: promote
+/// events, hand-edit commits, per-patch play counts. Un-logged signal is
+/// gone forever; modeling can come later.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ImplicitEvent {
+    /// `"promote"`, `"play"`, `"edit"`, …
+    pub kind: String,
+    /// Candidate id the event is about.
+    pub id: u64,
+    /// Magnitude (play counts, 1 for point events).
+    pub value: f64,
+    /// Session index when it happened.
+    pub session: usize,
+}
+
 /// A full saved session: everything needed to restore the app across a
 /// reload — the portable profile plus the bank and its history.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -178,6 +221,12 @@ pub struct SessionState {
     pub lineage: Vec<LineageEvent>,
     /// Generation counter.
     pub generation: usize,
+    /// User-given style names (index = aligned style index).
+    #[serde(default)]
+    pub style_names: Vec<String>,
+    /// Implicit preference events.
+    #[serde(default)]
+    pub events: Vec<ImplicitEvent>,
 }
 
 /// The session engine.
@@ -200,6 +249,10 @@ pub struct Engine {
     pub lineage: Vec<LineageEvent>,
     /// Generation counter (one per refinement call).
     pub generation: usize,
+    /// User-given style names (index = aligned style index; empty = unnamed).
+    pub style_names: Vec<String>,
+    /// Implicit preference events (logged, not yet modeled).
+    pub events: Vec<ImplicitEvent>,
     next_id: u64,
 }
 
@@ -216,6 +269,8 @@ impl Engine {
             pool: Vec::new(),
             lineage: Vec::new(),
             generation: 0,
+            style_names: Vec::new(),
+            events: Vec::new(),
             next_id: 1,
         }
     }
@@ -319,7 +374,9 @@ impl Engine {
         // capped by config. Idle lenses collapse to ~0 share on their own,
         // so K is an upper bound the data may or may not use.
         let k = (1 + self.log.len() / 20).min(self.cfg.k_styles).max(1);
-        let model = TasteModel::new(TasteConfig::mixture(d, k));
+        let mut taste_cfg = TasteConfig::mixture(d, k);
+        taste_cfg.recency_half_life = self.cfg.recency_half_life;
+        let model = TasteModel::new(taste_cfg);
         let posterior = model.fit(rng, &self.log, self.cfg.mcmc_samples, self.cfg.mcmc_warmup);
         self.posterior = Some(Arc::new(posterior.aligned()));
     }
@@ -352,6 +409,105 @@ impl Engine {
         false
     }
 
+    /// Grammar prior with kind-weights tilted toward the fitted taste: each
+    /// structural θ component (share-weighted across styles) multiplies its
+    /// kind's proposal weight by `exp(η·θ)`. This is θ_struct → grammar
+    /// feedback — refinement *proposes* toward the user instead of merely
+    /// filtering, which is where visible directionality comes from.
+    fn biased_prior(&self) -> PatchGrammarPrior {
+        let mut prior = self.prior.clone();
+        let eta = self.cfg.proposal_tilt;
+        let Some(p) = &self.posterior else {
+            return prior;
+        };
+        if eta <= 0.0 {
+            return prior;
+        }
+        let names = Features::phi_names();
+        let pool_phis: Vec<Vec<f64>> = self
+            .pool
+            .iter()
+            .filter(|c| !c.phi_std.is_empty())
+            .map(|c| c.phi_std.clone())
+            .collect();
+        let shares = p.style_share(&pool_phis);
+        let mut theta = vec![0.0; names.len()];
+        for k in 0..p.k_styles() {
+            let m = p.theta_mean(k);
+            let w = shares.get(k).copied().unwrap_or(0.0);
+            for (t, mi) in theta.iter_mut().zip(m) {
+                *t += w * mi;
+            }
+        }
+        let g = |name: &str| {
+            names
+                .iter()
+                .position(|n| *n == name)
+                .map(|i| theta[i])
+                .unwrap_or(0.0)
+        };
+        let src = tilt_weights(
+            &prior.source_weights,
+            &[g("n_vco"), g("n_supersaw"), g("n_noise")],
+            eta,
+        );
+        prior.source_weights = [src[0], src[1], src[2]];
+        let op = tilt_weights(
+            &prior.op_weights,
+            &[
+                g("n_mix"),
+                g("n_filter"),
+                g("n_fold"),
+                g("n_delay"),
+                g("n_chorus"),
+                g("n_reverb"),
+            ],
+            eta,
+        );
+        prior.op_weights = op.try_into().expect("op weight arity");
+        // "no modulation" carries no tilt — only the filled kinds compete.
+        let md = tilt_weights(
+            &prior.mod_weights,
+            &[0.0, g("n_lfo"), g("n_env"), g("n_rand")],
+            eta,
+        );
+        prior.mod_weights = md.try_into().expect("mod weight arity");
+        prior
+    }
+
+    /// Posterior probability that pool member `a` beats `b` in a duel
+    /// (`None` before the first fit).
+    pub fn predict_duel(&self, a: usize, b: usize) -> Option<f64> {
+        let p = self.posterior.as_ref()?;
+        let (pa, pb) = (&self.pool[a].phi_std, &self.pool[b].phi_std);
+        if pa.is_empty() || pb.is_empty() {
+            return None;
+        }
+        Some(p.prob_prefers(pa, pb))
+    }
+
+    /// Log an implicit preference event (promote, play time, …). Logged
+    /// only — not yet part of the likelihood.
+    pub fn log_event(&mut self, kind: &str, id: u64, value: f64) {
+        self.events.push(ImplicitEvent {
+            kind: kind.into(),
+            id,
+            value,
+            session: self.session,
+        });
+    }
+
+    /// Name (or rename; empty clears) an aligned style index.
+    pub fn set_style_name(&mut self, k: usize, name: &str) {
+        if k >= 16 {
+            return;
+        }
+        if self.style_names.len() <= k {
+            self.style_names.resize(k + 1, String::new());
+        }
+        self.style_names[k] = name.trim().chars().take(24).collect();
+    }
+
     /// Run locked MH refinement from one seed. Returns the end state if it
     /// differs from the seed.
     fn refine_one<R: Rng>(
@@ -370,7 +526,7 @@ impl Engine {
             standardizer,
             phrase: self.cfg.phrase.clone(),
         };
-        let model = EvolutionModel::new(self.prior.clone(), fitness).with_beta(self.cfg.beta);
+        let model = EvolutionModel::new(self.biased_prior(), fitness).with_beta(self.cfg.beta);
         let mut chain = EvolutionChain::new(model);
         let mut trace = chain.init_from(seed)?;
 
@@ -708,6 +864,8 @@ impl Engine {
                 .collect(),
             lineage: self.lineage.clone(),
             generation: self.generation,
+            style_names: self.style_names.clone(),
+            events: self.events.clone(),
         }
     }
 
@@ -719,6 +877,8 @@ impl Engine {
         self.import_profile(state.profile);
         self.lineage = state.lineage;
         self.generation = state.generation;
+        self.style_names = state.style_names;
+        self.events = state.events;
         self.pool.clear();
         let mut max_id = 0;
         for entry in state.bank {
