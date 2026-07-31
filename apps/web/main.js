@@ -35,6 +35,13 @@ master.gain.value = 0.8;
 master.connect(audioCtx.destination);
 
 // ---------- state ----------
+// Is the primary input a finger? Read once, at the top, because half a dozen
+// decisions downstream depend on it — the keybed's default width, the size of
+// every rack hit target, whether hover-revealed affordances have to be shown
+// outright. A device does not grow a mouse mid-session, and the rack re-renders
+// far too often to keep asking the same question of a media query.
+const COARSE = window.matchMedia("(pointer: coarse)").matches;
+
 const renders = new Map(); // id -> {buffer: AudioBuffer, sexpr}
 // Ids the engine has told us it cannot render. Rendering is lazy in the worker
 // now, so "the buffer never arrived" is a real, reachable outcome rather than
@@ -630,6 +637,13 @@ worker.onmessage = (e) => {
       views = m.views;
       applyStatus(m.status);
       refreshInstruments();
+      // A preview is a listen, not a selection: no bench, no toast, no
+      // interruption of the screen the user is standing on.
+      if (m.preview) {
+        warmPreviewLoaded(m.id);
+        scheduleSave();
+        break;
+      }
       if (m.warm !== undefined) {
         warmPresetLoaded(m.warm, m.id);
         scheduleSave();
@@ -1255,6 +1269,14 @@ function panic() {
 // ---------- virtual keyboard ----------
 const PIANO_LO = 48; // C3
 const PIANO_HI = 84; // C6
+// The keybed's width is a performance decision, not a constant. Three octaves
+// across a tablet is 22 white keys at ~27px — narrower than a fingertip, so
+// every chord is a gamble; two octaves is 15 keys you can actually aim at, and
+// one is a fat lead keybed. Range costs little: z/x move the whole keybed, so
+// nothing becomes unreachable, it just takes a shift to get there.
+const KEY_SPANS = [12, 24, 36, 48];
+const SPAN_DEFAULT_FINE = 36; // three octaves, as it has always been
+const SPAN_DEFAULT_COARSE = 24; // a finger needs the width more than the range
 const BLACK = new Set([1, 3, 6, 8, 10]);
 const KEYMAP = {
   a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
@@ -1272,8 +1294,14 @@ function buildPiano() {
   // The keybed follows the octave shift. It used to be pinned at C3–C6 while
   // Z/X moved only the computer keymap, so at oct +2 the keys you played
   // neither lit nor carried letters.
-  const lo = PIANO_LO + 12 * octShift;
-  const hi = PIANO_HI + 12 * octShift;
+  // Where the keybed starts matters once it can be narrow. A wide keybed sits
+  // an octave below the computer keymap so a pointer can reach bass the letters
+  // can't — but a one-octave keybed anchored there shows C3–C4 while `a`–`k`
+  // play C4–F5, i.e. an octave you cannot type and none of the one you can. So
+  // the narrow sizes anchor on the keymap itself.
+  const anchor = perf.keySpan >= 36 ? PIANO_LO : PIANO_LO + 12;
+  const lo = anchor + 12 * octShift;
+  const hi = lo + perf.keySpan;
   for (let n = lo; n <= hi; n++) {
     if (BLACK.has(n % 12)) continue;
     const wk = document.createElement("div");
@@ -1505,7 +1533,17 @@ $("vol").oninput = (e) => {
 };
 
 // ---------- performance controls (arp / unison / glide) ----------
-const perf = { arp: false, arpMode: 0, arpDiv: 2, bpm: 120, uni: false, glide: 0, arpGate: 0.5, arpOct: 1, arpSwing: 0 };
+// `keySpan` defaults by input device rather than by taste: three octaves is
+// right for a mouse, which can hit a 27px key, and wrong for a finger, which
+// cannot. Saved sessions override it, so this only decides the first visit.
+const perf = {
+  arp: false, arpMode: 0, arpDiv: 2, bpm: 120, uni: false, glide: 0,
+  arpGate: 0.5, arpOct: 1, arpSwing: 0,
+  // The tall dock stays an explicit choice — it costs the rack real height,
+  // and taking that without being asked is not a default's business. The
+  // width, which costs nothing but range, is chosen for you.
+  bigKeys: false, keySpan: COARSE ? SPAN_DEFAULT_COARSE : SPAN_DEFAULT_FINE,
+};
 
 function sendArp() {
   if (live) live.arp(perf.arp, perf.arpMode, perf.arpDiv, perf.bpm, perf.arpGate, perf.arpOct, perf.arpSwing);
@@ -1545,7 +1583,35 @@ function applyPerfUi() {
   renderArpVals();
   sendArp();
   sendUni();
+  applyKeybed();
+  renderGlideVal();
   if (live) live.glide(perf.glide);
+}
+
+// A fader with no readout looks broken even when it isn't — and this one is
+// the least self-evident control on the dock, because its effect only shows
+// up on the *next* note. Say the time it will take.
+function renderGlideVal() {
+  const el = $("glide-val");
+  if (!el) return;
+  // Matches the audio thread: tau = glide * 0.5 s (see LivePoly::advance_pitch).
+  el.textContent = perf.glide <= 0 ? "off" : `${Math.round(perf.glide * 500)} ms`;
+}
+
+// Height and width of the keybed, applied together. This lives here rather
+// than in the click handlers so a restored session comes back exactly as it
+// was left — tall or short, one octave or four.
+function applyKeybed() {
+  if (!KEY_SPANS.includes(perf.keySpan)) perf.keySpan = SPAN_DEFAULT_FINE;
+  document.querySelector(".app").classList.toggle("bigkeys", perf.bigKeys);
+  $("bigkeys-btn").classList.toggle("lit", perf.bigKeys);
+  $("bigkeys-btn").setAttribute("aria-pressed", String(perf.bigKeys));
+  $("key-span").value = String(perf.keySpan);
+  buildPiano();
+  // The dock changing height is a layout change like any other — the rack
+  // above it has to re-zoom into what's left, and the canvases have to be
+  // re-measured. The app already knows how to answer that question.
+  window.dispatchEvent(new Event("resize"));
 }
 $("arp-btn").onclick = () => { perf.arp = !perf.arp; sendArp(); scheduleSave(); };
 $("arp-mode").onchange = (e) => { perf.arpMode = Number(e.target.value); sendArp(); scheduleSave(); };
@@ -1557,11 +1623,26 @@ $("bpm").onchange = (e) => {
   scheduleSave();
 };
 $("uni-btn").onclick = () => { perf.uni = !perf.uni; sendUni(); scheduleSave(); };
+$("bigkeys-btn").onclick = () => {
+  perf.bigKeys = !perf.bigKeys;
+  applyKeybed();
+  note(perf.bigKeys
+    ? "Tall keybed — narrow the keys with the octave selector beside it."
+    : "Keybed back to a control strip.");
+  scheduleSave();
+};
+$("key-span").onchange = (e) => {
+  perf.keySpan = Number(e.target.value);
+  applyKeybed();
+  note(`Keybed showing ${perf.keySpan / 12} octave${perf.keySpan === 12 ? "" : "s"} — z / x move it.`);
+  scheduleSave();
+};
 $("arp-gate").oninput = (e) => { perf.arpGate = Number(e.target.value); renderArpVals(); sendArp(); scheduleSave(); };
 $("arp-swing").oninput = (e) => { perf.arpSwing = Number(e.target.value); renderArpVals(); sendArp(); scheduleSave(); };
 $("arp-oct").onchange = (e) => { perf.arpOct = Number(e.target.value); sendArp(); scheduleSave(); };
 $("glide").oninput = (e) => {
   perf.glide = Number(e.target.value);
+  renderGlideVal();
   if (live) live.glide(perf.glide);
   scheduleSave();
 };
@@ -2374,6 +2455,36 @@ function svgEl(tag, attrs, cls) {
   return el;
 }
 
+// ---------- touch ----------
+// Take a gesture away from the browser before it takes it away from us.
+// The rack frame scrolls on touch, and a pan beats a control every time: a
+// finger dragged down a knob inside a scrollable frame scrolls the frame,
+// and the knob receives one pointermove and then a pointercancel. Both lines
+// say "this drag is mine" — `touch-action` is the modern one, and the
+// non-passive touchstart preventDefault is the one that holds in engines that
+// don't apply touch-action to SVG *children*, which is where every control in
+// this rack lives. Only ever called on elements whose whole job is a drag, so
+// suppressing the synthetic click it would otherwise produce costs nothing.
+// Both are inert for a mouse.
+function claimGesture(el) {
+  el.style.touchAction = "none";
+  el.addEventListener("touchstart", (ev) => ev.preventDefault(), { passive: false });
+}
+
+// A 10px glyph is a fine mouse target and a poor thumb one. Rather than grow
+// the glyph — which would redraw the faceplate for everyone — give it an
+// invisible pad, and only where a finger is doing the aiming. `pad` is the
+// full width/height of the target area in viewBox units.
+// Appended last so it hit-tests above the glyph it pads, and always inside
+// the control's own group so the pad inherits the control's identity — the
+// document-level "a click outside closes it" guard reads `.mod-menu-btn` off
+// the target, and a pad that sat outside the group would open the menu and
+// then be seen as an outside click that closes it again.
+function fingerPad(g, x, y, w, h) {
+  if (!COARSE) return;
+  g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
+}
+
 function renderRack() {
   const svg = $("rack-svg");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
@@ -2641,35 +2752,43 @@ function buildRack(svg, rack, opts) {
 
     if (interactive) {
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
-      const menuBtn = svgEl("text", { x: p.w - 32, y: 17 }, "mod-menu-btn");
+      // The glyph lives in a group so a finger can be given more to aim at
+      // than the 10px ellipsis itself.
+      const menuG = svgEl("g", {}, "mod-menu-btn");
+      const menuBtn = svgEl("text", { x: p.w - 32, y: 17 });
       menuBtn.textContent = "⋯";
       const mt = svgEl("title", {});
       mt.textContent = m.kind === "amp"
         ? "Add a module at the output"
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
-      menuBtn.addEventListener("click", (ev) => {
+      menuG.appendChild(menuBtn);
+      fingerPad(menuG, p.w - 29, 13, 26, 28);
+      menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
       });
-      g.appendChild(menuBtn);
+      g.appendChild(menuG);
 
       if (m.kind !== "amp") {
         const lockOn = isModuleLockedIn(m);
-        const mlock = svgEl("text", { x: p.w - 16, y: 17 }, `mod-lock${lockOn ? " on" : ""}`);
+        const lockG = svgEl("g", {}, `mod-lock${lockOn ? " on" : ""}`);
+        const mlock = svgEl("text", { x: p.w - 16, y: 17 });
         mlock.textContent = lockOn ? "▣" : "▢";
         const mtitle = svgEl("title", {});
         mtitle.textContent = lockOn
           ? "Unlock this module (evolution may change it again)"
           : "Lock this whole module (evolution keeps it exactly as-is)";
         mlock.appendChild(mtitle);
-        mlock.addEventListener("click", () => {
+        lockG.appendChild(mlock);
+        fingerPad(lockG, p.w - 13, 13, 26, 28);
+        lockG.addEventListener("click", () => {
           const addrs = moduleLockAddrs(m);
           const on = isModuleLockedIn(m);
           for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
           renderRack();
         });
-        g.appendChild(mlock);
+        g.appendChild(lockG);
       }
     }
 
@@ -2701,6 +2820,7 @@ function buildRack(svg, rack, opts) {
     } else if (m.kind === "amp") {
       const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" });
       if (interactive) {
+        claimGesture(j);
         j.addEventListener("pointerdown", (ev) => {
           ev.preventDefault();
           startWireDrag({ mode: "unplug-audio", childKey: "node", kind: "audio" }, ev);
@@ -2714,6 +2834,7 @@ function buildRack(svg, rack, opts) {
         for (const [jy, lbl, ck] of ins) {
           const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck });
           if (interactive) {
+            claimGesture(j);
             j.addEventListener("pointerdown", (ev) => {
               ev.preventDefault();
               startWireDrag({ mode: "unplug-audio", childKey: ck, kind: "audio" }, ev);
@@ -2728,6 +2849,7 @@ function buildRack(svg, rack, opts) {
           j.classList.add("pulse");
         }
         if (interactive) {
+          claimGesture(j);
           j.addEventListener("pointerdown", (ev) => {
             if (!modAtKey(m.key)) return; // empty slot: target only
             ev.preventDefault();
@@ -2830,6 +2952,9 @@ function buildRack(svg, rack, opts) {
           locked ? wb.locks.delete(k.addr) : wb.locks.add(k.addr);
           renderRack();
         });
+        // A 3.4-unit dot is a 7px target. The pad stops 10 units out, which
+        // still clears the knob body it sits beside (29.8 units away, r 15).
+        fingerPad(dot, 0, 0, 20, 20);
         kg.appendChild(dot);
 
         // Keyboard operation: the rack was entirely pointer-only, which made
@@ -3112,6 +3237,7 @@ function paintKnob(kg, knob) {
 }
 
 function attachKnobDrag(el, mod, knob) {
+  claimGesture(el); // a knob turn is not a scroll of the rack behind it
   el.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
     el.setPointerCapture(ev.pointerId);
@@ -3387,7 +3513,9 @@ function renderTray() {
       </div>
       <div class="ti-params mono">${fragParamStrip(t.frag) || "—"}</div>`;
     el.querySelector(".t-x").onclick = () => unstage(t.uid);
-    el.querySelector(".t-jack").addEventListener("pointerdown", (ev) => {
+    const tjack = el.querySelector(".t-jack");
+    claimGesture(tjack); // the tray scrolls sideways; the cable pull is not that
+    tjack.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
       startWireDrag({ mode: t.isMod ? "tray-mod" : "tray-audio", item: t, kind: t.isMod ? "mod" : "audio" }, ev);
     });
@@ -3443,6 +3571,13 @@ function startWireDrag(spec, ev) {
   wire.sy = ev.clientY;
   document.addEventListener("pointermove", onWireMove);
   document.addEventListener("pointerup", onWireUp, { once: true });
+  // A touch the browser reclaims (an OS edge gesture, a second finger, a
+  // system alert) fires pointercancel and *no* pointerup. Without this the
+  // cable stays drawn across the screen, every legal jack stays lit, and
+  // `wire` stays non-null — which the re-entrancy guard in startWireDrag
+  // then reads as "a cable is already out", so no further wiring is possible
+  // until reload.
+  document.addEventListener("pointercancel", onWireCancel, { once: true });
 }
 
 function drawWireBand(x1, y1, x2, y2, kind) {
@@ -3460,8 +3595,15 @@ function onWireMove(ev) {
   drawWireBand(wire.sx, wire.sy, ev.clientX, ev.clientY, wire.kind);
 }
 
+function onWireCancel() {
+  if (wire) note("cable dropped");
+  endWireDrag();
+}
+
 function endWireDrag() {
   document.removeEventListener("pointermove", onWireMove);
+  document.removeEventListener("pointerup", onWireUp);
+  document.removeEventListener("pointercancel", onWireCancel);
   $("wire-overlay").innerHTML = "";
   const rackSvg = $("rack-svg");
   rackSvg.classList.remove("wiring");
@@ -4184,6 +4326,12 @@ function mapHitAt(ev) {
 
 $("taste-crt").addEventListener("pointermove", (ev) => {
   const canvas = $("taste-crt");
+  // A finger has no hover: a tap fires one pointermove at the touch point and
+  // then never a pointerleave, so the hover tooltip would paint itself over
+  // the map and stay there for the rest of the session. The tap's own job —
+  // open that patch on the bench — is the same thing the tooltip was
+  // advertising, so touch skips straight to it.
+  if (ev.pointerType !== "mouse") return hideMapTip();
   if (tasteTab !== "map" || mapHits.length === 0) {
     canvas.classList.remove("hit");
     return hideMapTip();
@@ -4482,10 +4630,28 @@ function renderWarmStart(rows) {
   const grid = $("warm-grid");
   grid.innerHTML = "";
   rows.forEach((r) => {
+    // The card and its ▶ are two different questions — "do you like this?"
+    // and "what does it sound like?" — so they are two different buttons. The
+    // ▶ used to be an aria-hidden span inside the pick button: it looked like
+    // a transport, and pressing it cast a vote on a patch the user had never
+    // heard. That is the exact opposite of what this screen is for, and the
+    // card above it says "Play them" in so many words. A real button cannot
+    // nest inside the pick button, so the pair share a positioned cell.
+    const cell = document.createElement("div");
+    cell.className = "warm-cell";
     const b = document.createElement("button");
     b.className = "warm-item";
-    b.innerHTML = `<span class="wi-name">${r.name}</span><span class="wi-sig mono">${r.sig}</span><span class="wi-play" aria-hidden="true">▶</span>`;
+    b.innerHTML = `<span class="wi-name">${r.name}</span><span class="wi-sig mono">${r.sig}</span>`;
     b.setAttribute("aria-pressed", "false");
+    const pb = document.createElement("button");
+    pb.className = "wi-play";
+    pb.textContent = "▶";
+    pb.title = `Hear ${r.name}`;
+    pb.setAttribute("aria-label", `Hear ${r.name}`);
+    pb.onclick = (ev) => {
+      ev.stopPropagation();
+      previewPreset(r, pb);
+    };
     b.onclick = () => {
       if (warmPicked.has(r.index)) warmPicked.delete(r.index);
       else if (warmPicked.size < 3) warmPicked.add(r.index);
@@ -4497,11 +4663,42 @@ function renderWarmStart(rows) {
         : warmPicked.size === 0 ? "pick any three"
         : `${3 - warmPicked.size} more`;
     };
-    grid.appendChild(b);
+    cell.append(b, pb);
+    grid.appendChild(cell);
   });
   $("warm-go").disabled = true;
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
+}
+
+// Hearing a preset means having it: the only way the engine can render one is
+// to insert it, and `load_preset` returns the existing id when the identical
+// patch is already in the bank, so this is idempotent with the load that
+// "teach it" does at the end anyway. The cost of a preview is therefore one
+// preset in your bank early — which is what the PRESETS button does on
+// purpose, and strictly better than a screen that asks you to judge nine
+// sounds you cannot hear.
+const presetIds = new Map(); // preset index -> bank id
+let warmPreview = null; // {index, btn} — the one preview in flight
+
+function previewPreset(row, btn) {
+  if (stopAudition()) return; // pressing ▶ again stops it
+  const known = presetIds.get(row.index);
+  if (known != null) return awaitRender(known, () => play(known, btn));
+  if (warmPreview) return; // one load at a time; the engine is single-file
+  btn.classList.add("loading");
+  warmPreview = { index: row.index, btn };
+  send({ type: "load_preset", index: row.index, preview: true });
+}
+
+function warmPreviewLoaded(id) {
+  const req = warmPreview;
+  warmPreview = null;
+  if (!req) return;
+  req.btn.classList.remove("loading");
+  if (!id) return note("That preset wouldn't load.");
+  presetIds.set(req.index, id);
+  awaitRender(id, () => play(id, req.btn));
 }
 
 function closeWarmStart(mark = true) {

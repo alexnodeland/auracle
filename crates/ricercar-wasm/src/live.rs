@@ -162,8 +162,10 @@ pub struct LivePoly {
     bend_tgt: f64,
     /// Glide amount 0..1 (0 = off; 1 ≈ 500 ms portamento).
     glide: f64,
-    /// v/oct of the most recent press — glide start point.
-    last_pitch: f64,
+    /// v/oct of the most recent press — glide start point. `None` until the
+    /// first press: with nothing behind it there is nowhere to glide *from*,
+    /// and a zero would slide the first note of the session in from C4.
+    last_pitch: Option<f64>,
     /// Unison: all voices play one note, detuned and panned apart.
     unison: bool,
     uni_detune: f64,
@@ -248,7 +250,7 @@ impl LivePoly {
             bend: 0.0,
             bend_tgt: 0.0,
             glide: 0.0,
-            last_pitch: 0.0,
+            last_pitch: None,
             unison: false,
             uni_detune: 0.3,
             uni_spread: 0.7,
@@ -328,11 +330,12 @@ impl LivePoly {
     fn press(&mut self, note: u8, vel: f32) {
         let target = (note as f64 - 60.0) / 12.0;
         let start = if self.glide > 0.0 {
-            self.last_pitch
+            self.last_pitch.unwrap_or(target)
         } else {
             target
         };
-        self.last_pitch = target;
+        let first_press = self.last_pitch.is_none();
+        self.last_pitch = Some(target);
         if self.unison {
             // All voices, symmetric detune on the supersaw curve and an
             // equal-power pan spread. Held gates stay high = legato.
@@ -382,6 +385,10 @@ impl LivePoly {
                     .min_by_key(|(_, v)| v.stamp)
                     .map(|(i, _)| i)
             });
+        // Is anything under the player's fingers right now? Asked *before* the
+        // new voice is assigned, because it decides whether this press is one
+        // note of a chord or one note of a line.
+        let anything_held = self.voices.iter().any(|v| v.note.is_some());
         if let Some(i) = idx {
             let glide_on = self.glide > 0.0;
             let bend = self.bend;
@@ -390,10 +397,26 @@ impl LivePoly {
             // sounding slides from its own pitch, a fresh voice starts on
             // target. A single global `last_pitch` would chain note→note
             // through a chord and make it swoop in as a scramble.
+            //
+            // Per-voice alone, though, meant the control did nothing at all
+            // for the one thing portamento is for. Voice assignment prefers a
+            // *free* voice, so a melody played on a four-voice keybed rotates
+            // through voices that were never sounding: `was_sounding` is false
+            // for note after note, and every one of them starts dead on pitch.
+            // The glide fader moved a number that could not be heard unless
+            // you exceeded the polyphony and forced a steal.
+            //
+            // So a line glides too. A press with nothing else held is a line —
+            // it slides from the pitch of the note before it — and a press
+            // made while a key is still down is a chord, which still starts on
+            // target and keeps its attack clean. That is the same distinction
+            // the original comment was protecting; it just wasn't being made.
             let was_sounding = v.running;
             v.pitch_tgt = target;
             v.pitch_cur = if glide_on && was_sounding {
                 v.pitch_cur
+            } else if glide_on && !anything_held && !first_press {
+                start
             } else {
                 target
             };
@@ -1357,5 +1380,85 @@ mod tests {
             );
             let _ = poly.poll_event();
         }
+    }
+
+    /// Glide has to be audible on the thing portamento is *for*: a melody.
+    /// Voice assignment prefers a free voice, so a line rotates through voices
+    /// that were never sounding — with per-voice-only portamento every note of
+    /// a tune started dead on pitch and the fader did nothing you could hear.
+    #[test]
+    fn glide_slides_a_line_but_not_a_chord() {
+        let json = plucked_json();
+
+        // A line: press, release, press. The second note starts an octave
+        // below its target and slides up.
+        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        p.set_glide(0.5);
+        p.note_on(60, 1.0);
+        let _ = p.process(256);
+        p.note_off(60);
+        let _ = p.process(256);
+        p.note_on(72, 1.0);
+        let v = p.voices.iter().find(|v| v.note == Some(72)).unwrap();
+        assert!(
+            (v.pitch_tgt - 1.0).abs() < 1.0e-9,
+            "second note should target C6: {}",
+            v.pitch_tgt
+        );
+        assert!(
+            v.pitch_cur < 0.1,
+            "second note of a line must start back at the first note, not on \
+             pitch (pitch_cur={})",
+            v.pitch_cur
+        );
+
+        // ...and it actually arrives.
+        let _ = p.process(44_100 * 4);
+        let v = p.voices.iter().find(|v| v.note == Some(72)).unwrap();
+        assert!(
+            (v.pitch_cur - 1.0).abs() < 1.0e-3,
+            "glide never reached its target: {}",
+            v.pitch_cur
+        );
+
+        // A chord: the second note is pressed while the first is still held,
+        // so it speaks on pitch. Portamento must not scramble a chord.
+        let mut q = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        q.set_glide(0.5);
+        q.note_on(60, 1.0);
+        let _ = q.process(64);
+        q.note_on(64, 1.0);
+        let v = q.voices.iter().find(|v| v.note == Some(64)).unwrap();
+        assert!(
+            (v.pitch_cur - v.pitch_tgt).abs() < 1.0e-9,
+            "a chord tone must start on pitch: cur={} tgt={}",
+            v.pitch_cur,
+            v.pitch_tgt
+        );
+
+        // The very first note of the session has nothing to glide from.
+        let mut r = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        r.set_glide(1.0);
+        r.note_on(48, 1.0);
+        let v = r.voices.iter().find(|v| v.note == Some(48)).unwrap();
+        assert!(
+            (v.pitch_cur - v.pitch_tgt).abs() < 1.0e-9,
+            "the first note ever played swooped in from C4: {}",
+            v.pitch_cur
+        );
+
+        // Glide off: nothing slides, however the line is played.
+        let mut o = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        o.note_on(60, 1.0);
+        let _ = o.process(256);
+        o.note_off(60);
+        let _ = o.process(256);
+        o.note_on(72, 1.0);
+        let v = o.voices.iter().find(|v| v.note == Some(72)).unwrap();
+        assert!(
+            (v.pitch_cur - v.pitch_tgt).abs() < 1.0e-9,
+            "glide is off; this must start on pitch: {}",
+            v.pitch_cur
+        );
     }
 }

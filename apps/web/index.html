@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=26">
+<link rel="stylesheet" href="style.css?b=27">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=26";
+    s.src = "main.js?b=27";
     document.head.appendChild(s);
   }
 })();
@@ -269,9 +269,19 @@
         <span class="mono" id="oct-label" title="Octave shift — Z down, X up">a = C4</span>
         <button class="util-btn sq" id="oct-up" data-kbd="x" title="Octave up (X)" aria-label="Octave up">+</button>
         <button class="util-btn sq" id="panic-btn" title="Silence all voices" aria-label="Panic — silence all voices">◼</button>
+        <button class="util-btn" id="bigkeys-btn" title="Taller keybed — worth it if you're playing with fingers rather than a mouse" aria-pressed="false">⇕ tall</button>
         <button class="util-btn" id="hold-btn" title="Latch held notes">hold</button>
         <button class="util-btn" id="uni-btn" title="Unison: all 4 voices on one note, detuned wide">uni</button>
         <button class="util-btn" id="arp-btn" title="Arpeggiator: hold a chord, it plays the pattern">arp</button>
+        <label class="keys-span mono" title="How much of the keybed to show — fewer octaves means wider keys">
+          <span class="pc-cap">keys</span>
+          <select id="key-span" class="perf-sel" aria-label="Keybed width in octaves">
+            <option value="12">1 oct</option>
+            <option value="24">2 oct</option>
+            <option value="36">3 oct</option>
+            <option value="48">4 oct</option>
+          </select>
+        </label>
       </div>
       <div class="perf-ctl idle" id="arp-ctl">
         <span class="pc"><span class="pc-cap">pattern</span><select id="arp-mode" class="perf-sel" title="Arp pattern" aria-label="Arp pattern">
@@ -294,7 +304,7 @@
     <div class="piano" id="piano" role="group" aria-label="Musical keyboard"></div>
     <div class="key-side right">
       <div class="perf-ctl">
-        <label class="perf-glide mono" title="Glide (portamento)">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"></label>
+        <label class="perf-glide mono" title="Glide — how long a note takes to slide to the next one in a line">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"><span class="pc-val" id="glide-val">off</span></label>
         <button class="util-btn" id="rec-btn" title="Record what you play; stop to download a WAV">● rec</button>
         <span class="mono midi-ind" id="midi-ind" title="MIDI input">midi —</span>
       </div>
@@ -341,7 +351,8 @@
         <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the highlighted bank row</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a vote</p>
         <div class="help-h">performance</div>
-        <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> is portamento · <b>● rec</b> bounces your playing to a WAV</p>
+        <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
+        <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>
         <p>A MIDI keyboard just works: velocity, pitch bend, sustain pedal.</p>
       </div>
       <div>

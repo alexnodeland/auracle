@@ -963,8 +963,9 @@ self.onmessage = async (e) => {
     case "load_preset": {
       const id = Number(engine.load_preset(m.index));
       // `warm` rides along so the first-run elicitation can pair the loaded id
-      // back to the preset the user picked.
-      post({ type: "preset_loaded", id, warm: m.warm, views: tasteViews(), status: status() });
+      // back to the preset the user picked; `preview` says the caller only
+      // wants to hear it, so the UI must not haul it onto the bench.
+      post({ type: "preset_loaded", id, warm: m.warm, preview: m.preview, views: tasteViews(), status: status() });
       break;
     }
     case "edit_structure": {

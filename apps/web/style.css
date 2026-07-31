@@ -773,7 +773,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   gap: var(--s2);
   flex: 0 0 auto;
 }
-.ctl-grid { display: grid; grid-template-columns: repeat(4, auto); gap: var(--s1); align-items: center; }
+/* Five columns, two rows: octave −/label/+, panic and the tall toggle above;
+   hold, uni, arp and the width selector below. A sixth control would be a
+   third row, and a third row does not fit a 128px dock. */
+.ctl-grid { display: grid; grid-template-columns: repeat(5, auto); gap: var(--s1); align-items: center; }
 .util-btn.sq { width: 30px; padding: 6px 0; text-align: center; position: relative; }
 /* The keycap that drives the control, visible without hover. 9px is the
    rack-micro tier: a single glyph from a closed set, not prose. */
@@ -802,8 +805,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
   overflow: hidden;
   border: 1px solid #000;
   box-shadow: inset 0 2px 8px rgba(0,0,0,0.7);
-  user-select: none;
   touch-action: none;
+}
+/* Nothing you play should highlight. `user-select: none` alone left the keys
+   selectable in every WebKit before 17.4 — which is most iPads in use — so a
+   glissando dragged a blue selection across the hint letters and left the
+   caret parked on the keybed. It is set on the whole dock, not just the keys:
+   a drag that *starts* on the keybar background and crosses the keys selects
+   just as readily. Text you might legitimately want — the patch name you are
+   renaming, anything typed — opts back in below.
+
+   Deliberately not applied app-wide: readouts, the lineage log and the help
+   card are prose, and a synth is not a reason to make prose uncopyable. */
+.keybar, .piano, .rack-scroll, .tray, .bank-item, .stage-toolbar, .duel-controls {
+  -webkit-user-select: none;
+  user-select: none;
+}
+input, textarea, .bi-rename {
+  -webkit-user-select: text;
+  user-select: text;
 }
 /* The felt strip above the keybed — the one detail every real keyboard has. */
 .piano::before {
@@ -1432,12 +1452,58 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #help-close { margin-top: 14px; }
 @media (max-width: 640px) { .help-cols { grid-template-columns: 1fr; } }
 
-/* ---------- touch pass ---------- */
+/* ---------- touch pass ----------
+   A coarse pointer is a real input, not a degraded mouse. Everything here is
+   inside `@media (pointer: coarse)` on purpose: a mouse must see exactly the
+   instrument it saw before, so nothing below may leak into the desktop
+   cascade. Two laws:
+
+   1. WHAT HOVER REVEALS, TOUCH CANNOT REACH. A finger has no hover state, so
+      every affordance gated behind `:hover` is, on a tablet, a feature that
+      does not exist. Those are revealed here instead — dimmed rather than
+      lit, so they read as available rather than active.
+   2. A GESTURE MUST BE CLAIMED BEFORE THE BROWSER CLAIMS IT. Panning wins
+      ties, so a control that owns a drag says so (`touch-action`), and a
+      frame that must scroll says that too. See `claimGesture` in main.js —
+      CSS alone doesn't hold in every engine for SVG children. */
 @media (pointer: coarse) {
   .util-btn, .inspect-btn, .hw-btn { min-height: 30px; min-width: 30px; }
-  .jack circle { r: 8; }
+  /* Only the invisible hit circle grows. `.jack circle` hit all three — the
+     knurled nut (6.5), the dark bore (3.4) and the hit target (5.5) — and a
+     CSS geometry property beats the presentation attribute, so every jack on
+     every touch device rendered as one flat 8px disc with its bore as wide
+     as its nut. The jack is the thing you aim a cable at; it has to keep
+     looking like a socket while getting easier to hit. */
+  .jack circle:last-of-type { r: 9; }
   .bank-item .star { font-size: var(--t-lead); padding: 4px; }
   .perf-glide input[type="range"], #vol { min-height: 26px; }
+
+  /* Law 1 — the hover-gated affordances, made reachable. The knob lock dot
+     is the third one and it is NOT here: `.lock-dot` is re-declared further
+     down this file, and a later rule of equal specificity wins no matter
+     what a media query wraps it in. It sits with its own kin instead. */
+  .bank-item .stars, .bank-item .bi-kill { opacity: 1; }
+  .bank-item .bi-kill { color: var(--silk-dim); }
+
+  /* Law 2 — gesture ownership.
+     The rack frame scrolls (a nine-module patch is wider than any tablet),
+     and `touch-action: none` on it meant a finger could not move the rack at
+     all: the patch simply ended at the frame edge. Panning belongs to the
+     frame; the controls take their own gestures back individually. */
+  .rack-scroll { touch-action: pan-x pan-y; }
+  .rack-scroll, .bank-list, .nb-body, .tray-items { overscroll-behavior: contain; }
+
+  /* A knob held for half a second is a gesture, not a request for the iOS
+     callout menu and a selection of the label underneath it. */
+  .rack-scroll, .piano, .duel-card, .tray { -webkit-touch-callout: none; }
+  #rack-svg { user-select: none; -webkit-user-select: none; }
+
+  /* Double-tap to rename has to beat double-tap to zoom. */
+  .bank-item .bi-name { touch-action: manipulation; }
+
+  /* The grey flash the OS paints over a tapped element belongs to a web page,
+     not to a faceplate — the app draws its own :active states. */
+  * { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ---------- reduced motion ---------- */
@@ -1573,13 +1639,27 @@ select:focus-visible,
 .j-nut { fill: url(#jackNut); pointer-events: none; }
 .j-bore { fill: #050607; pointer-events: none; }
 .j-spec { fill: none; stroke: rgba(255,255,255,0.18); stroke-width: 1; pointer-events: none; }
-.jack circle:last-of-type { fill: none; }
+/* The outermost circle is the jack's hit target — it draws the green ring and
+   is otherwise unfilled. Unfilled is the problem: SVG hit-testing defaults to
+   `visiblePainted`, which means *painted* pixels only, so with no fill the
+   whole middle of a jack was dead and the only thing you could grab or drop a
+   cable on was the 1.6px ring itself. Scanning across a jack's 11px diameter
+   found exactly two 2px bands that responded — the left and right edges of
+   the stroke — with eight dead pixels between them. Patching by hand meant
+   hitting a sliver, and the nut and bore drawn inside it are `pointer-events:
+   none`, so they could not help. `all` hit-tests the disc whether or not it
+   is painted, which is what a socket has always looked like it did. */
+.jack circle:last-of-type { fill: none; pointer-events: all; }
 
 /* Ten knobs meant ten amber dots glowing at all times, for nothing. Only a
    knob that is actually locked speaks; the rest appear on hover or focus. */
 .lock-dot { opacity: 0; transition: opacity 160ms ease; }
 .lock-dot.on { opacity: 1; }
 g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
+/* Nothing hovers a knob on a tablet, so "appear on hover" means "never" —
+   and locking is half of what the rack is for. Dimmed, not lit: the dot has
+   to read as available without competing with the ones actually locked. */
+@media (pointer: coarse) { .lock-dot { opacity: 0.4; } }
 
 /* Audio cables only travel while audio does. */
 #rack-svg.flowing .wire.audio {
@@ -1741,7 +1821,32 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 }
 .wi-name { font-size: var(--t-body); font-weight: 500; color: var(--silk); }
 .wi-sig { font-size: var(--t-micro); color: var(--phos-a-dim); }
-.wi-play { font-size: var(--t-micro); color: var(--silk-dim); }
+/* The ▶ overlays the pick card's bottom-right rather than sitting inside it:
+   one cell, two targets, no nested buttons. Padding on `.warm-item` keeps the
+   name clear of it. */
+.warm-cell { position: relative; display: flex; }
+.warm-cell .warm-item { flex: 1; padding-right: 40px; }
+.wi-play {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  font-size: var(--t-body);
+  line-height: 1;
+  color: var(--phos-a-dim);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.wi-play:hover { color: var(--phos-a); border-color: var(--phos-a-dim); }
+.wi-play.playing { color: var(--phos-a); box-shadow: inset 0 0 10px rgba(142,240,177,0.3); }
+/* Waiting on the engine, which on a cold boot is genuinely busy. */
+.wi-play.loading { color: var(--phos-b-dim); border-color: var(--phos-b-deep); }
+@media (pointer: coarse) { .wi-play { width: 34px; height: 34px; } }
 .warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
 
 /* ---------- boot ---------- */
@@ -2196,3 +2301,39 @@ html.handheld .handheld-gate {
   cursor: pointer;
 }
 .hg-anyway:active { color: var(--silk-dim); }
+
+/* ===================== the keybed, resized =====================
+   The keybed is the one surface whose size is a *performance* decision, so it
+   is the one surface the player gets to resize — in both directions, from two
+   controls that do exactly one thing each. `⇕ tall` is height: 128px is a
+   control strip, and the tall dock is a keyboard. `keys` is width: fewer
+   octaves, wider keys. Neither touches the other, and both persist.
+
+   Height comes from the same `--keybar-h` token the dock already sizes from,
+   so the deck above simply gets less and re-zooms; nothing is positioned
+   against a hard-coded footer height. Capped at 44vh so the rack never loses
+   more than it can spare, and floored at 210px so the mode is worth entering
+   on a short screen. */
+.app.bigkeys { --keybar-h: clamp(210px, 44vh, 340px); }
+
+/* Fewer, wider keys deserve bigger markings, and the strike-position velocity
+   law (top of the key is soft, bottom is hard) is finally a real gesture at
+   this height — so the hint sits clear of where the finger lands. */
+.app.bigkeys .pkey { border-right-width: 2px; }
+.app.bigkeys .pkey .hint { bottom: 10px; font-size: var(--t-body); }
+.app.bigkeys .bkey .hint { font-size: var(--t-label); }
+.app.bigkeys .bkey { width: 58%; }
+
+/* The arp strip is a settings panel, and in big mode it is the widest thing
+   standing between the keybed and the edge of the screen. The arp BUTTON
+   stays — only its six selects fold away, and they come back with the dock. */
+.app.bigkeys #arp-ctl { display: none; }
+/* No lit-state rule here on purpose: `.util-btn.lit` already says "engaged"
+   for hold / uni / arp, and a fourth toggle in the same row that lit up a
+   different colour would read as a different kind of thing. */
+
+/* The width selector sits in the control grid, spanning the cells the fifth
+   column leaves over, with its caption inline so the row stays two deep. */
+.keys-span { display: flex; align-items: center; gap: 4px; grid-column: span 2; }
+.keys-span .pc-cap { font-size: var(--t-rack-micro); color: var(--silk-mute); text-transform: uppercase; letter-spacing: 0.1em; }
+.keys-span .perf-sel { flex: 1; min-width: 0; }
