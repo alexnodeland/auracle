@@ -816,6 +816,13 @@ self.onmessage = async (e) => {
       post({ type: "status", status: status(), pred, choseA: m.choseA });
       break;
     }
+    // The forecast alone, for immediate display: the vote itself is buffered
+    // behind an undo window on the main thread, but its payoff line must not
+    // arrive seven seconds late.
+    case "duel_pred": {
+      post({ type: "duel_pred", pred: engine.duel_pred(m.a, m.b), choseA: m.choseA });
+      break;
+    }
     case "record_keep": {
       engine.record_keep(m.id, m.kept);
       post({ type: "status", status: status() });

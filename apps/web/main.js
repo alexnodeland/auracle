@@ -26,6 +26,13 @@ const INK = {
 const BUILD = Date.now();
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// ONE master gain. Every audible path — live keys AND every ▶ phrase
+// audition — routes through it, so the volume fader governs freshly evolved
+// patches whose levels vary by tens of dB, which is exactly the path that
+// needed a level control. Auditions used to connect straight to destination.
+const master = audioCtx.createGain();
+master.gain.value = 0.8;
+master.connect(audioCtx.destination);
 
 // ---------- state ----------
 const renders = new Map(); // id -> {buffer: AudioBuffer, sexpr}
@@ -119,6 +126,15 @@ async function idbPut(key, value) {
   const db = await idbOpen();
   if (!db) return;
   db.transaction("kv", "readwrite").objectStore("kv").put(value, key);
+}
+async function idbDel(key) {
+  const db = await idbOpen();
+  if (!db) return;
+  return new Promise((resolve) => {
+    const tx = db.transaction("kv", "readwrite").objectStore("kv").delete(key);
+    tx.onsuccess = () => resolve();
+    tx.onerror = () => resolve();
+  });
 }
 
 let saveTimer = null;
@@ -218,11 +234,15 @@ worker.onmessage = (e) => {
       send({ type: "taste_views" });
       if (m.restored > 0) {
         note(`Welcome back — ${m.restored} patches and your taste restored.`);
-      } else if (!localStorage.getItem("ricercar-warmed")) {
+      } else if (
+        !localStorage.getItem("ricercar-warmed") &&
+        !localStorage.getItem("ricercar-warm-deferred")
+      ) {
         setTimeout(openWarmStart, 500);
       } else if (fillTarget > fillPool) {
         note(`Start picking — ${fillTarget - fillPool} more patches are still arriving.`);
       }
+      showCoach();
       break;
     }
     // The engine has said goodbye to the farm. Reap the workers: they exist
@@ -240,7 +260,12 @@ worker.onmessage = (e) => {
     // forever tells the user nothing at all, so drop it and say what happened.
     case "boot_failed": {
       dropBootVeil();
-      note(`Boot failed: ${m.error} — reload to try again.`);
+      // A condition, not a remark: this stays until it is resolved. A 4.2s
+      // toast for a dead engine left a blank instrument with no explanation.
+      alarm(`The audio engine failed to start: ${m.error}`, {
+        label: "reload",
+        run: () => location.reload(),
+      });
       break;
     }
     case "filled": {
@@ -280,16 +305,29 @@ worker.onmessage = (e) => {
       break;
     }
     case "duel": {
+      // A retract restored the previous pair while this deal was in flight —
+      // the restored question stands; this pair is dropped like a skip.
+      if (ignoreNextDeal) {
+        ignoreNextDeal = false;
+        dealing = false;
+        setDuelControlsEnabled(true);
+        break;
+      }
       currentDuel = m.pair;
+      // Randomise the presented side: the engine's first pick was always A,
+      // always left, always ←. `duel_pred` is computed at record time from
+      // the order we submit, so a swapped pair stays consistent end-to-end.
+      if (currentDuel && Math.random() < 0.5) currentDuel = [currentDuel[1], currentDuel[0]];
       duelMeta = m.meta || null;
       dealing = false;
       setDuelControlsEnabled(true);
       renderCheckBadge();
-      if (m.pair) {
+      if (currentDuel) {
         setFlip("a", false);
         setFlip("b", false);
-        loadSide("a", m.pair[0]);
-        loadSide("b", m.pair[1]);
+        loadSide("a", currentDuel[0]);
+        loadSide("b", currentDuel[1]);
+        benchBeforeAudition = null; // a fresh pair closes any audition detour
         setDuelSelection(null);
         dealCards();
       }
@@ -356,25 +394,14 @@ worker.onmessage = (e) => {
         // function deliberately picks near-ties. Skill vs a coin flip.
         calib.brier += (pChosen - 1) ** 2;
         renderSkill();
-        // Lead with the information, not the probability. A surprise is the
-        // valuable event — it is where the model was wrong and just learned.
-        const el = $("duel-pred");
-        el.classList.toggle("hit", pChosen >= 0.65);
-        el.classList.toggle("miss", pChosen <= 0.45);
-        el.textContent =
-          pChosen >= 0.65 ? `Expected — it's getting you. ${Math.round(pChosen * 100)}%`
-          : pChosen <= 0.45 ? `⚡ Surprise — it had this backwards. ${Math.round(pChosen * 100)}%`
-          : `Toss-up — that one taught it the most. ${Math.round(pChosen * 100)}%`;
-        el.title = "The model's forecast, made before your vote. Surprises are where it's still learning.";
-        el.classList.remove("check");
-        predHoldUntil = performance.now() + PRED_HOLD_MS;
-        const pd = $("pd-pred");
-        if (pd) {
-          pd.textContent = el.textContent;
-          pd.className = `pd-pred ${el.classList.contains("hit") ? "hit" : el.classList.contains("miss") ? "miss" : ""}`;
-        }
       }
       scheduleSave();
+      break;
+    }
+    // The forecast payoff, shown the instant the vote is cast — the vote
+    // itself sits behind the undo window.
+    case "duel_pred": {
+      if (m.pred != null && m.pred >= 0) showForecast(m.choseA ? m.pred : 1 - m.pred);
       break;
     }
     case "fitted": {
@@ -395,7 +422,18 @@ worker.onmessage = (e) => {
       $("wm-r").classList.remove("thinking");
       $("evolve-btn").disabled = false;
       $("evolve-btn").textContent = "evolve pool";
+      // The pool is fixed-size: every accepted child evicts the patch the
+      // model predicts you like least. Say so — silent eviction is how a
+      // user loses something they liked and stops trusting the bank.
+      const prevIds = new Set(((views && views.ranked) || []).map((r) => r.id));
       views = m.views;
+      const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
+      const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
+      const evictedStarred = evicted.filter((id) => (starsById.get(id) || 0) > 0);
+      if (m.born && m.born.length > 0) {
+        lastBorn.clear();
+        for (const id of m.born) lastBorn.add(id);
+      }
       applyStatus(m.status);
       refreshInstruments();
       redrawDuelScopes();
@@ -408,9 +446,18 @@ worker.onmessage = (e) => {
       } else if (m.born && m.born.length === 0) {
         note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
       } else if (m.born) {
-        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.`);
+        const made = evicted.length
+          ? ` ${evicted.length} lowest-predicted made room.`
+          : "";
+        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`);
       } else {
         note(`Generation ${m.status.generation} bred.`);
+      }
+      if (evictedStarred.length > 0) {
+        alarm(
+          `Breeding replaced ${evictedStarred.length} starred patch${evictedStarred.length > 1 ? "es" : ""} — stars don't protect from eviction yet. Export patches you must keep.`,
+          { label: "ok", run: () => alarm(null) }
+        );
       }
       break;
     }
@@ -418,12 +465,33 @@ worker.onmessage = (e) => {
       wb.rack = m.rack;
       wb.vetOk = m.vetOk;
       if (m.subject !== undefined) {
+        // Benching anything that is NOT the auditioned candidate ends the
+        // audition detour — otherwise the header keeps naming a candidate
+        // that is no longer under the fingers.
+        const candId =
+          hearingSide && currentDuel
+            ? hearingSide === "a" ? currentDuel[0] : currentDuel[1]
+            : null;
+        if (candId != null && m.subject !== candId) {
+          benchBeforeAudition = null;
+          setDuelSelection(null);
+        }
         wb.subjectId = m.subject;
         wb.dirty = false;
         wb.locks = new Set();
         undoStack.length = 0;
         redoStack.length = 0;
         note(`${nameOf(m.subject)} on the bench`);
+        // First patch on the bench: a one-time walkthrough of the gestures
+        // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
+        if (!localStorage.getItem("ricercar-bench-tour")) {
+          $("bench-tour").classList.remove("hidden");
+          $("bt-close").onclick = () => {
+            $("bench-tour").classList.add("hidden");
+            localStorage.setItem("ricercar-bench-tour", "1");
+            refitRack();
+          };
+        }
       }
       if (m.edited !== undefined) {
         wb.dirty = true;
@@ -471,6 +539,10 @@ worker.onmessage = (e) => {
       );
       if (!knobDragging) renderRack();
       renderBank();
+      // The selection ring on the taste map is drawn at wb.subjectId, so a
+      // bench change while the map is up must repaint it — clicking a dot
+      // used to leave the ring on the old patch.
+      if (currentView === "taste") drawTaste();
       editInFlight = false;
       if (editQueue) {
         const q = editQueue;
@@ -594,7 +666,7 @@ worker.onmessage = (e) => {
 };
 
 let status = { observations: 0, generation: 0 };
-let hasPlayed = false;
+let hasPlayed = !!localStorage.getItem("ricercar-played");
 
 function applyStatus(st) {
   status = st;
@@ -602,6 +674,20 @@ function applyStatus(st) {
   $("gen-count").textContent = st.generation;
   renderTeach();
   renderNextStep();
+  // A deferred warm start gets one re-offer once the user has proven they'll
+  // vote at all — after that it lives in ⋯ only.
+  if (
+    st.observations >= 3 &&
+    localStorage.getItem("ricercar-warm-deferred") &&
+    !localStorage.getItem("ricercar-warmed") &&
+    !localStorage.getItem("ricercar-warm-reoffered")
+  ) {
+    localStorage.setItem("ricercar-warm-reoffered", "1");
+    note("Want the fast lane? Picking 3 favourites teaches it ~20 picks’ worth.", {
+      undo: openWarmStart,
+      undoLabel: "pick 3 favourites",
+    });
+  }
 }
 
 // ---------- the teaching meter ----------
@@ -630,29 +716,35 @@ function renderTeach() {
   const pdPips = $("pd-pips");
   if (pdPips) pdPips.innerHTML = dots;
   if (teachTakeover) return;
+  // Single-line copy: the duel bar is a grid now, and the sentence that
+  // teaches the whole product should land whole. Name the payoff, not the
+  // refit schedule.
   if (status.observations === 0) {
-    copy.innerHTML = "Play both.<br>Keep the one<br>you’d reach for.";
+    copy.innerHTML = "Play both. Keep the one you’d reach for.";
   } else {
     const left = FIT_EVERY - into;
     copy.innerHTML = left === FIT_EVERY
-      ? `<b>${status.observations}</b> picks in.<br>It refits every ${FIT_EVERY}.`
-      : `${left} more pick${left > 1 ? "s" : ""}<br>and it refits.`;
+      ? `<b>${status.observations}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
+      : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
   }
 }
 
-// The learning moment, given its own beat instead of a blinked LED.
+// The learning moment, given its own beat instead of a blinked LED — and a
+// link to the evidence: the map it just redrew.
 function teachLearned() {
   const copy = $("teach-copy");
   if (!copy) return;
   teachTakeover = true;
   $("duel-mid").classList.add("learning");
   $("wm-r").classList.add("thinking");
-  copy.innerHTML = "● learning from<br>your last six picks";
+  copy.innerHTML = `● it just learned — <b class="teach-link">see what changed ▸</b>`;
+  const link = copy.querySelector(".teach-link");
+  if (link) link.onclick = () => showView("taste");
   setTimeout(() => {
     teachTakeover = false;
     $("duel-mid").classList.remove("learning");
     renderTeach();
-  }, 1500);
+  }, 3200);
 }
 
 // ---------- next step ----------
@@ -668,9 +760,20 @@ function renderNextStep() {
   // control whose entire job is answering "what now?" did nothing during the
   // first teaching cycle. The invitation to play already lives in the rack's
   // own empty state, which is where it belongs.
-  if (n === 0) {
-    label = `Teach it your taste — ${FIT_EVERY} quick A/B picks ▸`;
-    act = () => showView("evolve");
+  if (n === 0 && !hasPlayed) {
+    // A fresh profile is invited to make a sound before it is asked to vote.
+    label = "Play it first — press A, or tap a key below ▸";
+    act = () => {
+      document.activeElement?.blur?.();
+      pulseOnce($("piano"));
+    };
+  } else if (n === 0) {
+    label = `Teach it your taste — ${FIT_EVERY} quick picks below ▸`;
+    act = () => {
+      const strip = $("play-duel");
+      if (currentView === "play" && strip && !strip.classList.contains("hidden")) pulseOnce(strip);
+      else showView("evolve");
+    };
   } else if (n < FIT_EVERY) {
     label = `${FIT_EVERY - n} more pick${FIT_EVERY - n > 1 ? "s" : ""} and it refits ▸`;
     act = () => showView("evolve");
@@ -686,9 +789,32 @@ function renderNextStep() {
   el.onclick = act || null;
 }
 
+function pulseOnce(el) {
+  if (!el) return;
+  el.classList.remove("pulse-once");
+  void el.getBoundingClientRect();
+  el.classList.add("pulse-once");
+  setTimeout(() => el.classList.remove("pulse-once"), 1300);
+}
+
+// First-run coach: the app invites a sound before it asks for a vote.
+let coachEl = null;
+function showCoach() {
+  if (hasPlayed || localStorage.getItem("ricercar-played") || coachEl) return;
+  coachEl = document.createElement("div");
+  coachEl.className = "coach";
+  coachEl.textContent = "Press A–L or tap a key — you’re already holding a synth.";
+  document.body.appendChild(coachEl);
+}
+
 function firstNotePlayed() {
+  if (coachEl) {
+    coachEl.remove();
+    coachEl = null;
+  }
   if (hasPlayed) return;
   hasPlayed = true;
+  localStorage.setItem("ricercar-played", "1");
   renderNextStep();
 }
 
@@ -732,25 +858,58 @@ function note(text, opts = {}) {
     el.classList.add("out");
     setTimeout(() => el.remove(), 300);
   }, ttl);
+  return el;
+}
+
+// A toast whose undo can no longer fire must say so — see commitPendingVote,
+// which retires a vote's undo early when a refit claims it.
+function retireToastUndo(el) {
+  const b = el?.querySelector?.(".toast-undo");
+  if (!b) return;
+  b.disabled = true;
+  b.style.pointerEvents = "none";
+  b.textContent = "in the log";
 }
 
 // One number, one source. The menubar readout and the TRUST tab must not
 // disagree, so both prefer the engine's accounting and fall back to the
 // local tally only until the first `calibration()` reply lands.
+// Honesty gates: no percentage below 20 forecasts (3 forecasts can print
+// "100% sharper than chance"), never a negative percentage (skill can go
+// negative; "−73% sharper" is meaningless), and prefer the unbiased
+// check-duel number once it has enough mass — the app's own TRUST copy calls
+// it "the number to trust", so the headline must not disagree.
+const SKILL_MIN_N = 20;
+
+// The ONE formatter for a skill percentage, shared by the menubar and the
+// TRUST tab so they can never disagree — and so a negative skill is always
+// clamped to honest words instead of "−7% sharper than chance".
+function skillLine(skill, n, tag) {
+  const pct = Math.round(skill * 100);
+  return pct <= 0
+    ? `not beating a coin flip yet (n=${n})`
+    : `${pct}% sharper than chance${tag ? ` · ${tag}` : ""}`;
+}
+
 function renderSkill() {
   const el = $("skill");
   if (!el) return;
   const E = engineCalib;
-  if (E && E.n >= 3) {
-    el.textContent = `${Math.round(E.skill * 100)}% sharper than chance`;
-    el.title =
-      E.check_n >= 3
-        ? `Brier skill over ${E.n} forecasts. On ${E.check_n} unbiased check duels: ${Math.round(E.check_skill * 100)}%. See TASTE → trust.`
-        : `Brier skill over ${E.n} forecasts. See TASTE → trust.`;
+  const line = skillLine;
+  if (E && E.check_n >= SKILL_MIN_N) {
+    el.textContent = line(E.check_skill, E.check_n, `${E.check_n} check picks`);
+    el.title = `Brier skill on unbiased check duels — the number to trust. All forecasts: ${Math.round(E.skill * 100)}% over ${E.n}. See TASTE → trust.`;
     return;
   }
-  if (calib.n >= 3) {
-    el.textContent = `${Math.round((1 - calib.brier / calib.n / 0.25) * 100)}% sharper than chance`;
+  if (E && E.n >= SKILL_MIN_N) {
+    el.textContent = line(E.skill, E.n);
+    el.title = `Brier skill over ${E.n} forecasts (selection-biased until enough check duels land). See TASTE → trust.`;
+    return;
+  }
+  const n = E ? E.n : calib.n;
+  if (n >= 1) {
+    el.textContent = `calibrating — ${Math.min(n, SKILL_MIN_N)} of ${SKILL_MIN_N} forecasts`;
+    el.title = `The model forecasts each duel before your vote; after ${SKILL_MIN_N} it reports how much sharper than a coin flip it has been.`;
   } else {
     el.textContent = "";
   }
@@ -801,6 +960,7 @@ function refreshInstruments() {
   renderBank();
   drawTaste();
   drawLineage();
+  renderPlayDuel(); // names backfill once ranked rows exist
 }
 
 // ---------- views (tabs) ----------
@@ -829,24 +989,113 @@ document.querySelectorAll(".viewtab").forEach((t) => {
   t.onclick = () => showView(t.dataset.view);
 });
 
+// role=tablist / role=menu promise arrow keys; deliver them. One wiring for
+// every group: roving focus with wrap, optional activate-on-move for tabs.
+function wireArrowNav(container, itemSel, { activate = false, vertical = false } = {}) {
+  if (!container) return;
+  // Roving tabindex: the group is ONE tab stop; arrows move within it.
+  const rove = (target) => {
+    container.querySelectorAll(itemSel).forEach((el) => {
+      el.tabIndex = el === target ? 0 : -1;
+    });
+  };
+  const first = container.querySelector(itemSel);
+  if (first) rove(container.querySelector(`${itemSel}.active`) || first);
+  container.addEventListener("focusin", (e) => {
+    const item = e.target.closest?.(itemSel);
+    if (item) rove(item);
+  });
+  container.addEventListener("keydown", (e) => {
+    const fwd = vertical ? "ArrowDown" : "ArrowRight";
+    const back = vertical ? "ArrowUp" : "ArrowLeft";
+    if (e.key !== fwd && e.key !== back && e.key !== "Home" && e.key !== "End") return;
+    const items = [...container.querySelectorAll(itemSel)].filter((el) => !el.disabled);
+    if (items.length === 0) return;
+    const cur = document.activeElement?.closest?.(itemSel);
+    const i = items.indexOf(cur);
+    const j =
+      e.key === "Home" ? 0
+      : e.key === "End" ? items.length - 1
+      : e.key === fwd ? (i + 1 + items.length) % items.length
+      : (i - 1 + items.length) % items.length;
+    e.preventDefault();
+    e.stopPropagation();
+    rove(items[j]);
+    items[j].focus();
+    if (activate) items[j].click();
+  });
+}
+wireArrowNav(document.querySelector(".viewtabs"), ".viewtab", { activate: true });
+wireArrowNav(document.querySelector(".tabs"), ".tab", { activate: true });
+wireArrowNav($("ovf-menu"), ".ovf-item", { vertical: true });
+wireArrowNav($("presets-pop"), ".pp-item", { vertical: true });
+
 // ---------- audio helpers ----------
 function ensureAudio() {
   if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
+let playingGain = null;
+
 function playBuffer(buffer, btn) {
   if (!buffer) return;
   ensureAudio();
-  if (playingSrc) { try { playingSrc.stop(); } catch (_) {} }
+  if (playingSrc) {
+    // Ramp the old source down over ~5ms before stopping it — a hard stop
+    // mid-waveform clicks on every re-audition.
+    const oldSrc = playingSrc;
+    const oldGain = playingGain;
+    if (oldGain) oldGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
+    setTimeout(() => { try { oldSrc.stop(); } catch (_) {} }, 20);
+  }
   const src = audioCtx.createBufferSource();
+  const g = audioCtx.createGain();
   src.buffer = buffer;
-  src.connect(audioCtx.destination);
+  src.connect(g);
+  g.connect(master);
   src.start();
   playingSrc = src;
-  if (btn) {
-    btn.classList.add("playing");
-    src.onended = () => btn.classList.remove("playing");
-  }
+  playingGain = g;
+  src.onended = () => {
+    if (playingSrc === src) { playingSrc = null; playingGain = null; }
+    if (btn) btn.classList.remove("playing");
+  };
+  if (btn) btn.classList.add("playing");
+}
+
+// Space is a transport: it stops what's sounding, or auditions the current
+// patch's phrase from any view.
+function stopAudition() {
+  if (!playingSrc) return false;
+  const s = playingSrc;
+  const g = playingGain;
+  if (g) g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
+  setTimeout(() => { try { s.stop(); } catch (_) {} }, 20);
+  playingSrc = null;
+  playingGain = null;
+  return true;
+}
+
+function toggleAudition() {
+  if (stopAudition()) return;
+  if (currentView === "play" && wb.buffer && !$("rack-play").disabled) return playBench();
+  const id = wb.subjectId != null ? wb.subjectId : livePatchId;
+  if (id == null) return;
+  awaitRender(id, () => play(id));
+}
+
+// Step the bank without the mouse: loads the next patch onto the bench and
+// follows it in the rail. Steps bankRows — the exact filtered, sorted list
+// the rail is showing — so mouse, arrows and [ ] agree on one order.
+function stepBank(d) {
+  const rows = bankRows;
+  if (rows.length === 0) return;
+  const cur = rows.findIndex((r) => r.id === wb.subjectId);
+  const idx = Math.max(0, Math.min(rows.length - 1, (cur < 0 ? (d > 0 ? -1 : rows.length) : cur) + d));
+  const next = rows[idx];
+  if (!next || next.id === wb.subjectId) return;
+  bankScrollTo = next.id;
+  openOnBench(next.id);
 }
 
 function play(id, btn) {
@@ -921,7 +1170,7 @@ function renderFailed(id, reason) {
 // ---------- live instrument ----------
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
-  live = await initLiveAudio(audioCtx, BUILD);
+  live = await initLiveAudio(audioCtx, BUILD, master);
   live.onMessage((m) => {
     (window.__ricLog = window.__ricLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
@@ -930,7 +1179,11 @@ async function bootLiveAudio() {
       downloadWav(m.samples, m.sampleRate);
     }
   });
-  live.setVolume(volume);
+  // Master owns the volume now (so ▶ auditions obey the fader too); the
+  // worklet's internal gain stays at unity.
+  live.setVolume(1);
+  master.gain.value = volume;
+  renderVolVal();
   applyPerfUi();
   live.node.onprocessorerror = (e) => {
     (window.__ricLog = window.__ricLog || []).push({ type: "processor_error", e: String(e) });
@@ -1016,17 +1269,23 @@ function buildPiano() {
   const piano = $("piano");
   piano.innerHTML = "";
   keyEls.clear();
-  for (let n = PIANO_LO; n <= PIANO_HI; n++) {
+  // The keybed follows the octave shift. It used to be pinned at C3–C6 while
+  // Z/X moved only the computer keymap, so at oct +2 the keys you played
+  // neither lit nor carried letters.
+  const lo = PIANO_LO + 12 * octShift;
+  const hi = PIANO_HI + 12 * octShift;
+  for (let n = lo; n <= hi; n++) {
     if (BLACK.has(n % 12)) continue;
     const wk = document.createElement("div");
     wk.className = "pkey";
     wk.dataset.note = n;
     wk.innerHTML = `<span class="hint"></span>`;
     keyEls.set(n, wk);
-    // A black key rides on the white key to its left.
-    if (n + 1 <= PIANO_HI && BLACK.has((n + 1) % 12)) {
+    // A black key rides on the white key to its left. The pitch-class tag
+    // places each accidental where it sits on a real keybed (CSS .pc1…).
+    if (n + 1 <= hi && BLACK.has((n + 1) % 12)) {
       const bk = document.createElement("div");
-      bk.className = "bkey";
+      bk.className = `bkey pc${(n + 1) % 12}`;
       bk.dataset.note = n + 1;
       bk.innerHTML = `<span class="hint"></span>`;
       keyEls.set(n + 1, bk);
@@ -1036,6 +1295,8 @@ function buildPiano() {
   }
   attachPianoPointers(piano);
   paintHints();
+  // A latched chord survives the rebuild visually as well as audibly.
+  for (const n of heldNotes) paintKey(n, true);
 }
 
 function paintHints() {
@@ -1044,9 +1305,19 @@ function paintHints() {
   for (const [key, off] of Object.entries(KEYMAP)) hintFor.set(base + off, key);
   for (const [midi, el] of keyEls) {
     const hint = el.querySelector(".hint");
-    hint.textContent = hintFor.get(midi) || "";
+    const letter = hintFor.get(midi) || "";
+    // Every C carries its octave label — a keybed with no C markers is
+    // unreadable at a glance.
+    if (midi % 12 === 0) {
+      const oct = Math.floor(midi / 12) - 1;
+      hint.innerHTML = letter ? `${letter} <b>C${oct}</b>` : `<b>C${oct}</b>`;
+    } else {
+      hint.textContent = letter;
+    }
+    el.classList.toggle("mapped", !!letter);
   }
-  $("oct-label").textContent = `oct ${octShift >= 0 ? "+" : ""}${octShift}`;
+  // Say what the shift means, not its sign: the note the `a` key plays.
+  $("oct-label").textContent = `a = C${4 + octShift}`;
 }
 
 function paintKey(midi, down) {
@@ -1121,17 +1392,40 @@ document.addEventListener("keydown", (e) => {
   // Undo/redo for workbench edits (knobs, wiring, structure).
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
+    // In EVOLVE, ⌘Z takes back the vote still inside its undo window;
+    // everywhere else it is the workbench edit undo.
+    if (!e.shiftKey && currentView === "evolve" && retractVote()) return;
     if (!restoreInFlight) e.shiftKey ? doRedo() : doUndo();
     return;
   }
+  if (e.key === "Escape") {
+    // One dismissal law for the keyboard too: Escape closes whatever floats,
+    // and hands focus back to the control that opened it.
+    if (!$("ovf-menu").classList.contains("hidden")) {
+      $("ovf-menu").classList.add("hidden");
+      $("ovf-btn").setAttribute("aria-expanded", "false");
+      $("ovf-btn").focus();
+    }
+    if (!$("presets-pop").classList.contains("hidden")) {
+      $("presets-pop").classList.add("hidden");
+      $("presets-btn").focus();
+    }
+    $("ctx-menu").classList.add("hidden");
+    return;
+  }
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-  // Typing into the UI must never play notes. Without this guard a keyboard
-  // user tabbing the interface triggers audio on every keystroke, and Space to
-  // activate a focused button also fires a note.
+  const k = e.key.toLowerCase();
+  // Typing into the UI must never play notes — but a focused control must not
+  // silence the instrument either. Text-entry contexts swallow everything;
+  // buttons, tabs, knobs, and sliders swallow only the keys they actually use
+  // (Space, Enter, arrows), so note letters still play. Without the second
+  // rule, clicking HOLD or ARP left focus on the button and the entire
+  // keyboard went dead until the player clicked elsewhere.
   // Optional-chained: a keydown whose target is the document (rather than an
   // element) has no `closest`, and an exception here kills the note handler.
-  if (e.target?.closest?.("input, select, textarea, button, [role=tab], [contenteditable], [data-addr]")) return;
-  const k = e.key.toLowerCase();
+  if (e.target?.closest?.("input:not([type=range]), select, textarea, [contenteditable]")) return;
+  const noteKey = k in KEYMAP || k === "z" || k === "x";
+  if (!noteKey && e.target?.closest?.("button, [role=tab], [data-addr], input[type=range]")) return;
   if (k in KEYMAP) {
     const midi = 60 + 12 * octShift + KEYMAP[k];
     if (midi >= 0 && midi <= 127 && !downComputerKeys.has(k)) {
@@ -1146,6 +1440,9 @@ document.addEventListener("keydown", (e) => {
   }
   if (k === "z") return octave(-1);
   if (k === "x") return octave(1);
+  if (k === " ") { e.preventDefault(); return toggleAudition(); }
+  if (k === "[") return stepBank(-1);
+  if (k === "]") return stepBank(1);
   if (currentView === "evolve") {
     if (e.key === "1") $("play-a").click();
     else if (e.key === "2") $("play-b").click();
@@ -1165,10 +1462,26 @@ window.addEventListener("blur", () => {
   downComputerKeys.clear();
   panic();
 });
+// A buffered vote must not die with the tab.
+window.addEventListener("pagehide", () => commitPendingVote());
+
+// A real mouse click must not leave focus parked on a button — parked focus
+// changes what the next keystroke means, and on an instrument that surprise
+// is fatal. Keyboard activation (detail === 0) keeps focus so Tab users keep
+// their place; blur() on an element that no longer holds focus (a handler
+// moved it into an input) is a no-op, so this never steals a deliberate move.
+document.addEventListener("click", (e) => {
+  if (e.detail === 0) return;
+  const b = e.target?.closest?.("button");
+  if (b) b.blur();
+});
 
 function octave(d) {
-  octShift = Math.max(-2, Math.min(2, octShift + d));
-  paintHints();
+  const next = Math.max(-2, Math.min(2, octShift + d));
+  if (next === octShift) return;
+  octShift = next;
+  buildPiano(); // the keybed moves with the shift, not just the letter hints
+  scheduleSave();
 }
 
 $("oct-down").onclick = () => octave(-1);
@@ -1179,9 +1492,15 @@ $("hold-btn").onclick = () => {
   if (!hold) panic();
 };
 $("panic-btn").onclick = () => panic();
+function renderVolVal() {
+  const el = $("vol-val");
+  if (!el) return;
+  el.textContent = volume <= 0.001 ? "mute" : `${(20 * Math.log10(volume)).toFixed(0)} dB`;
+}
 $("vol").oninput = (e) => {
   volume = Number(e.target.value);
-  if (live) live.setVolume(volume);
+  master.gain.setTargetAtTime(volume, audioCtx.currentTime, 0.01);
+  renderVolVal();
   scheduleSave();
 };
 
@@ -1191,10 +1510,29 @@ const perf = { arp: false, arpMode: 0, arpDiv: 2, bpm: 120, uni: false, glide: 0
 function sendArp() {
   if (live) live.arp(perf.arp, perf.arpMode, perf.arpDiv, perf.bpm, perf.arpGate, perf.arpOct, perf.arpSwing);
   $("arp-btn").classList.toggle("lit", perf.arp);
+  // The arp row is the ARP button's drawer: recessed and inert until it
+  // runs — for the keyboard as well as the mouse.
+  const drawer = $("arp-ctl");
+  if (drawer) {
+    drawer.classList.toggle("idle", !perf.arp);
+    drawer.setAttribute("aria-disabled", String(!perf.arp));
+    drawer.querySelectorAll("select, input").forEach((c) => {
+      c.tabIndex = perf.arp ? 0 : -1;
+    });
+  }
 }
 function sendUni() {
   if (live) live.unison(perf.uni, 0.4, 0.8);
-  $("uni-btn").classList.toggle("lit", perf.uni);
+  const btn = $("uni-btn");
+  btn.classList.toggle("lit", perf.uni);
+  // UNI silently turns a 4-voice poly synth mono — say so on the control.
+  btn.textContent = perf.uni ? "uni ×4 mono" : "uni";
+}
+function renderArpVals() {
+  const g = $("arp-gate-val");
+  if (g) g.textContent = `${Math.round(perf.arpGate * 100)}%`;
+  const s = $("arp-swing-val");
+  if (s) s.textContent = `${Math.round(perf.arpSwing * 100)}%`;
 }
 function applyPerfUi() {
   $("arp-mode").value = String(perf.arpMode);
@@ -1204,6 +1542,7 @@ function applyPerfUi() {
   $("arp-gate").value = String(perf.arpGate);
   $("arp-oct").value = String(perf.arpOct);
   $("arp-swing").value = String(perf.arpSwing);
+  renderArpVals();
   sendArp();
   sendUni();
   if (live) live.glide(perf.glide);
@@ -1218,8 +1557,8 @@ $("bpm").onchange = (e) => {
   scheduleSave();
 };
 $("uni-btn").onclick = () => { perf.uni = !perf.uni; sendUni(); scheduleSave(); };
-$("arp-gate").oninput = (e) => { perf.arpGate = Number(e.target.value); sendArp(); scheduleSave(); };
-$("arp-swing").oninput = (e) => { perf.arpSwing = Number(e.target.value); sendArp(); scheduleSave(); };
+$("arp-gate").oninput = (e) => { perf.arpGate = Number(e.target.value); renderArpVals(); sendArp(); scheduleSave(); };
+$("arp-swing").oninput = (e) => { perf.arpSwing = Number(e.target.value); renderArpVals(); sendArp(); scheduleSave(); };
 $("arp-oct").onchange = (e) => { perf.arpOct = Number(e.target.value); sendArp(); scheduleSave(); };
 $("glide").oninput = (e) => {
   perf.glide = Number(e.target.value);
@@ -1316,7 +1655,9 @@ function dealCards() {
   }
 }
 
-// The quick-duel strip on PLAY: vote without leaving the instrument.
+// The quick-duel strip on PLAY: vote without leaving the instrument. Labels
+// carry the letter AND the name so PICK A / PICK B have an antecedent, and
+// names backfill when the bank lands (refreshInstruments re-calls this).
 function renderPlayDuel() {
   const strip = $("play-duel");
   if (!currentDuel) {
@@ -1324,8 +1665,11 @@ function renderPlayDuel() {
     return;
   }
   strip.classList.remove("hidden");
-  $("pd-a").textContent = `▶ ${nameOf(currentDuel[0])}`;
-  $("pd-b").textContent = `▶ ${nameOf(currentDuel[1])}`;
+  // "…" while the bank row hasn't landed — a bare #20 collides with the
+  // bank's own numbering and names nothing.
+  const nm = (id) => (rowOf(id) ? nameOf(id) : "…");
+  $("pd-a").textContent = `▶ A · ${nm(currentDuel[0])}`;
+  $("pd-b").textContent = `▶ B · ${nm(currentDuel[1])}`;
 }
 $("pd-a").onclick = () => selectDuelSide("a");
 $("pd-b").onclick = () => selectDuelSide("b");
@@ -1408,6 +1752,27 @@ function checksAreUniversal() {
 let predHoldUntil = 0;
 const PRED_HOLD_MS = 3200;
 
+// Lead with the information, not the probability. A surprise is the valuable
+// event — it is where the model was wrong and just learned.
+function showForecast(pChosen) {
+  const el = $("duel-pred");
+  if (!el) return;
+  el.classList.toggle("hit", pChosen >= 0.65);
+  el.classList.toggle("miss", pChosen <= 0.45);
+  el.textContent =
+    pChosen >= 0.65 ? `Expected — it's getting you. ${Math.round(pChosen * 100)}%`
+    : pChosen <= 0.45 ? `⚡ Surprise — it had this backwards. ${Math.round(pChosen * 100)}%`
+    : `Toss-up — that one taught it the most. ${Math.round(pChosen * 100)}%`;
+  el.title = "The model's forecast, made before your vote. Surprises are where it's still learning.";
+  el.classList.remove("check");
+  predHoldUntil = performance.now() + PRED_HOLD_MS;
+  const pd = $("pd-pred");
+  if (pd) {
+    pd.textContent = el.textContent;
+    pd.className = `pd-pred ${el.classList.contains("hit") ? "hit" : el.classList.contains("miss") ? "miss" : ""}`;
+  }
+}
+
 function renderCheckBadge() {
   const el = $("duel-pred");
   if (!el) return;
@@ -1418,9 +1783,14 @@ function renderCheckBadge() {
   if (performance.now() < predHoldUntil) return;
   el.textContent = "";
   el.classList.remove("hit", "miss");
-  el.classList.toggle("check", check && !checksAreUniversal());
-  if (check && !checksAreUniversal()) {
-    el.textContent = "check duel — this pair was picked at random";
+  // Below ~10 picks the badge is suppressed outright: a brand-new user's
+  // first duel captioned "picked at random" reads as "this question is
+  // arbitrary". When it does appear, it states its benefit.
+  const show = check && !checksAreUniversal() && status.observations >= 10;
+  el.classList.toggle("check", show);
+  if (show) {
+    el.textContent = "unbiased probe — picks like this one score the honesty meter";
+    el.title = "About one duel in ten is dealt at random rather than by the acquisition rule. Only those score the model's honesty — see TASTE → trust.";
   }
 }
 
@@ -1445,17 +1815,49 @@ function renderExplain(id, ex) {
     `<span class="ex-lens">under your <b>${ex.style_name || `style ${ex.style + 1}`}</b> lens</span>`;
 }
 
+// Which candidate is sounding, everywhere it can be asked: the EVOLVE cards,
+// the PLAY strip buttons (with aria-pressed), the stage header, and the rack
+// itself, which visibly stands aside while a candidate is live.
+let hearingSide = null;
+
 function setDuelSelection(side) {
+  hearingSide = side || null;
   $("duel-a").classList.toggle("live-sel", side === "a");
   $("duel-b").classList.toggle("live-sel", side === "b");
+  for (const s of ["a", "b"]) {
+    const b = $(`pd-${s}`);
+    if (b) {
+      b.classList.toggle("live-sel", side === s);
+      b.setAttribute("aria-pressed", String(side === s));
+    }
+  }
+  $("play-duel").classList.toggle("auditioning", side != null);
+  renderSubject();
 }
+
+// Auditioning a candidate is a full context switch, not a side-channel: the
+// candidate lands on the bench, so the rack graph, the bank highlight and
+// the live keyboard all point at the sound you are hearing.
+let benchBeforeAudition = null;
 
 function selectDuelSide(side) {
   if (!currentDuel) return;
   const id = side === "a" ? currentDuel[0] : currentDuel[1];
+  if (benchBeforeAudition == null) benchBeforeAudition = wb.subjectId;
   setDuelSelection(side);
-  send({ type: "tree_json", id });
+  bankScrollTo = id;
+  openOnBench(id);
 }
+
+$("pd-back").onclick = () => {
+  const back = benchBeforeAudition;
+  benchBeforeAudition = null;
+  setDuelSelection(null);
+  if (back != null) {
+    bankScrollTo = back;
+    openOnBench(back);
+  }
+};
 
 // Between a vote and the worker's reply the pair on screen is stale. Any click
 // landing in that window used to be *silently discarded* — no observation, no
@@ -1480,6 +1882,48 @@ function setDuelControlsEnabled(on) {
   $("duel-b").classList.toggle("dealing", !on);
 }
 
+// One vote at a time may sit behind the undo window — the only irreversible
+// action in an app that gives a *cut* seven seconds of grace was the vote.
+// The observation is held, not logged-and-compensated: a taste log containing
+// "picked it, then unpicked it" records the user's mouse, not their taste.
+let pendingVote = null; // { timer, commit, pair }
+
+let ignoreNextDeal = false;
+
+function commitPendingVote() {
+  if (!pendingVote) return;
+  clearTimeout(pendingVote.timer);
+  const v = pendingVote;
+  pendingVote = null;
+  retireToastUndo(v.toast);
+  v.commit();
+}
+
+function retractVote() {
+  if (!pendingVote) return false;
+  clearTimeout(pendingVote.timer);
+  const pair = pendingVote.pair;
+  pendingVote = null;
+  // The next deal was requested at vote time; if it hasn't landed yet it
+  // must not overwrite the pair we are restoring.
+  if (dealing) ignoreNextDeal = true;
+  duelsSinceFit = Math.max(0, duelsSinceFit - 1);
+  fitDue = duelsSinceFit >= FIT_EVERY;
+  renderTeach();
+  // Re-deal the retracted pair so the question is asked again.
+  currentDuel = pair;
+  dealing = false;
+  setDuelControlsEnabled(true);
+  setFlip("a", false);
+  setFlip("b", false);
+  loadSide("a", pair[0]);
+  loadSide("b", pair[1]);
+  setDuelSelection(null);
+  dealCards();
+  renderPlayDuel();
+  return true;
+}
+
 function choose(side) {
   if (dealing) {
     // Deliberately dropped, not queued. A queued click would vote on a pair
@@ -1490,9 +1934,32 @@ function choose(side) {
     return;
   }
   if (!currentDuel) return;
+  // A second vote inside the first one's window commits it — one pending
+  // vote at a time keeps the log ordered.
+  commitPendingVote();
+  benchBeforeAudition = null; // the vote closes the audition detour
   const [a, b] = currentDuel;
   const choseA = side === "a";
-  send({ type: "record_duel", a, b, choseA });
+  // Acknowledge the vote where it was cast, and show the forecast payoff now
+  // — the observation itself waits out the undo window.
+  const nameEl = $(`name-${side}`);
+  if (nameEl) {
+    nameEl.classList.add("chosen");
+    setTimeout(() => nameEl.classList.remove("chosen"), 400);
+  }
+  send({ type: "duel_pred", a, b, choseA });
+  const timer = setTimeout(commitPendingVote, UNDO_WINDOW_MS);
+  pendingVote = {
+    timer,
+    pair: [a, b],
+    commit: () => send({ type: "record_duel", a, b, choseA }),
+  };
+  const win = choseA ? a : b;
+  const lose = choseA ? b : a;
+  pendingVote.toast = note(`Picked ${nameOf(win)} over ${nameOf(lose)}.`, {
+    undo: () => retractVote(),
+    undoLabel: "not what I meant",
+  });
   duelsSinceFit += 1;
   renderTeach();
 
@@ -1541,6 +2008,10 @@ function settleFit() {
   if (status.needs_refit === false) return;
   fitDue = false;
   duelsSinceFit = 0;
+  // A vote still inside its undo window belongs in the log the fit reads.
+  // Committing here trades the tail of one undo window for a fit that has
+  // actually seen all six picks.
+  commitPendingVote();
   requestPairRendersNow();
   fitting = true;
   teachLearned();
@@ -1586,20 +2057,56 @@ let bankScrollTo = null;
 function renderBank() {
   const list = $("bank-list");
   const ranked = (views && views.ranked) || [];
-  const rows = ranked.filter((r) => !cutIds.has(r.id));
+  let rows = ranked.filter((r) => !cutIds.has(r.id));
   renderFillHint(); // owns the header count; it also carries "N arriving"
+  // Provenance filter: where your saves, the newest generation, the presets
+  // and your edits each live.
+  if (bankFilter === "starred") rows = rows.filter((r) => (starsById.get(r.id) || 0) > 0);
+  else if (bankFilter === "gen") rows = rows.filter((r) => lastBorn.has(r.id));
+  else if (bankFilter === "preset") rows = rows.filter((r) => r.origin === "preset");
+  else if (bankFilter === "edited") rows = rows.filter((r) => r.origin === "edited");
+  bankRows = rows; // assigned before ANY return: [ ] and 1–5 step THIS list
   list.innerHTML = "";
   if (rows.length === 0) {
-    list.innerHTML = '<div class="bench-empty">Nothing here yet.</div>';
+    const msg = {
+      starred: "No saves yet — star a patch to keep track of it. (Stars don't yet protect it from eviction; export what you must keep.)",
+      gen: "Nothing bred this session yet — press EVOLVE POOL, or ⚡ evolve a patch you like.",
+      preset: "No presets loaded — the PRESETS button seeds the bank with hand-made patches.",
+      edited: "No committed edits yet — turn knobs on the bench, then COMMIT.",
+      all: "Nothing here yet.",
+    }[bankFilter] || "Nothing here yet.";
+    list.innerHTML = `<div class="bench-empty">${msg}</div>`;
     return;
   }
-  const maxU = Math.max(0.01, ...rows.map((r) => r.mean));
-  const minU = Math.min(0, ...rows.map((r) => r.mean));
+  // Absolute scale, not min–max across the visible bank: the old
+  // normalisation made the worst patch always read 0% and the best always
+  // 100%, so the widget could never say "it likes none of these". The
+  // logistic of the posterior mean is a fixed, monotone map.
+  const fitted = !!(views && views.styles);
+  const sq = (u) => 1 / (1 + Math.exp(-u));
+  const sortMode = $("bank-sort") ? $("bank-sort").value : "rank";
+  if (sortMode === "number") rows.sort((x, y) => x.id - y.id);
+  else if (sortMode === "unsure") rows.sort((x, y) => (y.std || 0) - (x.std || 0));
+  else if (sortMode === "disagree") {
+    const d = (r) => {
+      const s = starsById.get(r.id) || 0;
+      return s === 0 ? -1 : Math.abs(sq(r.mean) * 5 - s);
+    };
+    rows.sort((x, y) => d(y) - d(x));
+  }
   const ORIGIN_GLYPH = { prior: "◇", refined: "⚡", edited: "✎", preset: "▤" };
+  const ORIGIN_TITLE = {
+    prior: "◇ sampled fresh from the grammar",
+    refined: "⚡ bred by evolution toward your taste",
+    edited: "✎ committed from your bench edits",
+    preset: "▤ hand-made preset",
+  };
   for (const r of rows) {
     const el = document.createElement("div");
     el.className = "bank-item" + (r.id === wb.subjectId ? " live" : "");
-    const frac = (r.mean - minU) / Math.max(1e-9, maxU - minU);
+    const frac = fitted ? sq(r.mean) : 0;
+    const lo = fitted ? sq(r.mean - (r.std || 0)) : 0;
+    const hi = fitted ? sq(r.mean + (r.std || 0)) : 0;
     const stars = starsById.get(r.id) || 0;
     const sig = r.sig || r.signature || "";
     el.setAttribute("role", "option");
@@ -1615,19 +2122,20 @@ function renderBank() {
     // it used to be a 60×4px sliver next to five stars.
     el.innerHTML = `
       <div class="bi-top">
-        <span class="bi-origin ${r.origin}" title="${r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
-        <span class="bi-name ${r.named ? "custom" : ""}" title="Double-click to rename">${r.name}</span>
+        <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
+        <span class="bi-name ${r.named ? "custom" : ""}" title="${sig ? `${sig} — ` : ""}double-click to rename">${r.name}</span>
         <span class="bi-id">#${r.id}</span>
       </div>
       ${sig ? `<div class="bi-sig mono">${sig}</div>` : ""}
       <div class="bi-row">
-        <button class="bi-hear" title="Audition phrase" aria-label="Audition ${r.name}">▶</button>
-        <span class="stars" role="radiogroup" aria-label="Rate ${r.name}">
+        <button class="bi-hear" title="Audition sample" aria-label="Audition ${r.name}">▶</button>
+        <span class="stars" role="group" aria-label="Rate ${r.name} — press 1 to 5 on the highlighted row">
         ${[1, 2, 3, 4, 5]
-          .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" role="radio" aria-checked="${stars === s}" aria-label="${s} star${s > 1 ? "s" : ""}">★</button>`)
+          .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}">★</button>`)
           .join("")}
         </span>
-        <span class="bi-u" title="How much the model thinks you'd like this"><i style="width:${Math.round(frac * 100)}%"></i></span>
+        <span class="bi-u${fitted ? "" : " nofit"}" title="${fitted ? `How much the model thinks you'd like this — the band is how sure it is` : "No prediction yet — teach it with a few picks"}">${fitted ? `<i style="width:${Math.round(frac * 100)}%"></i><b style="left:${Math.round(lo * 100)}%;width:${Math.max(1, Math.round((hi - lo) * 100))}%"></b>` : ""}</span>
+        ${fitted ? `<span class="bi-pct mono" title="Predicted appeal">${Math.round(frac * 100)}%</span>` : ""}
         <button class="bi-kill" title="Cut: teach the model you don't want this" aria-label="Cut ${r.name}">cut</button>
       </div>`;
     el.addEventListener("click", (e) => {
@@ -1700,6 +2208,23 @@ function renderBank() {
 
 // The bank is one tab stop, not 280. Before this, reaching the rack from the
 // menubar took ~287 Tab presses through unlabelled star buttons.
+$("bank-sort").onchange = () => renderBank();
+
+let bankFilter = "all";
+let bankRows = []; // the filtered, sorted rows the rail currently shows
+const lastBorn = new Set(); // ids born in the latest bred generation
+document.querySelectorAll(".bank-filters .bf").forEach((b) => {
+  b.setAttribute("aria-pressed", String(b.classList.contains("active")));
+  b.onclick = () => {
+    bankFilter = b.dataset.f;
+    document.querySelectorAll(".bank-filters .bf").forEach((x) => {
+      x.classList.toggle("active", x === b);
+      x.setAttribute("aria-pressed", String(x === b));
+    });
+    renderBank();
+  };
+});
+
 $("bank-list").addEventListener("keydown", (e) => {
   const rows = [...$("bank-list").querySelectorAll(".bank-item")];
   if (rows.length === 0) return;
@@ -1716,6 +2241,18 @@ $("bank-list").addEventListener("keydown", (e) => {
     e.preventDefault();
     const row = rows[cur < 0 ? 0 : cur];
     if (row) row.click();
+  } else if (/^[1-5]$/.test(e.key)) {
+    // Rate the highlighted row from the keyboard — the stars' whole
+    // keyboard path.
+    e.preventDefault();
+    e.stopPropagation(); // digit keys are evolve-view shortcuts elsewhere
+    const i = cur < 0 ? 0 : cur;
+    const target = bankRows[i];
+    if (target) {
+      starsById.set(target.id, Number(e.key));
+      send({ type: "record_stars", id: target.id, rating: Number(e.key) });
+      renderBank();
+    }
   }
 });
 
@@ -1734,19 +2271,23 @@ $("presets-btn").onclick = () => {
 
 function renderPresetsPop() {
   const pop = $("presets-pop");
-  pop.innerHTML = presetRows
-    .map(
-      (r) =>
-        `<button class="pp-item" data-i="${r.index}"><span class="pp-name">${r.name}</span><span class="pp-sig">${r.sig}</span></button>`
-    )
-    .join("");
+  pop.innerHTML =
+    `<div class="pp-head">presets — load one to hear it</div>` +
+    presetRows
+      .map(
+        (r) =>
+          `<button class="pp-item" data-i="${r.index}"><span class="pp-name">${r.name}</span><span class="pp-sig" title="topology signature — the modules in its chain">${r.sig}</span></button>`
+      )
+      .join("");
   pop.querySelectorAll(".pp-item").forEach((btn) => {
     btn.onclick = () => {
       pop.classList.add("hidden");
+      $("presets-btn").focus();
       send({ type: "load_preset", index: Number(btn.dataset.i) });
     };
   });
   pop.classList.remove("hidden");
+  pop.querySelector(".pp-item")?.focus();
 }
 
 document.addEventListener("click", (e) => {
@@ -1755,6 +2296,13 @@ document.addEventListener("click", (e) => {
   }
   if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn")) {
     $("ctx-menu").classList.add("hidden");
+  }
+  // One dismissal law for every popover: a click that is not inside it closes
+  // it. The ovf button used to stopPropagation, which kept THIS handler from
+  // ever seeing the click — so opening one popover left the other one up.
+  if (!e.target.closest(".ovf")) {
+    $("ovf-menu").classList.add("hidden");
+    $("ovf-btn").setAttribute("aria-expanded", "false");
   }
 });
 
@@ -1837,6 +2385,19 @@ function renderRack() {
   enable("lock-knobs", hasRack);
   enable("lock-structure", hasRack);
   enable("lock-clear", hasRack && wb.locks.size > 0);
+  // Preconditions on hover: `title` never fires on a disabled element, so
+  // the reason lives on the wrapper span.
+  const reason = (id, text) => {
+    const wrap = $(id)?.closest(".tt");
+    if (wrap) wrap.title = $(id).disabled ? text : "";
+  };
+  reason("rack-play", !hasRack ? "Pick a patch from the bank first" : "This patch failed the safety vet and is muted");
+  reason("rack-commit", !hasRack ? "Pick a patch from the bank first" : !wb.dirty ? "Nothing to commit — turn a knob first" : "This patch failed the safety vet");
+  reason("rack-evolve", "Pick a patch from the bank first");
+  reason("lock-knobs", "Pick a patch from the bank first");
+  reason("lock-structure", "Pick a patch from the bank first");
+  reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
+  renderSubject();
   if (!hasRack) { svg.innerHTML = ""; return; }
 
   buildRack(svg, wb.rack, {
@@ -1857,11 +2418,38 @@ function renderRack() {
   // lowercase and a `startsWith("ENV")` test silently never matches.
   ampPlateEl = $("rack-svg").querySelector('g[data-kind="amp"] .mod-plate');
 
-  const subjName = wb.subjectId != null ? nameOf(wb.subjectId) : "";
-  const sig = wb.subjectId != null ? sigOf(wb.subjectId) : "";
-  const subj = wb.subjectId != null ? `${subjName} (#${wb.subjectId})${wb.dirty ? " · edited" : ""}` : "";
-  const lockInfo = wb.locks.size ? ` · ${wb.locks.size} locked` : "";
-  $("rack-subject").textContent = `— ${subj}${sig ? ` · ${sig}` : ""}${lockInfo}${wb.vetOk ? "" : " · ⚠ MUTED"}`;
+}
+
+// The patch is the headline; its provenance is the caption. While a TEACH
+// candidate sounds, the header says so where the eye already is.
+function renderSubject() {
+  const nameEl = $("rack-subject");
+  const metaEl = $("rack-meta");
+  if (!nameEl || !metaEl) return;
+  if (hearingSide && currentDuel) {
+    const id = hearingSide === "a" ? currentDuel[0] : currentDuel[1];
+    nameEl.classList.add("hearing");
+    nameEl.textContent = `${rowOf(id) ? nameOf(id) : "…"} · candidate ${hearingSide.toUpperCase()}`;
+    metaEl.textContent =
+      benchBeforeAudition != null ? `← bench returns to ${nameOf(benchBeforeAudition)}` : "";
+    return;
+  }
+  nameEl.classList.remove("hearing");
+  const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  if (!hasRack || wb.subjectId == null) {
+    nameEl.textContent = "no patch loaded";
+    metaEl.textContent = "";
+    return;
+  }
+  nameEl.textContent = `${nameOf(wb.subjectId)}${wb.dirty ? " · edited" : ""}`;
+  metaEl.textContent = [
+    `#${wb.subjectId}`,
+    sigOf(wb.subjectId),
+    wb.locks.size ? `${wb.locks.size} locked` : "",
+    wb.vetOk ? "" : "⚠ muted",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 // Shared rack renderer: the interactive workbench and the read-only duel
@@ -2761,6 +3349,26 @@ function unstage(uid) {
   renderTray();
 }
 
+// The head node's own parameters, as a readable strip — the staged module
+// shows what it actually is, not just a name tag.
+function fragParamStrip(frag) {
+  const tag = nodeTag(frag);
+  const body = frag[tag] || {};
+  const parts = [];
+  let chain = 0;
+  for (const [k, v] of Object.entries(body)) {
+    if (v && typeof v === "object") { chain += subtreeSize(v); continue; }
+    if (v === "None") continue;
+    if (typeof v === "number") {
+      parts.push(`${k} ${v >= 1 || v <= -1 || Number.isInteger(v) ? v : `${Math.round(v * 100)}%`}`);
+    } else {
+      parts.push(`${k} ${String(v).toLowerCase()}`);
+    }
+  }
+  if (chain > 1) parts.push(`+${chain} in chain`);
+  return parts.join(" · ");
+}
+
 function renderTray() {
   const holder = $("tray-items");
   holder.innerHTML = "";
@@ -2771,7 +3379,13 @@ function renderTray() {
   for (const t of tray) {
     const el = document.createElement("div");
     el.className = "tray-item" + (t.isMod ? " mod" : "");
-    el.innerHTML = `<span class="t-jack" title="Drag onto a ${t.isMod ? "mod" : "in"} jack"></span><span>${t.label}</span><button class="t-x" title="Discard">✕</button>`;
+    el.innerHTML = `
+      <div class="ti-head">
+        <span class="t-jack" title="Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack"></span>
+        <span class="ti-name">${t.label}</span>
+        <button class="t-x" title="Discard">✕</button>
+      </div>
+      <div class="ti-params mono">${fragParamStrip(t.frag) || "—"}</div>`;
     el.querySelector(".t-x").onclick = () => unstage(t.uid);
     el.querySelector(".t-jack").addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
@@ -3137,6 +3751,55 @@ const CAPTIONS = {
   dir: "What each style listens for — learned directions in sound, not settings. Longer bar = stronger pull.",
   trust: "Should you believe it? Each dot is a bucket of forecasts: how confident it was, against how often it was right. On the line = honest.",
 };
+// While a chart is empty, the caption must describe the state on screen —
+// "longer bar = stronger pull" over a void promises a chart that isn't there.
+const EMPTY_CAPTIONS = {
+  map: "Your patches will map here by sound & structure — a few picks and it lights up.",
+  styles: "Your taste as separate styles. None on record yet.",
+  dir: "The sound qualities that pull you — brightness, roughness, attack. Nothing learned yet.",
+  trust: "Whether to believe the model. It forecasts every duel before your vote; the first 20 land here.",
+};
+
+const TRUST_MIN_N = 20;
+
+// Empty states are HTML, not canvas paint: selectable, with a real CTA, and
+// no two tabs identical.
+function renderEmptyState(tab) {
+  const holder = $("crt-empty");
+  if (!holder) return;
+  const n = status.observations;
+  const cn = engineCalib ? engineCalib.n : 0;
+  const skel = (rows, cls = "") =>
+    `<div class="ce-skel ${cls}" aria-hidden="true">${"<i></i>".repeat(rows)}</div>`;
+  const cta = `<button class="hw-btn small" id="ce-cta">Start ${FIT_EVERY} quick picks →</button>`;
+  const content = {
+    map: `
+      <div class="ce-title">nothing predicted yet</div>
+      <div class="ce-copy">Every patch you hear lands on this map. After your first
+      ${FIT_EVERY} picks the model fits, and the dots glow by how much it thinks
+      you'd like them.</div>
+      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+    styles: `${skel(3)}
+      <div class="ce-title">one lens, waiting</div>
+      <div class="ce-copy">Your taste gets up to five lenses as it splits — after a
+      dozen picks it can separate ambient-you from acid-you, and you can name
+      each one.</div>
+      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+    dir: `${skel(4, "dir")}
+      <div class="ce-title">nothing learned yet</div>
+      <div class="ce-copy">This shows which <i>qualities</i> pull you — brightness,
+      roughness, attack — not which knobs. Longer bar, stronger pull.</div>
+      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+    trust: `<div class="ce-trust-skel" aria-hidden="true"></div>
+      <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} forecasts</div>
+      <div class="ce-copy">Before every vote the model forecasts your pick. Dots land
+      here: forecast against outcome, and on the line means honest. Dots inside
+      their whisker are indistinguishable from honest.</div>${cta}`,
+  }[tab];
+  holder.innerHTML = content || "";
+  const btn = holder.querySelector("#ce-cta");
+  if (btn) btn.onclick = () => showView("evolve");
+}
 
 let mapHits = [];
 
@@ -3149,21 +3812,32 @@ function drawTaste() {
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
   drawGraticule(ctx, w, h, "rgba(255,180,84,0.06)");
-  $("taste-caption").textContent = CAPTIONS[tasteTab];
   renderStyleChips();
   mapHits = [];
 
   ctx.font = `${10 * dpr}px "IBM Plex Mono", monospace`;
   const noTaste = !views || !views.styles;
+  const empty = {
+    map: !(views && views.map && views.map.points && views.map.points.length),
+    styles: noTaste,
+    dir: noTaste,
+    trust: !(engineCalib && engineCalib.n >= TRUST_MIN_N),
+  }[tasteTab];
+  // MAP before the first fit: the dots are real (patches by sound) but the
+  // glow is not — draw the map AND overlay the pre-state invitation, so the
+  // caption never describes a prediction that doesn't exist yet.
+  const mapPrefit = tasteTab === "map" && !empty && noTaste;
+  $("taste-caption").textContent = (empty || mapPrefit ? EMPTY_CAPTIONS : CAPTIONS)[tasteTab];
+  $("crt-empty").classList.toggle("hidden", !empty && !mapPrefit);
+  $("crt-empty").classList.toggle("translucent", mapPrefit);
+  $("map-legend").classList.toggle("hidden", tasteTab !== "map" || empty || noTaste);
+  if (empty) return renderEmptyState(tasteTab);
+  if (mapPrefit) renderEmptyState("map");
+
   if (tasteTab === "map") drawMapTab(ctx, w, h, dpr);
   else if (tasteTab === "trust") drawTrustTab(ctx, w, h, dpr);
-  else if (tasteTab === "styles") {
-    if (noTaste) return drawNoTaste(ctx, w, h, dpr);
-    drawStylesTab(ctx, w, h, dpr);
-  } else {
-    if (noTaste) return drawNoTaste(ctx, w, h, dpr);
-    drawDirectionsTab(ctx, w, h, dpr);
-  }
+  else if (tasteTab === "styles") drawStylesTab(ctx, w, h, dpr);
+  else drawDirectionsTab(ctx, w, h, dpr);
 }
 
 function drawTrustFromEngine(ctx, w, h, dpr, E) {
@@ -3199,26 +3873,56 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
   for (const b of E.bins || []) {
     if (!b.n) continue;
     const r = (3 + 5 * Math.min(1, b.n / 12)) * dpr;
-    ctx.fillStyle = INK.amber;
+    const bx = sx(b.predicted);
+    // A bin of two forecasts plots far off the diagonal under a caption that
+    // says "on the line = honest" — without an interval, the user's correct
+    // inference is that the model is lying. Wilson 95% on the observed rate.
+    const z = 1.96;
+    const denom = 1 + (z * z) / b.n;
+    const centre = (b.observed + (z * z) / (2 * b.n)) / denom;
+    const half =
+      (z * Math.sqrt((b.observed * (1 - b.observed)) / b.n + (z * z) / (4 * b.n * b.n))) / denom;
+    ctx.strokeStyle = "rgba(255,180,84,0.4)";
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(bx, sy(Math.min(1, centre + half)));
+    ctx.lineTo(bx, sy(Math.max(0, centre - half)));
+    ctx.stroke();
     ctx.shadowColor = INK.amber;
     ctx.shadowBlur = 8 * dpr;
     ctx.beginPath();
-    ctx.arc(sx(b.predicted), sy(b.observed), r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(bx, sy(b.observed), r, 0, Math.PI * 2);
+    if (b.n >= 5) {
+      ctx.fillStyle = INK.amber;
+      ctx.fill();
+    } else {
+      // Too few forecasts to mean anything: hollow, recessed.
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = INK.amber;
+      ctx.lineWidth = 1.2 * dpr;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     ctx.shadowBlur = 0;
+    ctx.fillStyle = INK.amberDim;
+    ctx.textAlign = "left";
+    ctx.fillText(`n=${b.n}`, bx + r + 4 * dpr, sy(b.observed) + 3 * dpr);
   }
+  ctx.fillStyle = INK.amberDim;
+  ctx.textAlign = "left";
+  ctx.fillText("dots inside their whisker are indistinguishable from honest", x0, y0 + side + 84 * dpr);
 
   ctx.textAlign = "left";
   ctx.fillStyle = INK.silk;
   ctx.fillText(
-    `${E.n} forecasts · Brier ${E.brier.toFixed(3)} · ${Math.round(E.skill * 100)}% sharper than a coin flip`,
+    `${E.n} forecasts · Brier ${E.brier.toFixed(3)} · ${skillLine(E.skill, E.n)}`,
     x0, y0 + side + 48 * dpr
   );
   ctx.fillStyle = INK.amberDim;
   ctx.fillText(
-    E.check_n >= 3
-      ? `on ${E.check_n} unbiased check duels: ${Math.round(E.check_skill * 100)}% — this is the number to trust`
-      : "check duels (picked at random) are the unbiased measure — a few more and they'll show here",
+    E.check_n >= SKILL_MIN_N
+      ? `on ${E.check_n} unbiased check duels: ${skillLine(E.check_skill, E.check_n)} — this is the number to trust`
+      : `check duels (picked at random) are the unbiased measure — ${E.check_n} of ${SKILL_MIN_N} so far`,
     x0, y0 + side + 66 * dpr
   );
 }
@@ -3227,29 +3931,13 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
 // both the forecast and the *outcome*. There is deliberately no client-side
 // approximation: the obvious one — bin by forecast, plot the share above 0.5 —
 // scores the forecast against itself and draws a staircase no matter how
-// calibrated the model is.
+// calibrated the model is. Emptiness is decided in drawTaste (n >= 20).
 function drawTrustTab(ctx, w, h, dpr) {
-  const E = engineCalib;
-  if (E && E.n >= 3) return drawTrustFromEngine(ctx, w, h, dpr, E);
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "center";
-  ctx.fillText("NOT ENOUGH FORECASTS YET", w / 2, h / 2 - 8 * dpr);
-  ctx.fillText("— make a few more picks —", w / 2, h / 2 + 10 * dpr);
-  ctx.textAlign = "left";
-}
-
-
-function drawNoTaste(ctx, w, h, dpr) {
-  ctx.fillStyle = INK.amberDim;
-  ctx.textAlign = "center";
-  ctx.fillText("NO TASTE ON RECORD", w / 2, h / 2 - 8 * dpr);
-  ctx.fillText("— duel to teach it —", w / 2, h / 2 + 10 * dpr);
-  ctx.textAlign = "left";
+  drawTrustFromEngine(ctx, w, h, dpr, engineCalib);
 }
 
 function drawMapTab(ctx, w, h, dpr) {
   const map = views && views.map;
-  if (!map || !map.points || map.points.length === 0) return drawNoTaste(ctx, w, h, dpr);
   const pts = map.points;
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const pad = 34 * dpr;
@@ -3257,9 +3945,12 @@ function drawMapTab(ctx, w, h, dpr) {
   const [y0, y1] = [Math.min(...ys), Math.max(...ys)];
   const sx = (v) => pad + ((v - x0) / Math.max(1e-9, x1 - x0)) * (w - 2 * pad);
   const sy = (v) => pad + ((v - y0) / Math.max(1e-9, y1 - y0)) * (h - 2 * pad);
-  const us = pts.map((p) => p.utility);
-  const [u0, u1] = [Math.min(...us), Math.max(...us)];
-  const un = (u) => (u - u0) / Math.max(1e-9, u1 - u0);
+  // Absolute glow, same logistic map as the bank bar — min–max across the
+  // visible map made the least-liked dot always dark and the most-liked
+  // always bright, which the legend's absolute ramp contradicted. Pre-fit,
+  // every dot glows uniformly dim: no prediction, no gradient.
+  const fitted = !!(views && views.styles);
+  const un = fitted ? (u) => 1 / (1 + Math.exp(-u)) : () => 0.35;
 
   const draw = (p) => {
     const cx = sx(p.x), cy = sy(p.y);
@@ -3289,7 +3980,19 @@ function drawMapTab(ctx, w, h, dpr) {
         ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
         ctx.stroke();
       }
-      mapHits.push({ x: cx, y: cy, id: p.id });
+      mapHits.push({ x: cx, y: cy, id: p.id, u01: fitted ? glow : null });
+      if (p.id === mapCursorId) {
+        // Keyboard cursor: dashed ring, distinct from the solid subject ring.
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = INK.amber;
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 5 * dpr, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     } else {
       ctx.shadowBlur = 0;
       ctx.globalAlpha = 0.16 + 0.2 * glow;
@@ -3307,12 +4010,9 @@ function drawMapTab(ctx, w, h, dpr) {
   ctx.fillStyle = INK.amberDim;
   ctx.textAlign = "left";
   ctx.fillText(
-    `axes = sound-space PCA · ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of variance`,
+    `axes = sound-space PCA · ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of variance · ${pts.filter((p) => p.id != null).length} patches`,
     10 * dpr, h - 8 * dpr
   );
-  if (!views.styles) {
-    ctx.fillText("glow appears after the first fit", 10 * dpr, 14 * dpr);
-  }
 }
 
 function activeStyles() {
@@ -3369,7 +4069,12 @@ function drawStylesTab(ctx, w, h, dpr) {
 
 function drawDirectionsTab(ctx, w, h, dpr) {
   const styles = activeStyles().filter((s) => s.share >= 0.08);
-  if (styles.length === 0) return drawNoTaste(ctx, w, h, dpr);
+  if (styles.length === 0) {
+    // Fitted, but every lens is idle — show the pre-state, not a void.
+    $("taste-caption").textContent = EMPTY_CAPTIONS.dir;
+    $("crt-empty").classList.remove("hidden");
+    return renderEmptyState("dir");
+  }
   const chosen = new Map();
   for (const s of styles) {
     [...s.theta]
@@ -3449,6 +4154,89 @@ $("taste-crt").addEventListener("click", (ev) => {
     note(`${nameOf(best.id)} selected — it's on the workbench and under your fingers`);
     bankScrollTo = best.id;
   }
+});
+
+// The dots are clickable and the surface should say so: pointer cursor over a
+// hit, plus a tooltip naming the patch.
+let mapTipEl = null;
+
+function hideMapTip() {
+  if (mapTipEl) {
+    mapTipEl.remove();
+    mapTipEl = null;
+  }
+}
+
+function mapHitAt(ev) {
+  const canvas = $("taste-crt");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const x = (ev.clientX - rect.left) * dpr;
+  const y = (ev.clientY - rect.top) * dpr;
+  let best = null;
+  let bestD = 12 * dpr;
+  for (const hit of mapHits) {
+    const d = Math.hypot(hit.x - x, hit.y - y);
+    if (d < bestD) { bestD = d; best = hit; }
+  }
+  return best;
+}
+
+$("taste-crt").addEventListener("pointermove", (ev) => {
+  const canvas = $("taste-crt");
+  if (tasteTab !== "map" || mapHits.length === 0) {
+    canvas.classList.remove("hit");
+    return hideMapTip();
+  }
+  const best = mapHitAt(ev);
+  canvas.classList.toggle("hit", !!best);
+  if (!best) return hideMapTip();
+  if (!mapTipEl) {
+    mapTipEl = document.createElement("div");
+    mapTipEl.className = "map-tip";
+    document.body.appendChild(mapTipEl);
+  }
+  const r = rowOf(best.id);
+  mapTipEl.innerHTML =
+    `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to open on the bench</div>`;
+  mapTipEl.children[0].textContent = r ? r.name : `#${best.id}`;
+  mapTipEl.children[1].textContent = r ? r.sig || r.signature || "" : "";
+  mapTipEl.children[2].textContent =
+    best.u01 != null ? `would like: ${Math.round(best.u01 * 100)}%` : "no prediction yet";
+  // Clamp to the viewport — unclamped, the tooltip clips at the right edge.
+  mapTipEl.style.left = `${Math.min(ev.clientX + 14, window.innerWidth - 250)}px`;
+  mapTipEl.style.top = `${Math.min(ev.clientY + 12, window.innerHeight - 90)}px`;
+});
+$("taste-crt").addEventListener("pointerleave", () => {
+  $("taste-crt").classList.remove("hit");
+  hideMapTip();
+});
+
+// Keyboard traversal of the map: arrows step the dashed cursor in x-order,
+// Enter opens the patch on the bench.
+let mapCursorId = null;
+$("taste-crt").addEventListener("keydown", (e) => {
+  if (tasteTab !== "map" || mapHits.length === 0) return;
+  const sorted = [...mapHits].sort((p, q) => p.x - q.x);
+  const i = sorted.findIndex((hh) => hh.id === mapCursorId);
+  if (e.key === "Enter") {
+    if (mapCursorId != null) {
+      e.preventDefault();
+      bankScrollTo = mapCursorId;
+      openOnBench(mapCursorId);
+      note(`${nameOf(mapCursorId)} selected — it's on the workbench and under your fingers`);
+    }
+    return;
+  }
+  let j = null;
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(sorted.length - 1, i + 1);
+  else if (e.key === "ArrowLeft" || e.key === "ArrowUp") j = i < 0 ? 0 : Math.max(0, i - 1);
+  else if (e.key === "Home") j = 0;
+  else if (e.key === "End") j = sorted.length - 1;
+  if (j == null) return;
+  e.preventDefault();
+  mapCursorId = sorted[j].id;
+  drawTaste();
 });
 
 // ---------- lineage ----------
@@ -3543,6 +4331,27 @@ $("import-input").onchange = async (e) => {
   if (file) send({ type: "import", json: await file.text() });
 };
 
+// The warm start stays reachable after a skip, and the profile can start
+// over — previously the only reset was clearing site data by hand.
+$("warm-rerun-btn").onclick = () => openWarmStart();
+$("taste-reset-btn").onclick = () => {
+  alarm("Reset the taste profile? Every pick, star and generation is forgotten.", {
+    label: "reset it",
+    run: async () => {
+      clearTimeout(saveTimer); // a pending autosave would rewrite the record
+      await idbDel("state");
+      for (const k of ["ricercar-warmed", "ricercar-warm-deferred", "ricercar-warm-reoffered", "ricercar-played", "ricercar-bench-tour"])
+        localStorage.removeItem(k);
+      location.reload();
+    },
+  });
+  const keep = document.createElement("button");
+  keep.className = "toast-undo";
+  keep.textContent = "keep it";
+  keep.onclick = () => alarm(null);
+  $("alarm").appendChild(keep);
+};
+
 // ---------- patch share (single-patch files) ----------
 $("patch-export-btn").onclick = () => {
   if (!wb.tree) return note("nothing on the bench to export");
@@ -3616,11 +4425,8 @@ function renderFillHint() {
   const ranked = (views && views.ranked) || [];
   const shown = ranked.filter((r) => !cutIds.has(r.id)).length;
   const arriving = Math.max(0, fillTarget - fillPool);
-  el.textContent = shown
-    ? `${shown} patches${arriving ? ` · ${arriving} arriving` : ""}`
-    : arriving
-      ? `${arriving} arriving`
-      : "";
+  el.textContent = shown ? `${shown}${arriving ? ` +${arriving}` : ""}` : arriving ? `+${arriving}` : "";
+  el.title = `${shown} patches in the bank${arriving ? ` — ${arriving} more arriving` : ""}`;
 }
 
 function bootField(pool, target) {
@@ -3698,16 +4504,20 @@ function renderWarmStart(rows) {
   $("warmstart").classList.remove("hidden");
 }
 
-function closeWarmStart() {
+function closeWarmStart(mark = true) {
   $("warmstart").classList.add("hidden");
-  localStorage.setItem("ricercar-warmed", "1");
+  if (mark) localStorage.setItem("ricercar-warmed", "1");
 }
 
 $("warm-skip").onclick = () => {
   // Straight to the instrument. Stacking the help dialog behind this one made
   // the first thing a new user did be dismissing two modals in a row; the
   // keymap is one click away in ⋯ and the next-step chip says what to do.
-  closeWarmStart();
+  // A skip DEFERS the warm start rather than destroying it — it is the
+  // highest-value-per-second elicitation in the product, so it is re-offered
+  // once after a few duels and stays reachable from the ⋯ menu.
+  closeWarmStart(false);
+  localStorage.setItem("ricercar-warm-deferred", "1");
   localStorage.setItem("ricercar-helped", "1");
   note("Press a key to hear it. The ⋯ menu has the full keyboard map.");
 };
@@ -3746,11 +4556,11 @@ function warmPresetLoaded(index, id) {
 }
 
 // ---------- overflow menu ----------
-$("ovf-btn").onclick = (e) => {
-  e.stopPropagation();
+$("ovf-btn").onclick = () => {
   const menu = $("ovf-menu");
   const open = menu.classList.toggle("hidden");
   $("ovf-btn").setAttribute("aria-expanded", String(!open));
+  if (!open) menu.querySelector(".ovf-item")?.focus();
 };
 $("ovf-menu").addEventListener("click", (e) => {
   if (e.target.closest("button, label")) {
@@ -3777,6 +4587,7 @@ function showHelp(on) {
   }
 }
 $("help-btn").onclick = () => showHelp(true);
+$("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {
   showHelp(false);
   localStorage.setItem("ricercar-helped", "1");
@@ -3966,8 +4777,10 @@ bootMidi();
     if (saved.ui.vol != null) {
       volume = saved.ui.vol;
       $("vol").value = volume;
+      master.gain.value = volume;
+      renderVolVal();
     }
-    if (saved.ui.oct != null) { octShift = saved.ui.oct; paintHints(); }
+    if (saved.ui.oct != null) { octShift = saved.ui.oct; buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     applyPerfUi();
   }

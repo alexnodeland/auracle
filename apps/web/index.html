@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=24">
+<link rel="stylesheet" href="style.css?b=25">
 </head>
 <body>
 <div class="app">
@@ -25,6 +25,7 @@
       <span class="counter" title="A/B picks you've made — this is what the model learns from"><span class="counter-label">picks</span> <span id="duel-count">0</span></span>
       <span class="counter" title="Generations bred toward your taste"><span class="counter-label">gen</span> <span id="gen-count">0</span></span>
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
+      <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
         <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, profile &amp; help">⋯</button>
         <div class="ovf-menu hidden" id="ovf-menu" role="menu">
@@ -33,6 +34,9 @@
           <div class="ovf-sep"></div>
           <button id="patch-export-btn" class="ovf-item" role="menuitem">Export this patch</button>
           <label class="ovf-item" role="menuitem" tabindex="0">Import a patch<input id="patch-import-input" type="file" accept=".json" hidden></label>
+          <div class="ovf-sep"></div>
+          <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
+          <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset taste profile…</button>
           <div class="ovf-sep"></div>
           <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
         </div>
@@ -45,9 +49,22 @@
 
     <aside class="bank">
       <div class="bank-head">
-        <span class="panel-label">patch bank</span>
+        <span class="panel-label">bank</span>
         <span class="silk-dim mono" id="bank-count"></span>
+        <select id="bank-sort" class="perf-sel" title="Sort the bank" aria-label="Sort the bank">
+          <option value="rank" selected>liked</option>
+          <option value="number">number</option>
+          <option value="unsure">unsure</option>
+          <option value="disagree">disagrees</option>
+        </select>
         <button class="util-btn" id="presets-btn" title="Load a hand-made preset — a quick way to seed your taste">presets</button>
+      </div>
+      <div class="bank-filters" role="group" aria-label="Filter the bank">
+        <button class="bf active" data-f="all" title="Everything in the pool">all</button>
+        <button class="bf" data-f="starred" title="Patches you starred — your saves">saved</button>
+        <button class="bf" data-f="gen" title="Born in the latest bred generation">new</button>
+        <button class="bf" data-f="preset" title="Hand-made presets you loaded">presets</button>
+        <button class="bf" data-f="edited" title="Patches you committed from the bench">edits</button>
       </div>
       <div class="presets-pop hidden" id="presets-pop"></div>
       <div class="bank-list" id="bank-list" role="listbox" aria-label="Patch bank" tabindex="0">
@@ -60,20 +77,31 @@
       <!-- ------------- PLAY: the patch is the instrument ------------- -->
       <section id="view-play" class="view" role="tabpanel" aria-label="Play">
         <div class="stage-toolbar">
-          <span class="panel-label">patch <span class="silk-dim" id="rack-subject">— none loaded</span></span>
+          <div class="subject-block">
+            <div class="subject-name" id="rack-subject">no patch loaded</div>
+            <div class="subject-meta" id="rack-meta"></div>
+          </div>
           <button class="nextstep" id="nextstep" title="What to do next"></button>
           <div class="rack-tools">
-            <button class="util-btn" id="rack-play" disabled title="Audition the standard 3-note phrase">▶ phrase</button>
+            <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="rack-play" disabled>▶ sample</button></span>
             <label class="toggle" title="When committed, also teach the model that your edit beat the original">
               <input type="checkbox" id="improve-check"><span>my edit is better</span>
             </label>
-            <button class="util-btn" id="rack-commit" disabled title="Save the edited patch into the bank">commit</button>
+            <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn" id="rack-commit" disabled>commit</button></span>
             <span class="tool-sep"></span>
-            <button class="util-btn" id="lock-knobs" disabled title="Lock every knob (evolution may only rewire)">lock knobs</button>
-            <button class="util-btn" id="lock-structure" disabled title="Lock the wiring &amp; module choice (evolution may only turn knobs)">lock wiring</button>
-            <button class="util-btn" id="lock-clear" disabled title="Release every lock">clear locks</button>
-            <button class="util-btn amber" id="rack-evolve" disabled title="Evolve everything except the locked controls, seeded from this patch">⚡ evolve from this</button>
+            <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-knobs" disabled>lock knobs</button></span>
+            <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-structure" disabled>lock wiring</button></span>
+            <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn" id="lock-clear" disabled>clear locks</button></span>
+            <span class="tt" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
           </div>
+        </div>
+        <div class="bench-tour hidden" id="bench-tour">
+          <span class="bt-copy">This patch is live under your fingers. <b>Drag a knob</b> — the
+            sound changes instantly. Click a <b>lock dot</b> (hover a knob) or a module's <b>▢</b>
+            to pin what you love, then <b>⚡ evolve from this</b> breeds variations that keep your
+            locks. Made it better by hand? Tick <b>my edit is better</b> and <b>commit</b> — that
+            teaches the model too.</span>
+          <button class="util-btn" id="bt-close">got it</button>
         </div>
         <div class="play-body">
           <div class="play-canvas">
@@ -95,7 +123,11 @@
               <div class="nb-grid" id="nb-audio"></div>
               <div class="nb-sect amber">modulation</div>
               <div class="nb-grid" id="nb-mod"></div>
-              <p class="nb-hint">Click to stage a module in the tray, then drag its <b>out ●</b> onto any <b>in ○</b> jack. Green wires carry audio; amber wires carry modulation — the jacks only accept matching cables.</p>
+              <p class="nb-hint">Click a module, then drag its <b>●</b> onto a <b>○</b>.</p>
+              <div class="nb-legend" aria-hidden="true">
+                <span class="lg-row"><i class="lg-swatch"></i>audio</span>
+                <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
+              </div>
             </div>
           </aside>
         </div>
@@ -112,6 +144,7 @@
           <button class="util-btn" id="pd-pick-a" title="Vote: A wins">pick a</button>
           <button class="util-btn" id="pd-pick-b" title="Vote: B wins">pick b</button>
           <button class="util-btn" id="pd-skip" title="Deal a different pair" aria-label="Deal a different pair">↻</button>
+          <button class="util-btn" id="pd-back" title="Stop auditioning — reload the bench patch">← bench</button>
           <span class="pd-pred" id="pd-pred"></span>
         </div>
       </section>
@@ -125,7 +158,10 @@
             <div class="teach-pips" id="teach-pips" aria-hidden="true"></div>
             <div class="teach-copy" id="teach-copy">Play both. Keep the one you’d reach for.</div>
           </div>
-          <div class="mono duel-pred" id="duel-pred" title="The model's forecast, made before your vote"></div>
+          <div class="duel-centre">
+            <div class="mono duel-pred" id="duel-pred" title="The model's forecast, made before your vote"></div>
+            <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
+          </div>
           <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste">evolve pool</button>
         </div>
         <div class="duel-row">
@@ -141,7 +177,7 @@
             </div>
             <div class="readout mono" id="readout-a">—</div>
             <div class="duel-controls">
-              <button class="hw-btn play" id="play-a">▶ phrase <kbd>1</kbd></button>
+              <button class="hw-btn play" id="play-a">▶ sample <kbd>1</kbd></button>
               <button class="hw-btn promote" id="promote-a" title="Open on the workbench to edit, lock, and evolve">⌖ bench</button>
               <button class="hw-btn choose" id="choose-a">choose a <kbd>←</kbd></button>
             </div>
@@ -151,7 +187,6 @@
               <div class="duel-name" id="name-b">candidate b</div>
               <span class="style-badge mono" id="style-b"></span>
               <button class="inspect-btn" id="flip-b" title="Flip: waveform ⇄ circuit">⇄ circuit</button>
-              <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
             </div>
             <canvas class="scope" id="scope-b"></canvas>
             <div class="mini-rack hidden" id="mini-b">
@@ -159,7 +194,7 @@
             </div>
             <div class="readout mono" id="readout-b">—</div>
             <div class="duel-controls">
-              <button class="hw-btn play" id="play-b">▶ phrase <kbd>2</kbd></button>
+              <button class="hw-btn play" id="play-b">▶ sample <kbd>2</kbd></button>
               <button class="hw-btn promote" id="promote-b" title="Open on the workbench to edit, lock, and evolve">⌖ bench</button>
               <button class="hw-btn choose" id="choose-b">choose b <kbd>→</kbd></button>
             </div>
@@ -187,7 +222,14 @@
           <p class="caption" id="taste-caption"></p>
         </div>
         <div class="style-chips hidden" id="style-chips"></div>
-        <div class="crt-wrap"><canvas class="crt" id="taste-crt"></canvas></div>
+        <div class="crt-wrap">
+          <canvas class="crt" id="taste-crt" tabindex="0" role="application" aria-label="Taste map — arrow keys step between patches, Enter opens one on the bench"></canvas>
+          <div class="map-legend hidden" id="map-legend" aria-hidden="true">
+            <span class="ml-ramp-wrap">less <i class="ml-ramp"></i> would like</span>
+            <span class="ml-ring"><i class="sm"></i> sure · <i class="lg"></i> unsure</span>
+          </div>
+          <div class="crt-empty hidden" id="crt-empty"></div>
+        </div>
       </section>
 
     </main>
@@ -197,30 +239,30 @@
   <footer class="keybar">
     <div class="key-side">
       <div class="ctl-grid">
-        <button class="util-btn sq" id="oct-down" title="Octave down (Z)" aria-label="Octave down">−</button>
-        <span class="mono" id="oct-label">oct 0</span>
-        <button class="util-btn sq" id="oct-up" title="Octave up (X)" aria-label="Octave up">+</button>
+        <button class="util-btn sq" id="oct-down" data-kbd="z" title="Octave down (Z)" aria-label="Octave down">−</button>
+        <span class="mono" id="oct-label" title="Octave shift — Z down, X up">a = C4</span>
+        <button class="util-btn sq" id="oct-up" data-kbd="x" title="Octave up (X)" aria-label="Octave up">+</button>
         <button class="util-btn sq" id="panic-btn" title="Silence all voices" aria-label="Panic — silence all voices">◼</button>
         <button class="util-btn" id="hold-btn" title="Latch held notes">hold</button>
         <button class="util-btn" id="uni-btn" title="Unison: all 4 voices on one note, detuned wide">uni</button>
         <button class="util-btn" id="arp-btn" title="Arpeggiator: hold a chord, it plays the pattern">arp</button>
       </div>
-      <div class="perf-ctl">
-        <select id="arp-mode" class="perf-sel" title="Arp pattern" aria-label="Arp pattern">
+      <div class="perf-ctl idle" id="arp-ctl">
+        <span class="pc"><span class="pc-cap">pattern</span><select id="arp-mode" class="perf-sel" title="Arp pattern" aria-label="Arp pattern">
           <option value="0">up</option><option value="1">down</option>
           <option value="2">up·dn</option><option value="3">rnd</option>
-        </select>
-        <select id="arp-div" class="perf-sel" title="Arp rate (steps per beat)" aria-label="Arp rate">
+        </select></span>
+        <span class="pc"><span class="pc-cap">rate</span><select id="arp-div" class="perf-sel" title="Arp rate (steps per beat)" aria-label="Arp rate">
           <option value="1">1/4</option><option value="2" selected>1/8</option>
           <option value="4">1/16</option><option value="3">1/8t</option>
-        </select>
-        <input type="number" id="bpm" class="perf-num" min="30" max="300" value="120" title="Tempo (BPM)" aria-label="Tempo in BPM">
-        <select id="arp-oct" class="perf-sel" title="Arp octave range" aria-label="Arp octave range">
+        </select></span>
+        <span class="pc"><span class="pc-cap">tempo</span><input type="number" id="bpm" class="perf-num" min="30" max="300" value="120" title="Tempo (BPM)" aria-label="Tempo in BPM"></span>
+        <span class="pc"><span class="pc-cap">range</span><select id="arp-oct" class="perf-sel" title="Arp octave range" aria-label="Arp octave range">
           <option value="1">1 oct</option><option value="2">2 oct</option>
           <option value="3">3 oct</option><option value="4">4 oct</option>
-        </select>
-        <label class="perf-glide mono" title="Arp gate length">gate<input type="range" id="arp-gate" min="0.05" max="1" step="0.05" value="0.5" aria-label="Arp gate length"></label>
-        <label class="perf-glide mono" title="Arp swing">swg<input type="range" id="arp-swing" min="0" max="0.7" step="0.05" value="0" aria-label="Arp swing"></label>
+        </select></span>
+        <span class="pc"><span class="pc-cap">gate</span><label class="perf-glide mono" title="Arp gate length"><input type="range" id="arp-gate" min="0.05" max="1" step="0.05" value="0.5" aria-label="Arp gate length"><span class="pc-val" id="arp-gate-val">50%</span></label></span>
+        <span class="pc"><span class="pc-cap">swing</span><label class="perf-glide mono" title="Arp swing"><input type="range" id="arp-swing" min="0" max="0.7" step="0.05" value="0" aria-label="Arp swing"><span class="pc-val" id="arp-swing-val">0%</span></label></span>
       </div>
     </div>
     <div class="piano" id="piano" role="group" aria-label="Musical keyboard"></div>
@@ -231,7 +273,7 @@
         <span class="mono midi-ind" id="midi-ind" title="MIDI input">midi —</span>
       </div>
       <div class="live-label mono" id="live-label">no patch</div>
-      <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" title="Volume" aria-label="Master volume">
+      <label class="perf-glide mono" title="Master volume — live keys and every ▶ audition">vol<input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>
     </div>
   </footer>
 </div>
@@ -270,7 +312,8 @@
       <div>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
-        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote</p>
+        <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the highlighted bank row</p>
+        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a vote</p>
         <div class="help-h">performance</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> is portamento · <b>● rec</b> bounces your playing to a WAV</p>
         <p>A MIDI keyboard just works: velocity, pitch bend, sustain pedal.</p>
@@ -281,7 +324,10 @@
         <p>Stage modules from the <b>node bank</b>, then drag the tray jack onto a matching <b>in</b>/<b>mod</b> jack. Drag a wired <b>in</b> jack off to unplug into the tray.</p>
         <div class="help-h">teaching it</div>
         <p>Pick between pairs in EVOLVE (or the quick-pick strip in PLAY). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them.</p>
-        <p>Everything autosaves. <b>Export this patch</b> shares one patch as a file.</p>
+        <p>The bank holds 40: each bred patch replaces the one the model thinks
+        you like <i>least</i>. <b>★</b> marks your saves (filter the bank by ★ saved);
+        <b>Export this patch</b> is the safe copy on disk.</p>
+        <p>Everything autosaves.</p>
       </div>
     </div>
     <button class="hw-btn small" id="help-close">got it</button>
@@ -300,6 +346,6 @@
   </div>
 </section>
 
-<script type="module" src="main.js?b=24"></script>
+<script type="module" src="main.js?b=25"></script>
 </body>
 </html>

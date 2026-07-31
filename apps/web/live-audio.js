@@ -195,7 +195,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
 registerProcessor("ricercar-voice", EvoVoiceProcessor);
 `;
 
-export async function initLiveAudio(audioCtx, build) {
+export async function initLiveAudio(audioCtx, build, dest) {
   const glue = await (await fetch(`./pkg/ricercar_wasm.js?v=${build}`)).text();
   const inlined = glue
     .replace(/^export class /gm, "class ")
@@ -221,7 +221,7 @@ export async function initLiveAudio(audioCtx, build) {
   analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0.6;
   node.connect(analyser);
-  node.connect(gain).connect(audioCtx.destination);
+  node.connect(gain).connect(dest || audioCtx.destination);
   node.port.postMessage({ type: "init", bytes }, [bytes]);
 
   return {
@@ -261,7 +261,9 @@ export async function initLiveAudio(audioCtx, build) {
       node.port.postMessage({ type: "rec", on });
     },
     setVolume(v) {
-      gain.gain.value = v;
+      // A step assignment zippers audibly while notes sound; a 10ms time
+      // constant is inaudible as a lag and silent as an artifact.
+      gain.gain.setTargetAtTime(v, audioCtx.currentTime, 0.01);
     },
   };
 }
