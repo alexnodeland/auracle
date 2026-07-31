@@ -11,6 +11,7 @@ for "to seek". Built on [fugue-evo](https://github.com/alexnodeland/fugue-evo)
 Formerly known as EvoSynth.*
 
 [![CI](https://github.com/alexnodeland/ricercar/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/ricercar/actions/workflows/ci.yml)
+[![Pages](https://github.com/alexnodeland/ricercar/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/ricercar/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
 
@@ -38,8 +39,9 @@ generating patches in your style, and able to say why.
 
 ## 🚧 Project Status
 
-Ricercar is **pre-1.0 and under active development**. There are no published
-releases of Ricercar itself — build and run it locally (one clone; its
+Ricercar is **pre-1.0 and under active development**. The live build at
+[alexnodeland.github.io/ricercar](https://alexnodeland.github.io/ricercar/)
+always tracks `main`; you can also build and run it locally (one clone; its
 foundations come from crates.io). The instrument is fully playable and the
 taste loop is closed, but the public API and the save format may change
 between commits without notice.
@@ -116,7 +118,11 @@ Two loops around one observation stream:
 
 ## 🚀 Quick Start
 
-Ricercar's foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
+**Play it in the browser: https://alexnodeland.github.io/ricercar/** — every
+push to `main` builds the wasm engine and deploys the instrument to GitHub
+Pages. Nothing to install; your bank and taste model live in your browser.
+
+To build it yourself: Ricercar's foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
 [`fugue-ppl`](https://crates.io/crates/fugue-ppl),
 [`fugue-evo`](https://crates.io/crates/fugue-evo)) come from crates.io — one
 clone is all you need:

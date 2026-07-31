@@ -6,7 +6,7 @@ CARGO := cargo
 WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
 
 .PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
-        wasm serve doc bundle clean
+        wasm serve doc bundle site clean
 
 all: check
 
@@ -52,6 +52,13 @@ bundle: wasm
 	cp -r apps/web/. dist/ricercar-web/
 	printf '# Running Ricercar\n\nPrebuilt web instrument — serve statically and open the URL:\n\n    python3 serve.py    # -> http://localhost:8642\n' > dist/ricercar-web/RUNNING.md
 	cd dist && zip -qr ricercar-web.zip ricercar-web
+
+## site: what the Pages workflow publishes — site/ served at any subpath
+site: wasm
+	rm -rf site && mkdir -p site
+	cp -r apps/web/. site/
+	rm -f site/serve.py
+	touch site/.nojekyll
 
 doc:
 	$(CARGO) doc --workspace --no-deps --open
