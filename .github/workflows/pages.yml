@@ -1,0 +1,74 @@
+name: Pages
+
+# Publishes the web instrument to GitHub Pages. The app is fully static and
+# every asset path in apps/web is relative, so it runs unchanged from the
+# project subpath (…github.io/ricercar/) — no base-href rewriting needed.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer main supersedes an in-flight one, but never
+# cancels a run that is already mid-deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build wasm engine
+        run: wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
+
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r apps/web/. site/
+          # serve.py is for local development; Pages is the server here.
+          rm -f site/serve.py
+          # Ship the wasm/glue as-is: Pages must not run the artifact through
+          # Jekyll, which would drop the underscore-prefixed wasm-bindgen files.
+          touch site/.nojekyll
+
+      # `enablement` is a no-op here (Pages is already set to the Actions
+      # source) but makes the workflow self-bootstrapping in a fresh fork.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
