@@ -95,6 +95,13 @@ to a pinned `role="alert"` strip that stays until resolved.
   content. The one exception is loud: a job retired after two attempts logs a
   console warning.
 
+- **Handheld gate**: a coarse pointer with a min viewport dimension under
+  620px never boots the engine at all — an inline check in `index.html`
+  injects `main.js` only when it passes, and otherwise shows a stand-in
+  screen asking for a desktop. Gating *before* the script tag is the point:
+  a phone would otherwise pay for 40 renders it can't display. `look around
+  anyway` sets a session flag and reloads past it. A real handheld layout is
+  still to be built.
 - **main.js** is UI + WebAudio: audition plays pre-rendered, LUFS-normalized
   buffers transferred from the worker (never a live unvetted patch —
   DESIGN.md §2.1). Green phosphor = audio; amber = the model's mind.

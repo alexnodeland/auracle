@@ -2106,3 +2106,93 @@ input[type="range"]::-moz-range-thumb {
 .map-legend .ml-ring i { display: inline-block; border: 1px solid var(--phos-b-dim); border-radius: 50%; }
 .map-legend .ml-ring .sm { width: 7px; height: 7px; }
 .map-legend .ml-ring .lg { width: 13px; height: 13px; }
+
+/* ===================== handheld gate =====================
+   Shown only when the early script in index.html sets html.handheld, which
+   also means main.js never loaded — so this screen is the whole page, and it
+   is plain CSS with no engine behind it. Hide, don't just cover: the app
+   shell and boot overlay would otherwise sit under it half-built. */
+.handheld-gate { display: none; }
+html.handheld .app,
+html.handheld #boot,
+html.handheld #warmstart,
+html.handheld #help,
+html.handheld #wire-overlay { display: none !important; }
+/* The app is a fixed, non-scrolling instrument (html, body { overflow: hidden }).
+   This screen is a document — it has to scroll on a phone in landscape. */
+html.handheld, html.handheld body { height: auto; min-height: 100%; overflow: visible; }
+html.handheld .handheld-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--s5) var(--s4);
+  background:
+    radial-gradient(ellipse at 50% 26%, #14110a 0%, var(--rack) 72%);
+}
+.hg-card {
+  width: min(420px, 100%);
+  text-align: center;
+  padding: 32px 24px 24px;
+}
+.hg-card .boot-word { font-size: var(--t-title); }
+.hg-lede {
+  margin-top: var(--s4);
+  font-family: var(--font-voice);
+  font-size: var(--t-lead);
+  line-height: 1.45;
+  color: var(--silk);
+}
+/* The teaser: the loop, three beats, no feature list. */
+.hg-loop {
+  list-style: none;
+  margin: var(--s5) 0 0;
+  display: grid;
+  gap: var(--s2);
+  text-align: left;
+  font-size: var(--t-body);
+  color: var(--phos-a-dim);
+}
+.hg-loop li { display: flex; align-items: center; gap: var(--s2); }
+.hg-loop .hg-n {
+  flex: none;
+  width: 18px; height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--phos-a-deep);
+  border-radius: 50%;
+  font-size: var(--t-micro);
+  color: var(--phos-a);
+}
+.hg-rule {
+  height: 1px;
+  margin: var(--s5) 0 var(--s4);
+  background: linear-gradient(90deg, transparent, var(--hairline) 20%, var(--hairline) 80%, transparent);
+}
+.hg-ask {
+  font-size: var(--t-body);
+  line-height: 1.5;
+  color: var(--silk-dim);
+}
+.hg-ask b { color: var(--phos-b); font-weight: 500; }
+.hg-soon {
+  margin-top: var(--s3);
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  color: var(--silk-mute);
+}
+/* Deliberately quiet — it leads somewhere that doesn't work well yet. */
+.hg-anyway {
+  margin-top: var(--s5);
+  padding: 8px 12px;
+  min-height: 34px;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  color: var(--silk-mute);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.hg-anyway:active { color: var(--silk-dim); }

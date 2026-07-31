@@ -7,7 +7,33 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=25">
+<link rel="stylesheet" href="style.css?b=26">
+<!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
+     under ~1000px with a coarse pointer there is no honest way to show it, so
+     we say so instead of shipping a broken one. This runs before anything
+     else because the point is to NOT boot the engine on a phone: main.js is
+     injected below only when the gate lets us through. -->
+<script>
+(function () {
+  var forced = false;
+  try { forced = sessionStorage.getItem("ricercar-anyway") === "1"; } catch (e) {}
+  var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  var handheld = !forced && coarse && Math.min(window.innerWidth, window.innerHeight) < 620;
+  if (handheld) {
+    document.documentElement.className += " handheld";
+    // Rotating a phone to landscape doesn't earn you the instrument, but an
+    // Android tablet that crosses the threshold has: re-run the check once.
+    window.addEventListener("resize", function () {
+      if (Math.min(window.innerWidth, window.innerHeight) >= 620) location.reload();
+    });
+  } else {
+    var s = document.createElement("script");
+    s.type = "module";
+    s.src = "main.js?b=26";
+    document.head.appendChild(s);
+  }
+})();
+</script>
 </head>
 <body>
 <div class="app">
@@ -334,6 +360,34 @@
   </div>
 </section>
 
+<!-- handheld gate — the only thing rendered when html.handheld is set -->
+<section id="handheld" class="handheld-gate">
+  <div class="hg-card panel">
+    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="boot-word">RICERCA<b>R</b></div>
+    <p class="hg-lede">A synthesizer that learns what you like by asking you to choose.</p>
+    <!-- The teaser is the loop in three words, not a feature list. -->
+    <ol class="hg-loop mono" aria-label="What it does">
+      <li><span class="hg-n">1</span> listen to two</li>
+      <li><span class="hg-n">2</span> keep one</li>
+      <li><span class="hg-n">3</span> it breeds the next</li>
+    </ol>
+    <div class="hg-rule" aria-hidden="true"></div>
+    <p class="hg-ask"><b>Open this on a desktop browser.</b> The instrument needs a
+      patch bank, a live rack and a keybed side by side — a phone can't hold it yet.</p>
+    <p class="hg-soon mono">a handheld version is coming</p>
+    <button class="hg-anyway mono" id="hg-anyway">look around anyway →</button>
+  </div>
+</section>
+<script>
+// The escape hatch, for the one person who wants to see it break. Session-
+// scoped: closing the tab puts the gate back.
+document.getElementById("hg-anyway").addEventListener("click", function () {
+  try { sessionStorage.setItem("ricercar-anyway", "1"); } catch (e) {}
+  location.reload();
+});
+</script>
+
 <!-- boot overlay -->
 <section id="boot" class="boot">
   <div class="boot-card panel">
@@ -346,6 +400,5 @@
   </div>
 </section>
 
-<script type="module" src="main.js?b=25"></script>
 </body>
 </html>
