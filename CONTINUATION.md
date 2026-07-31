@@ -1,5 +1,25 @@
 # Continuation notes — updated 2026-07-31 (pass 8: audition phrase v2)
 
+## NEXT SESSION: deep UI/UX pass (user-requested, 2026-07-31)
+
+The user played the pass-8 build and signed off on the phrase work, but
+flagged for a dedicated pass:
+
+- **"a bunch of UI chrome things"** — unspecified; do a systematic sweep,
+  don't wait for a list.
+- **Functional: "hold/arp/etc I think doesn't work anymore."** Not yet
+  triaged. Pass 8 did not touch the live-keyboard path (its only main.js
+  change was the `niceName()` label helper), so if hold/arp is genuinely
+  broken it almost certainly came in with pass 7's main.js rework (1,891
+  lines changed) and shipped in #2. Triage on main first to confirm, then
+  bisect within pass 7's surface work. Candidate suspects: the roving-tab
+  keyboard-accessibility rework (letter keys now only play when focus is
+  outside the interface — a focus state left on a button would make the
+  whole keyboard feel dead), and the keybar state persistence.
+- The pass-6/7 keybar features to re-verify while there: hold latch, arp
+  (pattern/div/BPM/gate/swing/octaves), uni, gld, ●rec, MIDI indicator,
+  octave shift, panic.
+
 ## Pass 8: the audition phrase can finally hear what the grammar can say
 
 Pass 7 named the fixed 3-note audition phrase the weakest link in the loop:
