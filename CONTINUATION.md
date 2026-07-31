@@ -1,24 +1,58 @@
-# Continuation notes — updated 2026-07-31 (pass 8: audition phrase v2)
+# Continuation notes — updated 2026-07-31 (pass 9: panel-driven design/UX pass)
 
-## NEXT SESSION: deep UI/UX pass (user-requested, 2026-07-31)
+## Pass 9: four-expert panel pass — design, chrome, honesty (uncommitted in worktree)
 
-The user played the pass-8 build and signed off on the phrase work, but
-flagged for a dedicated pass:
+A four-persona panel (music technologist, creative designer, ML researcher,
+UX specialist; Opus subagents) critiqued the app (62 findings), the merged
+plan was implemented in `apps/web/` only (no engine changes), and a second
+panel round verified every fix in code: **4/4 satisfied**. Highlights:
 
-- **"a bunch of UI chrome things"** — unspecified; do a systematic sweep,
-  don't wait for a list.
-- **Functional: "hold/arp/etc I think doesn't work anymore."** Not yet
-  triaged. Pass 8 did not touch the live-keyboard path (its only main.js
-  change was the `niceName()` label helper), so if hold/arp is genuinely
-  broken it almost certainly came in with pass 7's main.js rework (1,891
-  lines changed) and shipped in #2. Triage on main first to confirm, then
-  bisect within pass 7's surface work. Candidate suspects: the roving-tab
-  keyboard-accessibility rework (letter keys now only play when focus is
-  outside the interface — a focus state left on a button would make the
-  whole keyboard feel dead), and the keybar state persistence.
-- The pass-6/7 keybar features to re-verify while there: hold latch, arp
-  (pattern/div/BPM/gate/swing/octaves), uni, gld, ●rec, MIDI indicator,
-  octave shift, panic.
+- **Hold/arp triage (the pass-8 flag): root-caused and fixed.** A real mouse
+  click parked focus on the keybar button and the keydown guard swallowed
+  every letter-key note. Fix: clicks blur buttons (keyboard activation keeps
+  focus), and the note-key guard only fully swallows in typing contexts.
+  Arp gate/swing were always wired engine-side; they were unreachable
+  behind the same focus trap.
+- **State legibility:** TEACH-strip audition fully benches the candidate
+  (rack + bank + live keyboard follow; amber header names the candidate;
+  ← bench restores); votes acknowledge, are retractable for 7 s (toast +
+  ⌘Z, re-deals the pair, race-guarded); presentation side randomised.
+- **Honesty:** one clamped skill formatter gated at n≥20 everywhere; check
+  badge suppressed <10 picks and reworded; map glow + bank bars on one
+  absolute logistic scale with σ bands and % readouts; Wilson intervals +
+  per-bin n on TRUST; breeding reports evictions and alarms when a starred
+  patch is evicted.
+- **First run:** HTML empty states per TASTE tab (skeleton + countdown +
+  CTA), play-first chip + coach mark on the keybed, deferred (not destroyed)
+  warm start + re-run/reset in ⋯, one-time bench walkthrough
+  (locks / ⚡ evolve from this / my-edit-is-better).
+- **Chrome:** color-scheme dark, amber selection, styled scrollbars (and
+  corner), machined selects/number input, drawn checkbox, unified popover
+  surface + Escape/outside-click dismissal + roving arrow nav, focus ring
+  follows element shape, util-btn physics, keybed rebuilt per octave shift
+  with C labels + mapped-span tint + per-pitch black keys (gentle offsets),
+  bank provenance filters (all/saved/new/presets/edits) + sort, readable
+  card names ("sample" not "phrase"), tray items as mini faceplates.
+
+### NEXT SESSION (agreed by all four panelists; ordered)
+
+1. **A/B duel as one looping, position-preserving transport** — two
+   BufferSources at a common offset, 8 ms equal-power crossfade on
+   `1`/`2`/`Tab`, `space` start/stop. Unanimously the highest-value item.
+2. Engine: **star-protection from eviction** (insert_candidate skips
+   starred ids) — the UI already warns that stars don't protect.
+3. Scope graticule at true phrase onsets (`worker.js` produces `phrase_json`
+   at boot; forward it) + playhead + click-to-scrub.
+4. Knob gestures: pointer-lock drag, dblclick reset, wheel, type-in.
+5. Blind duels (deal bare A/B, reveal after vote, ⋯ toggle, log the flag);
+   "too close to call" / "neither" buttons; per-observation
+   `presented_side` field; post-vote explain line under the duel.
+6. ● rec as a transport (elapsed readout, metronome + count-in, ▶/save
+   toast); UNI voices select + detune/spread; velocity/expression engine
+   items (vel as patchable CV, bend/mod strips, MIDI learn).
+7. Carried roughness: live-region announcements on map traversal, native
+   `<select>` popup styling limits, retraction toast wording, three amber
+   instructions competing at t=0 on first run.
 
 ## Pass 8: the audition phrase can finally hear what the grammar can say
 
