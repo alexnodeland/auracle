@@ -119,15 +119,21 @@ learned utility plugged in as fitness:
 π_β(x) ∝ p_grammar(x) · exp(β · E[u_θ(x)])
 ```
 
-sampled by tempered SMC with the crossover population kernel. β tunes
-conservatism: low β ≈ browse the prior, high β / `anneal` ≈ optimizer mode
-("give me your best guess at my perfect patch").
+β tunes conservatism: low β ≈ browse the prior, high β / `anneal` ≈ optimizer
+mode ("give me your best guess at my perfect patch").
+
+**What ships today is not a sample from π_β.** Refinement runs a short
+adaptive single-site MH walk (a dozen steps) warm-started from each of the
+best pool members and keeps the final state — local hill-climbing *on* that
+target, which is what a candidate pool needs, rather than a draw *from* it.
+Tempered SMC with the crossover population kernel remains the design; the
+claim is stated here as an intention, not as a description of the code.
 
 ### 1.5 The two-loop engine
 
 ```
 ┌─ patch loop (fast, silent, machine-paced) ────────────────┐
-│  SMC over π_β: grammar prior → subtree moves →            │
+│  local MH toward π_β: grammar prior → subtree moves →     │
 │  struct-screen → render survivors → feature-score          │
 └──────────────┬────────────────────────────────────────────┘
                │ candidate pool

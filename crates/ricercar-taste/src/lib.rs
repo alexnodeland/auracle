@@ -28,10 +28,12 @@ pub mod observe;
 pub mod standardize;
 pub mod synthetic;
 
-pub use model::{TasteConfig, TasteModel, TastePosterior, TasteSample};
-pub use observe::{Observation, ObservationLog};
+pub use model::{TasteConfig, TasteModel, TastePosterior, TasteSample, MAX_NORMAL_SD};
+pub use observe::{
+    Feedback, FitSet, Observation, ObservationLog, PHI_SCHEMA, PHI_SCHEMA_STANDARDIZED,
+};
 pub use standardize::Standardizer;
-pub use synthetic::{MixtureSyntheticUser, SyntheticUser};
+pub use synthetic::{IdealPointUser, MixtureSyntheticUser, SyntheticUser};
 
 #[cfg(test)]
 mod tests {
@@ -81,7 +83,7 @@ mod tests {
         }
 
         let model = TasteModel::new(TasteConfig::linear(D));
-        let posterior = model.fit(&mut rng, &log, 30_000, 10_000);
+        let posterior = model.fit(&mut rng, &FitSet::as_is(&log), 30_000, 10_000);
 
         let theta_hat = posterior.theta_mean(0);
         let cos = cosine(&theta_hat, &user.theta);
@@ -119,24 +121,16 @@ mod tests {
         for _ in 0..150 {
             let x = random_phi(&mut rng);
             let kept = user.keep(&mut rng, &x);
-            log.push(Observation::KeepKill {
-                x,
-                kept,
-                session: 0,
-            });
+            log.push(Observation::new(Feedback::KeepKill { x, kept }, 0, &[]));
         }
         for _ in 0..150 {
             let x = random_phi(&mut rng);
             let rating = user.stars(&mut rng, &x);
-            log.push(Observation::Stars {
-                x,
-                rating,
-                session: 0,
-            });
+            log.push(Observation::new(Feedback::Stars { x, rating }, 0, &[]));
         }
 
         let model = TasteModel::new(TasteConfig::linear(D));
-        let posterior = model.fit(&mut rng, &log, 30_000, 10_000);
+        let posterior = model.fit(&mut rng, &FitSet::as_is(&log), 30_000, 10_000);
 
         let cos = cosine(&posterior.theta_mean(0), &user.theta);
         assert!(cos > 0.85, "mixed-modality recovery cosine {cos} too low");
@@ -164,7 +158,7 @@ mod tests {
             log.push(user.observe_duel(&mut rng, a, b, 0));
         }
         let model = TasteModel::new(TasteConfig::linear(D));
-        let posterior = model.fit(&mut rng, &log, 30_000, 10_000);
+        let posterior = model.fit(&mut rng, &FitSet::as_is(&log), 30_000, 10_000);
 
         // Pool of 100; compare model's top-10 against true top-10.
         let pool: Vec<Vec<f64>> = (0..100).map(|_| random_phi(&mut rng)).collect();
@@ -186,6 +180,83 @@ mod tests {
         assert!(
             overlap >= 6,
             "only {overlap}/10 of the true best candidates in the model's top 10"
+        );
+    }
+
+    /// **The misspecification gate.** Every other user here is linear in the
+    /// same φ the model is linear in, so the model is correctly specified by
+    /// construction and the gates only ever measure estimation speed. This one
+    /// is an ideal-point listener: `u* = −Σ w(φ−c)²`, strictly concave, while
+    /// `max_k θ_k·φ` is a maximum of affine functions and therefore convex.
+    /// The model provably cannot represent this user at any K.
+    ///
+    /// What it *should* still do is rank most pairs, because over any region
+    /// not straddling the ideal point the true utility is locally monotone.
+    /// So the assertions are: still clearly better than chance (this can fail,
+    /// and would if inference broke), and measurably worse than the same
+    /// machinery on a well-specified user (this can also fail — if it did, the
+    /// harness would not be sensitive enough to detect misspecification at
+    /// all, which is the property being established).
+    #[test]
+    fn misspecified_user_is_learned_partially_and_detectably() {
+        let mut rng = StdRng::seed_from_u64(0x1DEA);
+        let mut center = vec![0.0; D];
+        let mut weights = vec![0.15; D];
+        // A specific sound: bright-ish, not too bright; quiet on dim 1.
+        center[0] = 0.8;
+        center[1] = -0.6;
+        center[3] = 0.4;
+        weights[0] = 0.9;
+        weights[1] = 0.7;
+        weights[3] = 0.5;
+        let curved = IdealPointUser { center, weights };
+        let linear = ground_truth();
+
+        // Held-out modal accuracy under each user, same budget and inference.
+        let accuracy = |rng: &mut StdRng, use_curved: bool| -> f64 {
+            let mut log = ObservationLog::new();
+            for _ in 0..300 {
+                let (a, b) = (random_phi(rng), random_phi(rng));
+                log.push(if use_curved {
+                    curved.observe_duel(rng, a, b, 0)
+                } else {
+                    linear.observe_duel(rng, a, b, 0)
+                });
+            }
+            let posterior = TasteModel::new(TasteConfig::mixture(D, 2)).fit(
+                rng,
+                &FitSet::as_is(&log),
+                20_000,
+                6_000,
+            );
+            let mut correct = 0;
+            let n_test = 400;
+            for _ in 0..n_test {
+                let (a, b) = (random_phi(rng), random_phi(rng));
+                let truth = if use_curved {
+                    curved.utility(&a) > curved.utility(&b)
+                } else {
+                    linear.utility(&a) > linear.utility(&b)
+                };
+                if (posterior.prob_prefers(&a, &b) > 0.5) == truth {
+                    correct += 1;
+                }
+            }
+            correct as f64 / n_test as f64
+        };
+
+        let acc_curved = accuracy(&mut rng, true);
+        let acc_linear = accuracy(&mut rng, false);
+        println!("misspecified acc {acc_curved:.3} vs well-specified {acc_linear:.3}");
+
+        assert!(
+            acc_curved > 0.60,
+            "a concave user should still be ranked well above chance, got {acc_curved}"
+        );
+        assert!(
+            acc_curved < acc_linear,
+            "the harness cannot tell a misspecified user ({acc_curved}) from a \
+             well-specified one ({acc_linear}) — it would not catch a real one"
         );
     }
 
@@ -231,6 +302,164 @@ mod tests {
         assert!(transformed.iter().all(|r| r[1].abs() < 1e-9));
     }
 
+    /// A log written before raw-φ logging still loads, and is recognizable
+    /// as legacy — silently reading its standardized vectors as raw values
+    /// would corrupt the profile it was meant to preserve.
+    #[test]
+    fn legacy_logs_still_load() {
+        let json = r#"{"observations":[
+            {"Duel":{"a":[1.0,2.0],"b":[3.0,4.0],"chose_a":true,"session":0}},
+            {"KeepKill":{"x":[0.5,0.25],"kept":false,"session":1}},
+            {"Stars":{"x":[0.1,0.2],"rating":3,"session":1}}
+        ]}"#;
+        let log: ObservationLog = serde_json::from_str(json).unwrap();
+        assert_eq!(log.len(), 3);
+        assert_eq!(log.n_sessions(), 2);
+        assert!(
+            log.observations.iter().all(|o| !o.is_raw()),
+            "legacy observations must not claim to be raw"
+        );
+        // …and they contribute nothing to a standardizer fit over raw values.
+        assert!(log
+            .raw_rows(&[String::from("a"), String::from("b")])
+            .is_empty());
+    }
+
+    /// The point of raw-φ logging: the feature set can change and old votes
+    /// still land on the right axes. A renamed/reordered/extended feature set
+    /// must re-project by name, and a coordinate the vote predates is imputed
+    /// at the standardizer mean — which standardizes to exactly zero, i.e.
+    /// "this vote says nothing about that axis".
+    #[test]
+    fn observations_reproject_by_name() {
+        let names_then: Vec<String> = ["bright", "noisy"].iter().map(|s| s.to_string()).collect();
+        let mut log = ObservationLog::new();
+        log.push(Observation::new(
+            Feedback::Duel {
+                a: vec![10.0, 1.0],
+                b: vec![0.0, 3.0],
+                chose_a: true,
+            },
+            0,
+            &names_then,
+        ));
+        // The feature set later gains a coordinate and swaps the order.
+        let names_now: Vec<String> = ["noisy", "warm", "bright"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let sz = Standardizer {
+            mean: vec![2.0, 7.0, 5.0],
+            std: vec![1.0, 2.0, 5.0],
+        };
+        let fit = FitSet::build(&log, &names_now, &sz);
+        let Feedback::Duel { a, b, chose_a } = &fit.rows[0].0 else {
+            panic!("modality changed");
+        };
+        assert!(chose_a);
+        // noisy: (1−2)/1, warm: absent ⇒ 0, bright: (10−5)/5.
+        assert_eq!(a, &vec![-1.0, 0.0, 1.0]);
+        assert_eq!(b, &vec![1.0, 0.0, -1.0]);
+        assert_eq!(log.raw_rows(&names_then).len(), 2, "raw rows are fittable");
+    }
+
+    /// σ_θ must widen with K. `u = max_k u_k` is the max of K standard
+    /// normals under the prior, whose SD *falls* with K — so at fixed σ_θ,
+    /// growing the mixture would quietly shrink `Var(u_a − u_b)` and make the
+    /// model less able to express a strong preference than before.
+    #[test]
+    fn sigma_theta_compensates_the_k_schedule() {
+        let s1 = TasteConfig::linear(D).sigma_theta();
+        let mut prev = s1;
+        for k in 2..=5 {
+            let s = TasteConfig::mixture(D, k).sigma_theta();
+            assert!(s > prev, "sigma did not widen from K={} to K={k}", k - 1);
+            prev = s;
+        }
+        assert!(
+            (s1 - 1.0 / (D as f64).sqrt()).abs() < 1e-12,
+            "K=1 unchanged"
+        );
+        // Var(u_a − u_b) restored to its K=1 value, to within the table.
+        for k in 1..=5 {
+            let s = TasteConfig::mixture(D, k).sigma_theta();
+            let sd_u = s * (D as f64).sqrt() * MAX_NORMAL_SD[k - 1];
+            assert!((sd_u - 1.0).abs() < 1e-9, "K={k} utility SD {sd_u}");
+        }
+        // An explicit override still wins.
+        let mut cfg = TasteConfig::mixture(D, 5);
+        cfg.theta_prior_std = Some(0.3);
+        assert_eq!(cfg.sigma_theta(), 0.3);
+    }
+
+    /// Between full refits the posterior is updated by importance
+    /// reweighting. It must move toward the evidence, degrade *visibly*
+    /// (falling ESS) rather than silently, and survive resampling.
+    #[test]
+    fn importance_updates_track_new_evidence() {
+        let mut rng = StdRng::seed_from_u64(88);
+        let user = ground_truth();
+        let mut log = ObservationLog::new();
+        for _ in 0..40 {
+            let (a, b) = (random_phi(&mut rng), random_phi(&mut rng));
+            log.push(user.observe_duel(&mut rng, a, b, 0));
+        }
+        let p = TasteModel::new(TasteConfig::linear(D)).fit(
+            &mut rng,
+            &FitSet::as_is(&log),
+            8_000,
+            3_000,
+        );
+        assert!(
+            (p.ess() - p.samples.len() as f64).abs() < 1e-6,
+            "fit is uniform"
+        );
+
+        // A decisive duel: A is far up θ*, B far down. Reweighting must raise
+        // the model's probability for that outcome.
+        let mut a = vec![0.0; D];
+        a[0] = 3.0;
+        let mut b = vec![0.0; D];
+        b[0] = -3.0;
+        let before = p.prob_prefers(&a, &b);
+        let after = p
+            .reweighted(
+                &Feedback::Duel {
+                    a: a.clone(),
+                    b: b.clone(),
+                    chose_a: true,
+                },
+                0,
+            )
+            .reweighted(
+                &Feedback::Duel {
+                    a: a.clone(),
+                    b: b.clone(),
+                    chose_a: true,
+                },
+                0,
+            );
+        assert!(
+            after.prob_prefers(&a, &b) > before,
+            "reweighting ignored the evidence: {before} → {}",
+            after.prob_prefers(&a, &b)
+        );
+        assert!(
+            after.ess() < p.ess(),
+            "ESS must show the cost of the update"
+        );
+        assert!((after.weights.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+
+        let re = after.resampled();
+        assert_eq!(re.samples.len(), after.samples.len());
+        assert!(
+            (re.ess() - re.samples.len() as f64).abs() < 1e-6,
+            "resampling restores uniform weights"
+        );
+        // Resampling preserves the weighted summary it was drawn from.
+        assert!((re.prob_prefers(&a, &b) - after.prob_prefers(&a, &b)).abs() < 0.05);
+    }
+
     /// K = 2 smoke: the mixture path runs end-to-end and returns finite
     /// summaries, weights sum to one, and alignment is well-formed.
     #[test]
@@ -245,7 +474,7 @@ mod tests {
             }
         }
         let posterior = TasteModel::new(TasteConfig::mixture(D, 2))
-            .fit(&mut rng, &log, 4_000, 2_000)
+            .fit(&mut rng, &FitSet::as_is(&log), 4_000, 2_000)
             .aligned();
         let phi = random_phi(&mut rng);
         for style in 0..2 {
@@ -287,8 +516,18 @@ mod tests {
             log.push(user.observe_duel(&mut rng, a, b, 0));
         }
 
-        let p1 = TasteModel::new(TasteConfig::linear(D)).fit(&mut rng, &log, 25_000, 8_000);
-        let p2 = TasteModel::new(TasteConfig::mixture(D, 2)).fit(&mut rng, &log, 45_000, 15_000);
+        let p1 = TasteModel::new(TasteConfig::linear(D)).fit(
+            &mut rng,
+            &FitSet::as_is(&log),
+            25_000,
+            8_000,
+        );
+        let p2 = TasteModel::new(TasteConfig::mixture(D, 2)).fit(
+            &mut rng,
+            &FitSet::as_is(&log),
+            45_000,
+            15_000,
+        );
 
         // (a) held-out modal accuracy.
         let mut correct = [0usize; 2];

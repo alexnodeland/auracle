@@ -101,7 +101,16 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       case "bend": if (this.poly) this.poly.set_bend(m.semis); break;
       case "glide": if (this.poly) this.poly.set_glide(m.amount); break;
       case "unison": if (this.poly) this.poly.set_unison(m.on, m.detune, m.spread); break;
-      case "arp": if (this.poly) this.poly.set_arp(m.on, m.mode, m.div, m.bpm); break;
+      case "arp":
+        if (this.poly) {
+          this.poly.set_arp(
+            m.on, m.mode, m.div, m.bpm,
+            m.gate == null ? 0.5 : m.gate,
+            m.octaves == null ? 1 : m.octaves,
+            m.swing == null ? 0.0 : m.swing
+          );
+        }
+        break;
       case "rec": {
         if (m.on) {
           this.rec = [];
@@ -206,11 +215,18 @@ export async function initLiveAudio(audioCtx, build) {
   });
   const gain = audioCtx.createGain();
   gain.gain.value = 0.8;
+  // Tapped pre-master so the on-screen trace shows what the *instrument* is
+  // doing, not what the volume slider is doing.
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.6;
+  node.connect(analyser);
   node.connect(gain).connect(audioCtx.destination);
   node.port.postMessage({ type: "init", bytes }, [bytes]);
 
   return {
     node,
+    analyser,
     onMessage(fn) {
       node.port.onmessage = (e) => fn(e.data);
     },
@@ -238,8 +254,8 @@ export async function initLiveAudio(audioCtx, build) {
     unison(on, detune, spread) {
       node.port.postMessage({ type: "unison", on, detune, spread });
     },
-    arp(on, mode, div, bpm) {
-      node.port.postMessage({ type: "arp", on, mode, div, bpm });
+    arp(on, mode, div, bpm, gate, octaves, swing) {
+      node.port.postMessage({ type: "arp", on, mode, div, bpm, gate, octaves, swing });
     },
     rec(on) {
       node.port.postMessage({ type: "rec", on });

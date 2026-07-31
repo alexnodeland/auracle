@@ -12,6 +12,9 @@ quiver-dsp.workspace = true
 ricercar-grammar.workspace = true
 rustfft = "6"
 serde.workspace = true
+# Cache keys are hashed over canonical JSON of the term + spec; `float_roundtrip`
+# (set workspace-wide) is what makes that encoding exact and stable.
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

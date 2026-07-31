@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use fugue_evo::fitness::traits::Fitness;
-use ricercar_features::{featurize, PhraseSpec};
+use ricercar_features::{featurize_memo, PhraseSpec, RenderMemo};
 use ricercar_grammar::PatchTree;
 use ricercar_taste::{Standardizer, TastePosterior};
 
@@ -19,7 +19,7 @@ use ricercar_taste::{Standardizer, TastePosterior};
 pub const QUARANTINE_FITNESS: f64 = -50.0;
 
 /// Expected posterior utility as a scalar fitness over patch terms.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SurrogateFitness {
     /// The fitted taste posterior.
     pub posterior: Arc<TastePosterior>,
@@ -27,6 +27,15 @@ pub struct SurrogateFitness {
     pub standardizer: Arc<Standardizer>,
     /// The audition stimulus (must match the one used for observations).
     pub phrase: PhraseSpec,
+    /// The engine's featurization memo.
+    ///
+    /// Not an optimization detail — it is what makes the MH walk affordable.
+    /// `adaptive_single_site_mh` executes the model **twice per step**: once
+    /// to re-score the current trace, which is bit-identically the tree the
+    /// previous step accepted and therefore already featurized, and once for
+    /// the proposal. Without a memo, one render in two is a recomputation of a
+    /// number the walk already has.
+    pub memo: RenderMemo,
 }
 
 impl Fitness for SurrogateFitness {
@@ -34,9 +43,15 @@ impl Fitness for SurrogateFitness {
     type Value = f64;
 
     fn evaluate(&self, genome: &PatchTree) -> f64 {
-        match featurize(genome, &self.phrase) {
-            Ok(v) => {
-                let phi = self.standardizer.transform(&v.features.phi());
+        // `want_audio: false` — the surrogate only ever wants φ, and nothing
+        // in a refinement generation is ever played. Asking for samples here
+        // would undo the memo: a miss would convert 141 k f64s it then drops,
+        // and a hit would copy a ~565 KB buffer out of the audio tier. Twice
+        // per MH step, ~96 times per seed, that is tens of megabytes of churn
+        // for a value discarded on the next line.
+        match featurize_memo(genome, &self.phrase, &self.memo, false) {
+            Ok((cf, _)) => {
+                let phi = self.standardizer.transform(&cf.features.phi());
                 self.posterior.utility_mix(&phi).0
             }
             Err(_) => QUARANTINE_FITNESS,

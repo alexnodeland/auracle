@@ -57,7 +57,7 @@ Ricercar treats the problem as inference:
 | Idea | What it buys |
 |---|---|
 | Patches are **terms in a typed PCFG** over quiver combinators | Every sample, mutation, and hand edit is a valid, playable patch by construction |
-| Evolution is **MH on a Boltzmann posterior** `π(x) ∝ p_grammar(x) · exp(β·u(x))` via fugue-evo | Parsimony comes from the prior, search intensity is one dial, and locked knobs give *exact* conditional refinement |
+| Evolution is **typed MH toward a Boltzmann target** `π(x) ∝ p_grammar(x) · exp(β·u(x))` via fugue-evo | Parsimony comes from the prior, search intensity is one dial, and locked knobs give *exact* conditional refinement |
 | Taste is a **max-of-linear-experts utility with its own posterior** | One user can love several unrelated islands of sound; the model names them, shows its confidence, and forecasts your votes |
 | The instrument and the search **share one compiler** | What you play live is byte-for-byte the patch that was evolved, vetted, and featurized |
 
@@ -78,9 +78,10 @@ Ricercar treats the problem as inference:
   running calibration; styles are nameable and color-coded everywhere; old
   votes fade with a recency half-life.
 - **Taste-directed evolution** — refinement warm-starts typed MH from your
-  best patches on the Boltzmann target, with kind-proposal weights tilted by
-  the structural taste posterior. Lock what you love; evolution provably
-  leaves it alone.
+  best patches and takes a short *local* walk on the Boltzmann target (the
+  pool is moved uphill on `π_β`, not sampled from it), with kind-proposal
+  weights tilted by the structural taste posterior. Lock what you love;
+  evolution provably leaves it alone.
 - **Persistence by default** — the whole session (bank, names, taste log,
   lineage, style names) autosaves to IndexedDB; profiles and single patches
   export as shareable files.
@@ -109,7 +110,7 @@ Two loops around one observation stream:
 | `ricercar-grammar` | Typed PCFG over quiver combinator terms; term ⇄ trace codec; term → `Patch` compiler with live parameter handles; structural edit ops; presets |
 | `ricercar-features` | Deterministic phrase rendering, vet gate, BS.1770 LUFS normalization, audio + structural features (φ) |
 | `ricercar-taste` | Max-of-experts utility, three likelihoods, recency weighting, MCMC posterior, label alignment, portable profiles |
-| `ricercar-session` | Two-loop engine: pool, dueling-Thompson acquisition, locked refinement, taste-tilted proposals, session persistence |
+| `ricercar-session` | Two-loop engine: pool, duel acquisition (uniform by default; BALD selectable), locked refinement, taste-tilted proposals, session persistence |
 | `ricercar-wasm` | `WasmEngine` (worker-side brain) and `LivePoly` (worklet-side instrument) |
 | `apps/web` | The instrument: PLAY / EVOLVE / TASTE, patch bank, keyboard dock |
 

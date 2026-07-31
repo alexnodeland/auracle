@@ -11,7 +11,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::engine::{Engine, Origin};
-use ricercar_taste::Observation;
 
 /// One point on the map.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -143,21 +142,24 @@ impl Engine {
             };
             meta.push((Some(c.id), origin.into()));
         }
-        let mut history: Vec<&Vec<f64>> = Vec::new();
+        // History φ are raw; the map lives in standardized space, so they go
+        // through the current standardizer — the same one the pool points use,
+        // which is what keeps ghosts and live candidates on one projection.
+        let mut history: Vec<Vec<f64>> = Vec::new();
         for o in self.log.observations.iter().rev() {
-            match o {
-                Observation::Duel { a, b, .. } => {
-                    history.push(a);
-                    history.push(b);
-                }
-                Observation::KeepKill { x, .. } | Observation::Stars { x, .. } => history.push(x),
+            for phi in o.feedback.phis() {
+                let phi = match (&self.standardizer, o.is_raw()) {
+                    (Some(sz), true) if phi.len() == sz.dimension() => sz.transform(phi),
+                    _ => phi.to_vec(),
+                };
+                history.push(phi);
             }
             if history.len() >= MAX_HISTORY {
                 break;
             }
         }
         for phi in history {
-            rows.push(phi.clone());
+            rows.push(phi);
             meta.push((None, "history".into()));
         }
 

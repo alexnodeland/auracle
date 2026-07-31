@@ -17,10 +17,19 @@
 //!   to a fixed target before audition *and* feature extraction — otherwise
 //!   "louder" poisons the preference data.
 //!
+//! - **Memoization** ([`cache`]): because `(term, spec) → φ` is pure, a
+//!   featurization the engine has already performed is replayed rather than
+//!   re-rendered. A hit is indistinguishable from a miss by construction —
+//!   the same [`pipeline::Features`] object comes back either way.
+//!
 //! [`pipeline::featurize`] composes it all; the [`pipeline::VettedCandidate`]
-//! it returns carries the exact buffer audition will play.
+//! it returns carries the exact buffer audition will play. [`render::Audition`]
+//! is that buffer in the f32 form every consumer actually wants, and
+//! [`render::render_playback`] reproduces it bit-identically from a term plus
+//! its recorded `gain_db`, which is what makes deferring the buffer safe.
 
 pub mod audio;
+pub mod cache;
 pub mod loudness;
 pub mod phrase;
 pub mod pipeline;
@@ -29,9 +38,13 @@ pub mod structural;
 pub mod vet;
 
 pub use audio::{audio_features, AudioFeatures};
+pub use cache::{
+    canonical_tree_json, featurize_memo, render_key, CachedFeatures, MemoStats, RenderMemo,
+    DEFAULT_AUDIO_CAP, DEFAULT_FEATURE_CAP,
+};
 pub use phrase::PhraseSpec;
 pub use pipeline::{featurize, Features, FeaturizeError, VettedCandidate, TARGET_LUFS};
-pub use render::{render_phrase, RenderedPhrase};
+pub use render::{render_phrase, render_playback, Audition, RenderedPhrase};
 pub use structural::{struct_features, StructFeatures};
 pub use vet::{vet, VetConfig, VetFailure, VetReport};
 
@@ -184,6 +197,81 @@ mod tests {
             matches!(err, FeaturizeError::Quarantined(VetFailure::Silent { .. })),
             "expected Silent quarantine, got: {err}"
         );
+    }
+
+    /// Brightness lives on an **octave** axis, not a linear-Hz one: equal
+    /// frequency *ratios* must move the coordinate equally, or a linear model
+    /// in it cannot express "a shade brighter" anywhere but the top octave.
+    #[test]
+    fn spectral_axis_is_logarithmic() {
+        use crate::audio::log_axis;
+        let ny = 22_050.0;
+        let octave_low = log_axis(400.0, ny) - log_axis(200.0, ny);
+        let octave_high = log_axis(16_000.0, ny) - log_axis(8_000.0, ny);
+        assert!(
+            (octave_low - octave_high).abs() < 1e-12,
+            "an octave is {octave_low} down low but {octave_high} up high"
+        );
+        // Anchored and normalized: 20 Hz is 0, Nyquist is 1.
+        assert!(log_axis(20.0, ny).abs() < 1e-12);
+        assert!((log_axis(ny, ny) - 1.0).abs() < 1e-12);
+        // Sub-anchor frequencies clamp rather than diverge.
+        assert_eq!(log_axis(1.0, ny), 0.0);
+    }
+
+    /// `attack_s` must stay a *continuous* axis at the fast end. Flooring the
+    /// 90%-crossing to the analysis-window index collapsed every percussive
+    /// patch to exactly zero — a spike, not a coordinate, and standardizing a
+    /// spike gives the model a feature that is one value for most of the pool.
+    #[test]
+    fn fast_attacks_are_resolved_not_floored() {
+        let spec = PhraseSpec::default();
+        let measure = |attack: f64| {
+            featurize(
+                &PatchTree {
+                    amp: AmpEnv { attack, ..amp() },
+                    root: AudioNode::Vco {
+                        wave: Waveform::Saw,
+                        octave: 0,
+                        detune: 0.5,
+                    },
+                },
+                &spec,
+            )
+            .unwrap()
+            .features
+            .audio
+            .attack_s
+        };
+        let (a0, a1, a2) = (measure(0.0), measure(0.02), measure(0.05));
+        assert!(
+            a0 < a1 && a1 < a2,
+            "attack not monotone/resolved: {a0} {a1} {a2}"
+        );
+    }
+
+    /// `size` is exactly the sum of the nine module counts, so it must not be
+    /// a φ coordinate — an exact collinearity is a rank-deficient design
+    /// matrix and an unidentified ridge for the sampler to wander along.
+    #[test]
+    fn phi_carries_no_exact_collinearity() {
+        let names = Features::phi_names();
+        assert!(!names.contains(&"size"), "`size` is back in φ");
+        let spec = PhraseSpec::default();
+        for (_, tree) in ricercar_grammar::presets() {
+            let f = featurize(&tree, &spec).unwrap().features;
+            let s = &f.structural;
+            let sum = s.n_vco
+                + s.n_supersaw
+                + s.n_noise
+                + s.n_mix
+                + s.n_filter
+                + s.n_fold
+                + s.n_delay
+                + s.n_chorus
+                + s.n_reverb;
+            assert_eq!(s.size, sum, "the collinearity this test guards is real");
+        }
     }
 
     /// Structural features count exactly what's in the tree.

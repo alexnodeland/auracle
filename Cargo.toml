@@ -15,10 +15,22 @@ authors = ["Alex Nodeland"]
 license = "MIT"
 repository = "https://github.com/alexnodeland/ricercar"
 
+# Everything the user waits on is render-bound, so release builds trade
+# compile time for codegen quality. `panic = "abort"` also drops unwinding
+# tables from the wasm bundle; tests keep the default dev/test profile and
+# are unaffected. These flags cannot change float results — only --fast-math
+# style options could, and none is enabled anywhere.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
 [workspace.dependencies]
 # In-house foundations, from crates.io.
 # quiver-dsp: the LIBRARY name is `quiver` — imports are `use quiver::...`.
-quiver-dsp = "0.1.1"
+# 0.2.0 is the perf release (coefficient memoization + interpreter R-series);
+# renders are bit-identical to 0.1.1 by that release's golden-vector gate.
+quiver-dsp = "0.2.0"
 # default-features off: `checkpoint`/`parallel` don't compile on wasm32 and
 # nothing here uses them; `ppl` is the layer we build on.
 fugue-evo = { version = "0.3.1", default-features = false, features = ["std", "ppl"] }
@@ -38,6 +50,9 @@ ricercar-features = { path = "crates/ricercar-features", version = "0.1.0" }
 ricercar-taste = { path = "crates/ricercar-taste", version = "0.1.0" }
 ricercar-session = { path = "crates/ricercar-session", version = "0.1.0" }
 
+# Working on quiver / fugue / fugue-evo alongside ricercar? Uncomment to use
+# sibling checkouts instead of the registry (must stay at the end of this
+# file — [patch.crates-io] is a top-level table):
 # Working on quiver / fugue / fugue-evo alongside ricercar? Uncomment to use
 # sibling checkouts instead of the registry (must stay at the end of this
 # file — [patch.crates-io] is a top-level table):

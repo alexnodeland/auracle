@@ -1,4 +1,424 @@
-# Continuation notes — updated 2026-07-30 (pass 6: four-tier panel plan)
+# Continuation notes — updated 2026-07-30 (pass 7: panel round 2)
+
+## Pass 7: second four-persona panel → correctness, craft, legibility
+
+A second panel (music technologist / creative designer / ML researcher / UX)
+critiqued the running app. Unlike pass 6 this one **measured**: peak levels off
+the worklet, contrast ratios and font resolution in-browser, `getBoundingClientRect`
+on the rack, DOM sampling across eight duel votes. Several headline findings were
+bugs, not opinions. Scope rule for the round: **no changes to the shape of the
+genome** — anything adding or removing a `PatchTree` field was deferred rather than
+migrated through term/prior/mutate/genome/describe/presets/features at the same
+time as everything below.
+
+### The bug that mattered most
+`live.rs::render_into` never applied the `/5.0` volt normalization that
+`features::render` does. quiver audio is nominal ±5 V; the float domain is ±1.0;
+and the LUFS makeup gain riding every patch was fitted in the ±1.0 domain. So the
+live path ran ~14 dB hot and the `clamp(±1.5)` had become the **operating point**,
+not a safety net — measured 1.364 peak for one note and exactly 1.500 (the rail)
+for a four-note chord. It also quietly sabotaged the science: two duel candidates
+both slamming the same clipper come out at the same level, "loudness-matched" by
+destruction. Fixed with `VOLT_SCALE`, plus a real `MasterLimiter` across the
+summed polyphony (instant attack, ~80 ms release, 0.98 ceiling) — there was no
+master limiter at all, and N voices sum to N× one voice.
+
+### DSP (`compile.rs`, `live.rs`)
+Envelopes were **linear** everywhere: quiver's `Adsr.shape` and `Vca.response`
+default to 0 and were never wired. Mod depth wasted ~97% of its travel (LFO ±5 V
+and mod-env 0–10 V both landing on a normalized 0..1 cutoff CV). The filter never
+tracked the keyboard, so patches died in the upper register. The wavefolder's
+`#thresh` knob was silently dead whenever the fold was modulated, because
+`get_or` returns the *connected* value instead of the constructor default. The
+per-voice limiter sat permanently in its soft knee (threshold 0.8 = 4 V against
+±5 V audio) — a tone stage, not a safety net. Reverb/chorus discarded their
+stereo tanks. Voice stealing kept the gate high, so the fifth note of a chord
+inherited the stolen note's envelope position and spoke with no attack. Glide
+chained through a chord because `last_pitch` was global. All fixed; see the
+module docs for the reasoning on each.
+
+### Taste model (`taste/*`, `session/*`, `features/*`)
+`size` was **exactly** the sum of the nine per-kind node counts — a rank-deficient
+design matrix with an unidentified ridge the chain random-walks along forever, and
+it poisoned `biased_prior()`, which reads those nine coefficients. Spectral
+features were linear in Hz, so a *linear* model could not express "brighter
+basses". Observations stored standardized φ against a standardizer fitted once and
+never refitted, which made the log not the source of truth and made changing the
+feature set silently invalidate every saved profile — now raw φ + `feature_names`
++ `schema_version`, standardized at fit time, with `migrate.rs` inverting the
+persisted standardizer for schema-1 logs.
+
+**On the acquisition function: the default is `Random`, now settled by
+measurement in both regimes — see the dedicated section below.** The short
+history, because the sequence matters more than the endpoint:
+
+1. Dueling Thompson sampling was the shipped rule. It is best-arm
+   identification, which is the wrong objective — and in the live app it served
+   the identical pair four times running.
+2. BALD replaced it, measured over 3 seeds, which appeared to show random
+   pairing *ahead* of BALD. That ordering was inside noise and was retracted.
+3. At 10 and then 20 paired seeds: BALD **beats dueling Thompson** decisively on
+   pool ranking and predictive error, and **ties uniformly-random pairing**
+   within noise on all three metrics.
+4. `Random` shipped as the default on the reasoning that a rule with four tuning
+   constants which ties one with none should not be the default.
+
+Two bugs surfaced only because the measurement was built. BALD's enjoyment term
+was scored on *unnormalized* utility, so as the posterior sharpened it swamped
+the information term and the rule silently reverted to the best-arm behaviour it
+was meant to replace; and the softmax used an absolute 0.05-nat temperature, so
+`exp(ΔJ/T)` ran to e¹⁰ — an argmax wearing a softmax's clothes. **That single
+defect was also the cause of the repeated duels the UX panel measured**: the two
+findings were one bug seen from two directions.
+
+### Surface (`apps/web/*`)
+The hero rack was **5% ink coverage** at 1920×1080 — the SVG stretched to the
+container while content laid out at a fixed pitch from `x = 15`, and horizontal
+centring was never applied. It now centres and **scales 1×–2.2×** to fill its
+frame, which also fixes the 6.5–7.5px parameter labels. The app had **zero
+`requestAnimationFrame` loops and no `AnalyserNode`**: you played a synthesizer
+and it never appeared powered on. There is now a live scope, audio cables that
+travel only while audio does (previously only *mod* wires animated — backwards
+from what you hear), and a note-on flash on the amp plate.
+
+Knobs read musical units (`840 Hz`, `24 ms`, `−6.0 dB`, `+12 ¢`) from quiver's
+real mappings, and wear value arcs and tick rings. Plates got bevels, cast
+shadows and screws; jacks got nuts and bores. The cable bezier's control points
+**crossed** whenever the span was under 48px — which it is between adjacent
+columns — so short runs kinked instead of hanging.
+
+Type is six roles on a scale with a 10px floor, and the three faces are
+self-hosted: the old stack resolved to Trebuchet MS on stock Windows and Menlo
+for "IBM Plex Mono" essentially everywhere, and 284 elements rendered in Arial
+because form controls don't inherit `font-family`. Every phosphor split into a
+text tier (AA-passing) and a stroke tier; nine off-system slate-blues and pinks
+removed. Measured contrast failures: ~9 → 1.
+
+The learning loop was invisible where it mattered: the first six votes produced
+no pixel change anywhere, and the only "it learned" signal was an 8px LED that
+flashed too fast to catch in 8 of 8 samples. Replaced by a teaching meter that
+never goes blank, a takeover beat at the refit, surprise-first forecast copy, and
+the wordmark's final **R** as the seeking light (*ricercar*: to seek out).
+`⌖ promote to play` rendered at **0px width**, severing the duel→bench path.
+`cut` deleted silently and irreversibly; it now holds the observation for the
+length of the undo window rather than logging a kill and compensating with a
+keep — a log containing both is a log of the user's mouse, not their taste.
+`my edit is better` defaulted to **checked**, pre-arming a fabricated training
+signal.
+
+First run now offers a **warm start**: pick 3 of 9 presets → 18 pairwise
+observations, built entirely from existing `load_preset` / `record_duel` calls.
+TRUST is a reliability diagram over engine-side calibration, separating the
+unbiased check-duel skill from the acquisition-biased number, because a running
+hit-rate is not a proper scoring rule and is pinned near 50% by an acquisition
+rule that serves near-ties on purpose.
+
+Accessibility: the rack was entirely keyboard-unreachable and the bank cost ~287
+tab stops. Both are now single roving tab stops; letter keys only play notes when
+focus is outside the interface (previously every keystroke while tabbing fired
+audio, and Space on a focused button played a note).
+
+### Performance — native regression RESOLVED; wasm boot needs one re-measurement
+
+**The native render regression is gone.** Measured with
+`cargo run --release --example pipeline_stats -- 200`, CPU time (`user`):
+
+| | 200 candidates | per render+vet+featurize |
+|---|---|---|
+| pre-pass baseline (`9f1d4ed`) | 82.35 s | 0.41 s |
+| mid-pass (blocker on every patch) | 130.77 s | 0.65 s |
+| final, blocker gated on `has_ladder` | **72.17 s** | **0.36 s** |
+
+The hypothesis was confirmed and the fix was already in the tree when this
+document still called it open: the DC blocker is an `Svf` whose `tick`
+evaluates three f64 transcendentals per sample (`pow` for the cutoff map,
+`pow` for keytrack, `tan` for the TPT prewarp), measured at ~0.057 s of render
+per patch. `compile.rs` now inserts it **only when the tree contains a diode
+ladder** — the one module whose `diode_sat` is asymmetric and actually emits
+DC — which is ~9% of prior draws. `RIC_DCB_ALWAYS=1` forces it everywhere if a
+new DC source is ever added to the palette. The 72.17 s final number was taken
+on an otherwise idle machine, `user ≈ real` (72.17 vs 72.56), and lands
+*below* the pre-pass baseline, so the remaining additions (per-channel stereo
+voice tail, mod-depth `Attenuverter`s, deduped gate constants) are in the
+noise.
+
+**Do not "fix" any future DC issue by reverting to the textbook one-pole.**
+(`x[n] − x[n−1] + R·y[n−1]`) — it was tried first and is *worse than the
+problem*: its state is not sanitized, so after a note ends it rings on as a
+sub-audio decay that never reaches zero — inaudible, and ruinous to
+`flatness_mean`, which is a geometric mean. It dragged noise-patch flatness
+from 0.567 to **0.0028** and broke `features_track_physics`. That would
+silently corrupt every preference observation, which is far worse than a slow
+boot.
+
+**The in-browser measurement is done, and a deliberate perf pass is under
+way** (2026-07-30, design by a 7-agent judged workflow — investigation and
+design docs in the session scratchpad `perf-design/`, synthesis in
+`judgment.json`). The stale 78.1 s wasm figure was exactly that — stale;
+a fresh 40-patch cold boot on the pre-pass bundle measured **19.96 s**.
+Steps landed since, each verified byte-identical on the 200-candidate
+`pipeline_stats` feature table before the next was measured:
+
+| | native 200 renders | time-to-playable | cold boot (filled, 40) | wasm bundle |
+|---|---|---|---|---|
+| baseline (gated DC blocker) | 72.2 s | = filled | 19.96 s | 1.90 MB |
+| + quiver `perf/coefficient-memoization` (e67a279) | 62.2 s | = filled | 18.9 s | — |
+| + `wasm-opt -O3` + `lto="fat"`/`codegen-units=1`/`panic="abort"` | 45.2 s | = filled | 14.6 s | 1.25 MB |
+| + quiver `perf/interpreter-r-series` (7ff567e, ships as 0.2.0) + progressive boot + featurize memo/lazy f32 | 15.0 s | **0.77 s** | **4.46 s** | 1.27 MB |
+| + R4 (`constant()` bakes port defaults via `set_param_by_id`) | **14.1 s** | — | — | — |
+| + step 5: stateless render farm (6 workers, indexed draw stream) | — | **0.37 s** | **0.85 s** | — |
+
+**Step 7 (the fit stall) also landed.** Measured split confirmed (80% of a
+mature fit is model *reconstruction*, not likelihood): `SiteAddrs` hoists the
+per-site-per-step `addr!(format!(...))` allocation (bit-identical draws,
+1.6–1.9×), and the MCMC budget dropped 30k/10k → 10k/3k after a 13-seed
+replication showed the upper budgets are statistically indistinguishable
+(mean r 0.715–0.747, inside one SE; only 5k separates downward — and note
+even 30k fails the old single-seed gate on ~1/13 seeds). The closed-loop M4
+gate now averages 5 seeds with loose per-seed floors, and runs at the
+*shipped* budget, which it never did before. Browser MCMC override removed
+(it would have out-weighed the new default). Native mature fit 1.86 s →
+~0.6 s; first fit 0.34 s → ~0.09 s. `fit_bench` + `closed_loop_sweep`
+examples are the reproduction commands.
+
+**quiver-dsp 0.2.0 is RELEASED**: PR alexnodeland/quiver#38 merged, tag
+v0.2.0, crates.io publish + GitHub release succeeded; ricercar consumes the
+registry crate (byte-identical features re-verified against the registry
+tarball). One loose end: **npm publish failed with EOTP** — the npm account
+requires a 2FA one-time password CI cannot supply; fix is an npm Automation
+token in the repo's NPM_TOKEN secret (then re-run the workflow) or a local
+`npm publish --otp` for @quiver-dsp/{types,wasm,react}.
+
+Farm result (2026-07-30, adversarially reviewed, four blockers fixed
+including a feature-provenance hash gate — a mis-routed worker reply can no
+longer attach one tree's raw φ to another): pool proven IDENTICAL at farm
+widths {0,1,2,3,5,8} on `(id, tree, raw φ)` natively AND byte-for-byte on
+`export_session()` in Chrome, including under build skew, dead workers, and
+mid-boot kills. Warm restore drops the veil at 0.28 s (was a frozen bar for
+~40 serial re-featurizes). Cold boot end-to-end: **19.96 s → 0.85 s (23×)**;
+native render: **72.2 s → 14.1 s (5.1×)**.
+
+Net: **4.8× on the native render, 4.5× on cold boot, 26× on time-to-playable**
+(the veil now drops at 8 candidates while the rest stream in with an
+"· N arriving" hint). Post-boot smoke-tested in the browser: duel dealt, one
+vote roundtrip through the new `needs_refit` gating, zero console errors.
+The R-series over-delivered its ~1.8–2× static estimate (3× measured on top
+of step 1) — execution-ordered module iteration under fat LTO compounds
+beyond the per-op model. Every step was gated on a byte-identical
+`pipeline_stats` feature table over the same 200 draws.
+
+The steps 3–4 app work (progressive boot with staged progress, `needs_refit`
+finally read by main.js, duel-buffer prefetch before fits, `RenderMemo` +
+`featurize_memo` killing refine's duplicate renders, `RenderPolicy` with f32
+`Audition` buffers, worker `busy`/`idle` so render timeouts measure
+serviceable time) each passed an adversarial Opus review; all four blockers
+raised (restore double-deal, frozen restore veil, false render timeout
+during long fits, unconditional audio clone in the memo) were fixed.
+
+Two acquisition tests were reshaped in the process (they were mine, and
+seed-brittle): `duels_spread_over_candidates_not_just_pairs` no longer
+demands zero pair-collisions from *uniform* sampling (birthday math says
+~21% of seeds collide once; `Bald` still must deliver all-distinct pairs —
+its exposure penalty is the machinery under test), and
+`acquisition_asks_different_questions` no longer runs a one-seed
+BALD-vs-Thompson horse race (that is `learn_synthetic --compare`'s job);
+it asserts the product property — no pair lock-on.
+
+The quiver branch memoizes every parameter-derived transcendental in module
+`tick()`s (recompute-only-on-input-change, bit-pattern keys, forced-recompute
+twin tests prove hit ≡ miss ≡ original). It is NOT yet published: the
+workspace carries a TEMPORARY `[patch.crates-io]` at the end of `Cargo.toml`
+pointing quiver-dsp at the sibling checkout. Before committing ricercar,
+either publish quiver-dsp 0.1.2 from that branch and bump the dependency, or
+keep the patch deliberately.
+
+Remaining sequenced steps (judge's plan, `perf-design/judgment.json`): the
+quiver interpreter R-series (dense PortValues is the single biggest lever),
+progressive boot + `needs_refit` (status() ships it; main.js never reads it),
+featurize memo + lazy f32 audition renders, the stateless render-farm workers
+with the indexed draw stream, IndexedDB render cache, refine/fit costs, and —
+**needing a product decision** — shipped starter packs (one shared bank for
+all cold-boot users vs 3–5 packs selected by seed).
+
+Caution on older figures in this document: the earlier wall-clock numbers
+(EVOLVE POOL "68 s"/"80 s", the UX panel's "81 s", the pass-6 era "~12 s") were
+taken under contention, against different builds, or on a *restored* session
+rather than a fresh fill, and are **not** mutually comparable. When
+re-measuring, state the build, the machine load, and whether the pool is
+restored or freshly filled.
+
+### Unverified at the point this pass was halted
+
+Stated so nobody inherits these as "done":
+
+- ~~The EVOLVE forecast-line fix~~ — **now verified.** Reordering the deal ahead
+  of the refit had made the `duel` reply land *after* the `status` reply carrying
+  the forecast, so `renderCheckBadge` wiped the surprise-first copy every time;
+  and with `Acquisition::Random` every duel is tagged `random_check`, so the
+  badge fired on 100% of duels while the copy claimed "roughly one in ten".
+  Fixed with a hold window on the forecast plus badge suppression when checks
+  are universal. Verified on a profile with a fitted posterior: nine consecutive
+  votes produced `Expected — it's getting you. 73%`, `Toss-up — that one taught
+  it the most. 61%`, `⚡ Surprise — it had this backwards. 38%` …
+- **Clean wall-clock timings** for boot and EVOLVE POOL (see the performance
+  section above).
+- **The designer's round 3.** Round 2 was NOT SATISFIED on two counts, both
+  since addressed — type roles had *regressed* 24 → 33 (now 0 raw `font-size`
+  declarations; the rack has its own tokens because it draws into a zoomed
+  viewBox and its floor must hold at zoom 1), and `flashAmp()` was dead code
+  matching `"ENV"` against a title whose textContent is lowercase. Neither
+  re-verified by the panel.
+
+### Round-3 panel blockers — all four verified fixed
+
+Both round-3 reports returned NOT SATISFIED. Every blocker they named was fixed
+*after* those reports, and each has now been measured in the running app:
+
+| blocker | was | now |
+|---|---|---|
+| fabricated `Q` on a module whose own plate reads "ladder" (`DiodeLadderFilter` uses `k = res·4`, a feedback amount toward self-oscillation — not a Q and it has none) | `Q 0.9` | `23% res` |
+| a running 20-second LFO reported as stopped (`fmtHz` collapsed everything under 1 Hz) | `0.0 Hz` | `0.16 Hz` |
+| `bal` claimed a level it never had (equal-power law, so the meaningful figure is the dB difference) | `a 3%` at near-centre | `a +0.3 dB` |
+| computer-key velocity pinned at 1.0, making `vel_gain` a constant for anyone without MIDI | `1.0` | `0.78`, Shift → `1.0` |
+| next-step chip blank at first paint | `""` | `Teach it your taste — 6 quick A/B picks ▸` |
+| EVOLVE forecast line wiped by the check badge | check text on 100% of duels | surprise-first copy on every vote |
+
+**All three of these panelists have now independently re-verified.** Final
+state of the panel at the end of this pass:
+
+| panelist | verdict | evidence |
+|---|---|---|
+| music technologist | **SATISFIED** | ladder `47% res` vs SVF `Q 0.9` on one module at res 0.550; 51-point LFO sweep 0.01→30.0 Hz with no `0.0 Hz`; computer-key vel 0.780 / Shift 1.0 / glissando 0.369 on the same strike law; `bal` symmetric in dB across 51 points; **third** pass over all 23 `KNOB_UNITS` entries against their quiver ports found no remaining wrong unit |
+| UX specialist | **SATISFIED** | 10/10 votes show a forecast (was 100% "check duel"); chip actionable at t=135 ms and through votes 1–5; **0 silently-lost votes** at 700/250/80 ms (was 25%); 20 distinct candidates / 28 slots; undo inert exactly at the 7000 ms boundary (the ~350 ms lie is 0 ms) |
+| creative designer | **SATISFIED** | 0.00 px label overlap across 50 patch-loads at zoom 1.000 / 1.369 / 2.200; cable control points uncrossed at every span (+5.60 px at span 35, was −25); type roles 33 → 22, sizes 15 → 7; plate-union coverage not regressed |
+| ML researcher | **SATISFIED** | all five round-2 blockers closed; it explicitly declined to condition its sign-off on the unrun evolving-pool number, on the grounds that *"shipping `Random` is correct on grounds that hold in either regime, and the measurement decides what the doc may claim, not what the product should do"* |
+
+**The ML reviewer retracted its own round-2 headline.** Its "BALD is ~8% worse
+than random" was a measurement of a broken implementation — the unnormalized
+enjoyment term and the absolute 0.05-nat softmax temperature — and its
+explanation for that number (that the Houlsby regime does not transfer to a
+48-candidate pool) it now calls "over-reach dressed as inference". It also
+checked the repair story quantitatively rather than accepting the narrative: a
+rule partially collapsing toward argmax-utility should land *between* Random and
+Thompson, and its own replication put old-BALD at Random +0.017 against
+Thompson's +0.046 — which is where the story predicts.
+
+**A better reason for the `Random` default than the one in the doc**, from the
+same review, and worth adopting: parsimony ("four tuning constants vs none") is
+*contingent on the tie*, so it is exactly as provisional as the measurement.
+The regime-independent reason is that under `Random` **every duel is an unbiased
+calibration sample**, which is what lets TRUST plot a reliability diagram with no
+selection-bias asterisk — and that holds whichever rule learns θ faster. Flipping
+the default back is one line; flipping it silently re-breaks the trust surface.
+Say that in the doc, because as written it tells the next reader a BALD win flips
+the default and nothing warns them what else flips with it.
+
+**Fixed immediately on that review** (the fourth would have wasted the next
+person's time): the `Evolving` arm had the synthetic user answering through each
+*arm's own* standardizer, so the arms faced different ground-truth users — and
+directionally, since an arm that concentrates its pool gets a smaller sigma,
+inflating z-scores, inflating |Δu*|, making its own training labels less noisy.
+The fixed-exam grading removed that from the scoring but not from the training
+signal. The user now answers through the reference basis. **The decisive run
+would not have been decisive.** Also: README no longer advertises BALD as the
+shipped acquisition, `learn_synthetic`'s module doc no longer claims a stale
+table "reproduces exactly", and the reliability diagram's axes now say
+"it said A would win this often" / "A actually won this often" rather than
+"how confident" / "how often it was right" — a bin at p_a = 0.1 where A wins 10%
+of the time is *perfectly calibrated* and the old labels made that read as
+failure.
+
+Two process notes worth carrying forward, because both were caught by
+measurement disagreeing with expectation rather than by review:
+
+- A label-overlap "defect" of 44.7 px was **an artifact of my own measurement** —
+  comparing `getBBox()` values across different `<g>` transforms, i.e. different
+  local coordinate spaces. Screen coordinates (`getBoundingClientRect`) showed
+  zero. When a number contradicts the geometry, suspect the instrument.
+- The `textLength` condensing net added for long labels **never fires**: the
+  tightest label (`release`, 45.7 units) has 4.3 units of headroom against its
+  50-unit allowance. The designer checked *why* the count was zero rather than
+  accepting it, and concluded a guard that never triggers is the right structure
+  here — the abbreviations do the work. Keep the net; it is what stops the next
+  long label from regressing this.
+
+Also fixed while verifying: the note-key target guard threw when `e.target` was
+the document rather than an element (`e.target.closest is not a function`),
+which would kill the whole keyboard handler. Optional-chained.
+
+### Uncommitted
+
+Nothing in this pass is committed. `crates/ricercar-session/src/{naming,calib,migrate}.rs`
+and `apps/web/fonts/` are **untracked** — a stray `git checkout` during the pass
+already reverted `compile.rs`, `audio.rs` and `structural.rs` once (recovered).
+A tree snapshot sits in the session scratchpad.
+
+### Deferred, with reasons
+Palette expansion (FM, sync, PWM, sub-osc, LFO→pitch) and a keytrack *knob* —
+all grammar-shape changes; keytracking ships as a fixed 0.5 constant instead,
+which is the audible fix without the migration. Velocity→filter (no per-voice CV
+path exists in the compiled patch). Hoisting reverb/delay/chorus to a shared send
+bus, and the voice count past 4 — the second is gated on the first, since
+per-voice Freeverb is the cost driver. Live A/B of two `LivePoly` instances on
+the keyboard, which is the right answer for auditioning but is a second engine
+instance and a crossfade, not a tweak. Harmonicity/beat-rate features, the
+brightness-cluster group prior, β normalization, K gated on prequential log-loss,
+and timestamps for recency.
+
+The single fixed 3-note audition phrase remains the weakest link in the loop and
+is the first thing to look at next: it cannot discriminate slow pads (a 3 s attack
+is silent for the whole stimulus), anything modulated below ~1 Hz, anything above
+Eb4, or how a patch stacks polyphonically — so the grammar can express patches the
+audition can never reveal. Note the deficit **compounds**: this pass's
+exponential-envelope fix pushed a slow patch's t90 from ~630 ms to 1705 ms
+against a 3.2 s phrase whose first note is 600 ms, and the shipped bank already
+holds an `amp#attack` of 0.831 (labels 2.10 s, t90 ≈ 5.7 s) that the audition
+literally cannot show. Every future correctness win widens the gap.
+
+
+### ✓ Closed: the acquisition default is now measured in both regimes
+
+`Acquisition::default()` is `Random`, and it is no longer provisional. The
+evolving-pool run (`learn_synthetic --compare 20`, with the reference-basis
+fix so the synthetic user answers through one common ground truth in both
+regimes) completed on 2026-07-30: **bald − random is inside noise on all
+three metrics in both the static and the evolving regime**, while Thompson
+loses clearly in both. Full tables live in the `Acquisition` type doc in
+`engine.rs`, which now carries both regimes from the same harness run.
+
+The manipulation check turned out to be the interesting number: final pool
+spread was **7.7–7.9 evolving vs 7.2 static** — six generations over a
+72-duel session did not concentrate the pool; frontier-biased injection plus
+worst-eviction *widened* it slightly. So the hypothesized concentrated regime
+where BALD should win never arises at session horizon, and the original
+"pool concentrates under evolution" objection is answered by measurement
+rather than dismissed: the concern was legitimate, the regime was run, and
+the concentration does not materialize.
+
+Re-run with `cargo run --release --example learn_synthetic -- --compare 20`
+(**fans out one thread per run — it held ~14 of 16 cores for ~27 min; do not
+run it alongside anything you care about timing**).
+
+### Two related lessons from the same error
+
+1. **The synthetic user was linear in our own φ**, so the model was
+   well-specified by construction and the harness could not fail. Now also
+   `IdealPointUser` (`u* = −Σ wᵢ(φᵢ−cᵢ)²`), which is *provably* outside the
+   model class: `max_k θ_k·φ` is a maximum of affine functions and therefore
+   convex, an ideal-point utility is strictly concave, so no K closes the gap.
+   Measured 0.675 accuracy vs 0.932 well-specified. The gate fails if inference
+   breaks **or** if the harness is too blunt to notice misspecification.
+2. **Quantile naming spreads names by construction**, so "top-name share 33% →
+   8%" was partly forced rather than earned — a genuinely homogeneous pool would
+   still have been given 30 distinct names. Now terciles (robust to pool drift)
+   **plus a per-axis just-noticeable-difference floor**: if the pool's whole
+   span on an axis is below audibility, that axis stops contributing a word.
+   Absolute constants are legitimate *there* because a JND encodes perception,
+   which does not move when the pool does — unlike the original thresholds,
+   which were absolute claims about pool *structure* and broke when it drifted.
+   Guarded by `names_collapse_when_the_patches_are_alike`: twelve imperceptible
+   variants of one preset must yield ≤2 distinct names.
+
 
 ## Pass 6: panel critique → all four tiers shipped (commits 4e94345, d12a23b, + tier-4)
 

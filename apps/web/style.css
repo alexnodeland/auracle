@@ -1,5 +1,46 @@
 /* RICERCAR — a full instrument: menu bar, bank, staged views, keyboard dock.
-   Two-phosphor language: green = audio, amber = the model's mind. */
+   Two-phosphor language: green = audio, amber = the model's mind.
+
+   The token layer below is load-bearing and has three laws:
+
+   1. TEXT TIER vs STROKE TIER. Each phosphor exists twice. `--phos-*-dim` is
+      the *text* tier and clears 4.5:1 on the rack; `--phos-*-deep` is the
+      *stroke* tier for wire glow and jack rings, where contrast rules don't
+      apply and the darker value looks right. One token cannot do both jobs —
+      trying to made every dimmed label in the app fail AA, including the
+      lineage log, which is the copy that explains what evolution actually did.
+   2. TRACKING LAW. Uppercase gets tracking. Lowercase and mono get none.
+   3. NO OFF-SYSTEM COLOUR. Every accent is signal-green or mind-amber. Slate
+      blues and pinks read as "generic dark app" and dissolve the phosphor law. */
+
+/* Self-hosted so the identity isn't a coin flip on the user's OS — see
+   fonts/README.md for why the old local-only stack silently failed. */
+@font-face {
+  font-family: "Jost";
+  src: url("fonts/jost-var.woff2") format("woff2-variations");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/plexmono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/plexmono-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-it.woff2") format("woff2-variations");
+  font-weight: 300 600;
+  font-style: italic;
+  font-display: swap;
+}
 
 :root {
   --rack: #0c0d10;          /* the void behind the rack */
@@ -7,16 +48,60 @@
   --panel-hi: #1d2127;      /* raised surface */
   --bezel: #07080a;         /* screen bezels */
   --hairline: #292e36;
-  --silk: #d9d4c8;          /* warm silkscreen ink */
-  --silk-dim: #6f6c63;
-  --phos-a: #8ef0b1;        /* green phosphor — sound */
-  --phos-a-dim: #3d6a4d;
-  --phos-b: #ffb454;        /* amber phosphor — taste */
-  --phos-b-dim: #7a5526;
+
+  /* silk — warm silkscreen ink */
+  --silk: #d9d4c8;          /* 13.1:1 on rack */
+  --silk-dim: #9a958a;      /*  5.9:1 — all dimmed TEXT */
+  --silk-mute: #6f6c63;     /*  non-text only: hairlines, disabled glyphs */
+
+  /* green phosphor — sound */
+  --phos-a: #8ef0b1;        /* 14.1:1 */
+  --phos-a-dim: #63a97c;    /*  5.2:1 — knob values, readouts */
+  --phos-a-deep: #3d6a4d;   /*  strokes and fills only */
+
+  /* amber phosphor — the model's mind */
+  --phos-b: #ffb454;        /* 11.0:1 */
+  --phos-b-dim: #b8823c;    /*  5.4:1 — lineage log, notes */
+  --phos-b-deep: #7a5526;   /*  strokes and fills only */
+
   --led-red: #ff5747;
-  --font-silk: "Futura", "Century Gothic", "Avenir Next", "Trebuchet MS", sans-serif;
+
+  --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --font-serif: Georgia, "Times New Roman", serif;
+  --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+
+  /* type scale — six roles, 10px floor. Nothing on an instrument panel
+     should be 6.5px. */
+  --t-micro: 10px;   /* mono — knob values, jack labels */
+  --t-label: 11px;   /* silk caps — panel labels */
+  --t-body: 13px;    /* readouts, hints */
+  --t-lead: 15px;    /* the model speaking */
+  --t-title: 17px;   /* view + module titles, counters */
+  --t-hero: 22px;    /* wordmark */
+
+  /* The rack draws into a viewBox that is zoomed 1×–2.2× to fill its frame,
+     so its type floor has to hold at the *worst* case (zoom 1, small window).
+     These are the rendered sizes there; everything above 1× is a bonus. They
+     are separate tokens rather than reused DOM ones because the module
+     geometry (MOD_W / COL_W / KNOB_ROW in main.js) is sized around them. */
+  /* 9px, deliberately one under the DOM floor, and the exception is argued
+     rather than hidden: this tier carries mono *numerals* (`1.3 ms`,
+     `−22.7 dB`) with uniform advance widths, read as values rather than prose.
+     Note the rack is NOT always magnified — zoom clamps at 1.0, and on a
+     1000px-wide window most patches render there, so treat 9px as the real
+     rendered size and not a best case. `.jack text` shares this token for
+     `in`/`out`, which are port symbols from a closed set of two rather than
+     words. The 10px floor stands for everything else. */
+  --t-rack-micro: 9px;
+  --t-rack-label: 10px;
+  --t-rack-title: 11px;
+
+  /* spacing scale */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+
+  /* light comes from 315° everywhere */
+  --lift: inset 1px 1px 0 rgba(255, 255, 255, 0.08);
+  --cast: 0 3px 8px rgba(0, 0, 0, 0.5);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,17 +112,24 @@ body {
   background: var(--rack);
   color: var(--silk);
   font-family: var(--font-silk);
+  font-size: var(--t-body);
   -webkit-font-smoothing: antialiased;
 }
 
-.mono { font-family: var(--font-mono); }
+/* Form controls do not inherit type. Without this, every button, input and
+   select in the app renders in the UA default — which was 284 elements in
+   Arial, including all 200 bank stars. */
+button, input, select, textarea { font: inherit; color: inherit; }
+
+.mono { font-family: var(--font-mono); letter-spacing: 0; }
 .hidden { display: none !important; }
-.silk-dim { color: var(--silk-dim); font-weight: 400; letter-spacing: 0.08em; text-transform: none; }
+/* Sentence-case text takes no tracking (law 2). */
+.silk-dim { color: var(--silk-dim); font-weight: 400; text-transform: none; }
 
 .panel-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 .panel-label.amber { color: var(--phos-b); }
@@ -63,17 +155,33 @@ body {
   background-size: 44px 100%, 100% 100%;
 }
 .wordmark {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
+  font-size: var(--t-hero);
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  color: var(--silk);
+  display: flex;
+  align-items: baseline;
 }
-.wordmark span { color: var(--phos-b); text-shadow: 0 0 12px rgba(255, 180, 84, 0.45); }
+/* The final R is the "model is thinking" indicator — one mark, two jobs.
+   At rest it takes the *text* tier, not the stroke tier: it is a letter of the
+   wordmark before it is an indicator, so it has to stay readable. */
+.wordmark b {
+  font-weight: 500;
+  color: var(--phos-b-dim);
+  transition: color 260ms ease, text-shadow 260ms ease;
+}
+.wordmark b.thinking {
+  color: var(--phos-b);
+  text-shadow: 0 0 14px rgba(255, 180, 84, 0.75);
+  animation: seek 1.1s ease-in-out infinite;
+}
+@keyframes seek { 50% { opacity: 0.55; } }
 .viewtabs { display: flex; gap: 6px; }
 .viewtab {
   font-family: var(--font-silk);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--silk-dim);
   background: var(--bezel);
@@ -88,12 +196,14 @@ body {
   box-shadow: 0 0 10px rgba(142,240,177,0.15), inset 0 0 8px rgba(142,240,177,0.07);
 }
 .menubar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.counter { font-family: var(--font-mono); font-size: 12px; color: var(--phos-a); }
-.counter-label { color: var(--silk-dim); font-family: var(--font-silk); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; margin-right: 4px; }
+/* The menubar should lead with what the machine has learned, not with file
+   management — so the counters carry title weight and the amber of the mind. */
+.counter { font-family: var(--font-mono); font-size: var(--t-title); font-weight: 600; color: var(--phos-b); }
+.counter-label { color: var(--silk-dim); font-family: var(--font-silk); font-size: var(--t-micro); letter-spacing: 0.16em; text-transform: uppercase; margin-right: 5px; }
 
 .util-btn {
   font-family: var(--font-silk);
-  font-size: 10px;
+  font-size: var(--t-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--silk);
@@ -104,6 +214,7 @@ body {
   cursor: pointer;
 }
 .util-btn:hover { border-color: var(--silk-dim); }
+.util-btn:active { transform: translateY(1px); }
 .util-btn.amber { color: var(--phos-b); border-color: var(--phos-b-dim); }
 .util-btn.amber:hover { box-shadow: 0 0 10px rgba(255,180,84,0.25); }
 .util-btn:disabled { opacity: 0.4; cursor: default; }
@@ -113,7 +224,7 @@ body {
   box-shadow: 0 0 10px rgba(255,180,84,0.3), inset 0 0 6px rgba(255,180,84,0.12);
 }
 
-.led-block { display: flex; align-items: center; gap: 6px; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--silk-dim); }
+.led-block { display: flex; align-items: center; gap: 6px; font-size: var(--t-micro); letter-spacing: 0.18em; text-transform: uppercase; color: var(--silk-dim); }
 .led {
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -150,7 +261,7 @@ body {
   padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
 }
-.bank-head .silk-dim { font-size: 10px; }
+.bank-head .silk-dim { font-size: var(--t-micro); }
 .bank-list {
   flex: 1;
   overflow-y: auto;
@@ -173,10 +284,10 @@ body {
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-micro);
   color: var(--silk);
 }
-.bank-item .bi-origin { font-size: 9px; }
+.bank-item .bi-origin { font-size: var(--t-micro); }
 .bank-item .bi-origin.prior { color: var(--silk-dim); }
 .bank-item .bi-origin.refined { color: var(--phos-b); }
 .bank-item .bi-origin.edited { color: var(--phos-a); }
@@ -199,13 +310,13 @@ body {
   border: none;
   cursor: pointer;
   color: var(--silk-dim);
-  font-size: 12px;
+  font-size: var(--t-body);
   padding: 0 1px;
 }
 .bank-item .bi-row button:hover { color: var(--silk); }
 .bank-item .star.lit { color: var(--phos-b); text-shadow: 0 0 6px rgba(255,180,84,0.6); }
-.bank-item .bi-kill { margin-left: auto; color: var(--led-red); font-size: 10px; }
-.bench-empty { color: var(--silk-dim); font-size: 12px; font-style: italic; font-family: var(--font-serif); padding: 12px 6px; }
+.bank-item .bi-kill { margin-left: auto; color: var(--led-red); font-size: var(--t-micro); }
+.bench-empty { color: var(--silk-dim); font-size: var(--t-body); font-style: italic; font-family: var(--font-voice); padding: var(--s3) var(--s2); }
 
 /* ---- stage + views ---- */
 .stage { flex: 1; min-width: 0; position: relative; }
@@ -229,7 +340,7 @@ body {
 .tool-sep { width: 1px; height: 18px; background: var(--hairline); margin: 0 2px; }
 .toggle {
   display: flex; align-items: center; gap: 6px;
-  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  font-size: var(--t-micro); letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--silk-dim); cursor: pointer;
 }
 .toggle input { accent-color: var(--phos-b); }
@@ -237,6 +348,7 @@ body {
 /* ---- workbench rack ---- */
 .rack-scroll {
   position: relative;
+  touch-action: none;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -252,10 +364,9 @@ body {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   color: var(--silk-dim);
-  font-family: var(--font-serif); font-style: italic; font-size: 13.5px;
+  font-family: var(--font-voice); font-style: italic; font-size: var(--t-lead);
   padding: 0 60px; text-align: center;
 }
-.rack-note { font-size: 10px; color: var(--phos-b-dim); min-height: 1.3em; }
 
 /* svg module styling */
 .mod-plate { fill: url(#plateGrad); stroke: #2c313a; stroke-width: 1; }
@@ -263,7 +374,7 @@ body {
 .mod-plate.locked { stroke: var(--phos-b); stroke-dasharray: 4 3; }
 .mod-title {
   font-family: var(--font-silk);
-  font-size: 9px;
+  font-size: var(--t-rack-title);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -272,7 +383,7 @@ body {
 .mod-title.modside { fill: var(--phos-b); }
 .knob-label {
   font-family: var(--font-silk);
-  font-size: 7.5px;
+  font-size: var(--t-rack-label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   fill: var(--silk-dim);
@@ -280,7 +391,7 @@ body {
 }
 .knob-value {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: var(--t-rack-micro);
   fill: var(--phos-a-dim);
   text-anchor: middle;
 }
@@ -291,17 +402,17 @@ body {
 .knob-locked-halo { fill: none; stroke: var(--phos-b); stroke-width: 1.2; stroke-dasharray: 2 2.5; pointer-events: none; }
 .enum-body { fill: #0a0c0e; stroke: #2c313a; stroke-width: 1; cursor: pointer; }
 .enum-text {
-  font-family: var(--font-mono); font-size: 8px; fill: var(--phos-a);
+  font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--phos-a);
   text-anchor: middle; pointer-events: none;
 }
 .lock-dot { cursor: pointer; }
 .lock-dot circle { fill: #1a1410; stroke: #3a2f1d; stroke-width: 1; }
 .lock-dot.on circle { fill: var(--phos-b); stroke: var(--phos-b); filter: drop-shadow(0 0 3px rgba(255,180,84,0.8)); }
-.mod-lock { font-family: var(--font-mono); font-size: 9px; fill: var(--silk-dim); cursor: pointer; }
+.mod-lock { font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim); cursor: pointer; }
 .mod-lock.on { fill: var(--phos-b); }
 .wire { fill: none; stroke-linecap: round; pointer-events: none; }
-.wire.audio { stroke: rgba(142,240,177,0.55); stroke-width: 2.2; }
-.wire.audio-glow { stroke: rgba(142,240,177,0.14); stroke-width: 6; }
+.wire.audio { stroke: rgba(142,240,177,0.62); stroke-width: 3; }
+.wire.audio-glow { stroke: #0a1a10; stroke-width: 5.5; }
 .wire.mod { stroke: rgba(255,180,84,0.55); stroke-width: 1.8; stroke-dasharray: 6 4; }
 .wire.mod-glow { stroke: rgba(255,180,84,0.12); stroke-width: 5; }
 .port { fill: #0a0b0d; stroke: #3a3f48; stroke-width: 1; }
@@ -311,8 +422,8 @@ body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 150px 1fr;
-  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s3);
 }
 .duel-card {
   display: flex;
@@ -328,7 +439,7 @@ body {
     linear-gradient(180deg, var(--panel-hi), var(--panel) 60%);
 }
 .duel-card.live-sel { border-color: var(--phos-a-dim); box-shadow: 0 0 12px rgba(142,240,177,0.12); }
-.duel-hint { font-size: 9px; }
+.duel-hint { font-size: var(--t-micro); }
 .panel-head {
   display: flex;
   align-items: center;
@@ -338,7 +449,7 @@ body {
 }
 .inspect-btn {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-micro);
   color: var(--silk-dim);
   background: none;
   border: 1px solid var(--hairline);
@@ -360,7 +471,7 @@ body {
 }
 .scope { flex: 1; min-height: 90px; }
 .readout {
-  font-size: 10px;
+  font-size: var(--t-micro);
   line-height: 1.5;
   color: var(--phos-a-dim);
   min-height: 2.9em;
@@ -370,17 +481,28 @@ body {
 }
 .duel-controls { display: flex; gap: 10px; }
 .duel-mid {
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: var(--s5);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(115deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, var(--panel-hi), var(--panel) 60%);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.duel-mid.learning {
+  border-color: var(--phos-b);
+  box-shadow: 0 0 24px rgba(255,180,84,0.22), inset 0 0 18px rgba(255,180,84,0.07);
 }
 .prompt {
   text-align: center;
-  font-family: var(--font-serif);
+  font-family: var(--font-voice);
   font-style: italic;
-  font-size: 13.5px;
+  font-size: var(--t-lead);
   line-height: 1.6;
   color: var(--silk-dim);
 }
@@ -388,7 +510,7 @@ body {
 .hw-btn {
   flex: 1;
   font-family: var(--font-silk);
-  font-size: 11px;
+  font-size: var(--t-label);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -398,7 +520,7 @@ body {
   border: 1px solid #000;
   background: linear-gradient(180deg, #2a2f37, #1a1d23);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.09),
+    var(--lift),
     0 3px 0 #0a0b0d,
     0 5px 8px rgba(0,0,0,0.5);
   cursor: pointer;
@@ -411,7 +533,7 @@ body {
 .hw-btn:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .hw-btn kbd {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--t-micro);
   color: var(--silk-dim);
   border: 1px solid var(--hairline);
   border-radius: 3px;
@@ -421,7 +543,7 @@ body {
 .hw-btn.play { color: var(--phos-a); }
 .hw-btn.play.playing { box-shadow: inset 0 0 12px rgba(142,240,177,0.25), 0 3px 0 #0a0b0d; }
 .hw-btn.choose { color: var(--phos-b); }
-.hw-btn.small { flex: none; font-size: 10px; padding: 8px 12px; color: var(--phos-b); }
+.hw-btn.small { flex: none; font-size: var(--t-micro); padding: 8px 12px; color: var(--phos-b); }
 .hw-btn:disabled { opacity: 0.45; cursor: default; }
 
 .lineage-strip {
@@ -442,7 +564,7 @@ body {
 }
 .lineage-log {
   flex: 1;
-  font-size: 10px;
+  font-size: var(--t-body);
   line-height: 1.65;
   color: var(--phos-b-dim);
   overflow: hidden;
@@ -455,7 +577,7 @@ body {
 .tabs { display: flex; gap: 4px; }
 .tab {
   font-family: var(--font-silk);
-  font-size: 9px;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -473,10 +595,10 @@ body {
 }
 .caption {
   flex: 1 1 300px;
-  font-family: var(--font-serif);
+  font-family: var(--font-voice);
   font-style: italic;
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: var(--t-body);
+  line-height: 1.45;
   color: var(--silk-dim);
 }
 .crt-wrap { flex: 1; min-height: 0; }
@@ -504,13 +626,17 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: var(--s2);
   flex: 0 0 auto;
 }
+.ctl-grid { display: grid; grid-template-columns: repeat(4, auto); gap: var(--s1); align-items: center; }
+.util-btn.sq { width: 30px; padding: 6px 0; text-align: center; }
+#oct-label { grid-column: span 1; }
 .key-side.right { align-items: flex-end; }
 .oct-ctl { display: flex; align-items: center; gap: 8px; }
-#oct-label { font-size: 10px; color: var(--phos-a); min-width: 44px; text-align: center; }
-.live-label { font-size: 10px; color: var(--phos-a-dim); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#oct-label { font-size: var(--t-micro); color: var(--phos-a); min-width: 44px; text-align: center; }
+.live-label { font-size: var(--t-micro); color: var(--phos-a-dim); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #vol { accent-color: var(--phos-a); width: 110px; }
 
 .piano {
@@ -532,15 +658,16 @@ body {
   cursor: pointer;
 }
 .pkey:last-child { border-right: none; }
-.pkey.down { background: linear-gradient(180deg, #9be8b6 0%, #6fcf95 100%); }
+.pkey { transition: background 140ms ease-out; }
+.pkey.down { background: linear-gradient(180deg, #9be8b6 0%, #6fcf95 100%); transition: background 30ms linear; }
 .pkey .hint {
   position: absolute;
   bottom: 5px;
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--font-mono);
-  font-size: 9px;
-  color: #6b675c;
+  font-size: var(--t-micro);
+  color: #4a473f;
   pointer-events: none;
 }
 .pkey.down .hint { color: #14532b; }
@@ -558,15 +685,16 @@ body {
   cursor: pointer;
   box-shadow: 0 3px 5px rgba(0,0,0,0.6);
 }
-.bkey.down { background: linear-gradient(180deg, #2f7a4d 0%, #174a2c 90%); }
+.bkey { transition: background 140ms ease-out; }
+.bkey.down { background: linear-gradient(180deg, #2f7a4d 0%, #174a2c 90%); transition: background 30ms linear; }
 .bkey .hint {
   position: absolute;
   bottom: 4px;
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--font-mono);
-  font-size: 8px;
-  color: #7a766b;
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
   pointer-events: none;
 }
 
@@ -588,9 +716,7 @@ body {
   background:
     repeating-linear-gradient(115deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px),
     linear-gradient(180deg, var(--panel-hi), var(--panel) 60%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.05),
-    0 10px 24px rgba(0,0,0,0.45);
+  box-shadow: var(--lift), 0 10px 24px rgba(0,0,0,0.45);
 }
 .screws i {
   position: absolute;
@@ -612,8 +738,8 @@ body {
 .screws i:nth-child(3) { bottom: 6px; left: 6px; }
 .screws i:nth-child(4) { bottom: 6px; right: 6px; }
 .boot-card { width: min(520px, 92vw); text-align: center; padding: 34px 30px 28px; }
-.boot-title { font-size: 15px; font-weight: 700; letter-spacing: 0.3em; }
-.boot-sub { margin-top: 8px; font-size: 12px; color: var(--silk-dim); letter-spacing: 0.06em; }
+.boot-title { font-size: var(--t-lead); font-weight: 700; letter-spacing: 0.3em; }
+.boot-sub { margin-top: 8px; font-size: var(--t-body); color: var(--silk-dim); letter-spacing: 0.06em; }
 .boot-meter {
   margin: 22px auto 10px;
   height: 10px;
@@ -629,12 +755,12 @@ body {
   box-shadow: 0 0 10px rgba(142, 240, 177, 0.55);
   transition: width 300ms ease;
 }
-.boot-status { font-size: 11px; color: var(--phos-a); }
+.boot-status { font-size: var(--t-label); color: var(--phos-a); }
 
 /* ---- bank names + presets ---- */
 .bank-item .bi-name {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--t-micro);
   color: var(--silk);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -644,10 +770,10 @@ body {
   cursor: text;
 }
 .bank-item .bi-name.custom { color: var(--phos-b); }
-.bank-item .bi-id { font-size: 8.5px; color: var(--silk-dim); }
+.bank-item .bi-id { font-size: var(--t-micro); color: var(--silk-dim); }
 .bank-item input.bi-rename {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--t-micro);
   flex: 1;
   min-width: 0;
   color: var(--phos-b);
@@ -658,7 +784,7 @@ body {
   outline: none;
 }
 .bank-head { position: relative; gap: 8px; }
-.bank-head .util-btn { padding: 4px 8px; font-size: 9px; }
+.bank-head .util-btn { padding: 4px 8px; font-size: var(--t-micro); }
 .presets-pop {
   position: absolute;
   top: 42px;
@@ -689,12 +815,12 @@ body {
 .presets-pop .pp-item:hover { background: rgba(255,180,84,0.08); }
 .presets-pop .pp-name {
   font-family: var(--font-silk);
-  font-size: 11px;
+  font-size: var(--t-label);
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--silk);
 }
-.presets-pop .pp-sig { font-family: var(--font-mono); font-size: 9px; color: var(--phos-a-dim); margin-left: auto; }
+.presets-pop .pp-sig { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--phos-a-dim); margin-left: auto; }
 
 /* ---- duel card flip ---- */
 .mini-rack {
@@ -728,7 +854,7 @@ body {
 }
 .ctx-menu .cm-head {
   font-family: var(--font-silk);
-  font-size: 9px;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -740,7 +866,7 @@ body {
   width: 100%;
   text-align: left;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-label);
   color: var(--silk);
   background: none;
   border: none;
@@ -750,7 +876,7 @@ body {
 }
 .ctx-menu .cm-item:hover { background: rgba(142,240,177,0.09); color: var(--phos-a); }
 .ctx-menu .cm-item.danger:hover { background: rgba(255,87,71,0.12); color: var(--led-red); }
-.mod-menu-btn { font-family: var(--font-mono); font-size: 10px; fill: var(--silk-dim); cursor: pointer; }
+.mod-menu-btn { font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim); cursor: pointer; }
 .mod-menu-btn:hover { fill: var(--phos-a); }
 
 /* ---- play canvas + node bank ---- */
@@ -774,7 +900,7 @@ body {
   background: var(--bezel);
   color: var(--silk-dim);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--t-label);
 }
 .nb-collapse:hover { color: var(--phos-a); }
 .nodebank.collapsed .nb-body { display: none; }
@@ -788,14 +914,14 @@ body {
 }
 .nb-head {
   font-family: var(--font-silk);
-  font-size: 10px;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 .nb-sect {
   font-family: var(--font-silk);
-  font-size: 8.5px;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -806,7 +932,7 @@ body {
 .nb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .nb-item {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--t-micro);
   color: var(--silk);
   background: linear-gradient(180deg, #1f242b, #15181d);
   border: 1px solid #2c313a;
@@ -818,10 +944,10 @@ body {
 .nb-item:hover { border-color: var(--phos-a-dim); color: var(--phos-a); }
 .nb-item.mod:hover { border-color: var(--phos-b-dim); color: var(--phos-b); }
 .nb-hint {
-  font-family: var(--font-serif);
+  font-family: var(--font-voice);
   font-style: italic;
-  font-size: 10.5px;
-  line-height: 1.45;
+  font-size: var(--t-body);
+  line-height: 1.5;
   color: var(--silk-dim);
 }
 .nb-hint b { color: var(--phos-a); font-weight: 400; }
@@ -841,7 +967,7 @@ body {
   writing-mode: vertical-lr;
   transform: rotate(180deg);
   font-family: var(--font-silk);
-  font-size: 8.5px;
+  font-size: var(--t-micro);
   font-weight: 700;
   letter-spacing: 0.3em;
   text-transform: uppercase;
@@ -849,7 +975,7 @@ body {
   align-self: center;
 }
 .tray-items { flex: 1; display: flex; gap: 8px; overflow-x: auto; align-items: center; }
-.tray-hint { font-size: 10px; color: #4a4f45; font-style: italic; }
+.tray-hint { font-size: var(--t-micro); color: var(--silk-dim); font-style: italic; }
 .tray-item {
   position: relative;
   flex: 0 0 auto;
@@ -861,7 +987,7 @@ body {
   background: linear-gradient(180deg, #1a1e24, #13161a);
   padding: 7px 10px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-micro);
   color: var(--silk);
 }
 .tray-item .t-jack {
@@ -878,22 +1004,21 @@ body {
 }
 .tray-item .t-x {
   background: none; border: none; color: var(--silk-dim);
-  font-size: 11px; cursor: pointer; padding: 0 2px;
+  font-size: var(--t-label); cursor: pointer; padding: 0 2px;
 }
 .tray-item .t-x:hover { color: var(--led-red); }
 
 /* ---- jacks & wires ---- */
 .jack { cursor: crosshair; }
 .jack circle {
-  fill: radial-gradient(#000, #000);
   fill: #0a0c0a;
-  stroke: var(--phos-a-dim);
+  stroke: var(--phos-a-deep);
   stroke-width: 1.6;
 }
-.jack.modjack circle { stroke: var(--phos-b-dim); }
+.jack.modjack circle { stroke: var(--phos-b-deep); }
 .jack text {
   font-family: var(--font-mono);
-  font-size: 6.5px;
+  font-size: var(--t-rack-micro);
   fill: var(--silk-dim);
   pointer-events: none;
 }
@@ -927,10 +1052,18 @@ body {
 #wire-overlay path.mod { stroke: rgba(255,180,84,0.85); filter: drop-shadow(0 0 5px rgba(255,180,84,0.6)); }
 
 /* ---- responsive ---- */
+/* A and B stay side by side at every width — the comparison IS the
+   interaction. The previous rule dropped B onto a third grid row inside an
+   `overflow: hidden` view, so the cards overprinted the controls. */
 @media (max-width: 1080px) {
   .bank { width: 200px; flex-basis: 200px; }
-  .duel-row { grid-template-columns: 1fr 1fr; }
-  .duel-mid { grid-column: 1 / -1; flex-direction: row; }
+  .rack-tools { gap: var(--s1); }
+  .duel-mid { gap: var(--s3); }
+}
+/* Short laptops: the deck is the elastic part, so give the fixed chrome less. */
+@media (max-height: 860px) {
+  .keybar { flex-basis: 108px; }
+  .tray { flex: 0 0 52px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -940,16 +1073,16 @@ body {
 /* ---------- performance controls (keybar) ---------- */
 .perf-ctl { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .perf-sel, .perf-num {
-  background: #14171c; color: var(--ink, #d9d4c8);
+  background: #14171c; color: var(--silk);
   border: 1px solid #2c313a; border-radius: 3px;
-  font: 10px "IBM Plex Mono", monospace; padding: 2px 3px;
+  font: var(--t-micro)/1.4 var(--font-mono); padding: 2px 3px;
 }
 .perf-num { width: 44px; }
-.perf-glide { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--phos-a-dim); }
+.perf-glide { display: flex; align-items: center; gap: 3px; font-size: var(--t-micro); color: var(--phos-a-dim); }
 .perf-glide input[type="range"] { width: 54px; }
-.midi-ind { font-size: 9px; color: #565d68; }
+.midi-ind { font-size: var(--t-micro); color: var(--silk-dim); }
 .midi-ind.on { color: var(--phos-a); text-shadow: 0 0 6px rgba(142,240,177,0.6); }
-#rec-btn.lit { color: #ff6b6b; border-color: #ff6b6b; text-shadow: 0 0 8px rgba(255,107,107,0.8); }
+#rec-btn.lit { color: var(--led-red); border-color: var(--led-red); text-shadow: 0 0 8px rgba(255,87,71,0.8); }
 
 /* ---------- taste style chips & duel prediction ---------- */
 .style-chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 14px; }
@@ -961,16 +1094,16 @@ body {
 .style-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .style-chip .sc-name {
   background: transparent; border: none; outline: none;
-  color: var(--ink, #d9d4c8); font: 10px "IBM Plex Mono", monospace; width: 110px;
+  color: var(--silk); font: var(--t-body)/1.4 var(--font-mono); width: 168px;
 }
-.style-chip .sc-share { font-size: 9px; color: #7a8290; }
+.style-chip .sc-share { font-size: var(--t-micro); color: var(--silk-dim); }
 .style-chip .sc-play {
   background: none; border: none; color: var(--phos-a, #8ef0b1);
-  cursor: pointer; font-size: 10px; padding: 0 2px;
+  cursor: pointer; font-size: var(--t-micro); padding: 0 2px;
 }
-.style-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; color: #a8b0bc; }
+.style-badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-micro); color: var(--silk-dim); }
 .style-badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-.duel-pred { font-size: 9px; color: #7a8290; text-align: center; min-height: 12px; }
+.duel-pred { font-size: var(--t-micro); color: var(--silk-dim); text-align: center; min-height: 12px; }
 .duel-pred.hit { color: var(--phos-a, #8ef0b1); }
 .duel-pred.miss { color: var(--phos-b, #ffb454); }
 
@@ -992,13 +1125,13 @@ body {
 /* ---------- quick duel strip (PLAY) ---------- */
 .play-duel {
   display: flex; align-items: center; gap: 8px;
-  padding: 4px 12px; font-size: 10px;
+  padding: 4px 12px; font-size: var(--t-micro);
   border-top: 1px solid #262b33; background: #14171cd9;
 }
-.play-duel .pd-label { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+.play-duel .pd-label { font-size: var(--t-micro); letter-spacing: 0.12em; text-transform: uppercase; }
 .pd-side {
   background: #191d24; border: 1px solid #2c313a; border-radius: 3px;
-  color: var(--phos-a, #8ef0b1); font: 10px "IBM Plex Mono", monospace;
+  color: var(--phos-a, #8ef0b1); font: var(--t-micro)/1.4 var(--font-mono);
   padding: 2px 8px; cursor: pointer; max-width: 180px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1011,16 +1144,16 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .help-card { max-width: 720px; width: min(92vw, 720px); padding: 22px 26px; position: relative; }
-.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; font-size: 11px; line-height: 1.55; }
-.help-cols p { margin: 4px 0 10px; color: #b8bec8; }
+.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; font-size: var(--t-label); line-height: 1.55; }
+.help-cols p { margin: 4px 0 10px; color: var(--silk); }
 .help-cols b { color: var(--phos-a, #8ef0b1); font-weight: 600; }
 .help-h {
-  color: var(--phos-b, #ffb454); font-size: 9px; letter-spacing: 0.14em;
+  color: var(--phos-b, #ffb454); font-size: var(--t-micro); letter-spacing: 0.14em;
   text-transform: uppercase; margin-top: 8px;
 }
 .help-cols kbd {
   background: #1d222a; border: 1px solid #333a45; border-bottom-width: 2px;
-  border-radius: 3px; padding: 0 4px; font-size: 10px;
+  border-radius: 3px; padding: 0 4px; font-size: var(--t-micro);
 }
 #help-close { margin-top: 14px; }
 @media (max-width: 640px) { .help-cols { grid-template-columns: 1fr; } }
@@ -1029,7 +1162,7 @@ body {
 @media (pointer: coarse) {
   .util-btn, .inspect-btn, .hw-btn { min-height: 30px; min-width: 30px; }
   .jack circle { r: 8; }
-  .bank-item .star { font-size: 16px; padding: 4px; }
+  .bank-item .star { font-size: var(--t-lead); padding: 4px; }
   .perf-glide input[type="range"], #vol { min-height: 26px; }
 }
 
@@ -1038,3 +1171,396 @@ body {
   .wire.pulse, .wire.mod.pulse, .wire.mod-glow.pulse,
   .jack.modjack.pulse circle, .duel-card.deal { animation: none !important; }
 }
+
+/* =====================================================================
+   Pass 7 — the surfaces added to make the instrument legible and alive.
+   ===================================================================== */
+
+/* ---------- focus ----------
+   Only .hw-btn had a focus ring, on a near-black palette where the UA default
+   is invisible, and two rules actively removed outlines. Everything gets one. */
+.util-btn:focus-visible,
+.viewtab:focus-visible,
+.tab:focus-visible,
+.inspect-btn:focus-visible,
+.nb-item:focus-visible,
+.cm-item:focus-visible,
+.ovf-item:focus-visible,
+.warm-item:focus-visible,
+.bank-item:focus-visible,
+.bank-list:focus-visible,
+.star:focus-visible,
+.bi-kill:focus-visible,
+.bi-hear:focus-visible,
+.nextstep:focus-visible,
+.pd-side:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[data-addr]:focus-visible {
+  outline: 2px solid var(--phos-a);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+[data-addr]:focus-visible .knob-body { stroke: var(--phos-a); stroke-width: 2; }
+
+/* ---------- menubar: skill readout + overflow ---------- */
+.skill { font-size: var(--t-micro); color: var(--phos-b-dim); max-width: 190px; }
+.ovf { position: relative; }
+.ovf-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 214px;
+  padding: var(--s1);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1e232a, #14161a);
+  box-shadow: var(--cast), 0 14px 34px rgba(0,0,0,0.6);
+}
+.ovf-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: var(--t-body);
+  color: var(--silk);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.ovf-item:hover { background: rgba(142,240,177,0.09); color: var(--phos-a); }
+.ovf-item kbd {
+  float: right;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
+}
+.ovf-sep { height: 1px; background: var(--hairline); margin: var(--s1) 6px; }
+
+/* ---------- next step ----------
+   Nothing in the app ever answered "what now?". This always does. */
+.nextstep {
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-lead);
+  color: var(--phos-b);
+  background: rgba(255,180,84,0.07);
+  border: 1px solid var(--phos-b-deep);
+  border-radius: 999px;
+  padding: 5px var(--s3);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.nextstep:hover { background: rgba(255,180,84,0.14); border-color: var(--phos-b); }
+.nextstep.inert { color: var(--silk-dim); border-color: var(--hairline); background: none; cursor: default; }
+
+/* ---------- the live scope ----------
+   Sits in the rack's own frame, behind the modules, so the circuit you are
+   looking at is the thing that appears to be running. */
+.live-scope {
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 42%;
+  height: 34%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+/* ---------- rack material ---------- */
+.plate-lit { fill: rgba(255,255,255,0.07); pointer-events: none; }
+.plate-shade { fill: rgba(0,0,0,0.6); pointer-events: none; }
+.plate-screw { opacity: 0.85; pointer-events: none; }
+.mod-plate { transition: stroke 260ms cubic-bezier(0.2, 0, 0.6, 1); }
+/* Note-on lights the amp plate: picture tied to sound, at the module where
+   the sound leaves the patch. */
+.mod-plate.struck { stroke: var(--phos-a); transition: stroke 30ms linear; }
+
+.knob-ticks line { stroke: #3a4049; stroke-width: 1; }
+.knob-track { fill: none; stroke: var(--hairline); stroke-width: 2.5; stroke-linecap: round; }
+/* The value arc is the single change that turns a clock hand into a control
+   you can read across the room. */
+.knob-arc {
+  fill: none;
+  stroke: var(--phos-a);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(142,240,177,0.55));
+  pointer-events: none;
+}
+.knob-arc.modside { stroke: var(--phos-b); filter: drop-shadow(0 0 3px rgba(255,180,84,0.55)); }
+
+.j-nut { fill: url(#jackNut); pointer-events: none; }
+.j-bore { fill: #050607; pointer-events: none; }
+.j-spec { fill: none; stroke: rgba(255,255,255,0.18); stroke-width: 1; pointer-events: none; }
+.jack circle:last-of-type { fill: none; }
+
+/* Ten knobs meant ten amber dots glowing at all times, for nothing. Only a
+   knob that is actually locked speaks; the rest appear on hover or focus. */
+.lock-dot { opacity: 0; transition: opacity 160ms ease; }
+.lock-dot.on { opacity: 1; }
+g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
+
+/* Audio cables only travel while audio does. */
+#rack-svg.flowing .wire.audio {
+  stroke-dasharray: 1 15;
+  animation: flow 760ms linear infinite;
+}
+@keyframes flow { to { stroke-dashoffset: -16; } }
+
+/* ---------- duel cards ---------- */
+.duel-name {
+  font-size: var(--t-title);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--silk);
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+.dn-id { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim); }
+.dn-sig { font-size: var(--t-micro); color: var(--phos-a-dim); }
+.duel-controls .hw-btn.promote { flex: 0 0 auto; color: var(--phos-a-dim); font-size: var(--t-micro); }
+.duel-controls .hw-btn.promote:hover { color: var(--phos-a); }
+
+/* ---------- teaching meter ----------
+   The first six votes used to produce no pixel change anywhere. */
+.teach { display: flex; align-items: center; gap: var(--s3); }
+.teach-pips { display: flex; gap: 5px; }
+.teach-pips i {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #1a1410;
+  box-shadow: inset 0 0 2px #000;
+  transition: background 220ms ease, box-shadow 220ms ease;
+}
+.teach-pips i.lit {
+  background: var(--phos-b);
+  box-shadow: 0 0 8px rgba(255,180,84,0.7);
+}
+.teach-copy {
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-lead);
+  line-height: 1.45;
+  color: var(--silk-dim);
+  text-align: left;
+  min-width: 190px;
+}
+.duel-mid.learning .teach-copy { color: var(--phos-b); }
+.duel-pred { flex: 1; text-align: center; }
+
+/* ---------- toasts & the alarm strip ---------- */
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 148px;
+  transform: translateX(-50%);
+  z-index: 58;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  max-width: 62vw;
+  font-size: var(--t-body);
+  color: var(--silk);
+  background: linear-gradient(180deg, #21262e, #171a1f);
+  border: 1px solid var(--hairline);
+  border-left: 2px solid var(--phos-a-deep);
+  border-radius: 5px;
+  padding: 8px var(--s3);
+  box-shadow: var(--cast);
+  animation: toast-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
+}
+.toast.out { opacity: 0; transform: translateY(6px); transition: opacity 280ms ease, transform 280ms ease; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+.toast-undo {
+  font-size: var(--t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--phos-b);
+  background: none;
+  border: 1px solid var(--phos-b-deep);
+  border-radius: 3px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.toast-undo:hover { border-color: var(--phos-b); box-shadow: 0 0 10px rgba(255,180,84,0.25); }
+
+/* A condition, not a remark: this stays until it is resolved. */
+.alarm {
+  position: fixed;
+  left: 50%;
+  top: 52px;
+  transform: translateX(-50%);
+  z-index: 58;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  max-width: 72vw;
+  font-size: var(--t-body);
+  color: #21160a;
+  background: linear-gradient(180deg, #ffc774, var(--phos-b));
+  border-radius: 5px;
+  padding: 8px var(--s4);
+  box-shadow: 0 8px 26px rgba(0,0,0,0.55);
+}
+.alarm .al-icon { font-size: var(--t-lead); }
+.alarm .toast-undo { color: #21160a; border-color: rgba(0,0,0,0.35); }
+
+/* ---------- first-run elicitation ---------- */
+.warm {
+  position: fixed; inset: 0; z-index: 59;
+  background: rgba(10, 12, 15, 0.9);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+}
+.warm-card { width: min(760px, 92vw); padding: var(--s6) var(--s5) var(--s5); text-align: center; }
+.warm-sub {
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-lead);
+  line-height: 1.5;
+  color: var(--silk-dim);
+  max-width: 52ch;
+  margin: var(--s3) auto var(--s5);
+}
+.warm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
+.warm-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+  padding: var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1f242b, #15181d);
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.warm-item:hover { border-color: var(--silk-dim); }
+.warm-item.picked {
+  border-color: var(--phos-b);
+  box-shadow: 0 0 16px rgba(255,180,84,0.22), inset 0 0 10px rgba(255,180,84,0.08);
+}
+.wi-name { font-size: var(--t-body); font-weight: 500; color: var(--silk); }
+.wi-sig { font-size: var(--t-micro); color: var(--phos-a-dim); }
+.wi-play { font-size: var(--t-micro); color: var(--silk-dim); }
+.warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
+
+/* ---------- boot ---------- */
+.boot { transition: opacity 420ms cubic-bezier(0.4, 0, 0.2, 1); }
+.boot.done { opacity: 0; pointer-events: none; }
+.boot-word {
+  font-size: var(--t-hero);
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  color: var(--silk);
+}
+.boot-word b { font-weight: 500; color: var(--phos-b); text-shadow: 0 0 14px rgba(255,180,84,0.7); }
+/* The wait draws the search happening, on the same field the taste map uses. */
+.boot-field {
+  display: block;
+  width: 100%;
+  height: 190px;
+  margin: var(--s4) 0 var(--s2);
+  border-radius: 5px;
+  background: radial-gradient(ellipse at 50% 40%, #171107 0%, var(--bezel) 85%);
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.9), inset 0 0 2px 1px #000;
+}
+
+/* ---------- bank rows ---------- */
+.bi-sig {
+  font-size: var(--t-micro);
+  color: var(--phos-a-dim);
+  margin: 2px 0 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stars { display: inline-flex; }
+.bank-item .star { font-size: var(--t-body); color: var(--silk-mute); }
+.bank-item .bi-u { width: 54px; height: 5px; }
+.bank-item .bi-kill { font-size: var(--t-micro); letter-spacing: 0.1em; text-transform: uppercase; }
+.bank-item .bi-hear { font-size: var(--t-body); }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, .duel-mid, .mod-plate, .lock-dot, .live-scope, .boot { transition: none !important; }
+  #rack-svg.flowing .wire.audio { animation: none !important; stroke-dasharray: none; }
+}
+
+/* Roving keyboard cursor in the bank (the list itself is the tab stop). */
+.bank-item.kbd { border-color: var(--phos-a); box-shadow: 0 0 0 1px var(--phos-a-deep) inset; }
+
+/* ---------- local explanation ----------
+   Utility is linear within a style lens, so these contributions are exact.
+   "The model likes this" is a claim; "it likes this because it's bright and
+   has a long tail, under your Dark Drones lens" is one you can check by ear. */
+.explain {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  font-size: var(--t-body);
+  color: var(--silk-dim);
+  padding: var(--s1) 0;
+}
+.explain .ex-why { color: var(--phos-b); letter-spacing: 0.1em; text-transform: uppercase; font-size: var(--t-micro); }
+.explain b.up { color: var(--phos-b); font-weight: 400; }
+.explain b.down { color: var(--silk-dim); font-weight: 400; }
+.explain .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
+.explain .ex-lens b { color: var(--phos-b); font-weight: 400; }
+
+/* A duel drawn at random rather than by the acquisition function. */
+.duel-pred.check { color: var(--phos-b); }
+.duel-pred.check::before { content: "◇ "; }
+
+/* ---------- round-2 corrections ---------- */
+
+/* Native range inputs render their track in the OS accent — macOS system blue,
+   inside a two-phosphor palette. Master volume and the checkbox were tinted;
+   these three were missed, so the only cool colour left on screen was on the
+   performance controls. */
+#glide, #arp-gate, #arp-swing { accent-color: var(--phos-a); }
+.perf-sel, .perf-num { appearance: none; -webkit-appearance: none; }
+.perf-sel {
+  padding-right: 16px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--silk-dim) 50%),
+                    linear-gradient(135deg, var(--silk-dim) 50%, transparent 50%);
+  background-position: right 7px center, right 3px center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+
+
+/* Tick rings turn to moiré at zoom 1 — they are a texture for the zoomed-in
+   case, not information. */
+.knob-ticks line { stroke: #3a4049; stroke-width: 1; opacity: 0.55; }
+
+/* The value arc carried a full-strength glow on every knob, which made
+   parameter values brighter than the cables carrying the signal. */
+.knob-arc { filter: drop-shadow(0 0 2px rgba(142, 240, 177, 0.35)); }
+.knob-arc.modside { filter: drop-shadow(0 0 2px rgba(255, 180, 84, 0.35)); }
+
+/* A duel that is settling must not look live. */
+.duel-card.dealing { opacity: 0.55; }
+.duel-card.dealing .duel-controls { pointer-events: none; }
+
+/* The play-view teaching strip carries the same state as EVOLVE's — a
+   stripped-down copy of the core interaction teaches the user there is
+   nothing in it. */
+.play-duel .teach-pips i { width: 7px; height: 7px; }
+.pd-pred { margin-left: auto; font-size: var(--t-micro); color: var(--silk-dim); }
+.pd-pred.hit { color: var(--phos-a); }
+.pd-pred.miss { color: var(--phos-b); }
