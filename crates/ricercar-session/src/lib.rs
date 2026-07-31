@@ -80,8 +80,14 @@ mod tests {
     fn ground_truth() -> SyntheticUser {
         let names = Features::phi_names();
         let mut theta = vec![0.0; names.len()];
+        // Audio names carry a stimulus tag (`centroid_mean:p2`); the synthetic
+        // user's taste is about the perceptual axis, not the stimulus, so
+        // match on the base name.
         let mut set = |name: &str, w: f64| {
-            let i = names.iter().position(|n| *n == name).unwrap();
+            let i = names
+                .iter()
+                .position(|n| n.split(':').next() == Some(name))
+                .unwrap();
             theta[i] = w;
         };
         set("centroid_mean", 2.0);
@@ -1245,12 +1251,18 @@ mod tests {
             !o.feature_names.contains(&"size".to_string()),
             "`size` survived"
         );
+        // Schema-1 values were measured under the v1 stimulus, so the vote
+        // lands on the v1 names — not the current stimulus-tagged audio
+        // names, which would launder old-stimulus evidence into coordinates
+        // it was never commensurable with.
         assert_eq!(
-            o.feature_names, names,
-            "a migrated vote must land on the current feature set, not beside it"
+            o.feature_names,
+            crate::migrate::v1_names(),
+            "a migrated vote must land on the stimulus it was recorded under"
         );
-        // The migrated vote is usable: it fits a standardizer and projects
-        // cleanly onto the current feature set.
+        // Old-stimulus rows must never feed the current standardizer …
+        assert_eq!(engine.log.raw_rows(&names).len(), 0);
+        // … but the vote itself is intact raw evidence under its own names.
         assert_eq!(engine.log.raw_rows(&o.feature_names).len(), 2);
         let sz_now = engine.standardizer.as_ref().expect("standardizer refit");
         assert_eq!(sz_now.dimension(), names.len());
@@ -1261,9 +1273,22 @@ mod tests {
         assert!(chose_a);
         assert_eq!(a.len(), names.len());
         assert!(a.iter().chain(b).all(|x| x.is_finite()));
-        // The winner really did have the larger raw values on every axis, so
-        // the migration must not have flipped the comparison.
-        assert!(a.iter().zip(b).filter(|(x, y)| x > y).count() > names.len() / 2);
+        // Structural coordinates (stimulus-independent) carry the comparison
+        // forward; stimulus-tagged audio coordinates are imputed to exactly
+        // "no evidence" (z = 0) on both sides. The winner keeps its win, and
+        // no coordinate flips.
+        let audio_tagged = |n: &str| n.ends_with(":p2");
+        for (j, name) in names.iter().enumerate() {
+            if audio_tagged(name) {
+                assert_eq!(a[j], 0.0, "old-stimulus audio leaked into {name}");
+                assert_eq!(b[j], 0.0, "old-stimulus audio leaked into {name}");
+            }
+        }
+        assert!(a.iter().zip(b).all(|(x, y)| x >= y));
+        assert!(
+            a.iter().zip(b).any(|(x, y)| x > y),
+            "the structural evidence vanished entirely"
+        );
     }
 
     // ------------------------------------------------------------------

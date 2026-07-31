@@ -9,6 +9,22 @@ use ricercar_grammar::{compile, PatchTree};
 
 use crate::phrase::PhraseSpec;
 
+/// Where one phrase note sits in the rendered buffer, and what it was — the
+/// role information segment-local features key on ([`crate::audio`] finds the
+/// held note, the highest note and the chord note by *property*, never by
+/// position, so custom test phrases degrade gracefully).
+#[derive(Clone, Copy, Debug)]
+pub struct NoteSpan {
+    /// Pitch of the note's primary voice, V/Oct from C4.
+    pub voct: f64,
+    /// Number of additional chord voices gate-synced with this note.
+    pub chord: usize,
+    /// Sample index where the gate opened.
+    pub on_start: usize,
+    /// Sample index where the gate closed (exclusive end of the on-span).
+    pub on_end: usize,
+}
+
 /// A rendered phrase: mono samples normalized from quiver's ±5 V audio level
 /// to nominal ±1.0.
 #[derive(Clone, Debug)]
@@ -19,37 +35,126 @@ pub struct RenderedPhrase {
     pub sample_rate: f64,
     /// Sample index where each note's gate opens (for attack-time features).
     pub note_onsets: Vec<usize>,
+    /// Gate spans and roles of each note, in phrase order.
+    pub spans: Vec<NoteSpan>,
 }
 
+/// A chord voice: its own compiled copy of the patch, alive from its note's
+/// onset until its release tail parks on silence.
+struct ChordVoice {
+    voice: ricercar_grammar::CompiledVoice,
+    /// Consecutive below-threshold samples seen since the gate closed.
+    quiet_run: usize,
+    /// Gate is closed and the tail has decayed — stop ticking.
+    parked: bool,
+    /// Gate currently open (ignore silence while held: a slow attack is
+    /// silent and must not be parked).
+    gated: bool,
+}
+
+/// Silence threshold and run length for parking a released chord voice —
+/// the same judgment the live engine makes when it stops ticking a silent
+/// voice, deterministic here because the render itself is.
+const PARK_ABS: f64 = 1e-6;
+const PARK_RUN: usize = 1024;
+
 /// Compile `tree` and render it playing the phrase.
+///
+/// Chord notes ([`crate::phrase::Note::chord`]) are rendered by additional
+/// compiled voices summed into the same buffer with **no attenuation**: two
+/// voices sounding at once being louder and denser than one is exactly the
+/// polyphonic-stacking information the stimulus exists to capture, whole-
+/// phrase loudness is normalized downstream, and the vet ceiling scales with
+/// [`crate::phrase::PhraseSpec::max_voices`]. Chord voices tick from their
+/// note's onset (cold start, like live voice allocation), share the note's
+/// gate, and after release keep ticking until their output parks on silence
+/// so a long tail is never truncated into a click. Tick order per sample is
+/// fixed (main voice, then chord voices in pitch order), which keeps the
+/// thread-local RNG draw sequence — and therefore the render — deterministic.
 pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhrase, PatchError> {
     let mut voice = compile(tree, spec.sample_rate)?;
+    // Chord voices for the note being (or last) played. Compiled lazily at
+    // the first chord note; a mono spec pays nothing.
+    let mut chord_voices: Vec<ChordVoice> = Vec::new();
 
     // Determinism: fix the stochastic-module RNG for this render.
     quiver::rng::seed(spec.seed);
 
     let mut samples = Vec::with_capacity(spec.total_samples());
     let mut note_onsets = Vec::with_capacity(spec.notes.len());
+    let mut spans = Vec::with_capacity(spec.notes.len());
+
+    let tick_all =
+        |voice: &mut ricercar_grammar::CompiledVoice, chord: &mut Vec<ChordVoice>| -> f64 {
+            let (l, r) = voice.patch.tick();
+            let mut s = (l + r) * 0.5 / 5.0;
+            for cv in chord.iter_mut().filter(|cv| !cv.parked) {
+                let (cl, cr) = cv.voice.patch.tick();
+                let c = (cl + cr) * 0.5 / 5.0;
+                s += c;
+                if !cv.gated {
+                    if c.abs() < PARK_ABS {
+                        cv.quiet_run += 1;
+                        if cv.quiet_run >= PARK_RUN {
+                            cv.parked = true;
+                        }
+                    } else {
+                        cv.quiet_run = 0;
+                    }
+                }
+            }
+            s
+        };
 
     for note in &spec.notes {
+        // Retire the previous note's chord voices only once parked; a voice
+        // still ringing keeps ticking into this note, tail intact.
+        if !note.chord.is_empty() {
+            chord_voices.retain(|cv| !cv.parked);
+            for &voct in &note.chord {
+                let v = compile(tree, spec.sample_rate)?;
+                v.pitch.set(voct);
+                v.gate.set(5.0);
+                chord_voices.push(ChordVoice {
+                    voice: v,
+                    quiet_run: 0,
+                    parked: false,
+                    gated: true,
+                });
+            }
+        }
+
         voice.pitch.set(note.voct);
-        note_onsets.push(samples.len());
+        let on_start = samples.len();
+        note_onsets.push(on_start);
         voice.gate.set(5.0);
         for _ in 0..(note.on_s * spec.sample_rate) as usize {
-            let (l, r) = voice.patch.tick();
-            samples.push((l + r) * 0.5 / 5.0);
+            let s = tick_all(&mut voice, &mut chord_voices);
+            samples.push(s);
         }
+        let on_end = samples.len();
         voice.gate.set(0.0);
-        for _ in 0..(note.off_s * spec.sample_rate) as usize {
-            let (l, r) = voice.patch.tick();
-            samples.push((l + r) * 0.5 / 5.0);
+        for cv in chord_voices.iter_mut().filter(|cv| cv.gated) {
+            cv.voice.gate.set(0.0);
+            cv.gated = false;
         }
+        for _ in 0..(note.off_s * spec.sample_rate) as usize {
+            let s = tick_all(&mut voice, &mut chord_voices);
+            samples.push(s);
+        }
+        spans.push(NoteSpan {
+            voct: note.voct,
+            chord: note.chord.len(),
+            on_start,
+            on_end,
+        });
     }
 
     Ok(RenderedPhrase {
         samples,
         sample_rate: spec.sample_rate,
         note_onsets,
+        spans,
     })
 }
 

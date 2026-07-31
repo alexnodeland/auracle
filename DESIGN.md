@@ -160,12 +160,18 @@ only a curated few.
 
 ## 2. Audition & feature pipeline
 
-- **Standard phrase:** every candidate auto-renders a fixed short mono phrase
-  (note-on / sustain / release; a few notes covering register and articulation)
-  used for *both* default playback and φ_audio. Features are only comparable
-  across patches under an identical stimulus. Free-play (keyboard) is always
-  available on any candidate before judging. **Later:** discovered styles pick
-  their own audition phrase (bass style → bassline, pad style → chord swell).
+- **Standard phrase:** every candidate auto-renders a fixed short phrase used
+  for *both* default playback and φ_audio. Features are only comparable across
+  patches under an identical stimulus. The v2 phrase (~5 s) covers what the
+  grammar can express: a long held root (slow attacks, sub-Hz modulation), a
+  C5 stab (upper-register response), a two-voice dyad (polyphonic stacking),
+  and a low note with a long release window (bass register, tails). Audio
+  feature names carry a stimulus tag (`centroid_mean:p2`) because a stimulus
+  change changes what every audio value *means* — the tag is what lets the
+  by-name observation log migrate honestly across phrase generations.
+  Free-play (keyboard) is always available on any candidate before judging.
+  **Later:** discovered styles pick their own audition phrase (bass style →
+  bassline, pad style → chord swell).
 - **Loudness normalization:** every render is LUFS-normalized before audition
   *and* feature extraction. Louder always wins A/B; unnormalized loudness would
   poison θ.

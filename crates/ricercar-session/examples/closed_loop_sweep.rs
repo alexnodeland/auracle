@@ -50,8 +50,12 @@ const SEEDS: [u64; 13] = [
 fn ground_truth() -> SyntheticUser {
     let names = Features::phi_names();
     let mut theta = vec![0.0; names.len()];
+    // Match on the base name: audio names carry a stimulus tag (`:p2`).
     let mut set = |name: &str, w: f64| {
-        let i = names.iter().position(|n| *n == name).unwrap();
+        let i = names
+            .iter()
+            .position(|n| n.split(':').next() == Some(name))
+            .unwrap();
         theta[i] = w;
     };
     set("centroid_mean", 2.0);

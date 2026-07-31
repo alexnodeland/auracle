@@ -76,7 +76,7 @@ pub struct VettedCandidate {
 /// Run the full pipeline for one term.
 pub fn featurize(tree: &PatchTree, spec: &PhraseSpec) -> Result<VettedCandidate, FeaturizeError> {
     let mut render = render_phrase(tree, spec)?;
-    let report = vet(&render.samples, &VetConfig::default())?;
+    let report = vet(&render.samples, &VetConfig::for_spec(spec))?;
     // A signal that passed the RMS floor always clears the loudness gate in
     // practice; treat a `None` here as silence for safety.
     let norm = normalize_to(&mut render.samples, render.sample_rate, TARGET_LUFS)

@@ -2330,10 +2330,14 @@ impl Engine {
         let names = phi_names();
         if let Some(sz) = &profile.standardizer {
             if crate::migrate::needs_migration(&self.log) {
+                // Schema-1 values were measured under the v1 stimulus, so
+                // they land on the v1 names — FitSet::build keeps their
+                // structural coordinates and imputes today's stimulus-tagged
+                // audio coordinates at "no evidence" (migrate::v1_names).
                 crate::migrate::migrate_log(
                     &mut self.log,
                     sz,
-                    &names,
+                    &crate::migrate::v1_names(),
                     self.cfg.phrase.sample_rate / 2.0,
                 );
             }

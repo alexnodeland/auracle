@@ -85,7 +85,11 @@ fn ground_truth() -> SyntheticUser {
         ("n_filter", 0.8),
         ("tail_ratio", 0.6),
     ] {
-        theta[names.iter().position(|n| *n == name).unwrap()] = w;
+        // Base-name match: audio names carry a stimulus tag (`:p2`).
+        theta[names
+            .iter()
+            .position(|n| n.split(':').next() == Some(name))
+            .unwrap()] = w;
     }
     SyntheticUser {
         theta,

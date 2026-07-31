@@ -1,4 +1,124 @@
-# Continuation notes — updated 2026-07-30 (pass 7: panel round 2)
+# Continuation notes — updated 2026-07-31 (pass 8: audition phrase v2)
+
+## NEXT SESSION: deep UI/UX pass (user-requested, 2026-07-31)
+
+The user played the pass-8 build and signed off on the phrase work, but
+flagged for a dedicated pass:
+
+- **"a bunch of UI chrome things"** — unspecified; do a systematic sweep,
+  don't wait for a list.
+- **Functional: "hold/arp/etc I think doesn't work anymore."** Not yet
+  triaged. Pass 8 did not touch the live-keyboard path (its only main.js
+  change was the `niceName()` label helper), so if hold/arp is genuinely
+  broken it almost certainly came in with pass 7's main.js rework (1,891
+  lines changed) and shipped in #2. Triage on main first to confirm, then
+  bisect within pass 7's surface work. Candidate suspects: the roving-tab
+  keyboard-accessibility rework (letter keys now only play when focus is
+  outside the interface — a focus state left on a button would make the
+  whole keyboard feel dead), and the keybar state persistence.
+- The pass-6/7 keybar features to re-verify while there: hold latch, arp
+  (pattern/div/BPM/gate/swing/octaves), uni, gld, ●rec, MIDI indicator,
+  octave shift, panic.
+
+## Pass 8: the audition phrase can finally hear what the grammar can say
+
+Pass 7 named the fixed 3-note audition phrase the weakest link in the loop:
+it could not discriminate slow pads (a 2 s attack was silent for most of the
+stimulus), anything modulated below ~1 Hz, anything above Eb4, or how a patch
+stacks polyphonically — and the deficit **compounded** with every correctness
+fix. This pass replaced the stimulus and made the migration honest.
+
+### The v2 phrase (`phrase.rs`, ~5.0 s wall)
+
+1. **C4 held 1.8 s** — attack window 2.0 s (was 0.75 s); a register-constant
+   sustain long enough for sub-Hz modulation to be a measurable fact.
+2. **C5 stab** — one octave above the old ceiling.
+3. **C4+E4 dyad** — a second compiled voice, gate-synced (`Note::chord`).
+   Chord voices start cold at onset (like live allocation) and after release
+   tick until silent-parked, so long tails never truncate into a click. A
+   dyad, not a triad: render cost is per-voice-second and pairwise
+   intermodulation is the first-order phenomenon.
+4. **C3 held + 1.1 s release window, kept last** so the tail features still
+   measure release/reverb, not a chord cut.
+
+### Three new segment-local features (φ_audio 12 → 15)
+
+`held_centroid_std` (timbral motion on the held note — whole-phrase
+`centroid_std` conflates register jumps with modulation), `high_ratio`
+(ln RMS of the high note vs the held note — does it speak up high),
+`chord_flatness_delta` (flatness of the stacked span minus the held span —
+intermodulation mud). Roles are found by *property* (first note / highest
+note ≥ +0.5 oct / first chord note), never by position, so custom test
+phrases degrade to honest 0.0 ("no evidence").
+
+### Measured discrimination (the gates in `features/src/lib.rs` pin these)
+
+- Attack: v1 saturated from knob ~0.7 up (0.03 ln-units of spread over
+  0.7→0.9); v2 spreads the same range over 0.78 ln-units, monotone.
+- A ~0.1 Hz LFO reads 0.026 on `held_centroid_std` vs 0.0002 unmodulated
+  (>100×); ~0.4 Hz reads 0.087.
+- Dark ladder −0.74 vs open saw +0.03 on `high_ratio`.
+- Dyad span: bit-identical render before chord onset, 2.00× energy inside it.
+
+### Migration: the stimulus tag IS the mechanism
+
+Audio feature names now carry `:p2` (`centroid_mean:p2`). Same name ⇒ same
+coordinate is the observation-log contract, and a stimulus change changes
+what every audio value *means* — so the rename makes `FitSet::build` carry
+old votes' (stimulus-independent) **structural** coordinates forward and
+impute their old-stimulus audio coordinates at exactly "no evidence", instead
+of silently mixing incommensurable values into one standardizer.
+`migrate.rs::v1_names()` freezes the v1 name list so schema-1 logs land on
+the stimulus they were recorded under, never the current one — the
+`legacy_profile_migrates_into_the_new_feature_set` test asserts both
+directions, including `raw_rows(current) == 0`. `render_key` folds the spec
+into the content address, so every memo self-invalidates. Old saved sessions
+restore fine: trees are re-featurized (farmed) under the new phrase on
+import. JS: `niceName()` strips the tag for display; new labels "held-note
+motion", "speaks up high", "stack mud".
+
+Vet: the peak ceiling now scales with `PhraseSpec::max_voices()`
+(`VetConfig::for_spec`) — N gate-synced voices legitimately sum toward N×,
+and that summing is the information; no artificial chord attenuation, LUFS
+normalizes the whole phrase downstream.
+
+### Cost, measured honestly (2026-07-31, same machine, back-to-back)
+
+- Native `pipeline_stats -- 200`: **18.7 s → 41.8 s (2.23×)** — slightly
+  above the ~2× design budget; the released dyad voice ticking through its
+  tail is the honest price of click-free chord releases. (Baseline re-measured
+  same-day, not taken from pass 7's 14.1 s — day-to-day machine variance.)
+- In-browser cold boot (fresh IndexedDB, nav → 40-patch fill, DevTools-attached
+  probe, loaded machine): v2 {5.7, 7.9, 8.0} s vs same-probe v1 baseline
+  {6.5, 9.2} s — **unchanged within noise**; boot is dominated by fixed costs
+  (wasm fetch/compile ×7, worker spin-up, fit) and the 6-worker farm absorbs
+  the render delta. These numbers are NOT comparable to pass 7's 0.85 s,
+  which was a different instrument on an idle machine.
+- Browser smoke (fresh cold boot on the new bundle): 40 patches named and
+  ranked, quick-duel dealt, warm start offered, vote roundtrip picks 0 → 1,
+  **zero console errors**. The first bank patch had a 2.45 s attack — exactly
+  the class v1 could never audition.
+
+All 89 workspace tests green; clippy clean. Synthetic users in
+session tests/examples now match θ axes by base name (tag-agnostic).
+
+### Still open after this pass
+
+- npm publish for @quiver-dsp/{types,wasm,react} still blocked on EOTP (needs
+  an npm Automation token in NPM_TOKEN or a local `npm publish --otp`).
+- Starter-packs product decision (one shared cold-boot bank vs 3–5 packs by
+  seed) — unchanged from pass 7.
+- IndexedDB persistent render cache (`RENDER_EPOCH` namespace reserved in
+  cache.rs, deliberately not built yet).
+- Per-style audition phrases (bass → bassline, pad → chord swell) remain the
+  eventual answer for what a single fixed phrase still can't do (e.g. the
+  bank's 5.7 s-attack pad is *better* seen now but still not fully).
+- A stale worktree `/private/tmp/ric-base` (pre-pass-7 baseline) still exists.
+
+---
+
+# (pass 7 and earlier)
+
 
 ## Pass 7: second four-persona panel → correctness, craft, legibility
 
