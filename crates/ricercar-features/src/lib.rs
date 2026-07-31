@@ -189,6 +189,7 @@ mod tests {
                 voct: 0.0,
                 on_s: 0.0,
                 off_s: 1.0,
+                chord: Vec::new(),
             }],
             ..Default::default()
         };
@@ -247,6 +248,227 @@ mod tests {
         assert!(
             a0 < a1 && a1 < a2,
             "attack not monotone/resolved: {a0} {a1} {a2}"
+        );
+    }
+
+    /// The v1 stimulus, kept as a fixture: the phrase whose blind spots the
+    /// v2 default exists to remove. The gates below assert both directions —
+    /// that v2 discriminates, *and* that v1 could not, so the next person
+    /// reading a failure knows what the segment is for.
+    fn v1_spec() -> PhraseSpec {
+        use crate::phrase::Note;
+        PhraseSpec {
+            notes: vec![
+                Note {
+                    voct: 0.0,
+                    on_s: 0.60,
+                    off_s: 0.15,
+                    chord: Vec::new(),
+                },
+                Note {
+                    voct: 3.0 / 12.0,
+                    on_s: 0.25,
+                    off_s: 0.10,
+                    chord: Vec::new(),
+                },
+                Note {
+                    voct: -1.0,
+                    on_s: 0.80,
+                    off_s: 1.25,
+                    chord: Vec::new(),
+                },
+            ],
+            ..Default::default()
+        }
+    }
+
+    fn filtered(cutoff: f64, modulation: ModNode) -> PatchTree {
+        PatchTree {
+            amp: amp(),
+            root: AudioNode::Filter {
+                kind: ricercar_grammar::term::FilterKind::SvfLp,
+                cutoff,
+                resonance: 0.3,
+                mod_depth: 0.8,
+                modulation,
+                input: Box::new(vco(Waveform::Saw).root),
+            },
+        }
+    }
+
+    /// Slow attacks resolve well past the old 0.75 s onset window. Under the
+    /// v1 phrase every attack knob position from ~0.7 up measured the same
+    /// (the envelope was still rising when the window closed, so t90 pinned
+    /// to the window end); the 1.8 s held note spreads that range back out.
+    #[test]
+    fn slow_attacks_resolve_beyond_the_old_window() {
+        let attack_under = |spec: &PhraseSpec, attack: f64| {
+            featurize(
+                &PatchTree {
+                    amp: AmpEnv { attack, ..amp() },
+                    root: vco(Waveform::Saw).root,
+                },
+                spec,
+            )
+            .unwrap()
+            .features
+            .audio
+            .attack_s
+        };
+        let (v1, v2) = (v1_spec(), PhraseSpec::default());
+        let v1_gap = attack_under(&v1, 0.82) - attack_under(&v1, 0.7);
+        let v2_gap = attack_under(&v2, 0.82) - attack_under(&v2, 0.7);
+        assert!(
+            v1_gap.abs() < 0.05,
+            "v1 no longer saturates ({v1_gap:.3}) — this gate's premise moved"
+        );
+        assert!(
+            v2_gap > 0.10,
+            "v2 fails to separate slow attacks ({v2_gap:.3})"
+        );
+        // And the axis stays monotone through the newly-resolved range.
+        let (a, b, c) = (
+            attack_under(&v2, 0.6),
+            attack_under(&v2, 0.7),
+            attack_under(&v2, 0.82),
+        );
+        assert!(a < b && b < c, "not monotone: {a:.3} {b:.3} {c:.3}");
+    }
+
+    /// A register-constant held note makes sub-Hz modulation a measurable
+    /// fact. `held_centroid_std` is near-zero for a static patch and orders
+    /// of magnitude larger with a slow LFO on the filter — including at
+    /// ~0.1 Hz, which the whole v1 phrase was too short to witness.
+    #[test]
+    fn held_note_reveals_sub_hz_modulation() {
+        let spec = PhraseSpec::default();
+        let hcs = |m: ModNode| {
+            featurize(&filtered(0.4, m), &spec)
+                .unwrap()
+                .features
+                .audio
+                .held_centroid_std
+        };
+        let still = hcs(ModNode::None);
+        let slow = hcs(ModNode::Lfo {
+            wave: Waveform::Triangle,
+            rate: 0.45, // ≈ 0.4 Hz
+        });
+        let crawl = hcs(ModNode::Lfo {
+            wave: Waveform::Triangle,
+            rate: 0.3, // ≈ 0.1 Hz
+        });
+        assert!(still < 0.005, "static patch moves on its own: {still:.4}");
+        assert!(
+            slow > 10.0 * still.max(1e-4) && slow > 0.03,
+            "0.4 Hz motion invisible: {slow:.4} vs still {still:.4}"
+        );
+        assert!(
+            crawl > 10.0 * still.max(1e-4) && crawl > 0.01,
+            "0.1 Hz motion invisible: {crawl:.4} vs still {still:.4}"
+        );
+    }
+
+    /// The C5 note exposes whether a patch speaks in the upper register: a
+    /// dark low-cutoff filter chokes it (strongly negative `high_ratio`)
+    /// while an open patch carries it at roughly the held note's level.
+    #[test]
+    fn high_note_reveals_register_response() {
+        let spec = PhraseSpec::default();
+        let dark = featurize(&filtered(0.12, ModNode::None), &spec)
+            .unwrap()
+            .features
+            .audio
+            .high_ratio;
+        let open = featurize(&vco(Waveform::Saw), &spec)
+            .unwrap()
+            .features
+            .audio
+            .high_ratio;
+        assert!(
+            dark < open - 0.3,
+            "register response indistinct: dark {dark:.3} vs open {open:.3}"
+        );
+        assert!(
+            open.abs() < 0.5,
+            "open patch should speak evenly: {open:.3}"
+        );
+    }
+
+    /// The chord note really is a second voice: the render is bit-identical
+    /// up to the chord onset, diverges inside it, carries ~2× the energy of
+    /// the mono render there, and the chord feature goes live exactly (and
+    /// only) when the phrase has a chord.
+    #[test]
+    fn chord_segment_stacks_a_second_voice() {
+        let spec = PhraseSpec::default();
+        assert_eq!(spec.max_voices(), 2);
+        let mut mono = spec.clone();
+        for n in &mut mono.notes {
+            n.chord.clear();
+        }
+        let tree = vco(Waveform::Saw);
+        let poly_r = render_phrase(&tree, &spec).unwrap();
+        let mono_r = render_phrase(&tree, &mono).unwrap();
+        let chord = poly_r
+            .spans
+            .iter()
+            .find(|s| s.chord > 0)
+            .expect("chord span");
+        assert_eq!(
+            poly_r.samples[..chord.on_start],
+            mono_r.samples[..chord.on_start],
+            "chord voice leaked ahead of its onset"
+        );
+        assert_ne!(
+            poly_r.samples[chord.on_start..chord.on_end],
+            mono_r.samples[chord.on_start..chord.on_end],
+            "chord segment is not polyphonic"
+        );
+        let energy = |s: &[f64]| s.iter().map(|x| x * x).sum::<f64>();
+        let ratio = energy(&poly_r.samples[chord.on_start..chord.on_end])
+            / energy(&mono_r.samples[chord.on_start..chord.on_end]);
+        assert!(
+            (1.4..=3.0).contains(&ratio),
+            "dyad energy ratio {ratio:.2} outside the plausible band"
+        );
+        let poly_f = featurize(&tree, &spec).unwrap().features.audio;
+        let mono_f = featurize(&tree, &mono).unwrap().features.audio;
+        assert_ne!(poly_f.chord_flatness_delta, 0.0);
+        assert_eq!(
+            mono_f.chord_flatness_delta, 0.0,
+            "chord feature must read 'no evidence' without a chord"
+        );
+    }
+
+    /// The default stimulus keeps its advertised shape — each clause here is
+    /// one of the four blind spots the v2 phrase exists to remove, so a
+    /// "harmless" retiming that reopens one fails loudly.
+    #[test]
+    fn the_default_phrase_keeps_its_advertised_shape() {
+        let spec = PhraseSpec::default();
+        let first = &spec.notes[0];
+        assert!(
+            first.on_s >= 1.5,
+            "held note too short to reveal slow attacks / sub-Hz motion"
+        );
+        assert!(
+            spec.notes.iter().any(|n| n.voct >= 1.0),
+            "no note above the old Eb4 ceiling"
+        );
+        assert!(
+            spec.notes.iter().any(|n| !n.chord.is_empty()),
+            "no polyphonic segment"
+        );
+        let last = spec.notes.last().unwrap();
+        assert!(
+            last.chord.is_empty() && last.off_s >= 1.0,
+            "tail window must stay last, long, and mono"
+        );
+        assert!(
+            spec.total_seconds() <= 5.5,
+            "stimulus creep: {:.2}s — the render budget was ~2× v1",
+            spec.total_seconds()
         );
     }
 

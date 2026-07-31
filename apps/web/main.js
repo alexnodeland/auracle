@@ -1436,7 +1436,7 @@ function renderExplain(id, ex) {
   holder.classList.remove("hidden");
   const top = ex.contributions.slice(0, 3);
   const parts = top.map((c) => {
-    const nice = NICE_NAMES[c.name] || c.name;
+    const nice = niceName(c.name);
     const sign = c.contribution >= 0 ? "+" : "−";
     return `<b class="${c.contribution >= 0 ? "up" : "down"}">${nice}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
@@ -3060,6 +3060,8 @@ const NICE_NAMES = {
   flatness_mean: "noisiness", flux_mean: "movement", zcr_mean: "edge",
   rms_mean: "body", rms_std: "dynamics", crest: "punch", attack_s: "slow attack",
   tail_ratio: "long tail", bass_fraction: "bass weight",
+  held_centroid_std: "held-note motion", high_ratio: "speaks up high",
+  chord_flatness_delta: "stack mud",
   n_vco: "VCOs", n_supersaw: "supersaws", n_noise: "noise srcs", n_mix: "mixers",
   n_filter: "filters", n_fold: "wavefolders", n_delay: "delays", n_chorus: "choruses",
   n_reverb: "reverbs", n_rand: "S&H mods",
@@ -3067,6 +3069,13 @@ const NICE_NAMES = {
   mod_density: "mod density", amp_attack: "amp attack", amp_sustain: "amp sustain",
   amp_release: "amp release",
 };
+
+// Audio feature names carry a stimulus tag (`centroid_mean:p2`) because their
+// values only mean anything relative to the audition phrase that produced
+// them; the human label is stimulus-agnostic, so strip the tag for display.
+function niceName(name) {
+  return NICE_NAMES[name] || NICE_NAMES[String(name).split(":")[0]] || name;
+}
 
 // Style hues are amber rotations, not an arbitrary categorical ramp: the
 // taste map is the model's mind, and the model speaks amber.
@@ -3081,7 +3090,7 @@ function styleName(s, k) {
     .filter((r) => r.mean > 0)
     .sort((a, b) => b.mean - a.mean)
     .slice(0, 2)
-    .map((r) => NICE_NAMES[r.name] || r.name);
+    .map((r) => niceName(r.name));
   return tops.length ? tops.join(" + ") : `style ${k + 1}`;
 }
 
@@ -3341,7 +3350,7 @@ function drawStylesTab(ctx, w, h, dpr) {
       if (y > y0 + blockH - 8 * dpr) return;
       ctx.fillStyle = INK.amberDim;
       ctx.textAlign = "right";
-      ctx.fillText(NICE_NAMES[r.name] || r.name, cx - usable - 10 * dpr, y + 3 * dpr);
+      ctx.fillText(niceName(r.name), cx - usable - 10 * dpr, y + 3 * dpr);
       ctx.textAlign = "left";
       const len = (r.mean / maxAbs) * usable;
       ctx.fillStyle = color;
@@ -3386,7 +3395,7 @@ function drawDirectionsTab(ctx, w, h, dpr) {
     const y = rowH * (i + 1);
     ctx.fillStyle = INK.amberDim;
     ctx.textAlign = "right";
-    ctx.fillText(NICE_NAMES[name] || name, cx - usable - 10 * dpr, y + 3 * dpr);
+    ctx.fillText(niceName(name), cx - usable - 10 * dpr, y + 3 * dpr);
     ctx.textAlign = "left";
     const lane = 7 * dpr;
     styles.forEach((s, si) => {

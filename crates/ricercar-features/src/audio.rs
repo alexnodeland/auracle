@@ -93,23 +93,59 @@ pub struct AudioFeatures {
     pub tail_ratio: f64,
     /// Low-band energy fraction (below ~250 Hz) — weight/sub character.
     pub bass_fraction: f64,
+    /// Std of the log-axis centroid over frames of the **held note's** gate-on
+    /// span only. `centroid_std` over the whole phrase conflates note-to-note
+    /// register jumps with genuine timbral motion; this coordinate is
+    /// register-constant by construction, so it is the axis on which "a filter
+    /// sweeping at 0.4 Hz" and "a static patch" are different patches at all.
+    /// 0.0 when the phrase has no held span long enough to measure.
+    pub held_centroid_std: f64,
+    /// `ln` RMS of the **highest note's** gate-on span relative to the held
+    /// note's — does the patch speak in the upper register, or does its
+    /// filter choke it? 0.0 when the phrase has no note meaningfully above
+    /// its first.
+    pub high_ratio: f64,
+    /// Mean spectral flatness over the **chord note's** gate-on span minus
+    /// the held note's — intermodulation and mud when voices stack. 0.0 when
+    /// the phrase has no chord note.
+    pub chord_flatness_delta: f64,
 }
 
 impl AudioFeatures {
     /// Feature names in `to_vec` order.
-    pub const NAMES: [&'static str; 12] = [
-        "centroid_mean",
-        "centroid_std",
-        "rolloff_mean",
-        "flatness_mean",
-        "flux_mean",
-        "zcr_mean",
-        "rms_mean",
-        "rms_std",
-        "crest",
-        "attack_s",
-        "tail_ratio",
-        "bass_fraction",
+    ///
+    /// ## The `:p2` stimulus tag
+    ///
+    /// Every audio feature is a measurement **of the standard phrase**, so a
+    /// stimulus change changes what each value means even when the formula is
+    /// untouched — a slow pad's `rms_mean` under a phrase that never lets it
+    /// open is a different quantity from the same field under one that does.
+    /// The observation log stores raw φ **by name**, and
+    /// [`FitSet::build`](../../ricercar_taste/observe/struct.FitSet.html)
+    /// projects old logs onto the current names: same name ⇒ same coordinate.
+    /// Tagging the names with the stimulus generation is therefore the
+    /// migration mechanism itself — votes recorded under the v1 phrase keep
+    /// their (stimulus-independent) structural coordinates and have their
+    /// old-stimulus audio coordinates honestly imputed as "no evidence",
+    /// instead of being silently mixed into a standardizer they were never
+    /// commensurable with. Bump the tag whenever
+    /// [`PhraseSpec::default`](crate::phrase::PhraseSpec) changes audibly.
+    pub const NAMES: [&'static str; 15] = [
+        "centroid_mean:p2",
+        "centroid_std:p2",
+        "rolloff_mean:p2",
+        "flatness_mean:p2",
+        "flux_mean:p2",
+        "zcr_mean:p2",
+        "rms_mean:p2",
+        "rms_std:p2",
+        "crest:p2",
+        "attack_s:p2",
+        "tail_ratio:p2",
+        "bass_fraction:p2",
+        "held_centroid_std:p2",
+        "high_ratio:p2",
+        "chord_flatness_delta:p2",
     ];
 
     /// Flatten to a vector in [`Self::NAMES`] order.
@@ -127,6 +163,9 @@ impl AudioFeatures {
             self.attack_s,
             self.tail_ratio,
             self.bass_fraction,
+            self.held_centroid_std,
+            self.high_ratio,
+            self.chord_flatness_delta,
         ]
     }
 }
@@ -212,6 +251,9 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
     let mut centroids = Vec::new();
     let mut rolloffs = Vec::new();
     let mut flatnesses = Vec::new();
+    // Start position of the frame behind each centroids/flatnesses entry —
+    // what lets the segment-local features select frames by note span.
+    let mut spec_frame_pos = Vec::new();
     let mut fluxes = Vec::new();
     let mut frame_rms = Vec::new();
     let mut bass_energy = 0.0f64;
@@ -233,6 +275,7 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
             .push((x[pos..pos + FRAME].iter().map(|s| s * s).sum::<f64>() / FRAME as f64).sqrt());
 
         if power > 1e-12 {
+            spec_frame_pos.push(pos);
             let msum: f64 = mag.iter().sum();
             let centroid_hz = mag
                 .iter()
@@ -299,6 +342,70 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         }
     };
 
+    // --- segment-local roles (see phrase.rs for why each segment exists) ---
+    // Roles are found by *property*, not position: the held reference is the
+    // first note, the high note is the highest note at least half an octave
+    // above it, the chord note is the first with chord voices. A phrase
+    // missing a role yields the honest 0.0 ("no evidence") for its features.
+    let frames_in = |lo: usize, hi: usize| -> Vec<usize> {
+        spec_frame_pos
+            .iter()
+            .enumerate()
+            .filter(|(_, &p)| p >= lo && p + FRAME <= hi)
+            .map(|(i, _)| i)
+            .collect()
+    };
+    let span_rms = |lo: usize, hi: usize| -> f64 {
+        let seg = &x[lo.min(n)..hi.min(n)];
+        if seg.is_empty() {
+            0.0
+        } else {
+            (seg.iter().map(|s| s * s).sum::<f64>() / seg.len() as f64).sqrt()
+        }
+    };
+
+    let held = r.spans.first();
+    let held_frames = held.map_or(Vec::new(), |h| frames_in(h.on_start, h.on_end));
+
+    let held_centroid_std = if held_frames.len() >= 3 {
+        let vals: Vec<f64> = held_frames.iter().map(|&i| centroids[i]).collect();
+        std(&vals)
+    } else {
+        0.0
+    };
+
+    let high_ratio = held
+        .and_then(|h| {
+            r.spans
+                .iter()
+                .filter(|s| s.voct >= h.voct + 0.5)
+                .max_by(|a, b| a.voct.total_cmp(&b.voct))
+                .map(|s| {
+                    let hi = span_rms(s.on_start, s.on_end);
+                    let lo = span_rms(h.on_start, h.on_end);
+                    ((hi + 1e-4) / (lo + 1e-4)).ln()
+                })
+        })
+        .unwrap_or(0.0);
+
+    let chord_flatness_delta = r
+        .spans
+        .iter()
+        .find(|s| s.chord > 0)
+        .and_then(|chord| {
+            let held_flat: Vec<f64> = held_frames.iter().map(|&i| flatnesses[i]).collect();
+            let chord_flat: Vec<f64> = frames_in(chord.on_start, chord.on_end)
+                .iter()
+                .map(|&i| flatnesses[i])
+                .collect();
+            if held_flat.is_empty() || chord_flat.is_empty() {
+                None
+            } else {
+                Some(mean(&chord_flat) - mean(&held_flat))
+            }
+        })
+        .unwrap_or(0.0);
+
     AudioFeatures {
         centroid_mean: mean(&centroids),
         centroid_std: std(&centroids),
@@ -316,5 +423,8 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         } else {
             0.0
         },
+        held_centroid_std,
+        high_ratio,
+        chord_flatness_delta,
     }
 }

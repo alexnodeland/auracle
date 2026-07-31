@@ -61,8 +61,43 @@ pub const SCHEMA1_NAMES: [&str; 30] = [
     "amp_release",
 ];
 
-/// Convert one schema-1 raw vector onto `target` — the *current* φ names, in
-/// their current order.
+/// The audio φ names as of the **v1 stimulus** (no stimulus tag), in order.
+const V1_AUDIO_NAMES: [&str; 12] = [
+    "centroid_mean",
+    "centroid_std",
+    "rolloff_mean",
+    "flatness_mean",
+    "flux_mean",
+    "zcr_mean",
+    "rms_mean",
+    "rms_std",
+    "crest",
+    "attack_s",
+    "tail_ratio",
+    "bass_fraction",
+];
+
+/// φ names as of the v1 stimulus: the 12 un-tagged audio coordinates plus the
+/// current (stimulus-independent) structural set.
+///
+/// Schema-1 values were measured under the v1 phrase, so migration must land
+/// them **here** — never on the current stimulus-tagged audio names, which
+/// would launder old-stimulus evidence into coordinates it was never
+/// commensurable with. `FitSet::build` then carries the structural
+/// coordinates forward by name and imputes the current audio coordinates at
+/// "no evidence", which is the honest reading of a vote about a stimulus
+/// that no longer exists.
+pub fn v1_names() -> Vec<String> {
+    use ricercar_features::StructFeatures;
+    V1_AUDIO_NAMES
+        .iter()
+        .chain(StructFeatures::NAMES.iter())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Convert one schema-1 raw vector onto `target` — the *v1-stimulus* φ names
+/// ([`v1_names`]), in their order.
 ///
 /// Projecting onto the live feature set rather than "schema 1 minus whatever
 /// we dropped" is what keeps a migrated vote first-class: `raw_rows` matches
@@ -113,8 +148,10 @@ fn convert(raw: &[f64], nyquist: f64, target: &[String]) -> Vec<f64> {
 /// Rewrite a schema-1 log into the current schema, in place.
 ///
 /// `sz` must be the standardizer the log was written under (the one the
-/// profile carries) and `names` the current φ names, which the result is
-/// projected onto. Returns how many observations were migrated;
+/// profile carries) and `names` the φ names of the stimulus the log was
+/// *recorded* under — [`v1_names`] for every schema-1 log, since raw-φ
+/// logging and the v2 stimulus both postdate schema 1. Returns how many
+/// observations were migrated;
 /// observations already in the current schema are left alone, and the whole
 /// thing is a no-op if the standardizer's dimension doesn't match schema 1 (in
 /// which case we genuinely cannot recover the raw values, and pretending

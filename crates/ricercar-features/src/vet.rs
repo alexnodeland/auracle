@@ -70,6 +70,23 @@ impl Default for VetConfig {
     }
 }
 
+impl VetConfig {
+    /// Defaults with the peak ceiling scaled for the phrase's polyphony.
+    ///
+    /// The default ceiling (2.0) is one limiter-bounded voice (~1.5 peak in
+    /// the ±1.0 float domain) plus overshoot headroom. N gate-synced voices
+    /// legitimately sum toward N× one voice, and that summing is exactly the
+    /// stacking information the chord segment exists to measure — so each
+    /// additional simultaneous voice raises the ceiling by one voice's worth
+    /// (1.5) rather than the gate quarantining honest polyphony as runaway.
+    pub fn for_spec(spec: &crate::phrase::PhraseSpec) -> Self {
+        Self {
+            peak_ceiling: 2.0 + 1.5 * (spec.max_voices() as f64 - 1.0),
+            ..Self::default()
+        }
+    }
+}
+
 /// Inspect a raw render. `Ok(report)` admits the candidate to normalization
 /// and feature extraction; `Err` quarantines it.
 pub fn vet(samples: &[f64], cfg: &VetConfig) -> Result<VetReport, VetFailure> {
