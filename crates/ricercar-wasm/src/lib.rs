@@ -20,18 +20,29 @@
 mod live;
 pub use live::LivePoly;
 
+use std::sync::Arc;
+
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use ricercar_features::{featurize, Features, PhraseSpec, RenderedPhrase};
+use ricercar_features::{featurize_memo, Audition, CachedFeatures, Features, PhraseSpec};
 use ricercar_grammar::{
     apply_struct_op, describe, presets, set_param, ParamValue, PatchGrammarPrior, PatchTree,
     StructOp,
 };
-use ricercar_session::{Engine, Origin, Profile, SessionConfig, SessionState};
+use ricercar_session::{
+    BankEntry, Engine, Origin, PreFeaturized, Profile, RenderPolicy, SessionConfig, SessionState,
+};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 /// One row of the ranked-pool summary.
+///
+/// `name` is the display name — the user's if they gave one, otherwise a
+/// **musical** name read off the measured features (`Bright Pluck`,
+/// `Fat Sub`), disambiguated across the pool. `signature` is the topology
+/// (`ssaw·lp·ladr`), kept as separate metadata: it describes the circuit, not
+/// the sound, and it collides constantly, so it belongs under the name rather
+/// than in place of it.
 #[derive(Serialize)]
 struct RankedRow {
     id: u64,
@@ -40,6 +51,7 @@ struct RankedRow {
     origin: &'static str,
     name: String,
     named: bool,
+    signature: String,
     sexpr: String,
 }
 
@@ -74,6 +86,13 @@ struct Status {
     has_posterior: bool,
     generation: usize,
     k_styles: usize,
+    /// Effective sample size of the posterior draws after the importance
+    /// updates folded in since the last full fit (0 before the first fit).
+    ess: f64,
+    /// True when those weights have degenerated enough that a full MCMC
+    /// refit is worth its seconds — a better refit trigger than a fixed
+    /// vote count.
+    needs_refit: bool,
 }
 
 fn origin_str(o: Origin) -> &'static str {
@@ -85,8 +104,108 @@ fn origin_str(o: Origin) -> &'static str {
     }
 }
 
-fn to_f32(r: &RenderedPhrase) -> Vec<f32> {
-    r.samples.iter().map(|s| *s as f32).collect()
+/// The buffer form WebAudio wants. Cloned rather than moved because the
+/// engine and the workbench both keep the authoritative copy — every consumer
+/// of an audition on this boundary hands it straight to a `Float32Array`.
+fn pcm(a: &Audition) -> Vec<f32> {
+    a.samples.clone()
+}
+
+// ----------------------------------------------------------------------
+// The render farm's stateless surface
+// ----------------------------------------------------------------------
+
+/// One farm result: a render + vet + featurize that happened with **no
+/// [`Engine`] anywhere in sight**.
+///
+/// This is the whole farm-worker contract. A farm worker holds a wasm instance
+/// and nothing else — no pool, no RNG, no session — so any worker is
+/// interchangeable with any other and with the engine itself. `samples` is
+/// moved out on the first read so the buffer can be transferred rather than
+/// copied.
+#[wasm_bindgen]
+pub struct RenderJob {
+    ok: bool,
+    cached: String,
+    samples: Vec<f32>,
+}
+
+#[wasm_bindgen]
+impl RenderJob {
+    /// Whether the term rendered and passed vetting. A `false` here is a
+    /// **normal outcome** — a quarantined draw — not an error to report.
+    #[wasm_bindgen(getter)]
+    pub fn ok(&self) -> bool {
+        self.ok
+    }
+
+    /// Serialized `ricercar_features::CachedFeatures`: the content key, the
+    /// raw φ and vet report, the note onsets and the render length. `""` when
+    /// `!ok`.
+    #[wasm_bindgen(getter)]
+    pub fn cached(&self) -> String {
+        self.cached.clone()
+    }
+
+    /// The normalized audition as `f32`, emptying the job.
+    ///
+    /// `f32` is not a precision compromise: a stored render is only ever
+    /// consumed through this boundary (`render_of`, `edit_render`), and the
+    /// engine measures φ on the f64 render inside the farm worker, before this
+    /// conversion. See `ricercar_features::Audition`'s one-way-door note.
+    pub fn take_samples(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.samples)
+    }
+
+    /// Number of samples still held (0 after [`RenderJob::take_samples`]).
+    #[wasm_bindgen(getter)]
+    pub fn n_samples(&self) -> usize {
+        self.samples.len()
+    }
+}
+
+/// Render, vet and featurize one term under `phrase_json` — the farm worker's
+/// entire job, and a pure function of its two arguments.
+///
+/// The phrase travels with the handshake rather than being reconstructed from
+/// a default, so a farm worker can never measure φ under a stimulus the pool
+/// was not measured under. A vet failure returns `ok:false` rather than
+/// throwing: a quarantined draw is a normal outcome, and the engine consumes
+/// its index either way.
+///
+/// `want_audio` decides whether the ~565 KB buffer comes back at all. The
+/// engine's own fill asks for φ only (its `RenderPolicy::Lazy` pool keeps no
+/// audio at admission), so the flag exists to let the caller pay for audio
+/// exactly where it will be heard — the first few patches, which are the ones
+/// the user auditions while the rest of the bank lands.
+#[wasm_bindgen]
+pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> RenderJob {
+    let rejected = || RenderJob {
+        ok: false,
+        cached: String::new(),
+        samples: Vec::new(),
+    };
+    let (Ok(tree), Ok(spec)) = (
+        serde_json::from_str::<PatchTree>(tree_json),
+        serde_json::from_str::<PhraseSpec>(phrase_json),
+    ) else {
+        return rejected();
+    };
+    let Ok(pre) = PreFeaturized::render(tree, &spec, want_audio) else {
+        return rejected();
+    };
+    let Ok(cached) = serde_json::to_string(&pre.cached) else {
+        return rejected();
+    };
+    let samples = pre
+        .audition
+        .map(|a| Arc::try_unwrap(a).unwrap_or_else(|a| (*a).clone()).samples)
+        .unwrap_or_default();
+    RenderJob {
+        ok: true,
+        cached,
+        samples,
+    }
 }
 
 /// The session engine, wasm-side.
@@ -95,10 +214,35 @@ pub struct WasmEngine {
     engine: Engine,
     rng: StdRng,
     bench_tree: Option<PatchTree>,
-    bench_render: Option<RenderedPhrase>,
+    bench_render: Option<Arc<Audition>>,
     bench_original: Option<u64>,
     bench_vet_ok: bool,
     bench_gain_db: f64,
+    /// Bank entries of a deferred restore, awaiting off-engine featurization.
+    /// Held here rather than shipped to JS so the orchestrator addresses them
+    /// by index — the same statelessness the pool fill gets from its draw
+    /// stream.
+    pending_bank: Vec<BankEntry>,
+}
+
+/// The workbench's audition buffer after a featurize.
+///
+/// The bench is the one surface that *always* needs audio — the user is
+/// looking at a scope of the edit they just made — so a memo hit whose buffer
+/// has aged out is re-derived rather than left blank. `render_playback` is
+/// bit-identical to what `featurize` normalized, so the scope and the sound
+/// are the same artifact either way.
+fn bench_audio(
+    tree: &PatchTree,
+    phrase: &PhraseSpec,
+    features: &Features,
+    fresh: Option<Arc<Audition>>,
+) -> Option<Arc<Audition>> {
+    fresh.or_else(|| {
+        ricercar_features::render_playback(tree, phrase, features.gain_db)
+            .ok()
+            .map(Arc::new)
+    })
 }
 
 /// LUFS makeup as a linear gain, clamped to ±12 dB so near-silent patches
@@ -115,10 +259,20 @@ impl WasmEngine {
         console_error_panic_hook::set_once();
         let cfg = SessionConfig {
             pool_size,
-            keep_renders: true,
-            // Browser budget: slightly lighter chains than native default.
-            mcmc_samples: 20_000,
-            mcmc_warmup: 6_000,
+            // The browser is the one place audition memory is scarce and the
+            // one place audio is actually played. Lazy is the answer to both:
+            // a full eager pool is tens of megabytes of buffers the user will
+            // mostly never hear, while the dozen that matter (the duel pair,
+            // the bench subject, whatever was just auditioned) stay resident.
+            render_policy: RenderPolicy::Lazy,
+            audio_cache: 12,
+            // The MCMC budget is no longer overridden here. This used to run
+            // 20 000/6 000 as a "slightly lighter chain than the native
+            // default" of 30 000/10 000; the default is now 10 000/3 000
+            // (chosen from a measured recovery-vs-budget curve — see
+            // `SessionConfig::mcmc_samples`), so an override would make the
+            // browser, the one place a fit blocks a human, the *heaviest*
+            // chain in the tree.
             ..Default::default()
         };
         let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
@@ -131,6 +285,7 @@ impl WasmEngine {
             bench_original: None,
             bench_vet_ok: false,
             bench_gain_db: 0.0,
+            pending_bank: Vec::new(),
         }
     }
 
@@ -150,8 +305,169 @@ impl WasmEngine {
 
     /// Add up to `max_new` vetted candidates. Returns how many were added,
     /// so the worker can post fill progress between calls.
+    ///
+    /// The serial path, and the fallback whenever no farm is available. It
+    /// folds the same indexed draw stream `fill_draw`/`fill_absorb` fold, so
+    /// the pool it builds is the pool the farm builds.
     pub fn fill_step(&mut self, max_new: usize) -> usize {
         self.engine.fill_pool_step(&mut self.rng, max_new)
+    }
+
+    // ------------------------------------------------------------------
+    // Render farm (see `ricercar_session::farm`)
+    // ------------------------------------------------------------------
+
+    /// The audition stimulus as JSON, for the farm handshake.
+    ///
+    /// Shipped rather than assumed: a farm worker that defaulted its own
+    /// `PhraseSpec` would measure φ under a different stimulus the moment the
+    /// engine's phrase ever becomes configurable, and the drift would be
+    /// silent because every individual render would still be internally
+    /// consistent.
+    pub fn phrase_json(&self) -> String {
+        serde_json::to_string(&self.engine.cfg.phrase).unwrap_or_default()
+    }
+
+    /// Next index of the pool draw stream the engine will fold in.
+    pub fn fill_cursor(&self) -> u32 {
+        self.engine.draw_cursor() as u32
+    }
+
+    /// Hand out up to `n` unrendered draws as JSON
+    /// `[{"i":7,"tree":{…},"dup":false}]`, possibly shorter than `n` or empty.
+    ///
+    /// Empty means "nothing to issue *right now*" — the pool has as much work
+    /// outstanding as it can use, or the draw budget is spent. It is a stop
+    /// signal only in combination with nothing outstanding; see
+    /// `Engine::fill_draw`.
+    pub fn fill_draw(&mut self, n: usize) -> String {
+        self.engine.ensure_fill_seed(&mut self.rng);
+        serde_json::to_string(&self.engine.fill_draw(n)).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// The term at `index` of the draw stream, as JSON (`""` before the stream
+    /// starts).
+    ///
+    /// The re-issue path: a farm worker that dies or hangs loses nothing but
+    /// its render, because the job it was doing is fully named by its index.
+    /// No tree JSON has to be retained anywhere to recover it.
+    pub fn draw_json(&self, index: u32) -> String {
+        self.engine
+            .draw_at(index as u64)
+            .and_then(|t| serde_json::to_string(&t).ok())
+            .unwrap_or_default()
+    }
+
+    /// Fold one farm result into the pool, in index order.
+    ///
+    /// `cached_json == ""` (or samples whose length disagrees with the render
+    /// the farm reported) means the draw did not survive: the index is
+    /// consumed and 0 returned, exactly as a vet failure burns an attempt in
+    /// the serial loop. Returns the new candidate id otherwise, or 0 for a
+    /// duplicate or a full pool.
+    pub fn fill_absorb(&mut self, index: u32, cached_json: &str, samples: &[f32]) -> u32 {
+        let i = index as u64;
+        let pre = self
+            .engine
+            .draw_at(i)
+            .and_then(|tree| self.pre_featurized(tree, cached_json, samples));
+        self.engine.absorb_prior(i, pre).unwrap_or(0) as u32
+    }
+
+    /// Restore a session but leave the bank un-rendered: returns JSON
+    /// `[{"i":0,"tree":{…}}]` in bank order. Every entry must come back
+    /// through [`WasmEngine::bank_absorb`], after which
+    /// [`WasmEngine::restore_finish`] closes the restore.
+    pub fn import_session_deferred(&mut self, json: &str) -> String {
+        let Ok(state) = serde_json::from_str::<SessionState>(json) else {
+            return "[]".into();
+        };
+        self.pending_bank = self.engine.import_state_deferred(state);
+        self.engine.begin_session();
+        let jobs: Vec<serde_json::Value> = self
+            .pending_bank
+            .iter()
+            .enumerate()
+            .map(|(i, e)| serde_json::json!({ "i": i, "tree": e.tree }))
+            .collect();
+        serde_json::to_string(&jobs).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// The term of pending bank entry `index`, as JSON (`""` if unknown) —
+    /// the restore path's re-issue hook.
+    pub fn bank_draw_json(&self, index: usize) -> String {
+        self.pending_bank
+            .get(index)
+            .and_then(|e| serde_json::to_string(&e.tree).ok())
+            .unwrap_or_default()
+    }
+
+    /// Reinstate one restored bank entry from an off-engine featurization.
+    /// Returns false for an unknown index or a result that did not survive —
+    /// a bank entry that no longer vets is dropped, exactly as the serial
+    /// restore drops it.
+    pub fn bank_absorb(&mut self, index: usize, cached_json: &str, samples: &[f32]) -> bool {
+        let Some(entry) = self.pending_bank.get(index).cloned() else {
+            return false;
+        };
+        let Some(pre) = self.pre_featurized(entry.tree.clone(), cached_json, samples) else {
+            return false;
+        };
+        self.engine.absorb_bank_entry(entry, pre);
+        true
+    }
+
+    /// Featurize and reinstate pending bank entry `index` **in this worker**.
+    ///
+    /// The deferred restore's serial completion: whatever the farm did not
+    /// finish is finished here, so a restore never depends on the farm having
+    /// survived. Same work, same order, same result — it just blocks.
+    pub fn bank_render(&mut self, index: usize) -> bool {
+        let Some(entry) = self.pending_bank.get(index).cloned() else {
+            return false;
+        };
+        let want_audio = self.engine.cfg.render_policy == RenderPolicy::Eager;
+        let Ok((cached, audition)) = featurize_memo(
+            &entry.tree,
+            &self.engine.cfg.phrase,
+            self.engine.memo(),
+            want_audio,
+        ) else {
+            return false;
+        };
+        let pre = PreFeaturized {
+            tree: entry.tree.clone(),
+            cached,
+            audition,
+        };
+        self.engine.absorb_bank_entry(entry, pre);
+        true
+    }
+
+    /// Close a deferred restore (standardizer + φ resolution). Returns the
+    /// number of bank entries that landed.
+    pub fn restore_finish(&mut self) -> usize {
+        self.pending_bank = Vec::new();
+        self.engine.finish_restore()
+    }
+
+    /// Make the pool duel-able **now**, mid-fill: standardize every member,
+    /// fitting a standardizer over whatever has been drawn so far if none
+    /// exists yet. Cheap — no renders, just mean/variance over φ.
+    ///
+    /// This is what lets a progressive boot hand the user a duel after ~8
+    /// candidates instead of after all 40: `next_duel` refuses any candidate
+    /// with an empty `phi_std`, and without this the engine only standardizes
+    /// when the pool first *reaches* its target.
+    pub fn standardize_now(&mut self) {
+        self.engine.standardize_now();
+    }
+
+    /// Re-fit the standardizer once the fill completes, over the full pool
+    /// rather than the first few draws. No-op if a posterior already exists —
+    /// moving the scale under live θ would rescale every utility on screen.
+    pub fn restandardize_if_untaught(&mut self) {
+        self.engine.restandardize_if_untaught();
     }
 
     /// Engine status as JSON.
@@ -164,12 +480,14 @@ impl WasmEngine {
             has_posterior: self.engine.posterior.is_some(),
             generation: self.engine.generation,
             k_styles: self.engine.cfg.k_styles,
+            ess: self.engine.posterior_ess().unwrap_or(0.0),
+            needs_refit: self.engine.needs_refit(),
         })
         .unwrap()
     }
 
     /// Choose the next duel: JSON `[idA, idB]`, or `null` if the pool is
-    /// small.
+    /// small. See [`WasmEngine::next_duel_ex`] for the annotated form.
     pub fn next_duel(&mut self) -> String {
         let pair = self
             .engine
@@ -178,14 +496,76 @@ impl WasmEngine {
         serde_json::to_string(&pair).unwrap()
     }
 
+    /// Choose the next duel, with the reasoning attached — `null` if the pool
+    /// is too small:
+    ///
+    /// ```json
+    /// {"a":12,"b":31,"info_gain":0.41,"random_check":false,"method":"bald"}
+    /// ```
+    ///
+    /// `a`/`b` are candidate **ids**. `info_gain` is expected information
+    /// about θ in nats (max `ln 2 ≈ 0.693`). `method` is `"bald"`,
+    /// `"check"` (a uniformly-random calibration probe — worth labelling in
+    /// the UI, since the model is deliberately not choosing it) or
+    /// `"random"` (no posterior yet).
+    pub fn next_duel_ex(&mut self) -> String {
+        #[derive(Serialize)]
+        struct Row {
+            a: u64,
+            b: u64,
+            info_gain: f64,
+            random_check: bool,
+            method: &'static str,
+        }
+        match self.engine.next_duel_full(&mut self.rng) {
+            Some(d) => serde_json::to_string(&Row {
+                a: self.engine.pool[d.a].id,
+                b: self.engine.pool[d.b].id,
+                info_gain: d.info_gain,
+                random_check: d.random_check,
+                method: d.method,
+            })
+            .unwrap(),
+            None => "null".into(),
+        }
+    }
+
     /// The audition buffer of candidate `id` (mono, ±1.0), for WebAudio.
-    pub fn render_of(&self, id: u32) -> Vec<f32> {
-        let id = id as u64;
+    ///
+    /// **`&mut self`, and it can take a render.** Under the lazy policy this
+    /// engine boots with, the buffer is materialized here on first request
+    /// rather than retained from the fill. An **empty** return means the term
+    /// no longer renders (a restored bank can outlive the DSP that made it) —
+    /// callers must treat it as a failure and stop waiting, not as "not yet".
+    pub fn render_of(&mut self, id: u32) -> Vec<f32> {
         self.engine
-            .find(id)
-            .and_then(|i| self.engine.pool[i].render.as_ref())
-            .map(to_f32)
+            .render_of(id as u64)
+            .map(|a| pcm(&a))
             .unwrap_or_default()
+    }
+
+    /// Materialize `id`'s audition buffer without returning it.
+    ///
+    /// The deal path calls this for both sides the moment a pair is chosen,
+    /// so the lazy render happens while the user is still reading the cards
+    /// rather than after they press ▶. Cheap and idempotent once resident.
+    pub fn prefetch_render(&mut self, id: u32) -> bool {
+        self.engine.render_of(id as u64).is_some()
+    }
+
+    /// Featurization-memo counters as JSON
+    /// (`{hits, misses, features, audio, audio_bytes}`) — how much rendering
+    /// the memo is deleting, and how much audio is resident.
+    pub fn memo_stats(&self) -> String {
+        let s = self.engine.memo().stats();
+        serde_json::to_string(&serde_json::json!({
+            "hits": s.hits,
+            "misses": s.misses,
+            "features": s.features,
+            "audio": s.audio,
+            "audio_bytes": s.audio_bytes,
+        }))
+        .unwrap()
     }
 
     /// The render sample rate.
@@ -265,6 +645,25 @@ impl WasmEngine {
         self.engine.refine(&mut self.rng);
     }
 
+    /// Open a generation; returns the parent ids to refine from as a JSON
+    /// array, or `[]` if there is no taste to refine toward yet (in which case
+    /// no generation is opened).
+    ///
+    /// Paired with [`WasmEngine::refine_seed`] so the caller can drive a
+    /// generation one seed at a time and show progress. A generation is tens
+    /// of seconds of render-bound work; as a single call it looks like a hang.
+    pub fn refine_begin(&mut self) -> String {
+        serde_json::to_string(&self.engine.refine_begin()).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// Refine one seed of the open generation. Returns the child id, or 0 if
+    /// the walk was rejected or landed on a patch already in the pool.
+    pub fn refine_seed(&mut self, parent_id: u32) -> u32 {
+        self.engine
+            .refine_seed(&mut self.rng, parent_id as u64)
+            .unwrap_or(0) as u32
+    }
+
     /// Locked refinement from candidate `id`: evolve everything except the
     /// locked addresses (`locked_json` = JSON array of `key#site` strings).
     /// Returns the new child id, or 0 if no move was accepted.
@@ -276,8 +675,10 @@ impl WasmEngine {
             .unwrap_or(0) as u32
     }
 
-    /// Ranked pool as JSON (`[{id, mean, std, origin, sexpr}]`).
+    /// Ranked pool as JSON
+    /// (`[{id, mean, std, origin, name, named, signature, sexpr}]`).
     pub fn ranked(&self) -> String {
+        let names = self.engine.display_names();
         let rows: Vec<RankedRow> = self
             .engine
             .ranked()
@@ -289,13 +690,74 @@ impl WasmEngine {
                     mean,
                     std,
                     origin: origin_str(c.origin),
-                    name: c.name.clone().unwrap_or_else(|| c.tree.signature()),
+                    name: names
+                        .get(&c.id)
+                        .cloned()
+                        .unwrap_or_else(|| c.tree.signature()),
                     named: c.name.is_some(),
+                    signature: c.tree.signature(),
                     sexpr: c.tree.to_sexpr(),
                 }
             })
             .collect();
         serde_json::to_string(&rows).unwrap()
+    }
+
+    /// Display name of one candidate (user-given, else musical).
+    pub fn name_of(&self, id: u32) -> String {
+        self.engine
+            .display_names()
+            .get(&(id as u64))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// **Why this patch scores what it does**, as JSON, or `null` before the
+    /// first fit / for an unknown id:
+    ///
+    /// ```json
+    /// {"id":12,"style":1,"style_name":"Dark Drones",
+    ///  "utility":0.84,"utility_std":0.31,
+    ///  "mix_utility":0.91,"responsibility":0.86,
+    ///  "contributions":[{"name":"centroid_mean","theta":0.42,
+    ///                    "phi_std":1.01,"contribution":0.42}, …]}
+    /// ```
+    ///
+    /// Contributions are sorted by descending |contribution| and sum exactly
+    /// to `utility` — utility is linear within a lens, so this is an exact
+    /// decomposition rather than a surrogate approximation.
+    ///
+    /// **Draw `mix_utility` as the score.** It is the value `ranked()` sorts
+    /// the bank by; `utility` is the lens-conditional quantity the
+    /// contributions explain, and it is always ≤ `mix_utility`. Rendering
+    /// `utility` beside a row ranked by `mix_utility` shows a number that
+    /// disagrees with its own list. `responsibility` says how much that
+    /// distinction matters for this patch: near 1 the two coincide, well
+    /// below 1 the patch sits between styles.
+    pub fn explain(&self, id: u32) -> String {
+        match self.engine.explain(id as u64) {
+            Some(e) => serde_json::to_string(&e).unwrap(),
+            None => "null".into(),
+        }
+    }
+
+    /// Prequential calibration as JSON — a **proper** score, replacing the
+    /// running hit rate (which is not one, and which the acquisition function
+    /// pins near 50 % by design):
+    ///
+    /// ```json
+    /// {"n":42,"brier":0.19,"log_loss":0.58,"skill":0.24,
+    ///  "bins":[{"lo":0.0,"hi":0.2,"n":7,"predicted":0.11,"observed":0.14}, …],
+    ///  "check_n":4,"check_skill":0.18,"check_log_loss":0.61,"hit_rate":0.55}
+    /// ```
+    ///
+    /// `skill` is `1 − Brier/0.25`: 0 means no better than a coin flip, 1
+    /// means perfect and certain. `log_loss` is in nats (`ln 2 ≈ 0.693` is
+    /// the coin-flip baseline). `bins` is the reliability diagram over
+    /// `P(A wins)`. `check_*` restricts the score to the uniformly-random
+    /// check duels, which is the only selection-bias-free number here.
+    pub fn calibration(&self) -> String {
+        serde_json::to_string(&self.engine.calibration()).unwrap()
     }
 
     /// The 2D taste map (pool + history ghosts) as JSON, or `null` when
@@ -460,10 +922,18 @@ impl WasmEngine {
         match self.engine.find(id) {
             Some(i) => {
                 self.bench_tree = Some(self.engine.pool[i].tree.clone());
-                self.bench_render = self.engine.pool[i].render.clone();
-                self.bench_original = Some(id);
-                self.bench_vet_ok = true;
                 self.bench_gain_db = self.engine.pool[i].features.gain_db;
+                // Materializes the buffer if the lazy pool had let it go: the
+                // panel shows a scope the moment it opens, so the bench must
+                // never start empty for a candidate that renders fine.
+                self.bench_render = self.engine.render_of(id);
+                self.bench_original = Some(id);
+                // A pool member vetted when it was admitted, but a bank
+                // restored across a DSP change can hold a term that no longer
+                // renders — and `bench_vet_ok` is what gates commit *and*
+                // playback. Take it from whether a buffer actually exists,
+                // not from the fact that this id is in the pool.
+                self.bench_vet_ok = self.bench_render.is_some();
                 true
             }
             None => false,
@@ -483,12 +953,13 @@ impl WasmEngine {
         } else {
             ParamValue::Continuous(value)
         };
+        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         match set_param(tree, addr, v) {
             Ok(edited) => {
-                match featurize(&edited, &self.phrase()) {
-                    Ok(vetted) => {
-                        self.bench_gain_db = vetted.features.gain_db;
-                        self.bench_render = Some(vetted.render);
+                match featurize_memo(&edited, &phrase, &memo, true) {
+                    Ok((cf, audio)) => {
+                        self.bench_gain_db = cf.features.gain_db;
+                        self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
                         self.bench_vet_ok = true;
                     }
                     Err(_) => {
@@ -517,12 +988,13 @@ impl WasmEngine {
             Ok(op) => op,
             Err(e) => return format!("bad op: {e}"),
         };
+        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         match apply_struct_op(tree, &op) {
             Ok(edited) => {
-                match featurize(&edited, &self.phrase()) {
-                    Ok(vetted) => {
-                        self.bench_gain_db = vetted.features.gain_db;
-                        self.bench_render = Some(vetted.render);
+                match featurize_memo(&edited, &phrase, &memo, true) {
+                    Ok((cf, audio)) => {
+                        self.bench_gain_db = cf.features.gain_db;
+                        self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
                         self.bench_vet_ok = true;
                     }
                     Err(_) => {
@@ -548,10 +1020,11 @@ impl WasmEngine {
             Ok(t) => t,
             Err(e) => return format!("bad tree: {e}"),
         };
-        match featurize(&tree, &self.phrase()) {
-            Ok(vetted) => {
-                self.bench_gain_db = vetted.features.gain_db;
-                self.bench_render = Some(vetted.render);
+        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
+        match featurize_memo(&tree, &phrase, &memo, true) {
+            Ok((cf, audio)) => {
+                self.bench_gain_db = cf.features.gain_db;
+                self.bench_render = bench_audio(&tree, &phrase, &cf.features, audio);
                 self.bench_vet_ok = true;
             }
             Err(_) => {
@@ -566,7 +1039,7 @@ impl WasmEngine {
     /// The workbench audition buffer (empty when the current edit failed
     /// vetting — DESIGN.md §2.1: never play an unvetted patch).
     pub fn edit_render(&self) -> Vec<f32> {
-        self.bench_render.as_ref().map(to_f32).unwrap_or_default()
+        self.bench_render.as_deref().map(pcm).unwrap_or_default()
     }
 
     /// Whether the current workbench state passed vetting.
@@ -604,6 +1077,54 @@ impl WasmEngine {
 
     fn phrase(&self) -> PhraseSpec {
         self.engine.cfg.phrase.clone()
+    }
+
+    /// Reconstitute a farm result. `None` is the "did not survive" answer that
+    /// every absorb site treats as a vet failure.
+    ///
+    /// Two gates, both from DESIGN §2.1. The content key is re-derived from
+    /// the tree the *engine* chose for this index and compared against the key
+    /// the farm reported: a mis-routed reply — a duplicated or reordered worker
+    /// message that files φ(A) under index B — is otherwise indistinguishable
+    /// from a good result, and admitting it writes another patch's raw φ into
+    /// the observation log, `export_profile` and the standardizer's reference
+    /// population. That is durable corruption; an FNV-128 over the canonical
+    /// tree is microseconds against a ~500 ms render.
+    ///
+    /// The samples-length check is the same argument one level down: a buffer
+    /// whose length disagrees with the render the farm itself reported is a
+    /// buffer belonging to some *other* patch, and admitting it would put audio
+    /// into the pool whose vet report is a lie about it. Refusing either gate
+    /// costs one draw; accepting costs the gate.
+    fn pre_featurized(
+        &self,
+        tree: PatchTree,
+        cached_json: &str,
+        samples: &[f32],
+    ) -> Option<PreFeaturized> {
+        if cached_json.is_empty() {
+            return None;
+        }
+        let cached: CachedFeatures = serde_json::from_str(cached_json).ok()?;
+        if cached.key != ricercar_features::render_key(&tree, &self.engine.cfg.phrase) {
+            return None;
+        }
+        let audition = if samples.is_empty() {
+            None
+        } else {
+            if samples.len() != cached.n_samples {
+                return None;
+            }
+            Some(Arc::new(Audition {
+                samples: samples.to_vec(),
+                sample_rate: self.engine.cfg.phrase.sample_rate,
+            }))
+        };
+        Some(PreFeaturized {
+            tree,
+            cached,
+            audition,
+        })
     }
 
     // ------------------------------------------------------------------
@@ -648,5 +1169,216 @@ impl WasmEngine {
             }
             Err(_) => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Drive one pool fill entirely through the farm boundary: the exact JSON
+    /// shapes, index types and byte buffers `farm.js` and `worker.js` move.
+    fn farm_fill(engine: &mut WasmEngine, want_audio: bool) {
+        let phrase = engine.phrase_json();
+        loop {
+            let wave: Vec<serde_json::Value> =
+                serde_json::from_str(&engine.fill_draw(4)).expect("fill_draw JSON");
+            if wave.is_empty() {
+                break;
+            }
+            // Deliberately absorbed in issue order after rendering the whole
+            // wave — the reordering a real farm introduces lives between these
+            // two loops.
+            let mut results = Vec::new();
+            for job in &wave {
+                let index = job["i"].as_u64().expect("draw index") as u32;
+                let tree = serde_json::to_string(&job["tree"]).expect("tree JSON");
+                if job["dup"].as_bool().unwrap_or(false) {
+                    results.push((index, String::new(), Vec::new()));
+                    continue;
+                }
+                let mut r = farm_render(&tree, &phrase, want_audio);
+                if !r.ok() {
+                    results.push((index, String::new(), Vec::new()));
+                    continue;
+                }
+                results.push((index, r.cached(), r.take_samples()));
+            }
+            for (index, cached, samples) in results {
+                engine.fill_absorb(index, &cached, &samples);
+            }
+            let st: serde_json::Value =
+                serde_json::from_str(&engine.status()).expect("status JSON");
+            if st["pool"].as_u64() >= st["pool_target"].as_u64() {
+                break;
+            }
+        }
+    }
+
+    /// The whole point, at the boundary the browser actually crosses: a pool
+    /// filled through `fill_draw` → `farm_render` → `fill_absorb` is the pool
+    /// `fill_step` builds. If these ever disagree, a user whose browser cannot
+    /// spawn a worker is running a different instrument.
+    #[test]
+    fn the_farm_boundary_builds_the_serial_pool() {
+        let mut serial = WasmEngine::new(0xBEEF, 6);
+        while serial.fill_step(2) > 0 {}
+        let mut farmed = WasmEngine::new(0xBEEF, 6);
+        farm_fill(&mut farmed, false);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&serial.status()).unwrap()["pool"],
+            serde_json::from_str::<serde_json::Value>(&farmed.status()).unwrap()["pool"],
+        );
+        assert_eq!(
+            serial.export_session(),
+            farmed.export_session(),
+            "the farm boundary built a different session than the serial fill"
+        );
+    }
+
+    /// Audio may ride along, and when it does it must be the render φ was
+    /// measured on. Asking for it must not move the pool either — it is a
+    /// transport option, not a featurization one.
+    #[test]
+    fn transported_audio_neither_moves_nor_misses_the_pool() {
+        let mut dry = WasmEngine::new(0x1234, 4);
+        farm_fill(&mut dry, false);
+        let mut wet = WasmEngine::new(0x1234, 4);
+        farm_fill(&mut wet, true);
+        assert_eq!(
+            dry.export_session(),
+            wet.export_session(),
+            "asking the farm for audio changed the pool"
+        );
+        // The absorbed buffer is what `render_of` hands WebAudio, and it must
+        // match a fresh in-process render of the same term.
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&wet.ranked()).unwrap();
+        let id = ranked[0]["id"].as_u64().expect("ranked id") as u32;
+        let from_farm = wet.render_of(id);
+        assert!(
+            !from_farm.is_empty(),
+            "absorbed audio never reached the pool"
+        );
+        let mut cold = WasmEngine::new(0x1234, 4);
+        farm_fill(&mut cold, false);
+        assert_eq!(
+            from_farm,
+            cold.render_of(id),
+            "a transported audition drifted from the render it names"
+        );
+    }
+
+    /// A result that does not survive transport is a *vet failure*, not an
+    /// admission: the draw's index is consumed and nothing enters the pool.
+    /// Admitting audio whose length disagrees with its own vet report would be
+    /// exactly the DESIGN §2.1 bypass the gate exists to prevent.
+    #[test]
+    fn a_corrupted_farm_result_burns_its_draw_and_admits_nothing() {
+        let mut engine = WasmEngine::new(0x9999, 8);
+        let phrase = engine.phrase_json();
+        let wave: Vec<serde_json::Value> = serde_json::from_str(&engine.fill_draw(1)).unwrap();
+        let index = wave[0]["i"].as_u64().unwrap() as u32;
+        let tree = serde_json::to_string(&wave[0]["tree"]).unwrap();
+        let mut r = farm_render(&tree, &phrase, true);
+        assert!(r.ok(), "reference draw must render");
+        let mut samples = r.take_samples();
+        samples.truncate(samples.len() - 1);
+
+        assert_eq!(engine.fill_cursor(), index);
+        assert_eq!(
+            engine.fill_absorb(index, &r.cached(), &samples),
+            0,
+            "a length-mismatched buffer was admitted"
+        );
+        assert_eq!(engine.fill_cursor(), index + 1, "the draw was not consumed");
+        let st: serde_json::Value = serde_json::from_str(&engine.status()).unwrap();
+        assert_eq!(st["pool"], 0, "a refused result still reached the pool");
+
+        // An empty result (the farm's own vet failure) behaves identically.
+        let next: Vec<serde_json::Value> = serde_json::from_str(&engine.fill_draw(1)).unwrap();
+        let i2 = next[0]["i"].as_u64().unwrap() as u32;
+        assert_eq!(engine.fill_absorb(i2, "", &[]), 0);
+        assert_eq!(engine.fill_cursor(), i2 + 1);
+    }
+
+    /// Absorption is in index order, and out-of-order results are refused
+    /// rather than folded in — the invariant the whole width-equivalence
+    /// argument rests on. A reorder buffer that silently accepted them would
+    /// build a pool no other width reproduces.
+    #[test]
+    fn out_of_order_absorption_is_refused() {
+        let mut engine = WasmEngine::new(0x77, 8);
+        let phrase = engine.phrase_json();
+        let wave: Vec<serde_json::Value> = serde_json::from_str(&engine.fill_draw(3)).unwrap();
+        assert!(wave.len() >= 2, "need two draws to reorder");
+        let cursor = engine.fill_cursor();
+        let later = wave[1]["i"].as_u64().unwrap() as u32;
+        let tree = serde_json::to_string(&wave[1]["tree"]).unwrap();
+        let mut r = farm_render(&tree, &phrase, false);
+        let samples = r.take_samples();
+        assert_eq!(
+            engine.fill_absorb(later, &r.cached(), &samples),
+            0,
+            "a result that jumped the queue was absorbed"
+        );
+        assert_eq!(
+            engine.fill_cursor(),
+            cursor,
+            "the cursor moved out of order"
+        );
+    }
+
+    /// A deferred restore rebuilds the session the serial restore rebuilds,
+    /// through the same index-addressed boundary the pool fill uses.
+    #[test]
+    fn deferred_restore_matches_the_serial_restore() {
+        let mut origin = WasmEngine::new(0x5A5A, 5);
+        while origin.fill_step(2) > 0 {}
+        let saved = origin.export_session();
+
+        let mut serial = WasmEngine::new(1, 5);
+        let n_serial = serial.import_session(&saved);
+        assert!(n_serial >= 3, "bank too small to test");
+
+        let mut deferred = WasmEngine::new(1, 5);
+        let phrase = deferred.phrase_json();
+        let jobs: Vec<serde_json::Value> =
+            serde_json::from_str(&deferred.import_session_deferred(&saved)).unwrap();
+        assert_eq!(jobs.len(), n_serial);
+        for job in &jobs {
+            let index = job["i"].as_u64().unwrap() as usize;
+            let tree = serde_json::to_string(&job["tree"]).unwrap();
+            let mut r = farm_render(&tree, &phrase, false);
+            assert!(deferred.bank_absorb(index, &r.cached(), &r.take_samples()));
+        }
+        assert_eq!(deferred.restore_finish(), n_serial);
+        assert_eq!(
+            serial.export_session(),
+            deferred.export_session(),
+            "the deferred restore rebuilt a different session"
+        );
+    }
+
+    /// Re-issue is stateless: the term at a draw index is recoverable from the
+    /// engine alone, so a farm worker that dies mid-job costs its render and
+    /// nothing else. Nobody has to have kept the tree JSON.
+    #[test]
+    fn a_lost_job_is_recoverable_from_its_index_alone() {
+        let mut engine = WasmEngine::new(0x1D, 8);
+        let wave: Vec<serde_json::Value> = serde_json::from_str(&engine.fill_draw(2)).unwrap();
+        for job in &wave {
+            let index = job["i"].as_u64().unwrap() as u32;
+            let reissued: serde_json::Value =
+                serde_json::from_str(&engine.draw_json(index)).expect("re-issued tree JSON");
+            assert_eq!(
+                reissued, job["tree"],
+                "draw {index} could not be re-derived from its index"
+            );
+        }
+        // And it stays true after the pool has moved underneath it: the stream
+        // is indexed, not advanced.
+        let far = engine.draw_json(37);
+        while engine.fill_step(2) > 0 {}
+        assert_eq!(engine.draw_json(37), far, "the draw stream advanced");
     }
 }

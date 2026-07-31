@@ -1,11 +1,36 @@
 //! `φ_audio`: perceptual descriptors of the normalized standard-phrase render.
 //!
 //! Computed on Hann-windowed frames (2048 samples, 50% hop) of the mono
-//! render. Spectral features are frequency-normalized to `[0, 1]` by Nyquist
-//! so the vector is sample-rate-agnostic; every field is finite by
-//! construction (renders are vetted first). Deliberately compact (~12 dims) —
-//! the taste model is a mixture of *linear* experts, and interpretable axes
-//! ("bright", "noisy", "slow attack", "long tail") are the point.
+//! render. Every field is finite by construction (renders are vetted first).
+//! Deliberately compact (12 dims) — the taste model is a mixture of *linear*
+//! experts, and interpretable axes ("bright", "noisy", "slow attack", "long
+//! tail") are the point.
+//!
+//! ## Why these coordinates and not the obvious ones
+//!
+//! The model downstream is **linear in φ**, so the axis a feature lives on
+//! decides what preferences are *expressible at all*.
+//!
+//! - **Frequency features are logarithmic, not linear in Hz.** Brightness and
+//!   pitch perception are octave-based. On a linear-Hz axis normalized by
+//!   Nyquist, moving a patch from 200 Hz to 400 Hz — a full octave, an
+//!   enormous audible change — shifts the coordinate by 0.009, while
+//!   8 k → 16 k shifts it by 0.36. A linear model in that coordinate cannot
+//!   represent "I like my basses a shade brighter": the entire usable range is
+//!   swallowed by the bright tail of the pool. [`log_axis`] puts centroid,
+//!   rolloff and zero-crossing rate on a shared **octaves-above-20 Hz** scale,
+//!   normalized to `[0, 1]` at Nyquist so the vector stays sample-rate
+//!   agnostic.
+//! - **Heavy tails are logged.** `crest` spans 1 to 40+ and `tail_ratio`
+//!   spans three orders of magnitude; standardizing either raw hands the model
+//!   a coordinate whose z-score is a near-constant for most of the pool and
+//!   +4 for a handful of outliers.
+//! - **The attack crossing is interpolated, not floored.** Quantizing the
+//!   90 %-of-peak crossing to the analysis-window index makes `attack_s`
+//!   *exactly* zero for every patch whose first window is already at peak —
+//!   i.e. most percussive patches — turning a continuous axis into a
+//!   zero-inflated spike. A fine hop plus sub-window interpolation keeps it
+//!   continuous, and `ln(attack + 5 ms)` keeps the fast end resolved.
 
 use rustfft::num_complex::Complex;
 use rustfft::FftPlanner;
@@ -16,31 +41,55 @@ use crate::render::RenderedPhrase;
 const FRAME: usize = 2048;
 const HOP: usize = 1024;
 
+/// Anchor of the log-frequency axis: below this, frequency is inaudible as
+/// pitch and the ratio scale stops meaning anything.
+const F_ANCHOR: f64 = 20.0;
+
+/// Envelope window / hop for the attack measurement. The window is wide
+/// enough to be a stable RMS, the hop fine enough that interpolation between
+/// consecutive hops resolves attacks well under a millisecond.
+const ENV_WIN_S: f64 = 0.004;
+const ENV_HOP_S: f64 = 0.001;
+
+/// Map a frequency to **octaves above 20 Hz**, normalized so Nyquist is 1.0.
+///
+/// This is the coordinate every spectral feature lives on; see the module doc
+/// for why a linear-Hz axis makes ordinary timbral preference inexpressible.
+pub fn log_axis(hz: f64, nyquist: f64) -> f64 {
+    let span = (nyquist.max(F_ANCHOR * 2.0) / F_ANCHOR).log2();
+    (hz.max(F_ANCHOR) / F_ANCHOR).log2() / span
+}
+
 /// Named perceptual descriptors. `to_vec` order matches [`AudioFeatures::NAMES`].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AudioFeatures {
-    /// Mean spectral centroid (fraction of Nyquist) — brightness.
+    /// Mean spectral centroid on the [`log_axis`] (octaves above 20 Hz,
+    /// 1.0 = Nyquist) — brightness.
     pub centroid_mean: f64,
-    /// Std of spectral centroid over frames — timbral movement.
+    /// Std of the log-axis centroid over frames — timbral movement, in
+    /// octaves, so a wobble means the same thing at any register.
     pub centroid_std: f64,
-    /// Mean 85% spectral rolloff (fraction of Nyquist).
+    /// Mean 85% spectral rolloff on the [`log_axis`].
     pub rolloff_mean: f64,
     /// Mean spectral flatness (0 tonal … 1 noisy).
     pub flatness_mean: f64,
     /// Mean spectral flux — how fast the spectrum changes.
     pub flux_mean: f64,
-    /// Mean zero-crossing rate (fraction of sample pairs).
+    /// Zero-crossing rate as an equivalent frequency, on the [`log_axis`].
     pub zcr_mean: f64,
     /// Mean frame RMS of the normalized render.
     pub rms_mean: f64,
     /// Std of frame RMS — dynamics/movement.
     pub rms_std: f64,
-    /// Crest factor: peak / whole-phrase RMS.
+    /// `ln` crest factor: `ln(peak / whole-phrase RMS)`. Logged because the
+    /// raw factor is heavy-tailed (1 … 40+).
     pub crest: f64,
-    /// First-note attack time in seconds (onset → 90% of that note's peak RMS).
+    /// `ln(attack + 5 ms)` of the first note (onset → 90% of that note's peak
+    /// RMS, interpolated between envelope hops).
     pub attack_s: f64,
-    /// Tail level: RMS of the final 300 ms relative to whole-phrase RMS —
-    /// captures release length and delay/reverb tails.
+    /// `ln` tail level: RMS of the final 300 ms relative to whole-phrase RMS —
+    /// captures release length and delay/reverb tails. Logged: the raw ratio
+    /// spans three orders of magnitude.
     pub tail_ratio: f64,
     /// Low-band energy fraction (below ~250 Hz) — weight/sub character.
     pub bass_fraction: f64,
@@ -91,33 +140,52 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
     // --- time-domain ---
     let global_rms = (x.iter().map(|s| s * s).sum::<f64>() / n.max(1) as f64).sqrt();
     let peak = x.iter().fold(0.0f64, |p, s| p.max(s.abs()));
-    let crest = peak / (global_rms + 1e-12);
+    let crest = (peak / (global_rms + 1e-12)).max(1e-6).ln();
 
     let tail_len = ((0.3 * sr) as usize).min(n);
     let tail_rms =
         (x[n - tail_len..].iter().map(|s| s * s).sum::<f64>() / tail_len.max(1) as f64).sqrt();
-    let tail_ratio = tail_rms / (global_rms + 1e-12);
+    // 1e-3 floor: a pluck that has fully decayed by the last 300 ms would
+    // otherwise send the log to −∞, and "silent tail" and "very quiet tail"
+    // are the same judgment to a listener anyway.
+    let tail_ratio = (tail_rms / (global_rms + 1e-12) + 1e-3).ln();
 
-    // Attack: short-window RMS from the first onset to the start of the
-    // second note (or end), time to reach 90% of that segment's max.
+    // Attack: overlapping short-window RMS from the first onset to the start
+    // of the second note (or end), time to reach 90% of that segment's max —
+    // *interpolated* between hops, so a fast attack is a small number rather
+    // than exactly zero.
     let attack_s = {
         let start = r.note_onsets.first().copied().unwrap_or(0);
         let end = r.note_onsets.get(1).copied().unwrap_or(n).min(n);
-        let win = (0.005 * sr) as usize; // 5 ms
+        let win = ((ENV_WIN_S * sr) as usize).max(1);
+        let hop = ((ENV_HOP_S * sr) as usize).max(1);
         let seg = &x[start..end];
-        let mut env = Vec::with_capacity(seg.len() / win.max(1) + 1);
+        let mut env = Vec::with_capacity(seg.len() / hop + 1);
         let mut i = 0;
         while i + win <= seg.len() {
             let w = &seg[i..i + win];
             env.push((w.iter().map(|s| s * s).sum::<f64>() / win as f64).sqrt());
-            i += win;
+            i += hop;
         }
         let max = env.iter().cloned().fold(0.0f64, f64::max);
-        let idx = env.iter().position(|&e| e >= 0.9 * max).unwrap_or(0);
-        idx as f64 * win as f64 / sr
+        let target = 0.9 * max;
+        let idx = env.iter().position(|&e| e >= target).unwrap_or(0);
+        let hops = if idx == 0 {
+            0.0
+        } else {
+            // Linear crossing between the last sub-threshold hop and this one.
+            let (lo, hi) = (env[idx - 1], env[idx]);
+            let frac = if hi > lo {
+                (target - lo) / (hi - lo)
+            } else {
+                1.0
+            };
+            (idx - 1) as f64 + frac.clamp(0.0, 1.0)
+        };
+        (hops * hop as f64 / sr + 0.005).ln()
     };
 
-    let zcr_mean = if n > 1 {
+    let zcr_fraction = if n > 1 {
         x.windows(2)
             .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
             .count() as f64
@@ -125,6 +193,9 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
     } else {
         0.0
     };
+    // A zero-crossing rate *is* a frequency (two crossings per cycle); put it
+    // on the same perceptual axis as the other spectral features.
+    let zcr_mean = log_axis(zcr_fraction * sr / 2.0, sr / 2.0);
 
     // --- spectral, framewise ---
     let mut planner = FftPlanner::<f64>::new();
@@ -134,7 +205,9 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         .collect();
 
     let bins = FRAME / 2;
-    let bass_bin = (250.0 / (sr / 2.0) * bins as f64) as usize; // ≤ ~250 Hz
+    let nyquist = sr / 2.0;
+    let bass_bin = (250.0 / nyquist * bins as f64) as usize; // ≤ ~250 Hz
+    let bin_hz = sr / FRAME as f64;
 
     let mut centroids = Vec::new();
     let mut rolloffs = Vec::new();
@@ -161,14 +234,13 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
 
         if power > 1e-12 {
             let msum: f64 = mag.iter().sum();
-            let centroid = mag
+            let centroid_hz = mag
                 .iter()
                 .enumerate()
-                .map(|(i, m)| i as f64 * m)
+                .map(|(i, m)| i as f64 * bin_hz * m)
                 .sum::<f64>()
-                / msum
-                / bins as f64;
-            centroids.push(centroid);
+                / msum;
+            centroids.push(log_axis(centroid_hz, nyquist));
 
             let target = 0.85 * power;
             let mut acc = 0.0;
@@ -180,7 +252,7 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
                     break;
                 }
             }
-            rolloffs.push(roll as f64 / bins as f64);
+            rolloffs.push(log_axis(roll as f64 * bin_hz, nyquist));
 
             // Flatness: geometric / arithmetic mean of the power spectrum.
             let log_mean = mag.iter().map(|m| (m * m + 1e-20).ln()).sum::<f64>() / bins as f64;

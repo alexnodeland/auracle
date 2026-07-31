@@ -38,6 +38,66 @@ const FADE_STEP: f32 = 1.0 / 256.0;
 const SMOOTH_COEFF: f64 = 0.3;
 /// Snap threshold ending a parameter ramp.
 const SMOOTH_EPS: f64 = 1.0e-4;
+/// quiver audio is nominal ±5 V; the float domain is ±1.0. Offline rendering
+/// applies the same divisor (`ricercar_features::render`), and the LUFS makeup
+/// gain that rides every patch was fitted in that ±1.0 domain — so the live
+/// path **must** normalize identically or it runs ~14 dB hot into the ceiling.
+const VOLT_SCALE: f32 = 1.0 / 5.0;
+/// Master brickwall ceiling, just under full scale.
+const MASTER_CEILING: f32 = 0.98;
+/// Master limiter release coefficient per sample (≈80 ms at 44.1 kHz).
+const MASTER_RELEASE: f32 = 2.8e-4;
+/// Full-scale unison detune in V/Oct: ±0.05 V = ±60 cents. At the old ±30 c a
+/// four-voice stack was a chorus; a JP-8000-style supersaw wants ±50–70 c.
+const UNI_DETUNE_VOLT: f64 = 0.05;
+/// Arp gate lengths at or above this are *tied*: the step boundary slides the
+/// sounding voice to the next pitch instead of releasing and re-attacking.
+const ARP_TIE: f64 = 0.95;
+
+/// The classic supersaw detune curve, mapping a voice's uniform position in
+/// `[-1, 1]` to its share of the detune spread.
+///
+/// The outer voices sit disproportionately far out — that asymmetry is what
+/// makes a stack read as one wide instrument rather than as a chorus, and it is
+/// why a linear spread sounds thin no matter how far you push it.
+/// `sign(u)·|u|^1.5` fits the JP-8000's published seven-voice offsets to within
+/// a couple of percent.
+fn detune_curve(u: f64) -> f64 {
+    u.signum() * u.abs().powf(1.5)
+}
+
+/// Master bus limiter: instant attack, one-pole release, applied to the summed
+/// polyphony. Each voice carries its own limiter, but N voices sum to N× the
+/// level of one — without this a four-note chord is ~12 dB hotter than a single
+/// note and simply clips. Gain reduction is shared across L/R so the stereo
+/// image never wobbles.
+struct MasterLimiter {
+    /// Current gain reduction (1.0 = no reduction).
+    gain: f32,
+}
+
+impl MasterLimiter {
+    fn new() -> Self {
+        Self { gain: 1.0 }
+    }
+
+    /// Process one stereo frame in place.
+    fn tick(&mut self, l: &mut f32, r: &mut f32) {
+        let peak = l.abs().max(r.abs());
+        let desired = if peak > MASTER_CEILING {
+            MASTER_CEILING / peak
+        } else {
+            1.0
+        };
+        if desired < self.gain {
+            self.gain = desired; // instant attack — catch the sample that overs
+        } else {
+            self.gain += (desired - self.gain) * MASTER_RELEASE;
+        }
+        *l = (*l * self.gain).clamp(-1.0, 1.0);
+        *r = (*r * self.gain).clamp(-1.0, 1.0);
+    }
+}
 
 struct Voice {
     voice: ricercar_grammar::CompiledVoice,
@@ -56,6 +116,11 @@ struct Voice {
     /// Pitch in v/oct, smoothed toward `pitch_tgt` (glide). Excludes bend.
     pitch_cur: f64,
     pitch_tgt: f64,
+    /// Frames until the gate is re-raised. Stealing a *sounding* voice drops
+    /// the gate for one frame so the ADSR sees a rising edge and actually
+    /// retriggers — otherwise the new note inherits the stolen note's
+    /// envelope position and speaks with no attack.
+    regate_in: u32,
 }
 
 struct Smoother {
@@ -106,20 +171,33 @@ pub struct LivePoly {
     /// Loudness makeup gain (linear); swaps in with the patch it belongs to.
     makeup: f32,
     pending_makeup: Option<f32>,
+    /// Master brickwall across the summed polyphony.
+    master: MasterLimiter,
     // Arpeggiator (sample-accurate, runs on the audio thread).
     arp_on: bool,
     /// 0 = up, 1 = down, 2 = up-down, 3 = random.
     arp_mode: u32,
     /// Steps per beat (1 = quarters, 2 = eighths, 4 = sixteenths).
     arp_div: f64,
+    /// Gate length as a fraction of the step (0.05–1.0); ≥ [`ARP_TIE`] is tied.
+    arp_gate: f64,
+    /// How many octaves the pattern spans (1–4).
+    arp_octaves: u32,
+    /// Shuffle amount (0–0.75): even steps lengthen, odd steps shorten.
+    arp_swing: f64,
     bpm: f64,
     /// Samples elapsed in the current arp step.
     arp_phase: f64,
     arp_idx: usize,
+    /// Steps played since the arp was switched on — swing needs the parity.
+    arp_step: u64,
     /// Direction flag for up-down mode.
     arp_up: bool,
-    /// The arp note currently gated on.
+    /// The transposed note currently gated on (may be an octave up).
     arp_note: Option<u8>,
+    /// The *held* note that `arp_note` was derived from, so releasing a key
+    /// mid-step can still find its sounding voice.
+    arp_base: Option<u8>,
     /// xorshift state for random mode (deterministic; no wall clock).
     rng_state: u64,
 }
@@ -138,6 +216,7 @@ fn build_voice(tree: &PatchTree, sample_rate: f64) -> Result<Voice, String> {
         pan_r: std::f32::consts::FRAC_1_SQRT_2,
         pitch_cur: 0.0,
         pitch_tgt: 0.0,
+        regate_in: 0,
     })
 }
 
@@ -175,14 +254,20 @@ impl LivePoly {
             uni_spread: 0.7,
             makeup: 1.0,
             pending_makeup: None,
+            master: MasterLimiter::new(),
             arp_on: false,
             arp_mode: 0,
             arp_div: 2.0,
+            arp_gate: 0.5,
+            arp_octaves: 1,
+            arp_swing: 0.0,
             bpm: 120.0,
             arp_phase: 0.0,
             arp_idx: 0,
+            arp_step: 0,
             arp_up: true,
             arp_note: None,
+            arp_base: None,
             rng_state: 0x9E37_79B9_7F4A_7C15,
         })
     }
@@ -249,7 +334,7 @@ impl LivePoly {
         };
         self.last_pitch = target;
         if self.unison {
-            // All voices, symmetric detune (±uni_detune·30 cents) and
+            // All voices, symmetric detune on the supersaw curve and an
             // equal-power pan spread. Held gates stay high = legato.
             let n = self.voices.len().max(1);
             self.counter += 1;
@@ -260,7 +345,7 @@ impl LivePoly {
                 } else {
                     0.0
                 };
-                let det = frac * self.uni_detune * 0.025; // v/oct (30 c max)
+                let det = detune_curve(frac) * self.uni_detune * UNI_DETUNE_VOLT;
                 let pan = frac * self.uni_spread;
                 let th = (pan + 1.0) * 0.25 * std::f64::consts::PI;
                 let v = &mut self.voices[i];
@@ -272,6 +357,7 @@ impl LivePoly {
                 };
                 v.voice.pitch.set(v.pitch_cur + self.bend);
                 v.voice.gate.set(GATE_ON);
+                v.regate_in = 0; // unison is deliberately mono-legato
                 v.note = Some(note);
                 v.stamp = stamp;
                 v.running = true;
@@ -297,13 +383,31 @@ impl LivePoly {
                     .map(|(i, _)| i)
             });
         if let Some(i) = idx {
+            let glide_on = self.glide > 0.0;
+            let bend = self.bend;
             let v = &mut self.voices[i];
+            // Portamento is *per voice* (fingered): a voice that was already
+            // sounding slides from its own pitch, a fresh voice starts on
+            // target. A single global `last_pitch` would chain note→note
+            // through a chord and make it swoop in as a scramble.
+            let was_sounding = v.running;
             v.pitch_tgt = target;
-            v.pitch_cur = start;
-            v.voice.pitch.set(v.pitch_cur + self.bend);
-            // Stealing a *held* voice keeps its gate high (legato steal — the
-            // envelope doesn't retrigger). Only happens past N held notes.
-            v.voice.gate.set(GATE_ON);
+            v.pitch_cur = if glide_on && was_sounding {
+                v.pitch_cur
+            } else {
+                target
+            };
+            v.voice.pitch.set(v.pitch_cur + bend);
+            // Stealing a voice whose gate is still high needs a real rising
+            // edge, or the ADSR never re-enters Attack and the new note
+            // inherits the old note's envelope level.
+            if v.note.is_some() {
+                v.voice.gate.set(0.0);
+                v.regate_in = 1;
+            } else {
+                v.voice.gate.set(GATE_ON);
+                v.regate_in = 0;
+            }
             v.note = Some(note);
             v.stamp = stamp;
             v.running = true;
@@ -319,6 +423,7 @@ impl LivePoly {
             if v.note == Some(note) {
                 v.voice.gate.set(0.0);
                 v.note = None;
+                v.regate_in = 0; // a pending retrigger must not resurrect it
             }
         }
     }
@@ -328,10 +433,13 @@ impl LivePoly {
         self.held.retain(|(n, _)| *n != note);
         if self.arp_on {
             // Only the arp's own gate matters; other held notes were never
-            // pressed.
-            if self.arp_note == Some(note) && !self.held.iter().any(|(n, _)| *n == note) {
-                self.release_voices(note);
-                self.arp_note = None;
+            // pressed. Match on the *base* note, since with an octave range the
+            // sounding pitch may be a transposition of the key that was let go.
+            if self.arp_base == Some(note) {
+                if let Some(n) = self.arp_note.take() {
+                    self.release_voices(n);
+                }
+                self.arp_base = None;
             }
             return;
         }
@@ -342,9 +450,11 @@ impl LivePoly {
     pub fn all_off(&mut self) {
         self.held.clear();
         self.arp_note = None;
+        self.arp_base = None;
         for v in &mut self.voices {
             v.voice.gate.set(0.0);
             v.note = None;
+            v.regate_in = 0;
         }
     }
 
@@ -381,13 +491,41 @@ impl LivePoly {
         }
     }
 
-    /// Configure the arpeggiator. `mode`: 0 up, 1 down, 2 up-down,
-    /// 3 random. `div`: steps per beat. Turning it off re-presses the held
-    /// chord; turning it on hands the held notes to the scheduler.
-    pub fn set_arp(&mut self, on: bool, mode: u32, div: f64, bpm: f64) {
+    /// Configure the arpeggiator. `mode`: 0 up, 1 down, 2 up-down, 3 random.
+    /// `div`: steps per beat. `gate`: note length as a fraction of the step
+    /// (0.05 staccato … 1.0; at or above [`ARP_TIE`] the pattern is tied and
+    /// slides between pitches instead of retriggering). `octaves`: how many
+    /// octaves the pattern climbs before wrapping (1–4). `swing`: 0–0.75, which
+    /// lengthens every even step and shortens the odd one after it, leaving the
+    /// pair's total duration unchanged.
+    ///
+    /// Turning it off re-presses the held chord; turning it on hands the held
+    /// notes to the scheduler.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_arp(
+        &mut self,
+        on: bool,
+        mode: u32,
+        div: f64,
+        bpm: f64,
+        gate: f64,
+        octaves: u32,
+        swing: f64,
+    ) {
         self.arp_mode = mode.min(3);
         self.arp_div = div.clamp(0.5, 8.0);
         self.bpm = bpm.clamp(30.0, 300.0);
+        self.arp_gate = if gate.is_finite() {
+            gate.clamp(0.05, 1.0)
+        } else {
+            0.5
+        };
+        self.arp_octaves = octaves.clamp(1, 4);
+        self.arp_swing = if swing.is_finite() {
+            swing.clamp(0.0, 0.75)
+        } else {
+            0.0
+        };
         if on == self.arp_on {
             return;
         }
@@ -398,13 +536,16 @@ impl LivePoly {
                 self.release_voices(n);
             }
             self.arp_note = None;
+            self.arp_base = None;
             self.arp_phase = f64::MAX; // fire on the next quantum
             self.arp_idx = 0;
+            self.arp_step = 0;
             self.arp_up = true;
         } else {
             if let Some(n) = self.arp_note.take() {
                 self.release_voices(n);
             }
+            self.arp_base = None;
             for &(n, v) in self.held.clone().iter() {
                 self.press(n, v);
             }
@@ -421,8 +562,32 @@ impl LivePoly {
         x
     }
 
-    /// Advance the arpeggiator by `frames` samples: half-step gate length,
-    /// step boundaries press the next held note (sorted by pitch).
+    /// Slide the voice currently sounding `from` to pitch `to` without touching
+    /// its gate. This is what makes a tied step tie: no falling edge, so the
+    /// amp envelope keeps its place and (with glide up) the step portamentos.
+    /// Returns false if that voice was stolen out from under us.
+    fn arp_slide(&mut self, from: u8, to: u8, vel: f32) -> bool {
+        let Some(i) = self.voices.iter().position(|v| v.note == Some(from)) else {
+            return false;
+        };
+        let target = (to as f64 - 60.0) / 12.0;
+        let glide_on = self.glide > 0.0;
+        let bend = self.bend;
+        let v = &mut self.voices[i];
+        v.pitch_tgt = target;
+        if !glide_on {
+            v.pitch_cur = target;
+        }
+        v.voice.pitch.set(v.pitch_cur + bend);
+        v.note = Some(to);
+        v.vel = Self::vel_gain(vel);
+        v.silent_run = 0;
+        true
+    }
+
+    /// Advance the arpeggiator by `frames` samples. Step boundaries press the
+    /// next note of the pattern — the held chord sorted by pitch, repeated
+    /// across [`Self::arp_octaves`] octaves — held for `arp_gate` of the step.
     fn tick_arp(&mut self, frames: usize) {
         if !self.arp_on {
             return;
@@ -431,27 +596,48 @@ impl LivePoly {
             if let Some(n) = self.arp_note.take() {
                 self.release_voices(n);
             }
+            self.arp_base = None;
             return;
         }
-        let step_len = self.sample_rate * 60.0 / (self.bpm * self.arp_div);
+        // Swing lengthens even steps and shortens the odd step that follows by
+        // the same amount, so a pair still spans two straight steps and the
+        // pattern does not drift against the beat.
+        let beat = self.sample_rate * 60.0 / (self.bpm * self.arp_div);
+        let step_len = if self.arp_step.is_multiple_of(2) {
+            beat * (1.0 + self.arp_swing)
+        } else {
+            beat * (1.0 - self.arp_swing)
+        };
+        // Tying is meaningless in unison, where every voice is already gated on
+        // the same note and there is no single voice to slide.
+        let tied = self.arp_gate >= ARP_TIE && !self.unison;
         self.arp_phase = (self.arp_phase + frames as f64).min(f64::MAX);
-        // Gate off at half the step.
         if let Some(n) = self.arp_note {
-            if self.arp_phase >= step_len * 0.5 && !self.held.iter().any(|(h, _)| *h == n) {
-                // Note left the chord mid-step: release now.
+            // Release at the gate fraction — or immediately if the key this
+            // step came from was let go mid-step.
+            let key_gone = self
+                .arp_base
+                .is_none_or(|b| !self.held.iter().any(|(h, _)| *h == b));
+            if key_gone || (!tied && self.arp_phase >= step_len * self.arp_gate) {
                 self.release_voices(n);
                 self.arp_note = None;
-            } else if self.arp_phase >= step_len * 0.5 {
-                self.release_voices(n);
-                self.arp_note = None;
+                self.arp_base = None;
             }
         }
         if self.arp_phase < step_len {
             return;
         }
         self.arp_phase = 0.0;
-        let mut notes: Vec<(u8, f32)> = self.held.clone();
-        notes.sort_by_key(|(n, _)| *n);
+        self.arp_step = self.arp_step.wrapping_add(1);
+        let mut chord: Vec<(u8, f32)> = self.held.clone();
+        chord.sort_by_key(|(n, _)| *n);
+        // (pitch to play, the key it came from, velocity)
+        let mut notes: Vec<(u8, u8, f32)> = Vec::with_capacity(chord.len() * 4);
+        for o in 0..self.arp_octaves {
+            for &(n, vel) in &chord {
+                notes.push((n.saturating_add(12 * o as u8).min(127), n, vel));
+            }
+        }
         let len = notes.len();
         let pick = match self.arp_mode {
             1 => {
@@ -489,9 +675,15 @@ impl LivePoly {
                 self.arp_idx
             }
         };
-        let (note, vel) = notes[pick.min(len - 1)];
-        self.press(note, vel);
+        let (note, base, vel) = notes[pick.min(len - 1)];
+        match self.arp_note.filter(|_| tied) {
+            // Tied: reuse the sounding voice so the gate never falls. If it was
+            // stolen in the meantime, fall back to a normal press.
+            Some(prev) if self.arp_slide(prev, note, vel) => {}
+            _ => self.press(note, vel),
+        }
         self.arp_note = Some(note);
+        self.arp_base = Some(base);
     }
 
     /// Set a normalized knob target. The value ramps in over ~25 ms on the
@@ -582,8 +774,18 @@ impl LivePoly {
             let mut tail_silent = 0u32;
             for f in 0..frames {
                 let (l, r) = v.voice.patch.tick();
-                self.out_buf[f * 2] += l as f32 * v.vel * v.pan_l * std::f32::consts::SQRT_2;
-                self.out_buf[f * 2 + 1] += r as f32 * v.vel * v.pan_r * std::f32::consts::SQRT_2;
+                // Re-raise *after* the tick: the patch has to actually observe
+                // the low gate for one sample, or the ADSR's edge detector
+                // never sees a falling edge and the retrigger is a no-op.
+                if v.regate_in > 0 {
+                    v.regate_in -= 1;
+                    if v.regate_in == 0 {
+                        v.voice.gate.set(GATE_ON);
+                    }
+                }
+                let g = v.vel * std::f32::consts::SQRT_2 * VOLT_SCALE;
+                self.out_buf[f * 2] += l as f32 * g * v.pan_l;
+                self.out_buf[f * 2 + 1] += r as f32 * g * v.pan_r;
                 if !held && l.abs() + r.abs() < SILENCE_EPS {
                     tail_silent += 1;
                 } else {
@@ -603,17 +805,21 @@ impl LivePoly {
                 }
             }
         }
-        // Per-frame fade + safety clamp (each voice is already limited).
+        // Per-frame swap fade, loudness makeup, then the master brickwall.
+        // Each voice carries its own limiter, but N voices sum to N× one
+        // voice — the master stage is what keeps a held chord off the rail.
         for f in 0..frames {
             if fade_dir < 0 {
                 self.gain = (self.gain - FADE_STEP).max(0.0);
             } else if fade_dir > 0 {
                 self.gain = (self.gain + FADE_STEP).min(1.0);
             }
-            for c in 0..2 {
-                let s = &mut self.out_buf[f * 2 + c];
-                *s = (*s * self.gain * self.makeup).clamp(-1.5, 1.5);
-            }
+            let g = self.gain * self.makeup;
+            let mut l = self.out_buf[f * 2] * g;
+            let mut r = self.out_buf[f * 2 + 1] * g;
+            self.master.tick(&mut l, &mut r);
+            self.out_buf[f * 2] = l;
+            self.out_buf[f * 2 + 1] = r;
         }
     }
 
@@ -714,6 +920,44 @@ mod tests {
 
     fn tree_json(rng: &mut StdRng) -> String {
         serde_json::to_string(&PatchGrammarPrior::default().sample_with_rng(rng)).unwrap()
+    }
+
+    /// A plain saw → lowpass voice with a **percussive** amp envelope: fast
+    /// attack, medium decay, sustain 0. Once the decay has run the voice is
+    /// silent while its gate is still high, which makes an envelope retrigger
+    /// unmistakable — with one, a stolen voice speaks; without one, it cannot.
+    fn plucked_json() -> String {
+        use ricercar_grammar::term::{AmpEnv, FilterKind, Waveform};
+        use ricercar_grammar::{AudioNode, ModNode, PatchTree};
+        serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.2,  // ≈6 ms
+                decay: 0.45,  // ≈63 ms
+                sustain: 0.0, // the whole point
+                release: 0.3, // ≈16 ms
+            },
+            root: AudioNode::Filter {
+                kind: FilterKind::SvfLp,
+                cutoff: 0.7,
+                resonance: 0.1,
+                mod_depth: 0.0,
+                input: Box::new(AudioNode::Vco {
+                    wave: Waveform::Saw,
+                    octave: 0,
+                    detune: 0.5,
+                }),
+                modulation: ModNode::None,
+            },
+        })
+        .unwrap()
+    }
+
+    fn peak(buf: &[f32]) -> f32 {
+        buf.iter().fold(0.0f32, |m, s| m.max(s.abs()))
+    }
+
+    fn energy(buf: &[f32]) -> f64 {
+        buf.iter().map(|s| (*s as f64) * (*s as f64)).sum()
     }
 
     /// Native smoke: a prior patch plays a note (finite, audible), rings a
@@ -875,7 +1119,7 @@ mod tests {
         // Arp: hold a triad with the arp on; distinct pitches must be
         // pressed over time, and turning it off restores the chord.
         let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
-        p.set_arp(true, 0, 4.0, 240.0); // 16ths at 240 BPM ≈ 16 steps/s
+        p.set_arp(true, 0, 4.0, 240.0, 0.5, 1, 0.0); // 16ths at 240 BPM ≈ 16 steps/s
         p.note_on(48, 1.0);
         p.note_on(52, 1.0);
         p.note_on(55, 1.0);
@@ -896,9 +1140,165 @@ mod tests {
         // At any instant the arp holds at most one gated note.
         let gated = p.voices.iter().filter(|v| v.note.is_some()).count();
         assert!(gated <= 1, "arp gated {gated} notes at once");
-        p.set_arp(false, 0, 4.0, 240.0);
+        p.set_arp(false, 0, 4.0, 240.0, 0.5, 1, 0.0);
         let gated: Vec<_> = p.voices.iter().filter_map(|v| v.note).collect();
         assert_eq!(gated.len(), 3, "chord not re-pressed after arp off");
+    }
+
+    /// The master bus holds a full chord inside full scale. Four voices sum to
+    /// ~4× one voice, and before the master limiter existed a four-note chord
+    /// sat exactly on the rail — hard-clipped, and clipped again by the device
+    /// conversion because the old ceiling was above 1.0.
+    #[test]
+    fn chord_never_exceeds_full_scale() {
+        let mut rng = StdRng::seed_from_u64(0xC401);
+        for i in 0..8 {
+            let json = tree_json(&mut rng);
+            let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
+            for n in [48, 55, 60, 64] {
+                poly.note_on(n, 1.0);
+            }
+            let mut hottest = 0.0f32;
+            for _ in 0..60 {
+                let out = poly.process(512);
+                assert!(out.iter().all(|s| s.is_finite()), "patch {i}: non-finite");
+                hottest = hottest.max(peak(&out));
+            }
+            assert!(
+                hottest <= 1.0,
+                "patch {i}: four-note chord peaked at {hottest}"
+            );
+            // And it is limited, not clipped: the brickwall lands on the
+            // ceiling, so nothing should be sitting above it.
+            assert!(
+                hottest <= MASTER_CEILING + 1e-6,
+                "patch {i}: output ran past the ceiling into the clamp ({hottest})"
+            );
+        }
+    }
+
+    /// A stolen voice retriggers its amp envelope. On a percussive patch the
+    /// voice is silent at sustain 0 by the time it is stolen, so the fifth note
+    /// on a four-voice instrument is *only* audible if the ADSR sees a real
+    /// falling-then-rising gate edge.
+    #[test]
+    fn stolen_voice_retriggers_its_envelope() {
+        let json = plucked_json();
+        let mut poly = LivePoly::new(&json, 44_100.0, 1).unwrap();
+        poly.note_on(60, 1.0);
+        // Run past the decay: the note has fallen to sustain 0 and is silent
+        // even though its gate is still high.
+        for _ in 0..40 {
+            let _ = poly.process(512);
+        }
+        let decayed = energy(&poly.process(4096));
+        // Steal the (still-held) voice with a new note.
+        poly.note_on(67, 1.0);
+        let after_steal = energy(&poly.process(4096));
+        assert!(
+            after_steal > decayed * 100.0 && after_steal > 1e-4,
+            "stolen voice did not retrigger: {decayed:.3e} decayed vs \
+             {after_steal:.3e} after the steal"
+        );
+    }
+
+    /// The arp's new controls each do their documented thing: a short gate
+    /// shortens the note without moving the step clock, an octave range reaches
+    /// pitches nobody is holding, and swing makes consecutive steps unequal.
+    #[test]
+    fn arp_gate_octaves_and_swing() {
+        let json = plucked_json();
+        // Octave range: hold one key, span three octaves, collect the pitches
+        // the scheduler actually presses.
+        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        p.set_arp(true, 0, 4.0, 240.0, 0.5, 3, 0.0);
+        p.note_on(48, 1.0);
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..400 {
+            let _ = p.process(128);
+            if let Some(n) = p.arp_note {
+                seen.insert(n);
+            }
+        }
+        assert_eq!(
+            seen,
+            [48u8, 60, 72].into_iter().collect(),
+            "octave range did not transpose the pattern: {seen:?}"
+        );
+
+        // Gate length: staccato must sound for a smaller share of the step than
+        // legato, with the step clock itself unchanged.
+        let sounding_frac = |gate: f64| {
+            let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
+            p.set_arp(true, 0, 2.0, 120.0, gate, 1, 0.0);
+            p.note_on(48, 1.0);
+            p.note_on(52, 1.0);
+            let (mut on, mut total) = (0, 0);
+            for _ in 0..600 {
+                let _ = p.process(128);
+                total += 1;
+                if p.arp_note.is_some() {
+                    on += 1;
+                }
+            }
+            on as f64 / total as f64
+        };
+        let (staccato, legato) = (sounding_frac(0.1), sounding_frac(0.9));
+        assert!(
+            staccato < legato * 0.5,
+            "gate length had no effect: {staccato:.2} staccato vs {legato:.2} legato"
+        );
+
+        // Swing: measure the sample distance between consecutive note-ons.
+        let step_gaps = |swing: f64| {
+            let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
+            p.set_arp(true, 0, 4.0, 120.0, 0.5, 1, swing);
+            p.note_on(48, 1.0);
+            p.note_on(52, 1.0);
+            let mut starts: Vec<usize> = Vec::new();
+            let mut prev = None;
+            for q in 0..1200 {
+                let _ = p.process(128);
+                if p.arp_note.is_some() && prev.is_none() {
+                    starts.push(q * 128);
+                }
+                prev = p.arp_note;
+            }
+            starts.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>()
+        };
+        let straight = step_gaps(0.0);
+        let swung = step_gaps(0.6);
+        let spread = |g: &[usize]| {
+            let (lo, hi) = (g.iter().min().copied(), g.iter().max().copied());
+            hi.unwrap_or(0) as i64 - lo.unwrap_or(0) as i64
+        };
+        assert!(straight.len() > 3 && swung.len() > 3, "arp never stepped");
+        assert!(
+            spread(&swung) > spread(&straight) + 2000,
+            "swing did not stagger the steps: straight {straight:?}, swung {swung:?}"
+        );
+    }
+
+    /// Unison detune reaches supersaw width (±60 cents at full travel) and
+    /// spreads the voices non-uniformly.
+    #[test]
+    fn unison_detune_is_wide_and_non_uniform() {
+        let json = plucked_json();
+        let mut p = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        p.set_unison(true, 1.0, 0.5);
+        p.note_on(60, 1.0);
+        let mut cents: Vec<f64> = p.voices.iter().map(|v| v.pitch_tgt * 1200.0).collect();
+        cents.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!(
+            (cents[0] + 60.0).abs() < 1.0 && (cents[3] - 60.0).abs() < 1.0,
+            "unison spread is not ±60 cents: {cents:?}"
+        );
+        // Non-uniform: the inner pair sits far closer to centre than an even
+        // split across four voices (±20 c) would put it.
+        assert!(
+            cents[1].abs() < 15.0,
+            "detune curve is still linear: {cents:?}"
+        );
     }
 
     /// Chaos: random notes, knob writes (real and junk addresses), and
@@ -928,6 +1328,9 @@ mod tests {
                     rng.gen_range(0..5),
                     rng.gen_range(0.25..9.0),
                     rng.gen_range(20.0..400.0),
+                    rng.gen_range(-0.5..1.5),
+                    rng.gen_range(0..7),
+                    rng.gen_range(-0.5..1.5),
                 ),
                 8 if i % 13 == 0 => {
                     poly.set_unison(rng.gen_bool(0.5), rng.gen(), rng.gen());

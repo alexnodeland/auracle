@@ -4,6 +4,44 @@
 //! screening cascade work: a struct-only surrogate prunes candidates before
 //! the expensive render path. They also capture taste axes audio features
 //! can't fully separate ("likes supersaws", "likes deep modulated chains").
+//!
+//! **`size`, `n_mix` and `depth` are deliberately not in φ.** Every audio node increments exactly
+//! one of `n_vco … n_reverb`, so `size ≡ Σ n_*` — *exactly*, for every tree.
+//! Including it makes the design matrix rank-deficient: the Gaussian prior
+//! keeps the posterior proper, but there is an unidentified ridge along which
+//! the MH chain random-walks forever. That wrecks mixing, splits each
+//! coefficient arbitrarily between `size` and the counts (so the per-feature
+//! weights shown in the Styles tab mean nothing individually), and poisons the
+//! taste→grammar proposal tilt, which reads exactly those nine coefficients.
+//! `size − depth` would be no better: it is still an exact linear combination
+//! of coordinates already present. The field is kept for display and naming;
+//! it just never reaches the model.
+//!
+//! Dropping `size` alone was **not enough**, which a VIF sweep over 300 prior
+//! draws caught (`cargo run -p ricercar-features --example pipeline_stats
+//! --release -- 300`). `Mix` is this grammar's only binary node and every
+//! other operator is unary, so in any tree the leaf count exceeds the branch
+//! count by exactly one:
+//!
+//! ```text
+//! n_vco + n_supersaw + n_noise − n_mix = 1     (exactly, for every tree)
+//! ```
+//!
+//! — a second exact dependency, reported as VIF ≈ 10⁹ on all four. `n_mix` is
+//! the redundant one (it is determined by the sources, not the reverse), so it
+//! leaves φ and the source counts stay.
+//!
+//! `depth` goes too, on a weaker but real argument: VIF ≈ 21.7. Not exact —
+//! the posterior stays proper — but a coefficient that unstable is not
+//! individually meaningful, and the Styles tab renders these per-feature
+//! weights as if they were.
+//!
+//! Still standing, and deliberately: `rolloff_mean` ≈ 24.7, `zcr_mean` ≈ 16.6
+//! against `centroid_mean` ≈ 6.6. That is the brightness cluster — three
+//! genuine measurements of one perceptual thing. Dropping any of them discards
+//! real signal rather than redundancy, so the right fix is a shared/fused
+//! prior over the cluster, which is a modelling change rather than a feature
+//! change and is not in this pass.
 
 use ricercar_grammar::term::{AudioNode, ModNode, PatchTree};
 use serde::{Deserialize, Serialize};
@@ -17,7 +55,9 @@ pub struct StructFeatures {
     pub n_supersaw: f64,
     /// Number of noise sources.
     pub n_noise: f64,
-    /// Number of Mix nodes.
+    /// Number of Mix nodes. **Not a φ coordinate** — exactly one less than
+    /// the number of sources, since Mix is the only branching node; see the
+    /// module doc. Kept for display and for the proposal tilt.
     pub n_mix: f64,
     /// Number of filters.
     pub n_filter: f64,
@@ -35,9 +75,11 @@ pub struct StructFeatures {
     pub n_env: f64,
     /// Number of S&H random modulators.
     pub n_rand: f64,
-    /// Tree depth.
+    /// Tree depth. **Not a φ coordinate** — VIF ≈ 21.7 against the module
+    /// counts; see the module doc. Kept for display.
     pub depth: f64,
-    /// Tree size (audio nodes).
+    /// Tree size (audio nodes). **Not a φ coordinate** — it is exactly the sum
+    /// of the nine `n_*` counts above; see the module doc. Kept for display.
     pub size: f64,
     /// Fraction of modulation slots actually filled.
     pub mod_density: f64,
@@ -51,11 +93,10 @@ pub struct StructFeatures {
 
 impl StructFeatures {
     /// Feature names in `to_vec` order.
-    pub const NAMES: [&'static str; 18] = [
+    pub const NAMES: [&'static str; 15] = [
         "n_vco",
         "n_supersaw",
         "n_noise",
-        "n_mix",
         "n_filter",
         "n_fold",
         "n_delay",
@@ -64,8 +105,6 @@ impl StructFeatures {
         "n_lfo",
         "n_env",
         "n_rand",
-        "depth",
-        "size",
         "mod_density",
         "amp_attack",
         "amp_sustain",
@@ -78,7 +117,6 @@ impl StructFeatures {
             self.n_vco,
             self.n_supersaw,
             self.n_noise,
-            self.n_mix,
             self.n_filter,
             self.n_fold,
             self.n_delay,
@@ -87,8 +125,6 @@ impl StructFeatures {
             self.n_lfo,
             self.n_env,
             self.n_rand,
-            self.depth,
-            self.size,
             self.mod_density,
             self.amp_attack,
             self.amp_sustain,

@@ -52,3 +52,67 @@ pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhra
         note_onsets,
     })
 }
+
+/// A playback-ready audition buffer.
+///
+/// `f32` because that is the **only** form a stored render is ever consumed
+/// in — every consumer in the tree converts at the boundary for WebAudio
+/// (`ricercar_wasm`'s `render_of` / `edit_render`). Storing it converted
+/// halves resident audio and removes a per-request conversion pass.
+///
+/// One-way door, stated explicitly: **features are never derived from an
+/// `Audition`.** [`crate::featurize`] measures on the f64 [`RenderedPhrase`]
+/// and always will; anything that wants φ from a term must featurize it, not
+/// analyze its audition buffer.
+#[derive(Clone, Debug)]
+pub struct Audition {
+    /// Mono samples, nominal ±1.0 full scale, loudness-normalized.
+    pub samples: Vec<f32>,
+    /// Sample rate in Hz.
+    pub sample_rate: f64,
+}
+
+impl Audition {
+    /// Resident bytes of the sample buffer (for memo accounting).
+    pub fn bytes(&self) -> usize {
+        self.samples.len() * std::mem::size_of::<f32>()
+    }
+}
+
+impl RenderedPhrase {
+    /// The playback-ready view of this render.
+    pub fn to_audition(&self) -> Audition {
+        Audition {
+            samples: self.samples.iter().map(|s| *s as f32).collect(),
+            sample_rate: self.sample_rate,
+        }
+    }
+}
+
+/// Re-derive the audition buffer of an already-featurized term **without**
+/// re-running the loudness analysis, using the `gain_db` its
+/// [`crate::Features`] recorded.
+///
+/// Bit-identical to what [`crate::featurize`] produced for the same term:
+/// [`crate::loudness::normalize_to`] measures a gain and then applies it as a
+/// *uniform scalar multiply* over the buffer, so replaying the recorded gain
+/// reproduces the same products exactly. `gain_db` is stored already clamped
+/// (`loudness::MAX_GAIN_DB`), so no clamp is re-applied here — clamping twice
+/// would be a no-op, and not clamping at all is what keeps this in lockstep
+/// with the one place the decision is made.
+///
+/// This is the second code path that must stay in lockstep with `featurize`'s
+/// normalization forever; `render_playback_is_bit_identical` is the test that
+/// keeps it honest.
+pub fn render_playback(
+    tree: &PatchTree,
+    spec: &PhraseSpec,
+    gain_db: f64,
+) -> Result<Audition, PatchError> {
+    let mut render = render_phrase(tree, spec)?;
+    let gain = 10f64.powf(gain_db / 20.0);
+    for s in render.samples.iter_mut() {
+        *s *= gain;
+    }
+    Ok(render.to_audition())
+}

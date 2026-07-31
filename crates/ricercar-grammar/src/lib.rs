@@ -96,7 +96,13 @@ mod tests {
                         || w.contains("Audio to Gate/Trigger")
                         // ±5 V square clock into the S&H trigger thresholds
                         // cleanly at the 2.5 V gate level.
-                        || w.contains("Unusual connection: CvBipolar -> Trigger"),
+                        || w.contains("Unusual connection: CvBipolar -> Trigger")
+                        // `Adsr.shape`, `Vca.response` and `Limiter.soft` are
+                        // Gate-kind ports quiver reads as booleans at 2.5 V.
+                        // Pinning them is a baked `set_param_by_id` default
+                        // now (no cable, no warning), but the class stays
+                        // allowed for any remaining CvBipolar-into-Gate wiring.
+                        || w.contains("Unusual connection: CvBipolar -> Gate"),
                     "sample {i}: unexpected warning class: {w}"
                 );
             }

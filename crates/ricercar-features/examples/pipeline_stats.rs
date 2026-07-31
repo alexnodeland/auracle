@@ -62,4 +62,95 @@ fn main() {
         let max = col.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         println!("{name:<16} {min:>9.3} {mean:>9.3} {max:>9.3}");
     }
+
+    // Collinearity. The taste model is linear in φ, so a coordinate that is
+    // nearly a linear combination of the others has an unstable, individually
+    // meaningless coefficient — which defeats the per-feature explanations the
+    // Styles tab renders — and inflates posterior variance along the shared
+    // direction, lengthening the cold start. VIF = 1/(1−R²) of each column
+    // regressed on all the others; >10 is the conventional alarm.
+    println!();
+    println!("{:<16} {:>9}", "feature", "VIF");
+    let mut vifs: Vec<(f64, &str)> = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (vif(&phis, i), *name))
+        .collect();
+    vifs.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (v, name) in vifs {
+        let flag = if v > 10.0 { "  <-- collinear" } else { "" };
+        println!("{name:<16} {v:>9.1}{flag}");
+    }
+}
+
+/// Variance inflation factor of column `target`: regress it on every other
+/// column (with intercept) by ridge-stabilized normal equations and return
+/// `1/(1−R²)`.
+fn vif(rows: &[Vec<f64>], target: usize) -> f64 {
+    let d = rows[0].len();
+    let cols: Vec<usize> = (0..d).filter(|&c| c != target).collect();
+    let k = cols.len() + 1; // + intercept
+    let n = rows.len();
+    // Normal equations XᵀX b = Xᵀy.
+    let x = |r: &Vec<f64>, j: usize| if j == 0 { 1.0 } else { r[cols[j - 1]] };
+    let mut ata = vec![vec![0.0f64; k]; k];
+    let mut aty = vec![0.0f64; k];
+    for r in rows {
+        for a in 0..k {
+            let xa = x(r, a);
+            for (b, cell) in ata[a].iter_mut().enumerate() {
+                *cell += xa * x(r, b);
+            }
+            aty[a] += xa * r[target];
+        }
+    }
+    for (a, row) in ata.iter_mut().enumerate() {
+        row[a] += 1e-8; // keep the solve well-posed on exact duplicates
+    }
+    // Gaussian elimination with partial pivoting.
+    let mut m = ata;
+    let mut v = aty;
+    for c in 0..k {
+        let piv = (c..k)
+            .max_by(|&i, &j| m[i][c].abs().total_cmp(&m[j][c].abs()))
+            .unwrap();
+        m.swap(c, piv);
+        v.swap(c, piv);
+        let p = m[c][c];
+        if p.abs() < 1e-12 {
+            continue;
+        }
+        for r in (c + 1)..k {
+            let f = m[r][c] / p;
+            let pivot_row: Vec<f64> = m[c][c..k].to_vec();
+            for (cc, pv) in pivot_row.iter().enumerate() {
+                m[r][c + cc] -= f * pv;
+            }
+            v[r] -= f * v[c];
+        }
+    }
+    let mut beta = vec![0.0f64; k];
+    for c in (0..k).rev() {
+        if m[c][c].abs() < 1e-12 {
+            continue;
+        }
+        let mut acc = v[c];
+        for (cc, bv) in beta.iter().enumerate().skip(c + 1) {
+            acc -= m[c][cc] * bv;
+        }
+        beta[c] = acc / m[c][c];
+    }
+    let ybar = rows.iter().map(|r| r[target]).sum::<f64>() / n as f64;
+    let mut ss_res = 0.0;
+    let mut ss_tot = 0.0;
+    for r in rows {
+        let pred: f64 = (0..k).map(|j| beta[j] * x(r, j)).sum();
+        ss_res += (r[target] - pred).powi(2);
+        ss_tot += (r[target] - ybar).powi(2);
+    }
+    if ss_tot <= 1e-12 {
+        return 1.0;
+    }
+    let r2 = (1.0 - ss_res / ss_tot).clamp(0.0, 1.0 - 1e-9);
+    1.0 / (1.0 - r2)
 }

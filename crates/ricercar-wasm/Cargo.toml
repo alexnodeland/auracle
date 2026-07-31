@@ -25,5 +25,17 @@ console_error_panic_hook = "0.1"
 # explicitly, but the js feature is required for the crate to compile at all.
 getrandom = { version = "0.2", features = ["js"] }
 
+# Post-link optimization. The explicit --enable-* set matches what rustc's
+# wasm32-unknown-unknown output already uses, so wasm-opt neither adds nor
+# forbids features — it only optimizes. Never add --fast-math: it licenses
+# value-changing float rewrites, and (term, spec) → bit-identical samples is
+# a contract (see ricercar-features/src/render.rs).
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+wasm-opt = [
+    "-O3",
+    "--enable-reference-types",
+    "--enable-multivalue",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int",
+    "--enable-sign-ext",
+]

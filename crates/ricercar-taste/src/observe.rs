@@ -1,18 +1,49 @@
 //! Feedback observations and the persistent observation log.
 //!
 //! All three feedback modalities condition the **same latent utility**
-//! (DESIGN.md §1.3); an observation stores the *standardized* feature
-//! vector(s) it was made about plus which session produced it (sessions carry
-//! their own keep/kill threshold latent `τ` and, at K > 1, a style latent
-//! `z`). The log is the profile's source of truth: the posterior can always
-//! be re-fit from it.
+//! (DESIGN.md §1.3). An observation stores the **raw** feature vector(s) it
+//! was made about, the **names** of those coordinates, a **schema version**,
+//! and which session produced it (sessions carry their own keep/kill threshold
+//! latent `τ` and, at K > 1, a style latent `z`).
+//!
+//! ## Why raw φ and not standardized φ
+//!
+//! Standardization is a *modeling* choice, not a fact about what the user did.
+//! Baking it into the log made the log stop being the source of truth in two
+//! ways. Because the standardizer was fit once and frozen, z-scores drifted
+//! as the pool moved away from that reference sample — the linear model ended
+//! up extrapolating far outside where it was calibrated. And, structurally
+//! worse, **the feature set could never change again**: adding a coordinate,
+//! or fixing one's units, silently invalidated every saved profile with no
+//! way to detect it.
+//!
+//! Storing raw values plus names fixes both. The standardizer is re-fit at
+//! fit time over the log *and* the live pool, and a log recorded under an
+//! older feature set is re-projected by name onto the current one
+//! ([`FitSet::build`]) — coordinates that disappeared are dropped, ones that
+//! did not exist yet are imputed at the standardizer mean, which is exactly
+//! "no evidence" in standardized space.
+//!
+//! The names ride on every observation rather than once per log. They
+//! duplicate, but a log is a stream of independently-meaningful records: a
+//! record that cannot be interpreted without a header elsewhere in the file
+//! is the failure mode this whole change exists to prevent.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// One feedback event, in standardized feature space.
+use crate::standardize::Standardizer;
+
+/// Current φ schema: vectors are **raw** (un-standardized) and carry names.
+pub const PHI_SCHEMA: u32 = 2;
+
+/// Schema of logs written before raw-φ logging: vectors are *standardized*
+/// under the profile's persisted standardizer, and carry no names.
+pub const PHI_SCHEMA_STANDARDIZED: u32 = 1;
+
+/// What the user did, and the feature vector(s) it was about.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Observation {
+pub enum Feedback {
     /// A pairwise duel: the user heard both and picked one.
     Duel {
         /// Features of candidate A.
@@ -21,8 +52,6 @@ pub enum Observation {
         b: Vec<f64>,
         /// True if A won.
         chose_a: bool,
-        /// Session index.
-        session: usize,
     },
     /// A keep/kill triage decision.
     KeepKill {
@@ -30,8 +59,6 @@ pub enum Observation {
         x: Vec<f64>,
         /// True if kept.
         kept: bool,
-        /// Session index.
-        session: usize,
     },
     /// A star rating (ordinal, `0..n_stars`).
     Stars {
@@ -39,19 +66,153 @@ pub enum Observation {
         x: Vec<f64>,
         /// The rating, `0..=n_stars-1`.
         rating: u8,
-        /// Session index.
+    },
+}
+
+impl Feedback {
+    /// Every feature vector this feedback refers to.
+    pub fn phis(&self) -> Vec<&[f64]> {
+        match self {
+            Feedback::Duel { a, b, .. } => vec![a, b],
+            Feedback::KeepKill { x, .. } | Feedback::Stars { x, .. } => vec![x],
+        }
+    }
+
+    /// Rebuild with every feature vector passed through `f` (projection,
+    /// standardization, unit migration).
+    pub fn map_phi(&self, f: impl Fn(&[f64]) -> Vec<f64>) -> Feedback {
+        match self {
+            Feedback::Duel { a, b, chose_a } => Feedback::Duel {
+                a: f(a),
+                b: f(b),
+                chose_a: *chose_a,
+            },
+            Feedback::KeepKill { x, kept } => Feedback::KeepKill {
+                x: f(x),
+                kept: *kept,
+            },
+            Feedback::Stars { x, rating } => Feedback::Stars {
+                x: f(x),
+                rating: *rating,
+            },
+        }
+    }
+}
+
+/// One feedback event: what happened, in which session, over which features.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Observation {
+    /// What the user did.
+    pub feedback: Feedback,
+    /// Session index (sessions own their own `τ`).
+    pub session: usize,
+    /// Names of the φ coordinates, in vector order. Empty means "unknown" —
+    /// the vectors can only be interpreted positionally.
+    pub feature_names: Vec<String>,
+    /// Which φ schema the vectors are in ([`PHI_SCHEMA`] for raw values).
+    pub schema_version: u32,
+}
+
+impl Observation {
+    /// A fresh observation in the current schema.
+    pub fn new(feedback: Feedback, session: usize, feature_names: &[String]) -> Self {
+        Self {
+            feedback,
+            session,
+            feature_names: feature_names.to_vec(),
+            schema_version: PHI_SCHEMA,
+        }
+    }
+
+    /// The session index of this observation.
+    pub fn session(&self) -> usize {
+        self.session
+    }
+
+    /// True when the vectors are raw values in the current schema (rather
+    /// than pre-standardized values from a legacy log).
+    pub fn is_raw(&self) -> bool {
+        self.schema_version >= PHI_SCHEMA
+    }
+}
+
+/// The pre-raw-φ on-disk form: an externally-tagged enum whose vectors were
+/// already standardized. Kept only so old profiles still load.
+#[derive(Deserialize)]
+enum LegacyObservation {
+    Duel {
+        a: Vec<f64>,
+        b: Vec<f64>,
+        chose_a: bool,
+        session: usize,
+    },
+    KeepKill {
+        x: Vec<f64>,
+        kept: bool,
+        session: usize,
+    },
+    Stars {
+        x: Vec<f64>,
+        rating: u8,
         session: usize,
     },
 }
 
-impl Observation {
-    /// The session index of this observation.
-    pub fn session(&self) -> usize {
-        match self {
-            Observation::Duel { session, .. }
-            | Observation::KeepKill { session, .. }
-            | Observation::Stars { session, .. } => *session,
-        }
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ObservationRepr {
+    Current {
+        feedback: Feedback,
+        session: usize,
+        #[serde(default)]
+        feature_names: Vec<String>,
+        #[serde(default)]
+        schema_version: u32,
+    },
+    Legacy(LegacyObservation),
+}
+
+impl<'de> Deserialize<'de> for Observation {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(match ObservationRepr::deserialize(d)? {
+            ObservationRepr::Current {
+                feedback,
+                session,
+                feature_names,
+                schema_version,
+            } => Observation {
+                feedback,
+                session,
+                feature_names,
+                schema_version: if schema_version == 0 {
+                    PHI_SCHEMA
+                } else {
+                    schema_version
+                },
+            },
+            ObservationRepr::Legacy(o) => {
+                let (feedback, session) = match o {
+                    LegacyObservation::Duel {
+                        a,
+                        b,
+                        chose_a,
+                        session,
+                    } => (Feedback::Duel { a, b, chose_a }, session),
+                    LegacyObservation::KeepKill { x, kept, session } => {
+                        (Feedback::KeepKill { x, kept }, session)
+                    }
+                    LegacyObservation::Stars { x, rating, session } => {
+                        (Feedback::Stars { x, rating }, session)
+                    }
+                };
+                Observation {
+                    feedback,
+                    session,
+                    feature_names: Vec::new(),
+                    schema_version: PHI_SCHEMA_STANDARDIZED,
+                }
+            }
+        })
     }
 }
 
@@ -92,6 +253,17 @@ impl ObservationLog {
             .unwrap_or(0)
     }
 
+    /// Every raw φ in the log, for fitting a standardizer. Only observations
+    /// already in the current schema whose names match `names` contribute —
+    /// mixing units into a standardizer is how you get a silently wrong model.
+    pub fn raw_rows(&self, names: &[String]) -> Vec<Vec<f64>> {
+        self.observations
+            .iter()
+            .filter(|o| o.is_raw() && o.feature_names == names)
+            .flat_map(|o| o.feedback.phis().into_iter().map(|p| p.to_vec()))
+            .collect()
+    }
+
     /// Serialize to a JSON file.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)
@@ -100,5 +272,84 @@ impl ObservationLog {
     /// Load from a JSON file.
     pub fn load(path: &Path) -> std::io::Result<Self> {
         Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
+    }
+}
+
+/// A log projected onto one feature order and standardized — exactly what the
+/// likelihood sees. Derived at fit time from the log plus a standardizer, and
+/// never persisted: the log is the source of truth, this is a view of it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FitSet {
+    /// Standardized feedback, paired with its session index, in log order.
+    pub rows: Vec<(Feedback, usize)>,
+}
+
+impl FitSet {
+    /// Project every observation onto `names` and standardize with `sz`.
+    ///
+    /// Coordinates the observation does not have are imputed at the
+    /// standardizer's mean — which standardizes to exactly 0, i.e. "this
+    /// observation says nothing about that axis", the honest imputation for a
+    /// feature that did not exist when the vote was cast. Observations from a
+    /// legacy standardized log are re-used as-is (they are already z-scores);
+    /// they are on a different geometry, so the session layer migrates them to
+    /// raw values first where it can.
+    pub fn build(log: &ObservationLog, names: &[String], sz: &Standardizer) -> Self {
+        let d = names.len();
+        let rows = log
+            .observations
+            .iter()
+            .map(|o| {
+                let index: Vec<Option<usize>> = if o.feature_names.is_empty() {
+                    // No names: positional, which is all a legacy log allows.
+                    (0..d).map(Some).collect()
+                } else {
+                    names
+                        .iter()
+                        .map(|n| o.feature_names.iter().position(|m| m == n))
+                        .collect()
+                };
+                let raw = o.is_raw();
+                let project = |phi: &[f64]| -> Vec<f64> {
+                    (0..d)
+                        .map(|j| match index[j].and_then(|i| phi.get(i)) {
+                            Some(&v) if raw => (v - sz.mean[j]) / sz.std[j],
+                            // Already standardized, or absent (mean ⇒ z = 0).
+                            Some(&v) => v,
+                            None => 0.0,
+                        })
+                        .collect()
+                };
+                (o.feedback.map_phi(project), o.session)
+            })
+            .collect();
+        Self { rows }
+    }
+
+    /// Take the log's vectors as already being on the model's scale (unit
+    /// tests and synthetic users work directly in standardized space).
+    pub fn as_is(log: &ObservationLog) -> Self {
+        Self {
+            rows: log
+                .observations
+                .iter()
+                .map(|o| (o.feedback.clone(), o.session))
+                .collect(),
+        }
+    }
+
+    /// Number of observations.
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// True when there is nothing to condition on.
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// Number of distinct sessions referenced (`max session index + 1`).
+    pub fn n_sessions(&self) -> usize {
+        self.rows.iter().map(|(_, s)| s + 1).max().unwrap_or(0)
     }
 }

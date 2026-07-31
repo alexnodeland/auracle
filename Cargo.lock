@@ -295,9 +295,9 @@ dependencies = [
 
 [[package]]
 name = "quiver-dsp"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f228ffb0c3539c44bedd1b1b236dd3018cb80068ad9a15bb8e0cb46eb6f484e6"
+checksum = "72b295b3dc2506318f39d85e0182155c63f91fbde0e91ece880d31a981140111"
 dependencies = [
  "libm",
  "portable-atomic",
@@ -374,6 +374,7 @@ dependencies = [
  "ricercar-grammar",
  "rustfft",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 
