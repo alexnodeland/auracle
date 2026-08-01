@@ -539,6 +539,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-anchor: middle;
 }
 .knob-body { fill: url(#knobGrad); stroke: #000; stroke-width: 1; cursor: ns-resize; }
+/* A knob's face is bigger than its body: the ticks, the travel track and the
+   value arc all ride outside r, and all of them read as part of the control.
+   None of them may intercept the press — an unfilled ring still hit-tests on
+   its stroke, and a press that lands on decoration is a knob that doesn't
+   turn. `.knob-hit` is the real target and covers the whole face. */
+.knob-hit { fill: transparent; cursor: ns-resize; }
+.knob-ticks, .knob-track, .knob-arc { pointer-events: none; }
 .knob-ring { fill: none; stroke: #343a44; stroke-width: 1; }
 .knob-ind { stroke: var(--phos-a); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
 .knob-ind.modside { stroke: var(--phos-b); }

@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=27">
+<link rel="stylesheet" href="style.css?b=28">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=27";
+    s.src = "main.js?b=28";
     document.head.appendChild(s);
   }
 })();
@@ -348,7 +348,7 @@
       <div>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
-        <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the highlighted bank row</p>
+        <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you're on</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a vote</p>
         <div class="help-h">performance</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>

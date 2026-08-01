@@ -298,6 +298,23 @@ worker.onmessage = (e) => {
       idbPut("state", { session: m.json, ui: uiState() });
       break;
     }
+    // `edit_begin` said no: that id is not in the pool any more. It is
+    // reachable by racing a landing generation — the bank holds 40 and each
+    // bred patch evicts one, so a row (or a map dot, or a ⌖ bench) clicked
+    // while a generation lands can name a patch that no longer exists.
+    //
+    // The worker has always sent this and nothing has ever listened, which is
+    // the worst possible handling: every caller of `openOnBench` announces
+    // success optimistically, so the failure left a toast reading "it's on the
+    // workbench and under your fingers" while the workbench showed the patch
+    // from before. Silence would merely have been a dead click; this was the
+    // app stating something untrue about its own state. Say what happened,
+    // and pull fresh views so the row that can't be opened stops being listed.
+    case "bench_missing": {
+      note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
+      send({ type: "taste_views" });
+      break;
+    }
     case "patch_imported": {
       views = m.views;
       applyStatus(m.status);
@@ -1109,6 +1126,10 @@ function stepBank(d) {
   const next = rows[idx];
   if (!next || next.id === wb.subjectId) return;
   bankScrollTo = next.id;
+  // Stepping is what "the highlighted row" means to someone who just pressed
+  // [ or ] — so the step moves the keyboard cursor too, and 1–5 rates what
+  // they just stepped to rather than nothing.
+  kbdRowId = next.id;
   openOnBench(next.id);
 }
 
@@ -1476,6 +1497,18 @@ document.addEventListener("keydown", (e) => {
     else if (e.key === "2") $("play-b").click();
     else if (e.key === "ArrowLeft") $("choose-a").click();
     else if (e.key === "ArrowRight") $("choose-b").click();
+    return;
+  }
+  // The help has always printed "[ / ] step through the bank · 1–5 rate the
+  // highlighted bank row" on one line, and the obvious reading of it — step to
+  // a patch, then rate it — did nothing at all: the digits were bound to the
+  // bank list's own keydown, so they only fired if you had first tabbed into
+  // it, which the help does not mention and nothing on screen suggests. Bound
+  // here, that sentence is true. EVOLVE keeps 1/2 for auditioning its pair,
+  // which is why this sits after that branch's return.
+  if (/^[1-5]$/.test(e.key)) {
+    e.preventDefault();
+    rateRow(Number(e.key));
   }
 });
 document.addEventListener("keyup", (e) => {
@@ -1517,6 +1550,7 @@ $("oct-up").onclick = () => octave(1);
 $("hold-btn").onclick = () => {
   hold = !hold;
   $("hold-btn").classList.toggle("lit", hold);
+  $("hold-btn").setAttribute("aria-pressed", String(hold));
   if (!hold) panic();
 };
 $("panic-btn").onclick = () => panic();
@@ -1548,6 +1582,7 @@ const perf = {
 function sendArp() {
   if (live) live.arp(perf.arp, perf.arpMode, perf.arpDiv, perf.bpm, perf.arpGate, perf.arpOct, perf.arpSwing);
   $("arp-btn").classList.toggle("lit", perf.arp);
+  $("arp-btn").setAttribute("aria-pressed", String(perf.arp));
   // The arp row is the ARP button's drawer: recessed and inert until it
   // runs — for the keyboard as well as the mouse.
   const drawer = $("arp-ctl");
@@ -1563,6 +1598,10 @@ function sendUni() {
   if (live) live.unison(perf.uni, 0.4, 0.8);
   const btn = $("uni-btn");
   btn.classList.toggle("lit", perf.uni);
+  // `.lit` is a colour. A colour is not a state a screen reader can read, and
+  // hold / uni / arp are the three controls that silently change what every
+  // subsequent keypress does.
+  btn.setAttribute("aria-pressed", String(perf.uni));
   // UNI silently turns a 4-voice poly synth mono — say so on the control.
   btn.textContent = perf.uni ? "uni ×4 mono" : "uni";
 }
@@ -1711,6 +1750,7 @@ function bootMidi() {
             // Sustain pedal = hold latch.
             hold = d2 >= 64;
             $("hold-btn").classList.toggle("lit", hold);
+            $("hold-btn").setAttribute("aria-pressed", String(hold));
             if (!hold) panic();
           } else if (kind === 0xb0 && d1 === 123) {
             panic();
@@ -2184,7 +2224,14 @@ function renderBank() {
   };
   for (const r of rows) {
     const el = document.createElement("div");
-    el.className = "bank-item" + (r.id === wb.subjectId ? " live" : "");
+    el.className = "bank-item"
+      + (r.id === wb.subjectId ? " live" : "")
+      // The keyboard cursor is state, so it is carried by *id* and re-applied
+      // on every render. It used to live only on the DOM node, and rating a
+      // row re-renders the bank — so the highlight vanished the instant you
+      // used it, and the next digit fell through to the index-0 fallback and
+      // rated a patch nobody had selected. See `kbdRowId`.
+      + (r.id === kbdRowId ? " kbd" : "");
     const frac = fitted ? sq(r.mean) : 0;
     const lo = fitted ? sq(r.mean - (r.std || 0)) : 0;
     const hi = fitted ? sq(r.mean + (r.std || 0)) : 0;
@@ -2227,6 +2274,9 @@ function renderBank() {
     el.querySelector(".bi-hear").onclick = () => awaitRender(r.id, () => play(r.id));
     el.querySelectorAll(".star").forEach((btn) => {
       btn.onclick = () => {
+        // The row you just rated is the one a follow-up 1–5 should correct,
+        // whichever hand you rated it with.
+        kbdRowId = r.id;
         starsById.set(r.id, Number(btn.dataset.s));
         send({ type: "record_stars", id: r.id, rating: Number(btn.dataset.s) });
         renderBank();
@@ -2306,34 +2356,58 @@ document.querySelectorAll(".bank-filters .bf").forEach((b) => {
   };
 });
 
+// Which row the keyboard is pointing at, by id rather than by DOM position.
+// A rating re-renders the bank, and an index into a list that was just
+// rebuilt is a different patch.
+let kbdRowId = null;
+
+function moveKbdRow(d) {
+  if (bankRows.length === 0) return;
+  const cur = bankRows.findIndex((r) => r.id === kbdRowId);
+  const next = Math.max(0, Math.min(bankRows.length - 1, (cur < 0 ? 0 : cur) + d));
+  kbdRowId = bankRows[next].id;
+  renderBank();
+  $("bank-list").querySelector(".bank-item.kbd")?.scrollIntoView({ block: "nearest" });
+}
+
+// What a digit rates. The keyboard cursor if there is one; otherwise the
+// patch on the bench, which is the row the app is already drawing as `live`
+// and the only other row the user can be said to have chosen. Never an index
+// — the old fallback was `bankRows[0]`, so a second rating after the
+// highlight was lost silently landed on whatever happened to be at the top of
+// the list and taught the model a preference nobody expressed.
+function rateTargetId() {
+  if (kbdRowId != null && bankRows.some((r) => r.id === kbdRowId)) return kbdRowId;
+  if (wb.subjectId != null && bankRows.some((r) => r.id === wb.subjectId)) return wb.subjectId;
+  return null;
+}
+
+function rateRow(rating) {
+  const id = rateTargetId();
+  if (id == null) {
+    note("Nothing selected to rate — click a bank row, or step to one with [ and ].");
+    return;
+  }
+  kbdRowId = id; // rating something makes it the cursor, so 1–5 can correct it
+  starsById.set(id, rating);
+  send({ type: "record_stars", id, rating });
+  renderBank();
+  note(`${nameOf(id)} rated ${rating}★`);
+}
+
 $("bank-list").addEventListener("keydown", (e) => {
-  const rows = [...$("bank-list").querySelectorAll(".bank-item")];
-  if (rows.length === 0) return;
-  const cur = rows.findIndex((r) => r.classList.contains("kbd"));
-  const move = (d) => {
-    const next = Math.max(0, Math.min(rows.length - 1, (cur < 0 ? 0 : cur) + d));
-    rows.forEach((r) => r.classList.remove("kbd"));
-    rows[next].classList.add("kbd");
-    rows[next].scrollIntoView({ block: "nearest" });
-  };
-  if (e.key === "ArrowDown") { e.preventDefault(); move(cur < 0 ? 0 : 1); }
-  else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+  if (bankRows.length === 0) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null ? 0 : 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); moveKbdRow(-1); }
   else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
-    const row = rows[cur < 0 ? 0 : cur];
-    if (row) row.click();
+    const id = kbdRowId ?? bankRows[0].id;
+    bankScrollTo = id;
+    openOnBench(id);
   } else if (/^[1-5]$/.test(e.key)) {
-    // Rate the highlighted row from the keyboard — the stars' whole
-    // keyboard path.
     e.preventDefault();
     e.stopPropagation(); // digit keys are evolve-view shortcuts elsewhere
-    const i = cur < 0 ? 0 : cur;
-    const target = bankRows[i];
-    if (target) {
-      starsById.set(target.id, Number(e.key));
-      send({ type: "record_stars", id: target.id, rating: Number(e.key) });
-      renderBank();
-    }
+    rateRow(Number(e.key));
   }
 });
 
@@ -2894,11 +2968,6 @@ function buildRack(svg, rack, opts) {
           );
         }
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
-        if (interactive) {
-          const tt = svgEl("title", {});
-          tt.textContent = `${k.label}: ${knobUnit(k.addr, k.value, m.kind, variant)} — drag up/down`;
-          body.appendChild(tt);
-        }
         kg.appendChild(body);
         // The pointer starts at 45% radius: a full-radius spoke reads as a pie
         // slice, not a pointer.
@@ -2912,7 +2981,25 @@ function buildRack(svg, rack, opts) {
           }, `knob-ind${m.is_mod ? " modside" : ""}`)
         );
         if (locked) kg.appendChild(svgEl("circle", { r: KNOB_R + 9 }, "knob-locked-halo"));
-        if (interactive) attachKnobDrag(body, m, k);
+        if (interactive) {
+          // The knob you *see* is the body plus its travel ring: the value arc
+          // at r+3 is the brightest thing in the control and reads as its rim.
+          // Only the body was draggable, so a press on the ring landed on
+          // `.knob-track` — decoration with no listener — and the knob did not
+          // move. Scanning out from a knob's centre found the body to 17px,
+          // then a dead band at 18, then three more pixels of track that
+          // swallowed the press: a 36px control wearing a 44px face.
+          //
+          // One transparent target covers the whole face. It goes on last so
+          // it sits above the decoration, and the lock dot is appended after
+          // it so the dot still wins its own corner.
+          const hit = svgEl("circle", { r: KNOB_R + 7 }, "knob-hit");
+          const tt = svgEl("title", {});
+          tt.textContent = `${k.label}: ${knobUnit(k.addr, k.value, m.kind, variant)} — drag up/down`;
+          hit.appendChild(tt);
+          kg.appendChild(hit);
+          attachKnobDrag(hit, m, k);
+        }
       } else {
         const bw = 62;
         const body = svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body");
@@ -3879,11 +3966,16 @@ function renderStyleChips() {
     input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
     input.addEventListener("keyup", (e) => e.stopPropagation());
     input.onblur = () => send({ type: "set_style_name", k, name: input.value });
-    chip.querySelector(".sc-play").onclick = () => {
-      const ex = s.exemplars && s.exemplars[0];
-      if (ex == null) return;
-      awaitRender(ex, () => play(ex));
-    };
+    // A lens the model has learned but has no exemplar for yet cannot be
+    // auditioned. Saying so on the control beats a ▶ that silently returns.
+    const ex = s.exemplars && s.exemplars[0];
+    const scPlay = chip.querySelector(".sc-play");
+    if (ex == null) {
+      scPlay.disabled = true;
+      scPlay.title = "No exemplar for this style yet — it needs more patches on this lens";
+    } else {
+      scPlay.onclick = () => awaitRender(ex, () => play(ex, scPlay));
+    }
     holder.appendChild(chip);
   });
 }

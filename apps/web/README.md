@@ -95,6 +95,22 @@ to a pinned `role="alert"` strip that stays until resolved.
   content. The one exception is loud: a job retired after two attempts logs a
   console warning.
 
+- **Hit targets are measured, not eyeballed.** Two controls turned out to be
+  much smaller than they looked, both because an SVG shape only hit-tests
+  where it is *painted*. A jack's outer circle is unfilled, so only its 1.6px
+  ring responded — scanning a jack's 11px diameter found 4 live pixels in two
+  slivers. A knob's ticks, track and value arc all ride outside its body and
+  intercepted the press, so a 44px face had a 36px control inside it. Both are
+  fixed (`pointer-events: all` on the jack ring, `.knob-hit` covering the
+  knob's whole face, decoration set to `pointer-events: none`). When adding a
+  rack control, scan across it with `elementFromPoint` before trusting it.
+- **A control that can't act says so.** The audit's recurring bug was silence:
+  a ▶ with no handler, an `if (x == null) return`, a worker failure message
+  nothing listened for. `bench_missing` is the sharpest case — the worker has
+  always sent it when `edit_begin` fails, and because nothing handled it the
+  optimistic "it's on the workbench" toast stayed on screen while the bench
+  showed the previous patch. Prefer a disabled control with a reason in its
+  title, or a note; never a handler that returns.
 - **Touch**: everything the rack does works under a finger on a tablet —
   knob drags, cable pulls, locks, the ⋯ menu. Two rules carry it. Controls
   that own a drag claim the gesture before the browser can (`claimGesture`:
