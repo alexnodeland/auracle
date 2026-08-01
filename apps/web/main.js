@@ -582,6 +582,14 @@ worker.onmessage = (e) => {
       }
       break;
     }
+    // A request that arrived before the engine finished booting. The worker
+    // now says so instead of throwing into the void; the only one that needs
+    // re-asking is the preset list, because the bank shows an empty shelf
+    // until it lands and nothing else would ever ask again.
+    case "not_ready": {
+      if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
+      break;
+    }
     case "edit_rejected": {
       if (m.error) note(`edit rejected: ${m.error}`);
       editInFlight = false;
@@ -5067,6 +5075,22 @@ function buildNodeBank() {
     }
   });
 
+  $("nb-tour-btn").onclick = () => {
+    if (nbTourAt >= 0) return endNbTour();
+    nbTourAt = 0;
+    showNbTourStep();
+  };
+  $("nbt-next").onclick = () => { nbTourAt += 1; showNbTourStep(); };
+  $("nbt-back").onclick = () => { nbTourAt -= 1; showNbTourStep(); };
+  $("nbt-skip").onclick = endNbTour;
+
+  // The group headers park under the header band, so the band's height is a
+  // layout constant two rules apart. Measure it rather than write it twice.
+  const headH = Math.round(
+    document.querySelector(".nb-head")?.getBoundingClientRect().height || 0,
+  );
+  if (headH > 0) $("nodebank").style.setProperty("--nb-head-h", `${headH}px`);
+
   $("nb-collapse").onclick = () => nbSetCollapsed(!nbState.collapsed);
   $("nb-rail").onclick = () => nbSetCollapsed(false);
   nbSetCollapsed(nbState.collapsed, true);
@@ -5475,6 +5499,94 @@ function disarm() {
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
+}
+
+// ---------- the catalogue's walkthrough ----------
+// Mirrors the bank's, for the same reason it exists: at 41 modules across ten
+// groups, the two things that are not guessable — that clicking a module puts
+// it in your hand, and that the θ column stays blank until there is evidence
+// for it — are exactly the two a hover card cannot teach, because you have to
+// know to hover first.
+//
+// It does not fire on its own. The bench tour already opens unprompted and now
+// points here; a second uninvited panel is one more thing to dismiss before
+// making a sound.
+const NB_TOUR = [
+  {
+    lit: () => $("nb-groups"),
+    title: "a catalogue, not a shelf",
+    body:
+      `Every module the instrument has, in the order a patch is built: what ` +
+      `makes the sound, what dirties it, what filters it, where it sits, what ` +
+      `moves it. Each row says what it <b>does to a signal</b> — that is what ` +
+      `the drawing is — and how many cables it has.`,
+  },
+  {
+    lit: () => $("nb-groups").querySelector('.nb-item[data-kind="filter"]'),
+    title: "click one and it is in your hand",
+    body:
+      `Then every socket it can legally go into lights up <b>and says what will ` +
+      `happen there</b> — green inserts it in front of what is already in the ` +
+      `socket, amber replaces that. Click a lit ○ to place it, <kbd>esc</kbd> to ` +
+      `put it down. Every placement is one undo, and the toast offers it.`,
+  },
+  {
+    lit: () => $("nb-q"),
+    title: "search by sound, not just by name",
+    body:
+      `<kbd>/</kbd> from anywhere. Modules answer to how you would ask for them: ` +
+      `<i>grit</i> finds the distortion and the bitcrusher, <i>vowel</i> the ` +
+      `formant oscillator, <i>pump</i> the ducker. Hover any row for a sentence ` +
+      `on what it does and what it will arrive set to.`,
+  },
+  {
+    lit: () => $("nb-groups").querySelector('[data-group="modulation"]'),
+    title: "modulation chains",
+    body:
+      `Drop a <b>shape cv</b> module — quantize, slew — on a cable that already ` +
+      `carries a modulator and it takes that modulator as its <i>input</i> ` +
+      `rather than replacing it. That is how <i>s&amp;h rand → quantize → slew</i> ` +
+      `gets built: three clicks, nothing lost.`,
+  },
+  {
+    lit: () => $("nb-groups"),
+    title: "what the model thinks",
+    body:
+      `The bar on the right of a row is the model's opinion of that module, with ` +
+      `its uncertainty. It stays <b>blank until there is evidence for it</b>, and ` +
+      `shows a dot on zero when the model has looked and found no lean either ` +
+      `way. A short bar and "I do not know" must not look alike.`,
+  },
+];
+
+let nbTourAt = -1;
+
+function showNbTourStep() {
+  const el = $("nb-tour");
+  if (nbTourAt < 0 || nbTourAt >= NB_TOUR.length) return endNbTour();
+  if (nbState.collapsed) nbSetCollapsed(false);
+  const step = NB_TOUR[nbTourAt];
+  document.querySelectorAll(".nb-tour-lit").forEach((e) => e.classList.remove("nb-tour-lit"));
+  // The tour is a pointer, not a pamphlet: light the thing each step is about,
+  // and scroll it into view, because the rail is three viewports tall.
+  const target = step.lit();
+  if (target) {
+    target.classList.add("nb-tour-lit");
+    target.scrollIntoView({ block: "nearest" });
+  }
+  $("nbt-step").textContent = `${nbTourAt + 1} / ${NB_TOUR.length}`;
+  $("nbt-title").textContent = step.title;
+  $("nbt-body").innerHTML = step.body;
+  $("nbt-back").disabled = nbTourAt === 0;
+  $("nbt-next").textContent = nbTourAt === NB_TOUR.length - 1 ? "got it" : "next";
+  el.classList.remove("hidden");
+  $("nbt-next").focus();
+}
+
+function endNbTour() {
+  nbTourAt = -1;
+  $("nb-tour").classList.add("hidden");
+  document.querySelectorAll(".nb-tour-lit").forEach((e) => e.classList.remove("nb-tour-lit"));
 }
 
 /** Put down a pending ⋯ handoff — from Escape, a view change, or a new patch. */

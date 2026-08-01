@@ -517,6 +517,21 @@ function postBench(extra) {
 
 self.onmessage = async (e) => {
   const m = e.data;
+  // Everything but `init` needs the engine, and `init` is async: it imports the
+  // wasm, instantiates it and fills a pool. Any request that arrives inside
+  // that window used to throw on a null `engine`, and the throw was *silent* —
+  // an unhandled rejection in a worker, with the reply that never came looking
+  // exactly like a slow one. `save` was the only case that guarded, which is
+  // how it stayed hidden: the observable symptom is a presets bank that is
+  // empty until something happens to ask again.
+  //
+  // Guarding centrally rather than per-case, because the failure is a property
+  // of the boot sequence, not of any one message, and thirty individual
+  // `if (!engine) break` lines is thirty chances to forget the thirty-first.
+  if (!engine && m.type !== "init") {
+    post({ type: "not_ready", request: m.type });
+    return;
+  }
   switch (m.type) {
     case "init": {
       // Boot owns the farm: N x ~15 MB of linear memory and N live ports
@@ -938,8 +953,6 @@ self.onmessage = async (e) => {
       break;
     }
     case "save": {
-      // A restore can schedule a save before `init` has built the engine.
-      if (!engine) break;
       post({ type: "saved", json: engine.export_session() });
       break;
     }
