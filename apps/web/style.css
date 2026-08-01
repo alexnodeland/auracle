@@ -689,11 +689,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .lock-dot.on circle { fill: var(--phos-b); stroke: var(--phos-b); filter: drop-shadow(0 0 3px rgba(255,180,84,0.8)); }
 .mod-lock { font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim); cursor: pointer; }
 .mod-lock.on { fill: var(--phos-b); }
+/* Cables run *over* the faceplates now (see .rack-wires in main.js): under
+   them, a run that crossed a module simply vanished and reappeared — the graph
+   asserted a connection and then hid the evidence. Front-panel cables are
+   physically true for this instrument, and they only read that way with two
+   things: a casing, and a shadow.
+
+   The casing is the cable's jacket — background-coloured and wider than the
+   ink, so a crossing cuts a channel through the plate instead of tinting it.
+   The shadow is on the whole layer at the same 315° offset as .mod-plate's, so
+   a cable casts onto the panel it lies on and the two agree about the lamp. */
 .wire { fill: none; stroke-linecap: round; pointer-events: none; }
-.wire.audio { stroke: rgba(142,240,177,0.62); stroke-width: 3; }
-.wire.audio-glow { stroke: #0a1a10; stroke-width: 5.5; }
-.wire.mod { stroke: rgba(255,180,84,0.55); stroke-width: 1.8; stroke-dasharray: 6 4; }
-.wire.mod-glow { stroke: rgba(255,180,84,0.12); stroke-width: 5; }
+.wire.audio { stroke: rgba(142,240,177,0.72); stroke-width: 2.2; }
+.wire.audio-case { stroke: #0c0e12; stroke-width: 4.8; }
+.wire.mod {
+  stroke: rgba(255,180,84,0.62); stroke-width: 1.8; stroke-dasharray: 6 4;
+  filter: drop-shadow(0 0 3px rgba(255,180,84,0.35));
+}
+.wire.mod-case { stroke: #0c0e12; stroke-width: 4; }
+.rack-wires { filter: drop-shadow(1px 3px 3px rgba(0,0,0,0.55)); }
 .port { fill: #0a0b0d; stroke: #3a3f48; stroke-width: 1; }
 
 /* ---- EVOLVE view ---- */
@@ -2041,10 +2055,8 @@ input, textarea, .bi-rename {
 
 /* ---------- living modulation (tier 4) ---------- */
 .wire.mod.pulse { animation: modpulse linear infinite; }
-.wire.mod-glow.pulse { animation: modglow linear infinite; }
 .jack.modjack.pulse circle { animation: jackpulse 1.2s ease-in-out infinite; }
 @keyframes modpulse { 0%,100% { stroke-opacity: 0.45; } 50% { stroke-opacity: 1; } }
-@keyframes modglow { 0%,100% { stroke-opacity: 0.10; } 50% { stroke-opacity: 0.45; } }
 @keyframes jackpulse { 0%,100% { fill-opacity: 0.55; } 50% { fill-opacity: 1; } }
 
 /* ---------- duel staging ---------- */
@@ -2146,7 +2158,7 @@ input, textarea, .bi-rename {
 
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .wire.pulse, .wire.mod.pulse, .wire.mod-glow.pulse,
+  .wire.pulse, .wire.mod.pulse,
   .jack.modjack.pulse circle, .duel-card.deal { animation: none !important; }
 }
 

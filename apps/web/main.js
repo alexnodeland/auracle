@@ -3163,29 +3163,289 @@ function playBench() {
 // Layout constants.
 // Sized around the rack type tokens in style.css: the plate has to fit a
 // 10px knob label and a 9px unit readout at zoom 1, not just at zoom 2.
-const MOD_W = 168;
-const COL_W = 196;
+//
+// Width is content-driven now, the way height already was. Every plate being
+// 168 units wide meant a one-knob drive wore the same faceplate as a
+// four-knob filter: half of the rack was empty plate, an eight-module chain
+// overflowed a 1700px frame for no reason, and the panel read as a flowchart
+// rather than as gear — real racks have a wide/narrow HP rhythm you can see
+// from across the room. Three steps, because two is not a rhythm and four is
+// noise at this plate count.
+const PLATE_W = [96, 168, 240];
+// Knobs per row, indexed the same as PLATE_W: the pitch stays ~56-80 units at
+// every step, which is what the 10px silkscreen label was measured against.
+const PLATE_COLS = [1, 2, 3];
 const KNOB_R = 15;
-const KNOBS_PER_ROW = 2;
 
 // Row pitch has to clear the knob's tick ring plus its label and its unit
 // readout — the readout grew from "0.41" to "24 ms".
 const KNOB_ROW = 64;
 
-function moduleHeight(mod) {
-  const rows = Math.max(1, Math.ceil(mod.knobs.length / KNOBS_PER_ROW));
-  return 36 + rows * KNOB_ROW;
+// One gutter serves two jobs: the horizontal space between layers, and the
+// vertical clearance a branch input departs the spine by. Keeping them the
+// same number is what makes the arrangement read as a grid rather than as two
+// unrelated spacings that happen to be near each other.
+const GUTTER = 28;
+// Two plates stacked inside one layer.
+const STACK_GAP = 16;
+
+// An enum chip is a 62-unit plate, not a 30-unit knob, so it costs two slots.
+// Without that a vco's `wave` and `octave` chips sat on a 56-unit pitch and
+// overlapped by 6 units on every single patch — the collision the SILK
+// abbreviation table was papering over one label at a time.
+function plateStep(mod) {
+  const slots =
+    mod.knobs.length + mod.knobs.filter((k) => k.kind.t !== "continuous").length;
+  const step = slots <= 1 ? 0 : slots <= 4 ? 1 : 2;
+  // A binary node's two input labels are content too: `carrier` and `mod`
+  // printed inside a 96-unit plate land on top of the one knob it has. Two
+  // named sockets buy a step, the same way a chip does.
+  return MOD_BY_KIND[mod.kind]?.ins === 2 ? Math.max(1, step) : step;
 }
 
-function knobPos(mod, i) {
-  const row = Math.floor(i / KNOBS_PER_ROW);
-  const inRow = mod.knobs.length - row * KNOBS_PER_ROW >= KNOBS_PER_ROW
-    ? KNOBS_PER_ROW
-    : mod.knobs.length - row * KNOBS_PER_ROW;
-  const col = i % KNOBS_PER_ROW;
-  const x = (MOD_W / (inRow + 1)) * (col + 1);
-  const y = 50 + row * KNOB_ROW;
-  return { x, y };
+/** Plate geometry for one module: width, height, and its knob grid. */
+function moduleBox(mod) {
+  const step = plateStep(mod);
+  const perRow = PLATE_COLS[step];
+  const rows = Math.max(1, Math.ceil(mod.knobs.length / perRow));
+  return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW, perRow };
+}
+
+// Knob pitch for the row `i` lands in — a short last row centres itself, so a
+// four-knob module on a three-wide plate puts its orphan knob in the middle
+// instead of hard against the left edge.
+function knobPitch(mod, i, box) {
+  const row = Math.floor(i / box.perRow);
+  const inRow = Math.min(box.perRow, mod.knobs.length - row * box.perRow);
+  return box.w / (inRow + 1);
+}
+
+function knobPos(mod, i, box) {
+  const row = Math.floor(i / box.perRow);
+  return {
+    x: knobPitch(mod, i, box) * ((i % box.perRow) + 1),
+    y: 50 + row * KNOB_ROW,
+  };
+}
+
+// Which arrangement the rack draws in. Persisted, because it is a reading
+// preference rather than a property of the patch — the mode you can read is
+// the mode you want back after a reload. One button in the rack chrome for
+// now; it gets its proper home beside the level-of-detail selector when that
+// lands, and `compact` becomes the export default after that.
+let layoutMode = localStorage.getItem("ricercar-layout") === "compact" ? "compact" : "chain";
+
+// ---------- layout ----------
+// The seam. Cables, plates and knobs were already pure consumers of a
+// `key → box` map; this pulls the map out of the renderer so that a new
+// arrangement is a new y-assignment rather than a second copy of buildRack.
+//
+// Two modes ship now:
+//   chain   — the reading mode. The trunk is one straight horizontal run and
+//             every departure from it means something: up is a second audio
+//             input, down is modulation. Nothing else is allowed to bend it.
+//   compact — the same layering packed tight. This is the mode a screenshot
+//             or an export wants, where bounding box beats legibility.
+//
+// The layering itself is not recomputed: `RackModule.column` out of
+// describe.rs is already a correct longest-path-from-sink, and re-deriving it
+// in JS would be a second implementation of the same fact that can disagree
+// with the engine.
+function layout(rack, mode) {
+  const box = new Map();
+  const byKey = new Map();
+  for (const m of rack.modules) {
+    box.set(m.key, moduleBox(m));
+    byKey.set(m.key, m);
+  }
+  const maxCol = Math.max(...rack.modules.map((m) => m.column));
+  // Flip the column so signal flows left to right and the amp — the anchor of
+  // the whole mental model — sits at the right edge where the ear expects it.
+  const layerOf = (k) => maxCol - byKey.get(k).column;
+  const layers = [];
+  for (let l = 0; l <= maxCol; l++) layers.push([]);
+  for (const m of rack.modules) layers[maxCol - m.column].push(m.key);
+
+  // A node's parent is one layer to the right, always: every wire runs from a
+  // child to its consumer and `column` is the distance from the sink.
+  const parent = new Map();
+  for (const w of rack.wires) parent.set(w.from, w.to);
+  const kidsOf = (k) =>
+    (k === "amp" ? ["node"] : [`${k}/0`, `${k}/1`, `${k}/m`]).filter((c) => byKey.has(c));
+
+  // 2×2 alternating median sweeps. The term is a strict tree (term.rs is
+  // `Box<AudioNode>` — one parent per node), so the downward sweep alone
+  // already converges on a zero-crossing order and the upward one only
+  // centres a parent over its children; both are cheap and they are what
+  // compact mode reads its stacking order from.
+  const indexIn = (l) => {
+    const m = new Map();
+    layers[l].forEach((k, i) => m.set(k, i));
+    return m;
+  };
+  const median = (xs) => {
+    if (!xs.length) return null;
+    const s = xs.slice().sort((a, b) => a - b);
+    return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  };
+  // A node with no neighbour in the fixed layer holds its current position
+  // rather than being swept to one end — the standard barycentre treatment,
+  // and here it means a leaf keeps the engine's depth-first order, which is
+  // the order the player built the patch in.
+  const orderBy = (keys, weight) =>
+    keys
+      .map((k, i) => ({ k, i, w: weight(k) }))
+      .map((e) => (e.w == null ? { ...e, w: e.i } : e))
+      .sort((a, b) => a.w - b.w || a.i - b.i)
+      .map((e) => e.k);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let l = maxCol - 1; l >= 0; l--) {
+      const above = indexIn(l + 1);
+      layers[l] = orderBy(layers[l], (k) => above.get(parent.get(k)) ?? null);
+    }
+    for (let l = 1; l <= maxCol; l++) {
+      const below = indexIn(l - 1);
+      layers[l] = orderBy(layers[l], (k) =>
+        median(kidsOf(k).map((c) => below.get(c)).filter((v) => v != null)));
+    }
+  }
+
+  const cy = new Map(); // centre y, before normalisation
+  const pinned = new Set(); // the spine: never moved by the overlap pass
+
+  if (mode === "compact") {
+    // Minimum bounding box: pack every layer from a shared top edge. No spine,
+    // because straightening the trunk costs vertical space and an export is
+    // being read as a picture, not traced with a finger.
+    for (const keys of layers) {
+      let y = 0;
+      for (const k of keys) {
+        const b = box.get(k);
+        cy.set(k, y + b.h / 2);
+        y += b.h + STACK_GAP;
+      }
+    }
+  } else {
+    // SPINE RULE. Walk the repeated `/0` chain down from the sink and pin every
+    // module on it to one shared baseline. That run is the signal path; a
+    // player traces it with a finger, and a staircase makes them stop and
+    // re-read at every step.
+    const root = byKey.has("amp") ? "amp" : layers[maxCol][0];
+    for (let k = root; k && byKey.has(k); k = k === "amp" ? "node" : `${k}/0`) {
+      if (byKey.get(k).is_mod) break;
+      pinned.add(k);
+    }
+    // Audio: `/0` continues the local baseline, `/1` is the deliberate
+    // departure. The sign is fixed upward rather than the plan's ±, because
+    // modulation owns "below" — if a branch could also go down, the two kinds
+    // of departure would look identical at a glance, which is the one thing
+    // this rule exists to prevent.
+    const placeAudio = (key, y) => {
+      cy.set(key, y);
+      const h = box.get(key).h;
+      const kids = key === "amp" ? ["node"] : [`${key}/0`, `${key}/1`];
+      kids.forEach((c, i) => {
+        if (!byKey.has(c) || byKey.get(c).is_mod) return;
+        const ch = box.get(c).h;
+        placeAudio(c, i === 0 ? y : y - (h / 2 + GUTTER + ch / 2));
+      });
+    };
+    placeAudio(root, 0);
+
+    // Modulation gets its own band under the whole audio field. Chains are
+    // packed into rows by the layers they span — two modulators that never
+    // share a column share a row — so the band costs the least height it can
+    // while still never colliding, and a chain never has to kink to dodge a
+    // neighbour the way a per-layer push-down would make it.
+    let audioBottom = -Infinity;
+    for (const [k, y] of cy) audioBottom = Math.max(audioBottom, y + box.get(k).h / 2);
+    const chains = [];
+    for (const m of rack.modules) {
+      if (!m.is_mod || !m.key.endsWith("/m")) continue;
+      const rel = new Map();
+      (function walk(key, y) {
+        rel.set(key, y);
+        const h = box.get(key).h;
+        [`${key}/0`, `${key}/1`].forEach((c, i) => {
+          if (!byKey.has(c)) return;
+          walk(c, i === 0 ? y : y + (h / 2 + GUTTER + box.get(c).h / 2));
+        });
+      })(m.key, 0);
+      const ch = { rel, top: Infinity, bot: -Infinity, l0: Infinity, l1: -Infinity };
+      for (const [k, y] of rel) {
+        ch.top = Math.min(ch.top, y - box.get(k).h / 2);
+        ch.bot = Math.max(ch.bot, y + box.get(k).h / 2);
+        ch.l0 = Math.min(ch.l0, layerOf(k));
+        ch.l1 = Math.max(ch.l1, layerOf(k));
+      }
+      chains.push(ch);
+    }
+    const rows = [];
+    for (const ch of chains) {
+      let r = rows.findIndex((row) => row.every((c) => c.l1 < ch.l0 || c.l0 > ch.l1));
+      if (r < 0) r = rows.push([]) - 1;
+      rows[r].push(ch);
+    }
+    // Clearance is a gutter plus the `→ cut` label the mod jack prints under
+    // the plate it belongs to; without the second term the band lands on top
+    // of the very text that says what it modulates.
+    let top = audioBottom + GUTTER + 18;
+    for (const row of rows) {
+      for (const c of row) for (const [k, y] of c.rel) cy.set(k, top + (y - c.top));
+      top += Math.max(...row.map((c) => c.bot - c.top)) + STACK_GAP;
+    }
+  }
+
+  // Priority method: the spine is immovable and everything else yields around
+  // it. A layer is resolved outward from its pinned plate in both directions
+  // and never through it — resolving a layer top-down would bend the trunk,
+  // which is the whole thing we just spent the y-assignment straightening.
+  for (const keys of layers) {
+    const ord = keys.slice().sort((a, b) => cy.get(a) - cy.get(b));
+    const p = ord.findIndex((k) => pinned.has(k));
+    const anchor = p >= 0 ? p : 0;
+    for (let i = anchor - 1; i >= 0; i--) {
+      const lim =
+        cy.get(ord[i + 1]) - box.get(ord[i + 1]).h / 2 - STACK_GAP - box.get(ord[i]).h / 2;
+      if (cy.get(ord[i]) > lim) cy.set(ord[i], lim);
+    }
+    for (let i = anchor + 1; i < ord.length; i++) {
+      const lim =
+        cy.get(ord[i - 1]) + box.get(ord[i - 1]).h / 2 + STACK_GAP + box.get(ord[i]).h / 2;
+      if (cy.get(ord[i]) < lim) cy.set(ord[i], lim);
+    }
+  }
+
+  // Layer bands are as wide as their widest plate, and plates are right-
+  // aligned inside them so every `out` jack in a layer departs from the same
+  // x. Cables then read as a bundle rather than as a ragged fan.
+  const bandW = layers.map((keys) => Math.max(...keys.map((k) => box.get(k).w)));
+  const xs = [];
+  let x = 0;
+  for (let l = 0; l < layers.length; l++) {
+    xs[l] = x;
+    x += bandW[l] + GUTTER;
+  }
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const m of rack.modules) {
+    const b = box.get(m.key);
+    minY = Math.min(minY, cy.get(m.key) - b.h / 2);
+    maxY = Math.max(maxY, cy.get(m.key) + b.h / 2);
+  }
+  const pos = new Map();
+  for (const m of rack.modules) {
+    const b = box.get(m.key);
+    const l = maxCol - m.column;
+    pos.set(m.key, {
+      x: xs[l] + bandW[l] - b.w,
+      y: cy.get(m.key) - b.h / 2 - minY,
+      w: b.w,
+      h: b.h,
+      perRow: b.perRow,
+    });
+  }
+  return { pos, natW: x - GUTTER, natH: maxY - minY };
 }
 
 function moduleLockAddrs(mod) {
@@ -3320,7 +3580,14 @@ function renderSubject() {
 // Shared rack renderer: the interactive workbench and the read-only duel
 // minis draw through the same code, so the circuit always looks the same.
 function buildRack(svg, rack, opts) {
-  const { interactive = false, locks = new Set(), minW = 0, minH = 0, fit = false } = opts || {};
+  const {
+    interactive = false,
+    locks = new Set(),
+    minW = 0,
+    minH = 0,
+    fit = false,
+    mode = layoutMode,
+  } = opts || {};
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
   // Light comes from 315° (top-left) everywhere: plate bevel, knob body,
@@ -3346,24 +3613,12 @@ function buildRack(svg, rack, opts) {
     </g>`;
   svg.appendChild(defs);
 
-  // Columns: amp (col 0) sits rightmost; deeper modules leftward.
-  const maxCol = Math.max(...rack.modules.map((m) => m.column));
-  const byCol = new Map();
-  for (const m of rack.modules) {
-    const cx = maxCol - m.column;
-    if (!byCol.has(cx)) byCol.set(cx, []);
-    byCol.get(cx).push(m);
-  }
-  const nCols = maxCol + 1;
-  const pos = new Map();
-  let maxHeight = 0;
-  for (const [, mods] of byCol) {
-    let stack = 0;
-    for (const m of mods) stack += moduleHeight(m) + 16;
-    maxHeight = Math.max(maxHeight, stack);
-  }
-  const natW = nCols * COL_W + 30;
-  const natH = maxHeight + 24;
+  // Arrangement is decided by `layout` and consumed here. The renderer never
+  // computes a coordinate of its own any more — that separation is what lets a
+  // second mode be a second y-assignment instead of a second renderer.
+  const L = layout(rack, mode);
+  const natW = L.natW + 30;
+  const natH = L.natH + 24;
   const svgW = Math.max(minW, natW);
   const svgH = Math.max(minH, natH);
   // Fill the frame. The rack used to stretch its SVG to the container while
@@ -3389,20 +3644,74 @@ function buildRack(svg, rack, opts) {
   const layoutH = fit ? natH : viewH;
   // ...and centre horizontally, which it never did (vertical always was).
   const xOff = fit ? 15 : Math.max(15, (viewW - natW) / 2 + 15);
-  for (const [cx, mods] of byCol) {
-    const total = mods.reduce((s, m) => s + moduleHeight(m) + 16, -16);
-    let y = (layoutH - total) / 2;
-    for (const m of mods) {
-      const h = moduleHeight(m);
-      pos.set(m.key, { x: xOff + cx * COL_W, y, w: MOD_W, h });
-      y += h + 16;
-    }
+  const yOff = (layoutH - L.natH) / 2;
+  const pos = new Map();
+  for (const [k, b] of L.pos) {
+    pos.set(k, { x: b.x + xOff, y: b.y + yOff, w: b.w, h: b.h, perRow: b.perRow });
   }
 
-  // Wires under modules.
-  const wireLayer = svgEl("g", {});
+  // Three layers, in this order: plates, then cables, then controls.
+  //
+  // Cables used to paint *under* the plates, so a run that crossed a module
+  // simply vanished and reappeared — the graph told you two modules were
+  // connected and then hid the evidence. Front-panel cables are physically
+  // true for this instrument, so they go on top, with a casing and a cast
+  // shadow (see .rack-wires in style.css) that makes a crossing read as a
+  // cable lying on a panel rather than as a line drawn through it. Controls
+  // then go above the cables, because a cable that covers a knob you have to
+  // grab is a worse problem than the one we just fixed.
+  const plateLayer = svgEl("g", {}, "rack-plates");
+  const wireLayer = svgEl("g", {}, "rack-wires");
+  const ctrlLayer = svgEl("g", {}, "rack-controls");
+  svg.appendChild(plateLayer);
   svg.appendChild(wireLayer);
+  svg.appendChild(ctrlLayer);
   const modByKey = new Map(rack.modules.map((m) => [m.key, m]));
+
+  // Orthogonal routing for modulation. The old cubics anchored on "the source
+  // is left of and above the target" and drew crossed kinks the moment the
+  // layout stopped guaranteeing it. A right angle is also what a patch cable
+  // does when it is tied to a rail, which is what the mod band is.
+  //
+  // `orth` takes a polyline and rounds its corners, clamping each radius to
+  // half the shorter of the two segments so a short run can never make a
+  // corner overshoot back into the one before it.
+  const orth = (raw) => {
+    const p = [raw[0]];
+    for (const q of raw.slice(1)) {
+      const last = p[p.length - 1];
+      if (Math.abs(q[0] - last[0]) > 0.5 || Math.abs(q[1] - last[1]) > 0.5) p.push(q);
+    }
+    if (p.length < 2) return `M ${p[0][0]} ${p[0][1]}`;
+    let d = `M ${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
+    for (let i = 1; i < p.length - 1; i++) {
+      const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
+      const la = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+      const r = Math.min(12, la / 2, lc / 2);
+      d += ` L ${(b[0] + ((a[0] - b[0]) / la) * r).toFixed(1)} ${(b[1] + ((a[1] - b[1]) / la) * r).toFixed(1)}`;
+      d += ` Q ${b[0].toFixed(1)} ${b[1].toFixed(1)}` +
+        ` ${(b[0] + ((c[0] - b[0]) / lc) * r).toFixed(1)} ${(b[1] + ((c[1] - b[1]) / lc) * r).toFixed(1)}`;
+    }
+    const e = p[p.length - 1];
+    return `${d} L ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
+  };
+  // The mod jack is on the plate's *bottom* edge, so the cable has to arrive
+  // from below or it crosses the panel it is plugging into — which is exactly
+  // what happens in compact mode, where a modulator often sits above its
+  // target. Drop to a bus level under both plates first, then rise into it.
+  // In chain mode the modulator is already below and both jogs collapse away,
+  // leaving the plain out-and-up the mod band was designed to read as.
+  const modRoute = (x1, y1, x2, y2) => {
+    const yb = Math.max(y1, y2 + 26);
+    const xm = yb > y1 + 0.5 ? x1 + 22 : x1;
+    return orth([[x1, y1], [xm, y1], [xm, yb], [x2, yb], [x2, y2]]);
+  };
+  // Into the left edge of the next plate in a CV chain: leave horizontally,
+  // step across at the midpoint, arrive horizontally.
+  const chainRoute = (x1, y1, x2, y2) =>
+    orth([[x1, y1], [(x1 + x2) / 2, y1], [(x1 + x2) / 2, y2], [x2, y2]]);
+
   for (const w of rack.wires) {
     const from = pos.get(w.from);
     const to = pos.get(w.to);
@@ -3411,17 +3720,30 @@ function buildRack(svg, rack, opts) {
     const y1 = from.y + from.h / 2;
     let x2, y2, d;
     if (w.kind === "mod") {
-      // Mod cables land on the target's bottom mod jack.
-      x2 = to.x + to.w / 2;
-      y2 = to.y + to.h;
-      const dx = Math.max(24, (x2 - x1) / 2);
-      d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + 16}, ${x2} ${y2 + 26}, ${x2} ${y2}`;
+      const toMod = modByKey.get(w.to);
+      if (toMod && toMod.is_mod) {
+        // A link inside a CV chain: both plates sit on the same mod row, so
+        // the honest route is a straight run into the next plate's left edge.
+        x2 = to.x;
+        y2 = to.y + to.h / 2;
+        d = chainRoute(x1, y1, x2, y2);
+      } else {
+        // Into an audio module's bottom jack: out along the mod row, then one
+        // vertical into the plate's bottom edge.
+        x2 = to.x + to.w / 2;
+        y2 = to.y + to.h;
+        d = modRoute(x1, y1, x2, y2);
+      }
     } else {
-      // Audio cables land on the target's in jack (mix: a or b).
+      // Audio cables land on the target's in jack.
       const toMod = modByKey.get(w.to);
       x2 = to.x;
       y2 = to.y + to.h / 2;
-      if (toMod && toMod.kind === "mix") {
+      // A binary node's two sockets sit at 0.38/0.68 of the plate — all six of
+      // them, not just `mix`. Testing for `kind === "mix"` left a ducker's key
+      // cable and a vocoder's carrier cable landing on the plate edge halfway
+      // between the two jacks they were supposed to terminate in.
+      if (toMod && MOD_BY_KIND[toMod.kind]?.ins === 2) {
         y2 = to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68);
       }
       // Sag proportional to span. A flat `max(24, span/2)` put control point 1
@@ -3434,7 +3756,10 @@ function buildRack(svg, rack, opts) {
       const sag = Math.min(span * 0.22, 46) + Math.abs(y2 - y1) * 0.06;
       d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
     }
-    const glowEl = svgEl("path", { d }, `wire ${w.kind}-glow`);
+    // The casing is the cable's jacket, not a glow: it is background-coloured
+    // and wider than the ink, so a run crossing a plate cuts a channel through
+    // it instead of tinting it.
+    const caseEl = svgEl("path", { d }, `wire ${w.kind}-case`);
     const wireEl = svgEl("path", { d }, `wire ${w.kind}`);
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
@@ -3450,12 +3775,12 @@ function buildRack(svg, rack, opts) {
           if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
         }
       }
-      for (const el of [glowEl, wireEl]) {
-        el.classList.add("pulse");
-        el.style.animationDuration = `${dur.toFixed(2)}s`;
-      }
+      // Only the ink breathes. A casing that pulsed would read as the cable
+      // itself thinning and thickening, which is not what modulation does.
+      wireEl.classList.add("pulse");
+      wireEl.style.animationDuration = `${dur.toFixed(2)}s`;
     }
-    wireLayer.appendChild(glowEl);
+    wireLayer.appendChild(caseEl);
     wireLayer.appendChild(wireEl);
   }
 
@@ -3484,25 +3809,38 @@ function buildRack(svg, rack, opts) {
 
   for (const m of rack.modules) {
     const p = pos.get(m.key);
+    const box = { w: p.w, h: p.h, perRow: p.perRow };
+    // `plateG` is the faceplate — panel, bevel, screws, silkscreen — and lives
+    // under the cables. `g` is everything you can put a hand on, and lives
+    // over them. Same transform, same `data-kind`, so every existing selector
+    // (`g[data-kind="amp"] .mod-plate`, `[data-addr]`, `.jack[data-childkey]`)
+    // still finds what it went looking for.
+    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind });
     const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind });
+    plateLayer.appendChild(plateG);
+    ctrlLayer.appendChild(g);
     const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}`;
     const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
     plate.setAttribute("filter", "url(#plateShadow)");
-    g.appendChild(plate);
+    plateG.appendChild(plate);
     // Faceplate material: a lit top edge and a shaded bottom edge give the
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
     // diagram rather than an instrument you could put your hands on.
-    g.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
-    g.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
+    plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
+    plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
     for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
       const use = svgEl("use", { x: sx, y: sy }, "plate-screw");
       use.setAttribute("href", "#screw");
-      g.appendChild(use);
+      plateG.appendChild(use);
     }
     const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}`);
     title.textContent = m.title;
-    g.appendChild(title);
+    // A title is silkscreened onto the panel, so it belongs under the cables
+    // — but it must not be *squeezed* by them: the fit pass measures against
+    // the room left between the left edge and the control well.
+    title.dataset.fit = String(Math.max(38, p.w - 46));
+    plateG.appendChild(title);
 
     if (interactive) {
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
@@ -3650,7 +3988,8 @@ function buildRack(svg, rack, opts) {
         ? (fkind.kind.options[Math.round(fkind.value)] || "").replace(/^svf /, "svf-")
         : null;
     m.knobs.forEach((k, i) => {
-      const { x, y } = knobPos(m, i);
+      const { x, y } = knobPos(m, i, box);
+      const pitch = knobPitch(m, i, box);
       const kg = svgEl("g", { transform: `translate(${x},${y})` });
       const locked = locks.has(k.addr);
 
@@ -3709,7 +4048,9 @@ function buildRack(svg, rack, opts) {
           attachKnobDrag(hit, m, k);
         }
       } else {
-        const bw = 62;
+        // The chip is as wide as its slot allows, capped at the 62 units the
+        // longest option name ("triangle", "notch out") was drawn against.
+        const bw = Math.max(40, Math.min(62, pitch - 4));
         const body = svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body");
         const txt = svgEl("text", { y: 4 }, "enum-text");
         txt.textContent = enumDisplay(k);
@@ -3773,7 +4114,7 @@ function buildRack(svg, rack, opts) {
       lbl.textContent = silkLabel(k.label);
       // Available width is the knob pitch less a hair of breathing room.
       lbl.dataset.fit = String(
-        Math.max(24, MOD_W / (Math.min(KNOBS_PER_ROW, m.knobs.length) + 1) - 6)
+        Math.max(24, pitch - 6)
       );
       kg.appendChild(lbl);
       if (k.kind.t === "continuous") {
@@ -3783,7 +4124,6 @@ function buildRack(svg, rack, opts) {
       }
       g.appendChild(kg);
     });
-    svg.appendChild(g);
   }
 
   // Must run after insertion — `getBBox` needs a laid-out element.
@@ -3928,7 +4268,7 @@ $("promote-b").onclick = () => {
   showView("play");
 };
 
-// Faceplate silkscreen. Two knobs share a `MOD_W / 3` pitch (~56 user units),
+// Faceplate silkscreen. Two knobs on a 168-unit plate share a 56-unit pitch,
 // and at the rack label size anything past seven characters overruns its
 // neighbour — `resonance` measures 68 units against a 56 unit pitch, which
 // printed as `RESONANCMOD DEPTH` on the filter. Hardware panels abbreviate for
@@ -4288,6 +4628,27 @@ $("lock-clear").onclick = () => {
   wb.locks.clear();
   renderRack();
 };
+// The arrangement switch. Deliberately a plain toggle rather than a menu: two
+// modes is not a menu's worth of choice, and the label says which one you are
+// in rather than which one you would get, because the rack in front of you is
+// the only preview either mode needs.
+function syncLayoutBtn() {
+  const b = $("rack-layout");
+  if (!b) return;
+  b.textContent = layoutMode === "compact" ? "compact" : "chain";
+  b.setAttribute("aria-pressed", String(layoutMode === "compact"));
+  b.closest(".tt").title =
+    layoutMode === "compact"
+      ? "Compact: layers packed tight. Click for the straight signal chain."
+      : "Chain: the signal path on one baseline. Click to pack it tight.";
+}
+$("rack-layout").onclick = () => {
+  layoutMode = layoutMode === "chain" ? "compact" : "chain";
+  try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+  syncLayoutBtn();
+  renderRack();
+};
+syncLayoutBtn();
 
 
 // ===========================================================================
