@@ -126,6 +126,12 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         }
         break;
       }
+      // Loudness makeup on its own, without a patch swap. The bench now hands
+      // the worklet a new tree before the featurizer has measured its gain, so
+      // the makeup that rode with the patch was one edit stale; correcting it
+      // is a single atomic write, and paying for it with a second set_patch
+      // would undo the whole point of speaking early.
+      case "makeup": if (this.poly && m.makeup != null) this.poly.set_makeup(m.makeup); break;
       case "param": {
         // Live knob write: straight into the running voices' atomics — no
         // recompile, state survives, audible next sample. A miss means the
@@ -232,6 +238,9 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     setPatch(tree, makeup) {
       node.port.postMessage({ type: "patch", tree, makeup });
+    },
+    setMakeup(makeup) {
+      node.port.postMessage({ type: "makeup", makeup });
     },
     noteOn(note, vel) {
       node.port.postMessage({ type: "on", note, vel });

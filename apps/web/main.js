@@ -108,7 +108,52 @@ let knobDragging = false;
 
 // Addresses with no live audio handle (enums, structural sites): edits to
 // these need a voice re-patch when the engine confirms them.
+//
+// Cleared on every structural edit — see the `bench` handler. Trace addresses
+// are positional, so an insert renumbers them, and an entry learned before the
+// edit afterwards names a different knob: one that is perfectly live, forced
+// into a full patch swap on every bench reply for the rest of the session.
 const nonLiveAddrs = new Set();
+
+// What the *voices* are running, as the exact string the engine sent — not a
+// re-serialization of `wb.tree`, because only the original bytes can answer
+// "is the tree the bench is describing the one already in the worklet?", and a
+// round trip through JSON.parse is not obliged to give back the same bytes.
+let liveTreeJson = null;
+let liveMakeup = null;
+// What the *bench* holds, which is routinely ahead of the voices: a continuous
+// knob turn is written straight into the running voices and deliberately never
+// re-patched, so the genome moves and the compiled tree does not. This is what
+// `param_miss` heals from when that assumption turns out to be wrong.
+let benchTreeJson = null;
+let benchMakeup = null;
+// Bumped on every tree that reaches the voices. The `param_miss` self-heal
+// keys off it so a burst of misses against one tree costs one re-patch rather
+// than one per knob write.
+let liveRev = 0;
+let healedRev = -1;
+// The tree handed to the worklet ahead of its vet (see the worker's
+// apply/featurize split), so the bench reply can tell "already playing this"
+// from "this is new".
+let liveOptimisticJson = null;
+let liveMuted = false;
+
+function setLivePatchJson(json, makeup) {
+  liveTreeJson = json;
+  liveMakeup = makeup;
+  liveRev += 1;
+}
+
+// The one place the instrument is silenced without touching the player's
+// fader. `alarm()` has claimed "Muted" on an unvetted state since the beginning
+// and it was never true: continuous knobs write straight into the running
+// voices, and structural edits now do too, so by the time the vet says the
+// patch can run away it is already the thing making noise.
+function setLiveMuted(on) {
+  if (!live || on === liveMuted) return;
+  liveMuted = on;
+  live.setVolume(on ? 0 : 1);
+}
 
 // ---------- persistence (IndexedDB autosave) ----------
 // One record: {session: <engine SessionState JSON>, ui: {stars, cut, vol, oct, perf}}.
@@ -405,8 +450,18 @@ worker.onmessage = (e) => {
       break;
     }
     case "tree_json": {
-      if (m.json && m.json !== "null" && live) {
-        live.setPatch(m.json, m.makeup);
+      if (!(m.json && m.json !== "null" && live)) break;
+      live.setPatch(m.json, m.makeup);
+      setLivePatchJson(m.json, m.makeup);
+      if (m.edited !== undefined) {
+        // The bench speaking early: the worker posts the edited tree the
+        // instant it is adopted and featurizes afterwards, so this arrives
+        // ~half a second before the `bench` reply that vets it. The patch is
+        // in the voices now; the vet lands later and mutes if it fails.
+        liveOptimisticJson = m.json;
+        livePatchId = null;
+        setLiveLabel(`${nameOf(wb.subjectId)} (edited)`);
+      } else {
         livePatchId = m.id;
         setLiveLabel(nameOf(m.id));
       }
@@ -508,6 +563,10 @@ worker.onmessage = (e) => {
         wb.subjectId = m.subject;
         wb.dirty = false;
         wb.locks = new Set();
+        // A different patch entirely: nothing learned about the old one's
+        // addresses says anything about this one's, and a survivor here is
+        // the same stale-entry dropout a structural edit used to leave.
+        nonLiveAddrs.clear();
         undoStack.length = 0;
         redoStack.length = 0;
         note(`${nameOf(m.subject)} on the bench`);
@@ -522,8 +581,19 @@ worker.onmessage = (e) => {
           };
         }
       }
+      const structural = m.edited === "structure" || m.edited === "restore";
       if (m.edited !== undefined) {
         wb.dirty = true;
+        if (structural) {
+          // Everything keyed by trace address is invalidated by the same
+          // fact — the addresses moved. Locks were already being cleared
+          // here; `nonLiveAddrs` never was, and it is the more expensive
+          // omission: one stale entry makes a genuinely live knob force a
+          // full patch swap on every bench reply for the rest of the
+          // session, which is a dropout and an envelope retrigger roughly
+          // twice a second for as long as you keep turning it.
+          nonLiveAddrs.clear();
+        }
         if (m.edited === "restore" && wb.locks.size > 0) {
           wb.locks.clear(); // restored tree may have different addresses
         }
@@ -543,23 +613,41 @@ worker.onmessage = (e) => {
       }
       if (m.treeJson && m.treeJson !== "null") {
         wb.tree = JSON.parse(m.treeJson);
+        benchTreeJson = m.treeJson;
+        benchMakeup = m.makeup;
       }
       // The keyboard follows the bench — but continuous knob turns were
       // already applied live inside the worklet (zero-recompile), so only
       // subject loads, structural changes, and non-live params re-patch.
-      const structural = m.edited === "structure" || m.edited === "restore";
       const paramNonLive =
         m.edited !== undefined && !structural && nonLiveAddrs.has(m.edited);
       const subjectLoad = m.subject !== undefined;
       if (m.edited === "restore") restoreInFlight = false;
-      if (
+      if (structural) structInFlight = false;
+      // Structural edits already reached the voices from the worker's early
+      // `tree_json` post. Swapping the identical tree in again would buy a
+      // second fade-out, rebuild and re-attack for no change in sound; all
+      // that is left to reconcile is the makeup gain, which the early post
+      // could not know because measuring it *is* the expensive half.
+      const spokeEarly = liveOptimisticJson !== null && liveOptimisticJson === m.treeJson;
+      liveOptimisticJson = null;
+      if (spokeEarly) {
+        if (live && m.makeup != null) live.setMakeup(m.makeup);
+        liveMakeup = m.makeup;
+      } else if (
         m.treeJson && m.treeJson !== "null" && live &&
         (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
       ) {
         live.setPatch(m.treeJson, m.makeup);
+        setLivePatchJson(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
         setLiveLabel(wb.dirty ? `${nameOf(wb.subjectId)} (edited)` : nameOf(wb.subjectId));
       }
+      // Optimism's other half: the sound arrived before the verdict. A patch
+      // that fails vetting can self-oscillate, and it is already in the
+      // voices, so the mute has to be real. Any vet that passes lifts it.
+      if (wb.vetOk) setLiveMuted(false);
+      else if (spokeEarly) setLiveMuted(true);
       alarm(
         wb.vetOk
           ? null
@@ -580,6 +668,7 @@ worker.onmessage = (e) => {
       } else if (auditionOnSettle) {
         auditionOnSettle = false;
       }
+      drainStruct();
       break;
     }
     // A request that arrived before the engine finished booting. The worker
@@ -593,11 +682,19 @@ worker.onmessage = (e) => {
     case "edit_rejected": {
       if (m.error) note(`edit rejected: ${m.error}`);
       editInFlight = false;
+      // A rejected op never reached the tree, so nothing was posted early and
+      // nothing is in flight; the next one may go. `restoreInFlight` matters
+      // now that a whole-tree replace can *be* rejected (the ceiling check):
+      // left set, it would wedge undo and redo shut for the rest of the
+      // session, since both are gated on it.
+      structInFlight = false;
+      restoreInFlight = false;
       if (editQueue) {
         const q = editQueue;
         editQueue = null;
         sendEdit(q.addr, q.value, q.isIndex);
       }
+      drainStruct();
       break;
     }
     case "committed": {
@@ -1321,6 +1418,35 @@ function renderFailed(id, reason) {
   note(`Couldn't render ${nameOf(id)} — ${reason || "the engine returned no audio"}.`);
 }
 
+// The worklet reporting that an address it was asked to write does not exist
+// in the patch it is running. That is the gesture→sound contract broken: the
+// knob moved, the genome moved, and the sound did not.
+//
+// Remembering the address for next time was never a fix. `nonLiveAddrs` is
+// consulted *synchronously* when the bench reply lands, and this message
+// arrives asynchronously from the audio thread — the only reason annotating
+// ever appeared to work is that the worklet answers in ~3 ms and the worker in
+// ~500, so the note usually beat the reply it was meant for. It is a race, and
+// the first knob of a session is where it loses. So heal it here rather than
+// filing it: hand the voices the tree the bench actually holds, and the
+// address exists again.
+//
+// Once per tree, though, and only when the voices are genuinely behind. A knob
+// drag is a stream of writes, every one of them misses until the re-patch
+// lands, and a re-patch per write is a dropout per write — the exact storm
+// this is meant to end. When the worklet already has the newest tree the miss
+// means the address has no live handle at all (an enum, a structural site);
+// re-patching would buy a dropout and change nothing, and the bench reply's
+// own non-live path already covers it.
+function healParamMiss(addr) {
+  nonLiveAddrs.add(addr);
+  if (!live || !benchTreeJson || benchTreeJson === "null") return;
+  if (benchTreeJson === liveTreeJson || healedRev === liveRev) return;
+  live.setPatch(benchTreeJson, benchMakeup);
+  setLivePatchJson(benchTreeJson, benchMakeup);
+  healedRev = liveRev;
+}
+
 // ---------- live instrument ----------
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
@@ -1328,7 +1454,7 @@ async function bootLiveAudio() {
   live.onMessage((m) => {
     (window.__ricLog = window.__ricLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
-    if (m.type === "param_miss") nonLiveAddrs.add(m.addr);
+    if (m.type === "param_miss") healParamMiss(m.addr);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
       downloadWav(m.samples, m.sampleRate);
     }
@@ -3665,9 +3791,38 @@ function buildRack(svg, rack, opts) {
 }
 
 // ---------- structural edits ----------
+// Structural edits are strictly serialized, one in flight at a time.
+//
+// Two reasons, and the second is the one with a body count. Every op addresses
+// a node by its *position* in the tree, so an op built against the tree on
+// screen and applied after another op has already reshaped that tree does not
+// mean what the player meant — it means whatever now happens to live at that
+// key. And the persisted console log from earlier builds carries
+// `recursive use of an object detected … at WasmEngine.edit_structure`, which
+// is what overlapping calls into one wasm object look like from the outside.
+// Queue rather than drop: the ops came from deliberate gestures, and each is
+// re-sent only once the tree it will land on is the tree it was aimed at.
+let structInFlight = false;
+const structQueue = [];
 function sendStruct(op) {
+  if (structInFlight) {
+    // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
+    // deeper than a rapid double-click means the worker is wedged, and
+    // replaying a minute of stale intent into a tree that has moved on is
+    // worse than saying so.
+    if (structQueue.length >= 8) {
+      return note("still applying the last edit — give it a moment");
+    }
+    structQueue.push(op);
+    return;
+  }
+  structInFlight = true;
   pushUndo();
   send({ type: "edit_structure", op });
+}
+function drainStruct() {
+  if (structInFlight || structQueue.length === 0) return;
+  sendStruct(structQueue.shift());
 }
 
 // The module vocabulary lives in exactly one place now (MODULES / the node

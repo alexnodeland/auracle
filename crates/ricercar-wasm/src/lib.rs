@@ -26,8 +26,8 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use ricercar_features::{featurize_memo, Audition, CachedFeatures, Features, PhraseSpec};
 use ricercar_grammar::{
-    apply_struct_op, describe, presets, set_param, ParamValue, PatchGrammarPrior, PatchTree,
-    StructOp,
+    apply_struct_op, describe, presets, set_param, validate_tree, ParamValue, PatchGrammarPrior,
+    PatchTree, StructOp,
 };
 use ricercar_session::{
     BankEntry, Engine, Origin, PreFeaturized, Profile, RenderPolicy, SessionConfig, SessionState,
@@ -1004,11 +1004,19 @@ impl WasmEngine {
         }
     }
 
-    /// Apply a structural edit (replace/insert/delete/set_mod/swap_mix, as
-    /// JSON — see `ricercar_grammar::StructOp`) to the workbench tree, then
-    /// re-render and re-vet. Returns an empty string on success or the
-    /// rejection reason.
-    pub fn edit_structure(&mut self, op_json: &str) -> String {
+    /// Adopt a structural edit (replace/insert/delete/set_mod/swap_mix, as
+    /// JSON — see `ricercar_grammar::StructOp`) **without** re-rendering.
+    /// Returns an empty string on success or the rejection reason.
+    ///
+    /// Split out of [`Self::edit_structure`] because the render is the entire
+    /// cost. The live worklet can swap a new tree in ~23 ms; the featurizer
+    /// takes the better part of a second, and the only thing that ever put it
+    /// between a player's gesture and the sound was that the two lived in one
+    /// call. A caller that splits gets to speak to the audio thread first and
+    /// featurize after — but it owes a following [`Self::edit_revet`], because
+    /// until then `edit_render`/`edit_vet_ok` describe the tree *before* this
+    /// edit.
+    pub fn edit_structure_apply(&mut self, op_json: &str) -> String {
         let Some(tree) = &self.bench_tree else {
             return "no patch on the bench".into();
         };
@@ -1016,20 +1024,8 @@ impl WasmEngine {
             Ok(op) => op,
             Err(e) => return format!("bad op: {e}"),
         };
-        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         match apply_struct_op(tree, &op) {
             Ok(edited) => {
-                match featurize_memo(&edited, &phrase, &memo, true) {
-                    Ok((cf, audio)) => {
-                        self.bench_gain_db = cf.features.gain_db;
-                        self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
-                        self.bench_vet_ok = true;
-                    }
-                    Err(_) => {
-                        self.bench_render = None;
-                        self.bench_vet_ok = false;
-                    }
-                }
                 self.bench_tree = Some(edited);
                 String::new()
             }
@@ -1037,16 +1033,40 @@ impl WasmEngine {
         }
     }
 
-    /// Replace the whole workbench tree (undo/redo restore path), then
-    /// re-render and re-vet. Returns an empty string on success or the
-    /// rejection reason.
-    pub fn edit_set_tree(&mut self, tree_json: &str) -> String {
+    /// Adopt a whole replacement workbench tree (undo/redo restore, and every
+    /// client-side rewrite the graph editor commits) **without** re-rendering.
+    /// Returns an empty string on success or the rejection reason.
+    ///
+    /// The ceiling check is the load-bearing line. This route does not go
+    /// through `apply_struct_op`, so until `validate_tree` existed it was a
+    /// hole straight through MAX_SIZE / MAX_DEPTH / MAX_MOD_DEPTH — and it is
+    /// exactly the route a move or a reconnect uses. A patch built past those
+    /// ceilings is not just big: it has ~zero mass under the prior, sits
+    /// outside the range the standardizer was fitted on, and gets mutated back
+    /// inside them by the next refinement, so the player's structure
+    /// disappears on the next evolve with nothing ever having said no.
+    pub fn edit_set_tree_apply(&mut self, tree_json: &str) -> String {
         if self.bench_tree.is_none() {
             return "no patch on the bench".into();
         }
         let tree: PatchTree = match serde_json::from_str(tree_json) {
             Ok(t) => t,
             Err(e) => return format!("bad tree: {e}"),
+        };
+        if let Err(e) = validate_tree(&tree) {
+            return e;
+        }
+        self.bench_tree = Some(tree);
+        String::new()
+    }
+
+    /// Re-render and re-vet whatever tree is currently on the bench.
+    ///
+    /// The expensive half of an edit, callable on its own so the cheap half
+    /// can be delivered to the ear first. Idempotent.
+    pub fn edit_revet(&mut self) {
+        let Some(tree) = self.bench_tree.clone() else {
+            return;
         };
         let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         match featurize_memo(&tree, &phrase, &memo, true) {
@@ -1060,8 +1080,25 @@ impl WasmEngine {
                 self.bench_vet_ok = false;
             }
         }
-        self.bench_tree = Some(tree);
-        String::new()
+    }
+
+    /// Apply a structural edit and re-render in one call — apply + revet, for
+    /// callers with nothing to do in between.
+    pub fn edit_structure(&mut self, op_json: &str) -> String {
+        let err = self.edit_structure_apply(op_json);
+        if err.is_empty() {
+            self.edit_revet();
+        }
+        err
+    }
+
+    /// Replace the whole workbench tree and re-render in one call.
+    pub fn edit_set_tree(&mut self, tree_json: &str) -> String {
+        let err = self.edit_set_tree_apply(tree_json);
+        if err.is_empty() {
+            self.edit_revet();
+        }
+        err
     }
 
     /// The workbench audition buffer (empty when the current edit failed
