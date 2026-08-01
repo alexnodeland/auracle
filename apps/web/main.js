@@ -645,6 +645,7 @@ worker.onmessage = (e) => {
     case "ranked": {
       if (views) views.ranked = m.ranked;
       renderBank();
+      renderNodeBank(); // pool support and θ both move with the pool
       renderRack(); // subject label may show a new name
       scheduleSave();
       break;
@@ -1103,6 +1104,10 @@ function refreshInstruments() {
 
 // ---------- views (tabs) ----------
 function showView(name) {
+  // Nothing may stay in your hand across a view change: PLAY is only hidden,
+  // not torn down, so its sockets still match and the armed key handler would
+  // go on swallowing EVOLVE's arrow-key votes.
+  if (name !== "play") { disarm(); cancelPending(); }
   currentView = name;
   for (const v of ["play", "evolve", "taste"]) {
     $(`view-${v}`).classList.toggle("hidden", v !== name);
@@ -1553,9 +1558,12 @@ document.addEventListener("keydown", (e) => {
     if (!restoreInFlight) e.shiftKey ? doRedo() : doUndo();
     return;
   }
+  // A module in hand takes the arrow keys and Enter, so it is asked first.
+  if (nbArmedKeys(e)) { e.preventDefault(); return; }
   if (e.key === "Escape") {
     // One dismissal law for the keyboard too: Escape closes whatever floats,
     // and hands focus back to the control that opened it.
+    cancelPending();
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
       $("ovf-btn").setAttribute("aria-expanded", "false");
@@ -1566,6 +1574,17 @@ document.addEventListener("keydown", (e) => {
       $("bank-tour-btn").focus();
     }
     $("ctx-menu").classList.add("hidden");
+    return;
+  }
+  // `/` is the index. It is deliberately checked before the text-entry guard's
+  // sibling below, so it works from the rack, the bank or the keybed — but
+  // after it, so typing a slash into a field still types a slash.
+  if (e.key === "/" && currentView === "play" &&
+      !e.target?.closest?.("input, select, textarea, [contenteditable]")) {
+    e.preventDefault();
+    if (nbState.collapsed) nbSetCollapsed(false);
+    $("nb-q").focus();
+    $("nb-q").select();
     return;
   }
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -3105,7 +3124,7 @@ function renderRack() {
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
   renderSubject();
-  if (!hasRack) { svg.innerHTML = ""; return; }
+  if (!hasRack) { svg.innerHTML = ""; nbSync(); return; }
 
   buildRack(svg, wb.rack, {
     interactive: true,
@@ -3118,6 +3137,11 @@ function renderRack() {
   // of skipping the patch editor entirely.
   const first = $("rack-svg").querySelector("[data-addr]");
   if (first) first.setAttribute("tabindex", "0");
+
+  // The rack is rebuilt from scratch on every edit, which throws away the lit
+  // sockets. Re-light them, or a knob turn while something is in hand would
+  // silently leave the user holding a module with nowhere visible to put it.
+  nbSync();
 
   // Cache the amp faceplate for the per-note flash (see flashAmp).
   // Match the module *kind*, not its silkscreen: the title renders as
@@ -3408,9 +3432,25 @@ function buildRack(svg, rack, opts) {
       t.textContent = label;
       jg.appendChild(t);
       g.appendChild(jg);
+      // A socket is a place you can put something, so it is a control — the
+      // rack had no keyboard path to one, which made wiring the only gesture
+      // in the app a keyboard user could not perform at all.
+      if (interactive && data) {
+        jg.setAttribute("role", "button");
+        jg.setAttribute("tabindex", "-1");
+        jg.setAttribute("aria-label", `${label} socket`);
+      }
       return jg;
     };
-    const isSource = ["vco", "supersaw", "noise"].includes(m.kind);
+    // While a module is in hand, a socket is a destination, not a cable to
+    // pull: the same press has to mean "place here" instead of "unplug this".
+    const placeGuard = (j, ev) => {
+      if (!armed) return false;
+      ev.preventDefault();
+      nbSocketClick(j);
+      return true;
+    };
+    const isSource = SOURCE_KINDS.includes(m.kind);
     if (m.is_mod) {
       addJack(p.w, p.h / 2, "modjack", "out", "left");
     } else if (m.kind === "amp") {
@@ -3418,20 +3458,27 @@ function buildRack(svg, rack, opts) {
       if (interactive) {
         claimGesture(j);
         j.addEventListener("pointerdown", (ev) => {
+          if (placeGuard(j, ev)) return;
           ev.preventDefault();
           startWireDrag({ mode: "unplug-audio", childKey: "node", kind: "audio" }, ev);
         });
       }
     } else {
       if (!isSource) {
-        const ins = m.kind === "mix"
-          ? [[p.h * 0.38, "a", `${m.key}/0`], [p.h * 0.68, "b", `${m.key}/1`]]
-          : [[p.h / 2, "in", `${m.key}/0`]];
+        // A binary node's two sockets are not interchangeable and must not
+        // read as if they were: a ducker's second input is a *key*, and
+        // labelling it "b" tells the player nothing about what to plug in.
+        const spec = MOD_BY_KIND[m.kind];
+        const names = spec?.inNames || (spec?.ins === 2 ? ["a", "b"] : ["in"]);
+        const ins = spec?.ins === 2
+          ? [[p.h * 0.38, names[0], `${m.key}/0`], [p.h * 0.68, names[1], `${m.key}/1`]]
+          : [[p.h / 2, names[0], `${m.key}/0`]];
         for (const [jy, lbl, ck] of ins) {
           const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck });
           if (interactive) {
             claimGesture(j);
             j.addEventListener("pointerdown", (ev) => {
+              if (placeGuard(j, ev)) return;
               ev.preventDefault();
               startWireDrag({ mode: "unplug-audio", childKey: ck, kind: "audio" }, ev);
             });
@@ -3439,14 +3486,19 @@ function buildRack(svg, rack, opts) {
         }
       }
       addJack(p.w, p.h / 2, "", "out", "left");
-      if (m.kind === "filter" || m.kind === "fold") {
-        const j = addJack(p.w / 2, p.h, "modjack", "mod", "below", { "data-modkey": m.key });
+      // The mod jack names the port it drives. On a four-knob module an
+      // unlabelled "mod" input is a mystery — and now that eight different
+      // modules carry one, "mod" would mean eight different things.
+      const modDest = kindModTarget(m.kind);
+      if (modDest) {
+        const j = addJack(p.w / 2, p.h, "modjack", `→ ${modDest}`, "below", { "data-modkey": m.key });
         if (rack.wires.some((w) => w.kind === "mod" && w.to === m.key)) {
           j.classList.add("pulse");
         }
         if (interactive) {
           claimGesture(j);
           j.addEventListener("pointerdown", (ev) => {
+            if (placeGuard(j, ev)) return;
             if (!modAtKey(m.key)) return; // empty slot: target only
             ev.preventDefault();
             startWireDrag({ mode: "unplug-mod", key: m.key, kind: "mod" }, ev);
@@ -3605,68 +3657,72 @@ function buildRack(svg, rack, opts) {
 }
 
 // ---------- structural edits ----------
-const KIND_LABELS = {
-  vco: "vco", supersaw: "supersaw", noise: "noise", mix: "mix",
-  filter: "filter", fold: "wavefolder", delay: "delay", chorus: "chorus",
-  reverb: "reverb",
-};
-const SOURCE_KINDS = ["vco", "supersaw", "noise"];
-const PROC_KINDS = ["filter", "fold", "delay", "chorus", "reverb", "mix"];
-
 function sendStruct(op) {
   pushUndo();
   send({ type: "edit_structure", op });
 }
 
+// The module vocabulary lives in exactly one place now (MODULES / the node
+// bank), so this menu no longer reprints it. "replace with…" and "insert
+// after…" hand off to the rail with this socket already chosen and lit —
+// the inventory, its glyphs, its search and its one-sentence descriptions are
+// all things a nineteen-item context menu could never carry.
 function openStructMenu(mod, x, y) {
   const menu = $("ctx-menu");
   const items = [];
-  const item = (label, op, danger) =>
-    items.push(`<button class="cm-item${danger ? " danger" : ""}" data-op='${JSON.stringify(op)}'>${label}</button>`);
+  const item = (label, act, danger) =>
+    items.push(`<button class="cm-item${danger ? " danger" : ""}" data-act='${JSON.stringify(act)}'>${label}</button>`);
   const head = (t) => items.push(`<div class="cm-head">${t}</div>`);
 
   if (mod.kind === "amp") {
-    head("add at output");
-    for (const k of PROC_KINDS) item(`+ ${KIND_LABELS[k]}`, { op: "insert", key: "node", kind: k });
+    head("output");
+    item("add a module here…", { arm: "insert", key: "node" });
   } else if (mod.is_mod) {
-    // LFO / mod-env: swap or remove via the parent's mod slot.
+    // A modulator is edited through the slot it sits in, which belongs to its
+    // parent — that is why this menu names the parent's key.
     const parentKey = mod.key.replace(/\/m$/, "");
-    head("modulation");
-    for (const [label, kind] of [["none (remove)", "none"], ["lfo", "lfo"], ["mod env", "env"], ["s&h rand", "rand"]]) {
-      item(label, { op: "set_mod", key: parentKey, kind });
-    }
-  } else {
-    head("replace with");
-    for (const k of [...SOURCE_KINDS, ...PROC_KINDS]) {
-      if (k !== mod.kind) item(KIND_LABELS[k], { op: "replace", key: mod.key, kind: k });
-    }
-    head("insert after (toward output)");
-    for (const k of PROC_KINDS) item(`+ ${KIND_LABELS[k]}`, { op: "insert", key: mod.key, kind: k });
-    if (mod.kind === "filter" || mod.kind === "fold") {
-      head("modulation");
-      for (const [label, kind] of [["none", "none"], ["lfo", "lfo"], ["mod env", "env"], ["s&h rand", "rand"]]) {
-        item(label, { op: "set_mod", key: mod.key, kind });
-      }
-    }
-    if (mod.kind === "mix") {
-      head("mixer");
-      item("swap inputs", { op: "swap_mix", key: mod.key });
+    head(`modulating ${kindName(rackKindAt(parentKey) || "")} → ${kindModTarget(rackKindAt(parentKey)) || "?"}`);
+    for (const k of MOD_KINDS) {
+      if (k !== mod.kind) item(kindName(k), { op: { op: "set_mod", key: parentKey, kind: k } });
     }
     head("");
-    item("delete", { op: "delete", key: mod.key }, true);
+    item("unplug this modulator", { op: { op: "set_mod", key: parentKey, kind: "none" } }, true);
+  } else {
+    head(kindName(mod.kind));
+    item("replace with…", { arm: "replace", key: mod.key });
+    item("insert after…", { arm: "insert", key: mod.key });
+    const target = kindModTarget(mod.kind);
+    if (target) {
+      head(`modulate → ${target}`);
+      for (const k of MOD_KINDS) item(kindName(k), { op: { op: "set_mod", key: mod.key, kind: k } });
+      if (modAtKey(mod.key)) item("none", { op: { op: "set_mod", key: mod.key, kind: "none" } });
+    }
+    if (MOD_BY_KIND[mod.kind]?.ins === 2) {
+      head(kindName(mod.kind));
+      item("swap the two inputs", { op: { op: "swap_mix", key: mod.key } });
+    }
+    head("");
+    item("delete", { op: { op: "delete", key: mod.key } }, true);
   }
 
   menu.innerHTML = items.join("");
   menu.querySelectorAll(".cm-item").forEach((btn) => {
     btn.onclick = () => {
       menu.classList.add("hidden");
-      sendStruct(JSON.parse(btn.dataset.op));
+      const act = JSON.parse(btn.dataset.act);
+      if (act.op) sendStruct(act.op);
+      else armFromRack(act.arm, act.key);
     };
   });
   menu.classList.remove("hidden");
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   menu.style.left = `${Math.min(x, window.innerWidth - mw - 8)}px`;
   menu.style.top = `${Math.min(y, window.innerHeight - mh - 8)}px`;
+}
+
+/** The engine `kind` of the rack module at a trace key, if the rack has one. */
+function rackKindAt(key) {
+  return wb.rack?.modules.find((m) => m.key === key)?.kind ?? null;
 }
 
 // ---------- duel card flip ----------
@@ -3799,7 +3855,105 @@ const KNOB_UNITS = {
     return d > 0 ? `a +${d.toFixed(1)} dB` : `b +${(-d).toFixed(1)} dB`;
   },
   thresh: (x) => pct(0.1 + 0.9 * x),
+
+  // The v2 palette. `#pfb` is the one that matters most: it is a *bipolar*
+  // port, so 0.5 is zero feedback — printing "50%" on a knob whose centre
+  // means "off" is the same one-site-name/two-mappings defect as `#det`.
+  pfb: (x) => {
+    const v = (x * 2 - 1) * 70;
+    return Math.abs(v) < 0.5 ? "0%" : minus(`${v > 0 ? "+" : ""}${v.toFixed(0)}%`);
+  },
+  prate: (x) => fmtHz(HZ(x, 0.05, 200)),                 // quiver Phaser: 0.05–10 Hz
+  bits: (x) => `${(1 + 15 * x).toFixed(1)} bit`,         // quiver Bitcrusher: 1–16
+  dsamp: (x) => (x < 0.01 ? "off" : fmtHz(44100 / (1 + 63 * x))),
+  // Karplus-Strong's loop filter opens as this rises: longer and brighter.
+  // Labelled "decay" on the plate for that reason — see describe.rs.
+  damp: (x) => pct(x),
+
+  // ---- wave 2A ----
+  // The vowel port is a continuous slide across five formant patterns, so the
+  // honest readout is the vowel you are nearest, not "37%".
+  vowel: (x) => {
+    const v = ["ah", "eh", "ee", "oh", "oo"];
+    return v[Math.min(v.length - 1, Math.round(x * (v.length - 1)))];
+  },
+  // Bipolar, and *not* a percentage: the compiler maps this to a ±5 V port that
+  // quiver reads as `2^(cv/5)`, so the knob scales every formant frequency by
+  // 0.5×–2× with no shift at centre. "+50%" would name neither end.
+  fshift: (x) => {
+    const mult = Math.pow(2, 2 * x - 1);
+    return Math.abs(mult - 1) < 0.02 ? "natural" : `${mult.toFixed(2)}×`;
+  },
+  frate: (x) => fmtHz(HZ(x, 0.05, 100)),                 // quiver Flanger: 0.05–5 Hz
+  trate: (x) => fmtHz(HZ(x, 0.1, 200)),                  // quiver Tremolo: 0.1–20 Hz
+  vrate: (x) => fmtHz(HZ(x, 0.1, 150)),                  // quiver Vibrato: 0.1–15 Hz
+  // Tremolo's shape leans the LFO from a sine toward a triangle; naming the two
+  // ends is worth more than a percentage of nothing nameable.
+  tshape: (x) => (x < 0.02 ? "sine" : x > 0.98 ? "triangle" : `${Math.round(x * 100)}% tri`),
+  // The flanger's feedback is bipolar, like the phaser's: centre is none, and
+  // the sign is what puts the comb's teeth between the harmonics or on them.
+  ffb: (x) => {
+    const v = (x * 2 - 1) * 70;
+    return Math.abs(v) < 0.5 ? "0%" : minus(`${v > 0 ? "+" : ""}${v.toFixed(0)}%`);
+  },
+  // Three bipolar bands, ±12 dB, unity at centre — an eq that reads "50%" at
+  // flat is an eq nobody can set by eye.
+  low: (x) => eqBand(x),
+  mid: (x) => eqBand(x),
+  high: (x) => eqBand(x),
+  gsize: (x) => fmtSec((0.01 + x * 0.49) * 1000),        // quiver Granular: 10–500 ms
+  gdens: (x) => `${(1 + x * 19).toFixed(0)}/s`,          // grains per second
+
+  // ---- wave 2B ----
+  // The compiler halves quiver's ±24-semitone port so the knob and the mod
+  // cable — which sum on it — cannot pin against the clamp. See map::semitones.
+  semis: (x) => {
+    const st = (x * 2 - 1) * 12;
+    return Math.abs(st) < 0.05 ? "unison" : minus(`${st > 0 ? "+" : ""}${st.toFixed(1)} st`);
+  },
+  ratio: (x) => `${(1 + x * 19).toFixed(1)}:1`,          // quiver Compressor: 1:1–20:1
+  makeup: (x) => minus(`+${(20 * Math.log10(1 + x * 3)).toFixed(1)} dB`),
+  bands: (x) => `${Math.round(4 + x * 12)} bands`,       // quiver Vocoder: 4–16
+  // The three detector thresholds share one geometric 0.05–5 V law
+  // (map::detector_volts) because this instrument's sources are 27 dB apart —
+  // a sine vco holds 3.18 V and a plucked string 0.14 V. So the readout is
+  // where the detector opens, in dB below quiver's nominal full scale, which
+  // is the number that tells you whether your key will actually reach it.
+  "comp#thresh": (x) => threshDb(x),
+  gthresh: (x) => threshDb(x),
+  dthresh: (x) => threshDb(x),
+
+  // ---- wave 2C: the modulation sort ----
+  // quiver's Clock reads bpm as a 0–10 V port, `20·15^(cv/10)`, and the
+  // compiler scales the knob onto it (map::ClockRate) — so this is real tempo,
+  // not a fraction of a voltage.
+  erate: (x) => `${Math.round(20 * Math.pow(15, x))} bpm`,
+  hrate: (x) => `${Math.round(20 * Math.pow(15, x))} bpm`,
+  // The compiler gives up the two shortest patterns so one CV floor serves
+  // every step count — see map::euclid_steps.
+  esteps: (x) => `${Math.round(4 + x * 12)} steps`,
+  epulses: (x) => `${Math.round((0.25 + 0.74 * x) * 100)}% full`,
+  // Both quantizer plates carry their selection in the label already
+  // (`scale · minor`), so the value slot shows the raw position rather than
+  // repeating the word.
+  qroot: (x) => `${Math.round(x * 100)}%`,
+  qscale: (x) => `${Math.round(x * 100)}%`,
+  // SlewLimiter's own map is square-law and the compiler scales into its
+  // usable quarter, so this is the real time constant.
+  rise: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
+  fall: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
 };
+
+/** A geometric 0.05–5 V detector threshold, as dB below full scale. */
+function threshDb(x) {
+  return minus(`${(40 * x - 40).toFixed(0)} dB`);
+}
+
+/** ±12 dB around unity, with the centre named rather than numbered. */
+function eqBand(x) {
+  const db = (x * 2 - 1) * 12;
+  return Math.abs(db) < 0.25 ? "flat" : minus(`${db > 0 ? "+" : ""}${db.toFixed(1)} dB`);
+}
 
 // Anything else — mixes, depths, amounts — is a plain percentage.
 function knobUnit(addr, value, kind, variant) {
@@ -3973,20 +4127,603 @@ $("lock-clear").onclick = () => {
 };
 
 
-// ---------- patch-tree JSON utils (serde externally-tagged AudioNode) ----------
-const AUDIO_TAGS = ["Vco", "Supersaw", "Noise", "Mix", "Filter", "Fold", "Delay", "Chorus", "Reverb"];
-const SOURCE_TAGS = ["Vco", "Supersaw", "Noise"];
+// ===========================================================================
+// THE MODULE TABLE — one inventory, six consumers
+// ===========================================================================
+// The node bank, the ⋯ structural menu, the tray, the spec card, search and the
+// rack's jack labels all read from here. They used to keep six parallel lists
+// (FRAG_DEFAULTS, KIND_LABELS, SOURCE_KINDS, PROC_KINDS, NB_AUDIO, NB_MOD) plus
+// three duplicated label ternaries, which is how "mod env" managed to be called
+// `env`, `Env` and `mod env` on three surfaces at once. Adding a module is now
+// one entry, and the palette cannot describe a different instrument from the
+// one the right-click menu builds.
+//
+// Fields
+//   kind      the string the engine uses: RackModule.kind, NodeKind, ModKind
+//   tag       the serde variant name in patch-tree JSON
+//   name      what a synthesist calls it — the only display string
+//   sort      source | proc | combine | mod   (what it can legally do)
+//   group     which palette section it lives in (signal-flow order, not enum order)
+//   ins       audio inputs: 0 source, 1 processor, 2 combiner
+//   modTarget the *named destination* of its mod slot, or null for no slot.
+//             The rack prints this on the mod jack: an unlabelled mod input on a
+//             four-knob module is a mystery, and state is visible, never inferred.
+//   tags      search synonyms — how people ask for a sound, not what we named it
+//   blurb     one sentence of plain English. Nothing anywhere in the product used
+//             to say what any module did.
+//   heard     what φ can and cannot measure about it. Saying "the model won't
+//             learn this one" is the difference between a trustworthy HITL
+//             instrument and one that quietly implies more than it knows.
+//   glyph     a transfer-function drawing in a 20×14 box — what this does to a
+//             wave, never a pictogram. One drawing problem, nineteen answers, so
+//             the set cannot drift as it grows.
 
+// Every source fragment the palette hands out starts from the same saw, so a
+// staged processor is audible the instant it lands rather than silent until you
+// also give it an input.
+const SEED_VCO = () => ({
+  Vco: { wave: "Saw", octave: 0, detune: 0.5, mod_depth: 0.3, modulation: "None" },
+});
+
+const MODULES = [
+  // ---- sources ----
+  {
+    kind: "vco", tag: "Vco", name: "vco", sort: "source", group: "sources",
+    // The slot lands on the pitch Offset, whose input sums with the incoming
+    // note CV. Until this existed nothing in the instrument could bend a
+    // pitch — no vibrato, no envelope drop, no siren.
+    ins: 0, modTarget: "pitch", phi: "n_vco",
+    tags: ["osc", "oscillator", "analog", "saw", "square", "sine", "basic", "vibrato"],
+    blurb: "The reference oscillator. One bandlimited shape at a time — sine, triangle, saw or square — tracking the keyboard. Cable its mod input and the pitch itself bends.",
+    heard: "brightness and roughness, well.",
+    glyph: `<path class="gl" d="M1 11.5 L7 2.5 L7 11.5 L13 2.5 L13 11.5 L19 2.5"/>`,
+    frag: SEED_VCO,
+  },
+  {
+    kind: "supersaw", tag: "Supersaw", name: "supersaw", sort: "source", group: "sources",
+    ins: 0, modTarget: "pitch", phi: "n_supersaw",
+    tags: ["saw", "stack", "detune", "wide", "trance", "unison", "thick"],
+    blurb: "Seven saws detuned against each other, plus a sub. The sound of a chord played by one note.",
+    heard: "brightness and roughness. The feature pipeline listens to the L/R sum, so the width collapses before the model hears it.",
+    glyph:
+      `<path class="gl-ghost" d="M0.5 9.5 L6 2 L6 9.5 L11.5 2 L11.5 9.5 L17 2"/>` +
+      `<path class="gl-ghost" d="M2.5 13 L8 5.5 L8 13 L13.5 5.5 L13.5 13 L19 5.5"/>` +
+      `<path class="gl" d="M1.5 11.5 L7 4 L7 11.5 L12.5 4 L12.5 11.5 L18 4"/>`,
+    frag: () => ({ Supersaw: { octave: 0, detune: 0.35, mix: 0.5, mod_depth: 0.3, modulation: "None" } }),
+  },
+  {
+    kind: "wavetable", tag: "Wavetable", name: "wavetable", sort: "source", group: "sources",
+    ins: 0, modTarget: "morph", phi: "n_wavetable",
+    tags: ["wt", "morph", "digital", "sweep", "table", "shape"],
+    blurb: "Eight bandlimited shapes on one dial. Morph sweeps between them while the note is still sounding — the first source here whose timbre moves.",
+    heard: "brightness, and the movement itself through the spectral change over the sample.",
+    glyph:
+      `<path class="gl" d="M1 3.4 q2.3 -2.8 4.6 0 t4.6 0 t4.6 0"/>` +
+      `<path class="gl" d="M1 11.2 h2.6 v-3 h3.1 v3 h3.1 v-3 h3.1 v3 h2.9"/>` +
+      `<path class="gl-mark" d="M17.6 4.6 V9.4 M16.3 8.2 l1.3 1.4 l1.3 -1.4"/>`,
+    frag: () => ({ Wavetable: { table: "Saw", octave: 0, morph: 0.35, mod_depth: 0.3, modulation: "None" } }),
+  },
+  {
+    kind: "pluck", tag: "Pluck", name: "pluck", sort: "source", group: "sources",
+    // The slot drives the string's decay, not `brightness`: quiver only reads
+    // brightness on the trigger edge, so modulating it would do nothing you
+    // could hear between plucks. The rack prints this string on the mod jack,
+    // so it has to name the control the compiler actually cables.
+    ins: 0, modTarget: "decay", phi: "n_pluck",
+    tags: ["string", "karplus", "physical", "guitar", "harp", "mallet", "koto"],
+    blurb: "A string, modelled rather than sampled. Strike it and it rings — decay decides for how long, brightness decides what the pick was made of.",
+    heard: "its decay and its brightness. It has no sustain to speak of, which the amp envelope's shape cannot hide.",
+    glyph: `<path class="gl" d="M1 7 C2.4 0.8, 4 13.2, 5.6 7 C6.9 2.4, 8.2 11.6, 9.5 7 C10.6 3.8, 11.7 10.2, 12.8 7 C13.7 4.9, 14.6 9.1, 15.5 7 C16.3 5.6, 17.1 8.4, 17.9 7 L19 7"/>`,
+    frag: () => ({ Pluck: { octave: 0, damping: 0.45, brightness: 0.6, mod_depth: 0.3, modulation: "None" } }),
+  },
+  {
+    kind: "formant", tag: "Formant", name: "formant", sort: "source", group: "sources",
+    // quiver's `vowel` port is a CONTINUOUS position interpolated across
+    // A/E/I/O/U, not a five-way switch — which is why this earns a mod slot
+    // and why the model can hear it at all: a vowel sweep is a spectral
+    // movement, and spectral movement is what φ measures best.
+    ins: 0, modTarget: "vowel", phi: "n_formant",
+    tags: ["vowel", "voice", "vox", "throat", "talk", "choir", "ah", "oo"],
+    blurb: "A glottal pulse through five resonators. Sweep the vowel and it speaks — ah, eh, ee, oh, oo — without ever leaving the keyboard.",
+    heard: "as a moving centroid. The vowel itself is a formant pattern the model has no coordinate for; it hears the sweep, not the word.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M1 12 C2.4 12, 2.7 3.2, 4.1 3.2 C5.5 3.2, 5.8 12, 7.2 12 ` +
+      `C8.3 12, 8.6 5.8, 9.9 5.8 C11.2 5.8, 11.5 12, 12.8 12 ` +
+      `C13.8 12, 14.1 8, 15.3 8 C16.5 8, 16.8 12, 18 12 L19 12"/>`,
+    frag: () => ({ Formant: { vowel: 0.3, shift: 0.5, octave: 0, mod_depth: 0.3, modulation: "None" } }),
+  },
+  {
+    kind: "noise", tag: "Noise", name: "noise", sort: "source", group: "sources",
+    ins: 0, modTarget: null, phi: "n_noise",
+    tags: ["white", "pink", "hiss", "wind", "percussion", "air", "snare"],
+    blurb: "Every frequency at once — white flat, pink weighted toward the bottom. Filter it and it becomes wind, breath or a snare.",
+    heard: "flatness, loudly. It is the one source φ can pick out on its own.",
+    glyph: `<path class="gl" d="M1 7 L2.3 2.6 L3.6 10.8 L4.9 4 L6.2 12 L7.5 3.4 L8.8 9.6 L10.1 2.4 L11.4 11.4 L12.7 4.6 L14 12.2 L15.3 3 L16.6 10 L17.9 4.4 L19 7.4"/>`,
+    frag: () => ({ Noise: { color: "White" } }),
+  },
+
+  // ---- shape: the nonlinearities ----
+  {
+    kind: "fold", tag: "Fold", name: "wavefolder", sort: "proc", group: "shape",
+    ins: 1, modTarget: "threshold", phi: "n_drive",
+    tags: ["fold", "west coast", "buchla", "metallic", "harmonics", "timbre"],
+    blurb: "Folds the peaks back on themselves at a threshold. Quiet in, nothing happens; loud in, a whole new harmonic series that grows with the level.",
+    heard: "brightness and roughness climbing together as it folds harder.",
+    glyph:
+      `<path class="gl-rule" d="M0 3.6 H20"/>` +
+      `<path class="gl" d="M1 12.4 L4.6 3.6 L6.6 7.8 L8.6 3.6 L11.4 12.4 L14.6 3.6 L16.6 7.8 L18.6 3.6"/>`,
+    frag: () => ({ Fold: { threshold: 0.5, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+  {
+    kind: "distortion", tag: "Distortion", name: "distortion", sort: "proc", group: "shape", sx: "dist",
+    ins: 1, modTarget: "drive", phi: "n_drive",
+    tags: ["drive", "overdrive", "saturation", "fuzz", "grit", "warm", "tube", "dirt"],
+    blurb: "Runs the signal into a wall. Soft rounds the peaks, hard clips them flat, tube leans on one side harder than the other.",
+    heard: "brightness and roughness. Tube mode also shifts the DC the voice then has to block.",
+    glyph:
+      `<path class="gl-rule" d="M1 13 L19 1"/>` +
+      `<path class="gl" d="M1 12.6 C5.4 12.4, 6.4 9.4, 10 7 C13.6 4.6, 14.6 1.7, 19 1.5"/>`,
+    frag: () => ({ Distortion: { drive: 0.45, tone: 0.5, mode: "Soft", mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+  {
+    kind: "bitcrush", tag: "Bitcrush", name: "bitcrush", sort: "proc", group: "shape",
+    ins: 1, modTarget: "bits", phi: "n_drive",
+    tags: ["crush", "lo-fi", "digital", "8-bit", "aliasing", "sampler", "grit", "chiptune"],
+    blurb: "Throws away bits and sample rate. The sound of an early sampler running out of memory — and nothing like saturation, because the damage is quantisation, not clipping.",
+    heard: "roughness and flatness. Its aliasing sits above where the model listens most.",
+    glyph: `<path class="gl" d="M1 10.6 h2.6 V8 h2.6 V5 h2.6 V3.4 h2.6 V5 h2.6 V8 h2.6 V10.6 h2"/>`,
+    frag: () => ({ Bitcrush: { bits: 0.55, downsample: 0.3, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+
+  // ---- filter: a group of one, on purpose ----
+  {
+    kind: "filter", tag: "Filter", name: "filter", sort: "proc", group: "filter",
+    ins: 1, modTarget: "cutoff", phi: "n_filter",
+    tags: ["lowpass", "highpass", "bandpass", "ladder", "svf", "cutoff", "resonance", "303", "sweep"],
+    blurb: "The identity of a subtractive synth. Four modes on one plate: three state-variable responses and a diode ladder that growls when you push it.",
+    heard: "brightness and rolloff — the coordinates φ measures best. Nothing you do here is invisible to the model.",
+    glyph: `<path class="gl" d="M1 5 H8.6 C10.6 5, 10.9 3, 12.1 3 C13.4 3, 13.7 7.2, 15.2 10 C16.4 12.3, 17.7 13, 19 13"/>`,
+    frag: () => ({ Filter: { kind: "SvfLp", cutoff: 0.6, resonance: 0.3, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+
+  {
+    kind: "eq", tag: "Eq", name: "eq", sort: "proc", group: "filter",
+    ins: 1, modTarget: "mid", phi: "n_filter",
+    tags: ["tone", "tilt", "shelf", "bass", "treble", "boost", "cut", "presence"],
+    blurb: "Three bands of ±12 dB: a low shelf, a mid bell and a high shelf. It arrives flat and does nothing until you move it — that is what a tone control is.",
+    heard: "directly, as brightness and rolloff. The most legible thing in the palette to the model.",
+    glyph: `<path class="gl" d="M1 4.6 H3.4 C5 4.6, 5.4 10.4, 7.6 10.4 C9.4 10.4, 10.2 10.4, 11.6 10.4 C13.6 10.4, 14 4.6, 16.2 4.6 H19"/>`,
+    frag: () => ({ Eq: { low: 0.5, mid: 0.5, high: 0.5, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+
+  // ---- space: time and movement ----
+  {
+    kind: "delay", tag: "Delay", name: "delay", sort: "proc", group: "space",
+    ins: 1, modTarget: "time", phi: "n_time",
+    tags: ["echo", "repeat", "feedback", "tape", "slap", "dub", "flutter"],
+    blurb: "Repeats what it hears, quieter each time. Modulate the time and the repeats bend pitch — that is tape flutter.",
+    heard: "as a longer, more sustained sample. Its rhythm is not a coordinate φ has.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M1.6 12 V2.6 M6.4 12 V5.8 M11.2 12 V8.2 M16 12 V10.2"/>`,
+    // 0.35 is 14 ms — quiver maps time as 1 ms · 2000^cv, so the old default
+    // landed in comb-filter territory and read as a tone change, not an echo.
+    frag: () => ({ Delay: { time: 0.72, feedback: 0.35, mix: 0.35, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+  {
+    kind: "chorus", tag: "Chorus", name: "chorus", sort: "proc", group: "space",
+    ins: 1, modTarget: "depth", phi: "n_mod_fx",
+    tags: ["ensemble", "width", "thicken", "detune", "shimmer", "80s", "stereo"],
+    blurb: "A copy of the signal drifting in and out of tune with itself. One voice becomes a section, and the two sides go different ways.",
+    heard: "as comb filtering, not as width — the pipeline sums L and R, so the model learns the artefact rather than the effect.",
+    glyph:
+      `<path class="gl-ghost" d="M1 7 q2.6 4.2 5.2 0 t5.2 0 t5.2 0"/>` +
+      `<path class="gl" d="M1 7 q2.2 -4.2 4.4 0 t4.4 0 t4.4 0 t4.4 0"/>`,
+    frag: () => ({ Chorus: { rate: 0.3, depth: 0.4, mix: 0.35, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+  {
+    kind: "reverb", tag: "Reverb", name: "reverb", sort: "proc", group: "space",
+    ins: 1, modTarget: "size", phi: "n_reverb",
+    tags: ["room", "hall", "space", "tail", "ambient", "wash", "verb"],
+    blurb: "Puts the sound somewhere. Size is how far the walls are, damping is what they are made of — modulate size and the room breathes.",
+    heard: "as a longer tail and a flatter spectrum. Its stereo depth is not measured.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M2 12 V2 M5 12 V6.4 M7.2 12 V8.6 M9.4 12 V7.4 M11.6 12 V9.6 M13.8 12 V8.8 M16 12 V10.4 M18.2 12 V9.9"/>`,
+    frag: () => ({ Reverb: { size: 0.5, damp: 0.5, mix: 0.3, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+  {
+    kind: "phaser", tag: "Phaser", name: "phaser", sort: "proc", group: "space",
+    ins: 1, modTarget: "depth", phi: "n_mod_fx",
+    tags: ["sweep", "notch", "jet", "allpass", "swirl", "phase", "funk"],
+    blurb: "Allpass stages sweeping a comb of notches through the sound. Where a chorus blurs, a phaser carves — and the feedback knob is what makes it whistle.",
+    heard: "as a moving rolloff. Its notches are shallower than φ's brightness coordinates resolve.",
+    // Drawn as a response curve on the same axis convention as `filter`, so
+    // SHAPE / FILTER / SPACE each read in their own domain and the phaser stops
+    // colliding with the chorus's two-waveform picture.
+    glyph: `<path class="gl" d="M1 4.4 H3.2 C4.2 4.4, 4.4 10.6, 5.4 10.6 C6.4 10.6, 6.6 4.4, 7.6 4.4 C8.8 4.4, 9 10.6, 10 10.6 C11 10.6, 11.2 4.4, 12.4 4.4 C13.6 4.4, 13.8 10.6, 14.8 10.6 C15.8 10.6, 16 4.4, 17.2 4.4 H19"/>`,
+    // feedback is bipolar: 0.5 is the zero crossing, i.e. no resonance at all,
+    // which is a phaser with its defining character switched off.
+    frag: () => ({ Phaser: { rate: 0.42, depth: 0.6, feedback: 0.78, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+
+  {
+    kind: "flanger", tag: "Flanger", name: "flanger", sort: "proc", group: "space",
+    ins: 1, modTarget: "depth", phi: "n_mod_fx",
+    tags: ["jet", "whoosh", "comb", "sweep", "metallic", "tape", "swirl"],
+    blurb: "A copy of the signal delayed by a millisecond or two and swept. Where the phaser carves four notches, a flanger carves a whole harmonic comb — that is the jet-plane sound.",
+    heard: "as a moving rolloff, and only weakly: the comb's teeth are finer than φ's brightness coordinates resolve.",
+    // A dense comb — deliberately more teeth than the phaser's four, because
+    // that is exactly what separates them to anyone who is not already an
+    // expert, and the two sit in the same group.
+    glyph: `<path class="gl" d="M1 4.6 q1 5.6 2 0 t2 0 t2 0 t2 0 t2 0 t2 0 t2 0 t2 0 t2 0"/>`,
+    frag: () => ({ Flanger: { rate: 0.35, depth: 0.6, feedback: 0.62, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+  {
+    kind: "granular", tag: "Granular", name: "granular", sort: "proc", group: "space",
+    ins: 1, modTarget: "position", phi: "n_time",
+    tags: ["grains", "cloud", "texture", "smear", "stretch", "shimmer", "blur"],
+    blurb: "Chops what it hears into short grains and sprays them back. Position picks where in the recent past to read from, density how many at once — a sound scattered and reassembled.",
+    heard: "as a longer, flatter, less periodic sample. The scattering is exactly the kind of thing φ's flatness coordinate is for.",
+    glyph:
+      `<path class="gl" d="M2 5 v2 M4 8.4 v2 M5.6 3.6 v2 M7.2 9.6 v2 M8.8 6 v2 M10.4 3.4 v2 ` +
+      `M12 8.6 v2 M13.6 5.4 v2 M15.2 10 v2 M16.8 6.8 v2 M18.4 4.4 v2"/>`,
+    frag: () => ({ Granular: { position: 0.5, size: 0.4, density: 0.6, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+
+  // ---- motion: periodic movement applied to a whole chain ----
+  {
+    kind: "tremolo", tag: "Tremolo", name: "tremolo", sort: "proc", group: "motion",
+    ins: 1, modTarget: "depth", phi: "n_mod_fx",
+    tags: ["amplitude", "pulse", "throb", "chop", "surf", "helicopter", "am"],
+    blurb: "Level, moving on its own clock. Shape leans the LFO from a sine toward a triangle — gentle swell at one end, a hard chop at the other.",
+    heard: "as movement in loudness over the sample rather than in timbre — one of the few things φ measures that has nothing to do with brightness.",
+    glyph:
+      `<path class="gl-ghost" d="M1 7 q2.5 5 5 0 t5 0 t5 0 t3 0"/>` +
+      `<path class="gl" d="M1 7 q2.5 -5 5 0 t5 0 t5 0 t3 0"/>`,
+    frag: () => ({ Tremolo: { rate: 0.4, depth: 0.5, shape: 0.0, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+  {
+    kind: "vibrato", tag: "Vibrato", name: "vibrato", sort: "proc", group: "motion",
+    ins: 1, modTarget: "depth", phi: "n_mod_fx",
+    tags: ["pitch", "wobble", "warble", "singer", "wow", "flutter", "tape"],
+    blurb: "Pitch, moving on its own clock — applied to a whole chain rather than one oscillator. Wet all the way, because a half-wet vibrato is a chorus.",
+    heard: "barely on its own. φ has no pitch coordinate; what reaches the model is the smearing a swept delay line leaves behind.",
+    // Lobes that widen and narrow: the wavelength itself is what moves.
+    glyph: `<path class="gl" d="M1 7 q0.7 -4.4 1.4 0 q0.9 4.4 1.8 0 q1.3 -4.4 2.6 0 q1.7 4.4 3.4 0 q1.3 -4.4 2.6 0 q0.9 4.4 1.8 0 q0.7 -4.4 1.4 0"/>`,
+    frag: () => ({ Vibrato: { rate: 0.45, depth: 0.25, mix: 1.0, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+
+  {
+    kind: "shift", tag: "Shift", name: "pitch shift", sort: "proc", group: "motion",
+    ins: 1, modTarget: "shift", phi: "n_time",
+    tags: ["harmony", "transpose", "octave", "detune", "harmonizer", "semitone", "chipmunk"],
+    blurb: "Transposes what it hears without changing its speed, then blends the shifted copy back in. Set it to a third or a fifth and one note becomes an interval.",
+    heard: "as a brighter or darker copy layered over the original — φ measures the sum, and has no coordinate for the interval itself.",
+    glyph:
+      `<path class="gl-ghost" d="M1 10.5 q1.6 -3.4 3.2 0 t3.2 0 t3.2 0 t3.2 0 t3.2 0"/>` +
+      `<path class="gl" d="M1 4.2 q1.1 -3.4 2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0 t2.2 0"/>`,
+    frag: () => ({ Shift: { semis: 0.62, window: 0.5, mix: 0.5, mod_depth: 0.3, input: SEED_VCO(), modulation: "None" } }),
+  },
+
+  // ---- dynamics: level shaped by a second signal ----
+  // These are binary nodes like mix and ring mod, but the second child is a
+  // *control*, not something you hear — which is exactly why they get their own
+  // group rather than sitting in COMBINE.
+  {
+    kind: "comp", tag: "Comp", name: "compressor", sort: "combine", group: "dynamics",
+    ins: 2, inNames: ["in", "key"], modTarget: "threshold", phi: "n_dynamics", fields: ["input", "sidechain"],
+    tags: ["squash", "glue", "level", "sustain", "punch", "sidechain", "dynamics"],
+    blurb: "Turns down whatever passes a threshold, by the ratio you set. Feed its key input from another chain and it is a sidechain compressor.",
+    heard: "as a flatter, more sustained sample — φ's crest and RMS coordinates read this one directly.",
+    glyph:
+      `<path class="gl-rule" d="M1 13 L19 1"/>` +
+      `<path class="gl" d="M1 13 L8.5 5.5 C10.2 4, 11.6 3.6, 13.6 3.3 L19 2.8"/>`,
+    frag: () => ({
+      Comp: { threshold: 0.4, ratio: 0.5, makeup: 0.4, mod_depth: 0.3, input: SEED_VCO(),
+              sidechain: SEED_VCO(), modulation: "None" },
+    }),
+  },
+  {
+    kind: "duck", tag: "Duck", name: "ducker", sort: "combine", group: "dynamics",
+    ins: 2, inNames: ["in", "key"], modTarget: "amount", phi: "n_dynamics", fields: ["input", "key"],
+    tags: ["sidechain", "pump", "breathe", "dip", "edm", "kick", "dance"],
+    blurb: "Pushes the signal down whenever its key input gets loud, and lets it swell back. The pumping that a pad does under a kick.",
+    heard: "as movement in loudness across the sample. The pumping is a real φ coordinate, unlike most rhythm.",
+    glyph:
+      `<path class="gl-mark" d="M4.2 12.6 V8"/>` +
+      `<path class="gl" d="M1 4.4 H3.6 L4.6 11.2 C6.6 11.2, 8.2 6, 11.2 4.9 C13.8 4.5, 16.2 4.4, 19 4.4"/>`,
+    frag: () => ({
+      Duck: { amount: 0.7, threshold: 0.4, release: 0.35, mod_depth: 0.3, input: SEED_VCO(),
+              key: MOD_BY_KIND.pluck.frag(), modulation: "None" },
+    }),
+  },
+  {
+    kind: "gate", tag: "Gate", name: "gate", sort: "combine", group: "dynamics",
+    ins: 2, inNames: ["in", "key"], modTarget: "threshold", phi: "n_dynamics", fields: ["input", "sidechain"],
+    tags: ["chop", "stutter", "rhythm", "tighten", "trance", "silence", "noise gate"],
+    blurb: "Passes the signal only while its key input is loud enough, and shuts otherwise. Key it from something rhythmic and a pad becomes a pattern.",
+    heard: "as a shorter, more transient sample. Chopping a drone changes almost every temporal coordinate at once.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M1.6 7.4 q0.7 -3.6 1.4 0 t1.4 0 t1.4 0 M9 7.4 q0.7 -3.6 1.4 0 t1.4 0 ` +
+      `M15.4 7.4 q0.7 -3.6 1.4 0 t1.4 0"/>`,
+    frag: () => ({
+      Gate: { threshold: 0.35, range: 0.7, release: 0.3, mod_depth: 0.3, input: SEED_VCO(),
+              sidechain: MOD_BY_KIND.pluck.frag(), modulation: "None" },
+    }),
+  },
+
+  // ---- combine: the branching sort ----
+  {
+    kind: "mix", tag: "Mix", name: "mix", sort: "combine", group: "combine",
+    ins: 2, modTarget: null, phi: null,
+    tags: ["blend", "crossfade", "layer", "two", "sum", "branch", "parallel"],
+    blurb: "Crossfades two chains into one, at equal power. This is how a patch branches — everything else here is a straight line.",
+    heard: "as whichever side you favour. The balance knob moves every audio coordinate at once.",
+    glyph: `<path class="gl" d="M1 2.8 L9.6 7 L19 7 M1 11.2 L9.6 7"/>`,
+    frag: () => ({
+      Mix: { balance: 0.5, a: SEED_VCO(), b: { Vco: { wave: "Triangle", octave: 0, detune: 0.5 } } },
+    }),
+  },
+  {
+    kind: "ringmod", tag: "RingMod", name: "ring mod", sort: "combine", group: "combine",
+    ins: 2, inNames: ["carrier", "mod"], modTarget: null, phi: "n_drive",
+    tags: ["am", "ring", "metallic", "bell", "inharmonic", "clang", "radio", "dalek"],
+    blurb: "Multiplies two chains together. What comes out is the sum and difference of their frequencies — inharmonic, so it reads as bell, metal or radio rather than as a note.",
+    heard: "as a jump in roughness and flatness. There is no ring-mod coordinate — the model hears the spectrum it produces, not the operation.",
+    glyph:
+      `<path class="gl-rule" d="M1 7 q4.5 -5.6 9 0 t9 0"/>` +
+      `<path class="gl" d="M1 7 q1.5 -4 3 0 t3 0 t3 0 t3 0 t3 0 t3 0"/>`,
+    // `b` is a sine, and deliberately NOT at a whole-octave interval: at an
+    // exact octave the sum and difference tones land back on the harmonic
+    // series and the result is a timbre change, not the bell the blurb
+    // promises. detune 0.78 is +28 cents, enough to make it clang.
+    frag: () => ({
+      RingMod: { mix: 0.5, a: SEED_VCO(), b: { Vco: { wave: "Sine", octave: 1, detune: 0.78 } } },
+    }),
+  },
+
+  {
+    kind: "vocoder", tag: "Vocoder", name: "vocoder", sort: "combine", group: "combine",
+    ins: 2, inNames: ["carrier", "voice"], modTarget: "bands", phi: "n_filter", fields: ["carrier", "modulator"],
+    tags: ["talk", "robot", "vox", "speech", "choir", "formant", "daft"],
+    blurb: "Splits one chain into bands, measures how loud each is, and imposes that shape on another. The carrier supplies the pitch, the voice supplies the words.",
+    heard: "as the carrier's brightness following the voice's — a filter bank whose curve is drawn by a signal.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M2 12 V6.2 M4.4 12 V3.6 M6.8 12 V7.8 M9.2 12 V4.6 M11.6 12 V9.2 ` +
+      `M14 12 V5.2 M16.4 12 V8.2 M18.4 12 V6.6"/>` +
+      `<path class="gl-ghost" d="M1.6 7.4 C4 2.6, 7 9, 9.8 4.8 C12.8 2.2, 15.6 8.6, 18.8 6.2"/>`,
+    frag: () => ({
+      Vocoder: {
+        bands: 0.6, attack: 0.25, release: 0.3, mod_depth: 0.3,
+        carrier: { Supersaw: { octave: 0, detune: 0.35, mix: 0.5, mod_depth: 0.3, modulation: "None" } },
+        modulator: MOD_BY_KIND.formant.frag(),
+        modulation: "None",
+      },
+    }),
+  },
+
+  // ---- modulation ----
+  {
+    kind: "lfo", tag: "Lfo", name: "lfo", sort: "mod", group: "modulation",
+    ins: 0, modTarget: null, phi: "n_lfo",
+    tags: ["wobble", "sweep", "cycle", "vibrato", "tremolo", "slow", "movement"],
+    blurb: "A slow oscillator that never stops. Cabled anywhere, it makes that parameter breathe on its own clock.",
+    heard: "as movement across the sample — φ measures how much things change, not what changed them.",
+    glyph: `<path class="gl" d="M1 10.6 L5.5 3.4 L10 10.6 L14.5 3.4 L19 10.6"/>`,
+    frag: () => ({ Lfo: { wave: "Triangle", rate: 0.4 } }),
+  },
+  {
+    kind: "env", tag: "Env", name: "mod env", sort: "mod", group: "modulation",
+    ins: 0, modTarget: null, phi: "n_env",
+    tags: ["envelope", "ad", "attack", "decay", "per note", "sweep", "pluck"],
+    blurb: "Fires once per note and decays. This is the classic filter sweep — the shape that makes a note sound plucked, bowed or blown.",
+    heard: "clearly: it is the main thing shaping the sample's spectral contour over time.",
+    glyph: `<path class="gl" d="M1 12 L5 2.4 L19 12"/>`,
+    frag: () => ({ Env: { attack: 0.2, decay: 0.5 } }),
+  },
+  {
+    kind: "rand", tag: "Rand", name: "s&h rand", sort: "mod", group: "modulation",
+    ins: 0, modTarget: null, phi: "n_rand",
+    tags: ["random", "sample and hold", "stepped", "wander", "burble", "chance", "glide"],
+    blurb: "Holds a new random value at every tick. Glide smooths the steps, which is the difference between a burble and a wander.",
+    heard: "as instability. Two takes of the same patch differ, which is itself a thing to like.",
+    glyph: `<path class="gl" d="M1 9 h3 V4 h3 V11.2 h3 V6 h3 V8.6 h3 V3.4 h2"/>`,
+    frag: () => ({ Rand: { rate: 0.4, glide: 0.0 } }),
+  },
+  {
+    kind: "follow", tag: "Follow", name: "follower", sort: "mod", group: "modulation",
+    ins: 0, modTarget: null, phi: "n_follow",
+    tags: ["envelope follower", "dynamic", "react", "duck", "auto", "responsive", "self"],
+    blurb: "Listens to what is already going into this module and turns its loudness into modulation. The patch starts responding to itself.",
+    heard: "as a coupling between loudness and timbre — φ sees the result, not the cause.",
+    glyph:
+      `<path class="gl-ghost" d="M2 7 L3 3.6 L4 10.4 L5 4.2 L6 10 L7 4.8 L8 9.6 L9 5.4 L10 9 L11 5.9 L12 8.4 L13 6.3 L14 8 L15 6.6 L16 7.6 L17 6.9 L18 7.3"/>` +
+      `<path class="gl" d="M1 12.4 C2.6 3, 3.4 2.6, 5.2 3.2 C8.6 4.2, 13 9.4, 19 11.8"/>`,
+    frag: () => ({ Follow: { sens: 0.5, release: 0.4 } }),
+  },
+  {
+    kind: "euclid", tag: "Euclid", name: "euclid", sort: "mod", modSort: "leaf", group: "modulation",
+    ins: 0, modTarget: null, phi: "n_mod_logic",
+    tags: ["rhythm", "pattern", "clock", "pulse", "gate", "steps", "polyrhythm", "tick"],
+    blurb: "Spreads a number of pulses as evenly as it can across a number of steps — the pattern behind most drum machines. Cabled to a cutoff, a pad starts playing a rhythm.",
+    heard: "as movement on a grid. φ has no coordinate for rhythm; what reaches the model is that the sample stops sitting still.",
+    glyph:
+      `<path class="gl-rule" d="M0 12 H20"/>` +
+      `<path class="gl" d="M1.4 12 V5 M6.2 12 V5 M11 12 V5 M15.8 12 V5"/>` +
+      `<path class="gl-ghost" d="M3.8 12 V8.6 M8.6 12 V8.6 M13.4 12 V8.6 M18.2 12 V8.6"/>`,
+    frag: () => ({ Euclid: { rate: 0.45, steps: 0.35, pulses: 0.4 } }),
+  },
+
+  // ---- CV shapers: these WRAP the modulator already in the slot ----
+  {
+    kind: "quantize", tag: "Op", name: "quantize", sort: "mod", modSort: "op", group: "cvshape", params: ["root", "scale"],
+    ins: 0, modTarget: null, phi: "n_mod_shape",
+    tags: ["scale", "snap", "notes", "melody", "musical", "key", "semitone", "minor"],
+    blurb: "Snaps whatever is driving it onto the notes of a scale. This is what turns a random voltage into a melody instead of a siren.",
+    heard: "as pitch content that lands on a key. φ measures the spectrum, not the interval, so what it sees is the sample becoming less smeared.",
+    glyph: `<path class="gl" d="M1 11 h2.6 V8.6 h2.6 V6.2 h2.6 V3.8 h2.6 V6.2 h2.6 V8.6 h2.6 V11 h2"/>`,
+    frag: () => ({ Op: { kind: "quantize", p0: 0.0, p1: 0.4, input: { Rand: { rate: 0.5, glide: 0.0 } } } }),
+  },
+  {
+    kind: "slew", tag: "Op", name: "slew", sort: "mod", modSort: "op", group: "cvshape", params: ["rise", "fall"],
+    ins: 0, modTarget: null, phi: "n_mod_shape",
+    tags: ["glide", "smooth", "portamento", "lag", "ramp", "soften", "sand"],
+    blurb: "Limits how fast its input can move, with separate times up and down. Every step becomes a ramp — the difference between a burble and a wander.",
+    heard: "as slower spectral movement. The steps it removes were the part φ noticed most.",
+    glyph:
+      `<path class="gl-ghost" d="M1 10.5 h4 V4 h5 V10.5 h4 V4 h5"/>` +
+      `<path class="gl" d="M1 10.5 h2.6 L6.4 4 h2.2 L11 10.5 h2.4 L16 4 h3"/>`,
+    frag: () => ({ Op: { kind: "slew", p0: 0.35, p1: 0.5, input: { Rand: { rate: 0.5, glide: 0.0 } } } }),
+  },
+  {
+    kind: "rectify", tag: "Op", name: "rectify", sort: "mod", modSort: "op", group: "cvshape", params: ["mode"],
+    ins: 0, modTarget: null, phi: "n_mod_shape",
+    tags: ["fold", "abs", "positive", "negative", "half", "double", "polarity"],
+    blurb: "Folds a modulator onto one side of zero. A triangle through it comes out at twice the rate; a bipolar source comes out only ever pushing one way.",
+    heard: "as a doubling of the modulation rate, or as a modulator that only ever adds.",
+    glyph:
+      `<path class="gl-rule" d="M0 7 H20"/>` +
+      `<path class="gl-ghost" d="M1 3.4 L5 10.6 L9 3.4 L13 10.6 L17 3.4"/>` +
+      `<path class="gl" d="M1 3.4 L3 7 L5 3.4 L7 7 L9 3.4 L11 7 L13 3.4 L15 7 L17 3.4"/>`,
+    frag: () => ({ Op: { kind: "rectify", p0: 0.5, p1: 0.0, input: { Lfo: { wave: "Triangle", rate: 0.4 } } } }),
+  },
+  {
+    kind: "hold", tag: "Op", name: "hold", sort: "mod", modSort: "op", group: "cvshape", params: ["rate"],
+    ins: 0, modTarget: null, phi: "n_mod_shape",
+    tags: ["sample and hold", "step", "freeze", "latch", "clock", "stair"],
+    blurb: "Samples whatever is driving it on a clock and holds that value until the next tick. Unlike s&h rand it samples a modulator you chose, not noise.",
+    heard: "as stepped rather than continuous movement.",
+    glyph:
+      `<path class="gl-ghost" d="M1 7 q2.2 -4 4.4 0 t4.4 0 t4.4 0 t4.4 0"/>` +
+      `<path class="gl" d="M1 8.6 h3 V4.4 h3 V6.6 h3 V10.4 h3 V6.6 h3 V4 h2"/>`,
+    frag: () => ({ Op: { kind: "hold", p0: 0.45, p1: 0.0, input: { Lfo: { wave: "Sine", rate: 0.5 } } } }),
+  },
+
+  // ---- CV combiners: two modulators in, one out ----
+  // Six variants of one shape, so they share a glyph vocabulary: the two
+  // inputs on the left, the decision on the right.
+  ...[
+    ["min", "min", "the lower of the two, sample by sample — whichever modulator is quieter wins",
+     `<path class="gl-ghost" d="M1 4 L9 4"/><path class="gl-ghost" d="M1 10 L9 10"/><path class="gl" d="M9 4 L11 10 L19 10"/>`,
+     ["low", "floor", "smaller", "whichever"]],
+    ["max", "max", "the higher of the two — the loudest modulator at each instant takes over",
+     `<path class="gl-ghost" d="M1 4 L9 4"/><path class="gl-ghost" d="M1 10 L9 10"/><path class="gl" d="M9 10 L11 4 L19 4"/>`,
+     ["high", "ceiling", "larger", "whichever"]],
+    ["and", "and", "high only while both are high — the overlap of two patterns",
+     `<path class="gl-ghost" d="M1 4 h5 v0 M1 10 h7"/><path class="gl" d="M6 11 h2 V4 h4 V11 h7"/>`,
+     ["both", "overlap", "gate", "logic", "intersect"]],
+    ["or", "or", "high while either is high — two patterns laid over each other",
+     `<path class="gl-ghost" d="M1 4 h4 M1 10 h6"/><path class="gl" d="M1 11 h3 V4 h5 V11 h2 V4 h4 V11 h4"/>`,
+     ["either", "union", "gate", "logic", "merge"]],
+    ["xor", "xor", "high while exactly one is — two rhythms that never land together",
+     `<path class="gl-ghost" d="M1 4 h4 M1 10 h6"/><path class="gl" d="M1 11 h3 V4 h3 V11 h3 V4 h3 V11 h6"/>`,
+     ["exclusive", "either but not both", "polyrhythm", "logic", "cross"]],
+    ["switch", "switch", "passes one or the other depending on which is winning — a hard cut between two modulators",
+     `<path class="gl-ghost" d="M1 4 h6 M1 10 h6"/><path class="gl" d="M7 4 L11 4 M7 10 L10 10 L11 4 M11 4 h8"/>`,
+     ["route", "select", "either", "punch", "swap"]],
+  ].map(([kind, name, what, glyph, tags]) => ({
+    kind, tag: "Pair", name, sort: "mod", modSort: "pair", group: "cvlogic",
+    ins: 0, modTarget: null, phi: "n_mod_logic",
+    tags: [...tags, "combine", "two"],
+    blurb: `Takes two modulators and gives back ${what}.`,
+    heard: "as a modulation shape φ has no name for — it sees only the movement that results.",
+    glyph,
+    // `a` is the modulator already in the slot when you place this; `b` is a
+    // second one it needs to be worth having, so it arrives with an LFO
+    // rather than an empty branch the grammar would fold away.
+    frag: () => ({
+      Pair: {
+        // `ModOp`/`PairOp` serialise snake_case, and the palette's own kind
+        // strings already are — capitalising here sent `"Min"` at an enum
+        // spelled `"min"`, which failed to deserialise and rejected the whole
+        // edit.
+        kind,
+        a: { Lfo: { wave: "Triangle", rate: 0.4 } },
+        b: { Lfo: { wave: "Sine", rate: 0.62 } },
+      },
+    }),
+  })),
+];
+
+const MOD_BY_KIND = Object.fromEntries(MODULES.map((m) => [m.kind, m]));
+// The mod envelope is the one module whose engine spellings differ: `ModKind`
+// serialises as `env` (what a structural edit sends) while `RackModule.kind`
+// reads `modenv` (what the rack draws). Both resolve to the same entry, so no
+// surface has to know which one it is holding.
+MOD_BY_KIND.modenv = MOD_BY_KIND.env;
+// `Op` and `Pair` are one serde tag each across ten palette entries, so a bare
+// tag lookup would resolve every quantizer to whichever shaper was declared
+// last. Those two go through `modEntry` instead, which reads the inner kind.
+const MOD_BY_TAG = Object.fromEntries(
+  MODULES.filter((m) => m.tag !== "Op" && m.tag !== "Pair").map((m) => [m.tag, m]),
+);
+
+/** The palette entry a modulation fragment came from, Op/Pair included. */
+function modEntry(frag) {
+  const tag = nodeTag(frag);
+  if (tag === "Op" || tag === "Pair") {
+    return MOD_BY_KIND[String(frag[tag].kind).toLowerCase()] || null;
+  }
+  return MOD_BY_TAG[tag] || null;
+}
+const SOURCE_TAGS = MODULES.filter((m) => m.sort === "source").map((m) => m.tag);
+
+/** The palette's sections, in signal-flow order — which is deliberately not the
+ *  order the grammar's categoricals are in. Enum order is an append-only wire
+ *  format; this is how a person builds a patch. */
+const NB_GROUPS = [
+  { id: "sources", label: "sources", amber: false, note: "where the sound starts" },
+  { id: "shape", label: "shape", amber: false, note: "what dirties it" },
+  { id: "filter", label: "filter", amber: false, note: "what takes away" },
+  { id: "space", label: "space", amber: false, note: "where it sits" },
+  { id: "motion", label: "motion", amber: false, note: "what makes it move" },
+  { id: "dynamics", label: "dynamics", amber: false, note: "what a second signal controls" },
+  { id: "combine", label: "combine", amber: false, note: "how chains meet" },
+  { id: "modulation", label: "modulation", amber: true, note: "what moves the knobs" },
+  { id: "cvshape", label: "shape cv", amber: true, note: "what bends a modulator" },
+  { id: "cvlogic", label: "combine cv", amber: true, note: "two modulators, one cable" },
+];
+
+/** Modules that can be inserted into a wire (everything but a source). */
+const PROC_KINDS = MODULES.filter((m) => m.sort === "proc" || m.sort === "combine").map((m) => m.kind);
+/** Modules that can only replace a node, never splice into one. */
+const SOURCE_KINDS = MODULES.filter((m) => m.sort === "source").map((m) => m.kind);
+/** Modulation sources, in the order the ⋯ menu offers them. */
+const MOD_KINDS = MODULES.filter((m) => m.sort === "mod").map((m) => m.kind);
+
+/** Display name for an engine `kind` string. */
+function kindName(kind) {
+  return MOD_BY_KIND[kind]?.name ?? kind;
+}
+
+/** Does the module at this rack kind carry a modulation slot? */
+function kindModTarget(kind) {
+  return MOD_BY_KIND[kind]?.modTarget ?? null;
+}
+
+// ---------- patch-tree JSON utils (serde externally-tagged AudioNode) ----------
 function nodeTag(n) {
   return typeof n === "string" ? n : Object.keys(n)[0];
+}
+
+/** The serde field names holding a module's children, in `/0`, `/1` order.
+ *  Binary nodes do not agree on them — a mixer has `a`/`b`, a ducker has
+ *  `input`/`key`, a vocoder has `carrier`/`modulator` — so the walker reads
+ *  them from the table rather than assuming. */
+function childFields(m) {
+  return m.fields || (m.ins === 2 ? ["a", "b"] : m.ins === 1 ? ["input"] : []);
 }
 
 function nodeChildrenJSON(n) {
   const tag = nodeTag(n);
   const v = n[tag];
-  if (tag === "Mix") return [v.a, v.b];
-  if (["Filter", "Fold", "Delay", "Chorus", "Reverb"].includes(tag)) return [v.input];
-  return [];
+  const m = MOD_BY_TAG[tag];
+  if (!m || !v) return [];
+  return childFields(m).map((f) => v[f]).filter(Boolean);
 }
 
 function nodeAtKey(key) {
@@ -4006,7 +4743,10 @@ function modAtKey(key) {
   const n = nodeAtKey(key);
   if (!n) return null;
   const tag = nodeTag(n);
-  if (tag !== "Filter" && tag !== "Fold") return null;
+  // Every module that declares a mod destination has a slot — the set used to
+  // be hard-coded as filter-or-wavefolder, which is why a modulated delay was
+  // unreachable in an instrument whose DSP had supported it all along.
+  if (!MOD_BY_TAG[tag]?.modTarget) return null;
   const m = n[tag].modulation;
   return m === "None" ? null : m;
 }
@@ -4015,67 +4755,27 @@ function subtreeSize(n) {
   return 1 + nodeChildrenJSON(n).reduce((s, c) => s + subtreeSize(c), 0);
 }
 
-// ---------- staged fragments: defaults (must mirror grammar mutate.rs) ----------
-const FRAG_DEFAULTS = {
-  vco: () => ({ Vco: { wave: "Saw", octave: 0, detune: 0.5 } }),
-  supersaw: () => ({ Supersaw: { octave: 0, detune: 0.35, mix: 0.5 } }),
-  noise: () => ({ Noise: { color: "White" } }),
-  mix: () => ({
-    Mix: {
-      balance: 0.5,
-      a: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } },
-      b: { Vco: { wave: "Triangle", octave: 0, detune: 0.5 } },
-    },
-  }),
-  filter: () => ({
-    Filter: {
-      kind: "SvfLp", cutoff: 0.6, resonance: 0.3, mod_depth: 0.3,
-      input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } },
-      modulation: "None",
-    },
-  }),
-  fold: () => ({
-    Fold: {
-      threshold: 0.5, mod_depth: 0.3,
-      input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } },
-      modulation: "None",
-    },
-  }),
-  delay: () => ({
-    Delay: { time: 0.35, feedback: 0.35, mix: 0.35, input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } } },
-  }),
-  chorus: () => ({
-    Chorus: { rate: 0.3, depth: 0.4, mix: 0.35, input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } } },
-  }),
-  reverb: () => ({
-    Reverb: { size: 0.5, damp: 0.5, mix: 0.3, input: { Vco: { wave: "Saw", octave: 0, detune: 0.5 } } },
-  }),
-  lfo: () => ({ Lfo: { wave: "Triangle", rate: 0.4 } }),
-  env: () => ({ Env: { attack: 0.2, decay: 0.5 } }),
-  rand: () => ({ Rand: { rate: 0.4 } }),
-};
-
-// ---------- tray (staged, unwired modules) ----------
+// ---------- held modules (unplugged chains, waiting to go back) ----------
+// This was "the tray", and it was a toll booth: the only route from the palette
+// to the rack ran through it. Placement now goes direct, so its one remaining
+// job is holding what you pulled out — which is what it is now named for.
 const tray = [];
 let trayUid = 1;
 
 function fragLabel(frag, isMod) {
-  const tag = nodeTag(frag);
-  if (isMod) return tag === "Env" ? "mod env" : tag === "Rand" ? "s&h rand" : tag.toLowerCase();
+  const name = (isMod ? modEntry(frag) : MOD_BY_TAG[nodeTag(frag)])?.name
+    ?? nodeTag(frag).toLowerCase();
+  if (isMod) return name;
   const size = subtreeSize(frag);
-  return tag.toLowerCase() + (size > 1 ? `·${size}` : "");
-}
-
-function stageKind(kind) {
-  const isMod = kind === "lfo" || kind === "env" || kind === "rand";
-  tray.push({ uid: trayUid++, isMod, frag: FRAG_DEFAULTS[kind](), label: kind === "env" ? "mod env" : kind === "rand" ? "s&h rand" : kind });
-  renderTray();
+  return name + (size > 1 ? `·${size}` : "");
 }
 
 function stageFragment(frag, isMod) {
-  if (!frag) return;
-  tray.push({ uid: trayUid++, isMod, frag, label: fragLabel(frag, isMod) });
+  if (!frag) return null;
+  const uid = trayUid++;
+  tray.push({ uid, isMod, frag, label: fragLabel(frag, isMod) });
   renderTray();
+  return uid;
 }
 
 function unstage(uid) {
@@ -4089,15 +4789,25 @@ function unstage(uid) {
 function fragParamStrip(frag) {
   const tag = nodeTag(frag);
   const body = frag[tag] || {};
+  // `Op` and `Pair` carry their identity in a `kind` field and their two
+  // parameters in generic `p0`/`p1` slots, because one term shape serves ten
+  // palette entries. Neither belongs on a faceplate: the card's own title
+  // already says `quantize`, and `p0` is a leaked identifier — the exact
+  // defect `mod_depth` was fixed for.
+  const named = modEntry(frag)?.params;
   const parts = [];
   let chain = 0;
   for (const [k, v] of Object.entries(body)) {
     if (v && typeof v === "object") { chain += subtreeSize(v); continue; }
-    if (v === "None") continue;
+    if (v === "None" || k === "kind") continue;
+    const slot = k === "p0" ? 0 : k === "p1" ? 1 : -1;
+    if (slot >= 0 && named && !named[slot]) continue; // a one-parameter op
+    // Serde field names are the wire, not the silkscreen.
+    const label = slot >= 0 && named ? named[slot] : k.replace(/_/g, " ");
     if (typeof v === "number") {
-      parts.push(`${k} ${v >= 1 || v <= -1 || Number.isInteger(v) ? v : `${Math.round(v * 100)}%`}`);
+      parts.push(`${label} ${v >= 1 || v <= -1 || Number.isInteger(v) ? v : `${Math.round(v * 100)}%`}`);
     } else {
-      parts.push(`${k} ${String(v).toLowerCase()}`);
+      parts.push(`${label} ${String(v).toLowerCase()}`);
     }
   }
   if (chain > 1) parts.push(`+${chain} in chain`);
@@ -4107,8 +4817,10 @@ function fragParamStrip(frag) {
 function renderTray() {
   const holder = $("tray-items");
   holder.innerHTML = "";
+  nbRenderRail();
   if (tray.length === 0) {
-    holder.innerHTML = '<span class="tray-hint mono">unwired modules land here — drag a jack to patch them in</span>';
+    holder.innerHTML =
+      '<span class="tray-hint mono">Anything you unplug is held here until you reload. Save the patch to keep it for good.</span>';
     return;
   }
   for (const t of tray) {
@@ -4132,33 +4844,820 @@ function renderTray() {
   }
 }
 
-// ---------- node bank ----------
-const NB_AUDIO = ["vco", "supersaw", "noise", "mix", "filter", "fold", "delay", "chorus", "reverb"];
-const NB_MOD = ["lfo", "env", "rand"];
+// ===========================================================================
+// THE NODE BANK — the instrument's catalogue
+// ===========================================================================
+// It was twelve mono words in a 168px column with one tooltip repeated twelve
+// times, and the only route out of it ran through the tray. It is now an
+// indexed catalogue: it says what each module *does to a signal*, where it can
+// legally go, and — where the model has enough evidence to be honest about it —
+// what the model currently thinks of it.
+//
+// The primary gesture is ARM-AND-PLACE, not press-drag: click a module, the
+// legal sockets light up and name what will happen to them, click one. That is
+// the same two clicks whether you use the mouse or the keyboard, and unlike a
+// 6px drop target it cannot miss. Press-drag from a chip still works as the
+// expert path.
+
+const NB_STORE = "ricercar-nodebank";
+const nbState = {
+  collapsed: false,
+  width: 0, // 0 = follow the CSS clamp
+  groups: {}, // id -> false when the section is folded shut
+};
+
+function nbLoad() {
+  try {
+    // Only the keys this version knows about: a stored preference that has
+    // been retired should not keep round-tripping through the save forever.
+    const saved = JSON.parse(localStorage.getItem(NB_STORE) || "{}");
+    for (const k of Object.keys(nbState)) if (k in saved) nbState[k] = saved[k];
+  } catch (e) { /* a corrupt preference is not worth a broken palette */ }
+}
+function nbSave() {
+  try { localStorage.setItem(NB_STORE, JSON.stringify(nbState)); } catch (e) {}
+}
+
+/** What is currently in your hand: `{kind, mode, key}`, or null. */
+let armed = null;
+/** Sockets lit for the armed module, and which one the keyboard is on. */
+let armedSockets = [];
+let armedIdx = -1;
+/** Set by the rack's ⋯ menu: the next module you pick goes straight here. */
+let pendingTarget = null;
+
+function nbAnnounce(text) {
+  const el = $("nb-live");
+  if (el) el.textContent = text;
+}
+
+// ---- pool support: how often the model has actually seen a module ----
+// Counted client-side off the `sexpr` each ranked row already carries, so this
+// costs no new wasm surface and is honest from the first vote.
+function nbSupport() {
+  // Cut patches are gone from every other count in the app (see bankSource),
+  // and they are not what the model is reasoning over either.
+  const rows = ((views && views.ranked) || []).filter((r) => !cutIds.has(r.id));
+  const counts = {};
+  for (const m of MODULES) counts[m.kind] = 0;
+  for (const r of rows) {
+    if (!r.sexpr) continue;
+    // `sx` is the head token the grammar's compact s-expression actually
+    // writes, which is not always the module kind (`distortion` prints as
+    // `dist`). Counting the kind blind would have shown "the model has never
+    // seen a distortion" on a pool full of them.
+    for (const m of MODULES) if (r.sexpr.includes(`(${m.sx || m.kind} `)) counts[m.kind] += 1;
+  }
+  // The coefficient is fitted per FAMILY (`n_drive` covers fold, distortion
+  // and bitcrush), so the evidence behind it is every patch using any of them.
+  // Gating a family's θ on one member's prevalence measured a different
+  // quantity from the one it was guarding.
+  const byPhi = {};
+  for (const m of MODULES) {
+    if (!m.phi) continue;
+    byPhi[m.phi] = (byPhi[m.phi] || 0) + counts[m.kind];
+  }
+  return { counts, byPhi, total: rows.length };
+}
+
+/** Below this many patches carrying the coordinate, the model has no business
+ *  having an opinion at all — and the rail says so with a dash, not a bar. */
+const NB_SUPPORT_MIN = 5;
+/** …and having looked is still not the same as having found something. A
+ *  coefficient whose |mean| is inside its own σ is not distinguishable from
+ *  zero, so drawing a bar and saying "you lean toward it" asserts a direction
+ *  the posterior does not have. The engine already refuses to let such a θ
+ *  move a proposal (`shrink` in engine.rs); the surface has to be at least as
+ *  careful, because here it is being read as the user's own taste. */
+function beliefState(t, support) {
+  if (!t) return "unfitted";
+  if (support < NB_SUPPORT_MIN) return "thin";
+  return Math.abs(t.mean) >= t.std ? "resolved" : "flat";
+}
+
+/** The φ coordinate a module's belief is read from, and the dominant style. */
+function nbTheta(kind) {
+  const phi = MOD_BY_KIND[kind]?.phi;
+  if (!phi || !views || !views.styles || views.styles.length === 0) return null;
+  const styles = activeStyles();
+  const s = styles[0];
+  if (!s || !s.theta) return null;
+  const row = s.theta.find((t) => t.name === phi);
+  if (!row) return null;
+  return { mean: row.mean, std: row.std, style: s.k, share: s.share };
+}
+
+// ---- building ----
+function nbChip(m) {
+  const b = document.createElement("button");
+  b.className = "nb-item" + (m.sort === "mod" ? " mod" : "");
+  b.dataset.kind = m.kind;
+  b.type = "button";
+  b.setAttribute("aria-label", `${m.name} — ${m.blurb}`);
+  // Port signature: green rings for audio, an amber one for a modulation slot.
+  // Both phosphors are on the chip AT REST — hover intensifies them rather than
+  // revealing them, which is the difference between a colour law being used
+  // and merely obeyed. One invariant reading: [inputs] → [output], with the
+  // modulation slot appended as a dashed amber pip. The first rule dropped the
+  // arrow when there were no inputs, so vco, supersaw and noise printed
+  // nothing at all in the column that is supposed to say what shape a module is.
+  // Drawn, not typed: an 8px glyph would be the second exception to the type
+  // scale's 10px floor, and this one has no argument for it.
+  const arrow = '<svg class="pip-arrow" viewBox="0 0 8 6"><path d="M0.5 3 H6.4 M4.6 1.2 L6.6 3 L4.6 4.8"/></svg>';
+  const pips =
+    '<i class="pip"></i>'.repeat(m.sort === "mod" ? 0 : m.ins) +
+    arrow +
+    (m.sort === "mod" ? '<i class="pip mod"></i>' : '<i class="pip"></i>') +
+    (m.modTarget ? '<i class="pip mod"></i>' : "");
+  b.innerHTML =
+    `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${m.glyph}</svg>` +
+    `<span class="ni-name">${esc(m.name)}</span>` +
+    `<span class="ni-pips" aria-hidden="true">${pips}</span>` +
+    `<span class="ni-theta" aria-hidden="true"></span>`;
+  return b;
+}
 
 function buildNodeBank() {
-  const mk = (holder, kinds, mod) => {
-    for (const k of kinds) {
-      const b = document.createElement("button");
-      b.className = "nb-item" + (mod ? " mod" : "");
-      b.textContent = k === "env" ? "mod env" : k === "fold" ? "wavefolder" : k === "rand" ? "s&h rand" : k;
-      b.title = "Stage in the tray";
-      b.onclick = () => stageKind(k);
-      holder.appendChild(b);
+  nbLoad();
+  const groups = $("nb-groups");
+  groups.innerHTML = "";
+  for (const g of NB_GROUPS) {
+    const sec = document.createElement("section");
+    sec.className = "nb-group" + (g.amber ? " amber" : "");
+    sec.dataset.group = g.id;
+    const members = MODULES.filter((m) => m.group === g.id);
+    const hid = `nb-h-${g.id}`;
+    sec.innerHTML =
+      `<h3 class="nb-sect" id="${hid}">` +
+      `<button class="nb-fold" type="button" aria-expanded="true" aria-controls="nb-l-${g.id}">` +
+      `<svg class="nb-caret" viewBox="0 0 7 5" aria-hidden="true"><path d="M0.8 1.2 L3.5 3.9 L6.2 1.2"/></svg>${esc(g.label)}` +
+      `<span class="nb-note">${esc(g.note)}</span>` +
+      `<span class="nb-n mono">${members.length}</span></button></h3>` +
+      `<div class="nb-list" id="nb-l-${g.id}" role="group" aria-labelledby="${hid}"></div>` +
+      `<p class="nb-why hidden"></p>`;
+    const list = sec.querySelector(".nb-list");
+    for (const m of members) list.appendChild(nbChip(m));
+    const fold = sec.querySelector(".nb-fold");
+    fold.onclick = () => {
+      const shut = sec.classList.toggle("folded");
+      fold.setAttribute("aria-expanded", String(!shut));
+      nbState.groups[g.id] = !shut;
+      nbSave();
+    };
+    if (nbState.groups[g.id] === false) {
+      sec.classList.add("folded");
+      fold.setAttribute("aria-expanded", "false");
     }
+    groups.appendChild(sec);
+  }
+
+  // One delegated listener for the whole catalogue — nineteen chips today, and
+  // the count is the thing most likely to change.
+  groups.addEventListener("click", (ev) => {
+    const chip = ev.target.closest(".nb-item");
+    if (!chip) return;
+    // A dimmed chip still answers when clicked. Returning silently is how a
+    // disabled control teaches nothing about why it is disabled.
+    if (chip.classList.contains("unavailable")) {
+      const m = MOD_BY_KIND[chip.dataset.kind];
+      note(!wb.rack
+        ? "No patch loaded — pick one from the bank on the left first."
+        : `Nothing in this patch takes modulation yet — add a filter and ${m.name} has somewhere to go.`);
+      return;
+    }
+    pickModule(chip.dataset.kind);
+  });
+  groups.addEventListener("pointerdown", (ev) => {
+    const chip = ev.target.closest(".nb-item");
+    if (!chip || chip.classList.contains("unavailable") || ev.button !== 0) return;
+    nbDragFrom(chip, ev);
+  });
+  groups.addEventListener("pointerover", (ev) => {
+    const chip = ev.target.closest(".nb-item");
+    if (chip) nbSpecShow(chip);
+  });
+  groups.addEventListener("focusin", (ev) => {
+    const chip = ev.target.closest(".nb-item");
+    if (chip) nbSpecShow(chip);
+  });
+  groups.addEventListener("pointerout", (ev) => {
+    if (!ev.relatedTarget || !ev.relatedTarget.closest(".nb-item")) nbSpecHide();
+  });
+  groups.addEventListener("focusout", nbSpecHide);
+  groups.addEventListener("keydown", nbGridKeys);
+
+  const q = $("nb-q");
+  q.addEventListener("input", renderNodeBank);
+  q.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      // The ⋯ handoff drops focus in this field and says "esc to cancel", and
+      // this listener used to stop the event before the document handler that
+      // actually cancels it ever ran — so the pending socket survived, and the
+      // next module you picked, minutes later, edited a stale key.
+      if (pendingTarget) cancelPending();
+      else if (q.value) { q.value = ""; renderNodeBank(); }
+      else q.blur();
+      ev.stopPropagation();
+    } else if (ev.key === "Enter") {
+      const first = $("nb-groups").querySelector(".nb-item:not(.hidden):not(.unavailable)");
+      if (first) pickModule(first.dataset.kind);
+    } else if (ev.key === "ArrowDown") {
+      const first = $("nb-groups").querySelector(".nb-item:not(.hidden)");
+      if (first) { first.focus(); ev.preventDefault(); }
+    }
+  });
+
+  $("nb-collapse").onclick = () => nbSetCollapsed(!nbState.collapsed);
+  $("nb-rail").onclick = () => nbSetCollapsed(false);
+  nbSetCollapsed(nbState.collapsed, true);
+  nbInitResize();
+  renderNodeBank();
+}
+
+// ---- collapse: a drawer with an identity and a memory ----
+function nbSetCollapsed(shut, silent) {
+  nbState.collapsed = !!shut;
+  const nb = $("nodebank");
+  nb.classList.toggle("collapsed", nbState.collapsed);
+  const btn = $("nb-collapse");
+  btn.textContent = nbState.collapsed ? "◂" : "▸";
+  btn.title = nbState.collapsed ? "Show the node bank" : "Collapse the node bank";
+  btn.setAttribute("aria-expanded", String(!nbState.collapsed));
+  if (nbState.collapsed) disarm();
+  if (!silent) nbSave();
+  renderNodeBank();
+}
+
+// ---- the rail can be dragged wider; the width is remembered ----
+function nbInitResize() {
+  const h = $("nb-resize");
+  if (!h) return;
+  if (nbState.width) $("nb-body").style.width = `${nbState.width}px`;
+  h.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    const body = $("nb-body");
+    const startX = ev.clientX;
+    const startW = body.getBoundingClientRect().width;
+    const move = (mv) => {
+      const w = Math.round(Math.max(196, Math.min(320, startW + (startX - mv.clientX))));
+      body.style.width = `${w}px`;
+      nbState.width = w;
+    };
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      nbSave();
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  });
+}
+
+// ---- render: filter, availability, and the model's belief ----
+function renderNodeBank() {
+  const groups = $("nb-groups");
+  if (!groups || !groups.firstChild) return;
+  const q = ($("nb-q").value || "").trim().toLowerCase();
+  const hasRack = !!wb.rack;
+  const hasModSocket = hasRack && wb.rack.modules.some((m) => kindModTarget(m.kind));
+  const { byPhi, total } = nbSupport();
+
+  let shown = 0;
+  for (const chip of groups.querySelectorAll(".nb-item")) {
+    const m = MOD_BY_KIND[chip.dataset.kind];
+    const hit = !q || m.name.includes(q) || m.tags.some((t) => t.includes(q));
+    chip.classList.toggle("hidden", !hit);
+    if (hit) shown += 1;
+
+    // Unavailable is explained, never silent — see the per-group note below.
+    const blocked = !hasRack || (m.sort === "mod" && !hasModSocket);
+    chip.classList.toggle("unavailable", blocked);
+    chip.setAttribute("aria-disabled", String(blocked));
+    // Roving tab stop, set per group below: nineteen tab stops in a sidebar
+    // would put the whole catalogue between the search field and the rack.
+    chip.tabIndex = -1;
+
+    // The belief row. A bar without evidence is a lie with a shape, so anything
+    // short of a resolved coefficient draws a mark that is not a bar.
+    const t = nbTheta(m.kind);
+    const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
+    const cell = chip.querySelector(".ni-theta");
+    const state = m.phi ? beliefState(t, sup) : "unmeasured";
+    if (state !== "resolved") {
+      cell.className = "ni-theta " + (state === "flat" ? "flat" : "thin");
+      cell.innerHTML = "";
+      cell.title =
+        state === "unmeasured" ? "Not something the taste model measures directly."
+        : state === "unfitted" ? "The model hasn't been fitted yet — make a few picks."
+        : state === "thin" ? `Too little to go on — ${sup} of ${total} patches carry this.`
+        : `The model has looked and has no lean either way (θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}).`;
+    } else {
+      // 16px of travel each side of the zero rule (see .ni-theta), so the
+      // clamps are the geometry rather than a number that overflows it.
+      const scale = 14; // px per unit θ
+      const len = Math.max(2, Math.min(15, Math.abs(t.mean) * scale));
+      const whisk = Math.min(16, (Math.abs(t.mean) + t.std) * scale);
+      const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
+      cell.className = "ni-theta" + (t.mean >= 0 ? " pos" : " neg");
+      cell.innerHTML =
+        `<i class="tb-whisk" style="width:${whisk}px"></i>` +
+        `<i class="tb-bar" style="width:${len}px;background:${color}"></i>`;
+      cell.title =
+        `In ${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank) ` +
+        `you lean ${t.mean >= 0 ? "toward" : "away from"} this ` +
+        `— θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
+        `from ${sup} of ${total} patches.`;
+    }
+  }
+
+  // Group-level counts, folding and the explained-unavailable copy.
+  for (const g of NB_GROUPS) {
+    const sec = groups.querySelector(`[data-group="${g.id}"]`);
+    const vis = [...sec.querySelectorAll(".nb-item:not(.hidden)")].length;
+    sec.classList.toggle("empty", vis === 0);
+    // A group folded shut still matches the query, and its count still says
+    // so — showing "2" above a collapsed panel is a count that points at
+    // nothing. Search opens what it finds without overwriting the user's folds.
+    if (q && vis > 0) sec.classList.remove("folded");
+    else if (!q && nbState.groups[g.id] === false) sec.classList.add("folded");
+    sec.querySelector(".nb-n").textContent = q ? `${vis}` : `${MODULES.filter((m) => m.group === g.id).length}`;
+    // One tab stop per group; arrows move inside it, ←/→ jump between groups.
+    const first = sec.querySelector(".nb-item:not(.hidden):not(.unavailable)");
+    if (first) first.tabIndex = 0;
+    const why = sec.querySelector(".nb-why");
+    if (g.id === "modulation" && hasRack && !hasModSocket) {
+      why.classList.remove("hidden");
+      why.innerHTML =
+        `Nothing in this patch takes modulation yet — ` +
+        `<button class="nb-inline" type="button">add a filter</button> and its mod input appears.`;
+      why.querySelector(".nb-inline").onclick = () => pickModule("filter");
+    } else {
+      why.classList.add("hidden");
+      why.innerHTML = "";
+    }
+  }
+
+  // The belief column appears the moment the model has any styles at all.
+  groups.classList.toggle("has-belief", !!(views && views.styles && views.styles.length));
+  nbRenderInPatch();
+
+  $("nb-count").textContent = q ? `${shown} of ${MODULES.length}` : `${MODULES.length}`;
+  const none = $("nb-none");
+  none.classList.toggle("hidden", shown > 0 || !q);
+  $("nb-empty").classList.toggle("hidden", hasRack);
+  nbRenderRail();
+}
+
+/** What the bench patch is made of, as glyph chips. Clicking one puts the
+ *  keyboard on that module in the rack — the rail is a legend for the canvas
+ *  beside it, not only a shopping list. */
+function nbRenderInPatch() {
+  const sec = $("nb-inpatch");
+  const list = $("nb-inpatch-list");
+  const mods = (wb.rack && wb.rack.modules) || [];
+  const real = mods.filter((m) => MOD_BY_KIND[m.kind]);
+  sec.classList.toggle("hidden", real.length === 0);
+  if (real.length === 0) { list.innerHTML = ""; return; }
+  $("nb-inpatch-n").textContent = String(real.length);
+  list.innerHTML = real
+    .map((m) => {
+      const d = MOD_BY_KIND[m.kind];
+      return (
+        `<button class="nb-chip${d.sort === "mod" ? " mod" : ""}" type="button" data-key="${esc(m.key)}" ` +
+        `title="${esc(d.name)} — jump to it in the rack">` +
+        `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${d.glyph}</svg>` +
+        `<span>${esc(d.name)}</span></button>`
+      );
+    })
+    .join("");
+  list.querySelectorAll(".nb-chip").forEach((b) => {
+    b.onclick = () => {
+      const g = $("rack-svg").querySelector(`.jack[data-childkey="${b.dataset.key}/0"], [data-addr^="${b.dataset.key}#"]`);
+      const el = g || $("rack-svg").querySelector(`[data-addr^="${b.dataset.key}#"]`);
+      if (el) {
+        el.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+        if (el.hasAttribute("data-addr")) { el.setAttribute("tabindex", "0"); el.focus(); }
+      }
+    };
+  });
+}
+
+/** Re-apply the palette's view of the rack after the rack is rebuilt: the
+ *  availability pass, and the lit sockets for whatever is still in hand. */
+function nbSync() {
+  renderNodeBank();
+  if (!armed) return;
+  if (!wb.rack) return disarm();
+  lightSockets();
+  if (armedSockets.length === 0) disarm();
+}
+
+function nbRenderRail() {
+  const rail = $("nb-rail");
+  const held = tray.length;
+  rail.innerHTML =
+    `<span class="rail-word">node bank</span>` +
+    `<span class="rail-n mono">${MODULES.length}</span>` +
+    (held ? `<span class="rail-held mono" title="${held} module${held > 1 ? "s" : ""} held below">${held}</span>` : "");
+  rail.title = "Show the node bank";
+}
+
+// ---- the spec card ----
+let specTimer = null;
+function nbSpecShow(chip) {
+  clearTimeout(specTimer);
+  specTimer = setTimeout(() => nbSpecPaint(chip), 180);
+}
+function nbSpecHide() {
+  clearTimeout(specTimer);
+  $("nb-spec").classList.add("hidden");
+}
+
+function nbSpecPaint(chip) {
+  const m = MOD_BY_KIND[chip.dataset.kind];
+  if (!m) return;
+  const card = $("nb-spec");
+  const { byPhi, total } = nbSupport();
+  const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
+  const t = nbTheta(m.kind);
+  // Several modules share one coordinate on purpose (see structural.rs). Saying
+  // "the model likes distortion" when the coefficient cannot separate it from a
+  // wavefolder would be the surface claiming a resolution the model lacks.
+  const shared = m.phi ? MODULES.filter((x) => x.phi === m.phi).map((x) => x.name) : [];
+
+  const ports =
+    m.sort === "mod"
+      ? "out — modulation"
+      : [m.ins === 2 ? "a, b — audio in" : m.ins === 1 ? "in — audio in" : null,
+         "out — audio",
+         m.modTarget ? `mod → ${m.modTarget}` : null]
+          .filter(Boolean).join(" · ");
+
+  // Four different silences, and they are not the same sentence: this is not
+  // measured / the model has not been fitted / too few examples / here is what
+  // it thinks. Collapsing any of them into "no data" is how a HITL surface
+  // starts implying more than it knows.
+  // Five distinct silences, and they are not the same sentence: this is not
+  // measured / the model has not been fitted / too few examples / it looked and
+  // found no lean / here is what it thinks. Collapsing any of them into "no
+  // data" is how a human-in-the-loop surface starts implying more than it knows.
+  const state = m.phi ? beliefState(t, sup) : "unmeasured";
+  let belief;
+  if (state === "unmeasured") {
+    belief = `<span class="sp-dim">Not a coordinate the taste model measures on its own.</span>`;
+  } else if (state === "unfitted") {
+    belief = `<span class="sp-dim">The model hasn't been fitted yet — make a few picks.</span>`;
+  } else if (state === "thin") {
+    belief = `<span class="sp-dim">In ${sup} of ${total} patches — too few for the model to have an opinion yet.</span>`;
+  } else if (state === "flat") {
+    belief =
+      `<span class="sp-dim">In ${sup} of ${total} patches. The model has looked and has no lean either way ` +
+      `— θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}, an interval that straddles zero.</span>`;
+  } else {
+    const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
+    belief =
+      `<span class="sp-dim">In ${sup} of ${total} patches.</span> ` +
+      `<i class="sp-dot" style="background:${color}"></i>` +
+      `<span class="sp-belief">in ${esc(styleName(views.styles[t.style], t.style))} ` +
+      `(${Math.round(t.share * 100)}% of your bank) you lean ${t.mean >= 0 ? "toward" : "away from"} it` +
+      ` — θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}</span>`;
+  }
+  if (shared.length > 1) {
+    belief +=
+      `<br><span class="sp-dim">The model does not separate ${esc(shared.join(", "))} — ` +
+      `they share one coordinate, so this belief is about all of them.</span>`;
+  }
+
+  card.innerHTML =
+    `<div class="sp-head"><svg class="sp-glyph${m.sort === "mod" ? " mod" : ""}" viewBox="0 0 20 14" aria-hidden="true">${m.glyph}</svg>` +
+    `<span class="panel-label">${esc(m.name)}</span></div>` +
+    `<p class="sp-blurb">${esc(m.blurb)}</p>` +
+    `<div class="sp-ports mono">${esc(ports)}</div>` +
+    `<div class="sp-params mono">${esc(fragParamStrip(m.frag()) || "—")}</div>` +
+    `<div class="sp-model mono">${belief}</div>` +
+    `<div class="sp-heard mono"><b>heard as</b> ${esc(m.heard)}</div>`;
+
+  const r = chip.getBoundingClientRect();
+  card.classList.remove("hidden");
+  const ch = card.offsetHeight;
+  card.style.top = `${Math.max(8, Math.min(window.innerHeight - ch - 8, r.top - 6))}px`;
+  card.style.right = `${Math.round(window.innerWidth - r.left + 10)}px`;
+}
+
+// ---- arm and place ----
+function pickModule(kind) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return;
+  if (!wb.rack) return note("No patch loaded — pick one from the bank on the left first.");
+
+  // Straight from the rack's ⋯ menu: the socket is already chosen. The handoff
+  // carries what it can accept, because "replace with…" on a filter cannot
+  // take an LFO — and placeModule branches on the module's sort before it ever
+  // looks at the mode, so an unchecked handoff would quietly rewrite the
+  // filter's modulation slot instead of replacing the filter.
+  if (pendingTarget) {
+    const p = pendingTarget;
+    if (!p.accepts.includes(m.sort)) {
+      note(`${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`);
+      return;
+    }
+    cancelPending();
+    placeModule(kind, p.mode, p.key);
+    return;
+  }
+  if (armed && armed.kind === kind) return disarm();
+  arm(kind);
+}
+
+function arm(kind) {
+  disarm();
+  const m = MOD_BY_KIND[kind];
+  armed = { kind, sort: m.sort, modSort: m.modSort || "leaf" };
+  const chip = $("nb-groups").querySelector(`.nb-item[data-kind="${kind}"]`);
+  if (chip) chip.classList.add("armed");
+  lightSockets();
+  if (armedSockets.length === 0) {
+    disarm();
+    note(
+      m.sort === "mod"
+        ? "Nothing in this patch takes modulation yet — add a filter first."
+        : "Nowhere to put that yet.",
+    );
+    return;
+  }
+  $("rack-scroll").classList.add("placing");
+  armStatus();
+  nbAnnounce(`${m.name} in hand. ${armedSockets.length} sockets available. Arrow keys to step, Enter to place.`);
+}
+
+function armStatus() {
+  if (!armed) return;
+  const m = MOD_BY_KIND[armed.kind];
+  const verb = m.sort === "mod" ? "cabling" : "placing";
+  $("nb-status").innerHTML =
+    `<b>${verb} ${esc(m.name)}</b> — click a lit socket <span class="sp-dim">· esc to put it down</span>`;
+}
+
+function lightSockets() {
+  const svg = $("rack-svg");
+  const sel = armed.sort === "mod" ? ".jack[data-modkey]" : ".jack[data-childkey]";
+  armedSockets = [...svg.querySelectorAll(sel)];
+  armedIdx = -1;
+  for (const j of armedSockets) {
+    j.classList.add("legal");
+    // Name the two drops BEFORE either happens. A source evicts whatever is in
+    // the socket; a processor splices in front of it. Those had the same
+    // appearance right up until one of them had already thrown a chain away.
+    // Amber means "something here goes away". A source evicts the chain in
+    // the socket, and a *leaf* modulator evicts whatever is in the slot — but
+    // a CV shaper or combiner takes the existing term as its own input, so
+    // nothing is lost and the socket stays green.
+    const key = j.getAttribute("data-childkey") || j.getAttribute("data-modkey");
+    const evicts =
+      armed.sort === "source" ||
+      (armed.sort === "mod" && armed.modSort === "leaf" && modAtKey(key));
+    if (evicts) j.classList.add("replaces");
+    const label = socketLabel(j);
+    j.setAttribute("aria-label", label);
+    // …and where a sighted user can read it. This sentence is the entire
+    // reason arm-and-place is safer than a drag, and it used to exist only in
+    // the accessibility tree: everyone else got a colour and a guess.
+    let t = j.querySelector("title");
+    if (!t) { t = svgEl("title", {}); j.appendChild(t); }
+    t.textContent = label;
+    j.addEventListener("pointerenter", onSocketHover);
+    j.addEventListener("pointerleave", onSocketLeave);
+  }
+}
+
+/** Echo the socket's promise into the status line the rail already reserves. */
+function onSocketHover(ev) {
+  if (!armed) return;
+  const j = ev.currentTarget;
+  $("nb-status").innerHTML =
+    `<b>${esc(socketLabel(j))}</b> <span class="sp-dim">· click to place · esc to put it down</span>`;
+}
+function onSocketLeave() {
+  if (armed) armStatus();
+}
+
+function socketLabel(jack) {
+  const key = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
+  const name = kindName(armed ? armed.kind : "");
+  if (armed && armed.sort === "mod") {
+    const owner = rackKindAt(key);
+    const dest = kindModTarget(owner) || "";
+    const here = modAtKey(key);
+    // Three different things can happen to a modulation slot, and they must
+    // not share a sentence: fill it, replace what is in it, or take what is
+    // in it as an input.
+    if (here && armed.modSort !== "leaf") {
+      return `${kindName(owner)} → ${dest} — put ${name} after the ${fragLabel(here, true)}`;
+    }
+    if (here) return `${kindName(owner)} → ${dest} — replaces the ${fragLabel(here, true)}`;
+    return `${kindName(owner)} — modulate ${dest} with ${name}`;
+  }
+  const occupant = nodeAtKey(key);
+  const what = occupant ? fragLabel(occupant, false) : "the socket";
+  return armed && armed.sort === "source"
+    ? `replaces ${what}`
+    : `insert ${name} before ${what}`;
+}
+
+function disarm() {
+  if (!armed) return;
+  const chip = $("nb-groups").querySelector(".nb-item.armed");
+  if (chip) chip.classList.remove("armed");
+  for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot");
+  armedSockets = [];
+  armedIdx = -1;
+  armed = null;
+  $("rack-scroll").classList.remove("placing");
+  $("nb-status").textContent = "";
+  nbAnnounce("");
+}
+
+/** Put down a pending ⋯ handoff — from Escape, a view change, or a new patch. */
+function cancelPending() {
+  if (!pendingTarget) return;
+  pendingTarget = null;
+  $("nb-status").textContent = "";
+  nbAnnounce("cancelled");
+}
+
+/** The rack's ⋯ menu hands off here: open the rail, wait for a module. */
+function armFromRack(mode, key) {
+  // Both menu items act on the audio tree; a modulation slot is offered by its
+  // own items on the same menu, which name their destination port.
+  pendingTarget = { mode, key, accepts: ["source", "proc", "combine"] };
+  if (nbState.collapsed) nbSetCollapsed(false);
+  const q = $("nb-q");
+  q.value = "";
+  renderNodeBank();
+  q.focus();
+  // The wording follows the menu item the user just clicked. Inserting *at*
+  // this node's slot puts the new module between it and its parent, so from
+  // the signal's point of view the new module comes after it — the same edit
+  // the socket labels describe as "before" the node downstream of it.
+  const here = nodeAtKey(key);
+  const name = here ? fragLabel(here, false) : "the output";
+  const what = mode === "replace" ? "replace" : "insert after";
+  $("nb-status").innerHTML =
+    `<b>${what} ${esc(name)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
+  nbAnnounce(`Choose a module to ${what} ${name}.`);
+}
+
+function placeModule(kind, mode, key) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return;
+  // Placement is one undo step, and the toast says so — trying a module out is
+  // supposed to be cheap, and "how do I get rid of this" should never be a
+  // question the user has to go and answer somewhere else.
+  //
+  // Taking it out has to undo BOTH halves of the edit. `doUndo` only restores
+  // the tree, so an undone replacement used to put the chain back in the rack
+  // *and* leave a second copy of it sitting in HELD.
+  let staged = null;
+  const undo = { undo: () => { if (staged != null) unstage(staged); doUndo(); }, undoLabel: "take it out" };
+  if (m.sort === "mod") {
+    const owner = rackKindAt(key);
+    const old = modAtKey(key);
+    const dest = kindModTarget(owner) || "mod";
+    // A CV shaper takes the slot's current term as its own input rather than
+    // evicting it — chaining is the entire reason the modulation sort became
+    // recursive, and "drop a quantizer on this cable" should not first cost
+    // you the modulator that made the cable worth quantizing.
+    const wraps = (m.modSort === "op" || m.modSort === "pair") && old;
+    sendStruct({ op: "set_mod_tree", key, m: wrapMod(m, old) });
+    if (old && !wraps) staged = stageFragment(old, true);
+    note(
+      wraps
+        ? `${m.name} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
+        : old
+          ? `${m.name} replaced the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest} — the old one is held below.`
+          : `${m.name} → ${dest} on ${kindName(owner)}`,
+      undo,
+    );
+  } else if (mode === "replace" || m.sort === "source") {
+    const old = nodeAtKey(key);
+    sendStruct({ op: "replace_tree", key, node: m.frag() });
+    if (old && subtreeSize(old) > 1) {
+      staged = stageFragment(old, false);
+      note(`${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`, undo);
+    } else {
+      note(`${m.name} took the socket.`, undo);
+    }
+  } else {
+    sendStruct({ op: "insert_tree", key, node: m.frag() });
+    note(`${m.name} patched into the wire.`, undo);
+  }
+  disarm();
+  $("nb-status").textContent = "";
+}
+
+/** A shaper's fragment, with whatever is already in the slot as its input.
+ *  Leaves, and shapers landing on an empty slot, keep their own defaults. */
+function wrapMod(m, existing) {
+  const frag = m.frag();
+  if (!existing || (m.modSort !== "op" && m.modSort !== "pair")) return frag;
+  const tag = nodeTag(frag);
+  if (tag === "Op") frag.Op.input = existing;
+  else if (tag === "Pair") frag.Pair.a = existing;
+  return frag;
+}
+
+/** A click on a lit socket while something is armed. */
+function nbSocketClick(jack) {
+  if (!armed) return false;
+  const key = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
+  if (!key) return false;
+  placeModule(armed.kind, armed.sort === "source" ? "replace" : "insert", key);
+  return true;
+}
+
+// ---- keyboard ----
+function nbGridKeys(ev) {
+  // While a module is armed the arrows belong to the socket walk. Both
+  // handlers used to fire on the same press, so the focus ring and the lit
+  // socket moved independently and Enter placed into whichever one won.
+  if (armed) return;
+  const chip = ev.target.closest(".nb-item");
+  if (!chip) return;
+  const groups = $("nb-groups");
+  const all = [...groups.querySelectorAll(".nb-item:not(.hidden)")];
+  const i = all.indexOf(chip);
+  const go = (el) => {
+    if (!el) return;
+    // Keep the roving stop with the focus, or Tab would return to whichever
+    // chip happened to hold it when the list was last rendered.
+    all.forEach((c) => { c.tabIndex = -1; });
+    el.tabIndex = 0;
+    el.focus();
+    ev.preventDefault();
   };
-  mk($("nb-audio"), NB_AUDIO, false);
-  mk($("nb-mod"), NB_MOD, true);
-  $("nb-collapse").onclick = () => {
-    const nb = $("nodebank");
-    nb.classList.toggle("collapsed");
-    const shut = nb.classList.contains("collapsed");
-    const btn = $("nb-collapse");
-    btn.textContent = shut ? "◂" : "▸";
-    // The glyph used to flip while the tooltip permanently read "Collapse".
-    btn.title = shut ? "Show the node bank" : "Collapse the node bank";
-    btn.setAttribute("aria-expanded", String(!shut));
+  if (ev.key === "ArrowDown") go(all[Math.min(all.length - 1, i + 1)]);
+  else if (ev.key === "ArrowUp") go(all[Math.max(0, i - 1)]);
+  else if (ev.key === "Home") go(all[0]);
+  else if (ev.key === "End") go(all[all.length - 1]);
+  else if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") {
+    const secs = [...groups.querySelectorAll(".nb-group:not(.empty)")];
+    const here = secs.indexOf(chip.closest(".nb-group"));
+    const next = secs[Math.max(0, Math.min(secs.length - 1, here + (ev.key === "ArrowRight" ? 1 : -1)))];
+    go(next?.querySelector(".nb-item:not(.hidden)"));
+  } else if (ev.key === "Escape") {
+    $("nb-q").focus();
+    ev.preventDefault();
+  }
+}
+
+/** Arrow-walk the lit sockets while something is armed. Returns true if the
+ *  key was consumed, so the global handler can leave it alone. */
+function nbArmedKeys(ev) {
+  if (!armed || armedSockets.length === 0) return false;
+  if (ev.key === "Escape") { disarm(); return true; }
+  if (ev.key === "ArrowDown" || ev.key === "ArrowRight" || ev.key === "ArrowUp" || ev.key === "ArrowLeft") {
+    const d = ev.key === "ArrowDown" || ev.key === "ArrowRight" ? 1 : -1;
+    armedSockets[armedIdx]?.classList.remove("hot");
+    armedIdx = (armedIdx + d + armedSockets.length) % armedSockets.length;
+    const j = armedSockets[armedIdx];
+    j.classList.add("hot");
+    j.scrollIntoView({ block: "nearest", inline: "nearest" });
+    nbAnnounce(`socket ${armedIdx + 1} of ${armedSockets.length} — ${socketLabel(j)}`);
+    return true;
+  }
+  if (ev.key === "Enter" && armedIdx >= 0) { nbSocketClick(armedSockets[armedIdx]); return true; }
+  return false;
+}
+
+/** Press-drag straight off a chip — the expert path. */
+function nbDragFrom(chip, ev) {
+  const m = MOD_BY_KIND[chip.dataset.kind];
+  if (!m || !wb.rack) return;
+  let dragging = false;
+  const startX = ev.clientX, startY = ev.clientY;
+  const move = (mv) => {
+    if (dragging) return;
+    if (Math.hypot(mv.clientX - startX, mv.clientY - startY) < 6) return;
+    dragging = true;
+    cleanup();
+    disarm();
+    startWireDrag(
+      {
+        mode: m.sort === "mod" ? "palette-mod" : "palette-audio",
+        item: { frag: m.frag(), kindId: m.kind },
+        kind: m.sort === "mod" ? "mod" : "audio",
+      },
+      mv,
+    );
   };
+  const cleanup = () => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", cleanup);
+    document.removeEventListener("pointercancel", cleanup);
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", cleanup);
+  document.addEventListener("pointercancel", cleanup);
 }
 
 // ---------- wire drawing ----------
@@ -4169,10 +5668,15 @@ function startWireDrag(spec, ev) {
   wire = spec;
   const rackSvg = $("rack-svg");
   rackSvg.classList.add("wiring");
-  // Light up legal targets.
-  if (spec.mode === "tray-audio") {
-    rackSvg.querySelectorAll('.jack[data-childkey]').forEach((j) => j.classList.add("legal"));
-  } else if (spec.mode === "tray-mod") {
+  // Light up legal targets. A palette drag lights the same sockets a tray drag
+  // does — the two gestures differ only in where the module came from.
+  if (spec.mode === "tray-audio" || spec.mode === "palette-audio") {
+    rackSvg.querySelectorAll('.jack[data-childkey]').forEach((j) => {
+      j.classList.add("legal");
+      // Sources evict, processors splice. Say which before the drop, not after.
+      if (SOURCE_TAGS.includes(nodeTag(spec.item.frag))) j.classList.add("replaces");
+    });
+  } else if (spec.mode === "tray-mod" || spec.mode === "palette-mod") {
     rackSvg.querySelectorAll('.jack[data-modkey]').forEach((j) => j.classList.add("legal"));
   }
   drawWireBand(ev.clientX, ev.clientY, ev.clientX, ev.clientY, spec.kind);
@@ -4216,7 +5720,7 @@ function endWireDrag() {
   $("wire-overlay").innerHTML = "";
   const rackSvg = $("rack-svg");
   rackSvg.classList.remove("wiring");
-  rackSvg.querySelectorAll(".jack.legal").forEach((j) => j.classList.remove("legal"));
+  rackSvg.querySelectorAll(".jack.legal").forEach((j) => j.classList.remove("legal", "replaces"));
   wire = null;
 }
 
@@ -4227,43 +5731,59 @@ function onWireUp(ev) {
   const w = wire;
   endWireDrag();
 
-  if (w.mode === "tray-audio") {
+  if (w.mode === "tray-audio" || w.mode === "palette-audio") {
     const childKey = jack && jack.getAttribute("data-childkey");
-    if (!childKey) return; // dropped on nothing: stays staged
+    const label = w.item.kindId ? kindName(w.item.kindId) : fragLabel(w.item.frag, false);
+    // A missed drop used to be completely silent: the cable vanished, nothing
+    // moved, and there was no way to tell a miss from a refusal.
+    if (!childKey) {
+      if (w.item.uid) note(`nothing there — ${label} is still held below`);
+      else note(`nothing there — drop ${label} on a lit ○`);
+      return;
+    }
     const frag = w.item.frag;
     if (SOURCE_TAGS.includes(nodeTag(frag))) {
-      // A source takes the socket; the old chain parks in the tray.
+      // A source takes the socket; whatever was there is held below.
       const old = nodeAtKey(childKey);
       sendStruct({ op: "replace_tree", key: childKey, node: frag });
-      if (old) stageFragment(old, false);
-      note("plugged in — the old chain is parked in the tray");
+      if (old && subtreeSize(old) > 1) {
+        stageFragment(old, false);
+        note(`${label} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`);
+      } else {
+        note(`${label} took the socket.`);
+      }
     } else {
       sendStruct({ op: "insert_tree", key: childKey, node: frag });
-      note("patched into the wire");
+      note(`${label} patched into the wire.`);
     }
-    unstage(w.item.uid);
-  } else if (w.mode === "tray-mod") {
+    if (w.item.uid) unstage(w.item.uid);
+  } else if (w.mode === "tray-mod" || w.mode === "palette-mod") {
     const modKey = jack && jack.getAttribute("data-modkey");
-    if (!modKey) return;
+    const label = w.item.kindId ? kindName(w.item.kindId) : fragLabel(w.item.frag, true);
+    if (!modKey) {
+      if (w.item.uid) note(`nothing there — ${label} is still held below`);
+      else note(`nothing there — drop ${label} on a lit mod ○`);
+      return;
+    }
     const old = modAtKey(modKey);
     sendStruct({ op: "set_mod_tree", key: modKey, m: w.item.frag });
     if (old) stageFragment(old, true);
-    unstage(w.item.uid);
-    note("modulation connected");
+    if (w.item.uid) unstage(w.item.uid);
+    note(`${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`);
   } else if (w.mode === "unplug-audio") {
     if (jack) return; // dropped back on a jack: treat as cancel
     const old = nodeAtKey(w.childKey);
     if (!old) return;
     stageFragment(old, false);
-    sendStruct({ op: "replace_tree", key: w.childKey, node: FRAG_DEFAULTS.vco() });
-    note("unplugged — chain parked in the tray; a fresh vco holds the socket");
+    sendStruct({ op: "replace_tree", key: w.childKey, node: MOD_BY_KIND.vco.frag() });
+    note("unplugged — the chain is held below; a fresh vco holds the socket");
   } else if (w.mode === "unplug-mod") {
     if (jack) return;
     const old = modAtKey(w.key);
     if (!old) return;
     stageFragment(old, true);
     sendStruct({ op: "set_mod", key: w.key, kind: "none" });
-    note("modulation unplugged into the tray");
+    note("modulation unplugged — it is held below");
   }
 }
 
@@ -4427,10 +5947,16 @@ const NICE_NAMES = {
   tail_ratio: "long tail", bass_fraction: "bass weight",
   held_centroid_std: "held-note motion", high_ratio: "speaks up high",
   chord_flatness_delta: "stack mud",
+  // Structural coordinates. Several are FAMILIES — one column standing for
+  // several modules — so the label has to name the family rather than any one
+  // member, or the WHY line credits a wavefolder for a bitcrusher's evidence.
   n_vco: "VCOs", n_supersaw: "supersaws", n_noise: "noise srcs", n_mix: "mixers",
-  n_filter: "filters", n_fold: "wavefolders", n_delay: "delays", n_chorus: "choruses",
-  n_reverb: "reverbs", n_rand: "S&H mods",
-  n_lfo: "LFO mods", n_env: "env mods", depth: "patch depth", size: "patch size",
+  n_wavetable: "wavetables", n_pluck: "plucked strings", n_formant: "formant voices",
+  n_filter: "filtering", n_drive: "drive & fold", n_time: "delay & grains",
+  n_mod_fx: "chorus & sweeps", n_reverb: "reverbs", n_dynamics: "level control",
+  n_rand: "S&H mods", n_lfo: "LFO mods", n_env: "env mods", n_follow: "followers",
+  n_mod_shape: "shaped mod", n_mod_logic: "gated mod", mod_depth_mean: "mod chaining",
+  depth: "patch depth", size: "patch size",
   mod_density: "mod density", amp_attack: "amp attack", amp_sustain: "amp sustain",
   amp_release: "amp release",
 };

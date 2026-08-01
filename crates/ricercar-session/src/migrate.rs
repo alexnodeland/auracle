@@ -19,7 +19,26 @@
 //!   observation's own centroid. First-order, and honest about it.
 //! - `crest`, `tail_ratio`, `attack_s` are now logged. Exact.
 //! - `size` was dropped from φ entirely (it was exactly collinear with the
-//!   nine module counts). Dropped here too.
+//!   module counts). Dropped here too.
+//! - `n_mix`, `n_fold` and `n_chorus` no longer exist as φ coordinates: the
+//!   first left for the same collinearity reason as `size`, and the other two
+//!   were folded into the `n_drive` / `n_mod_fx` families. A schema-1 vote
+//!   carries no value for a family coordinate — it was never measured — so
+//!   they are imputed at the mean like any other absent coordinate, rather
+//!   than being re-derived from a count that answered a different question.
+//!
+//! A φ coordinate that is *renamed* rather than dropped is a third case, and
+//! the one that fails silently if nobody handles it. Both the schema-1 table
+//! and every raw-φ observation already on disk store their coordinate names,
+//! and [`FitSet::build`](ricercar_taste::FitSet::build) matches on those names
+//! — so renaming `n_delay` to `n_time` in wave 2A would have quietly imputed
+//! that column at the mean for every vote ever cast, which reads as "this user
+//! has no opinion about delays" rather than as a rename.
+//!
+//! [`RENAMES`] carries the value across instead. That is exact, not a
+//! convenience: `n_time` counts delays *and* granulators, and no observation
+//! predating this wave can contain a granulator, so the old `n_delay` count
+//! **is** the new coordinate's value for every row being migrated.
 //!
 //! Anything the migration cannot place is left at the new standardizer's mean
 //! by [`FitSet::build`](ricercar_taste::FitSet::build), which standardizes to
@@ -60,6 +79,27 @@ pub const SCHEMA1_NAMES: [&str; 30] = [
     "amp_sustain",
     "amp_release",
 ];
+
+/// φ coordinates that were renamed, as `(old name, current name)`.
+///
+/// A rename is not a drop: the stored value is still the right value for the
+/// new coordinate, so a log written under the old name must be read under the
+/// new one rather than imputed away. See the module doc for why each entry is
+/// exact rather than approximate.
+pub const RENAMES: [(&str, &str); 1] = [
+    // Wave 2A: the column counts delays and granulators, so a name that says
+    // "delay" would be a lie. No pre-2A patch can hold a granulator, so the
+    // old count is the new count.
+    ("n_delay", "n_time"),
+];
+
+/// The current name for a possibly-renamed φ coordinate.
+fn renamed(name: &str) -> &str {
+    RENAMES
+        .iter()
+        .find(|(old, _)| *old == name)
+        .map_or(name, |(_, new)| *new)
+}
 
 /// The audio φ names as of the **v1 stimulus** (no stimulus tag), in order.
 const V1_AUDIO_NAMES: [&str; 12] = [
@@ -110,7 +150,7 @@ fn convert(raw: &[f64], nyquist: f64, target: &[String]) -> Vec<f64> {
     let get = |name: &str| {
         SCHEMA1_NAMES
             .iter()
-            .position(|n| *n == name)
+            .position(|n| renamed(n) == name)
             .and_then(|i| raw.get(i).copied())
     };
     let centroid_hz = get("centroid_mean").unwrap_or(0.0) * nyquist;
@@ -208,4 +248,25 @@ pub fn stamp_names(log: &mut ObservationLog, names: &[String]) {
             o.feature_names = names.to_vec();
         }
     }
+}
+
+/// Rewrite [`RENAMES`]'d coordinate names in a log's stored name lists.
+///
+/// Cheap, idempotent, and the difference between a renamed coordinate keeping
+/// its evidence and losing it: `FitSet::build` matches an observation's stored
+/// names against the live feature set, so a name that moved takes every vote
+/// about it along unless someone rewrites it here.
+pub fn apply_renames(log: &mut ObservationLog) -> usize {
+    let mut touched = 0;
+    for o in &mut log.observations {
+        let mut hit = false;
+        for name in &mut o.feature_names {
+            if let Some((_, new)) = RENAMES.iter().find(|(old, _)| old == name) {
+                *name = (*new).to_string();
+                hit = true;
+            }
+        }
+        touched += usize::from(hit);
+    }
+    touched
 }

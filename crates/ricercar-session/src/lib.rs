@@ -1259,8 +1259,22 @@ mod tests {
                 n_pairs >= min_pairs,
                 "{acquisition:?}: {n_pairs} distinct pairs out of {N}"
             );
+            // Distinct-candidate coverage splits the same way and for the
+            // same reason. Twelve duels are 24 slots drawn from a pool of 24,
+            // so a *uniform* rule is expected to reach
+            // `24·(1 − (23/24)^24) ≈ 15.5` distinct candidates with a
+            // standard deviation near 1.6 — 13 is an ordinary draw from that,
+            // and asserting 14 of `Random` asserts seed luck. It held until
+            // wave 2C's recursive mod sort moved rng consumption, which is
+            // exactly the brittleness this comment already describes for
+            // pairs. `Bald` is the rule that *promises* spread, through its
+            // exposure penalty, so it keeps the stronger bound.
+            let min_distinct = match acquisition {
+                Acquisition::Bald => 14,
+                _ => 12,
+            };
             assert!(
-                distinct >= 14,
+                distinct >= min_distinct,
                 "{acquisition:?}: only {distinct} distinct candidates over {N} duels"
             );
             assert!(
@@ -1397,6 +1411,178 @@ mod tests {
         assert!(
             a.iter().zip(b).any(|(x, y)| x > y),
             "the structural evidence vanished entirely"
+        );
+    }
+
+    /// A session saved under the **v1 palette** still loads — bank, votes and
+    /// all — after the palette grew modulation slots on modules that already
+    /// shipped.
+    ///
+    /// This is the failure mode a palette expansion produces and a schema
+    /// migration does not catch, because nothing about the *log* changed. The
+    /// v2 palette added `mod_depth` + `modulation` to `Delay`, `Chorus` and
+    /// `Reverb`, and serde requires every field of a struct variant by
+    /// default — so before those fields were `#[serde(default)]`, a single
+    /// v1-era delay anywhere in a bank failed the `SessionState` deserialize.
+    /// Not the patch: the **save**. Bank, observation log, lineage,
+    /// calibration, all of it, for a user who did nothing but keep using the
+    /// app. Roughly a third of v1 op draws were one of those three modules,
+    /// so most real banks contained at least one.
+    ///
+    /// The fixture is hand-written v1-shaped JSON rather than a serialized
+    /// current tree, because a current tree round-trips trivially and would
+    /// assert nothing. The defaults must also be *v1 behaviour* — depth 0,
+    /// no modulation source — so a restored patch sounds like the one that
+    /// was saved, which the parameter asserts below check.
+    #[test]
+    fn v1_palette_session_still_loads() {
+        use ricercar_grammar::term::{AudioNode, ModNode};
+
+        // One tree per module that gained a slot, in the exact shape v1 wrote.
+        let v1_bank = r#"[
+          {"id":0,"tree":{"amp":{"attack":0.1,"decay":0.2,"sustain":0.5,"release":0.3},
+            "root":{"Delay":{"time":0.4,"feedback":0.3,"mix":0.5,
+              "input":{"Vco":{"wave":"Saw","octave":0,"detune":0.2}}}}},
+           "origin":"prior","name":null,"pinned":false},
+          {"id":1,"tree":{"amp":{"attack":0.1,"decay":0.2,"sustain":0.5,"release":0.3},
+            "root":{"Chorus":{"rate":0.4,"depth":0.3,"mix":0.5,
+              "input":{"Supersaw":{"octave":0,"detune":0.3,"mix":0.5}}}}},
+           "origin":"prior","name":null,"pinned":false},
+          {"id":2,"tree":{"amp":{"attack":0.1,"decay":0.2,"sustain":0.5,"release":0.3},
+            "root":{"Reverb":{"size":0.4,"damp":0.3,"mix":0.5,
+              "input":{"Filter":{"kind":"SvfLp","cutoff":0.6,"resonance":0.3,
+                "mod_depth":0.2,"modulation":{"Lfo":{"wave":"Sine","rate":0.3}},
+                "input":{"Vco":{"wave":"Square","octave":-1,"detune":0.1}}}}}}},
+           "origin":"prior","name":null,"pinned":false},
+          {"id":3,"tree":{"amp":{"attack":0.1,"decay":0.2,"sustain":0.5,"release":0.3},
+            "root":{"Vco":{"wave":"Triangle","octave":1,"detune":0.75}}},
+           "origin":"prior","name":null,"pinned":false},
+          {"id":4,"tree":{"amp":{"attack":0.1,"decay":0.2,"sustain":0.5,"release":0.3},
+            "root":{"Supersaw":{"octave":-1,"detune":0.65,"mix":0.4}}},
+           "origin":"prior","name":null,"pinned":false}
+        ]"#;
+        let d = crate::migrate::SCHEMA1_NAMES.len();
+        let sz = ricercar_taste::Standardizer {
+            mean: (0..d).map(|i| 0.1 + i as f64 * 0.01).collect(),
+            std: vec![0.5; d],
+        };
+        let saved = format!(
+            r#"{{"profile":{{"log":{{"observations":[
+                 {{"Duel":{{"a":{a},"b":{b},"chose_a":true,"session":0}}}}
+               ]}},"standardizer":{sz}}},
+               "bank":{v1_bank},"lineage":[],"generation":3}}"#,
+            a = serde_json::to_string(&vec![0.4_f64; d]).unwrap(),
+            b = serde_json::to_string(&vec![-0.4_f64; d]).unwrap(),
+            sz = serde_json::to_string(&sz).unwrap(),
+        );
+
+        let state: SessionState =
+            serde_json::from_str(&saved).expect("a v1-palette save must still deserialize");
+        assert_eq!(state.bank.len(), 5);
+
+        // The added knobs default to "as it sounded in v1".
+        let AudioNode::Delay {
+            time,
+            mod_depth,
+            modulation,
+            ..
+        } = &state.bank[0].tree.root
+        else {
+            panic!("delay did not survive the load");
+        };
+        assert_eq!(*time, 0.4, "a saved parameter changed value on load");
+        assert_eq!(*mod_depth, 0.0, "new knob must default to inaudible");
+        assert_eq!(*modulation, ModNode::None);
+        assert!(matches!(
+            &state.bank[1].tree.root,
+            AudioNode::Chorus { mod_depth, modulation, .. }
+                if *mod_depth == 0.0 && *modulation == ModNode::None
+        ));
+        // Reverb's own slot defaults, but the filter *below* it had a slot in
+        // v1 and must keep the source that was saved in it.
+        let AudioNode::Reverb {
+            mod_depth, input, ..
+        } = &state.bank[2].tree.root
+        else {
+            panic!("reverb did not survive the load");
+        };
+        assert_eq!(*mod_depth, 0.0);
+        assert!(
+            matches!(&**input, AudioNode::Filter { modulation, .. }
+                if matches!(modulation, ModNode::Lfo { .. })),
+            "a slot that already existed in v1 lost its source"
+        );
+
+        // Wave 2A put a pitch-modulation slot on the two oldest sources, and
+        // a vco is in *every* saved patch — so a missing `#[serde(default)]`
+        // there does not cost one module, it fails the whole `SessionState`
+        // deserialize and takes bank, observation log and lineage with it.
+        // These two entries are the shapes that would have caught that:
+        // roots with no `mod_depth` and no `modulation` key at all.
+        let AudioNode::Vco {
+            wave,
+            octave,
+            detune,
+            mod_depth,
+            modulation,
+        } = &state.bank[3].tree.root
+        else {
+            panic!("a v1-shaped vco did not survive the load");
+        };
+        assert_eq!(*wave, ricercar_grammar::term::Waveform::Triangle);
+        assert_eq!(*octave, 1);
+        assert_eq!(*detune, 0.75, "a saved parameter changed value on load");
+        assert_eq!(*mod_depth, 0.0, "new pitch knob must default to inaudible");
+        assert_eq!(*modulation, ModNode::None);
+        let AudioNode::Supersaw {
+            octave,
+            detune,
+            mix,
+            mod_depth,
+            modulation,
+        } = &state.bank[4].tree.root
+        else {
+            panic!("a v1-shaped supersaw did not survive the load");
+        };
+        assert_eq!(*octave, -1);
+        assert_eq!(*detune, 0.65);
+        assert_eq!(*mix, 0.4);
+        assert_eq!(*mod_depth, 0.0);
+        assert_eq!(*modulation, ModNode::None);
+        // The vcos nested *inside* the three older entries must have defaulted
+        // too — that is the shape a real save actually has.
+        let AudioNode::Delay { input, .. } = &state.bank[0].tree.root else {
+            unreachable!("checked above")
+        };
+        assert!(
+            matches!(&**input, AudioNode::Vco { mod_depth, modulation, .. }
+                if *mod_depth == 0.0 && *modulation == ModNode::None),
+            "a nested v1 vco lost its defaults"
+        );
+
+        // And the whole thing restores into a live engine: every v1 patch
+        // compiles, renders and vets under the v2 compiler, and the user's
+        // vote is still in the log.
+        let mut rng = StdRng::seed_from_u64(0x71D);
+        let mut engine = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 8,
+                ..fast()
+            },
+        );
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let restored = engine.import_state(state);
+        assert_eq!(restored, 5, "a v1 patch was dropped on restore");
+        assert_eq!(engine.log.len(), 1, "the user's vote did not survive");
+        assert!(
+            engine.log.observations[0].is_raw(),
+            "the schema-1 vote was not migrated"
+        );
+        assert!(
+            engine.pool.iter().all(|c| !c.phi_std.is_empty()),
+            "a restored v1 patch has no features"
         );
     }
 

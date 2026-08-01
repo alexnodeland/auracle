@@ -23,8 +23,12 @@
 //!
 //! - Acyclic terms only — no feedback combinator productions. Modules with
 //!   *internal* feedback (delay, chorus) are allowed.
-//! - Curated palette: Vco, Supersaw, NoiseGenerator, Svf, DiodeLadderFilter,
-//!   Adsr, Vca, Lfo, DelayLine, Chorus, Wavefolder.
+//! - Curated palette: Vco, Supersaw, NoiseGenerator, Wavetable,
+//!   KarplusStrong, FormantOsc, Svf, DiodeLadderFilter, ParametricEq,
+//!   Wavefolder, Distortion, Bitcrusher, DelayLine, Chorus, Reverb, Phaser,
+//!   Flanger, Tremolo, Vibrato, Granular, PitchShifter, RingModulator,
+//!   Compressor, Ducker, NoiseGate, Vocoder, Adsr, Vca, Lfo, SampleAndHold,
+//!   SlewLimiter, EnvelopeFollower.
 //! - Every compiled patch gets the mandatory voice stage — amp ADSR → VCA →
 //!   **Limiter** → StereoOutput — and bounded parameter mappings (resonance,
 //!   feedback), so the grammar cannot express the most degenerate settings.
@@ -97,12 +101,39 @@ mod tests {
                         // ±5 V square clock into the S&H trigger thresholds
                         // cleanly at the 2.5 V gate level.
                         || w.contains("Unusual connection: CvBipolar -> Trigger")
+                        // The note gate plucks the string. quiver edge-detects
+                        // the port, so a held gate excites once — which is the
+                        // behaviour this class warns *might* differ, and here
+                        // is exactly the behaviour wanted.
+                        || w.contains("Gate/Trigger connection")
                         // `Adsr.shape`, `Vca.response` and `Limiter.soft` are
                         // Gate-kind ports quiver reads as booleans at 2.5 V.
                         // Pinning them is a baked `set_param_by_id` default
                         // now (no cable, no warning), but the class stays
                         // allowed for any remaining CvBipolar-into-Gate wiring.
-                        || w.contains("Unusual connection: CvBipolar -> Gate"),
+                        || w.contains("Unusual connection: CvBipolar -> Gate")
+                        // Wave 2C: modulation is a sort, so CV now meets CV
+                        // through quiver's utility modules, whose ports are
+                        // typed for the job they usually do rather than for
+                        // the one this grammar gives them. All six are volt
+                        // arithmetic on wires that are already in range.
+                        //
+                        // `Rectifier` and `VcSwitch` type their inputs as
+                        // Audio because they are usually waveshapers; here
+                        // they are fed a modulator or a gate, and `|x|` and
+                        // "pick one of two" do not read the signal kind.
+                        || w.contains("Unusual connection: CvUnipolar -> Audio")
+                        || w.contains("Unusual connection: Gate -> Audio")
+                        || w.contains("Unusual connection: Trigger -> Audio")
+                        // A 0–10 V modulator into a logic input, thresholded
+                        // at 2.5 V — which is the whole point of putting a
+                        // logic gate on a modulator.
+                        || w.contains("Unusual connection: CvUnipolar -> Gate")
+                        // A euclidean pattern or a logic output into the mod
+                        // cable's own attenuverter, or into `Min`/`Max`/the
+                        // sample-and-hold: 5 V arriving on a ±5 V wire.
+                        || w.contains("Unusual connection: Gate -> CvBipolar")
+                        || w.contains("Unusual connection: Trigger -> CvBipolar"),
                     "sample {i}: unexpected warning class: {w}"
                 );
             }
@@ -295,11 +326,25 @@ mod tests {
             NodeKind::Vco,
             NodeKind::Supersaw,
             NodeKind::Noise,
+            NodeKind::Wavetable,
+            NodeKind::Pluck,
             NodeKind::Mix,
+            NodeKind::RingMod,
             NodeKind::Filter,
             NodeKind::Fold,
             NodeKind::Delay,
             NodeKind::Chorus,
+            NodeKind::Distortion,
+            NodeKind::Bitcrush,
+            NodeKind::Phaser,
+            // Wave 2B, and the four binaries are the point: every structural
+            // op has to survive a node with two audio subtrees *and* a
+            // modulation slot, which nothing but mix and ring mod ever had.
+            NodeKind::Shift,
+            NodeKind::Comp,
+            NodeKind::Duck,
+            NodeKind::Gate,
+            NodeKind::Vocoder,
         ];
         for i in 0..30 {
             let (tree, _) = draw(&prior, &mut rng);
@@ -324,7 +369,13 @@ mod tests {
                     }
                 }
                 ops.push(StructOp::Delete { key: key.clone() });
-                for mk in [ModKind::None, ModKind::Lfo, ModKind::Env] {
+                for mk in [
+                    ModKind::None,
+                    ModKind::Lfo,
+                    ModKind::Env,
+                    ModKind::Rand,
+                    ModKind::Follow,
+                ] {
                     ops.push(StructOp::SetMod {
                         key: key.clone(),
                         kind: mk,
@@ -345,6 +396,133 @@ mod tests {
                     describe::describe(&next); // must not panic
                 }
             }
+        }
+    }
+
+    /// Every structural path that treats a binary node specially, exercised on
+    /// each of the six deterministically rather than waiting for the prior to
+    /// draw one.
+    ///
+    /// Mix and ring mod were the only two-child productions for two waves, so
+    /// `child_mut`, `graft`, `primary_input`, `Delete`-a-branch, the mod slot
+    /// and the trace address scheme are the least-travelled code in the crate
+    /// — and wave 2B quadrupled the number of shapes going through them, with
+    /// the new ones carrying a modulation slot the old two never had.
+    #[test]
+    fn every_binary_node_survives_the_whole_edit_vocabulary() {
+        use mutate::{ModKind, NodeKind, StructOp};
+        let seed = presets::presets()[0].1.clone();
+        for kind in [
+            NodeKind::Mix,
+            NodeKind::RingMod,
+            NodeKind::Comp,
+            NodeKind::Duck,
+            NodeKind::Gate,
+            NodeKind::Vocoder,
+        ] {
+            let tree = mutate::apply_struct_op(
+                &seed,
+                &StructOp::Replace {
+                    key: "node".into(),
+                    kind,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{kind:?}: replace at the root: {e}"));
+            // A binary node plus two branches: `size` has to count both, and
+            // an arm that forgets `/1` reports the tree a node short.
+            assert!(
+                tree.root.size() >= 3,
+                "{kind:?}: size {} — the second branch is not being counted",
+                tree.root.size()
+            );
+            // Both branches are real nodes at `/0` and `/1`, and the rack
+            // names them there — those keys are what the frontend hangs its
+            // per-module jack labels off.
+            let rack = describe::describe(&tree);
+            for k in ["node/0", "node/1"] {
+                assert!(
+                    rack.modules.iter().any(|m| m.key == k),
+                    "{kind:?}: no module at {k}"
+                );
+                assert!(
+                    rack.wires.iter().any(|w| w.from == k && w.to == "node"),
+                    "{kind:?}: no audio wire from {k}"
+                );
+            }
+            // Deleting either branch collapses to the sibling, both ways.
+            for (gone, kept) in [(0usize, 1usize), (1, 0)] {
+                let before = describe::describe(&tree);
+                let sibling = before
+                    .modules
+                    .iter()
+                    .find(|m| m.key == format!("node/{kept}"))
+                    .expect("sibling")
+                    .kind
+                    .clone();
+                let after = mutate::apply_struct_op(
+                    &tree,
+                    &StructOp::Delete {
+                        key: format!("node/{gone}"),
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{kind:?}: delete /{gone}: {e}"));
+                assert_eq!(
+                    describe::describe(&after).modules[1].kind,
+                    sibling,
+                    "{kind:?}: deleting /{gone} did not leave /{kept} at the root"
+                );
+                assert!(compile(&after, SR).is_ok());
+            }
+            // The modulation slot: the two pure binaries have none, the four
+            // dynamics nodes do, and setting one must not disturb `/1`.
+            let has_slot = !matches!(kind, NodeKind::Mix | NodeKind::RingMod);
+            let set = mutate::apply_struct_op(
+                &tree,
+                &StructOp::SetMod {
+                    key: "node".into(),
+                    kind: ModKind::Lfo,
+                },
+            );
+            assert_eq!(
+                set.is_ok(),
+                has_slot,
+                "{kind:?}: modulation slot present = {}, expected {has_slot}",
+                set.is_ok()
+            );
+            if let Ok(set) = set {
+                let rack = describe::describe(&set);
+                assert!(rack.modules.iter().any(|m| m.key == "node/m" && m.is_mod));
+                assert!(rack.modules.iter().any(|m| m.key == "node/1"));
+                assert!(compile(&set, SR).is_ok());
+                assert_eq!(PatchTree::from_trace(&set.to_trace()).unwrap(), set);
+                // A node is never distance-zero from itself with a different
+                // slot — `node_distance` has to walk both branches *and* the
+                // slot, and a missed arm reads as "identical".
+                use fugue_evo::genome::traits::EvolutionaryGenome;
+                assert!(set.distance(&tree) > 0.0, "{kind:?}: distance is blind");
+            }
+            // Insert-into-the-wire keeps the fragment's own `/1`.
+            let inserted = mutate::apply_struct_op(
+                &tree,
+                &StructOp::InsertTree {
+                    key: "node/0".into(),
+                    node: mutate::apply_struct_op(
+                        &seed,
+                        &StructOp::Replace {
+                            key: "node".into(),
+                            kind,
+                        },
+                    )
+                    .unwrap()
+                    .root,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{kind:?}: insert into a wire: {e}"));
+            assert!(compile(&inserted, SR).is_ok());
+            assert_eq!(
+                PatchTree::from_trace(&inserted.to_trace()).unwrap(),
+                inserted
+            );
         }
     }
 
