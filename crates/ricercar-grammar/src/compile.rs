@@ -860,6 +860,17 @@ mod tests {
             if let Some(a) = amt {
                 set_constant(&mut v, "node:svf", "keytrack_amt", a);
             }
+            // Every leg hears the *same* noise. quiver's noise draws from a
+            // thread-local RNG seeded from the system clock, so without this
+            // each measurement gets a different realisation — and the patch
+            // ends in a limiter, whose gain reduction tracks peak statistics
+            // rather than RMS, so the difference between two realisations is
+            // far larger than sampling error. Measured over 120 unseeded runs
+            // the flat-control ratio spread from 0.0000 to 0.1332 against a
+            // 0.1 tolerance: a 1.7%-per-run CI failure that says nothing about
+            // keytracking. Seeded, both legs differ only by the thing under
+            // test, which is also why the tolerance below can be tight.
+            quiver::rng::seed(0x5EED_1E55);
             let out = hold(&mut v, voct, 88_200);
             rms(&out[44_100..])
         };
@@ -871,7 +882,7 @@ mod tests {
         // Counterfactual: amount 0 is quiver's default, i.e. the old behaviour.
         let (flat_low, flat_high) = (level(Some(0.0), -2.0), level(Some(0.0), 2.0));
         assert!(
-            (flat_high / flat_low - 1.0).abs() < 0.1,
+            (flat_high / flat_low - 1.0).abs() < 0.01,
             "control is not flat, so the test proves nothing: \
              C2 {flat_low:.4}, C6 {flat_high:.4}"
         );
