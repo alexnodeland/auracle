@@ -17,7 +17,10 @@ use fugue_evo::genome::traits::EvolutionaryGenome;
 use rand::Rng;
 
 use crate::prior::PatchGrammarPrior;
-use crate::term::{AmpEnv, AudioNode, FilterKind, ModNode, NoiseColor, PatchTree, Waveform};
+use crate::term::{
+    AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
+    TableShape, Waveform,
+};
 
 impl EvolutionaryGenome for PatchTree {
     type Allele = f64;
@@ -71,8 +74,70 @@ fn mod_distance(a: &ModNode, b: &ModNode) -> f64 {
                 decay: db,
             },
         ) => (aa - ab).abs() + (da - db).abs(),
-        (ModNode::Rand { rate: ra }, ModNode::Rand { rate: rb }) => (ra - rb).abs(),
-        _ => 2.0,
+        (
+            ModNode::Rand {
+                rate: ra,
+                glide: ga,
+            },
+            ModNode::Rand {
+                rate: rb,
+                glide: gb,
+            },
+        ) => (ra - rb).abs() + (ga - gb).abs(),
+        (
+            ModNode::Follow {
+                sens: sa,
+                release: ra,
+            },
+            ModNode::Follow {
+                sens: sb,
+                release: rb,
+            },
+        ) => (sa - sb).abs() + (ra - rb).abs(),
+        (
+            ModNode::Euclid {
+                rate: ra,
+                steps: sa,
+                pulses: pa,
+            },
+            ModNode::Euclid {
+                rate: rb,
+                steps: sb,
+                pulses: pb,
+            },
+        ) => (ra - rb).abs() + (sa - sb).abs() + (pa - pb).abs(),
+        // Recursive arms, on the same rule the audio tree uses: parameter L1
+        // where the terms agree, and a flat penalty where they diverge.
+        (
+            ModNode::Op {
+                kind: ka,
+                p0: p0a,
+                p1: p1a,
+                input: ia,
+            },
+            ModNode::Op {
+                kind: kb,
+                p0: p0b,
+                p1: p1b,
+                input: ib,
+            },
+        ) if ka == kb => (p0a - p0b).abs() + (p1a - p1b).abs() + mod_distance(ia, ib),
+        (
+            ModNode::Pair {
+                kind: ka,
+                a: aa,
+                b: ba,
+            },
+            ModNode::Pair {
+                kind: kb,
+                a: ab,
+                b: bb,
+            },
+        ) if ka == kb => mod_distance(aa, ab) + mod_distance(ba, bb),
+        // Diverging structures pay by size, so replacing a leaf with a
+        // two-deep chain reads as further away than swapping two leaves — the
+        // same shape as `node_distance`'s subtree penalty.
+        (a, b) => 2.0 + (a.size() as f64 - b.size() as f64).abs(),
     }
 }
 
@@ -84,35 +149,117 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 wave: wa,
                 octave: oa,
                 detune: da,
+                mod_depth: mda,
+                modulation: moda,
             },
             Vco {
                 wave: wb,
                 octave: ob,
                 detune: db,
+                mod_depth: mdb,
+                modulation: modb,
             },
         ) => {
             (if wa == wb { 0.0 } else { 1.0 })
                 + (*oa as f64 - *ob as f64).abs() / 4.0
                 + (da - db).abs()
+                + (mda - mdb).abs()
+                + mod_distance(moda, modb)
         }
         (
             Supersaw {
                 octave: oa,
                 detune: da,
                 mix: ma,
+                mod_depth: mda,
+                modulation: moda,
             },
             Supersaw {
                 octave: ob,
                 detune: db,
                 mix: mb,
+                mod_depth: mdb,
+                modulation: modb,
             },
-        ) => (*oa as f64 - *ob as f64).abs() / 4.0 + (da - db).abs() + (ma - mb).abs(),
+        ) => {
+            (*oa as f64 - *ob as f64).abs() / 4.0
+                + (da - db).abs()
+                + (ma - mb).abs()
+                + (mda - mdb).abs()
+                + mod_distance(moda, modb)
+        }
+        (
+            Formant {
+                vowel: va,
+                shift: sa,
+                octave: oa,
+                mod_depth: mda,
+                modulation: moda,
+            },
+            Formant {
+                vowel: vb,
+                shift: sb,
+                octave: ob,
+                mod_depth: mdb,
+                modulation: modb,
+            },
+        ) => {
+            (va - vb).abs()
+                + (sa - sb).abs()
+                + (*oa as f64 - *ob as f64).abs() / 4.0
+                + (mda - mdb).abs()
+                + mod_distance(moda, modb)
+        }
         (Noise { color: ca }, Noise { color: cb }) => {
             if ca == cb {
                 0.0
             } else {
                 1.0
             }
+        }
+        (
+            Wavetable {
+                table: ta,
+                octave: oa,
+                morph: ma,
+                mod_depth: da,
+                modulation: moda,
+            },
+            Wavetable {
+                table: tb,
+                octave: ob,
+                morph: mb,
+                mod_depth: db,
+                modulation: modb,
+            },
+        ) => {
+            (if ta == tb { 0.0 } else { 1.0 })
+                + (*oa as f64 - *ob as f64).abs() / 4.0
+                + (ma - mb).abs()
+                + (da - db).abs()
+                + mod_distance(moda, modb)
+        }
+        (
+            Pluck {
+                octave: oa,
+                damping: da,
+                brightness: ba,
+                mod_depth: mda,
+                modulation: moda,
+            },
+            Pluck {
+                octave: ob,
+                damping: db,
+                brightness: bb,
+                mod_depth: mdb,
+                modulation: modb,
+            },
+        ) => {
+            (*oa as f64 - *ob as f64).abs() / 4.0
+                + (da - db).abs()
+                + (ba - bb).abs()
+                + (mda - mdb).abs()
+                + mod_distance(moda, modb)
         }
         (
             Mix {
@@ -122,6 +269,18 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
             },
             Mix {
                 balance: lb,
+                a: ab,
+                b: bb,
+            },
+        ) => (la - lb).abs() + node_distance(aa, ab) + node_distance(ba, bb),
+        (
+            RingMod {
+                mix: la,
+                a: aa,
+                b: ba,
+            },
+            RingMod {
+                mix: lb,
                 a: ab,
                 b: bb,
             },
@@ -170,43 +329,412 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 time: ta,
                 feedback: fa,
                 mix: ma,
+                mod_depth: dpa,
                 input: ia,
+                modulation: moda,
             },
             Delay {
                 time: tb,
                 feedback: fb,
                 mix: mb,
+                mod_depth: dpb,
                 input: ib,
+                modulation: modb,
             },
-        ) => (ta - tb).abs() + (fa - fb).abs() + (ma - mb).abs() + node_distance(ia, ib),
+        ) => {
+            (ta - tb).abs()
+                + (fa - fb).abs()
+                + (ma - mb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
         (
             Chorus {
                 rate: ra,
                 depth: da,
                 mix: ma,
+                mod_depth: dpa,
                 input: ia,
+                modulation: moda,
             },
             Chorus {
                 rate: rb,
                 depth: db,
                 mix: mb,
+                mod_depth: dpb,
                 input: ib,
+                modulation: modb,
             },
-        ) => (ra - rb).abs() + (da - db).abs() + (ma - mb).abs() + node_distance(ia, ib),
+        ) => {
+            (ra - rb).abs()
+                + (da - db).abs()
+                + (ma - mb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
         (
             Reverb {
                 size: sa,
                 damp: da,
                 mix: ma,
+                mod_depth: dpa,
                 input: ia,
+                modulation: moda,
             },
             Reverb {
                 size: sb,
                 damp: db,
                 mix: mb,
+                mod_depth: dpb,
                 input: ib,
+                modulation: modb,
             },
-        ) => (sa - sb).abs() + (da - db).abs() + (ma - mb).abs() + node_distance(ia, ib),
+        ) => {
+            (sa - sb).abs()
+                + (da - db).abs()
+                + (ma - mb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Distortion {
+                drive: ga,
+                tone: ta,
+                mode: ka,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Distortion {
+                drive: gb,
+                tone: tb,
+                mode: kb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (ga - gb).abs()
+                + (ta - tb).abs()
+                + (if ka == kb { 0.0 } else { 1.0 })
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Bitcrush {
+                bits: ba,
+                downsample: sa,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Bitcrush {
+                bits: bb,
+                downsample: sb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (ba - bb).abs()
+                + (sa - sb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Phaser {
+                rate: ra,
+                depth: da,
+                feedback: fa,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Phaser {
+                rate: rb,
+                depth: db,
+                feedback: fb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (ra - rb).abs()
+                + (da - db).abs()
+                + (fa - fb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Flanger {
+                rate: xa,
+                depth: ya,
+                feedback: za,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Flanger {
+                rate: xb,
+                depth: yb,
+                feedback: zb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Tremolo {
+                rate: xa,
+                depth: ya,
+                shape: za,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Tremolo {
+                rate: xb,
+                depth: yb,
+                shape: zb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Vibrato {
+                rate: xa,
+                depth: ya,
+                mix: za,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Vibrato {
+                rate: xb,
+                depth: yb,
+                mix: zb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Eq {
+                low: xa,
+                mid: ya,
+                high: za,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Eq {
+                low: xb,
+                mid: yb,
+                high: zb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Granular {
+                position: xa,
+                size: ya,
+                density: za,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Granular {
+                position: xb,
+                size: yb,
+                density: zb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        (
+            Shift {
+                semis: xa,
+                window: ya,
+                mix: za,
+                mod_depth: dpa,
+                input: ia,
+                modulation: moda,
+            },
+            Shift {
+                semis: xb,
+                window: yb,
+                mix: zb,
+                mod_depth: dpb,
+                input: ib,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+        }
+        // The binary dynamics nodes: both branches are real audio subtrees, so
+        // both are walked, exactly as `Mix` and `RingMod` are.
+        (
+            Comp {
+                threshold: xa,
+                ratio: ya,
+                makeup: za,
+                mod_depth: dpa,
+                input: ia,
+                sidechain: sa,
+                modulation: moda,
+            },
+            Comp {
+                threshold: xb,
+                ratio: yb,
+                makeup: zb,
+                mod_depth: dpb,
+                input: ib,
+                sidechain: sb,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+                + node_distance(sa, sb)
+        }
+        (
+            Duck {
+                amount: xa,
+                threshold: ya,
+                release: za,
+                mod_depth: dpa,
+                input: ia,
+                key: ka,
+                modulation: moda,
+            },
+            Duck {
+                amount: xb,
+                threshold: yb,
+                release: zb,
+                mod_depth: dpb,
+                input: ib,
+                key: kb,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+                + node_distance(ka, kb)
+        }
+        (
+            Gate {
+                threshold: xa,
+                range: ya,
+                release: za,
+                mod_depth: dpa,
+                input: ia,
+                sidechain: sa,
+                modulation: moda,
+            },
+            Gate {
+                threshold: xb,
+                range: yb,
+                release: zb,
+                mod_depth: dpb,
+                input: ib,
+                sidechain: sb,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ia, ib)
+                + node_distance(sa, sb)
+        }
+        (
+            Vocoder {
+                bands: xa,
+                attack: ya,
+                release: za,
+                mod_depth: dpa,
+                carrier: ca,
+                modulator: ma,
+                modulation: moda,
+            },
+            Vocoder {
+                bands: xb,
+                attack: yb,
+                release: zb,
+                mod_depth: dpb,
+                carrier: cb,
+                modulator: mb,
+                modulation: modb,
+            },
+        ) => {
+            (xa - xb).abs()
+                + (ya - yb).abs()
+                + (za - zb).abs()
+                + (dpa - dpb).abs()
+                + mod_distance(moda, modb)
+                + node_distance(ca, cb)
+                + node_distance(ma, mb)
+        }
         // Different constructors: whole-subtree penalty.
         _ => (a.size() + b.size()) as f64,
     }
@@ -249,9 +777,49 @@ fn encode_mod(m: &ModNode, key: &str, t: &mut Trace) {
             put_f64(t, key, "att", *attack);
             put_f64(t, key, "dec", *decay);
         }
-        ModNode::Rand { rate } => {
+        ModNode::Rand { rate, glide } => {
             put_usize(t, key, "mod", 3);
             put_f64(t, key, "rate", *rate);
+            put_f64(t, key, "glide", *glide);
+        }
+        ModNode::Follow { sens, release } => {
+            put_usize(t, key, "mod", 4);
+            put_f64(t, key, "sens", *sens);
+            put_f64(t, key, "rel", *release);
+        }
+        ModNode::Euclid {
+            rate,
+            steps,
+            pulses,
+        } => {
+            put_usize(t, key, "mod", 5);
+            put_f64(t, key, "erate", *rate);
+            put_f64(t, key, "esteps", *steps);
+            put_f64(t, key, "epulses", *pulses);
+        }
+        // The recursive arms. Subterm keys are `<key>/0` and `<key>/1`, the
+        // same convention the audio tree uses — unambiguous because every
+        // modulation key already sits below a `/m`.
+        ModNode::Op {
+            kind,
+            p0,
+            p1,
+            input,
+        } => {
+            put_usize(t, key, "mod", 6);
+            put_usize(t, key, "modop", kind.index());
+            let sites = kind.param_sites();
+            put_f64(t, key, sites[0], *p0);
+            if let Some(site) = sites.get(1) {
+                put_f64(t, key, site, *p1);
+            }
+            encode_mod(input, &child_key(key, 0), t);
+        }
+        ModNode::Pair { kind, a, b } => {
+            put_usize(t, key, "mod", 7);
+            put_usize(t, key, "pairop", kind.index());
+            encode_mod(a, &child_key(key, 0), t);
+            encode_mod(b, &child_key(key, 1), t);
         }
     }
 }
@@ -263,28 +831,81 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             wave,
             octave,
             detune,
+            mod_depth,
+            modulation,
         } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 0);
             put_usize(t, key, "wave", wave.index());
             put_usize(t, key, "oct", (octave + 2) as usize);
             put_f64(t, key, "det", *detune);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
         }
         Supersaw {
             octave,
             detune,
             mix,
+            mod_depth,
+            modulation,
         } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 1);
             put_usize(t, key, "oct", (octave + 2) as usize);
             put_f64(t, key, "det", *detune);
             put_f64(t, key, "smix", *mix);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
         }
         Noise { color } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 2);
             put_usize(t, key, "color", color.index());
+        }
+        Wavetable {
+            table,
+            octave,
+            morph,
+            mod_depth,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", true);
+            put_usize(t, key, "src", 3);
+            put_usize(t, key, "table", table.index());
+            put_usize(t, key, "oct", (octave + 2) as usize);
+            put_f64(t, key, "morph", *morph);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+        }
+        Pluck {
+            octave,
+            damping,
+            brightness,
+            mod_depth,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", true);
+            put_usize(t, key, "src", 4);
+            put_usize(t, key, "oct", (octave + 2) as usize);
+            put_f64(t, key, "damp", *damping);
+            put_f64(t, key, "bright", *brightness);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+        }
+        Formant {
+            vowel,
+            shift,
+            octave,
+            mod_depth,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", true);
+            put_usize(t, key, "src", 5);
+            put_f64(t, key, "vowel", *vowel);
+            put_f64(t, key, "fshift", *shift);
+            put_usize(t, key, "oct", (octave + 2) as usize);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
         }
         Mix { balance, a, b } => {
             put_bool(t, key, "leaf", false);
@@ -327,40 +948,289 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             time,
             feedback,
             mix,
+            mod_depth,
             input,
+            modulation,
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 3);
             put_f64(t, key, "time", *time);
             put_f64(t, key, "fb", *feedback);
             put_f64(t, key, "dmix", *mix);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
             encode_node(input, &child_key(key, 0), t);
         }
         Chorus {
             rate,
             depth,
             mix,
+            mod_depth,
             input,
+            modulation,
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 4);
             put_f64(t, key, "crate", *rate);
             put_f64(t, key, "cdepth", *depth);
             put_f64(t, key, "cmix", *mix);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
             encode_node(input, &child_key(key, 0), t);
         }
         Reverb {
             size,
             damp,
             mix,
+            mod_depth,
             input,
+            modulation,
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 5);
             put_f64(t, key, "rsize", *size);
             put_f64(t, key, "rdamp", *damp);
             put_f64(t, key, "rmix", *mix);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
             encode_node(input, &child_key(key, 0), t);
+        }
+        Distortion {
+            drive,
+            tone,
+            mode,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 6);
+            put_f64(t, key, "drive", *drive);
+            put_f64(t, key, "tone", *tone);
+            put_usize(t, key, "dmode", mode.index());
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        Bitcrush {
+            bits,
+            downsample,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 7);
+            put_f64(t, key, "bits", *bits);
+            put_f64(t, key, "dsamp", *downsample);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        Phaser {
+            rate,
+            depth,
+            feedback,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 8);
+            put_f64(t, key, "prate", *rate);
+            put_f64(t, key, "pdepth", *depth);
+            put_f64(t, key, "pfb", *feedback);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        Flanger {
+            rate,
+            depth,
+            feedback,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 10);
+            put_f64(t, key, "frate", *rate);
+            put_f64(t, key, "fdepth", *depth);
+            put_f64(t, key, "ffb", *feedback);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        Tremolo {
+            rate,
+            depth,
+            shape,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 11);
+            put_f64(t, key, "trate", *rate);
+            put_f64(t, key, "tdepth", *depth);
+            put_f64(t, key, "tshape", *shape);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        Vibrato {
+            rate,
+            depth,
+            mix,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 12);
+            put_f64(t, key, "vrate", *rate);
+            put_f64(t, key, "vdepth", *depth);
+            put_f64(t, key, "vmix", *mix);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        Eq {
+            low,
+            mid,
+            high,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 13);
+            put_f64(t, key, "low", *low);
+            put_f64(t, key, "mid", *mid);
+            put_f64(t, key, "high", *high);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        Granular {
+            position,
+            size,
+            density,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 14);
+            put_f64(t, key, "gpos", *position);
+            put_f64(t, key, "gsize", *size);
+            put_f64(t, key, "gdens", *density);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        RingMod { mix, a, b } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 9);
+            put_f64(t, key, "rgmix", *mix);
+            encode_node(a, &child_key(key, 0), t);
+            encode_node(b, &child_key(key, 1), t);
+        }
+        Shift {
+            semis,
+            window,
+            mix,
+            mod_depth,
+            input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 15);
+            put_f64(t, key, "semis", *semis);
+            put_f64(t, key, "window", *window);
+            put_f64(t, key, "smix", *mix);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+        }
+        // The four binary nodes write their control branch at `/1`, exactly
+        // where `Mix` and `RingMod` write theirs — the address scheme cannot
+        // tell a second audio input from a second *audio* input.
+        Comp {
+            threshold,
+            ratio,
+            makeup,
+            mod_depth,
+            input,
+            sidechain,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 16);
+            put_f64(t, key, "thresh", *threshold);
+            put_f64(t, key, "ratio", *ratio);
+            put_f64(t, key, "makeup", *makeup);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+            encode_node(sidechain, &child_key(key, 1), t);
+        }
+        Duck {
+            amount,
+            threshold,
+            release,
+            mod_depth,
+            input,
+            key: key_input,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 17);
+            put_f64(t, key, "amount", *amount);
+            put_f64(t, key, "dthresh", *threshold);
+            put_f64(t, key, "drel", *release);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+            encode_node(key_input, &child_key(key, 1), t);
+        }
+        Gate {
+            threshold,
+            range,
+            release,
+            mod_depth,
+            input,
+            sidechain,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 18);
+            put_f64(t, key, "gthresh", *threshold);
+            put_f64(t, key, "range", *range);
+            put_f64(t, key, "grel", *release);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(input, &child_key(key, 0), t);
+            encode_node(sidechain, &child_key(key, 1), t);
+        }
+        Vocoder {
+            bands,
+            attack,
+            release,
+            mod_depth,
+            carrier,
+            modulator,
+            modulation,
+        } => {
+            put_bool(t, key, "leaf", false);
+            put_usize(t, key, "op", 19);
+            put_f64(t, key, "bands", *bands);
+            put_f64(t, key, "vatt", *attack);
+            put_f64(t, key, "vrel", *release);
+            put_f64(t, key, "mdepth", *mod_depth);
+            encode_mod(modulation, &mod_key(key), t);
+            encode_node(carrier, &child_key(key, 0), t);
+            encode_node(modulator, &child_key(key, 1), t);
         }
     }
 }
@@ -383,6 +1253,16 @@ fn get_bool(t: &Trace, key: &str, site: &str) -> Result<bool, GenomeError> {
         .ok_or_else(|| GenomeError::MissingAddress(a.to_string()))
 }
 
+/// A site added *after* traces were already being persisted: absent means the
+/// value the palette-v1 engine behaved as if it had, not a corrupt genome.
+///
+/// Old traces are the user's taste history and the bank they saved; the only
+/// two ways to treat a missing site are "default it" and "throw the session
+/// away", so every v2 site on a v1 variant reads through here.
+fn get_f64_or(t: &Trace, key: &str, site: &str, default: f64) -> f64 {
+    t.get_f64(&addr!(key, site)).unwrap_or(default)
+}
+
 fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
     match get_usize(t, key, "mod")? {
         0 => Ok(ModNode::None),
@@ -396,6 +1276,37 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
         }),
         3 => Ok(ModNode::Rand {
             rate: get_f64(t, key, "rate")?,
+            // v1 S&H had no slew: hard steps.
+            glide: get_f64_or(t, key, "glide", 0.0),
+        }),
+        4 => Ok(ModNode::Follow {
+            sens: get_f64(t, key, "sens")?,
+            release: get_f64(t, key, "rel")?,
+        }),
+        5 => Ok(ModNode::Euclid {
+            rate: get_f64(t, key, "erate")?,
+            steps: get_f64(t, key, "esteps")?,
+            pulses: get_f64(t, key, "epulses")?,
+        }),
+        6 => {
+            let kind = ModOp::from_index(get_usize(t, key, "modop")?);
+            let sites = kind.param_sites();
+            Ok(ModNode::Op {
+                kind,
+                p0: get_f64(t, key, sites[0])?,
+                // The one-parameter ops do not write `p1` at all, so there is
+                // nothing to read back — see `ModOp::param_sites`.
+                p1: match sites.get(1) {
+                    Some(site) => get_f64(t, key, site)?,
+                    None => 0.0,
+                },
+                input: Box::new(decode_mod(t, &child_key(key, 0))?),
+            })
+        }
+        7 => Ok(ModNode::Pair {
+            kind: PairOp::from_index(get_usize(t, key, "pairop")?),
+            a: Box::new(decode_mod(t, &child_key(key, 0))?),
+            b: Box::new(decode_mod(t, &child_key(key, 1))?),
         }),
         k => Err(GenomeError::InvalidStructure(format!(
             "mod kind {k} out of range at {key}"
@@ -403,21 +1314,65 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
     }
 }
 
+/// Decode a modulation slot that did not exist when the trace was written
+/// (`Delay`, `Chorus`, `Reverb` from the v2 palette; `Vco` and `Supersaw` from
+/// wave 2A's pitch slot): a trace with no `#mod` site at all decodes to an
+/// empty slot, which is exactly how those modules used to sound.
+fn decode_new_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
+    if t.get_usize(&addr!(key, "mod")).is_none() {
+        return Ok(ModNode::None);
+    }
+    decode_mod(t, key)
+}
+
+/// The mod-depth a v2 module gets when its trace predates the slot. Matches
+/// `mutate::default_node`, so a migrated patch and a hand-placed one start
+/// from the same knob.
+const DEFAULT_MOD_DEPTH: f64 = 0.3;
+
 fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
     if get_bool(t, key, "leaf")? {
         match get_usize(t, key, "src")? {
+            // The pitch-modulation sites postdate every trace written before
+            // wave 2A, and a vco is in nearly all of them — so these two read
+            // through the defaulting accessors, exactly as `Delay` does.
             0 => Ok(AudioNode::Vco {
                 wave: Waveform::from_index(get_usize(t, key, "wave")?),
                 octave: get_usize(t, key, "oct")? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
+                mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
+                modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             1 => Ok(AudioNode::Supersaw {
                 octave: get_usize(t, key, "oct")? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
                 mix: get_f64(t, key, "smix")?,
+                mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
+                modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             2 => Ok(AudioNode::Noise {
                 color: NoiseColor::from_index(get_usize(t, key, "color")?),
+            }),
+            3 => Ok(AudioNode::Wavetable {
+                table: TableShape::from_index(get_usize(t, key, "table")?),
+                octave: get_usize(t, key, "oct")? as i8 - 2,
+                morph: get_f64(t, key, "morph")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_new_mod(t, &mod_key(key))?,
+            }),
+            4 => Ok(AudioNode::Pluck {
+                octave: get_usize(t, key, "oct")? as i8 - 2,
+                damping: get_f64(t, key, "damp")?,
+                brightness: get_f64(t, key, "bright")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_new_mod(t, &mod_key(key))?,
+            }),
+            5 => Ok(AudioNode::Formant {
+                vowel: get_f64(t, key, "vowel")?,
+                shift: get_f64(t, key, "fshift")?,
+                octave: get_usize(t, key, "oct")? as i8 - 2,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
             }),
             k => Err(GenomeError::InvalidStructure(format!(
                 "source kind {k} out of range at {key}"
@@ -448,19 +1403,137 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 time: get_f64(t, key, "time")?,
                 feedback: get_f64(t, key, "fb")?,
                 mix: get_f64(t, key, "dmix")?,
+                mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
+                modulation: decode_new_mod(t, &mod_key(key))?,
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             4 => Ok(AudioNode::Chorus {
                 rate: get_f64(t, key, "crate")?,
                 depth: get_f64(t, key, "cdepth")?,
                 mix: get_f64(t, key, "cmix")?,
+                mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
+                modulation: decode_new_mod(t, &mod_key(key))?,
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             5 => Ok(AudioNode::Reverb {
                 size: get_f64(t, key, "rsize")?,
                 damp: get_f64(t, key, "rdamp")?,
                 mix: get_f64(t, key, "rmix")?,
+                mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
+                modulation: decode_new_mod(t, &mod_key(key))?,
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            6 => Ok(AudioNode::Distortion {
+                drive: get_f64(t, key, "drive")?,
+                tone: get_f64(t, key, "tone")?,
+                mode: DriveMode::from_index(get_usize(t, key, "dmode")?),
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            7 => Ok(AudioNode::Bitcrush {
+                bits: get_f64(t, key, "bits")?,
+                downsample: get_f64(t, key, "dsamp")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            8 => Ok(AudioNode::Phaser {
+                rate: get_f64(t, key, "prate")?,
+                depth: get_f64(t, key, "pdepth")?,
+                feedback: get_f64(t, key, "pfb")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            9 => Ok(AudioNode::RingMod {
+                mix: get_f64(t, key, "rgmix")?,
+                a: Box::new(decode_node(t, &child_key(key, 0))?),
+                b: Box::new(decode_node(t, &child_key(key, 1))?),
+            }),
+            10 => Ok(AudioNode::Flanger {
+                rate: get_f64(t, key, "frate")?,
+                depth: get_f64(t, key, "fdepth")?,
+                feedback: get_f64(t, key, "ffb")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            11 => Ok(AudioNode::Tremolo {
+                rate: get_f64(t, key, "trate")?,
+                depth: get_f64(t, key, "tdepth")?,
+                shape: get_f64(t, key, "tshape")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            12 => Ok(AudioNode::Vibrato {
+                rate: get_f64(t, key, "vrate")?,
+                depth: get_f64(t, key, "vdepth")?,
+                mix: get_f64(t, key, "vmix")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            13 => Ok(AudioNode::Eq {
+                low: get_f64(t, key, "low")?,
+                mid: get_f64(t, key, "mid")?,
+                high: get_f64(t, key, "high")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            14 => Ok(AudioNode::Granular {
+                position: get_f64(t, key, "gpos")?,
+                size: get_f64(t, key, "gsize")?,
+                density: get_f64(t, key, "gdens")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            15 => Ok(AudioNode::Shift {
+                semis: get_f64(t, key, "semis")?,
+                window: get_f64(t, key, "window")?,
+                mix: get_f64(t, key, "smix")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+            }),
+            16 => Ok(AudioNode::Comp {
+                threshold: get_f64(t, key, "thresh")?,
+                ratio: get_f64(t, key, "ratio")?,
+                makeup: get_f64(t, key, "makeup")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+                sidechain: Box::new(decode_node(t, &child_key(key, 1))?),
+            }),
+            17 => Ok(AudioNode::Duck {
+                amount: get_f64(t, key, "amount")?,
+                threshold: get_f64(t, key, "dthresh")?,
+                release: get_f64(t, key, "drel")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+                key: Box::new(decode_node(t, &child_key(key, 1))?),
+            }),
+            18 => Ok(AudioNode::Gate {
+                threshold: get_f64(t, key, "gthresh")?,
+                range: get_f64(t, key, "range")?,
+                release: get_f64(t, key, "grel")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                input: Box::new(decode_node(t, &child_key(key, 0))?),
+                sidechain: Box::new(decode_node(t, &child_key(key, 1))?),
+            }),
+            19 => Ok(AudioNode::Vocoder {
+                bands: get_f64(t, key, "bands")?,
+                attack: get_f64(t, key, "vatt")?,
+                release: get_f64(t, key, "vrel")?,
+                mod_depth: get_f64(t, key, "mdepth")?,
+                modulation: decode_mod(t, &mod_key(key))?,
+                carrier: Box::new(decode_node(t, &child_key(key, 0))?),
+                modulator: Box::new(decode_node(t, &child_key(key, 1))?),
             }),
             k => Err(GenomeError::InvalidStructure(format!(
                 "op kind {k} out of range at {key}"
@@ -494,5 +1567,104 @@ impl TraceGenome for PatchTree {
 
     fn trace_prefix() -> &'static str {
         "node"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::term::FilterKind;
+
+    /// A trace written by the v1 palette still decodes.
+    ///
+    /// Saved sessions, bank entries and the whole observation log are stored
+    /// as traces, so a site added to an *existing* variant is a wire-format
+    /// change: `Delay` gained `#mdepth` and a `/m` slot, and `Rand` gained
+    /// `#glide`, none of which appear in a trace written last week. The
+    /// defaults are chosen so the decoded patch still *sounds* like the one
+    /// that was saved — an empty slot and a mod depth that modulates nothing.
+    #[test]
+    fn a_v1_trace_still_decodes() {
+        let mut t = Trace::default();
+        for (site, v) in [
+            ("attack", 0.1),
+            ("decay", 0.3),
+            ("sustain", 0.6),
+            ("release", 0.2),
+        ] {
+            put_f64(&mut t, "amp", site, v);
+        }
+        // node = Delay { time, fb, dmix } — no #mdepth, no /m slot at all.
+        put_bool(&mut t, "node", "leaf", false);
+        put_usize(&mut t, "node", "op", 3);
+        put_f64(&mut t, "node", "time", 0.6);
+        put_f64(&mut t, "node", "fb", 0.4);
+        put_f64(&mut t, "node", "dmix", 0.35);
+        // node/0 = Filter modulated by a v1 Rand — rate but no glide.
+        put_bool(&mut t, "node/0", "leaf", false);
+        put_usize(&mut t, "node/0", "op", 1);
+        put_usize(&mut t, "node/0", "fkind", 3);
+        put_f64(&mut t, "node/0", "cut", 0.5);
+        put_f64(&mut t, "node/0", "res", 0.4);
+        put_f64(&mut t, "node/0", "mdepth", 0.5);
+        put_usize(&mut t, "node/0/m", "mod", 3);
+        put_f64(&mut t, "node/0/m", "rate", 0.62);
+        // node/0/0 = Vco.
+        put_bool(&mut t, "node/0/0", "leaf", true);
+        put_usize(&mut t, "node/0/0", "src", 0);
+        put_usize(&mut t, "node/0/0", "wave", 2);
+        put_usize(&mut t, "node/0/0", "oct", 1);
+        put_f64(&mut t, "node/0/0", "det", 0.5);
+
+        let tree = PatchTree::from_trace(&t).expect("a v1 trace must still load");
+        let AudioNode::Delay {
+            mod_depth,
+            modulation,
+            input,
+            ..
+        } = &tree.root
+        else {
+            panic!("decoded the wrong node: {}", tree.root.to_sexpr());
+        };
+        assert_eq!(*mod_depth, 0.3, "new mod depth did not default");
+        assert_eq!(*modulation, ModNode::None, "absent slot must decode empty");
+        let AudioNode::Filter {
+            kind, modulation, ..
+        } = &**input
+        else {
+            panic!("decoded the wrong child: {}", input.to_sexpr());
+        };
+        assert_eq!(*kind, FilterKind::Ladder);
+        assert_eq!(
+            *modulation,
+            ModNode::Rand {
+                rate: 0.62,
+                glide: 0.0
+            },
+            "a v1 S&H must come back as hard steps"
+        );
+        // The vco at the bottom is the one that matters most: wave 2A gave it
+        // a pitch slot, and a vco is in nearly every trace ever written. An
+        // absent `#mdepth`/`/m` must decode to "no pitch modulation", not to
+        // a missing-address error that fails the whole genome.
+        let AudioNode::Filter { input, .. } = &**input else {
+            unreachable!("checked above")
+        };
+        assert_eq!(
+            **input,
+            AudioNode::Vco {
+                wave: Waveform::Saw,
+                octave: -1,
+                detune: 0.5,
+                mod_depth: DEFAULT_MOD_DEPTH,
+                modulation: ModNode::None,
+            },
+            "a v1 vco must decode with its pitch slot empty"
+        );
+
+        // ...and once loaded it is a v2 genome like any other: re-encoding it
+        // writes the new sites, and that trace round-trips.
+        let back = PatchTree::from_trace(&tree.to_trace()).expect("re-encoded trace decodes");
+        assert_eq!(back, tree);
     }
 }

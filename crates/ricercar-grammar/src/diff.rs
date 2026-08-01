@@ -31,9 +31,41 @@ fn display_value(site: &str, v: &ChoiceValue) -> String {
                 "wave" => name(&["sin", "tri", "saw", "sqr"]),
                 "color" => name(&["white", "pink"]),
                 "fkind" => name(&["svf lp", "svf bp", "svf hp", "ladder"]),
-                "src" => name(&["vco", "supersaw", "noise"]),
-                "op" => name(&["mix", "filter", "fold", "delay", "chorus"]),
-                "mod" => name(&["no mod", "lfo", "mod env"]),
+                // These three are the grammar's categoricals, in the index
+                // order `crate::genome` persists. They fell out of date once
+                // already, which shows up as an evolution diff reporting the
+                // raw index — "op: 3 → 11" instead of "delay → tremolo" —
+                // exactly where the point of the view is legibility.
+                "src" => name(&["vco", "supersaw", "noise", "wavetable", "pluck", "formant"]),
+                "op" => name(&[
+                    "mix",
+                    "filter",
+                    "wavefolder",
+                    "delay",
+                    "chorus",
+                    "reverb",
+                    "distortion",
+                    "bitcrush",
+                    "phaser",
+                    "ring mod",
+                    "flanger",
+                    "tremolo",
+                    "vibrato",
+                    "eq",
+                    "granular",
+                ]),
+                "mod" => name(&["no mod", "lfo", "mod env", "s&h rand", "follower"]),
+                "table" => name(&[
+                    "sine",
+                    "tri",
+                    "saw",
+                    "square",
+                    "pulse 25",
+                    "pulse 12",
+                    "formant a",
+                    "formant o",
+                ]),
+                "dmode" => name(&["soft", "hard", "tube"]),
                 "oct" => Some(format!("{:+}", *i as i8 - 2)),
                 _ => None,
             }

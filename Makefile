@@ -5,6 +5,21 @@ CARGO := cargo
 # ~/.cargo/bin for wasm builds.
 WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
 
+# wasm32's default stack is 1 MB, and the patch compiler is recursive: every
+# level of `Compiler::build` constructs quiver modules *by value* before moving
+# them into the patch, and some of those are large inline buffers — a
+# `PitchShifter` carries [f64; 4800] (38 KB) and a `Granular` more than that.
+# A dozen-module patch with the v2 palette overflows it, which wasm reports as
+# "memory access out of bounds" and which then poisons the engine: the panic
+# unwinds out of a `&mut self` binding and every later call fails with
+# wasm-bindgen's "recursive use of an object" instead of the real fault.
+#
+# 8 MB is the same order as the native main-thread stack the test suite runs
+# on, which is why `make check` never saw this. Costs nothing but address
+# space; the AudioWorklet build gets it too, and it compiles the same patches.
+WASM_STACK := 8388608
+WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
+
 .PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         wasm serve doc bundle site clean
 
@@ -40,7 +55,7 @@ clippy: lint
 
 ## wasm: build the web app's engine into apps/web/pkg
 wasm:
-	$(WASM_PATH) wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
+	$(WASM_PATH) $(WASM_RUSTFLAGS) wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:

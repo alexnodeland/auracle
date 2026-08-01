@@ -341,6 +341,8 @@ mod tests {
                 wave: Waveform::Saw,
                 octave: 0,
                 detune,
+                mod_depth: 0.0,
+                modulation: ricercar_grammar::term::ModNode::None,
             },
         }
     }

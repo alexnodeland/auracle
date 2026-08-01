@@ -968,6 +968,8 @@ mod tests {
                     wave: Waveform::Saw,
                     octave: 0,
                     detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
                 }),
                 modulation: ModNode::None,
             },

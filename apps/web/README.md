@@ -18,7 +18,7 @@ the bank head walks through what a generation is and what evolving costs.
   **musical units** (`840 Hz`, `24 ms`, `−6.0 dB`, `+12 ¢`), and a **live scope**
   traces the output while you play. A quick-pick strip votes without leaving
   the view, and a **next-step chip** always says what to do now.
-- **EVOLVE** — duels (click a card to play that candidate live; ▶ PHRASE for
+- **EVOLVE** — duels (click a card to play that candidate live; ▶ SAMPLE for
   the fixed A/B stimulus) under a **teaching meter** that counts down to the
   next refit and takes the strip over when the model learns. Candidates carry
   names, not s-expressions. Plus EVOLVE POOL and the generation lineage.
@@ -28,6 +28,55 @@ the bank head walks through what a generation is and what evolving costs.
   diagram plus Brier skill, because a running hit-rate is not a proper scoring
   rule and is pinned near 50% by an acquisition function that serves near-ties
   on purpose.
+
+## The node bank
+
+The rail on the right of PLAY is the instrument's **catalogue** — forty-one
+modules in eight signal-flow groups (sources → shape → filter → space → motion
+→ dynamics → combine → modulation), not one alphabetical shelf. Every entry carries four things at
+rest: a **transfer-function glyph** (what this does to a wave — never a
+pictogram, so the set cannot drift as it grows), the name a synthesist would
+use, a **port signature** in both phosphors, and, once the model has been fitted
+*and* at least five patches in the pool use the module, a **θ bar with a ±σ
+whisker**. Below that support threshold it draws a dash: "the model barely
+likes this" and "the model has never seen this" must not look alike.
+
+`/` focuses the index, which matches by **sound as well as by name** — *grit*
+finds distortion and bitcrush, *wander* finds s&h rand, *vowel* finds the
+formant oscillator. Hovering or focusing an
+entry opens a **spec card**: one sentence in the app's voice, the port map, the
+parameters it will arrive with, an honest line about what the model believes
+(with four distinct silences — not measured / not fitted / too few examples /
+here is the belief), and a **heard as** line saying what the feature extractor
+can and cannot pick up. Chorus's says the model will not learn it, because φ has
+no stereo-width coordinate.
+
+Placing is **arm-and-place**: click a module and it is in your hand; every
+socket it can legally go into lights up and *names what will happen there* —
+green **inserts** ahead of what is in the socket, amber **replaces** it. Click a
+lit ○ to place, `esc` to put it down. Press-drag from an entry still works for
+anyone who prefers it, and a missed drop now says so instead of silently doing
+nothing. Every placement is one undo step and the toast offers **take it out**.
+
+The whole path has a keyboard equivalent, which wiring did not have at all
+before: arrows walk the catalogue (one tab stop per group), `enter` arms,
+arrows then walk the **lit sockets** with each one announced, `enter` places.
+**IN THIS PATCH** lists what the bench patch is made of; clicking a pill jumps
+to that module in the rack. Collapsed, the rail keeps its name and the count of
+anything **held** below, because a drawer that can hide staged work without
+saying so is a trap. Its width, its collapsed state and which groups are folded
+all persist.
+
+Modulation is a **sort, not a slot**: a cable can carry `s&h rand → quantize →
+slew` before it reaches a cutoff, and the rack draws the whole chain in amber.
+Dropping a CV shaper on an occupied slot **wraps** what is already there rather
+than evicting it, and the socket says which of fill / replace / wrap you are
+about to do.
+
+The rack's ⋯ menu no longer reprints the module list: **replace with…** and
+**insert after…** hand off to the rail with the socket already chosen and lit.
+One inventory, one place — the palette and the right-click menu cannot describe
+different instruments.
 
 On first run a **warm-start** screen asks you to pick 3 of 9 presets — one
 ~30 s interaction worth 18 pairwise observations, which is how the model gets

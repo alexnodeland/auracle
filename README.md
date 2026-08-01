@@ -74,6 +74,18 @@ Ricercar treats the problem as inference:
   running voices' atomics (no recompile) *and* the genome. Rewire by dragging
   typed jacks; structural edits are grammar operations, so illegal patches
   are unrepresentable. Undo/redo, per-knob and per-module locks.
+- **Forty-one modules, catalogued** — six sources (a wavetable, a physically-
+  modelled pluck and a formant oscillator among them), twenty processors, and
+  fifteen modulators. Six processors are **binary**: a crossfade and a ring
+  modulator that merge two chains into one, and a compressor, ducker, gate and
+  vocoder whose second input is a *control* — real sidechaining, in a typed
+  tree. Nearly all of them carry a modulation slot with a named destination,
+  including the oscillators, whose slot bends pitch.
+- **Modulation is a sort, not a slot** — a cable can carry
+  `s&h rand → quantize → slew` before it reaches a cutoff, with a depth bound
+  so the grammar's parsimony pressure still applies. The node bank shows what
+  each module does to a signal, where it can legally go, and — only where the
+  evidence supports it — what the model has learned about it.
 - **A taste model that earns trust** — Bradley–Terry duels, ordinal stars,
   and keep/kill feed one max-of-experts posterior (fitted style count grows
   with evidence). It forecasts each duel *before* your vote and shows its
@@ -87,9 +99,6 @@ Ricercar treats the problem as inference:
 - **Persistence by default** — the whole session (bank, names, taste log,
   lineage, style names) autosaves to IndexedDB; profiles and single patches
   export as shareable files.
-- **A curated palette** — VCO / supersaw / noise / mix / SVF+ladder filters /
-  wavefolder / delay / chorus / reverb, with LFO / envelope / sample-and-hold
-  random modulation — all evolvable, all hand-patchable.
 
 ## 🏗 Architecture
 

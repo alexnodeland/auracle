@@ -1204,6 +1204,111 @@ impl WasmEngine {
 mod tests {
     use super::*;
 
+    /// The structural-edit vocabulary is a **wire format**: `main.js` builds
+    /// these payloads by hand and posts them at `apply_struct_op`, and the
+    /// same strings are what `describe` reports as a module's `kind`, so the
+    /// palette, the faceplate and the edit all key off one spelling. A serde
+    /// rename drifting from the rack description would be invisible in Rust
+    /// and would break exactly one button in the browser.
+    #[test]
+    fn the_structural_edit_vocabulary_keeps_its_spellings() {
+        use ricercar_grammar::{ModKind, NodeKind};
+        for (kind, want) in [
+            (NodeKind::Vco, "vco"),
+            (NodeKind::Supersaw, "supersaw"),
+            (NodeKind::Noise, "noise"),
+            (NodeKind::Wavetable, "wavetable"),
+            (NodeKind::Pluck, "pluck"),
+            (NodeKind::Mix, "mix"),
+            (NodeKind::Filter, "filter"),
+            (NodeKind::Fold, "fold"),
+            (NodeKind::Delay, "delay"),
+            (NodeKind::Chorus, "chorus"),
+            (NodeKind::Reverb, "reverb"),
+            (NodeKind::Distortion, "distortion"),
+            (NodeKind::Bitcrush, "bitcrush"),
+            (NodeKind::Phaser, "phaser"),
+            // Not `ring_mod`: `describe` reports `ringmod`, and one module
+            // must not have two names.
+            (NodeKind::RingMod, "ringmod"),
+            (NodeKind::Formant, "formant"),
+            (NodeKind::Flanger, "flanger"),
+            (NodeKind::Tremolo, "tremolo"),
+            (NodeKind::Vibrato, "vibrato"),
+            (NodeKind::Eq, "eq"),
+            (NodeKind::Granular, "granular"),
+            (NodeKind::Shift, "shift"),
+            (NodeKind::Comp, "comp"),
+            (NodeKind::Duck, "duck"),
+            (NodeKind::Gate, "gate"),
+            (NodeKind::Vocoder, "vocoder"),
+        ] {
+            assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{want}\""));
+        }
+        for (kind, want) in [
+            (ModKind::None, "none"),
+            (ModKind::Lfo, "lfo"),
+            (ModKind::Env, "env"),
+            (ModKind::Rand, "rand"),
+            (ModKind::Follow, "follow"),
+            // Wave 2C. Each of these is also a `RackModule::kind` — the
+            // shapers report `ModOp::label`/`PairOp::label`, which are the
+            // same eleven strings, so the palette button and the module it
+            // produces agree exactly as they do for the audio kinds.
+            (ModKind::Euclid, "euclid"),
+            (ModKind::Quantize, "quantize"),
+            (ModKind::Slew, "slew"),
+            (ModKind::Rectify, "rectify"),
+            (ModKind::Hold, "hold"),
+            (ModKind::Min, "min"),
+            (ModKind::Max, "max"),
+            (ModKind::And, "and"),
+            (ModKind::Or, "or"),
+            (ModKind::Xor, "xor"),
+            (ModKind::Switch, "switch"),
+        ] {
+            assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{want}\""));
+        }
+        // Every buildable kind is also a kind the rack description names, so
+        // the palette button and the module it produces agree.
+        for kind in [
+            NodeKind::Wavetable,
+            NodeKind::Pluck,
+            NodeKind::Distortion,
+            NodeKind::Bitcrush,
+            NodeKind::Phaser,
+            NodeKind::RingMod,
+            NodeKind::Formant,
+            NodeKind::Flanger,
+            NodeKind::Tremolo,
+            NodeKind::Vibrato,
+            NodeKind::Eq,
+            NodeKind::Granular,
+            NodeKind::Shift,
+            NodeKind::Comp,
+            NodeKind::Duck,
+            NodeKind::Gate,
+            NodeKind::Vocoder,
+        ] {
+            let tree = ricercar_grammar::apply_struct_op(
+                &ricercar_grammar::presets()[0].1,
+                &ricercar_grammar::StructOp::Replace {
+                    key: "node".into(),
+                    kind,
+                },
+            )
+            .expect("replace at the root always applies");
+            let rack = ricercar_grammar::describe(&tree);
+            let spelled = serde_json::to_string(&kind).unwrap();
+            assert!(
+                rack.modules
+                    .iter()
+                    .any(|m| format!("\"{}\"", m.kind) == spelled),
+                "no module named {spelled} in the rack it built"
+            );
+        }
+    }
+
     /// Drive one pool fill entirely through the farm boundary: the exact JSON
     /// shapes, index types and byte buffers `farm.js` and `worker.js` move.
     fn farm_fill(engine: &mut WasmEngine, want_audio: bool) {

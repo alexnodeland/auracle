@@ -50,6 +50,28 @@ pub struct VetReport {
 
 /// Vet thresholds. Defaults are deliberately lenient — the gate exists to
 /// catch pathology, not to encode taste (that's the model's job).
+///
+/// **Re-checked against the v2 palette's drive modules and left unchanged.**
+/// A gate tuned before distortion existed is exactly the kind that starts
+/// quarantining a whole timbre as pathology, so the three thresholds were
+/// measured over the full cross of `{soft, hard, tube} × drive
+/// {0.3, 0.6, 0.85, 1.0} × {saw, square, supersaw}`, plus a stacked
+/// fold → tube drive → resonant ladder chain:
+///
+/// - **peak** never exceeded 2.00 against a 3.5 ceiling. quiver's shapers all
+///   normalize into the ±1 domain and rescale, so the module is bounded at
+///   ±5 V *by construction* however hard it is driven — drive buys harmonics,
+///   not level.
+/// - **|mean|/rms** never exceeded 0.0016 against a 0.6 limit, because
+///   `compile::makes_dc` puts a blocker in front of every tube-mode patch.
+///   Without it the same renders measure 1–8% — still nowhere near the
+///   threshold, which is the point: this gate was never the thing protecting
+///   the feature extractor from that offset.
+/// - **rms** stayed far above the floor; distortion raises level, it cannot
+///   silence a patch.
+///
+/// So no threshold moved. The one that would have needed to, had the module
+/// not been bounded, is `peak_ceiling`.
 #[derive(Clone, Copy, Debug)]
 pub struct VetConfig {
     /// RMS below this is "silent".

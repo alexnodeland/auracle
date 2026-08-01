@@ -27,8 +27,12 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
+      # Through the Makefile, so the wasm stack size lives in exactly one
+      # place. Building wasm-pack directly here would ship a 1 MB stack, which
+      # the patch compiler overflows on a dozen-module patch — and it does so
+      # as "memory access out of bounds", nowhere near the flag that caused it.
       - name: Build wasm engine
-        run: wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
+        run: make wasm
 
       - name: Assemble web bundle
         run: |

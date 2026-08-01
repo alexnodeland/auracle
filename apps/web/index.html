@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=36">
+<link rel="stylesheet" href="style.css?b=47">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=39";
+    s.src = "main.js?b=67";
     document.head.appendChild(s);
   }
 })();
@@ -152,24 +152,50 @@
               <canvas class="live-scope" id="live-scope" aria-hidden="true"></canvas>
               <div class="rack-empty" id="rack-empty">Pick a patch from the bank — then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
+            <!-- Held, not "tray". Placement goes direct from the node bank
+                 now, so the only thing that lands here is what you unplugged —
+                 and the strip says its own terms rather than implying they
+                 are safe. -->
             <div class="tray" id="tray">
-              <span class="tray-label">tray</span>
-              <div class="tray-items" id="tray-items"><span class="tray-hint mono">unwired modules land here — drag a jack to patch them in</span></div>
+              <span class="tray-label">held</span>
+              <div class="tray-items" id="tray-items" aria-live="polite"><span class="tray-hint mono">Anything you unplug is held here until you reload. Save the patch to keep it for good.</span></div>
             </div>
           </div>
-          <aside class="nodebank" id="nodebank">
-            <button class="nb-collapse" id="nb-collapse" title="Collapse the node bank" aria-expanded="true">▸</button>
+          <!-- The node bank: the instrument's catalogue, not a shelf. Every
+               entry says what it does to a signal (the glyph), where it can
+               legally go (the port pips), and — only once the pool carries
+               enough evidence — what the model thinks of it (the θ bar). -->
+          <aside class="nodebank" id="nodebank" aria-label="Node bank">
+            <button class="nb-collapse" id="nb-collapse" title="Collapse the node bank" aria-expanded="true" aria-controls="nb-body">▸</button>
+            <!-- Collapsed, the rail keeps its name and its held-count. A drawer
+                 that can hide staged work without saying so is a trap. -->
+            <button class="nb-rail" id="nb-rail" type="button" aria-label="Show the node bank"></button>
+            <div class="nb-resize" id="nb-resize" title="Drag to resize" aria-hidden="true"></div>
             <div class="nb-body" id="nb-body">
-              <div class="nb-head">node bank</div>
-              <div class="nb-sect">audio</div>
-              <div class="nb-grid" id="nb-audio"></div>
-              <div class="nb-sect amber">modulation</div>
-              <div class="nb-grid" id="nb-mod"></div>
-              <p class="nb-hint">Click a module, then drag its <b>●</b> onto a <b>○</b>.</p>
-              <div class="nb-legend" aria-hidden="true">
+              <header class="nb-head">
+                <span class="panel-label">node bank</span>
+                <span class="mono" id="nb-count"></span>
+              </header>
+              <div class="nb-search">
+                <input id="nb-q" class="nb-q mono" type="search" autocomplete="off" spellcheck="false"
+                       placeholder="search — grit, wander…" aria-label="Search modules">
+                <kbd class="nb-slash" aria-hidden="true">/</kbd>
+              </div>
+              <p class="nb-empty hidden" id="nb-empty">No patch loaded. Pick one from the bank on the left and the node bank wakes up.</p>
+              <!-- What the patch on the bench is actually made of. The rail is
+                   a legend for the canvas beside it, so it should be able to
+                   answer "what am I looking at" as well as "what can I add". -->
+              <section class="nb-inpatch hidden" id="nb-inpatch" aria-labelledby="nb-inpatch-h">
+                <h3 class="nb-sect"><span id="nb-inpatch-h">in this patch</span><span class="nb-n mono" id="nb-inpatch-n"></span></h3>
+                <div class="nb-chips" id="nb-inpatch-list"></div>
+              </section>
+              <div id="nb-groups"></div>
+              <p class="nb-none hidden" id="nb-none">Nothing called that. Ricercar has no sampler and no sequencer — it is one voice you play.</p>
+              <div class="nb-legend">
                 <span class="lg-row"><i class="lg-swatch"></i>audio</span>
                 <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
               </div>
+              <p class="nb-status mono" id="nb-status"></p>
             </div>
           </aside>
         </div>
@@ -333,6 +359,10 @@
 <!-- wire-drag overlay (fixed, pointer-events none) -->
 <svg id="wire-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
 
+<!-- the node bank's spec card: teaching anchored to the thing it describes -->
+<div class="nb-spec hidden" id="nb-spec" role="tooltip"></div>
+<div class="sr-only" id="nb-live" aria-live="polite" aria-atomic="true"></div>
+
 <!-- structural-edit context menu -->
 <div class="ctx-menu hidden" id="ctx-menu"></div>
 
@@ -374,7 +404,11 @@
       <div>
         <div class="help-h">the rack</div>
         <p>Drag knobs — sound changes instantly. Click enum plates to cycle. ⋯ restructures a module; ▢ locks it so evolution can't touch it. <kbd>Tab</kbd> into the rack, then arrows to move and <kbd>↑</kbd>/<kbd>↓</kbd> to turn.</p>
-        <p>Stage modules from the <b>node bank</b>, then drag the tray jack onto a matching <b>in</b>/<b>mod</b> jack. Drag a wired <b>in</b> jack off to unplug into the tray.</p>
+        <div class="help-h">the node bank</div>
+        <p>The rail on the right is the catalogue. <b>Click a module</b> and it's in your hand: every socket it can go into lights up and says what will happen there — green <b>inserts</b> before what's already in the socket, amber <b>replaces</b> it. Click a lit ○ to place it. <kbd>esc</kbd> puts it down.</p>
+        <p><kbd>/</kbd> searches by sound as well as by name — <i>grit</i>, <i>vowel</i>, <i>sidechain</i>, <i>wander</i>. Hover any module for a sentence on what it does, its ports, and what the model has learned about it. Arrows walk the list; <kbd>enter</kbd> takes one; then arrows walk the lit sockets and <kbd>enter</kbd> places.</p>
+        <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module — quantize, slew, rectify, hold — on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill / replace / shape it is about to do.</p>
+        <p>Drag a wired <b>in</b> jack off its socket to unplug — the chain is <b>held</b> under the rack until you reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>
         <p>Pick between pairs in EVOLVE (or the quick-pick strip in PLAY). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>evolution</b> is the live pool of 40:

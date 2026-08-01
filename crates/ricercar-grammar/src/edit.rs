@@ -42,12 +42,19 @@ fn enum_arity(site: &str) -> Option<usize> {
         "color" => Some(2),
         "fkind" => Some(4),
         "oct" => Some(5),
+        "table" => Some(8),
+        "dmode" => Some(3),
         _ => None,
     }
 }
 
 fn is_structural(site: &str) -> bool {
-    matches!(site, "leaf" | "src" | "op" | "mod")
+    // `modop` and `pairop` joined in wave 2C: which CV processor sits in a mod
+    // chain is a production, not a knob, exactly as `#op` is for the audio
+    // tree. (`qscale` and `rmode` are *not* here: they select inside a module
+    // that is already placed, so they are ordinary continuous sites — see
+    // `crate::term::quant_scale_index`.)
+    matches!(site, "leaf" | "src" | "op" | "mod" | "modop" | "pairop")
 }
 
 /// Split a full address string (`key#site`) into its key and site.

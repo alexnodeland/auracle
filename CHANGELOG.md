@@ -6,7 +6,101 @@ the project is pre-1.0.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — wave 2C: modulation becomes a sort
+
+- `ModNode` was a flat enum of leaves: one modulator, one destination, and
+  nowhere to put anything in between. It is now **recursive with a depth
+  bound**, so `s&h rand → quantize to a minor scale → slew` is a term the
+  grammar can write, the taste model can learn and the rack can draw.
+- Eleven new modulators: `euclid` (a clocked pattern — the rhythm behind most
+  drum machines), the CV shapers `quantize`, `slew`, `rectify` and `hold`, and
+  the combiners `min`, `max`, `and`, `or`, `xor` and `switch`.
+- **Shapers wrap rather than replace.** Dropping a quantizer on a cable that
+  already carries an LFO takes the LFO as its input — chaining is the whole
+  point of the recursive sort, and it should not first cost you the modulator
+  that made the cable worth quantizing. The socket says which of the three
+  things will happen before you click.
+- Palette: **30 → 41 modules**, and 43 of quiver's 65 are now reachable.
+
+### Added — wave 2B: the binary-node family
+
+- **Five more modules.** `pitch shift` (a harmoniser — one note becomes an
+  interval), and four **binary** nodes whose second child is a *control* rather
+  than something you hear: `compressor`, `ducker`, `gate` and `vocoder`.
+- Wave one cut all five on the grounds that they "need a second free audio input
+  the typed tree cannot name". `ring mod` shipped in that same wave *as a
+  two-child node*, so the premise was already false — and the pitch shifter
+  turned out to be unary all along; the port map that condemned it belonged to
+  the vocoder.
+- A `dynamics` group joins the catalogue, and binary sockets now carry real
+  names — `in`/`key`, `carrier`/`voice` — instead of `a`/`b`.
+- Palette: **25 → 30 modules**.
+
+### Added — wave 2A: motion, voice, and pitch that can bend
+
+- **Six more modules**, none of which needed an architectural change — they were
+  cut in wave one on product grounds that did not survive re-reading:
+  `formant` (a glottal pulse through five resonators, with a *continuous* vowel
+  slide rather than a five-way switch), `flanger`, `tremolo`, `vibrato`,
+  `eq` (three bands, ±12 dB, arriving flat) and `granular`.
+- **Pitch modulation.** `vco` and `supersaw` gained a modulation slot landing on
+  the pitch offset. Until this existed nothing in the instrument could bend a
+  pitch — no vibrato, no pitch envelope, no siren — which made "vibrato is just
+  an LFO on pitch, pre-baked" an argument for a capability that was not there.
+- Palette: **19 → 25 modules**, and modulation slots **10 → 18**.
+- A `motion` group joins the catalogue, between `space` and `combine`.
+
+### Added — the palette, and the catalogue that holds it
+
+- **Six new modules, appended to the grammar**: `wavetable` (eight bandlimited
+  shapes with a modulatable morph — the first source whose timbre moves),
+  `pluck` (Karplus–Strong, gate-triggered), `distortion` (soft / hard / tube),
+  `bitcrush`, `phaser`, and `ringmod` — the grammar's **second binary node**,
+  which is what makes COMBINE a real sort rather than a sidebar heading.
+  Plus `follower`, an envelope follower that taps the module's own input so a
+  patch responds to itself, and a `glide` knob on `s&h rand`. Nineteen modules,
+  from twelve.
+- **Modulation almost everywhere.** Delay, chorus, reverb, wavetable, pluck,
+  distortion, bitcrush and phaser gained a modulation slot, each with a fixed,
+  **named destination** the rack prints on the jack (`→ time`, `→ size`,
+  `→ drive`). It was filter and wavefolder only, in an instrument whose DSP had
+  supported the rest all along.
+- **The node bank became a catalogue.** Six signal-flow groups, a transfer-
+  function glyph per module, a port signature in both phosphors at rest, search
+  by sound as well as by name (`grit`, `metal`, `wander`), a spec card with one
+  sentence of plain English per module, and — where the evidence supports it —
+  the model's own θ with a ±σ whisker.
+- **Arm-and-place**, with a full keyboard equivalent. Click a module and every
+  legal socket lights up and says what will happen to it: green **inserts**,
+  amber **replaces**. Wiring previously had no keyboard path at all.
+- **IN THIS PATCH** in the rail, a resizable and persisted width, a collapsed
+  rail that keeps its name and its held count, and six new presets that
+  exercise the new modules.
+
+### Changed
+
+- `φ_struct` carries **families**, not one column per module: `n_drive` covers
+  fold + distortion + bitcrush, `n_mod_fx` covers chorus + phaser. Ten sparse
+  per-kind columns would have arrived as near-indicator variables and cost the
+  cold start ten dimensions of posterior variance before the model said
+  anything.
+- The taste→grammar proposal tilt is **shrunk by θ's own uncertainty** rather
+  than reading `theta_mean` raw, and the refinement budget scales with the op
+  alphabet.
+- The rack's ⋯ menu stopped reprinting the module list — **replace with…** and
+  **insert after…** hand off to the rail with the socket pre-chosen. One
+  inventory, one place.
+- The tray is now **held**, and states its terms where it stands.
+
+### Fixed
+
+- The belief the sidebar shows is gated on **evidence, not prevalence**: a
+  coefficient whose |mean| sits inside its own σ draws a dot on zero and says
+  "the model has looked and has no lean either way", rather than a short bar
+  and a direction the posterior does not have.
+- Tube-mode distortion is now included in the voice's DC-blocker test — its
+  asymmetric shaping emits real DC, which the amp envelope would otherwise
+  multiply into a per-note thump and carry into every feature vector.
 
 ## [0.1.0] — 2026-07-30
 

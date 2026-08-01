@@ -13,9 +13,9 @@
 //! # default: seeds 0xE05 and 0x1..=0xC at 5k / 10k / 30k
 //! cargo run -p ricercar-session --example closed_loop_sweep --release
 //!
-//! # fewer seeds, or specific budgets (warmup is held at 30 % of the budget)
+//! # fewer (or more) seeds, or specific budgets (warmup is held at 30 % of the budget)
 //! cargo run -p ricercar-session --example closed_loop_sweep --release -- 8
-//! cargo run -p ricercar-session --example closed_loop_sweep --release -- 13 10000
+//! cargo run -p ricercar-session --example closed_loop_sweep --release -- 40 10000
 //! ```
 //!
 //! The default run is ~19 s wall / ~3.5 CPU-minutes on 16 cores: the seeds of
@@ -40,11 +40,28 @@ use ricercar_taste::SyntheticUser;
 /// The gate the test asserts on.
 const R_GATE: f64 = 0.6;
 
-/// Seeds, in the order they are consumed. `0xE05` first so a 1-seed run is
-/// the test itself.
-const SEEDS: [u64; 13] = [
-    0xE05, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC,
-];
+/// The default seed count — the 13 the budget tables in
+/// [`SessionConfig::mcmc_samples`] were read off.
+const DEFAULT_SEEDS: usize = 13;
+
+/// Seed `i`, in the order they are consumed. `0xE05` first so a 1-seed run is
+/// the test itself, then `0x1, 0x2, …`.
+///
+/// A *function* rather than the fixed array this used to be, so the sweep can
+/// be run wider than 13 without editing it. That matters when the question is
+/// not "is the loop working" (13 seeds answers that) but "did a change move
+/// it" — the seed-to-seed sd of `r` is ≈ 0.08, so the standard error on a
+/// 13-seed mean is ≈ 0.022 and on the *difference* of two unpaired 13-seed
+/// means ≈ 0.031, which is wider than any effect worth arguing about. Seeds
+/// 0..13 are byte-identical to the old array, so every previously published
+/// number still reproduces.
+fn seed_at(i: usize) -> u64 {
+    if i == 0 {
+        0xE05
+    } else {
+        i as u64
+    }
+}
 
 /// Same synthetic user as the test: bright, bassy, filtered, fast attack.
 fn ground_truth() -> SyntheticUser {
@@ -136,8 +153,8 @@ fn main() {
     let n_seeds = args
         .first()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(SEEDS.len())
-        .clamp(1, SEEDS.len());
+        .unwrap_or(DEFAULT_SEEDS)
+        .max(1);
     let budgets: Vec<(usize, usize)> = if args.len() > 1 {
         args[1..]
             .iter()
@@ -154,9 +171,9 @@ fn main() {
     for (samples, warmup) in budgets {
         let t0 = std::time::Instant::now();
         let rows: Vec<(u64, (f64, f64, f64, f64))> = thread::scope(|s| {
-            let handles: Vec<_> = SEEDS[..n_seeds]
-                .iter()
-                .map(|&seed| s.spawn(move || (seed, run(seed, samples, warmup))))
+            let handles: Vec<_> = (0..n_seeds)
+                .map(seed_at)
+                .map(|seed| s.spawn(move || (seed, run(seed, samples, warmup))))
                 .collect();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
@@ -168,6 +185,11 @@ fn main() {
         let fails = rs.iter().filter(|r| **r <= R_GATE).count();
         let mean_top5 = rows.iter().map(|(_, m)| m.1).sum::<f64>() / n;
         let mean_cos = rows.iter().map(|(_, m)| m.3).sum::<f64>() / n;
+        // Standard error of the mean, so a run-to-run difference can be read
+        // against its own noise rather than by eye.
+        let se_r =
+            (rs.iter().map(|r| (r - mean_r) * (r - mean_r)).sum::<f64>() / (n - 1.0).max(1.0) / n)
+                .sqrt();
 
         println!(
             "--- {samples}+{warmup} steps  ({:.1?} wall) ---",
@@ -188,7 +210,7 @@ fn main() {
             );
         }
         println!(
-            "  mean r={mean_r:.3}  min r={min_r:.3}  r<={R_GATE} on {fails}/{} seeds  \
+            "  mean r={mean_r:.3}±{se_r:.3}  min r={min_r:.3}  r<={R_GATE} on {fails}/{} seeds  \
              mean top5={mean_top5:.3}  mean cos={mean_cos:.3}\n",
             rows.len()
         );

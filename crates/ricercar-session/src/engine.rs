@@ -41,6 +41,7 @@ use rand::{Rng, SeedableRng};
 use ricercar_features::{
     featurize_memo, render_playback, Audition, Features, PhraseSpec, RenderMemo,
 };
+use ricercar_grammar::prior::N_OPS;
 use ricercar_grammar::{tree_diff, DiffEntry, PatchGrammarPrior, PatchTree};
 use ricercar_taste::{
     Feedback, FitSet, Observation, ObservationLog, Standardizer, TasteConfig, TasteModel,
@@ -218,8 +219,17 @@ pub struct SessionConfig {
     /// attempts).
     pub max_draws: usize,
     /// MH refinement steps per seed (scaled up when locks waste proposals).
+    ///
+    /// The default scales with [`N_OPS`]: a structural proposal picks a new
+    /// operator from a categorical that the v2 palette widened from six to
+    /// ten, so a fixed budget would spend the same number of proposals
+    /// covering nearly twice the move set and land the pool's children in a
+    /// visibly thinner slice of it.
     pub refine_steps: usize,
-    /// How many top candidates to refine from.
+    /// How many top candidates to refine from. Also scaled with [`N_OPS`] —
+    /// more seeds is more *starting points*, which is what actually buys
+    /// coverage of a wider palette, whereas more steps per seed buys depth
+    /// around one.
     pub refine_seeds: usize,
     /// Boltzmann sharpness β of the refinement target.
     pub beta: f64,
@@ -408,8 +418,10 @@ impl Default for SessionConfig {
         Self {
             pool_size: 48,
             max_draws: 400,
-            refine_steps: 12,
-            refine_seeds: 3,
+            // 12 and 3 were tuned against the six-operator v1 palette; both
+            // ride N_OPS so the same tuning survives a palette change.
+            refine_steps: 2 * N_OPS,
+            refine_seeds: N_OPS.div_ceil(2),
             beta: 2.0,
             k_styles: 5,
             phrase: PhraseSpec::default(),
@@ -522,6 +534,23 @@ pub struct Profile {
 /// with each multiplier clamped to `[1/4, 4]` so no kind is ever starved or
 /// monopolized, and the result renormalized. Pure, so the taste→grammar
 /// mapping is testable without an MCMC fit.
+/// Shrink a posterior mean toward zero by its own uncertainty:
+/// `θ·|θ|/(|θ| + σ)`.
+///
+/// The factor is 1 when the coefficient is many standard deviations from
+/// zero, ½ when `σ = |θ|`, and →0 when the posterior is mostly prior. It is
+/// the same shape as a signal-to-noise weighting, chosen over a hard
+/// significance cut because a cut makes the proposal distribution jump
+/// discontinuously as evidence accumulates, and users hear that as the
+/// instrument changing its mind.
+fn shrink(mean: f64, std: f64) -> f64 {
+    let m = mean.abs();
+    if m <= 0.0 {
+        return 0.0;
+    }
+    mean * m / (m + std.max(0.0))
+}
+
 pub fn tilt_weights(base: &[f64], tilts: &[f64], eta: f64) -> Vec<f64> {
     let mut out: Vec<f64> = base
         .iter()
@@ -1399,6 +1428,36 @@ impl Engine {
     /// kind's proposal weight by `exp(η·θ)`. This is θ_struct → grammar
     /// feedback — refinement *proposes* toward the user instead of merely
     /// filtering, which is where visible directionality comes from.
+    ///
+    /// Two things make the mapping from φ names to grammar weights less than
+    /// a lookup, and both are consequences of φ carrying **families**
+    /// (`ricercar_features::StructFeatures`):
+    ///
+    /// - Several kinds share one coefficient. `n_drive` speaks for the
+    ///   wavefolder, the distortion, the bitcrusher and the ring modulator;
+    ///   `n_mod_fx` for the chorus, phaser, flanger, tremolo and vibrato;
+    ///   `n_time` for the delay, the granulator and the pitch shifter;
+    ///   `n_filter` for the filter, the EQ and the vocoder; `n_dynamics` for
+    ///   the compressor, the ducker and the gate. They each get the family's
+    ///   tilt, which is the honest reading: the evidence never distinguished
+    ///   them, so the proposal should not pretend it did. Their *base* weights
+    ///   still differ, so the tilt shifts the family without flattening it.
+    /// - `n_mix` is not in φ at all — it is determined by the source count and
+    ///   the other five binary counts under the exact identity that removed it
+    ///   — so its tilt comes from the sources: wanting more sources is wanting
+    ///   more binary nodes to combine them, and that is the only sense in
+    ///   which the taste model has an opinion here. The other five binaries
+    ///   take the tilt of whichever family they are counted under.
+    ///
+    /// Each coefficient is also **shrunk by its own posterior uncertainty**,
+    /// `θ·|θ|/(|θ| + σ)`, before it tilts anything. The new palette's
+    /// coefficients are the least identified ones in the model — a pool of 48
+    /// draws contains a handful of bitcrushers — so a raw posterior mean is
+    /// as likely to be sampling noise as signal, and feeding noise into the
+    /// *proposal* distribution compounds it: the pool drifts toward the
+    /// spurious kind, which produces more evidence about it, which is not the
+    /// same as producing more evidence *for* it. A coefficient whose σ equals
+    /// its mean tilts half as hard; one that is mostly noise tilts not at all.
     fn biased_prior(&self) -> PatchGrammarPrior {
         let mut prior = self.prior.clone();
         let eta = self.cfg.proposal_tilt;
@@ -1416,50 +1475,96 @@ impl Engine {
             .map(|c| c.phi_std.clone())
             .collect();
         let shares = p.style_share(&pool_phis);
-        let mut theta = vec![0.0; names.len()];
+        let (mut theta, mut sd) = (vec![0.0; names.len()], vec![0.0; names.len()]);
         for k in 0..p.k_styles() {
-            let m = p.theta_mean(k);
             let w = shares.get(k).copied().unwrap_or(0.0);
-            for (t, mi) in theta.iter_mut().zip(m) {
+            for (t, mi) in theta.iter_mut().zip(p.theta_mean(k)) {
                 *t += w * mi;
+            }
+            for (s, si) in sd.iter_mut().zip(p.theta_std(k)) {
+                *s += w * si;
             }
         }
         let g = |name: &str| {
             names
                 .iter()
                 .position(|n| *n == name)
-                .map(|i| theta[i])
+                .map(|i| shrink(theta[i], sd[i]))
                 .unwrap_or(0.0)
         };
-        let src = tilt_weights(
-            &prior.source_weights,
-            &[g("n_vco"), g("n_supersaw"), g("n_noise")],
-            eta,
-        );
-        prior.source_weights = [src[0], src[1], src[2]];
-        // `n_mix` is not a φ coordinate — it is exactly one less than the
-        // source count, so it carries no information the source coefficients
-        // don't already hold. Its proposal tilt therefore comes from *them*:
-        // wanting more sources is wanting more mixers to combine them, and
-        // that is the only sense in which the taste model has an opinion here.
-        let mix_tilt = (g("n_vco") + g("n_supersaw") + g("n_noise")) / 3.0;
+        let sources = [
+            g("n_vco"),
+            g("n_supersaw"),
+            g("n_noise"),
+            g("n_wavetable"),
+            g("n_pluck"),
+            g("n_formant"),
+        ];
+        let src = tilt_weights(&prior.source_weights, &sources, eta);
+        prior.source_weights = src.try_into().expect("source weight arity");
+        // Mix inherits the sources' average tilt — it is the node that exists
+        // to combine them, and it is the one column the identity removed.
+        let binary_tilt = sources.iter().sum::<f64>() / sources.len() as f64;
+        let (drive, mod_fx) = (g("n_drive"), g("n_mod_fx"));
+        // `n_filter` and `n_time` are families now too — the eq and the
+        // vocoder are counted under the first, the granulator and the pitch
+        // shifter under the second — so every member of each takes the same
+        // tilt, exactly as the drive and movement families already did.
+        let (spectral, time) = (g("n_filter"), g("n_time"));
+        // Wave 2B's three level-shapers share one coefficient for the same
+        // reason: the evidence never distinguished a compressor from a ducker
+        // from a gate, so the proposal must not pretend it did.
+        let dynamics = g("n_dynamics");
         let op = tilt_weights(
             &prior.op_weights,
             &[
-                mix_tilt,
-                g("n_filter"),
-                g("n_fold"),
-                g("n_delay"),
-                g("n_chorus"),
-                g("n_reverb"),
+                binary_tilt,   // mix
+                spectral,      // filter
+                drive,         // fold
+                time,          // delay
+                mod_fx,        // chorus
+                g("n_reverb"), // reverb
+                drive,         // distortion
+                drive,         // bitcrush
+                mod_fx,        // phaser
+                drive,         // ring mod — counted inside n_drive
+                mod_fx,        // flanger
+                mod_fx,        // tremolo
+                mod_fx,        // vibrato
+                spectral,      // eq — counted inside n_filter
+                time,          // granular — counted inside n_time
+                time,          // pitch shift — counted inside n_time
+                dynamics,      // compressor
+                dynamics,      // ducker
+                dynamics,      // gate
+                spectral,      // vocoder — counted inside n_filter
             ],
             eta,
         );
         prior.op_weights = op.try_into().expect("op weight arity");
         // "no modulation" carries no tilt — only the filled kinds compete.
+        // Wave 2C's three take their family's coefficient, on the same rule as
+        // the op table: the euclidean generator and the two recursive
+        // productions are all counted inside `n_mod_logic` or `n_mod_shape`,
+        // and the evidence never separated a quantizer from a slew limiter.
+        //
+        // `Op` reads `n_mod_shape` and `Pair` reads `n_mod_logic`, but the
+        // euclid — which is a *leaf* — reads `n_mod_logic` too, because that
+        // is the column it is counted in. Tilting it by anything else would
+        // move the prior in a direction no observation supports.
+        let (shape, logic) = (g("n_mod_shape"), g("n_mod_logic"));
         let md = tilt_weights(
             &prior.mod_weights,
-            &[0.0, g("n_lfo"), g("n_env"), g("n_rand")],
+            &[
+                0.0,
+                g("n_lfo"),
+                g("n_env"),
+                g("n_rand"),
+                g("n_follow"),
+                logic, // euclid — counted inside n_mod_logic
+                shape, // op
+                logic, // pair
+            ],
             eta,
         );
         prior.mod_weights = md.try_into().expect("mod weight arity");
@@ -2407,6 +2512,11 @@ impl Engine {
                 );
             }
         }
+        // Before stamping: a coordinate that was renamed since this profile
+        // was written still holds the right *value*, and `FitSet::build`
+        // matches by name — so the rename has to be applied to the stored
+        // names or the evidence is imputed away as "no opinion".
+        crate::migrate::apply_renames(&mut self.log);
         crate::migrate::stamp_names(&mut self.log, &names);
         match profile.standardizer {
             Some(sz) if sz.dimension() == names.len() => {
