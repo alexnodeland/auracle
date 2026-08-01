@@ -1217,6 +1217,23 @@ input, textarea, .bi-rename {
 .bank-tour .tour-nav #tour-next { margin-left: auto; }
 .bank-tour .tour-nav button:disabled { opacity: 0.35; cursor: default; }
 /* The chip the current step is about. */
+/* The catalogue's walkthrough reuses the bank tour's panel wholesale — same
+   component, same rules, anchored to its own rail. Only the highlight differs,
+   because what it points at is a group or a row rather than a chip. */
+.nb-tour { left: 10px; right: 10px; max-height: 52%; }
+.nb-tour-lit {
+  outline: 2px solid var(--phos-b);
+  outline-offset: 3px;
+  border-radius: 5px;
+}
+.nb-head .bank-tour-btn {
+  margin-left: 0;
+  /* `.bank-tour-btn` sets a width but not a basis, and this header is a
+     space-between flex row — so the circle was shrinking to 11px and going
+     oval. The bank's own head gets away with it because it has slack. */
+  flex: 0 0 20px;
+}
+
 .bank-filters .bf.tour-lit {
   border-color: var(--phos-b);
   box-shadow: 0 0 0 2px rgba(255, 180, 84, 0.25);
@@ -1425,10 +1442,14 @@ input, textarea, .bi-rename {
 /* At 41 modules the rail is three viewports tall, so the group you are inside
    has to stay named while you scroll it — otherwise the only landmarks in the
    catalogue are the ones that have just left the screen. Parks directly under
-   the header band, which is sticky at 0. */
+   the header band, which is sticky at 0.
+   
+   The offset is measured from the header at build time rather than written
+   here: it was hard-coded at 37px and the `?` button changed the header's
+   height to 44, which would have left a 7px gap that nothing points at. */
 .nb-sect {
   position: sticky;
-  top: 37px;
+  top: var(--nb-head-h, 40px);
   z-index: 2;
   margin: 8px 0 4px;
   background: linear-gradient(180deg, #14171b 70%, rgba(20, 23, 27, 0));

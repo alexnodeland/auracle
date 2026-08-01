@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=47">
+<link rel="stylesheet" href="style.css?b=49">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=67";
+    s.src = "main.js?b=71";
     document.head.appendChild(s);
   }
 })();
@@ -142,7 +142,7 @@
             sound changes instantly. Click a <b>lock dot</b> (hover a knob) or a module's <b>▢</b>
             to pin what you love, then <b>⚡ evolve from this</b> breeds variations that keep your
             locks. Made it better by hand? Tick <b>my edit is better</b> and <b>commit</b> — that
-            teaches the model too.</span>
+            teaches the model too. The rail on the right is the module catalogue — its <b>?</b> walks you through it.</span>
           <button class="util-btn" id="bt-close">got it</button>
         </div>
         <div class="play-body">
@@ -175,6 +175,7 @@
               <header class="nb-head">
                 <span class="panel-label">node bank</span>
                 <span class="mono" id="nb-count"></span>
+                <button class="bank-tour-btn" id="nb-tour-btn" title="How the catalogue works" aria-label="Walk me through the node bank">?</button>
               </header>
               <div class="nb-search">
                 <input id="nb-q" class="nb-q mono" type="search" autocomplete="off" spellcheck="false"
@@ -196,6 +197,19 @@
                 <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
               </div>
               <p class="nb-status mono" id="nb-status"></p>
+            </div>
+            <!-- The catalogue's own walkthrough, anchored to the rail rather
+                 than centred in a modal, for the same reason the bank's is:
+                 every step points at something in the rail. -->
+            <div class="bank-tour nb-tour hidden" id="nb-tour" role="dialog" aria-modal="false" aria-labelledby="nbt-title">
+              <div class="tour-step mono" id="nbt-step"></div>
+              <div class="tour-title" id="nbt-title"></div>
+              <div class="tour-body" id="nbt-body"></div>
+              <div class="tour-nav">
+                <button class="util-btn" id="nbt-skip">skip</button>
+                <button class="util-btn" id="nbt-back">back</button>
+                <button class="hw-btn small" id="nbt-next">next</button>
+              </div>
             </div>
           </aside>
         </div>
