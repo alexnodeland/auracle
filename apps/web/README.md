@@ -95,6 +95,37 @@ to a pinned `role="alert"` strip that stays until resolved.
   content. The one exception is loud: a job retired after two attempts logs a
   console warning.
 
+- **Hit targets are measured, not eyeballed.** Two controls turned out to be
+  much smaller than they looked, both because an SVG shape only hit-tests
+  where it is *painted*. A jack's outer circle is unfilled, so only its 1.6px
+  ring responded — scanning a jack's 11px diameter found 4 live pixels in two
+  slivers. A knob's ticks, track and value arc all ride outside its body and
+  intercepted the press, so a 44px face had a 36px control inside it. Both are
+  fixed (`pointer-events: all` on the jack ring, `.knob-hit` covering the
+  knob's whole face, decoration set to `pointer-events: none`). When adding a
+  rack control, scan across it with `elementFromPoint` before trusting it.
+- **A control that can't act says so.** The audit's recurring bug was silence:
+  a ▶ with no handler, an `if (x == null) return`, a worker failure message
+  nothing listened for. `bench_missing` is the sharpest case — the worker has
+  always sent it when `edit_begin` fails, and because nothing handled it the
+  optimistic "it's on the workbench" toast stayed on screen while the bench
+  showed the previous patch. Prefer a disabled control with a reason in its
+  title, or a note; never a handler that returns.
+- **Touch**: everything the rack does works under a finger on a tablet —
+  knob drags, cable pulls, locks, the ⋯ menu. Two rules carry it. Controls
+  that own a drag claim the gesture before the browser can (`claimGesture`:
+  `touch-action` plus a non-passive `touchstart` preventDefault, because
+  `touch-action` is unreliable on SVG *children*), which lets the rack frame
+  keep its own panning. And affordances that a mouse reveals by hovering —
+  the knob lock dots, the bank's stars and CUT — are shown outright on a
+  coarse pointer, since hover-to-reveal on a tablet means "never". Small
+  glyphs get an invisible `fingerPad`, created only for coarse pointers, so
+  desktop hit areas are byte-for-byte what they were.
+- **Keybed size**: `⇕ tall` is height (the dock grows via `--keybar-h`, the
+  deck re-zooms into what's left); `keys` is width, 1–4 octaves. Both persist
+  in `perf`. The width defaults by input device — three octaves for a mouse,
+  two for a finger — and the narrow sizes anchor on the computer keymap's
+  octave rather than an octave below it.
 - **Handheld gate**: a coarse pointer with a min viewport dimension under
   620px never boots the engine at all — an inline check in `index.html`
   injects `main.js` only when it passes, and otherwise shows a stand-in
