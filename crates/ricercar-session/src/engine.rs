@@ -222,14 +222,46 @@ pub struct SessionConfig {
     ///
     /// The default scales with [`N_OPS`]: a structural proposal picks a new
     /// operator from a categorical that the v2 palette widened from six to
-    /// ten, so a fixed budget would spend the same number of proposals
-    /// covering nearly twice the move set and land the pool's children in a
+    /// twenty, so a fixed budget would spend the same number of proposals
+    /// covering a far wider move set and land the pool's children in a
     /// visibly thinner slice of it.
+    ///
+    /// ## The split is measured, not reasoned
+    ///
+    /// `2·N_OPS` steps from `N_OPS/2` seeds was an argument, and the argument
+    /// could have been wrong in either direction. `search_health --budget-ab`
+    /// exists to settle it; over 8 seeds, 6 generations, graded against the
+    /// synthetic user's true utility:
+    ///
+    /// | steps | seeds | proposals | mean u | max u | |
+    /// |---|---|---|---|---|---|
+    /// | 40 | 10 | 400 | **1.714** | **8.154** | shipped |
+    /// | 40 |  3 | 120 | 1.241 | 6.178 | same depth, fewer seeds |
+    /// | 66 |  3 | 198 | 0.774 | 6.281 | same total, fewer seeds |
+    /// | 20 | 20 | 400 | 0.568 | 6.790 | half depth, double breadth |
+    ///
+    /// The shipped split wins on both metrics, and it is a genuine optimum
+    /// rather than the top of a slope: moving off it in *either* direction is
+    /// worse. Two rows are worth more than the headline.
+    ///
+    /// **Depth from few seeds is actively harmful.** 66×3 runs 65% more
+    /// proposals than 40×3 and scores *lower* (0.774 against 1.241) — a long
+    /// chain from a bad starting point converges confidently on somewhere you
+    /// did not want to be, and the extra steps are what get it there.
+    ///
+    /// **Breadth is not free either.** 20×20 spends the shipped budget and is
+    /// the worst row of the four. Twenty steps is not enough for a chain to
+    /// leave its seed, so the generation is twenty barely-moved copies of the
+    /// current top — which is also why it has the second-best `max`: it
+    /// preserves the frontier by never straying from it.
+    ///
+    /// Re-run this before changing either number.
     pub refine_steps: usize,
     /// How many top candidates to refine from. Also scaled with [`N_OPS`] —
     /// more seeds is more *starting points*, which is what actually buys
     /// coverage of a wider palette, whereas more steps per seed buys depth
-    /// around one.
+    /// around one. See [`SessionConfig::refine_steps`] for the measurement
+    /// that fixes the ratio between them.
     pub refine_seeds: usize,
     /// Boltzmann sharpness β of the refinement target.
     pub beta: f64,

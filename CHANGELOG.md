@@ -6,6 +6,22 @@ the project is pre-1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Two open questions about the search loop are now **answered in the code**
+  rather than in a commit message, because both would otherwise be re-asked
+  from scratch:
+  - The refinement budget split (`2·N_OPS` steps from `N_OPS/2` seeds) is a
+    measured optimum, not an argument — moving off it in *either* direction
+    scores worse, and depth from few seeds is actively harmful. The table is
+    on `SessionConfig::refine_steps`.
+  - The pool-decline scare from the palette expansion: the fitted ranking
+    genuinely does churn between refits (Spearman 0.556), and it genuinely
+    does not matter, because the true best survives 98% of generations and
+    eviction only reads the bottom of the order. Recorded on
+    `search_health`'s `retention`, along with why the upper-confidence-bound
+    eviction rule it motivated was designed and not shipped.
+
 ### Added — wave 2C: modulation becomes a sort
 
 - `ModNode` was a flat enum of leaves: one modulator, one destination, and
