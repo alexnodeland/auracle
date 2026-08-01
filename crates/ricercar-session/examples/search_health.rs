@@ -82,6 +82,9 @@ use ricercar_taste::SyntheticUser;
 const GENERATIONS: usize = 6;
 /// Duels used to teach the model before search starts.
 const TEACH_DUELS: usize = 60;
+/// Votes cast between generations in [`retention`], so the posterior is
+/// actually refit while the pool turns over.
+const REFIT_DUELS: usize = 12;
 
 fn ground_truth() -> SyntheticUser {
     let names = Features::phi_names();
@@ -121,8 +124,13 @@ fn cfg(pool: usize) -> SessionConfig {
 
 /// Teach `engine` a taste, then return the synthetic user.
 fn teach(engine: &mut Engine, rng: &mut StdRng, user: &SyntheticUser) {
+    teach_n(engine, rng, user, TEACH_DUELS);
+}
+
+/// `teach` with an explicit budget, refit in four instalments.
+fn teach_n(engine: &mut Engine, rng: &mut StdRng, user: &SyntheticUser, duels: usize) {
     for _ in 0..4 {
-        for _ in 0..(TEACH_DUELS / 4) {
+        for _ in 0..(duels / 4) {
             let Some((a, b)) = engine.next_duel(rng) else {
                 break;
             };
@@ -411,6 +419,14 @@ fn refine_hits(seed: u64, steps: usize, trials: usize) -> (usize, usize, usize) 
 ///   the next's, over the members present in both. If *this* is low while
 ///   fit↔truth is fine, the ranking is churning between refits and eviction is
 ///   sampling noise rather than reading a belief.
+///
+/// The first version of this measurement taught once up front and then ran the
+/// generations, exactly as [`climb`] does — which froze the posterior and made
+/// stability report **ρ = 1.000 by construction**. A number that cannot come
+/// out any other way is not evidence, and it is the same tautology the MH
+/// acceptance measurement above had to be rewritten to avoid. So this one
+/// keeps voting between generations, which is also what the instrument
+/// actually does: the user does not stop after sixty duels.
 /// - **best kept** — how often the previous generation's true-best member is
 ///   still in the pool afterwards. This is the failure itself, counted.
 struct Retention {
@@ -488,7 +504,12 @@ fn retention(seed: u64) -> Retention {
     };
     let mut prev_fit: Vec<(u64, f64)> = fitted(&engine);
 
-    for _ in 0..GENERATIONS {
+    for g in 0..GENERATIONS {
+        // Keep teaching, or the posterior never moves and "does the ranking
+        // hold still" answers itself.
+        if g > 0 {
+            teach_n(&mut engine, &mut rng, &user, REFIT_DUELS);
+        }
         // Who is genuinely best right now?
         let best = engine
             .pool
