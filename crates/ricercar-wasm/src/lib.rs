@@ -53,6 +53,7 @@ struct RankedRow {
     named: bool,
     signature: String,
     sexpr: String,
+    pinned: bool,
 }
 
 /// One θ coordinate of one style.
@@ -697,6 +698,7 @@ impl WasmEngine {
                     named: c.name.is_some(),
                     signature: c.tree.signature(),
                     sexpr: c.tree.to_sexpr(),
+                    pinned: c.pinned,
                 }
             })
             .collect();
@@ -830,6 +832,22 @@ impl WasmEngine {
         self.engine.set_name(id as u64, name);
     }
 
+    /// Pin or unpin a patch against eviction. Returns `false` when the id is
+    /// gone or the pin budget is full — the caller must say which, because a
+    /// pin control that silently does nothing is the exact failure this whole
+    /// mechanism exists to end.
+    pub fn set_pinned(&mut self, id: u32, pinned: bool) -> bool {
+        self.engine.set_pinned(id as u64, pinned)
+    }
+
+    /// How many patches are pinned, and the ceiling, as `[count, cap]`.
+    pub fn pin_budget(&self) -> Vec<u32> {
+        vec![
+            self.engine.pinned_count() as u32,
+            self.engine.pin_cap() as u32,
+        ]
+    }
+
     /// Name an aligned style index.
     pub fn set_style_name(&mut self, k: usize, name: &str) {
         self.engine.set_style_name(k, name);
@@ -867,21 +885,31 @@ impl WasmEngine {
             .unwrap_or(-1)
     }
 
-    /// The built-in preset bank as JSON (`[{index, name, sig}]`).
+    /// The built-in preset bank as JSON
+    /// (`[{index, name, category, blurb, sig}]`).
+    ///
+    /// `category` is what the browser groups by and what the warm start
+    /// samples across — with the library past two dozen, an unstratified
+    /// sample of nine would keep landing in one corner of the space, which is
+    /// the same cold-start bias the warm start exists to remove.
     pub fn preset_list(&self) -> String {
         #[derive(Serialize)]
         struct Row {
             index: usize,
             name: &'static str,
+            category: &'static str,
+            blurb: &'static str,
             sig: String,
         }
-        let rows: Vec<Row> = presets()
+        let rows: Vec<Row> = ricercar_grammar::preset_bank()
             .into_iter()
             .enumerate()
-            .map(|(index, (name, tree))| Row {
+            .map(|(index, p)| Row {
                 index,
-                name,
-                sig: tree.signature(),
+                name: p.name,
+                category: p.category,
+                blurb: p.blurb,
+                sig: p.tree.signature(),
             })
             .collect();
         serde_json::to_string(&rows).unwrap()

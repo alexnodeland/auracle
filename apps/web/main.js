@@ -159,6 +159,16 @@ function uiState() {
     vol: volume,
     oct: octShift,
     perf,
+    // Which bank you were looking at, and which ids the latest generation
+    // produced. `born` was never persisted, so the `new` filter it fed was
+    // empty on every reload — a control that could not act, silently.
+    //
+    // Pins deliberately do NOT live here: the engine evicts, so the engine
+    // owns them, and `SessionState.bank` carries them. Holding them in both
+    // places is what let the old bank apologise for eviction without being
+    // able to prevent it.
+    bank: bankFilter,
+    born: [...lastBorn],
   };
 }
 
@@ -226,6 +236,10 @@ worker.onmessage = (e) => {
       // message queue, so everything below is serviced while it runs.
       dropBootVeil();
       applyStatus(m.status);
+      // The preset library is static and tiny, and its size shows on the chip
+      // before you press it. Fetching only on first press would leave that
+      // count reading 0 — a number that is wrong rather than merely absent.
+      if (!presetRows) send({ type: "presets" });
       // Claim the deal before it goes out. On a full restore the worker posts
       // `playable` and `filled` in the same synchronous turn (the fill loop —
       // and therefore its yield — never runs), so `filled` would otherwise see
@@ -316,12 +330,12 @@ worker.onmessage = (e) => {
       break;
     }
     case "patch_imported": {
-      views = m.views;
+      const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
       if (m.id > 0) {
         openOnBench(m.id);
-        note(`patch imported as ${nameOf(m.id)}`);
+        note(`patch imported as ${nameOf(m.id)}.${madeRoom(evicted)}`);
         scheduleSave();
       } else {
         note("could not import that patch (duplicate, or it failed the safety vet)");
@@ -431,7 +445,7 @@ worker.onmessage = (e) => {
     case "fitted": {
       fitting = false;
       $("wm-r").classList.remove("thinking");
-      views = m.views;
+      applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
       scheduleSave();
@@ -449,11 +463,7 @@ worker.onmessage = (e) => {
       // The pool is fixed-size: every accepted child evicts the patch the
       // model predicts you like least. Say so — silent eviction is how a
       // user loses something they liked and stops trusting the bank.
-      const prevIds = new Set(((views && views.ranked) || []).map((r) => r.id));
-      views = m.views;
-      const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
-      const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
-      const evictedStarred = evicted.filter((id) => (starsById.get(id) || 0) > 0);
+      const evicted = applyViews(m.views);
       if (m.born && m.born.length > 0) {
         lastBorn.clear();
         for (const id of m.born) lastBorn.add(id);
@@ -470,18 +480,13 @@ worker.onmessage = (e) => {
       } else if (m.born && m.born.length === 0) {
         note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
       } else if (m.born) {
+        offerBankTourAfterFirstGeneration();
         const made = evicted.length
           ? ` ${evicted.length} lowest-predicted made room.`
           : "";
         note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`);
       } else {
         note(`Generation ${m.status.generation} bred.`);
-      }
-      if (evictedStarred.length > 0) {
-        alarm(
-          `Breeding replaced ${evictedStarred.length} starred patch${evictedStarred.length > 1 ? "es" : ""} — stars don't protect from eviction yet. Export patches you must keep.`,
-          { label: "ok", run: () => alarm(null) }
-        );
       }
       break;
     }
@@ -588,14 +593,14 @@ worker.onmessage = (e) => {
       break;
     }
     case "committed": {
-      views = m.views;
+      const evicted = applyViews(m.views);
       applyStatus(m.status);
       if (m.id > 0) {
         wb.subjectId = m.id;
         wb.dirty = false;
         livePatchId = m.id;
         setLiveLabel(nameOf(m.id));
-        note(`committed as patch #${m.id}${$("improve-check").checked ? " · taught: your edit beat the original" : ""}`);
+        note(`committed as patch #${m.id}${$("improve-check").checked ? " · taught: your edit beat the original" : ""}.${madeRoom(evicted)}`);
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
@@ -612,11 +617,11 @@ worker.onmessage = (e) => {
     case "evolved_from": {
       $("rack-evolve").disabled = false;
       $("wm-r").classList.remove("thinking");
-      views = m.views;
+      const evolveEvicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
       if (m.childId > 0) {
-        note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench, play it`);
+        note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench, play it.${madeRoom(evolveEvicted)}`);
         send({ type: "edit_begin", id: m.childId });
         scheduleSave();
       } else {
@@ -625,7 +630,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "taste_views": {
-      views = m.views;
+      applyViews(m.views);
       refreshInstruments();
       // First arrival: put a patch under the player's fingers immediately.
       if (wb.subjectId == null && views.ranked && views.ranked.length > 0) {
@@ -647,17 +652,48 @@ worker.onmessage = (e) => {
     case "presets": {
       presetRows = m.rows;
       if (warmPending) { warmPending = false; renderWarmStart(m.rows); }
-      else renderPresetsPop();
+      else if (bankFilter === "preset") renderBank();
+      else renderBankCounts(); // the chip says how many even from another bank
+      break;
+    }
+    case "pinned": {
+      if (m.ranked && views) views.ranked = m.ranked;
+      if (m.budget) pinBudget = m.budget;
+      // A control that cannot act says so. `set_pinned` fails for exactly two
+      // reasons and they need different sentences: the budget is full (the
+      // user can fix that by unkeeping something) or the patch is already gone
+      // (they cannot).
+      if (!m.ok) {
+        if (rowOf(m.id)) {
+          note(`That would pass your limit of ${pinBudget[1]} saved patches. Release one first.`);
+        } else {
+          note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
+        }
+      } else if (m.pinned && !warmLoaded) {
+        note(`Saved ${nameOf(m.id)} — it won't be replaced. ${pinBudget[0]}/${pinBudget[1]} slots used.`);
+      } else if (!warmLoaded) {
+        // Releasing is destructive in slow motion: the patch goes back into
+        // the pool and the next generation may breed it away. Silence made it
+        // the one half of the toggle that reported nothing.
+        note(`Released ${nameOf(m.id)} — it can be replaced again. ${pinBudget[0]}/${pinBudget[1]} slots used.`);
+      }
+      renderPinBudget();
+      renderBank();
+      scheduleSave();
       break;
     }
     case "preset_loaded": {
-      views = m.views;
+      const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
       // A preview is a listen, not a selection: no bench, no toast, no
       // interruption of the screen the user is standing on.
       if (m.preview) {
-        warmPreviewLoaded(m.id);
+        // Hearing a preset costs a pool slot — the engine can only render what
+        // it holds. That is defensible, but it has to be *said*: this branch
+        // used to drop the eviction on the floor, so pressing ▶ destroyed a
+        // patch and reported nothing at all.
+        warmPreviewLoaded(m.id, evicted);
         scheduleSave();
         break;
       }
@@ -667,9 +703,20 @@ worker.onmessage = (e) => {
         break;
       }
       if (m.id > 0) {
+        // Remember which library row this id came from, so the preset bank can
+        // say "in bank" and open it next time instead of loading it again.
+        // Only the warm-start preview path used to record this, so a plain
+        // click re-loaded the same preset forever and never marked it.
+        if (m.index !== undefined) presetIds.set(m.index, m.id);
         openOnBench(m.id);
-        note(`Preset loaded as ${nameOf(m.id)}`);
+        note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
         scheduleSave();
+      } else {
+        // `insert_preset` returns 0 before the standardizer exists, and this
+        // branch did not exist: the click closed the menu and did nothing at
+        // all, with no message. The bank is still filling at that moment, so
+        // this is the most likely moment for a new user to press it.
+        note("The bank is still warming up — try that preset again in a moment.");
       }
       break;
     }
@@ -965,6 +1012,66 @@ function alarm(text, action) {
   }
 }
 
+// Names are the one thing on this surface the user (or a *file*) writes, and
+// every list on the surface is built by interpolating them into `innerHTML`.
+// Raw, that executed: renaming a patch to `<img src=x onerror=…>` ran the
+// handler, and because the name persists in `BankEntry.name` it came back on
+// every reload. The sink is also fed by imported patch JSON — the app's share
+// format — so opening a patch someone sent you was script execution in your
+// session, with your whole taste log in reach.
+//
+// Prefer `textContent` wherever the node allows it. `esc` is for the templates
+// that cannot be rewritten that way, and covers `"` and `'` because two of
+// them interpolate into *attributes* (the style chip's value/placeholder).
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
+// Adopt a new `views` and report anything the pool quietly destroyed doing it.
+//
+// The prev/now diff used to live inside the `refined` handler alone, so three
+// of the four paths that can evict said nothing: committing an edit, importing
+// a patch, and loading a preset each silently dropped the lowest-predicted
+// member — which meant "Preset loaded as Cathedral" could be the whole report
+// of an exchange that also destroyed a patch the user had starred. Every path
+// that adopts views goes through here now.
+//
+// Returns the ids that vanished, so a caller can fold the count into whatever
+// it was going to say anyway rather than firing a second toast.
+function applyViews(next) {
+  const prevIds = new Set(((views && views.ranked) || []).map((r) => r.id));
+  const prevNames = new Map(((views && views.ranked) || []).map((r) => [r.id, r.name]));
+  views = next;
+  const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
+  const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
+  // The engine owns the budget and ships it with every views post, which is
+  // the only reason the readout survives a reload: nothing in the UI knows how
+  // many pins a restored session came back with.
+  if (next && next.pinBudget) pinBudget = next.pinBudget;
+  renderPinBudget();
+  // A pin means this can no longer happen to anything the user kept, so if it
+  // somehow does, that is a bug worth shouting about rather than a policy to
+  // apologise for.
+  const lost = evicted.filter((id) => (starsById.get(id) || 0) >= 4);
+  if (lost.length > 0) {
+    const names = lost.map((id) => prevNames.get(id) || `#${id}`).join(", ");
+    alarm(
+      `Made room by dropping ${names}, which you rated highly. Stars tell the model what you like; ` +
+        `saving is what stops a patch being replaced.`,
+      { label: "ok", run: () => alarm(null) }
+    );
+  }
+  return evicted;
+}
+
+// The clause every insertion path appends to its own message, so the exchange
+// is reported as an exchange rather than as a gift.
+function madeRoom(evicted) {
+  if (!evicted || evicted.length === 0) return "";
+  return ` ${evicted.length} lowest-predicted made room.`;
+}
+
 function rowOf(id) {
   return (views && views.ranked && views.ranked.find((x) => x.id === id)) || null;
 }
@@ -1059,7 +1166,6 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
 wireArrowNav(document.querySelector(".viewtabs"), ".viewtab", { activate: true });
 wireArrowNav(document.querySelector(".tabs"), ".tab", { activate: true });
 wireArrowNav($("ovf-menu"), ".ovf-item", { vertical: true });
-wireArrowNav($("presets-pop"), ".pp-item", { vertical: true });
 
 // ---------- audio helpers ----------
 function ensureAudio() {
@@ -1455,9 +1561,9 @@ document.addEventListener("keydown", (e) => {
       $("ovf-btn").setAttribute("aria-expanded", "false");
       $("ovf-btn").focus();
     }
-    if (!$("presets-pop").classList.contains("hidden")) {
-      $("presets-pop").classList.add("hidden");
-      $("presets-btn").focus();
+    if (!$("bank-tour").classList.contains("hidden")) {
+      endBankTour();
+      $("bank-tour-btn").focus();
     }
     $("ctx-menu").classList.add("hidden");
     return;
@@ -1492,6 +1598,11 @@ document.addEventListener("keydown", (e) => {
   if (k === " ") { e.preventDefault(); return toggleAudition(); }
   if (k === "[") return stepBank(-1);
   if (k === "]") return stepBank(1);
+  // Global, like `[`/`]` and `1`-`5`, because the help lists it beside them.
+  // Bound only to the bank list it was a shortcut the docs promised and the
+  // app did not honour anywhere else — the same defect the digits already had
+  // and had already been fixed for.
+  if (k === "m") { saveCursorRow(); return; }
   if (currentView === "evolve") {
     if (e.key === "1") $("play-a").click();
     else if (e.key === "2") $("play-b").click();
@@ -1849,7 +1960,7 @@ function onRenderArrived(id) {
   // bank. The s-expression is engine truth, not a label — it lives under the
   // ⇄ circuit flip, where an expert can still find it.
   $(`name-${side}`).innerHTML =
-    `${nameOf(id)}<span class="dn-id">#${id}</span><span class="dn-sig mono">${sigOf(id)}</span>`;
+    `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
   $(`readout-${side}`).textContent = r.sexpr;
   styleBadge($(`style-${side}`), r.bestStyle);
   drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
@@ -1929,11 +2040,11 @@ function renderExplain(id, ex) {
   const parts = top.map((c) => {
     const nice = niceName(c.name);
     const sign = c.contribution >= 0 ? "+" : "−";
-    return `<b class="${c.contribution >= 0 ? "up" : "down"}">${nice}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
+    return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(nice)}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
   holder.innerHTML =
     `<span class="ex-why">why:</span> ${parts.join(" · ")} ` +
-    `<span class="ex-lens">under your <b>${ex.style_name || `style ${ex.style + 1}`}</b> lens</span>`;
+    `<span class="ex-lens">under your <b>${esc(ex.style_name || `style ${ex.style + 1}`)}</b> lens</span>`;
 }
 
 // Which candidate is sounding, everywhere it can be asked: the EVOLVE cards,
@@ -2175,161 +2286,143 @@ $("evolve-btn").onclick = () => {
 // ---------- patch bank ----------
 let bankScrollTo = null;
 
-function renderBank() {
-  const list = $("bank-list");
+// The three banks the chips switch between.
+//
+//   pool    — the live candidate pool: what evolution breeds from, what the
+//             model reasons over, and the only one of the three that evicts.
+//   mine    — patches the user saved. Engine-side `pinned`, so saving is what
+//             actually exempts a patch from eviction rather than a label that
+//             says it does.
+//   preset  — the built-in library. Not pool members at all until you load
+//             one, which is why this list is built from `presetRows`.
+//
+// One list, three sources. The old surface had five provenance filters plus a
+// four-option sort menu overlapping them, and could not answer "where are my
+// sounds?" at all, because the answer was "nowhere, they get evicted".
+const BANKS = ["pool", "mine", "preset"];
+
+// The save control, drawn rather than typed.
+//
+// It shipped for one round as `▣`, borrowed from the rack's module lock:
+// internally consistent, and the first person to look at it asked what the
+// little square was. A floppy disk is the one save affordance everybody
+// already knows — but the *monochrome* floppy codepoints (U+1F5AA/AB/AC)
+// measure exactly as wide as an unassigned codepoint here, i.e. they are tofu
+// in every font on the machine, and the one that does render (U+1F4BE) is a
+// colour emoji, which would make it the only non-phosphor colour on the
+// surface. So it is an inline SVG in `currentColor`: the familiar shape, no
+// font dependency, and it obeys the palette like everything else.
+const FLOPPY =
+  `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">` +
+  `<path d="M2.6 2.2h8L13.4 5v8.2a1.2 1.2 0 0 1-1.2 1.2H3.8a1.2 1.2 0 0 1-1.2-1.2V3.4a1.2 1.2 0 0 1 1.2-1.2z"` +
+  ` fill="none" stroke="currentColor" stroke-width="1.3"/>` +
+  `<rect class="fl-shutter" x="5.4" y="2.2" width="4.6" height="3.9" fill="currentColor"/>` +
+  `<rect class="fl-label" x="4.6" y="8.6" width="6.8" height="5.8" fill="none" stroke="currentColor" stroke-width="1.2"/>` +
+  `</svg>`;
+
+const ORIGIN_GLYPH = { prior: "◇", refined: "⚡", edited: "✎", preset: "▤" };
+const ORIGIN_TITLE = {
+  prior: "◇ dealt fresh from the grammar — nobody's taste in it yet",
+  refined: "⚡ bred by evolution toward your taste",
+  edited: "✎ committed from your bench edits",
+  preset: "▤ hand-made preset",
+};
+
+// Absolute scale, not min–max across the visible bank: the old normalisation
+// made the worst patch always read 0% and the best always 100%, so the widget
+// could never say "it likes none of these". The logistic of the posterior mean
+// is a fixed, monotone map.
+const sq = (u) => 1 / (1 + Math.exp(-u));
+
+function bankSource() {
   const ranked = (views && views.ranked) || [];
-  let rows = ranked.filter((r) => !cutIds.has(r.id));
+  const live = ranked.filter((r) => !cutIds.has(r.id));
+  if (bankFilter === "mine") return live.filter((r) => r.pinned);
+  if (bankFilter === "preset") return presetRows || [];
+  return live;
+}
+
+// Counts on the chips themselves: the cheapest way to say what is in a place
+// you are not currently looking at.
+function renderBankCounts() {
+  const ranked = (views && views.ranked) || [];
+  const live = ranked.filter((r) => !cutIds.has(r.id));
+  const n = {
+    pool: live.length,
+    mine: live.filter((r) => r.pinned).length,
+    preset: (presetRows || []).length,
+  };
+  for (const el of document.querySelectorAll(".bf-n")) {
+    el.textContent = n[el.dataset.n] != null ? String(n[el.dataset.n]) : "";
+  }
+}
+
+function renderPinBudget() {
+  const el = $("pin-budget");
+  if (!el) return;
+  const [used, cap] = pinBudget;
+  // Shown from the moment the cap is known, including at zero: releasing your
+  // last save used to delete the readout, so the one number that says how much
+  // room you have left disappeared exactly when it changed.
+  el.hidden = !cap;
+  el.textContent = cap ? `${used}/${cap} saved` : "";
+  el.title = `${used} of ${cap} save slots used. A saved patch is never replaced to make room.`;
+}
+
+function renderBank() {
+  // Never rebuild the list out from under a rename.
+  //
+  // `renderBank` fires on every knob edit, rating, worker view and bred
+  // generation. Each rebuild detaches the open `<input>`, and Chromium fires
+  // `blur` on removal — so an edit the user was still typing got committed by
+  // something they did somewhere else entirely. Guarding the *commit* is not
+  // enough (a click on another row is a real blur and must still commit); the
+  // fix is that a rename in flight owns the list until it ends.
+  if (renamingId != null) {
+    bankRenderPending = true;
+    return;
+  }
+  bankRenderPending = false;
+  const list = $("bank-list");
   renderFillHint(); // owns the header count; it also carries "N arriving"
-  // Provenance filter: where your saves, the newest generation, the presets
-  // and your edits each live.
-  if (bankFilter === "starred") rows = rows.filter((r) => (starsById.get(r.id) || 0) > 0);
-  else if (bankFilter === "gen") rows = rows.filter((r) => lastBorn.has(r.id));
-  else if (bankFilter === "preset") rows = rows.filter((r) => r.origin === "preset");
-  else if (bankFilter === "edited") rows = rows.filter((r) => r.origin === "edited");
+  renderBankCounts();
+  renderPinBudget();
+  renderBankNote();
+
+  if (bankFilter === "preset") {
+    // Presets are not pool members, so they carry no id and nothing may rate
+    // or save them — but they are still 29 rows in a focusable `listbox`, and
+    // leaving `bankRows` empty made the entire keyboard fall through to the
+    // synth: arrowing did nothing *and* the keystroke played a note.
+    // `presetCursor` gives them their own navigation.
+    bankRows = [];
+    renderPresetBank(list);
+    syncBankCursor();
+    return;
+  }
+
+  const rows = bankSource();
   bankRows = rows; // assigned before ANY return: [ ] and 1–5 step THIS list
   list.innerHTML = "";
   if (rows.length === 0) {
+    // An empty state names the one thing to do next. It is never where a
+    // known limitation gets confessed — the old `saved` copy spent its whole
+    // budget apologising that stars did not protect anything.
     const msg = {
-      starred: "No saves yet — star a patch to keep track of it. (Stars don't yet protect it from eviction; export what you must keep.)",
-      gen: "Nothing bred this session yet — press EVOLVE POOL, or ⚡ evolve a patch you like.",
-      preset: "No presets loaded — the PRESETS button seeds the bank with hand-made patches.",
-      edited: "No committed edits yet — turn knobs on the bench, then COMMIT.",
-      all: "Nothing here yet.",
+      mine:
+        "Nothing saved yet. Press <b>save</b> on any patch to keep it here — a saved patch is never replaced to make room.",
+      pool: "The pool is empty. Load a preset, or press EVOLVE POOL to fill it again.",
     }[bankFilter] || "Nothing here yet.";
     list.innerHTML = `<div class="bench-empty">${msg}</div>`;
     return;
   }
-  // Absolute scale, not min–max across the visible bank: the old
-  // normalisation made the worst patch always read 0% and the best always
-  // 100%, so the widget could never say "it likes none of these". The
-  // logistic of the posterior mean is a fixed, monotone map.
+
   const fitted = !!(views && views.styles);
-  const sq = (u) => 1 / (1 + Math.exp(-u));
-  const sortMode = $("bank-sort") ? $("bank-sort").value : "rank";
-  if (sortMode === "number") rows.sort((x, y) => x.id - y.id);
-  else if (sortMode === "unsure") rows.sort((x, y) => (y.std || 0) - (x.std || 0));
-  else if (sortMode === "disagree") {
-    const d = (r) => {
-      const s = starsById.get(r.id) || 0;
-      return s === 0 ? -1 : Math.abs(sq(r.mean) * 5 - s);
-    };
-    rows.sort((x, y) => d(y) - d(x));
-  }
-  const ORIGIN_GLYPH = { prior: "◇", refined: "⚡", edited: "✎", preset: "▤" };
-  const ORIGIN_TITLE = {
-    prior: "◇ sampled fresh from the grammar",
-    refined: "⚡ bred by evolution toward your taste",
-    edited: "✎ committed from your bench edits",
-    preset: "▤ hand-made preset",
-  };
-  for (const r of rows) {
-    const el = document.createElement("div");
-    el.className = "bank-item"
-      + (r.id === wb.subjectId ? " live" : "")
-      // The keyboard cursor is state, so it is carried by *id* and re-applied
-      // on every render. It used to live only on the DOM node, and rating a
-      // row re-renders the bank — so the highlight vanished the instant you
-      // used it, and the next digit fell through to the index-0 fallback and
-      // rated a patch nobody had selected. See `kbdRowId`.
-      + (r.id === kbdRowId ? " kbd" : "");
-    const frac = fitted ? sq(r.mean) : 0;
-    const lo = fitted ? sq(r.mean - (r.std || 0)) : 0;
-    const hi = fitted ? sq(r.mean + (r.std || 0)) : 0;
-    const stars = starsById.get(r.id) || 0;
-    const sig = r.sig || r.signature || "";
-    el.setAttribute("role", "option");
-    el.setAttribute("aria-selected", String(r.id === wb.subjectId));
-    // The list is one tab stop. Without pulling the rows *and their buttons*
-    // out of the tab order, the ARIA says listbox while the tab order says
-    // 280 individually-focusable buttons — and the rack sits behind all of
-    // them.
-    el.tabIndex = -1;
-    el.setAttribute("aria-label", `${r.name}, patch ${r.id}${sig ? `, ${sig}` : ""}`);
-    // Two lines: what it is, then what the model thinks of it. The prediction
-    // bar is the product's whole thesis, so it gets its own row and a label —
-    // it used to be a 60×4px sliver next to five stars.
-    el.innerHTML = `
-      <div class="bi-top">
-        <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
-        <span class="bi-name ${r.named ? "custom" : ""}" title="${sig ? `${sig} — ` : ""}double-click to rename">${r.name}</span>
-        <span class="bi-id">#${r.id}</span>
-      </div>
-      ${sig ? `<div class="bi-sig mono">${sig}</div>` : ""}
-      <div class="bi-row">
-        <button class="bi-hear" title="Audition sample" aria-label="Audition ${r.name}">▶</button>
-        <span class="stars" role="group" aria-label="Rate ${r.name} — press 1 to 5 on the highlighted row">
-        ${[1, 2, 3, 4, 5]
-          .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}">★</button>`)
-          .join("")}
-        </span>
-        <span class="bi-u${fitted ? "" : " nofit"}" title="${fitted ? `How much the model thinks you'd like this — the band is how sure it is` : "No prediction yet — teach it with a few picks"}">${fitted ? `<i style="width:${Math.round(frac * 100)}%"></i><b style="left:${Math.round(lo * 100)}%;width:${Math.max(1, Math.round((hi - lo) * 100))}%"></b>` : ""}</span>
-        ${fitted ? `<span class="bi-pct mono" title="Predicted appeal">${Math.round(frac * 100)}%</span>` : ""}
-        <button class="bi-kill" title="Cut: teach the model you don't want this" aria-label="Cut ${r.name}">cut</button>
-      </div>`;
-    el.addEventListener("click", (e) => {
-      if (e.target.closest("button")) return;
-      openOnBench(r.id);
-      showView("play");
-    });
-    el.querySelector(".bi-hear").onclick = () => awaitRender(r.id, () => play(r.id));
-    el.querySelectorAll(".star").forEach((btn) => {
-      btn.onclick = () => {
-        // The row you just rated is the one a follow-up 1–5 should correct,
-        // whichever hand you rated it with.
-        kbdRowId = r.id;
-        starsById.set(r.id, Number(btn.dataset.s));
-        send({ type: "record_stars", id: r.id, rating: Number(btn.dataset.s) });
-        renderBank();
-      };
-    });
-    el.querySelector(".bi-kill").onclick = () => {
-      // Undo, not confirm. A confirm dialog trains people to click through it;
-      // an undo window costs nothing and actually protects the work. Cutting
-      // used to remove a patch silently, irreversibly, with no message at all.
-      //
-      // The observation is *held* for the length of the undo window rather
-      // than logged and compensated — a taste log that contains "killed it,
-      // then kept it" for the same patch is a log of the user's mouse, not of
-      // their taste.
-      cutIds.add(r.id);
-      renderBank();
-      const commit = setTimeout(() => {
-        pendingCuts.delete(r.id);
-        send({ type: "record_keep", id: r.id, kept: false });
-      }, UNDO_WINDOW_MS);
-      pendingCuts.set(r.id, commit);
-      note(`Cut ${r.name} #${r.id}.`, {
-        undo: () => {
-          clearTimeout(pendingCuts.get(r.id));
-          pendingCuts.delete(r.id);
-          cutIds.delete(r.id);
-          renderBank();
-        },
-      });
-    };
-    const nameEl = el.querySelector(".bi-name");
-    nameEl.ondblclick = (ev) => {
-      ev.stopPropagation();
-      const input = document.createElement("input");
-      input.className = "bi-rename";
-      input.value = r.named ? r.name : "";
-      input.placeholder = r.name;
-      input.maxLength = 40;
-      nameEl.replaceWith(input);
-      input.focus();
-      input.select();
-      const commit = () => send({ type: "set_name", id: r.id, name: input.value });
-      input.onkeydown = (ke) => {
-        ke.stopPropagation(); // typing must not play notes
-        if (ke.key === "Enter") input.blur();
-        if (ke.key === "Escape") { input.oninput = null; input.onblur = null; renderBank(); }
-      };
-      input.onkeyup = (ke) => ke.stopPropagation();
-      input.onblur = commit;
-    };
-    el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
-    list.appendChild(el);
-  }
+  const frag = document.createDocumentFragment();
+  for (const r of rows) frag.appendChild(bankRow(r, fitted));
+  list.innerHTML = "";
+  list.appendChild(frag);
+  syncBankCursor();
   if (bankScrollTo != null) {
     const target = list.querySelector(".bank-item.live");
     if (target) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -2337,29 +2430,279 @@ function renderBank() {
   }
 }
 
+function bankRow(r, fitted) {
+  const el = document.createElement("div");
+  el.className = "bank-item"
+    + (r.id === wb.subjectId ? " live" : "")
+    // The keyboard cursor is state, so it is carried by *id* and re-applied
+    // on every render. It used to live only on the DOM node, and rating a
+    // row re-renders the bank — so the highlight vanished the instant you
+    // used it, and the next digit fell through to the index-0 fallback and
+    // rated a patch nobody had selected. See `kbdRowId`.
+    + (r.id === kbdRowId ? " kbd" : "")
+    + (r.pinned ? " saved" : "")
+    + (lastBorn.has(r.id) ? " fresh" : "");
+  const frac = fitted ? sq(r.mean) : 0;
+  const lo = fitted ? sq(r.mean - (r.std || 0)) : 0;
+  const hi = fitted ? sq(r.mean + (r.std || 0)) : 0;
+  const stars = starsById.get(r.id) || 0;
+  const sig = r.sig || r.signature || "";
+  el.id = `bank-row-${r.id}`; // aria-activedescendant needs something to point at
+  el.setAttribute("role", "option");
+  el.setAttribute("aria-selected", "false");
+  // The list is one tab stop. Without pulling the rows *and their buttons*
+  // out of the tab order, the ARIA says listbox while the tab order says
+  // 280 individually-focusable buttons — and the rack sits behind all of
+  // them. The trade is that a screen reader gets no path to the buttons, so
+  // the row's own label has to carry the state they encode.
+  el.tabIndex = -1;
+  const said = [
+    r.name,
+    `patch ${r.id}`,
+    sig,
+    r.pinned ? "saved" : "",
+    stars ? `${stars} of 5 stars` : "unrated",
+    fitted ? `predicted ${Math.round(frac * 100)} percent` : "",
+  ].filter(Boolean);
+  // setAttribute takes a string, not markup — no escaping here, and escaping
+  // would put a literal `&amp;` into what a screen reader says.
+  el.setAttribute("aria-label", said.join(", "));
+  el.innerHTML = `
+    <div class="bi-top">
+      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
+      <span class="bi-name ${r.named ? "custom" : ""}" title="${sig ? `${esc(sig)} — ` : ""}double-click to rename">${esc(r.name)}</span>
+      <span class="bi-pct mono" title="${fitted ? "How much the model thinks you'd like this" : "No prediction yet — teach it with a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "—"}</span>
+      <span class="bi-id">#${r.id}</span>
+    </div>
+    <div class="bi-row">
+      <button class="bi-hear" title="Hear this patch" aria-label="Audition ${esc(r.name)}">▶</button>
+      <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
+      ${[1, 2, 3, 4, 5]
+        .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ — teaches the model, ${s > 3 ? "does not" : "does not"} keep the patch">★</button>`)
+        .join("")}
+      </span>
+      <button class="bi-save${r.pinned ? " on" : ""}" aria-pressed="${!!r.pinned}"
+        title="${r.pinned ? "Saved — this patch is never replaced to make room. Click to release it." : "Save this patch. Saved patches are never replaced to make room."}"
+        aria-label="${r.pinned ? "Release" : "Save"} ${esc(r.name)}">${FLOPPY}</button>
+      <button class="bi-kill" title="Cut: teach the model you don't want this" aria-label="Cut ${esc(r.name)}">cut</button>
+    </div>
+    <span class="bi-u${fitted ? "" : " nofit"}" title="${fitted ? "The model's guess, and the block is how sure it is" : "No prediction yet"}">${
+      fitted
+        ? `<b style="left:${(lo * 100).toFixed(1)}%;width:${Math.max(1.5, (hi - lo) * 100).toFixed(1)}%"></b><i style="left:${(frac * 100).toFixed(1)}%"></i>`
+        : ""
+    }</span>`;
+  el.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    kbdRowId = r.id;
+    openOnBench(r.id);
+    showView("play");
+  });
+  el.querySelector(".bi-hear").onclick = () => awaitRender(r.id, () => play(r.id));
+  el.querySelectorAll(".star").forEach((btn) => {
+    btn.onclick = () => {
+      // The row you just rated is the one a follow-up 1–5 should correct,
+      // whichever hand you rated it with.
+      kbdRowId = r.id;
+      rateRow(Number(btn.dataset.s), r.id);
+    };
+  });
+  el.querySelector(".bi-save").onclick = () => {
+    kbdRowId = r.id;
+    // Optimism here would be a lie half the time: the engine refuses at the
+    // budget, and it owns the count. Ask, then render what it says.
+    send({ type: "set_pinned", id: r.id, pinned: !r.pinned });
+  };
+  el.querySelector(".bi-kill").onclick = () => cutRow(r);
+  wireRename(el.querySelector(".bi-name"), r);
+  el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
+  return el;
+}
+
+// Undo, not confirm. A confirm dialog trains people to click through it; an
+// undo window costs nothing and actually protects the work.
+//
+// The observation is *held* for the length of the undo window rather than
+// logged and compensated — a taste log that contains "killed it, then kept
+// it" for the same patch is a log of the user's mouse, not of their taste.
+function cutRow(r) {
+  // Cutting something you saved is a contradiction, and the old behaviour
+  // resolved it in the worst way: the row vanished from every bank while the
+  // engine went on holding its save slot, so the budget was permanently short
+  // and the only control that could release it was unreachable. The cut is
+  // what the user just said, so the save yields to it.
+  if (r.pinned) send({ type: "set_pinned", id: r.id, pinned: false });
+  cutIds.add(r.id);
+  renderBank();
+  scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
+  const commit = setTimeout(() => {
+    pendingCuts.delete(r.id);
+    send({ type: "record_keep", id: r.id, kept: false });
+  }, UNDO_WINDOW_MS);
+  pendingCuts.set(r.id, commit);
+  note(`Cut ${r.name} #${r.id}.`, {
+    undo: () => {
+      clearTimeout(pendingCuts.get(r.id));
+      pendingCuts.delete(r.id);
+      cutIds.delete(r.id);
+      renderBank();
+      scheduleSave();
+    },
+  });
+}
+
+function wireRename(nameEl, r) {
+  nameEl.ondblclick = (ev) => {
+    ev.stopPropagation();
+    const input = document.createElement("input");
+    input.className = "bi-rename";
+    input.value = r.named ? r.name : "";
+    input.placeholder = r.name;
+    input.maxLength = 40;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    renamingId = r.id;
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      renamingId = null;
+      // Commit only if the field is still in the document. Chromium fires
+      // `blur` when a node is *removed*, so any unrelated `renderBank()` — and
+      // one fires on every knob edit, every rating, every worker view — landed
+      // here and saved whatever half-typed text was in the box. Other engines
+      // discard instead, which made it browser-dependent rather than merely
+      // wrong. A field the user is still looking at is connected; one the
+      // renderer just tore out from under them is not.
+      if (commit) send({ type: "set_name", id: r.id, name: input.value });
+      if (bankRenderPending) renderBank(); // whatever we held off, run it now
+    };
+    input.onkeydown = (ke) => {
+      ke.stopPropagation(); // typing must not play notes
+      if (ke.key === "Enter") { finish(true); input.blur(); }
+      if (ke.key === "Escape") { finish(false); renderBank(); }
+    };
+    input.onkeyup = (ke) => ke.stopPropagation();
+    input.onblur = () => finish(true);
+  };
+}
+
+// The preset library, grouped by family.
+//
+// It used to live behind its own button in a popover: a flat list of nine
+// names with no ▶, where clicking committed the patch to the bank, evicted
+// something silently and yanked you to the bench. Two places for one concept,
+// and the only one that could audition was the first-run screen. Now it is
+// simply one of the three banks, and the row behaves like every other row.
+function renderPresetBank(list) {
+  list.innerHTML = "";
+  if (!presetRows) {
+    list.innerHTML = `<div class="bench-empty">Loading the library…</div>`;
+    send({ type: "presets" });
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  let lastCat = null;
+  for (const p of presetRows) {
+    if (p.category !== lastCat) {
+      lastCat = p.category;
+      const h = document.createElement("div");
+      h.className = "pb-cat";
+      h.textContent = p.category;
+      frag.appendChild(h);
+    }
+    const loadedId = presetIds.get(p.index);
+    const inBank = loadedId != null && !!rowOf(loadedId);
+    const el = document.createElement("div");
+    el.className = "bank-item preset-item" + (inBank ? " in-bank" : "");
+    el.setAttribute("role", "option");
+    el.setAttribute("aria-selected", "false");
+    el.tabIndex = -1;
+    el.setAttribute("aria-label", `${p.name}, ${p.category}. ${p.blurb}.${inBank ? " In your bank." : ""}`);
+    el.innerHTML = `
+      <div class="bi-top">
+        <span class="bi-origin preset" title="▤ hand-made preset">▤</span>
+        <span class="bi-name">${esc(p.name)}</span>
+        ${inBank ? `<span class="pb-in" title="Already in your bank">in bank</span>` : ""}
+      </div>
+      <div class="pb-blurb">${esc(p.blurb)}</div>
+      <div class="bi-row">
+        <button class="bi-hear" aria-label="Hear ${esc(p.name)}"
+          title="Hear it. Hearing a preset loads it into the pool — the engine can only render what it holds.">▶</button>
+        <span class="pb-sig mono">${esc(p.sig)}</span>
+      </div>`;
+    const hear = el.querySelector(".bi-hear");
+    hear.onclick = () => previewPreset(p, hear);
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      if (inBank) { openOnBench(loadedId); showView("play"); }
+      else send({ type: "load_preset", index: p.index });
+    });
+    el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
+    frag.appendChild(el);
+  }
+  list.appendChild(frag);
+}
+
 // The bank is one tab stop, not 280. Before this, reaching the rack from the
 // menubar took ~287 Tab presses through unlabelled star buttons.
-$("bank-sort").onchange = () => renderBank();
-
-let bankFilter = "all";
-let bankRows = []; // the filtered, sorted rows the rail currently shows
+let bankFilter = "pool";
+let bankRows = []; // the rows the rail currently shows
+let pinBudget = [0, 0]; // [used, cap], owned by the engine and echoed here
+let renamingId = null; // a rename in flight; see `syncBankCursor`
+let presetCursor = -1;  // the preset bank's own row cursor (presets have no id)
+let bankRenderPending = false; // a render deferred while a rename is open
 const lastBorn = new Set(); // ids born in the latest bred generation
+
+function selectBank(which) {
+  if (!BANKS.includes(which)) return;
+  bankFilter = which;
+  document.querySelectorAll(".bank-filters .bf").forEach((x) => {
+    const on = x.dataset.f === which;
+    x.classList.toggle("active", on);
+    x.setAttribute("aria-pressed", String(on));
+  });
+  // Presets are fetched once, lazily — the library is static, so the only
+  // reason to ask twice is a reload.
+  if (which === "preset" && !presetRows) send({ type: "presets" });
+  renderBank();
+  // Not while restoring: the restore path calls this *before* `init`, and a
+  // save that reaches the worker before the engine exists throws inside it.
+  if (!restoreInFlight) scheduleSave();
+}
 document.querySelectorAll(".bank-filters .bf").forEach((b) => {
   b.setAttribute("aria-pressed", String(b.classList.contains("active")));
-  b.onclick = () => {
-    bankFilter = b.dataset.f;
-    document.querySelectorAll(".bank-filters .bf").forEach((x) => {
-      x.classList.toggle("active", x === b);
-      x.setAttribute("aria-pressed", String(x === b));
-    });
-    renderBank();
-  };
+  b.onclick = () => selectBank(b.dataset.f);
 });
 
 // Which row the keyboard is pointing at, by id rather than by DOM position.
 // A rating re-renders the bank, and an index into a list that was just
 // rebuilt is a different patch.
 let kbdRowId = null;
+
+// Tell assistive tech where the cursor is.
+//
+// The list has always claimed `role="listbox"` while announcing nothing as you
+// arrowed through it: there was no `aria-activedescendant`, rows had no `id`,
+// and `aria-selected` tracked the *bench* rather than the cursor. So the
+// highlight moved and a screen reader stayed silent.
+function syncBankCursor() {
+  const list = $("bank-list");
+  if (renamingId != null) return; // a rename owns the focus; leave it alone
+  // A cursor pointing at a row this bank does not contain is worse than no
+  // cursor: `aria-activedescendant` naming a deleted element is a dangling
+  // reference, and switching to the preset bank used to leave one behind.
+  const row = kbdRowId != null ? document.getElementById(`bank-row-${kbdRowId}`) : null;
+  for (const el of list.querySelectorAll(".bank-item[aria-selected='true']")) {
+    el.setAttribute("aria-selected", "false");
+  }
+  if (row) {
+    row.setAttribute("aria-selected", "true");
+    list.setAttribute("aria-activedescendant", row.id);
+  } else {
+    list.removeAttribute("aria-activedescendant");
+  }
+}
 
 function moveKbdRow(d) {
   if (bankRows.length === 0) return;
@@ -2368,6 +2711,48 @@ function moveKbdRow(d) {
   kbdRowId = bankRows[next].id;
   renderBank();
   $("bank-list").querySelector(".bank-item.kbd")?.scrollIntoView({ block: "nearest" });
+}
+
+// The preset bank's keyboard. Presets carry a library `index`, not a bank id,
+// so they cannot share the pool's cursor — but they are rows in a listbox and
+// have to answer arrows, Enter and Escape like any other list. Anything this
+// does not handle is swallowed rather than passed on: a listbox that plays a
+// note when you press a letter is not a listbox.
+function presetKeydown(e) {
+  const rows = [...$("bank-list").querySelectorAll(".preset-item")];
+  if (rows.length === 0) return;
+  const move = (d) => {
+    presetCursor = Math.max(0, Math.min(rows.length - 1, presetCursor < 0 ? 0 : presetCursor + d));
+    rows.forEach((el, i) => el.classList.toggle("kbd", i === presetCursor));
+    const el = rows[presetCursor];
+    el.scrollIntoView({ block: "nearest" });
+    $("bank-list").setAttribute("aria-activedescendant", el.id);
+    rows.forEach((x) => x.setAttribute("aria-selected", String(x === el)));
+  };
+  if (e.key === "ArrowDown") { e.preventDefault(); move(presetCursor < 0 ? 0 : 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+  else if (e.key === "Home") { e.preventDefault(); presetCursor = 0; move(0); }
+  else if (e.key === "End") { e.preventDefault(); presetCursor = rows.length - 1; move(0); }
+  else if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    rows[Math.max(0, presetCursor)]?.click();
+  } else if (e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    rows[Math.max(0, presetCursor)]?.querySelector(".bi-hear")?.click();
+  }
+}
+
+// Save (or release) whatever row the bank is pointing at. Shared by the row
+// button, the bank list's own key handler and the global one, so all three
+// mean exactly the same thing.
+function saveCursorRow() {
+  const id = rateTargetId();
+  if (id == null) {
+    note("Nothing selected to save — click a bank row, or step to one with [ and ].");
+    return false;
+  }
+  send({ type: "set_pinned", id, pinned: !(rowOf(id) || {}).pinned });
+  return true;
 }
 
 // What a digit rates. The keyboard cursor if there is one; otherwise the
@@ -2382,13 +2767,20 @@ function rateTargetId() {
   return null;
 }
 
-function rateRow(rating) {
-  const id = rateTargetId();
+function rateRow(rating, explicitId) {
+  const id = explicitId != null ? explicitId : rateTargetId();
   if (id == null) {
     note("Nothing selected to rate — click a bank row, or step to one with [ and ].");
     return;
   }
-  kbdRowId = id; // rating something makes it the cursor, so 1–5 can correct it
+  // Re-asserting a rating is not new evidence — logging it again would weight
+  // one opinion twice. But returning in silence made a lit star a dead button,
+  // so say what the state already is.
+  if ((starsById.get(id) || 0) === rating) {
+    note(`${nameOf(id)} is already ${rating}★ — pick a different number to change it.`);
+    return;
+  }
+  kbdRowId = id; // rating something makes it the cursor, so 1-5 can correct it
   starsById.set(id, rating);
   send({ type: "record_stars", id, rating });
   renderBank();
@@ -2396,6 +2788,7 @@ function rateRow(rating) {
 }
 
 $("bank-list").addEventListener("keydown", (e) => {
+  if (bankFilter === "preset") return presetKeydown(e);
   if (bankRows.length === 0) return;
   if (e.key === "ArrowDown") { e.preventDefault(); moveKbdRow(kbdRowId == null ? 0 : 1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); moveKbdRow(-1); }
@@ -2404,6 +2797,20 @@ $("bank-list").addEventListener("keydown", (e) => {
     const id = kbdRowId ?? bankRows[0].id;
     bankScrollTo = id;
     openOnBench(id);
+  } else if (e.key.toLowerCase() === "m") {
+    // Save from the keyboard, since the row's buttons are deliberately out of
+    // the tab order and a screen-reader user would otherwise have no path to
+    // the one control that protects their work.
+    //
+    // `m` for "my patches", and — the actual constraint — `m` is one of the
+    // few letters the Ableton note layout leaves free. `s` would have been the
+    // obvious mnemonic and is a note: the global handler deliberately lets note
+    // letters through even when a control has focus, so binding it here would
+    // have both saved the patch and played a D, and silently cost a player one
+    // key of their keyboard whenever the bank had focus.
+    e.preventDefault();
+    e.stopPropagation();
+    saveCursorRow();
   } else if (/^[1-5]$/.test(e.key)) {
     e.preventDefault();
     e.stopPropagation(); // digit keys are evolve-view shortcuts elsewhere
@@ -2411,44 +2818,159 @@ $("bank-list").addEventListener("keydown", (e) => {
   }
 });
 
-// ---------- presets ----------
-let presetRows = null;
 
-$("presets-btn").onclick = () => {
-  const pop = $("presets-pop");
-  if (!pop.classList.contains("hidden")) {
-    pop.classList.add("hidden");
-    return;
-  }
-  if (presetRows) renderPresetsPop();
-  else send({ type: "presets" });
+// ---------- the three banks, explained ----------
+//
+// Splitting one list into three named banks only helps if the names mean
+// something, and two of them are load-bearing jargon: *pool* and *generation*.
+// Nothing on screen ever said what a generation was, what EVOLVE POOL does to
+// the bank, or why a patch you liked could disappear. That is the single
+// hardest idea in the product and it was left entirely implicit.
+//
+// Two surfaces carry it. A one-line note under the chips, always there, saying
+// what you are looking at. And a walkthrough that steps through all three,
+// switching banks as it goes — reading about the pool while looking at the
+// presets teaches nobody anything.
+
+// One line each. The depth lives in the walkthrough; this is a label, and at
+// three lines it was costing more of the rail than it was worth.
+const BANK_NOTES = {
+  pool: `Every patch the model is weighing.`,
+  mine: `Never replaced — but still in the pool, still being learned from.`,
+  preset: `Hand-made. <b>▶</b> loads one into the pool.`,
 };
 
-function renderPresetsPop() {
-  const pop = $("presets-pop");
-  pop.innerHTML =
-    `<div class="pp-head">presets — load one to hear it</div>` +
-    presetRows
-      .map(
-        (r) =>
-          `<button class="pp-item" data-i="${r.index}"><span class="pp-name">${r.name}</span><span class="pp-sig" title="topology signature — the modules in its chain">${r.sig}</span></button>`
-      )
-      .join("");
-  pop.querySelectorAll(".pp-item").forEach((btn) => {
-    btn.onclick = () => {
-      pop.classList.add("hidden");
-      $("presets-btn").focus();
-      send({ type: "load_preset", index: Number(btn.dataset.i) });
-    };
-  });
-  pop.classList.remove("hidden");
-  pop.querySelector(".pp-item")?.focus();
+function renderBankNote() {
+  const el = $("bank-note");
+  if (!el) return;
+  el.innerHTML = `${BANK_NOTES[bankFilter] || ""} <button class="note-more" id="bank-note-more">what's this?</button>`;
+  const more = $("bank-note-more");
+  if (more) more.onclick = () => startBankTour(BANKS.indexOf(bankFilter));
 }
 
+const PRESET_COUNT_TOKEN = "%PRESETS%";
+const PIN_CAP_TOKEN = "%CAP%";
+
+// Each step names the bank it is about, so the tour can drive the chips.
+const TOUR = [
+  {
+    bank: "preset",
+    title: "presets — where you start",
+    body:
+      `${PRESET_COUNT_TOKEN} hand-made patches that shipped with the instrument. ` +
+      `They never change and they are never lost. Press <b>▶</b> to hear one — ` +
+      `that also loads it into the pool, because the engine can only play what it holds.`,
+  },
+  {
+    bank: "pool",
+    title: "evolution — the living bank",
+    body:
+      `The pool holds a fixed number of patches. The model scores every one of ` +
+      `them for how much it thinks <i>you</i> would like it — that is the bar and ` +
+      `the % on each row. Rating with ★ and cutting with ✕ is how it learns.`,
+  },
+  {
+    bank: "pool",
+    title: "what a generation is",
+    body:
+      `Press <b>EVOLVE POOL</b> and it breeds: it takes the patches it thinks you ` +
+      `like best and makes mutated children of them. Children that score better ` +
+      `than the worst patch in the pool get in. That round is a <b>generation</b>. ` +
+      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow.`,
+  },
+  {
+    bank: "pool",
+    title: "…and what it costs",
+    body:
+      `The pool is a fixed size, so every child that gets in <b>replaces</b> the ` +
+      `patch the model rates lowest. That is deliberate — the pool is the model's ` +
+      `working set, not a hard drive. But it means a sound you loved can be bred ` +
+      `away before the model has learned why you loved it.`,
+  },
+  {
+    bank: "mine",
+    title: "my patches — how you keep one",
+    body:
+      `Press <b>save</b> on any row. A saved patch is <b>never</b> replaced, ` +
+      `however many generations you run. It stays in the pool — still played, ` +
+      `still duelled, still teaching the model — it just cannot be bred away. ` +
+      `You get ${PIN_CAP_TOKEN} slots: enough to keep what matters, few enough that the ` +
+      `pool still has room to evolve. ` +
+      `<br><br>★ and <b>save</b> are different questions: stars tell the model what you ` +
+      `think of a patch, saving tells the bank what to hold on to.`,
+  },
+];
+
+
+let tourAt = -1;
+
+function tourText(s) {
+  return s
+    // No invented fallbacks: the old ones said "Two dozen" and "12" while the
+    // library held 29 and the cap was 10. A number on screen is a claim.
+    .replace(PRESET_COUNT_TOKEN, String((presetRows || []).length || "The"))
+    .replace(PIN_CAP_TOKEN, pinBudget[1] ? String(pinBudget[1]) : "a fixed number of");
+}
+
+function startBankTour(from = 0) {
+  tourAt = Math.max(0, from);
+  showTourStep();
+}
+
+function showTourStep() {
+  const el = $("bank-tour");
+  if (tourAt < 0 || tourAt >= TOUR.length) return endBankTour();
+  const step = TOUR[tourAt];
+  selectBank(step.bank);
+  // Highlight the chip this step is about — the tour is a pointer, not a
+  // pamphlet.
+  document.querySelectorAll(".bank-filters .bf").forEach((b) => {
+    b.classList.toggle("tour-lit", b.dataset.f === step.bank);
+  });
+  $("tour-step").textContent = `${tourAt + 1} / ${TOUR.length}`;
+  $("tour-title").textContent = step.title;
+  $("tour-body").innerHTML = tourText(step.body);
+  $("tour-back").disabled = tourAt === 0;
+  $("tour-next").textContent = tourAt === TOUR.length - 1 ? "got it" : "next";
+  el.classList.remove("hidden");
+  $("tour-next").focus();
+}
+
+function endBankTour() {
+  tourAt = -1;
+  $("bank-tour").classList.add("hidden");
+  document.querySelectorAll(".bank-filters .bf").forEach((b) => b.classList.remove("tour-lit"));
+  localStorage.setItem("ricercar-bank-toured", "1");
+}
+
+$("bank-tour-btn").onclick = () => (tourAt >= 0 ? endBankTour() : startBankTour(0));
+$("tour-next").onclick = () => { tourAt += 1; showTourStep(); };
+$("tour-back").onclick = () => { tourAt -= 1; showTourStep(); };
+$("tour-skip").onclick = endBankTour;
+
+// The one moment the eviction rule stops being trivia: the first time a
+// generation actually lands. Offer the explanation then rather than at boot,
+// where it would be one more thing to dismiss before making a sound.
+function offerBankTourAfterFirstGeneration() {
+  if (localStorage.getItem("ricercar-bank-toured")) return;
+  localStorage.setItem("ricercar-bank-toured", "1");
+  // `note` takes `undo`/`undoLabel`, not `label`/`run` — that is `alarm`'s
+  // shape. Passing the wrong one rendered a bare toast with no button, so the
+  // single designed entry point to the walkthrough was consumed silently and
+  // never offered again. The action here is not an undo, but the toast's one
+  // action slot is what it is; the label carries the meaning.
+  note("The bank just bred a generation — some patches were replaced.", {
+    undoLabel: "what happened?",
+    undo: () => startBankTour(2),
+  });
+}
+
+// ---------- presets ----------
+// The library itself lives in the bank list now (see `renderPresetBank`).
+// What stays here is the *loading* protocol, which is subtler than it looks.
+let presetRows = null;
+
 document.addEventListener("click", (e) => {
-  if (!e.target.closest(".presets-pop") && !e.target.closest("#presets-btn")) {
-    $("presets-pop").classList.add("hidden");
-  }
   if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn")) {
     $("ctx-menu").classList.add("hidden");
   }
@@ -3943,7 +4465,7 @@ function styleBadge(el, k) {
     return;
   }
   const color = STYLE_COLORS[k % STYLE_COLORS.length];
-  el.innerHTML = `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>${styleName(views.styles[k], k)}`;
+  el.innerHTML = `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>${esc(styleName(views.styles[k], k))}`;
 }
 
 function renderStyleChips() {
@@ -3959,7 +4481,7 @@ function renderStyleChips() {
     chip.className = "style-chip";
     chip.innerHTML =
       `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>` +
-      `<input class="sc-name" maxlength="24" value="${s.name || ""}" placeholder="${styleName(s, k)}" title="Name this style">` +
+      `<input class="sc-name" maxlength="24" value="${esc(s.name || "")}" placeholder="${esc(styleName(s, k))}" title="Name this style">` +
       `<span class="sc-share">${Math.round(s.share * 100)}%</span>` +
       `<button class="sc-play" title="Audition this style's exemplar">▶</button>`;
     const input = chip.querySelector(".sc-name");
@@ -4659,14 +5181,16 @@ function dropBootVeil() {
 // The bank keeps growing after the veil lifts. The count in the bank header is
 // the honest place to say so — a toast would be long gone by the time the last
 // patch lands, and the boot meter is behind a veil nobody can see any more.
+// The head no longer counts anything: each chip now carries its own count, and
+// this one always counted the *pool* whatever bank you were looking at — so it
+// read "BANK 40" directly above "Nothing saved yet." It keeps only the thing
+// no chip can say, which is that patches are still landing.
 function renderFillHint() {
   const el = $("bank-count");
   if (!el) return;
-  const ranked = (views && views.ranked) || [];
-  const shown = ranked.filter((r) => !cutIds.has(r.id)).length;
   const arriving = Math.max(0, fillTarget - fillPool);
-  el.textContent = shown ? `${shown}${arriving ? ` +${arriving}` : ""}` : arriving ? `+${arriving}` : "";
-  el.title = `${shown} patches in the bank${arriving ? ` — ${arriving} more arriving` : ""}`;
+  el.textContent = arriving ? `+${arriving} arriving` : "";
+  el.title = arriving ? `${arriving} more patches are still being rendered` : "";
 }
 
 function bootField(pool, target) {
@@ -4717,7 +5241,41 @@ function openWarmStart() {
 }
 let warmPending = false;
 
-function renderWarmStart(rows) {
+// Nine cards, drawn one per family, however big the library gets.
+//
+// This screen used to render a card for *every* preset and `warm-go` loaded
+// every one of them — which was survivable at nine and is not at twenty-eight:
+// a first-run screen you have to scroll, and 58% of a 48-slot pool spent
+// before the user has expressed a single preference. Library size and grid
+// size are now independent.
+//
+// Stratified rather than uniform on purpose. An unstratified sample of nine
+// from a library that is deliberately unevenly weighted (five basses, three
+// perc) keeps landing in the same corner, and a cold start taught from one
+// corner is the exact bias this screen exists to remove. One per family first,
+// then fill from what is left, so the first thirty seconds *span* the space.
+function warmSample(rows) {
+  const byCat = new Map();
+  for (const r of rows) {
+    if (!byCat.has(r.category)) byCat.set(r.category, []);
+    byCat.get(r.category).push(r);
+  }
+  const pick = (xs) => xs[Math.floor(Math.random() * xs.length)];
+  const chosen = [];
+  const taken = new Set();
+  for (const [, xs] of byCat) {
+    const r = pick(xs);
+    chosen.push(r);
+    taken.add(r.index);
+  }
+  const rest = rows.filter((r) => !taken.has(r.index)).sort(() => Math.random() - 0.5);
+  while (chosen.length < 9 && rest.length) chosen.push(rest.pop());
+  // Back into library order so the grid reads as a shelf, not a shuffle.
+  return chosen.slice(0, 9).sort((a, b) => a.index - b.index);
+}
+
+function renderWarmStart(all) {
+  const rows = warmSample(all);
   warmRows = rows;
   const grid = $("warm-grid");
   grid.innerHTML = "";
@@ -4733,7 +5291,9 @@ function renderWarmStart(rows) {
     cell.className = "warm-cell";
     const b = document.createElement("button");
     b.className = "warm-item";
-    b.innerHTML = `<span class="wi-name">${r.name}</span><span class="wi-sig mono">${r.sig}</span>`;
+    // The blurb, not the topology signature. `tri·cho·ladr` describes the
+    // graph, which is the one thing this screen is not asking about.
+    b.innerHTML = `<span class="wi-name">${esc(r.name)}</span><span class="wi-sig">${esc(r.blurb || r.sig)}</span>`;
     b.setAttribute("aria-pressed", "false");
     const pb = document.createElement("button");
     pb.className = "wi-play";
@@ -4783,13 +5343,15 @@ function previewPreset(row, btn) {
   send({ type: "load_preset", index: row.index, preview: true });
 }
 
-function warmPreviewLoaded(id) {
+function warmPreviewLoaded(id, evicted) {
   const req = warmPreview;
   warmPreview = null;
   if (!req) return;
   req.btn.classList.remove("loading");
   if (!id) return note("That preset wouldn't load.");
   presetIds.set(req.index, id);
+  if (evicted && evicted.length) note(`Loaded to play it.${madeRoom(evicted)}`);
+  if (bankFilter === "preset") renderBank(); // it can now say "in bank"
   awaitRender(id, () => play(id, req.btn));
 }
 
@@ -4816,7 +5378,16 @@ $("warm-go").onclick = () => {
   // Load every preset into the bank, then log each chosen ≻ each unchosen as a
   // duel. Same likelihood, same log format — no new inference path.
   warmLoaded = { want: warmRows.length, ids: new Map(), picked: new Set(warmPicked) };
-  for (const r of warmRows) send({ type: "load_preset", index: r.index, warm: r.index });
+  for (const r of warmRows) {
+    send({
+      type: "load_preset",
+      index: r.index,
+      warm: r.index,
+      // The three the user picked are saved as they are inserted, so the six
+      // they did not pick cannot evict them on the way in.
+      pin: warmPicked.has(r.index),
+    });
+  }
   closeWarmStart();
   note("Loading those in and teaching the model what you picked…");
 };
@@ -4824,6 +5395,11 @@ $("warm-go").onclick = () => {
 function warmPresetLoaded(index, id) {
   if (!warmLoaded || id <= 0) return;
   warmLoaded.ids.set(index, id);
+  // The picks are saved by the worker as it inserts them (`load_preset`'s
+  // `pin`), because `warm-go` pushes nine presets into a pool that is already
+  // full and they evict each other on the way in. Doing it from here, one
+  // message later, measured 1 of 3 surviving: the whole burst has already run
+  // by the time the first reply comes back.
   if (warmLoaded.ids.size < warmLoaded.want) return;
   let n = 0;
   for (const chosen of warmLoaded.picked) {
@@ -4840,7 +5416,7 @@ function warmPresetLoaded(index, id) {
   send({ type: "fit" });
   fitting = true;
   $("wm-r").classList.add("thinking");
-  note(`${n} preferences learned from your three picks — the model starts out pointed at you.`);
+  note(`${n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
   if (first != null) openOnBench(first);
 }
 
@@ -5071,6 +5647,11 @@ bootMidi();
     }
     if (saved.ui.oct != null) { octShift = saved.ui.oct; buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
+    for (const id of saved.ui.born || []) lastBorn.add(id);
+    // `selectBank` re-applies the `active` class, which the markup hard-codes
+    // onto the first chip — restoring the variable alone would leave the
+    // highlight and the list disagreeing.
+    if (saved.ui.bank) selectBank(saved.ui.bank);
     applyPerfUi();
   }
   send(

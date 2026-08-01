@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=28">
+<link rel="stylesheet" href="style.css?b=36">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=28";
+    s.src = "main.js?b=39";
     document.head.appendChild(s);
   }
 })();
@@ -77,24 +77,40 @@
       <div class="bank-head">
         <span class="panel-label">bank</span>
         <span class="silk-dim mono" id="bank-count"></span>
-        <select id="bank-sort" class="perf-sel" title="Sort the bank" aria-label="Sort the bank">
-          <option value="rank" selected>liked</option>
-          <option value="number">number</option>
-          <option value="unsure">unsure</option>
-          <option value="disagree">disagrees</option>
-        </select>
-        <button class="util-btn" id="presets-btn" title="Load a hand-made preset — a quick way to seed your taste">presets</button>
+        <span class="pin-budget mono" id="pin-budget" hidden></span>
+        <button class="bank-tour-btn" id="bank-tour-btn" title="What are these three banks?" aria-label="Explain the three banks">?</button>
       </div>
-      <div class="bank-filters" role="group" aria-label="Filter the bank">
-        <button class="bf active" data-f="all" title="Everything in the pool">all</button>
-        <button class="bf" data-f="starred" title="Patches you starred — your saves">saved</button>
-        <button class="bf" data-f="gen" title="Born in the latest bred generation">new</button>
-        <button class="bf" data-f="preset" title="Hand-made presets you loaded">presets</button>
-        <button class="bf" data-f="edited" title="Patches you committed from the bench">edits</button>
+      <!-- Three banks, not five filters and a sort menu.
+           A sort <select> used to sit beside a row of provenance chips
+           answering nearly the same question in different words ("liked" next
+           to "saved"), labelling nothing and reading as a sixth chip. What a
+           person actually wants to switch between is three places: the sounds
+           that came with the instrument, the sounds it is breeding for them,
+           and the sounds they decided to keep. -->
+      <div class="bank-filters" role="group" aria-label="Which bank">
+        <button class="bf active" data-f="pool" title="The live pool — what evolution breeds from and the model reasons over">evolution<b class="bf-n" data-n="pool"></b></button>
+        <button class="bf" data-f="mine" title="Patches you saved. A saved patch is never replaced to make room.">my patches<b class="bf-n" data-n="mine"></b></button>
+        <button class="bf" data-f="preset" title="The hand-made preset library that came with the instrument">presets<b class="bf-n" data-n="preset"></b></button>
       </div>
-      <div class="presets-pop hidden" id="presets-pop"></div>
+      <!-- Each bank says what it is, in one line, in place. The three-bank
+           split is only clearer than the old filters if the words "pool" and
+           "generation" mean something, and nothing on screen ever said. -->
+      <div class="bank-note" id="bank-note"></div>
       <div class="bank-list" id="bank-list" role="listbox" aria-label="Patch bank" tabindex="0">
         <div class="bench-empty">Warming up…</div>
+      </div>
+      <!-- The walkthrough. Anchored to the rail rather than centred in a
+           modal, because every step points at something in the rail and asks
+           you to look at it. -->
+      <div class="bank-tour hidden" id="bank-tour" role="dialog" aria-modal="false" aria-labelledby="tour-title">
+        <div class="tour-step mono" id="tour-step"></div>
+        <div class="tour-title" id="tour-title"></div>
+        <div class="tour-body" id="tour-body"></div>
+        <div class="tour-nav">
+          <button class="util-btn" id="tour-skip">skip</button>
+          <button class="util-btn" id="tour-back">back</button>
+          <button class="hw-btn small" id="tour-next">next</button>
+        </div>
       </div>
     </aside>
 
@@ -348,7 +364,7 @@
       <div>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
-        <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you're on</p>
+        <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a vote</p>
         <div class="help-h">performance</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
@@ -360,10 +376,15 @@
         <p>Drag knobs — sound changes instantly. Click enum plates to cycle. ⋯ restructures a module; ▢ locks it so evolution can't touch it. <kbd>Tab</kbd> into the rack, then arrows to move and <kbd>↑</kbd>/<kbd>↓</kbd> to turn.</p>
         <p>Stage modules from the <b>node bank</b>, then drag the tray jack onto a matching <b>in</b>/<b>mod</b> jack. Drag a wired <b>in</b> jack off to unplug into the tray.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PLAY). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them.</p>
-        <p>The bank holds 40: each bred patch replaces the one the model thinks
-        you like <i>least</i>. <b>★</b> marks your saves (filter the bank by ★ saved);
-        <b>Export this patch</b> is the safe copy on disk.</p>
+        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PLAY). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
+        <p>The rail holds three banks. <b>evolution</b> is the live pool of 40:
+        each bred patch replaces the one the model thinks you like <i>least</i>.
+        <b>presets</b> is the hand-made library that came with the instrument.
+        <b>my patches</b> is what you saved.</p>
+        <p><b>★</b> and <b>save</b> are different questions. Stars tell the
+        model what you think of a patch; <b>save</b> tells the bank to keep it —
+        a saved patch is never replaced to make room. Press <kbd>m</kbd> on the
+        row the bank cursor is on to save it.</p>
         <p>Everything autosaves.</p>
       </div>
     </div>

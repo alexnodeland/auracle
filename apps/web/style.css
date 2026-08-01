@@ -119,7 +119,7 @@
 
 ::selection { background: rgba(255, 180, 84, 0.3); color: var(--silk); }
 
-.bank-list, .nb-body, .ctx-menu, .presets-pop, .tray-items {
+.bank-list, .nb-body, .ctx-menu, .tray-items {
   scrollbar-width: thin;
   scrollbar-color: var(--hairline) transparent;
 }
@@ -293,9 +293,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .bank {
-  position: relative; /* containing block for .presets-pop — without it the
-                         popover's left/right resolve against the page and it
-                         renders as a full-width sheet */
+  position: relative; /* containing block for .bank-tour, which anchors to
+                         the rail it describes rather than to the page */
   width: 252px;
   flex: 0 0 252px;
   display: flex;
@@ -314,25 +313,38 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--hairline);
 }
 .bank-head .silk-dim { font-size: var(--t-micro); }
-/* What's in the pool, by provenance — and where your saves live. */
+/* Three banks: presets, the evolving pool, and what you kept. */
 .bank-filters {
   display: flex;
   gap: 3px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--hairline);
+  /* Five chips needed 240px of a 251px rail with nowrap, and the rail narrows
+     to 200px below 1080px — one more word anywhere and they overflowed. Three
+     chips wrap cleanly, but left to their natural widths they wrapped 1+2 at
+     200px with 87px of dead space beside the first one; sharing the row keeps
+     the grouping stable at both widths. */
+  flex-wrap: wrap;
+}
+.bank-filters .bf {
+  flex: 1 1 auto;
+  justify-content: center;
 }
 .bank-filters .bf {
   font-family: var(--font-silk);
   font-size: var(--t-micro);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--silk-dim);
   background: var(--bezel);
   border: 1px solid var(--hairline);
   border-radius: 999px;
-  padding: 2px 6px;
+  padding: 3px 8px;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .bank-filters .bf:hover { color: var(--silk); border-color: var(--silk-dim); }
 .bank-filters .bf.active {
@@ -340,30 +352,46 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-color: var(--phos-b-dim);
   background: rgba(255, 180, 84, 0.07);
 }
-.bank-filters .bf-label {
-  margin-left: auto;
-  align-self: center;
+/* How many are in a bank you are not currently looking at. */
+.bank-filters .bf-n {
+  font-family: var(--font-mono);
   font-size: var(--t-micro);
+  font-weight: 400;
+  letter-spacing: 0;
   color: var(--silk-dim);
 }
+.bank-filters .bf.active .bf-n { color: var(--phos-b-dim); }
 
 .bank-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
 }
 .bank-item {
-  border: 1px solid var(--hairline);
+  border: 1px solid transparent;
   border-radius: 5px;
   background: var(--bezel);
-  padding: 7px 9px;
+  padding: 5px 8px 6px;
   cursor: pointer;
+  /* A 2px rail carries row state, so selection no longer depends on noticing
+     a 1px border change on a dark background. */
+  border-left: 2px solid transparent;
 }
-.bank-item:hover { border-color: var(--silk-dim); }
-.bank-item.live { border-color: var(--phos-a-dim); box-shadow: 0 0 8px rgba(142,240,177,0.12); }
+.bank-item:hover { border-color: var(--hairline); border-left-color: var(--silk-dim); }
+.bank-item.live {
+  border-color: var(--phos-a-dim);
+  border-left-color: var(--phos-a);
+  box-shadow: 0 0 8px rgba(142,240,177,0.12);
+}
+.bank-item.kbd { border-color: var(--silk-dim); }
+/* Saved: the user's own organisation, so silk rather than either phosphor —
+   green is audio, amber is the model, and this is neither. It gets a real
+   rail and a tint, not a hairline: "which of these did I decide to keep" has
+   to be answerable by scanning the column, without hovering anything. */
+.bank-item.saved { border-left-color: var(--silk); }
 .bank-item .bi-top {
   display: flex;
   align-items: center;
@@ -376,59 +404,160 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item .bi-origin.prior { color: var(--silk-dim); }
 .bank-item .bi-origin.refined { color: var(--phos-b); }
 .bank-item .bi-origin.edited { color: var(--phos-a); }
+.bank-item .bi-origin.preset { color: var(--phos-a-dim); }
+/* Just born this generation. */
+.bank-item.fresh .bi-origin.refined { text-shadow: 0 0 7px rgba(255,180,84,0.8); }
+
+/* The prediction meter is a full-width underline on the row's bottom edge.
+   At 54px, 1% was 0.54px — the number beside it existed because the bar could
+   not draw its own data. The band is now the *fill* and the mean is a tick
+   inside it: more ink where the model is less certain reads as fog, which is
+   what uncertainty should look like. Absolutely positioned so it costs the row
+   no height at all. */
+.bank-item { position: relative; }
 .bank-item .bi-u {
-  position: relative;
-  margin-left: auto;
-  height: 8px;
-  width: 64px;
-  border-radius: 3px;
+  position: absolute;
+  left: 8px; right: 8px; bottom: 3px;
+  height: 3px;
+  border-radius: 2px;
   background: #1a1410;
   overflow: hidden;
 }
-.bank-item .bi-u i {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, var(--phos-b-dim), var(--phos-b));
-}
-/* Posterior spread as a band over the bar — the model saying how sure it is. */
 .bank-item .bi-u b {
   position: absolute;
   top: 0;
   height: 100%;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--phos-b-deep);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.bank-item .bi-u i {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  margin-left: -1px;
+  background: var(--phos-b);
   pointer-events: none;
 }
 /* No fit yet: an explicitly hatched empty track, not a zero. */
 .bank-item .bi-u.nofit {
-  background: repeating-linear-gradient(45deg, #1a1410 0 4px, #23180f 4px 8px);
+  background: repeating-linear-gradient(45deg, #241b12 0 3px, #3a2c1a 3px 6px);
 }
-.bank-item .bi-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+/* Sits with the name, where it is scannable down the column. Its width is
+   reserved before the first fit so rows do not shift sideways when the model
+   finally has an opinion. */
+.bank-item .bi-pct {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 26px;
+  text-align: right;
+  font-size: var(--t-micro);
+  color: var(--phos-b-dim);
+}
+
+.bank-item .bi-row { display: flex; align-items: center; gap: 2px; margin-top: 3px; }
 .bank-item .bi-row button {
   background: none;
   border: none;
   cursor: pointer;
   color: var(--silk-dim);
   font-size: var(--t-body);
-  padding: 0 1px;
+  /* WCAG 2.2 §2.5.8 wants 24×24. These measured 15×19 (and ▶ measured 12×19)
+     — the smallest targets in the app, on the control that writes to the
+     taste log, where an off-by-one star is a permanent wrong answer. */
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 .bank-item .bi-row button:hover { color: var(--silk); }
-.bank-item .star.lit { color: var(--phos-b); text-shadow: 0 0 6px rgba(255,180,84,0.6); }
-/* 40 red CUTs were the loudest thing in the app — the highest-chroma colour,
+/* Each of these must out-specify `.bank-item .bi-row button` above (0,2,1) or
+   its font-size, padding and tracking are silently discarded — which is how
+   the save and cut labels ended up running into each other. */
+.bank-item .bi-row button.star { min-width: 22px; }
+.bank-item .bi-row button.star.lit { color: var(--phos-b); text-shadow: 0 0 6px rgba(255,180,84,0.6); }
+/* Save is the user's own channel: silk, not a phosphor.
+   A word, not a glyph. It shipped for one round as `▣` — borrowed from the
+   rack's module lock, internally consistent and completely undecodable to
+   anyone who had not read the source. The first person to see it asked what
+   the little square was. The row has room for four letters. */
+.bank-item .bi-row button.bi-save {
+  margin-left: auto;
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  padding: 0 4px;
+}
+.bank-item .bi-row button.bi-save.on { color: var(--silk); }
+.bank-item .bi-row button.bi-save:hover { color: var(--silk); }
+/* 40 red cuts were the loudest thing in the app — the highest-chroma colour,
    spent on a destructive action, forty times down the leftmost column. The
-   action exists on approach; the colour arrives on the control itself. */
-.bank-item .bi-kill { margin-left: auto; color: var(--silk-mute); font-size: var(--t-micro); opacity: 0; transition: opacity 120ms ease; }
+   action exists on approach; the colour arrives on the control itself.
+   `visibility` rather than opacity alone: at `opacity: 0` this stayed fully
+   clickable, so the destructive control was invisible and live at once. */
+.bank-item .bi-row button.bi-kill {
+  color: var(--silk-dim);
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0 4px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+}
 .bank-item:hover .bi-kill,
 .bank-item:focus-within .bi-kill,
-.bank-item.kbd .bi-kill { opacity: 1; }
-.bank-item .bi-kill:hover { color: var(--led-red); }
+.bank-item.kbd .bi-kill { opacity: 1; visibility: visible; }
+.bank-item .bi-row button.bi-kill:hover { color: var(--led-red); }
 /* 200 identical dead stars said nothing. Unrated rows read as names; the
    stars appear on approach or once they carry a rating. */
-.bank-item .stars { opacity: 0; transition: opacity 120ms ease; }
+.bank-item .stars { display: inline-flex; opacity: 0.28; transition: opacity 120ms ease; }
 .bank-item:hover .stars,
 .bank-item:focus-within .stars,
 .bank-item.kbd .stars,
 .bank-item.live .stars,
 .bank-item .stars:has(.star.lit) { opacity: 1; }
+
+/* ---- the preset library, browsed in place ---- */
+.pb-cat {
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  padding: 10px 4px 3px;
+}
+.preset-item .pb-blurb {
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-label);
+  color: var(--silk-dim);
+  line-height: 1.4;
+  margin-top: 1px;
+}
+.preset-item .pb-sig {
+  margin-left: auto;
+  font-size: var(--t-micro);
+  color: var(--phos-a-dim);
+}
+.preset-item .pb-in {
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--phos-a-dim);
+}
+.preset-item.in-bank { border-left-color: var(--phos-a-dim); }
+.preset-item.kbd { border-color: var(--phos-a); box-shadow: 0 0 0 1px var(--phos-a-deep) inset; }
+
 .bench-empty { color: var(--silk-dim); font-size: var(--t-body); font-style: italic; font-family: var(--font-voice); padding: var(--s3) var(--s2); }
 
 /* ---- stage + views ---- */
@@ -989,6 +1118,7 @@ input, textarea, .bi-rename {
   cursor: text;
 }
 .bank-item .bi-name.custom { color: var(--phos-b); }
+.bank-item .bi-top .bi-name { flex: 0 1 auto; }
 .bank-item .bi-id { font-size: var(--t-micro); color: var(--silk-dim); }
 .bank-item input.bi-rename {
   font-family: var(--font-mono);
@@ -1004,68 +1134,93 @@ input, textarea, .bi-rename {
 }
 .bank-head { position: relative; gap: 8px; }
 .bank-head .util-btn { padding: 4px 8px; font-size: var(--t-micro); }
-/* The sort control wears bank-head chrome, not keybar chrome. */
-#bank-sort {
+/* ---- the three banks ---- */
+.bank-head .bank-tour-btn {
+  margin-left: auto;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: var(--bezel);
+  color: var(--silk-dim);
   font-family: var(--font-silk);
   font-size: var(--t-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--silk-dim);
-  background-color: var(--bezel);
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  padding: 3px 16px 3px 6px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
 }
-#bank-sort:hover { color: var(--silk); border-color: var(--silk-dim); }
-.presets-pop {
+.bank-head .bank-tour-btn:hover { color: var(--phos-b); border-color: var(--phos-b-dim); }
+
+/* What you are looking at, said in place. */
+.bank-note {
+  padding: 6px 10px 7px;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-label);
+  line-height: 1.45;
+  color: var(--silk-dim);
+}
+.bank-note b { font-style: normal; font-weight: 600; color: var(--silk); }
+.bank-note .note-more {
+  background: none; border: none; padding: 0;
+  margin-left: 2px;
+  font-family: var(--font-silk);
+  font-style: normal;
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--phos-b-dim);
+  cursor: pointer;
+}
+.bank-note .note-more:hover { color: var(--phos-b); }
+
+/* The walkthrough sits over the rail it is describing. */
+.bank-tour {
   position: absolute;
-  top: 42px;
-  left: var(--s2);
-  width: 320px;
-  max-height: min(420px, 60vh);
+  left: 8px; right: 8px; bottom: 8px;
+  /* Capped: it used to take 35% of the list at 252px and 50% at 200px — a
+     coach mark covering the thing it is pointing at. */
+  max-height: 46%;
   overflow-y: auto;
-  z-index: 30;
-  border: 1px solid var(--hairline);
+  z-index: 40;
+  border: 1px solid var(--phos-b-dim);
   border-radius: 6px;
   background: var(--surface-pop);
   box-shadow: var(--shadow-pop);
-  padding: var(--s1);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  padding: 10px 12px 10px;
 }
-.presets-pop .pp-head {
-  font-family: var(--font-silk);
+.bank-tour .tour-step {
   font-size: var(--t-micro);
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--silk-dim);
-  padding: 6px 8px 3px;
+  color: var(--phos-b-dim);
+  letter-spacing: 0.1em;
 }
-.presets-pop .pp-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  background: none;
-  border: none;
-  text-align: left;
-  width: 100%;
-}
-.presets-pop .pp-item:hover,
-.presets-pop .pp-item.kbd { background: rgba(142,240,177,0.09); }
-.presets-pop .pp-item:hover .pp-name,
-.presets-pop .pp-item.kbd .pp-name { color: var(--phos-a); }
-.presets-pop .pp-name {
+.bank-tour .tour-title {
   font-family: var(--font-silk);
   font-size: var(--t-body);
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--phos-b);
+  margin: 2px 0 5px;
+}
+.bank-tour .tour-body {
+  font-family: var(--font-voice);
+  font-size: var(--t-label);
+  line-height: 1.5;
   color: var(--silk);
 }
-.presets-pop .pp-sig { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--phos-a-dim); margin-left: auto; }
+.bank-tour .tour-body b { font-family: var(--font-silk); font-weight: 600; }
+.bank-tour .tour-nav {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+}
+.bank-tour .tour-nav #tour-next { margin-left: auto; }
+.bank-tour .tour-nav button:disabled { opacity: 0.35; cursor: default; }
+/* The chip the current step is about. */
+.bank-filters .bf.tour-lit {
+  border-color: var(--phos-b);
+  box-shadow: 0 0 0 2px rgba(255, 180, 84, 0.25);
+}
 
 /* ---- duel card flip ---- */
 .mini-rack {
@@ -1489,7 +1644,7 @@ input, textarea, .bi-rename {
      is the third one and it is NOT here: `.lock-dot` is re-declared further
      down this file, and a later rule of equal specificity wins no matter
      what a media query wraps it in. It sits with its own kin instead. */
-  .bank-item .stars, .bank-item .bi-kill { opacity: 1; }
+  .bank-item .stars, .bank-item .bi-kill { opacity: 1; visibility: visible; }
   .bank-item .bi-kill { color: var(--silk-dim); }
 
   /* Law 2 — gesture ownership.
@@ -1539,10 +1694,13 @@ input, textarea, .bi-rename {
 .star:focus-visible,
 .bi-kill:focus-visible,
 .bi-hear:focus-visible,
+.bi-save:focus-visible,
+.bank-tour button:focus-visible,
+.note-more:focus-visible,
+.bank-tour-btn:focus-visible,
 .nextstep:focus-visible,
 .pd-side:focus-visible,
 .bank-filters .bf:focus-visible,
-.presets-pop .pp-item:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [data-addr]:focus-visible {
@@ -1877,33 +2035,19 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
   box-shadow: inset 0 0 18px rgba(0,0,0,0.9), inset 0 0 2px 1px #000;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
 /* ---------- bank rows ---------- */
-/* The topology signature is expert metadata: unreadable at rail size and not
-   what anyone scans by. It lives on the LIVE row (where the rack gives it
-   meaning) and in the name's tooltip everywhere else. */
-.bi-sig {
-  display: none;
-  font-size: var(--t-micro);
-  color: var(--phos-a-dim);
-  margin: 2px 0 1px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bank-item.live .bi-sig { display: block; }
-/* The prediction, as a number the bar alone can't carry — bars cluster when
-   the model genuinely rates the pool alike, and 91% vs 97% must still read. */
-.bank-item .bi-pct {
-  font-size: var(--t-micro);
-  color: var(--phos-b-dim);
-  min-width: 30px;
-  text-align: right;
-}
-.stars { display: inline-flex; }
-.bank-item .star { font-size: var(--t-body); color: var(--silk-mute); }
-.bank-item .bi-u { width: 54px; height: 5px; }
-.bank-item .bi-kill { font-size: var(--t-micro); letter-spacing: 0.1em; text-transform: uppercase; }
-.bank-item .bi-hear { font-size: var(--t-body); }
+/* Everything that dresses a bank row lives in the `.bank` block near the top
+   of this file. It used to be split across two places 1600 lines apart, and
+   the halves disagreed: a `.bi-u { width: 54px }` down here silently overrode
+   the full-width meter declared up there, and a `#bank-sort` rule carried a
+   comment claiming it shed the keybar's chrome while the markup kept the class
+   that applied it. Splitting one component's rules across the file is how
+   contradictions like those survive review. */
+.bank-item .bi-row button.star { color: var(--silk-dim); }
 
 @media (prefers-reduced-motion: reduce) {
   .toast, .duel-mid, .mod-plate, .lock-dot, .live-scope, .boot { transition: none !important; }

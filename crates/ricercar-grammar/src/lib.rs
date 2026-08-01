@@ -44,7 +44,7 @@ pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
 pub use mutate::{apply_struct_op, ModKind, NodeKind, StructError, StructOp};
-pub use presets::presets;
+pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
 pub use term::{AudioNode, ModNode, PatchTree};
 

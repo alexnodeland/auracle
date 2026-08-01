@@ -491,6 +491,9 @@ function tasteViews() {
     styles: JSON.parse(engine.styles()),
     lineage: JSON.parse(engine.lineage()),
     ranked: JSON.parse(engine.ranked()),
+    // Rides with every views post so the header's `▣ n/m` cannot drift out of
+    // step with the engine after a restore, an eviction or a bred generation.
+    pinBudget: Array.from(engine.pin_budget()),
   };
 }
 
@@ -935,6 +938,8 @@ self.onmessage = async (e) => {
       break;
     }
     case "save": {
+      // A restore can schedule a save before `init` has built the engine.
+      if (!engine) break;
       post({ type: "saved", json: engine.export_session() });
       break;
     }
@@ -960,12 +965,38 @@ self.onmessage = async (e) => {
       post({ type: "presets", rows: JSON.parse(engine.preset_list()) });
       break;
     }
+    case "set_pinned": {
+      // The engine is the single owner of a pin, because the engine is what
+      // evicts. Holding pins in the UI beside `starsById` would repeat the
+      // exact split that let the bank apologise for eviction without being
+      // able to prevent it.
+      const ok = engine.set_pinned(m.id, m.pinned);
+      const budget = Array.from(engine.pin_budget());
+      post({
+        type: "pinned",
+        id: m.id,
+        pinned: m.pinned,
+        ok,
+        budget,
+        ranked: JSON.parse(engine.ranked()),
+      });
+      break;
+    }
     case "load_preset": {
       const id = Number(engine.load_preset(m.index));
+      // Pin *here*, not in a follow-up message. The warm start posts nine
+      // loads in one burst, so by the time a `set_pinned` reply could be sent
+      // and re-queued, the whole burst has already run and the early picks
+      // have been evicted by the late ones. This worker handles messages one
+      // at a time, so pinning inside the same turn as the insert is the only
+      // point at which the next load cannot have happened yet.
+      if (m.pin && id > 0) engine.set_pinned(id, true);
+      // `index` rides back so main can map library row -> bank id. Without it
+      // the UI could never know a preset was already loaded.
       // `warm` rides along so the first-run elicitation can pair the loaded id
       // back to the preset the user picked; `preview` says the caller only
       // wants to hear it, so the UI must not haul it onto the bench.
-      post({ type: "preset_loaded", id, warm: m.warm, preview: m.preview, views: tasteViews(), status: status() });
+      post({ type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview, views: tasteViews(), status: status() });
       break;
     }
     case "edit_structure": {
