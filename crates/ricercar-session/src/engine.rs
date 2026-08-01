@@ -472,6 +472,19 @@ pub struct Candidate {
     pub origin: Origin,
     /// User-given name (frontends fall back to `tree.signature()`).
     pub name: Option<String>,
+    /// The user asked to keep this one: [`Engine::insert_candidate`] will never
+    /// evict it.
+    ///
+    /// Deliberately **not** derived from the star rating. A star is an
+    /// observation that enters the log and moves θ; if a rating also decided
+    /// what survives, users would rate strategically to protect patches, and
+    /// every protective over-rating is a preference they never held — under
+    /// exactly the pressure where they care most. So the two channels stay
+    /// separate: stars are what you think, pins are what you keep.
+    ///
+    /// Capped by [`Engine::pin_cap`]; see there for why the pool cannot be
+    /// pinned solid.
+    pub pinned: bool,
 }
 
 /// One recorded evolution/edit step, for the lineage display.
@@ -537,6 +550,14 @@ pub struct BankEntry {
     pub origin: Origin,
     /// User-given name.
     pub name: Option<String>,
+    /// Whether the user pinned this patch against eviction.
+    ///
+    /// `#[serde(default)]` is what makes this change safe for sessions saved
+    /// before pins existed: the record is one IndexedDB key with no schema
+    /// version, so compatibility has to be by construction. An old session
+    /// loads with nothing pinned, which is exactly what it meant.
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 /// An implicit preference signal, logged but (for now) not modeled: promote
@@ -1161,6 +1182,7 @@ impl Engine {
             features: cached.features,
             origin: Origin::Prior,
             name: None,
+            pinned: false,
         });
         id
     }
@@ -1553,7 +1575,7 @@ impl Engine {
                 .pool
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| Some(c.id) != protect)
+                .filter(|(_, c)| Some(c.id) != protect && !c.pinned)
                 .min_by(|(_, x), (_, y)| {
                     let (sx, ux) = rank(x);
                     let (sy, uy) = rank(y);
@@ -1583,6 +1605,7 @@ impl Engine {
             features: cf.features,
             origin,
             name: None,
+            pinned: false,
         });
         Some(id)
     }
@@ -2169,6 +2192,46 @@ impl Engine {
         }
     }
 
+    /// How many patches may be pinned at once: a quarter of the pool.
+    ///
+    /// The pool is the model's *working set*, not storage — duel pairing is
+    /// uniform over it and refinement seeds from the top of `ranked()` — so
+    /// pins are spent capacity, and the only wholly wasted duel is one where
+    /// both sides are pinned. At a quarter of the pool that is ~6% of pairs,
+    /// with three quarters of the pool still free to churn; at half it is 25%.
+    /// A quarter buys the user far more than they lose.
+    ///
+    /// The cap also keeps "everything is pinned" unreachable, which matters
+    /// because that state has no honest report: it surfaces as
+    /// [`Engine::insert_candidate`] returning `None`, which every caller
+    /// already renders as "no proposal beat its parent" — a statement about
+    /// the search that would then be a lie about storage.
+    pub fn pin_cap(&self) -> usize {
+        (self.cfg.pool_size / 4).max(1)
+    }
+
+    /// How many pool members are currently pinned.
+    pub fn pinned_count(&self) -> usize {
+        self.pool.iter().filter(|c| c.pinned).count()
+    }
+
+    /// Pin or unpin a patch against eviction. Returns `false` when the id is
+    /// unknown, or when pinning would exceed [`Engine::pin_cap`] — callers are
+    /// expected to say which, rather than letting the control fail silently.
+    ///
+    /// Records **no observation**: a pin says what the user wants to keep, not
+    /// what they think of it. See [`Candidate::pinned`].
+    pub fn set_pinned(&mut self, id: u64, pinned: bool) -> bool {
+        let Some(i) = self.find(id) else {
+            return false;
+        };
+        if pinned && !self.pool[i].pinned && self.pinned_count() >= self.pin_cap() {
+            return false;
+        }
+        self.pool[i].pinned = pinned;
+        true
+    }
+
     /// Insert a named preset into the pool (protected from immediate
     /// eviction pressure only by its utility, like any candidate). Returns
     /// the new id.
@@ -2204,6 +2267,7 @@ impl Engine {
                     tree: c.tree.clone(),
                     origin: c.origin,
                     name: c.name.clone(),
+                    pinned: c.pinned,
                 })
                 .collect(),
             lineage: self.lineage.clone(),
@@ -2292,6 +2356,7 @@ impl Engine {
             render,
             origin: entry.origin,
             name: entry.name,
+            pinned: entry.pinned,
         });
     }
 

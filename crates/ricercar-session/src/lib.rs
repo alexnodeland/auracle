@@ -203,6 +203,110 @@ mod tests {
         );
     }
 
+    /// The whole point of a pin.
+    ///
+    /// Eviction takes the member with the *lowest* posterior utility, which is
+    /// exactly the patch a user loves before the model has learned why — so
+    /// before pins the bank was not merely careless with favourites, it was
+    /// biased toward destroying precisely the ones worth keeping. This test
+    /// pins the very patch the evictor would reach for first and then applies
+    /// more insertion pressure than there are free slots.
+    #[test]
+    fn a_pinned_patch_survives_eviction_pressure() {
+        let mut rng = StdRng::seed_from_u64(0x9111);
+        let mut engine = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 8,
+                ..fast()
+            },
+        );
+        engine.fill_pool(&mut rng);
+        assert_eq!(engine.pool.len(), 8, "pool did not fill");
+
+        let worst = engine.ranked().last().expect("a ranked pool").0;
+        let doomed = engine.pool[worst].id;
+        assert!(engine.set_pinned(doomed, true), "the pin was refused");
+
+        let mut inserted = 0;
+        for (name, tree) in ricercar_grammar::presets() {
+            if engine.insert_preset(tree, name).is_some() {
+                inserted += 1;
+            }
+        }
+        assert!(
+            inserted >= 4,
+            "only {inserted} insertions — not enough to force eviction"
+        );
+        assert_eq!(engine.pool.len(), 8, "pool grew past its cap");
+        assert!(
+            engine.find(doomed).is_some(),
+            "the pinned patch was evicted anyway — a pin that does not hold is \
+             worse than no pin, because the UI promises it held"
+        );
+    }
+
+    /// The budget is a real ceiling and refuses out loud. A `set_pinned` that
+    /// silently no-ops at the cap would reproduce, in the fix, the exact class
+    /// of bug the fix exists to remove.
+    #[test]
+    fn the_pin_budget_is_capped_and_refusal_is_reported() {
+        let mut rng = StdRng::seed_from_u64(0x9112);
+        let mut engine = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 8,
+                ..fast()
+            },
+        );
+        engine.fill_pool(&mut rng);
+        let ids: Vec<u64> = engine.pool.iter().map(|c| c.id).collect();
+        let cap = engine.pin_cap();
+        assert!(cap >= 1 && cap < ids.len(), "cap {cap} is not a real bound");
+
+        for id in ids.iter().take(cap) {
+            assert!(engine.set_pinned(*id, true), "pin within budget refused");
+        }
+        assert_eq!(engine.pinned_count(), cap);
+        assert!(
+            !engine.set_pinned(ids[cap], true),
+            "pinning past the cap must be refused, not silently ignored"
+        );
+        // Re-pinning something already pinned is not a new charge.
+        assert!(engine.set_pinned(ids[0], true), "idempotent re-pin refused");
+        // Unpinning frees budget again.
+        assert!(engine.set_pinned(ids[0], false));
+        assert!(
+            engine.set_pinned(ids[cap], true),
+            "freed budget not reusable"
+        );
+        assert!(
+            !engine.set_pinned(9_999_999, true),
+            "unknown id reported ok"
+        );
+    }
+
+    /// A session saved before pins existed must still load.
+    ///
+    /// The saved record is a single IndexedDB key with no schema version, so
+    /// backward compatibility cannot be checked at runtime — it has to hold by
+    /// construction, and `#[serde(default)]` is the construction. A bank entry
+    /// written by the previous build has no `pinned` key at all; it must
+    /// deserialize as "not pinned", which is exactly what it meant.
+    #[test]
+    fn a_bank_entry_saved_before_pins_still_loads() {
+        let (_, tree) = ricercar_grammar::presets().remove(0);
+        let legacy = serde_json::json!({
+            "id": 7,
+            "tree": tree,
+            "origin": "preset",
+            "name": "Saved Last Week",
+        });
+        let entry: BankEntry = serde_json::from_value(legacy).expect("legacy entry must load");
+        assert_eq!(entry.id, 7);
+        assert!(!entry.pinned, "a pre-pin entry must restore as unpinned");
+    }
+
     /// Persistence round-trip: export a session, restore it into a fresh
     /// engine, and everything that matters survives — bank (ids, trees,
     /// names, origins), log, standardizer geometry, lineage, and id
@@ -222,6 +326,10 @@ mod tests {
         engine.record_keep(2, false);
         let named_id = engine.pool[0].id;
         engine.set_name(named_id, "My Bass");
+        // A pin that does not survive a reload is not a save at all — this is
+        // the one property the whole feature is for.
+        let pinned_id = engine.pool[3].id;
+        assert!(engine.set_pinned(pinned_id, true));
 
         let json = serde_json::to_string(&engine.export_state()).unwrap();
         let state: SessionState = serde_json::from_str(&json).unwrap();
@@ -236,6 +344,7 @@ mod tests {
             assert_eq!(a.tree, b.tree);
             assert_eq!(a.name, b.name);
             assert_eq!(a.origin, b.origin);
+            assert_eq!(a.pinned, b.pinned, "a pin did not survive the reload");
             // φ must be re-standardized under the SAME standardizer.
             for (x, y) in a.phi_std.iter().zip(&b.phi_std) {
                 assert!((x - y).abs() < 1e-9, "phi drifted across restore");

@@ -6,6 +6,11 @@ current patch runs live in an AudioWorklet (4-voice poly). No page scrolling;
 everything is visible at once. The whole session **autosaves to IndexedDB**
 (bank, names, taste history, settings) and restores on reload.
 
+The sidebar is **three banks**, not one list with filters: **evolution** (the
+live pool the model reasons over and breeds from), **my patches** (what you
+saved), and **presets** (the hand-made library, browsed in place). A `?` in
+the bank head walks through what a generation is and what evolving costs.
+
 - **PLAY** — the patch is the hero: its full rack (modules, cables, knobs at
   true positions, mod wires pulsing at their modulator's rate), editable and
   lockable, playable from the keyboard while you turn knobs. The rack **scales
@@ -27,7 +32,11 @@ everything is visible at once. The whole session **autosaves to IndexedDB**
 On first run a **warm-start** screen asks you to pick 3 of 9 presets — one
 ~30 s interaction worth 18 pairwise observations, which is how the model gets
 past a cold start that the repo's own synthetic gates measure in the hundreds
-of duels.
+of duels. Those nine are **sampled one per family** from the 29-patch library
+and only those nine are loaded: the screen used to render a card per preset and
+load every one of them, which at 29 would be a scrolling first run that spent
+more than half a 40-slot pool before the user had said anything. Library size
+and grid size are independent on purpose.
 
 Playing: on-screen keys (mouse/touch with glissando), computer keys
 `a w s e d f t g y h u j k o l p ; '` (Ableton layout, `z`/`x` octave), or a
@@ -37,8 +46,18 @@ gate / swing), **unison**, **glide**, and **● rec** (bounces your playing to a
 WAV). ⌘Z / ⇧⌘Z undo and redo workbench edits. Press `?` in-app for the full map.
 
 **Keyboard and screen readers.** Tab reaches the bank as a single stop (arrows
-to move, Enter to open) and the rack as a single stop (arrows between controls,
-↑/↓ to turn, Shift for fine, `L` to lock). Letter keys only play notes when
+to move, Enter to open, `1`–`5` to rate, `m` to save) and the rack as a single
+stop (arrows between controls, ↑/↓ to turn, Shift for fine, `L` to lock). The
+bank's cursor is announced: rows carry ids and the list carries
+`aria-activedescendant`, which it did not — it claimed `role="listbox"` while
+arrowing through it said nothing at all. Because the row's buttons are
+deliberately outside the tab order, the row's own label has to carry what they
+encode, so it announces name, id, saved state, rating and prediction. The save
+key is `m` rather than the obvious `s` because `s` is a note in the Ableton
+layout and the global handler deliberately lets note letters through even when
+a control has focus — binding it here would have played a D on every save.
+
+Letter keys only play notes when
 focus is not in the interface. Transient messages go to an `aria-live` toast
 stack; conditions that persist — a muted unvetted patch, a crashed engine — go
 to a pinned `role="alert"` strip that stays until resolved.
@@ -104,6 +123,29 @@ to a pinned `role="alert"` strip that stays until resolved.
   fixed (`pointer-events: all` on the jack ring, `.knob-hit` covering the
   knob's whole face, decoration set to `pointer-events: none`). When adding a
   rack control, scan across it with `elementFromPoint` before trusting it.
+- **Stars and saves are different questions, and must stay different
+  controls.** ★ is an *observation*: it enters the taste log and moves θ.
+  **save** is *storage*: it exempts a patch from eviction and logs nothing. The
+  bank used to conflate them — a `saved` filter that meant "starred ≥ 1" over a
+  pool that evicts by lowest posterior utility, i.e. it targeted precisely the
+  oddball you loved before the model had learned it, and the app apologized for
+  this in three separate strings. Merging the two is tempting and wrong: the
+  moment a rating decides what survives, people rate strategically to protect
+  patches, and every protective over-rating is a preference they never held.
+  Pins live engine-side (`Candidate::pinned`, `BankEntry::pinned` with
+  `#[serde(default)]`) because the engine is what evicts; holding them in the
+  UI beside `starsById` would rebuild the same split that made the old bug
+  possible. Capped at `pool_size / 4` so the pool can never be pinned solid —
+  that state has no honest report, since it surfaces as `insert_candidate`
+  returning `None`, which callers already render as "no proposal beat its
+  parent".
+- **Escape everything that a user or a file can name.** `renderBank` built rows
+  by interpolating `r.name` straight into `innerHTML`. Renaming a patch to
+  `<img src=x onerror=…>` executed, persisted into `BankEntry.name`, and
+  re-fired on every reload — and the same sink is fed by *imported patch JSON*,
+  so opening a shared patch was script execution in the recipient's session.
+  `esc()` now covers every interpolation of a name, including the two that land
+  in attributes. Prefer `textContent` where the node allows it.
 - **A control that can't act says so.** The audit's recurring bug was silence:
   a ▶ with no handler, an `if (x == null) return`, a worker failure message
   nothing listened for. `bench_missing` is the sharpest case — the worker has
