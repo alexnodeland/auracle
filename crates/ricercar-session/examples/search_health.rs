@@ -429,6 +429,41 @@ fn refine_hits(seed: u64, steps: usize, trials: usize) -> (usize, usize, usize) 
 /// actually does: the user does not stop after sixty duels.
 /// - **best kept** — how often the previous generation's true-best member is
 ///   still in the pool afterwards. This is the failure itself, counted.
+///
+/// # What it found, so the question does not get re-asked from scratch
+///
+/// A wave-2B reading showed the pool peaking at generation 4 and then falling
+/// back, with `max u` falling too — the best member being evicted. The obvious
+/// suspect was ranking churn: with 23 φ coordinates fitted from sixty duels, a
+/// member could plausibly be top-five one generation and bottom-five the next,
+/// and eviction reads only the current ranking.
+///
+/// Over 8 seeds, refitting between generations:
+///
+/// ```text
+/// fitted vs true utility (spearman):  0.318
+/// fitted ranking across refits:       0.556
+/// true-best survived the generation:  47/48 = 98%
+/// ```
+///
+/// **The churn is real** — 0.556 is a ranking that moves substantially between
+/// refits. **And it does not matter**, because the top of the order is not
+/// where it moves: the true best survives 98% of generations, and eviction
+/// only ever looks at the bottom. So the hypothesis was right about the
+/// mechanism and wrong about the consequence, which is the useful half to
+/// write down.
+///
+/// The number that *does* constrain things is the first one. A Spearman of
+/// 0.318 between the fitted ranking and the truth means eviction is acting on
+/// a weak signal — so late in a run, once the pool has converged and true
+/// utilities are bunched, which member goes is close to arbitrary with respect
+/// to the truth. No eviction *rule* fixes that; an upper-confidence-bound
+/// variant was designed and deliberately not shipped, because the ranking's
+/// problem is not that it ignores uncertainty, it is that it carries little
+/// information. The levers are more evidence or a better surrogate.
+///
+/// The decline itself does not reproduce at the wave-2C palette (monotonic,
+/// 7 of 8 seeds climbing, `max u` 5.505 → 8.154).
 struct Retention {
     fit_vs_truth: Vec<f64>,
     fit_stability: Vec<f64>,
