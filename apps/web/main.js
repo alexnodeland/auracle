@@ -235,7 +235,37 @@ function uiState() {
     // lock is keyed by node identity now: under the old trace-address keys a
     // restored lock would have named whatever had since moved into that slot.
     locks: [...lockStore].filter(([, s]) => s.size).map(([id, s]) => [id, [...s]]),
+    // Where you like to stand in a big patch (WS-9). Nine slots per subject,
+    // stored as a *centre plus a zoom* rather than as a viewBox: the frame is
+    // resizable — the node-bank divider drags it — and a corner recorded at
+    // one frame width points somewhere else at another. Flattened for the
+    // same reason `positions` is: this blob is stored as-is and a Map is not.
+    marks: [...bookmarks]
+      .filter(([, l]) => l.length)
+      .map(([id, l]) => [
+        id,
+        l.map((b) => [b.slot, Math.round(b.x), Math.round(b.y), Number(b.zoom.toFixed(3))]),
+      ]),
   };
+}
+
+/** The inverse, tolerant of a save written before bookmarks existed — which is
+ *  every save on disk right now. A slot outside 1-9, or a coordinate that is
+ *  not a number, is dropped rather than restored: a bookmark that jumps the
+ *  camera somewhere impossible is worse than one that is missing. */
+function restoreBookmarks(saved) {
+  if (!Array.isArray(saved)) return;
+  for (const [id, list] of saved) {
+    if (!Array.isArray(list) || !list.length) continue;
+    const out = [];
+    for (const [slot, x, y, zoom] of list) {
+      if (!Number.isFinite(slot) || slot < 1 || slot > BM_MAX) continue;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zoom)) continue;
+      if (out.some((b) => b.slot === slot)) continue;
+      out.push({ slot, x, y, zoom: clamp(zoom, FIT_MIN, ZOOM_MAX) });
+    }
+    if (out.length) bookmarks.set(String(id), out.sort((a, b) => a.slot - b.slot));
+  }
 }
 
 /** The inverse, tolerant of a save written before positions existed — which is
@@ -1031,6 +1061,23 @@ worker.onmessage = (e) => {
         discardStagedUndo();
         // A refused restore consumes no step: the stacks were never touched.
         restorePending = null;
+      } else if (m.addr) {
+        // `edit_param` said no: the address is not on this genome. This was the
+        // one refusal in the app that was still silent — the worker sends this
+        // shape with no `error` string, so the branch above skipped it and the
+        // knob stayed exactly where the hand left it while the engine held a
+        // different value. Silent *and* wrong, which is the combination the
+        // whole explained-rejection rule exists to rule out.
+        //
+        // Said, and then undone on screen: a re-render off the bench snaps the
+        // control back to what the patch actually holds, so the picture and
+        // the sound agree again.
+        const label = addrLabel(m.addr);
+        note(
+          `${label} isn't on this patch any more — that change did not land.`,
+          { urgent: true },
+        );
+        if (wb.rack) renderRack();
       }
       editInFlight = false;
       // A rejected op never reached the tree, so nothing was posted early and
@@ -1099,7 +1146,8 @@ worker.onmessage = (e) => {
     // already begun cannot be recalled and the player has usually moved on by
     // the time it lands. Dropping it here is the cancellation.
     case "preview": {
-      onPreviewArrived(m);
+      if (m.tag === "port") onPortTrace(m);
+      else onPreviewArrived(m);
       break;
     }
     case "committed": {
@@ -2345,6 +2393,16 @@ document.addEventListener("keydown", (e) => {
   if (currentView === "play" && !e.defaultPrevented) {
     if (e.key === "Home") { e.preventDefault(); fitAll(true); return; }
     if (e.key === ".") { e.preventDefault(); fitSelection(true); return; }
+    // The minimap's shift-click, from the keyboard. Read off `code` rather
+    // than `key`: shift+1 *is* "!" on a US layout and "&" on a French one, and
+    // a bookmark is a slot number rather than a character — matching on the
+    // character would bind the feature to one keyboard. The unshifted digits
+    // are the bank's 1-5 rating keys and stay theirs.
+    if (e.shiftKey && /^Digit[1-9]$/.test(e.code || "")) {
+      e.preventDefault();
+      bmJump(Number(e.code.slice(5)));
+      return;
+    }
   }
   const noteKey = k in KEYMAP || k === "z" || k === "x";
   if (!noteKey && e.target?.closest?.("button, [role=tab], [data-addr], input[type=range]")) return;
@@ -4989,6 +5047,16 @@ function buildRack(svg, rack, opts) {
   // another. Chain is the honest fallback, and it is freeform's own seed.
   let { mode = layoutMode } = opts || {};
   if (mode === "freeform" && !places) mode = "chain";
+  // Decided before anything is drawn, because the probe is part of the
+  // picture: which module it is on can change without the rack changing (the
+  // selection moved), and the answer has to be settled by the time the module
+  // loop reaches that plate. Interactive only — the duel minis and the export
+  // stage are pictures of a patch, not places you are standing in.
+  if (interactive) portTraceSync();
+  // The belief tint is a read of the posterior, and the posterior is the same
+  // for every plate — so the support counts are gathered once per build rather
+  // than once per module.
+  const beliefSup = interactive && beliefOverlay && !compact ? nbSupport() : null;
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
   // Light comes from 315° (top-left) everywhere: plate bevel, knob body,
@@ -5095,6 +5163,9 @@ function buildRack(svg, rack, opts) {
   svg.appendChild(plateLayer);
   svg.appendChild(wireLayer);
   svg.appendChild(ctrlLayer);
+  // The one thing that must be above every plate *and* every control: the
+  // per-port probe window. Built in the loop, appended after it.
+  let probeArt = null;
   const modByKey = new Map(rack.modules.map((m) => [m.key, m]));
   // What the motion system will need after the next teardown: the elements it
   // has to move, and the identity that says which of them is "the same one".
@@ -5245,6 +5316,13 @@ function buildRack(svg, rack, opts) {
     // plate and a blurred filter region the compositor still has to paint.
     if (!compact) plate.setAttribute("filter", "url(#plateShadow)");
     plateG.appendChild(plate);
+    // The opt-in belief tint, immediately over the panel and under everything
+    // printed on it — an edge, the way a coloured band on a resistor is an
+    // edge, rather than a wash that would fight the silkscreen.
+    if (beliefSup && !isEmpty) {
+      const edge = beliefEdge(m, p, beliefSup);
+      if (edge) plateG.appendChild(edge);
+    }
     // Faceplate material: a lit top edge and a shaded bottom edge give the
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
@@ -5482,6 +5560,14 @@ function buildRack(svg, rack, opts) {
       const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key },
         cabled.has(m.key) ? 0 : null);
       if (interactive && !isEmpty) attachOutJack(oj, m.key, "audio");
+      // …and the probe clipped onto it, if this is the plate it is on. Held
+      // back rather than appended here: the module loop paints in tree order,
+      // so a plate drawn later would paint over a window that has to be
+      // readable. It goes on last, over everything.
+      if (interactive && !compact && mid === portTrace.mid) {
+        probeArt = svgEl("g", { transform: `translate(${p.x},${p.y})` });
+        probeArt.appendChild(portTraceArt(p, m));
+      }
       // The mod slot, in its permanent housing. The jack names the port it
       // drives — on a four-knob module an unlabelled "mod" input is a
       // mystery, and now that eight different modules carry one, "mod" would
@@ -5699,6 +5785,8 @@ function buildRack(svg, rack, opts) {
       g.appendChild(kg);
     });
   }
+
+  if (probeArt) ctrlLayer.appendChild(probeArt);
 
   // Must run after insertion — `getBBox` needs a laid-out element.
   fitLabels();
@@ -6140,7 +6228,16 @@ function restoreRackFocus(mark) {
   setRackStop(el);
   // No `ensureRackVisible`: this is not navigation. The player did not move,
   // the patch did, and the camera's own answer to that is `aimCamera`.
-  el.focus({ preventScroll: true });
+  //
+  // …and for the same reason it is not a *selection* move either. `selInit`
+  // reads focus as "what the player is on", which is right for a keyboard walk
+  // and wrong for this: a plate click updates the selection on pointerdown,
+  // the rebuild that follows restores focus to wherever the keyboard was
+  // standing, and the selection would be silently dragged back there. Measured
+  // — clicking a second plate with the probe on moved it for one frame and
+  // then returned it to the first.
+  restoringFocus = true;
+  try { el.focus({ preventScroll: true }); } finally { restoringFocus = false; }
 }
 
 // ===========================================================================
@@ -6283,6 +6380,92 @@ $("rack-lod").onclick = () => {
   renderRack();
 };
 syncLodBtn();
+
+// ---------- belief overlay ----------
+// WS-9: which parts of your patch the model has an opinion about, at a glance.
+// It lives beside the arrangement and detail switches because it is the same
+// kind of control — a way of *reading* the rack, not a way of changing it —
+// and it is off by default because it is a second colour law running over the
+// first, and the first one (green carries signal, amber is the model's mind)
+// has to be legible on its own.
+//
+// The honesty, which is the whole design: φ_struct counts **families**.
+// `n_filter` says how many filters a patch has; there is no coordinate in
+// which *this* filter is distinguishable from the one two plates along. So the
+// tint is a statement about the family, every tooltip says so in words, and
+// nothing is drawn at all for a coefficient that is not resolved — the same
+// law `nbPaintTheta` runs under, for the same reason: a tint without evidence
+// is a lie with a colour.
+let beliefOverlay = localStorage.getItem("ricercar-belief") === "1";
+function syncBeliefBtn() {
+  const b = $("rack-belief");
+  if (!b) return;
+  b.setAttribute("aria-pressed", String(beliefOverlay));
+  b.closest(".tt").title = beliefOverlay
+    ? "Belief tint: on. Amber edge = you lean toward that family of module, red = away, "
+      + "stronger where the model is more certain. It is a family belief — φ counts how many "
+      + "filters a patch has, not which filter. Click to turn it off."
+    : "Tint each plate by what the model believes about its family of module — amber toward, "
+      + "red away, stronger where it is certain. Off by default.";
+}
+$("rack-belief").onclick = () => {
+  beliefOverlay = !beliefOverlay;
+  try { localStorage.setItem("ricercar-belief", beliefOverlay ? "1" : "0"); } catch (_) {}
+  syncBeliefBtn();
+  renderRack();
+  // A control whose whole effect can be "nothing visibly changed" owes the
+  // player the reason: an unfitted posterior, or a bank too thin to resolve
+  // any coefficient, paints no edges at all and looks exactly like a dead
+  // button.
+  if (beliefOverlay && wb.rack) {
+    const sup = nbSupport();
+    const lit = wb.rack.modules.filter((m) => beliefResolved(m, sup)).length;
+    if (lit === 0) {
+      note("belief tint on — but the model has no resolved lean about anything in this patch yet. Make a few more picks.");
+    }
+  }
+};
+syncBeliefBtn();
+
+/** What the posterior has resolved about this module's family, or null — which
+ *  is the answer for anything the taste model does not measure, has not been
+ *  fitted for, has too few patches carrying, or has looked at and found no
+ *  lean in. Nothing at all is drawn for any of those, the same law
+ *  `nbPaintTheta` runs under: a tint without evidence is a lie with a colour. */
+function beliefResolved(m, sup) {
+  const spec = MOD_BY_KIND[m.kind];
+  if (!spec || !spec.phi) return null;
+  const t = nbTheta(m.kind);
+  if (beliefState(t, sup.byPhi[spec.phi] || 0) !== "resolved") return null;
+  return { spec, t };
+}
+
+/** The tint for one plate, or null when there is nothing resolved to say.
+ *
+ *  Opacity is *confidence*, not enthusiasm: |θ| / (|θ| + σ), so a large
+ *  coefficient with a large σ tints no harder than a small certain one — which
+ *  is the reading "saturation scaled by 1/σ" asks for and the one the player
+ *  will make anyway from a stronger colour. */
+function beliefEdge(m, p, sup) {
+  const hit = beliefResolved(m, sup);
+  if (!hit) return null;
+  const { spec, t } = hit;
+  const conf = Math.abs(t.mean) / (Math.abs(t.mean) + Math.max(1e-6, t.std));
+  const r = svgEl("rect", {
+    x: 2, y: 2, width: Math.max(1, p.w - 4), height: Math.max(1, p.h - 4), rx: 4,
+    "stroke-opacity": (0.18 + 0.72 * conf).toFixed(3),
+  }, `belief-edge ${t.mean >= 0 ? "pos" : "neg"}`);
+  const tt = svgEl("title", {});
+  tt.textContent =
+    `Family belief, not this module: in ${styleName(views.styles[t.style], t.style)} ` +
+    `(${Math.round(t.share * 100)}% of your bank) you lean ` +
+    `${t.mean >= 0 ? "toward" : "away from"} ${niceName(spec.phi)} — ` +
+    `θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
+    `from ${sup.byPhi[spec.phi] || 0} of ${sup.total} patches. The model counts how many of ` +
+    `these a patch has; it has no opinion about this one in particular.`;
+  r.appendChild(tt);
+  return r;
+}
 
 // ---------- fits and moves ----------
 function cancelTween() {
@@ -6558,7 +6741,88 @@ const MM_W = 172;
 const MM_H = 116;
 let mmT = null;        // {s, ox, oy} — rack units → map units
 let mmBuiltFor = null; // which rackBoxes the node rects were drawn from
+let mmMarkSig = "";    // …and which bookmarks the pips were drawn from
 let mapOn = localStorage.getItem("ricercar-map") === "1";
+
+// ---- bookmarks (WS-9) ----
+// Nine places you can be, per patch. `shift+click` on the map stores the spot
+// under the pointer; `shift+1`…`shift+9` go back to it, on the motion
+// system's own curve so it reads as the camera travelling rather than cutting.
+//
+// The gesture belongs on the *map* rather than on a key because a bookmark is
+// a place, and the map is the only surface in this app where places are
+// visible: the pip lands exactly where the click did, so storing one and
+// finding one again are the same picture. Shift-clicking a pip clears it —
+// the map has no room for a delete affordance and does not need one.
+//
+// Slots are auto-assigned, lowest free first, and they are what the keyboard
+// names. Nine because that is how many digits there are, and a tenth bookmark
+// with no key to reach it would be a place you cannot go.
+const BM_MAX = 9;
+const bookmarks = new Map(); // subject id → [{slot, x, y, zoom}], x/y a centre
+
+function bmKey() { return wb.subjectId == null ? null : String(wb.subjectId); }
+function bmList() { const k = bmKey(); return (k && bookmarks.get(k)) || []; }
+
+/** Redraw the pips and get the new set onto disk. Bookmarks ride in the same
+ *  `ui` blob as the hand positions and the locks — same lifetime, same key,
+ *  and the same reason: a viewpoint you have to set again after a reload is
+ *  not a viewpoint, it is a keystroke. */
+function bmChanged() {
+  mmMarkSig = "";
+  drawMinimap();
+  scheduleSave();
+}
+
+/** Store the point under a shift-click, or clear the pip it landed on. */
+function bmAdd(rx, ry) {
+  const k = bmKey();
+  if (!k) return note("no patch on the bench — a bookmark is a place inside a patch");
+  const list = [...(bookmarks.get(k) || [])];
+  // A pip is a target as well as a mark. Measured in *map* units, because the
+  // thing being aimed at is 5.5 map units across whatever the patch's scale is.
+  const near = list.find((b) => Math.hypot(b.x - rx, b.y - ry) * mmT.s < 8);
+  if (near) {
+    bookmarks.set(k, list.filter((b) => b !== near));
+    bmChanged();
+    return note(`bookmark ${near.slot} cleared.`);
+  }
+  const used = new Set(list.map((b) => b.slot));
+  let slot = 0;
+  for (let i = 1; i <= BM_MAX && !slot; i++) if (!used.has(i)) slot = i;
+  // A full set is a refusal, and refusals are spoken — with the way out in the
+  // same sentence, because "shift-click a pip" is not a gesture anyone would
+  // guess from a map with nine numbers on it.
+  if (!slot) {
+    return note(
+      `all ${BM_MAX} bookmarks on this patch are taken — shift-click a numbered pip to clear one.`,
+      { urgent: true },
+    );
+  }
+  list.push({ slot, x: rx, y: ry, zoom: view.zoom });
+  list.sort((a, b) => a.slot - b.slot);
+  bookmarks.set(k, list);
+  bmChanged();
+  note(`bookmark ${slot} set — shift+${slot} comes back here.`);
+}
+
+function bmJump(slot) {
+  if (!wb.rack) return note("no patch on the bench");
+  const b = bmList().find((x) => x.slot === slot);
+  // The empty slot is the commonest press of this key and it used to be the
+  // one thing a keyboard shortcut can do that is indistinguishable from a
+  // broken keyboard: nothing at all.
+  if (!b) return note(`no bookmark ${slot} on this patch — shift-click the minimap to set one.`);
+  const { w, h } = frameSize();
+  viewUserSet = true;
+  tweenView(
+    { zoom: b.zoom, x: b.x - w / (2 * b.zoom), y: b.y - h / (2 * b.zoom) },
+    MOTION_MS,
+    EASE_MOTION,
+  );
+  if (!mapOn) note(`bookmark ${slot}.`);
+  nbAnnounce?.(`bookmark ${slot} — ${Math.round(b.zoom * 100)}%`);
+}
 
 function syncMapBtn() {
   const b = $("rack-map-btn");
@@ -6567,8 +6831,10 @@ function syncMapBtn() {
   const show = mapOn && !!wb.rack;
   el.classList.toggle("hidden", !show);
   b.setAttribute("aria-pressed", String(mapOn));
-  b.closest(".tt").title = mapOn ? "Hide the minimap" : "Show the minimap (bottom-left of the rack)";
-  if (show) { mmBuiltFor = null; drawMinimap(); }
+  b.closest(".tt").title = mapOn
+    ? "Hide the minimap. Shift-click it to bookmark a spot; shift+1–9 jumps to one."
+    : "Show the minimap (bottom-left of the rack). Shift-click it to bookmark a spot; shift+1–9 jumps to one.";
+  if (show) { mmBuiltFor = null; mmMarkSig = ""; drawMinimap(); }
 }
 // The chip is dismissible by mouse as well as by esc — a keyboard-only
 // escape hatch is not one.
@@ -6602,7 +6868,31 @@ function drawMinimap() {
       return `<rect class="${cls}" x="${(mmT.ox + b.x * s).toFixed(1)}" y="${(mmT.oy + b.y * s).toFixed(1)}" ` +
         `width="${Math.max(1.5, b.w * s).toFixed(1)}" height="${Math.max(1.5, b.h * s).toFixed(1)}" rx="0.8"/>`;
     });
-    el.innerHTML = `<g class="mm-nodes">${rects.join("")}</g><rect class="mm-view" id="mm-view" rx="1.5"/>`;
+    el.innerHTML = `<g class="mm-nodes">${rects.join("")}</g><g class="mm-marks"></g>` +
+      `<rect class="mm-view" id="mm-view" rx="1.5"/>`;
+    mmMarkSig = ""; // the group the pips lived in was just thrown away
+  }
+  // The pips are a third layer for the same reason the first two are split:
+  // this function runs on every frame of every pan, and an innerHTML reparse
+  // per frame is exactly what that split exists to avoid. Nine entries make a
+  // cheap signature; the DOM write happens only when it moves.
+  const marks = bmList();
+  const sig = `${bmKey()}|${mmT.s.toFixed(4)}|${mmT.ox.toFixed(1)}|${mmT.oy.toFixed(1)}|` +
+    marks.map((b) => `${b.slot}:${Math.round(b.x)}:${Math.round(b.y)}`).join(",");
+  if (sig !== mmMarkSig) {
+    mmMarkSig = sig;
+    const layer = el.querySelector(".mm-marks");
+    if (layer) {
+      layer.innerHTML = marks.map((b) => {
+        // Clamped inside the map: a bookmark set at one zoom and read at
+        // another can sit outside the patch bounds, and a pip you cannot see
+        // is a slot you cannot clear.
+        const cx = clamp(mmT.ox + b.x * s, 6, MM_W - 6).toFixed(1);
+        const cy = clamp(mmT.oy + b.y * s, 6, MM_H - 6).toFixed(1);
+        return `<circle class="mm-pip" cx="${cx}" cy="${cy}" r="5.6"/>` +
+          `<text class="mm-pip-n" x="${cx}" y="${(Number(cy) + 2.6).toFixed(1)}">${b.slot}</text>`;
+      }).join("");
+    }
   }
   const vr = $("mm-view");
   if (!vr) return;
@@ -6619,21 +6909,33 @@ function drawMinimap() {
   vr.setAttribute("height", (y1 - y0).toFixed(1));
 }
 
+/** Where on the patch a pointer over the map is, in rack units. */
+function mmPoint(ev) {
+  const r = $("rack-map").getBoundingClientRect();
+  return {
+    x: ((ev.clientX - r.left) * (MM_W / r.width) - mmT.ox) / mmT.s,
+    y: ((ev.clientY - r.top) * (MM_H / r.height) - mmT.oy) / mmT.s,
+  };
+}
 /** Click or drag the map to put that part of the patch in the middle. */
 function mmNavigate(ev) {
   if (!mmT) return;
-  const r = $("rack-map").getBoundingClientRect();
-  const rx = ((ev.clientX - r.left) * (MM_W / r.width) - mmT.ox) / mmT.s;
-  const ry = ((ev.clientY - r.top) * (MM_H / r.height) - mmT.oy) / mmT.s;
+  const p = mmPoint(ev);
   const { w, h } = frameSize();
   cancelTween();
-  view.x = rx - w / (2 * view.zoom);
-  view.y = ry - h / (2 * view.zoom);
+  view.x = p.x - w / (2 * view.zoom);
+  view.y = p.y - h / (2 * view.zoom);
   viewUserSet = true;
   applyView();
 }
 $("rack-map").addEventListener("pointerdown", (ev) => {
   ev.preventDefault();
+  // Shift is "remember here", not "go here" — and it deliberately takes no
+  // pointer capture, because it is a press rather than a drag.
+  if (ev.shiftKey) {
+    if (mmT) { const p = mmPoint(ev); bmAdd(p.x, p.y); }
+    return;
+  }
   // Same guard as the plate drag: a pointer the browser has already forgotten
   // (a cancelled touch, a synthesised press) throws on capture, and the
   // `pointermove` listener below is on the element either way — so the drag
@@ -6642,7 +6944,7 @@ $("rack-map").addEventListener("pointerdown", (ev) => {
   mmNavigate(ev);
 });
 $("rack-map").addEventListener("pointermove", (ev) => {
-  if (ev.buttons & 1) mmNavigate(ev);
+  if ((ev.buttons & 1) && !ev.shiftKey) mmNavigate(ev);
 });
 
 // ---------- pointer and wheel ----------
@@ -7301,6 +7603,18 @@ function openStructMenu(mod, x, y) {
       run: () => armFromRack("insert", key, { accepts: ["mod"], verb: "modulate" }),
     });
   }
+  // The probe (WS-9). A verb about *reading* the patch rather than editing it,
+  // so it sits after the edits and before the fence that `delete` is behind.
+  const tracedHere = portTraceOn && portTrace.mid === midOf(mod);
+  rows.push({
+    label: tracedHere ? "stop probing this output" : "probe this output",
+    sub: tracedHere
+      ? "takes the little scope off the out ○"
+      : "a little scope on the out ○ — the patch rendered as if it ended here",
+    disabled: isPlaceholderKey(key),
+    why: "this socket is empty — there is nothing here to listen to",
+    run: () => togglePortTrace(mod),
+  });
   if (ins === 2) {
     rows.push({
       label: "swap the two inputs",
@@ -7915,6 +8229,18 @@ function eqBand(x) {
 }
 
 // Anything else — mixes, depths, amounts — is a plain percentage.
+/** The name a player would recognise for a parameter address. An address is
+ *  `node/0#cutoff` — a position and a port — and neither half is notation
+ *  anyone has been shown, so the plate's own silkscreen answers where it can
+ *  and the port name is the fallback. */
+function addrLabel(addr) {
+  for (const m of wb.rack?.modules || []) {
+    for (const k of m.knobs || []) if (k.addr === addr) return `${m.title} ${k.label}`;
+  }
+  const port = String(addr || "").split("#").pop();
+  return port ? `the ${port} control` : "that control";
+}
+
 function knobUnit(addr, value, kind, variant) {
   const site = addr.split("#").pop();
   const f =
@@ -10252,6 +10578,13 @@ function previewInvalidate() {
   preview.failed = null;
   preview.playOnArrive = false;
   if (armed) renderSpecDock();
+  // The probe is a render of the bench too, so it goes stale on exactly the
+  // same events — but it is not thrown away: a dimmed picture of the patch a
+  // moment ago is worth more than an empty box, and it says which it is.
+  if (portTrace.mid) {
+    portTrace.stale = true;
+    portTraceAsk(PT_SETTLE_MS);
+  }
 }
 
 /** Ask for one. `play` means the player pressed ▶ and is waiting for sound. */
@@ -11162,7 +11495,7 @@ function connectSync() {
     return;
   }
   svg.classList.add("wiring");
-  if (!wb.rack) return endConnectPick();
+  if (!wb.rack) return endConnectPick("the patch went away — the cable is back on its hook");
   let lit = 0;
   for (const j of svg.querySelectorAll(`.jack[${connectPick.attr}]`)) {
     if (!connectPick.legalKeys.has(j.getAttribute(connectPick.attr))) continue;
@@ -11171,7 +11504,10 @@ function connectSync() {
   }
   const from = svg.querySelector(`.jack[data-outkey="${cssKey(connectPick.srcKey)}"]`);
   if (from) from.classList.add("hot");
-  if (lit === 0) endConnectPick();
+  // A rebuild moved the patch out from under a held cable and nothing it could
+  // reach survived. Dropping the gesture silently left the player clicking at
+  // sockets that had stopped being targets between one frame and the next.
+  if (lit === 0) endConnectPick("that edit left the cable nowhere to go — it is back on its hook");
 }
 
 function endConnectPick(msg) {
@@ -11762,7 +12098,19 @@ function onWireUp(ev) {
     if (!target) return openLinkSearch(w);
     offerConnect(w.srcKey, target.getAttribute(w.attr), w.kind, ev.clientX, ev.clientY);
   } else if (w.mode === "unplug-audio") {
-    if (jack) return; // dropped back on a jack: treat as cancel
+    // Dropped on a jack. Landing back on the one it came out of is a cancel
+    // and needs no sentence; landing on a *different* one reads as "move this
+    // cable" and does nothing at all, which is the silent no-op the audit went
+    // looking for. Say what the gesture for it is — the cable moves from the
+    // output end, not from the input end, because an input has only one thing
+    // it could be moved to and an output has the whole patch.
+    if (jack) {
+      const to = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
+      if (to && to !== w.childKey) {
+        note("a cable is moved from its out ○, not its in ○ — drag from the output you want to re-aim");
+      }
+      return;
+    }
     // The socket is left visibly empty. The engine still needs a node there —
     // the term is total — but the plate says "empty" and the next module goes
     // there by default, instead of a fresh vco quietly pretending the unplug
@@ -11787,13 +12135,264 @@ function onWireUp(ev) {
       { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
     );
   } else if (w.mode === "unplug-mod") {
-    if (jack) return;
-    if (!modAtKey(w.key)) return;
+    if (jack) {
+      const to = jack.getAttribute("data-modkey");
+      if (to && to !== w.key) {
+        note("a modulator is moved from its own out ○ — drag from the modulator's plate, not from the slot it sits in");
+      }
+      return;
+    }
+    // The slot emptied under the gesture (a bench reply landed mid-drag).
+    // Silence here left the player looking at a cable they had just pulled out
+    // of a socket that no longer had anything in it.
+    if (!modAtKey(w.key)) {
+      return note("that modulation slot is already empty");
+    }
     // Staged *after* the post, not before: `stageFragment` binds the fragment
     // to the edit that is going out, so an op that the engine refuses takes
     // its own shelf entry back with it.
     unplugMod(w.key);
   }
+}
+
+// ===========================================================================
+// PER-PORT SCOPE — a probe you can clip onto one module's out ○
+// ===========================================================================
+// WS-9's teaching surface: the rack draws a chain of stages and never says
+// what any one of them *did*. A small window on the selected module's output
+// says it, and it is the only place in the app where "what does a wavefolder
+// actually do to a saw" is a thing you can look at rather than infer.
+//
+// **Where the signal comes from, and why it is not a tap.** The obvious
+// implementation is a second `AnalyserNode` hung off the node in question, and
+// it is not reachable: the worklet compiles the whole term into one voice
+// graph inside quiver and exposes exactly one output to the WebAudio graph —
+// `wireLevels` says the same thing in its own comment, which is why the
+// differential flow animation *estimates* levels from the patch instead of
+// measuring them. There is no per-node port to attach to, and manufacturing
+// one means either splitting the compile (a second voice bank per probed
+// module — the crossfade cost from WS-5 §6, for a picture) or teaching quiver
+// to expose interior taps (grammar and DSP work, not editor work).
+//
+// So the nearest honest thing, and it is honest rather than approximate: ask
+// the engine to render **the patch with everything after this module removed**
+// — `replace_tree` at the root with this node's own subtree, through
+// `preview_op`, which already exists for pre-placement audition and already
+// clones the bench rather than touching it. That is the signal at this out ○,
+// exactly, played through the same amp envelope and the same phrase. What it
+// is *not* is live: it is an offline render, asked for on demand, and every
+// piece of copy on it says so. The alternative — a live-looking trace that is
+// really the master analyser — would be a lie about which stage you are
+// looking at, which is the one thing a teaching surface may not be.
+//
+// Off by default (it costs a render), one module at a time, toggled from that
+// module's ⋯ menu, and it follows the selection thereafter.
+const PORT_TRACE_SECONDS = 0.7;
+const PT_W = 66;   // the probe window, in rack units
+const PT_H = 30;
+const PT_BINS = 54;
+// How long the patch has to hold still before the probe pays for a new render.
+// A knob drag is a bench reply every few tens of milliseconds and each one
+// makes the drawn trace untrue; rendering per reply would put a full phrase
+// render on the critical path of a knob turn, which is the exact mistake WS-5
+// §2 was written to undo. So: mark it stale (the window dims and says so) and
+// re-render once the hand stops.
+const PT_SETTLE_MS = 520;
+// Deliberately *not* persisted, unlike the arrangement, detail, map and belief
+// switches. Those are reading modes with a pressed button in the chrome saying
+// so; the probe's only indicator is the window itself, and the window is drawn
+// on one module. Restore the flag across a reload and you get "on" with
+// nothing selected yet — a state that is on, invisible, and has no control
+// showing it, which is exactly the silent state this pass went looking for.
+// A probe is a tool you clip on; putting your tools away at the end of the
+// session is the honest default.
+let portTraceOn = false;
+const portTrace = {
+  mid: null,      // which module the probe is on
+  key: null,      // …at which trace key, when it was asked for
+  token: 0,
+  inflight: false,
+  peaks: null,    // [[min,max], …] normalised to the render's own peak
+  stale: false,   // the patch moved under the render currently drawn
+  failed: false,
+  timer: null,
+};
+
+/** The module the probe should be on. Selection follows the keyboard, and the
+ *  keyboard visits plates a trace cannot be taken from — a modulator carries
+ *  CV rather than audio, the amp is the master the big scope already shows,
+ *  and a hole has nothing in it. Rather than blanking the window at every such
+ *  step (which reads as the feature breaking), the probe stays where it was
+ *  until the selection lands somewhere it can actually move to. */
+function portTraceTarget() {
+  if (!portTraceOn || !wb.rack) return null;
+  const ok = (x) => x && !x.is_mod && x.kind !== "amp" && !isPlaceholderKey(x.key);
+  const sel = selModule();
+  if (ok(sel)) return { mid: midOf(sel), key: sel.key };
+  const held = portTrace.mid && wb.rack.modules.find((x) => midOf(x) === portTrace.mid);
+  return ok(held) ? { mid: midOf(held), key: held.key } : null;
+}
+
+/** Called from the top of every interactive build: decide what the probe is
+ *  on now, and ask for a render if what is drawn is of something else. */
+function portTraceSync() {
+  const t = portTraceTarget();
+  if (!t) {
+    clearTimeout(portTrace.timer);
+    portTrace.timer = null;
+    portTrace.mid = null;
+    portTrace.peaks = null;
+    return;
+  }
+  if (portTrace.mid !== t.mid) {
+    portTrace.mid = t.mid;
+    portTrace.key = t.key;
+    portTrace.peaks = null;
+    portTrace.failed = false;
+    portTrace.stale = false;
+    portTraceAsk(0);
+  } else if (portTrace.stale && !portTrace.inflight) {
+    portTrace.key = t.key; // the same module, at a key an edit may have moved
+    portTraceAsk(PT_SETTLE_MS);
+  }
+}
+
+function portTraceAsk(delay) {
+  clearTimeout(portTrace.timer);
+  portTrace.timer = setTimeout(() => {
+    portTrace.timer = null;
+    const t = portTraceTarget();
+    if (!t || wb.subjectId == null) return;
+    // Read the subtree out of the bench tree at request time, not at draw
+    // time: this is the one piece of the request that an edit in flight can
+    // have moved, and a probe rendered from a stale subtree would be a picture
+    // of a patch nobody is holding.
+    const node = nodeAtKey(t.key);
+    if (!node) return;
+    portTrace.inflight = true;
+    portTrace.stale = false;
+    portTrace.token += 1;
+    send({
+      type: "preview_render",
+      tag: "port",
+      token: portTrace.token,
+      key: t.key,
+      op: { op: "replace_tree", key: "node", node },
+      seconds: PORT_TRACE_SECONDS,
+    });
+  }, delay);
+}
+
+/** Min/max per column, normalised to the render's own peak. Normalised, and
+ *  said so in the tooltip: the probe is for reading *shape* — what the stage
+ *  did to the envelope and the edge — and a window scaled in absolute terms
+ *  would draw an early stage as a flat line whenever a later gain stage is the
+ *  loud one. */
+function tracePeaks(buf, n) {
+  let peak = 1e-6;
+  for (let i = 0; i < buf.length; i++) {
+    const a = buf[i] < 0 ? -buf[i] : buf[i];
+    if (a > peak) peak = a;
+  }
+  const out = [];
+  const step = buf.length / n;
+  for (let i = 0; i < n; i++) {
+    const a = Math.floor(i * step);
+    const b = Math.max(a + 1, Math.min(buf.length, Math.floor((i + 1) * step)));
+    let lo = 0, hi = 0;
+    for (let j = a; j < b; j++) {
+      if (buf[j] < lo) lo = buf[j];
+      if (buf[j] > hi) hi = buf[j];
+    }
+    out.push([lo / peak, hi / peak]);
+  }
+  return out;
+}
+
+function onPortTrace(m) {
+  if (m.token !== portTrace.token) return; // superseded: the cancellation
+  portTrace.inflight = false;
+  if (m.buffer && m.buffer.length > 0) {
+    portTrace.peaks = tracePeaks(m.buffer, PT_BINS);
+    portTrace.failed = false;
+  } else {
+    // The grammar refused the truncation, or the truncated patch failed
+    // vetting. Say it in the window — an empty box reads as "this module makes
+    // silence", which is a claim about the patch rather than about the render.
+    portTrace.peaks = null;
+    portTrace.failed = true;
+  }
+  if (wb.rack) renderRack();
+}
+
+/** The probe itself: a bezelled window sitting **above** the plate, right edge
+ *  flush with the panel's, and a lead running down the outside of that edge
+ *  into the out ○ — so it reads as a meter clipped to the jack rather than as
+ *  a label floating next to it.
+ *
+ *  Above, and not in the gutter beside the jack where it obviously belongs:
+ *  the gutter is 28 units and the window is 66, so a probe in it lands on the
+ *  next plate's knobs — measured, in the browser, on a filter feeding a mix.
+ *  Above the plate is the one direction with room in every arrangement: layers
+ *  are laid out left to right, modulators hang below, and a stacked sibling is
+ *  the only thing that can be there at all. Drawn in the control layer, so no
+ *  cable can ever cross the window. */
+function portTraceArt(p, m) {
+  const x0 = Math.max(0, p.w - PT_W);
+  const y0 = -PT_H - 12;
+  const gg = svgEl(
+    "g",
+    { transform: `translate(${x0},${y0})` },
+    `port-trace${portTrace.stale || portTrace.inflight ? " stale" : ""}`,
+  );
+  // Down the right-hand side of the panel and into the socket, 8 units out in
+  // the gutter — a line, not a window, so it costs the neighbour nothing.
+  const jy = -y0 + p.h / 2;   // the out ○, in this group's coordinates
+  const jx = p.w - x0;
+  gg.appendChild(svgEl("path", {
+    d: `M ${jx - 8} ${PT_H} L ${jx - 8} ${PT_H + 6} L ${jx + 8} ${PT_H + 6} ` +
+       `L ${jx + 8} ${jy} L ${jx} ${jy}`,
+  }, "pt-lead"));
+  gg.appendChild(svgEl("rect", { width: PT_W, height: PT_H, rx: 3 }, "pt-bezel"));
+  gg.appendChild(svgEl("line", { x1: 3, y1: PT_H / 2, x2: PT_W - 3, y2: PT_H / 2 }, "pt-zero"));
+  if (portTrace.peaks && portTrace.peaks.length > 1) {
+    const n = portTrace.peaks.length;
+    const iw = PT_W - 8;
+    const half = (PT_H - 8) / 2;
+    const px = (i) => (4 + (i * iw) / (n - 1)).toFixed(1);
+    const py = (v) => (PT_H / 2 - v * half).toFixed(1);
+    const top = portTrace.peaks.map((q, i) => `${px(i)},${py(q[1])}`);
+    const bot = portTrace.peaks.map((q, i) => `${px(i)},${py(q[0])}`).reverse();
+    gg.appendChild(svgEl("polygon", { points: top.concat(bot).join(" ") }, "pt-wave"));
+  } else {
+    const t = svgEl("text", { x: PT_W / 2, y: PT_H / 2 + 3, "text-anchor": "middle" }, "pt-msg");
+    t.textContent = portTrace.failed ? "nothing to render" : "rendering…";
+    gg.appendChild(t);
+  }
+  const tt = svgEl("title", {});
+  tt.textContent =
+    `What leaves ${m.title || kindName(m.kind)}: the patch rendered with everything after this ` +
+    `module removed — ${PORT_TRACE_SECONDS}s of the same phrase through the same amp envelope, ` +
+    `scaled to its own peak. Rendered offline on demand, not a live tap: the analyser hangs off ` +
+    `the master and the compiled voice has no interior port to listen to.` +
+    (portTrace.stale || portTrace.inflight ? " The patch has moved — this is the previous render." : "");
+  gg.appendChild(tt);
+  return gg;
+}
+
+/** The ⋯ row. Moves the probe when it is somewhere else, takes it off when it
+ *  is already here — one row that reads as its own state. */
+function togglePortTrace(m) {
+  const mid = midOf(m);
+  const here = portTraceOn && portTrace.mid === mid;
+  portTraceOn = !here;
+  if (portTraceOn) selMid = mid;
+  renderRack();
+  note(
+    portTraceOn
+      ? `probing ${m.title || kindName(m.kind)} — the window on its out ○ is an offline render of the patch cut off here, not a live tap.`
+      : "output probe off.",
+  );
 }
 
 // ---------- live scope ----------
@@ -13095,13 +13694,49 @@ function imageSave() {
 // module the keyboard (or a plate click) landed on is remembered by `mid`,
 // which survives both the rebuild and the focus move.
 let selMid = null;
+// Set while `restoreRackFocus` is putting the keyboard back after a rebuild.
+// See there for why that must not count as the player selecting anything.
+let restoringFocus = false;
 function selInit() {
   const scroll = $("rack-scroll");
   if (!scroll) return;
   scroll.addEventListener("focusin", (ev) => {
+    if (restoringFocus) return;
     const g = ev.target.closest?.("g.mod-group");
     const mid = g?.getAttribute("data-mid");
+    if (!mid || mid === selMid) return;
+    selMid = mid;
+    selMoved();
+  });
+  // …and "last-clicked", literally. A press on bare panel does not focus
+  // anything (only knobs, jacks and the plate's own tabstop do), so a player
+  // who has never touched the keyboard had no selection at all. Capture
+  // phase, because a plate press is claimed by the freeform drag before it
+  // reaches anything else.
+  //
+  // This only *records*: rebuilding the rack from inside a pointerdown would
+  // tear out the element the gesture is about to capture. The redraw that
+  // moves the probe waits for the pointer to come back up.
+  scroll.addEventListener("pointerdown", (ev) => {
+    const mid = ev.target.closest?.("g[data-mid]")?.getAttribute("data-mid");
     if (mid) selMid = mid;
+  }, true);
+  // The pointer path records on the way down and redraws on the way up, so a
+  // press that turns into a drag never rebuilds under its own hand.
+  scroll.addEventListener("pointerup", () => selMoved());
+}
+
+/** The selection moved, so anything drawn *for* the selection has to catch up.
+ *  Only the probe is, today. Deferred by a frame in every case: this is
+ *  reached from inside a `focus()` call and from a `pointerup` that a drag may
+ *  still be finishing, and a rebuild from either would tear out the element
+ *  the gesture is holding. */
+let selRaf = null;
+function selMoved() {
+  if (!portTraceOn || selRaf != null) return;
+  selRaf = requestAnimationFrame(() => {
+    selRaf = null;
+    if (portTraceOn && wb.rack && portTraceTarget()?.mid !== portTrace.mid) renderRack();
   });
 }
 /** The module the selection names, if the current patch still contains it. */
@@ -14237,6 +14872,7 @@ bootMidi();
     for (const id of saved.ui.born || []) lastBorn.add(id);
     restoreTray(saved.ui.held);
     restorePositions(saved.ui.positions);
+    restoreBookmarks(saved.ui.marks);
     restoreLocks(saved.ui.locks);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the

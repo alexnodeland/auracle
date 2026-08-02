@@ -735,6 +735,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mm-node.mod { fill: rgba(255,180,84,0.34); }
 .mm-node.amp { fill: rgba(142,240,177,0.7); }
 .mm-view { fill: rgba(255,255,255,0.05); stroke: var(--phos-b); stroke-width: 1.2; }
+/* Bookmarks. Amber, because a bookmark is a decision about where to look and
+   the amber channel is where this instrument keeps decisions — and filled
+   rather than outlined so a pip reads as a marker on the map rather than as a
+   second, smaller viewport rect. Drawn under `.mm-view`, which is the one
+   thing on the map that must never be obscured. */
+.mm-pip {
+  fill: rgba(255, 180, 84, 0.9);
+  stroke: rgba(10, 8, 5, 0.85);
+  stroke-width: 1;
+}
+.mm-pip-n {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  fill: #120c04;
+  text-anchor: middle;
+  pointer-events: none;
+}
 .rack-empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -747,6 +765,40 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mod-plate { fill: url(#plateGrad); stroke: #2c313a; stroke-width: 1; }
 .mod-plate.modside { stroke: #57431f; }
 .mod-plate.locked { stroke: var(--phos-b); stroke-dasharray: 4 3; }
+/* The opt-in belief tint. A stroke rather than a fill, and inset rather than
+   on the plate's own edge, so it can never be confused with the dashed amber
+   `locked` outline — one says "the model leans this way about this family",
+   the other says "you pinned this", and they are routinely on at once.
+   `stroke-opacity` is written per plate: it carries the model's certainty. */
+.belief-edge { fill: none; stroke-width: 2; pointer-events: none; }
+.belief-edge.pos { stroke: var(--phos-b); }
+.belief-edge.neg { stroke: var(--led-red); }
+
+/* ---- the per-port probe (WS-9) ---- */
+/* A CRT window in the same idiom as the big scope's bezel, clipped to a
+   module's out ○ by a short lead. Nothing here is interactive except the
+   tooltip, so the whole group is pointer-transparent apart from the bezel
+   itself, which has to be hoverable for the title to be readable. */
+.port-trace { pointer-events: none; }
+.pt-lead { fill: none; stroke: var(--phos-a-deep); stroke-width: 1.4; }
+.pt-bezel {
+  fill: var(--bezel);
+  stroke: var(--hairline);
+  stroke-width: 1;
+  pointer-events: auto;
+}
+.pt-zero { stroke: rgba(142, 240, 177, 0.16); stroke-width: 0.8; }
+.pt-wave { fill: var(--phos-a); fill-opacity: 0.82; stroke: none; }
+.pt-msg {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  fill: var(--silk-mute);
+  pointer-events: none;
+}
+/* Stale: the patch has moved and the render on screen is of the one before
+   it. Dimmed rather than emptied — a picture of a moment ago is worth more
+   than a blank box, and the tooltip says which it is. */
+.port-trace.stale { opacity: 0.45; }
 /* Hierarchy by ratio, not by a pixel. The three pieces of text on a plate had
    one size between them and the brightest of them was the one that never
    changed — so the plate read as a caption block rather than as a control

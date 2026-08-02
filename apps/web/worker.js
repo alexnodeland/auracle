@@ -990,6 +990,12 @@ self.onmessage = async (e) => {
       post(
         {
           type: "preview",
+          // Which stream asked. Two different features render through this one
+          // case now — the pre-placement audition and the per-port probe — and
+          // they keep separate token counters, so without a name for the
+          // stream each one's reply would look like a stale reply to the
+          // other and be dropped as the cancellation.
+          tag: m.tag || null,
           token: m.token,
           key: m.key || null,
           kind: m.kind || null,
