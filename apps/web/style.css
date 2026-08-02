@@ -1520,10 +1520,17 @@ input, textarea, .bi-rename {
   background: linear-gradient(180deg, #14171b 70%, rgba(20, 23, 27, 0));
   padding-bottom: 2px;
 }
+/* A group header is NOT a chip, and it must not read as one. The caret sits in
+   its own 14px gutter, the row has no plate, no bevel, no lift and no press —
+   the only thing hover changes is the label's brightness. Everything below it
+   is a pressable object with a shelf to travel into; a header that shared that
+   language invited the same click, and clicking one while a module was in your
+   hand folded a group away while pick mode stayed silently armed. */
 .nb-fold {
-  display: flex;
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 6px;
+  gap: 0 6px;
   width: 100%;
   background: none;
   border: none;
@@ -1538,6 +1545,14 @@ input, textarea, .bi-rename {
   color: var(--phos-a-dim);
 }
 .nb-group.amber .nb-fold { color: var(--phos-b-dim); }
+.nb-fold:hover { color: var(--phos-a); }
+.nb-group.amber .nb-fold:hover { color: var(--phos-b); }
+/* Inert while something is in your hand: the rail's job for the length of a
+   placement is to narrow, not to rearrange itself under the pointer. The row
+   still answers when clicked (see the handler) — a control that goes quiet
+   teaches nothing about why. */
+#nb-groups.armed .nb-fold,
+#nb-groups.armed .nb-fold:hover { color: var(--silk-mute); cursor: default; }
 .nb-caret {
   width: 7px; height: 5px;
   flex: 0 0 auto;
@@ -1646,9 +1661,9 @@ input, textarea, .bi-rename {
 /* The belief column only exists once the model has been fitted at all — 19
    identical placeholders on a fresh session is noise pretending to be data. */
 .ni-theta { display: none; }
-#nb-groups.has-belief .ni-theta { position: relative; width: 34px; height: 9px; display: block; }
+.has-belief .ni-theta { position: relative; width: 34px; height: 9px; display: block; }
 /* The zero line, drawn only where there is a bar to be left or right OF it. */
-#nb-groups.has-belief .ni-theta:not(.thin):not(.flat)::before {
+.has-belief .ni-theta:not(.thin):not(.flat)::before {
   content: "";
   position: absolute;
   left: 17px; top: 0; bottom: 0;
@@ -1658,7 +1673,7 @@ input, textarea, .bi-rename {
 }
 /* No support: a dash. Never a short bar — "the model barely likes this" and
    "the model has never seen this" must not look alike. */
-#nb-groups.has-belief .ni-theta.thin::after {
+.has-belief .ni-theta.thin::after {
   content: "";
   position: absolute;
   left: 13px; right: 13px; top: 4px;
@@ -1669,7 +1684,7 @@ input, textarea, .bi-rename {
 /* "Looked, and found no lean" is a *third* mark: a dot sitting on zero. It has
    to be distinguishable from both the dash (no evidence) and the shortest bar
    the geometry can draw, or the honesty the ladder buys is spent again here. */
-#nb-groups.has-belief .ni-theta.flat::after {
+.has-belief .ni-theta.flat::after {
   content: "";
   position: absolute;
   /* Centred on the zero rule at 17px, so "no lean" sits exactly where a bar
@@ -1811,6 +1826,19 @@ input, textarea, .bi-rename {
   transition: border-color 120ms ease-out, color 120ms ease-out;
 }
 .nb-chip .nb-glyph { width: 14px; height: 10px; }
+/* The belief cell rides on the in-patch chip too — narrower, because the chip
+   is a pill in a wrapping row rather than a full-width catalogue row, but the
+   same three marks and the same refusal to draw a bar without evidence. */
+.nb-chips.has-belief .ni-theta { width: 24px; margin-left: 2px; }
+.nb-chips.has-belief .ni-theta:not(.thin):not(.flat)::before { left: 12px; }
+.nb-chips.has-belief .ni-theta.thin::after { left: 8px; right: 8px; }
+.nb-chips.has-belief .ni-theta.flat::after { left: 10.5px; }
+.nb-chips.has-belief .ni-theta.pos .tb-bar, .nb-chips.has-belief .ni-theta.pos .tb-whisk { left: 13px; }
+.nb-chips.has-belief .ni-theta.neg .tb-bar, .nb-chips.has-belief .ni-theta.neg .tb-whisk { right: 12px; }
+/* The bar's length is written inline in px against 16 units of travel; in the
+   narrower cell it is clamped rather than rescaled, so a long bar reads as
+   "off the end", never as a shorter belief than the catalogue is showing. */
+.nb-chips.has-belief .ni-theta .tb-bar, .nb-chips.has-belief .ni-theta .tb-whisk { max-width: 11px; }
 .nb-chip:hover { border-color: var(--phos-a-dim); color: var(--phos-a); }
 .nb-chip.mod:hover { border-color: var(--phos-b-dim); color: var(--phos-b); }
 
@@ -1826,6 +1854,67 @@ input, textarea, .bi-rename {
   pointer-events: none;
 }
 .nb-spec.hidden { display: none; }
+
+/* ---- the docked spec strip ----
+   The card's real home. It reads left to right the way the chip does — what it
+   is, what it does, what the model thinks — and it holds a reserved height so
+   that nothing on the bench moves as its content changes. The floating card
+   above is now the keyboard's copy only. */
+.spec-dock {
+  flex: 0 0 clamp(96px, 13vh, 150px);
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr) 300px;
+  gap: var(--s4);
+  align-items: start;
+  padding: 11px var(--s4);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #14171b, #101317);
+  box-shadow: var(--lift);
+  overflow: hidden;
+}
+/* Resting and armed are one line, so they span the whole strip rather than
+   leaving two empty columns where the description used to be. */
+.spec-dock.rest, .spec-dock.armed {
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+.sd-rest {
+  font-size: var(--t-micro);
+  line-height: 1.7;
+  color: var(--silk-mute);
+  max-width: 68ch;
+}
+.sd-id { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.sd-idtext { min-width: 0; }
+.sd-name { display: block; margin-bottom: 3px; }
+.sd-ports { font-size: var(--t-micro); line-height: 1.6; color: var(--phos-a-dim); }
+.sd-body { min-width: 0; }
+.sd-body .sp-blurb { margin: 0 0 6px; }
+.sd-strip { display: flex; flex-wrap: wrap; gap: 4px var(--s4); font-size: var(--t-micro); line-height: 1.6; }
+.sd-model {
+  font-size: var(--t-micro);
+  line-height: 1.6;
+  color: var(--silk-dim);
+  border-left: 1px solid var(--hairline);
+  padding-left: var(--s4);
+  min-width: 0;
+}
+/* One line, and it names the thing in your hand — the strip stops being a
+   description the moment the question becomes "where does this go". */
+.sd-line { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; min-width: 0; }
+.sd-line b { font-family: var(--font-silk); font-size: var(--t-body); color: var(--phos-a); letter-spacing: 0.02em; }
+.sd-verb {
+  font-size: var(--t-micro); letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--silk-mute);
+}
+.sd-blurb {
+  font-family: var(--font-voice); font-style: italic; font-size: var(--t-body);
+  color: var(--silk-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sd-hint { font-size: var(--t-micro); color: var(--silk-mute); margin-left: auto; white-space: nowrap; }
+.sd-hint kbd { font-size: var(--t-micro); color: var(--silk-dim); }
+.sp-glyph.small { width: 24px; height: 17px; }
 .sp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sp-glyph { width: 34px; height: 24px; overflow: visible; }
 .sp-glyph .gl { fill: none; stroke: var(--phos-a); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
@@ -2042,6 +2131,37 @@ input, textarea, .bi-rename {
 /* Amber is the app's one word for "something here goes away". */
 .pick-halo.replaces { stroke: var(--phos-b); opacity: 0.95; stroke-width: 1.8; }
 
+/* ---- the ghost plate ----
+   The module in your hand, drawn where it will land, at rack scale. Greyed and
+   desaturated so it can never be mistaken for a module that is already in the
+   patch, and dashed so its edge reads as a proposal rather than a panel. It is
+   not a target for anything — the sockets under it still are. */
+/* Nearly opaque, and desaturated to the bone. An insertion genuinely lands in
+   the 28-unit gutter between two plates, so a translucent ghost there reads as
+   a smear across both of them; a near-solid grey card reads as an object lying
+   on the panel, which is what a proposal should look like. Grey plus a dashed
+   edge is what keeps it from being mistaken for a module already in the patch,
+   since every real plate in the rack is lit green or amber. */
+.pick-ghost {
+  pointer-events: none;
+  opacity: 0.92;
+  /* The cast is what says "above the panel, not part of it". */
+  filter: grayscale(0.85) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.75));
+  animation: ghost-in 160ms cubic-bezier(0.2, 0, 0.6, 1);
+}
+@keyframes ghost-in { from { opacity: 0; transform: scale(0.97); } }
+.pick-ghost .mod-plate {
+  fill: #10131a;
+  stroke: var(--phos-a);
+  stroke-width: 1.3;
+  stroke-dasharray: 6 4;
+}
+.pick-ghost.modside .mod-plate { stroke: var(--phos-b); }
+.pick-ghost .knob-body { filter: none; }
+@media (prefers-reduced-motion: reduce) {
+  .pick-ghost { animation: none; }
+}
+
 .pick-chip {
   position: absolute;
   z-index: 6;
@@ -2185,7 +2305,6 @@ input, textarea, .bi-rename {
   /* The chip gets its own row so it stops fighting the 8-control toolbar
      for wrap space, and the toolbar tightens. */
   .stage-toolbar { row-gap: 6px; }
-  #nextstep { order: 10; flex-basis: 100%; text-align: left; }
   .rack-tools { gap: 6px; }
   .util-btn { padding: 6px 8px; }
 }
@@ -2198,6 +2317,11 @@ input, textarea, .bi-rename {
 @media (max-height: 860px) {
   :root { --keybar-h: 108px; }
   .tray { flex: 0 0 52px; }
+  /* The canvas is the elastic part everywhere else in this block, and the spec
+     strip is the newest claim on it — so it gives ground first. Its height is
+     still reserved, just smaller: the blurb wraps rather than the strip
+     appearing and disappearing under the pointer. */
+  .spec-dock { flex: 0 0 92px; padding: 8px var(--s4); }
   /* Below this the rack cannot hold both a patch and a 268px catalogue, so the
      rail folds itself to the 34px group tab rather than squeezing the canvas. */
   .nb-body { width: clamp(180px, 15vw, 220px); }
@@ -2458,7 +2582,24 @@ select:focus-visible,
 .ovf-sep { height: 1px; background: var(--hairline); margin: var(--s1) 6px; }
 
 /* ---------- next step ----------
-   Nothing in the app ever answered "what now?". This always does. */
+   Nothing in the app ever answered "what now?". This always does.
+
+   It gets a RESERVED ROW of its own, left-aligned under the title, and that
+   row keeps its height whether or not there is a callout in it. It used to
+   sit inline between the patch name and the tool row, so its x was decided by
+   the character count of whatever patch was on the bench — "Gritty Swell" and
+   "Noisy Pad 2" put the app's one piece of guidance in two different places —
+   and at some widths it wrapped to a second row and pushed the canvas down.
+   A chip that moves when the content behind it changes is a chip nobody
+   learns the position of. */
+.callout-row {
+  flex-basis: 100%;
+  order: 10;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  margin-top: -2px;
+}
 .nextstep {
   font-family: var(--font-voice);
   font-style: italic;
@@ -2597,24 +2738,32 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 .duel-centre { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 
 /* ---------- toasts & the alarm strip ---------- */
+/* One lane, top-right of the rack frame, positioned by `positionToastLane`.
+   It used to stack up from the bottom centre — straight over PICK A / PICK B,
+   so the recovery affordance obscured the app's core teaching action. The
+   z-index is deliberately BELOW anything holding a pressed state or a teaching
+   strip (see the rule below), so this class of collision cannot come back by
+   accident: even a mispositioned lane would pass under them. */
 .toasts {
   position: fixed;
-  left: 50%;
-  bottom: calc(var(--keybar-h) + var(--s5));
-  transform: translateX(-50%);
-  z-index: 58;
+  top: 64px;
+  right: 16px;
+  z-index: 46;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: center;
+  align-items: flex-end;
   pointer-events: none;
 }
+/* The primary teaching affordances, and every control that holds a state,
+   sit above transient chrome — always. */
+.play-duel, .duel-mid, [aria-pressed] { position: relative; z-index: 50; }
 .toast {
   pointer-events: auto;
   display: flex;
   align-items: center;
   gap: var(--s3);
-  max-width: 62vw;
+  max-width: min(360px, 62vw);
   font-size: var(--t-body);
   color: var(--silk);
   background: linear-gradient(180deg, #21262e, #171a1f);
@@ -2625,8 +2774,20 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
   box-shadow: var(--cast);
   animation: toast-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
 }
-.toast.out { opacity: 0; transform: translateY(6px); transition: opacity 280ms ease, transform 280ms ease; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+.toast.out { opacity: 0; transform: translateY(-6px); transition: opacity 280ms ease, transform 280ms ease; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
+.toast-msg { flex: 1; min-width: 0; }
+/* What the lane is holding back. A queue with no counter is a queue that
+   looks like dropped messages. */
+.toast-stack {
+  flex: 0 0 auto;
+  font-size: var(--t-micro);
+  color: var(--silk-mute);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.toast-stack.hidden { display: none; }
 .toast-undo {
   font-size: var(--t-micro);
   letter-spacing: 0.14em;

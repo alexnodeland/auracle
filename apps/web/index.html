@@ -123,7 +123,12 @@
             <div class="subject-name" id="rack-subject">no patch loaded</div>
             <div class="subject-meta" id="rack-meta"></div>
           </div>
-          <button class="nextstep" id="nextstep" title="What to do next"></button>
+          <!-- A reserved row, not an inline chip: the callout's position must
+               not be a function of how long the patch's name happens to be.
+               The row keeps its height when the button is empty. -->
+          <div class="callout-row">
+            <button class="nextstep" id="nextstep" title="What to do next"></button>
+          </div>
           <div class="rack-tools">
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="rack-play" disabled>▶ sample</button></span>
             <label class="toggle" title="When committed, also teach the model that your edit beat the original">
@@ -180,6 +185,13 @@
               </div>
               <div class="rack-empty" id="rack-empty">Pick a patch from the bank — then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
+            <!-- The spec card, docked. It used to float over the graph it was
+                 describing — you could read what a module does or look at
+                 where it would go, never both — while the bench's lower band
+                 sat empty. Reading left to right: what it is, what it does,
+                 what the model thinks of it. The strip keeps its height
+                 whatever is in it, so nothing under the pointer ever moves. -->
+            <div class="spec-dock" id="spec-dock"></div>
             <!-- Held, not "tray". Placement goes direct from the node bank
                  now, so the only thing that lands here is what you unplugged —
                  and the strip says its own terms rather than implying they
