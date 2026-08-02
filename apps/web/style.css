@@ -2041,6 +2041,12 @@ input, textarea, .bi-rename {
   font-size: var(--t-label); cursor: pointer; padding: 0 2px;
 }
 .tray-item .t-x:hover { color: var(--led-red); }
+/* On its way into the patch: it stays on the shelf until the engine has taken
+   it (a shelf that empties on a promise is how a held chain got lost), but it
+   is inert while it waits, so it cannot be placed twice. */
+.tray-item.pending { opacity: 0.5; }
+.tray-item.pending .t-jack { cursor: progress; box-shadow: none; }
+.tray-item.pending .t-x { cursor: default; }
 
 /* ---- jacks & wires ---- */
 .jack { cursor: crosshair; }

@@ -273,19 +273,44 @@ function discardStagedUndo() {
   openEdit = null;
 }
 
-// The sentence an edit is owed *if it lands*, held until the reply for exactly
-// the reason its undo snapshot is. Said at post time — which is what every
-// placement used to do — it is a claim about an edit the engine has not
-// accepted yet: hit the depth ceiling and the app announced "wavefolder patched
-// into the wire", offered to take it back out, and only much later mentioned
-// that nothing had happened. A confirmation is a statement of fact, so it waits
-// for the fact.
+// What an edit owes *if it lands*, held until the reply for exactly the reason
+// its undo snapshot is.
+//
+// The sentence, first. Said at post time — which is what every placement used
+// to do — it is a claim about an edit the engine has not accepted yet: hit the
+// depth ceiling and the app announced "wavefolder patched into the wire",
+// offered to take it back out, and only much later mentioned that nothing had
+// happened. A confirmation is a statement of fact, so it waits for the fact.
+//
+// And the shelf entry, which is the same mistake with a body count. Dropping a
+// held chain onto a socket took it off HELD at post time, so an edit the engine
+// then refused left the patch untouched *and* the chain gone from the one place
+// the app promises "removed, but recoverable" — the only route in this app to
+// destroying work outright. It comes off the shelf when the engine has it, and
+// not before; until then it is marked `pending` and cannot be dragged again,
+// because a shelf entry you can still pick up is a shelf entry you can place
+// twice.
 let landedNote = null;
-/** Say what the edit that just landed did, now that it has. */
-function sayLandedNote() {
+let landedDrops = [];
+/** Pay what the edit that just landed owes. */
+function settleLanded() {
   const l = landedNote;
   landedNote = null;
+  for (const uid of landedDrops) unstage(uid);
+  landedDrops = [];
   if (l) note(l.text, l.opts);
+}
+/** …and take it all back when the engine refuses: nothing was announced,
+ *  and nothing left the shelf. */
+function forgetLanded() {
+  landedNote = null;
+  for (const uid of landedDrops) setTrayPending(uid, false);
+  landedDrops = [];
+}
+/** Bind an edit's promises at the moment it is queued or posted. */
+function bindLanded(landed) {
+  landedNote = landed && landed.text ? { text: landed.text, opts: landed.opts || {} } : null;
+  landedDrops = landed && landed.drop != null ? [landed.drop] : [];
 }
 /** The same promise for a whole-tree rewrite, which cannot carry its sentence
  *  through `sendStruct`: the text usually describes what the rewrite *found*,
@@ -800,9 +825,10 @@ worker.onmessage = (e) => {
       if (structural) {
         structInFlight = false;
         // It landed, so the step it displaced is now history worth keeping —
-        // and only now is the sentence about it a true one.
+        // and only now is the sentence about it a true one, and only now is
+        // the shelf entry it came from really spent.
         commitStagedUndo();
-        sayLandedNote();
+        settleLanded();
       }
       // Structural edits already reached the voices from the worker's early
       // `tree_json` post. Swapping the identical tree in again would buy a
@@ -888,7 +914,9 @@ worker.onmessage = (e) => {
       placeholderPending = null; // the tree it described never happened
       // The edit never landed, so the sentence that would have announced it is
       // not owed — and must not be said on top of the next edit that does land.
-      landedNote = null;
+      // The shelf keeps what the engine would not take: a refused drop leaves
+      // the chain exactly where the player left it, draggable again.
+      forgetLanded();
       // A refused restore means ⌘Z is aimed at a route the engine is turning
       // down; replaying the rest of the burst would say the same thing ten
       // times over. The stacks are untouched, so nothing is lost by stopping.
@@ -5202,13 +5230,12 @@ new ResizeObserver(() => {
 // re-sent only once the tree it will land on is the tree it was aimed at.
 let structInFlight = false;
 const structQueue = [];
-/** Post a structural op. `landedText` is the confirmation it earns *if the
- *  engine accepts it* — see `landedNote`; it is never said here. */
-function sendStruct(op, landedText, landedOpts) {
-  queueStruct(
-    { type: "edit_structure", op },
-    landedText ? { text: landedText, opts: landedOpts || {} } : null,
-  );
+/** Post a structural op. `landed` is what it earns *if the engine accepts it* —
+ *  `{text, opts}` for the confirmation, `{drop}` for a HELD entry that is only
+ *  really gone once the module is really in the patch. See `landedNote`;
+ *  neither is spent here. */
+function sendStruct(op, landed) {
+  queueStruct({ type: "edit_structure", op }, landed || null);
 }
 function queueStruct(msg, landed) {
   if (structInFlight) {
@@ -5224,12 +5251,15 @@ function queueStruct(msg, landed) {
     // ride *on* `msg`, which is structured-cloned to the worker and would
     // choke on the undo closure.
     structQueue.push({ msg, landed: landed || null });
+    // Waiting its turn is still in flight as far as the shelf is concerned.
+    if (landed && landed.drop != null) setTrayPending(landed.drop, true);
     // Nothing went out, so nothing may be charged to the edit that is out.
     stagingBound = null;
     return;
   }
   structInFlight = true;
-  landedNote = landed || null;
+  bindLanded(landed);
+  if (landed && landed.drop != null) setTrayPending(landed.drop, true);
   stageUndo();
   // Taken here, against the tree the op is aimed at. By the time the reply
   // lands `wb.rack` is the *new* rack and "was that node's parent binary?"
@@ -5563,7 +5593,15 @@ function openStructMenu(mod, x, y) {
     rows.push({
       label: "swap the two inputs",
       sub: `${inNames[0]} ⇄ ${inNames[1]}`,
-      run: () => sendStruct({ op: "swap_mix", key }),
+      // The one structural verb in this menu that said nothing at all. On a
+      // ducker or a vocoder it is the difference between the two patches, and
+      // on a mix it is inaudible — either way the player is owed a receipt and
+      // the undo that goes with it. Like every other confirmation here it is
+      // said on the reply, so a refused swap stays silent.
+      run: () => sendStruct({ op: "swap_mix", key }, {
+        text: `${plateTitle(key)}: ${inNames[0]} and ${inNames[1]} swapped.`,
+        opts: { undo: doUndo, undoLabel: "swap them back" },
+      }),
     });
   }
   rows.push({
@@ -5821,11 +5859,10 @@ function deleteKeeping(key, keep, name) {
 function unplugMod(ownerKey) {
   const old = modAtKey(ownerKey);
   let uid = null;
-  sendStruct(
-    { op: "set_mod", key: ownerKey, kind: "none" },
-    old ? `${fragLabel(old, true)} unplugged — it is held below.` : "modulation unplugged.",
-    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
-  );
+  sendStruct({ op: "set_mod", key: ownerKey, kind: "none" }, {
+    text: old ? `${fragLabel(old, true)} unplugged — it is held below.` : "modulation unplugged.",
+    opts: { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
+  });
   uid = old ? stageFragment(old, true) : null;
 }
 
@@ -7209,6 +7246,17 @@ function stageFragment(frag, isMod, opts) {
   return uid;
 }
 
+/** Mark a shelf entry as belonging to an edit that is still in flight. It stays
+ *  visible — the module is not in the patch yet, and a shelf that empties on a
+ *  promise is how the chain got lost in the first place — but it is inert until
+ *  the engine has answered, so the same chain cannot be placed twice. */
+function setTrayPending(uid, on) {
+  const t = tray.find((x) => x.uid === uid);
+  if (!t || !!t.pending === !!on) return;
+  t.pending = !!on;
+  renderTray();
+}
+
 function unstage(uid) {
   const i = tray.findIndex((t) => t.uid === uid);
   if (i >= 0) tray.splice(i, 1);
@@ -7290,19 +7338,28 @@ function renderTray() {
   }
   for (const t of tray) {
     const el = document.createElement("div");
-    el.className = "tray-item" + (t.isMod ? " mod" : "");
+    el.className = "tray-item" + (t.isMod ? " mod" : "") + (t.pending ? " pending" : "");
+    const jackTitle = t.pending
+      ? "going into the patch — waiting for the engine"
+      : `Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack`;
     el.innerHTML = `
       <div class="ti-head">
-        <span class="t-jack" title="Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack"></span>
+        <span class="t-jack" title="${esc(jackTitle)}"></span>
         <span class="ti-name">${esc(t.label)}${t.note ? ` <span class="ti-why">${esc(t.note)}</span>` : ""}</span>
         <button class="t-x" title="Discard">✕</button>
       </div>
       <div class="ti-params mono">${esc(fragParamStrip(t.frag)) || "—"}</div>`;
-    el.querySelector(".t-x").onclick = () => unstage(t.uid);
+    // Discarding something the engine is in the middle of accepting would race
+    // its own reply, so the ✕ waits with it.
+    el.querySelector(".t-x").onclick = () => {
+      if (t.pending) return note("that one is going into the patch — give it a moment");
+      unstage(t.uid);
+    };
     const tjack = el.querySelector(".t-jack");
     claimGesture(tjack); // the tray scrolls sideways; the cable pull is not that
     tjack.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
+      if (t.pending) return;
       startWireDrag({ mode: t.isMod ? "tray-mod" : "tray-audio", item: t, kind: t.isMod ? "mod" : "audio" }, ev);
     });
     holder.appendChild(el);
@@ -8323,29 +8380,28 @@ function placeModule(kind, mode, key) {
     // Every one of these sentences is a confirmation, so it is handed to the
     // send and said on the reply — never here, where the engine has not yet
     // agreed that any of it is true. See `landedNote`.
-    sendStruct(
-      { op: "set_mod_tree", key, m: wrapMod(m, old) },
-      wraps
+    sendStruct({ op: "set_mod_tree", key, m: wrapMod(m, old) }, {
+      text: wraps
         ? `${m.name} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
         : old
           ? `${m.name} replaced the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest} — the old one is held below.`
           : `${m.name} → ${dest} on ${kindName(owner)}`,
-      undo,
-    );
+      opts: undo,
+    });
     if (old && !wraps) staged = stageFragment(old, true);
   } else if (mode === "replace" || m.sort === "source") {
     const old = nodeAtKey(key);
     const chain = old && subtreeSize(old) > 1;
-    sendStruct(
-      { op: "replace_tree", key, node: m.frag() },
-      chain
+    sendStruct({ op: "replace_tree", key, node: m.frag() }, {
+      text: chain
         ? `${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
         : `${m.name} took the socket.`,
-      undo,
-    );
+      opts: undo,
+    });
     if (chain) staged = stageFragment(old, false);
   } else {
-    sendStruct({ op: "insert_tree", key, node: m.frag() }, `${m.name} patched into the wire.`, undo);
+    sendStruct({ op: "insert_tree", key, node: m.frag() },
+      { text: `${m.name} patched into the wire.`, opts: undo });
   }
   disarm();
   $("nb-status").textContent = "";
@@ -9225,22 +9281,21 @@ function onWireUp(ev) {
     const splice = !SOURCE_TAGS.includes(nodeTag(frag)) &&
                    (!fromTray || w.item.rewrap || subtreeSize(frag) === 1);
     if (splice) {
-      sendStruct(
-        { op: "insert_tree", key: childKey, node: frag },
-        w.item.rewrap ? `${label} is back in the wire, with its settings.` : `${label} patched into the wire.`,
-      );
+      sendStruct({ op: "insert_tree", key: childKey, node: frag }, {
+        text: w.item.rewrap ? `${label} is back in the wire, with its settings.` : `${label} patched into the wire.`,
+        drop: w.item.uid ?? null,
+      });
     } else {
       const old = nodeAtKey(childKey);
       const chain = old && subtreeSize(old) > 1;
-      sendStruct(
-        { op: "replace_tree", key: childKey, node: frag },
-        chain
+      sendStruct({ op: "replace_tree", key: childKey, node: frag }, {
+        text: chain
           ? `${label} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
           : `${label} took the socket.`,
-      );
+        drop: w.item.uid ?? null,
+      });
       if (chain) stageFragment(old, false);
     }
-    if (w.item.uid) unstage(w.item.uid);
   } else if (w.mode === "tray-mod" || w.mode === "palette-mod") {
     const modKey = jack && jack.getAttribute("data-modkey");
     const label = w.item.kindId ? kindName(w.item.kindId) : fragLabel(w.item.frag, true);
@@ -9250,12 +9305,11 @@ function onWireUp(ev) {
       return;
     }
     const old = modAtKey(modKey);
-    sendStruct(
-      { op: "set_mod_tree", key: modKey, m: w.item.frag },
-      `${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`,
-    );
+    sendStruct({ op: "set_mod_tree", key: modKey, m: w.item.frag }, {
+      text: `${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`,
+      drop: w.item.uid ?? null,
+    });
     if (old) stageFragment(old, true);
-    if (w.item.uid) unstage(w.item.uid);
   } else if (w.mode === "connect-audio" || w.mode === "connect-mod") {
     // No movement at all is a click, not a miss — the same gesture without a
     // drag, for touch and for long distances.
