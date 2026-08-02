@@ -273,6 +273,31 @@ function discardStagedUndo() {
   openEdit = null;
 }
 
+// The sentence an edit is owed *if it lands*, held until the reply for exactly
+// the reason its undo snapshot is. Said at post time — which is what every
+// placement used to do — it is a claim about an edit the engine has not
+// accepted yet: hit the depth ceiling and the app announced "wavefolder patched
+// into the wire", offered to take it back out, and only much later mentioned
+// that nothing had happened. A confirmation is a statement of fact, so it waits
+// for the fact.
+let landedNote = null;
+/** Say what the edit that just landed did, now that it has. */
+function sayLandedNote() {
+  const l = landedNote;
+  landedNote = null;
+  if (l) note(l.text, l.opts);
+}
+/** The same promise for a whole-tree rewrite, which cannot carry its sentence
+ *  through `sendStruct`: the text usually describes what the rewrite *found*,
+ *  so it is only knowable after the mutation has run. Called immediately after
+ *  a successful `applyTreeRewrite`, while that rewrite is the edit in flight —
+ *  the engine validates these too (the ceilings), so they can be refused, and
+ *  a refused one must not have announced itself. */
+function noteOnLanding(text, opts) {
+  if (!structInFlight) return note(text, opts); // nothing is pending to wait on
+  landedNote = { text, opts: opts || {} };
+}
+
 // How the edit in flight moves a trace address, or null if it cannot be known.
 // Computed at *send* time, because it is a statement about the tree the op was
 // aimed at, and consumed by the bench reply — see `lockRemapFor`.
@@ -289,21 +314,46 @@ let stagedLockRemap = null;
 // route now) used to consume the step anyway, so ⌘Z would eat one level of
 // history and give nothing back.
 let restorePending = null; // {kind: "undo"|"redo", cur: <tree json before>}
-function doUndo() {
-  if (structInFlight) return note("still applying the last edit — give it a moment");
-  if (undoStack.length === 0 || !wb.tree) return note("nothing to undo");
-  restorePending = { kind: "undo", cur: JSON.stringify(wb.tree) };
-  restoreInFlight = true;
-  structInFlight = true;
-  send({ type: "edit_set_tree", json: undoStack[undoStack.length - 1] });
+
+// ⌘Z pressed ten times quickly is ten undos, not one. Both of these used to
+// answer "an edit is already in flight" by dropping the press — measured: ten
+// fast presses advanced the patch one step and swallowed nine, with a toast
+// that read like a hint rather than a refusal. So the request is *counted*.
+//
+// Counted, and never queued as a tree: a queued tree is a statement about a
+// tree that has since moved, and posting one would restore over the top of
+// whatever landed in between. Each drain re-reads the live stack and sends the
+// step the player would get if they pressed it right then. Undo and redo
+// requests cancel each other, because that is what they mean.
+let restoreBacklog = 0; // >0 undos owed, <0 redos owed
+const RESTORE_BACKLOG_MAX = 60; // the depth of the stack itself
+
+function doUndo() { requestRestore("undo"); }
+function doRedo() { requestRestore("redo"); }
+
+function requestRestore(kind) {
+  const step = kind === "undo" ? 1 : -1;
+  // A restore is a whole tree, so it also waits behind ops that are still
+  // queued — those are aimed at the tree it would replace.
+  if (structInFlight || structQueue.length) {
+    restoreBacklog = clamp(restoreBacklog + step, -RESTORE_BACKLOG_MAX, RESTORE_BACKLOG_MAX);
+    return;
+  }
+  performRestore(kind);
 }
-function doRedo() {
-  if (structInFlight) return note("still applying the last edit — give it a moment");
-  if (redoStack.length === 0 || !wb.tree) return note("nothing to redo");
-  restorePending = { kind: "redo", cur: JSON.stringify(wb.tree) };
+
+function performRestore(kind) {
+  const stack = kind === "undo" ? undoStack : redoStack;
+  if (stack.length === 0 || !wb.tree) {
+    // Nothing left to land on, so the rest of the burst has nothing to do
+    // either — said once rather than once per press.
+    restoreBacklog = 0;
+    return note(kind === "undo" ? "nothing to undo" : "nothing to redo");
+  }
+  restorePending = { kind, cur: JSON.stringify(wb.tree) };
   restoreInFlight = true;
   structInFlight = true;
-  send({ type: "edit_set_tree", json: redoStack[redoStack.length - 1] });
+  send({ type: "edit_set_tree", json: stack[stack.length - 1] });
 }
 /** The restore landed: only now does the step actually move. */
 function settleRestore() {
@@ -749,8 +799,10 @@ worker.onmessage = (e) => {
       }
       if (structural) {
         structInFlight = false;
-        // It landed, so the step it displaced is now history worth keeping.
+        // It landed, so the step it displaced is now history worth keeping —
+        // and only now is the sentence about it a true one.
         commitStagedUndo();
+        sayLandedNote();
       }
       // Structural edits already reached the voices from the worker's early
       // `tree_json` post. Swapping the identical tree in again would buy a
@@ -808,8 +860,13 @@ worker.onmessage = (e) => {
       break;
     }
     case "edit_rejected": {
+      const refusedRestore = restorePending !== null;
       if (m.error) {
-        note(`edit rejected: ${m.error}`);
+        // Urgent, because this sentence is the only thing standing between the
+        // player and a false belief about their own patch: they made a gesture,
+        // and it did not happen. Queued behind ordinary confirmations it
+        // arrived seconds late and, under a burst, not at all.
+        note(`edit rejected: ${m.error}`, { urgent: true });
         // Nothing happened, so nothing is owed to history — and nothing that
         // rode along with the edit is owed to HELD either. Without this the
         // next ⌘Z restored the patch the user is already looking at (a dead
@@ -829,6 +886,13 @@ worker.onmessage = (e) => {
       structInFlight = false;
       restoreInFlight = false;
       placeholderPending = null; // the tree it described never happened
+      // The edit never landed, so the sentence that would have announced it is
+      // not owed — and must not be said on top of the next edit that does land.
+      landedNote = null;
+      // A refused restore means ⌘Z is aimed at a route the engine is turning
+      // down; replaying the rest of the burst would say the same thing ten
+      // times over. The stacks are untouched, so nothing is lost by stopping.
+      if (refusedRestore) restoreBacklog = 0;
       if (editQueue) {
         const q = editQueue;
         editQueue = null;
@@ -1170,10 +1234,21 @@ const UNDO_WINDOW_MS = 7000;
 // The queue matters for more than tidiness: a toast's time-to-live starts when
 // it becomes *visible*, so an undo that waits its turn still gets its full
 // seven seconds rather than expiring behind someone else's confirmation.
+//
+// Rule 4 arrived later, from the acceptance walkthrough: a REFUSAL IS NOT A
+// REMARK. Everything above treats the lane as first-in-first-out, which is
+// right for confirmations and wrong for the one message class that answers a
+// gesture the player has already made and still believes in. Measured on the
+// depth ceiling: the refusal surfaced eight seconds after the edit it was
+// about, and under a burst it never surfaced at all — it carries no action, so
+// the staleness drop and the backlog trim both cut exactly it. So `urgent`
+// jumps the queue, displaces what is on screen, and is exempt from both cuts.
 const toastQueue = [];
 let toastLive = null;
 /** A queued remark about a patch state that has moved on is worse than
- *  silence. An undo is exempt: being still actionable is its whole point. */
+ *  silence. An undo is exempt: being still actionable is its whole point.
+ *  So is a refusal — an unheard "that did not happen" is the one omission
+ *  that leaves the player believing something false. */
 const TOAST_STALE_MS = 9000;
 
 function note(text, opts = {}) {
@@ -1197,25 +1272,48 @@ function note(text, opts = {}) {
   const stack = document.createElement("span");
   stack.className = "toast-stack mono hidden";
   el.appendChild(stack);
-  toastQueue.push(entry);
+  if (opts.urgent) preemptToast(entry);
+  else toastQueue.push(entry);
   trimToastQueue();
   toastPump();
   return el;
 }
 
+/** Put a refusal at the head of the lane and take the floor for it. Whatever
+ *  was on screen is *interrupted*, not spent: it goes back into the queue
+ *  right behind the refusal with its undo button still live, and its window
+ *  restarts when it is visible again — the same rule every queued toast
+ *  already gets. Cutting it instead would answer one silent failure by
+ *  creating another. */
+function preemptToast(entry) {
+  toastQueue.unshift(entry);
+  const held = toastLive;
+  if (!held) return;
+  clearTimeout(held.timer);
+  held.timer = null;
+  held.el.classList.remove("out");
+  held.el.remove();
+  toastLive = null;
+  toastQueue.splice(1, 0, held);
+}
+
 /** Keep the backlog shallow, and spend the cut on remarks rather than on
- *  anything still carrying an action. */
+ *  anything still carrying an action — or on a refusal, which is the one
+ *  thing in the lane that cannot be said later instead. */
 function trimToastQueue() {
   while (toastQueue.length > MAX_TOASTS) {
-    const i = toastQueue.findIndex((t) => !t.opts.undo);
-    toastQueue.splice(i >= 0 ? i : 0, 1);
+    let i = toastQueue.findIndex((t) => !t.opts.undo && !t.opts.urgent);
+    if (i < 0) i = toastQueue.findIndex((t) => !t.opts.urgent);
+    // Last resort takes from the back, never the front: the head is where the
+    // refusal that just pre-empted is sitting.
+    toastQueue.splice(i >= 0 ? i : toastQueue.length - 1, 1);
   }
   renderToastStack();
 }
 
 function toastPump() {
   if (toastLive) return;
-  while (toastQueue.length && !toastQueue[0].opts.undo &&
+  while (toastQueue.length && !toastQueue[0].opts.undo && !toastQueue[0].opts.urgent &&
          Date.now() - toastQueue[0].born > TOAST_STALE_MS) {
     toastQueue.shift();
   }
@@ -1947,7 +2045,10 @@ document.addEventListener("keydown", (e) => {
     // In EVOLVE, ⌘Z takes back the vote still inside its undo window;
     // everywhere else it is the workbench edit undo.
     if (!e.shiftKey && currentView === "evolve" && retractVote()) return;
-    if (!restoreInFlight) e.shiftKey ? doRedo() : doUndo();
+    // Unconditional: a restore already in flight is a reason to *queue* the
+    // press, not to discard it — which is what this gate did, silently, to
+    // nine presses out of ten in a burst. `requestRestore` owns the waiting.
+    e.shiftKey ? doRedo() : doUndo();
     return;
   }
   // Camera zoom, on the bindings every expert already has in their fingers.
@@ -4711,9 +4812,15 @@ function fitAll(animate) {
  *  node identity), so the honest reading is: whatever the keyboard is on. */
 function fitSelection(animate) {
   if (!wb.rack) return;
-  const el = document.activeElement?.closest?.("[data-addr], .jack");
+  // The plate is a tabstop in its own right — the whole structural keyboard
+  // hangs off it — and it was the one focus this could not read, so a player
+  // arrowing between modules got fit-all from a key that promises the
+  // opposite. `closest` still finds the innermost match, so a focused knob is
+  // answered with its knob's key rather than its plate's.
+  const el = document.activeElement?.closest?.("[data-addr], .jack, g[data-key]");
   const key = el && (el.dataset?.addr?.split("#")[0] || el.getAttribute("data-modkey") ||
-    (el.getAttribute("data-childkey") || "").replace(/\/[01]$/, ""));
+    (el.getAttribute("data-childkey") || "").replace(/\/[01]$/, "") ||
+    el.getAttribute("data-key"));
   const b = key && rackBoxes.get(key);
   if (!b) return fitAll(animate);
   fitBox({ x: b.x - 40, y: b.y - 40, w: b.w + 80, h: b.h + 80 }, animate);
@@ -4733,6 +4840,20 @@ function zoomAt(clientX, clientY, factor) {
   viewUserSet = true;
   applyView();
 }
+/** Give up a text field's focus in favour of the canvas. Only text entry is
+ *  taken: a focused knob or plate is a tabstop the player is deliberately on,
+ *  and the rack frame — not the body — receives the focus so the keyboard
+ *  stays somewhere meaningful. */
+function releaseTextEntry() {
+  const a = document.activeElement;
+  if (!a || !a.matches?.("input:not([type=range]), select, textarea, [contenteditable]")) return;
+  a.blur();
+  const frame = $("rack-frame");
+  if (!frame) return;
+  if (!frame.hasAttribute("tabindex")) frame.setAttribute("tabindex", "-1");
+  frame.focus({ preventScroll: true });
+}
+
 /** Keyboard zoom has no cursor to anchor to, so it anchors the frame centre. */
 function zoomStep(factor) {
   const r = $("rack-svg").getBoundingClientRect();
@@ -4914,6 +5035,14 @@ $("rack-scroll").addEventListener("wheel", (ev) => {
 // otherwise claim the same press — the modifier decides, not the target.
 $("rack-scroll").addEventListener("pointerdown", (ev) => {
   if (!wb.rack) return;
+  // Whatever this press turns out to be, it is a press on the canvas — and the
+  // camera gestures below call `preventDefault`, which suppresses the implicit
+  // blur a click would otherwise perform. So the node bank's search field kept
+  // focus straight through clicking and panning the rack, and every camera key
+  // after it went into the text field: `Home` moved the caret instead of
+  // fitting the patch, and `.` typed a full stop. Hand the focus back to the
+  // thing the gesture is actually about.
+  releaseTextEntry();
   const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
   const wants =
     ev.button === 1 ||                        // middle-drag, everywhere
@@ -5073,10 +5202,15 @@ new ResizeObserver(() => {
 // re-sent only once the tree it will land on is the tree it was aimed at.
 let structInFlight = false;
 const structQueue = [];
-function sendStruct(op) {
-  queueStruct({ type: "edit_structure", op });
+/** Post a structural op. `landedText` is the confirmation it earns *if the
+ *  engine accepts it* — see `landedNote`; it is never said here. */
+function sendStruct(op, landedText, landedOpts) {
+  queueStruct(
+    { type: "edit_structure", op },
+    landedText ? { text: landedText, opts: landedOpts || {} } : null,
+  );
 }
-function queueStruct(msg) {
+function queueStruct(msg, landed) {
   if (structInFlight) {
     // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
     // deeper than a rapid double-click means the worker is wedged, and
@@ -5085,12 +5219,17 @@ function queueStruct(msg) {
     if (structQueue.length >= 8) {
       return note("still applying the last edit — give it a moment");
     }
-    structQueue.push(msg);
+    // The confirmation travels with the op rather than being said now, for the
+    // same reason it waits on the reply: nothing has happened yet. It cannot
+    // ride *on* `msg`, which is structured-cloned to the worker and would
+    // choke on the undo closure.
+    structQueue.push({ msg, landed: landed || null });
     // Nothing went out, so nothing may be charged to the edit that is out.
     stagingBound = null;
     return;
   }
   structInFlight = true;
+  landedNote = landed || null;
   stageUndo();
   // Taken here, against the tree the op is aimed at. By the time the reply
   // lands `wb.rack` is the *new* rack and "was that node's parent binary?"
@@ -5202,8 +5341,18 @@ function remapLocks(remap) {
   return dropped;
 }
 function drainStruct() {
-  if (structInFlight || structQueue.length === 0) return;
-  queueStruct(structQueue.shift());
+  if (structInFlight) return;
+  if (structQueue.length) {
+    const q = structQueue.shift();
+    queueStruct(q.msg, q.landed);
+    return;
+  }
+  // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
+  // step — one per reply, each read off the stack as it stands now.
+  if (restoreBacklog === 0) return;
+  const kind = restoreBacklog > 0 ? "undo" : "redo";
+  restoreBacklog -= restoreBacklog > 0 ? 1 : -1;
+  performRestore(kind);
 }
 
 // ---------- client-side tree rewrites ----------
@@ -5497,7 +5646,7 @@ function duplicateModule(key) {
     return null;
   });
   if (!ok) return;
-  note(`a second ${name} now sits after the first, with the same settings.`,
+  noteOnLanding(`a second ${name} now sits after the first, with the same settings.`,
     { undo: doUndo, undoLabel: "take it out" });
 }
 
@@ -5506,6 +5655,8 @@ function duplicateModule(key) {
 function extractModule(key) {
   const here = nodeAtKey(key);
   if (!here) return note("that module has moved");
+  // Named before the rewrite goes out, off the rack the player is looking at.
+  const what = chainTitle(key);
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     const node = nodeAtIn(tree, key);
@@ -5518,9 +5669,9 @@ function extractModule(key) {
   });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
-  note(
+  noteOnLanding(
     doomed
-      ? `${fragLabel(doomed, false)} is held below — the socket is empty.`
+      ? `${what} is held below — the socket is empty.`
       : "the socket is empty.",
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
   );
@@ -5555,7 +5706,7 @@ function bypassModule(key) {
   if (!ok) return;
   const inNames = MOD_BY_KIND[rackKindAt(key)]?.inNames;
   const uid = head ? stageFragment(head, false, { rewrap: true, note: "bypassed" }) : null;
-  note(
+  noteOnLanding(
     lost > 1
       ? `${name} bypassed — its ${inNames ? inNames[1] : "second"} branch (${lost} modules) is held with it.`
       : `${name} bypassed — it is held below with its settings; drag it back onto a ○ to switch it in again.`,
@@ -5578,7 +5729,10 @@ function deleteModule(key, x, y) {
   if (f.length === 2) {
     const names = spec?.inNames || ["a", "b"];
     return openChooser(x, y, `delete ${name} — which input survives?`, [0, 1].map((i) => {
-      const keepName = fragLabel(node[tag][f[i]] || {}, false);
+      // Both branches are plates on screen, so both are named the way the rack
+      // names them — a survivor choice is exactly the wrong place to make the
+      // player decode a label they have never been shown.
+      const keepName = plateTitle(`${key}/${i}`);
       const dropSize = subtreeSize(node[tag][f[1 - i]] || {});
       return {
         label: `delete, keep ${names[i]}`,
@@ -5595,9 +5749,8 @@ function deleteModule(key, x, y) {
   // kind of edit that has to be said out loud first.
   const par = parentOfKey(key);
   if (par && par.binary) {
-    const pf = childFields(MOD_BY_TAG[nodeTag(par.node)] || {});
     const mine = Number(key.slice(key.lastIndexOf("/") + 1));
-    const sib = fragLabel(par.node[nodeTag(par.node)][pf[1 - mine]] || {}, false);
+    const sib = plateTitle(`${par.key}/${1 - mine}`);
     const pname = kindName(rackKindAt(par.key)) || "the module above";
     return openChooser(x, y, `delete this branch?`, [{
       label: `delete ${name} and the ${pname}`,
@@ -5629,13 +5782,16 @@ function deleteModule(key, x, y) {
   });
   if (!ok) return;
   const uid = head ? stageFragment(head, false, { rewrap: true }) : null;
-  note(`${name} deleted — it is held below.`,
+  noteOnLanding(`${name} deleted — it is held below.`,
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" });
 }
 
 /** Collapse the binary at `key` onto child `keep`; the other branch goes to
  *  HELD whole, so "discards 3 modules" is a statement about where they went. */
 function deleteKeeping(key, keep, name) {
+  // Named while it is still in the rack, and by its plate: this sentence is
+  // the receipt for a branch the player just agreed to lose.
+  const droppedName = chainTitle(`${key}/${1 - keep}`);
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     const node = nodeAtIn(tree, key);
@@ -5652,9 +5808,9 @@ function deleteKeeping(key, keep, name) {
   });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
-  note(
+  noteOnLanding(
     doomed
-      ? `${name} deleted — ${fragLabel(doomed, false)} is held below.`
+      ? `${name} deleted — ${droppedName} is held below.`
       : `${name} deleted.`,
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
   );
@@ -5664,12 +5820,13 @@ function deleteKeeping(key, keep, name) {
  *  one field and `set_mod` says exactly that. */
 function unplugMod(ownerKey) {
   const old = modAtKey(ownerKey);
-  sendStruct({ op: "set_mod", key: ownerKey, kind: "none" });
-  const uid = old ? stageFragment(old, true) : null;
-  note(
+  let uid = null;
+  sendStruct(
+    { op: "set_mod", key: ownerKey, kind: "none" },
     old ? `${fragLabel(old, true)} unplugged — it is held below.` : "modulation unplugged.",
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
   );
+  uid = old ? stageFragment(old, true) : null;
 }
 
 // ---------- one floating menu, one keyboard ----------
@@ -7004,6 +7161,31 @@ function fragLabel(frag, isMod) {
   return name + (size > 1 ? `·${size}` : "");
 }
 
+/** The name on the plate at a trace key — the words the player has actually
+ *  read off the rack. `fragLabel` answers in the term's own vocabulary
+ *  (`wavefolder·3` is a kind plus a subtree size), which is right for a
+ *  fragment on the shelf and a leak everywhere the thing being named is still
+ *  a plate on screen: `·3` is notation nobody has been shown, and the number
+ *  reads like an instance id. The pick chip has always named plates this way;
+ *  these are the surfaces that had not. */
+function plateTitle(key) {
+  if (isPlaceholderKey(key)) return "the empty socket";
+  const m = wb.rack?.modules.find((x) => x.key === key);
+  const here = nodeAtKey(key);
+  return m?.title || kindName(rackKindAt(key)) || (here ? fragLabel(here, false) : "that module");
+}
+
+/** …and how to name a whole subtree that is about to leave the patch: the
+ *  plate at its head, plus an honest count of what is going with it. That
+ *  count is the one true thing `·3` was saying, so it is kept — in the words
+ *  the rest of the app already uses for it ("a 3-module chain"). */
+function chainTitle(key) {
+  const here = nodeAtKey(key);
+  const n = here ? subtreeSize(here) : 1;
+  const title = plateTitle(key);
+  return n > 1 ? `${title} (a ${n}-module chain)` : title;
+}
+
 /** Put a fragment on the shelf. `opts.rewrap` marks a head-only module that
  *  wants to be spliced back *into* a wire rather than to take the socket —
  *  what bypass leaves behind. */
@@ -7440,16 +7622,26 @@ function nbSetHolding() {
   return holding;
 }
 
-/** Why a chip is dimmed, in one sentence, in the player's terms. The three
- *  reasons are genuinely different — no patch / nothing to modulate / wrong
- *  sort for the socket you already chose — and collapsing them into
- *  "unavailable" is what makes a filtered palette feel arbitrary. */
+/** Why a chip is dimmed, in one sentence, in the player's terms. The reasons
+ *  are genuinely different — no patch / nothing to modulate / wrong sort for
+ *  the socket you already chose — and collapsing them into "unavailable" is
+ *  what makes a filtered palette feel arbitrary. A *wrong* reason is worse
+ *  than a collapsed one: the mismatch branch had two arms for three cases, so
+ *  every source chip dimmed by an insert socket was told it "moves knobs" and
+ *  "does not carry audio", which is false about all six of them. */
 function chipBlockedWhy(m, { hasRack, hasModSocket, mismatch }) {
   if (!hasRack) return "No patch loaded — pick one from the bank on the left first.";
   if (mismatch) {
-    return pendingTarget.accepts.includes("mod")
-      ? `${m.name} carries audio — that jack carries control voltage. Pick something amber.`
-      : `${m.name} moves knobs; it does not carry audio, so it cannot sit in the signal path — it goes in a mod slot.`;
+    if (pendingTarget.accepts.includes("mod")) {
+      return `${m.name} carries audio — that jack carries control voltage. Pick something amber.`;
+    }
+    // A source has no input, so there is no wire to splice it into: it starts
+    // the signal rather than passing one through. The socket already chosen is
+    // an insert, and the only thing a source can do to a socket is take it.
+    if (m.sort === "source") {
+      return `${m.name} has no input — it starts a signal rather than passing one through, so it cannot go into a wire. It can only replace what feeds something.`;
+    }
+    return `${m.name} moves knobs; it does not carry audio, so it cannot sit in the signal path — it goes in a mod slot.`;
   }
   if (m.sort === "mod" && !hasModSocket) {
     return `Nothing in this patch takes modulation yet — add a filter and ${m.name} has somewhere to go.`;
@@ -7820,7 +8012,12 @@ function pickModule(kind) {
           ? `${m.name} is an audio module — that jack carries control voltage. Pick something from the amber groups, or esc to cancel.`
           : m.sort === "mod"
             ? `${m.name} moves knobs; it does not carry audio, so it cannot ${p.mode === "replace" ? "replace" : "go after"} that. It goes in a mod ○.`
-            : `${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`,
+            // Same correction as `chipBlockedWhy`: telling someone holding a
+            // vco to "pick an audio module" answers a question they did not
+            // get wrong. What is missing is an input, not audio.
+            : m.sort === "source"
+              ? `${m.name} has no input — it starts a signal rather than passing one through, so it cannot go into a wire. Replace something with it instead, or esc to cancel.`
+              : `${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`,
       );
       return;
     }
@@ -7941,11 +8138,14 @@ function socketLabel(jack) {
   // A hole is not an occupant: nothing is displaced and nothing is held, so
   // the promise must not be worded as if something were about to be lost.
   if (isPlaceholderKey(key)) return `fills the empty socket with ${name}`;
-  const occupant = nodeAtKey(key);
-  const what = occupant ? fragLabel(occupant, false) : "the socket";
+  // By the title on the plate, not by the trace id — this line is read at the
+  // moment of the decision, with the plate itself right there to compare it
+  // to. And "after", because that is the op: the socket's occupant keeps
+  // feeding it, and the new module goes between the occupant and its parent.
+  const what = plateTitle(key);
   return armed && armed.sort === "source"
     ? `replaces ${what}`
-    : `insert ${name} before ${what}`;
+    : `insert ${name} after ${what}`;
 }
 
 function disarm() {
@@ -8120,9 +8320,11 @@ function placeModule(kind, mode, key) {
     // recursive, and "drop a quantizer on this cable" should not first cost
     // you the modulator that made the cable worth quantizing.
     const wraps = (m.modSort === "op" || m.modSort === "pair") && old;
-    sendStruct({ op: "set_mod_tree", key, m: wrapMod(m, old) });
-    if (old && !wraps) staged = stageFragment(old, true);
-    note(
+    // Every one of these sentences is a confirmation, so it is handed to the
+    // send and said on the reply — never here, where the engine has not yet
+    // agreed that any of it is true. See `landedNote`.
+    sendStruct(
+      { op: "set_mod_tree", key, m: wrapMod(m, old) },
       wraps
         ? `${m.name} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
         : old
@@ -8130,18 +8332,20 @@ function placeModule(kind, mode, key) {
           : `${m.name} → ${dest} on ${kindName(owner)}`,
       undo,
     );
+    if (old && !wraps) staged = stageFragment(old, true);
   } else if (mode === "replace" || m.sort === "source") {
     const old = nodeAtKey(key);
-    sendStruct({ op: "replace_tree", key, node: m.frag() });
-    if (old && subtreeSize(old) > 1) {
-      staged = stageFragment(old, false);
-      note(`${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`, undo);
-    } else {
-      note(`${m.name} took the socket.`, undo);
-    }
+    const chain = old && subtreeSize(old) > 1;
+    sendStruct(
+      { op: "replace_tree", key, node: m.frag() },
+      chain
+        ? `${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
+        : `${m.name} took the socket.`,
+      undo,
+    );
+    if (chain) staged = stageFragment(old, false);
   } else {
-    sendStruct({ op: "insert_tree", key, node: m.frag() });
-    note(`${m.name} patched into the wire.`, undo);
+    sendStruct({ op: "insert_tree", key, node: m.frag() }, `${m.name} patched into the wire.`, undo);
   }
   disarm();
   $("nb-status").textContent = "";
@@ -8303,11 +8507,14 @@ function offerConnect(srcKey, targetKey, kind, cx, cy) {
   const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
   // A hole is not a decision. Dropping into one is unambiguously a move.
   if (isPlaceholderKey(targetKey)) return connectMove(srcKey, targetKey);
-  const hereName = here ? fragLabel(here, false) : "what is there";
+  // Two namings, because the two rows do different things to the same socket:
+  // move displaces the whole subtree to HELD, branch mixes into its head.
+  const hereName = here ? plateTitle(targetKey) : "what is there";
+  const hereChain = here ? chainTitle(targetKey) : "what is there";
   openChooser(cx, cy, `${srcName} → ${ownerName}`, [
     {
       label: "move it here",
-      sub: `${srcName} leaves where it is — its old socket becomes a hole — and ${hereName} is held below.`,
+      sub: `${srcName} leaves where it is — its old socket becomes a hole — and ${hereChain} is held below.`,
       run: () => connectMove(srcKey, targetKey),
     },
     {
@@ -8330,6 +8537,7 @@ function openChooser(x, y, head, rows) {
 function connectMove(srcKey, targetKey) {
   const srcName = kindName(rackKindAt(srcKey)) || "that";
   const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
+  const hereChain = chainTitle(targetKey); // named before the tree moves
   let doomed = null;
   const ok = applyTreeRewrite((tree, marks) => {
     if (keyInside(targetKey, srcKey)) {
@@ -8352,9 +8560,9 @@ function connectMove(srcKey, targetKey) {
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   const undo = { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" };
-  note(
+  noteOnLanding(
     doomed
-      ? `${srcName} now feeds ${ownerName} — the ${fragLabel(doomed, false)} it displaced is held below, and its old socket is empty.`
+      ? `${srcName} now feeds ${ownerName} — the ${hereChain} it displaced is held below, and its old socket is empty.`
       : `${srcName} now feeds ${ownerName} — its old socket is empty.`,
     undo,
   );
@@ -8367,7 +8575,7 @@ function connectMove(srcKey, targetKey) {
 function connectBranch(srcKey, targetKey) {
   const srcName = kindName(rackKindAt(srcKey)) || "that";
   const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
-  let hereName = "";
+  const hereName = plateTitle(targetKey); // the plate it will mix with
   const ok = applyTreeRewrite((tree) => {
     if (keyInside(targetKey, srcKey)) {
       return "that socket is downstream of this module — branching into it would be a loop, and the patch is a tree";
@@ -8375,7 +8583,6 @@ function connectBranch(srcKey, targetKey) {
     const src = nodeAtIn(tree, srcKey);
     const here = nodeAtIn(tree, targetKey);
     if (!src || !here) return "that socket has moved — try the cable again";
-    hereName = fragLabel(here, false);
     const spec = MOD_BY_KIND.mix;
     const mix = spec.frag();
     const f = childFields(spec);
@@ -8385,7 +8592,7 @@ function connectBranch(srcKey, targetKey) {
     return null;
   });
   if (!ok) return;
-  note(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
+  noteOnLanding(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
 }
 
 /** Modulation has one slot per module, so its only verb is move. */
@@ -8410,7 +8617,7 @@ function connectMoveMod(srcKey, targetKey) {
   });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, true) : null;
-  note(
+  noteOnLanding(
     `${fragLabel(srcMod, true)} → ${dest} on ${kindName(rackKindAt(targetKey))}` +
     (doomed ? ` — the ${fragLabel(doomed, true)} it replaced is held below.` : ""),
     { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
@@ -8616,7 +8823,12 @@ function pickFeedback() {
         verb = replaces ? "replace" : "fill";
       } else {
         caretKey = pickHoverKey;
-        verb = "insert before";
+        // The same op as the ⋯ handoff above, and therefore the same word for
+        // it: `insert_tree` at this socket puts the module between its
+        // occupant and whatever the occupant feeds, so the signal reaches it
+        // *after* the plate the chip is naming. This said "insert before" and
+        // the menu said "insert after" about the identical edit.
+        verb = "insert after";
       }
     }
   } else {
@@ -9013,17 +9225,20 @@ function onWireUp(ev) {
     const splice = !SOURCE_TAGS.includes(nodeTag(frag)) &&
                    (!fromTray || w.item.rewrap || subtreeSize(frag) === 1);
     if (splice) {
-      sendStruct({ op: "insert_tree", key: childKey, node: frag });
-      note(w.item.rewrap ? `${label} is back in the wire, with its settings.` : `${label} patched into the wire.`);
+      sendStruct(
+        { op: "insert_tree", key: childKey, node: frag },
+        w.item.rewrap ? `${label} is back in the wire, with its settings.` : `${label} patched into the wire.`,
+      );
     } else {
       const old = nodeAtKey(childKey);
-      sendStruct({ op: "replace_tree", key: childKey, node: frag });
-      if (old && subtreeSize(old) > 1) {
-        stageFragment(old, false);
-        note(`${label} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`);
-      } else {
-        note(`${label} took the socket.`);
-      }
+      const chain = old && subtreeSize(old) > 1;
+      sendStruct(
+        { op: "replace_tree", key: childKey, node: frag },
+        chain
+          ? `${label} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
+          : `${label} took the socket.`,
+      );
+      if (chain) stageFragment(old, false);
     }
     if (w.item.uid) unstage(w.item.uid);
   } else if (w.mode === "tray-mod" || w.mode === "palette-mod") {
@@ -9035,10 +9250,12 @@ function onWireUp(ev) {
       return;
     }
     const old = modAtKey(modKey);
-    sendStruct({ op: "set_mod_tree", key: modKey, m: w.item.frag });
+    sendStruct(
+      { op: "set_mod_tree", key: modKey, m: w.item.frag },
+      `${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`,
+    );
     if (old) stageFragment(old, true);
     if (w.item.uid) unstage(w.item.uid);
-    note(`${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`);
   } else if (w.mode === "connect-audio" || w.mode === "connect-mod") {
     // No movement at all is a click, not a miss — the same gesture without a
     // drag, for touch and for long distances.
@@ -9065,6 +9282,7 @@ function onWireUp(ev) {
     // the term is total — but the plate says "empty" and the next module goes
     // there by default, instead of a fresh vco quietly pretending the unplug
     // did nothing.
+    const pulled = chainTitle(w.childKey); // while it is still in the rack
     let doomed = null;
     const ok = applyTreeRewrite((tree, marks) => {
       const old2 = nodeAtIn(tree, w.childKey);
@@ -9077,9 +9295,9 @@ function onWireUp(ev) {
     });
     if (!ok) return;
     const uid = doomed ? stageFragment(doomed, false) : null;
-    note(
+    noteOnLanding(
       doomed
-        ? `unplugged — the ${fragLabel(doomed, false)} is held below and the socket is empty.`
+        ? `unplugged — the ${pulled} is held below and the socket is empty.`
         : "unplugged — the socket is empty.",
       { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
     );
