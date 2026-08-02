@@ -837,6 +837,33 @@ impl WasmEngine {
         serde_json::to_string(&rows).unwrap()
     }
 
+    /// The standardizer's per-coordinate scale, as `{"n_filter":1.42,…}`
+    /// (`{}` before one is fitted).
+    ///
+    /// θ lives in standardized space and everything that has ever been shown
+    /// to the user lived there with it, which was fine while the only claim
+    /// being made was "this coefficient is positive". Pricing a placement is a
+    /// different claim: adding one filter is a **raw** unit step in
+    /// `n_filter`, and turning that into a utility needs the divisor that
+    /// carried it into z-scores. Without it the client can render θ and cannot
+    /// render what θ is worth.
+    ///
+    /// Names rather than a bare vector, because the client already keys every
+    /// module to its coordinate *by name* (`MODULES[k].phi`) and an index
+    /// agreement across the wasm boundary is a silent-drift bug waiting for
+    /// the next φ column to land. Mean is deliberately absent: a **delta** is
+    /// invariant to it, so shipping it would only invite someone to use it.
+    pub fn phi_scale(&self) -> String {
+        let Some(sz) = &self.engine.standardizer else {
+            return "{}".into();
+        };
+        let map: std::collections::BTreeMap<&'static str, f64> = Features::phi_names()
+            .into_iter()
+            .zip(sz.std.iter().copied())
+            .collect();
+        serde_json::to_string(&map).unwrap_or_else(|_| "{}".into())
+    }
+
     /// The lineage log (evolution/edit events, oldest first) as JSON.
     pub fn lineage(&self) -> String {
         serde_json::to_string(&self.engine.lineage).unwrap()
@@ -1155,6 +1182,70 @@ impl WasmEngine {
     /// Whether the current workbench state passed vetting.
     pub fn edit_vet_ok(&self) -> bool {
         self.bench_vet_ok
+    }
+
+    /// Render the **first `seconds`** of the bench tree with `op` applied,
+    /// without the bench ever having held that tree.
+    ///
+    /// Hearing a module before you place it is the whole point, and the one
+    /// thing it must not cost is the patch you already have. Every other route
+    /// to a rendered edit goes through `bench_tree` — apply, revet, and now the
+    /// player's patch *is* the proposal, recoverable only by an undo they did
+    /// not ask for. So this clones, applies to the clone, and drops it:
+    /// `bench_tree`, `bench_render`, `bench_phi` and `bench_vet_ok` are all
+    /// untouched, which is what lets a hover be free of consequence.
+    ///
+    /// It takes a whole [`StructOp`] rather than a key and a fragment because
+    /// the placement it is previewing is a `StructOp` — the same JSON, from the
+    /// same call site. A preview built from a re-derived splice would be a
+    /// second implementation of insertion semantics, and the day the two
+    /// disagreed the app would be lying about a sound.
+    ///
+    /// The render is the **full phrase**, truncated after the fact. Two
+    /// reasons, and the second is the one that makes previewing usable at all:
+    /// a shorter phrase is a different stimulus, so its φ would not be the φ
+    /// this patch is scored under and its loudness normalization would not
+    /// match the bench's; and the full phrase is the memo's key, so re-hovering
+    /// a socket — which is what hovering *is* — costs a hash lookup instead of
+    /// a render. An empty return means "nothing to play": no bench, a rejected
+    /// op, or a term that failed vetting. Never a silent zero-filled buffer.
+    pub fn preview_op(&mut self, op_json: &str, seconds: f64) -> Vec<f32> {
+        let Some(tree) = &self.bench_tree else {
+            return Vec::new();
+        };
+        let Ok(op) = serde_json::from_str::<StructOp>(op_json) else {
+            return Vec::new();
+        };
+        let Ok(edited) = apply_struct_op(tree, &op) else {
+            return Vec::new();
+        };
+        // The same ceiling gate `edit_set_tree_apply` runs. A preview is not a
+        // commit, but auditioning a patch the grammar would refuse teaches the
+        // player a move that will be taken away from them later.
+        if validate_tree(&edited).is_err() {
+            return Vec::new();
+        }
+        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
+        let Ok((cf, audio)) = featurize_memo(&edited, &phrase, &memo, true) else {
+            return Vec::new();
+        };
+        let Some(a) = bench_audio(&edited, &phrase, &cf.features, audio) else {
+            return Vec::new();
+        };
+        let n = ((seconds.max(0.1) * a.sample_rate) as usize).min(a.samples.len());
+        let mut out = a.samples[..n].to_vec();
+        // A phrase cut at an arbitrary sample is a step discontinuity, which is
+        // a click — and a click at the end of every audition is the loudest
+        // thing in the preview. 12 ms of cosine is below the threshold where a
+        // release sounds shortened and well above the one where an edge is
+        // audible.
+        let fade = ((0.012 * a.sample_rate) as usize).min(out.len());
+        for i in 0..fade {
+            let t = i as f32 / fade as f32;
+            let k = out.len() - fade + i;
+            out[k] *= 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
+        }
+        out
     }
 
     /// Rack description of the workbench tree as JSON (`null` if empty).
@@ -1862,5 +1953,91 @@ mod tests {
         // And it stays out of the likelihood, which is the whole premise of
         // logging it this early.
         assert_eq!(state.profile.log.len(), 0);
+    }
+
+    /// The one property the whole pre-placement audition rests on: you can
+    /// hear the proposal without owning it. If the bench moved, a hover would
+    /// be an edit, and the player would be undoing sounds they only looked at.
+    #[test]
+    fn a_preview_renders_the_proposal_and_leaves_the_bench_alone() {
+        let mut engine = WasmEngine::new(0x9A1, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let before_tree = engine.edit_tree_json();
+        let before_render = engine.edit_render();
+        let before_desc = engine.edit_describe();
+
+        let pcm = engine.preview_op(r#"{"op":"insert","key":"node","kind":"distortion"}"#, 1.6);
+        assert!(!pcm.is_empty(), "the spliced patch should have rendered");
+        // Truncated, not the whole phrase: the phrase is ~5 s and the audition
+        // is a glance.
+        let want = (1.6 * engine.sample_rate()) as usize;
+        assert_eq!(pcm.len(), want);
+        assert!(
+            pcm.iter().any(|s| s.abs() > 1e-4),
+            "a preview of a real patch is not silence"
+        );
+        // The tail is faded, so the cut cannot click.
+        assert!(pcm[pcm.len() - 1].abs() < 1e-6);
+
+        assert_eq!(engine.edit_tree_json(), before_tree);
+        assert_eq!(engine.edit_render(), before_render);
+        assert_eq!(engine.edit_describe(), before_desc);
+        assert!(engine.edit_vet_ok());
+        // Nor did it move the belief readout — a hover must not restate what
+        // the model thinks of a patch the player never adopted.
+        assert!(!engine.edit_differs_from_original());
+    }
+
+    /// An op the grammar refuses and an op past the ceilings both come back as
+    /// "nothing to play", never as a buffer of zeros that would audition as a
+    /// patch that had gone silent.
+    #[test]
+    fn an_unplayable_preview_is_empty_rather_than_silent() {
+        let mut engine = WasmEngine::new(0x9A2, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+
+        // No bench at all.
+        assert!(engine
+            .preview_op(r#"{"op":"insert","key":"node","kind":"distortion"}"#, 1.6)
+            .is_empty());
+
+        assert!(engine.edit_begin(id));
+        // A key that is not in the tree.
+        assert!(engine
+            .preview_op(r#"{"op":"insert","key":"node/9/9/9","kind":"fold"}"#, 1.6)
+            .is_empty());
+        // Not a `StructOp` at all.
+        assert!(engine.preview_op(r#"{"op":"teleport"}"#, 1.6).is_empty());
+        // And a source where a processor belongs — the grammar's own refusal.
+        assert!(engine
+            .preview_op(r#"{"op":"insert","key":"node","kind":"vco"}"#, 1.6)
+            .is_empty());
+    }
+
+    /// The scale is what turns θ into a price. Shipping it keyed by name (and
+    /// only after a standardizer exists) is what keeps the client from
+    /// inventing one.
+    #[test]
+    fn the_phi_scale_ships_by_name_once_it_exists() {
+        let mut engine = WasmEngine::new(0x9A3, 6);
+        assert_eq!(engine.phi_scale(), "{}", "no standardizer, no scale");
+        while engine.fill_step(3) > 0 {}
+        engine.standardize_now();
+        let map: std::collections::BTreeMap<String, f64> =
+            serde_json::from_str(&engine.phi_scale()).unwrap();
+        assert_eq!(map.len(), Features::phi_names().len());
+        for name in Features::phi_names() {
+            let s = *map.get(name).expect("every φ coordinate is priced");
+            assert!(s > 0.0, "{name} scaled by a non-positive divisor");
+        }
+        // The one the sockets are priced through most often.
+        assert!(map.contains_key("n_filter"));
     }
 }

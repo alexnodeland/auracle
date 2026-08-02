@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=54">
+<link rel="stylesheet" href="style.css?b=56">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=93";
+    s.src = "main.js?b=98";
     document.head.appendChild(s);
   }
 })();
@@ -202,8 +202,14 @@
                    to, named by the title silkscreened on that plate. The rail
                    1000px away used to be the only place this was said, and it
                    said it with the trace id. -->
+              <!-- Second cell: what the model expects this placement to be
+                   worth. It is a property of the module, not of the socket
+                   (φ counts modules, it does not record cables), so the chip
+                   carries the caveat as its tooltip and the strip under the
+                   rack says it in words. -->
               <div class="pick-chip hidden" id="pick-chip" role="status">
                 <span class="pick-chip-text"></span>
+                <span class="pick-chip-price mono hidden"></span>
                 <kbd>esc</kbd>
                 <button class="pick-chip-x" type="button" aria-label="Cancel">✕</button>
               </div>

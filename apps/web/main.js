@@ -1057,6 +1057,14 @@ worker.onmessage = (e) => {
       }
       break;
     }
+    // A pre-placement audition came back (WS-2 §6). Stale replies are the
+    // normal case, not the error case — the worker is serial, so a preview
+    // already begun cannot be recalled and the player has usually moved on by
+    // the time it lands. Dropping it here is the cancellation.
+    case "preview": {
+      onPreviewArrived(m);
+      break;
+    }
     case "committed": {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
@@ -2763,10 +2771,20 @@ function renderCheckBadge() {
 //    better than showing a wrong number confidently for half a second — this
 //    is the objective the player is steering against, and a readout that lies
 //    under motion teaches them to ignore it.
-const belief = { u: null, sd: 0, prev: null, lens: "", top: [], stale: false, has: false };
+// `styleK` is the *aligned lens index* the bench's φ was decomposed under, and
+// it is here because the socket prices below have to be quoted under the same
+// lens as the number they promise to move. The bank's chips read θ from the
+// lens that claims the most of the pool, which is usually but not always this
+// one; two numbers from two lenses sitting next to each other is a
+// disagreement the player would have no way to see.
+const belief = { u: null, sd: 0, prev: null, lens: "", styleK: null, top: [], stale: false, has: false };
 
 /** An edit has gone out; whatever is on screen is about to be untrue. */
 function beliefStale() {
+  // The audition goes with it, and unconditionally: a preview is a render of
+  // "the bench plus this module", so the moment the bench is in motion the
+  // buffer on the card is of neither the old patch nor the new one.
+  previewInvalidate();
   if (!belief.has || belief.stale) return;
   belief.stale = true;
   renderBelief();
@@ -2782,6 +2800,7 @@ function applyBelief(m) {
     belief.stale = false;
     belief.u = null;
     belief.prev = null;
+    belief.styleK = null;
   } else {
     // A subject load is a new patch, not a move: it has no "was".
     if (m.subject !== undefined) belief.prev = null;
@@ -2789,11 +2808,15 @@ function applyBelief(m) {
     belief.u = u.u;
     belief.sd = u.sd;
     belief.lens = u.lens || "";
+    belief.styleK = ex && typeof ex.style === "number" ? ex.style : null;
     belief.top = ex && ex.contributions ? ex.contributions.slice(0, 3) : [];
     belief.has = true;
     belief.stale = false;
   }
   renderBelief();
+  // The bench moved, so a rendered audition is of a patch that no longer
+  // exists and every socket price is quoted against a new baseline.
+  previewInvalidate();
 }
 
 function renderBelief() {
@@ -9251,15 +9274,33 @@ function renderSpecDock() {
   if (!dock) return;
   const held = armed ? MOD_BY_KIND[armed.kind] : null;
   if (held) {
+    // While something is in your hand the strip stops describing and starts
+    // answering the two questions a placement actually raises: what does the
+    // model expect of it (§5), and what does it sound like (§6). Both are
+    // about the socket the pointer is on, so both move with it.
+    const target = previewTarget();
+    const p = target ? socketPrice(held.kind, target.mode, target.key) : socketPrice(held.kind, "insert", null);
     dock.className = "spec-dock armed";
-    dock.innerHTML =
+    const html =
       `<div class="sd-line">${specGlyph(held, " small")}` +
       `<b>${esc(held.name)}</b><span class="sd-verb">in hand</span>` +
-      `<span class="sd-blurb">${esc(held.blurb)}</span>` +
+      `<span class="sd-price mono" title="${esc(priceWhatNotWhere(p))}">${priceHTML(p, true)}</span>` +
+      previewStripHTML(target) +
       `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit` +
       ` · click one, or <kbd>esc</kbd> to put it down</span></div>`;
+    // Rewritten only when it actually changed. This strip re-renders on every
+    // socket enter and leave, and an unconditional `innerHTML =` there would
+    // destroy and rebuild the ▶ *while the pointer is travelling to it* — the
+    // click lands on an element that no longer exists. It also throws away the
+    // painted waveform for no reason.
+    if (dock.dataset.armedHtml !== html) {
+      dock.innerHTML = html;
+      dock.dataset.armedHtml = html;
+    }
+    paintPreviewScope(target);
     return;
   }
+  delete dock.dataset.armedHtml;
   if (pendingTarget) {
     dock.className = "spec-dock armed";
     dock.innerHTML =
@@ -9287,6 +9328,365 @@ function renderSpecDock() {
     `<span class="sp-heard"><b>heard as</b> ${esc(m.heard)}</span></div></div>` +
     `<div class="sd-model mono">${p.belief}</div>`;
 }
+
+// ===========================================================================
+// PRICED SOCKETS — what the model thinks this placement is worth (WS-2 §5)
+// ===========================================================================
+// The bank has always shown θ for a module: a bar with a whisker, in
+// standardized coefficient units, which answers "does the model like filters"
+// and not the question anyone actually has, which is "what happens to my score
+// if I put one here". Those are one divide apart. φ_struct is a **count**
+// vector, so adding one filter is a raw unit step in `n_filter`; the
+// standardizer turns that into `1/scale` of a z-unit; θ turns that into
+// utility. No compile, no render, no round trip — the whole price is
+// `θ / scale`, and the only reason it was not on screen already is that the
+// scale lived in the engine (see `WasmEngine::phi_scale`).
+//
+// Three honesty rules, and the first is the one the plan singled out:
+//
+//  1. **The structural half of φ is order-invariant.** `n_filter` counts
+//     filters; it does not care which cable they sit on. So this number prices
+//     *what* you are adding and not *where* — the same figure at every lit
+//     socket — and the copy says so rather than letting a per-socket
+//     annotation imply a per-socket opinion the model does not have.
+//  2. **It is the module-count coordinates only.** The audio half of φ
+//     (brightness, rolloff, the tail) needs a render to know, and the two
+//     modulation ratios move in ways one insertion does not determine. Those
+//     are precisely what the audition next door is for: §5 says what the model
+//     expects, §6 lets you check.
+//  3. **A placement that evicts something is not priced.** Replacing a chain
+//     takes modules *out* of the count as well as putting one in, and half a
+//     subtraction is worse than no number at all — so those sockets say what is
+//     missing instead of quoting a figure that only counts the arrival.
+//
+// The units are utility, the same units as the contributions in the model's-
+// guess line above the rack — deliberately, so "drive +0.09" up there and
+// "+0.04" down here are the same kind of quantity and can be added.
+
+/** The θ row a placement is priced from — under the **bench's** lens, so the
+ *  price and the number it promises to move come from the same decomposition.
+ *  Falls back to the lens that claims most of the bank before the first bench
+ *  featurize, which is the same one the chips read. */
+function priceTheta(kind) {
+  const phi = MOD_BY_KIND[kind]?.phi;
+  if (!phi || !views || !views.styles || views.styles.length === 0) return null;
+  const scale = views.scale ? views.scale[phi] : null;
+  if (!scale || !(scale > 0)) return null;
+  const k =
+    belief.styleK != null && views.styles[belief.styleK] ? belief.styleK : (activeStyles()[0] || {}).k;
+  const s = k != null ? views.styles[k] : null;
+  const row = s && s.theta ? s.theta.find((t) => t.name === phi) : null;
+  if (!row) return null;
+  return { phi, scale, style: k, mean: row.mean, std: row.std, share: s.share };
+}
+
+/** What placing `kind` at `key` is worth, and — when it is not a number — why.
+ *  `mode` is the placement mode the click would use, because a replacement and
+ *  an insertion are not the same edit to φ. */
+function socketPrice(kind, mode, key) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return null;
+  const { byPhi, total } = nbSupport();
+  const sup = m.phi ? byPhi[m.phi] || 0 : 0;
+  const t = priceTheta(kind);
+  // The same five silences the spec card draws (`beliefState`), plus one this
+  // surface has and that one does not: a socket where the arithmetic itself
+  // does not hold.
+  const evicts = key != null && placementEvicts(kind, mode, key);
+  const state = !m.phi
+    ? "unmeasured"
+    : !t
+      ? "unfitted"
+      : evicts
+        ? "evicts"
+        : sup < NB_SUPPORT_MIN
+          ? "thin"
+          : Math.abs(t.mean) >= t.std
+            ? "resolved"
+            : "flat";
+  return {
+    state,
+    kind,
+    phi: m.phi || null,
+    sup,
+    total,
+    du: t ? t.mean / t.scale : 0,
+    sd: t ? t.std / t.scale : 0,
+    lens: t && views.styles[t.style] ? styleName(views.styles[t.style], t.style) : "",
+    evicted: evicts ? evicts : null,
+  };
+}
+
+/** Does this placement take modules out as well as put one in? Returns a short
+ *  phrase naming the loss, or `false`. */
+function placementEvicts(kind, mode, key) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return false;
+  if (m.sort === "mod") {
+    // A shaper takes the slot's term as its own input; only a leaf evicts.
+    const old = modAtKey(key);
+    return old && m.modSort !== "op" && m.modSort !== "pair" ? "the modulator already in that slot" : false;
+  }
+  if (mode !== "replace" && m.sort !== "source") return false;
+  const old = nodeAtKey(key);
+  if (!old || isPlaceholderKey(key)) return false;
+  const n = subtreeSize(old);
+  return `the ${n === 1 ? fragLabel(old, false) : `${n}-module chain`} in that socket`;
+}
+
+const PRICE_SIGN = (x) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(2)}`;
+
+/** The one sentence that keeps the figure from claiming more than it is. */
+function priceWhatNotWhere(p) {
+  return (
+    `The model's structural features count modules; they do not record which cable a module sits on. ` +
+    `So this prices WHAT you are adding, not WHERE — it is the same number at every lit socket. ` +
+    `It covers the module count only: how it will actually sound is the ▶ beside it.` +
+    (p && p.lens ? `\n\nUnder the lens "${p.lens}", the same one the model's-guess line above the rack uses.` : "")
+  );
+}
+
+/** The price as a readout. `long` is the strip under the rack, which has a
+ *  line to spend and says the whole sentence; short is the chip pinned to the
+ *  plate, which sits between two modules and carries the rest as a tooltip.
+ *
+ *  The figure itself is printed in every state where one exists, including
+ *  "no lean" — a number the model is not confident about is still the number,
+ *  and hiding it would make "no lean" indistinguishable from "no answer". */
+function priceHTML(p, long) {
+  if (!p) return "";
+  const fig = `${PRICE_SIGN(p.du)} ± ${p.sd.toFixed(2)}`;
+  switch (p.state) {
+    case "unmeasured":
+      return `<span class="pr pr-mute">${long ? "not a coordinate the model measures" : "unmeasured"}</span>`;
+    case "unfitted":
+      return `<span class="pr pr-mute">${long ? "no price yet — the model needs a few picks" : "no price yet"}</span>`;
+    case "evicts":
+      return `<span class="pr pr-mute">${
+        long
+          ? `replaces ${esc(p.evicted)} — not priced, because that takes modules out too`
+          : "not priced — this takes modules out too"
+      }</span>`;
+    case "thin":
+      return `<span class="pr pr-mute">${
+        long ? `in ${p.sup} of ${p.total} patches — too few to price` : "too few to price"
+      }</span>`;
+    case "flat":
+      return long
+        ? `<span class="pr pr-flat">the model has no lean here</span>` +
+            ` <span class="pr-dim">(${fig}, straddling zero)</span>` +
+            ` <span class="pr-note">what, not where</span>`
+        : `<span class="pr pr-flat">no lean</span> <span class="pr-dim">${fig}</span>`;
+    default:
+      return long
+        ? `<span class="pr ${p.du >= 0 ? "up" : "down"}">${fig}</span>` +
+            ` <span class="pr-dim">predicted</span> <span class="pr-note">what, not where</span>`
+        : `<span class="pr ${p.du >= 0 ? "up" : "down"}">${fig}</span>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PRE-PLACEMENT AUDITION (WS-2 §6)
+// ---------------------------------------------------------------------------
+// Nobody in the category lets you hear a module before you place it, and for a
+// preference-learning instrument that is the natural gesture: §5 says what the
+// model expects of this placement, and this says what it actually does — the
+// two halves of the same question, side by side on the same strip.
+//
+// The render happens in `WasmEngine::preview_op`, on a clone: the bench never
+// holds the proposal, so a hover costs nothing and undoes nothing. Two guards
+// keep it from being an expense:
+//
+//  - **It never fires on a hover.** Explicit ▶, or 600 ms of dwell on one
+//    socket. Sweeping a rack full of lit sockets renders exactly nothing.
+//  - **One in flight at a time, and stale answers are dropped.** The worker is
+//    serial, so a preview already begun cannot be recalled; "cancel" means the
+//    reply is discarded on arrival and the request that superseded it goes out
+//    then. Queueing them instead would put a second half-second of featurizing
+//    between the player and their next knob.
+//
+// A dwell renders and paints; it does not play. The waveform arriving on its
+// own is information; audio arriving on its own is a jump scare, and the one
+// place this instrument makes sound without being asked is nowhere.
+const PREVIEW_DWELL_MS = 600;
+const PREVIEW_SECONDS = 2.0;   // the phrase's first held note, whole
+
+const preview = {
+  token: 0,          // monotonic; a reply with an older one is stale
+  inflight: false,
+  pending: null,     // the request that arrived while one was out
+  want: null,        // {kind, key, mode} the strip is currently about
+  have: null,        // {kind, key, mode, buffer} the last good render
+  failed: null,      // {kind, key, mode} — rendered and came back empty
+  playOnArrive: false,
+  dwellTimer: null,
+};
+
+/** The exact `StructOp` a placement will send.
+ *
+ *  Extracted so that `placeModule` and its audition read the *same* function:
+ *  a preview built from a re-derived splice would be a second implementation
+ *  of insertion semantics, and the day the two disagreed the app would be
+ *  playing one edit and committing another. */
+function placementOp(kind, mode, key) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return null;
+  if (m.sort === "mod") return { op: "set_mod_tree", key, m: wrapMod(m, modAtKey(key)) };
+  if (mode === "replace" || m.sort === "source") return { op: "replace_tree", key, node: m.frag() };
+  return { op: "insert_tree", key, node: m.frag() };
+}
+
+/** The socket an audition would splice into: the one under the pointer, else
+ *  the one the arming pre-selected, else the first lit. Never null while
+ *  something is in hand and anything is lit. */
+function previewTarget() {
+  if (!armed || !armedSockets.length) return null;
+  const at = (k) =>
+    k && armedSockets.find((j) => (j.getAttribute("data-childkey") || j.getAttribute("data-modkey")) === k);
+  const jack =
+    at(pickHoverKey) ||
+    // Leaving the 6px nut is not leaving the decision. A render already paid
+    // for stays on the strip until the player points at a different socket or
+    // puts the module down — otherwise the waveform vanishes at the exact
+    // moment the pointer travels to the ▶ that plays it.
+    at(preview.have && preview.have.kind === armed.kind ? preview.have.key : null) ||
+    (armedIdx >= 0 ? armedSockets[armedIdx] : null) ||
+    armedSockets[0];
+  const key = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
+  return { kind: armed.kind, key, mode: armed.sort === "source" ? "replace" : "insert" };
+}
+
+const sameTarget = (a, b) => !!a && !!b && a.kind === b.kind && a.key === b.key && a.mode === b.mode;
+
+/** Throw away everything rendered against the old bench. Called from every
+ *  route that moves the tree — see `beliefStale`. */
+function previewInvalidate() {
+  clearTimeout(preview.dwellTimer);
+  preview.dwellTimer = null;
+  preview.token++;
+  preview.inflight = false;
+  preview.pending = null;
+  preview.have = null;
+  preview.failed = null;
+  preview.playOnArrive = false;
+  if (armed) renderSpecDock();
+}
+
+/** Ask for one. `play` means the player pressed ▶ and is waiting for sound. */
+function requestPreview(target, play) {
+  if (!target || wb.subjectId == null) return;
+  if (sameTarget(preview.have, target)) {
+    if (play) previewPlay();
+    return;
+  }
+  if (sameTarget(preview.failed, target)) return; // it already said no
+  preview.want = target;
+  preview.playOnArrive = !!play;
+  if (preview.inflight) {
+    // Supersede rather than queue: the answer in flight is about a socket the
+    // player has already left.
+    preview.pending = target;
+    renderSpecDock();
+    return;
+  }
+  preview.inflight = true;
+  preview.token += 1;
+  send({
+    type: "preview_render",
+    token: preview.token,
+    key: target.key,
+    kind: target.kind,
+    mode: target.mode,
+    op: placementOp(target.kind, target.mode, target.key),
+    seconds: PREVIEW_SECONDS,
+  });
+  renderSpecDock();
+}
+
+function onPreviewArrived(m) {
+  if (m.token !== preview.token) return;   // stale: the cancellation
+  preview.inflight = false;
+  const target = { kind: m.kind, key: m.key, mode: preview.want ? preview.want.mode : "insert" };
+  if (m.buffer && m.buffer.length > 0) {
+    const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
+    buf.copyToChannel(m.buffer, 0);
+    preview.have = { ...target, buffer: buf };
+    preview.failed = null;
+  } else {
+    // The grammar refused it, or it failed vetting. Say so — an empty scope
+    // and a live ▶ would audition as "this placement makes silence".
+    preview.have = null;
+    preview.failed = target;
+  }
+  const next = preview.pending;
+  preview.pending = null;
+  const play = preview.playOnArrive;
+  preview.playOnArrive = false;
+  renderSpecDock();
+  if (next) requestPreview(next, play);
+  else if (play && preview.have) previewPlay();
+}
+
+function previewPlay() {
+  if (!preview.have) return;
+  playBuffer(preview.have.buffer, $("pv-play"));
+}
+
+/** Start the dwell clock on the socket under the pointer. Restarted, not
+ *  extended, on every move to a new socket. */
+function previewDwell() {
+  clearTimeout(preview.dwellTimer);
+  const target = previewTarget();
+  if (!target || wb.subjectId == null) return;
+  if (sameTarget(preview.have, target) || sameTarget(preview.failed, target)) return;
+  preview.dwellTimer = setTimeout(() => requestPreview(target, false), PREVIEW_DWELL_MS);
+}
+
+/** The ▶ + waveform that rides the armed strip. Its state is the state of the
+ *  render, said in words, because "a button that does nothing yet" and "a
+ *  button that will not work here" look identical otherwise. */
+function previewStripHTML(target) {
+  const ready = sameTarget(preview.have, target);
+  const dead = sameTarget(preview.failed, target);
+  const busy = preview.inflight || !!preview.pending;
+  const label = dead
+    ? "can't audition that here"
+    : ready
+      ? "hear it here"
+      : busy
+        ? "rendering…"
+        : "hold a socket, or ▶";
+  return (
+    `<span class="pv${busy ? " busy" : ""}${dead ? " dead" : ""}">` +
+    `<button class="pv-play" id="pv-play" type="button" ${dead ? "disabled" : ""} ` +
+    `aria-label="Audition this patch with the module spliced in" ` +
+    `title="A 2-second render of THIS patch with the module spliced at the lit socket. Nothing is placed — the bench is untouched.">▶</button>` +
+    `<canvas class="pv-scope" id="pv-scope" width="312" height="76" aria-hidden="true"></canvas>` +
+    `<span class="pv-label mono">${esc(label)}</span></span>`
+  );
+}
+
+/** Paint whatever the strip is currently holding. Called after the dock is in
+ *  the DOM, because the canvas has to exist to be drawn on. */
+function paintPreviewScope(target) {
+  const c = $("pv-scope");
+  if (!c) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth || 156;
+  const h = c.clientHeight || 38;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  if (sameTarget(preview.have, target)) drawWave(c, preview.have.buffer.getChannelData(0));
+  else scopeCtx(c).clearRect(0, 0, c.width, c.height);
+}
+
+// Delegated, and wired exactly once. The strip is rebuilt whenever the price
+// or the render state changes, so a handler bound to the button would be bound
+// to a button that has since been replaced — and the replacement happens on
+// pointer-leave of the socket, which is the same movement that carries the
+// pointer to the ▶.
+$("spec-dock")?.addEventListener("click", (ev) => {
+  if (ev.target.closest(".pv-play")) requestPreview(previewTarget(), true);
+});
 
 // ---- arm and place ----
 function pickModule(kind) {
@@ -9325,6 +9725,11 @@ function pickModule(kind) {
   arm(kind);
 }
 
+/** The price this arming was quoted at, until it is either taken (logged by
+ *  `placeModule`) or put down (logged by `disarm`). Both halves are needed:
+ *  a ledger of accepted placements alone is a ledger with no negatives in it. */
+let armPriced = null;
+
 function arm(kind) {
   disarm();
   const m = MOD_BY_KIND[kind];
@@ -9342,6 +9747,7 @@ function arm(kind) {
     return;
   }
   $("rack-scroll").classList.add("placing");
+  armPriced = socketPrice(kind, m.sort === "source" ? "replace" : "insert", null);
   pickFeedback();
   renderSpecDock();
   nbSetHolding();
@@ -9401,17 +9807,26 @@ function lightSockets() {
 function onSocketHover(ev) {
   if (!armed) return;
   const j = ev.currentTarget;
-  $("nb-status").innerHTML =
-    `<b>${esc(socketLabel(j))}</b> <span class="sp-dim">· click to place · esc to put it down</span>`;
   // The socket key doubles as a plate key: an audio socket names its
   // occupant, a mod socket names its owner. Both are the plate the promise
   // is about, which is the plate the chip should be pinned to.
   pickHoverKey = j.getAttribute("data-childkey") || j.getAttribute("data-modkey") || null;
+  const price = socketPrice(armed.kind, armed.sort === "source" ? "replace" : "insert", pickHoverKey);
+  $("nb-status").innerHTML =
+    `<b>${esc(socketLabel(j))}</b> <span class="sp-dim">· click to place · esc to put it down</span>` +
+    `<span class="nb-price">${priceHTML(price, false)}</span>`;
   pickFeedback();
+  // The price and the audition both belong to the socket under the pointer,
+  // so both follow it — and the dwell clock restarts here rather than
+  // accumulating across sockets, which is what stops a sweep across a lit rack
+  // from queueing a render per socket.
+  renderSpecDock();
+  previewDwell();
 }
 function onSocketLeave() {
   pickHoverKey = null;
-  if (armed) { armStatus(); pickFeedback(); }
+  clearTimeout(preview.dwellTimer);
+  if (armed) { armStatus(); pickFeedback(); renderSpecDock(); }
 }
 
 function socketLabel(jack) {
@@ -9445,12 +9860,20 @@ function socketLabel(jack) {
 
 function disarm() {
   if (!armed) return;
+  // Put down without placing: the negative half of the price ledger.
+  if (armPriced) { logPriceOutcome(armPriced, false, null); armPriced = null; }
   const chip = $("nb-groups").querySelector(".nb-item.armed");
   if (chip) chip.classList.remove("armed");
   for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot");
   armedSockets = [];
   armedIdx = -1;
   armed = null;
+  clearTimeout(preview.dwellTimer);
+  preview.dwellTimer = null;
+  preview.have = null;
+  preview.failed = null;
+  preview.pending = null;
+  preview.playOnArrive = false;
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
@@ -9606,6 +10029,14 @@ function placeModule(kind, mode, key) {
   // *and* leave a second copy of it sitting in HELD.
   let staged = null;
   const undo = { undo: () => { if (staged != null) unstage(staged); doUndo(); }, undoLabel: "take it out" };
+  // The price the player was shown, and the fact that they took it. Paired
+  // with the rejections logged on `disarm`, this is calibration data at *edit*
+  // granularity — far denser than the duel stream, and the rows where a
+  // confident negative θ was placed anyway are exactly the ones that diagnose
+  // a misspecified model. Logged before the send, because the send is what
+  // makes the tree stop being the one the price was quoted against.
+  logPriceOutcome(socketPrice(kind, mode, key), true, key);
+  armPriced = null;   // the disarm below is a placement, not a refusal
   if (m.sort === "mod") {
     const owner = rackKindAt(key);
     const old = modAtKey(key);
@@ -9618,7 +10049,7 @@ function placeModule(kind, mode, key) {
     // Every one of these sentences is a confirmation, so it is handed to the
     // send and said on the reply — never here, where the engine has not yet
     // agreed that any of it is true. See `landedNote`.
-    sendStruct({ op: "set_mod_tree", key, m: wrapMod(m, old) }, {
+    sendStruct(placementOp(kind, mode, key), {
       text: wraps
         ? `${m.name} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
         : old
@@ -9630,7 +10061,7 @@ function placeModule(kind, mode, key) {
   } else if (mode === "replace" || m.sort === "source") {
     const old = nodeAtKey(key);
     const chain = old && subtreeSize(old) > 1;
-    sendStruct({ op: "replace_tree", key, node: m.frag() }, {
+    sendStruct(placementOp(kind, mode, key), {
       text: chain
         ? `${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
         : `${m.name} took the socket.`,
@@ -9638,11 +10069,37 @@ function placeModule(kind, mode, key) {
     });
     if (chain) staged = stageFragment(old, false);
   } else {
-    sendStruct({ op: "insert_tree", key, node: m.frag() },
+    sendStruct(placementOp(kind, mode, key),
       { text: `${m.name} patched into the wire.`, opts: undo });
   }
   disarm();
   $("nb-status").textContent = "";
+}
+
+/** One row of the price ledger: what the model predicted, and whether the
+ *  player did it anyway. `accepted` is the whole point — a prediction with no
+ *  outcome beside it can never be scored.
+ *
+ *  It goes into the implicit stream and, like everything else there, stays out
+ *  of the likelihood: a placement is confounded with curiosity, with the
+ *  search query that led to it, and with the socket being the only lit one.
+ *  It is logged because it cannot be logged retroactively. */
+function logPriceOutcome(p, accepted, key) {
+  if (!p) return;
+  logImplicit(
+    "price",
+    {
+      kind: p.kind,
+      phi: p.phi,
+      state: p.state,
+      du: Number(p.du.toFixed(4)),
+      sd: Number(p.sd.toFixed(4)),
+      lens: p.lens || null,
+      key: key || null,
+      accepted: !!accepted,
+    },
+    { value: p.du },
+  );
 }
 
 /** A shaper's fragment, with whatever is already in the slot as its input.
@@ -10184,6 +10641,17 @@ function pickFeedback() {
   const mod = wb.rack.modules.find((m) => m.key === aimKey);
   const title = isPlaceholderKey(aimKey) ? "the empty socket" : mod ? mod.title : "the output";
   chip.querySelector(".pick-chip-text").textContent = `${verb} ${title}`;
+  // …and what the model expects of it, on the plate where the decision is
+  // being made rather than only in a rail across the room (WS-2 §5). The chip
+  // has no room for the caveat, so it carries it as the tooltip — and the
+  // strip below the rack carries it in words.
+  const priceEl = chip.querySelector(".pick-chip-price");
+  if (priceEl) {
+    const p = armed && aimKey ? socketPrice(armed.kind, armed.sort === "source" ? "replace" : "insert", aimKey) : null;
+    priceEl.innerHTML = p ? priceHTML(p, false) : "";
+    priceEl.classList.toggle("hidden", !p);
+    chip.title = p ? priceWhatNotWhere(p) : "";
+  }
   chip.classList.remove("hidden");
   positionPickChip();
 }
@@ -10311,7 +10779,14 @@ function positionPickChip() {
   if (!b) return chip.classList.add("hidden");
   const fr = $("rack-frame").getBoundingClientRect();
   const p = rackToClient(b.x + b.w / 2, b.y);
-  chip.style.left = `${Math.round(p.x - fr.left)}px`;
+  // Clamped into the frame. The chip is centre-anchored on the plate, so a
+  // plate near an edge used to push half the sentence out of the frame and the
+  // frame clipped it — "…RT AFTER SUPERSAW". It got worse when the chip
+  // started carrying the price as well, which is what made it worth fixing:
+  // sliding sideways breaks the exact centring and keeps every word.
+  const half = chip.offsetWidth / 2 + 6;
+  const x = Math.max(half, Math.min(fr.width - half, p.x - fr.left));
+  chip.style.left = `${Math.round(x)}px`;
   chip.style.top = `${Math.round(p.y - fr.top - 8)}px`;
 }
 

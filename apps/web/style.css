@@ -1930,6 +1930,63 @@ input, textarea, .bi-rename {
 }
 .sd-hint { font-size: var(--t-micro); color: var(--silk-mute); margin-left: auto; white-space: nowrap; }
 .sd-hint kbd { font-size: var(--t-micro); color: var(--silk-dim); }
+
+/* ---- priced sockets (WS-2 §5) ----
+   The number sits in a recessed well so it reads as an instrument readout
+   rather than as more prose, and its sign carries the colour. Green is the
+   signal channel everywhere else in this app, so a *prediction* deliberately
+   does not get it: the price is the model talking, and the model's colour on
+   this instrument is amber. */
+.sd-price {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: var(--t-micro);
+  white-space: nowrap;
+  cursor: help;
+}
+.pr { font-weight: 500; letter-spacing: 0.02em; }
+.pr.up { color: var(--phos-b); }
+.pr.down { color: var(--led-red); }
+.pr.pr-flat { color: var(--silk-dim); }
+.pr.pr-mute { color: var(--silk-mute); }
+.pr-dim { color: var(--silk-mute); }
+.pr-note {
+  color: var(--silk-mute); text-transform: uppercase;
+  letter-spacing: 0.14em; font-size: 0.9em;
+  border-bottom: 1px dotted var(--hairline);
+}
+.nb-price { display: block; margin-top: 3px; font-family: var(--font-mono); font-size: var(--t-micro); }
+
+/* ---- pre-placement audition (WS-2 §6) ---- */
+.pv { display: inline-flex; align-items: center; gap: 7px; }
+.pv-play {
+  width: 22px; height: 22px; flex: 0 0 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--hairline); border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--phos-a); font-size: 9px; line-height: 1; cursor: pointer;
+  padding: 0 0 0 1px;
+}
+.pv-play:hover:not(:disabled) { color: #fff; border-color: var(--phos-a-deep); background: rgba(142, 240, 177, 0.1); }
+.pv-play:disabled { color: var(--silk-mute); cursor: not-allowed; }
+.pv-play.playing { color: #fff; box-shadow: 0 0 8px rgba(142, 240, 177, 0.45); }
+/* Tall enough to be a measurement. At 22px the trace, its zero line and the
+   two full-scale references all landed within a few pixels of each other and
+   the audition read as a flat line whatever it actually was. */
+.pv-scope {
+  width: 156px; height: 38px;
+  border: 1px solid var(--hairline); border-radius: 3px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.pv-label { font-size: var(--t-micro); color: var(--silk-mute); white-space: nowrap; }
+/* Rendering is a half-second of somebody else's CPU: say so by dimming the
+   thing that is about to change rather than by adding a spinner. */
+.pv.busy .pv-scope { opacity: 0.45; }
+.pv.busy .pv-label { color: var(--phos-b-deep); }
+.pv.dead .pv-scope { opacity: 0.3; }
 .sp-glyph.small { width: 24px; height: 17px; }
 .sp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sp-glyph { width: 34px; height: 24px; overflow: visible; }
@@ -2204,6 +2261,16 @@ input, textarea, .bi-rename {
   pointer-events: auto;
 }
 .pick-chip .pick-chip-text { text-transform: uppercase; }
+/* The price, on the plate. Separated by a rule rather than a gap so the chip
+   reads as one object with two facts in it — what happens, and what it is
+   expected to be worth. */
+.pick-chip .pick-chip-price {
+  border-left: 1px solid var(--hairline);
+  padding-left: 6px;
+  letter-spacing: 0;
+  font-size: var(--t-micro);
+}
+.pick-chip .pick-chip-price.hidden { display: none; }
 .pick-chip kbd {
   font-family: var(--font-mono);
   font-size: var(--t-micro);

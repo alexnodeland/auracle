@@ -494,6 +494,14 @@ function tasteViews() {
     // Rides with every views post so the header's `▣ n/m` cannot drift out of
     // step with the engine after a restore, an eviction or a bred generation.
     pinBudget: Array.from(engine.pin_budget()),
+    // The standardizer's per-coordinate divisor, keyed by φ name. θ has always
+    // shipped in `styles`; this is what θ is *worth* — adding one filter is a
+    // raw unit step in `n_filter`, so `θ/scale` is the utility that placement
+    // buys. It rides with views rather than with the bench because it is a
+    // property of the pool, not of the patch under the pointer, and it changes
+    // only when the standardizer is refitted. `{}` before then, and the socket
+    // prices stay silent rather than guessing a divisor of 1.
+    scale: JSON.parse(engine.phi_scale()),
   };
 }
 
@@ -956,6 +964,37 @@ self.onmessage = async (e) => {
           buffer: arr,
           sampleRate: engine.sample_rate(),
           ...(m.then ? { then: m.then } : {}),
+        },
+        [arr.buffer]
+      );
+      break;
+    }
+    // Pre-placement audition (WS-2 §6): the current patch with a module
+    // spliced at the socket under the pointer, rendered without the bench ever
+    // holding it — see `WasmEngine::preview_op`.
+    //
+    // The `token` is echoed rather than interpreted. This worker is serial, so
+    // a preview already begun cannot be interrupted; "cancel" therefore means
+    // "the answer is stale on arrival", which is a decision only main can make
+    // and only main has the state for. Answering every request — including the
+    // failures, with an empty buffer — is what lets main retire its in-flight
+    // slot without a timeout.
+    //
+    // Not routed through the render farm, which looks like the natural home
+    // for it and is not: the farm holds no engine, so it has neither the memo
+    // that makes a re-hover free nor the bench tree the splice is applied to,
+    // and main is deliberately not on the farm's data path at all.
+    case "preview_render": {
+      const pcm = engine.preview_op(JSON.stringify(m.op), m.seconds || 2.0);
+      const arr = new Float32Array(pcm);
+      post(
+        {
+          type: "preview",
+          token: m.token,
+          key: m.key || null,
+          kind: m.kind || null,
+          buffer: arr,
+          sampleRate: engine.sample_rate(),
         },
         [arr.buffer]
       );
