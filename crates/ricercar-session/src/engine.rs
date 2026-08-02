@@ -488,6 +488,20 @@ pub enum Origin {
     Preset,
 }
 
+/// Give a tree its node identities on the way into the pool.
+///
+/// The pool is where a term stops being a search intermediate and becomes a
+/// patch someone can open, lock, lay out and breed from, so it is exactly where
+/// identities are worth minting — and the only place. Search itself hands
+/// through thousands of anonymous trees per generation; a prior draw carries
+/// none, and a tree restored from a save written before uids existed carries
+/// none either, which is the whole of that migration: old saves deserialize
+/// with every `uid` defaulted to unset and are settled here on the way in.
+fn settled(mut tree: PatchTree) -> PatchTree {
+    tree.ensure_uids();
+    tree
+}
+
 /// A vetted pool member.
 pub struct Candidate {
     /// Stable id (unique for the lifetime of the engine; survives pool
@@ -1236,7 +1250,7 @@ impl Engine {
         let render = self.admitted_render(&tree, &cached.features, audition);
         self.pool.push(Candidate {
             id,
-            tree,
+            tree: settled(tree),
             phi_std: Vec::new(),
             key: cached.key,
             render,
@@ -1735,7 +1749,7 @@ impl Engine {
         let render = self.admitted_render(&tree, &cf.features, fresh);
         self.pool.push(Candidate {
             id,
-            tree,
+            tree: settled(tree),
             phi_std,
             key: cf.key,
             render,
@@ -1867,10 +1881,22 @@ impl Engine {
         &mut self,
         parent_id: u64,
         seed: &PatchTree,
-        end: PatchTree,
+        mut end: PatchTree,
         kind: &str,
         protect: Option<u64>,
     ) -> Option<u64> {
+        // The one place a refined child meets its seed, and therefore the one
+        // place its node identities can be recovered.
+        //
+        // `refine_one` runs typed MH over the *trace*, and every accepted step
+        // rebuilds the whole genome through `crate::genome`'s decoder — a trace
+        // is a map from address to value and has no room for a uid, so what
+        // comes back is structurally almost the seed and completely anonymous.
+        // Without this line every ⚡ would look to the panel like a brand-new
+        // patch: locks gone, hand-placed positions gone, selection gone, on the
+        // one action the whole instrument is built around. Positions and locks
+        // are the point of uids, and evolution is the point of ricercar.
+        end.inherit_uids(seed);
         let parent_phi = self
             .find(parent_id)
             .map(|i| self.pool[i].phi_std.clone())
@@ -2486,7 +2512,7 @@ impl Engine {
         self.next_id = self.next_id.max(entry.id + 1);
         self.pool.push(Candidate {
             id: entry.id,
-            tree: entry.tree,
+            tree: settled(entry.tree),
             features: cached.features,
             phi_std,
             key: cached.key,

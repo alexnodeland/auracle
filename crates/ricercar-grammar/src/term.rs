@@ -10,7 +10,149 @@
 //! support); musical mappings (log cutoff scales, bounded resonance/feedback)
 //! live in [`crate::compile`]. Discrete parameters are small enums.
 
+use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use serde::{Deserialize, Serialize};
+
+/// A stable identity for one node, independent of where it sits.
+///
+/// # Why the tree needs one
+///
+/// Every other handle on a node in this system is its **position**: the trace
+/// key (`node/0/1`), and therefore the trace address of every knob on it, and
+/// therefore every lock, every remembered hand position, every selection. That
+/// is fine until the structure moves. Insert one filter at the top of a chain
+/// and every key below it shifts by one segment; delete a mixer branch and the
+/// survivor is re-rooted; run one generation of refinement and the tree is
+/// rebuilt from a trace with no memory of the object graph at all. Under
+/// positional identity the only honest response to a structural edit is to
+/// throw the UI's state away — which is exactly what the workbench used to do,
+/// with the comment "structure changed — locks cleared" — and that destroys the
+/// loop the graph editor exists to serve: build a routing by hand, pin it, and
+/// breed around it.
+///
+/// A `Uid` is minted once, travels with the node through clones, splices and
+/// refinement, and is dropped only when the node itself is.
+///
+/// # It is deliberately invisible to the model
+///
+/// `uid` is UI identity, nothing else. It must never reach the generative
+/// model, the featurizer, the compiler, or anything content-addressed, because
+/// two patches that differ only in uids are the *same patch* and every one of
+/// those systems is entitled to say so:
+///
+/// - **Equality ignores it.** [`PartialEq`] here is `true` unconditionally, so
+///   the derived `PartialEq` on [`AudioNode`]/[`PatchTree`] keeps comparing
+///   patches by content. The engine's pool dedup (`self.pool.iter().any(|c|
+///   c.tree == end)`) and refinement's own "did this walk move at all"
+///   (`current != *seed`) are both that comparison, and both would break the
+///   moment a fresh uid could make two identical trees differ.
+/// - **Hashing ignores it**, for the same reason and so the two stay coherent.
+/// - **It is skipped in JSON when unset**, and
+///   `ricercar_features::cache::canonical_tree_json` clears uids before hashing,
+///   so the render memo's content address is byte-identical to what it was
+///   before uids existed. A cache key that moved with the UI's bookkeeping
+///   would miss on every refinement step *and* invalidate every persisted row.
+/// - **It is not a choice site.** [`crate::genome`] neither encodes nor decodes
+///   it, so `to_trace`/`from_trace` round-trips carry no uid — which is why
+///   [`PatchTree::inherit_uids`] exists.
+///
+/// # `Uid::NEW` and settling
+///
+/// Construction sites write [`Uid::NEW`] (zero, "unset") rather than minting
+/// eagerly. The prior samples thousands of trees per refinement walk and all
+/// but one are thrown away; minting there would burn identities for nothing and
+/// make the counter's value depend on how much search ran. Instead a tree is
+/// *settled* — [`PatchTree::ensure_uids`] — at the few points where it becomes
+/// something a person can point at: admitted to the pool, adopted onto the
+/// bench, restored from a save. Everything before that is anonymous.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Uid(pub u64);
+
+/// The mint. One process-global counter, monotonic from 1.
+///
+/// Not seeded, not per-engine, and deliberately not derived from the tree:
+/// uniqueness *within a session* is the whole contract, and a content-derived
+/// id would give two identical sibling modules the same identity — which is
+/// precisely the confusion uids exist to end.
+static UID_SOURCE: AtomicU64 = AtomicU64::new(1);
+
+impl Uid {
+    /// The unset identity: a node that has not been settled yet.
+    pub const NEW: Uid = Uid(0);
+
+    /// Mint a fresh identity.
+    pub fn mint() -> Uid {
+        Uid(UID_SOURCE.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// Note that this identity already exists, so the mint never reissues it.
+    ///
+    /// The counter is per *process*, and a restored session is the case that
+    /// makes that a problem rather than a detail: a save carries the uids it
+    /// was written with (that is the entire point — a hand-placed layout has to
+    /// survive a reload), but a fresh page load starts the counter at 1. Insert
+    /// one module into a restored patch and the mint would hand out an id that
+    /// tree is already using, and two nodes would answer to one lock. So every
+    /// identity the engine *sees* pushes the counter past itself, and a restore
+    /// — which settles the whole bank on the way in — leaves it above every id
+    /// in the save.
+    pub fn observe(id: Uid) {
+        UID_SOURCE.fetch_max(id.0.saturating_add(1), Ordering::Relaxed);
+    }
+
+    /// Whether this node still needs an identity.
+    pub fn is_new(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+// Two patches that differ only in uids are the same patch. See the type docs:
+// pool dedup, refinement's fixed-point test and every golden-tree assertion in
+// the suite are this comparison, and all of them mean "same content".
+impl PartialEq for Uid {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl Eq for Uid {}
+impl Hash for Uid {
+    fn hash<H: Hasher>(&self, _: &mut H) {}
+}
+
+/// Every [`AudioNode`] variant, in declaration order — the one list the uid
+/// accessors expand over, so a new module cannot be added without one.
+macro_rules! audio_variants {
+    ($mac:ident) => {
+        $mac!(
+            Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Mix, Filter, Fold, Delay, Chorus,
+            Reverb, Distortion, Bitcrush, Phaser, Flanger, Tremolo, Vibrato, Eq, Granular, RingMod,
+            Shift, Comp, Duck, Gate, Vocoder
+        )
+    };
+}
+
+/// Every [`AudioNode`] variant that carries a modulation slot — all of them
+/// but `Noise`, `Mix` and `RingMod`.
+macro_rules! modulated_variants {
+    ($mac:ident) => {
+        $mac!(
+            Vco, Supersaw, Wavetable, Pluck, Formant, Filter, Fold, Delay, Chorus, Reverb,
+            Distortion, Bitcrush, Phaser, Flanger, Tremolo, Vibrato, Eq, Granular, Shift, Comp,
+            Duck, Gate, Vocoder
+        )
+    };
+}
+
+/// Every non-empty [`ModNode`] variant. `None` is excluded on purpose: an
+/// empty slot is not a module and carries no identity.
+macro_rules! mod_variants {
+    ($mac:ident) => {
+        $mac!(Lfo, Env, Rand, Follow, Euclid, Op, Pair)
+    };
+}
 
 /// Oscillator / LFO waveform. Index order matches the trace-site categorical
 /// and the quiver output-port table.
@@ -445,6 +587,9 @@ pub enum ModNode {
         wave: Waveform,
         /// Normalized rate (0-1).
         rate: f64,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// An attack/decay envelope retriggered by the note gate.
     Env {
@@ -452,6 +597,9 @@ pub enum ModNode {
         attack: f64,
         /// Normalized decay time (0-1).
         decay: f64,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// A random stepped source (noise sampled-and-held on an internal
     /// clock) — the classic S&H burble.
@@ -460,6 +608,9 @@ pub enum ModNode {
         rate: f64,
         /// Normalized slew between steps (0 = hard steps, 1 = a drift).
         glide: f64,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// An envelope follower riding the *owning module's own input* — the
     /// patch's dynamics fed back into its timbre (a filter that opens on the
@@ -474,6 +625,9 @@ pub enum ModNode {
         sens: f64,
         /// Normalized release time.
         release: f64,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// A clocked euclidean gate pattern — pulses spread as evenly as the step
     /// count allows. A **leaf**, like the four above: it generates rather than
@@ -485,6 +639,9 @@ pub enum ModNode {
         steps: f64,
         /// Normalized pulse density (0-1 → 1..steps−1 pulses).
         pulses: f64,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// A unary CV processor wrapping another modulation term.
     ///
@@ -504,6 +661,9 @@ pub enum ModNode {
         /// renormalizes it away rather than drawing it (see
         /// [`ModNode::normalized`]).
         input: Box<ModNode>,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// A binary CV combiner over two modulation terms.
     Pair {
@@ -514,6 +674,9 @@ pub enum ModNode {
         /// Second input. Never [`ModNode::None`]; on
         /// [`PairOp::Switch`] it is also the control.
         b: Box<ModNode>,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
 }
 
@@ -545,6 +708,9 @@ pub enum AudioNode {
         /// Pitch modulation source. Absent in pre-2A saves.
         #[serde(default)]
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Seven-voice detuned saw stack with sub oscillator.
     Supersaw {
@@ -561,11 +727,17 @@ pub enum AudioNode {
         /// Pitch modulation source. Absent in pre-2A saves.
         #[serde(default)]
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Noise source.
     Noise {
         /// Noise color.
         color: NoiseColor,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Morphing wavetable oscillator: eight bandlimited tables, crossfaded.
     ///
@@ -583,6 +755,9 @@ pub enum AudioNode {
         mod_depth: f64,
         /// Morph modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Karplus-Strong plucked string, retriggered by the note gate.
     Pluck {
@@ -596,6 +771,9 @@ pub enum AudioNode {
         mod_depth: f64,
         /// Damping modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Formant (vocal-tract) oscillator: a glottal pulse through five
     /// parallel resonators.
@@ -617,6 +795,9 @@ pub enum AudioNode {
         mod_depth: f64,
         /// Vowel modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Equal-power crossfade of two audio terms.
     Mix {
@@ -626,6 +807,9 @@ pub enum AudioNode {
         a: Box<AudioNode>,
         /// Second input.
         b: Box<AudioNode>,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// A filter over an audio term, with an optional cutoff modulation.
     Filter {
@@ -641,6 +825,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Cutoff modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Wavefolder over an audio term, with optional threshold modulation.
     Fold {
@@ -652,6 +839,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Threshold modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Delay line over an audio term, with optional delay-time modulation.
     ///
@@ -685,6 +875,9 @@ pub enum AudioNode {
         /// [`ModNode::None`].
         #[serde(default)]
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Chorus over an audio term, with optional depth modulation.
     Chorus {
@@ -703,6 +896,9 @@ pub enum AudioNode {
         /// Chorus-depth modulation source. Absent in v1 saves.
         #[serde(default)]
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Algorithmic reverb (Freeverb) over an audio term, with optional size
     /// modulation.
@@ -722,6 +918,9 @@ pub enum AudioNode {
         /// Room-size modulation source. Absent in v1 saves.
         #[serde(default)]
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Waveshaping distortion over an audio term.
     Distortion {
@@ -737,6 +936,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Drive modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Bit-depth and sample-rate reduction over an audio term.
     Bitcrush {
@@ -750,6 +952,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Bit-depth modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Swept allpass phaser over an audio term.
     Phaser {
@@ -765,6 +970,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Sweep-depth modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Flanging comb over an audio term: a 1–10 ms swept delay against the
     /// dry signal, with signed feedback. Stereo — its `spread` decorrelates
@@ -783,6 +991,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Sweep-depth modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Amplitude modulation over an audio term, sine-to-triangle.
     Tremolo {
@@ -798,6 +1009,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Depth modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Pitch wobble over an audio term (a modulated delay read).
     ///
@@ -817,6 +1031,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Depth modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Three-band tone control over an audio term (low shelf, parametric mid,
     /// high shelf), each ±12 dB with unity at the knob's centre.
@@ -833,6 +1050,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Mid-gain modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Granular re-reading of an audio term: overlapping Hann-windowed grains
     /// taken from a rolling buffer of what the input just played.
@@ -849,6 +1069,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Position modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Ring modulation of two audio terms, crossfaded against the dry
     /// carrier. The grammar's **second** binary node.
@@ -859,6 +1082,9 @@ pub enum AudioNode {
         a: Box<AudioNode>,
         /// Modulator.
         b: Box<AudioNode>,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Grain-based pitch shifter over an audio term: two Hann-windowed grains
     /// read from a rolling buffer at a resampled rate.
@@ -881,6 +1107,9 @@ pub enum AudioNode {
         input: Box<AudioNode>,
         /// Transposition modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Compressor whose detector runs on a **second** audio term: the
     /// grammar's third binary node, and the first whose `/1` branch is heard
@@ -903,6 +1132,9 @@ pub enum AudioNode {
         sidechain: Box<AudioNode>,
         /// Threshold modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Ducker: a key signal pulls the main signal down, in proportion to how
     /// far the key's envelope sits above the threshold.
@@ -927,6 +1159,9 @@ pub enum AudioNode {
         key: Box<AudioNode>,
         /// Duck-amount modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Noise gate keyed by a second audio term.
     Gate {
@@ -944,6 +1179,9 @@ pub enum AudioNode {
         sidechain: Box<AudioNode>,
         /// Threshold modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
     /// Vocoder: a bank of bandpass filters whose per-band envelopes are taken
     /// from the **modulator** and imposed on the **carrier**.
@@ -967,6 +1205,9 @@ pub enum AudioNode {
         modulator: Box<AudioNode>,
         /// Band-count modulation source.
         modulation: ModNode,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
     },
 }
 
@@ -994,6 +1235,46 @@ pub struct PatchTree {
 }
 
 impl ModNode {
+    /// This term's stable identity — `None` for [`ModNode::None`], which is an
+    /// empty slot rather than a module.
+    pub fn uid(&self) -> Option<Uid> {
+        macro_rules! arms {
+            ($($v:ident),*) => {
+                match self { $(ModNode::$v { uid, .. } => Some(*uid),)* ModNode::None => None }
+            };
+        }
+        mod_variants!(arms)
+    }
+
+    /// Overwrite this term's identity (a no-op on [`ModNode::None`]).
+    pub fn set_uid(&mut self, id: Uid) {
+        macro_rules! arms {
+            ($($v:ident),*) => {
+                match self { $(ModNode::$v { uid, .. } => *uid = id,)* ModNode::None => {} }
+            };
+        }
+        mod_variants!(arms)
+    }
+
+    /// Sub-terms in key-index order (`Op`'s input is `/0`; a `Pair`'s two
+    /// branches are `/0` and `/1`).
+    pub fn children(&self) -> Vec<&ModNode> {
+        match self {
+            ModNode::Op { input, .. } => vec![input],
+            ModNode::Pair { a, b, .. } => vec![a, b],
+            _ => Vec::new(),
+        }
+    }
+
+    /// Mutable [`Self::children`].
+    pub fn children_mut(&mut self) -> Vec<&mut ModNode> {
+        match self {
+            ModNode::Op { input, .. } => vec![input],
+            ModNode::Pair { a, b, .. } => vec![a, b],
+            _ => Vec::new(),
+        }
+    }
+
     /// Number of probabilistic-choice sites this mod term occupies.
     pub fn site_count(&self) -> usize {
         match self {
@@ -1070,9 +1351,11 @@ impl ModNode {
                 p0,
                 p1,
                 input,
+                ..
             } => match input.normalized() {
                 ModNode::None => ModNode::None,
                 input => ModNode::Op {
+                    uid: Uid::NEW,
                     kind,
                     p0,
                     p1: if kind.param_sites().len() > 1 {
@@ -1083,11 +1366,12 @@ impl ModNode {
                     input: Box::new(input),
                 },
             },
-            ModNode::Pair { kind, a, b } => match (a.normalized(), b.normalized()) {
+            ModNode::Pair { kind, a, b, .. } => match (a.normalized(), b.normalized()) {
                 (ModNode::None, ModNode::None) => ModNode::None,
                 (a, ModNode::None) => a,
                 (ModNode::None, b) => b,
                 (a, b) => ModNode::Pair {
+                    uid: Uid::NEW,
                     kind,
                     a: Box::new(a),
                     b: Box::new(b),
@@ -1099,6 +1383,160 @@ impl ModNode {
 }
 
 impl AudioNode {
+    /// This node's stable identity ([`Uid::NEW`] until the tree is settled).
+    pub fn uid(&self) -> Uid {
+        macro_rules! arms {
+            ($($v:ident),*) => { match self { $(AudioNode::$v { uid, .. } => *uid,)* } };
+        }
+        audio_variants!(arms)
+    }
+
+    /// Overwrite this node's identity. Only the settling and inheritance
+    /// passes have any business calling this.
+    pub fn set_uid(&mut self, id: Uid) {
+        macro_rules! arms {
+            ($($v:ident),*) => { match self { $(AudioNode::$v { uid, .. } => *uid = id,)* } };
+        }
+        audio_variants!(arms)
+    }
+
+    /// Audio children in **key-index order** — the same `/0`, `/1` order
+    /// `mutate::child_mut`, `describe` and `genome` all use, so index `i` here
+    /// and the key segment `i` there address the same node.
+    pub fn children(&self) -> Vec<&AudioNode> {
+        match self {
+            AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => vec![a, b],
+            AudioNode::Comp {
+                input,
+                sidechain: other,
+                ..
+            }
+            | AudioNode::Gate {
+                input,
+                sidechain: other,
+                ..
+            }
+            | AudioNode::Duck {
+                input, key: other, ..
+            }
+            | AudioNode::Vocoder {
+                carrier: input,
+                modulator: other,
+                ..
+            } => vec![input, other],
+            AudioNode::Shift { input, .. }
+            | AudioNode::Filter { input, .. }
+            | AudioNode::Fold { input, .. }
+            | AudioNode::Delay { input, .. }
+            | AudioNode::Chorus { input, .. }
+            | AudioNode::Reverb { input, .. }
+            | AudioNode::Distortion { input, .. }
+            | AudioNode::Bitcrush { input, .. }
+            | AudioNode::Phaser { input, .. }
+            | AudioNode::Flanger { input, .. }
+            | AudioNode::Tremolo { input, .. }
+            | AudioNode::Vibrato { input, .. }
+            | AudioNode::Eq { input, .. }
+            | AudioNode::Granular { input, .. } => vec![input],
+            // The sources. Spelled out rather than caught by a wildcard so
+            // that a new production cannot quietly become childless — and so
+            // become invisible to identity — by being forgotten here.
+            AudioNode::Vco { .. }
+            | AudioNode::Supersaw { .. }
+            | AudioNode::Noise { .. }
+            | AudioNode::Wavetable { .. }
+            | AudioNode::Pluck { .. }
+            | AudioNode::Formant { .. } => Vec::new(),
+        }
+    }
+
+    /// Mutable [`Self::children`].
+    pub fn children_mut(&mut self) -> Vec<&mut AudioNode> {
+        match self {
+            AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => vec![a, b],
+            AudioNode::Comp {
+                input,
+                sidechain: other,
+                ..
+            }
+            | AudioNode::Gate {
+                input,
+                sidechain: other,
+                ..
+            }
+            | AudioNode::Duck {
+                input, key: other, ..
+            }
+            | AudioNode::Vocoder {
+                carrier: input,
+                modulator: other,
+                ..
+            } => vec![input, other],
+            AudioNode::Shift { input, .. }
+            | AudioNode::Filter { input, .. }
+            | AudioNode::Fold { input, .. }
+            | AudioNode::Delay { input, .. }
+            | AudioNode::Chorus { input, .. }
+            | AudioNode::Reverb { input, .. }
+            | AudioNode::Distortion { input, .. }
+            | AudioNode::Bitcrush { input, .. }
+            | AudioNode::Phaser { input, .. }
+            | AudioNode::Flanger { input, .. }
+            | AudioNode::Tremolo { input, .. }
+            | AudioNode::Vibrato { input, .. }
+            | AudioNode::Eq { input, .. }
+            | AudioNode::Granular { input, .. } => vec![input],
+            // The sources. Spelled out rather than caught by a wildcard so
+            // that a new production cannot quietly become childless — and so
+            // become invisible to identity — by being forgotten here.
+            AudioNode::Vco { .. }
+            | AudioNode::Supersaw { .. }
+            | AudioNode::Noise { .. }
+            | AudioNode::Wavetable { .. }
+            | AudioNode::Pluck { .. }
+            | AudioNode::Formant { .. } => Vec::new(),
+        }
+    }
+
+    /// The modulation term hanging off this node's one mod slot, if the module
+    /// has one (`Mix`, `RingMod`, `Noise` and `Shift` do not).
+    pub fn modulation(&self) -> Option<&ModNode> {
+        macro_rules! arms {
+            ($($v:ident),*) => {
+                match self {
+                    $(AudioNode::$v { modulation, .. } => Some(modulation),)*
+                    // The three productions with nothing worth modulating:
+                    // `Noise` has only a colour, and `Mix`/`RingMod` have two
+                    // audio inputs and a blend. Named rather than wildcarded so
+                    // a new module with a slot cannot silently land here.
+                    AudioNode::Noise { .. }
+                    | AudioNode::Mix { .. }
+                    | AudioNode::RingMod { .. } => None,
+                }
+            };
+        }
+        modulated_variants!(arms)
+    }
+
+    /// Mutable [`Self::modulation`].
+    pub fn modulation_mut(&mut self) -> Option<&mut ModNode> {
+        macro_rules! arms {
+            ($($v:ident),*) => {
+                match self {
+                    $(AudioNode::$v { modulation, .. } => Some(modulation),)*
+                    // The three productions with nothing worth modulating:
+                    // `Noise` has only a colour, and `Mix`/`RingMod` have two
+                    // audio inputs and a blend. Named rather than wildcarded so
+                    // a new module with a slot cannot silently land here.
+                    AudioNode::Noise { .. }
+                    | AudioNode::Mix { .. }
+                    | AudioNode::RingMod { .. } => None,
+                }
+            };
+        }
+        modulated_variants!(arms)
+    }
+
     /// Tree depth (a source leaf is depth 1).
     pub fn depth(&self) -> usize {
         match self {
@@ -1308,7 +1746,7 @@ impl AudioNode {
                 "(supersaw {octave:+} {detune:.2} {mix:.2} {})",
                 mod_sexpr(modulation)
             ),
-            AudioNode::Noise { color } => format!("(noise {})", color.port_name()),
+            AudioNode::Noise { color, .. } => format!("(noise {})", color.port_name()),
             AudioNode::Formant {
                 vowel,
                 shift,
@@ -1340,10 +1778,10 @@ impl AudioNode {
                 "(pluck {octave:+} d={damping:.2} b={brightness:.2} {})",
                 mod_sexpr(modulation)
             ),
-            AudioNode::Mix { balance, a, b } => {
+            AudioNode::Mix { balance, a, b, .. } => {
                 format!("(mix {balance:.2} {} {})", a.to_sexpr(), b.to_sexpr())
             }
-            AudioNode::RingMod { mix, a, b } => {
+            AudioNode::RingMod { mix, a, b, .. } => {
                 format!("(ringmod {mix:.2} {} {})", a.to_sexpr(), b.to_sexpr())
             }
             AudioNode::Filter {
@@ -1575,25 +2013,27 @@ impl AudioNode {
 fn mod_sexpr(m: &ModNode) -> String {
     match m {
         ModNode::None => "nomod".to_string(),
-        ModNode::Lfo { wave, rate } => format!("(lfo {} {rate:.2})", wave.port_name()),
-        ModNode::Env { attack, decay } => format!("(env a={attack:.2} d={decay:.2})"),
-        ModNode::Rand { rate, glide } => format!("(rand r={rate:.2} g={glide:.2})"),
-        ModNode::Follow { sens, release } => format!("(follow s={sens:.2} r={release:.2})"),
+        ModNode::Lfo { wave, rate, .. } => format!("(lfo {} {rate:.2})", wave.port_name()),
+        ModNode::Env { attack, decay, .. } => format!("(env a={attack:.2} d={decay:.2})"),
+        ModNode::Rand { rate, glide, .. } => format!("(rand r={rate:.2} g={glide:.2})"),
+        ModNode::Follow { sens, release, .. } => format!("(follow s={sens:.2} r={release:.2})"),
         ModNode::Euclid {
             rate,
             steps,
             pulses,
+            ..
         } => format!("(euclid r={rate:.2} s={steps:.2} p={pulses:.2})"),
         ModNode::Op {
             kind,
             p0,
             p1,
             input,
+            ..
         } => match kind.param_sites().len() {
             1 => format!("({} {p0:.2} {})", kind.label(), mod_sexpr(input)),
             _ => format!("({} {p0:.2} {p1:.2} {})", kind.label(), mod_sexpr(input)),
         },
-        ModNode::Pair { kind, a, b } => {
+        ModNode::Pair { kind, a, b, .. } => {
             format!("({} {} {})", kind.label(), mod_sexpr(a), mod_sexpr(b))
         }
     }
@@ -1741,5 +2181,146 @@ impl PatchTree {
             self.amp.release,
             self.root.to_sexpr()
         )
+    }
+
+    /// Give every node that still lacks an identity a fresh one, and break any
+    /// duplicates.
+    ///
+    /// This is the *settle* step: the point at which an anonymous tree becomes
+    /// a thing a person can point at. Call it wherever a tree is adopted —
+    /// admitted to the pool, put on the bench, restored from a save, arrived
+    /// from the panel — and nowhere in the middle of search.
+    ///
+    /// De-duplication is not paranoia. A whole-tree replace from the panel is
+    /// arbitrary client JSON, and the one gesture that most obviously produces
+    /// a repeat is "duplicate this module": copying a subtree copies its uids,
+    /// and two nodes claiming one identity is worse than no identity at all —
+    /// a lock on either would light both. First occurrence in walk order keeps
+    /// the id; the copies are minted fresh.
+    pub fn ensure_uids(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        settle_audio(&mut self.root, &mut seen);
+    }
+
+    /// Strip every identity back to [`Uid::NEW`].
+    ///
+    /// Used where a tree must hash or serialize as pure content — the render
+    /// memo's key, above all, which would otherwise miss on every refinement
+    /// step and invalidate every persisted row the moment uids started moving.
+    pub fn clear_uids(&mut self) {
+        walk_audio_mut(&mut self.root, &mut |n| n.set_uid(Uid::NEW), &mut |m| {
+            m.set_uid(Uid::NEW)
+        });
+    }
+
+    /// Carry `parent`'s identities onto this tree wherever the structure is
+    /// unchanged.
+    ///
+    /// **This is what makes locks and hand positions survive ⚡ evolve.**
+    /// Refinement does not mutate a tree in place — `EvolutionChain` proposes
+    /// over the *trace*, and every accepted step reconstructs the whole genome
+    /// through [`crate::genome`]'s decoder, which knows nothing about uids and
+    /// cannot: a trace is a map from address to value. So a refined child comes
+    /// back structurally near-identical to its seed and completely anonymous,
+    /// and without this pass every generation would look to the UI like a brand
+    /// new patch — the exact failure (`R6`) that would make pinned routings and
+    /// freeform layout read as broken.
+    ///
+    /// The match is positional and shallow-by-variant: walking both trees in
+    /// lockstep, a node inherits its counterpart's identity **only if it is the
+    /// same variant**, but the walk descends either way. That last part
+    /// matters — a step that swaps one filter for a reverb should not orphan
+    /// the entire chain beneath it, which was not touched.
+    ///
+    /// Anything left unmatched (a genuinely new module, a branch that grew)
+    /// stays [`Uid::NEW`] and is minted by the following [`Self::ensure_uids`].
+    pub fn inherit_uids(&mut self, parent: &PatchTree) {
+        inherit_audio(&mut self.root, &parent.root);
+    }
+}
+
+/// Depth-first over an audio subtree and every modulation term hanging off it.
+fn walk_audio_mut(
+    n: &mut AudioNode,
+    fa: &mut impl FnMut(&mut AudioNode),
+    fm: &mut impl FnMut(&mut ModNode),
+) {
+    fa(n);
+    if let Some(m) = n.modulation_mut() {
+        walk_mod_mut(m, fm);
+    }
+    for c in n.children_mut() {
+        walk_audio_mut(c, fa, fm);
+    }
+}
+
+fn walk_mod_mut(n: &mut ModNode, fm: &mut impl FnMut(&mut ModNode)) {
+    fm(n);
+    for c in n.children_mut() {
+        walk_mod_mut(c, fm);
+    }
+}
+
+fn settle_audio(n: &mut AudioNode, seen: &mut std::collections::HashSet<u64>) {
+    let uid = n.uid();
+    if uid.is_new() || !seen.insert(uid.0) {
+        let fresh = Uid::mint();
+        seen.insert(fresh.0);
+        n.set_uid(fresh);
+    } else {
+        Uid::observe(uid);
+    }
+    if let Some(m) = n.modulation_mut() {
+        settle_mod(m, seen);
+    }
+    for c in n.children_mut() {
+        settle_audio(c, seen);
+    }
+}
+
+fn settle_mod(n: &mut ModNode, seen: &mut std::collections::HashSet<u64>) {
+    // `None` is an empty slot, not a module: it draws no plate, owns no knobs
+    // and cannot be locked, so it has nothing to be identified by — and
+    // `ModNode::uid` says so by returning `None` for it.
+    if let Some(uid) = n.uid() {
+        if uid.is_new() || !seen.insert(uid.0) {
+            let fresh = Uid::mint();
+            seen.insert(fresh.0);
+            n.set_uid(fresh);
+        } else {
+            Uid::observe(uid);
+        }
+    }
+    for c in n.children_mut() {
+        settle_mod(c, seen);
+    }
+}
+
+fn inherit_audio(child: &mut AudioNode, parent: &AudioNode) {
+    if std::mem::discriminant(&*child) == std::mem::discriminant(parent) {
+        child.set_uid(parent.uid());
+    }
+    if let (Some(cm), Some(pm)) = (child.modulation_mut(), parent.modulation()) {
+        inherit_mod(cm, pm);
+    }
+    let pk = parent.children();
+    for (i, c) in child.children_mut().into_iter().enumerate() {
+        if let Some(p) = pk.get(i) {
+            inherit_audio(c, p);
+        }
+    }
+}
+
+fn inherit_mod(child: &mut ModNode, parent: &ModNode) {
+    if std::mem::discriminant(&*child) == std::mem::discriminant(parent) {
+        if let Some(u) = parent.uid() {
+            child.set_uid(u);
+        }
+    }
+    let pk = parent.children();
+    for (i, c) in child.children_mut().into_iter().enumerate() {
+        if let Some(p) = pk.get(i) {
+            inherit_mod(c, p);
+        }
     }
 }

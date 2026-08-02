@@ -939,7 +939,7 @@ mod tests {
     use super::*;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
-    use ricercar_grammar::PatchGrammarPrior;
+    use ricercar_grammar::{PatchGrammarPrior, Uid};
 
     fn tree_json(rng: &mut StdRng) -> String {
         serde_json::to_string(&PatchGrammarPrior::default().sample_with_rng(rng)).unwrap()
@@ -960,11 +960,13 @@ mod tests {
                 release: 0.3, // ≈16 ms
             },
             root: AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::SvfLp,
                 cutoff: 0.7,
                 resonance: 0.1,
                 mod_depth: 0.0,
                 input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
                     wave: Waveform::Saw,
                     octave: 0,
                     detune: 0.5,

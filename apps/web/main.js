@@ -98,6 +98,9 @@ const wb = {
   buffer: null,      // phrase render of the bench state
   vetOk: true,
   dirty: false,
+  // Locked sites, keyed by **node identity** rather than by trace address —
+  // `41#cut`, not `node/0#cut`. See the lock section below for why the whole
+  // point of this phase hangs off that one substitution.
   locks: new Set(),
 };
 let editInFlight = false;
@@ -258,7 +261,6 @@ function stageUndo() {
   return openEdit;
 }
 function commitStagedUndo() {
-  stagedLockRemap = null;
   if (!openEdit) return;
   undoStack.push(openEdit.snap);
   if (undoStack.length > 60) undoStack.shift();
@@ -266,8 +268,6 @@ function commitStagedUndo() {
   openEdit = null;
 }
 function discardStagedUndo() {
-  stagedLockRemap = null;
-  pendingRewriteLocks = null; // the tree those keys described never happened
   if (!openEdit) return;
   for (const uid of openEdit.trays) unstage(uid);
   openEdit = null;
@@ -322,11 +322,6 @@ function noteOnLanding(text, opts) {
   if (!structInFlight) return note(text, opts); // nothing is pending to wait on
   landedNote = { text, opts: opts || {} };
 }
-
-// How the edit in flight moves a trace address, or null if it cannot be known.
-// Computed at *send* time, because it is a statement about the tree the op was
-// aimed at, and consumed by the bench reply — see `lockRemapFor`.
-let stagedLockRemap = null;
 
 // Undo and redo post a whole tree, which cannot be re-aimed at a tree that
 // moved under it — so they wait for the lane to clear rather than racing the
@@ -700,6 +695,9 @@ worker.onmessage = (e) => {
     }
     case "bench": {
       wb.rack = m.rack;
+      // Every address in the identity index belongs to the rack it was built
+      // from, and this is the only place a rack is ever replaced.
+      lockIndex = null;
       wb.vetOk = m.vetOk;
       if (m.subject !== undefined) {
         // Benching anything that is NOT the auditioned candidate ends the
@@ -715,7 +713,14 @@ worker.onmessage = (e) => {
         }
         wb.subjectId = m.subject;
         wb.dirty = false;
-        wb.locks = new Set();
+        // Pruned, not cleared. A different patch entirely shares no node
+        // identities with the one that was here, so pruning empties the set
+        // and reads exactly as clearing did. But the two subject changes that
+        // matter are *not* different patches: `edit_commit` benches the very
+        // tree that was on it, and ⚡ evolve benches a child whose surviving
+        // nodes carry the seed's identities through `inherit_uids`. Both keep
+        // their locks — which is the loop this whole editor exists to serve.
+        pruneLocks();
         // A different patch entirely: nothing learned about the old one's
         // addresses says anything about this one's, and a survivor here is
         // the same stale-entry dropout a structural edit used to leave.
@@ -761,40 +766,15 @@ worker.onmessage = (e) => {
           cancelPending();
           endConnectPick();
         }
-        if (m.edited === "restore" && wb.locks.size > 0) {
-          // Two very different restores arrive on this one route. A rewrite
-          // built the tree it is replacing with, so it knows where every
-          // locked module went (`applyTreeRewrite`) and the locks travel. A
-          // ⌘Z is putting back a tree these locks were never about, so they
-          // come off — silently, because restoring an earlier patch and
-          // finding its earlier locks is not news.
-          const lost = wb.locks.size;
-          if (!restorePending && pendingRewriteLocks) {
-            wb.locks = pendingRewriteLocks;
-            const dropped = lost - wb.locks.size;
-            if (dropped > 0) {
-              note(`${dropped} lock${dropped > 1 ? "s" : ""} went with what you removed — the rest moved with the patch.`);
-            }
-          } else {
-            wb.locks.clear();
-          }
-        }
-        pendingRewriteLocks = null;
-        if (m.edited === "structure" && wb.locks.size > 0) {
-          // Structural edits shift trace addresses. They used to be cleared
-          // wholesale, which meant the loop this editor exists to serve —
-          // pin a routing, then breed around it — could not be completed.
-          // Each op's remapping is known, so the locks travel with the nodes
-          // and only the sites the edit actually destroyed are lost.
-          if (stagedLockRemap) {
-            const dropped = remapLocks(stagedLockRemap);
-            if (dropped > 0) {
-              note(`${dropped} lock${dropped > 1 ? "s" : ""} went with what you removed — the rest moved with the patch.`);
-            }
-          } else {
-            wb.locks.clear();
-            note("structure changed — locks cleared");
-          }
+        // One rule for every edit, from an op to a whole-tree rewrite to a
+        // ⌘Z: a lock names a *node*, so it survives unless that node is gone.
+        // This replaced a page of per-op key remapping (`lockRemapFor`) and a
+        // second copy of the same reasoning inside `applyTreeRewrite`, which
+        // tracked node objects by reference — both of them standing in for an
+        // identity the term did not have and now does.
+        const droppedLocks = pruneLocks();
+        if (droppedLocks > 0) {
+          note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
         }
       }
       if (m.buffer && m.buffer.length > 0) {
@@ -3871,7 +3851,7 @@ function moduleLockAddrs(mod) {
 
 function isModuleLocked(mod) {
   const addrs = moduleLockAddrs(mod);
-  return addrs.length > 0 && addrs.every((a) => wb.locks.has(a));
+  return addrs.length > 0 && addrs.every(isLockedAddr);
 }
 
 function svgEl(tag, attrs, cls) {
@@ -3957,7 +3937,7 @@ function renderRack() {
 
   buildRack(svg, wb.rack, {
     interactive: true,
-    locks: wb.locks,
+    locks: lockedAddrs(),
     compact: effectiveLod() === "compact",
     placeholders: placeholderKeys,
   });
@@ -4284,8 +4264,15 @@ function buildRack(svg, rack, opts) {
     // which module it landed on, and pick mode has to be able to dim, halo
     // and pin a chip to one plate. `data-kind` alone cannot name a plate —
     // a patch routinely carries three filters.
-    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key });
-    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key }, "mod-group");
+    // `data-uid` is the *identity* alongside the position. `renderRack` is a
+    // full teardown (`svg.innerHTML = ""`), so the only way anything can be
+    // said to have "moved" rather than "been replaced" is a key that outlives
+    // the rebuild — which is what a FLIP tween, a sticky hand position and a
+    // selection that survives a splice all need. `0` on the amp, which is the
+    // envelope rather than a node.
+    const ids = { "data-kind": m.kind, "data-key": m.key, "data-uid": m.uid };
+    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids });
+    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids }, "mod-group");
     plateLayer.appendChild(plateG);
     ctrlLayer.appendChild(g);
     if (interactive) {
@@ -4375,9 +4362,8 @@ function buildRack(svg, rack, opts) {
         lockG.appendChild(mlock);
         hitPad(lockG, p.w - 14, 13, 24, 26);
         lockG.addEventListener("click", () => {
-          const addrs = moduleLockAddrs(m);
           const on = isModuleLockedIn(m);
-          for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
+          for (const a of moduleLockAddrs(m)) setLock(a, !on);
           renderRack();
         });
         g.appendChild(lockG);
@@ -4604,7 +4590,7 @@ function buildRack(svg, rack, opts) {
         dt.textContent = locked ? `Unlock ${k.label}` : `Lock ${k.label} (evolution won't touch it)`;
         dot.appendChild(dt);
         dot.addEventListener("click", () => {
-          locked ? wb.locks.delete(k.addr) : wb.locks.add(k.addr);
+          setLock(k.addr, !locked);
           renderRack();
         });
         // A 3.4-unit dot is a 7px target. The pad stops 10 units out, which
@@ -5261,115 +5247,109 @@ function queueStruct(msg, landed) {
   bindLanded(landed);
   if (landed && landed.drop != null) setTrayPending(landed.drop, true);
   stageUndo();
-  // Taken here, against the tree the op is aimed at. By the time the reply
-  // lands `wb.rack` is the *new* rack and "was that node's parent binary?"
-  // can no longer be asked.
-  stagedLockRemap = lockRemapFor(msg);
   send(msg);
 }
 
-// ---------- locks across a structural edit ----------
-// A lock is a trace address (`node/0#cut`), and a trace address is a
-// *position*, so every structural edit moves some locks and destroys others.
-// Clearing the whole set was honest and it broke the one loop the graph editor
-// exists to serve: hand-build a routing, pin it, breed around it. You cannot
-// pin anything if pinning is undone by the next edit.
+// ---------- locks, keyed by node identity ----------
+// A lock used to be a trace address (`node/0#cut`), and a trace address is a
+// *position*: insert one module upstream and every key below it shifts a
+// segment, delete a mixer branch and the survivor is re-rooted, run one
+// generation and the tree is rebuilt from a trace that never saw the object
+// graph. Under positional keys the only honest answer to a structural edit was
+// to throw the locks away — and that broke the single loop this editor exists
+// to serve: hand-build a routing, pin it, breed around it. Phase 1 bought time
+// with per-op key remapping (a table of eight `StructOp` remappings, plus a
+// second copy of the same reasoning inside `applyTreeRewrite` that tracked
+// node objects by reference) and still cleared on ⚡ evolve, which is the one
+// place it mattered most.
 //
-// Every op the UI can send has known, small key-remapping semantics — read off
-// `apply_struct_op` in mutate.rs — so the set is carried through them instead
-// of thrown away. This is the interim treatment: the real fix is a stable
-// `uid` on the node (WS-4 §6, phase 2), after which none of this is needed.
-// A whole-tree replace (`edit_set_tree`, which is undo, redo and every
-// client-side rewrite) is the one route that genuinely says nothing about
-// where anything went, and it still clears.
+// The term now carries a `uid` on every node — minted in the engine, preserved
+// by `apply_struct_op`, inherited by refinement (`PatchTree::inherit_uids`),
+// and echoed onto every `RackModule` — so a lock can name the module instead
+// of its address. All of the remapping is gone. Locks survive insert, delete,
+// reconnect, undo, redo and ⚡ evolve, and are lost only when the module they
+// name is actually gone.
 //
-// Returns `key → newKey | null` (null = that site no longer exists), or null
-// for "cannot be known, clear them".
-function reRoot(k, from, to) { return to + k.slice(from.length); }
+// A lock id is `<uid><suffix-within-the-module>#<site>`: `41#cut` for a knob,
+// `41/m#mod` for the empty modulation slot a module guards (whose address
+// hangs below the module's own key). The `amp` pseudo-module is not a node at
+// all — the envelope wraps the term — so it has no uid and its addresses ride
+// through unchanged, which is also why they survive everything.
 
-/** A lock address split into the three things that move independently: the
- *  audio node it hangs off, the modulation chain below it if any, and the
- *  parameter site itself. `amp#attack` has no audio node in the tree at all
- *  (the envelope wraps the term), which is exactly why it survives everything.
- */
-function lockParts(addr) {
-  const h = addr.indexOf("#");
-  const key = h < 0 ? addr : addr.slice(0, h);
-  const site = h < 0 ? "" : addr.slice(h);
-  const segs = key.split("/");
-  const i = segs.indexOf("m");
-  return i < 0
-    ? { owner: key, tail: "", site }
-    : { owner: segs.slice(0, i).join("/"), tail: `/${segs.slice(i).join("/")}`, site };
-}
-
-function lockRemapFor(msg) {
-  if (!msg || msg.type !== "edit_structure") return null;
-  const op = msg.op || {};
-  const key = op.key;
-  if (!key) return null;
-  switch (op.op) {
-    // The new module takes the socket and the old occupant becomes its first
-    // input — `graft` always wires `old` into index 0 — so a whole subtree
-    // slides one level deeper and nothing is lost.
-    case "insert_tree":
-      return (k) => (keyInside(k, key) ? reRoot(k, key, `${key}/0`) : k);
-    // Everything at and below the key is replaced wholesale.
-    case "replace_tree":
-      return (k) => (keyInside(k, key) ? null : k);
-    // Two shapes. Pulling one branch out of a binary collapses the parent to
-    // the surviving sibling, which therefore climbs into the parent's key;
-    // anything else is spliced out and its own input climbs into its key.
-    case "delete": {
-      const cut = key.lastIndexOf("/");
-      const parentKey = cut > 0 ? key.slice(0, cut) : null;
-      const binary = parentKey && MOD_BY_KIND[rackKindAt(parentKey)]?.ins === 2;
-      if (binary) {
-        const sib = `${parentKey}/${key.slice(cut + 1) === "0" ? "1" : "0"}`;
-        return (k) =>
-          keyInside(k, sib) ? reRoot(k, sib, parentKey)
-          : keyInside(k, parentKey) ? null
-          : k;
-      }
-      const child = `${key}/0`;
-      return (k) =>
-        keyInside(k, child) ? reRoot(k, child, key)
-        : keyInside(k, key) ? null
-        : k;
+/** Address ↔ identity, both ways, for the rack currently on the bench.
+ *  Rebuilt lazily and thrown away whenever `wb.rack` is replaced, because
+ *  every address in it is only meaningful against that one rack. */
+let lockIndex = null;
+function lockIndexOf() {
+  if (lockIndex) return lockIndex;
+  const byAddr = new Map();
+  const byId = new Map();
+  for (const m of wb.rack ? wb.rack.modules : []) {
+    if (!m.uid) continue; // the amp
+    for (const a of [...m.structural_addrs, ...m.knobs.map((k) => k.addr)]) {
+      // Everything the module owns hangs off its key, so what is left after
+      // the key is exactly what does *not* move when the module does.
+      if (!a.startsWith(m.key)) continue;
+      const id = m.uid + a.slice(m.key.length);
+      byAddr.set(a, id);
+      byId.set(id, a);
     }
-    // The two branches exchange places, so the locks on them do too.
-    case "swap_mix": {
-      const a = `${key}/0`, b = `${key}/1`;
-      return (k) =>
-        keyInside(k, a) ? reRoot(k, a, b)
-        : keyInside(k, b) ? reRoot(k, b, a)
-        : k;
-    }
-    // The whole modulation term under the owner is replaced; the audio tree
-    // around it does not move at all.
-    case "set_mod":
-    case "set_mod_tree":
-      return (k) => (keyInside(k, `${key}/m`) ? null : k);
-    default:
-      return null;
   }
+  lockIndex = { byAddr, byId };
+  return lockIndex;
 }
 
-/** Carry `wb.locks` through the edit that just landed. Returns how many sites
- *  the edit took with it, so the toast only speaks when something was lost. */
-function remapLocks(remap) {
+/** Trace address → lock id. Addresses with no node under them (the amp's) are
+ *  their own id: nothing can move them, so nothing needs to track them. */
+function lockIdOf(addr) {
+  return lockIndexOf().byAddr.get(addr) || addr;
+}
+
+/** Lock id → the trace address it names *right now*, or null if that module is
+ *  no longer in the patch. */
+function lockAddrOf(id) {
+  const a = lockIndexOf().byId.get(id);
+  if (a) return a;
+  return /^\d/.test(id) ? null : id;
+}
+
+/** Is this trace address locked? The question every plate and knob asks. */
+function isLockedAddr(addr) {
+  return wb.locks.has(lockIdOf(addr));
+}
+
+/** Set or clear the lock on a trace address. */
+function setLock(addr, on) {
+  const id = lockIdOf(addr);
+  if (on) wb.locks.add(id);
+  else wb.locks.delete(id);
+}
+
+/** The locked set as trace addresses against the current rack — what
+ *  `buildRack` draws from and what `refine_from` sends to the engine, which
+ *  knows only positions. */
+function lockedAddrs() {
+  const out = new Set();
+  for (const id of wb.locks) {
+    const a = lockAddrOf(id);
+    if (a) out.add(a);
+  }
+  return out;
+}
+
+/** Drop the locks whose module is gone, and report how many. The whole of
+ *  "carrying locks through an edit" now: everything else simply stays. */
+function pruneLocks() {
   let dropped = 0;
-  const next = new Set();
-  for (const addr of wb.locks) {
-    const hash = addr.indexOf("#");
-    const k = hash < 0 ? addr : addr.slice(0, hash);
-    const nk = remap(k);
-    if (nk === null) { dropped += 1; continue; }
-    next.add(hash < 0 ? nk : nk + addr.slice(hash));
+  for (const id of [...wb.locks]) {
+    if (lockAddrOf(id) === null) {
+      wb.locks.delete(id);
+      dropped += 1;
+    }
   }
-  wb.locks = next;
   return dropped;
 }
+
 function drainStruct() {
   if (structInFlight) return;
   if (structQueue.length) {
@@ -5418,56 +5398,19 @@ function applyTreeRewrite(fn) {
     const n = nodeAtIn(tree, k);
     if (n) marks.push(n);
   }
-  // Locks ride the rewrite the same way the holes do. An op has a known key
-  // remapping (`lockRemapFor`); a whole-tree replace does not — but this route
-  // *builds* the new tree, and a rewrite moves subtrees by reference, so the
-  // node object is a handle on "the same module" that a key is not. Note where
-  // each locked site hangs before the mutation, ask where those objects ended
-  // up after it, and a delete that splices one module out of a chain no longer
-  // silently takes every lock in the patch with it.
-  const anchors = [];  // {node, addrs:[{tail, site}]}
-  const fixed = [];    // addresses with no audio node under them — the amp's
-  const byOwner = new Map();
-  for (const addr of wb.locks) {
-    const p = lockParts(addr);
-    if (!byOwner.has(p.owner)) byOwner.set(p.owner, []);
-    byOwner.get(p.owner).push(p);
-  }
-  for (const [owner, parts] of byOwner) {
-    // "amp" is not a path into the term — the envelope wraps it — and
-    // `keyIndices` would happily read it as `node/0`. Anything that is not a
-    // tree key cannot move, so it is carried through verbatim.
-    if (owner !== "node" && !owner.startsWith("node/")) {
-      for (const p of parts) fixed.push(p.owner + p.tail + p.site);
-      continue;
-    }
-    // A key that does not resolve is already stale; it is dropped rather than
-    // carried, because carrying it would pin whatever moves in later.
-    const n = nodeAtIn(tree, owner);
-    if (n) anchors.push({ node: n, parts });
-  }
-
+  // Locks need nothing here any more. A rewrite moves subtrees by reference
+  // and each of those nodes carries its own `uid` in the JSON being moved, so
+  // the identity travels inside the thing that travelled — the tracking this
+  // function used to do (anchor every locked node, walk the mutated tree, ask
+  // where each object landed) was reconstructing exactly that, by hand,
+  // because the node had no name of its own.
   const refusal = fn(tree, marks);
   if (typeof refusal === "string") { note(refusal); return false; }
   placeholderPending = keysOfNodes(tree, marks);
 
-  const where = new Map();
-  const live = anchors.map((a) => a.node);
-  if (live.length) walkTreeKeys(tree, (n, key) => { if (live.includes(n)) where.set(n, key); });
-  const next = new Set(fixed);
-  for (const a of anchors) {
-    const k = where.get(a.node);
-    if (k === undefined) continue; // the rewrite removed that module
-    for (const p of a.parts) next.add(k + p.tail + p.site);
-  }
-  pendingRewriteLocks = next;
-
   queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) });
   return true;
 }
-/** Where the locks land after the rewrite in flight, or null when the restore
- *  came from ⌘Z — an undo puts back a tree these locks were never about. */
-let pendingRewriteLocks = null;
 
 // ---------- empty sockets ----------
 // An unplugged socket has to look empty. The grammar cannot express that: the
@@ -6378,9 +6321,8 @@ $("rack-svg").addEventListener("keydown", (e) => {
       else armFromRack("insert", "node");
     } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
       e.preventDefault();
-      const addrs = moduleLockAddrs(mod);
       const on = isModuleLocked(mod);
-      for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
+      for (const a of moduleLockAddrs(mod)) setLock(a, !on);
       nbAnnounce(on ? `${mod.title} unlocked` : `${mod.title} locked`);
       renderRack();
       focusPlate($("rack-svg").querySelector(`g.mod-group[data-key="${cssKey(key)}"]`), false);
@@ -6420,7 +6362,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     sendEdit(knob.addr, knob.value, true);
   } else if (e.key.toLowerCase() === "l") {
     e.preventDefault();
-    wb.locks.has(knob.addr) ? wb.locks.delete(knob.addr) : wb.locks.add(knob.addr);
+    setLock(knob.addr, !isLockedAddr(knob.addr));
     renderRack();
     focusRackControl(i);
   }
@@ -6430,7 +6372,10 @@ function startEvolveFrom(id) {
   $("rack-evolve").disabled = true;
   $("wm-r").classList.add("thinking");
   note("⚡ evolving around the locked controls…");
-  send({ type: "refine_from", id, locks: [...wb.locks] });
+  // Identity is the panel's business; the engine's refinement kernel rejects
+  // proposals at *trace addresses*, so the set is projected back onto the rack
+  // that is on screen on the way out.
+  send({ type: "refine_from", id, locks: [...lockedAddrs()] });
 }
 
 $("rack-play").onclick = () => playBench();
@@ -6449,12 +6394,12 @@ $("rack-evolve").onclick = () => {
 };
 $("lock-knobs").onclick = () => {
   if (!wb.rack) return;
-  for (const m of wb.rack.modules) for (const k of m.knobs) wb.locks.add(k.addr);
+  for (const m of wb.rack.modules) for (const k of m.knobs) setLock(k.addr, true);
   renderRack();
 };
 $("lock-structure").onclick = () => {
   if (!wb.rack) return;
-  for (const m of wb.rack.modules) for (const a of m.structural_addrs) wb.locks.add(a);
+  for (const m of wb.rack.modules) for (const a of m.structural_addrs) setLock(a, true);
   renderRack();
 };
 $("lock-clear").onclick = () => {

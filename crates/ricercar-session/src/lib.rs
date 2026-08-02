@@ -764,6 +764,73 @@ mod tests {
         assert!(children > 0, "no locked refinement ever accepted a move");
     }
 
+    /// **R6.** A refined child keeps its seed's node identities wherever the
+    /// structure survived the walk.
+    ///
+    /// Without this the panel cannot tell "the patch evolved" from "a different
+    /// patch arrived", so every lock, hand-placed position and selection dies
+    /// on the app's central action — and evolution is exactly the action the
+    /// locks exist to be used *with*. Refinement gives identity no help at all:
+    /// it proposes over the trace and rebuilds the genome from it on every
+    /// accepted step, so what `refine_from` returns is anonymous until
+    /// `record_child` re-keys it against the seed. This asserts the re-keying,
+    /// through the rack view the panel actually reads.
+    #[test]
+    fn refinement_carries_node_identity() {
+        use ricercar_grammar::describe;
+        let mut rng = StdRng::seed_from_u64(0x1D3);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            refine_steps: 20,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        for _ in 0..20 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+
+        let mut checked = 0;
+        for round in 0..8 {
+            let seed_id = engine.pool[round % engine.pool.len()].id;
+            let seed = describe::describe(&engine.pool[engine.find(seed_id).unwrap()].tree);
+            let Some(child_id) = engine.refine_from(&mut rng, seed_id, &[]) else {
+                continue;
+            };
+            let child = describe::describe(&engine.pool[engine.find(child_id).unwrap()].tree);
+            let mut carried = 0;
+            for cm in &child.modules {
+                if cm.key == "amp" {
+                    assert_eq!(cm.uid, 0, "the amp is the envelope, not a node");
+                    continue;
+                }
+                assert_ne!(cm.uid, 0, "{} came back without an identity", cm.key);
+                // Same key, same kind, before and after: the same module, and
+                // the only honest answer is the same identity.
+                if let Some(sm) = seed.modules.iter().find(|m| m.key == cm.key) {
+                    if sm.kind == cm.kind {
+                        assert_eq!(sm.uid, cm.uid, "identity lost at {}", cm.key);
+                        carried += 1;
+                    }
+                }
+            }
+            assert!(
+                carried > 0,
+                "a refinement step that changed everything is not a refinement"
+            );
+            checked += 1;
+            if checked >= 2 {
+                break;
+            }
+        }
+        assert!(checked > 0, "no refinement was ever accepted");
+    }
+
     /// Hand edits: `commit_edit` inserts the edited tree, links lineage, and
     /// (when flagged) records the improvement duel.
     #[test]
@@ -1525,6 +1592,7 @@ mod tests {
             detune,
             mod_depth,
             modulation,
+            ..
         } = &state.bank[3].tree.root
         else {
             panic!("a v1-shaped vco did not survive the load");
@@ -1540,6 +1608,7 @@ mod tests {
             mix,
             mod_depth,
             modulation,
+            ..
         } = &state.bank[4].tree.root
         else {
             panic!("a v1-shaped supersaw did not survive the load");
@@ -1584,6 +1653,20 @@ mod tests {
             engine.pool.iter().all(|c| !c.phi_std.is_empty()),
             "a restored v1 patch has no features"
         );
+
+        // Node identities are the other thing this fixture is now proving: it
+        // was written long before uids existed, so every node in it arrives
+        // unset. The whole migration is that `#[serde(default)]` lets the save
+        // load at all and the pool settles it on the way in — a returning user
+        // gets working locks and layout without their save being rewritten.
+        for c in &engine.pool {
+            let rack = ricercar_grammar::describe(&c.tree);
+            let mut seen = std::collections::HashSet::new();
+            for m in rack.modules.iter().filter(|m| m.key != "amp") {
+                assert_ne!(m.uid, 0, "a restored node has no identity at {}", m.key);
+                assert!(seen.insert(m.uid), "restored identities collide");
+            }
+        }
     }
 
     // ------------------------------------------------------------------

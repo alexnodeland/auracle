@@ -976,12 +976,12 @@ impl Compiler {
     ) -> Result<Option<(PortRef, bool)>, PatchError> {
         let built = match m {
             ModNode::None => return Ok(None),
-            ModNode::Lfo { wave, rate } => {
+            ModNode::Lfo { wave, rate, .. } => {
                 let lfo = self.patch.add(format!("{key}:lfo"), Lfo::new(self.sr()));
                 self.knob(key, "rate", *rate, ParamMap::Unit, false, lfo.in_("rate"))?;
                 (lfo.out(wave.port_name()), false)
             }
-            ModNode::Rand { rate, glide } => {
+            ModNode::Rand { rate, glide, .. } => {
                 // S&H burble: white noise sampled on an internal square-LFO
                 // clock. The knob drives the clock rate.
                 let clk = self.patch.add(format!("{key}:rclk"), Lfo::new(self.sr()));
@@ -1013,7 +1013,7 @@ impl Compiler {
                 )?;
                 (slew.out("out"), false)
             }
-            ModNode::Follow { sens, release } => {
+            ModNode::Follow { sens, release, .. } => {
                 // The tap is the owning module's *own* input, taken before it
                 // enters — so the follower measures what the module is about
                 // to process rather than what it produced, which would be a
@@ -1039,7 +1039,7 @@ impl Compiler {
                 // taper rather than the bipolar one.
                 (f.out("out"), true)
             }
-            ModNode::Env { attack, decay } => {
+            ModNode::Env { attack, decay, .. } => {
                 let env = self.patch.add(format!("{key}:env"), Adsr::new(self.sr()));
                 self.patch.connect(self.gate_out, env.in_("gate"))?;
                 self.knob(
@@ -1063,6 +1063,7 @@ impl Compiler {
                 rate,
                 steps,
                 pulses,
+                ..
             } => {
                 let clk = self.patch.add(format!("{key}:eclk"), Clock::new(self.sr()));
                 self.knob(
@@ -1125,6 +1126,7 @@ impl Compiler {
                 p0,
                 p1,
                 input,
+                ..
             } => {
                 let Some((src, unipolar)) =
                     self.build_mod(input, &format!("{key}/0"), owner_input)?
@@ -1133,7 +1135,7 @@ impl Compiler {
                 };
                 self.build_mod_op(*kind, *p0, *p1, key, src, unipolar)?
             }
-            ModNode::Pair { kind, a, b } => {
+            ModNode::Pair { kind, a, b, .. } => {
                 let (a, b) = (
                     self.build_mod(a, &format!("{key}/0"), owner_input)?,
                     self.build_mod(b, &format!("{key}/1"), owner_input)?,
@@ -1423,6 +1425,7 @@ impl Compiler {
                 detune,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let vco = self.patch.add(format!("{key}:vco"), Vco::new(self.sr()));
                 let pitch_in = self.wire_pitch(key, *octave, *detune, vco.in_("voct"))?;
@@ -1448,6 +1451,7 @@ impl Compiler {
                 mix,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let saw = self
                     .patch
@@ -1472,7 +1476,7 @@ impl Compiler {
                 self.knob(key, "smix", *mix, ParamMap::Unit, false, saw.in_("mix"))?;
                 Ok(Sig::mono(saw.out("out")))
             }
-            AudioNode::Noise { color } => {
+            AudioNode::Noise { color, .. } => {
                 let noise = self
                     .patch
                     .add(format!("{key}:noise"), NoiseGenerator::new());
@@ -1484,6 +1488,7 @@ impl Compiler {
                 morph,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let wt = self
                     .patch
@@ -1518,6 +1523,7 @@ impl Compiler {
                 brightness,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let ks = self
                     .patch
@@ -1566,6 +1572,7 @@ impl Compiler {
                 octave,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let fo = self
                     .patch
@@ -1596,7 +1603,7 @@ impl Compiler {
                 )?;
                 Ok(Sig::mono(fo.out("out")))
             }
-            AudioNode::Mix { balance, a, b } => {
+            AudioNode::Mix { balance, a, b, .. } => {
                 let a_out = self.build(a, &format!("{key}/0"))?;
                 let b_out = self.build(b, &format!("{key}/1"))?;
                 let xf = self.patch.add(format!("{key}:mix"), Crossfader::new());
@@ -1619,6 +1626,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let (filt, out_port) = match kind {
@@ -1678,6 +1686,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let fold = self.patch.add(
@@ -1717,6 +1726,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let dl = self
@@ -1753,6 +1763,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ch = self
@@ -1788,6 +1799,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let rv = self
@@ -1822,6 +1834,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ds = self
@@ -1853,6 +1866,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let bc = self.patch.add(format!("{key}:crush"), Bitcrusher::new());
@@ -1883,6 +1897,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ph = self
@@ -1928,6 +1943,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let fl = self
@@ -1975,6 +1991,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let tr = self
@@ -2017,6 +2034,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let vb = self
@@ -2055,6 +2073,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let eq = self
@@ -2113,6 +2132,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 // Allocates a fixed 96 000-sample buffer (≈768 KB) at
@@ -2156,7 +2176,7 @@ impl Compiler {
                 )?;
                 Ok(Sig::mono(gr.out("out")))
             }
-            AudioNode::RingMod { mix, a, b } => {
+            AudioNode::RingMod { mix, a, b, .. } => {
                 let a_out = self.build(a, &format!("{key}/0"))?;
                 let b_out = self.build(b, &format!("{key}/1"))?;
                 let rm = self.patch.add(format!("{key}:ring"), RingModulator::new());
@@ -2181,6 +2201,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ps = self
@@ -2225,6 +2246,7 @@ impl Compiler {
                 input,
                 sidechain,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let key_out = self.build(sidechain, &format!("{key}/1"))?;
@@ -2279,6 +2301,7 @@ impl Compiler {
                 input,
                 key: key_input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let key_out = self.build(key_input, &format!("{key}/1"))?;
@@ -2333,6 +2356,7 @@ impl Compiler {
                 input,
                 sidechain,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let key_out = self.build(sidechain, &format!("{key}/1"))?;
@@ -2380,6 +2404,7 @@ impl Compiler {
                 carrier,
                 modulator,
                 modulation,
+                ..
             } => {
                 let carrier_out = self.build(carrier, &format!("{key}/0"))?;
                 let mod_out = self.build(modulator, &format!("{key}/1"))?;
@@ -2616,7 +2641,9 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::term::{AmpEnv, DriveMode, FilterKind, ModNode, NoiseColor, TableShape, Waveform};
+    use crate::term::{
+        AmpEnv, DriveMode, FilterKind, ModNode, NoiseColor, TableShape, Uid, Waveform,
+    };
 
     const SR: f64 = 44_100.0;
 
@@ -2634,6 +2661,7 @@ mod tests {
 
     fn saw() -> AudioNode {
         AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Saw,
             octave: 0,
             detune: 0.5,
@@ -2676,11 +2704,13 @@ mod tests {
     #[test]
     fn filter_tracks_the_keyboard() {
         let tree = sustained(AudioNode::Filter {
+            uid: Uid::NEW,
             kind: FilterKind::SvfLp,
             cutoff: 0.3,
             resonance: 0.0,
             mod_depth: 0.0,
             input: Box::new(AudioNode::Noise {
+                uid: Uid::NEW,
                 color: NoiseColor::White,
             }),
             modulation: ModNode::None,
@@ -2725,6 +2755,7 @@ mod tests {
     #[test]
     fn dc_blocker_removes_the_ladder_offset() {
         let tree = sustained(AudioNode::Filter {
+            uid: Uid::NEW,
             kind: FilterKind::Ladder,
             cutoff: 0.35,
             resonance: 0.3,
@@ -2751,6 +2782,7 @@ mod tests {
     fn stereo_tanks_reach_the_output() {
         let mut wide = compile(
             &sustained(AudioNode::Reverb {
+                uid: Uid::NEW,
                 size: 0.7,
                 damp: 0.4,
                 mix: 0.6,
@@ -2784,10 +2816,12 @@ mod tests {
     #[test]
     fn fold_threshold_stays_live_under_modulation() {
         let tree = sustained(AudioNode::Fold {
+            uid: Uid::NEW,
             threshold: 0.5,
             mod_depth: 0.6,
             input: Box::new(saw()),
             modulation: ModNode::Lfo {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 rate: 0.4,
             },
@@ -2849,11 +2883,13 @@ mod tests {
     #[test]
     fn pitch_modulation_spans_exactly_one_octave_at_full_depth() {
         let vco = |mod_depth: f64| AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Sine,
             octave: 0,
             detune: 0.5,
             mod_depth,
             modulation: ModNode::Lfo {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 // 0.01·3000^x Hz ⇒ 0.5 Hz, one cycle in the 2 s rendered.
                 rate: 0.4886,
@@ -2915,11 +2951,13 @@ mod tests {
     #[test]
     fn eq_modulation_reaches_the_bands_own_volt_scale() {
         let eq = |mod_depth: f64| AudioNode::Eq {
+            uid: Uid::NEW,
             low: 0.5,
             mid: 0.5,
             high: 0.5,
             mod_depth,
             input: Box::new(AudioNode::Vco {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 octave: 0,
                 detune: 0.5,
@@ -2927,6 +2965,7 @@ mod tests {
                 modulation: ModNode::None,
             }),
             modulation: ModNode::Lfo {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 rate: 0.4886, // 0.5 Hz — one cycle in the 2 s rendered
             },
@@ -2992,6 +3031,7 @@ mod tests {
 
     fn sine_src() -> AudioNode {
         AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Sine,
             octave: 0,
             detune: 0.5,
@@ -3005,6 +3045,7 @@ mod tests {
     /// are geometric.
     fn pluck_key() -> AudioNode {
         AudioNode::Pluck {
+            uid: Uid::NEW,
             octave: -1,
             damping: 0.4,
             brightness: 0.7,
@@ -3048,6 +3089,7 @@ mod tests {
         let base = 261.625_565 * 4.0;
         let at = |semis: f64| {
             let tree = sustained(AudioNode::Shift {
+                uid: Uid::NEW,
                 semis,
                 window: 0.5,
                 mix: 1.0, // fully wet: the dry copy would win every bin
@@ -3082,12 +3124,14 @@ mod tests {
         let base = 261.625_565 * 4.0;
         let span = |mod_depth: f64| {
             let tree = sustained(AudioNode::Shift {
+                uid: Uid::NEW,
                 semis: 0.5,
                 window: 0.5,
                 mix: 1.0,
                 mod_depth,
                 input: Box::new(sine_src()),
                 modulation: ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Triangle,
                     rate: 0.4886, // ≈0.5 Hz — one cycle in the 2 s rendered
                 },
@@ -3148,6 +3192,7 @@ mod tests {
         // The behaviour. `range` 0.7 means a shut gate passes 0.3 of the
         // signal, so open and shut differ by ~10 dB and are unmistakable.
         let gated = sustained(AudioNode::Gate {
+            uid: Uid::NEW,
             threshold: 0.45,
             range: 0.7,
             release: 0.3,
@@ -3185,6 +3230,7 @@ mod tests {
     fn the_ducker_knob_offsets_quivers_own_base() {
         let ducked = |amount: f64| {
             let tree = sustained(AudioNode::Duck {
+                uid: Uid::NEW,
                 amount,
                 threshold: 0.4,
                 release: 0.35,
@@ -3229,6 +3275,7 @@ mod tests {
     fn duck_modulation_reaches_the_param_cv_scale() {
         let swing = |mod_depth: f64| {
             let tree = sustained(AudioNode::Duck {
+                uid: Uid::NEW,
                 // Mid depth, so the cable has room to move it both ways.
                 amount: 0.5,
                 threshold: 0.2,
@@ -3237,6 +3284,7 @@ mod tests {
                 input: Box::new(sine_src()),
                 key: Box::new(pluck_key()),
                 modulation: ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Sine,
                     rate: 0.5595, // ≈0.9 Hz — a full cycle inside the render
                 },
@@ -3271,11 +3319,13 @@ mod tests {
     #[test]
     fn a_vocoder_annihilates_its_carriers_dc() {
         let tree = sustained(AudioNode::Vocoder {
+            uid: Uid::NEW,
             bands: 0.6,
             attack: 0.25,
             release: 0.3,
             mod_depth: 0.0,
             carrier: Box::new(AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::Ladder,
                 cutoff: 0.6,
                 resonance: 0.4,
@@ -3284,6 +3334,7 @@ mod tests {
                 input: Box::new(saw()),
             }),
             modulator: Box::new(AudioNode::Formant {
+                uid: Uid::NEW,
                 vowel: 0.3,
                 shift: 0.5,
                 octave: 0,
@@ -3423,6 +3474,7 @@ mod tests {
                 release: 0.3,
             },
             root: AudioNode::Distortion {
+                uid: Uid::NEW,
                 drive: 0.15,
                 tone: 0.7,
                 mode: DriveMode::Tube,
@@ -3446,6 +3498,7 @@ mod tests {
         // The symmetric modes pay nothing for it.
         for mode in [DriveMode::Soft, DriveMode::Hard] {
             let clean = sustained(AudioNode::Distortion {
+                uid: Uid::NEW,
                 drive: 0.15,
                 tone: 0.7,
                 mode,
@@ -3467,12 +3520,14 @@ mod tests {
         // attenuverter neutralized.
         let tree = |depth: f64| {
             sustained(AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::SvfLp,
                 cutoff: 0.25,
                 resonance: 0.0,
                 mod_depth: depth,
                 input: Box::new(saw()),
                 modulation: ModNode::Follow {
+                    uid: Uid::NEW,
                     sens: 0.8,
                     release: 0.3,
                 },
@@ -3493,11 +3548,13 @@ mod tests {
         // silent on the cable, because both the prior and the panel can put a
         // follower there.
         let lone = sustained(AudioNode::Wavetable {
+            uid: Uid::NEW,
             table: crate::term::TableShape::Saw,
             octave: 0,
             morph: 0.4,
             mod_depth: 0.8,
             modulation: ModNode::Follow {
+                uid: Uid::NEW,
                 sens: 0.8,
                 release: 0.3,
             },
@@ -3553,11 +3610,13 @@ mod tests {
             // A ladder, so the patch actually receives a blocker; a sine
             // through it stays a sine, so output level reads as filter gain.
             root: AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::Ladder,
                 cutoff: 1.0,
                 resonance: 0.0,
                 mod_depth: 0.0,
                 input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
                     wave: Waveform::Sine,
                     octave: 0,
                     detune: 0.5,
@@ -3594,6 +3653,7 @@ mod tests {
     /// in the way.
     fn pitch_modulated(m: ModNode, mod_depth: f64) -> PatchTree {
         sustained(AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Sine,
             octave: 0,
             detune: 0.5,
@@ -3646,6 +3706,7 @@ mod tests {
     #[test]
     fn the_quantizer_lands_a_pitch_cable_on_whole_semitones() {
         let lfo = || ModNode::Lfo {
+            uid: Uid::NEW,
             wave: Waveform::Triangle,
             rate: SLOW_LFO_RATE,
         };
@@ -3657,6 +3718,7 @@ mod tests {
             semitone_track(&out, 40)
         };
         let quantized = track(ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Quantize,
             p0: 0.0, // root C
             p1: 0.0, // chromatic — every semitone is reachable
@@ -3720,6 +3782,7 @@ mod tests {
     fn the_euclid_clock_spans_the_ports_own_tempo_range() {
         let edges = |rate: f64| {
             let m = ModNode::Euclid {
+                uid: Uid::NEW,
                 rate,
                 steps: 0.3,
                 pulses: 0.6,
@@ -3750,6 +3813,7 @@ mod tests {
     fn every_corner_of_the_euclid_knobs_still_makes_a_rhythm() {
         let edges = |steps: f64, pulses: f64| {
             let m = ModNode::Euclid {
+                uid: Uid::NEW,
                 rate: 1.0,
                 steps,
                 pulses,
@@ -3780,12 +3844,15 @@ mod tests {
     fn the_switch_is_not_stuck_on_one_branch() {
         let render = |a_rate: f64| {
             let m = ModNode::Pair {
+                uid: Uid::NEW,
                 kind: PairOp::Switch,
                 a: Box::new(ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Triangle,
                     rate: a_rate,
                 }),
                 b: Box::new(ModNode::Euclid {
+                    uid: Uid::NEW,
                     rate: 0.7,
                     steps: 0.4,
                     pulses: 0.5,
@@ -3838,11 +3905,13 @@ mod tests {
                 .fold(0.0f64, f64::max)
         };
         let stepped = || ModNode::Euclid {
+            uid: Uid::NEW,
             rate: 0.75,
             steps: 0.3,
             pulses: 0.5,
         };
         let slewed = |t: f64| ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Slew,
             p0: t,
             p1: t,
@@ -3875,10 +3944,12 @@ mod tests {
     fn the_three_rectifier_modes_are_three_different_signals() {
         let track = |mode: f64| {
             let m = ModNode::Op {
+                uid: Uid::NEW,
                 kind: ModOp::Rectify,
                 p0: mode,
                 p1: 0.0,
                 input: Box::new(ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Triangle,
                     rate: SLOW_LFO_RATE,
                 }),
@@ -3911,6 +3982,7 @@ mod tests {
             let mut v = compile(
                 &pitch_modulated(
                     ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Triangle,
                         rate: SLOW_LFO_RATE,
                     },
@@ -3937,14 +4009,17 @@ mod tests {
     #[test]
     fn a_two_deep_mod_chain_reaches_the_destination_through_every_stage() {
         let chain = ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Slew,
             p0: 0.3,
             p1: 0.3,
             input: Box::new(ModNode::Op {
+                uid: Uid::NEW,
                 kind: ModOp::Quantize,
                 p0: 0.0,
                 p1: 2.5 / 7.0, // minor
                 input: Box::new(ModNode::Rand {
+                    uid: Uid::NEW,
                     rate: 0.6,
                     glide: 0.0,
                 }),
@@ -3994,10 +4069,12 @@ mod tests {
                 .fold(0.0f64, f64::max)
         };
         let inner = || ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Quantize,
             p0: 0.0,
             p1: 2.5 / 7.0, // minor
             input: Box::new(ModNode::Euclid {
+                uid: Uid::NEW,
                 rate: 0.75,
                 steps: 0.3,
                 pulses: 0.5,
@@ -4005,6 +4082,7 @@ mod tests {
         };
         let raw = jump(inner());
         let slewed = jump(ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Slew,
             p0: 1.0,
             p1: 1.0,

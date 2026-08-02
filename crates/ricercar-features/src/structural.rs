@@ -517,7 +517,7 @@ fn count_mod_nodes(m: &ModNode, f: &mut StructFeatures) {
             }
             count_mod_nodes(input, f);
         }
-        ModNode::Pair { kind, a, b } => {
+        ModNode::Pair { kind, a, b, .. } => {
             match kind {
                 PairOp::Min => f.n_min += 1.0,
                 PairOp::Max => f.n_max += 1.0,

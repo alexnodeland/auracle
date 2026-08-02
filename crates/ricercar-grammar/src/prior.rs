@@ -44,7 +44,7 @@ use rand::Rng;
 
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Waveform,
+    TableShape, Uid, Waveform,
 };
 
 /// Source-kind categorical order: Vco, Supersaw, Noise, Wavetable, Pluck,
@@ -250,6 +250,7 @@ impl PatchGrammarPrior {
                         u01_seq(k3.clone(), &["det", "mdepth"]).bind(move |p| {
                             cfg3.mod_model(mod_key(&k3), 0, true)
                                 .map(move |m| AudioNode::Vco {
+                                    uid: Uid::NEW,
                                     wave: Waveform::from_index(w),
                                     octave: o as i8 - 2,
                                     detune: p[0],
@@ -269,6 +270,7 @@ impl PatchGrammarPrior {
                     u01_seq(k2.clone(), &["det", "smix", "mdepth"]).bind(move |p| {
                         cfg2.mod_model(mod_key(&k2), 0, true)
                             .map(move |m| AudioNode::Supersaw {
+                                uid: Uid::NEW,
                                 octave: o as i8 - 2,
                                 detune: p[0],
                                 mix: p[1],
@@ -283,6 +285,7 @@ impl PatchGrammarPrior {
                 uniform_cat(NoiseColor::ALL.len()),
             )
             .map(|c| AudioNode::Noise {
+                uid: Uid::NEW,
                 color: NoiseColor::from_index(c),
             }),
             3 => {
@@ -301,6 +304,7 @@ impl PatchGrammarPrior {
                         u01_seq(k3.clone(), &["morph", "mdepth"]).bind(move |p| {
                             cfg3.mod_model(mod_key(&k3), 0, true).map(move |m| {
                                 AudioNode::Wavetable {
+                                    uid: Uid::NEW,
                                     table: TableShape::from_index(tb),
                                     octave: o as i8 - 2,
                                     morph: p[0],
@@ -321,6 +325,7 @@ impl PatchGrammarPrior {
                     u01_seq(k2.clone(), &["damp", "bright", "mdepth"]).bind(move |p| {
                         cfg2.mod_model(mod_key(&k2), 0, true)
                             .map(move |m| AudioNode::Pluck {
+                                uid: Uid::NEW,
                                 octave: o as i8 - 2,
                                 damping: p[0],
                                 brightness: p[1],
@@ -338,6 +343,7 @@ impl PatchGrammarPrior {
                     u01_seq(k2.clone(), &["vowel", "fshift", "mdepth"]).bind(move |p| {
                         cfg2.mod_model(mod_key(&k2), 0, true)
                             .map(move |m| AudioNode::Formant {
+                                uid: Uid::NEW,
                                 vowel: p[0],
                                 shift: p[1],
                                 octave: o as i8 - 2,
@@ -393,6 +399,7 @@ impl PatchGrammarPrior {
                 let k = key.clone();
                 sample(addr!(k.clone(), "wave"), uniform_cat(Waveform::ALL.len())).bind(move |w| {
                     sample(addr!(k.clone(), "rate"), u01()).map(move |r| ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::from_index(w),
                         rate: r,
                     })
@@ -402,20 +409,24 @@ impl PatchGrammarPrior {
                 let k = key.clone();
                 sample(addr!(k.clone(), "att"), u01()).bind(move |a| {
                     sample(addr!(k.clone(), "dec"), u01()).map(move |d| ModNode::Env {
+                        uid: Uid::NEW,
                         attack: a,
                         decay: d,
                     })
                 })
             }
             3 => u01_seq(key.clone(), &["rate", "glide"]).map(|p| ModNode::Rand {
+                uid: Uid::NEW,
                 rate: p[0],
                 glide: p[1],
             }),
             4 => u01_seq(key.clone(), &["sens", "rel"]).map(|p| ModNode::Follow {
+                uid: Uid::NEW,
                 sens: p[0],
                 release: p[1],
             }),
             5 => u01_seq(key.clone(), &["erate", "esteps", "epulses"]).map(|p| ModNode::Euclid {
+                uid: Uid::NEW,
                 rate: p[0],
                 steps: p[1],
                 pulses: p[2],
@@ -435,6 +446,7 @@ impl PatchGrammarPrior {
                         let p0 = p[0];
                         cfg2.mod_model(child_key(&k2, 0), depth + 1, false)
                             .map(move |input| ModNode::Op {
+                                uid: Uid::NEW,
                                 kind,
                                 p0,
                                 p1,
@@ -453,6 +465,7 @@ impl PatchGrammarPrior {
                     cfg.mod_model(ka, depth + 1, false).bind(move |a| {
                         cfg2.mod_model(kb.clone(), depth + 1, false)
                             .map(move |b| ModNode::Pair {
+                                uid: Uid::NEW,
                                 kind,
                                 a: Box::new(a.clone()),
                                 b: Box::new(b),
@@ -531,6 +544,7 @@ impl PatchGrammarPrior {
                         cfg_b
                             .audio_model(kb.clone(), depth + 1)
                             .map(move |b| AudioNode::Mix {
+                                uid: Uid::NEW,
                                 balance: bal,
                                 a: Box::new(a.clone()),
                                 b: Box::new(b),
@@ -561,6 +575,7 @@ impl PatchGrammarPrior {
                                     let m = m.clone();
                                     cfg5.audio_model(child_key(&k5, 0), depth + 1).map(
                                         move |input| AudioNode::Filter {
+                                            uid: Uid::NEW,
                                             kind: FilterKind::from_index(fk),
                                             cutoff: cut,
                                             resonance: res,
@@ -588,6 +603,7 @@ impl PatchGrammarPrior {
                             let m = m.clone();
                             cfg3.audio_model(child_key(&k3, 0), depth + 1)
                                 .map(move |input| AudioNode::Fold {
+                                    uid: Uid::NEW,
                                     threshold: t,
                                     mod_depth: md,
                                     input: Box::new(input),
@@ -607,6 +623,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Delay {
+                                uid: Uid::NEW,
                                 time,
                                 feedback: fb,
                                 mix,
@@ -627,6 +644,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Chorus {
+                                uid: Uid::NEW,
                                 rate,
                                 depth: dep,
                                 mix,
@@ -647,6 +665,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Reverb {
+                                uid: Uid::NEW,
                                 size,
                                 damp,
                                 mix,
@@ -670,6 +689,7 @@ impl PatchGrammarPrior {
                                 let m = m.clone();
                                 cfg3.audio_model(child_key(&k3, 0), depth + 1)
                                     .map(move |input| AudioNode::Distortion {
+                                        uid: Uid::NEW,
                                         drive,
                                         tone,
                                         mode: DriveMode::from_index(dm),
@@ -692,6 +712,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Bitcrush {
+                                uid: Uid::NEW,
                                 bits,
                                 downsample: dsamp,
                                 mod_depth: md,
@@ -711,6 +732,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Phaser {
+                                uid: Uid::NEW,
                                 rate,
                                 depth: dep,
                                 feedback: fb,
@@ -733,6 +755,7 @@ impl PatchGrammarPrior {
                         cfg_b
                             .audio_model(kb.clone(), depth + 1)
                             .map(move |b| AudioNode::RingMod {
+                                uid: Uid::NEW,
                                 mix,
                                 a: Box::new(a.clone()),
                                 b: Box::new(b),
@@ -749,6 +772,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Flanger {
+                                uid: Uid::NEW,
                                 rate,
                                 depth: dep,
                                 feedback,
@@ -768,6 +792,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Tremolo {
+                                uid: Uid::NEW,
                                 rate,
                                 depth: dep,
                                 shape,
@@ -787,6 +812,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Vibrato {
+                                uid: Uid::NEW,
                                 rate,
                                 depth: dep,
                                 mix,
@@ -806,6 +832,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Eq {
+                                uid: Uid::NEW,
                                 low,
                                 mid,
                                 high,
@@ -825,6 +852,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Granular {
+                                uid: Uid::NEW,
                                 position,
                                 size,
                                 density,
@@ -845,6 +873,7 @@ impl PatchGrammarPrior {
                         let m = m.clone();
                         cfg2.audio_model(child_key(&k2, 0), depth + 1)
                             .map(move |input| AudioNode::Shift {
+                                uid: Uid::NEW,
                                 semis,
                                 window,
                                 mix,
@@ -862,6 +891,7 @@ impl PatchGrammarPrior {
                 &["thresh", "ratio", "makeup", "mdepth"],
                 depth,
                 |p, m, input, sidechain| AudioNode::Comp {
+                    uid: Uid::NEW,
                     threshold: p[0],
                     ratio: p[1],
                     makeup: p[2],
@@ -876,6 +906,7 @@ impl PatchGrammarPrior {
                 &["amount", "dthresh", "drel", "mdepth"],
                 depth,
                 |p, m, input, key_input| AudioNode::Duck {
+                    uid: Uid::NEW,
                     amount: p[0],
                     threshold: p[1],
                     release: p[2],
@@ -890,6 +921,7 @@ impl PatchGrammarPrior {
                 &["gthresh", "range", "grel", "mdepth"],
                 depth,
                 |p, m, input, sidechain| AudioNode::Gate {
+                    uid: Uid::NEW,
                     threshold: p[0],
                     range: p[1],
                     release: p[2],
@@ -904,6 +936,7 @@ impl PatchGrammarPrior {
                 &["bands", "vatt", "vrel", "mdepth"],
                 depth,
                 |p, m, carrier, modulator| AudioNode::Vocoder {
+                    uid: Uid::NEW,
                     bands: p[0],
                     attack: p[1],
                     release: p[2],
@@ -934,6 +967,7 @@ impl PatchGrammarPrior {
         if is_leaf {
             match weighted_choice(rng, &self.source_weights) {
                 0 => AudioNode::Vco {
+                    uid: Uid::NEW,
                     wave: Waveform::from_index(rng.gen_range(0..Waveform::ALL.len())),
                     octave: rng.gen_range(0..5) as i8 - 2,
                     detune: rng.gen(),
@@ -941,6 +975,7 @@ impl PatchGrammarPrior {
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 1 => AudioNode::Supersaw {
+                    uid: Uid::NEW,
                     octave: rng.gen_range(0..5) as i8 - 2,
                     detune: rng.gen(),
                     mix: rng.gen(),
@@ -948,9 +983,11 @@ impl PatchGrammarPrior {
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 2 => AudioNode::Noise {
+                    uid: Uid::NEW,
                     color: NoiseColor::from_index(rng.gen_range(0..NoiseColor::ALL.len())),
                 },
                 3 => AudioNode::Wavetable {
+                    uid: Uid::NEW,
                     table: TableShape::from_index(rng.gen_range(0..TableShape::ALL.len())),
                     octave: rng.gen_range(0..5) as i8 - 2,
                     morph: rng.gen(),
@@ -958,6 +995,7 @@ impl PatchGrammarPrior {
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 4 => AudioNode::Pluck {
+                    uid: Uid::NEW,
                     octave: rng.gen_range(0..5) as i8 - 2,
                     damping: rng.gen(),
                     brightness: rng.gen(),
@@ -965,6 +1003,7 @@ impl PatchGrammarPrior {
                     modulation: self.sample_mod(rng, 0, true),
                 },
                 _ => AudioNode::Formant {
+                    uid: Uid::NEW,
                     vowel: rng.gen(),
                     shift: rng.gen(),
                     octave: rng.gen_range(0..5) as i8 - 2,
@@ -975,11 +1014,13 @@ impl PatchGrammarPrior {
         } else {
             match weighted_choice(rng, &self.op_weights) {
                 0 => AudioNode::Mix {
+                    uid: Uid::NEW,
                     balance: rng.gen(),
                     a: Box::new(self.sample_audio(rng, depth + 1)),
                     b: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 1 => AudioNode::Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::from_index(rng.gen_range(0..FilterKind::ALL.len())),
                     cutoff: rng.gen(),
                     resonance: rng.gen(),
@@ -988,12 +1029,14 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 2 => AudioNode::Fold {
+                    uid: Uid::NEW,
                     threshold: rng.gen(),
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 3 => AudioNode::Delay {
+                    uid: Uid::NEW,
                     time: rng.gen(),
                     feedback: rng.gen(),
                     mix: rng.gen(),
@@ -1002,6 +1045,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 4 => AudioNode::Chorus {
+                    uid: Uid::NEW,
                     rate: rng.gen(),
                     depth: rng.gen(),
                     mix: rng.gen(),
@@ -1010,6 +1054,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 5 => AudioNode::Reverb {
+                    uid: Uid::NEW,
                     size: rng.gen(),
                     damp: rng.gen(),
                     mix: rng.gen(),
@@ -1018,6 +1063,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 6 => AudioNode::Distortion {
+                    uid: Uid::NEW,
                     drive: rng.gen(),
                     tone: rng.gen(),
                     mode: DriveMode::from_index(rng.gen_range(0..DriveMode::ALL.len())),
@@ -1026,6 +1072,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 7 => AudioNode::Bitcrush {
+                    uid: Uid::NEW,
                     bits: rng.gen(),
                     downsample: rng.gen(),
                     mod_depth: rng.gen(),
@@ -1033,6 +1080,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 8 => AudioNode::Phaser {
+                    uid: Uid::NEW,
                     rate: rng.gen(),
                     depth: rng.gen(),
                     feedback: rng.gen(),
@@ -1041,11 +1089,13 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 9 => AudioNode::RingMod {
+                    uid: Uid::NEW,
                     mix: rng.gen(),
                     a: Box::new(self.sample_audio(rng, depth + 1)),
                     b: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 10 => AudioNode::Flanger {
+                    uid: Uid::NEW,
                     rate: rng.gen(),
                     depth: rng.gen(),
                     feedback: rng.gen(),
@@ -1054,6 +1104,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 11 => AudioNode::Tremolo {
+                    uid: Uid::NEW,
                     rate: rng.gen(),
                     depth: rng.gen(),
                     shape: rng.gen(),
@@ -1062,6 +1113,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 12 => AudioNode::Vibrato {
+                    uid: Uid::NEW,
                     rate: rng.gen(),
                     depth: rng.gen(),
                     mix: rng.gen(),
@@ -1070,6 +1122,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 13 => AudioNode::Eq {
+                    uid: Uid::NEW,
                     low: rng.gen(),
                     mid: rng.gen(),
                     high: rng.gen(),
@@ -1078,6 +1131,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 14 => AudioNode::Granular {
+                    uid: Uid::NEW,
                     position: rng.gen(),
                     size: rng.gen(),
                     density: rng.gen(),
@@ -1086,6 +1140,7 @@ impl PatchGrammarPrior {
                     input: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 15 => AudioNode::Shift {
+                    uid: Uid::NEW,
                     semis: rng.gen(),
                     window: rng.gen(),
                     mix: rng.gen(),
@@ -1097,6 +1152,7 @@ impl PatchGrammarPrior {
                 // `/0`, `/1`. It has to, or the two samplers disagree about
                 // which subtree came from which RNG state.
                 16 => AudioNode::Comp {
+                    uid: Uid::NEW,
                     threshold: rng.gen(),
                     ratio: rng.gen(),
                     makeup: rng.gen(),
@@ -1106,6 +1162,7 @@ impl PatchGrammarPrior {
                     sidechain: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 17 => AudioNode::Duck {
+                    uid: Uid::NEW,
                     amount: rng.gen(),
                     threshold: rng.gen(),
                     release: rng.gen(),
@@ -1115,6 +1172,7 @@ impl PatchGrammarPrior {
                     key: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 18 => AudioNode::Gate {
+                    uid: Uid::NEW,
                     threshold: rng.gen(),
                     range: rng.gen(),
                     release: rng.gen(),
@@ -1124,6 +1182,7 @@ impl PatchGrammarPrior {
                     sidechain: Box::new(self.sample_audio(rng, depth + 1)),
                 },
                 _ => AudioNode::Vocoder {
+                    uid: Uid::NEW,
                     bands: rng.gen(),
                     attack: rng.gen(),
                     release: rng.gen(),
@@ -1142,22 +1201,27 @@ impl PatchGrammarPrior {
         match weighted_choice(rng, &self.mod_weights_at(depth, root)) {
             0 => ModNode::None,
             1 => ModNode::Lfo {
+                uid: Uid::NEW,
                 wave: Waveform::from_index(rng.gen_range(0..Waveform::ALL.len())),
                 rate: rng.gen(),
             },
             2 => ModNode::Env {
+                uid: Uid::NEW,
                 attack: rng.gen(),
                 decay: rng.gen(),
             },
             3 => ModNode::Rand {
+                uid: Uid::NEW,
                 rate: rng.gen(),
                 glide: rng.gen(),
             },
             4 => ModNode::Follow {
+                uid: Uid::NEW,
                 sens: rng.gen(),
                 release: rng.gen(),
             },
             5 => ModNode::Euclid {
+                uid: Uid::NEW,
                 rate: rng.gen(),
                 steps: rng.gen(),
                 pulses: rng.gen(),
@@ -1171,6 +1235,7 @@ impl PatchGrammarPrior {
                 // two samplers on different RNG states.
                 let p1 = if two { rng.gen() } else { 0.0 };
                 ModNode::Op {
+                    uid: Uid::NEW,
                     kind,
                     p0,
                     p1,
@@ -1178,6 +1243,7 @@ impl PatchGrammarPrior {
                 }
             }
             _ => ModNode::Pair {
+                uid: Uid::NEW,
                 kind: PairOp::from_index(rng.gen_range(0..N_PAIR_OPS)),
                 a: Box::new(self.sample_mod(rng, depth + 1, false)),
                 b: Box::new(self.sample_mod(rng, depth + 1, false)),

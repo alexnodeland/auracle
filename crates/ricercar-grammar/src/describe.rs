@@ -51,6 +51,18 @@ pub struct RackModule {
     /// `amp`). A modulation chain's stages nest under the slot with the same
     /// `/0`, `/1` child convention the audio tree uses.
     pub key: String,
+    /// Stable node identity — [`Uid`](crate::Uid), flattened to its number, or
+    /// `0` for the `amp` pseudo-module, which is the envelope wrapping the term
+    /// rather than a node in it.
+    ///
+    /// `key` is the wire protocol: it is what a `StructOp` names, what a trace
+    /// address is built from, and what the engine understands. `uid` is the
+    /// *identity* — the same module before and after an insert above it, a
+    /// delete beside it, or a generation of refinement — and it is what the
+    /// panel keys locks, hand positions and selection by. Anything that has to
+    /// survive an edit is keyed by this; anything the engine has to read is
+    /// keyed by `key`.
+    pub uid: u64,
     /// Machine kind tag (`vco`, `filter`, `lfo`, `amp`, …).
     pub kind: String,
     /// Silkscreen title.
@@ -185,6 +197,7 @@ fn describe_mod(
             p0,
             p1,
             input,
+            ..
         } => {
             structural.push(format!("{key}#modop"));
             let sites = kind.param_sites();
@@ -223,6 +236,7 @@ fn describe_mod(
             };
             out.modules.push(RackModule {
                 key: key.into(),
+                uid: m.uid().map_or(0, |u| u.0),
                 kind: kind.label().into(),
                 title: kind.label().into(),
                 column,
@@ -245,10 +259,11 @@ fn describe_mod(
             describe_mod(input, &child, key, column + 1, out, &mut ignored);
             return;
         }
-        ModNode::Pair { kind, a, b } => {
+        ModNode::Pair { kind, a, b, .. } => {
             structural.push(format!("{key}#pairop"));
             out.modules.push(RackModule {
                 key: key.into(),
+                uid: m.uid().map_or(0, |u| u.0),
                 kind: kind.label().into(),
                 title: kind.label().into(),
                 column,
@@ -279,7 +294,7 @@ fn describe_mod(
     let (kind, title, knobs) = match m {
         // Handled above; the compiler cannot see that.
         ModNode::None | ModNode::Op { .. } | ModNode::Pair { .. } => return,
-        ModNode::Lfo { wave, rate } => (
+        ModNode::Lfo { wave, rate, .. } => (
             "lfo",
             "lfo",
             vec![
@@ -287,7 +302,7 @@ fn describe_mod(
                 knob_c(key, "rate", "rate", *rate),
             ],
         ),
-        ModNode::Env { attack, decay } => (
+        ModNode::Env { attack, decay, .. } => (
             "modenv",
             "mod env",
             vec![
@@ -295,7 +310,7 @@ fn describe_mod(
                 knob_c(key, "dec", "decay", *decay),
             ],
         ),
-        ModNode::Rand { rate, glide } => (
+        ModNode::Rand { rate, glide, .. } => (
             "rand",
             "s&h rand",
             vec![
@@ -303,7 +318,7 @@ fn describe_mod(
                 knob_c(key, "glide", "glide", *glide),
             ],
         ),
-        ModNode::Follow { sens, release } => (
+        ModNode::Follow { sens, release, .. } => (
             "follow",
             "follower",
             vec![
@@ -315,6 +330,7 @@ fn describe_mod(
             rate,
             steps,
             pulses,
+            ..
         } => (
             "euclid",
             "euclid",
@@ -327,6 +343,7 @@ fn describe_mod(
     };
     out.modules.push(RackModule {
         key: key.into(),
+        uid: m.uid().map_or(0, |u| u.0),
         kind: kind.into(),
         title: title.into(),
         column,
@@ -450,6 +467,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
     // Every module below shares everything but its kind, title and knobs.
     let module = |kind: &str, title: &str, knobs: Vec<Knob>, structural: Vec<String>| RackModule {
         key: key.into(),
+        uid: n.uid().0,
         kind: kind.into(),
         title: title.into(),
         column,
@@ -464,6 +482,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             detune,
             mod_depth,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -488,6 +507,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mix,
             mod_depth,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -510,6 +530,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             octave,
             mod_depth,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -526,7 +547,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             None,
             modulation,
         ),
-        AudioNode::Noise { color } => out.modules.push(module(
+        AudioNode::Noise { color, .. } => out.modules.push(module(
             "noise",
             "noise",
             vec![knob_e(
@@ -544,6 +565,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             morph,
             mod_depth,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -567,6 +589,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             brightness,
             mod_depth,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -590,7 +613,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             None,
             modulation,
         ),
-        AudioNode::Mix { balance, a, b } => push_binary(
+        AudioNode::Mix { balance, a, b, .. } => push_binary(
             out,
             module(
                 "mix",
@@ -601,7 +624,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             a,
             b,
         ),
-        AudioNode::RingMod { mix, a, b } => push_binary(
+        AudioNode::RingMod { mix, a, b, .. } => push_binary(
             out,
             module(
                 "ringmod",
@@ -619,6 +642,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -646,6 +670,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -667,6 +692,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -690,6 +716,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -713,6 +740,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -736,6 +764,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -758,6 +787,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -780,6 +810,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -803,6 +834,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -826,6 +858,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -849,6 +882,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -872,6 +906,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -895,6 +930,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -918,6 +954,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             mod_depth,
             input,
             modulation,
+            ..
         } => push_modulated(
             out,
             module(
@@ -946,6 +983,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             input,
             sidechain,
             modulation,
+            ..
         } => push_binary_modulated(
             out,
             module(
@@ -971,6 +1009,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             input,
             key: key_input,
             modulation,
+            ..
         } => push_binary_modulated(
             out,
             module(
@@ -996,6 +1035,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             input,
             sidechain,
             modulation,
+            ..
         } => push_binary_modulated(
             out,
             module(
@@ -1021,6 +1061,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             carrier,
             modulator,
             modulation,
+            ..
         } => push_binary_modulated(
             out,
             module(
@@ -1052,6 +1093,7 @@ pub fn describe(tree: &PatchTree) -> RackDescription {
     };
     out.modules.push(RackModule {
         key: "amp".into(),
+        uid: 0,
         kind: "amp".into(),
         title: "env / out".into(),
         column: 0,

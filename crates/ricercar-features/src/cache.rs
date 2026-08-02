@@ -59,7 +59,18 @@ fn fnv1a128(state: u128, bytes: &[u8]) -> u128 {
 /// Deterministic across runs and platforms: `serde_json` emits struct fields
 /// in declaration order and shortest-round-trip floats (ryu).
 pub fn canonical_tree_json(tree: &PatchTree) -> String {
-    serde_json::to_string(tree).expect("PatchTree always serializes")
+    // Uids are stripped first, and this is load-bearing rather than tidy. A
+    // `uid` is UI identity: two trees that differ only in theirs are the same
+    // patch and render the same audio, so a key that saw them would miss on
+    // *every* refinement step (the chain re-scores a tree it just rendered, and
+    // that tree comes back from the trace decoder with fresh identities) and
+    // would invalidate every persistable row the moment the editor renamed a
+    // node. Cleared uids also serialize to nothing — the field is skipped when
+    // unset — so this key is byte-identical to the one this cache used before
+    // identities existed, and no stored entry is orphaned by their arrival.
+    let mut plain = tree.clone();
+    plain.clear_uids();
+    serde_json::to_string(&plain).expect("PatchTree always serializes")
 }
 
 /// Content address of one `(term, spec)` featurization, 32 lowercase hex
@@ -327,7 +338,7 @@ pub fn featurize_memo(
 mod tests {
     use super::*;
     use crate::render::render_playback;
-    use ricercar_grammar::term::{AmpEnv, AudioNode, Waveform};
+    use ricercar_grammar::term::{AmpEnv, AudioNode, Uid, Waveform};
 
     fn tree(detune: f64) -> PatchTree {
         PatchTree {
@@ -338,6 +349,7 @@ mod tests {
                 release: 0.3,
             },
             root: AudioNode::Vco {
+                uid: Uid::NEW,
                 wave: Waveform::Saw,
                 octave: 0,
                 detune,
@@ -382,6 +394,28 @@ mod tests {
             "a different stimulus is a different φ"
         );
         assert_eq!(render_key(&tree(0.5), &spec).len(), 32);
+    }
+
+    /// Node identities are UI bookkeeping and the content address must not see
+    /// them.
+    ///
+    /// If it did, every refinement step would miss a row it had just written —
+    /// the chain re-scores a tree it just rendered, and that tree comes back
+    /// from the trace decoder with fresh identities — and every persisted row
+    /// would be orphaned the moment the editor touched a patch. The second
+    /// assertion is the migration half: a settled tree keys exactly as the same
+    /// term did before uids existed, so nothing already stored is lost.
+    #[test]
+    fn keys_ignore_node_identity() {
+        let spec = PhraseSpec::default();
+        let plain = tree(0.5);
+        let (mut a, mut b) = (plain.clone(), plain.clone());
+        a.ensure_uids();
+        b.ensure_uids();
+        assert_ne!(a.root.uid().0, b.root.uid().0, "distinct settlings");
+        assert_eq!(render_key(&a, &spec), render_key(&b, &spec));
+        assert_eq!(render_key(&a, &spec), render_key(&plain, &spec));
+        assert!(!canonical_tree_json(&a).contains("uid"));
     }
 
     /// `render_playback` replays the recorded gain, so the buffer it produces

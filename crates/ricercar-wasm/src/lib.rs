@@ -1049,13 +1049,22 @@ impl WasmEngine {
         if self.bench_tree.is_none() {
             return "no patch on the bench".into();
         }
-        let tree: PatchTree = match serde_json::from_str(tree_json) {
+        let mut tree: PatchTree = match serde_json::from_str(tree_json) {
             Ok(t) => t,
             Err(e) => return format!("bad tree: {e}"),
         };
         if let Err(e) = validate_tree(&tree) {
             return e;
         }
+        // The panel builds this tree itself, so it is also the one route by
+        // which a node can arrive with no identity (a module the editor just
+        // made) or with someone else's (a duplicated subtree brings its
+        // original's uids along in the copy). Settling assigns the first and
+        // breaks the second, and it is idempotent for every node that merely
+        // moved — which is the whole point: a reconnect must not reissue
+        // identities, or the locks and positions riding on them die on a
+        // gesture that changed nothing but a wire.
+        tree.ensure_uids();
         self.bench_tree = Some(tree);
         String::new()
     }
@@ -1385,6 +1394,23 @@ mod tests {
         }
     }
 
+    /// A saved session with its node identities stripped.
+    ///
+    /// Two engines that built the same patches by different routes are the
+    /// same session, and identities are the one thing that legitimately differs
+    /// between them: uids come from a process-global mint, so the second engine
+    /// in a test has simply counted further. Comparing exports is comparing
+    /// *content*, and content is what this strips to. (The identities
+    /// themselves are pinned by the grammar and session suites.)
+    fn session_content(engine: &WasmEngine) -> String {
+        let mut state: ricercar_session::SessionState =
+            serde_json::from_str(&engine.export_session()).expect("a session round-trips");
+        for entry in &mut state.bank {
+            entry.tree.clear_uids();
+        }
+        serde_json::to_string(&state).expect("a session serializes")
+    }
+
     /// The whole point, at the boundary the browser actually crosses: a pool
     /// filled through `fill_draw` → `farm_render` → `fill_absorb` is the pool
     /// `fill_step` builds. If these ever disagree, a user whose browser cannot
@@ -1400,8 +1426,8 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&farmed.status()).unwrap()["pool"],
         );
         assert_eq!(
-            serial.export_session(),
-            farmed.export_session(),
+            session_content(&serial),
+            session_content(&farmed),
             "the farm boundary built a different session than the serial fill"
         );
     }
@@ -1416,8 +1442,8 @@ mod tests {
         let mut wet = WasmEngine::new(0x1234, 4);
         farm_fill(&mut wet, true);
         assert_eq!(
-            dry.export_session(),
-            wet.export_session(),
+            session_content(&dry),
+            session_content(&wet),
             "asking the farm for audio changed the pool"
         );
         // The absorbed buffer is what `render_of` hands WebAudio, and it must

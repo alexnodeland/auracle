@@ -19,7 +19,7 @@ use rand::Rng;
 use crate::prior::PatchGrammarPrior;
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Waveform,
+    TableShape, Uid, Waveform,
 };
 
 impl EvolutionaryGenome for PatchTree {
@@ -61,37 +61,48 @@ impl EvolutionaryGenome for PatchTree {
 fn mod_distance(a: &ModNode, b: &ModNode) -> f64 {
     match (a, b) {
         (ModNode::None, ModNode::None) => 0.0,
-        (ModNode::Lfo { wave: wa, rate: ra }, ModNode::Lfo { wave: wb, rate: rb }) => {
-            (if wa == wb { 0.0 } else { 1.0 }) + (ra - rb).abs()
-        }
+        (
+            ModNode::Lfo {
+                wave: wa, rate: ra, ..
+            },
+            ModNode::Lfo {
+                wave: wb, rate: rb, ..
+            },
+        ) => (if wa == wb { 0.0 } else { 1.0 }) + (ra - rb).abs(),
         (
             ModNode::Env {
                 attack: aa,
                 decay: da,
+                ..
             },
             ModNode::Env {
                 attack: ab,
                 decay: db,
+                ..
             },
         ) => (aa - ab).abs() + (da - db).abs(),
         (
             ModNode::Rand {
                 rate: ra,
                 glide: ga,
+                ..
             },
             ModNode::Rand {
                 rate: rb,
                 glide: gb,
+                ..
             },
         ) => (ra - rb).abs() + (ga - gb).abs(),
         (
             ModNode::Follow {
                 sens: sa,
                 release: ra,
+                ..
             },
             ModNode::Follow {
                 sens: sb,
                 release: rb,
+                ..
             },
         ) => (sa - sb).abs() + (ra - rb).abs(),
         (
@@ -99,11 +110,13 @@ fn mod_distance(a: &ModNode, b: &ModNode) -> f64 {
                 rate: ra,
                 steps: sa,
                 pulses: pa,
+                ..
             },
             ModNode::Euclid {
                 rate: rb,
                 steps: sb,
                 pulses: pb,
+                ..
             },
         ) => (ra - rb).abs() + (sa - sb).abs() + (pa - pb).abs(),
         // Recursive arms, on the same rule the audio tree uses: parameter L1
@@ -114,12 +127,14 @@ fn mod_distance(a: &ModNode, b: &ModNode) -> f64 {
                 p0: p0a,
                 p1: p1a,
                 input: ia,
+                ..
             },
             ModNode::Op {
                 kind: kb,
                 p0: p0b,
                 p1: p1b,
                 input: ib,
+                ..
             },
         ) if ka == kb => (p0a - p0b).abs() + (p1a - p1b).abs() + mod_distance(ia, ib),
         (
@@ -127,11 +142,13 @@ fn mod_distance(a: &ModNode, b: &ModNode) -> f64 {
                 kind: ka,
                 a: aa,
                 b: ba,
+                ..
             },
             ModNode::Pair {
                 kind: kb,
                 a: ab,
                 b: bb,
+                ..
             },
         ) if ka == kb => mod_distance(aa, ab) + mod_distance(ba, bb),
         // Diverging structures pay by size, so replacing a leaf with a
@@ -151,6 +168,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 detune: da,
                 mod_depth: mda,
                 modulation: moda,
+                ..
             },
             Vco {
                 wave: wb,
@@ -158,6 +176,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 detune: db,
                 mod_depth: mdb,
                 modulation: modb,
+                ..
             },
         ) => {
             (if wa == wb { 0.0 } else { 1.0 })
@@ -173,6 +192,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mix: ma,
                 mod_depth: mda,
                 modulation: moda,
+                ..
             },
             Supersaw {
                 octave: ob,
@@ -180,6 +200,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mix: mb,
                 mod_depth: mdb,
                 modulation: modb,
+                ..
             },
         ) => {
             (*oa as f64 - *ob as f64).abs() / 4.0
@@ -195,6 +216,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 octave: oa,
                 mod_depth: mda,
                 modulation: moda,
+                ..
             },
             Formant {
                 vowel: vb,
@@ -202,6 +224,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 octave: ob,
                 mod_depth: mdb,
                 modulation: modb,
+                ..
             },
         ) => {
             (va - vb).abs()
@@ -210,7 +233,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 + (mda - mdb).abs()
                 + mod_distance(moda, modb)
         }
-        (Noise { color: ca }, Noise { color: cb }) => {
+        (Noise { color: ca, .. }, Noise { color: cb, .. }) => {
             if ca == cb {
                 0.0
             } else {
@@ -224,6 +247,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 morph: ma,
                 mod_depth: da,
                 modulation: moda,
+                ..
             },
             Wavetable {
                 table: tb,
@@ -231,6 +255,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 morph: mb,
                 mod_depth: db,
                 modulation: modb,
+                ..
             },
         ) => {
             (if ta == tb { 0.0 } else { 1.0 })
@@ -246,6 +271,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 brightness: ba,
                 mod_depth: mda,
                 modulation: moda,
+                ..
             },
             Pluck {
                 octave: ob,
@@ -253,6 +279,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 brightness: bb,
                 mod_depth: mdb,
                 modulation: modb,
+                ..
             },
         ) => {
             (*oa as f64 - *ob as f64).abs() / 4.0
@@ -266,11 +293,13 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 balance: la,
                 a: aa,
                 b: ba,
+                ..
             },
             Mix {
                 balance: lb,
                 a: ab,
                 b: bb,
+                ..
             },
         ) => (la - lb).abs() + node_distance(aa, ab) + node_distance(ba, bb),
         (
@@ -278,11 +307,13 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mix: la,
                 a: aa,
                 b: ba,
+                ..
             },
             RingMod {
                 mix: lb,
                 a: ab,
                 b: bb,
+                ..
             },
         ) => (la - lb).abs() + node_distance(aa, ab) + node_distance(ba, bb),
         (
@@ -293,6 +324,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: ma,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Filter {
                 kind: kb,
@@ -301,6 +333,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: mb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (if ka == kb { 0.0 } else { 1.0 })
@@ -316,12 +349,14 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: ma,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Fold {
                 threshold: tb,
                 mod_depth: mb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => (ta - tb).abs() + (ma - mb).abs() + mod_distance(moda, modb) + node_distance(ia, ib),
         (
@@ -332,6 +367,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Delay {
                 time: tb,
@@ -340,6 +376,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (ta - tb).abs()
@@ -357,6 +394,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Chorus {
                 rate: rb,
@@ -365,6 +403,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (ra - rb).abs()
@@ -382,6 +421,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Reverb {
                 size: sb,
@@ -390,6 +430,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (sa - sb).abs()
@@ -407,6 +448,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Distortion {
                 drive: gb,
@@ -415,6 +457,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (ga - gb).abs()
@@ -431,6 +474,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Bitcrush {
                 bits: bb,
@@ -438,6 +482,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (ba - bb).abs()
@@ -454,6 +499,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Phaser {
                 rate: rb,
@@ -462,6 +508,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (ra - rb).abs()
@@ -479,6 +526,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Flanger {
                 rate: xb,
@@ -487,6 +535,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -504,6 +553,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Tremolo {
                 rate: xb,
@@ -512,6 +562,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -529,6 +580,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Vibrato {
                 rate: xb,
@@ -537,6 +589,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -554,6 +607,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Eq {
                 low: xb,
@@ -562,6 +616,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -579,6 +634,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Granular {
                 position: xb,
@@ -587,6 +643,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -604,6 +661,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpa,
                 input: ia,
                 modulation: moda,
+                ..
             },
             Shift {
                 semis: xb,
@@ -612,6 +670,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 mod_depth: dpb,
                 input: ib,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -632,6 +691,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 input: ia,
                 sidechain: sa,
                 modulation: moda,
+                ..
             },
             Comp {
                 threshold: xb,
@@ -641,6 +701,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 input: ib,
                 sidechain: sb,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -660,6 +721,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 input: ia,
                 key: ka,
                 modulation: moda,
+                ..
             },
             Duck {
                 amount: xb,
@@ -669,6 +731,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 input: ib,
                 key: kb,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -688,6 +751,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 input: ia,
                 sidechain: sa,
                 modulation: moda,
+                ..
             },
             Gate {
                 threshold: xb,
@@ -697,6 +761,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 input: ib,
                 sidechain: sb,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -716,6 +781,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 carrier: ca,
                 modulator: ma,
                 modulation: moda,
+                ..
             },
             Vocoder {
                 bands: xb,
@@ -725,6 +791,7 @@ fn node_distance(a: &AudioNode, b: &AudioNode) -> f64 {
                 carrier: cb,
                 modulator: mb,
                 modulation: modb,
+                ..
             },
         ) => {
             (xa - xb).abs()
@@ -767,22 +834,22 @@ fn put_bool(t: &mut Trace, key: &str, site: &str, v: bool) {
 fn encode_mod(m: &ModNode, key: &str, t: &mut Trace) {
     match m {
         ModNode::None => put_usize(t, key, "mod", 0),
-        ModNode::Lfo { wave, rate } => {
+        ModNode::Lfo { wave, rate, .. } => {
             put_usize(t, key, "mod", 1);
             put_usize(t, key, "wave", wave.index());
             put_f64(t, key, "rate", *rate);
         }
-        ModNode::Env { attack, decay } => {
+        ModNode::Env { attack, decay, .. } => {
             put_usize(t, key, "mod", 2);
             put_f64(t, key, "att", *attack);
             put_f64(t, key, "dec", *decay);
         }
-        ModNode::Rand { rate, glide } => {
+        ModNode::Rand { rate, glide, .. } => {
             put_usize(t, key, "mod", 3);
             put_f64(t, key, "rate", *rate);
             put_f64(t, key, "glide", *glide);
         }
-        ModNode::Follow { sens, release } => {
+        ModNode::Follow { sens, release, .. } => {
             put_usize(t, key, "mod", 4);
             put_f64(t, key, "sens", *sens);
             put_f64(t, key, "rel", *release);
@@ -791,6 +858,7 @@ fn encode_mod(m: &ModNode, key: &str, t: &mut Trace) {
             rate,
             steps,
             pulses,
+            ..
         } => {
             put_usize(t, key, "mod", 5);
             put_f64(t, key, "erate", *rate);
@@ -805,6 +873,7 @@ fn encode_mod(m: &ModNode, key: &str, t: &mut Trace) {
             p0,
             p1,
             input,
+            ..
         } => {
             put_usize(t, key, "mod", 6);
             put_usize(t, key, "modop", kind.index());
@@ -815,7 +884,7 @@ fn encode_mod(m: &ModNode, key: &str, t: &mut Trace) {
             }
             encode_mod(input, &child_key(key, 0), t);
         }
-        ModNode::Pair { kind, a, b } => {
+        ModNode::Pair { kind, a, b, .. } => {
             put_usize(t, key, "mod", 7);
             put_usize(t, key, "pairop", kind.index());
             encode_mod(a, &child_key(key, 0), t);
@@ -833,6 +902,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             detune,
             mod_depth,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 0);
@@ -848,6 +918,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mix,
             mod_depth,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 1);
@@ -857,7 +928,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             put_f64(t, key, "mdepth", *mod_depth);
             encode_mod(modulation, &mod_key(key), t);
         }
-        Noise { color } => {
+        Noise { color, .. } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 2);
             put_usize(t, key, "color", color.index());
@@ -868,6 +939,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             morph,
             mod_depth,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 3);
@@ -883,6 +955,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             brightness,
             mod_depth,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 4);
@@ -898,6 +971,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             octave,
             mod_depth,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", true);
             put_usize(t, key, "src", 5);
@@ -907,7 +981,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             put_f64(t, key, "mdepth", *mod_depth);
             encode_mod(modulation, &mod_key(key), t);
         }
-        Mix { balance, a, b } => {
+        Mix { balance, a, b, .. } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 0);
             put_f64(t, key, "bal", *balance);
@@ -921,6 +995,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 1);
@@ -936,6 +1011,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 2);
@@ -951,6 +1027,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 3);
@@ -968,6 +1045,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 4);
@@ -985,6 +1063,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 5);
@@ -1002,6 +1081,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 6);
@@ -1018,6 +1098,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 7);
@@ -1034,6 +1115,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 8);
@@ -1051,6 +1133,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 10);
@@ -1068,6 +1151,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 11);
@@ -1085,6 +1169,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 12);
@@ -1102,6 +1187,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 13);
@@ -1119,6 +1205,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 14);
@@ -1129,7 +1216,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             encode_mod(modulation, &mod_key(key), t);
             encode_node(input, &child_key(key, 0), t);
         }
-        RingMod { mix, a, b } => {
+        RingMod { mix, a, b, .. } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 9);
             put_f64(t, key, "rgmix", *mix);
@@ -1143,6 +1230,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             mod_depth,
             input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 15);
@@ -1164,6 +1252,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             input,
             sidechain,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 16);
@@ -1183,6 +1272,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             input,
             key: key_input,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 17);
@@ -1202,6 +1292,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             input,
             sidechain,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 18);
@@ -1221,6 +1312,7 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             carrier,
             modulator,
             modulation,
+            ..
         } => {
             put_bool(t, key, "leaf", false);
             put_usize(t, key, "op", 19);
@@ -1267,23 +1359,28 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
     match get_usize(t, key, "mod")? {
         0 => Ok(ModNode::None),
         1 => Ok(ModNode::Lfo {
+            uid: Uid::NEW,
             wave: Waveform::from_index(get_usize(t, key, "wave")?),
             rate: get_f64(t, key, "rate")?,
         }),
         2 => Ok(ModNode::Env {
+            uid: Uid::NEW,
             attack: get_f64(t, key, "att")?,
             decay: get_f64(t, key, "dec")?,
         }),
         3 => Ok(ModNode::Rand {
+            uid: Uid::NEW,
             rate: get_f64(t, key, "rate")?,
             // v1 S&H had no slew: hard steps.
             glide: get_f64_or(t, key, "glide", 0.0),
         }),
         4 => Ok(ModNode::Follow {
+            uid: Uid::NEW,
             sens: get_f64(t, key, "sens")?,
             release: get_f64(t, key, "rel")?,
         }),
         5 => Ok(ModNode::Euclid {
+            uid: Uid::NEW,
             rate: get_f64(t, key, "erate")?,
             steps: get_f64(t, key, "esteps")?,
             pulses: get_f64(t, key, "epulses")?,
@@ -1292,6 +1389,7 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
             let kind = ModOp::from_index(get_usize(t, key, "modop")?);
             let sites = kind.param_sites();
             Ok(ModNode::Op {
+                uid: Uid::NEW,
                 kind,
                 p0: get_f64(t, key, sites[0])?,
                 // The one-parameter ops do not write `p1` at all, so there is
@@ -1304,6 +1402,7 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
             })
         }
         7 => Ok(ModNode::Pair {
+            uid: Uid::NEW,
             kind: PairOp::from_index(get_usize(t, key, "pairop")?),
             a: Box::new(decode_mod(t, &child_key(key, 0))?),
             b: Box::new(decode_mod(t, &child_key(key, 1))?),
@@ -1337,6 +1436,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
             // wave 2A, and a vco is in nearly all of them — so these two read
             // through the defaulting accessors, exactly as `Delay` does.
             0 => Ok(AudioNode::Vco {
+                uid: Uid::NEW,
                 wave: Waveform::from_index(get_usize(t, key, "wave")?),
                 octave: get_usize(t, key, "oct")? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
@@ -1344,6 +1444,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             1 => Ok(AudioNode::Supersaw {
+                uid: Uid::NEW,
                 octave: get_usize(t, key, "oct")? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
                 mix: get_f64(t, key, "smix")?,
@@ -1351,9 +1452,11 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             2 => Ok(AudioNode::Noise {
+                uid: Uid::NEW,
                 color: NoiseColor::from_index(get_usize(t, key, "color")?),
             }),
             3 => Ok(AudioNode::Wavetable {
+                uid: Uid::NEW,
                 table: TableShape::from_index(get_usize(t, key, "table")?),
                 octave: get_usize(t, key, "oct")? as i8 - 2,
                 morph: get_f64(t, key, "morph")?,
@@ -1361,6 +1464,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             4 => Ok(AudioNode::Pluck {
+                uid: Uid::NEW,
                 octave: get_usize(t, key, "oct")? as i8 - 2,
                 damping: get_f64(t, key, "damp")?,
                 brightness: get_f64(t, key, "bright")?,
@@ -1368,6 +1472,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             5 => Ok(AudioNode::Formant {
+                uid: Uid::NEW,
                 vowel: get_f64(t, key, "vowel")?,
                 shift: get_f64(t, key, "fshift")?,
                 octave: get_usize(t, key, "oct")? as i8 - 2,
@@ -1381,11 +1486,13 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
     } else {
         match get_usize(t, key, "op")? {
             0 => Ok(AudioNode::Mix {
+                uid: Uid::NEW,
                 balance: get_f64(t, key, "bal")?,
                 a: Box::new(decode_node(t, &child_key(key, 0))?),
                 b: Box::new(decode_node(t, &child_key(key, 1))?),
             }),
             1 => Ok(AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::from_index(get_usize(t, key, "fkind")?),
                 cutoff: get_f64(t, key, "cut")?,
                 resonance: get_f64(t, key, "res")?,
@@ -1394,12 +1501,14 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             2 => Ok(AudioNode::Fold {
+                uid: Uid::NEW,
                 threshold: get_f64(t, key, "thresh")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_mod(t, &mod_key(key))?,
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             3 => Ok(AudioNode::Delay {
+                uid: Uid::NEW,
                 time: get_f64(t, key, "time")?,
                 feedback: get_f64(t, key, "fb")?,
                 mix: get_f64(t, key, "dmix")?,
@@ -1408,6 +1517,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             4 => Ok(AudioNode::Chorus {
+                uid: Uid::NEW,
                 rate: get_f64(t, key, "crate")?,
                 depth: get_f64(t, key, "cdepth")?,
                 mix: get_f64(t, key, "cmix")?,
@@ -1416,6 +1526,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             5 => Ok(AudioNode::Reverb {
+                uid: Uid::NEW,
                 size: get_f64(t, key, "rsize")?,
                 damp: get_f64(t, key, "rdamp")?,
                 mix: get_f64(t, key, "rmix")?,
@@ -1424,6 +1535,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             6 => Ok(AudioNode::Distortion {
+                uid: Uid::NEW,
                 drive: get_f64(t, key, "drive")?,
                 tone: get_f64(t, key, "tone")?,
                 mode: DriveMode::from_index(get_usize(t, key, "dmode")?),
@@ -1432,6 +1544,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             7 => Ok(AudioNode::Bitcrush {
+                uid: Uid::NEW,
                 bits: get_f64(t, key, "bits")?,
                 downsample: get_f64(t, key, "dsamp")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
@@ -1439,6 +1552,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             8 => Ok(AudioNode::Phaser {
+                uid: Uid::NEW,
                 rate: get_f64(t, key, "prate")?,
                 depth: get_f64(t, key, "pdepth")?,
                 feedback: get_f64(t, key, "pfb")?,
@@ -1447,11 +1561,13 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             9 => Ok(AudioNode::RingMod {
+                uid: Uid::NEW,
                 mix: get_f64(t, key, "rgmix")?,
                 a: Box::new(decode_node(t, &child_key(key, 0))?),
                 b: Box::new(decode_node(t, &child_key(key, 1))?),
             }),
             10 => Ok(AudioNode::Flanger {
+                uid: Uid::NEW,
                 rate: get_f64(t, key, "frate")?,
                 depth: get_f64(t, key, "fdepth")?,
                 feedback: get_f64(t, key, "ffb")?,
@@ -1460,6 +1576,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             11 => Ok(AudioNode::Tremolo {
+                uid: Uid::NEW,
                 rate: get_f64(t, key, "trate")?,
                 depth: get_f64(t, key, "tdepth")?,
                 shape: get_f64(t, key, "tshape")?,
@@ -1468,6 +1585,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             12 => Ok(AudioNode::Vibrato {
+                uid: Uid::NEW,
                 rate: get_f64(t, key, "vrate")?,
                 depth: get_f64(t, key, "vdepth")?,
                 mix: get_f64(t, key, "vmix")?,
@@ -1476,6 +1594,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             13 => Ok(AudioNode::Eq {
+                uid: Uid::NEW,
                 low: get_f64(t, key, "low")?,
                 mid: get_f64(t, key, "mid")?,
                 high: get_f64(t, key, "high")?,
@@ -1484,6 +1603,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             14 => Ok(AudioNode::Granular {
+                uid: Uid::NEW,
                 position: get_f64(t, key, "gpos")?,
                 size: get_f64(t, key, "gsize")?,
                 density: get_f64(t, key, "gdens")?,
@@ -1492,6 +1612,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             15 => Ok(AudioNode::Shift {
+                uid: Uid::NEW,
                 semis: get_f64(t, key, "semis")?,
                 window: get_f64(t, key, "window")?,
                 mix: get_f64(t, key, "smix")?,
@@ -1500,6 +1621,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
             }),
             16 => Ok(AudioNode::Comp {
+                uid: Uid::NEW,
                 threshold: get_f64(t, key, "thresh")?,
                 ratio: get_f64(t, key, "ratio")?,
                 makeup: get_f64(t, key, "makeup")?,
@@ -1509,6 +1631,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 sidechain: Box::new(decode_node(t, &child_key(key, 1))?),
             }),
             17 => Ok(AudioNode::Duck {
+                uid: Uid::NEW,
                 amount: get_f64(t, key, "amount")?,
                 threshold: get_f64(t, key, "dthresh")?,
                 release: get_f64(t, key, "drel")?,
@@ -1518,6 +1641,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 key: Box::new(decode_node(t, &child_key(key, 1))?),
             }),
             18 => Ok(AudioNode::Gate {
+                uid: Uid::NEW,
                 threshold: get_f64(t, key, "gthresh")?,
                 range: get_f64(t, key, "range")?,
                 release: get_f64(t, key, "grel")?,
@@ -1527,6 +1651,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 sidechain: Box::new(decode_node(t, &child_key(key, 1))?),
             }),
             19 => Ok(AudioNode::Vocoder {
+                uid: Uid::NEW,
                 bands: get_f64(t, key, "bands")?,
                 attack: get_f64(t, key, "vatt")?,
                 release: get_f64(t, key, "vrel")?,
@@ -1638,6 +1763,7 @@ mod tests {
         assert_eq!(
             *modulation,
             ModNode::Rand {
+                uid: Uid::NEW,
                 rate: 0.62,
                 glide: 0.0
             },
@@ -1653,6 +1779,7 @@ mod tests {
         assert_eq!(
             **input,
             AudioNode::Vco {
+                uid: Uid::NEW,
                 wave: Waveform::Saw,
                 octave: -1,
                 detune: 0.5,
