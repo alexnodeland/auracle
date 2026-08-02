@@ -29,11 +29,11 @@ pub mod migrate;
 pub mod naming;
 pub mod surrogate;
 
-pub use calib::{calibration, Calibration, Forecast, ReliabilityBin};
+pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
-    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice, Engine,
-    Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RenderPolicy, SessionConfig,
-    SessionState,
+    phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
+    EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RenderPolicy,
+    SessionConfig, SessionState,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use map::{MapPoint, TasteMap};
@@ -44,6 +44,7 @@ pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
 mod tests {
     use super::*;
     use crate::calib::{calibration, Forecast};
+    use ricercar_taste::Provenance;
 
     /// Test-scale engine config.
     ///
@@ -764,6 +765,73 @@ mod tests {
         assert!(children > 0, "no locked refinement ever accepted a move");
     }
 
+    /// **R6.** A refined child keeps its seed's node identities wherever the
+    /// structure survived the walk.
+    ///
+    /// Without this the panel cannot tell "the patch evolved" from "a different
+    /// patch arrived", so every lock, hand-placed position and selection dies
+    /// on the app's central action — and evolution is exactly the action the
+    /// locks exist to be used *with*. Refinement gives identity no help at all:
+    /// it proposes over the trace and rebuilds the genome from it on every
+    /// accepted step, so what `refine_from` returns is anonymous until
+    /// `record_child` re-keys it against the seed. This asserts the re-keying,
+    /// through the rack view the panel actually reads.
+    #[test]
+    fn refinement_carries_node_identity() {
+        use ricercar_grammar::describe;
+        let mut rng = StdRng::seed_from_u64(0x1D3);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            refine_steps: 20,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        for _ in 0..20 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+
+        let mut checked = 0;
+        for round in 0..8 {
+            let seed_id = engine.pool[round % engine.pool.len()].id;
+            let seed = describe::describe(&engine.pool[engine.find(seed_id).unwrap()].tree);
+            let Some(child_id) = engine.refine_from(&mut rng, seed_id, &[]) else {
+                continue;
+            };
+            let child = describe::describe(&engine.pool[engine.find(child_id).unwrap()].tree);
+            let mut carried = 0;
+            for cm in &child.modules {
+                if cm.key == "amp" {
+                    assert_eq!(cm.uid, 0, "the amp is the envelope, not a node");
+                    continue;
+                }
+                assert_ne!(cm.uid, 0, "{} came back without an identity", cm.key);
+                // Same key, same kind, before and after: the same module, and
+                // the only honest answer is the same identity.
+                if let Some(sm) = seed.modules.iter().find(|m| m.key == cm.key) {
+                    if sm.kind == cm.kind {
+                        assert_eq!(sm.uid, cm.uid, "identity lost at {}", cm.key);
+                        carried += 1;
+                    }
+                }
+            }
+            assert!(
+                carried > 0,
+                "a refinement step that changed everything is not a refinement"
+            );
+            checked += 1;
+            if checked >= 2 {
+                break;
+            }
+        }
+        assert!(checked > 0, "no refinement was ever accepted");
+    }
+
     /// Hand edits: `commit_edit` inserts the edited tree, links lineage, and
     /// (when flagged) records the improvement duel.
     #[test]
@@ -786,7 +854,11 @@ mod tests {
 
         let obs_before = engine.log.len();
         let child_id = engine
-            .commit_edit(Some(original_id), edited.clone(), true)
+            .commit_edit(
+                Some(original_id),
+                edited.clone(),
+                EditOutcome::Heard { edited_won: true },
+            )
             .expect("edit commits");
         assert_eq!(engine.log.len(), obs_before + 1, "improvement duel logged");
         let child = &engine.pool[engine.find(child_id).unwrap()];
@@ -797,6 +869,108 @@ mod tests {
         assert_eq!((ev.parent_id, ev.child_id), (original_id, child_id));
         // The original survives (protected from eviction).
         assert!(engine.find(original_id).is_some());
+    }
+
+    /// The losing direction is the half that used to be unrepresentable: a
+    /// `false` in the old boolean API meant "said nothing", so an edit the
+    /// player heard and rejected left no trace and the log only ever saw
+    /// edits that won. It has to arrive as a duel the *original* wins, and
+    /// the express checkbox has to be distinguishable from a heard one — in
+    /// the log and in the forecast stream — without either of them changing
+    /// what the likelihood sees.
+    #[test]
+    fn a_heard_edit_that_lost_is_logged_as_a_loss_and_tagged() {
+        let mut rng = StdRng::seed_from_u64(0x105E);
+        let cfg = SessionConfig {
+            pool_size: 12,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let original_id = engine.pool[0].id;
+        let seed = engine.pool[0].tree.clone();
+        let bend = |v: f64| {
+            ricercar_grammar::set_param(
+                &seed,
+                "amp#attack",
+                ricercar_grammar::ParamValue::Continuous(v),
+            )
+            .unwrap()
+        };
+
+        engine
+            .commit_edit(
+                Some(original_id),
+                bend(0.05),
+                EditOutcome::Heard { edited_won: false },
+            )
+            .expect("a losing edit still commits — it is a candidate either way");
+        let obs = engine.log.observations.last().unwrap();
+        assert_eq!(obs.provenance, Provenance::HeardEdit);
+        let ricercar_taste::Feedback::Duel { chose_a, .. } = &obs.feedback else {
+            panic!("a commit outcome is a duel");
+        };
+        assert!(!chose_a, "A is the edit, and the edit lost");
+
+        engine
+            .commit_edit(Some(original_id), bend(0.09), EditOutcome::SelfReported)
+            .expect("the express path still commits");
+        let obs = engine.log.observations.last().unwrap();
+        assert_eq!(obs.provenance, Provenance::SelfReport);
+
+        engine
+            .commit_edit(Some(original_id), bend(0.13), EditOutcome::Untold)
+            .expect("an untold commit still commits");
+        assert_eq!(
+            engine.log.len(),
+            2,
+            "an untold commit claims nothing, so it observes nothing"
+        );
+        assert_eq!(engine.log.n_with(Provenance::HeardEdit), 1);
+        assert_eq!(engine.log.n_with(Provenance::SelfReport), 1);
+
+        // A commit whose tree the bank already holds inserts nothing — but the
+        // player still heard two patches and picked one, and the answer must
+        // not be lost to a bookkeeping collision. It is scored against the
+        // twin instead.
+        let twin = engine.pool[1].tree.clone();
+        let obs_before = engine.log.len();
+        assert!(
+            engine
+                .commit_edit(
+                    Some(original_id),
+                    twin,
+                    EditOutcome::Heard { edited_won: false }
+                )
+                .is_none(),
+            "a duplicate tree is not a new candidate"
+        );
+        assert_eq!(
+            engine.log.len(),
+            obs_before + 1,
+            "the comparison was thrown away because the winner already existed"
+        );
+        assert_eq!(
+            engine.log.observations.last().unwrap().provenance,
+            Provenance::HeardEdit
+        );
+
+        // And the tag stays out of the fit: what the likelihood is handed is
+        // (feedback, session), which is what it was handed before this field
+        // existed. Two rows differing only in provenance are one row twice.
+        let names = phi_names();
+        let sz = engine
+            .standardizer
+            .clone()
+            .expect("a filled pool has a standardizer");
+        let fit = ricercar_taste::FitSet::build(&engine.log, &names, &sz);
+        assert_eq!(fit.len(), engine.log.len());
+        assert_eq!(
+            fit.rows[0].0.phis().len(),
+            2,
+            "still a duel, whatever it was collected by"
+        );
     }
 
     /// The taste map projects every pool member plus history ghosts, with
@@ -1295,6 +1469,7 @@ mod tests {
                 p_a: 0.95,
                 chose_a: true,
                 random_check: false,
+                provenance: Provenance::Duel,
             })
             .collect();
         let hedging: Vec<Forecast> = (0..20)
@@ -1302,6 +1477,7 @@ mod tests {
                 p_a: 0.55,
                 chose_a: true,
                 random_check: false,
+                provenance: Provenance::Duel,
             })
             .collect();
         let (c, h) = (calibration(&confident), calibration(&hedging));
@@ -1320,12 +1496,52 @@ mod tests {
                 p_a: 0.1,
                 chose_a: i % 10 == 0,
                 random_check: i % 10 == 0,
+                provenance: Provenance::Duel,
             })
             .collect();
         let m = calibration(&mixed);
         let bin = m.bins.iter().find(|b| b.n > 0).unwrap();
         assert!((bin.predicted - bin.observed).abs() < 0.05, "{bin:?}");
         assert_eq!(m.check_n, 10, "check duels counted separately");
+        assert_eq!(m.by_provenance.len(), 1, "one stream, one row");
+        assert_eq!(m.by_provenance[0].provenance, "duel");
+    }
+
+    /// Self-report and heard comparison are scored apart, because there is no
+    /// reason to believe a checkbox and a heard A/B are equally reliable and
+    /// the only way to find out is to keep the two streams separable. The
+    /// aggregate still covers everything — this splits the score, it does not
+    /// hide any of it.
+    #[test]
+    fn calibration_scores_a_checkbox_apart_from_a_heard_comparison() {
+        let f = |p: f64, won: bool, prov| Forecast {
+            p_a: p,
+            chose_a: won,
+            random_check: false,
+            provenance: prov,
+        };
+        let mut fs: Vec<Forecast> = (0..10)
+            .map(|_| f(0.9, true, Provenance::HeardEdit))
+            .collect();
+        // The self-reports contradict a model that is right about the heard
+        // ones — precisely the asymmetry this split exists to make visible.
+        fs.extend((0..10).map(|_| f(0.9, false, Provenance::SelfReport)));
+        let c = calibration(&fs);
+        assert_eq!(c.n, 20, "the aggregate still sees every forecast");
+        let row = |name: &str| {
+            c.by_provenance
+                .iter()
+                .find(|r| r.provenance == name)
+                .unwrap_or_else(|| panic!("{name} missing"))
+        };
+        assert_eq!(row("heard_edit").n, 10);
+        assert_eq!(row("self_report").n, 10);
+        assert!(
+            row("heard_edit").skill > row("self_report").skill,
+            "the split scored nothing: {:?}",
+            c.by_provenance
+        );
+        assert!(c.by_provenance.iter().all(|r| r.provenance != "duel"));
     }
 
     /// A profile written before raw-φ logging still loads and still means
@@ -1525,6 +1741,7 @@ mod tests {
             detune,
             mod_depth,
             modulation,
+            ..
         } = &state.bank[3].tree.root
         else {
             panic!("a v1-shaped vco did not survive the load");
@@ -1540,6 +1757,7 @@ mod tests {
             mix,
             mod_depth,
             modulation,
+            ..
         } = &state.bank[4].tree.root
         else {
             panic!("a v1-shaped supersaw did not survive the load");
@@ -1584,6 +1802,20 @@ mod tests {
             engine.pool.iter().all(|c| !c.phi_std.is_empty()),
             "a restored v1 patch has no features"
         );
+
+        // Node identities are the other thing this fixture is now proving: it
+        // was written long before uids existed, so every node in it arrives
+        // unset. The whole migration is that `#[serde(default)]` lets the save
+        // load at all and the pool settles it on the way in — a returning user
+        // gets working locks and layout without their save being rewritten.
+        for c in &engine.pool {
+            let rack = ricercar_grammar::describe(&c.tree);
+            let mut seen = std::collections::HashSet::new();
+            for m in rack.modules.iter().filter(|m| m.key != "amp") {
+                assert_ne!(m.uid, 0, "a restored node has no identity at {}", m.key);
+                assert!(seen.insert(m.uid), "restored identities collide");
+            }
+        }
     }
 
     // ------------------------------------------------------------------

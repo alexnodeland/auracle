@@ -50,7 +50,7 @@ pub use edit::{set_param, EditError, ParamValue};
 pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
-pub use term::{AudioNode, ModNode, PatchTree};
+pub use term::{AudioNode, ModNode, PatchTree, Uid};
 
 #[cfg(test)]
 mod tests {
@@ -229,6 +229,50 @@ mod tests {
             assert_eq!(back, tree);
             assert!(compile(&tree, SR).is_ok());
         }
+    }
+
+    /// The two categorical sites that reach the running voices without a
+    /// recompile have a live handle on **every** module that advertises them.
+    ///
+    /// `oct` is live because it rides the pitch [`compile`]r's one `Offset`,
+    /// and every pitched source goes through `wire_pitch` to get there. A
+    /// future source that hand-wires its own pitch would still describe an
+    /// `oct` chip and would silently be back to a full patch swap per click —
+    /// which is invisible in a diff and audible as a dropout, so it is checked
+    /// here rather than left to be noticed.
+    #[test]
+    fn every_advertised_live_site_has_a_live_handle() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0x1_11E);
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..200 {
+            let tree = prior.sample_with_rng(&mut rng);
+            let rack = describe::describe(&tree);
+            let voice = compile(&tree, SR).expect("compiles");
+            for m in &rack.modules {
+                for knob in &m.knobs {
+                    let site = knob.addr.rsplit('#').next().unwrap_or("");
+                    if site != "table" && site != "oct" {
+                        continue;
+                    }
+                    seen.insert(site.to_string());
+                    assert!(
+                        voice.params.contains_key(&knob.addr),
+                        "{} advertises {site} with no live handle — clicking it \
+                         is a full patch swap",
+                        m.kind
+                    );
+                }
+            }
+        }
+        assert_eq!(
+            seen,
+            ["oct", "table"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<std::collections::BTreeSet<_>>(),
+            "the draw never produced both live sites, so this proved nothing"
+        );
     }
 
     /// Every knob address in the rack description is a real trace site, every
@@ -595,6 +639,7 @@ mod tests {
     /// would never return.
     fn default_filter_over(inner: term::AudioNode) -> term::AudioNode {
         term::AudioNode::Filter {
+            uid: Uid::NEW,
             kind: term::FilterKind::SvfLp,
             cutoff: 0.5,
             resonance: 0.2,
@@ -632,5 +677,241 @@ mod tests {
             mean(&small),
             mean(&large)
         );
+    }
+
+    // ---------- node identity ----------
+
+    /// Uids must be invisible to every system that reasons about *content*.
+    ///
+    /// Three of those, and all three would break loudly: the engine's pool
+    /// dedup and refinement's own "did the walk move" test are both
+    /// `PatchTree` equality, and the render memo is a hash of the tree's JSON.
+    /// If a fresh identity could make two identical patches differ, evolution
+    /// would admit duplicates forever and every refinement step would miss a
+    /// cache it had just filled.
+    #[test]
+    fn uid_is_invisible_to_content() {
+        let mut a = presets::presets()[0].1.clone();
+        let mut b = a.clone();
+        a.ensure_uids();
+        b.ensure_uids();
+        assert_ne!(
+            a.root.uid().0,
+            b.root.uid().0,
+            "two settlings must mint different identities, or the test is vacuous"
+        );
+        assert_eq!(a, b, "patches that differ only in uid are the same patch");
+
+        // The render memo's content address is `canonical_tree_json`, which
+        // clears identities first; the half of that contract this crate can
+        // state is that clearing lands both trees on the same term. The JSON
+        // itself is pinned in `ricercar_features::cache`, where the key lives.
+        let (mut ca, mut cb) = (a.clone(), b.clone());
+        ca.clear_uids();
+        cb.clear_uids();
+        assert!(ca.root.uid().is_new() && cb.root.uid().is_new());
+        assert_eq!(ca, cb);
+    }
+
+    /// A structural edit keeps the identity of every module that lived
+    /// through it, and mints one for the module it added.
+    ///
+    /// This is the difference between "insert a filter" and "throw the patch
+    /// away and build a new one that looks similar", and every lock, hand
+    /// position and selection in the panel rides on it.
+    #[test]
+    fn struct_ops_carry_identity_through() {
+        use mutate::{NodeKind, StructOp};
+        let mut tree = presets::presets()[0].1.clone();
+        tree.ensure_uids();
+        let before = describe::describe(&tree);
+        let uid_of = |d: &describe::RackDescription, key: &str| {
+            d.modules.iter().find(|m| m.key == key).map(|m| m.uid)
+        };
+        let root_uid = uid_of(&before, "node").expect("a root module");
+
+        // Insert above the root: everything shifts down one key, and nothing
+        // changes identity but the new plate.
+        let after = describe::describe(
+            &mutate::apply_struct_op(
+                &tree,
+                &StructOp::Insert {
+                    key: "node".into(),
+                    kind: NodeKind::Filter,
+                },
+            )
+            .expect("insert at the root is legal"),
+        );
+        assert_eq!(
+            uid_of(&after, "node/0"),
+            Some(root_uid),
+            "the module that was at `node` is now at `node/0` and is the same module"
+        );
+        assert!(
+            uid_of(&after, "node") != Some(root_uid) && uid_of(&after, "node") != Some(0),
+            "the inserted filter gets an identity of its own"
+        );
+
+        // And the identities in one tree are unique, including after a splice.
+        let mut seen = std::collections::HashSet::new();
+        for m in &after.modules {
+            if m.key == "amp" {
+                continue;
+            }
+            assert!(seen.insert(m.uid), "duplicate uid on {}", m.key);
+        }
+    }
+
+    /// **R6.** A refined child must inherit its seed's identities wherever the
+    /// structure survived.
+    ///
+    /// Refinement proposes over the *trace* and rebuilds the genome from it on
+    /// every accepted step, and a trace has no room for a uid — so the decoded
+    /// tree comes back anonymous. This is that exact round trip, without the
+    /// MCMC: encode, decode, and check that identity is gone and that
+    /// `inherit_uids` puts it back. Without it every ⚡ evolve would look to
+    /// the panel like a brand-new patch and every lock and hand position in it
+    /// would evaporate on the app's central action.
+    #[test]
+    fn identity_survives_the_trace_round_trip() {
+        let mut seed = presets::presets()[3].1.clone();
+        seed.ensure_uids();
+        let mut child = PatchTree::from_trace(&seed.to_trace()).expect("a trace decodes");
+        assert!(
+            child.root.uid().is_new(),
+            "the decoder cannot carry identities — that is why inheritance exists"
+        );
+        child.inherit_uids(&seed);
+        let (a, b) = (describe::describe(&seed), describe::describe(&child));
+        assert_eq!(a.modules.len(), b.modules.len());
+        for (x, y) in a.modules.iter().zip(&b.modules) {
+            assert_eq!(x.key, y.key);
+            assert_eq!(x.uid, y.uid, "identity lost at {}", x.key);
+        }
+    }
+
+    /// **R6, the other half.** Turning a knob must not rename the patch.
+    ///
+    /// `set_param` edits the *trace* and decodes it back, which is the same
+    /// anonymising round trip refinement takes — and it is on the hottest path
+    /// in the app. It went unnoticed because nothing in the engine reads a uid:
+    /// the loss only shows in the panel, where after one knob turn every lock
+    /// id collapses onto `0#site`, the motion system sees the whole rack
+    /// arrive at once, and every hand-placed position is orphaned. Measured in
+    /// the browser, not deduced from the code, which is why the assertion is
+    /// on `describe` — what the panel actually reads.
+    #[test]
+    fn identity_survives_a_knob_turn() {
+        let mut tree = presets::presets()[2].1.clone();
+        tree.ensure_uids();
+        let before = describe::describe(&tree);
+        // A continuous site somewhere below the root, so this is not just a
+        // statement about the amp.
+        let addr = before
+            .modules
+            .iter()
+            .filter(|m| m.key != "amp")
+            .find_map(|m| {
+                m.knobs
+                    .iter()
+                    .find(|k| k.kind == describe::KnobKind::Continuous)
+                    .map(|k| k.addr.clone())
+            })
+            .expect("a preset with a knob on it");
+        let edited = set_param(&tree, &addr, ParamValue::Continuous(0.375)).expect("a plain knob");
+        let after = describe::describe(&edited);
+        assert_eq!(before.modules.len(), after.modules.len());
+        for (x, y) in before.modules.iter().zip(&after.modules) {
+            assert_eq!(x.key, y.key);
+            assert_eq!(x.uid, y.uid, "a knob turn renamed {}", x.key);
+        }
+        // …and the edit itself still happened.
+        let value_at = |t: &PatchTree| {
+            t.to_trace()
+                .choices
+                .iter()
+                .find(|(k, _)| &***k == addr.as_str())
+                .map(|(_, c)| c.value.clone())
+        };
+        assert_ne!(value_at(&edited), value_at(&tree));
+    }
+
+    /// Settling reaches **every** module the rack draws, in every patch the
+    /// prior can produce.
+    ///
+    /// The walk has to know which productions carry children and which carry a
+    /// modulation slot, and a wildcard arm in either table is a module that
+    /// silently never gets an identity — which is how a `Shift`'s modulator
+    /// went uid-less on the first pass here. Prior draws are the right net:
+    /// they reach productions no preset uses.
+    #[test]
+    fn every_drawn_module_gets_an_identity() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0x1D_5E7);
+        for _ in 0..200 {
+            let (mut tree, _) = draw(&prior, &mut rng);
+            tree.ensure_uids();
+            let rack = describe::describe(&tree);
+            let mut seen = std::collections::HashSet::new();
+            for m in rack.modules.iter().filter(|m| m.key != "amp") {
+                assert_ne!(m.uid, 0, "{} ({}) has no identity", m.key, m.kind);
+                assert!(seen.insert(m.uid), "{} shares an identity", m.key);
+            }
+        }
+    }
+
+    /// A restored save carries identities the mint has never issued, and the
+    /// mint must not issue them again.
+    ///
+    /// The counter is per-process and a page reload starts it at 1, while the
+    /// save it restores is full of ids from the session that wrote it. Without
+    /// this, inserting one module into a restored patch would hand out an id
+    /// that patch already uses and two nodes would answer to one lock — the
+    /// exact confusion identities exist to end, arriving only for the returning
+    /// user, only after a reload.
+    #[test]
+    fn settling_pushes_the_mint_past_what_it_has_seen() {
+        // Stand in for a save written by an older session: a tree whose
+        // identities are far above anything this process has minted.
+        let mut restored = presets::presets()[0].1.clone();
+        restored.ensure_uids();
+        let high = term::Uid(9_000_000);
+        restored.root.set_uid(high);
+        restored.ensure_uids();
+        assert_eq!(
+            restored.root.uid().0,
+            high.0,
+            "a set identity is not reissued"
+        );
+
+        let mut fresh = presets::presets()[0].1.clone();
+        fresh.ensure_uids();
+        assert!(
+            fresh.root.uid().0 > high.0,
+            "the mint reissued an identity a restored patch is already using"
+        );
+    }
+
+    /// A duplicated subtree brings its original's identities with it in the
+    /// copy, and two nodes claiming one identity is worse than none: a lock on
+    /// either would light both. Settling breaks the tie.
+    #[test]
+    fn settling_breaks_duplicate_identities() {
+        let mut inner = presets::presets()[0].1.clone();
+        inner.ensure_uids();
+        let mut tree = inner.clone();
+        tree.root = term::AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(inner.root.clone()),
+            b: Box::new(inner.root.clone()),
+        };
+        tree.ensure_uids();
+        let d = describe::describe(&tree);
+        let mut seen = std::collections::HashSet::new();
+        for m in d.modules.iter().filter(|m| m.key != "amp") {
+            assert_ne!(m.uid, 0, "{} was left without an identity", m.key);
+            assert!(seen.insert(m.uid), "{} shares an identity", m.key);
+        }
     }
 }

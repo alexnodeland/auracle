@@ -98,6 +98,9 @@ const wb = {
   buffer: null,      // phrase render of the bench state
   vetOk: true,
   dirty: false,
+  // Locked sites, keyed by **node identity** rather than by trace address —
+  // `41#cut`, not `node/0#cut`. See the lock section below for why the whole
+  // point of this phase hangs off that one substitution.
   locks: new Set(),
 };
 let editInFlight = false;
@@ -218,7 +221,39 @@ function uiState() {
     // supposed to mean "recoverable"; before this it meant "recoverable until
     // you refresh", which is not a promise worth making.
     held: trayState(),
+    // Where you put the modules (WS-4 §8). Flattened to arrays because this
+    // blob is stored as-is and a Map is not: `[[subject, [[mid, x, y], …]], …]`.
+    // Rounded, because a hand position is a grid cell or a pixel, never 14
+    // digits of it.
+    positions: [...ffLayouts]
+      .filter(([, m]) => m.size)
+      .map(([id, m]) => [id, [...m].map(([mid, p]) => [mid, Math.round(p.x), Math.round(p.y)])]),
+    // What you pinned, per patch. "What have I already decided before I press
+    // ⚡" is the one question the lock dots exist to answer, and a reload used
+    // to answer it with "nothing" — every pin in the session gone, silently,
+    // with the rack looking exactly as it had. Safe to persist only because a
+    // lock is keyed by node identity now: under the old trace-address keys a
+    // restored lock would have named whatever had since moved into that slot.
+    locks: [...lockStore].filter(([, s]) => s.size).map(([id, s]) => [id, [...s]]),
   };
+}
+
+/** The inverse, tolerant of a save written before positions existed — which is
+ *  every save on disk right now. An absent key and an empty map mean the same
+ *  thing (no module has been placed by hand), so there is nothing to migrate. */
+function restorePositions(saved) {
+  if (!Array.isArray(saved)) return;
+  for (const [id, list] of saved) {
+    if (!Array.isArray(list) || !list.length) continue;
+    const m = new Map();
+    for (const [mid, x, y] of list) {
+      if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
+        m.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
+      }
+    }
+    if (m.size) { ffLayouts.set(String(id), m); ffLast = String(id); }
+  }
+  ffTrim();
 }
 
 // ---------- undo/redo (workbench edits) ----------
@@ -258,7 +293,6 @@ function stageUndo() {
   return openEdit;
 }
 function commitStagedUndo() {
-  stagedLockRemap = null;
   if (!openEdit) return;
   undoStack.push(openEdit.snap);
   if (undoStack.length > 60) undoStack.shift();
@@ -266,8 +300,6 @@ function commitStagedUndo() {
   openEdit = null;
 }
 function discardStagedUndo() {
-  stagedLockRemap = null;
-  pendingRewriteLocks = null; // the tree those keys described never happened
   if (!openEdit) return;
   for (const uid of openEdit.trays) unstage(uid);
   openEdit = null;
@@ -323,11 +355,6 @@ function noteOnLanding(text, opts) {
   landedNote = { text, opts: opts || {} };
 }
 
-// How the edit in flight moves a trace address, or null if it cannot be known.
-// Computed at *send* time, because it is a statement about the tree the op was
-// aimed at, and consumed by the bench reply — see `lockRemapFor`.
-let stagedLockRemap = null;
-
 // Undo and redo post a whole tree, which cannot be re-aimed at a tree that
 // moved under it — so they wait for the lane to clear rather than racing the
 // edit still in flight, which would restore over the top of it. They hold the
@@ -367,6 +394,63 @@ function requestRestore(kind) {
   performRestore(kind);
 }
 
+// ---------- the implicit stream (WS-8 §3) ----------
+// Log what the player does with their edits now, so a model can be fit on it
+// later. None of this enters the likelihood — a revert is confounded with
+// plain curiosity, and the fit the app shows a number from is not the place to
+// smuggle in an unvalidated signal. It is written because it cannot be written
+// retroactively: an edit-level preference model is the natural v2 and it is
+// unbuildable without a year of this log.
+//
+// It lands in the engine's `events` list, which rides in the same
+// `SessionState` blob as the observation log and therefore persists with it —
+// "alongside the observation log" in the plan means alongside on disk too.
+function logImplicit(kind, detail, opts = {}) {
+  send({
+    type: "log_edit",
+    kind,
+    id: opts.id != null ? opts.id : (wb.subjectId != null ? wb.subjectId : 0),
+    value: opts.value || 0,
+    detail: detail || null,
+    withPhi: !!opts.withPhi,
+  });
+}
+
+// What the last landed edit was, and whether the player can possibly have
+// heard it. The gate matters: an undo pressed reflexively two keystrokes after
+// an edit is a correction of a typo, not a preference, and logging it as one
+// would poison the very column a v2 model would key off.
+let lastEdit = null;      // {at, op} — the edit an undo would reverse
+let heardSinceEdit = false;
+// Long enough to be a judgement rather than a reflex. The plan's number, and
+// it matches the ~1.5 s the phrase render takes to become audible at all.
+const REVERT_DWELL_MS = 2000;
+/** Whatever gesture is going out next, in one place, so the revert that may
+ *  reverse it can name it. */
+let pendingEditTag = null;
+
+function markEditLanded() {
+  lastEdit = { at: Date.now(), op: pendingEditTag };
+  heardSinceEdit = heldNotes.size > 0;
+}
+/** The player is hearing the patch — through the keyboard, or ▶. */
+function markHeard() {
+  heardSinceEdit = true;
+}
+/** An undo just landed. Was it a revert of something the player actually
+ *  heard and sat with? */
+function noteRevertIfAudible() {
+  const e = lastEdit;
+  lastEdit = null;
+  if (!e || !heardSinceEdit) return;
+  const dwell = Date.now() - e.at;
+  if (dwell < REVERT_DWELL_MS) return;
+  // `withPhi` attaches the bench's φ on both sides — the engine holds the
+  // vector from before this restore and the one from after it, which is the
+  // only place the *direction* of the move exists.
+  logImplicit("revert", { op: e.op, dwell_ms: dwell }, { value: dwell, withPhi: true });
+}
+
 function performRestore(kind) {
   const stack = kind === "undo" ? undoStack : redoStack;
   if (stack.length === 0 || !wb.tree) {
@@ -378,10 +462,17 @@ function performRestore(kind) {
   restorePending = { kind, cur: JSON.stringify(wb.tree) };
   restoreInFlight = true;
   structInFlight = true;
+  beliefStale();
   send({ type: "edit_set_tree", json: stack[stack.length - 1] });
 }
+// Which direction the restore that just landed went. `restorePending` is
+// cleared by `settleRestore`, and the revert check needs the answer after
+// that — an undo and a redo are the same message on the wire.
+let lastSettledRestore = null;
+
 /** The restore landed: only now does the step actually move. */
 function settleRestore() {
+  lastSettledRestore = restorePending ? restorePending.kind : null;
   if (!restorePending) return;
   if (restorePending.kind === "undo") {
     undoStack.pop();
@@ -438,6 +529,11 @@ worker.onmessage = (e) => {
       // before you press it. Fetching only on first press would leave that
       // count reading 0 — a number that is wrong rather than merely absent.
       if (!presetRows) send({ type: "presets" });
+      // The same argument for the honesty meter. Forecasts persist with the
+      // session, but nothing asked for them until the *next* vote — so a
+      // returning player's TRUST tab opened on "0 of 20 forecasts" while the
+      // engine was holding twenty-five of them. Wrong, not merely absent.
+      send({ type: "calibration" });
       // Claim the deal before it goes out. On a full restore the worker posts
       // `playable` and `filled` in the same synchronous turn (the fill loop —
       // and therefore its yield — never runs), so `filled` would otherwise see
@@ -531,9 +627,39 @@ worker.onmessage = (e) => {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
+      const layout = pendingLayout;
+      pendingLayout = null;
       if (m.id > 0) {
+        // File the layout under the id it landed as, *before* benching it, so
+        // the first render already draws the arrangement the sender chose. The
+        // mids match because uids survive the round trip: the exported tree
+        // carries them, `ensure_uids` on admission keeps every id it is given
+        // and only mints for the ones that have none.
+        let placed = 0;
+        if (layout) {
+          const map = new Map();
+          for (const [mid, x, y] of layout) {
+            if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
+              map.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
+            }
+          }
+          if (map.size) {
+            ffLayouts.set(String(m.id), map);
+            ffLast = String(m.id);
+            ffTrim();
+            placed = map.size;
+            // A layout nobody can see is not carried, it is stored. The file
+            // said where these modules go; showing them anywhere else would
+            // make the feature indistinguishable from not having shipped it.
+            if (layoutMode !== "freeform") {
+              layoutMode = "freeform";
+              try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+              syncLayoutBtn();
+            }
+          }
+        }
         openOnBench(m.id);
-        note(`patch imported as ${nameOf(m.id)}.${madeRoom(evicted)}`);
+        note(`patch imported as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
         scheduleSave();
       } else {
         note("could not import that patch (duplicate, or it failed the safety vet)");
@@ -625,10 +751,6 @@ worker.onmessage = (e) => {
       if (currentView === "taste") drawTaste();
       break;
     }
-    case "explained": {
-      renderExplain(m.id, m.ex);
-      break;
-    }
     case "status": {
       applyStatus(m.status);
       send({ type: "calibration" });
@@ -700,6 +822,9 @@ worker.onmessage = (e) => {
     }
     case "bench": {
       wb.rack = m.rack;
+      // Every address in the identity index belongs to the rack it was built
+      // from, and this is the only place a rack is ever replaced.
+      lockIndex = null;
       wb.vetOk = m.vetOk;
       if (m.subject !== undefined) {
         // Benching anything that is NOT the auditioned candidate ends the
@@ -715,7 +840,20 @@ worker.onmessage = (e) => {
         }
         wb.subjectId = m.subject;
         wb.dirty = false;
-        wb.locks = new Set();
+        // Pruned, not cleared. A different patch entirely shares no node
+        // identities with the one that was here, so pruning empties the set
+        // and reads exactly as clearing did. But the two subject changes that
+        // matter are *not* different patches: `edit_commit` benches the very
+        // tree that was on it, and ⚡ evolve benches a child whose surviving
+        // nodes carry the seed's identities through `inherit_uids`. Both keep
+        // their locks — which is the loop this whole editor exists to serve.
+        pruneLocks();
+        // …and if nothing was carried, this patch may have pins of its own —
+        // from earlier in the session, or from before the last reload. The
+        // store is only ever read here, where a patch arrives with an empty
+        // set, so a carried lock always wins over a remembered one.
+        locksRestoreFor(m.subject);
+        locksRemember();
         // A different patch entirely: nothing learned about the old one's
         // addresses says anything about this one's, and a survivor here is
         // the same stale-entry dropout a structural edit used to leave.
@@ -761,40 +899,16 @@ worker.onmessage = (e) => {
           cancelPending();
           endConnectPick();
         }
-        if (m.edited === "restore" && wb.locks.size > 0) {
-          // Two very different restores arrive on this one route. A rewrite
-          // built the tree it is replacing with, so it knows where every
-          // locked module went (`applyTreeRewrite`) and the locks travel. A
-          // ⌘Z is putting back a tree these locks were never about, so they
-          // come off — silently, because restoring an earlier patch and
-          // finding its earlier locks is not news.
-          const lost = wb.locks.size;
-          if (!restorePending && pendingRewriteLocks) {
-            wb.locks = pendingRewriteLocks;
-            const dropped = lost - wb.locks.size;
-            if (dropped > 0) {
-              note(`${dropped} lock${dropped > 1 ? "s" : ""} went with what you removed — the rest moved with the patch.`);
-            }
-          } else {
-            wb.locks.clear();
-          }
-        }
-        pendingRewriteLocks = null;
-        if (m.edited === "structure" && wb.locks.size > 0) {
-          // Structural edits shift trace addresses. They used to be cleared
-          // wholesale, which meant the loop this editor exists to serve —
-          // pin a routing, then breed around it — could not be completed.
-          // Each op's remapping is known, so the locks travel with the nodes
-          // and only the sites the edit actually destroyed are lost.
-          if (stagedLockRemap) {
-            const dropped = remapLocks(stagedLockRemap);
-            if (dropped > 0) {
-              note(`${dropped} lock${dropped > 1 ? "s" : ""} went with what you removed — the rest moved with the patch.`);
-            }
-          } else {
-            wb.locks.clear();
-            note("structure changed — locks cleared");
-          }
+        // One rule for every edit, from an op to a whole-tree rewrite to a
+        // ⌘Z: a lock names a *node*, so it survives unless that node is gone.
+        // This replaced a page of per-op key remapping (`lockRemapFor`) and a
+        // second copy of the same reasoning inside `applyTreeRewrite`, which
+        // tracked node objects by reference — both of them standing in for an
+        // identity the term did not have and now does.
+        const droppedLocks = pruneLocks();
+        if (droppedLocks > 0) {
+          locksRemember(); // the set that survived is the set to remember
+          note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
         }
       }
       if (m.buffer && m.buffer.length > 0) {
@@ -862,6 +976,21 @@ worker.onmessage = (e) => {
       );
       if (!knobDragging) renderRack();
       renderBank();
+      // Both readouts are derived from this reply and nothing else, so they
+      // cannot drift from the tree the rack below them is drawing.
+      applyBelief(m);
+      renderBudget();
+      // The undo that just landed may have been a *revert* — the implicit
+      // stream's most informative row, and one that can only be recognised
+      // here, with both sides of the edit in hand.
+      // Told apart the same way the restore itself is: `edit_set_tree` answers
+      // "restore" for a ⌘Z *and* for every client-side rewrite, and only
+      // undo/redo leave a receipt. A rewrite is an edit like any other — it is
+      // the thing a later ⌘Z would revert — so it must land here as one.
+      if (m.edited !== undefined) {
+        if (m.edited === "restore" && lastSettledRestore === "undo") noteRevertIfAudible();
+        else markEditLanded();
+      }
       // The selection ring on the taste map is drawn at wb.subjectId, so a
       // bench change while the map is up must repaint it — clicking a dot
       // used to leave the ring on the old patch.
@@ -929,6 +1058,50 @@ worker.onmessage = (e) => {
       drainStruct();
       break;
     }
+    // The answer to "is there a duel to deal here, and what does the other
+    // side sound like". `differs` is the engine's own tree comparison, not the
+    // panel's `dirty` flag: turn a knob and turn it back and there is nothing
+    // to ask about, and an answer to a question with no content is a row of
+    // noise in the preference log.
+    case "edit_duel": {
+      if (!m.differs) {
+        // The engine has compared the trees and they are the same one: a knob
+        // turned and turned back, or a pair of structural edits that cancelled
+        // (duplicate, then delete). Two things follow, and the app used to do
+        // neither.
+        //
+        // First, the panel's `dirty` flag is now known to be wrong, so it goes
+        // — the subject line said "· edited" and COMMIT stayed lit over a
+        // patch byte-identical to the one in the bank, and the only commit
+        // that button could produce was a duplicate the engine would refuse.
+        clearBenchDirty();
+        // Second, "there is nothing to commit" is not a failure of ⚡. The
+        // generation is what was asked for; the commit was only ever the thing
+        // standing in front of it. Routing this through `sendCommit("none")`
+        // sent a doomed commit, got `id: 0` back, and dropped the generation on
+        // the floor with a note about a duplicate — for the one gesture that
+        // could not have been more clearly a request to evolve.
+        if (m.then === "evolve") {
+          pendingEvolve = false;
+          if (wb.subjectId != null) startEvolveFrom(wb.subjectId);
+        } else {
+          note(`nothing to commit — ${nameOf(wb.subjectId)} is exactly what it was.`);
+        }
+      } else if (!m.buffer || m.buffer.length === 0) {
+        sendCommit("none", { evolving: m.then === "evolve" });
+      } else {
+        openCommitDuel(m, m.then);
+      }
+      break;
+    }
+    // A pre-placement audition came back (WS-2 §6). Stale replies are the
+    // normal case, not the error case — the worker is serial, so a preview
+    // already begun cannot be recalled and the player has usually moved on by
+    // the time it lands. Dropping it here is the cancellation.
+    case "preview": {
+      onPreviewArrived(m);
+      break;
+    }
     case "committed": {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
@@ -937,15 +1110,43 @@ worker.onmessage = (e) => {
         wb.dirty = false;
         livePatchId = m.id;
         setLiveLabel(nameOf(m.id));
-        note(`committed as patch #${m.id}${$("improve-check").checked ? " · taught: your edit beat the original" : ""}.${madeRoom(evicted)}`);
+        // Say what was taught, from what actually happened rather than from
+        // the state of a checkbox: three of these four sentences were
+        // unsayable before the outcome had a direction.
+        const taught =
+          m.outcome === "heard_edited" ? " · taught: your edit won the comparison"
+          : m.outcome === "heard_original" ? " · taught: the original won — the model learns most from that"
+          : m.outcome === "self_edited" ? " · taught: you say your edit is better"
+          : "";
+        note(`committed as patch #${m.id}${taught}.${madeRoom(evicted)}`);
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
         }
       } else {
-        pendingEvolve = false;
-        note("commit failed (duplicate or unvetted state)");
+        // A patch the bank already holds is not a new candidate — but if the
+        // player answered a comparison on the way in, the engine scored it
+        // against the twin rather than dropping it, and saying "failed" about
+        // a vote that was recorded is the wrong sentence.
+        note(m.outcome && m.outcome !== "none"
+          ? "that patch is already in the bank — nothing new to add, but your pick was recorded."
+          : "commit failed (duplicate or unvetted state)");
+        // …and the generation still runs. ⚡ on an edited patch commits *and
+        // then* evolves; a commit the bank had no room for is a reason to
+        // evolve from the seed instead of a reason to swallow the gesture.
+        // The other half of this lives in `edit_duel`, which now avoids
+        // sending the doomed commit at all — this is the case that arrives
+        // any other way (an unvetted tree, an express self-report).
+        if (pendingEvolve) {
+          pendingEvolve = false;
+          if (wb.subjectId != null) startEvolveFrom(wb.subjectId);
+        }
       }
+      // A commit that carried an answer just added a forecast, and the trust
+      // view is the place that answer is visible. Without this it only
+      // refreshed on the next *dealt* duel — so the observation the player
+      // was asked for appeared to go nowhere.
+      if (m.outcome && m.outcome !== "none") send({ type: "calibration" });
       refreshInstruments();
       renderRack();
       scheduleSave();
@@ -1835,6 +2036,9 @@ function healParamMiss(addr) {
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD, master);
+  // The analysers exist for the first time here, so this is the first moment
+  // the persisted fft size, window and tap can actually be applied to one.
+  scopeApply();
   live.onMessage((m) => {
     (window.__ricLog = window.__ricLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
@@ -1862,6 +2066,9 @@ function liveNoteOn(note_, vel = 1.0) {
   ensureAudio();
   live.noteOn(note_, vel);
   heldNotes.add(note_);
+  // The audibility gate on the revert log: this note is the player hearing
+  // whatever edit is currently on the bench.
+  markHeard();
   paintKey(note_, true);
   startScope();
   setSignalFlow(true);
@@ -2593,25 +2800,170 @@ function renderCheckBadge() {
   }
 }
 
-// Why does the model like this? Utility is linear *within* a style lens, so the
-// per-feature contributions are exact — no SHAP, no surrogate, no sampling.
-function renderExplain(id, ex) {
-  const holder = $("explain");
-  if (!holder) return;
-  if (!ex || !ex.contributions || ex.contributions.length === 0) {
-    holder.classList.add("hidden");
+// ---------- the live utility readout ----------
+// What the model believes about the patch under your hands, above the rack,
+// updated on every edit.
+//
+// This replaces a WHY line that was fetched once — for the candidate you
+// loaded — and then described it through any number of edits, silently. The
+// bench re-featurizes on every edit whether or not anyone looks at the result,
+// so `θ · φ_std` and its exact per-feature decomposition are a dot product
+// away; the stale version was never the cheaper one, only the wrong one.
+//
+// Two rules make it honest rather than decorative:
+//
+//  - **The delta is against the last number this readout showed**, not against
+//    the loaded candidate. "0.71 (was 0.66) ▲" is a statement about the edit
+//    you just made, which is the only thing a player can act on.
+//  - **Stale is drawn, not guessed.** An edit in flight means the number on
+//    screen describes the tree *before* it. Dimming and saying so is strictly
+//    better than showing a wrong number confidently for half a second — this
+//    is the objective the player is steering against, and a readout that lies
+//    under motion teaches them to ignore it.
+// `styleK` is the *aligned lens index* the bench's φ was decomposed under, and
+// it is here because the socket prices below have to be quoted under the same
+// lens as the number they promise to move. The bank's chips read θ from the
+// lens that claims the most of the pool, which is usually but not always this
+// one; two numbers from two lenses sitting next to each other is a
+// disagreement the player would have no way to see.
+const belief = { u: null, sd: 0, prev: null, lens: "", styleK: null, top: [], stale: false, has: false };
+
+/** An edit has gone out; whatever is on screen is about to be untrue. */
+function beliefStale() {
+  // The audition goes with it, and unconditionally: a preview is a render of
+  // "the bench plus this module", so the moment the bench is in motion the
+  // buffer on the card is of neither the old patch nor the new one.
+  previewInvalidate();
+  if (!belief.has || belief.stale) return;
+  belief.stale = true;
+  renderBelief();
+}
+
+function applyBelief(m) {
+  const u = m.utility;
+  const ex = m.explain;
+  if (!u || !u.ok) {
+    // No posterior yet (or a bench that failed vetting): say what is missing
+    // rather than draw a zero, which reads as "the model hates this".
+    belief.has = false;
+    belief.stale = false;
+    belief.u = null;
+    belief.prev = null;
+    belief.styleK = null;
+  } else {
+    // A subject load is a new patch, not a move: it has no "was".
+    if (m.subject !== undefined) belief.prev = null;
+    else if (belief.has) belief.prev = belief.u;
+    belief.u = u.u;
+    belief.sd = u.sd;
+    belief.lens = u.lens || "";
+    belief.styleK = ex && typeof ex.style === "number" ? ex.style : null;
+    belief.top = ex && ex.contributions ? ex.contributions.slice(0, 3) : [];
+    belief.has = true;
+    belief.stale = false;
+  }
+  renderBelief();
+  // The bench moved, so a rendered audition is of a patch that no longer
+  // exists and every socket price is quoted against a new baseline.
+  previewInvalidate();
+}
+
+function renderBelief() {
+  const el = $("belief");
+  if (!el) return;
+  if (!belief.has) {
+    el.classList.remove("stale");
+    el.innerHTML = wb.subjectId == null
+      ? ""
+      : `<span class="ex-why">model's guess</span> <span class="bl-none">not yet — it needs a few picks first</span>`;
     return;
   }
-  holder.classList.remove("hidden");
-  const top = ex.contributions.slice(0, 3);
-  const parts = top.map((c) => {
-    const nice = niceName(c.name);
+  el.classList.toggle("stale", belief.stale);
+  // Drawn on the bank's scale, not the model's. The posterior mean is an
+  // unbounded log-odds and the bank's bars have always shown `sq()` of it, so
+  // a raw 1.43 above the rack would be a *different number for the same claim*
+  // sitting a few hundred pixels from the bar it contradicts. The contributions
+  // below stay in utility units — they are an exact decomposition of that
+  // quantity and squashing them would make them stop summing.
+  const u = sq(belief.u);
+  const prev = belief.prev == null ? null : sq(belief.prev);
+  const d = prev == null ? null : u - prev;
+  // 0.005 is half a printed digit: below it the arrow would point at a change
+  // the number it sits next to does not show.
+  const arrow = d == null || Math.abs(d) < 0.005 ? "" :
+    `<span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
+  const was = prev == null ? "" :
+    `<span class="bl-was">(was ${prev.toFixed(2)})</span>`;
+  const parts = belief.top.map((c) => {
     const sign = c.contribution >= 0 ? "+" : "−";
-    return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(nice)}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
+    return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
-  holder.innerHTML =
-    `<span class="ex-why">why:</span> ${parts.join(" · ")} ` +
-    `<span class="ex-lens">under your <b>${esc(ex.style_name || `style ${ex.style + 1}`)}</b> lens</span>`;
+  el.innerHTML =
+    `<span class="ex-why">model's guess</span> <b class="bl-u">${u.toFixed(2)}</b> ${was}${arrow}` +
+    (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
+    (belief.lens ? ` <span class="ex-lens">under your <b>${esc(belief.lens)}</b> lens</span>` : "") +
+    (belief.stale ? ` <span class="bl-stale">· re-measuring…</span>` : "");
+  el.title = belief.stale
+    ? "An edit is in flight — this describes the patch before it."
+    : `The same score the bank's bars draw. Posterior-mean utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}; the named features are its exact decomposition, in utility units.`;
+}
+
+// ---------- the structural budget ----------
+// The ceilings evolution can actually search, drawn from the tree, live.
+//
+// R2 in the plan, and the highest-severity silent-data-loss risk in it: a
+// hand-built patch past MAX_SIZE / MAX_DEPTH / MAX_MOD_DEPTH is refused now
+// (`validate_tree`), but a patch *at* them is worse than refused — it is
+// accepted, has almost no mass under the prior, and the next ⚡ mutates it back
+// inside the ceilings, so the structure disappears on the one action the whole
+// instrument is built around. The number has to be visible while there is
+// still room to spend.
+const BUDGET = { size: 24, depth: 9, mod: 4 };
+
+/** ModNode depth, mirroring `ModNode::depth` exactly — an `Op` wraps its
+ *  input, a `Pair` takes the deeper of two, everything else is a leaf. */
+function modDepthOf(m) {
+  if (!m || m === "None") return 0;
+  const tag = nodeTag(m);
+  const v = m[tag];
+  if (tag === "Op") return 1 + modDepthOf(v && v.input);
+  if (tag === "Pair") return 1 + Math.max(modDepthOf(v && v.a), modDepthOf(v && v.b));
+  return 1;
+}
+
+/** `{size, depth, mod}` of the bench tree, in the engine's own terms: audio
+ *  nodes only for size and depth (a modulator is not a module in the ceiling's
+ *  sense), deepest modulation term for mod. */
+function treeBudget(tree) {
+  let size = 0;
+  let depth = 0;
+  let mod = 0;
+  walkTreeKeys(tree, (n, key) => {
+    size += 1;
+    depth = Math.max(depth, keyIndices(key).length + 1);
+    const v = n[nodeTag(n)];
+    if (v) mod = Math.max(mod, modDepthOf(v.modulation));
+  });
+  return { size, depth, mod };
+}
+
+function renderBudget() {
+  const el = $("budget");
+  if (!el) return;
+  if (!wb.tree) { el.innerHTML = ""; return; }
+  const b = treeBudget(wb.tree);
+  const cell = (n, max, label) => {
+    // "Tight" one short of the ceiling, not at it: told at the ceiling the
+    // player has already spent the room the warning was about.
+    const cls = n >= max ? "full" : n >= max - 1 ? "tight" : "";
+    return `<span class="bg-cell ${cls}"><b>${n}</b>/${max} ${label}</span>`;
+  };
+  el.innerHTML =
+    cell(b.size, BUDGET.size, "modules") +
+    `<span class="bg-sep">·</span>` +
+    cell(b.depth, BUDGET.depth, "depth") +
+    `<span class="bg-sep">·</span>` +
+    cell(b.mod, BUDGET.mod, "mod depth");
 }
 
 // Which candidate is sounding, everywhere it can be asked: the EVOLVE cards,
@@ -3555,14 +3907,41 @@ document.addEventListener("click", (e) => {
 
 // ---------- workbench ----------
 function openOnBench(id) {
+  // No separate `explain` request any more: the bench reply carries the
+  // decomposition of the tree it is describing, so the readout can never name
+  // a patch other than the one on screen. See `renderBelief`.
   send({ type: "edit_begin", id });
-  send({ type: "explain", id });
 }
 
+// The categorical sites that reach the running voices without a recompile.
+//
+// `isIndex` used to be a synonym for "not live", because it was: every enum
+// selected a quiver output port at compile time. Two of them never did.
+// `table` is a *crossfade position* on the wavetable's stack — the port's own
+// comment in compile.rs says so — and `oct` is a V/Oct offset that was already
+// being summed as CV into the pitch node every other modulation lands on.
+// Both were baked constants for no reason but the assumption in this line, and
+// both cost a fade-out, a per-quantum voice rebuild and a re-attack of every
+// held note to move a number that is one addition on a wire.
+//
+// The rest of the enums (`wave`, `fkind`, `dmode`, `rmode`) stay non-live and
+// must: they choose a port at compile time, so making them live means a
+// crossfading selector network, which changes the rendered signal for every
+// existing patch and invalidates the bank's featurisation and the taste
+// posterior. That needs a measured evolution revalidation, not this stage.
+const LIVE_INDEX_SITES = new Set(["table", "oct"]);
+
 function sendEdit(addr, value, isIndex) {
-  // Sound first: continuous knobs write straight into the running voices.
-  if (isIndex) nonLiveAddrs.add(addr);
+  // Sound first: continuous knobs — and the two live categorical sites —
+  // write straight into the running voices.
+  const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
+  if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
   else if (live) live.param(addr, value);
+  // The readout above the rack describes the tree before this write until the
+  // bench answers with the new φ. Say so rather than leave a stale number
+  // looking current.
+  beliefStale();
+  pendingEditTag = { op: "param", addr };
   // Genome second: the worker validates, re-renders the phrase, updates φ.
   if (editInFlight) {
     editQueue = { addr, value, isIndex };
@@ -3573,8 +3952,10 @@ function sendEdit(addr, value, isIndex) {
 }
 
 function playBench() {
-  if (wb.buffer) playBuffer(wb.buffer, $("rack-play"));
-  else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
+  if (wb.buffer) {
+    markHeard();
+    playBuffer(wb.buffer, $("rack-play"));
+  } else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
 }
 
 // Layout constants.
@@ -3650,7 +4031,21 @@ function knobPos(mod, i, box) {
 // the mode you want back after a reload. One button in the rack chrome for
 // now; it gets its proper home beside the level-of-detail selector when that
 // lands, and `compact` becomes the export default after that.
-let layoutMode = localStorage.getItem("ricercar-layout") === "compact" ? "compact" : "chain";
+const LAYOUT_MODES = ["chain", "compact", "freeform"];
+let layoutMode = LAYOUT_MODES.includes(localStorage.getItem("ricercar-layout"))
+  ? localStorage.getItem("ricercar-layout")
+  : "chain";
+
+// The freeform grid, and the fixed inset `buildRack` lays content out at.
+// Both are needed by the snap: the dot grid is painted in *rack* coordinates
+// (`#dotGrid`, 24px, origin 0) while `layout` works in an un-inset space, so a
+// plate snapped to a multiple of 24 in layout space would land 15px off the
+// dots it is visibly aiming at. `snapL` does the round trip once, in one
+// place, so the hand and the offered-slot placer agree.
+const GRID = 24;
+const RACK_OFF_X = 15;
+const RACK_OFF_Y = 12;
+const snapL = (v, off) => Math.round((v + off) / GRID) * GRID - off;
 
 // ---------- layout ----------
 // The seam. Cables, plates and knobs were already pure consumers of a
@@ -3664,11 +4059,28 @@ let layoutMode = localStorage.getItem("ricercar-layout") === "compact" ? "compac
 //   compact — the same layering packed tight. This is the mode a screenshot
 //             or an export wants, where bounding box beats legibility.
 //
+//   freeform — the hand's mode. Positions come from the player, keyed by node
+//             identity, and everything the player has *not* placed is offered
+//             a slot next to the neighbour it is wired to. Chain is its seed,
+//             so a patch that arrives from evolution with no layout at all
+//             opens readable rather than in a heap at the origin.
+//
 // The layering itself is not recomputed: `RackModule.column` out of
 // describe.rs is already a correct longest-path-from-sink, and re-deriving it
 // in JS would be a second implementation of the same fact that can disagree
 // with the engine.
-function layout(rack, mode) {
+//
+// `places` is the freeform store — `Map<mid,{x,y}>` in layout space. It is
+// passed in rather than read from module scope because `layout` is also the
+// duel minis' arrangement function, and a mini draws a *different patch* than
+// the one whose hand positions are on file.
+function layout(rack, mode, places) {
+  if (mode === "freeform") return layoutFree(rack, layoutFlow(rack, "chain"), places);
+  return layoutFlow(rack, mode);
+}
+
+// The two flow arrangements: layered, and derived entirely from the term.
+function layoutFlow(rack, mode) {
   const box = new Map();
   const byKey = new Map();
   for (const m of rack.modules) {
@@ -3865,13 +4277,211 @@ function layout(rack, mode) {
   return { pos, natW: x - GUTTER, natH: maxY - minY };
 }
 
+// ---------- freeform ----------
+// Everything above is a function of the term. This is the one arrangement that
+// is not: it is a function of what the player did with their hands, and the
+// term only gets a say about the modules the player has not touched yet.
+//
+// Two rules do all the work.
+//
+//   1. A stored position is honoured exactly. Not "as a hint", not "as a seed
+//      for a relaxation pass" — a hand position that a layout pass is allowed
+//      to improve is not a hand position. This is why relayout is a *command*
+//      (WS-4 §3): switching to chain is a thing you ask for, never a thing the
+//      renderer decides for you because the patch grew.
+//
+//   2. A module with no stored position is offered a slot beside the neighbour
+//      it is wired to — upstream of its consumer for audio, under it for
+//      modulation — and then slid down the grid until it is clear of anything
+//      already placed. That is what "an evolved child does not appear at 0,0"
+//      means in practice: a generation of ⚡ typically keeps most of the tree
+//      (uids are inherited, WS-4 §6), so the two or three genuinely new
+//      modules arrive next to the modules they feed.
+//
+// Placement runs right to left — the sink first — so a consumer is on the
+// board before the thing that feeds it asks where the consumer went.
+function layoutFree(rack, seed, places) {
+  const store = places || new Map();
+  const pos = new Map();
+  const placed = [];
+  // The consumer of each module, which is the anchor an unplaced module wants.
+  const parent = new Map();
+  for (const w of rack.wires) parent.set(w.from, w.to);
+
+  // A hair over the gutter: two plates that merely touch read as one wide
+  // plate, and the offered slot should never produce that by itself.
+  const CLEAR = 12;
+  const hits = (x, y, w, h) =>
+    placed.some((b) =>
+      x < b.x + b.w + CLEAR && x + w + CLEAR > b.x &&
+      y < b.y + b.h + CLEAR && y + h + CLEAR > b.y);
+  const put = (m, x, y) => {
+    const s = seed.pos.get(m.key);
+    // Layout space has an origin, and the camera's content box starts there.
+    // Clamping here rather than normalising afterwards is deliberate: a
+    // normalising pass would shift *every* plate the moment the leftmost one
+    // moved, so a stored position would silently stop meaning what it said.
+    const b = { x: Math.max(0, x), y: Math.max(0, y), w: s.w, h: s.h, perRow: s.perRow };
+    pos.set(m.key, b);
+    placed.push(b);
+  };
+
+  for (const m of rack.modules) {
+    const p = store.get(midOf(m));
+    if (p) put(m, p.x, p.y);
+  }
+
+  // Keys whose position is a hand position or descends from one. Only these
+  // are worth anchoring to; see below.
+  const rooted = new Set(pos.keys());
+  const rest = rack.modules
+    .filter((m) => !pos.has(m.key))
+    .sort((a, b) => seed.pos.get(b.key).x - seed.pos.get(a.key).x);
+  for (const m of rest) {
+    const s = seed.pos.get(m.key);
+    const pk = parent.get(m.key);
+    // The consumer is only worth chasing if it is *rooted* in a hand position
+    // — placed by the player, or placed relative to something that was.
+    // Anchoring to it unconditionally would mean the first plate dropped in an
+    // untouched patch re-derived every other position in the rack, and a hand
+    // edit that reflows everything it did not touch is the thing §3 forbids.
+    // So the default is the seed, unrounded: with nothing placed, freeform is
+    // the chain layout to the pixel, and entering the mode changes nothing
+    // until you do something. Rootedness is transitive so that a whole new
+    // *chain* — a duplicate and the modulator that came with it — arrives
+    // beside the module it feeds rather than at its flow-layout coordinates,
+    // which describe an arrangement this rack is no longer in.
+    const pb = pk && rooted.has(pk) ? pos.get(pk) : null;
+    let ax = s.x;
+    let ay = s.y;
+    if (pb) {
+      rooted.add(m.key);
+      // Modulation goes under the module it drives — the mod jack is on the
+      // bottom edge, so anywhere else means a cable across a faceplate.
+      // Audio goes upstream, left, on the consumer's own centreline.
+      ax = m.is_mod ? pb.x + (pb.w - s.w) / 2 : pb.x - s.w - GUTTER;
+      ay = m.is_mod ? pb.y + pb.h + GUTTER + 18 : pb.y + (pb.h - s.h) / 2;
+      ax = Math.max(0, snapL(ax, RACK_OFF_X));
+      ay = Math.max(0, snapL(ay, RACK_OFF_Y));
+    }
+    // Clear of anything already on the board, either way: a plate the player
+    // has not placed must never be the one that ends up hidden.
+    for (let n = 0; n < 80 && hits(ax, ay, s.w, s.h); n++) ay += GRID;
+    put(m, ax, ay);
+  }
+
+  let natW = 0;
+  let natH = 0;
+  for (const b of pos.values()) {
+    natW = Math.max(natW, b.x + b.w);
+    natH = Math.max(natH, b.y + b.h);
+  }
+  return { pos, natW, natH };
+}
+
+// ---------- freeform positions, kept ----------
+// `Map<subject, Map<mid,{x,y}>>`, in layout space (WS-4 §8). Keyed by subject
+// because a `mid` is only unique where uids are: the amp and any unsettled
+// tree fall back to `k<key>`, and every patch in the bank has a `kamp`.
+//
+// Rides in the same `ui` blob as HELD and the bank filter, so hand positions
+// survive a reload the way the plan says they must. Old saves simply have no
+// `positions` key and start empty — nothing to migrate, because an absent
+// layout and an empty one mean the same thing here.
+const ffLayouts = new Map();
+const FF_KEEP = 60;       // subjects' worth of layout; the bank holds 40
+let ffLast = null;        // the subject whose layout was most recently written
+// A layout read out of an imported file, waiting for the engine to say which
+// id that patch landed as. See the `patch_imported` handler.
+let pendingLayout = null;
+
+function ffKey() {
+  return wb.subjectId == null ? "bench" : String(wb.subjectId);
+}
+
+/** The store for the current subject, creating it on first write. */
+function ffStore(create) {
+  const k = ffKey();
+  let m = ffLayouts.get(k);
+  if (!m && create) {
+    m = new Map();
+    ffLayouts.set(k, m);
+    ffTrim();
+  }
+  if (m && create) ffLast = k;
+  return m || null;
+}
+function ffTrim() {
+  // Insertion order is eviction order, which is what a Map already gives us.
+  while (ffLayouts.size > FF_KEEP) ffLayouts.delete(ffLayouts.keys().next().value);
+}
+
+/** The positions to draw the *current* rack with, inheriting the layout of the
+ *  patch this one came from when it is the first time we have seen this id.
+ *
+ *  Inheritance is by evidence rather than by provenance: uids are minted from
+ *  one monotonic counter for the whole session, so a patch that shares a uid
+ *  with the last one the player arranged is that patch's descendant — a commit,
+ *  or a generation of ⚡. That is the acceptance criterion "positions persist
+ *  for surviving nodes" (§5 P2.2), and it holds without the UI having to know
+ *  which message benched the new tree. */
+function ffPlaces() {
+  const k = ffKey();
+  const mine = ffLayouts.get(k);
+  // Drawing from a layout is the same evidence of "this is the arrangement in
+  // front of the player" as writing one, so it has to move `ffLast` too. It
+  // did not, and a layout that came off disk was therefore never a *source*
+  // for inheritance: bench a patch whose positions were restored, press ⚡,
+  // and the child compared its uids against whatever subject happened to have
+  // been dragged last — a patch it shares nothing with — so the test below
+  // failed and every survivor fell back to the chain seed.
+  if (mine) { ffLast = k; return mine; }
+  const src = ffLast != null ? ffLayouts.get(ffLast) : null;
+  if (!src || !wb.rack) return null;
+  // Asked through `midOf`, which is how the store is keyed, rather than by
+  // re-deriving `u${uid}` here — the same rule spelled twice is the same rule
+  // waiting to drift.
+  //
+  // The amp stays out of it on purpose. It is the envelope, not a node: uid 0,
+  // key `amp`, therefore mid `kamp` in *every* patch in the bank. Letting it
+  // count would make any layout inherit into any patch, which is the positional
+  // bleed identity was introduced to end — so it may ride along inside an
+  // overlap, but it can never be the whole of one.
+  if (!wb.rack.modules.some((m) => m.uid && src.has(midOf(m)))) return null;
+  const copy = new Map(src);
+  ffLayouts.set(k, copy);
+  ffLast = k;
+  ffTrim();
+  return copy;
+}
+
+/** Snap everything on screen to the grid and pin it — the "apply grid" verb.
+ *  The seed is whatever is currently drawn, which for a patch arriving without
+ *  a layout is the chain arrangement, exactly as ruled. */
+function applyGrid() {
+  if (!wb.rack || !rackBoxes.size) return;
+  const store = ffStore(true);
+  for (const m of wb.rack.modules) {
+    const b = rackBoxes.get(m.key);
+    if (!b) continue;
+    store.set(midOf(m), {
+      x: Math.max(0, snapL(b.x - RACK_OFF_X, RACK_OFF_X)),
+      y: Math.max(0, snapL(b.y - RACK_OFF_Y, RACK_OFF_Y)),
+    });
+  }
+  camHold = true;
+  renderRack();
+  scheduleSave();
+  note(`${store.size} modules pinned to the grid — drag any of them from here.`);
+}
+
 function moduleLockAddrs(mod) {
   return [...mod.structural_addrs, ...mod.knobs.map((k) => k.addr)];
 }
 
 function isModuleLocked(mod) {
   const addrs = moduleLockAddrs(mod);
-  return addrs.length > 0 && addrs.every((a) => wb.locks.has(a));
+  return addrs.length > 0 && addrs.every(isLockedAddr);
 }
 
 function svgEl(tag, attrs, cls) {
@@ -3922,6 +4532,308 @@ function hitPad(g, x, y, w, h) {
   g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
 }
 
+/** A screw's rotation, in degrees, hashed off the module's identity and the
+ *  screw's corner. FNV-1a, plus a final avalanche — without it two plates
+ *  whose uids differ by one came out with visibly the same four angles,
+ *  because FNV's last multiply only stirs the high bits and `% 71` was
+ *  reading a difference of exactly one multiplied constant. Four screws that
+ *  repeat across the rack is the tell this rule exists to remove. */
+function screwAngle(mid, i) {
+  const s = `${mid}:${i}`;
+  let h = 2166136261;
+  for (let j = 0; j < s.length; j++) {
+    h ^= s.charCodeAt(j);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= h >>> 13;
+  h = Math.imul(h, 0x5bd1e995);
+  h ^= h >>> 15;
+  return ((h >>> 0) % 71) - 35;
+}
+
+// ---------- the readout flash ----------
+// Green is reserved for things that carry signal. A knob's readout does not
+// — it reports — so it sits in `--silk-dim` and borrows `--phos-a` for ~400ms
+// when it changes, which is the moment it *is* about the sound. Three
+// payoffs: the plate calms, the cables become the brightest green on screen
+// (correct: they are what you are reading), and every parameter change gets a
+// free highlight that says "this edit reached the instrument".
+//
+// A map rather than a class on the element, because `renderRack` is a full
+// teardown: the element that was flashing is gone by the time the flash would
+// have ended, and the one that replaces it has to inherit the state.
+const KNOB_FLASH_MS = 420;
+const knobFlash = new Map();
+function markKnobChanged(addr) {
+  knobFlash.set(addr, performance.now() + KNOB_FLASH_MS);
+  // The map is per-session and knob addresses are positional, so a long
+  // session with many splices would otherwise accumulate dead keys.
+  if (knobFlash.size > 200) {
+    const now = performance.now();
+    for (const [k, t] of knobFlash) if (t < now) knobFlash.delete(k);
+  }
+}
+
+// ---------- cable terminations ----------
+// A cable used to stop at a coordinate. On a real panel it stops in a *plug*,
+// and the difference is most of why the old rack read as a flowchart: a line
+// that ends on a dot is a graph edge, a line that disappears into a barrel
+// sunk in a nut is a patch lead. The barrel is 7 across and 11 along the
+// cable's axis; the strain-relief boot is the 3-unit sleeve the lead actually
+// emerges from, so the cable leaves the plug rather than the socket.
+//
+// Orientation is one number: `rot` is the direction the cable departs in, so
+// an `out` jack is 0, an `in` jack is 180 (the lead comes from the left), and
+// a mod tab is 90 (the lead comes up from the bus below). Drawn inside the
+// jack group, which means it inherits the jack's transform for free — and,
+// more importantly, it rides the plate through a FLIP tween instead of having
+// to be re-placed every frame the way the cable itself is.
+function plugArt(rot) {
+  const g = svgEl("g", rot ? { transform: `rotate(${rot})` } : {}, "plug");
+  g.appendChild(svgEl("rect", { x: 1.5, y: -3.5, width: 11, height: 7, rx: 3 }, "plug-barrel"));
+  g.appendChild(svgEl("rect", { x: 3, y: -3.5, width: 3, height: 7, rx: 1.4 }, "plug-collar"));
+  g.appendChild(svgEl("rect", { x: 11.5, y: -2, width: 3.4, height: 4, rx: 1.6 }, "plug-boot"));
+  return g;
+}
+
+// Five stops inside the green family — hue ±14°, lightness ±10% off
+// `--phos-a` (#8ef0b1 ≈ hsl(141 76% 75%)). Green still unambiguously means
+// audio; what the ramp buys is that two cables converging on one mixer are
+// two *different* greens, so you can follow either one back to where it came
+// from. Amber stays unsplit: there is only ever one modulation story per
+// cable and splitting it would compete with the amber-means-the-model law.
+const AUDIO_INK = [
+  "hsl(127, 74%, 68%)",
+  "hsl(134, 75%, 71%)",
+  "hsl(141, 76%, 75%)",
+  "hsl(148, 77%, 79%)",
+  "hsl(155, 78%, 82%)",
+];
+
+/** Which stop each audio cable takes, keyed by its *source* — the term is a
+ *  tree, so a module has exactly one outgoing cable and its source names it.
+ *  Seeded by the source's index so the assignment is stable across a render,
+ *  then bumped by two whenever a target has already taken that stop, which is
+ *  the acceptance condition: no two converging cables share a green. */
+function audioInkStops(rack) {
+  const order = new Map(rack.modules.map((m, i) => [m.key, i]));
+  const taken = new Map();
+  const stop = new Map();
+  for (const w of rack.wires) {
+    if (w.kind === "mod") continue;
+    let seen = taken.get(w.to);
+    if (!seen) taken.set(w.to, (seen = new Set()));
+    let s = (order.get(w.from) ?? 0) % AUDIO_INK.length;
+    // Two, not one: adjacent stops are 7° and 4% apart by construction, which
+    // is a ramp you can read as an ordering and not as a distinction.
+    for (let i = 0; i < AUDIO_INK.length && seen.has(s); i++) s = (s + 2) % AUDIO_INK.length;
+    seen.add(s);
+    stop.set(w.from, s);
+  }
+  return stop;
+}
+
+// ---------- differential flow ----------
+// Uniform perpetual motion on every cable is noise: it says "this is a synth"
+// and nothing else. Motion scaled by the level actually present at that point
+// in the chain is a meter — crossfade a mixer to one side and the other
+// branch visibly stops, which is a fact about the patch you can otherwise
+// only get by ear.
+//
+// The level is estimated from the patch rather than measured, because the
+// analyser hangs off the master and there is no per-node tap: sources are
+// unity, and every cable inherits its source's level times whatever its
+// consumer does to it. That is cheap (one pass over ≤24 modules per render,
+// and the render is the only thing that can change the answer) and it is
+// exactly right for the case that matters — a mixer's balance knob.
+function wireLevels(rack) {
+  const byKey = new Map(rack.modules.map((m) => [m.key, m]));
+  // Each module has exactly one consumer — the term is a tree — so one wire
+  // out, indexed by its source.
+  const outWire = new Map();
+  for (const w of rack.wires) if (w.kind !== "mod") outWire.set(w.from, w);
+  // How much of a child's signal its consumer passes on. Only two consumers
+  // actually attenuate: a mixer's balance, at equal power because that is the
+  // law the DSP crossfades under (describe.rs `bal`), and the second input of
+  // the three dynamics modules — a sidechain key is not summed into the
+  // output at all, so its cable is drawn as a permanently quiet one.
+  const weight = (to, w) => {
+    if (!to) return 1;
+    const second = w.from === `${to.key}/1`;
+    if (to.kind === "mix") {
+      const b = to.knobs.find((k) => k.addr.endsWith("#bal"));
+      const v = b ? b.value : 0.5;
+      return second ? Math.sin(v * Math.PI / 2) : Math.cos(v * Math.PI / 2);
+    }
+    if (second && MOD_BY_KIND[to.kind]?.inNames?.[1] === "key") return 0.5;
+    return 1;
+  };
+  // The quantity drawn is *reach*: how much of what is on this cable arrives
+  // at the amp. Not "how much signal is present here" — that number would
+  // leave the four cables upstream of a muted mixer branch running at full
+  // speed with only the last one stopping, which reads as a fault rather than
+  // as a branch that has been turned off. Reach makes the whole limb go
+  // still, together, which is what the ear hears.
+  //
+  // `column` is the distance from the sink, so ascending order visits every
+  // consumer before the modules that feed it — no recursion, and no cycle to
+  // guard against (there cannot be one; the term is a tree).
+  const reach = new Map();
+  for (const m of [...rack.modules].sort((a, b) => a.column - b.column)) {
+    const w = outWire.get(m.key);
+    // No consumer: this is the amp, and everything it has reaches the ear.
+    reach.set(m.key, w ? (reach.get(w.to) ?? 1) * weight(byKey.get(w.to), w) : 1);
+  }
+  const lvl = new Map();
+  for (const w of rack.wires) {
+    if (w.kind === "mod") continue;
+    lvl.set(w.from, reach.get(w.from) ?? 1);
+  }
+  return lvl;
+}
+
+// ---------- the mod-slot housing ----------
+// An empty modulation slot used to render as an orphan ring floating below
+// the plate, and a filled one as the same ring with a cable in it — so
+// "this module can be modulated at X" was only legible on the modules that
+// already were. The tab is a permanent 96×22 housing notched into the bottom
+// edge, identical in silhouette whether or not anything is plugged into it:
+// occupancy reads from the stroke (dashed → solid), never from whether the
+// element exists.
+//
+// One function, because `wirePathD` has to land the cable in the jack and the
+// renderer has to draw the jack in the tab, and a housing whose cable arrives
+// somewhere else is worse than no housing.
+const MOD_TAB_W = 96;
+const MOD_TAB_H = 22;
+// How far below the plate's bottom edge the tab's centre line sits. Not zero:
+// a tab centred exactly on the edge is half over the last knob row, and the
+// bottom row's readout — the one piece of text on the plate that had just
+// been given the contrast — lands underneath it. Seven units puts the tab's
+// top edge 4 below the deepest descender and still leaves a third of the
+// housing inside the panel, which is what makes it read as notched in rather
+// than as a badge stuck on.
+const MOD_TAB_DY = 7;
+function modTab(w) {
+  const tw = Math.min(MOD_TAB_W, w - 8);
+  const x = (w - tw) / 2;
+  return { x, w: tw, jx: x + 13, jy: MOD_TAB_DY };
+}
+
+// ---------- cable routing ----------
+// Hoisted out of `buildRack` because a cable's shape is a function of where
+// its two plates are, and during a relayout that is a different answer every
+// frame. One generator, two callers: the build asks for the resting shape and
+// the motion system asks for the shape at 37% of the way there. A plate that
+// tweens while its cable stays where it was does not read as a module moving,
+// it reads as a cable coming unplugged.
+//
+// `orth` takes a polyline and rounds its corners, clamping each radius to
+// half the shorter of the two segments so a short run can never make a corner
+// overshoot back into the one before it.
+function orth(raw) {
+  const p = [raw[0]];
+  for (const q of raw.slice(1)) {
+    const last = p[p.length - 1];
+    if (Math.abs(q[0] - last[0]) > 0.5 || Math.abs(q[1] - last[1]) > 0.5) p.push(q);
+  }
+  if (p.length < 2) return `M ${p[0][0]} ${p[0][1]}`;
+  let d = `M ${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
+  for (let i = 1; i < p.length - 1; i++) {
+    const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
+    const la = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    const r = Math.min(12, la / 2, lc / 2);
+    d += ` L ${(b[0] + ((a[0] - b[0]) / la) * r).toFixed(1)} ${(b[1] + ((a[1] - b[1]) / la) * r).toFixed(1)}`;
+    d += ` Q ${b[0].toFixed(1)} ${b[1].toFixed(1)}` +
+      ` ${(b[0] + ((c[0] - b[0]) / lc) * r).toFixed(1)} ${(b[1] + ((c[1] - b[1]) / lc) * r).toFixed(1)}`;
+  }
+  const e = p[p.length - 1];
+  return `${d} L ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
+}
+// The mod jack is on the plate's *bottom* edge, so the cable has to arrive
+// from below or it crosses the panel it is plugging into — which is exactly
+// what happens in compact mode, where a modulator often sits above its
+// target. Drop to a bus level under both plates first, then rise into it.
+// In chain mode the modulator is already below and both jogs collapse away,
+// leaving the plain out-and-up the mod band was designed to read as.
+function modRoute(x1, y1, x2, y2) {
+  const yb = Math.max(y1, y2 + 26);
+  const xm = yb > y1 + 0.5 ? x1 + 22 : x1;
+  return orth([[x1, y1], [xm, y1], [xm, yb], [x2, yb], [x2, y2]]);
+}
+// Into the left edge of the next plate in a CV chain: leave horizontally,
+// step across at the midpoint, arrive horizontally.
+function chainRoute(x1, y1, x2, y2) {
+  return orth([[x1, y1], [(x1 + x2) / 2, y1], [(x1 + x2) / 2, y2], [x2, y2]]);
+}
+
+/** The `d` for one cable, given where the plates are *now*. `null` when either
+ *  end is missing, which is a wire the caller should skip rather than draw. */
+function wirePathD(w, pos, modByKey) {
+  const from = pos.get(w.from);
+  const to = pos.get(w.to);
+  if (!from || !to) return null;
+  const x1 = from.x + from.w;
+  const y1 = from.y + from.h / 2;
+  const toMod = modByKey.get(w.to);
+  if (w.kind === "mod") {
+    if (toMod && toMod.is_mod) {
+      // A link inside a CV chain: both plates sit on the same mod row, so
+      // the honest route is a straight run into the next plate's left edge.
+      return chainRoute(x1, y1, to.x, to.y + to.h / 2);
+    }
+    // Into an audio module's bottom jack: out along the mod row, then one
+    // vertical into the plate's bottom edge. The jack is no longer at the
+    // plate's midpoint — it sits at the left end of the mod tab (§4) — and a
+    // cable that arrives at the old midpoint would terminate on the tab's
+    // silkscreen instead of in its socket.
+    return modRoute(x1, y1, to.x + modTab(to.w).jx, to.y + to.h + MOD_TAB_DY);
+  }
+  // Audio cables land on the target's in jack.
+  const x2 = to.x;
+  // A binary node's two sockets sit at 0.38/0.68 of the plate — all six of
+  // them, not just `mix`. Testing for `kind === "mix"` left a ducker's key
+  // cable and a vocoder's carrier cable landing on the plate edge halfway
+  // between the two jacks they were supposed to terminate in.
+  const y2 = toMod && MOD_BY_KIND[toMod.kind]?.ins === 2
+    ? to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68)
+    : to.y + to.h / 2;
+  // A consumer *behind* its source. The flow layouts cannot produce this — a
+  // node's parent is always one layer to the right — but freeform can, and the
+  // span-proportional cubic below degenerates into a straight line drawn
+  // backwards through both plates when it happens. Route it the way the mod
+  // cables are routed instead: out, down to a bus level clear of both plates,
+  // back, and up into the socket. A cubic bowed wide enough to clear a long
+  // backwards run balloons with the distance; a right-angle run reads the same
+  // at any length, and it says "this one goes backwards" at a glance.
+  // The threshold is 8 rather than something comfortable on purpose: the
+  // tightest gap either flow layout can produce is the 28px gutter, so this
+  // branch is unreachable from chain or compact and cannot change how an
+  // existing patch draws.
+  if (x2 < x1 + 8) {
+    const yb = Math.max(from.y + from.h, to.y + to.h) + 26;
+    return orth([[x1, y1], [x1 + 26, y1], [x1 + 26, yb], [x2 - 26, yb], [x2 - 26, y2], [x2, y2]]);
+  }
+  // Sag proportional to span. A flat `max(24, span/2)` put control point 1
+  // *past* control point 2 whenever the span was under 48px — which it is
+  // between adjacent columns — so short runs kinked into a V instead of
+  // hanging. A constant sag was also 40% of a short span and 4% of a long
+  // one, so cables never read as the same kind of object.
+  const span = Math.max(1, x2 - x1);
+  const dx = Math.min(span * 0.42, 90);
+  const sag = Math.min(span * 0.22, 46) + Math.abs(y2 - y1) * 0.06;
+  return `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
+}
+
+/** A module's identity as the motion system spells it. `uid` is the real
+ *  answer (WS-4 §6); the amp has none — it is the envelope, not a node — and
+ *  a tree that has not been settled yet has none either, so both fall back to
+ *  the position, which is exactly as stable as the old behaviour was. */
+function midOf(m) {
+  return m && m.uid ? `u${m.uid}` : `k${m ? m.key : "?"}`;
+}
+
 function renderRack() {
   const svg = $("rack-svg");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
@@ -3949,23 +4861,40 @@ function renderRack() {
   if (!hasRack) {
     svg.innerHTML = "";
     rackBoxes = new Map();
+    rackFrame = null;
+    cancelRackMotion();
     rackContent = { w: frameSize().w, h: frameSize().h };
     syncMapBtn();
     nbSync();
     return;
   }
 
+  // Measured before the teardown, because after it there is nothing left to
+  // measure: where every plate was, and where the keyboard was standing.
+  const before = captureRackMotion();
+  const focusMark = markRackFocus();
+
   buildRack(svg, wb.rack, {
     interactive: true,
-    locks: wb.locks,
+    locks: lockedAddrs(),
     compact: effectiveLod() === "compact",
     placeholders: placeholderKeys,
+    // Only the workbench has hand positions; the duel minis draw other
+    // patches, whose layout this player has never touched. An *empty* store is
+    // still a store: freeform with nothing placed is the chain arrangement,
+    // and it has to draw through the freeform path so the first drop does not
+    // switch arrangements underneath the plate being dropped.
+    places: layoutMode === "freeform" ? (ffPlaces() || new Map()) : null,
   });
+  // Then play the difference. This has to happen before the camera is aimed,
+  // because whether anything is moving is what decides whether the camera
+  // travels on the motion curve or on its own.
+  const moving = startRackMotion(before);
   // The camera is pointed after the build, not during it: a rebuild that
   // changed the patch's bounding box asks for a fit, and one that did not
   // (a knob release, a lock toggle, a bench reply) must leave the view
   // exactly where the player put it.
-  aimCamera();
+  aimCamera(moving);
 
   // One roving tab stop for the whole rack, so Tab lands on the patch editor
   // instead of skipping it. It enters at a *module*, not at a knob: the module
@@ -3974,6 +4903,9 @@ function renderRack() {
   const first = $("rack-svg").querySelector("g.mod-group") ||
                 $("rack-svg").querySelector("[data-addr]");
   if (first) first.setAttribute("tabindex", "0");
+  // …unless the keyboard was already somewhere, in which case it stays there.
+  // Strictly after the default stop is set, or both would claim tabindex 0.
+  restoreRackFocus(focusMark);
 
   // The rack is rebuilt from scratch on every edit, which throws away the lit
   // sockets. Re-light them, or a knob turn while something is in hand would
@@ -4031,10 +4963,16 @@ function buildRack(svg, rack, opts) {
     interactive = false,
     locks = new Set(),
     fit = false,
-    mode = layoutMode,
     compact = false,
     placeholders = new Set(),
+    places = null,
   } = opts || {};
+  // A caller with no hand positions to draw cannot draw freeform: the duel
+  // minis inherit the workbench's mode for chain-vs-compact, but "where the
+  // player put the plates" is a fact about one patch and they are showing
+  // another. Chain is the honest fallback, and it is freeform's own seed.
+  let { mode = layoutMode } = opts || {};
+  if (mode === "freeform" && !places) mode = "chain";
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
   // Light comes from 315° (top-left) everywhere: plate bevel, knob body,
@@ -4051,8 +4989,22 @@ function buildRack(svg, rack, opts) {
     <radialGradient id="jackNut" cx="0.35" cy="0.3" r="0.85">
       <stop offset="0" stop-color="#4a505b"/><stop offset="1" stop-color="#1a1d22"/>
     </radialGradient>
-    <filter id="plateShadow" x="-30%" y="-30%" width="180%" height="190%">
-      <feDropShadow dx="1" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.55"/>
+    <linearGradient id="bevelTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <!-- One blur reads as a CSS card: a single soft shadow puts the plate at
+         a constant distance from a surface it never touches. An object
+         sitting on a surface has two shadows — a tight dark contact shadow
+         where it meets the panel, and a wide soft cast further out. Merged
+         rather than chained, so the cast is a shadow of the plate and not a
+         shadow of the contact shadow. -->
+    <filter id="plateShadow" x="-40%" y="-40%" width="200%" height="220%">
+      <feDropShadow in="SourceGraphic" dx="0" dy="1" stdDeviation="1"
+                    flood-color="#000" flood-opacity="0.8" result="contact"/>
+      <feDropShadow in="SourceGraphic" dx="0" dy="5" stdDeviation="7"
+                    flood-color="#000" flood-opacity="0.35" result="cast"/>
+      <feMerge><feMergeNode in="cast"/><feMergeNode in="contact"/></feMerge>
     </filter>
     <g id="screw">
       <circle r="3.1" fill="url(#jackNut)"/>
@@ -4071,7 +5023,7 @@ function buildRack(svg, rack, opts) {
   // Arrangement is decided by `layout` and consumed here. The renderer never
   // computes a coordinate of its own any more — that separation is what lets a
   // second mode be a second y-assignment instead of a second renderer.
-  const L = layout(rack, mode);
+  const L = layout(rack, mode, places);
   const natW = L.natW + 30;
   const natH = L.natH + 24;
   // Content is laid out at its natural size at a fixed origin, always. It used
@@ -4083,8 +5035,8 @@ function buildRack(svg, rack, opts) {
   // camera (`view`, below) and not a property of the last render, so the two
   // callers can each get what they want: the duel minis take the natural box
   // as their viewBox, and the workbench points the camera at it.
-  const xOff = 15;
-  const yOff = 12;
+  const xOff = RACK_OFF_X;
+  const yOff = RACK_OFF_Y;
   svg.removeAttribute("width");
   svg.removeAttribute("height");
   if (fit) svg.setAttribute("viewBox", `0 0 ${natW} ${natH}`);
@@ -4128,95 +5080,33 @@ function buildRack(svg, rack, opts) {
   svg.appendChild(wireLayer);
   svg.appendChild(ctrlLayer);
   const modByKey = new Map(rack.modules.map((m) => [m.key, m]));
+  // What the motion system will need after the next teardown: the elements it
+  // has to move, and the identity that says which of them is "the same one".
+  const mGroups = [];
+  const mWires = [];
 
-  // Orthogonal routing for modulation. The old cubics anchored on "the source
-  // is left of and above the target" and drew crossed kinks the moment the
-  // layout stopped guaranteeing it. A right angle is also what a patch cable
-  // does when it is tied to a rail, which is what the mod band is.
-  //
-  // `orth` takes a polyline and rounds its corners, clamping each radius to
-  // half the shorter of the two segments so a short run can never make a
-  // corner overshoot back into the one before it.
-  const orth = (raw) => {
-    const p = [raw[0]];
-    for (const q of raw.slice(1)) {
-      const last = p[p.length - 1];
-      if (Math.abs(q[0] - last[0]) > 0.5 || Math.abs(q[1] - last[1]) > 0.5) p.push(q);
-    }
-    if (p.length < 2) return `M ${p[0][0]} ${p[0][1]}`;
-    let d = `M ${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
-    for (let i = 1; i < p.length - 1; i++) {
-      const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
-      const la = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      const lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
-      const r = Math.min(12, la / 2, lc / 2);
-      d += ` L ${(b[0] + ((a[0] - b[0]) / la) * r).toFixed(1)} ${(b[1] + ((a[1] - b[1]) / la) * r).toFixed(1)}`;
-      d += ` Q ${b[0].toFixed(1)} ${b[1].toFixed(1)}` +
-        ` ${(b[0] + ((c[0] - b[0]) / lc) * r).toFixed(1)} ${(b[1] + ((c[1] - b[1]) / lc) * r).toFixed(1)}`;
-    }
-    const e = p[p.length - 1];
-    return `${d} L ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
-  };
-  // The mod jack is on the plate's *bottom* edge, so the cable has to arrive
-  // from below or it crosses the panel it is plugging into — which is exactly
-  // what happens in compact mode, where a modulator often sits above its
-  // target. Drop to a bus level under both plates first, then rise into it.
-  // In chain mode the modulator is already below and both jogs collapse away,
-  // leaving the plain out-and-up the mod band was designed to read as.
-  const modRoute = (x1, y1, x2, y2) => {
-    const yb = Math.max(y1, y2 + 26);
-    const xm = yb > y1 + 0.5 ? x1 + 22 : x1;
-    return orth([[x1, y1], [xm, y1], [xm, yb], [x2, yb], [x2, y2]]);
-  };
-  // Into the left edge of the next plate in a CV chain: leave horizontally,
-  // step across at the midpoint, arrive horizontally.
-  const chainRoute = (x1, y1, x2, y2) =>
-    orth([[x1, y1], [(x1 + x2) / 2, y1], [(x1 + x2) / 2, y2], [x2, y2]]);
+  // Which green each cable takes, and how much signal it is carrying. Both
+  // are properties of the patch, not of the frame, so they are computed once
+  // per build and read by the loop below rather than per cable.
+  const inkStop = audioInkStops(rack);
+  const flow = wireLevels(rack);
+  // Which sockets have something in them, so the plug art (§1) goes only
+  // where a lead actually terminates. The term is total, so every audio
+  // socket is occupied; a mod tab is the one socket in the instrument that
+  // can honestly be empty, which is exactly why it needed a housing.
+  const cabled = new Set(rack.wires.filter((w) => w.kind !== "mod").map((w) => w.from));
+  const modIn = new Set(rack.wires.filter((w) => w.kind === "mod").map((w) => w.to));
 
   for (const w of rack.wires) {
-    const from = pos.get(w.from);
-    const to = pos.get(w.to);
-    if (!from || !to) continue;
-    const x1 = from.x + from.w;
-    const y1 = from.y + from.h / 2;
-    let x2, y2, d;
-    if (w.kind === "mod") {
-      const toMod = modByKey.get(w.to);
-      if (toMod && toMod.is_mod) {
-        // A link inside a CV chain: both plates sit on the same mod row, so
-        // the honest route is a straight run into the next plate's left edge.
-        x2 = to.x;
-        y2 = to.y + to.h / 2;
-        d = chainRoute(x1, y1, x2, y2);
-      } else {
-        // Into an audio module's bottom jack: out along the mod row, then one
-        // vertical into the plate's bottom edge.
-        x2 = to.x + to.w / 2;
-        y2 = to.y + to.h;
-        d = modRoute(x1, y1, x2, y2);
-      }
-    } else {
-      // Audio cables land on the target's in jack.
-      const toMod = modByKey.get(w.to);
-      x2 = to.x;
-      y2 = to.y + to.h / 2;
-      // A binary node's two sockets sit at 0.38/0.68 of the plate — all six of
-      // them, not just `mix`. Testing for `kind === "mix"` left a ducker's key
-      // cable and a vocoder's carrier cable landing on the plate edge halfway
-      // between the two jacks they were supposed to terminate in.
-      if (toMod && MOD_BY_KIND[toMod.kind]?.ins === 2) {
-        y2 = to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68);
-      }
-      // Sag proportional to span. A flat `max(24, span/2)` put control point 1
-      // *past* control point 2 whenever the span was under 48px — which it is
-      // between adjacent columns — so short runs kinked into a V instead of
-      // hanging. A constant sag was also 40% of a short span and 4% of a long
-      // one, so cables never read as the same kind of object.
-      const span = Math.max(1, x2 - x1);
-      const dx = Math.min(span * 0.42, 90);
-      const sag = Math.min(span * 0.22, 46) + Math.abs(y2 - y1) * 0.06;
-      d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
-    }
+    // Orthogonal routing for modulation, span-proportional cubics for audio —
+    // all of it in `wirePathD` (above), because the same shape has to be
+    // computable mid-relayout from a set of interpolated plate positions.
+    const d = wirePathD(w, pos, modByKey);
+    if (d == null) continue;
+    // Identity for a cable is the identity of the two plates it joins, so a
+    // run that survives an edit is recognised as the same run even though
+    // both its endpoints were renamed by the splice.
+    const wid = `${midOf(modByKey.get(w.from))}>${midOf(modByKey.get(w.to))}`;
     // The casing is the cable's jacket, not a glow: it is background-coloured
     // and wider than the ink, so a run crossing a plate cuts a channel through
     // it instead of tinting it.
@@ -4225,6 +5115,20 @@ function buildRack(svg, rack, opts) {
     // cable rather than near it — "insert after wavefolder" has to point at
     // the run that is about to be cut, and there may be four of them.
     const wireEl = svgEl("path", { d, "data-from": w.from, "data-to": w.to }, `wire ${w.kind}`);
+    if (w.kind !== "mod") {
+      // The ramp, and the meter. Inline because both are per-cable facts
+      // about this patch — a class per stop would be five rules that say the
+      // same thing, and a level is a number, not a state.
+      wireEl.style.stroke = AUDIO_INK[inkStop.get(w.from) ?? 2];
+      const lv = Math.max(0, Math.min(1, flow.get(w.from) ?? 1));
+      // Floor at 0.2: a silent cable is still a cable, and drawing it away to
+      // nothing would say "unplugged", which is a different and much worse
+      // claim. It stops moving instead — that is the part you read as level.
+      wireEl.style.strokeOpacity = (0.2 + 0.62 * lv).toFixed(3);
+      if (lv < 0.06) wireEl.classList.add("still");
+      else wireEl.style.animationDuration = `${Math.round(560 / Math.max(0.1, lv))}ms`;
+    }
+    mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
       // patch looks alive where it sounds alive.
@@ -4254,7 +5158,7 @@ function buildRack(svg, rack, opts) {
   // `textLength` + `spacingAndGlyphs` squeezes tracking first and glyphs only
   // as far as it must, which is exactly how a real panel handles a long name.
   const fitLabels = () => {
-    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint")) {
+    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name")) {
       const avail = Number(t.dataset.fit || 0);
       if (!avail) continue;
       let w = 0;
@@ -4284,10 +5188,22 @@ function buildRack(svg, rack, opts) {
     // which module it landed on, and pick mode has to be able to dim, halo
     // and pin a chip to one plate. `data-kind` alone cannot name a plate —
     // a patch routinely carries three filters.
-    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key });
-    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key }, "mod-group");
+    // `data-uid` is the *identity* alongside the position. `renderRack` is a
+    // full teardown (`svg.innerHTML = ""`), so the only way anything can be
+    // said to have "moved" rather than "been replaced" is a key that outlives
+    // the rebuild — which is what a FLIP tween, a sticky hand position and a
+    // selection that survives a splice all need. `0` on the amp, which is the
+    // envelope rather than a node.
+    // `data-mid` is that same identity made total: the amp and any tree that
+    // has not been settled yet have no uid, and the motion system, the focus
+    // restore and the selection cannot have a module they are unable to name.
+    const mid = midOf(m);
+    const ids = { "data-kind": m.kind, "data-key": m.key, "data-uid": m.uid, "data-mid": mid };
+    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids });
+    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids }, "mod-group");
     plateLayer.appendChild(plateG);
     ctrlLayer.appendChild(g);
+    mGroups.push({ mid, key: m.key, plateG, g, x: p.x, y: p.y, w: p.w, h: p.h });
     if (interactive) {
       // A module is a thing you can act on, so it is a stop. The rack's roving
       // tabstop used to hold knobs only, which meant every structural verb in
@@ -4318,21 +5234,63 @@ function buildRack(svg, rack, opts) {
     // these it renders as a rounded div and the rack reads as a wiring
     // diagram rather than an instrument you could put your hands on.
     if (!compact && !isEmpty) {
-      plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
-      plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
-      for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
-        const use = svgEl("use", { x: sx, y: sy }, "plate-screw");
+      // A raised bevel, not a drawn outline. Three elements, all of them
+      // agreeing with the 315° lamp: a 2px lit top edge over a 6px gradient
+      // falling away from it (the roll-off is what makes the edge read as
+      // *raised* rather than as a white line), a 2px shade along the bottom,
+      // and a 1px lit left edge — the one the lamp also catches.
+      plateG.appendChild(svgEl("rect", { x: 1, y: 1, width: p.w - 2, height: 6, fill: "url(#bevelTop)" }, "plate-roll"));
+      plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 2, rx: 1 }, "plate-lit"));
+      plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 2.5, width: p.w - 2, height: 2, rx: 1 }, "plate-shade"));
+      plateG.appendChild(svgEl("rect", { x: 0.5, y: 2, width: 1, height: p.h - 4 }, "plate-edge"));
+      // Four screws, each at its own angle. A rack of identical screwdriver
+      // slots is the single loudest tell that a panel was generated rather
+      // than built — nobody has ever bolted four screws in at the same
+      // rotation. Hashed off the module's own identity so the pattern is
+      // this plate's, stable across every rebuild, and different from its
+      // neighbour's even when they are the same kind of module.
+      [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]].forEach(([sx, sy], si) => {
+        const use = svgEl("use", { transform: `translate(${sx},${sy}) rotate(${screwAngle(mid, si)})` }, "plate-screw");
         use.setAttribute("href", "#screw");
         plateG.appendChild(use);
-      }
+      });
     }
-    const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
+    // The control well (§5): a recessed 56×20 pocket top-right holding the
+    // two verbs that live on every plate. Before this they were two glyphs
+    // floating on bare panel, which is why "the only two entry points to all
+    // structure editing" read as decoration — nothing said they were
+    // controls. The well says it at rest, and it is where bypass and solo go
+    // when they land. Narrow plates get a shorter pocket: 56 units on a
+    // 96-unit plate would leave the silkscreen nowhere to be.
+    const wellW = interactive ? (p.w >= 168 ? 56 : 44) : 0;
+    const wellX = p.w - wellW - 4;
+    const lockedIn = isModuleLockedIn(m);
+    if (interactive && !compact) {
+      plateG.appendChild(svgEl("rect", {
+        x: wellX, y: 5, width: wellW, height: 20, rx: 3,
+      }, `ctrl-well${lockedIn ? " locked" : ""}`));
+    }
+    // Title: 13px at 500 in `--silk-mute`. A silkscreened panel name is large
+    // and quiet — it is the one piece of text on the plate that never
+    // changes, so it has no business owning the contrast. The hairline under
+    // it turns the name into a masthead and gives the knob grid something to
+    // hang from. A 96-unit plate takes the same type one step down: with a
+    // control well beside it there is not room for 13px without condensing
+    // the glyphs, and a squeezed title is worse than a small one.
+    const narrow = p.w < 168;
+    const title = svgEl("text", { x: 14, y: 18 },
+      `mod-title${narrow ? " narrow" : ""}${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
     title.textContent = isEmpty ? "empty" : m.title;
     // A title is silkscreened onto the panel, so it belongs under the cables
     // — but it must not be *squeezed* by them: the fit pass measures against
     // the room left between the left edge and the control well.
-    title.dataset.fit = String(Math.max(38, p.w - 52));
+    title.dataset.fit = String(Math.max(30, (interactive ? wellX : p.w - 8) - 20));
     plateG.appendChild(title);
+    if (!compact && !isEmpty) {
+      plateG.appendChild(svgEl("rect", {
+        x: 14, y: 25, width: Math.max(20, p.w - 26), height: 1,
+      }, "plate-rule"));
+    }
     if (isEmpty) {
       // The plate says what it is *for*, because "empty" alone reads as a
       // fault rather than as an invitation.
@@ -4343,11 +5301,29 @@ function buildRack(svg, rack, opts) {
     }
 
     if (interactive) {
+      // "Plate hover" is not a CSS state anything can express here: the
+      // faceplate is in one layer and the controls on it are in another, so
+      // `g:hover` never fires for a pointer resting on bare panel and the
+      // well would only light when you were already on it. Two listeners on
+      // the plate mark both groups instead, which is what makes the well
+      // brighten as the hand approaches rather than as it arrives.
+      const hot = (on) => {
+        plateG.classList.toggle("plate-hot", on);
+        g.classList.toggle("plate-hot", on);
+      };
+      for (const el of [plateG, g]) {
+        el.addEventListener("pointerenter", () => hot(true));
+        el.addEventListener("pointerleave", () => hot(false));
+      }
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
       // The glyph lives in a group so a finger can be given more to aim at
-      // than the 10px ellipsis itself.
+      // than the 10px ellipsis itself. Both glyphs sit in the well now: the
+      // amp has no lock, so its ⋯ takes the whole pocket.
+      const hasLock = m.kind !== "amp" && !isEmpty;
+      const menuX = wellX + (hasLock ? wellW * 0.3 : wellW / 2);
+      const lockX = wellX + wellW * 0.72;
       const menuG = svgEl("g", {}, "mod-menu-btn");
-      const menuBtn = svgEl("text", { x: p.w - 38, y: 17 });
+      const menuBtn = svgEl("text", { x: menuX, y: 19 });
       menuBtn.textContent = "⋯";
       const mt = svgEl("title", {});
       mt.textContent = m.kind === "amp"
@@ -4355,17 +5331,17 @@ function buildRack(svg, rack, opts) {
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
-      hitPad(menuG, p.w - 38, 13, 24, 26);
+      hitPad(menuG, menuX, 15, 24, 26);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
       });
       g.appendChild(menuG);
 
-      if (m.kind !== "amp" && !isEmpty) {
-        const lockOn = isModuleLockedIn(m);
+      if (hasLock) {
+        const lockOn = lockedIn;
         const lockG = svgEl("g", {}, `mod-lock${lockOn ? " on" : ""}`);
-        const mlock = svgEl("text", { x: p.w - 16, y: 17 });
+        const mlock = svgEl("text", { x: lockX, y: 19 });
         mlock.textContent = lockOn ? "▣" : "▢";
         const mtitle = svgEl("title", {});
         mtitle.textContent = lockOn
@@ -4373,11 +5349,10 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (evolution keeps it exactly as-is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        hitPad(lockG, p.w - 14, 13, 24, 26);
+        hitPad(lockG, lockX, 15, 24, 26);
         lockG.addEventListener("click", () => {
-          const addrs = moduleLockAddrs(m);
           const on = isModuleLockedIn(m);
-          for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
+          for (const a of moduleLockAddrs(m)) setLock(a, !on);
           renderRack();
         });
         g.appendChild(lockG);
@@ -4385,7 +5360,7 @@ function buildRack(svg, rack, opts) {
     }
 
     // ---- labeled jacks (green = audio, amber = modulation) ----
-    const addJack = (gx, gy, cls, label, labelSide, data) => {
+    const addJack = (gx, gy, cls, label, labelSide, data, plugRot) => {
       const jg = svgEl("g", { transform: `translate(${gx},${gy})` }, `jack${cls ? " " + cls : ""}`);
       if (interactive && data) {
         for (const [dk, dv] of Object.entries(data)) jg.setAttribute(dk, dv);
@@ -4395,14 +5370,22 @@ function buildRack(svg, rack, opts) {
       jg.appendChild(svgEl("circle", { r: 6.5 }, "j-nut"));
       jg.appendChild(svgEl("circle", { r: 3.4 }, "j-bore"));
       jg.appendChild(svgEl("path", { d: "M -4.4 -3.2 A 5.4 5.4 0 0 1 1.2 -5.3" }, "j-spec"));
+      // The lead in the socket, if there is one. Under the hit circle so it
+      // can never take a press away from the jack, and above the bore
+      // because a plug that is in a socket covers it. Not in compact: at
+      // 0.4× it is two more rects per jack and no information at all.
+      if (plugRot != null && !compact) jg.appendChild(plugArt(plugRot));
       jg.appendChild(svgEl("circle", { r: 5.5 }));
       const attrs =
         labelSide === "right" ? { x: 9, y: 3 } :
         labelSide === "left" ? { x: -9, y: 3, "text-anchor": "end" } :
+        labelSide === "none" ? null :
         { x: 0, y: 15, "text-anchor": "middle" };
-      const t = svgEl("text", attrs);
-      t.textContent = label;
-      jg.appendChild(t);
+      if (attrs) {
+        const t = svgEl("text", attrs);
+        t.textContent = label;
+        jg.appendChild(t);
+      }
       g.appendChild(jg);
       // A socket is a place you can put something, so it is a control — the
       // rack had no keyboard path to one, which made wiring the only gesture
@@ -4430,10 +5413,19 @@ function buildRack(svg, rack, opts) {
       // wiring, and moving one out of the middle is a different edit from
       // moving the chain.
       const top = m.key.endsWith("/m");
-      const oj = addJack(p.w, p.h / 2, "modjack", "out", "left", top ? { "data-outkey": m.key } : null);
+      const oj = addJack(p.w, p.h / 2, "modjack", "out", "left", top ? { "data-outkey": m.key } : null, 0);
       if (interactive && top) attachOutJack(oj, m.key, "mod");
+      // A link *arriving* from further down a CV chain lands on this plate's
+      // left edge, where there is no socket to draw — the chain's internal
+      // wiring is not a patch point. It still gets a plug, because the cable
+      // has to end in something; it just gets no ring and no label.
+      if (!compact && modIn.has(m.key)) {
+        const inPlug = svgEl("g", { transform: `translate(0,${p.h / 2})` }, "jack modjack bare");
+        inPlug.appendChild(plugArt(180));
+        g.appendChild(inPlug);
+      }
     } else if (m.kind === "amp") {
-      const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" });
+      const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" }, 180);
       if (interactive) {
         claimGesture(j);
         j.addEventListener("pointerdown", (ev) => {
@@ -4453,7 +5445,7 @@ function buildRack(svg, rack, opts) {
           ? [[p.h * 0.38, names[0], `${m.key}/0`], [p.h * 0.68, names[1], `${m.key}/1`]]
           : [[p.h / 2, names[0], `${m.key}/0`]];
         for (const [jy, lbl, ck] of ins) {
-          const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck });
+          const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck }, cabled.has(ck) ? 180 : null);
           if (interactive) {
             claimGesture(j);
             j.addEventListener("pointerdown", (ev) => {
@@ -4471,19 +5463,39 @@ function buildRack(svg, rack, opts) {
       // …except on a hole, which has nothing to give: the cable leaving it
       // exists only because the term is total, and offering to drag it would
       // be offering to move an absence.
-      const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key });
+      const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key },
+        cabled.has(m.key) ? 0 : null);
       if (interactive && !isEmpty) attachOutJack(oj, m.key, "audio");
-      // The mod jack names the port it drives. On a four-knob module an
-      // unlabelled "mod" input is a mystery — and now that eight different
-      // modules carry one, "mod" would mean eight different things.
-      // A hole does not advertise a mod destination either — "→ pitch" on an
+      // The mod slot, in its permanent housing. The jack names the port it
+      // drives — on a four-knob module an unlabelled "mod" input is a
+      // mystery, and now that eight different modules carry one, "mod" would
+      // mean eight different things.
+      // A hole does not advertise a mod destination either — "pitch" on an
       // empty socket names a port on a module the player has not chosen yet.
       const modDest = isEmpty ? null : kindModTarget(m.kind);
       if (modDest) {
-        const j = addJack(p.w / 2, p.h, "modjack", `→ ${modDest}`, "below", { "data-modkey": m.key });
-        if (rack.wires.some((w) => w.kind === "mod" && w.to === m.key)) {
-          j.classList.add("pulse");
+        const filled = modIn.has(m.key);
+        const tab = modTab(p.w);
+        if (!compact) {
+          // Notched into the bottom edge, half in and half out, so it reads
+          // as part of the panel rather than as a badge stuck under it.
+          plateG.appendChild(svgEl("rect", {
+            x: tab.x, y: p.h + tab.jy - MOD_TAB_H / 2, width: tab.w, height: MOD_TAB_H, rx: 3,
+          }, `mod-tab${filled ? " filled" : ""}`));
+          const nm = svgEl("text", {
+            x: tab.x + tab.w - 8, y: p.h + tab.jy + 3.5, "text-anchor": "end",
+          }, `mod-tab-name${filled ? " filled" : ""}`);
+          nm.textContent = modDest;
+          nm.dataset.fit = String(Math.max(24, tab.w - 34));
+          plateG.appendChild(nm);
         }
+        // The label is carried but not drawn: the tab already prints the
+        // destination in silkscreen, and printing it twice would be the one
+        // thing the housing was built to stop. It still has to reach the
+        // accessible name.
+        const j = addJack(tab.jx, p.h + tab.jy, "modjack", `${modDest} mod`, "none", { "data-modkey": m.key },
+          filled ? 90 : null);
+        if (filled) j.classList.add("pulse");
         if (interactive) {
           claimGesture(j);
           j.addEventListener("pointerdown", (ev) => {
@@ -4504,6 +5516,14 @@ function buildRack(svg, rack, opts) {
       fkind && fkind.kind.t === "enum"
         ? (fkind.kind.options[Math.round(fkind.value)] || "").replace(/^svf /, "svf-")
         : null;
+    // Which knobs on this plate are *actually being moved by something else*
+    // right now. The mod cable's destination is a port, not always a knob
+    // (a vco's slot lands on a pitch offset with no knob of its own), so the
+    // rule is: the port if it has a knob, and always the mod-depth knob,
+    // which is the one whose value the incoming cable is scaled by.
+    const modPort = modIn.has(m.key) ? kindModTarget(m.kind) : null;
+    const isModulated = (k) =>
+      modPort != null && (k.label === modPort || k.label === "mod depth");
     // The knob detail is the whole of the difference between the two levels
     // of detail, so it is one conditional rather than a second renderer.
     if (!compact && !isEmpty) m.knobs.forEach((k, i) => {
@@ -4530,7 +5550,7 @@ function buildRack(svg, rack, opts) {
         if (k.value > 0.004) {
           kg.appendChild(
             svgEl("path", { d: arcPath(KNOB_R + 3, 0, k.value) },
-              `knob-arc${m.is_mod ? " modside" : ""}`)
+              `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`)
           );
         }
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
@@ -4574,10 +5594,15 @@ function buildRack(svg, rack, opts) {
         const txt = svgEl("text", { y: 4 }, "enum-text");
         txt.textContent = enumDisplay(k);
         if (interactive) {
+          const sweepable = LIVE_INDEX_SITES.has(k.addr.split("#").pop());
           const tt = svgEl("title", {});
-          tt.textContent = `${k.label} — click to cycle`;
+          tt.textContent = sweepable
+            ? `${k.label} — click to cycle, drag up/down to sweep (live)`
+            : `${k.label} — click to cycle`;
           body.appendChild(tt);
           body.addEventListener("click", (ev) => {
+            // The click a sweep leaves behind on its way up is not a cycle.
+            if (Date.now() - enumSweptAt < 300) return;
             pushUndo();
             const n = k.kind.t === "octave" ? 5 : k.kind.options.length;
             const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
@@ -4585,6 +5610,13 @@ function buildRack(svg, rack, opts) {
             txt.textContent = enumDisplay(k);
             sendEdit(k.addr, next, true);
           });
+          // A live categorical site is worth dragging. `table` is a crossfade
+          // position and every step now ramps over the live path's ~25 ms
+          // smoother, so dragging it *morphs* the oscillator rather than
+          // switching it; `oct` slides. The other enums are deliberately left
+          // click-only — each of their steps is a full patch swap, and a drag
+          // across four of them would be four dropouts.
+          if (sweepable) attachEnumSweep(body, txt, k);
         }
         kg.appendChild(body);
         kg.appendChild(txt);
@@ -4604,7 +5636,7 @@ function buildRack(svg, rack, opts) {
         dt.textContent = locked ? `Unlock ${k.label}` : `Lock ${k.label} (evolution won't touch it)`;
         dot.appendChild(dt);
         dot.addEventListener("click", () => {
-          locked ? wb.locks.delete(k.addr) : wb.locks.add(k.addr);
+          setLock(k.addr, !locked);
           renderRack();
         });
         // A 3.4-unit dot is a 7px target. The pad stops 10 units out, which
@@ -4639,6 +5671,13 @@ function buildRack(svg, rack, opts) {
       if (k.kind.t === "continuous") {
         const val = svgEl("text", { y: KNOB_R + 25 }, "knob-value");
         val.textContent = knobUnit(k.addr, k.value, m.kind, variant);
+        // Still inside its window: this readout changed a moment ago and the
+        // teardown must not be what ends the flash.
+        const until = knobFlash.get(k.addr);
+        if (until != null && until > performance.now()) {
+          val.classList.add("flashing");
+          setTimeout(() => val.classList.remove("flashing"), until - performance.now());
+        }
         kg.appendChild(val);
       }
       g.appendChild(kg);
@@ -4656,7 +5695,436 @@ function buildRack(svg, rack, opts) {
     rackContent = { w: natW, h: natH };
     rackBoxes = pos;
     lodApplied = compact ? "compact" : "full";
+    // And the motion system's own record of this build. It is deliberately
+    // the live element references rather than a description of them: FLIP
+    // works by writing transforms onto the *new* DOM, and re-querying for
+    // thirty groups on every frame of a 260 ms tween is a selector engine
+    // doing the work a variable already did.
+    rackFrame = {
+      pos,
+      mods: modByKey,
+      groups: mGroups,
+      wires: mWires,
+      mids: new Set(mGroups.map((it) => it.mid)),
+      wids: new Set(mWires.map((it) => it.wid)),
+    };
   }
+}
+
+// ===========================================================================
+// MOTION — the rack moves instead of cutting
+// ===========================================================================
+// `renderRack` is a full teardown: `svg.innerHTML = ""` and thirty fresh
+// plates on every edit, knob release, lock toggle, bench reply and resize
+// (risk R8). That is a hard cut, and a cut is the one thing a graph editor
+// cannot afford — after an insert the player has to re-find every module by
+// reading it, because nothing on screen said "this one moved, that one is
+// new, and the one you deleted was *there*".
+//
+// This does not replace the teardown; it makes the teardown invisible. FLIP:
+// measure where everything is before the rebuild, let the rebuild put
+// everything where it now belongs, then play the difference. What makes it
+// possible at all is `uid` (WS-4 §6) — without a name that outlives a splice
+// there is no such thing as "the same plate", only two renders that happen to
+// contain a filter each.
+//
+// Three motions, one curve, one duration:
+//   survivors  tween from their old position to their new one, and every
+//              cable is re-routed each frame from the interpolated positions
+//              so the patch deforms as one object rather than as plates
+//              sliding out from under their wiring;
+//   arrivals   fade and scale up from 0.96;
+//   departures leave a ghost that fades, shrinks and drops 6px, so a deletion
+//              is *seen* leaving rather than simply never having been there.
+const MOTION_MS = 260;
+const STILL_MQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+/** Live, not a snapshot: the OS switch can be thrown while the app is open,
+ *  and a page that only honours it at load time honours it by luck. */
+function prefersStill() { return STILL_MQ.matches; }
+
+// The app's easing curve, in CSS for the WAAPI fades and in JS for the rAF
+// loop that drives the tween — the same numbers both times, because a camera
+// on one curve and its plates on another reads as two motions fighting, which
+// is precisely what §9 asks for one of.
+const EASE_CSS = "cubic-bezier(0.2,0,0.6,1)";
+function bezierEase(x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
+  const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+  const fx = (t) => ((ax * t + bx) * t + cx) * t;
+  const dfx = (t) => (3 * ax * t + 2 * bx) * t + cx;
+  return (u) => {
+    if (u <= 0) return 0;
+    if (u >= 1) return 1;
+    // Newton from t = u. Six steps is well past convergence for a curve this
+    // gentle, and the guard on a flat derivative keeps a pathological control
+    // point from dividing by nothing.
+    let t = u;
+    for (let i = 0; i < 6; i++) {
+      const e = fx(t) - u;
+      if (Math.abs(e) < 1e-5) break;
+      const d = dfx(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= e / d;
+    }
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return ((ay * t + by) * t + cy) * t;
+  };
+}
+const EASE_MOTION = bezierEase(0.2, 0, 0.6, 1);
+
+let rackFrame = null;  // the last interactive build, as the motion system sees it
+let rackTween = null;  // rAF handle for the survivors' tween
+
+/** A CSS transform placing a plate at (x,y) and scaled about its own centre.
+ *  Written out rather than left to `transform-origin`, because a CSS
+ *  transform on an SVG element *replaces* its `transform` attribute — there is
+ *  no offsetting it, so every keyframe has to carry the whole position. */
+function xform(x, y, s, w, h) {
+  if (s === 1) return `translate(${x.toFixed(2)}px,${y.toFixed(2)}px)`;
+  return `translate(${(x + w / 2).toFixed(2)}px,${(y + h / 2).toFixed(2)}px) ` +
+    `scale(${s}) translate(${(-w / 2).toFixed(2)}px,${(-h / 2).toFixed(2)}px)`;
+}
+
+// A ghost keeps its paint and gives up its name. A clone that still answered
+// to `[data-addr]` or `.mod-group` would be a second copy of the module as far
+// as every query in the app is concerned: the roving tabstop would walk into
+// it, `connectSync` would light its jacks, `elementFromPoint` could hand a
+// cable drop to a plate that no longer exists, and `ampPlateEl` could end up
+// pointing at a faceplate that is fading out.
+const GHOST_STRIP = [
+  "data-addr", "data-key", "data-uid", "data-mid", "data-kind", "data-childkey",
+  "data-modkey", "data-outkey", "data-from", "data-to", "id", "tabindex", "role",
+  "aria-label", "aria-valuenow", "aria-valuetext",
+];
+function ghostOf(el) {
+  const c = el.cloneNode(true);
+  for (const n of [c, ...c.querySelectorAll("*")]) {
+    for (const a of GHOST_STRIP) n.removeAttribute(a);
+    n.classList?.remove("mod-group");
+  }
+  return c;
+}
+
+/** Everything the motion system needs about the render that is about to be
+ *  thrown away. Must be read *before* `buildRack`, because after it the old
+ *  DOM is gone and with it every position the player last saw. */
+function captureRackMotion() {
+  if (!rackFrame || !wb.rack) return null;
+  // Asked here rather than only at playback time: the capture's expensive part
+  // is cloning the departing plates, and there is no point paying for ghosts
+  // nobody has asked to see.
+  if (prefersStill()) return null;
+  const prev = new Map();
+  for (const it of rackFrame.groups) {
+    // Mid-tween, "where it was" is where it *is* on screen, not where the
+    // last build meant to put it. A bench reply landing 100 ms into an insert
+    // would otherwise snap every plate back to its pre-edit position and
+    // replay the whole move from the start.
+    prev.set(it.mid, { x: it.cx ?? it.x, y: it.cy ?? it.y, w: it.w, h: it.h });
+  }
+  const keep = new Set(wb.rack.modules.map(midOf));
+  const ghosts = [];
+  for (const it of rackFrame.groups) {
+    if (keep.has(it.mid)) continue;
+    ghosts.push({ ...prev.get(it.mid), nodes: [ghostOf(it.plateG), ghostOf(it.g)] });
+  }
+  // A deleted module's cables go with it. Nothing redraws them — the rebuild
+  // simply does not contain them — so without a ghost they blink out a quarter
+  // of a second before the plate they were plugged into.
+  if (ghosts.length) {
+    for (const it of rackFrame.wires) {
+      const [f, t] = it.wid.split(">");
+      if (keep.has(f) && keep.has(t)) continue;
+      ghosts.push({ wire: true, nodes: [ghostOf(it.caseEl), ghostOf(it.inkEl)] });
+    }
+  }
+  return { prev, ghosts, wids: rackFrame.wids, count: rackFrame.groups.length };
+}
+
+function cancelRackMotion() {
+  if (rackTween != null) cancelAnimationFrame(rackTween);
+  rackTween = null;
+}
+
+/** Play the difference between `before` and the build that just landed.
+ *  Returns whether anything is actually moving, which is what tells the camera
+ *  to travel on the same curve rather than on its own. */
+function startRackMotion(before) {
+  cancelRackMotion();
+  if (!before || !rackFrame || prefersStill()) return false;
+  const moves = [];
+  const enters = [];
+  for (const it of rackFrame.groups) {
+    const o = before.prev.get(it.mid);
+    if (!o) { enters.push(it); continue; }
+    // Half a pixel is not a move; animating it costs a frame budget and buys
+    // a shimmer. Most renders — a knob release, a lock toggle, a bench reply —
+    // land entirely in this branch and start no animation at all.
+    if (Math.abs(o.x - it.x) < 0.4 && Math.abs(o.y - it.y) < 0.4) continue;
+    it.ox = o.x;
+    it.oy = o.y;
+    moves.push(it);
+  }
+  // Nothing survived: this is not a relayout, it is a different patch. Two
+  // unrelated racks cross-fading through each other is a double exposure, not
+  // a motion, so the departing one is simply gone and the new one fades up.
+  const ghosts = rackFrame.groups.length - enters.length === 0 && before.count > 0
+    ? []
+    : before.ghosts;
+  const arriving = rackFrame.wires.filter((it) => !before.wids.has(it.wid));
+  if (!moves.length && !enters.length && !arriving.length && !ghosts.length) return false;
+
+  const fade = { duration: MOTION_MS, easing: EASE_CSS };
+  for (const it of enters) {
+    for (const el of [it.plateG, it.g]) {
+      el.animate(
+        [{ opacity: 0, transform: xform(it.x, it.y, 0.96, it.w, it.h) },
+         { opacity: 1, transform: xform(it.x, it.y, 1, it.w, it.h) }],
+        fade,
+      );
+    }
+  }
+  for (const it of arriving) {
+    for (const el of [it.caseEl, it.inkEl]) el.animate([{ opacity: 0 }, { opacity: 1 }], fade);
+  }
+  if (ghosts.length) {
+    const layer = svgEl("g", {}, "rack-exit");
+    // Departing cables go in a `.rack-wires` of their own so they keep the
+    // cast shadow that rule carries — a wire that changed material on its way
+    // out would read as a different object leaving than the one that was
+    // there.
+    const wireBin = svgEl("g", {}, "rack-wires");
+    for (const gh of ghosts) {
+      for (const n of gh.nodes) (gh.wire ? wireBin : layer).appendChild(n);
+    }
+    layer.appendChild(wireBin);
+    $("rack-svg").appendChild(layer);
+    for (const gh of ghosts) {
+      // A cable has no plate to shrink: its geometry is absolute, so a
+      // transform would slide it off its own endpoints on the way out.
+      const kf = gh.wire
+        ? [{ opacity: 1 }, { opacity: 0 }]
+        : [{ opacity: 1, transform: xform(gh.x, gh.y, 1, gh.w, gh.h) },
+           { opacity: 0, transform: xform(gh.x, gh.y + 6, 0.96, gh.w, gh.h) }];
+      for (const n of gh.nodes) n.animate(kf, { ...fade, fill: "forwards" });
+    }
+    // The next teardown would take the layer with it anyway; this is for the
+    // case where there isn't one.
+    setTimeout(() => layer.remove(), MOTION_MS + 60);
+  }
+
+  if (!moves.length) return enters.length > 0 || ghosts.length > 0;
+
+  // Promote the movers for the duration. Every faceplate carries
+  // `filter: url(#plateShadow)`, and a filtered SVG element under a changing
+  // transform is re-rasterised from scratch on every frame unless the
+  // compositor has been told to keep it: measured on an 18-module patch, the
+  // tween ran at 25-33 ms a frame with the plates and at 8 ms without them
+  // (the compact level of detail, which drops the filter), while rewriting
+  // all 34 cable paths per frame cost nothing measurable. Dropped again on
+  // the last frame — a permanent `will-change` is a permanent layer, which is
+  // the memory version of the same mistake.
+  for (const it of moves) {
+    it.plateG.style.willChange = "transform";
+    it.g.style.willChange = "transform";
+  }
+
+  const t0 = performance.now();
+  const step = (now) => {
+    const u = Math.min(1, (now - t0) / MOTION_MS);
+    const e = EASE_MOTION(u);
+    // The whole layout at this instant: final positions for everything that
+    // did not move, interpolated ones for everything that did. The cables are
+    // then re-routed from it, which is the difference between "the patch is
+    // deforming" and "the plates are sliding out from under their wiring".
+    const at = new Map(rackFrame.pos);
+    for (const it of moves) {
+      it.cx = it.ox + (it.x - it.ox) * e;
+      it.cy = it.oy + (it.y - it.oy) * e;
+      const tf = xform(it.cx, it.cy, 1, it.w, it.h);
+      it.plateG.style.transform = tf;
+      it.g.style.transform = tf;
+      at.set(it.key, { ...rackFrame.pos.get(it.key), x: it.cx, y: it.cy });
+    }
+    for (const it of rackFrame.wires) {
+      const d = wirePathD(it.w, at, rackFrame.mods);
+      if (d == null) continue;
+      it.caseEl.setAttribute("d", d);
+      it.inkEl.setAttribute("d", d);
+    }
+    if (u < 1) { rackTween = requestAnimationFrame(step); return; }
+    rackTween = null;
+    // Hand the plates back to their `transform` attribute, which has held the
+    // final position all along — the last frame already agrees with it, so
+    // dropping the inline style is invisible.
+    for (const it of moves) {
+      it.cx = it.x;
+      it.cy = it.y;
+      it.plateG.style.transform = "";
+      it.g.style.transform = "";
+      it.plateG.style.willChange = "";
+      it.g.style.willChange = "";
+    }
+  };
+  step(t0);
+  return true;
+}
+
+// ===========================================================================
+// FREEFORM — the plate is a thing you can pick up
+// ===========================================================================
+// The gesture is deliberately *not* a listener on the plate. Every control on
+// a faceplate already owns its own press — knobs via `attachKnobDrag`, jacks
+// via `startWireDrag`, ⋯ and ▢ via their click handlers and their 24px pads —
+// and a second handler underneath them would be a race decided by whichever
+// element happened to be on top. Instead this runs in the same capture-phase
+// handler on `#rack-scroll` that already arbitrates the pan, from the same
+// `onControl` test, so there is exactly one place in the app that decides what
+// a press on the rack means. In freeform, that decision reads:
+//
+//     a control  → the control                (unchanged)
+//     a plate    → move the plate             (new)
+//     bare canvas→ pan the camera             (unchanged)
+//
+// and space-drag, middle-drag, right-click and long-press all keep the meaning
+// they had, because they are tested first.
+//
+// `rackFrame` (WS-4 §9) is the whole seam: it already holds live element
+// references and the `pos` map `wirePathD` consumes, so moving a plate is two
+// attribute writes and a re-route, with no rebuild and no layout flush.
+let plateDrag = null;
+
+/** Paint one plate at a rack-space position and re-route everything plugged
+ *  into it. Writes the `transform` *attribute*, not `style.transform`: the
+ *  motion system owns the inline style, and the two would fight — and the
+ *  attribute is where the next `captureRackMotion` expects to find the truth
+ *  (via `it.cx`, which is why this sets it). */
+function movePlateTo(it, x, y) {
+  it.cx = x;
+  it.cy = y;
+  const tf = `translate(${x.toFixed(2)},${y.toFixed(2)})`;
+  it.plateG.setAttribute("transform", tf);
+  it.g.setAttribute("transform", tf);
+  // `rackFrame.pos` *is* `rackBoxes` — the same Map object — so mutating it
+  // here keeps fit-selection, the minimap and drop-on-body hit testing honest
+  // about where the plate is, mid-drag, for free.
+  const b = rackFrame.pos.get(it.key);
+  if (b) { b.x = x; b.y = y; }
+  for (const w of rackFrame.wires) {
+    const d = wirePathD(w.w, rackFrame.pos, rackFrame.mods);
+    if (d == null) continue;
+    w.caseEl.setAttribute("d", d);
+    w.inkEl.setAttribute("d", d);
+  }
+}
+
+/** True if this press was taken. */
+function startPlateDrag(ev) {
+  if (!rackFrame || !wb.rack) return false;
+  const g = ev.target?.closest?.("g[data-mid]");
+  const mid = g && g.getAttribute("data-mid");
+  const it = mid && rackFrame.groups.find((q) => q.mid === mid);
+  if (!it) return false;
+  ev.preventDefault();
+  ev.stopPropagation();
+  // A tween writing `style.transform` every frame would drag the plate back
+  // out of the hand that is holding it.
+  cancelRackMotion();
+  const el = $("rack-scroll");
+  el.classList.add("moving-plate");
+  // Capture keeps the plate under a pointer that leaves the frame — and the
+  // guard keeps a pointer the browser has already forgotten (a cancelled
+  // touch, a synthesised press) from throwing on the way in. The listeners
+  // below are on `el` either way, so the drag degrades to "while the pointer
+  // is over the rack" rather than to nothing.
+  try { el.setPointerCapture(ev.pointerId); } catch (_) {}
+  const grab = clientToRack(ev.clientX, ev.clientY);
+  const from = { x: it.cx ?? it.x, y: it.cy ?? it.y };
+  let at = { ...from };
+  plateDrag = it;
+
+  const move = (mv) => {
+    const p = clientToRack(mv.clientX, mv.clientY);
+    let x = from.x + (p.x - grab.x);
+    let y = from.y + (p.y - grab.y);
+    // Snap is on by default and `shift` escapes it — the way every editor
+    // that has a grid does it, and the reason the grid is drawn at all.
+    if (!mv.shiftKey) {
+      x = Math.round(x / GRID) * GRID;
+      y = Math.round(y / GRID) * GRID;
+    }
+    at = { x: Math.max(RACK_OFF_X, x), y: Math.max(RACK_OFF_Y, y) };
+    movePlateTo(it, at.x, at.y);
+  };
+  const up = () => {
+    el.classList.remove("moving-plate");
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", up);
+    el.removeEventListener("pointercancel", up);
+    plateDrag = null;
+    ffStore(true).set(it.mid, { x: at.x - RACK_OFF_X, y: at.y - RACK_OFF_Y });
+    // One rebuild, so the content box, the minimap rects and any unplaced
+    // neighbour that now has to make room all agree with the drop. The camera
+    // is held: the player just told us what they were looking at, and a fit
+    // triggered by the bounding box they themselves changed would answer a
+    // 24px nudge by moving the entire world.
+    camHold = true;
+    renderRack();
+    scheduleSave();
+  };
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+  return true;
+}
+
+// ---------- focus retention ----------
+// A rebuild used to drop the keyboard on the floor: `innerHTML = ""` removes
+// the focused element, focus falls to `<body>`, and the roving tabstop resets
+// to the first plate. Every bench reply — one per knob release, several per
+// structural edit — therefore threw a keyboard user back to the start of the
+// rack. Identity fixes this the same way it fixes the locks: focus is not on
+// "the third knob of the fourth plate", it is on `#cut` of the module named
+// `u41`, and that survives a splice that renumbers every key in the patch.
+
+/** Where the keyboard is, in terms that outlive the rebuild. */
+function markRackFocus() {
+  const a = document.activeElement;
+  if (!a || !$("rack-svg").contains(a)) return null;
+  const g = a.closest?.("g.mod-group");
+  const mid = g?.getAttribute("data-mid");
+  if (!mid) return null;
+  const addr = a.getAttribute?.("data-addr");
+  // A knob is named by its parameter, which is what does *not* move when the
+  // module does — the same slice `lockIdOf` takes.
+  const hash = addr ? addr.indexOf("#") : -1;
+  if (hash >= 0) return { mid, param: addr.slice(hash) };
+  for (const attr of ["data-childkey", "data-modkey", "data-outkey"]) {
+    const v = a.getAttribute?.(attr);
+    // A socket is named by which socket it is: `/0`, `/1`, or the module's
+    // own key for an out or a mod jack.
+    if (v != null) return { mid, attr, tail: v.slice(v.lastIndexOf("/")) };
+  }
+  return { mid };
+}
+
+/** Put it back. Silent when the module it named is gone — a deleted plate has
+ *  no focus to keep, and stealing focus for the plate that took its place
+ *  would be the app deciding what the player is looking at. */
+function restoreRackFocus(mark) {
+  if (!mark) return;
+  const g = $("rack-svg").querySelector(`g.mod-group[data-mid="${mark.mid}"]`);
+  if (!g) return;
+  let el = g;
+  if (mark.param) el = g.querySelector(`[data-addr$="${mark.param}"]`) || g;
+  else if (mark.attr) {
+    el = [...g.querySelectorAll(`.jack[${mark.attr}]`)]
+      .find((j) => j.getAttribute(mark.attr).endsWith(mark.tail)) || g;
+  }
+  setRackStop(el);
+  // No `ensureRackVisible`: this is not navigation. The player did not move,
+  // the patch did, and the camera's own answer to that is `aimCamera`.
+  el.focus({ preventScroll: true });
 }
 
 // ===========================================================================
@@ -4678,7 +6146,14 @@ function buildRack(svg, rack, opts) {
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 2.5;
 const FIT_MAX = 2.2;
-const PREFERS_STILL = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// …and the floor a *fit* may reach past it. "Home shows you the whole patch"
+// is the promise the key makes, and 0.3× could not keep it: fourteen modules
+// in a 787×295 frame need 0.28×, so Home clipped three plates by six pixels
+// and left no clue that it had. A floor is there to stop you zooming out into
+// an empty grey field by accident — which is a thing a hand does, not a thing
+// a fit does. So the fit may go below it, as far as legibility survives, and
+// the wheel and the keys may not.
+const FIT_MIN = 0.22;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 const view = { x: 0, y: 0, zoom: 1 };
@@ -4686,6 +6161,7 @@ let rackContent = { w: 640, h: 360 }; // natural size of the last interactive bu
 let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
 let viewUserSet = false;              // has the player aimed the camera themselves?
 let camAimed = false;                 // first fit done?
+let camHold = false;                  // leave the next build's framing alone
 let camSig = "";                      // bounding-box signature of the last build
 let viewTween = null;
 
@@ -4711,7 +6187,10 @@ function rackToClient(rx, ry) {
 
 function applyView() {
   const { w, h } = frameSize();
-  view.zoom = clamp(view.zoom, ZOOM_MIN, ZOOM_MAX);
+  // The absolute floor, not the manual one: this runs on every frame of the
+  // tween a fit rides in on, so clamping to `ZOOM_MIN` here would take back
+  // whatever `fitBox` went below it for.
+  view.zoom = clamp(view.zoom, FIT_MIN, ZOOM_MAX);
   const vw = w / view.zoom;
   const vh = h / view.zoom;
   // A soft leash, not a cage: you can push the patch to the frame edge but
@@ -4796,16 +6275,20 @@ function cancelTween() {
 }
 
 /** Move the camera to `t` over ~180ms. Short enough not to be a wait, long
- *  enough that the player's eye tracks the patch instead of re-finding it. */
-function tweenView(t, ms) {
+ *  enough that the player's eye tracks the patch instead of re-finding it.
+ *  `ease` overrides the default curve: when the rack itself is moving, the
+ *  camera rides the *rack's* curve and duration, so a structural edit is one
+ *  motion rather than a fit racing a relayout. */
+function tweenView(t, ms, ease) {
   cancelTween();
-  if (PREFERS_STILL) { Object.assign(view, t); applyView(); return; }
+  if (prefersStill()) { Object.assign(view, t); applyView(); return; }
   const from = { x: view.x, y: view.y, zoom: view.zoom };
   const t0 = performance.now();
   const dur = ms || 180;
+  const curve = ease || ((u) => 1 - (1 - u) * (1 - u) * (1 - u)); // ease-out cubic
   const step = (now) => {
     const u = clamp((now - t0) / dur, 0, 1);
-    const e = 1 - (1 - u) * (1 - u) * (1 - u); // ease-out cubic, the app's curve
+    const e = curve(u);
     // Zoom interpolates geometrically: linear zoom on a big change ramps the
     // apparent speed instead of holding it, which is what makes a fit feel
     // like a lurch.
@@ -4818,17 +6301,112 @@ function tweenView(t, ms) {
   viewTween = requestAnimationFrame(step);
 }
 
-function fitBox(box, animate) {
+// What the bezel may cost the patch, as a fraction of the frame along the axis
+// the fit clears it on. A third of a short frame handed to the scope draws the
+// circuit too small to read; this is where that trade turns.
+const SCOPE_CAP = 0.38;
+// …and how far the bezel may be shrunk in service of it. Below this it stops
+// being an instrument and becomes a smudge, and the honest answer is the old
+// one: let it sit over the corner, where the player can move either one.
+const SCOPE_MIN_SCALE = 0.4;
+
+/** Hold the bezel inside the cap by *shrinking* it, so that the reserve below
+ *  never has to be skipped. This used to be a bail-out: a bezel over the cap
+ *  meant no reserve at all, so the size control had a cliff in it — at
+ *  1700×1000 an L bezel is 41% of the rack frame, the reserve was skipped
+ *  entirely, and the fit put four plates underneath the glass. A guarantee
+ *  with a hole in it at one
+ *  setting is not a guarantee, and "the trace is over the module I am reading"
+ *  is exactly the complaint the reserve exists to answer. So the scope
+ *  degrades instead: it keeps its proportions and its corner, and gives up
+ *  only the size it cannot have. */
+function scopeCapBezel(shell, fr) {
+  const cur = parseFloat(shell.style.getPropertyValue("--scope-scale")) || 1;
+  const r = shell.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  // Every dimension in the size classes carries the factor, so the natural
+  // size is what is on screen divided by it — no second measurement, and no
+  // copy of the CSS in here.
+  const natW = r.width / cur;
+  const natH = r.height / cur;
+  // The reserve only ever clears one axis, so the bezel only has to fit under
+  // the cap on one of them: take whichever costs the least shrinking.
+  const s = clamp(
+    Math.max((SCOPE_CAP * fr.width - 14) / natW, (SCOPE_CAP * fr.height - 14) / natH),
+    SCOPE_MIN_SCALE,
+    1,
+  );
+  if (Math.abs(s - cur) > 0.005) {
+    shell.style.setProperty("--scope-scale", s.toFixed(3));
+    // The canvas is sized in percentages of the bezel, so it has just been
+    // re-backed at a new pixel size and blanked. A parked scope has no frame
+    // coming to repaint it; the running one repaints itself in a sixtieth of
+    // a second either way.
+    if (scopeRaf == null) scopeApply();
+  }
+}
+
+/** The band the scope's bezel occupies, as padding the fit has to respect.
+ *  The scope is parented to the frame, so it cannot desync under a pan any
+ *  more — but a corner overlay over an auto-fitted patch will still sit on a
+ *  plate, and "the trace is over the module I am reading" is the complaint.
+ *  A fit that lands the patch beside the scope instead of under it is the
+ *  cheap ninety percent: the overlap can still be created by hand, with a
+ *  pan or a zoom, and that is a place the player put it. */
+function scopeReserve() {
+  const z = { l: 0, r: 0, t: 0, b: 0 };
+  const shell = $("scope-shell");
+  const frame = $("rack-frame");
+  if (!shell || !frame || shell.classList.contains("hidden")) return z;
+  const fr = frame.getBoundingClientRect();
+  if (!fr.width) return z;
+  scopeCapBezel(shell, fr);
+  const sr = shell.getBoundingClientRect();
+  if (!sr.width) return z;
+  // Push the patch out of the scope's way along whichever axis costs less —
+  // a corner-anchored box only ever has to be cleared one way.
+  const overW = sr.width + 14;
+  const overH = sr.height + 14;
+  // The cap holds by construction now, except on a frame so small that even a
+  // shrunken bezel eats it — where skipping the reserve is still the right
+  // answer, because there is no fit left to protect.
+  if (Math.min(overW / fr.width, overH / fr.height) > SCOPE_CAP + 0.005) return z;
+  if (overW <= overH) {
+    if (sr.left - fr.left < fr.right - sr.right) z.l = overW; else z.r = overW;
+  } else {
+    if (sr.top - fr.top < fr.bottom - sr.bottom) z.t = overH; else z.b = overH;
+  }
+  return z;
+}
+
+function fitBox(box, animate, coMotion) {
   const { w, h } = frameSize();
   const pad = 20;
+  const ins = scopeReserve();
+  const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
+  const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
   const z = clamp(
-    Math.min((w - pad * 2) / Math.max(1, box.w), (h - pad * 2) / Math.max(1, box.h)),
-    ZOOM_MIN,
+    Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h)),
+    FIT_MIN,
     FIT_MAX,
   );
-  const t = { zoom: z, x: box.x + box.w / 2 - w / (2 * z), y: box.y + box.h / 2 - h / (2 * z) };
+  // Centre in what is left, not in the whole frame: the reserve is only a
+  // reserve if the content is actually placed beside it.
+  const cx = pad + ins.l + availW / 2;
+  const cy = pad + ins.t + availH / 2;
+  const t = { zoom: z, x: box.x + box.w / 2 - cx / z, y: box.y + box.h / 2 - cy / z };
+  // …but the reserve is the weaker of the two promises. At the floor the patch
+  // can be bigger than what the reserve leaves, and centring it in a box it
+  // overflows spills it equally both ways — half of that spill going straight
+  // off the frame, which is how a scope in a *top* corner put a plate fifteen
+  // pixels below the bottom edge. So: if the patch fits the frame at all, it is
+  // held inside the frame, and the reserve gets whatever is left. A plate under
+  // the glass is a nuisance; a plate off the edge is gone.
+  const fit = (lo, hi, v) => (lo <= hi ? clamp(v, lo, hi) : v);
+  t.x = fit(box.x + box.w - (w - pad) / z, box.x - pad / z, t.x);
+  t.y = fit(box.y + box.h - (h - pad) / z, box.y - pad / z, t.y);
   viewUserSet = false;
-  if (animate) tweenView(t);
+  if (animate) tweenView(t, coMotion ? MOTION_MS : 180, coMotion ? EASE_MOTION : null);
   else { Object.assign(view, t); applyView(); }
 }
 function fitAll(animate) {
@@ -4855,7 +6433,11 @@ function fitSelection(animate) {
 }
 function zoomAt(clientX, clientY, factor) {
   const before = clientToRack(clientX, clientY);
-  const z = clamp(view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  // The hand keeps its own floor — but it cannot be a floor that *lifts* you.
+  // A fit is allowed below `ZOOM_MIN` to contain a big patch, and clamping to
+  // it here would turn the next scroll-out over that patch into a zoom *in*,
+  // which is the control doing the opposite of what it was pushed to do.
+  const z = clamp(view.zoom * factor, Math.min(ZOOM_MIN, view.zoom), ZOOM_MAX);
   if (z === view.zoom) return;
   cancelTween();
   view.zoom = z;
@@ -4910,14 +6492,26 @@ function contentFullyVisible() {
  *  carried to the new framing rather than teleported. A knob release, a lock
  *  toggle or a bench reply leaves the box alone and so leaves the camera
  *  alone; and once the player has aimed it themselves we only intervene when
- *  the patch has actually grown out of the frame. */
-function aimCamera() {
+ *  the patch has actually grown out of the frame.
+ *
+ *  `coMotion` says the rack is tweening underneath: the fit then borrows the
+ *  motion system's duration and curve so the two arrive together. A 180 ms
+ *  ease-out camera over a 260 ms bezier relayout is two animations disagreeing
+ *  about where the patch is, which is worse than either alone. */
+function aimCamera(coMotion) {
   syncMapBtn();
   const sig = `${Math.round(rackContent.w)}x${Math.round(rackContent.h)}:${rackBoxes.size}`;
   const changed = sig !== camSig;
   camSig = sig;
+  // One render whose framing the player has already chosen with their hands —
+  // a freeform drop, or "apply grid". The bounding box changed by definition
+  // in both cases, and answering that with a fit would move the whole world in
+  // reply to a 24px nudge. The signature is still updated, so the *next* real
+  // structural edit is compared against what is actually on screen.
+  const hold = camHold;
+  camHold = false;
   if (!camAimed) { camAimed = true; fitBox(contentBox(), false); return; }
-  if (changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true);
+  if (!hold && changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true, coMotion);
   else applyView();
 }
 
@@ -5024,7 +6618,11 @@ function mmNavigate(ev) {
 }
 $("rack-map").addEventListener("pointerdown", (ev) => {
   ev.preventDefault();
-  $("rack-map").setPointerCapture(ev.pointerId);
+  // Same guard as the plate drag: a pointer the browser has already forgotten
+  // (a cancelled touch, a synthesised press) throws on capture, and the
+  // `pointermove` listener below is on the element either way — so the drag
+  // degrades to "while the pointer is over the map" rather than to a throw.
+  try { $("rack-map").setPointerCapture(ev.pointerId); } catch (_) {}
   mmNavigate(ev);
 });
 $("rack-map").addEventListener("pointermove", (ev) => {
@@ -5072,6 +6670,15 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   // thing the gesture is actually about.
   releaseTextEntry();
   const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
+  // In freeform, a plain press on a faceplate moves the module. Tested after
+  // the modifier gestures below would be too late — they are tested here, in
+  // order, and space still wins so the pan modifier keeps working over a plate
+  // exactly as it does over the canvas. `armed`/`connectPick` win too: while a
+  // module is in hand or a cable is half-drawn, a plate is a *destination*.
+  if (
+    layoutMode === "freeform" && ev.button === 0 && !spacePan && !armed && !connectPick &&
+    !onControl && startPlateDrag(ev)
+  ) return;
   const wants =
     ev.button === 1 ||                        // middle-drag, everywhere
     (ev.button === 0 && spacePan) ||          // space-drag, the graph-editor idiom
@@ -5210,6 +6817,10 @@ function stopEdgePan() {
 // anywhere in the app; this is the one place that needs one.
 let roSettled = false;
 new ResizeObserver(() => {
+  // The scope's canvas is sized in percentages of this same frame, so a
+  // resize re-backs it at a new pixel size and blanks whatever was on it.
+  // Repaint before the refit, which is about to read the bezel's new box.
+  if (scopeRaf == null) scopeApply();
   if (!roSettled) { roSettled = true; return; } // the observer's own first call
   if (!wb.rack) return;
   if (viewUserSet && !contentFullyVisible()) applyView();
@@ -5237,7 +6848,7 @@ const structQueue = [];
 function sendStruct(op, landed) {
   queueStruct({ type: "edit_structure", op }, landed || null);
 }
-function queueStruct(msg, landed) {
+function queueStruct(msg, landed, tag) {
   if (structInFlight) {
     // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
     // deeper than a rapid double-click means the worker is wedged, and
@@ -5250,7 +6861,7 @@ function queueStruct(msg, landed) {
     // same reason it waits on the reply: nothing has happened yet. It cannot
     // ride *on* `msg`, which is structured-cloned to the worker and would
     // choke on the undo closure.
-    structQueue.push({ msg, landed: landed || null });
+    structQueue.push({ msg, landed: landed || null, tag });
     // Waiting its turn is still in flight as far as the shelf is concerned.
     if (landed && landed.drop != null) setTrayPending(landed.drop, true);
     // Nothing went out, so nothing may be charged to the edit that is out.
@@ -5261,120 +6872,216 @@ function queueStruct(msg, landed) {
   bindLanded(landed);
   if (landed && landed.drop != null) setTrayPending(landed.drop, true);
   stageUndo();
-  // Taken here, against the tree the op is aimed at. By the time the reply
-  // lands `wb.rack` is the *new* rack and "was that node's parent binary?"
-  // can no longer be asked.
-  stagedLockRemap = lockRemapFor(msg);
+  beliefStale();
+  // Both halves of WS-8 §3's edit row come from here, because this is the one
+  // place every structural gesture in the app funnels through: the op that is
+  // about to happen, and the module it is about to happen to. A whole-tree
+  // rewrite has no `StructOp` to report — it *is* the tree — so it says so
+  // rather than inventing one.
+  pendingEditTag = editTagOf(msg, tag);
+  logImplicit("edit", pendingEditTag);
   send(msg);
 }
 
-// ---------- locks across a structural edit ----------
-// A lock is a trace address (`node/0#cut`), and a trace address is a
-// *position*, so every structural edit moves some locks and destroys others.
-// Clearing the whole set was honest and it broke the one loop the graph editor
-// exists to serve: hand-build a routing, pin it, breed around it. You cannot
-// pin anything if pinning is undone by the next edit.
-//
-// Every op the UI can send has known, small key-remapping semantics — read off
-// `apply_struct_op` in mutate.rs — so the set is carried through them instead
-// of thrown away. This is the interim treatment: the real fix is a stable
-// `uid` on the node (WS-4 §6, phase 2), after which none of this is needed.
-// A whole-tree replace (`edit_set_tree`, which is undo, redo and every
-// client-side rewrite) is the one route that genuinely says nothing about
-// where anything went, and it still clears.
-//
-// Returns `key → newKey | null` (null = that site no longer exists), or null
-// for "cannot be known, clear them".
-function reRoot(k, from, to) { return to + k.slice(from.length); }
-
-/** A lock address split into the three things that move independently: the
- *  audio node it hangs off, the modulation chain below it if any, and the
- *  parameter site itself. `amp#attack` has no audio node in the tree at all
- *  (the envelope wraps the term), which is exactly why it survives everything.
- */
-function lockParts(addr) {
-  const h = addr.indexOf("#");
-  const key = h < 0 ? addr : addr.slice(0, h);
-  const site = h < 0 ? "" : addr.slice(h);
-  const segs = key.split("/");
-  const i = segs.indexOf("m");
-  return i < 0
-    ? { owner: key, tail: "", site }
-    : { owner: segs.slice(0, i).join("/"), tail: `/${segs.slice(i).join("/")}`, site };
+/** `{op, kind, key}` for a structural message, from the payload the engine is
+ *  about to be handed. `node`/`m` carry an explicit fragment whose serde tag
+ *  is the module kind (`{"Reverb":{…}}`).
+ *
+ *  A client-side rewrite has no `StructOp` to report — it *is* a tree — so it
+ *  carries the verb the player used instead. "duplicate" and "bypass" are
+ *  real gestures with real intent behind them, and logging nine different ones
+ *  as `set_tree` would throw away the only thing that distinguishes them. */
+function editTagOf(msg, tag) {
+  if (msg.type !== "edit_structure") return tag || { op: "set_tree" };
+  const o = msg.op || {};
+  const frag = o.node || o.m;
+  return {
+    op: o.op || "?",
+    key: o.key,
+    kind: o.kind || (frag && frag !== "None" ? nodeTag(frag) : undefined),
+  };
 }
 
-function lockRemapFor(msg) {
-  if (!msg || msg.type !== "edit_structure") return null;
-  const op = msg.op || {};
-  const key = op.key;
-  if (!key) return null;
-  switch (op.op) {
-    // The new module takes the socket and the old occupant becomes its first
-    // input — `graft` always wires `old` into index 0 — so a whole subtree
-    // slides one level deeper and nothing is lost.
-    case "insert_tree":
-      return (k) => (keyInside(k, key) ? reRoot(k, key, `${key}/0`) : k);
-    // Everything at and below the key is replaced wholesale.
-    case "replace_tree":
-      return (k) => (keyInside(k, key) ? null : k);
-    // Two shapes. Pulling one branch out of a binary collapses the parent to
-    // the surviving sibling, which therefore climbs into the parent's key;
-    // anything else is spliced out and its own input climbs into its key.
-    case "delete": {
-      const cut = key.lastIndexOf("/");
-      const parentKey = cut > 0 ? key.slice(0, cut) : null;
-      const binary = parentKey && MOD_BY_KIND[rackKindAt(parentKey)]?.ins === 2;
-      if (binary) {
-        const sib = `${parentKey}/${key.slice(cut + 1) === "0" ? "1" : "0"}`;
-        return (k) =>
-          keyInside(k, sib) ? reRoot(k, sib, parentKey)
-          : keyInside(k, parentKey) ? null
-          : k;
-      }
-      const child = `${key}/0`;
-      return (k) =>
-        keyInside(k, child) ? reRoot(k, child, key)
-        : keyInside(k, key) ? null
-        : k;
-    }
-    // The two branches exchange places, so the locks on them do too.
-    case "swap_mix": {
-      const a = `${key}/0`, b = `${key}/1`;
-      return (k) =>
-        keyInside(k, a) ? reRoot(k, a, b)
-        : keyInside(k, b) ? reRoot(k, b, a)
-        : k;
-    }
-    // The whole modulation term under the owner is replaced; the audio tree
-    // around it does not move at all.
-    case "set_mod":
-    case "set_mod_tree":
-      return (k) => (keyInside(k, `${key}/m`) ? null : k);
-    default:
-      return null;
+// ---------- locks, keyed by node identity ----------
+// A lock used to be a trace address (`node/0#cut`), and a trace address is a
+// *position*: insert one module upstream and every key below it shifts a
+// segment, delete a mixer branch and the survivor is re-rooted, run one
+// generation and the tree is rebuilt from a trace that never saw the object
+// graph. Under positional keys the only honest answer to a structural edit was
+// to throw the locks away — and that broke the single loop this editor exists
+// to serve: hand-build a routing, pin it, breed around it. Phase 1 bought time
+// with per-op key remapping (a table of eight `StructOp` remappings, plus a
+// second copy of the same reasoning inside `applyTreeRewrite` that tracked
+// node objects by reference) and still cleared on ⚡ evolve, which is the one
+// place it mattered most.
+//
+// The term now carries a `uid` on every node — minted in the engine, preserved
+// by `apply_struct_op`, inherited by refinement (`PatchTree::inherit_uids`),
+// and echoed onto every `RackModule` — so a lock can name the module instead
+// of its address. All of the remapping is gone. Locks survive insert, delete,
+// reconnect, undo, redo and ⚡ evolve, and are lost only when the module they
+// name is actually gone.
+//
+// A lock id is `<uid><suffix-within-the-module>#<site>`: `41#cut` for a knob,
+// `41/m#mod` for the empty modulation slot a module guards (whose address
+// hangs below the module's own key). The `amp` pseudo-module is not a node at
+// all — the envelope wraps the term — so it has no uid and its addresses ride
+// through unchanged, which is also why they survive everything.
+
+// Locks per patch, and across reloads. `wb.locks` is the set for whatever is
+// on the bench; this is every set the session has produced, keyed by subject
+// id, and it is what rides in the `ui` blob. Two things it buys, in order of
+// how much they were missed:
+//
+//  1. A reload keeps your pins. The plan's loop is hand-build, pin, breed —
+//     and half of it evaporated on every refresh, with no sign that it had.
+//  2. Benching a patch you had pinned before gives them back. Locks were only
+//     ever carried *forward* (a commit, a ⚡ child); going back to a patch in
+//     the bank arrived at a rack with the dots dark and nothing to say why.
+//
+// Persisting them is only honest because a lock names a node. Under the old
+// trace-address keys a restored lock would have pinned whatever had since
+// moved into that address — which is the failure mode the whole identity pass
+// exists to have ended.
+const lockStore = new Map();
+const LOCK_KEEP = 60; // same order as the layout store; the bank holds 40
+
+function lockKey() {
+  return wb.subjectId == null ? "bench" : String(wb.subjectId);
+}
+
+/** Write the bench's locks back to the store, and ask for a save. Every
+ *  mutation of `wb.locks` goes through here — a lock nobody wrote down is a
+ *  lock that survives until the tab closes, which is the bug. */
+function locksRemember() {
+  const k = lockKey();
+  // Nothing changed, nothing to write — and nothing to save. This is called on
+  // every bench reply as well as every toggle, and a save round trip per patch
+  // click for a set that is identical to the one already stored is a cost
+  // paid for no information.
+  const prev = lockStore.get(k);
+  const same = wb.locks.size === (prev ? prev.size : 0) &&
+    (!prev || [...wb.locks].every((id) => prev.has(id)));
+  if (same) return;
+  if (wb.locks.size) {
+    lockStore.delete(k); // re-insert, so eviction order stays recency order
+    lockStore.set(k, new Set(wb.locks));
+    while (lockStore.size > LOCK_KEEP) lockStore.delete(lockStore.keys().next().value);
+  } else {
+    // An empty set is not a set worth keeping: "no locks" is what an absent
+    // entry already means, and keeping it would let a cleared patch evict a
+    // pinned one.
+    lockStore.delete(k);
   }
+  scheduleSave();
 }
 
-/** Carry `wb.locks` through the edit that just landed. Returns how many sites
- *  the edit took with it, so the toast only speaks when something was lost. */
-function remapLocks(remap) {
+/** Give a patch back the locks it had, if the bench arrived without any. The
+ *  guard is the whole of the rule: a non-empty set here was *carried* — by a
+ *  commit or by ⚡ — and carried locks are the live ones, so the store never
+ *  overwrites them. */
+function locksRestoreFor(id) {
+  if (wb.locks.size) return;
+  const saved = lockStore.get(String(id));
+  if (!saved || !saved.size) return;
+  wb.locks = new Set(saved);
+  // Against this rack, not the one they were set on: the store can outlive a
+  // patch's own eviction and reuse of an id, and a lock that names nothing
+  // here has to go rather than sit in the count as a phantom.
+  pruneLocks();
+}
+
+/** The inverse of the `ui` blob's `locks`, tolerant of a save from before it
+ *  existed — which is every save on disk right now. */
+function restoreLocks(saved) {
+  if (!Array.isArray(saved)) return;
+  for (const [id, list] of saved) {
+    if (!Array.isArray(list) || !list.length) continue;
+    lockStore.set(String(id), new Set(list.filter((x) => typeof x === "string")));
+  }
+  while (lockStore.size > LOCK_KEEP) lockStore.delete(lockStore.keys().next().value);
+}
+
+/** Address ↔ identity, both ways, for the rack currently on the bench.
+ *  Rebuilt lazily and thrown away whenever `wb.rack` is replaced, because
+ *  every address in it is only meaningful against that one rack. */
+let lockIndex = null;
+function lockIndexOf() {
+  if (lockIndex) return lockIndex;
+  const byAddr = new Map();
+  const byId = new Map();
+  for (const m of wb.rack ? wb.rack.modules : []) {
+    if (!m.uid) continue; // the amp
+    for (const a of [...m.structural_addrs, ...m.knobs.map((k) => k.addr)]) {
+      // Everything the module owns hangs off its key, so what is left after
+      // the key is exactly what does *not* move when the module does.
+      if (!a.startsWith(m.key)) continue;
+      const id = m.uid + a.slice(m.key.length);
+      byAddr.set(a, id);
+      byId.set(id, a);
+    }
+  }
+  lockIndex = { byAddr, byId };
+  return lockIndex;
+}
+
+/** Trace address → lock id. Addresses with no node under them (the amp's) are
+ *  their own id: nothing can move them, so nothing needs to track them. */
+function lockIdOf(addr) {
+  return lockIndexOf().byAddr.get(addr) || addr;
+}
+
+/** Lock id → the trace address it names *right now*, or null if that module is
+ *  no longer in the patch. */
+function lockAddrOf(id) {
+  const a = lockIndexOf().byId.get(id);
+  if (a) return a;
+  return /^\d/.test(id) ? null : id;
+}
+
+/** Is this trace address locked? The question every plate and knob asks. */
+function isLockedAddr(addr) {
+  return wb.locks.has(lockIdOf(addr));
+}
+
+/** Set or clear the lock on a trace address. */
+function setLock(addr, on) {
+  const id = lockIdOf(addr);
+  if (on) wb.locks.add(id);
+  else wb.locks.delete(id);
+  locksRemember();
+}
+
+/** The locked set as trace addresses against the current rack — what
+ *  `buildRack` draws from and what `refine_from` sends to the engine, which
+ *  knows only positions. */
+function lockedAddrs() {
+  const out = new Set();
+  for (const id of wb.locks) {
+    const a = lockAddrOf(id);
+    if (a) out.add(a);
+  }
+  return out;
+}
+
+/** Drop the locks whose module is gone, and report how many. The whole of
+ *  "carrying locks through an edit" now: everything else simply stays. */
+function pruneLocks() {
   let dropped = 0;
-  const next = new Set();
-  for (const addr of wb.locks) {
-    const hash = addr.indexOf("#");
-    const k = hash < 0 ? addr : addr.slice(0, hash);
-    const nk = remap(k);
-    if (nk === null) { dropped += 1; continue; }
-    next.add(hash < 0 ? nk : nk + addr.slice(hash));
+  for (const id of [...wb.locks]) {
+    if (lockAddrOf(id) === null) {
+      wb.locks.delete(id);
+      dropped += 1;
+    }
   }
-  wb.locks = next;
   return dropped;
 }
+
 function drainStruct() {
   if (structInFlight) return;
   if (structQueue.length) {
     const q = structQueue.shift();
-    queueStruct(q.msg, q.landed);
+    queueStruct(q.msg, q.landed, q.tag);
     return;
   }
   // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
@@ -5402,7 +7109,10 @@ function drainStruct() {
 //
 // `fn(tree, marks)` mutates the clone in place. Returning a **string** is a
 // refusal and that string is what the player is told — never a silent no-op.
-function applyTreeRewrite(fn) {
+// `tag` names the gesture for the implicit stream (WS-8 §3), because the wire
+// message is only ever "here is a tree" and the intent behind it — duplicate,
+// bypass, reconnect, unplug — is exactly what a later model would want.
+function applyTreeRewrite(fn, tag) {
   if (!wb.tree) { note("no patch on the bench"); return false; }
   // Deliberately NOT queued, unlike an op. An op is a description of an edit
   // and is re-aimed at whatever tree it lands on; a whole-tree replace *is* a
@@ -5418,56 +7128,19 @@ function applyTreeRewrite(fn) {
     const n = nodeAtIn(tree, k);
     if (n) marks.push(n);
   }
-  // Locks ride the rewrite the same way the holes do. An op has a known key
-  // remapping (`lockRemapFor`); a whole-tree replace does not — but this route
-  // *builds* the new tree, and a rewrite moves subtrees by reference, so the
-  // node object is a handle on "the same module" that a key is not. Note where
-  // each locked site hangs before the mutation, ask where those objects ended
-  // up after it, and a delete that splices one module out of a chain no longer
-  // silently takes every lock in the patch with it.
-  const anchors = [];  // {node, addrs:[{tail, site}]}
-  const fixed = [];    // addresses with no audio node under them — the amp's
-  const byOwner = new Map();
-  for (const addr of wb.locks) {
-    const p = lockParts(addr);
-    if (!byOwner.has(p.owner)) byOwner.set(p.owner, []);
-    byOwner.get(p.owner).push(p);
-  }
-  for (const [owner, parts] of byOwner) {
-    // "amp" is not a path into the term — the envelope wraps it — and
-    // `keyIndices` would happily read it as `node/0`. Anything that is not a
-    // tree key cannot move, so it is carried through verbatim.
-    if (owner !== "node" && !owner.startsWith("node/")) {
-      for (const p of parts) fixed.push(p.owner + p.tail + p.site);
-      continue;
-    }
-    // A key that does not resolve is already stale; it is dropped rather than
-    // carried, because carrying it would pin whatever moves in later.
-    const n = nodeAtIn(tree, owner);
-    if (n) anchors.push({ node: n, parts });
-  }
-
+  // Locks need nothing here any more. A rewrite moves subtrees by reference
+  // and each of those nodes carries its own `uid` in the JSON being moved, so
+  // the identity travels inside the thing that travelled — the tracking this
+  // function used to do (anchor every locked node, walk the mutated tree, ask
+  // where each object landed) was reconstructing exactly that, by hand,
+  // because the node had no name of its own.
   const refusal = fn(tree, marks);
   if (typeof refusal === "string") { note(refusal); return false; }
   placeholderPending = keysOfNodes(tree, marks);
 
-  const where = new Map();
-  const live = anchors.map((a) => a.node);
-  if (live.length) walkTreeKeys(tree, (n, key) => { if (live.includes(n)) where.set(n, key); });
-  const next = new Set(fixed);
-  for (const a of anchors) {
-    const k = where.get(a.node);
-    if (k === undefined) continue; // the rewrite removed that module
-    for (const p of a.parts) next.add(k + p.tail + p.site);
-  }
-  pendingRewriteLocks = next;
-
-  queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) });
+  queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) }, null, tag);
   return true;
 }
-/** Where the locks land after the rewrite in flight, or null when the restore
- *  came from ⌘Z — an undo puts back a tree these locks were never about. */
-let pendingRewriteLocks = null;
 
 // ---------- empty sockets ----------
 // An unplugged socket has to look empty. The grammar cannot express that: the
@@ -5682,7 +7355,7 @@ function duplicateModule(key) {
     dup[tag][f[0]] = node;
     if (!setNodeAtIn(tree, key, dup)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "duplicate", key, kind: rackKindAt(key) });
   if (!ok) return;
   noteOnLanding(`a second ${name} now sits after the first, with the same settings.`,
     { undo: doUndo, undoLabel: "take it out" });
@@ -5704,7 +7377,7 @@ function extractModule(key) {
     if (!marks.includes(node)) doomed = node;
     marks.push(hole);
     return null;
-  });
+  }, { op: "extract", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   noteOnLanding(
@@ -5740,7 +7413,7 @@ function bypassModule(key) {
     head = headFragment(node);
     if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "bypass", key, kind: rackKindAt(key) });
   if (!ok) return;
   const inNames = MOD_BY_KIND[rackKindAt(key)]?.inNames;
   const uid = head ? stageFragment(head, false, { rewrap: true, note: "bypassed" }) : null;
@@ -5817,7 +7490,7 @@ function deleteModule(key, x, y) {
     head = headFragment(n);
     if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "delete_rewrite", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = head ? stageFragment(head, false, { rewrap: true }) : null;
   noteOnLanding(`${name} deleted — it is held below.`,
@@ -5843,7 +7516,7 @@ function deleteKeeping(key, keep, name) {
     if (dropped && !marks.includes(dropped)) doomed = dropped;
     if (!setNodeAtIn(tree, key, survivor)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "delete_keeping", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   noteOnLanding(
@@ -6241,7 +7914,20 @@ function paintKnob(kg, knob) {
   const valText = kg.querySelector(".knob-value");
   const kind = kg.dataset.kind;
   const variant = kg.dataset.variant;
-  if (valText) valText.textContent = knobUnit(knob.addr, v, kind, variant);
+  if (valText) {
+    const next = knobUnit(knob.addr, v, kind, variant);
+    // Only on a *change*. A drag emits a move per pixel and the readout
+    // quantises to two significant figures, so most frames say the same
+    // thing — and a flash retriggered sixty times a second is a steady glow,
+    // which is exactly the always-on green this is meant to retire.
+    if (valText.textContent !== next) {
+      valText.textContent = next;
+      markKnobChanged(knob.addr);
+      valText.classList.add("flashing");
+      clearTimeout(valText._flash);
+      valText._flash = setTimeout(() => valText.classList.remove("flashing"), KNOB_FLASH_MS);
+    }
+  }
   kg.setAttribute("aria-valuenow", v.toFixed(3));
   kg.setAttribute("aria-valuetext", knobUnit(knob.addr, v, kind, variant));
 }
@@ -6256,6 +7942,9 @@ function attachKnobDrag(el, mod, knob) {
     const startY = ev.clientY;
     const startV = knob.value;
     const kg = el.parentNode;
+    // The arc's glow is no longer unconditional (§6): it means "this one is
+    // moving", so a drag has to say so. Hover says it too, in CSS.
+    kg.classList.add("dragging");
     const onMove = (mv) => {
       // Shift is a fine-adjust gear, as on every hardware-modelled plugin.
       const travel = mv.shiftKey ? 700 : 140;
@@ -6269,12 +7958,78 @@ function attachKnobDrag(el, mod, knob) {
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
       knobDragging = false;
+      kg.classList.remove("dragging");
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
     // A cancelled touch used to leave knobDragging latched true, which froze
     // every subsequent rack repaint.
+    el.addEventListener("pointercancel", onUp);
+  });
+}
+
+/** When a sweep last moved, so the click it leaves behind is not read as a
+ *  cycle of the chip it just finished dragging. */
+let enumSweptAt = 0;
+
+/** Drag an enum chip up/down to step through its options.
+ *
+ *  Only offered on the two sites that reach the voices without a recompile
+ *  (`LIVE_INDEX_SITES`), which is what makes a drag a musical gesture instead
+ *  of a burst of dropouts. One index per 26 px, so the whole eight-table stack
+ *  is about one plate's height of travel; `shift` quadruples it for picking a
+ *  single table out of a sweep.
+ *
+ *  A step that lands on the value already showing sends nothing: the pointer
+ *  produces a move event per pixel, and the engine does not need to be told
+ *  four hundred times that the table is still `saw`.
+ *
+ *  The click handler above stays: this suppresses the click only when the
+ *  drag actually moved, so a tap still cycles. */
+function attachEnumSweep(el, txt, knob) {
+  claimGesture(el);
+  el.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    el.setPointerCapture(ev.pointerId);
+    const n = knob.kind.t === "octave" ? 5 : knob.kind.options.length;
+    const startY = ev.clientY;
+    const startV = Math.round(knob.value);
+    let moved = false;
+    let last = startV;
+    const onMove = (mv) => {
+      const travel = mv.shiftKey ? 104 : 26;
+      const next = Math.min(n - 1, Math.max(0,
+        startV + Math.round((startY - mv.clientY) / travel)));
+      if (Math.abs(mv.clientY - startY) > 3) moved = true;
+      if (next === last) return;
+      // One undo step for the whole sweep, taken at the first real step so a
+      // drag that never leaves its starting value costs nothing.
+      if (last === startV) {
+        pushUndo();
+        knobDragging = true;
+      }
+      last = next;
+      knob.value = next;
+      txt.textContent = enumDisplay(knob);
+      sendEdit(knob.addr, next, true);
+    };
+    const onUp = () => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      // The browser fires `click` after `pointerup` on the same element, and
+      // the cycle handler would add a ninth table to an eight-table sweep. A
+      // timestamp rather than a one-shot capture listener, for the same reason
+      // `menuOpenedAt` is one: a pointerdown that never produces a click must
+      // not leave a suppressor behind to eat the *next* one.
+      if (moved) enumSweptAt = Date.now();
+      if (!knobDragging) return;
+      knobDragging = false;
+      renderRack();
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
     el.addEventListener("pointercancel", onUp);
   });
 }
@@ -6378,9 +8133,8 @@ $("rack-svg").addEventListener("keydown", (e) => {
       else armFromRack("insert", "node");
     } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
       e.preventDefault();
-      const addrs = moduleLockAddrs(mod);
       const on = isModuleLocked(mod);
-      for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
+      for (const a of moduleLockAddrs(mod)) setLock(a, !on);
       nbAnnounce(on ? `${mod.title} unlocked` : `${mod.title} locked`);
       renderRack();
       focusPlate($("rack-svg").querySelector(`g.mod-group[data-key="${cssKey(key)}"]`), false);
@@ -6420,7 +8174,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     sendEdit(knob.addr, knob.value, true);
   } else if (e.key.toLowerCase() === "l") {
     e.preventDefault();
-    wb.locks.has(knob.addr) ? wb.locks.delete(knob.addr) : wb.locks.add(knob.addr);
+    setLock(knob.addr, !isLockedAddr(knob.addr));
     renderRack();
     focusRackControl(i);
   }
@@ -6430,57 +8184,200 @@ function startEvolveFrom(id) {
   $("rack-evolve").disabled = true;
   $("wm-r").classList.add("thinking");
   note("⚡ evolving around the locked controls…");
-  send({ type: "refine_from", id, locks: [...wb.locks] });
+  // Identity is the panel's business; the engine's refinement kernel rejects
+  // proposals at *trace addresses*, so the set is projected back onto the rack
+  // that is on screen on the way out.
+  const locks = [...lockedAddrs()];
+  logImplicit("evolve_from", { locks: locks.length }, { id });
+  send({ type: "refine_from", id, locks });
 }
 
-$("rack-play").onclick = () => playBench();
-$("rack-commit").onclick = () => {
-  send({ type: "edit_commit", asImprovement: $("improve-check").checked });
+// ---------- commit deals a real duel (WS-8 §1) ----------
+// The hand edit is the richest preference signal in the app, and it was
+// collected as an unverified checkbox: a claim about a comparison the player
+// had usually never made. Worse, the checkbox had no *off* — `false` meant
+// "said nothing", so an edit someone heard and rejected left no trace at all,
+// and the log only ever saw edits that won. A preference log made only of
+// successes is a biased sample of exactly the kind the model cannot defend
+// against.
+//
+// So a commit that actually changed the patch plays both versions, takes the
+// pick, and records it in whichever direction it went. The express checkbox
+// stays for people who are sure — it is faster, and forcing a duel on someone
+// who already knows is how you teach them to stop committing — but its answers
+// are tagged `self_report` so the two streams can be scored against each other
+// instead of averaged. Which of them is better calibrated is a question this
+// build can now answer and previously could not even ask.
+let commitDuel = null; // {orig, edit, origSide, then}
+
+/** The bench is the bank's patch again. `wb.dirty` is the panel's own belief
+ *  about whether anything has changed and it can only ever be an upper bound —
+ *  it goes up on every edit and knows nothing about edits that cancel. The
+ *  engine's tree comparison is the fact; when it says "identical", this is how
+ *  the panel stops saying otherwise. */
+function clearBenchDirty() {
+  if (!wb.dirty) return;
+  wb.dirty = false;
+  if (wb.subjectId != null) {
+    // The worklet is holding a tree byte-identical to the stored patch, so it
+    // is playing that patch — "(edited)" was a caption on a difference that
+    // does not exist.
+    livePatchId = wb.subjectId;
+    setLiveLabel(nameOf(wb.subjectId));
+  }
+  renderRack(); // the subject line and COMMIT both read `dirty`
+}
+
+/** Commit the bench. Deals the duel first when there is something to compare
+ *  and the player has not already told us the answer. */
+function commitBench(opts = {}) {
+  if (wb.subjectId == null) return;
+  if ($("improve-check").checked) {
+    // The express path: asserted, not heard, and tagged as such.
+    return sendCommit("self_edited", opts);
+  }
+  if (!wb.dirty || !wb.vetOk) return sendCommit("none", opts);
+  // The engine answers whether the tree really differs (a knob turned and
+  // turned back is not an edit) and hands back the original's audio in the
+  // same round trip.
+  send({ type: "edit_duel", then: opts.evolving ? "evolve" : "" });
+}
+
+function sendCommit(outcome, opts = {}) {
+  if (opts.evolving) note("committing your edits, then evolving…");
+  logImplicit("commit", { outcome, dirty: wb.dirty });
+  send({ type: "edit_commit", outcome });
+}
+
+function openCommitDuel(m, then) {
+  if (!wb.buffer) return sendCommit("none", { evolving: then === "evolve" });
+  const orig = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
+  orig.copyToChannel(m.buffer, 0);
+  // Randomise which side holds the original. The pick is a preference
+  // judgement and position bias is real; the app already does this for the
+  // dealt duel, and the answer here goes into the same log.
+  commitDuel = { orig, edit: wb.buffer, origSide: Math.random() < 0.5 ? "a" : "b", then };
+  // Shown before drawn, deliberately: `scopeCtx` sizes the backing store from
+  // `clientWidth`, which is 0 while the overlay is `display:none`, and a
+  // waveform drawn into a 0-wide canvas is a blank card.
+  $("cduel").classList.remove("hidden");
+  for (const side of ["a", "b"]) {
+    const isOrig = side === commitDuel.origSide;
+    $(`cd-name-${side}`).textContent = isOrig ? "the original" : "your edit";
+    drawWave($(`cd-scope-${side}`), (isOrig ? orig : wb.buffer).getChannelData(0));
+  }
+  $(`cd-play-${commitDuel.origSide === "a" ? "a" : "b"}`).focus();
+  nbAnnounce("Which one is better? Play A and B, then pick one.");
+}
+
+function closeCommitDuel() {
+  commitDuel = null;
+  $("cduel").classList.add("hidden");
+}
+
+function cdPlay(side) {
+  if (!commitDuel) return;
+  const buf = side === commitDuel.origSide ? commitDuel.orig : commitDuel.edit;
+  playBuffer(buf, $(`cd-play-${side}`));
+}
+
+function cdPick(side) {
+  if (!commitDuel) return;
+  const editWon = side !== commitDuel.origSide;
+  const then = commitDuel.then;
+  closeCommitDuel();
+  stopAudition();
+  sendCommit(editWon ? "heard_edited" : "heard_original", { evolving: then === "evolve" });
+  note(editWon
+    ? "taught: you heard both and your edit won."
+    : "taught: you heard both and the original won — that is the more useful half.");
+}
+
+$("cd-play-a").onclick = () => cdPlay("a");
+$("cd-play-b").onclick = () => cdPlay("b");
+$("cd-pick-a").onclick = () => cdPick("a");
+$("cd-pick-b").onclick = () => cdPick("b");
+$("cd-skip").onclick = () => {
+  const then = commitDuel && commitDuel.then;
+  closeCommitDuel();
+  sendCommit("none", { evolving: then === "evolve" });
 };
+// The overlay owns the keyboard while it is up — the keys underneath it play
+// notes, and a stray `a` while a modal asks a question is a note, not an answer.
+window.addEventListener("keydown", (e) => {
+  if (!commitDuel) return;
+  const k = e.key;
+  if (k === "Escape") { e.preventDefault(); $("cd-skip").click(); }
+  else if (k === "1") { e.preventDefault(); cdPlay("a"); }
+  else if (k === "2") { e.preventDefault(); cdPlay("b"); }
+  else if (k === "ArrowLeft") { e.preventDefault(); cdPick("a"); }
+  else if (k === "ArrowRight") { e.preventDefault(); cdPick("b"); }
+  else e.stopPropagation();
+}, true);
+
+$("rack-play").onclick = () => playBench();
+$("rack-commit").onclick = () => commitBench();
 $("rack-evolve").onclick = () => {
   if (wb.subjectId == null) return;
   if (wb.dirty) {
+    // The edit is about to become the seed of a whole generation. If there was
+    // ever a moment to ask which of the two it should breed from, this is it —
+    // so the same duel runs, and the evolve waits behind the answer.
     pendingEvolve = true;
-    note("committing your edits, then evolving…");
-    send({ type: "edit_commit", asImprovement: $("improve-check").checked });
+    commitBench({ evolving: true });
   } else {
     startEvolveFrom(wb.subjectId);
   }
 };
 $("lock-knobs").onclick = () => {
   if (!wb.rack) return;
-  for (const m of wb.rack.modules) for (const k of m.knobs) wb.locks.add(k.addr);
+  for (const m of wb.rack.modules) for (const k of m.knobs) setLock(k.addr, true);
   renderRack();
 };
 $("lock-structure").onclick = () => {
   if (!wb.rack) return;
-  for (const m of wb.rack.modules) for (const a of m.structural_addrs) wb.locks.add(a);
+  for (const m of wb.rack.modules) for (const a of m.structural_addrs) setLock(a, true);
   renderRack();
 };
 $("lock-clear").onclick = () => {
   wb.locks.clear();
+  locksRemember(); // clearing is a decision too, and it has to survive a reload
   renderRack();
 };
-// The arrangement switch. Deliberately a plain toggle rather than a menu: two
+// The arrangement switch. Deliberately a plain cycle rather than a menu: three
 // modes is not a menu's worth of choice, and the label says which one you are
 // in rather than which one you would get, because the rack in front of you is
-// the only preview either mode needs.
+// the only preview any of them needs.
+//
+// Switching is a *command* (WS-4 §3): chain and compact never overwrite the
+// hand positions, they merely stop drawing them, so freeform is exactly where
+// you left it when you come back — including after a reload.
+const LAYOUT_TIP = {
+  chain: "Chain: the signal path on one baseline. Click to pack it tight.",
+  compact: "Compact: layers packed tight. Click to place modules by hand.",
+  freeform: "Freeform: drag plates where you like — they snap to the grid, " +
+    "hold shift to place freely. Click for the straight signal chain.",
+};
 function syncLayoutBtn() {
   const b = $("rack-layout");
   if (!b) return;
-  b.textContent = layoutMode === "compact" ? "compact" : "chain";
-  b.setAttribute("aria-pressed", String(layoutMode === "compact"));
-  b.closest(".tt").title =
-    layoutMode === "compact"
-      ? "Compact: layers packed tight. Click for the straight signal chain."
-      : "Chain: the signal path on one baseline. Click to pack it tight.";
+  b.textContent = layoutMode;
+  b.setAttribute("aria-pressed", String(layoutMode !== "chain"));
+  b.closest(".tt").title = LAYOUT_TIP[layoutMode];
+  // "apply grid" only exists in the mode it acts on, and the frame advertises
+  // that a plate can be picked up — a draggable object with a default cursor
+  // is a draggable object nobody discovers.
+  const g = $("rack-grid");
+  if (g) g.closest(".tt").classList.toggle("hidden", layoutMode !== "freeform");
+  $("rack-scroll").classList.toggle("freeform", layoutMode === "freeform");
 }
 $("rack-layout").onclick = () => {
-  layoutMode = layoutMode === "chain" ? "compact" : "chain";
+  layoutMode = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
   try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
   syncLayoutBtn();
   renderRack();
 };
+$("rack-grid").onclick = () => applyGrid();
 syncLayoutBtn();
 
 
@@ -8013,15 +9910,33 @@ function renderSpecDock() {
   if (!dock) return;
   const held = armed ? MOD_BY_KIND[armed.kind] : null;
   if (held) {
+    // While something is in your hand the strip stops describing and starts
+    // answering the two questions a placement actually raises: what does the
+    // model expect of it (§5), and what does it sound like (§6). Both are
+    // about the socket the pointer is on, so both move with it.
+    const target = previewTarget();
+    const p = target ? socketPrice(held.kind, target.mode, target.key) : socketPrice(held.kind, "insert", null);
     dock.className = "spec-dock armed";
-    dock.innerHTML =
+    const html =
       `<div class="sd-line">${specGlyph(held, " small")}` +
       `<b>${esc(held.name)}</b><span class="sd-verb">in hand</span>` +
-      `<span class="sd-blurb">${esc(held.blurb)}</span>` +
+      `<span class="sd-price mono" title="${esc(priceWhatNotWhere(p))}">${priceHTML(p, true)}</span>` +
+      previewStripHTML(target) +
       `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit` +
       ` · click one, or <kbd>esc</kbd> to put it down</span></div>`;
+    // Rewritten only when it actually changed. This strip re-renders on every
+    // socket enter and leave, and an unconditional `innerHTML =` there would
+    // destroy and rebuild the ▶ *while the pointer is travelling to it* — the
+    // click lands on an element that no longer exists. It also throws away the
+    // painted waveform for no reason.
+    if (dock.dataset.armedHtml !== html) {
+      dock.innerHTML = html;
+      dock.dataset.armedHtml = html;
+    }
+    paintPreviewScope(target);
     return;
   }
+  delete dock.dataset.armedHtml;
   if (pendingTarget) {
     dock.className = "spec-dock armed";
     dock.innerHTML =
@@ -8049,6 +9964,365 @@ function renderSpecDock() {
     `<span class="sp-heard"><b>heard as</b> ${esc(m.heard)}</span></div></div>` +
     `<div class="sd-model mono">${p.belief}</div>`;
 }
+
+// ===========================================================================
+// PRICED SOCKETS — what the model thinks this placement is worth (WS-2 §5)
+// ===========================================================================
+// The bank has always shown θ for a module: a bar with a whisker, in
+// standardized coefficient units, which answers "does the model like filters"
+// and not the question anyone actually has, which is "what happens to my score
+// if I put one here". Those are one divide apart. φ_struct is a **count**
+// vector, so adding one filter is a raw unit step in `n_filter`; the
+// standardizer turns that into `1/scale` of a z-unit; θ turns that into
+// utility. No compile, no render, no round trip — the whole price is
+// `θ / scale`, and the only reason it was not on screen already is that the
+// scale lived in the engine (see `WasmEngine::phi_scale`).
+//
+// Three honesty rules, and the first is the one the plan singled out:
+//
+//  1. **The structural half of φ is order-invariant.** `n_filter` counts
+//     filters; it does not care which cable they sit on. So this number prices
+//     *what* you are adding and not *where* — the same figure at every lit
+//     socket — and the copy says so rather than letting a per-socket
+//     annotation imply a per-socket opinion the model does not have.
+//  2. **It is the module-count coordinates only.** The audio half of φ
+//     (brightness, rolloff, the tail) needs a render to know, and the two
+//     modulation ratios move in ways one insertion does not determine. Those
+//     are precisely what the audition next door is for: §5 says what the model
+//     expects, §6 lets you check.
+//  3. **A placement that evicts something is not priced.** Replacing a chain
+//     takes modules *out* of the count as well as putting one in, and half a
+//     subtraction is worse than no number at all — so those sockets say what is
+//     missing instead of quoting a figure that only counts the arrival.
+//
+// The units are utility, the same units as the contributions in the model's-
+// guess line above the rack — deliberately, so "drive +0.09" up there and
+// "+0.04" down here are the same kind of quantity and can be added.
+
+/** The θ row a placement is priced from — under the **bench's** lens, so the
+ *  price and the number it promises to move come from the same decomposition.
+ *  Falls back to the lens that claims most of the bank before the first bench
+ *  featurize, which is the same one the chips read. */
+function priceTheta(kind) {
+  const phi = MOD_BY_KIND[kind]?.phi;
+  if (!phi || !views || !views.styles || views.styles.length === 0) return null;
+  const scale = views.scale ? views.scale[phi] : null;
+  if (!scale || !(scale > 0)) return null;
+  const k =
+    belief.styleK != null && views.styles[belief.styleK] ? belief.styleK : (activeStyles()[0] || {}).k;
+  const s = k != null ? views.styles[k] : null;
+  const row = s && s.theta ? s.theta.find((t) => t.name === phi) : null;
+  if (!row) return null;
+  return { phi, scale, style: k, mean: row.mean, std: row.std, share: s.share };
+}
+
+/** What placing `kind` at `key` is worth, and — when it is not a number — why.
+ *  `mode` is the placement mode the click would use, because a replacement and
+ *  an insertion are not the same edit to φ. */
+function socketPrice(kind, mode, key) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return null;
+  const { byPhi, total } = nbSupport();
+  const sup = m.phi ? byPhi[m.phi] || 0 : 0;
+  const t = priceTheta(kind);
+  // The same five silences the spec card draws (`beliefState`), plus one this
+  // surface has and that one does not: a socket where the arithmetic itself
+  // does not hold.
+  const evicts = key != null && placementEvicts(kind, mode, key);
+  const state = !m.phi
+    ? "unmeasured"
+    : !t
+      ? "unfitted"
+      : evicts
+        ? "evicts"
+        : sup < NB_SUPPORT_MIN
+          ? "thin"
+          : Math.abs(t.mean) >= t.std
+            ? "resolved"
+            : "flat";
+  return {
+    state,
+    kind,
+    phi: m.phi || null,
+    sup,
+    total,
+    du: t ? t.mean / t.scale : 0,
+    sd: t ? t.std / t.scale : 0,
+    lens: t && views.styles[t.style] ? styleName(views.styles[t.style], t.style) : "",
+    evicted: evicts ? evicts : null,
+  };
+}
+
+/** Does this placement take modules out as well as put one in? Returns a short
+ *  phrase naming the loss, or `false`. */
+function placementEvicts(kind, mode, key) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return false;
+  if (m.sort === "mod") {
+    // A shaper takes the slot's term as its own input; only a leaf evicts.
+    const old = modAtKey(key);
+    return old && m.modSort !== "op" && m.modSort !== "pair" ? "the modulator already in that slot" : false;
+  }
+  if (mode !== "replace" && m.sort !== "source") return false;
+  const old = nodeAtKey(key);
+  if (!old || isPlaceholderKey(key)) return false;
+  const n = subtreeSize(old);
+  return `the ${n === 1 ? fragLabel(old, false) : `${n}-module chain`} in that socket`;
+}
+
+const PRICE_SIGN = (x) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(2)}`;
+
+/** The one sentence that keeps the figure from claiming more than it is. */
+function priceWhatNotWhere(p) {
+  return (
+    `The model's structural features count modules; they do not record which cable a module sits on. ` +
+    `So this prices WHAT you are adding, not WHERE — it is the same number at every lit socket. ` +
+    `It covers the module count only: how it will actually sound is the ▶ beside it.` +
+    (p && p.lens ? `\n\nUnder the lens "${p.lens}", the same one the model's-guess line above the rack uses.` : "")
+  );
+}
+
+/** The price as a readout. `long` is the strip under the rack, which has a
+ *  line to spend and says the whole sentence; short is the chip pinned to the
+ *  plate, which sits between two modules and carries the rest as a tooltip.
+ *
+ *  The figure itself is printed in every state where one exists, including
+ *  "no lean" — a number the model is not confident about is still the number,
+ *  and hiding it would make "no lean" indistinguishable from "no answer". */
+function priceHTML(p, long) {
+  if (!p) return "";
+  const fig = `${PRICE_SIGN(p.du)} ± ${p.sd.toFixed(2)}`;
+  switch (p.state) {
+    case "unmeasured":
+      return `<span class="pr pr-mute">${long ? "not a coordinate the model measures" : "unmeasured"}</span>`;
+    case "unfitted":
+      return `<span class="pr pr-mute">${long ? "no price yet — the model needs a few picks" : "no price yet"}</span>`;
+    case "evicts":
+      return `<span class="pr pr-mute">${
+        long
+          ? `replaces ${esc(p.evicted)} — not priced, because that takes modules out too`
+          : "not priced — this takes modules out too"
+      }</span>`;
+    case "thin":
+      return `<span class="pr pr-mute">${
+        long ? `in ${p.sup} of ${p.total} patches — too few to price` : "too few to price"
+      }</span>`;
+    case "flat":
+      return long
+        ? `<span class="pr pr-flat">the model has no lean here</span>` +
+            ` <span class="pr-dim">(${fig}, straddling zero)</span>` +
+            ` <span class="pr-note">what, not where</span>`
+        : `<span class="pr pr-flat">no lean</span> <span class="pr-dim">${fig}</span>`;
+    default:
+      return long
+        ? `<span class="pr ${p.du >= 0 ? "up" : "down"}">${fig}</span>` +
+            ` <span class="pr-dim">predicted</span> <span class="pr-note">what, not where</span>`
+        : `<span class="pr ${p.du >= 0 ? "up" : "down"}">${fig}</span>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PRE-PLACEMENT AUDITION (WS-2 §6)
+// ---------------------------------------------------------------------------
+// Nobody in the category lets you hear a module before you place it, and for a
+// preference-learning instrument that is the natural gesture: §5 says what the
+// model expects of this placement, and this says what it actually does — the
+// two halves of the same question, side by side on the same strip.
+//
+// The render happens in `WasmEngine::preview_op`, on a clone: the bench never
+// holds the proposal, so a hover costs nothing and undoes nothing. Two guards
+// keep it from being an expense:
+//
+//  - **It never fires on a hover.** Explicit ▶, or 600 ms of dwell on one
+//    socket. Sweeping a rack full of lit sockets renders exactly nothing.
+//  - **One in flight at a time, and stale answers are dropped.** The worker is
+//    serial, so a preview already begun cannot be recalled; "cancel" means the
+//    reply is discarded on arrival and the request that superseded it goes out
+//    then. Queueing them instead would put a second half-second of featurizing
+//    between the player and their next knob.
+//
+// A dwell renders and paints; it does not play. The waveform arriving on its
+// own is information; audio arriving on its own is a jump scare, and the one
+// place this instrument makes sound without being asked is nowhere.
+const PREVIEW_DWELL_MS = 600;
+const PREVIEW_SECONDS = 2.0;   // the phrase's first held note, whole
+
+const preview = {
+  token: 0,          // monotonic; a reply with an older one is stale
+  inflight: false,
+  pending: null,     // the request that arrived while one was out
+  want: null,        // {kind, key, mode} the strip is currently about
+  have: null,        // {kind, key, mode, buffer} the last good render
+  failed: null,      // {kind, key, mode} — rendered and came back empty
+  playOnArrive: false,
+  dwellTimer: null,
+};
+
+/** The exact `StructOp` a placement will send.
+ *
+ *  Extracted so that `placeModule` and its audition read the *same* function:
+ *  a preview built from a re-derived splice would be a second implementation
+ *  of insertion semantics, and the day the two disagreed the app would be
+ *  playing one edit and committing another. */
+function placementOp(kind, mode, key) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return null;
+  if (m.sort === "mod") return { op: "set_mod_tree", key, m: wrapMod(m, modAtKey(key)) };
+  if (mode === "replace" || m.sort === "source") return { op: "replace_tree", key, node: m.frag() };
+  return { op: "insert_tree", key, node: m.frag() };
+}
+
+/** The socket an audition would splice into: the one under the pointer, else
+ *  the one the arming pre-selected, else the first lit. Never null while
+ *  something is in hand and anything is lit. */
+function previewTarget() {
+  if (!armed || !armedSockets.length) return null;
+  const at = (k) =>
+    k && armedSockets.find((j) => (j.getAttribute("data-childkey") || j.getAttribute("data-modkey")) === k);
+  const jack =
+    at(pickHoverKey) ||
+    // Leaving the 6px nut is not leaving the decision. A render already paid
+    // for stays on the strip until the player points at a different socket or
+    // puts the module down — otherwise the waveform vanishes at the exact
+    // moment the pointer travels to the ▶ that plays it.
+    at(preview.have && preview.have.kind === armed.kind ? preview.have.key : null) ||
+    (armedIdx >= 0 ? armedSockets[armedIdx] : null) ||
+    armedSockets[0];
+  const key = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
+  return { kind: armed.kind, key, mode: armed.sort === "source" ? "replace" : "insert" };
+}
+
+const sameTarget = (a, b) => !!a && !!b && a.kind === b.kind && a.key === b.key && a.mode === b.mode;
+
+/** Throw away everything rendered against the old bench. Called from every
+ *  route that moves the tree — see `beliefStale`. */
+function previewInvalidate() {
+  clearTimeout(preview.dwellTimer);
+  preview.dwellTimer = null;
+  preview.token++;
+  preview.inflight = false;
+  preview.pending = null;
+  preview.have = null;
+  preview.failed = null;
+  preview.playOnArrive = false;
+  if (armed) renderSpecDock();
+}
+
+/** Ask for one. `play` means the player pressed ▶ and is waiting for sound. */
+function requestPreview(target, play) {
+  if (!target || wb.subjectId == null) return;
+  if (sameTarget(preview.have, target)) {
+    if (play) previewPlay();
+    return;
+  }
+  if (sameTarget(preview.failed, target)) return; // it already said no
+  preview.want = target;
+  preview.playOnArrive = !!play;
+  if (preview.inflight) {
+    // Supersede rather than queue: the answer in flight is about a socket the
+    // player has already left.
+    preview.pending = target;
+    renderSpecDock();
+    return;
+  }
+  preview.inflight = true;
+  preview.token += 1;
+  send({
+    type: "preview_render",
+    token: preview.token,
+    key: target.key,
+    kind: target.kind,
+    mode: target.mode,
+    op: placementOp(target.kind, target.mode, target.key),
+    seconds: PREVIEW_SECONDS,
+  });
+  renderSpecDock();
+}
+
+function onPreviewArrived(m) {
+  if (m.token !== preview.token) return;   // stale: the cancellation
+  preview.inflight = false;
+  const target = { kind: m.kind, key: m.key, mode: preview.want ? preview.want.mode : "insert" };
+  if (m.buffer && m.buffer.length > 0) {
+    const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
+    buf.copyToChannel(m.buffer, 0);
+    preview.have = { ...target, buffer: buf };
+    preview.failed = null;
+  } else {
+    // The grammar refused it, or it failed vetting. Say so — an empty scope
+    // and a live ▶ would audition as "this placement makes silence".
+    preview.have = null;
+    preview.failed = target;
+  }
+  const next = preview.pending;
+  preview.pending = null;
+  const play = preview.playOnArrive;
+  preview.playOnArrive = false;
+  renderSpecDock();
+  if (next) requestPreview(next, play);
+  else if (play && preview.have) previewPlay();
+}
+
+function previewPlay() {
+  if (!preview.have) return;
+  playBuffer(preview.have.buffer, $("pv-play"));
+}
+
+/** Start the dwell clock on the socket under the pointer. Restarted, not
+ *  extended, on every move to a new socket. */
+function previewDwell() {
+  clearTimeout(preview.dwellTimer);
+  const target = previewTarget();
+  if (!target || wb.subjectId == null) return;
+  if (sameTarget(preview.have, target) || sameTarget(preview.failed, target)) return;
+  preview.dwellTimer = setTimeout(() => requestPreview(target, false), PREVIEW_DWELL_MS);
+}
+
+/** The ▶ + waveform that rides the armed strip. Its state is the state of the
+ *  render, said in words, because "a button that does nothing yet" and "a
+ *  button that will not work here" look identical otherwise. */
+function previewStripHTML(target) {
+  const ready = sameTarget(preview.have, target);
+  const dead = sameTarget(preview.failed, target);
+  const busy = preview.inflight || !!preview.pending;
+  const label = dead
+    ? "can't audition that here"
+    : ready
+      ? "hear it here"
+      : busy
+        ? "rendering…"
+        : "hold a socket, or ▶";
+  return (
+    `<span class="pv${busy ? " busy" : ""}${dead ? " dead" : ""}">` +
+    `<button class="pv-play" id="pv-play" type="button" ${dead ? "disabled" : ""} ` +
+    `aria-label="Audition this patch with the module spliced in" ` +
+    `title="A 2-second render of THIS patch with the module spliced at the lit socket. Nothing is placed — the bench is untouched.">▶</button>` +
+    `<canvas class="pv-scope" id="pv-scope" width="312" height="76" aria-hidden="true"></canvas>` +
+    `<span class="pv-label mono">${esc(label)}</span></span>`
+  );
+}
+
+/** Paint whatever the strip is currently holding. Called after the dock is in
+ *  the DOM, because the canvas has to exist to be drawn on. */
+function paintPreviewScope(target) {
+  const c = $("pv-scope");
+  if (!c) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth || 156;
+  const h = c.clientHeight || 38;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  if (sameTarget(preview.have, target)) drawWave(c, preview.have.buffer.getChannelData(0));
+  else scopeCtx(c).clearRect(0, 0, c.width, c.height);
+}
+
+// Delegated, and wired exactly once. The strip is rebuilt whenever the price
+// or the render state changes, so a handler bound to the button would be bound
+// to a button that has since been replaced — and the replacement happens on
+// pointer-leave of the socket, which is the same movement that carries the
+// pointer to the ▶.
+$("spec-dock")?.addEventListener("click", (ev) => {
+  if (ev.target.closest(".pv-play")) requestPreview(previewTarget(), true);
+});
 
 // ---- arm and place ----
 function pickModule(kind) {
@@ -8087,6 +10361,11 @@ function pickModule(kind) {
   arm(kind);
 }
 
+/** The price this arming was quoted at, until it is either taken (logged by
+ *  `placeModule`) or put down (logged by `disarm`). Both halves are needed:
+ *  a ledger of accepted placements alone is a ledger with no negatives in it. */
+let armPriced = null;
+
 function arm(kind) {
   disarm();
   const m = MOD_BY_KIND[kind];
@@ -8104,6 +10383,7 @@ function arm(kind) {
     return;
   }
   $("rack-scroll").classList.add("placing");
+  armPriced = socketPrice(kind, m.sort === "source" ? "replace" : "insert", null);
   pickFeedback();
   renderSpecDock();
   nbSetHolding();
@@ -8163,17 +10443,26 @@ function lightSockets() {
 function onSocketHover(ev) {
   if (!armed) return;
   const j = ev.currentTarget;
-  $("nb-status").innerHTML =
-    `<b>${esc(socketLabel(j))}</b> <span class="sp-dim">· click to place · esc to put it down</span>`;
   // The socket key doubles as a plate key: an audio socket names its
   // occupant, a mod socket names its owner. Both are the plate the promise
   // is about, which is the plate the chip should be pinned to.
   pickHoverKey = j.getAttribute("data-childkey") || j.getAttribute("data-modkey") || null;
+  const price = socketPrice(armed.kind, armed.sort === "source" ? "replace" : "insert", pickHoverKey);
+  $("nb-status").innerHTML =
+    `<b>${esc(socketLabel(j))}</b> <span class="sp-dim">· click to place · esc to put it down</span>` +
+    `<span class="nb-price">${priceHTML(price, false)}</span>`;
   pickFeedback();
+  // The price and the audition both belong to the socket under the pointer,
+  // so both follow it — and the dwell clock restarts here rather than
+  // accumulating across sockets, which is what stops a sweep across a lit rack
+  // from queueing a render per socket.
+  renderSpecDock();
+  previewDwell();
 }
 function onSocketLeave() {
   pickHoverKey = null;
-  if (armed) { armStatus(); pickFeedback(); }
+  clearTimeout(preview.dwellTimer);
+  if (armed) { armStatus(); pickFeedback(); renderSpecDock(); }
 }
 
 function socketLabel(jack) {
@@ -8207,12 +10496,20 @@ function socketLabel(jack) {
 
 function disarm() {
   if (!armed) return;
+  // Put down without placing: the negative half of the price ledger.
+  if (armPriced) { logPriceOutcome(armPriced, false, null); armPriced = null; }
   const chip = $("nb-groups").querySelector(".nb-item.armed");
   if (chip) chip.classList.remove("armed");
   for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot");
   armedSockets = [];
   armedIdx = -1;
   armed = null;
+  clearTimeout(preview.dwellTimer);
+  preview.dwellTimer = null;
+  preview.have = null;
+  preview.failed = null;
+  preview.pending = null;
+  preview.playOnArrive = false;
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
@@ -8345,8 +10642,14 @@ function armFromRack(mode, key, opts) {
   // this node's slot puts the new module between it and its parent, so from
   // the signal's point of view the new module comes after it — the same edit
   // the socket labels describe as "before" the node downstream of it.
-  const here = nodeAtKey(o.aim || key);
-  const name = here ? fragLabel(here, false) : "the output";
+  // Named the way the pick chip names it — the title silkscreened on the
+  // plate. `fragLabel` answers in the term's vocabulary (`eq·3` is a kind plus
+  // a subtree size), and §13 rules trace ids out of copy the player reads: the
+  // `·3` is notation nobody has been shown and it reads like an instance id.
+  // Where a whole chain is what goes away, `chainTitle` says so in words.
+  const aimKey = o.aim || key;
+  const here = nodeAtKey(aimKey);
+  const name = here ? (mode === "replace" ? chainTitle(aimKey) : plateTitle(aimKey)) : "the output";
   const what = o.verb || (mode === "replace" ? "replace" : "insert after");
   pendingTarget.prompt = `${what} ${name} — pick a module`;
   $("nb-status").innerHTML =
@@ -8368,6 +10671,14 @@ function placeModule(kind, mode, key) {
   // *and* leave a second copy of it sitting in HELD.
   let staged = null;
   const undo = { undo: () => { if (staged != null) unstage(staged); doUndo(); }, undoLabel: "take it out" };
+  // The price the player was shown, and the fact that they took it. Paired
+  // with the rejections logged on `disarm`, this is calibration data at *edit*
+  // granularity — far denser than the duel stream, and the rows where a
+  // confident negative θ was placed anyway are exactly the ones that diagnose
+  // a misspecified model. Logged before the send, because the send is what
+  // makes the tree stop being the one the price was quoted against.
+  logPriceOutcome(socketPrice(kind, mode, key), true, key);
+  armPriced = null;   // the disarm below is a placement, not a refusal
   if (m.sort === "mod") {
     const owner = rackKindAt(key);
     const old = modAtKey(key);
@@ -8380,7 +10691,7 @@ function placeModule(kind, mode, key) {
     // Every one of these sentences is a confirmation, so it is handed to the
     // send and said on the reply — never here, where the engine has not yet
     // agreed that any of it is true. See `landedNote`.
-    sendStruct({ op: "set_mod_tree", key, m: wrapMod(m, old) }, {
+    sendStruct(placementOp(kind, mode, key), {
       text: wraps
         ? `${m.name} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
         : old
@@ -8392,7 +10703,7 @@ function placeModule(kind, mode, key) {
   } else if (mode === "replace" || m.sort === "source") {
     const old = nodeAtKey(key);
     const chain = old && subtreeSize(old) > 1;
-    sendStruct({ op: "replace_tree", key, node: m.frag() }, {
+    sendStruct(placementOp(kind, mode, key), {
       text: chain
         ? `${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
         : `${m.name} took the socket.`,
@@ -8400,11 +10711,37 @@ function placeModule(kind, mode, key) {
     });
     if (chain) staged = stageFragment(old, false);
   } else {
-    sendStruct({ op: "insert_tree", key, node: m.frag() },
+    sendStruct(placementOp(kind, mode, key),
       { text: `${m.name} patched into the wire.`, opts: undo });
   }
   disarm();
   $("nb-status").textContent = "";
+}
+
+/** One row of the price ledger: what the model predicted, and whether the
+ *  player did it anyway. `accepted` is the whole point — a prediction with no
+ *  outcome beside it can never be scored.
+ *
+ *  It goes into the implicit stream and, like everything else there, stays out
+ *  of the likelihood: a placement is confounded with curiosity, with the
+ *  search query that led to it, and with the socket being the only lit one.
+ *  It is logged because it cannot be logged retroactively. */
+function logPriceOutcome(p, accepted, key) {
+  if (!p) return;
+  logImplicit(
+    "price",
+    {
+      kind: p.kind,
+      phi: p.phi,
+      state: p.state,
+      du: Number(p.du.toFixed(4)),
+      sd: Number(p.sd.toFixed(4)),
+      lens: p.lens || null,
+      key: key || null,
+      accepted: !!accepted,
+    },
+    { value: p.du },
+  );
 }
 
 /** A shaper's fragment, with whatever is already in the slot as its input.
@@ -8612,7 +10949,7 @@ function connectMove(srcKey, targetKey) {
     marks.push(hole);
     if (victim && !marks.includes(victim)) doomed = victim;
     return null;
-  });
+  }, { op: "reconnect", key: srcKey, kind: rackKindAt(srcKey) });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   const undo = { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" };
@@ -8646,7 +10983,7 @@ function connectBranch(srcKey, targetKey) {
     mix.Mix[f[1]] = JSON.parse(JSON.stringify(src));
     if (!setNodeAtIn(tree, targetKey, mix)) return "that socket has moved — try the cable again";
     return null;
-  });
+  }, { op: "branch_here", key: srcKey, kind: rackKindAt(srcKey) });
   if (!ok) return;
   noteOnLanding(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
 }
@@ -8670,7 +11007,7 @@ function connectMoveMod(srcKey, targetKey) {
     owner[oTag].modulation = "None";
     target[tTag].modulation = m;
     return null;
-  });
+  }, { op: "reconnect_mod", key: from });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, true) : null;
   noteOnLanding(
@@ -8690,9 +11027,13 @@ const linkSearchLog = [];
 function openLinkSearch(w) {
   const isMod = w.kind === "mod";
   const key = isMod ? w.srcKey.replace(/\/m$/, "") : w.srcKey;
+  // The plate's own title for an audio source, the same as the pick chip and
+  // the ⋯ handoff. A modulator has no plate of its own — it is drawn in the
+  // slot on its host — so it keeps `fragLabel`, which for a modulator is just
+  // its name and carries no subtree count to leak.
   const srcName = isMod
     ? fragLabel(modAtKey(key) || {}, true)
-    : kindName(rackKindAt(w.srcKey)) || "that";
+    : plateTitle(w.srcKey) || "that";
   pendingTarget = {
     mode: "insert",
     key,
@@ -8717,14 +11058,21 @@ function logLinkQuery(chosen) {
   const l = pendingTarget && pendingTarget.link;
   if (!l || l.logged) return; // the pick and the cancel both land here
   l.logged = true;
-  linkSearchLog.push({
+  const row = {
     q: ($("nb-q").value || "").trim(),
     kind: l.kind,
     src: rackKindAt(l.srcKey) || l.srcKey,
     chosen: chosen || null,
     ms: Date.now() - l.at,
-  });
+  };
+  linkSearchLog.push(row);
   window.__ricLinkSearch = linkSearchLog;
+  // …and into the store that survives the tab. This array was a debugging
+  // window, which is to say the only explicit statement of intent in the whole
+  // app was being thrown away on every reload. A typed query aimed at a socket
+  // is the one place a player says what they *want* rather than choosing from
+  // what is offered.
+  logImplicit("link_search", row, { value: row.ms });
 }
 
 // ---- click source, then click target ----
@@ -8760,6 +11108,11 @@ function connectSync() {
   // when neither gesture is running.
   if (!connectPick) {
     if (!wire) svg.classList.remove("wiring");
+    // A cable held in the hand rather than put down by a click: the `wire`
+    // gesture's lit sockets were drawn once at pointerdown and died with the
+    // DOM they were drawn on, so a rebuild mid-drag left the player dragging
+    // a cable across a rack with nothing lit.
+    else lightWireTargets();
     return;
   }
   svg.classList.add("wiring");
@@ -8934,6 +11287,17 @@ function pickFeedback() {
   const mod = wb.rack.modules.find((m) => m.key === aimKey);
   const title = isPlaceholderKey(aimKey) ? "the empty socket" : mod ? mod.title : "the output";
   chip.querySelector(".pick-chip-text").textContent = `${verb} ${title}`;
+  // …and what the model expects of it, on the plate where the decision is
+  // being made rather than only in a rail across the room (WS-2 §5). The chip
+  // has no room for the caveat, so it carries it as the tooltip — and the
+  // strip below the rack carries it in words.
+  const priceEl = chip.querySelector(".pick-chip-price");
+  if (priceEl) {
+    const p = armed && aimKey ? socketPrice(armed.kind, armed.sort === "source" ? "replace" : "insert", aimKey) : null;
+    priceEl.innerHTML = p ? priceHTML(p, false) : "";
+    priceEl.classList.toggle("hidden", !p);
+    chip.title = p ? priceWhatNotWhere(p) : "";
+  }
   chip.classList.remove("hidden");
   positionPickChip();
 }
@@ -9061,7 +11425,14 @@ function positionPickChip() {
   if (!b) return chip.classList.add("hidden");
   const fr = $("rack-frame").getBoundingClientRect();
   const p = rackToClient(b.x + b.w / 2, b.y);
-  chip.style.left = `${Math.round(p.x - fr.left)}px`;
+  // Clamped into the frame. The chip is centre-anchored on the plate, so a
+  // plate near an edge used to push half the sentence out of the frame and the
+  // frame clipped it — "…RT AFTER SUPERSAW". It got worse when the chip
+  // started carrying the price as well, which is what made it worth fixing:
+  // sliding sideways breaks the exact centring and keeps every word.
+  const half = chip.offsetWidth / 2 + 6;
+  const x = Math.max(half, Math.min(fr.width - half, p.x - fr.left));
+  chip.style.left = `${Math.round(x)}px`;
   chip.style.top = `${Math.round(p.y - fr.top - 8)}px`;
 }
 
@@ -9158,13 +11529,21 @@ function nbDragFrom(chip, ev) {
 // ---------- wire drawing ----------
 let wire = null; // {mode, item?, childKey?, key?, kind}
 
-function startWireDrag(spec, ev) {
-  if (wire) return; // one cable at a time — no re-entrant drags
-  wire = spec;
+/** Light every socket the cable in hand can legally land in.
+ *
+ *  Split out of `startWireDrag` because the lighting lives on DOM that a
+ *  rebuild throws away, and a rebuild can land in the middle of a drag: a
+ *  bench reply from an earlier edit, or the level-of-detail switch tripping
+ *  when the edge-pan carries the camera past 0.55×. The lit set is the only
+ *  thing on screen saying where the cable may go, so it has to be rebuilt with
+ *  the rack rather than survive it. */
+function lightWireTargets() {
+  const spec = wire;
+  if (!spec) return;
   const rackSvg = $("rack-svg");
   rackSvg.classList.add("wiring");
-  // Light up legal targets. A palette drag lights the same sockets a tray drag
-  // does — the two gestures differ only in where the module came from.
+  // A palette drag lights the same sockets a tray drag does — the two gestures
+  // differ only in where the module came from.
   if (spec.mode === "tray-audio" || spec.mode === "palette-audio") {
     rackSvg.querySelectorAll('.jack[data-childkey]').forEach((j) => {
       j.classList.add("legal");
@@ -9181,6 +11560,12 @@ function startWireDrag(spec, ev) {
       if (spec.legalKeys.has(j.getAttribute(spec.attr))) j.classList.add("legal");
     }
   }
+}
+
+function startWireDrag(spec, ev) {
+  if (wire) return; // one cable at a time — no re-entrant drags
+  wire = spec;
+  lightWireTargets();
   wire.sx = ev.clientX;
   wire.sy = ev.clientY;
   wire.tx = ev.clientX;
@@ -9192,7 +11577,7 @@ function startWireDrag(spec, ev) {
   // exactly what the auto-pan below does on purpose and what a zoom does by
   // accident. A drag that began in the node bank has no rack anchor: the chip
   // it came from really is at a fixed place on the screen.
-  if (rackSvg.contains(ev.target)) wire.anchor = clientToRack(ev.clientX, ev.clientY);
+  if ($("rack-svg").contains(ev.target)) wire.anchor = clientToRack(ev.clientX, ev.clientY);
   redrawWireBand();
   document.addEventListener("pointermove", onWireMove);
   document.addEventListener("pointerup", onWireUp, { once: true });
@@ -9346,7 +11731,7 @@ function onWireUp(ev) {
       if (!marks.includes(old2)) doomed = old2;
       marks.push(hole);
       return null;
-    });
+    }, { op: "unplug", key: w.childKey, kind: rackKindAt(w.childKey) });
     if (!ok) return;
     const uid = doomed ? stageFragment(doomed, false) : null;
     noteOnLanding(
@@ -9372,24 +11757,149 @@ function onWireUp(ev) {
 // while something is sounding, so idling costs nothing.
 let scopeRaf = null;
 let scopeBuf = null;
+let scopeBins = null;
 let scopeQuiet = 0;
+let scopeLast = 0;
+
+// Everything about the scope that is a *choice*, persisted. Six of these were
+// constants buried in the draw loop — the fft size, the trigger, the colour,
+// the glow, how long it waits before parking, and which side of the master
+// gain it listens to. A scope you cannot aim is a decoration; one you have to
+// re-aim after every reload is worse, so the whole thing goes to localStorage
+// through the same merge-on-load `nbState` uses: unknown keys in storage are
+// ignored, missing keys keep their default, and a shipped default can change
+// without stranding anyone's saved settings.
+const SCOPE_STORE = "ricercar-scope";
+const scopeState = {
+  mode: "scope",     // off | scope | spectrum
+  tap: "pre",        // pre | post  — the instrument, or what you hear
+  fft: 2048,
+  smooth: 0.6,       // the analyser's own window
+  colour: "green",   // green | amber | ice
+  glow: true,
+  trigger: true,
+  gain: 1,
+  floor: 0.55,       // how present the trace and its grid stay once it parks
+  park: 1.5,         // seconds of silence before it parks
+  corner: "br",
+  size: "M",
+  freeze: false,
+};
+const SCOPE_INK = {
+  green: { line: "#8ef0b1", glow: "rgba(142,240,177,0.75)" },
+  amber: { line: "#ffb454", glow: "rgba(255,180,84,0.75)" },
+  ice: { line: "#cfe6ff", glow: "rgba(207,230,255,0.7)" },
+};
+function scopeLoad() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SCOPE_STORE) || "{}");
+    for (const k of Object.keys(scopeState)) if (k in saved) scopeState[k] = saved[k];
+  } catch (e) { /* a corrupt blob is not worth a boot failure */ }
+}
+function scopeSave() {
+  try { localStorage.setItem(SCOPE_STORE, JSON.stringify(scopeState)); } catch (e) {}
+}
+/** The analyser the current tap points at, or null before audio exists. */
+function scopeAnalyser() {
+  if (!live) return null;
+  return scopeState.tap === "post" ? (live.analyserPost || live.analyser) : live.analyser;
+}
 
 function scopeShouldRun() {
-  return live && live.analyser && (heldNotes.size > 0 || scopeQuiet < 90);
+  return scopeState.mode !== "off" && scopeAnalyser() != null &&
+    (heldNotes.size > 0 || scopeQuiet < scopeState.park * 60);
+}
+
+/** Push the persisted settings at the DOM and the analyser. Called on boot,
+ *  on every control in the panel, and whenever live audio (re)appears. */
+function scopeApply() {
+  const shell = $("scope-shell");
+  if (!shell) return;
+  shell.classList.toggle("hidden", scopeState.mode === "off");
+  for (const c of ["tl", "tr", "bl", "br"]) shell.classList.toggle(`corner-${c}`, scopeState.corner === c);
+  for (const s of ["s", "m", "l"]) shell.classList.toggle(`size-${s}`, scopeState.size.toLowerCase() === s);
+  shell.style.setProperty("--scope-floor", String(scopeState.floor));
+  $("scope-cap").textContent =
+    (scopeState.tap === "post" ? "post-master" : "pre-master") +
+    (scopeState.mode === "spectrum" ? " · spectrum" : "") +
+    (scopeState.freeze ? " · frozen" : "");
+  const an = scopeAnalyser();
+  if (an) {
+    // fftSize only accepts powers of two in range; a stored value from a
+    // future build that dropped one would otherwise throw on assignment.
+    try { an.fftSize = scopeState.fft; } catch (e) {}
+    an.smoothingTimeConstant = scopeState.smooth;
+  }
+  scopeBuf = null;
+  scopeBins = null;
+  if (scopeState.mode === "off") {
+    if (scopeRaf != null) cancelAnimationFrame(scopeRaf);
+    scopeRaf = null;
+    shell.classList.remove("live");
+  } else {
+    // Paint the graticule now, whether or not anything is sounding. A parked
+    // scope with an empty screen is a hole in the panel; one with its grid up
+    // is an instrument waiting for a signal, which is what it is.
+    const canvas = $("live-scope");
+    if (canvas && canvas.clientWidth) {
+      const ctx = scopeCtx(canvas);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      scopeGraticule(ctx, canvas.width, canvas.height, window.devicePixelRatio || 1);
+    }
+    if (live) startScope();
+  }
+}
+
+// The graticule. 8×4 divisions at 6% phosphor: enough to read amplitude and
+// period off the trace, faint enough that it never competes with it. Drawn in
+// the canvas rather than in CSS so it scales with the device pixel ratio the
+// trace is drawn at, and so a frozen trace keeps its grid.
+function scopeGraticule(ctx, w, h, dpr) {
+  ctx.strokeStyle = "rgba(142,240,177,0.06)";
+  ctx.lineWidth = Math.max(1, dpr * 0.5);
+  ctx.beginPath();
+  for (let i = 1; i < 8; i++) {
+    const x = Math.round((w * i) / 8) + 0.5;
+    ctx.moveTo(x, 0); ctx.lineTo(x, h);
+  }
+  for (let i = 1; i < 4; i++) {
+    const y = Math.round((h * i) / 4) + 0.5;
+    ctx.moveTo(0, y); ctx.lineTo(w, y);
+  }
+  ctx.stroke();
 }
 
 function startScope() {
-  if (scopeRaf != null || !live || !live.analyser) return;
+  if (scopeRaf != null || scopeState.mode === "off" || !scopeAnalyser()) return;
   scopeQuiet = 0;
-  const draw = () => {
+  const draw = (now) => {
     const canvas = $("live-scope");
-    const on = currentView === "play" && wb.rack;
+    const shell = $("scope-shell");
+    const on = currentView === "play" && wb.rack && scopeState.mode !== "off";
     if (!on) {
       scopeRaf = null;
-      canvas.style.opacity = "0";
+      shell.classList.remove("live");
       return;
     }
-    const an = live.analyser;
+    // Reduced motion does not mean "no instrument" — a scope that never
+    // updates is a broken scope — it means "do not animate at 60 Hz". Ten
+    // frames a second still reads as a live trace and stops being motion you
+    // have to look away from.
+    const budget = prefersStill() ? 100 : 0;
+    if (budget && now - scopeLast < budget) { scopeRaf = requestAnimationFrame(draw); return; }
+    scopeLast = now;
+
+    const an = scopeAnalyser();
+    if (!an) { scopeRaf = null; return; }
+    const ctx = scopeCtx(canvas);
+    const { width: w, height: h } = canvas;
+    const dpr = window.devicePixelRatio || 1;
+    // Freeze holds the last frame drawn, grid and all: nothing is cleared and
+    // nothing is fetched, so the loop costs one branch while it is on.
+    if (scopeState.freeze) {
+      scopeRaf = requestAnimationFrame(draw);
+      return;
+    }
     if (!scopeBuf || scopeBuf.length !== an.fftSize) scopeBuf = new Float32Array(an.fftSize);
     an.getFloatTimeDomainData(scopeBuf);
     let peak = 0;
@@ -9400,37 +11910,120 @@ function startScope() {
     if (heldNotes.size > 0 || peak > 1e-4) scopeQuiet = 0;
     else scopeQuiet += 1;
 
-    const ctx = scopeCtx(canvas);
-    const { width: w, height: h } = canvas;
     ctx.clearRect(0, 0, w, h);
-    canvas.style.opacity = peak > 1e-4 ? "1" : "0";
-    if (peak > 1e-4) {
-      const dpr = window.devicePixelRatio || 1;
-      const mid = h / 2;
-      // Trigger on the first rising zero crossing so the trace stands still
-      // instead of skating sideways.
-      let start = 0;
-      for (let i = 1; i < scopeBuf.length / 2; i++) {
-        if (scopeBuf[i - 1] <= 0 && scopeBuf[i] > 0) { start = i; break; }
-      }
-      const n = Math.floor(scopeBuf.length / 2);
-      ctx.strokeStyle = INK.green;
+    scopeGraticule(ctx, w, h, dpr);
+    const lit = peak > 1e-4;
+    shell.classList.toggle("live", lit);
+    if (lit) {
+      const ink = SCOPE_INK[scopeState.colour] || SCOPE_INK.green;
+      ctx.strokeStyle = ink.line;
+      ctx.fillStyle = ink.line;
       ctx.lineWidth = 1.5 * dpr;
-      ctx.shadowColor = "rgba(142,240,177,0.75)";
-      ctx.shadowBlur = 8 * dpr;
-      ctx.beginPath();
-      for (let x = 0; x < w; x++) {
-        const s = scopeBuf[start + Math.floor((x / w) * n)] || 0;
-        const y = mid - s * mid * 0.86;
-        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      if (scopeState.glow) {
+        ctx.shadowColor = ink.glow;
+        ctx.shadowBlur = 8 * dpr;
       }
-      ctx.stroke();
+      if (scopeState.mode === "spectrum") {
+        // One `getByteFrequencyData` away the whole time. A spectrum answers
+        // "what did that filter actually take out" in a way a waveform never
+        // does, and this instrument is mostly filters.
+        if (!scopeBins || scopeBins.length !== an.frequencyBinCount) {
+          scopeBins = new Uint8Array(an.frequencyBinCount);
+        }
+        an.getByteFrequencyData(scopeBins);
+        // Log-spaced columns: linear bins give three quarters of the width to
+        // the top two octaves, where a synth patch has almost nothing.
+        const cols = Math.max(24, Math.min(96, Math.floor(w / (4 * dpr))));
+        const bw = w / cols;
+        const n = scopeBins.length;
+        for (let c = 0; c < cols; c++) {
+          const lo = Math.floor(Math.pow(n, c / cols));
+          const hi = Math.max(lo + 1, Math.floor(Math.pow(n, (c + 1) / cols)));
+          let m = 0;
+          for (let i = lo; i < hi && i < n; i++) if (scopeBins[i] > m) m = scopeBins[i];
+          const bh = Math.min(h, (m / 255) * h * scopeState.gain);
+          ctx.fillRect(c * bw + 0.5, h - bh, Math.max(1, bw - 1.5 * dpr), bh);
+        }
+      } else {
+        const mid = h / 2;
+        // Trigger on the first rising zero crossing so the trace stands still
+        // instead of skating sideways. Off, it free-runs — which is what you
+        // want for noise and for anything percussive.
+        let start = 0;
+        if (scopeState.trigger) {
+          for (let i = 1; i < scopeBuf.length / 2; i++) {
+            if (scopeBuf[i - 1] <= 0 && scopeBuf[i] > 0) { start = i; break; }
+          }
+        }
+        const n = Math.floor(scopeBuf.length / 2);
+        ctx.beginPath();
+        for (let x = 0; x < w; x++) {
+          const s = (scopeBuf[start + Math.floor((x / w) * n)] || 0) * scopeState.gain;
+          const y = mid - Math.max(-1, Math.min(1, s)) * mid * 0.86;
+          x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
       ctx.shadowBlur = 0;
     }
     if (scopeShouldRun()) scopeRaf = requestAnimationFrame(draw);
-    else { scopeRaf = null; canvas.style.opacity = "0"; }
+    else { scopeRaf = null; shell.classList.remove("live"); }
   };
   scopeRaf = requestAnimationFrame(draw);
+}
+
+// ---------- the scope's settings panel ----------
+// Hung off the header's ⋯ rather than given its own gear on the rack: it is a
+// preference, and preferences live where the app's other preferences live.
+function scopePanelInit() {
+  const panel = $("scope-panel");
+  if (!panel) return;
+  const bind = (id, get, set) => {
+    const el = $(id);
+    if (!el) return;
+    get(el);
+    el.addEventListener("input", () => { set(el); scopeSave(); scopeApply(); });
+  };
+  bind("sp-mode", (e) => { e.value = scopeState.mode; }, (e) => { scopeState.mode = e.value; });
+  bind("sp-tap", (e) => { e.value = scopeState.tap; }, (e) => { scopeState.tap = e.value; });
+  bind("sp-fft", (e) => { e.value = String(scopeState.fft); }, (e) => { scopeState.fft = Number(e.value); });
+  bind("sp-smooth", (e) => { e.value = String(scopeState.smooth); }, (e) => { scopeState.smooth = Number(e.value); });
+  bind("sp-colour", (e) => { e.value = scopeState.colour; }, (e) => { scopeState.colour = e.value; });
+  bind("sp-corner", (e) => { e.value = scopeState.corner; }, (e) => { scopeState.corner = e.value; });
+  bind("sp-size", (e) => { e.value = scopeState.size; }, (e) => { scopeState.size = e.value; });
+  bind("sp-park", (e) => { e.value = String(scopeState.park); }, (e) => { scopeState.park = Number(e.value); });
+  bind("sp-gain",
+    (e) => { e.value = String(scopeState.gain); $("sp-gain-v").textContent = `${scopeState.gain.toFixed(2)}×`; },
+    (e) => { scopeState.gain = Number(e.value); $("sp-gain-v").textContent = `${scopeState.gain.toFixed(2)}×`; });
+  bind("sp-floor",
+    (e) => { e.value = String(scopeState.floor); $("sp-floor-v").textContent = scopeState.floor.toFixed(2); },
+    (e) => { scopeState.floor = Number(e.value); $("sp-floor-v").textContent = scopeState.floor.toFixed(2); });
+  bind("sp-trigger", (e) => { e.checked = !!scopeState.trigger; }, (e) => { scopeState.trigger = e.checked; });
+  bind("sp-glow", (e) => { e.checked = !!scopeState.glow; }, (e) => { scopeState.glow = e.checked; });
+  bind("sp-freeze", (e) => { e.checked = !!scopeState.freeze; }, (e) => { scopeState.freeze = e.checked; });
+  const close = () => {
+    panel.classList.add("hidden");
+    $("scope-btn")?.setAttribute("aria-expanded", "false");
+  };
+  $("scope-close").onclick = close;
+  $("scope-btn").onclick = (ev) => {
+    ev.stopPropagation();
+    $("ovf-menu").classList.add("hidden");
+    $("ovf-btn").setAttribute("aria-expanded", "false");
+    const shut = panel.classList.toggle("hidden");
+    $("scope-btn").setAttribute("aria-expanded", String(!shut));
+    if (!shut) $("sp-mode").focus();
+  };
+  // The same dismissals the ⋯ menu itself honours, so the panel never
+  // outlives the gesture that opened it.
+  document.addEventListener("pointerdown", (ev) => {
+    if (panel.classList.contains("hidden")) return;
+    if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
+    close();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { close(); $("scope-btn").focus(); }
+  });
 }
 
 // Audio cables only look alive while audio is actually flowing — before this,
@@ -9785,7 +12378,41 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
       : `check duels (picked at random) are the unbiased measure — ${E.check_n} of ${SKILL_MIN_N} so far`,
     x0, y0 + side + 66 * dpr
   );
+  // Where the answers came from. Committing a hand edit after hearing it
+  // against the original is a different act from ticking "my edit is better",
+  // and the model has no way to know which it was told — so the two are
+  // scored apart, and the split is drawn rather than left in the log. Silent
+  // until there is something to compare: one stream is not a comparison.
+  const streams = (E.by_provenance || []).filter((p) => p.n > 0);
+  if (streams.length > 1) {
+    // Right-aligned against the panel's own edge, on the headline's baseline:
+    // the three lines under the plot are full sentences with no room for a
+    // fourth, and the plot is a square in a wide panel — the whole right half
+    // of that line is empty.
+    ctx.fillStyle = INK.amberDim;
+    ctx.textAlign = "right";
+    ctx.fillText(
+      streams
+        .map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`)
+        .join("  ·  "),
+      w - 24 * dpr, y0 + side + 48 * dpr
+    );
+    ctx.textAlign = "left";
+  }
 }
+
+/** Brier skill as a signed percentage — a negative skill is worse than a coin
+ *  flip and has to look like it, not like a small positive number. */
+function skillPct(s) {
+  return `${s >= 0 ? "+" : "−"}${Math.abs(Math.round(s * 100))}%`;
+}
+
+// How a preference reached the log, in the words the app uses for it.
+const PROVENANCE_NAME = {
+  duel: "dealt duels",
+  heard_edit: "edits you heard",
+  self_report: "edits you asserted",
+};
 
 // Reliability is computed by the engine, which is the only place that has
 // both the forecast and the *outcome*. There is deliberately no client-side
@@ -10222,7 +12849,35 @@ $("taste-reset-btn").onclick = () => {
 $("patch-export-btn").onclick = () => {
   if (!wb.tree) return note("nothing on the bench to export");
   const name = wb.subjectId != null ? nameOf(wb.subjectId) : "patch";
-  const payload = JSON.stringify({ ricercar_patch: 1, name, tree: wb.tree }, null, 1);
+  const body = { ricercar_patch: 1, name, tree: wb.tree };
+  // The layout rides along (WS-4 §8), keyed by the same node identities the
+  // tree itself now carries — so a patch you send someone arrives arranged the
+  // way you arranged it. Purely additive: the field is absent when nothing has
+  // been placed by hand, and an older build that has never heard of `layout`
+  // ignores it and loads the tree exactly as before, which is why this is
+  // still `ricercar_patch: 1`.
+  // `ffPlaces`, not `ffStore`: a patch that inherited its layout from the one
+  // it was bred from has that layout even if it has not been drawn in freeform
+  // since. Nothing placed by hand at all means no `layout` key — a chain-mode
+  // patch is shared as a patch, not as an arrangement.
+  const store = ffPlaces();
+  const pins = [];
+  if (store && store.size) {
+    for (const m of wb.rack?.modules || []) {
+      const mid = midOf(m);
+      const p = store.get(mid) ||
+        // Not placed by hand, but on screen in the arrangement being shared —
+        // the modules a generation of ⚡ added since, sitting in their offered
+        // slots. The recipient should get the picture the sender is looking
+        // at, not that picture minus everything the sender never dragged.
+        (layoutMode === "freeform" && rackBoxes.get(m.key)
+          ? { x: rackBoxes.get(m.key).x - RACK_OFF_X, y: rackBoxes.get(m.key).y - RACK_OFF_Y }
+          : null);
+      if (p) pins.push([mid, Math.round(p.x), Math.round(p.y)]);
+    }
+  }
+  if (pins.length) body.layout = { grid: GRID, pos: pins };
+  const payload = JSON.stringify(body, null, 1);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
   a.download = `${name.replace(/[^\w-]+/g, "_").slice(0, 32)}.ricercar.json`;
@@ -10236,8 +12891,14 @@ $("patch-import-input").onchange = async (e) => {
   try {
     const data = JSON.parse(await file.text());
     const tree = data.tree || data; // accept bare trees too
+    // Held until the engine says which id the patch landed as — that id is the
+    // key the layout has to be filed under, and it does not exist yet. Cleared
+    // either way in `patch_imported`, so a refused import cannot leave a
+    // layout waiting to be adopted by the *next* one.
+    pendingLayout = Array.isArray(data.layout?.pos) ? data.layout.pos : null;
     send({ type: "import_patch", json: JSON.stringify(tree), name: data.name || "" });
   } catch (_) {
+    pendingLayout = null;
     note("that file isn't a patch");
   }
 };
@@ -10695,6 +13356,11 @@ async function spawnFarm() {
 // ---------- boot ----------
 buildPiano();
 buildNodeBank();
+// Before `bootLiveAudio`, so the bezel is already in the right corner at the
+// right size on the first paint rather than jumping there when audio arrives.
+scopeLoad();
+scopePanelInit();
+scopeApply();
 renderNextStep(); // never leave the "what now?" control blank on first paint
 renderTray();
 bootLiveAudio();
@@ -10753,6 +13419,8 @@ bootMidi();
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
     restoreTray(saved.ui.held);
+    restorePositions(saved.ui.positions);
+    restoreLocks(saved.ui.locks);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.

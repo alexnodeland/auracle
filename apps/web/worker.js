@@ -494,6 +494,14 @@ function tasteViews() {
     // Rides with every views post so the header's `▣ n/m` cannot drift out of
     // step with the engine after a restore, an eviction or a bred generation.
     pinBudget: Array.from(engine.pin_budget()),
+    // The standardizer's per-coordinate divisor, keyed by φ name. θ has always
+    // shipped in `styles`; this is what θ is *worth* — adding one filter is a
+    // raw unit step in `n_filter`, so `θ/scale` is the utility that placement
+    // buys. It rides with views rather than with the bench because it is a
+    // property of the pool, not of the patch under the pointer, and it changes
+    // only when the standardizer is refitted. `{}` before then, and the socket
+    // prices stay silent rather than guessing a divisor of 1.
+    scale: JSON.parse(engine.phi_scale()),
   };
 }
 
@@ -530,6 +538,14 @@ function postBench(extra) {
       buffer: arr,
       treeJson: engine.edit_tree_json(),
       makeup: engine.edit_makeup(),
+      // What the model makes of the patch that is on the bench *now*. It rides
+      // with the bench reply rather than being asked for separately because it
+      // is derived from the same featurization that reply already paid for —
+      // a dot product against a vector the engine is holding anyway — and
+      // because a readout that arrives on its own schedule is a readout that
+      // can be a message behind the rack it sits above.
+      utility: JSON.parse(engine.edit_utility()),
+      explain: JSON.parse(engine.edit_explain()),
       ...extra,
     },
     [arr.buffer]
@@ -798,17 +814,6 @@ self.onmessage = async (e) => {
       }
       break;
     }
-    case "explain": {
-      // Exact per-feature contributions under the candidate's best style lens.
-      // Utility is linear within a lens, so this is a decomposition, not a
-      // surrogate approximation.
-      try {
-        post({ type: "explained", id: m.id, ex: JSON.parse(engine.explain(m.id) || "null") });
-      } catch (_) {
-        post({ type: "explained", id: m.id, ex: null });
-      }
-      break;
-    }
     case "calibration": {
       try {
         post({ type: "calibration", calib: JSON.parse(engine.calibration()) });
@@ -928,13 +933,84 @@ self.onmessage = async (e) => {
       break;
     }
     case "edit_commit": {
-      const id = Number(engine.edit_commit(m.asImprovement));
+      // `outcome` is a string now, not a boolean: `"heard_original"` — the
+      // player listened to both and preferred the patch they started from —
+      // is the direction the old flag could not carry at all. See
+      // `WasmEngine::edit_commit`.
+      const id = Number(engine.edit_commit(m.outcome || "none"));
       post({
         type: "committed",
         id,
+        outcome: m.outcome || "none",
         views: tasteViews(),
         status: status(),
       });
+      break;
+    }
+    // Everything a commit duel needs, in one round trip: is there anything to
+    // compare, and the original's audio to compare against. Rendering here
+    // rather than through the `render` path keeps the pair honest — both
+    // buffers come from the same engine, the same phrase and the same makeup
+    // policy, so a preference between them is a preference about the patches.
+    case "edit_duel": {
+      const differs = engine.edit_differs_from_original();
+      const id = Number(engine.edit_original_id());
+      const arr = new Float32Array(differs && id > 0 ? engine.render_of(id) : 0);
+      post(
+        {
+          type: "edit_duel",
+          differs,
+          id,
+          buffer: arr,
+          sampleRate: engine.sample_rate(),
+          ...(m.then ? { then: m.then } : {}),
+        },
+        [arr.buffer]
+      );
+      break;
+    }
+    // Pre-placement audition (WS-2 §6): the current patch with a module
+    // spliced at the socket under the pointer, rendered without the bench ever
+    // holding it — see `WasmEngine::preview_op`.
+    //
+    // The `token` is echoed rather than interpreted. This worker is serial, so
+    // a preview already begun cannot be interrupted; "cancel" therefore means
+    // "the answer is stale on arrival", which is a decision only main can make
+    // and only main has the state for. Answering every request — including the
+    // failures, with an empty buffer — is what lets main retire its in-flight
+    // slot without a timeout.
+    //
+    // Not routed through the render farm, which looks like the natural home
+    // for it and is not: the farm holds no engine, so it has neither the memo
+    // that makes a re-hover free nor the bench tree the splice is applied to,
+    // and main is deliberately not on the farm's data path at all.
+    case "preview_render": {
+      const pcm = engine.preview_op(JSON.stringify(m.op), m.seconds || 2.0);
+      const arr = new Float32Array(pcm);
+      post(
+        {
+          type: "preview",
+          token: m.token,
+          key: m.key || null,
+          kind: m.kind || null,
+          buffer: arr,
+          sampleRate: engine.sample_rate(),
+        },
+        [arr.buffer]
+      );
+      break;
+    }
+    // The implicit stream (WS-8 §3). Fire-and-forget by design: nothing in the
+    // app waits on a log line, and a reply would only be another message on
+    // the queue between a gesture and its sound.
+    case "log_edit": {
+      engine.log_edit_event(
+        m.kind,
+        m.id || 0,
+        m.value || 0,
+        m.detail ? JSON.stringify(m.detail) : "",
+        !!m.withPhi
+      );
       break;
     }
     case "refine_from": {

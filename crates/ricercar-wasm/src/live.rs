@@ -21,6 +21,13 @@
 //!   per quantum while silent** (compile overruns are inaudible at zero
 //!   gain), re-press every held note on the new voices, fade back in. A
 //!   held chord survives rewiring.
+//! - **Envelope carry**: re-pressing restarts an ADSR from zero, so a
+//!   sustained pad used to swell in again on every structural edit — the edit
+//!   read as an event of its own rather than as a change to the sound. Each
+//!   carried note's amp envelope phase is read off the outgoing voice and
+//!   seeded into the new one (`ricercar_grammar::CompiledVoice::seed_env_phase`) with no
+//!   falling edge, so held notes never re-attack. Filter, delay and reverb
+//!   tails cannot transfer across a rewire and still die; that is accepted.
 //! - Released voices keep ticking through their tails and are parked once
 //!   effectively silent, so idle polyphony costs nothing.
 
@@ -709,15 +716,20 @@ impl LivePoly {
         self.arp_base = Some(base);
     }
 
-    /// Set a normalized knob target. The value ramps in over ~25 ms on the
-    /// audio thread (no zipper) — **no recompilation**: filter and delay
-    /// state survive. Returns false for addresses with no live handle
-    /// (enums, structure) — those need `set_patch`.
+    /// Set a knob target in the site's own units. The value ramps in over
+    /// ~25 ms on the audio thread (no zipper) — **no recompilation**: filter
+    /// and delay state survive. Returns false for addresses with no live
+    /// handle (the remaining enums, structure) — those need `set_patch`.
+    ///
+    /// "The site's own units" is new, and it is the whole reason `table` and
+    /// `oct` can be here at all: they send a *category index*, and the blanket
+    /// `clamp(0.0, 1.0)` this used to apply would have folded all eight
+    /// wavetables onto the first two and every octave onto −2 and −1.
     pub fn set_param(&mut self, addr: &str, value: f64) -> bool {
         let Some(handle) = self.voices.first().and_then(|v| v.voice.params.get(addr)) else {
             return false;
         };
-        let target = handle.map.apply(value.clamp(0.0, 1.0));
+        let target = handle.map.apply(handle.map.clamp_input(value));
         let current = handle.value.get();
         if let Some(s) = self.smoothers.iter_mut().find(|s| s.addr == addr) {
             s.target = target;
@@ -863,6 +875,19 @@ impl LivePoly {
                     Ok(v) => {
                         built.push(v);
                         if built.len() >= self.n_voices {
+                            // Where every sounding note's amp envelope had got
+                            // to, read off the *outgoing* voices while they are
+                            // still here. This is the whole of the envelope
+                            // carry: re-pressing a held note on a fresh voice
+                            // restarts its ADSR from zero, so a sustained pad
+                            // re-swelled on every structural edit — the edit
+                            // was audible as an event in its own right rather
+                            // than as a change to the sound.
+                            let carry: Vec<(u8, f64)> = self
+                                .voices
+                                .iter()
+                                .filter_map(|v| Some((v.note?, v.voice.env_phase())))
+                                .collect();
                             self.voices = built;
                             self.pending = None;
                             self.smoothers.clear();
@@ -875,6 +900,21 @@ impl LivePoly {
                             } else {
                                 for (n, v) in self.held.clone() {
                                     self.press(n, v);
+                                }
+                                // Gates are up and no falling edge was ever
+                                // presented, so nothing needs re-gating — the
+                                // new envelopes are simply fast-forwarded to
+                                // where the old ones were. A note that was
+                                // *not* held (a release tail) is not carried:
+                                // its voice was reallocated, and a tail cannot
+                                // survive a rewire anyway.
+                                for v in &mut self.voices {
+                                    let Some(note) = v.note else { continue };
+                                    let Some((_, phase)) = carry.iter().find(|(n, _)| *n == note)
+                                    else {
+                                        continue;
+                                    };
+                                    v.voice.seed_env_phase(*phase);
                                 }
                             }
                             self.event = EVENT_PATCHED;
@@ -939,7 +979,7 @@ mod tests {
     use super::*;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
-    use ricercar_grammar::PatchGrammarPrior;
+    use ricercar_grammar::{PatchGrammarPrior, Uid};
 
     fn tree_json(rng: &mut StdRng) -> String {
         serde_json::to_string(&PatchGrammarPrior::default().sample_with_rng(rng)).unwrap()
@@ -960,11 +1000,13 @@ mod tests {
                 release: 0.3, // ≈16 ms
             },
             root: AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::SvfLp,
                 cutoff: 0.7,
                 resonance: 0.1,
                 mod_depth: 0.0,
                 input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
                     wave: Waveform::Saw,
                     octave: 0,
                     detune: 0.5,
@@ -1113,6 +1155,220 @@ mod tests {
         assert!(
             poly.voices.iter().any(|v| v.note == Some(57)),
             "held note lost across patch swap"
+        );
+    }
+
+    /// A pad: slow attack (≈100 ms), full sustain, so the envelope's position
+    /// is legible in the output level and a restart is unmissable.
+    fn pad_json() -> String {
+        use ricercar_grammar::term::{AmpEnv, Waveform};
+        use ricercar_grammar::{AudioNode, ModNode, PatchTree};
+        serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.5,
+                decay: 0.3,
+                sustain: 1.0,
+                release: 0.4,
+            },
+            root: AudioNode::Vco {
+                uid: Uid::NEW,
+                wave: Waveform::Saw,
+                octave: 0,
+                detune: 0.5,
+                mod_depth: 0.0,
+                modulation: ModNode::None,
+            },
+        })
+        .unwrap()
+    }
+
+    /// **The envelope carry.** Swapping the patch under a held pad used to
+    /// re-press every held note on the new voices, which restarts their ADSRs
+    /// from zero — so every structural edit made the pad swell in again from
+    /// nothing, and the edit was audible as an event of its own rather than as
+    /// a change to the sound.
+    ///
+    /// The patch swapped in here is the *same* tree, so the only thing that can
+    /// move the level is the envelope. 23 ms of silence across the rebuild is
+    /// expected and accepted (R3); coming back at a fraction of the level is
+    /// not.
+    #[test]
+    fn a_held_pad_keeps_its_envelope_across_a_patch_swap() {
+        let json = pad_json();
+        let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        poly.note_on(60, 1.0);
+        // ~1.2 s: past a 100 ms attack and its decay, sitting on sustain. The
+        // level is measured over 16 quanta, not one — a saw at 262 Hz does not
+        // fit a whole number of periods into 128 frames, so a single quantum's
+        // energy swings ±40% for reasons that have nothing to do with an
+        // envelope.
+        let mut warm: Vec<f64> = Vec::new();
+        for _ in 0..400 {
+            warm.push(energy(&poly.process(128)));
+        }
+        let mean = |w: &[f64]| w.iter().sum::<f64>() / w.len() as f64;
+        let before = mean(&warm[384..]);
+        assert!(before > 1.0e-4, "the pad never spoke: {before}");
+
+        assert!(poly.set_patch(&json));
+        let mut after: Vec<f64> = Vec::new();
+        let mut patched_at = None;
+        for i in 0..200 {
+            let e = energy(&poly.process(128));
+            after.push(e);
+            if poly.poll_event() == EVENT_PATCHED && patched_at.is_none() {
+                patched_at = Some(i);
+            }
+        }
+        let at: usize = patched_at.expect("swap never completed");
+        // Four quanta past the swap the ~6 ms fade-in is over. Without the
+        // carry the envelope is ~12 ms into a 100 ms exponential attack —
+        // about a tenth of the level it left with, climbing.
+        let resumed = mean(&after[at + 4..at + 20]);
+        assert!(
+            resumed > before * 0.85,
+            "the pad re-attacked: {resumed:.3e} against {before:.3e} before the \
+             swap ({:.1}% of it)",
+            100.0 * resumed / before
+        );
+        // …and it does not overshoot either, which is what parking a
+        // mid-envelope note on the sustain shelf would look like from here.
+        assert!(
+            mean(&after[at + 4..at + 20]) < before * 1.15,
+            "the level jumped after the swap: {resumed:.3e} against {before:.3e}"
+        );
+    }
+
+    /// Below sustain the envelope is unambiguously still in Attack, and the
+    /// seeder has to leave it there rather than parking it on the sustain
+    /// shelf: a note swapped 30 ms into a 1 s attack must keep rising.
+    #[test]
+    fn a_mid_attack_note_resumes_its_attack_rather_than_jumping_to_sustain() {
+        use ricercar_grammar::term::{AmpEnv, Waveform};
+        use ricercar_grammar::{AudioNode, ModNode, PatchTree};
+        let json = serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.75, // ≈1 s
+                decay: 0.3,
+                sustain: 1.0,
+                release: 0.4,
+            },
+            root: AudioNode::Vco {
+                uid: Uid::NEW,
+                wave: Waveform::Saw,
+                octave: 0,
+                detune: 0.5,
+                mod_depth: 0.0,
+                modulation: ModNode::None,
+            },
+        })
+        .unwrap();
+        let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        poly.note_on(60, 1.0);
+        let mut before = 0.0;
+        for _ in 0..20 {
+            before = energy(&poly.process(128));
+        }
+        let phase_before = poly.voices[0].voice.env_phase();
+        assert!(
+            phase_before > 0.01 && phase_before < 0.3,
+            "the probe note is not mid-attack: {phase_before}"
+        );
+
+        assert!(poly.set_patch(&json));
+        let mut patched = false;
+        for _ in 0..60 {
+            let _ = poly.process(128);
+            patched |= poly.poll_event() == EVENT_PATCHED;
+        }
+        assert!(patched, "swap never completed");
+        let phase_after = poly.voices[0].voice.env_phase();
+        assert!(
+            phase_after > phase_before * 0.8 && phase_after < 0.5,
+            "a mid-attack note came back at {phase_after} from {phase_before} — \
+             either restarted or parked on the sustain shelf"
+        );
+        // It is still climbing, which is the half a level check cannot see.
+        for _ in 0..60 {
+            let _ = poly.process(128);
+        }
+        assert!(
+            poly.voices[0].voice.env_phase() > phase_after * 1.2,
+            "the envelope stopped rising after the swap"
+        );
+        let _ = before;
+    }
+
+    /// The two categorical sites that went live are reachable through the live
+    /// path at their *own* domain — an index, not a 0..1 knob — and neither
+    /// forces a recompile.
+    #[test]
+    fn table_and_oct_are_live_at_index_scale() {
+        use ricercar_grammar::term::{AmpEnv, TableShape, Waveform};
+        use ricercar_grammar::{AudioNode, ModNode, PatchTree};
+        let tree = |root| PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 1.0,
+                release: 0.3,
+            },
+            root,
+        };
+        let wt = serde_json::to_string(&tree(AudioNode::Wavetable {
+            uid: Uid::NEW,
+            table: TableShape::Sine,
+            octave: 0,
+            morph: 0.0,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+        }))
+        .unwrap();
+        let mut poly = LivePoly::new(&wt, 44_100.0, 1).unwrap();
+        poly.note_on(60, 1.0);
+        for _ in 0..40 {
+            let _ = poly.process(128);
+        }
+        // Table 7 is the last of eight; the old blanket clamp to 0..1 would
+        // have written table 1.
+        assert!(poly.set_param("node#table", 7.0), "`table` has no handle");
+        for _ in 0..40 {
+            let _ = poly.process(128);
+        }
+        let cv = poly.voices[0].voice.params["node#table"].value.get();
+        assert!(
+            (cv - 1.0).abs() < 1.0e-3,
+            "table 7 should land on cv 1.0, not {cv}"
+        );
+
+        let vco = serde_json::to_string(&tree(AudioNode::Vco {
+            uid: Uid::NEW,
+            wave: Waveform::Saw,
+            octave: 0,
+            detune: 0.5,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+        }))
+        .unwrap();
+        let mut poly = LivePoly::new(&vco, 44_100.0, 1).unwrap();
+        poly.note_on(60, 1.0);
+        for _ in 0..40 {
+            let _ = poly.process(128);
+        }
+        // Index 4 is +2 octaves; the compiled octave is 0, so the trim is +2.
+        assert!(poly.set_param("node#oct", 4.0), "`oct` has no handle");
+        for _ in 0..60 {
+            let _ = poly.process(128);
+        }
+        let cv = poly.voices[0].voice.params["node#oct"].value.get();
+        assert!(
+            (cv - 2.0).abs() < 1.0e-3,
+            "oct +2 should land on a 2 V trim, not {cv}"
+        );
+        // No recompile was queued: the swap machinery never woke up.
+        assert!(
+            matches!(poly.stage, Stage::Run),
+            "a live index write started a patch swap"
         );
     }
 

@@ -28,6 +28,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use ricercar_taste::Provenance;
+
 /// One out-of-sample duel forecast, recorded before the answer was known.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Forecast {
@@ -38,6 +40,11 @@ pub struct Forecast {
     /// True when the pair was drawn uniformly at random rather than by the
     /// acquisition function — the unbiased subsample.
     pub random_check: bool,
+    /// How the answer was collected. `#[serde(default)]` because forecasts
+    /// persist with the session and every one already on disk was a dealt
+    /// duel, which is exactly what [`Provenance::Duel`] means.
+    #[serde(default)]
+    pub provenance: Provenance,
 }
 
 impl Forecast {
@@ -64,6 +71,27 @@ pub struct ReliabilityBin {
     pub predicted: f64,
     /// Observed frequency of "A won" in the bucket (the evidence).
     pub observed: f64,
+}
+
+/// One provenance's slice of the forecast stream.
+///
+/// The comparison this exists for: a hand edit committed through a **heard**
+/// duel and one committed by ticking "my edit is better" make the same claim
+/// in the log, and there is no reason to believe they are equally reliable.
+/// Scoring them against forecasts the model made *before* either answer
+/// arrived is the only way to find out which — and it costs one tag.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProvenanceScore {
+    /// Which stream (`"duel"`, `"heard_edit"`, `"self_report"`).
+    pub provenance: String,
+    /// Forecasts scored in it.
+    pub n: usize,
+    /// Mean Brier score over them.
+    pub brier: f64,
+    /// Mean log-loss over them, in nats.
+    pub log_loss: f64,
+    /// Brier skill against a coin flip, `1 − B/0.25`.
+    pub skill: f64,
 }
 
 /// Calibration summary over a set of forecasts.
@@ -101,6 +129,11 @@ pub struct Calibration {
     /// Running hit rate, kept only so a frontend can show how misleading it
     /// is next to the skill score.
     pub hit_rate: f64,
+    /// The same scores, split by how the answer was collected. Empty streams
+    /// are omitted, so a session that has never committed a hand edit carries
+    /// exactly one row and reads as it always did.
+    #[serde(default)]
+    pub by_provenance: Vec<ProvenanceScore>,
 }
 
 /// Number of reliability buckets. Five is the most a small session can fill
@@ -153,6 +186,24 @@ pub fn calibration(forecasts: &[Forecast]) -> Calibration {
         }
     }
 
+    let by_provenance = [
+        Provenance::Duel,
+        Provenance::HeardEdit,
+        Provenance::SelfReport,
+    ]
+    .into_iter()
+    .filter_map(|p| {
+        let (n, b, ll) = score(forecasts.iter().copied().filter(|f| f.provenance == p));
+        (n > 0).then(|| ProvenanceScore {
+            provenance: p.as_str().into(),
+            n,
+            brier: b,
+            log_loss: ll,
+            skill: 1.0 - b / 0.25,
+        })
+    })
+    .collect();
+
     Calibration {
         n,
         brier: b,
@@ -167,5 +218,6 @@ pub fn calibration(forecasts: &[Forecast]) -> Calibration {
         },
         check_log_loss: check_ll,
         hit_rate: if n == 0 { 0.0 } else { hits as f64 / n as f64 },
+        by_provenance,
     }
 }

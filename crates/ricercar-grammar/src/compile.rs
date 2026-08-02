@@ -253,9 +253,44 @@ pub enum ParamMap {
     ModDepthDetector,
     /// Mod depth for a 0–10 V source into a dynamics threshold port.
     ModDepthDetectorUnipolar,
+    /// **Categorical.** Wavetable select, as a table *index* rather than a
+    /// 0..1 knob: `i ↦ i/7`, the same [`map::table_cv`] the port used to be
+    /// pinned to. See [`Self::clamp_input`] for why the domain is not 0..1.
+    TableIndex,
+    /// **Categorical.** Octave select, as an index `0..=4` (`i ↦ i−2`
+    /// octaves), *minus the octave already baked into this voice's pitch
+    /// [`Offset`]* — which is the `i8` payload.
+    ///
+    /// The relative form is the whole trick, and it is what keeps this change
+    /// from moving a single sample of an existing patch. quiver **sums** every
+    /// cable into a patched input and **writes** the default into an unpatched
+    /// one, so a cable carrying the absolute offset would have to be added in
+    /// a different place in the sum than the [`Offset`]'s own constant is:
+    /// `(pitch + oct) + detune` instead of `pitch + (oct + detune)`, which
+    /// disagree in the last bit, and again with a pitch-mod cable in the sum.
+    /// A trim is `+0.0` at compile time, and `x + 0.0` is exactly `x`.
+    ///
+    /// It also means the panel and the compiler can never double-count: a
+    /// recompile re-bakes whatever octave the tree now holds and re-zeroes the
+    /// trim in the same breath.
+    OctaveTrim(i8),
 }
 
 impl ParamMap {
+    /// Clamp a value arriving from the panel to this map's input domain.
+    ///
+    /// Continuous knobs are 0..1 and always were. The two categorical sites
+    /// that became live send a *category index*, so the blanket
+    /// `value.clamp(0.0, 1.0)` the live path used to apply would have folded
+    /// all eight wavetables onto the first two.
+    pub fn clamp_input(self, x: f64) -> f64 {
+        match self {
+            ParamMap::TableIndex => x.round().clamp(0.0, 7.0),
+            ParamMap::OctaveTrim(_) => x.round().clamp(0.0, 4.0),
+            _ => x.clamp(0.0, 1.0),
+        }
+    }
+
     /// Map a normalized value to the wire value.
     pub fn apply(self, x: f64) -> f64 {
         match self {
@@ -287,6 +322,8 @@ impl ParamMap {
             ParamMap::ModDepthParamCvUnipolar => map::mod_depth_param_cv_unipolar(x),
             ParamMap::ModDepthDetector => map::mod_depth_detector(x),
             ParamMap::ModDepthDetectorUnipolar => map::mod_depth_detector_unipolar(x),
+            ParamMap::TableIndex => map::table_cv(x),
+            ParamMap::OctaveTrim(baked) => (x - 2.0) - baked as f64,
         }
     }
 }
@@ -351,11 +388,30 @@ pub struct ParamHandle {
 }
 
 impl ParamHandle {
-    /// Write a normalized (0..1) knob value.
+    /// Write a knob value in the site's own units — 0..1 for a continuous
+    /// knob, a category index for the two live categorical sites (see
+    /// [`ParamMap::clamp_input`], which is why this is no longer a bare
+    /// `clamp(0.0, 1.0)`).
     pub fn set_normalized(&self, x: f64) {
-        self.value.set(self.map.apply(x.clamp(0.0, 1.0)));
+        self.value.set(self.map.apply(self.map.clamp_input(x)));
     }
 }
+
+/// The node name of the mandatory amp envelope. Every compiled voice has
+/// exactly one, and [`CompiledVoice::seed_env_phase`] is the only thing that
+/// reaches for it by name.
+const AMP_ADSR: &str = "voice:adsr";
+/// `Adsr`'s `env` output port id (0–10 V unipolar).
+const ADSR_ENV_PORT: PortId = 10;
+/// quiver's `Adsr` runs its exponential segments until it is within this of
+/// the target, then snaps. Mirrored here so the seeder knows when a segment
+/// has finished rather than guessing at a settling time.
+const ADSR_EXP_DONE: f64 = 1.0e-3;
+/// Ticks [`CompiledVoice::seed_env_phase`] will spend per segment. The
+/// envelope is running its fastest possible segment (1 ms) while it seeds, so
+/// ~7 time constants is a few hundred ticks at any sane rate; this is the
+/// guard rail, not the expected cost.
+const SEED_MAX_TICKS: usize = 4096;
 
 /// A compiled, playable voice: the patch plus its external control handles.
 pub struct CompiledVoice {
@@ -366,11 +422,122 @@ pub struct CompiledVoice {
     /// Gate control (≥ 2.5 V = on). Shared with the patch.
     pub gate: Arc<AtomicF64>,
     /// Live parameter handles, keyed by the knob's trace address
-    /// (`node/0#cut`, `amp#attack`, …). Continuous knobs only — enum and
-    /// structural changes require recompilation.
+    /// (`node/0#cut`, `amp#attack`, `node/0#table`, `node/0#oct`, …).
+    /// Everything the panel can move without a recompile.
     pub params: HashMap<String, ParamHandle>,
     /// Signal-kind warnings accumulated while wiring (Warn mode).
     pub warnings: Vec<String>,
+}
+
+impl CompiledVoice {
+    /// Where the amp envelope is right now, 0..1 — quiver's 0–10 V `env`
+    /// output scaled back down.
+    ///
+    /// Reads the routing's last computed value, so it is meaningful after the
+    /// voice has ticked at least once and zero before that.
+    pub fn env_phase(&self) -> f64 {
+        self.patch
+            .get_node_id_by_name(AMP_ADSR)
+            .and_then(|n| self.patch.get_output_value(n, ADSR_ENV_PORT))
+            .map(|v| (v * 0.1).clamp(0.0, 1.0))
+            .unwrap_or(0.0)
+    }
+
+    /// Fast-forward this voice's amp envelope to `level` (0..1), with the gate
+    /// **already high**, so a note carried across a patch swap resumes where it
+    /// was instead of re-attacking from silence.
+    ///
+    /// ## Why this is a pre-roll and not a setter
+    ///
+    /// The plan asked for an envelope-phase getter *and setter* on this type.
+    /// The getter is above and is honest. The setter cannot be: quiver's
+    /// `Adsr` keeps `stage` and `level` private and exposes no parameter,
+    /// state-serialization or introspection surface for them (`GraphModule`
+    /// gives it `port_spec`/`tick`/`reset`/`set_sample_rate`/`type_id` and
+    /// nothing else), so there is no way to write a level into it from
+    /// outside. The alternative was to fork the ADSR into this crate to gain
+    /// two accessors, which would put a hand-copy of quiver's envelope
+    /// arithmetic — `Libm` transcendentals and all — on the critical path of
+    /// every patch the instrument has ever rendered. That is a rendered-audio
+    /// change dressed as a refactor.
+    ///
+    /// So the envelope is driven to the level the same way the player would:
+    /// the attack and decay CVs are pinned to their fastest (1 ms) settings,
+    /// the patch is ticked in silence until `env` arrives, and the CVs are put
+    /// back. It costs a few hundred ticks — well inside the swap's silent
+    /// window, which already budgets a whole voice compile per quantum — and
+    /// it leaves the envelope in the *stage* the level implies, which is the
+    /// part that actually matters:
+    ///
+    /// - below sustain, only Attack can be there, so the rise stops on arrival
+    ///   and the envelope goes on attacking at its real rate;
+    /// - at or above sustain, the note is in Decay or Sustain, so the rise runs
+    ///   to the peak (which is what puts quiver's stage machine into Decay) and
+    ///   then falls to the level.
+    ///
+    /// A side effect worth naming: the pre-roll is real audio, so it also
+    /// primes the new voice's filters and delay lines with ~15 ms of its own
+    /// signal rather than handing the fade-in an empty reverb. Tails still do
+    /// not transfer across a rewire — that is [R3] and is accepted.
+    ///
+    /// Returns whether anything was seeded.
+    ///
+    /// [R3]: the panel plan's §4 risk register.
+    pub fn seed_env_phase(&mut self, level: f64) -> bool {
+        let level = level.clamp(0.0, 1.0);
+        let Some(adsr) = self.patch.get_node_id_by_name(AMP_ADSR) else {
+            return false;
+        };
+        // A percussive patch (sustain 0) whose note has already decayed has no
+        // phase to carry, and neither has a note that never sounded.
+        if level <= 0.0 {
+            return false;
+        }
+        let (Some(attack), Some(decay), Some(sustain)) = (
+            self.params.get("amp#attack").cloned(),
+            self.params.get("amp#decay").cloned(),
+            self.params.get("amp#sustain").cloned(),
+        ) else {
+            return false;
+        };
+        let sustain = sustain.value.get();
+        let (a0, d0) = (attack.value.get(), decay.value.get());
+        // `ParamMap::Unit` on both, and quiver maps 0 V to its 1 ms floor.
+        attack.value.set(0.0);
+        decay.value.set(0.0);
+
+        let peak = if level < sustain { level } else { 1.0 };
+        for _ in 0..SEED_MAX_TICKS {
+            let now = self
+                .patch
+                .get_output_value(adsr, ADSR_ENV_PORT)
+                .unwrap_or(0.0)
+                * 0.1;
+            // The exponential attack snaps to exactly 1.0 (and hands the stage
+            // machine over to Decay) once it is within `ADSR_EXP_DONE`.
+            if now >= peak - ADSR_EXP_DONE {
+                break;
+            }
+            self.patch.tick();
+        }
+        if level >= sustain {
+            for _ in 0..SEED_MAX_TICKS {
+                let now = self
+                    .patch
+                    .get_output_value(adsr, ADSR_ENV_PORT)
+                    .unwrap_or(0.0)
+                    * 0.1;
+                if now <= level {
+                    break;
+                }
+                self.patch.tick();
+            }
+        }
+
+        attack.value.set(a0);
+        decay.value.set(d0);
+        true
+    }
 }
 
 /// Bounded musical mappings from normalized genome parameters.
@@ -407,8 +574,13 @@ mod map {
     /// you hear and morph sweeps the whole way to the next shape. (`i = 7`
     /// gives `table_pos = 7`, which quiver clamps to `idx = 6, frac = 1.0` —
     /// i.e. table 7 at full blend, still exact.)
-    pub fn table_cv(index: usize) -> f64 {
-        index as f64 / 7.0
+    ///
+    /// The index is an `f64` because the site is live: a smoothed write ramps
+    /// *through* the fractional positions between two tables, which is the
+    /// morph this port was always capable of and the panel could never ask
+    /// for. Integral inputs are the shapes the grammar can name.
+    pub fn table_cv(index: f64) -> f64 {
+        index / 7.0
     }
     /// Distortion mode select. quiver quantizes this port as `cv·3.99`, and
     /// its slot 2 is foldback, which this grammar deliberately does not
@@ -976,12 +1148,12 @@ impl Compiler {
     ) -> Result<Option<(PortRef, bool)>, PatchError> {
         let built = match m {
             ModNode::None => return Ok(None),
-            ModNode::Lfo { wave, rate } => {
+            ModNode::Lfo { wave, rate, .. } => {
                 let lfo = self.patch.add(format!("{key}:lfo"), Lfo::new(self.sr()));
                 self.knob(key, "rate", *rate, ParamMap::Unit, false, lfo.in_("rate"))?;
                 (lfo.out(wave.port_name()), false)
             }
-            ModNode::Rand { rate, glide } => {
+            ModNode::Rand { rate, glide, .. } => {
                 // S&H burble: white noise sampled on an internal square-LFO
                 // clock. The knob drives the clock rate.
                 let clk = self.patch.add(format!("{key}:rclk"), Lfo::new(self.sr()));
@@ -1013,7 +1185,7 @@ impl Compiler {
                 )?;
                 (slew.out("out"), false)
             }
-            ModNode::Follow { sens, release } => {
+            ModNode::Follow { sens, release, .. } => {
                 // The tap is the owning module's *own* input, taken before it
                 // enters — so the follower measures what the module is about
                 // to process rather than what it produced, which would be a
@@ -1039,7 +1211,7 @@ impl Compiler {
                 // taper rather than the bipolar one.
                 (f.out("out"), true)
             }
-            ModNode::Env { attack, decay } => {
+            ModNode::Env { attack, decay, .. } => {
                 let env = self.patch.add(format!("{key}:env"), Adsr::new(self.sr()));
                 self.patch.connect(self.gate_out, env.in_("gate"))?;
                 self.knob(
@@ -1063,6 +1235,7 @@ impl Compiler {
                 rate,
                 steps,
                 pulses,
+                ..
             } => {
                 let clk = self.patch.add(format!("{key}:eclk"), Clock::new(self.sr()));
                 self.knob(
@@ -1125,6 +1298,7 @@ impl Compiler {
                 p0,
                 p1,
                 input,
+                ..
             } => {
                 let Some((src, unipolar)) =
                     self.build_mod(input, &format!("{key}/0"), owner_input)?
@@ -1133,7 +1307,7 @@ impl Compiler {
                 };
                 self.build_mod_op(*kind, *p0, *p1, key, src, unipolar)?
             }
-            ModNode::Pair { kind, a, b } => {
+            ModNode::Pair { kind, a, b, .. } => {
                 let (a, b) = (
                     self.build_mod(a, &format!("{key}/0"), owner_input)?,
                     self.build_mod(b, &format!("{key}/1"), owner_input)?,
@@ -1396,6 +1570,16 @@ impl Compiler {
     /// than replacing it, which is precisely why this stage is a real node and
     /// not a baked default (see [`Self::constant`]). A volt on that wire is an
     /// octave, so what arrives is transposition: vibrato, or a pitch envelope.
+    ///
+    /// A third cable lands here too, and it is the reason `oct` is a live
+    /// site: an [`ExternalInput`] carrying an **octave trim**, zero at compile
+    /// time, that the panel writes when the octave chip is cycled. Changing
+    /// the octave used to be a recompile — a fade-out, a per-quantum voice
+    /// rebuild and a re-attack of every held note, for a number that is one
+    /// addition on a CV wire. See [`ParamMap::OctaveTrim`] for why the live
+    /// value is a *trim* rather than the octave itself; the short version is
+    /// that a trim of `+0.0` is the additive identity in the gather sum and an
+    /// absolute octave is not, so this costs a node and no samples.
     fn wire_pitch(
         &mut self,
         key: &str,
@@ -1407,6 +1591,17 @@ impl Compiler {
         let node = self.patch.add(format!("{key}:pitch"), Offset::new(offset));
         self.patch.connect(self.pitch_out, node.in_("in"))?;
         self.patch.connect(node.out("out"), target)?;
+        self.knob(
+            key,
+            "oct",
+            (octave + 2) as f64,
+            ParamMap::OctaveTrim(octave),
+            // The trim is signed, and the port is `CvBipolar`; a unipolar
+            // `ExternalInput` here would be a validation warning on every
+            // source in every patch.
+            true,
+            node.in_("in"),
+        )?;
         Ok(node.in_("in"))
     }
 
@@ -1423,6 +1618,7 @@ impl Compiler {
                 detune,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let vco = self.patch.add(format!("{key}:vco"), Vco::new(self.sr()));
                 let pitch_in = self.wire_pitch(key, *octave, *detune, vco.in_("voct"))?;
@@ -1448,6 +1644,7 @@ impl Compiler {
                 mix,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let saw = self
                     .patch
@@ -1472,7 +1669,7 @@ impl Compiler {
                 self.knob(key, "smix", *mix, ParamMap::Unit, false, saw.in_("mix"))?;
                 Ok(Sig::mono(saw.out("out")))
             }
-            AudioNode::Noise { color } => {
+            AudioNode::Noise { color, .. } => {
                 let noise = self
                     .patch
                     .add(format!("{key}:noise"), NoiseGenerator::new());
@@ -1484,6 +1681,7 @@ impl Compiler {
                 morph,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let wt = self
                     .patch
@@ -1492,10 +1690,28 @@ impl Compiler {
                 // this module has no detune site, but pitch still goes
                 // through the same Offset every other source uses.
                 self.wire_pitch(key, *octave, 0.5, wt.in_("v_oct"))?;
-                // The table is an enum site, not a knob — changing it is a
-                // recompile either way — so it is a baked default rather than
-                // an `ExternalInput`.
-                self.constant(map::table_cv(table.index()), wt.id(), "table")?;
+                // The table is an enum site, and it used to be a baked default
+                // on the reasoning that "changing it is a recompile either
+                // way". That reasoning was circular: it was a recompile
+                // *because* it was baked. The port is a crossfade position —
+                // see [`map::table_cv`], which exists entirely to explain that
+                // — so a live write does not switch tables, it **morphs**
+                // between them, over the live path's own ~25 ms smoothing
+                // ramp. This is the one control the module is named for, and
+                // it was the only one that cost a fade-out, a voice rebuild
+                // and a re-attack of every held note.
+                //
+                // Bit-exact with the constant it replaces: quiver writes an
+                // unpatched port's default and sums a patched one's cables
+                // starting from `+0.0`, and `0.0 + table_cv` is `table_cv`.
+                self.knob(
+                    key,
+                    "table",
+                    table.index() as f64,
+                    ParamMap::TableIndex,
+                    false,
+                    wt.in_("table"),
+                )?;
                 // No hard sync: the grammar has no second oscillator to sync
                 // *to*, and quiver retriggers phase on any positive edge, so
                 // an unpinned Gate-kind port would be one stray cable away
@@ -1518,6 +1734,7 @@ impl Compiler {
                 brightness,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let ks = self
                     .patch
@@ -1566,6 +1783,7 @@ impl Compiler {
                 octave,
                 mod_depth,
                 modulation,
+                ..
             } => {
                 let fo = self
                     .patch
@@ -1596,7 +1814,7 @@ impl Compiler {
                 )?;
                 Ok(Sig::mono(fo.out("out")))
             }
-            AudioNode::Mix { balance, a, b } => {
+            AudioNode::Mix { balance, a, b, .. } => {
                 let a_out = self.build(a, &format!("{key}/0"))?;
                 let b_out = self.build(b, &format!("{key}/1"))?;
                 let xf = self.patch.add(format!("{key}:mix"), Crossfader::new());
@@ -1619,6 +1837,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let (filt, out_port) = match kind {
@@ -1678,6 +1897,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let fold = self.patch.add(
@@ -1717,6 +1937,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let dl = self
@@ -1753,6 +1974,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ch = self
@@ -1788,6 +2010,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let rv = self
@@ -1822,6 +2045,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ds = self
@@ -1853,6 +2077,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let bc = self.patch.add(format!("{key}:crush"), Bitcrusher::new());
@@ -1883,6 +2108,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ph = self
@@ -1928,6 +2154,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let fl = self
@@ -1975,6 +2202,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let tr = self
@@ -2017,6 +2245,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let vb = self
@@ -2055,6 +2284,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let eq = self
@@ -2113,6 +2343,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 // Allocates a fixed 96 000-sample buffer (≈768 KB) at
@@ -2156,7 +2387,7 @@ impl Compiler {
                 )?;
                 Ok(Sig::mono(gr.out("out")))
             }
-            AudioNode::RingMod { mix, a, b } => {
+            AudioNode::RingMod { mix, a, b, .. } => {
                 let a_out = self.build(a, &format!("{key}/0"))?;
                 let b_out = self.build(b, &format!("{key}/1"))?;
                 let rm = self.patch.add(format!("{key}:ring"), RingModulator::new());
@@ -2181,6 +2412,7 @@ impl Compiler {
                 mod_depth,
                 input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let ps = self
@@ -2225,6 +2457,7 @@ impl Compiler {
                 input,
                 sidechain,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let key_out = self.build(sidechain, &format!("{key}/1"))?;
@@ -2279,6 +2512,7 @@ impl Compiler {
                 input,
                 key: key_input,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let key_out = self.build(key_input, &format!("{key}/1"))?;
@@ -2333,6 +2567,7 @@ impl Compiler {
                 input,
                 sidechain,
                 modulation,
+                ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
                 let key_out = self.build(sidechain, &format!("{key}/1"))?;
@@ -2380,6 +2615,7 @@ impl Compiler {
                 carrier,
                 modulator,
                 modulation,
+                ..
             } => {
                 let carrier_out = self.build(carrier, &format!("{key}/0"))?;
                 let mod_out = self.build(modulator, &format!("{key}/1"))?;
@@ -2616,7 +2852,9 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::term::{AmpEnv, DriveMode, FilterKind, ModNode, NoiseColor, TableShape, Waveform};
+    use crate::term::{
+        AmpEnv, DriveMode, FilterKind, ModNode, NoiseColor, TableShape, Uid, Waveform,
+    };
 
     const SR: f64 = 44_100.0;
 
@@ -2634,6 +2872,7 @@ mod tests {
 
     fn saw() -> AudioNode {
         AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Saw,
             octave: 0,
             detune: 0.5,
@@ -2676,11 +2915,13 @@ mod tests {
     #[test]
     fn filter_tracks_the_keyboard() {
         let tree = sustained(AudioNode::Filter {
+            uid: Uid::NEW,
             kind: FilterKind::SvfLp,
             cutoff: 0.3,
             resonance: 0.0,
             mod_depth: 0.0,
             input: Box::new(AudioNode::Noise {
+                uid: Uid::NEW,
                 color: NoiseColor::White,
             }),
             modulation: ModNode::None,
@@ -2725,6 +2966,7 @@ mod tests {
     #[test]
     fn dc_blocker_removes_the_ladder_offset() {
         let tree = sustained(AudioNode::Filter {
+            uid: Uid::NEW,
             kind: FilterKind::Ladder,
             cutoff: 0.35,
             resonance: 0.3,
@@ -2751,6 +2993,7 @@ mod tests {
     fn stereo_tanks_reach_the_output() {
         let mut wide = compile(
             &sustained(AudioNode::Reverb {
+                uid: Uid::NEW,
                 size: 0.7,
                 damp: 0.4,
                 mix: 0.6,
@@ -2784,10 +3027,12 @@ mod tests {
     #[test]
     fn fold_threshold_stays_live_under_modulation() {
         let tree = sustained(AudioNode::Fold {
+            uid: Uid::NEW,
             threshold: 0.5,
             mod_depth: 0.6,
             input: Box::new(saw()),
             modulation: ModNode::Lfo {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 rate: 0.4,
             },
@@ -2849,11 +3094,13 @@ mod tests {
     #[test]
     fn pitch_modulation_spans_exactly_one_octave_at_full_depth() {
         let vco = |mod_depth: f64| AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Sine,
             octave: 0,
             detune: 0.5,
             mod_depth,
             modulation: ModNode::Lfo {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 // 0.01·3000^x Hz ⇒ 0.5 Hz, one cycle in the 2 s rendered.
                 rate: 0.4886,
@@ -2915,11 +3162,13 @@ mod tests {
     #[test]
     fn eq_modulation_reaches_the_bands_own_volt_scale() {
         let eq = |mod_depth: f64| AudioNode::Eq {
+            uid: Uid::NEW,
             low: 0.5,
             mid: 0.5,
             high: 0.5,
             mod_depth,
             input: Box::new(AudioNode::Vco {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 octave: 0,
                 detune: 0.5,
@@ -2927,6 +3176,7 @@ mod tests {
                 modulation: ModNode::None,
             }),
             modulation: ModNode::Lfo {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 rate: 0.4886, // 0.5 Hz — one cycle in the 2 s rendered
             },
@@ -2992,6 +3242,7 @@ mod tests {
 
     fn sine_src() -> AudioNode {
         AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Sine,
             octave: 0,
             detune: 0.5,
@@ -3005,6 +3256,7 @@ mod tests {
     /// are geometric.
     fn pluck_key() -> AudioNode {
         AudioNode::Pluck {
+            uid: Uid::NEW,
             octave: -1,
             damping: 0.4,
             brightness: 0.7,
@@ -3048,6 +3300,7 @@ mod tests {
         let base = 261.625_565 * 4.0;
         let at = |semis: f64| {
             let tree = sustained(AudioNode::Shift {
+                uid: Uid::NEW,
                 semis,
                 window: 0.5,
                 mix: 1.0, // fully wet: the dry copy would win every bin
@@ -3082,12 +3335,14 @@ mod tests {
         let base = 261.625_565 * 4.0;
         let span = |mod_depth: f64| {
             let tree = sustained(AudioNode::Shift {
+                uid: Uid::NEW,
                 semis: 0.5,
                 window: 0.5,
                 mix: 1.0,
                 mod_depth,
                 input: Box::new(sine_src()),
                 modulation: ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Triangle,
                     rate: 0.4886, // ≈0.5 Hz — one cycle in the 2 s rendered
                 },
@@ -3148,6 +3403,7 @@ mod tests {
         // The behaviour. `range` 0.7 means a shut gate passes 0.3 of the
         // signal, so open and shut differ by ~10 dB and are unmistakable.
         let gated = sustained(AudioNode::Gate {
+            uid: Uid::NEW,
             threshold: 0.45,
             range: 0.7,
             release: 0.3,
@@ -3185,6 +3441,7 @@ mod tests {
     fn the_ducker_knob_offsets_quivers_own_base() {
         let ducked = |amount: f64| {
             let tree = sustained(AudioNode::Duck {
+                uid: Uid::NEW,
                 amount,
                 threshold: 0.4,
                 release: 0.35,
@@ -3229,6 +3486,7 @@ mod tests {
     fn duck_modulation_reaches_the_param_cv_scale() {
         let swing = |mod_depth: f64| {
             let tree = sustained(AudioNode::Duck {
+                uid: Uid::NEW,
                 // Mid depth, so the cable has room to move it both ways.
                 amount: 0.5,
                 threshold: 0.2,
@@ -3237,6 +3495,7 @@ mod tests {
                 input: Box::new(sine_src()),
                 key: Box::new(pluck_key()),
                 modulation: ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Sine,
                     rate: 0.5595, // ≈0.9 Hz — a full cycle inside the render
                 },
@@ -3271,11 +3530,13 @@ mod tests {
     #[test]
     fn a_vocoder_annihilates_its_carriers_dc() {
         let tree = sustained(AudioNode::Vocoder {
+            uid: Uid::NEW,
             bands: 0.6,
             attack: 0.25,
             release: 0.3,
             mod_depth: 0.0,
             carrier: Box::new(AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::Ladder,
                 cutoff: 0.6,
                 resonance: 0.4,
@@ -3284,6 +3545,7 @@ mod tests {
                 input: Box::new(saw()),
             }),
             modulator: Box::new(AudioNode::Formant {
+                uid: Uid::NEW,
                 vowel: 0.3,
                 shift: 0.5,
                 octave: 0,
@@ -3423,6 +3685,7 @@ mod tests {
                 release: 0.3,
             },
             root: AudioNode::Distortion {
+                uid: Uid::NEW,
                 drive: 0.15,
                 tone: 0.7,
                 mode: DriveMode::Tube,
@@ -3446,6 +3709,7 @@ mod tests {
         // The symmetric modes pay nothing for it.
         for mode in [DriveMode::Soft, DriveMode::Hard] {
             let clean = sustained(AudioNode::Distortion {
+                uid: Uid::NEW,
                 drive: 0.15,
                 tone: 0.7,
                 mode,
@@ -3467,12 +3731,14 @@ mod tests {
         // attenuverter neutralized.
         let tree = |depth: f64| {
             sustained(AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::SvfLp,
                 cutoff: 0.25,
                 resonance: 0.0,
                 mod_depth: depth,
                 input: Box::new(saw()),
                 modulation: ModNode::Follow {
+                    uid: Uid::NEW,
                     sens: 0.8,
                     release: 0.3,
                 },
@@ -3493,11 +3759,13 @@ mod tests {
         // silent on the cable, because both the prior and the panel can put a
         // follower there.
         let lone = sustained(AudioNode::Wavetable {
+            uid: Uid::NEW,
             table: crate::term::TableShape::Saw,
             octave: 0,
             morph: 0.4,
             mod_depth: 0.8,
             modulation: ModNode::Follow {
+                uid: Uid::NEW,
                 sens: 0.8,
                 release: 0.3,
             },
@@ -3518,7 +3786,7 @@ mod tests {
     #[test]
     fn every_wavetable_shape_lands_on_its_own_table() {
         for i in 0..TableShape::ALL.len() {
-            let pos = map::table_cv(i) * 7.0;
+            let pos = map::table_cv(i as f64) * 7.0;
             let frac = pos - pos.floor();
             assert!(
                 frac < 1e-12 || (1.0 - frac) < 1e-12,
@@ -3531,7 +3799,9 @@ mod tests {
             );
         }
         // Distinct tables, in order: the plate's index IS the table you hear.
-        let cvs: Vec<f64> = (0..TableShape::ALL.len()).map(map::table_cv).collect();
+        let cvs: Vec<f64> = (0..TableShape::ALL.len())
+            .map(|i| map::table_cv(i as f64))
+            .collect();
         assert!(
             cvs.windows(2).all(|w| w[1] > w[0]),
             "table CVs are not monotonic"
@@ -3553,11 +3823,13 @@ mod tests {
             // A ladder, so the patch actually receives a blocker; a sine
             // through it stays a sine, so output level reads as filter gain.
             root: AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: FilterKind::Ladder,
                 cutoff: 1.0,
                 resonance: 0.0,
                 mod_depth: 0.0,
                 input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
                     wave: Waveform::Sine,
                     octave: 0,
                     detune: 0.5,
@@ -3594,6 +3866,7 @@ mod tests {
     /// in the way.
     fn pitch_modulated(m: ModNode, mod_depth: f64) -> PatchTree {
         sustained(AudioNode::Vco {
+            uid: Uid::NEW,
             wave: Waveform::Sine,
             octave: 0,
             detune: 0.5,
@@ -3646,6 +3919,7 @@ mod tests {
     #[test]
     fn the_quantizer_lands_a_pitch_cable_on_whole_semitones() {
         let lfo = || ModNode::Lfo {
+            uid: Uid::NEW,
             wave: Waveform::Triangle,
             rate: SLOW_LFO_RATE,
         };
@@ -3657,6 +3931,7 @@ mod tests {
             semitone_track(&out, 40)
         };
         let quantized = track(ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Quantize,
             p0: 0.0, // root C
             p1: 0.0, // chromatic — every semitone is reachable
@@ -3720,6 +3995,7 @@ mod tests {
     fn the_euclid_clock_spans_the_ports_own_tempo_range() {
         let edges = |rate: f64| {
             let m = ModNode::Euclid {
+                uid: Uid::NEW,
                 rate,
                 steps: 0.3,
                 pulses: 0.6,
@@ -3750,6 +4026,7 @@ mod tests {
     fn every_corner_of_the_euclid_knobs_still_makes_a_rhythm() {
         let edges = |steps: f64, pulses: f64| {
             let m = ModNode::Euclid {
+                uid: Uid::NEW,
                 rate: 1.0,
                 steps,
                 pulses,
@@ -3780,12 +4057,15 @@ mod tests {
     fn the_switch_is_not_stuck_on_one_branch() {
         let render = |a_rate: f64| {
             let m = ModNode::Pair {
+                uid: Uid::NEW,
                 kind: PairOp::Switch,
                 a: Box::new(ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Triangle,
                     rate: a_rate,
                 }),
                 b: Box::new(ModNode::Euclid {
+                    uid: Uid::NEW,
                     rate: 0.7,
                     steps: 0.4,
                     pulses: 0.5,
@@ -3838,11 +4118,13 @@ mod tests {
                 .fold(0.0f64, f64::max)
         };
         let stepped = || ModNode::Euclid {
+            uid: Uid::NEW,
             rate: 0.75,
             steps: 0.3,
             pulses: 0.5,
         };
         let slewed = |t: f64| ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Slew,
             p0: t,
             p1: t,
@@ -3875,10 +4157,12 @@ mod tests {
     fn the_three_rectifier_modes_are_three_different_signals() {
         let track = |mode: f64| {
             let m = ModNode::Op {
+                uid: Uid::NEW,
                 kind: ModOp::Rectify,
                 p0: mode,
                 p1: 0.0,
                 input: Box::new(ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Triangle,
                     rate: SLOW_LFO_RATE,
                 }),
@@ -3911,6 +4195,7 @@ mod tests {
             let mut v = compile(
                 &pitch_modulated(
                     ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Triangle,
                         rate: SLOW_LFO_RATE,
                     },
@@ -3937,14 +4222,17 @@ mod tests {
     #[test]
     fn a_two_deep_mod_chain_reaches_the_destination_through_every_stage() {
         let chain = ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Slew,
             p0: 0.3,
             p1: 0.3,
             input: Box::new(ModNode::Op {
+                uid: Uid::NEW,
                 kind: ModOp::Quantize,
                 p0: 0.0,
                 p1: 2.5 / 7.0, // minor
                 input: Box::new(ModNode::Rand {
+                    uid: Uid::NEW,
                     rate: 0.6,
                     glide: 0.0,
                 }),
@@ -3994,10 +4282,12 @@ mod tests {
                 .fold(0.0f64, f64::max)
         };
         let inner = || ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Quantize,
             p0: 0.0,
             p1: 2.5 / 7.0, // minor
             input: Box::new(ModNode::Euclid {
+                uid: Uid::NEW,
                 rate: 0.75,
                 steps: 0.3,
                 pulses: 0.5,
@@ -4005,6 +4295,7 @@ mod tests {
         };
         let raw = jump(inner());
         let slewed = jump(ModNode::Op {
+            uid: Uid::NEW,
             kind: ModOp::Slew,
             p0: 1.0,
             p1: 1.0,
@@ -4015,6 +4306,207 @@ mod tests {
             slewed < raw * 0.5,
             "the slew stage did not reach the pitch: {slewed:.3} against \
              {raw:.3} without it"
+        );
+    }
+
+    /// FNV-1a over the *bits* of every sample a voice renders: 3000 frames
+    /// with the gate high, then 1096 with it low, at a pitch of `7/12`.
+    ///
+    /// The pitch is a tempered fifth on purpose. It is not a binary fraction,
+    /// so `pitch + (oct + detune)` and `(pitch + oct) + detune` disagree in
+    /// the last bit — any change that reassociates the pitch sum shows up here
+    /// rather than in someone's ears.
+    fn render_fingerprint(mut v: CompiledVoice) -> u64 {
+        v.pitch.set(7.0 / 12.0);
+        v.gate.set(5.0);
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for i in 0..4096u32 {
+            if i == 3000 {
+                v.gate.set(0.0);
+            }
+            let (l, r) = v.patch.tick();
+            for x in [l, r] {
+                h ^= x.to_bits();
+                h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        h
+    }
+
+    /// Put a compiled voice back the way the compiler built it *before*
+    /// `table` and `oct` were live: pull the two new [`ExternalInput`] cables
+    /// out and write their values back where they used to be baked.
+    ///
+    /// This is what makes the regression test a real counterfactual rather
+    /// than a captured constant. A hard-coded golden vector would pin the
+    /// render to whichever machine captured it — quiver's transcendentals are
+    /// a pure-Rust libm, but nothing in this repo guarantees that for every
+    /// dependency on every target, and a flaky CI golden teaches people to
+    /// re-baseline it, which is precisely the thing it exists to prevent.
+    /// Rendering both graphs in the same process compares the arithmetic
+    /// itself.
+    ///
+    /// (The stronger check was also run once, by hand, across the two real
+    /// builds: 16 prior draws plus this corpus, hashed before and after the
+    /// change, identical — which additionally covers what this cannot, that
+    /// two extra nodes per source do not reorder the execution of the
+    /// `NoiseGenerator`s that draw from quiver's shared RNG.)
+    ///
+    /// Returns how many cables it removed, so a test cannot quietly pass by
+    /// comparing a patch with nothing in it.
+    fn unlive_table_and_oct(v: &mut CompiledVoice) -> usize {
+        let names: Vec<String> = v.patch.nodes().map(|(_, n, _)| n.to_string()).collect();
+        let mut pulled = 0;
+        for name in names {
+            if let Some(key) = name.strip_suffix(":table!") {
+                let src = v.patch.get_handle_by_name(&name).expect("just listed");
+                let wt = v
+                    .patch
+                    .get_handle_by_name(&format!("{key}:wavetable"))
+                    .expect("a `table!` knob belongs to a wavetable");
+                // The atomic holds exactly what `constant` used to pin.
+                let baked = v.params[&format!("{key}#table")].value.get();
+                v.patch
+                    .disconnect_ports(src.out("out"), wt.in_("table"))
+                    .expect("the cable this stage added");
+                assert!(v.patch.set_param_by_id(wt.id(), "table", baked));
+                pulled += 1;
+            } else if let Some(key) = name.strip_suffix(":oct!") {
+                let src = v.patch.get_handle_by_name(&name).expect("just listed");
+                let off = v
+                    .patch
+                    .get_handle_by_name(&format!("{key}:pitch"))
+                    .expect("an `oct!` knob belongs to a pitch offset");
+                // Nothing to bake back: the trim is zero at compile time and
+                // the octave never left the `Offset`. That assertion *is* the
+                // bit-exactness argument, so make it out loud.
+                assert_eq!(
+                    v.params[&format!("{key}#oct")].value.get(),
+                    0.0,
+                    "{key}: a freshly compiled octave trim must be exactly zero"
+                );
+                v.patch
+                    .disconnect_ports(src.out("out"), off.in_("in"))
+                    .expect("the cable this stage added");
+                pulled += 1;
+            }
+        }
+        v.patch.compile().expect("recompiles without the cables");
+        pulled
+    }
+
+    /// Every source that has an octave, at a non-zero octave, with something
+    /// on its modulation slot — the exact shape the pitch sum is fragile in,
+    /// since a mod cable joins the same gather. Plus one wavetable per table
+    /// shape, `table` being the other constant that became a cable.
+    fn pitch_and_table_corpus() -> Vec<PatchTree> {
+        let lfo = || ModNode::Lfo {
+            uid: Uid::NEW,
+            wave: Waveform::Triangle,
+            rate: 0.4,
+        };
+        let mut out = vec![
+            sustained(AudioNode::Vco {
+                uid: Uid::NEW,
+                wave: Waveform::Saw,
+                octave: -2,
+                detune: 0.31,
+                mod_depth: 0.6,
+                modulation: lfo(),
+            }),
+            sustained(AudioNode::Vco {
+                uid: Uid::NEW,
+                wave: Waveform::Square,
+                octave: 2,
+                detune: 0.83,
+                mod_depth: 0.0,
+                modulation: ModNode::None,
+            }),
+            sustained(AudioNode::Supersaw {
+                uid: Uid::NEW,
+                octave: -1,
+                detune: 0.4,
+                mix: 0.6,
+                mod_depth: 0.45,
+                modulation: lfo(),
+            }),
+            sustained(AudioNode::Pluck {
+                uid: Uid::NEW,
+                octave: 1,
+                damping: 0.6,
+                brightness: 0.4,
+                mod_depth: 0.3,
+                modulation: lfo(),
+            }),
+            sustained(AudioNode::Formant {
+                uid: Uid::NEW,
+                vowel: 0.3,
+                shift: 0.5,
+                octave: -1,
+                mod_depth: 0.2,
+                modulation: lfo(),
+            }),
+        ];
+        for (i, table) in TableShape::ALL.iter().enumerate() {
+            out.push(sustained(AudioNode::Wavetable {
+                uid: Uid::NEW,
+                table: *table,
+                octave: (i as i8 % 5) - 2,
+                morph: 0.37,
+                mod_depth: if i % 2 == 0 { 0.0 } else { 0.55 },
+                modulation: if i % 2 == 0 { ModNode::None } else { lfo() },
+            }));
+        }
+        out
+    }
+
+    /// **The standing rule, in CI.** Making `table` and `oct` live must not
+    /// move one sample of any patch that already exists — a rendered-audio
+    /// change invalidates the bank's featurisation and the taste posterior,
+    /// and needs a measured evolution revalidation, not a green `make check`.
+    ///
+    /// So the claim is checked rather than asserted: every patch is rendered
+    /// twice in the same process, once through the live cables and once
+    /// through [`unlive_table_and_oct`], and every bit of every sample must
+    /// agree. Sixteen prior draws for breadth, then a corpus built to hit
+    /// every octave-bearing source and every wavetable shape.
+    #[test]
+    fn table_and_oct_going_live_moved_no_sample() {
+        use crate::prior::PatchGrammarPrior;
+        use rand::rngs::StdRng;
+        use rand::SeedableRng;
+
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0x9E37_79B9_7F4A_7C15);
+        let trees: Vec<PatchTree> = (0..16)
+            .map(|_| prior.sample_with_rng(&mut rng))
+            .chain(pitch_and_table_corpus())
+            .collect();
+
+        let mut pulled_total = 0;
+        for (i, tree) in trees.iter().enumerate() {
+            // Noise draws from quiver's thread-local RNG, so both renders have
+            // to start from the same state or the comparison means nothing.
+            quiver::rng::seed(0x60_1DE5);
+            let live = render_fingerprint(compile(tree, SR).expect("compiles"));
+
+            quiver::rng::seed(0x60_1DE5);
+            let mut baked = compile(tree, SR).expect("compiles");
+            pulled_total += unlive_table_and_oct(&mut baked);
+            let baked = render_fingerprint(baked);
+
+            assert_eq!(
+                format!("{live:#018x}"),
+                format!("{baked:#018x}"),
+                "patch {i} renders differently with `table`/`oct` live:\n{}",
+                tree.to_sexpr()
+            );
+        }
+        assert!(
+            pulled_total >= trees.len(),
+            "only {pulled_total} live cables across {} patches — the corpus is \
+             not exercising the sites this test is about",
+            trees.len()
         );
     }
 }

@@ -51,7 +51,7 @@ pub use vet::{vet, VetConfig, VetFailure, VetReport};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ricercar_grammar::term::{AmpEnv, AudioNode, ModNode, NoiseColor, Waveform};
+    use ricercar_grammar::term::{AmpEnv, AudioNode, ModNode, NoiseColor, Uid, Waveform};
     use ricercar_grammar::{PatchGrammarPrior, PatchTree};
 
     /// Every built-in preset renders and passes the vetting gate — a preset
@@ -83,6 +83,7 @@ mod tests {
         PatchTree {
             amp: amp(),
             root: AudioNode::Vco {
+                uid: Uid::NEW,
                 wave,
                 octave: 0,
                 detune: 0.5,
@@ -100,15 +101,18 @@ mod tests {
         let noisy = PatchTree {
             amp: amp(),
             root: AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: ricercar_grammar::term::FilterKind::SvfLp,
                 cutoff: 0.5,
                 resonance: 0.4,
                 mod_depth: 0.3,
                 modulation: ModNode::Lfo {
+                    uid: Uid::NEW,
                     wave: Waveform::Triangle,
                     rate: 0.5,
                 },
                 input: Box::new(AudioNode::Noise {
+                    uid: Uid::NEW,
                     color: NoiseColor::White,
                 }),
             },
@@ -141,6 +145,7 @@ mod tests {
             &PatchTree {
                 amp: amp(),
                 root: AudioNode::Noise {
+                    uid: Uid::NEW,
                     color: NoiseColor::White,
                 },
             },
@@ -234,6 +239,7 @@ mod tests {
                 &PatchTree {
                     amp: AmpEnv { attack, ..amp() },
                     root: AudioNode::Vco {
+                        uid: Uid::NEW,
                         wave: Waveform::Saw,
                         octave: 0,
                         detune: 0.5,
@@ -290,6 +296,7 @@ mod tests {
         PatchTree {
             amp: amp(),
             root: AudioNode::Filter {
+                uid: Uid::NEW,
                 kind: ricercar_grammar::term::FilterKind::SvfLp,
                 cutoff,
                 resonance: 0.3,
@@ -355,10 +362,12 @@ mod tests {
         };
         let still = hcs(ModNode::None);
         let slow = hcs(ModNode::Lfo {
+            uid: Uid::NEW,
             wave: Waveform::Triangle,
             rate: 0.45, // ≈ 0.4 Hz
         });
         let crawl = hcs(ModNode::Lfo {
+            uid: Uid::NEW,
             wave: Waveform::Triangle,
             rate: 0.3, // ≈ 0.1 Hz
         });
@@ -622,12 +631,14 @@ mod tests {
         let dynamics = PatchTree {
             amp: amp(),
             root: AudioNode::Duck {
+                uid: Uid::NEW,
                 amount: 0.7,
                 threshold: 0.4,
                 release: 0.35,
                 mod_depth: 0.0,
                 modulation: ModNode::None,
                 input: Box::new(AudioNode::Distortion {
+                    uid: Uid::NEW,
                     drive: 0.4,
                     tone: 0.5,
                     mode: DriveMode::Soft,
@@ -636,6 +647,7 @@ mod tests {
                     input: Box::new(saw()),
                 }),
                 key: Box::new(AudioNode::Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
                     cutoff: 0.5,
                     resonance: 0.2,
@@ -659,24 +671,29 @@ mod tests {
         let tree = PatchTree {
             amp: amp(),
             root: AudioNode::Delay {
+                uid: Uid::NEW,
                 time: 0.5,
                 feedback: 0.5,
                 mix: 0.5,
                 mod_depth: 0.0,
                 modulation: ModNode::None,
                 input: Box::new(AudioNode::Filter {
+                    uid: Uid::NEW,
                     kind: ricercar_grammar::term::FilterKind::Ladder,
                     cutoff: 0.5,
                     resonance: 0.5,
                     mod_depth: 0.5,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.2,
                         decay: 0.6,
                     },
                     input: Box::new(AudioNode::Mix {
+                        uid: Uid::NEW,
                         balance: 0.5,
                         a: Box::new(vco(Waveform::Saw).root),
                         b: Box::new(AudioNode::Noise {
+                            uid: Uid::NEW,
                             color: NoiseColor::Pink,
                         }),
                     }),

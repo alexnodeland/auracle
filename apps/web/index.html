@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=50">
+<link rel="stylesheet" href="style.css?b=64">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=75";
+    s.src = "main.js?b=107";
     document.head.appendChild(s);
   }
 })();
@@ -61,10 +61,83 @@
           <button id="patch-export-btn" class="ovf-item" role="menuitem">Export this patch</button>
           <label class="ovf-item" role="menuitem" tabindex="0">Import a patch<input id="patch-import-input" type="file" accept=".json" hidden></label>
           <div class="ovf-sep"></div>
+          <button id="scope-btn" class="ovf-item" role="menuitem">Scope &amp; analyser…</button>
+          <div class="ovf-sep"></div>
           <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
           <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset taste profile…</button>
           <div class="ovf-sep"></div>
           <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
+        </div>
+        <!-- The scope's own panel. It hangs off the same ⋯ the rest of the
+             app's settings do rather than growing a second gear icon on the
+             rack, and everything in it is persisted: a scope you have to
+             re-aim on every reload is a scope you stop configuring. -->
+        <div class="scope-panel hidden" id="scope-panel" role="dialog" aria-label="Scope and analyser settings">
+          <div class="sp-head">
+            <span class="sp-title">scope &amp; analyser</span>
+            <button class="util-btn sq" id="scope-close" aria-label="Close">×</button>
+          </div>
+          <div class="sp-grid">
+            <label class="sp-row"><span>mode</span>
+              <select id="sp-mode">
+                <option value="off">off</option>
+                <option value="scope">waveform</option>
+                <option value="spectrum">spectrum</option>
+              </select></label>
+            <label class="sp-row"><span>tap</span>
+              <select id="sp-tap">
+                <option value="pre">pre-master</option>
+                <option value="post">post-master</option>
+              </select></label>
+            <label class="sp-row"><span>fft size</span>
+              <select id="sp-fft">
+                <option value="512">512</option>
+                <option value="1024">1024</option>
+                <option value="2048">2048</option>
+                <option value="4096">4096</option>
+              </select></label>
+            <label class="sp-row"><span>window</span>
+              <select id="sp-smooth">
+                <option value="0">none</option>
+                <option value="0.35">light</option>
+                <option value="0.6">medium</option>
+                <option value="0.85">heavy</option>
+              </select></label>
+            <label class="sp-row"><span>colour</span>
+              <select id="sp-colour">
+                <option value="green">phosphor</option>
+                <option value="amber">amber</option>
+                <option value="ice">ice</option>
+              </select></label>
+            <label class="sp-row"><span>corner</span>
+              <select id="sp-corner">
+                <option value="tl">top left</option>
+                <option value="tr">top right</option>
+                <option value="bl">bottom left</option>
+                <option value="br">bottom right</option>
+              </select></label>
+            <label class="sp-row"><span>size</span>
+              <select id="sp-size">
+                <option value="S">small</option>
+                <option value="M">medium</option>
+                <option value="L">large</option>
+              </select></label>
+            <label class="sp-row"><span>park after</span>
+              <select id="sp-park">
+                <option value="0.5">½ s</option>
+                <option value="1.5">1½ s</option>
+                <option value="4">4 s</option>
+                <option value="600">never</option>
+              </select></label>
+            <label class="sp-row"><span>gain <i class="sp-val" id="sp-gain-v">1.0×</i></span>
+              <input type="range" id="sp-gain" min="0.25" max="4" step="0.05"></label>
+            <label class="sp-row"><span>parked opacity <i class="sp-val" id="sp-floor-v">0.35</i></span>
+              <input type="range" id="sp-floor" min="0" max="1" step="0.05"></label>
+            <label class="sp-row sp-check"><input type="checkbox" id="sp-trigger"><span>trigger on the rising edge</span></label>
+            <label class="sp-row sp-check"><input type="checkbox" id="sp-glow"><span>phosphor glow</span></label>
+            <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
+          </div>
+          <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
         </div>
       </div>
     </div>
@@ -119,9 +192,16 @@
       <!-- ------------- PLAY: the patch is the instrument ------------- -->
       <section id="view-play" class="view" role="tabpanel" aria-label="Play">
         <div class="stage-toolbar">
+          <!-- Transport belongs to the patch, not to the verb row: it plays
+               *this* thing, so it sits against this thing's name as a round
+               button the eye finds without reading. Out of the row, seven
+               equal pills become six, and the six that remain can be ranked. -->
           <div class="subject-block">
-            <div class="subject-name" id="rack-subject">no patch loaded</div>
-            <div class="subject-meta" id="rack-meta"></div>
+            <span class="tt" title="Pick a patch from the bank first"><button class="xport" id="rack-play" aria-label="Play a sample of this patch" disabled>▶</button></span>
+            <div class="subject-id">
+              <div class="subject-name" id="rack-subject">no patch loaded</div>
+              <div class="subject-meta" id="rack-meta"></div>
+            </div>
           </div>
           <!-- A reserved row, not an inline chip: the callout's position must
                not be a function of how long the patch's name happens to be.
@@ -129,33 +209,68 @@
           <div class="callout-row">
             <button class="nextstep" id="nextstep" title="What to do next"></button>
           </div>
+          <!-- Four groups, ranked, with real gutters between them. Seven
+               equal pills in one run is zero hierarchy: teaching the model,
+               aiming the camera, pinning what you like and breeding the next
+               generation are four different kinds of act, and the last of
+               them is the one the whole app is for. -->
           <div class="rack-tools">
-            <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="rack-play" disabled>▶ sample</button></span>
-            <label class="toggle" title="When committed, also teach the model that your edit beat the original">
-              <input type="checkbox" id="improve-check"><span>my edit is better</span>
-            </label>
-            <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn" id="rack-commit" disabled>commit</button></span>
-            <span class="tool-sep"></span>
+            <div class="seg seg-teach" role="group" aria-label="Teach the model">
+              <!-- The express path. Commit normally plays both versions and asks;
+                   tick this when you already know, and it commits straight away.
+                   The two answers are logged distinguishably, because an
+                   assertion and a heard comparison are not the same evidence. -->
+              <label class="toggle seg-item" title="Skip the comparison: commit and tell the model your edit is better without hearing them back to back">
+                <input type="checkbox" id="improve-check"><span>my edit is better</span>
+              </label>
+              <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn seg-item" id="rack-commit" disabled>commit</button></span>
+            </div>
             <!-- Three camera controls in one group: which shape the rack is
                  drawn in, how much of each plate is drawn, and whether the
                  map is up. Arrangement and detail are different questions and
                  stay different buttons — Reaktor's mistake is folding them. -->
-            <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn" id="rack-layout" aria-pressed="false">chain</button></span>
-            <span class="tt" title="Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."><button class="util-btn" id="rack-lod" aria-pressed="false">detail auto</button></span>
-            <span class="tt" title="Show the minimap (bottom-left of the rack)"><button class="util-btn" id="rack-map-btn" aria-pressed="false">map</button></span>
-            <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-knobs" disabled>lock knobs</button></span>
-            <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-structure" disabled>lock wiring</button></span>
-            <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn" id="lock-clear" disabled>clear locks</button></span>
-            <span class="tt" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
+            <div class="seg seg-view" role="group" aria-label="How the rack is drawn">
+              <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn seg-item" id="rack-layout" aria-pressed="false">chain</button></span>
+              <!-- Only in freeform, because it is the only mode it means
+                   anything in: it pins whatever is currently on screen to the
+                   24px grid so a patch that arrived from evolution with no
+                   layout has one to start dragging from. -->
+              <span class="tt hidden" title="Snap every module to the 24px grid and pin it there."><button class="util-btn seg-item" id="rack-grid">apply grid</button></span>
+              <span class="tt" title="Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
+              <span class="tt" title="Show the minimap (bottom-left of the rack)"><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
+            </div>
+            <!-- Quieter and smaller than the rest on purpose: locking is a
+                 preparation for evolving, not an act of its own. -->
+            <div class="seg seg-locks" role="group" aria-label="Locks">
+              <span class="tt" title="Pick a patch from the bank first"><button class="util-btn seg-item" id="lock-knobs" disabled>lock knobs</button></span>
+              <span class="tt" title="Pick a patch from the bank first"><button class="util-btn seg-item" id="lock-structure" disabled>lock wiring</button></span>
+              <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn seg-item" id="lock-clear" disabled>clear locks</button></span>
+            </div>
+            <span class="tt evolve-slot" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
           </div>
         </div>
         <div class="bench-tour hidden" id="bench-tour">
           <span class="bt-copy">This patch is live under your fingers. <b>Drag a knob</b> — the
             sound changes instantly. Click a <b>lock dot</b> (hover a knob) or a module's <b>▢</b>
             to pin what you love, then <b>⚡ evolve from this</b> breeds variations that keep your
-            locks. Made it better by hand? Tick <b>my edit is better</b> and <b>commit</b> — that
-            teaches the model too. The rail on the right is the module catalogue — its <b>?</b> walks you through it.</span>
+            locks. Changed it by hand? <b>commit</b> plays your version against the original and
+            asks which you prefer — either answer teaches the model, and “the original” teaches it most. The rail on the right is the module catalogue — its <b>?</b> walks you through it.</span>
           <button class="util-btn" id="bt-close">got it</button>
+        </div>
+        <!-- What the model currently believes about the patch under your
+             hands, and how much room that patch has left. Above the rack
+             because it is the objective you are steering against, and it has
+             to be in the same glance as the thing you are steering.
+
+             The WHY line this replaces sat *below* the rack, was fetched once
+             for the candidate you loaded, and then went on describing it
+             through any number of edits — it named features of a patch you had
+             already edited away, silently and with no way to tell. This one is
+             recomputed from the bench on every reply and says so when it is
+             waiting. -->
+        <div class="belief-row mono" id="belief-row">
+          <div class="belief" id="belief" role="status"></div>
+          <div class="budget" id="budget" title="What evolution can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></div>
         </div>
         <div class="play-body">
           <div class="play-canvas">
@@ -170,7 +285,15 @@
               <div class="rack-scroll" id="rack-scroll">
                 <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack — arrow keys to move between controls, up/down to adjust"></svg>
               </div>
-              <canvas class="live-scope" id="live-scope" aria-hidden="true"></canvas>
+              <!-- The scope, in a CRT bezel. A trace floating on the panel
+                   with no housing reads as a decal; the bezel, the graticule
+                   behind it and the caption naming the tap turn it into an
+                   instrument bolted to the frame — and the caption is the
+                   only place the app ever said *where* it was listening. -->
+              <div class="scope-shell corner-br size-m hidden" id="scope-shell" aria-hidden="true">
+                <canvas class="live-scope" id="live-scope"></canvas>
+                <div class="scope-cap mono" id="scope-cap">pre-master</div>
+              </div>
               <!-- Where you are in the patch, and the fastest way to be
                    somewhere else. Bottom-left, out of the scope's corner. -->
               <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap — click to navigate"></svg>
@@ -178,8 +301,14 @@
                    to, named by the title silkscreened on that plate. The rail
                    1000px away used to be the only place this was said, and it
                    said it with the trace id. -->
+              <!-- Second cell: what the model expects this placement to be
+                   worth. It is a property of the module, not of the socket
+                   (φ counts modules, it does not record cables), so the chip
+                   carries the caveat as its tooltip and the strip under the
+                   rack says it in words. -->
               <div class="pick-chip hidden" id="pick-chip" role="status">
                 <span class="pick-chip-text"></span>
+                <span class="pick-chip-price mono hidden"></span>
                 <kbd>esc</kbd>
                 <button class="pick-chip-x" type="button" aria-label="Cancel">✕</button>
               </div>
@@ -253,7 +382,6 @@
             </div>
           </aside>
         </div>
-        <div class="explain mono hidden" id="explain"></div>
         <!-- Teaching without leaving the instrument. This carries the same
              pips and the same forecast line as EVOLVE — a stripped-down copy
              of the loop teaches the user there is nothing here. -->
@@ -439,6 +567,45 @@
   </div>
 </section>
 
+<!-- The commit duel. A hand edit is the richest preference signal in the app
+     and it used to be collected as an unverified checkbox — a claim about a
+     comparison the player had usually never made, with no way at all to say
+     the more informative thing, which is "I heard both and the original was
+     better". So a commit that actually changed something asks, plays both,
+     and records what was heard in whichever direction it went. The express
+     checkbox survives for people who are sure; its answers are tagged so the
+     two can be scored against each other rather than averaged. -->
+<section id="cduel" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="cd-title">
+  <div class="warm-card panel cduel-card">
+    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="boot-title" id="cd-title">WHICH ONE IS BETTER?</div>
+    <p class="warm-sub">You changed this patch. Play them both and pick — it teaches the model
+      either way, and “the original won” teaches it the most.</p>
+    <div class="cduel-grid">
+      <div class="cduel-cell">
+        <div class="cd-head"><span class="cd-letter">A</span><span class="cd-name" id="cd-name-a"></span></div>
+        <canvas class="cd-scope" id="cd-scope-a" aria-hidden="true"></canvas>
+        <div class="cd-row">
+          <button class="util-btn cd-play" id="cd-play-a">▶ play</button>
+          <button class="hw-btn small cd-pick" id="cd-pick-a">this one</button>
+        </div>
+      </div>
+      <div class="cduel-cell">
+        <div class="cd-head"><span class="cd-letter">B</span><span class="cd-name" id="cd-name-b"></span></div>
+        <canvas class="cd-scope" id="cd-scope-b" aria-hidden="true"></canvas>
+        <div class="cd-row">
+          <button class="util-btn cd-play" id="cd-play-b">▶ play</button>
+          <button class="hw-btn small cd-pick" id="cd-pick-b">this one</button>
+        </div>
+      </div>
+    </div>
+    <div class="warm-foot">
+      <button class="util-btn" id="cd-skip" title="Commit the edit without teaching the model anything">commit without teaching</button>
+      <span class="cd-hint silk-dim mono">1 / 2 play · ← → pick · esc skip</span>
+    </div>
+  </div>
+</section>
+
 <!-- help overlay -->
 <section id="help" class="help-overlay hidden" role="dialog" aria-modal="true" aria-label="How to play">
   <div class="help-card panel">
@@ -453,6 +620,7 @@
         <div class="help-h">the rack canvas</div>
         <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
         <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
+        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a plate by its faceplate and it snaps to the grid — hold <kbd>shift</kbd> to place it freely. <b>apply grid</b> pins everything where it currently sits, which is how you start from an evolved patch. Positions are kept per patch, survive a reload and a generation of ⚡, and travel with an exported patch file.</p>
         <div class="help-h">performance</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>

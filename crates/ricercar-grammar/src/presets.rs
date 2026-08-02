@@ -101,7 +101,7 @@
 
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
-    TableShape, Waveform,
+    TableShape, Uid, Waveform,
 };
 
 fn amp(attack: f64, decay: f64, sustain: f64, release: f64) -> AmpEnv {
@@ -118,6 +118,7 @@ fn amp(attack: f64, decay: f64, sustain: f64, release: f64) -> AmpEnv {
 /// which is also what makes them findable.
 fn vco(wave: Waveform, octave: i8, detune: f64) -> AudioNode {
     AudioNode::Vco {
+        uid: Uid::NEW,
         wave,
         octave,
         detune,
@@ -129,6 +130,7 @@ fn vco(wave: Waveform, octave: i8, detune: f64) -> AudioNode {
 /// A supersaw with no pitch modulation.
 fn supersaw(octave: i8, detune: f64, mix: f64) -> AudioNode {
     AudioNode::Supersaw {
+        uid: Uid::NEW,
         octave,
         detune,
         mix,
@@ -185,11 +187,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.03, 0.35, 0.55, 0.2),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.45,
                     resonance: 0.55,
                     mod_depth: 0.6,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.02,
                         decay: 0.45,
                     },
@@ -204,9 +208,11 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.05, 0.35, 0.65, 0.35),
                 root: Mix {
+                    uid: Uid::NEW,
                     balance: 0.35,
                     a: Box::new(vco(Waveform::Sine, -1, 0.5)),
                     b: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfHp,
                         cutoff: 0.7,
                         resonance: 0.3,
@@ -226,11 +232,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.42, 0.3, 0.3),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.3,
                     resonance: 0.8,
                     mod_depth: 0.65,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.0,
                         decay: 0.3,
                     },
@@ -247,15 +255,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.02, 0.5, 0.75, 0.35),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
                     cutoff: 0.45,
                     resonance: 0.35,
                     mod_depth: 0.25,
                     modulation: ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Triangle,
                         rate: 0.49, // 0.5 Hz — one full sweep per held note
                     },
                     input: Box::new(Mix {
+                        uid: Uid::NEW,
                         balance: 0.5,
                         a: Box::new(vco(Waveform::Saw, -1, 0.3)),
                         b: Box::new(vco(Waveform::Saw, -1, 0.85)),
@@ -270,15 +281,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.45, 0.45, 0.3),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.42,
                     resonance: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Fold {
+                        uid: Uid::NEW,
                         threshold: 0.35,
                         mod_depth: 0.4,
                         modulation: ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.0,
                             decay: 0.325,
                         },
@@ -299,17 +313,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.45, 0.6, 0.3),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.48,
                     resonance: 0.3,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Distortion {
+                        uid: Uid::NEW,
                         drive: 0.55,
                         tone: 0.45,
                         mode: DriveMode::Tube,
                         mod_depth: 0.6,
                         modulation: ModNode::Follow {
+                            uid: Uid::NEW,
                             sens: 0.55,
                             release: 0.35,
                         },
@@ -330,12 +347,14 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.05, 0.4, 0.8, 0.35),
                 root: Comp {
+                    uid: Uid::NEW,
                     threshold: 0.3,
                     ratio: 0.7,   // ≈14:1 — limiting, so the pump is not subtle
                     makeup: 0.25, // 1.75×, giving the level back between hits
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.4, // ≈316 Hz
                         resonance: 0.3,
@@ -344,6 +363,7 @@ pub fn preset_bank() -> Vec<Preset> {
                         input: Box::new(vco(Waveform::Saw, -1, 0.5)),
                     }),
                     sidechain: Box::new(Pluck {
+                        uid: Uid::NEW,
                         octave: 0,
                         damping: 0.3,
                         brightness: 0.8,
@@ -363,9 +383,11 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.02, 0.3, 0.7, 0.3),
                 root: Fold {
+                    uid: Uid::NEW,
                     threshold: 0.4,
                     mod_depth: 0.5,
                     modulation: ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Triangle,
                         rate: 0.6, // 1.2 Hz — was 0.35 (0.165 Hz), inaudible
                     },
@@ -380,11 +402,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.15, 0.4, 0.65, 0.3),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfBp,
                     cutoff: 0.62,
                     resonance: 0.7,
                     mod_depth: 0.25,
                     modulation: ModNode::Rand {
+                        uid: Uid::NEW,
                         rate: 0.62,
                         glide: 0.0,
                     }, // ~1.4 Hz stepping
@@ -399,17 +423,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.3, 0.45, 0.78, 0.45),
                 root: Chorus {
+                    uid: Uid::NEW,
                     rate: 0.3,
                     depth: 0.35,
                     mix: 0.3,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.72,
                         resonance: 0.3,
                         mod_depth: 0.18,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.55, // 0.8 Hz — a slow breath, still audible
                         },
@@ -425,17 +452,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.15, 0.45, 0.55, 0.35),
                 root: Delay {
+                    uid: Uid::NEW,
                     time: 0.63, // 120 ms — a slapback, not a comb
                     feedback: 0.4,
                     mix: 0.32,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.68,
                         resonance: 0.4,
                         mod_depth: 0.35,
                         modulation: ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.0,
                             decay: 0.42,
                         },
@@ -455,17 +485,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.04, 0.4, 0.7, 0.3),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.55,
                     resonance: 0.4,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Vco {
+                        uid: Uid::NEW,
                         wave: Waveform::Saw,
                         octave: 0,
                         detune: 0.5,
                         mod_depth: 0.09,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.78, // 5.2 Hz
                         },
@@ -484,17 +517,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.45, 0.6, 0.25),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
                     cutoff: 0.6,
                     resonance: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Vco {
+                        uid: Uid::NEW,
                         wave: Waveform::Square,
                         octave: 0,
                         detune: 0.5,
                         mod_depth: 0.55,
                         modulation: ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.0,
                             decay: 0.45, // 63 ms
                         },
@@ -513,15 +549,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.02, 0.4, 0.7, 0.25),
                 root: Eq {
+                    uid: Uid::NEW,
                     low: 0.15,
                     mid: 0.75,
                     high: 0.2,
                     mod_depth: 0.45,
                     modulation: ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Triangle,
                         rate: 0.52, // 0.64 Hz
                     },
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::Ladder,
                         cutoff: 0.55,
                         resonance: 0.5,
@@ -543,6 +582,7 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.15, 0.4, 0.7, 0.3),
                 root: Shift {
+                    uid: Uid::NEW,
                     semis: 0.79,
                     // 41 ms grains: long enough to track the fundamental of a
                     // lead register, short enough that the harmony arrives
@@ -552,11 +592,13 @@ pub fn preset_bank() -> Vec<Preset> {
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::Ladder,
                         cutoff: 0.55, // ≈1.2 kHz
                         resonance: 0.45,
                         mod_depth: 0.5,
                         modulation: ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.05,
                             decay: 0.45, // ≈45 ms
                         },
@@ -575,11 +617,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.25, 0.05, 0.25),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfBp,
                     cutoff: 0.6,
                     resonance: 0.45,
                     mod_depth: 0.5,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.0,
                         decay: 0.25,
                     },
@@ -596,15 +640,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.55, 0.0, 0.7),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.7,
                     damp: 0.3,
                     mix: 0.4,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Fold {
+                        uid: Uid::NEW,
                         threshold: 0.55,
                         mod_depth: 0.35,
                         modulation: ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.0,
                             decay: 0.35,
                         },
@@ -620,15 +667,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.6, 0.25, 0.5),
                 root: Chorus {
+                    uid: Uid::NEW,
                     rate: 0.2,
                     depth: 0.3,
                     mix: 0.3,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Mix {
+                        uid: Uid::NEW,
                         balance: 0.3,
                         a: Box::new(vco(Waveform::Sine, 0, 0.5)),
                         b: Box::new(Filter {
+                            uid: Uid::NEW,
                             kind: FilterKind::SvfHp,
                             cutoff: 0.78,
                             resonance: 0.2,
@@ -647,11 +697,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.42, 0.0, 0.35),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.55,
                     resonance: 0.6,
                     mod_depth: 0.3,
                     modulation: ModNode::Rand {
+                        uid: Uid::NEW,
                         rate: 0.75,
                         glide: 0.0,
                     }, // ~4 Hz
@@ -670,6 +722,7 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.5, 0.8, 0.4),
                 root: Pluck {
+                    uid: Uid::NEW,
                     octave: 0,
                     damping: 0.62,
                     brightness: 0.55,
@@ -689,12 +742,14 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.5, 0.0, 0.65),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.72,
                     damp: 0.35,
                     mix: 0.4,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(RingMod {
+                        uid: Uid::NEW,
                         mix: 0.68,
                         a: Box::new(vco(Waveform::Sine, 1, 0.5)),
                         b: Box::new(vco(Waveform::Sine, 2, 0.62)),
@@ -713,17 +768,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.12, 0.5, 0.75, 0.4),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.7,
                     damp: 0.4,
                     mix: 0.4,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Formant {
+                        uid: Uid::NEW,
                         vowel: 0.25,
                         shift: 0.55,
                         octave: 0,
                         mod_depth: 0.5,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Triangle,
                             rate: 0.45, // 0.37 Hz
                         },
@@ -743,18 +801,21 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.45, 0.25, 0.35),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.5,
                     damp: 0.55,
                     mix: 0.25,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(AudioNode::Shift {
+                        uid: Uid::NEW,
                         semis: 0.79,
                         window: 0.3, // ≈35 ms grains — tracks a key register
                         mix: 0.5,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
                         input: Box::new(AudioNode::Pluck {
+                            uid: Uid::NEW,
                             octave: 0,
                             damping: 0.55,
                             brightness: 0.55,
@@ -777,17 +838,20 @@ pub fn preset_bank() -> Vec<Preset> {
                 // which is what "slow" claimed all along.
                 amp: amp(0.75, 0.4, 0.75, 0.7),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.85,
                     damp: 0.35,
                     mix: 0.5,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.55,
                         resonance: 0.25,
                         mod_depth: 0.3,
                         modulation: ModNode::Rand {
+                            uid: Uid::NEW,
                             rate: 0.45,
                             glide: 0.0,
                         }, // 0.37 Hz
@@ -803,17 +867,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.55, 0.4, 0.8, 0.65),
                 root: Chorus {
+                    uid: Uid::NEW,
                     rate: 0.25,
                     depth: 0.5,
                     mix: 0.45,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.65,
                         resonance: 0.2,
                         mod_depth: 0.25,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.49, // 0.5 Hz — was 0.2 (0.05 Hz, 20 s/cycle)
                         },
@@ -829,12 +896,14 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.35, 0.4, 0.75, 0.55),
                 root: Delay {
+                    uid: Uid::NEW,
                     time: 0.72, // 250 ms — was 0.3 (8 ms), a metallic comb
                     feedback: 0.45,
                     mix: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Chorus {
+                        uid: Uid::NEW,
                         rate: 0.3,
                         depth: 0.55,
                         mix: 0.4,
@@ -852,24 +921,29 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.75, 0.55, 0.8, 0.85),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.75,
                     damp: 0.55,
                     mix: 0.45,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.42,
                         resonance: 0.25,
                         mod_depth: 0.25,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.45, // 0.37 Hz
                         },
                         input: Box::new(Mix {
+                            uid: Uid::NEW,
                             balance: 0.4,
                             a: Box::new(vco(Waveform::Sine, -1, 0.5)),
                             b: Box::new(Noise {
+                                uid: Uid::NEW,
                                 color: NoiseColor::Pink,
                             }),
                         }),
@@ -884,17 +958,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.79, 0.5, 0.85, 0.8),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.65,
                     damp: 0.4,
                     mix: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfBp,
                         cutoff: 0.5,
                         resonance: 0.45,
                         mod_depth: 0.5,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Triangle,
                             rate: 0.4, // 0.25 Hz — slow, but it does arrive
                         },
@@ -913,23 +990,27 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.6, 0.45, 0.8, 0.7),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.68,
                     damp: 0.4,
                     mix: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.62,
                         resonance: 0.25,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
                         input: Box::new(Wavetable {
+                            uid: Uid::NEW,
                             table: TableShape::Saw,
                             octave: 0,
                             morph: 0.3,
                             mod_depth: 0.6,
                             modulation: ModNode::Lfo {
+                                uid: Uid::NEW,
                                 wave: Waveform::Sine,
                                 rate: 0.44, // 0.34 Hz — one sweep per held note
                             },
@@ -948,6 +1029,7 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.45, 0.45, 0.85, 0.6),
                 root: Phaser {
+                    uid: Uid::NEW,
                     rate: 0.35, // 0.25 Hz
                     depth: 0.75,
                     feedback: 0.78,
@@ -967,11 +1049,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.35, 0.5, 0.8, 0.5),
                 root: Vibrato {
+                    uid: Uid::NEW,
                     rate: 0.55, // 1.6 Hz on quiver's own 0.1·150^x map
                     depth: 0.3,
                     mix: 1.0,
                     mod_depth: 0.4,
                     modulation: ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Sine,
                         rate: 0.4, // 0.25 Hz
                     },
@@ -991,18 +1075,21 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.4, 0.5, 0.85, 0.5),
                 root: Duck {
+                    uid: Uid::NEW,
                     amount: 0.85,
                     threshold: 0.4,
                     release: 0.6, // ≈600 ms — the recovery is the groove
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Chorus {
+                        uid: Uid::NEW,
                         rate: 0.25, // 0.27 Hz
                         depth: 0.6,
                         mix: 0.5,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
                         input: Box::new(Filter {
+                            uid: Uid::NEW,
                             kind: FilterKind::SvfLp,
                             cutoff: 0.62, // ≈2.0 kHz
                             resonance: 0.25,
@@ -1012,6 +1099,7 @@ pub fn preset_bank() -> Vec<Preset> {
                         }),
                     }),
                     key: Box::new(Pluck {
+                        uid: Uid::NEW,
                         octave: -1,
                         damping: 0.35,
                         brightness: 0.75,
@@ -1033,24 +1121,29 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.5, 0.5, 0.9, 0.55),
                 root: Chorus {
+                    uid: Uid::NEW,
                     rate: 0.25, // 0.27 Hz
                     depth: 0.35,
                     mix: 0.6,
                     mod_depth: 0.8,
                     modulation: ModNode::Pair {
+                        uid: Uid::NEW,
                         kind: PairOp::Or,
                         a: Box::new(ModNode::Euclid {
+                            uid: Uid::NEW,
                             rate: 0.55, // ≈83 bpm
                             steps: 0.303,
                             pulses: 0.230,
                         }),
                         b: Box::new(ModNode::Euclid {
+                            uid: Uid::NEW,
                             rate: 0.55,
                             steps: 0.613,
                             pulses: 0.190,
                         }),
                     },
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.62, // ≈1.6 kHz
                         resonance: 0.15,
@@ -1071,15 +1164,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.7, 0.5, 0.75, 0.8),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
                     cutoff: 0.45,
                     resonance: 0.5,
                     mod_depth: 0.5,
                     modulation: ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Sine,
                         rate: 0.44, // 0.34 Hz — was 0.15 (0.033 Hz, 30 s/cycle)
                     },
                     input: Box::new(Noise {
+                        uid: Uid::NEW,
                         color: NoiseColor::Pink,
                     }),
                 },
@@ -1092,6 +1188,7 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.02, 0.3, 0.5, 0.4),
                 root: Delay {
+                    uid: Uid::NEW,
                     // Was 0.45 — 31 ms, which is a flanger. 0.79 is ~420 ms,
                     // which is the sound the name has always promised.
                     time: 0.79,
@@ -1100,6 +1197,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.5,
                         resonance: 0.35,
@@ -1117,21 +1215,25 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.85, 0.5, 0.85, 0.9),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.9,
                     damp: 0.6,
                     mix: 0.55,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfBp,
                         cutoff: 0.55,
                         resonance: 0.65,
                         mod_depth: 0.55,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.42, // 0.29 Hz
                         },
                         input: Box::new(Noise {
+                            uid: Uid::NEW,
                             color: NoiseColor::White,
                         }),
                     }),
@@ -1145,17 +1247,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.65, 0.5, 0.9, 0.6),
                 root: Chorus {
+                    uid: Uid::NEW,
                     rate: 0.45,
                     depth: 0.6,
                     mix: 0.5,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.42,
                         resonance: 0.4,
                         mod_depth: 0.4,
                         modulation: ModNode::Rand {
+                            uid: Uid::NEW,
                             rate: 0.58,
                             glide: 0.0,
                         }, // ~1.0 Hz
@@ -1171,23 +1276,27 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.7, 0.5, 0.85, 0.9),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.8,
                     damp: 0.45,
                     mix: 0.4,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Delay {
+                        uid: Uid::NEW,
                         time: 0.82, // ~500 ms
                         feedback: 0.62,
                         mix: 0.45,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
                         input: Box::new(Filter {
+                            uid: Uid::NEW,
                             kind: FilterKind::SvfLp,
                             cutoff: 0.45,
                             resonance: 0.3,
                             mod_depth: 0.22,
                             modulation: ModNode::Lfo {
+                                uid: Uid::NEW,
                                 wave: Waveform::Triangle,
                                 rate: 0.42, // 0.29 Hz — 0.38 was 0.21, under the floor
                             },
@@ -1207,10 +1316,12 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.02, 0.4, 0.6, 0.3),
                 root: Bitcrush {
+                    uid: Uid::NEW,
                     bits: 0.32,
                     downsample: 0.42,
                     mod_depth: 0.45,
                     modulation: ModNode::Rand {
+                        uid: Uid::NEW,
                         rate: 0.55, // 0.82 Hz
                         glide: 0.35,
                     },
@@ -1228,15 +1339,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.25, 0.5, 0.8, 0.5),
                 root: Flanger {
+                    uid: Uid::NEW,
                     rate: 0.45, // 0.4 Hz on quiver's own 0.05·100^x map
                     depth: 0.75,
                     feedback: 0.78,
                     mod_depth: 0.35,
                     modulation: ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Sine,
                         rate: 0.42, // 0.29 Hz
                     },
                     input: Box::new(AudioNode::Noise {
+                        uid: Uid::NEW,
                         color: NoiseColor::White,
                     }),
                 },
@@ -1253,17 +1367,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.3, 0.5, 0.85, 0.6),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.75,
                     damp: 0.5,
                     mix: 0.45,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Granular {
+                        uid: Uid::NEW,
                         position: 0.08,
                         size: 0.35,    // 181 ms grains
                         density: 0.75, // 15 grains/second, so ~2.8 overlapping
                         mod_depth: 0.5,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.43, // 0.31 Hz
                         },
@@ -1284,6 +1401,7 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.25, 0.45, 0.85, 0.4),
                 root: Vocoder {
+                    uid: Uid::NEW,
                     bands: 0.75,  // ≈13 bands
                     attack: 0.15, // ≈38 ms
                     release: 0.35,
@@ -1291,11 +1409,13 @@ pub fn preset_bank() -> Vec<Preset> {
                     modulation: ModNode::None,
                     carrier: Box::new(supersaw(0, 0.5, 0.65)),
                     modulator: Box::new(Formant {
+                        uid: Uid::NEW,
                         vowel: 0.25,
                         shift: 0.5, // no formant shift; the sweep is the vowel
                         octave: 0,
                         mod_depth: 0.7,
                         modulation: ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Triangle,
                             rate: 0.49, // 0.5 Hz — one sweep per held note
                         },
@@ -1316,15 +1436,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.35, 0.5, 0.85, 0.55),
                 root: AudioNode::Granular {
+                    uid: Uid::NEW,
                     position: 0.5,
                     size: 0.25,    // ≈130 ms grains
                     density: 0.75, // ≈15 per second
                     mod_depth: 0.8,
                     modulation: ModNode::Op {
+                        uid: Uid::NEW,
                         kind: ModOp::Hold,
                         p0: 0.55, // ≈83 bpm — about one jump per bar
                         p1: 0.0,
                         input: Box::new(ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.52, // 0.64 Hz, so successive samples differ
                         }),
@@ -1345,19 +1468,23 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.3, 0.45, 0.8, 0.4),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.6,
                     damp: 0.5,
                     mix: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Fold {
+                        uid: Uid::NEW,
                         threshold: 0.7,
                         mod_depth: 0.7,
                         modulation: ModNode::Op {
+                            uid: Uid::NEW,
                             kind: ModOp::Rectify,
                             p0: 0.5, // cell centre of `positive`
                             p1: 0.0,
                             input: Box::new(ModNode::Lfo {
+                                uid: Uid::NEW,
                                 wave: Waveform::Triangle,
                                 rate: 0.5, // 0.55 Hz
                             }),
@@ -1377,15 +1504,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.35, 0.0, 0.25),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfHp,
                     cutoff: 0.72,
                     resonance: 0.55,
                     mod_depth: 0.3,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.0,
                         decay: 0.2,
                     },
                     input: Box::new(Noise {
+                        uid: Uid::NEW,
                         color: NoiseColor::White,
                     }),
                 },
@@ -1398,11 +1528,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.45, 0.0, 0.3),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.5,
                     resonance: 0.3,
                     mod_depth: 0.55,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.0,
                         decay: 0.2,
                     },
@@ -1417,17 +1549,20 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.4, 0.0, 0.25),
                 root: Delay {
+                    uid: Uid::NEW,
                     time: 0.54, // 60 ms — tight enough to read as a bounce
                     feedback: 0.68,
                     mix: 0.55,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfBp,
                         cutoff: 0.7,
                         resonance: 0.65,
                         mod_depth: 0.25,
                         modulation: ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.0,
                             decay: 0.15,
                         },
@@ -1446,15 +1581,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.02, 0.45, 0.7, 0.25),
                 root: Tremolo {
+                    uid: Uid::NEW,
                     rate: 0.62, // 2.7 Hz on quiver's own 0.1·200^x map
                     depth: 0.85,
                     shape: 0.8,
                     mod_depth: 0.4,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.3,
                         decay: 0.6,
                     },
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.45,
                         resonance: 0.4,
@@ -1476,12 +1614,14 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.1, 0.4, 0.9, 0.4),
                 root: Gate {
+                    uid: Uid::NEW,
                     threshold: 0.45,
                     range: 0.95,
                     release: 0.25, // ≈133 ms — a tight close
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfBp,
                         cutoff: 0.55, // ≈1.2 kHz
                         resonance: 0.6,
@@ -1490,6 +1630,7 @@ pub fn preset_bank() -> Vec<Preset> {
                         input: Box::new(supersaw(0, 0.35, 0.5)),
                     }),
                     sidechain: Box::new(Pluck {
+                        uid: Uid::NEW,
                         octave: -1,
                         damping: 0.35,
                         brightness: 0.75,
@@ -1511,24 +1652,29 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.25, 0.9, 0.15),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfBp,
                     cutoff: 0.66, // ≈1.9 kHz
                     resonance: 0.55,
                     mod_depth: 0.8,
                     modulation: ModNode::Pair {
+                        uid: Uid::NEW,
                         kind: PairOp::And,
                         a: Box::new(ModNode::Euclid {
+                            uid: Uid::NEW,
                             rate: 0.62, // ≈107 bpm
                             steps: 0.303,
                             pulses: 0.230,
                         }),
                         b: Box::new(ModNode::Euclid {
+                            uid: Uid::NEW,
                             rate: 0.62,
                             steps: 0.380,
                             pulses: 0.122,
                         }),
                     },
                     input: Box::new(AudioNode::Noise {
+                        uid: Uid::NEW,
                         color: NoiseColor::White,
                     }),
                 },
@@ -1545,12 +1691,14 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.3, 0.0, 0.2),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfBp,
                     cutoff: 0.6, // ≈1.0 kHz
                     resonance: 0.6,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(AudioNode::Pluck {
+                        uid: Uid::NEW,
                         octave: 1,
                         damping: 0.2,
                         brightness: 0.85,
@@ -1572,22 +1720,26 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.0, 0.4, 0.4, 0.2),
                 root: AudioNode::Gate {
+                    uid: Uid::NEW,
                     threshold: 0.45,
                     range: 0.85,
                     release: 0.2,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfHp,
                         cutoff: 0.5, // ≈630 Hz
                         resonance: 0.2,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
                         input: Box::new(AudioNode::Noise {
+                            uid: Uid::NEW,
                             color: NoiseColor::White,
                         }),
                     }),
                     sidechain: Box::new(AudioNode::Pluck {
+                        uid: Uid::NEW,
                         octave: 0,
                         damping: 0.3,
                         brightness: 0.6,
@@ -1612,17 +1764,21 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.3, 0.4, 0.8, 0.4),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
                     cutoff: 0.5, // ≈630 Hz
                     resonance: 0.5,
                     mod_depth: 0.75,
                     modulation: ModNode::Pair {
+                        uid: Uid::NEW,
                         kind: PairOp::Switch,
                         a: Box::new(ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Triangle,
                             rate: 0.42, // 0.29 Hz
                         }),
                         b: Box::new(ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.58, // 1.0 Hz
                         }),
@@ -1643,17 +1799,21 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.05, 0.4, 0.7, 0.35),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::Ladder,
                     cutoff: 0.35, // ≈220 Hz
                     resonance: 0.55,
                     mod_depth: 0.6,
                     modulation: ModNode::Pair {
+                        uid: Uid::NEW,
                         kind: PairOp::Max,
                         a: Box::new(ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.05, // ≈2.5 ms
                             decay: 0.5,   // ≈100 ms
                         }),
                         b: Box::new(ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.49, // 0.51 Hz
                         }),
@@ -1673,22 +1833,27 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.55, 0.5, 0.85, 0.6),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.55,
                     damp: 0.4,
                     mix: 0.7,
                     mod_depth: 0.9,
                     modulation: ModNode::Pair {
+                        uid: Uid::NEW,
                         kind: PairOp::Min,
                         a: Box::new(ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.4, // 0.25 Hz
                         }),
                         b: Box::new(ModNode::Lfo {
+                            uid: Uid::NEW,
                             wave: Waveform::Sine,
                             rate: 0.46, // 0.38 Hz
                         }),
                     },
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.55, // ≈890 Hz
                         resonance: 0.2,
@@ -1718,13 +1883,16 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.2, 0.45, 0.7, 0.35),
                 root: Fold {
+                    uid: Uid::NEW,
                     threshold: 0.3,
                     mod_depth: 0.6,
                     modulation: ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Square,
                         rate: 0.6, // 1.2 Hz — audibly switching
                     },
                     input: Box::new(Mix {
+                        uid: Uid::NEW,
                         balance: 0.45,
                         a: Box::new(vco(Waveform::Saw, 0, 0.5)),
                         b: Box::new(vco(Waveform::Square, -1, 0.5)),
@@ -1739,11 +1907,13 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.15, 0.5, 0.6, 0.35),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfBp,
                     cutoff: 0.45,
                     resonance: 0.82,
                     mod_depth: 0.7,
                     modulation: ModNode::Rand {
+                        uid: Uid::NEW,
                         rate: 0.8,
                         glide: 0.0,
                     }, // ~6 Hz
@@ -1762,21 +1932,25 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.6, 0.5, 0.7, 0.45),
                 root: Chorus {
+                    uid: Uid::NEW,
                     rate: 0.35, // 0.39 Hz — 0.15 was 0.18, slower than any LFO here
                     depth: 0.7,
                     mix: 0.6,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfHp,
                         cutoff: 0.8,
                         resonance: 0.45,
                         mod_depth: 0.65,
                         modulation: ModNode::Env {
+                            uid: Uid::NEW,
                             attack: 0.6,
                             decay: 0.65,
                         },
                         input: Box::new(Mix {
+                            uid: Uid::NEW,
                             balance: 0.55,
                             a: Box::new(vco(Waveform::Saw, -1, 0.5)),
                             b: Box::new(vco(Waveform::Square, 1, 0.5)),
@@ -1803,15 +1977,18 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.02, 0.3, 0.5, 0.25),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
                     cutoff: 0.62,
                     resonance: 0.4,
                     mod_depth: 0.35,
                     modulation: ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.02,
                         decay: 0.3,
                     },
                     input: Box::new(Vco {
+                        uid: Uid::NEW,
                         wave: Waveform::Saw,
                         octave: 0,
                         detune: 0.5,
@@ -1823,14 +2000,17 @@ pub fn preset_bank() -> Vec<Preset> {
                         // would only smooth the noise before it was snapped,
                         // which is inaudible.
                         modulation: ModNode::Op {
+                            uid: Uid::NEW,
                             kind: ModOp::Slew,
                             p0: 0.18, // ≈35 ms up…
                             p1: 0.3,  // …and ≈90 ms down: a fall is a slur
                             input: Box::new(ModNode::Op {
+                                uid: Uid::NEW,
                                 kind: ModOp::Quantize,
                                 p0: 9.5 / 12.0, // root A
                                 p1: 2.5 / 7.0,  // minor
                                 input: Box::new(ModNode::Rand {
+                                    uid: Uid::NEW,
                                     rate: 0.62, // ≈1.6 Hz — a note every beat
                                     glide: 0.0, // the slew above owns the glide
                                 }),
@@ -1851,24 +2031,29 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.25, 0.5, 0.85, 0.6),
                 root: Reverb {
+                    uid: Uid::NEW,
                     size: 0.7,
                     damp: 0.45,
                     mix: 0.45,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
                     input: Box::new(Filter {
+                        uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
                         cutoff: 0.32,
                         resonance: 0.5,
                         mod_depth: 0.75,
                         modulation: ModNode::Pair {
+                            uid: Uid::NEW,
                             kind: PairOp::Xor,
                             a: Box::new(ModNode::Euclid {
+                                uid: Uid::NEW,
                                 rate: 0.62,   // ≈120 BPM
                                 steps: 0.36,  // 8 steps
                                 pulses: 0.34, // 3 of 8
                             }),
                             b: Box::new(ModNode::Euclid {
+                                uid: Uid::NEW,
                                 rate: 0.62,   // the same clock…
                                 steps: 0.44,  // …over 9 steps, so they drift
                                 pulses: 0.28, // 3 of 9
@@ -1892,23 +2077,28 @@ pub fn preset_bank() -> Vec<Preset> {
             tree: PatchTree {
                 amp: amp(0.4, 0.6, 0.9, 0.7),
                 root: Filter {
+                    uid: Uid::NEW,
                     kind: FilterKind::SvfBp,
                     cutoff: 0.5,
                     resonance: 0.6,
                     mod_depth: 0.85,
                     modulation: ModNode::Op {
+                        uid: Uid::NEW,
                         kind: ModOp::Slew,
                         p0: 0.85, // ≈1.2 s up…
                         p1: 0.55, // …and ≈0.5 s down, so it falls faster
                         input: Box::new(ModNode::Rand {
+                            uid: Uid::NEW,
                             rate: 0.5,  // ≈0.55 Hz
                             glide: 0.0, // hard steps in; the slew makes the ramp
                         }),
                     },
                     input: Box::new(Mix {
+                        uid: Uid::NEW,
                         balance: 0.4,
                         a: Box::new(supersaw(0, 0.6, 0.4)),
                         b: Box::new(AudioNode::Noise {
+                            uid: Uid::NEW,
                             color: NoiseColor::Pink,
                         }),
                     }),
@@ -2174,7 +2364,7 @@ mod tests {
                     self.mods.insert(kind.label());
                     self.note_mod(input);
                 }
-                ModNode::Pair { kind, a, b } => {
+                ModNode::Pair { kind, a, b, .. } => {
                     self.mods.insert(kind.label());
                     self.note_mod(a);
                     self.note_mod(b);
@@ -2209,7 +2399,7 @@ mod tests {
                     self.octaves.insert(*octave);
                     self.note_mod(modulation);
                 }
-                AudioNode::Noise { color } => {
+                AudioNode::Noise { color, .. } => {
                     self.nodes.insert("noise");
                     self.colors.insert(format!("{color:?}"));
                 }
@@ -2495,6 +2685,7 @@ mod tests {
                 // folding — which is exactly how the first version of this
                 // test passed on the very bug it was written to catch.
                 AudioNode::Fold { input, .. } => AudioNode::Fold {
+                    uid: Uid::NEW,
                     threshold: t,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -2507,7 +2698,9 @@ mod tests {
                     mod_depth,
                     modulation,
                     input,
+                    ..
                 } => AudioNode::Filter {
+                    uid: Uid::NEW,
                     kind: *kind,
                     cutoff: *cutoff,
                     resonance: *resonance,
@@ -2522,7 +2715,9 @@ mod tests {
                     mod_depth,
                     modulation,
                     input,
+                    ..
                 } => AudioNode::Delay {
+                    uid: Uid::NEW,
                     time: *time,
                     feedback: *feedback,
                     mix: *mix,
@@ -2537,7 +2732,9 @@ mod tests {
                     mod_depth,
                     modulation,
                     input,
+                    ..
                 } => AudioNode::Chorus {
+                    uid: Uid::NEW,
                     rate: *rate,
                     depth: *depth,
                     mix: *mix,
@@ -2552,7 +2749,9 @@ mod tests {
                     mod_depth,
                     modulation,
                     input,
+                    ..
                 } => AudioNode::Reverb {
+                    uid: Uid::NEW,
                     size: *size,
                     damp: *damp,
                     mix: *mix,
@@ -2567,7 +2766,9 @@ mod tests {
                     mod_depth,
                     modulation,
                     input,
+                    ..
                 } => AudioNode::Distortion {
+                    uid: Uid::NEW,
                     drive: *drive,
                     tone: *tone,
                     mode: *mode,
@@ -2575,7 +2776,8 @@ mod tests {
                     modulation: modulation.clone(),
                     input: Box::new(set_fold(input, t)),
                 },
-                AudioNode::Mix { balance, a, b } => AudioNode::Mix {
+                AudioNode::Mix { balance, a, b, .. } => AudioNode::Mix {
+                    uid: Uid::NEW,
                     balance: *balance,
                     a: Box::new(set_fold(a, t)),
                     b: Box::new(set_fold(b, t)),

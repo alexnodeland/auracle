@@ -44,8 +44,8 @@ use ricercar_features::{
 use ricercar_grammar::prior::N_OPS;
 use ricercar_grammar::{tree_diff, DiffEntry, PatchGrammarPrior, PatchTree};
 use ricercar_taste::{
-    Feedback, FitSet, Observation, ObservationLog, Standardizer, TasteConfig, TasteModel,
-    TastePosterior,
+    Feedback, FitSet, Observation, ObservationLog, Provenance, Standardizer, TasteConfig,
+    TasteModel, TastePosterior,
 };
 use serde::{Deserialize, Serialize};
 
@@ -488,6 +488,20 @@ pub enum Origin {
     Preset,
 }
 
+/// Give a tree its node identities on the way into the pool.
+///
+/// The pool is where a term stops being a search intermediate and becomes a
+/// patch someone can open, lock, lay out and breed from, so it is exactly where
+/// identities are worth minting — and the only place. Search itself hands
+/// through thousands of anonymous trees per generation; a prior draw carries
+/// none, and a tree restored from a save written before uids existed carries
+/// none either, which is the whole of that migration: old saves deserialize
+/// with every `uid` defaulted to unset and are settled here on the way in.
+fn settled(mut tree: PatchTree) -> PatchTree {
+    tree.ensure_uids();
+    tree
+}
+
 /// A vetted pool member.
 pub struct Candidate {
     /// Stable id (unique for the lifetime of the engine; survives pool
@@ -624,16 +638,44 @@ pub struct BankEntry {
 /// An implicit preference signal, logged but (for now) not modeled: promote
 /// events, hand-edit commits, per-patch play counts. Un-logged signal is
 /// gone forever; modeling can come later.
+///
+/// The three optional fields carry the editor's stream (WS-8 §3). The single
+/// most informative row in it is a **revert**: the player made an edit, heard
+/// it, sat with it for a few seconds, and took it back. That is a preference
+/// statement about a pair of patches neither of which is in the bank, at edit
+/// granularity — far denser than the duel stream and the natural training set
+/// for an edit-level model. It is unbuildable without a year of this log, and
+/// the log is unbuildable retroactively, which is the whole argument for
+/// writing it before anything reads it.
+///
+/// Deliberately **not** in the likelihood, exactly as the play counts already
+/// here are not: a revert is confounded with curiosity, and the honest place
+/// for it is a v2 fit that can be validated, not a silent term in the model
+/// the player is being shown a number from.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ImplicitEvent {
-    /// `"promote"`, `"play"`, `"edit"`, …
+    /// `"promote"`, `"play"`, `"edit"`, `"revert"`, `"commit"`, …
     pub kind: String,
-    /// Candidate id the event is about.
+    /// Candidate id the event is about (0 when it is about the bench, which
+    /// is not a candidate until it is committed).
     pub id: u64,
-    /// Magnitude (play counts, 1 for point events).
+    /// Magnitude (play counts, dwell in ms, 1 for point events).
     pub value: f64,
     /// Session index when it happened.
     pub session: usize,
+    /// Free-form JSON detail: the `StructOp` and module kind for an edit, the
+    /// query string for a link-drag search, the outcome of a commit. A string
+    /// rather than a typed field per event kind, because the point of this log
+    /// is to be *written* now and interpreted later — a schema fixed today is
+    /// a schema that stops the next event kind from being logged at all.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+    /// Raw φ before the event, where the event is a transition (revert).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub phi_before: Vec<f64>,
+    /// Raw φ after it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub phi_after: Vec<f64>,
 }
 
 /// A full saved session: everything needed to restore the app across a
@@ -674,6 +716,43 @@ pub struct DuelChoice {
     pub random_check: bool,
     /// `"random"` (no posterior), `"check"`, or `"bald"`.
     pub method: &'static str,
+}
+
+/// What a hand edit's commit reported about the edit against the original.
+///
+/// The type exists because the old `as_improvement: bool` could not say the
+/// most informative thing a player can say. "I edited this, listened to both,
+/// and the original was better" is a duel with a known answer — and under a
+/// boolean it was **unrepresentable**: `false` meant "said nothing", so the
+/// loss was silently discarded and the log only ever saw edits that won. A
+/// preference log that records only successes is a biased sample of exactly
+/// the kind the model has no defence against, and hand editing is the richest
+/// signal in the app.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditOutcome {
+    /// Nothing was claimed. Lineage still links the two; no observation.
+    Untold,
+    /// The player heard both and picked. `edited_won: false` is the losing
+    /// direction — the half that used to be inexpressible.
+    Heard {
+        /// True when the edit beat the original.
+        edited_won: bool,
+    },
+    /// The player asserted the edit is better without hearing them back to
+    /// back (the express "my edit is better" checkbox). Same claim, weaker
+    /// evidence, tagged so it can be scored separately.
+    SelfReported,
+}
+
+impl EditOutcome {
+    /// `(edited_won, provenance)` when this outcome makes a claim.
+    pub fn told(&self) -> Option<(bool, Provenance)> {
+        match self {
+            EditOutcome::Untold => None,
+            EditOutcome::Heard { edited_won } => Some((*edited_won, Provenance::HeardEdit)),
+            EditOutcome::SelfReported => Some((true, Provenance::SelfReport)),
+        }
+    }
 }
 
 /// One feature's exact share of a candidate's utility.
@@ -1236,7 +1315,7 @@ impl Engine {
         let render = self.admitted_render(&tree, &cached.features, audition);
         self.pool.push(Candidate {
             id,
-            tree,
+            tree: settled(tree),
             phi_std: Vec::new(),
             key: cached.key,
             render,
@@ -1406,7 +1485,7 @@ impl Engine {
 
     /// Posterior-mean mixture utility of a standardized φ (0 with no
     /// posterior).
-    fn utility_of(&self, phi_std: &[f64]) -> f64 {
+    pub fn utility_of(&self, phi_std: &[f64]) -> f64 {
         match &self.posterior {
             Some(p) if !phi_std.is_empty() => p.utility_mix(phi_std).0,
             _ => 0.0,
@@ -1617,11 +1696,29 @@ impl Engine {
     /// Log an implicit preference event (promote, play time, …). Logged
     /// only — not yet part of the likelihood.
     pub fn log_event(&mut self, kind: &str, id: u64, value: f64) {
+        self.log_event_detail(kind, id, value, "", Vec::new(), Vec::new());
+    }
+
+    /// The same, carrying the editor's detail and (for a transition) the raw
+    /// φ on both sides of it. See [`ImplicitEvent`] for why the detail is an
+    /// opaque string and why none of this reaches the likelihood.
+    pub fn log_event_detail(
+        &mut self,
+        kind: &str,
+        id: u64,
+        value: f64,
+        detail: &str,
+        phi_before: Vec<f64>,
+        phi_after: Vec<f64>,
+    ) {
         self.events.push(ImplicitEvent {
             kind: kind.into(),
             id,
             value,
             session: self.session,
+            detail: detail.into(),
+            phi_before,
+            phi_after,
         });
     }
 
@@ -1735,7 +1832,7 @@ impl Engine {
         let render = self.admitted_render(&tree, &cf.features, fresh);
         self.pool.push(Candidate {
             id,
-            tree,
+            tree: settled(tree),
             phi_std,
             key: cf.key,
             render,
@@ -1809,15 +1906,30 @@ impl Engine {
     }
 
     /// Commit a hand-edited tree as a new candidate. If `original_id` is
-    /// given, a lineage event links them; if additionally `as_improvement`,
-    /// an "edited beats original" duel observation is recorded.
+    /// given, a lineage event links them; `outcome` says what the player
+    /// reported about the pair, and only a *told* outcome writes an
+    /// observation.
     pub fn commit_edit(
         &mut self,
         original_id: Option<u64>,
         tree: PatchTree,
-        as_improvement: bool,
+        outcome: EditOutcome,
     ) -> Option<u64> {
-        if self.pool.iter().any(|c| c.tree == tree) {
+        if let Some(i) = self.pool.iter().position(|c| c.tree == tree) {
+            // The edit landed on a patch the bank already holds, so there is
+            // no new candidate to insert. There *was* still a comparison: the
+            // player heard two patches and picked one, and discarding that
+            // answer because the winner happened to already exist would throw
+            // away a real vote on the grounds of a bookkeeping collision. The
+            // pair is scored against the twin instead.
+            let (existing, told) = (self.pool[i].id, outcome.told());
+            if let (Some(oid), Some((edited_won, provenance))) = (original_id, told) {
+                if let Some(pi) = self.find(oid) {
+                    if existing != oid {
+                        self.record_duel_as(i, pi, edited_won, provenance);
+                    }
+                }
+            }
             return None;
         }
         let original = original_id.and_then(|id| self.find(id)).map(|i| {
@@ -1825,17 +1937,12 @@ impl Engine {
                 self.pool[i].id,
                 self.pool[i].tree.clone(),
                 self.pool[i].phi_std.clone(),
-                self.pool[i].features.phi(),
             )
         });
         let child_id = self.insert_candidate(tree, Origin::Edited, original_id)?;
-        if let Some((pid, ptree, pphi, praw)) = original {
+        if let Some((pid, ptree, pphi)) = original {
             let ci = self.find(child_id).expect("just inserted");
-            let (ctree, cphi, craw) = (
-                self.pool[ci].tree.clone(),
-                self.pool[ci].phi_std.clone(),
-                self.pool[ci].features.phi(),
-            );
+            let (ctree, cphi) = (self.pool[ci].tree.clone(), self.pool[ci].phi_std.clone());
             self.lineage.push(LineageEvent {
                 generation: self.generation,
                 kind: "edit".into(),
@@ -1845,19 +1952,16 @@ impl Engine {
                 parent_utility: self.utility_of(&pphi),
                 child_utility: self.utility_of(&cphi),
             });
-            if as_improvement && !pphi.is_empty() && !cphi.is_empty() {
-                self.observe(
-                    Feedback::Duel {
-                        a: craw,
-                        b: praw,
-                        chose_a: true,
-                    },
-                    Feedback::Duel {
-                        a: cphi,
-                        b: pphi,
-                        chose_a: true,
-                    },
-                );
+            // A committed edit is a genuine one-step-ahead question — the
+            // model has never seen this tree — so it goes through the same
+            // forecast-then-observe path a dealt duel does, in the same
+            // (edit, original) order, and carries the tag that lets a
+            // self-report be scored against a heard comparison rather than
+            // averaged into it.
+            if let Some((edited_won, provenance)) = outcome.told() {
+                if let (Some(ci), Some(pi)) = (self.find(child_id), self.find(pid)) {
+                    self.record_duel_as(ci, pi, edited_won, provenance);
+                }
             }
         }
         Some(child_id)
@@ -1867,10 +1971,22 @@ impl Engine {
         &mut self,
         parent_id: u64,
         seed: &PatchTree,
-        end: PatchTree,
+        mut end: PatchTree,
         kind: &str,
         protect: Option<u64>,
     ) -> Option<u64> {
+        // The one place a refined child meets its seed, and therefore the one
+        // place its node identities can be recovered.
+        //
+        // `refine_one` runs typed MH over the *trace*, and every accepted step
+        // rebuilds the whole genome through `crate::genome`'s decoder — a trace
+        // is a map from address to value and has no room for a uid, so what
+        // comes back is structurally almost the seed and completely anonymous.
+        // Without this line every ⚡ would look to the panel like a brand-new
+        // patch: locks gone, hand-placed positions gone, selection gone, on the
+        // one action the whole instrument is built around. Positions and locks
+        // are the point of uids, and evolution is the point of ricercar.
+        end.inherit_uids(seed);
         let parent_phi = self
             .find(parent_id)
             .map(|i| self.pool[i].phi_std.clone())
@@ -2167,8 +2283,22 @@ impl Engine {
     /// sampling: an O(S) update that makes the *next* duel respond to this
     /// one instead of waiting for the next multi-second MCMC refit.
     fn observe(&mut self, raw: Feedback, standardized: Feedback) {
-        self.log
-            .push(Observation::new(raw, self.session, &phi_names()));
+        self.observe_as(raw, standardized, Provenance::Duel);
+    }
+
+    /// The same, carrying how the answer was collected. The tag reaches the
+    /// log and nothing else: `standardized` goes into the posterior update
+    /// untouched, so two observations that differ only in provenance move the
+    /// posterior identically. Provenance is evidence *about the evidence*, and
+    /// weighting by it would be a modeling claim with no measurement behind it
+    /// — see [`Provenance`].
+    fn observe_as(&mut self, raw: Feedback, standardized: Feedback, provenance: Provenance) {
+        self.log.push(Observation::tagged(
+            raw,
+            self.session,
+            &phi_names(),
+            provenance,
+        ));
         if self.cfg.sis_between_fits {
             if let Some(p) = &self.posterior {
                 let mut updated = p.reweighted(&standardized, self.session);
@@ -2192,12 +2322,22 @@ impl Engine {
     /// is what makes [`Engine::calibration`] prequential rather than a
     /// in-sample self-assessment.
     pub fn record_duel(&mut self, a: usize, b: usize, chose_a: bool) {
+        self.record_duel_as(a, b, chose_a, Provenance::Duel);
+    }
+
+    /// The same, for a pair the app assembled itself rather than dealt — a
+    /// hand edit against the patch it was edited from. One code path, so the
+    /// editor's answers are scored, logged and folded into the posterior by
+    /// exactly the machinery a dealt duel is, and differ only in the tag that
+    /// says where they came from.
+    fn record_duel_as(&mut self, a: usize, b: usize, chose_a: bool, provenance: Provenance) {
         if let Some(p_a) = self.predict_duel(a, b) {
             let key = pair_key(self.pool[a].id, self.pool[b].id);
             self.forecasts.push(Forecast {
                 p_a,
                 chose_a,
                 random_check: self.last_check_pair == Some(key),
+                provenance,
             });
         }
         let raw = Feedback::Duel {
@@ -2210,7 +2350,7 @@ impl Engine {
             b: self.pool[b].phi_std.clone(),
             chose_a,
         };
-        self.observe(raw, std);
+        self.observe_as(raw, std, provenance);
     }
 
     /// Record a keep/kill decision on a pool member (by pool index).
@@ -2247,9 +2387,31 @@ impl Engine {
     /// Exact per-feature decomposition of a candidate's utility under the lens
     /// that claims it (B9 — see [`Explanation`]).
     pub fn explain(&self, id: u64) -> Option<Explanation> {
-        let p = self.posterior.as_ref()?;
         let i = self.find(id)?;
-        let phi = &self.pool[i].phi_std;
+        self.explain_std(id, &self.pool[i].phi_std.clone())
+    }
+
+    /// The same decomposition for a φ that is **not** a pool member — the
+    /// workbench, which is a patch under the player's hands and not a
+    /// candidate until they commit it.
+    ///
+    /// This is what makes the readout above the rack honest. The WHY line used
+    /// to be fetched once, for the candidate that was loaded, and then went on
+    /// describing it through any number of edits: it named features of a patch
+    /// the player had already edited away. The bench re-featurizes on every
+    /// edit anyway, so the true decomposition is a dot product away — there
+    /// was never a cost reason for the stale one.
+    ///
+    /// Takes **raw** φ and standardizes here, because raw is what the
+    /// featurizer produces and what the log stores; θ is denominated in the
+    /// standardizer, so the transform is not optional.
+    pub fn explain_phi(&self, phi_raw: &[f64]) -> Option<Explanation> {
+        let sz = self.standardizer.as_ref()?;
+        self.explain_std(0, &sz.transform(phi_raw))
+    }
+
+    fn explain_std(&self, id: u64, phi: &[f64]) -> Option<Explanation> {
+        let p = self.posterior.as_ref()?;
         if phi.is_empty() {
             return None;
         }
@@ -2486,7 +2648,7 @@ impl Engine {
         self.next_id = self.next_id.max(entry.id + 1);
         self.pool.push(Candidate {
             id: entry.id,
-            tree: entry.tree,
+            tree: settled(entry.tree),
             features: cached.features,
             phi_std,
             key: cached.key,

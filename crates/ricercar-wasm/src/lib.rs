@@ -30,7 +30,8 @@ use ricercar_grammar::{
     PatchTree, StructOp,
 };
 use ricercar_session::{
-    BankEntry, Engine, Origin, PreFeaturized, Profile, RenderPolicy, SessionConfig, SessionState,
+    BankEntry, EditOutcome, Engine, Origin, PreFeaturized, Profile, RenderPolicy, SessionConfig,
+    SessionState,
 };
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -219,6 +220,18 @@ pub struct WasmEngine {
     bench_original: Option<u64>,
     bench_vet_ok: bool,
     bench_gain_db: f64,
+    /// Raw φ of the tree on the bench, and of the tree that was on it before
+    /// the last featurize.
+    ///
+    /// The current one is what the live utility readout is computed from: the
+    /// bench re-featurizes on every edit regardless, so `θ · φ_std` costs a
+    /// dot product and the alternative — a number describing the patch you
+    /// loaded rather than the one under your hands — is not cheaper, only
+    /// wrong. The previous one exists for the implicit stream: a revert is a
+    /// transition, and a transition logged with only one side of it says
+    /// nothing about the direction the player moved.
+    bench_phi: Option<Vec<f64>>,
+    bench_phi_prev: Option<Vec<f64>>,
     /// Bank entries of a deferred restore, awaiting off-engine featurization.
     /// Held here rather than shipped to JS so the orchestrator addresses them
     /// by index — the same statelessness the pool fill gets from its draw
@@ -286,6 +299,8 @@ impl WasmEngine {
             bench_original: None,
             bench_vet_ok: false,
             bench_gain_db: 0.0,
+            bench_phi: None,
+            bench_phi_prev: None,
             pending_bank: Vec::new(),
         }
     }
@@ -822,6 +837,33 @@ impl WasmEngine {
         serde_json::to_string(&rows).unwrap()
     }
 
+    /// The standardizer's per-coordinate scale, as `{"n_filter":1.42,…}`
+    /// (`{}` before one is fitted).
+    ///
+    /// θ lives in standardized space and everything that has ever been shown
+    /// to the user lived there with it, which was fine while the only claim
+    /// being made was "this coefficient is positive". Pricing a placement is a
+    /// different claim: adding one filter is a **raw** unit step in
+    /// `n_filter`, and turning that into a utility needs the divisor that
+    /// carried it into z-scores. Without it the client can render θ and cannot
+    /// render what θ is worth.
+    ///
+    /// Names rather than a bare vector, because the client already keys every
+    /// module to its coordinate *by name* (`MODULES[k].phi`) and an index
+    /// agreement across the wasm boundary is a silent-drift bug waiting for
+    /// the next φ column to land. Mean is deliberately absent: a **delta** is
+    /// invariant to it, so shipping it would only invite someone to use it.
+    pub fn phi_scale(&self) -> String {
+        let Some(sz) = &self.engine.standardizer else {
+            return "{}".into();
+        };
+        let map: std::collections::BTreeMap<&'static str, f64> = Features::phi_names()
+            .into_iter()
+            .zip(sz.std.iter().copied())
+            .collect();
+        serde_json::to_string(&map).unwrap_or_else(|_| "{}".into())
+    }
+
     /// The lineage log (evolution/edit events, oldest first) as JSON.
     pub fn lineage(&self) -> String {
         serde_json::to_string(&self.engine.lineage).unwrap()
@@ -935,7 +977,7 @@ impl WasmEngine {
         let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
             return 0;
         };
-        match self.engine.commit_edit(None, tree, false) {
+        match self.engine.commit_edit(None, tree, EditOutcome::Untold) {
             Some(id) => {
                 self.engine.set_name(id, name);
                 id as u32
@@ -956,6 +998,10 @@ impl WasmEngine {
                 // never start empty for a candidate that renders fine.
                 self.bench_render = self.engine.render_of(id);
                 self.bench_original = Some(id);
+                // A different patch entirely: nothing about the last one's φ
+                // is a "before" for anything this one does.
+                self.bench_phi = Some(self.engine.pool[i].features.phi());
+                self.bench_phi_prev = None;
                 // A pool member vetted when it was admitted, but a bank
                 // restored across a DSP change can hold a term that no longer
                 // renders — and `bench_vet_ok` is what gates commit *and*
@@ -989,12 +1035,14 @@ impl WasmEngine {
                         self.bench_gain_db = cf.features.gain_db;
                         self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
                         self.bench_vet_ok = true;
+                        self.set_bench_phi(Some(cf.features.phi()));
                     }
                     Err(_) => {
                         // Keep the edit (the user asked for it) but flag it:
                         // the buffer is withheld, never played unvetted.
                         self.bench_render = None;
                         self.bench_vet_ok = false;
+                        self.set_bench_phi(None);
                     }
                 }
                 self.bench_tree = Some(edited);
@@ -1049,13 +1097,22 @@ impl WasmEngine {
         if self.bench_tree.is_none() {
             return "no patch on the bench".into();
         }
-        let tree: PatchTree = match serde_json::from_str(tree_json) {
+        let mut tree: PatchTree = match serde_json::from_str(tree_json) {
             Ok(t) => t,
             Err(e) => return format!("bad tree: {e}"),
         };
         if let Err(e) = validate_tree(&tree) {
             return e;
         }
+        // The panel builds this tree itself, so it is also the one route by
+        // which a node can arrive with no identity (a module the editor just
+        // made) or with someone else's (a duplicated subtree brings its
+        // original's uids along in the copy). Settling assigns the first and
+        // breaks the second, and it is idempotent for every node that merely
+        // moved — which is the whole point: a reconnect must not reissue
+        // identities, or the locks and positions riding on them die on a
+        // gesture that changed nothing but a wire.
+        tree.ensure_uids();
         self.bench_tree = Some(tree);
         String::new()
     }
@@ -1074,12 +1131,27 @@ impl WasmEngine {
                 self.bench_gain_db = cf.features.gain_db;
                 self.bench_render = bench_audio(&tree, &phrase, &cf.features, audio);
                 self.bench_vet_ok = true;
+                self.set_bench_phi(Some(cf.features.phi()));
             }
             Err(_) => {
                 self.bench_render = None;
                 self.bench_vet_ok = false;
+                self.set_bench_phi(None);
             }
         }
+    }
+
+    /// Advance the bench's φ, keeping the one it displaces.
+    ///
+    /// Not a plain assignment: `edit_revet` is documented as idempotent and
+    /// callers rely on that, so a second revet of the same tree must not
+    /// shuffle the *actual* previous φ out of reach — a revert logged after
+    /// one would carry `phi_before == phi_after` and read as a no-op edit.
+    fn set_bench_phi(&mut self, phi: Option<Vec<f64>>) {
+        if phi != self.bench_phi {
+            self.bench_phi_prev = self.bench_phi.take();
+        }
+        self.bench_phi = phi;
     }
 
     /// Apply a structural edit and re-render in one call — apply + revet, for
@@ -1112,6 +1184,70 @@ impl WasmEngine {
         self.bench_vet_ok
     }
 
+    /// Render the **first `seconds`** of the bench tree with `op` applied,
+    /// without the bench ever having held that tree.
+    ///
+    /// Hearing a module before you place it is the whole point, and the one
+    /// thing it must not cost is the patch you already have. Every other route
+    /// to a rendered edit goes through `bench_tree` — apply, revet, and now the
+    /// player's patch *is* the proposal, recoverable only by an undo they did
+    /// not ask for. So this clones, applies to the clone, and drops it:
+    /// `bench_tree`, `bench_render`, `bench_phi` and `bench_vet_ok` are all
+    /// untouched, which is what lets a hover be free of consequence.
+    ///
+    /// It takes a whole [`StructOp`] rather than a key and a fragment because
+    /// the placement it is previewing is a `StructOp` — the same JSON, from the
+    /// same call site. A preview built from a re-derived splice would be a
+    /// second implementation of insertion semantics, and the day the two
+    /// disagreed the app would be lying about a sound.
+    ///
+    /// The render is the **full phrase**, truncated after the fact. Two
+    /// reasons, and the second is the one that makes previewing usable at all:
+    /// a shorter phrase is a different stimulus, so its φ would not be the φ
+    /// this patch is scored under and its loudness normalization would not
+    /// match the bench's; and the full phrase is the memo's key, so re-hovering
+    /// a socket — which is what hovering *is* — costs a hash lookup instead of
+    /// a render. An empty return means "nothing to play": no bench, a rejected
+    /// op, or a term that failed vetting. Never a silent zero-filled buffer.
+    pub fn preview_op(&mut self, op_json: &str, seconds: f64) -> Vec<f32> {
+        let Some(tree) = &self.bench_tree else {
+            return Vec::new();
+        };
+        let Ok(op) = serde_json::from_str::<StructOp>(op_json) else {
+            return Vec::new();
+        };
+        let Ok(edited) = apply_struct_op(tree, &op) else {
+            return Vec::new();
+        };
+        // The same ceiling gate `edit_set_tree_apply` runs. A preview is not a
+        // commit, but auditioning a patch the grammar would refuse teaches the
+        // player a move that will be taken away from them later.
+        if validate_tree(&edited).is_err() {
+            return Vec::new();
+        }
+        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
+        let Ok((cf, audio)) = featurize_memo(&edited, &phrase, &memo, true) else {
+            return Vec::new();
+        };
+        let Some(a) = bench_audio(&edited, &phrase, &cf.features, audio) else {
+            return Vec::new();
+        };
+        let n = ((seconds.max(0.1) * a.sample_rate) as usize).min(a.samples.len());
+        let mut out = a.samples[..n].to_vec();
+        // A phrase cut at an arbitrary sample is a step discontinuity, which is
+        // a click — and a click at the end of every audition is the loudest
+        // thing in the preview. 12 ms of cosine is below the threshold where a
+        // release sounds shortened and well above the one where an edge is
+        // audible.
+        let fade = ((0.012 * a.sample_rate) as usize).min(out.len());
+        for i in 0..fade {
+            let t = i as f32 / fade as f32;
+            let k = out.len() - fade + i;
+            out[k] *= 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
+        }
+        out
+    }
+
     /// Rack description of the workbench tree as JSON (`null` if empty).
     pub fn edit_describe(&self) -> String {
         match &self.bench_tree {
@@ -1120,16 +1256,137 @@ impl WasmEngine {
         }
     }
 
-    /// Commit the workbench tree as a new candidate. When `as_improvement`,
-    /// also records "edited beats original" as a duel observation. Returns
-    /// the new candidate id, or 0 (duplicate / unvetted / empty bench).
-    pub fn edit_commit(&mut self, as_improvement: bool) -> u32 {
+    /// Commit the workbench tree as a new candidate. Returns the new
+    /// candidate id, or 0 (duplicate / unvetted / empty bench).
+    ///
+    /// `outcome` is what the player reported about the edit against the
+    /// original, as a wire string:
+    ///
+    /// - `"none"` — they said nothing. Lineage only.
+    /// - `"heard_edited"` / `"heard_original"` — they heard both and picked.
+    ///   **`"heard_original"` is the point of this API**: an edit that lost is
+    ///   the more informative half of the comparison and had no way to be
+    ///   said before ([`EditOutcome`]).
+    /// - `"self_edited"` — the express "my edit is better" checkbox, tagged
+    ///   [`Provenance::SelfReport`] so calibration can score an assertion
+    ///   against a heard comparison instead of averaging them.
+    ///
+    /// An unknown string is `"none"`: a typo must not silently become a vote.
+    pub fn edit_commit(&mut self, outcome: &str) -> u32 {
+        let outcome = match outcome {
+            "heard_edited" => EditOutcome::Heard { edited_won: true },
+            "heard_original" => EditOutcome::Heard { edited_won: false },
+            "self_edited" => EditOutcome::SelfReported,
+            _ => EditOutcome::Untold,
+        };
         let (Some(tree), true) = (self.bench_tree.clone(), self.bench_vet_ok) else {
             return 0;
         };
         self.engine
-            .commit_edit(self.bench_original, tree, as_improvement)
+            .commit_edit(self.bench_original, tree, outcome)
             .unwrap_or(0) as u32
+    }
+
+    /// The pool id the bench was opened from (0 for none) — what a commit
+    /// duel plays against.
+    pub fn edit_original_id(&self) -> u32 {
+        self.bench_original.unwrap_or(0) as u32
+    }
+
+    /// Has the bench actually diverged from the patch it was opened from?
+    ///
+    /// The gate on dealing a real duel at commit. The panel's own `dirty` flag
+    /// answers "did the player touch anything", which is not the same
+    /// question: turn a knob and turn it back, or undo to the start, and there
+    /// is nothing to compare. Asking two patches that are the same patch which
+    /// one is better is a question with no answer, and an answer to it is a
+    /// row of noise in the log.
+    ///
+    /// `PatchTree`'s equality is content equality — `Uid`'s `PartialEq` is
+    /// unconditionally true by construction (see `term.rs`), so a reconnect
+    /// that reissued nothing and a rewrite that minted fresh identities
+    /// compare the same way, which is what "the same patch" has to mean here.
+    pub fn edit_differs_from_original(&self) -> bool {
+        let (Some(tree), Some(oid)) = (&self.bench_tree, self.bench_original) else {
+            return false;
+        };
+        match self.engine.find(oid) {
+            Some(i) => self.engine.pool[i].tree != *tree,
+            None => false,
+        }
+    }
+
+    /// What the model currently thinks of the tree on the bench:
+    /// `{"ok":bool,"u":f64,"sd":f64,"lens":string}`.
+    ///
+    /// `u` is the **mixture** utility — the same quantity the bank is ranked
+    /// by, so the number above the rack and the number beside the patch in the
+    /// bank are the same claim. `ok:false` means there is nothing honest to
+    /// show yet (no posterior, no standardizer, or a bench that failed
+    /// vetting), and the panel says so rather than drawing a zero.
+    pub fn edit_utility(&self) -> String {
+        let ex = self
+            .bench_phi
+            .as_ref()
+            .and_then(|phi| self.engine.explain_phi(phi));
+        match ex {
+            Some(ex) => format!(
+                r#"{{"ok":true,"u":{},"sd":{},"lens":{}}}"#,
+                ex.mix_utility,
+                ex.utility_std,
+                serde_json::to_string(&if ex.style_name.is_empty() {
+                    format!("style {}", ex.style + 1)
+                } else {
+                    ex.style_name.clone()
+                })
+                .unwrap()
+            ),
+            None => r#"{"ok":false}"#.into(),
+        }
+    }
+
+    /// The exact per-feature decomposition of that number (`null` before the
+    /// first fit). Same shape as [`Self::explain`], for the bench.
+    pub fn edit_explain(&self) -> String {
+        match self
+            .bench_phi
+            .as_ref()
+            .and_then(|phi| self.engine.explain_phi(phi))
+        {
+            Some(ex) => serde_json::to_string(&ex).unwrap(),
+            None => "null".into(),
+        }
+    }
+
+    /// Append one row of the editor's implicit stream (WS-8 §3): a revert, a
+    /// commit, an evolve-from, a structural op, a link-drag query.
+    ///
+    /// `detail` is opaque JSON. `with_phi` attaches the bench's φ on both
+    /// sides of the event, which only a transition (a revert) has — everything
+    /// else passes false and stores the strings it knows.
+    ///
+    /// None of this enters the likelihood, and that is deliberate: a revert is
+    /// confounded with plain curiosity, and the fit the app shows a number
+    /// from is not the place to smuggle in an unvalidated signal. It is logged
+    /// because it cannot be logged retroactively.
+    pub fn log_edit_event(
+        &mut self,
+        kind: &str,
+        id: u32,
+        value: f64,
+        detail: &str,
+        with_phi: bool,
+    ) {
+        let (before, after) = if with_phi {
+            (
+                self.bench_phi_prev.clone().unwrap_or_default(),
+                self.bench_phi.clone().unwrap_or_default(),
+            )
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        self.engine
+            .log_event_detail(kind, id as u64, value, detail, before, after);
     }
 
     /// Clear the workbench.
@@ -1138,6 +1395,8 @@ impl WasmEngine {
         self.bench_render = None;
         self.bench_original = None;
         self.bench_vet_ok = false;
+        self.bench_phi = None;
+        self.bench_phi_prev = None;
     }
 
     fn phrase(&self) -> PhraseSpec {
@@ -1385,6 +1644,23 @@ mod tests {
         }
     }
 
+    /// A saved session with its node identities stripped.
+    ///
+    /// Two engines that built the same patches by different routes are the
+    /// same session, and identities are the one thing that legitimately differs
+    /// between them: uids come from a process-global mint, so the second engine
+    /// in a test has simply counted further. Comparing exports is comparing
+    /// *content*, and content is what this strips to. (The identities
+    /// themselves are pinned by the grammar and session suites.)
+    fn session_content(engine: &WasmEngine) -> String {
+        let mut state: ricercar_session::SessionState =
+            serde_json::from_str(&engine.export_session()).expect("a session round-trips");
+        for entry in &mut state.bank {
+            entry.tree.clear_uids();
+        }
+        serde_json::to_string(&state).expect("a session serializes")
+    }
+
     /// The whole point, at the boundary the browser actually crosses: a pool
     /// filled through `fill_draw` → `farm_render` → `fill_absorb` is the pool
     /// `fill_step` builds. If these ever disagree, a user whose browser cannot
@@ -1400,8 +1676,8 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&farmed.status()).unwrap()["pool"],
         );
         assert_eq!(
-            serial.export_session(),
-            farmed.export_session(),
+            session_content(&serial),
+            session_content(&farmed),
             "the farm boundary built a different session than the serial fill"
         );
     }
@@ -1416,8 +1692,8 @@ mod tests {
         let mut wet = WasmEngine::new(0x1234, 4);
         farm_fill(&mut wet, true);
         assert_eq!(
-            dry.export_session(),
-            wet.export_session(),
+            session_content(&dry),
+            session_content(&wet),
             "asking the farm for audio changed the pool"
         );
         // The absorbed buffer is what `render_of` hands WebAudio, and it must
@@ -1550,5 +1826,218 @@ mod tests {
         let far = engine.draw_json(37);
         while engine.fill_step(2) > 0 {}
         assert_eq!(engine.draw_json(37), far, "the draw stream advanced");
+    }
+
+    /// The commit duel's gate. `wb.dirty` in the panel means "the player
+    /// touched something", which is a different question from "is there
+    /// anything to compare": turn a knob and turn it back, or undo to where
+    /// you started, and dealing a duel would be asking which of two identical
+    /// patches is better — a question whose answer is a row of noise in the
+    /// preference log.
+    #[test]
+    fn a_bench_edited_back_to_where_it_started_has_no_duel_to_deal() {
+        let mut engine = WasmEngine::new(0xD0E1, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        assert_eq!(engine.edit_original_id(), id);
+        assert!(
+            !engine.edit_differs_from_original(),
+            "a freshly benched patch is the patch it came from"
+        );
+
+        let before = engine.edit_tree_json();
+        assert!(engine.edit_param("amp#attack", 0.42, false));
+        assert!(engine.edit_differs_from_original(), "a knob moved");
+        // …and back, through the same route undo takes.
+        assert_eq!(engine.edit_set_tree(&before), "");
+        assert!(
+            !engine.edit_differs_from_original(),
+            "returning to the original tree still read as an edit"
+        );
+    }
+
+    /// The readout above the rack describes the tree under the player's
+    /// hands, on every edit — the WHY line's failure was that it described the
+    /// patch that was *loaded*, silently, through any number of edits. Both
+    /// surfaces have to move with the bench and agree with each other, and
+    /// both have to say "nothing to show" rather than draw a zero when there
+    /// is no posterior to ask.
+    #[test]
+    fn the_bench_readout_follows_the_bench() {
+        let mut engine = WasmEngine::new(0x0B1E, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+
+        // Untaught: no posterior, so no honest number exists.
+        let u: serde_json::Value = serde_json::from_str(&engine.edit_utility()).unwrap();
+        assert_eq!(u["ok"], false, "a number was drawn with nothing behind it");
+        assert_eq!(engine.edit_explain(), "null");
+
+        // Teach it something, then the same two calls have to answer.
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        let (a, b) = (
+            ranked[0]["id"].as_u64().unwrap() as u32,
+            ranked[1]["id"].as_u64().unwrap() as u32,
+        );
+        engine.record_duel(a, b, true);
+        engine.fit();
+        let u0: serde_json::Value = serde_json::from_str(&engine.edit_utility()).unwrap();
+        assert_eq!(u0["ok"], true);
+        let ex0: serde_json::Value = serde_json::from_str(&engine.edit_explain()).unwrap();
+        let sum: f64 = ex0["contributions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["contribution"].as_f64().unwrap())
+            .sum();
+        assert!(
+            (sum - ex0["utility"].as_f64().unwrap()).abs() < 1e-9,
+            "the decomposition is exact within a lens, or it is not a decomposition"
+        );
+
+        // An edit big enough to move φ has to move the number with it.
+        assert_eq!(
+            engine.edit_structure(r#"{"op":"insert","key":"node","kind":"distortion"}"#),
+            ""
+        );
+        let u1: serde_json::Value = serde_json::from_str(&engine.edit_utility()).unwrap();
+        assert_eq!(u1["ok"], true);
+        assert_ne!(
+            u0["u"], u1["u"],
+            "the readout kept describing the patch that was edited away"
+        );
+    }
+
+    /// The implicit stream: a revert has to arrive with φ on *both* sides of
+    /// it, because a transition logged from one side says nothing about the
+    /// direction the player moved — and direction is the entire signal.
+    #[test]
+    fn a_logged_revert_carries_both_sides_of_the_edit() {
+        let mut engine = WasmEngine::new(0x2E7, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let before = engine.edit_tree_json();
+        assert_eq!(
+            engine.edit_structure(r#"{"op":"insert","key":"node","kind":"distortion"}"#),
+            ""
+        );
+        assert_eq!(engine.edit_set_tree(&before), ""); // ⌘Z
+        engine.log_edit_event(
+            "revert",
+            id,
+            3400.0,
+            r#"{"op":"insert","kind":"distortion"}"#,
+            true,
+        );
+
+        let state: ricercar_session::SessionState =
+            serde_json::from_str(&engine.export_session()).unwrap();
+        let ev = state.events.last().expect("the revert was logged");
+        assert_eq!(ev.kind, "revert");
+        assert_eq!(ev.value, 3400.0);
+        assert!(!ev.phi_before.is_empty() && !ev.phi_after.is_empty());
+        assert_ne!(
+            ev.phi_before, ev.phi_after,
+            "a revert whose two sides are equal reverted nothing"
+        );
+        assert!(ev.detail.contains("distortion"));
+        // And it stays out of the likelihood, which is the whole premise of
+        // logging it this early.
+        assert_eq!(state.profile.log.len(), 0);
+    }
+
+    /// The one property the whole pre-placement audition rests on: you can
+    /// hear the proposal without owning it. If the bench moved, a hover would
+    /// be an edit, and the player would be undoing sounds they only looked at.
+    #[test]
+    fn a_preview_renders_the_proposal_and_leaves_the_bench_alone() {
+        let mut engine = WasmEngine::new(0x9A1, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let before_tree = engine.edit_tree_json();
+        let before_render = engine.edit_render();
+        let before_desc = engine.edit_describe();
+
+        let pcm = engine.preview_op(r#"{"op":"insert","key":"node","kind":"distortion"}"#, 1.6);
+        assert!(!pcm.is_empty(), "the spliced patch should have rendered");
+        // Truncated, not the whole phrase: the phrase is ~5 s and the audition
+        // is a glance.
+        let want = (1.6 * engine.sample_rate()) as usize;
+        assert_eq!(pcm.len(), want);
+        assert!(
+            pcm.iter().any(|s| s.abs() > 1e-4),
+            "a preview of a real patch is not silence"
+        );
+        // The tail is faded, so the cut cannot click.
+        assert!(pcm[pcm.len() - 1].abs() < 1e-6);
+
+        assert_eq!(engine.edit_tree_json(), before_tree);
+        assert_eq!(engine.edit_render(), before_render);
+        assert_eq!(engine.edit_describe(), before_desc);
+        assert!(engine.edit_vet_ok());
+        // Nor did it move the belief readout — a hover must not restate what
+        // the model thinks of a patch the player never adopted.
+        assert!(!engine.edit_differs_from_original());
+    }
+
+    /// An op the grammar refuses and an op past the ceilings both come back as
+    /// "nothing to play", never as a buffer of zeros that would audition as a
+    /// patch that had gone silent.
+    #[test]
+    fn an_unplayable_preview_is_empty_rather_than_silent() {
+        let mut engine = WasmEngine::new(0x9A2, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+
+        // No bench at all.
+        assert!(engine
+            .preview_op(r#"{"op":"insert","key":"node","kind":"distortion"}"#, 1.6)
+            .is_empty());
+
+        assert!(engine.edit_begin(id));
+        // A key that is not in the tree.
+        assert!(engine
+            .preview_op(r#"{"op":"insert","key":"node/9/9/9","kind":"fold"}"#, 1.6)
+            .is_empty());
+        // Not a `StructOp` at all.
+        assert!(engine.preview_op(r#"{"op":"teleport"}"#, 1.6).is_empty());
+        // And a source where a processor belongs — the grammar's own refusal.
+        assert!(engine
+            .preview_op(r#"{"op":"insert","key":"node","kind":"vco"}"#, 1.6)
+            .is_empty());
+    }
+
+    /// The scale is what turns θ into a price. Shipping it keyed by name (and
+    /// only after a standardizer exists) is what keeps the client from
+    /// inventing one.
+    #[test]
+    fn the_phi_scale_ships_by_name_once_it_exists() {
+        let mut engine = WasmEngine::new(0x9A3, 6);
+        assert_eq!(engine.phi_scale(), "{}", "no standardizer, no scale");
+        while engine.fill_step(3) > 0 {}
+        engine.standardize_now();
+        let map: std::collections::BTreeMap<String, f64> =
+            serde_json::from_str(&engine.phi_scale()).unwrap();
+        assert_eq!(map.len(), Features::phi_names().len());
+        for name in Features::phi_names() {
+            let s = *map.get(name).expect("every φ coordinate is priced");
+            assert!(s > 0.0, "{name} scaled by a non-positive divisor");
+        }
+        // The one the sockets are priced through most often.
+        assert!(map.contains_key("n_filter"));
     }
 }

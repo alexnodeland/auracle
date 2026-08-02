@@ -30,7 +30,7 @@ pub mod synthetic;
 
 pub use model::{TasteConfig, TasteModel, TastePosterior, TasteSample, MAX_NORMAL_SD};
 pub use observe::{
-    Feedback, FitSet, Observation, ObservationLog, PHI_SCHEMA, PHI_SCHEMA_STANDARDIZED,
+    Feedback, FitSet, Observation, ObservationLog, Provenance, PHI_SCHEMA, PHI_SCHEMA_STANDARDIZED,
 };
 pub use standardize::Standardizer;
 pub use synthetic::{IdealPointUser, MixtureSyntheticUser, SyntheticUser};
@@ -562,5 +562,50 @@ mod tests {
             ca > 0.6 && cb > 0.6,
             "style recovery too weak: cos_a={ca:.2} cos_b={cb:.2}"
         );
+    }
+
+    /// A log written before provenance existed still loads, and every row in
+    /// it reads as the thing it was: a dealt duel. The observation log is one
+    /// IndexedDB blob with no schema version, so compatibility is by
+    /// construction or it is nothing — and the alternative to a default here
+    /// is a saved profile that fails to parse and takes a user's whole taste
+    /// history with it.
+    #[test]
+    fn a_log_written_before_provenance_still_loads() {
+        let old = r#"{"observations":[
+            {"feedback":{"Duel":{"a":[0.5],"b":[0.25],"chose_a":true}},
+             "session":0,"feature_names":["x"],"schema_version":2},
+            {"KeepKill":{"x":[0.1],"kept":true,"session":1}}
+        ]}"#;
+        let log: ObservationLog = serde_json::from_str(old).expect("an old log parses");
+        assert_eq!(log.len(), 2);
+        assert!(log
+            .observations
+            .iter()
+            .all(|o| o.provenance == Provenance::Duel));
+        assert_eq!(log.n_with(Provenance::Duel), 2);
+        assert_eq!(log.n_with(Provenance::SelfReport), 0);
+
+        // And the tag round-trips when it is not the default, while a default
+        // one stays off the wire — an old reader sees exactly what it saw.
+        let mut log = log;
+        log.push(Observation::tagged(
+            Feedback::KeepKill {
+                x: vec![0.7],
+                kept: false,
+            },
+            2,
+            &["x".to_string()],
+            Provenance::SelfReport,
+        ));
+        let json = serde_json::to_string(&log).unwrap();
+        assert!(json.contains("self_report"));
+        assert_eq!(
+            json.matches("provenance").count(),
+            1,
+            "the default was serialized"
+        );
+        let back: ObservationLog = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, log);
     }
 }

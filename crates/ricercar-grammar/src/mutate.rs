@@ -17,7 +17,7 @@ use thiserror::Error;
 
 use crate::term::{
     AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree, TableShape,
-    Waveform,
+    Uid, Waveform,
 };
 
 /// Hard ceilings on hand-built patches (protects the realtime voice and the
@@ -219,12 +219,14 @@ fn default_op_params(kind: ModOp) -> (f64, f64) {
 fn default_pair_b(kind: PairOp) -> ModNode {
     if kind.is_gate() || kind == PairOp::Switch {
         ModNode::Euclid {
+            uid: Uid::NEW,
             rate: 0.5,
             steps: 0.5,
             pulses: 0.4,
         }
     } else {
         ModNode::Lfo {
+            uid: Uid::NEW,
             wave: Waveform::Triangle,
             rate: 0.3,
         }
@@ -329,6 +331,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
     match kind {
         NodeKind::Vco => saw_vco(0),
         NodeKind::Supersaw => AudioNode::Supersaw {
+            uid: Uid::NEW,
             octave: 0,
             detune: 0.35,
             mix: 0.5,
@@ -336,12 +339,15 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Noise => AudioNode::Noise {
+            uid: Uid::NEW,
             color: NoiseColor::White,
         },
         NodeKind::Mix => AudioNode::Mix {
+            uid: Uid::NEW,
             balance: 0.5,
             a: boxed(input),
             b: Box::new(AudioNode::Vco {
+                uid: Uid::NEW,
                 wave: Waveform::Triangle,
                 octave: 0,
                 detune: 0.5,
@@ -350,6 +356,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             }),
         },
         NodeKind::Filter => AudioNode::Filter {
+            uid: Uid::NEW,
             kind: FilterKind::SvfLp,
             cutoff: 0.6,
             resonance: 0.3,
@@ -358,12 +365,14 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Fold => AudioNode::Fold {
+            uid: Uid::NEW,
             threshold: 0.5,
             mod_depth: 0.3,
             input: boxed(input),
             modulation: ModNode::None,
         },
         NodeKind::Delay => AudioNode::Delay {
+            uid: Uid::NEW,
             time: 0.35,
             feedback: 0.35,
             mix: 0.35,
@@ -372,6 +381,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Chorus => AudioNode::Chorus {
+            uid: Uid::NEW,
             rate: 0.3,
             depth: 0.4,
             mix: 0.35,
@@ -380,6 +390,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Reverb => AudioNode::Reverb {
+            uid: Uid::NEW,
             size: 0.5,
             damp: 0.5,
             mix: 0.3,
@@ -388,6 +399,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Wavetable => AudioNode::Wavetable {
+            uid: Uid::NEW,
             table: TableShape::Saw,
             octave: 0,
             morph: 0.35,
@@ -395,6 +407,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Pluck => AudioNode::Pluck {
+            uid: Uid::NEW,
             octave: 0,
             damping: 0.45,
             brightness: 0.6,
@@ -402,6 +415,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Distortion => AudioNode::Distortion {
+            uid: Uid::NEW,
             drive: 0.45,
             tone: 0.5,
             mode: DriveMode::Soft,
@@ -410,6 +424,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Bitcrush => AudioNode::Bitcrush {
+            uid: Uid::NEW,
             bits: 0.55,
             downsample: 0.3,
             mod_depth: 0.3,
@@ -417,6 +432,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Phaser => AudioNode::Phaser {
+            uid: Uid::NEW,
             rate: 0.3,
             depth: 0.6,
             feedback: 0.5,
@@ -425,12 +441,14 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::RingMod => AudioNode::RingMod {
+            uid: Uid::NEW,
             mix: 0.5,
             a: boxed(input),
             // A sine an octave up, not a copy of the carrier: ring-modulating
             // a signal against itself squares it, which is a quiet, dull
             // module that looks broken. The default has to *ring*.
             b: Box::new(AudioNode::Vco {
+                uid: Uid::NEW,
                 wave: Waveform::Sine,
                 octave: 1,
                 detune: 0.5,
@@ -439,6 +457,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             }),
         },
         NodeKind::Formant => AudioNode::Formant {
+            uid: Uid::NEW,
             // Off the /a/ end: at vowel 0 the mod slot can only sweep one
             // way, and a formant oscillator parked on a single vowel is a
             // static filter bank.
@@ -449,6 +468,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Flanger => AudioNode::Flanger {
+            uid: Uid::NEW,
             rate: 0.35,
             depth: 0.6,
             // Bipolar: 0.62 is a gentle *positive* 0.17, enough to hear the
@@ -459,6 +479,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Tremolo => AudioNode::Tremolo {
+            uid: Uid::NEW,
             rate: 0.4,
             depth: 0.5,
             shape: 0.0,
@@ -467,6 +488,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Vibrato => AudioNode::Vibrato {
+            uid: Uid::NEW,
             rate: 0.45,
             depth: 0.25,
             // Fully wet. A half-wet vibrato *is* a chorus, and shipping the
@@ -478,6 +500,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Eq => AudioNode::Eq {
+            uid: Uid::NEW,
             // All three bands at centre, i.e. 0 dB: a freshly placed tone
             // control is audibly a no-op until you move it, which is correct
             // for a tone control and better than hiding it behind a tilt
@@ -490,6 +513,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Granular => AudioNode::Granular {
+            uid: Uid::NEW,
             position: 0.5,
             size: 0.4,
             density: 0.6,
@@ -498,6 +522,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Shift => AudioNode::Shift {
+            uid: Uid::NEW,
             // Off unison, or the module is a wire on first placement: 0.62 is
             // a bright +3 semitones, an interval rather than a detune.
             semis: 0.62,
@@ -516,6 +541,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
         // second branch is the point of these modules, so the default has to
         // demonstrate it.
         NodeKind::Comp => AudioNode::Comp {
+            uid: Uid::NEW,
             // 0.3 is ≈0.2 V of detector level, just under a plucked string's
             // own envelope peak — measured, because on the geometric knob
             // (`map::detector_volts`) the difference between 0.3 and 0.4 is
@@ -539,6 +565,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Duck => AudioNode::Duck {
+            uid: Uid::NEW,
             amount: 0.7,
             threshold: 0.4,
             release: 0.35,
@@ -548,6 +575,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Gate => AudioNode::Gate {
+            uid: Uid::NEW,
             // 0.45 is ≈0.4 V, in the middle of the band where a plucked key
             // opens the gate on its attack and lets it shut again as the
             // string decays. Below ≈0.42 it never shuts and above ≈0.47 it
@@ -562,6 +590,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             modulation: ModNode::None,
         },
         NodeKind::Vocoder => AudioNode::Vocoder {
+            uid: Uid::NEW,
             bands: 0.6,
             attack: 0.25,
             release: 0.3,
@@ -570,6 +599,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             // the carrier already has — on a sine there is nothing in fifteen
             // of the sixteen bands to reveal.
             carrier: Box::new(AudioNode::Supersaw {
+                uid: Uid::NEW,
                 octave: 0,
                 detune: 0.45,
                 mix: 0.6,
@@ -579,6 +609,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             // A formant oscillator as the modulator, because the vowel is what
             // makes a vocoder audibly a vocoder rather than a moving filter.
             modulator: Box::new(AudioNode::Formant {
+                uid: Uid::NEW,
                 vowel: 0.3,
                 shift: 0.5,
                 octave: 0,
@@ -598,6 +629,7 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
 /// source keys them into a static gain change nobody can hear as an effect.
 fn pluck_key() -> AudioNode {
     AudioNode::Pluck {
+        uid: Uid::NEW,
         octave: -1,
         damping: 0.4,
         brightness: 0.7,
@@ -612,6 +644,7 @@ fn pluck_key() -> AudioNode {
 /// fields in wave 2A — three places to forget one of them.
 fn saw_vco(octave: i8) -> AudioNode {
     AudioNode::Vco {
+        uid: Uid::NEW,
         wave: Waveform::Saw,
         octave,
         detune: 0.5,
@@ -729,6 +762,7 @@ fn take(n: &mut AudioNode) -> AudioNode {
     std::mem::replace(
         n,
         AudioNode::Noise {
+            uid: Uid::NEW,
             color: NoiseColor::White,
         },
     )
@@ -807,6 +841,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             let existing = std::mem::take(m);
             let inner = move || match existing {
                 ModNode::None => ModNode::Rand {
+                    uid: Uid::NEW,
                     rate: 0.4,
                     glide: 0.0,
                 },
@@ -815,6 +850,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             let replacement = if let Some(op) = kind.as_op() {
                 let (p0, p1) = default_op_params(op);
                 ModNode::Op {
+                    uid: Uid::NEW,
                     kind: op,
                     p0,
                     p1,
@@ -822,6 +858,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                 }
             } else if let Some(pair) = kind.as_pair() {
                 ModNode::Pair {
+                    uid: Uid::NEW,
                     kind: pair,
                     a: Box::new(inner()),
                     b: Box::new(default_pair_b(pair)),
@@ -829,22 +866,27 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             } else {
                 match kind {
                     ModKind::Lfo => ModNode::Lfo {
+                        uid: Uid::NEW,
                         wave: Waveform::Triangle,
                         rate: 0.4,
                     },
                     ModKind::Env => ModNode::Env {
+                        uid: Uid::NEW,
                         attack: 0.2,
                         decay: 0.5,
                     },
                     ModKind::Rand => ModNode::Rand {
+                        uid: Uid::NEW,
                         rate: 0.4,
                         glide: 0.0,
                     },
                     ModKind::Follow => ModNode::Follow {
+                        uid: Uid::NEW,
                         sens: 0.5,
                         release: 0.4,
                     },
                     ModKind::Euclid => ModNode::Euclid {
+                        uid: Uid::NEW,
                         rate: 0.5,
                         steps: 0.5,
                         pulses: 0.4,
@@ -984,11 +1026,13 @@ fn mod_slot_mut(n: &mut AudioNode) -> Result<&mut ModNode, StructError> {
 fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
     match frag {
         AudioNode::Mix { balance, b, .. } => Ok(AudioNode::Mix {
+            uid: Uid::NEW,
             balance,
             a: Box::new(old),
             b,
         }),
         AudioNode::RingMod { mix, b, .. } => Ok(AudioNode::RingMod {
+            uid: Uid::NEW,
             mix,
             a: Box::new(old),
             b,
@@ -1002,6 +1046,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Comp {
+            uid: Uid::NEW,
             threshold,
             ratio,
             makeup,
@@ -1019,6 +1064,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Duck {
+            uid: Uid::NEW,
             amount,
             threshold,
             release,
@@ -1036,6 +1082,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Gate {
+            uid: Uid::NEW,
             threshold,
             range,
             release,
@@ -1053,6 +1100,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Vocoder {
+            uid: Uid::NEW,
             bands,
             attack,
             release,
@@ -1069,6 +1117,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Shift {
+            uid: Uid::NEW,
             semis,
             window,
             mix,
@@ -1084,6 +1133,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Filter {
+            uid: Uid::NEW,
             kind,
             cutoff,
             resonance,
@@ -1097,6 +1147,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Fold {
+            uid: Uid::NEW,
             threshold,
             mod_depth,
             modulation,
@@ -1110,6 +1161,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Delay {
+            uid: Uid::NEW,
             time,
             feedback,
             mix,
@@ -1125,6 +1177,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Chorus {
+            uid: Uid::NEW,
             rate,
             depth,
             mix,
@@ -1140,6 +1193,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Reverb {
+            uid: Uid::NEW,
             size,
             damp,
             mix,
@@ -1155,6 +1209,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Distortion {
+            uid: Uid::NEW,
             drive,
             tone,
             mode,
@@ -1169,6 +1224,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Bitcrush {
+            uid: Uid::NEW,
             bits,
             downsample,
             mod_depth,
@@ -1183,6 +1239,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Phaser {
+            uid: Uid::NEW,
             rate,
             depth,
             feedback,
@@ -1198,6 +1255,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Flanger {
+            uid: Uid::NEW,
             rate,
             depth,
             feedback,
@@ -1213,6 +1271,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Tremolo {
+            uid: Uid::NEW,
             rate,
             depth,
             shape,
@@ -1228,6 +1287,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Vibrato {
+            uid: Uid::NEW,
             rate,
             depth,
             mix,
@@ -1243,6 +1303,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Eq {
+            uid: Uid::NEW,
             low,
             mid,
             high,
@@ -1258,6 +1319,7 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
             modulation,
             ..
         } => Ok(AudioNode::Granular {
+            uid: Uid::NEW,
             position,
             size,
             density,
@@ -1324,5 +1386,14 @@ fn check_ceilings(tree: &mut PatchTree) -> Result<(), StructError> {
 
 fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
     check_ceilings(&mut tree)?;
+    // Identity survives a structural edit for free, and the reason is worth
+    // stating: [`apply_struct_op`] works on a *clone* of the incoming tree and
+    // splices it in place, so every node that lives through the edit carries
+    // its own `uid` across with it in the same `memmove` that carried its
+    // knobs. The only nodes wanting an identity here are the ones this op just
+    // made (`default_node`, the mod-term literals, the `take` placeholder) and
+    // any subtree the panel handed in through `ReplaceTree`/`InsertTree` —
+    // which is also where a duplicated uid could arrive. Settling covers both.
+    tree.ensure_uids();
     Ok(tree)
 }
