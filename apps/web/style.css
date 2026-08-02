@@ -2956,6 +2956,86 @@ select:focus-visible,
   font-size: var(--t-micro); color: var(--silk-dim); line-height: 1.5;
 }
 
+/* ---------- the image-export dialog (WS-7 §3) ----------
+   Deliberately the *same* shell as the scope panel — same surface, same
+   shadow, same row grammar — because a second popover with its own look would
+   say these are two different kinds of thing, and they are not: both are a
+   handful of settings hung off the header's ⋯. Only the width and the two
+   pieces the scope panel has no equivalent of are new. */
+.image-panel { width: 268px; }
+/* `flex: 0 0 130px` alone does not hold a `<select>` to 130px: a flex item's
+   `min-width` is `auto`, so the longest option ("selection — nothing
+   selected") sets a floor and that one row grows wider than the four beside
+   it. The rows have to agree or the panel reads as four controls and an
+   accident. */
+.image-panel .sp-row select { min-width: 0; }
+/* The measured result, before the button rather than after the download. Its
+   own recessed strip so it reads as a readout and not as another control. */
+.ix-dims {
+  margin-top: var(--s3);
+  padding: 6px 8px;
+  border: 1px solid var(--hairline); border-radius: 3px;
+  background: var(--bezel);
+  font-size: var(--t-micro); color: var(--phos-a-dim);
+  text-align: center;
+}
+.ix-dims.busy { color: var(--silk-dim); }
+/* The only filled control in the panel, because it is the only one that does
+   anything — everything above it just describes what it will do. */
+.ix-go {
+  margin-top: var(--s2);
+  width: 100%;
+  padding: 7px 0;
+  border: 1px solid var(--phos-b-deep); border-radius: 3px;
+  background: linear-gradient(180deg, #3a2a12, #241a0c);
+  color: var(--phos-b);
+  font-family: var(--font-silk); font-size: var(--t-label);
+  letter-spacing: 0.16em; text-transform: uppercase;
+  cursor: pointer;
+}
+.ix-go:hover { border-color: var(--phos-b); background: linear-gradient(180deg, #4a3517, #2c200e); }
+.ix-go:disabled { opacity: 0.4; cursor: default; }
+.sp-row select:disabled { opacity: 0.45; }
+.sp-row option:disabled { color: var(--silk-mute); }
+
+/* ---------- the drop target ----------
+   A veil rather than a rim light on the frame: a dragged file has no obvious
+   home in a three-pane app, and the honest answer is "anywhere". */
+.drop-veil {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(7, 8, 10, 0.72);
+  backdrop-filter: blur(2px);
+  /* The veil must never eat the dragleave that dismisses it. */
+  pointer-events: none;
+}
+.drop-veil.hidden { display: none; }
+.dv-card {
+  padding: var(--s5) var(--s6);
+  border: 1px dashed var(--phos-a-deep); border-radius: 8px;
+  background: var(--surface-pop); box-shadow: var(--shadow-pop);
+  text-align: center;
+}
+.dv-mark { font-size: 26px; color: var(--phos-a); line-height: 1; }
+.dv-line {
+  margin-top: var(--s2);
+  font-family: var(--font-silk); font-size: var(--t-title);
+  letter-spacing: 0.1em; color: var(--silk);
+}
+.dv-sub { margin-top: var(--s1); font-size: var(--t-micro); color: var(--silk-dim); letter-spacing: 0.1em; }
+
+/* ---------- the offscreen export stage ----------
+   `buildRack` draws into a live document or it draws nothing: `fitLabels`
+   needs `getBBox`, and the whole style-inlining pass reads `getComputedStyle`,
+   both of which want a laid-out element in a real stylesheet's scope. So the
+   export renders on stage and off screen, rather than in a detached fragment
+   where every colour would come back as an initial value. */
+.export-stage {
+  position: fixed; left: -20000px; top: 0;
+  width: 1200px; height: 900px;
+  opacity: 0; pointer-events: none;
+}
+
 /* ---------- rack material ----------
    A bevel is a lit edge *and the roll-off behind it*. One 1px white line is a
    border; a 2px highlight over a 6px gradient falling away from it is an edge

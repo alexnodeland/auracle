@@ -12846,8 +12846,15 @@ $("taste-reset-btn").onclick = () => {
 };
 
 // ---------- patch share (single-patch files) ----------
-$("patch-export-btn").onclick = () => {
-  if (!wb.tree) return note("nothing on the bench to export");
+/** The share payload, for every file the app can write.
+ *
+ *  Extracted from the JSON export because there are now three carriers for it
+ *  — a `.ricercar.json`, a PNG `tEXt` chunk and an SVG `<metadata>` — and the
+ *  one thing that must never differ between them is what is inside. A picture
+ *  that loaded as a slightly different patch than the sidecar beside it would
+ *  be worse than no picture at all. */
+function patchSidecar() {
+  if (!wb.tree) return null;
   const name = wb.subjectId != null ? nameOf(wb.subjectId) : "patch";
   const body = { ricercar_patch: 1, name, tree: wb.tree };
   // The layout rides along (WS-4 §8), keyed by the same node identities the
@@ -12877,31 +12884,781 @@ $("patch-export-btn").onclick = () => {
     }
   }
   if (pins.length) body.layout = { grid: GRID, pos: pins };
-  const payload = JSON.stringify(body, null, 1);
+  return body;
+}
+
+/** One filename rule for every carrier, so a patch's three files sort next to
+ *  each other in a downloads folder. */
+function patchFileStem(body) {
+  return (body?.name || "patch").replace(/[^\w-]+/g, "_").slice(0, 32) || "patch";
+}
+
+/** Hand a blob to the browser as a download. */
+function saveBlob(blob, filename) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
-  a.download = `${name.replace(/[^\w-]+/g, "_").slice(0, 32)}.ricercar.json`;
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
   a.click();
-  URL.revokeObjectURL(a.href);
+  // A `revoke` in the same tick races the download in Safari; one turn is
+  // enough and the object is small.
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
+}
+
+$("patch-export-btn").onclick = () => {
+  const body = patchSidecar();
+  if (!body) return note("nothing on the bench to export");
+  saveBlob(
+    new Blob([JSON.stringify(body, null, 1)], { type: "application/json" }),
+    `${patchFileStem(body)}.ricercar.json`,
+  );
 };
+
+/** Open a parsed sidecar (or a bare tree) on the bench.
+ *
+ *  The single funnel every arrival goes through — file picker, drag-and-drop,
+ *  and whatever carried it (JSON, PNG, SVG). Before this there was one route
+ *  and the parse, the layout hand-off and the send were inline in its
+ *  listener; now the *sniffing* is what differs per carrier and everything
+ *  after it is identical by construction. */
+function loadPatchData(data) {
+  const tree = data.tree || data; // accept bare trees too
+  // Held until the engine says which id the patch landed as — that id is the
+  // key the layout has to be filed under, and it does not exist yet. Cleared
+  // either way in `patch_imported`, so a refused import cannot leave a
+  // layout waiting to be adopted by the *next* one.
+  pendingLayout = Array.isArray(data.layout?.pos) ? data.layout.pos : null;
+  send({ type: "import_patch", json: JSON.stringify(tree), name: data.name || "" });
+}
+
+/** Read a dropped or picked file as a patch, whatever shape it arrived in.
+ *
+ *  Returns the sidecar object, or null with the reason already spoken. The
+ *  sniff is on *content*, not on the extension: a PNG renamed `.dat` still
+ *  starts with the PNG signature, and a file called `.png` that is really a
+ *  JPEG has no chunk to find. */
+async function readPatchFile(file) {
+  const buf = await file.arrayBuffer();
+  const head = new Uint8Array(buf, 0, Math.min(8, buf.byteLength));
+  const isPng = head.length === 8 && PNG_SIG.every((b, i) => head[i] === b);
+  let json = null;
+  if (isPng) {
+    json = pngReadText(buf, PATCH_KEYWORD);
+    if (json == null) {
+      note("that PNG has no patch inside it — only images ricercar exported carry one");
+      return null;
+    }
+  } else {
+    const text = new TextDecoder().decode(buf);
+    if (/^\s*</.test(text)) {
+      json = svgReadPatch(text);
+      if (json == null) {
+        note("that SVG has no patch inside it — only images ricercar exported carry one");
+        return null;
+      }
+    } else {
+      json = text;
+    }
+  }
+  try {
+    return JSON.parse(json);
+  } catch (_) {
+    note("that file isn't a patch");
+    return null;
+  }
+}
+
 $("patch-import-input").onchange = async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    const tree = data.tree || data; // accept bare trees too
-    // Held until the engine says which id the patch landed as — that id is the
-    // key the layout has to be filed under, and it does not exist yet. Cleared
-    // either way in `patch_imported`, so a refused import cannot leave a
-    // layout waiting to be adopted by the *next* one.
-    pendingLayout = Array.isArray(data.layout?.pos) ? data.layout.pos : null;
-    send({ type: "import_patch", json: JSON.stringify(tree), name: data.name || "" });
-  } catch (_) {
-    pendingLayout = null;
-    note("that file isn't a patch");
-  }
+  const data = await readPatchFile(file);
+  if (data) loadPatchData(data);
+  else pendingLayout = null;
 };
+
+// ===========================================================================
+// IMAGE EXPORT — a picture of the patch that *is* the patch (WS-7)
+// ===========================================================================
+// Two halves that only make sense together.
+//
+// The first is a style-inlining pass, and it is not optional (WS-7 §2). Every
+// colour, stroke and type token on the rack lives in an external, class-based
+// stylesheet — `.mod-plate { fill: url(#plateGrad) }`, `.knob-value { fill:
+// var(--silk-dim) }` — none of which travels with a serialized SVG. The naive
+// `XMLSerializer → drawImage → toDataURL` therefore produces a black
+// skeleton: correct geometry, no paint, and no text at all once the webfont
+// fails to resolve. So the export renders the rack on an offscreen stage
+// *inside the live document*, where the stylesheet still applies, reads the
+// computed value of every paint property back off each element, and writes it
+// on as an attribute. Everything a `var(--…)` resolves to becomes a literal
+// for free, which is the whole reason to do it this way round rather than
+// shipping a hand-copied subset of style.css that drifts the first time
+// anyone edits a colour.
+//
+// The second is the round trip. The same `{ricercar_patch:1,…}` sidecar the
+// JSON export writes rides *inside* the image — a PNG `tEXt` chunk, an SVG
+// `<metadata>` element — and the import path sniffs for it. A screenshot
+// posted to a forum is then a patch someone can open, which is a share loop
+// rather than a file format.
+
+/** The keyword the sidecar rides under, in both carriers. PNG `tEXt` keywords
+ *  are Latin-1, 1–79 bytes, and conventionally lowercase-ish; this one is also
+ *  what an `exiftool` dump will print, so it is a word and not a UUID. */
+const PATCH_KEYWORD = "ricercar";
+const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+// The padding, in rack user units, that surrounds an exported patch on all
+// four sides. Uniform by construction: the padding is applied to the viewBox,
+// not to the layout, so it cannot interact with the arrangement.
+const EXPORT_PAD = 26;
+
+// What the dialog remembers, in `scopeState`'s shape and with `scopeState`'s
+// merge-on-load rule (an unknown key in the saved blob is ignored, a missing
+// one keeps its default) — a settings panel you have to re-answer on every
+// reload is a settings panel that becomes a button with extra steps.
+const IMAGE_STORE = "ricercar-image-export";
+const imageState = {
+  scope: "all",        // all | sel
+  scale: 2,            // 1 | 2 | 3
+  bg: "solid",         // solid | transparent
+  fmt: "png",          // png | svg
+};
+function imageLoad() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(IMAGE_STORE) || "{}");
+    for (const k of Object.keys(imageState)) if (k in saved) imageState[k] = saved[k];
+  } catch (e) { /* a corrupt blob is not worth a boot failure */ }
+}
+function imageSave() {
+  try { localStorage.setItem(IMAGE_STORE, JSON.stringify(imageState)); } catch (e) {}
+}
+
+// ---------- selection ----------
+// The app has no selection *object* — `fitSelection` says so in as many words
+// — and its honest reading of "the selection" is whatever the keyboard is on.
+// This is that reading, made durable: `document.activeElement` is no use to a
+// dialog, because opening the dialog is what takes the focus away. So the last
+// module the keyboard (or a plate click) landed on is remembered by `mid`,
+// which survives both the rebuild and the focus move.
+let selMid = null;
+function selInit() {
+  const scroll = $("rack-scroll");
+  if (!scroll) return;
+  scroll.addEventListener("focusin", (ev) => {
+    const g = ev.target.closest?.("g.mod-group");
+    const mid = g?.getAttribute("data-mid");
+    if (mid) selMid = mid;
+  });
+}
+/** The module the selection names, if the current patch still contains it. */
+function selModule() {
+  if (selMid == null || !wb.rack) return null;
+  return wb.rack.modules.find((m) => midOf(m) === selMid) || null;
+}
+
+/** The patch, or the selected module and everything feeding it.
+ *
+ *  Keys are paths (`node/0/1`), so a subtree is a prefix test — which is also
+ *  why "the selection" can only ever be a subtree here: the term is a strict
+ *  tree and there is no such thing as an arbitrary set of modules with wiring
+ *  between them. `column` is renumbered relative to the new root, because
+ *  `layoutFlow` derives its layer count from the maximum and would otherwise
+ *  leave one empty column per layer it cut away. */
+function exportRack(scoped) {
+  const rack = wb.rack;
+  if (!rack) return null;
+  const m = scoped ? selModule() : null;
+  // `amp` is the envelope wrapping the term, not a node in it: its audio input
+  // is `node`, not `amp/0`, so the prefix test would answer "the output stage"
+  // with a picture of one plate. Selecting the output is selecting the patch,
+  // which is also what a player means by it.
+  if (!m || m.key === "amp") return rack;
+  const inSub = (k) => k === m.key || k.startsWith(`${m.key}/`);
+  const modules = rack.modules.filter((x) => inSub(x.key));
+  const minCol = Math.min(...modules.map((x) => x.column));
+  return {
+    modules: modules.map((x) => ({ ...x, column: x.column - minCol })),
+    wires: rack.wires.filter((w) => inSub(w.from) && inSub(w.to)),
+  };
+}
+
+// ---------- fonts ----------
+// The rack's type is `--font-silk` (Jost, on the titles and knob labels) and
+// `--font-mono` (IBM Plex Mono, on every value and port name). Both are
+// self-hosted woff2 in `fonts/`, which is exactly why they can be embedded:
+// an SVG rasterized through `drawImage` may not fetch anything over the
+// network, but a `data:` URI is not a fetch. Whole files, not subsets —
+// subsetting woff2 in the browser means shipping a font parser and a brotli
+// re-compressor, which is not "trivially possible" by any reading; the three
+// faces the rack uses total ~47 kB, which is smaller than one plate's worth of
+// PNG.
+const EXPORT_FONTS = [
+  { file: "fonts/jost-var.woff2", family: "Jost", weight: "300 700", style: "normal" },
+  { file: "fonts/plexmono-400.woff2", family: "IBM Plex Mono", weight: "400", style: "normal" },
+  { file: "fonts/plexmono-600.woff2", family: "IBM Plex Mono", weight: "600", style: "normal" },
+];
+let fontCssPromise = null;
+function base64Of(bytes) {
+  let s = "";
+  // `apply` on the whole array blows the argument limit somewhere north of
+  // 100 kB; 32 kB chunks are well under every engine's ceiling.
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+/** `@font-face` rules with the faces inlined, fetched once per session. */
+function exportFontCss() {
+  if (!fontCssPromise) {
+    fontCssPromise = Promise.all(
+      EXPORT_FONTS.map(async (f) => {
+        const res = await fetch(f.file);
+        if (!res.ok) throw new Error(f.file);
+        const b64 = base64Of(new Uint8Array(await res.arrayBuffer()));
+        return `@font-face{font-family:"${f.family}";font-style:${f.style};` +
+          `font-weight:${f.weight};src:url(data:font/woff2;base64,${b64}) format("woff2");}`;
+      }),
+    ).then((rules) => rules.join("\n"))
+      // A missing font must not cost the user the export. The stack the
+      // inliner writes ends in `monospace`/`sans-serif`, so the picture is
+      // still styled and still readable — it is only wearing the wrong face.
+      .catch(() => "");
+  }
+  return fontCssPromise;
+}
+
+// ---------- style inlining ----------
+// Every paint-bearing property, and nothing else. Layout properties are not
+// here on purpose: SVG geometry is in attributes, and copying computed `width`
+// or `transform` onto a `<g>` would fight the attributes that are already
+// correct.
+const INLINE_PROPS = [
+  "fill", "fill-opacity", "fill-rule",
+  "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "stroke-dashoffset",
+  "stroke-linecap", "stroke-linejoin", "stroke-miterlimit",
+  "opacity", "mix-blend-mode", "filter", "paint-order", "shape-rendering",
+  "font-family", "font-size", "font-weight", "font-style", "letter-spacing",
+  "text-anchor", "dominant-baseline",
+];
+// Each property's initial value, so a declaration that says nothing can be
+// left out. It has to be per property and not one shared set of "empty
+// looking" strings: `none` is the initial `stroke` and it is emphatically
+// *not* the initial `fill`, so a shared set drops `.wire { fill: none }` and
+// every cable in the picture comes out as a filled black wedge between its
+// endpoints. (It did. That is why this comment is here.)
+const INLINE_INITIAL = {
+  fill: "rgb(0, 0, 0)",
+  "fill-opacity": "1",
+  "fill-rule": "nonzero",
+  stroke: "none",
+  "stroke-width": "1px",
+  "stroke-opacity": "1",
+  "stroke-dasharray": "none",
+  "stroke-dashoffset": "0px",
+  "stroke-linecap": "butt",
+  "stroke-linejoin": "miter",
+  "stroke-miterlimit": "4",
+  opacity: "1",
+  "mix-blend-mode": "normal",
+  filter: "none",
+  "paint-order": "normal",
+  "shape-rendering": "auto",
+  "font-size": "16px",
+  "font-weight": "400",
+  "font-style": "normal",
+  "letter-spacing": "normal",
+  "text-anchor": "start",
+  "dominant-baseline": "auto",
+};
+// Classes that move. Stripped *before* the computed style is read, because a
+// running animation is what the computed style would report: a `.pulse` mod
+// cable sampled mid-cycle bakes whatever stroke-opacity that frame happened to
+// hold into the file, so half the cables in the picture would come out at
+// random brightnesses. (`.flowing` needs no stripping — it is scoped to
+// `#rack-svg` and the export stage is not it, which is the kind of accident
+// worth writing down before someone "tidies" that selector.)
+const ANIM_CLASSES = ["pulse", "flashing", "struck", "plate-hot", "modulated", "dragging", "hot"];
+
+/** Absolute `url(…)` references, made relative again.
+ *
+ *  `getComputedStyle` resolves `url(#plateGrad)` against the document base, so
+ *  it comes back as `url("http://localhost:8642/#plateGrad")` — a reference to
+ *  a gradient in a *page*, which is nothing at all once the file is standing
+ *  on its own. Every id it could name is in the clone's own `<defs>`. */
+const relUrls = (v) => v.replace(/url\(["']?[^)"']*#([^)"']+)["']?\)/g, "url(#$1)");
+
+const XLINK_NS = "http://www.w3.org/1999/xlink";
+
+function inlineStyles(root) {
+  const all = [root, ...root.querySelectorAll("*")];
+  for (const el of all) {
+    for (const c of ANIM_CLASSES) el.classList?.remove(c);
+    el.style.animation = "none";
+    el.style.transition = "none";
+  }
+  for (const el of all) {
+    const cs = getComputedStyle(el);
+    let css = "";
+    for (const p of INLINE_PROPS) {
+      const v = cs.getPropertyValue(p);
+      if (!v || v === INLINE_INITIAL[p]) continue;
+      css += `${p}:${relUrls(v)};`;
+    }
+    // Silkscreen is uppercased by CSS, and CSS `text-transform` is a property
+    // a vector editor is entitled not to implement — Illustrator and Inkscape
+    // both read the *content*. So the transform is applied to the text itself
+    // and the property is dropped, which is also what makes the `textLength`
+    // the label fitter already wrote still describe the string beside it.
+    if (el.tagName === "text" && cs.textTransform === "uppercase") {
+      el.textContent = el.textContent.toUpperCase();
+    }
+    el.setAttribute("style", css);
+    // Nothing in the file is clickable, focusable or queryable — it is a
+    // picture. Dropping this lot is also about a third of the byte count.
+    for (const a of [...el.attributes]) {
+      if (a.name.startsWith("data-") || a.name.startsWith("aria-") ||
+          a.name === "tabindex" || a.name === "role" || a.name === "class") {
+        el.removeAttribute(a.name);
+      }
+    }
+    // SVG 1.1 renderers only know `xlink:href` on `<use>`; browsers only need
+    // `href`. Both cost nine bytes each and buy the vector-editor half of the
+    // acceptance criterion.
+    if (el.tagName === "use" && el.getAttribute("href")) {
+      el.setAttributeNS(XLINK_NS, "xlink:href", el.getAttribute("href"));
+    }
+  }
+}
+
+/** Draw one patch on the offscreen stage and hand the live `<svg>` to `fn`.
+ *
+ *  Compact is the export arrangement (WS-4 §2, WS-7 §5) — bounding box beats
+ *  legibility when the result is a still picture that has to fit in a forum
+ *  post. Freeform is the one exception, and it has to be: a player who placed
+ *  every plate by hand has said where they go, and re-packing their patch for
+ *  them would throw that away.
+ *
+ *  The stage is torn down on the way out whatever happens, so a throw in the
+ *  middle of an export cannot leave a second rack parked on the document. */
+function onExportStage(rack, fn) {
+  const stage = document.createElement("div");
+  stage.className = "export-stage";
+  const svg = document.createElementNS(SVG_NS, "svg");
+  stage.appendChild(svg);
+  document.body.appendChild(stage);
+  try {
+    const places = layoutMode === "freeform" ? ffPlaces() : null;
+    buildRack(svg, rack, {
+      // Not interactive: the control well, the lock glyph and the ⋯ are the
+      // app's chrome, not the instrument's front panel, and a picture of a
+      // patch should not have this app's buttons printed on it.
+      interactive: false,
+      // `fit` is what makes this the natural-size render the duel minis
+      // already prove works standalone — and, just as importantly, what keeps
+      // it from writing `rackContent`/`rackBoxes`/`rackFrame`, which belong to
+      // the on-screen build and to the camera pointing at it.
+      fit: true,
+      mode: places ? "freeform" : "compact",
+      places,
+    });
+    return fn(svg);
+  } finally {
+    stage.remove();
+  }
+}
+
+/** The padded frame the file gets, measured off what was actually drawn.
+ *
+ *  Not `layout`'s `natW`/`natH`: those describe the *arrangement's* extent from
+ *  its own origin, and in freeform the origin is the bench's, not the patch's.
+ *  Export a four-module branch out of a patch whose plates start 800 units in
+ *  and that difference is 800 units of empty picture down the left-hand side.
+ *  `getBBox` on the built tree is the honest answer to "how big is this", and
+ *  it is exact in the one place the estimate was worst: it includes the mod
+ *  tabs and the cable runs, not just the plate boxes. */
+function exportFrame(svg) {
+  let bb;
+  try { bb = svg.getBBox(); } catch (_) { bb = { x: 0, y: 0, width: 640, height: 360 }; }
+  const pad = EXPORT_PAD;
+  return {
+    x: Math.round(bb.x) - pad,
+    y: Math.round(bb.y) - pad,
+    w: Math.round(bb.width) + pad * 2,
+    h: Math.round(bb.height) + pad * 2,
+  };
+}
+
+/** Render one patch to a standalone, fully-styled SVG element. */
+async function buildExportSvg(rack, opts) {
+  const { transparent = false, sidecar = null } = opts || {};
+  // Everything that needs the element *laid out* — `getBBox` for the frame,
+  // `getComputedStyle` for every paint — happens inside the stage callback;
+  // everything after it works on a detached tree, which serializes fine.
+  const { svg, x, y, w, h } = onExportStage(rack, (el) => {
+    const box = exportFrame(el);
+    inlineStyles(el);
+    el.remove();
+    return { svg: el, ...box };
+  });
+  const pad = EXPORT_PAD;
+  svg.setAttribute("viewBox", `${x} ${y} ${w} ${h}`);
+  svg.setAttribute("xmlns", SVG_NS);
+  svg.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:xlink", XLINK_NS);
+
+  // The stylesheet the file carries: the embedded faces, and nothing else.
+  // Everything that *can* be an attribute already is one — a rule here would
+  // be a second place a colour lives.
+  const style = document.createElementNS(SVG_NS, "style");
+  style.textContent = await exportFontCss();
+  svg.insertBefore(style, svg.firstChild);
+
+  // The ground, under everything, inside the padding. `fit` builds skip the
+  // rack's own floor because the duel minis are cutouts — but an exported
+  // picture is not a cutout, it is the bench, and the dot grid and the pool
+  // of light under the patch are what make it read as an object standing on
+  // a surface rather than as ink floating in a rectangle.
+  if (!transparent) {
+    const ground = document.createElementNS(SVG_NS, "g");
+    const grad = document.createElementNS(SVG_NS, "linearGradient");
+    grad.setAttribute("id", "exportBg");
+    grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0");
+    grad.setAttribute("x2", "0"); grad.setAttribute("y2", "1");
+    // The frame's own background, literal rather than tokenised: this one
+    // lives in `.rack-scroll`, which is not an element the export renders.
+    grad.innerHTML = '<stop offset="0" stop-color="#0b0c0f"/><stop offset="1" stop-color="#0e1013"/>';
+    ground.appendChild(grad);
+    const rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("x", String(x)); rect.setAttribute("y", String(y));
+    rect.setAttribute("width", String(w)); rect.setAttribute("height", String(h));
+    rect.setAttribute("fill", "url(#exportBg)");
+    ground.appendChild(rect);
+    const dots = document.createElementNS(SVG_NS, "rect");
+    dots.setAttribute("x", String(x)); dots.setAttribute("y", String(y));
+    dots.setAttribute("width", String(w)); dots.setAttribute("height", String(h));
+    dots.setAttribute("fill", "url(#dotGrid)");
+    ground.appendChild(dots);
+    const pool = document.createElementNS(SVG_NS, "ellipse");
+    pool.setAttribute("cx", String(x + w / 2)); pool.setAttribute("cy", String(y + h / 2));
+    pool.setAttribute("rx", String(Math.max(240, (w - pad * 2) * 0.78)));
+    pool.setAttribute("ry", String(Math.max(180, (h - pad * 2) * 0.82)));
+    pool.setAttribute("fill", "url(#patchPool)");
+    ground.appendChild(pool);
+    svg.insertBefore(ground, style.nextSibling);
+  }
+
+  // The patch itself, riding inside the picture. `<metadata>` is the element
+  // SVG reserves for exactly this, and building it through the DOM means the
+  // serializer does the XML escaping — a patch name with an `&` in it would
+  // otherwise produce a file no parser will open.
+  if (sidecar) {
+    const md = document.createElementNS(SVG_NS, "metadata");
+    md.setAttribute("id", "ricercar-patch");
+    md.textContent = JSON.stringify(sidecar);
+    svg.insertBefore(md, svg.firstChild);
+  }
+  return { svg, w, h };
+}
+
+/** The serialized file, with the XML declaration a standalone `.svg` wants. */
+function serializeSvg(svg, w, h, scale) {
+  svg.setAttribute("width", String(Math.round(w * scale)));
+  svg.setAttribute("height", String(Math.round(h * scale)));
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(svg);
+}
+
+/** SVG text → PNG bytes at the size the file declares.
+ *
+ *  The rasterizer is the browser's own SVG renderer, reached through an
+ *  `<img>`: it re-renders the vectors at the requested size rather than
+ *  scaling a 1× bitmap, which is what makes 2× and 3× worth offering. The
+ *  embedded `data:` fonts are the reason text survives the trip — an SVG
+ *  loaded as an image is not allowed to fetch anything. */
+function rasterize(svgText, w, h) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob"))), "image/png");
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("svg did not load")); };
+    img.src = url;
+  });
+}
+
+// ---------- PNG tEXt ----------
+// A PNG is a signature and then a chain of length/type/data/CRC chunks. `tEXt`
+// is the simplest of them — a Latin-1 keyword, a NUL, and Latin-1 text — and
+// anything may sit between the header and `IEND`, so carrying the patch is a
+// splice and not a re-encode. Written by hand because the alternative is a
+// dependency to insert eleven bytes plus a checksum.
+let crcTable = null;
+function crc32(bytes) {
+  if (!crcTable) {
+    crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      crcTable[n] = c >>> 0;
+    }
+  }
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** Walk the chunk chain, calling back with each chunk's type and data span. */
+function pngChunks(buf, visit) {
+  const b = new Uint8Array(buf);
+  if (b.length < 8 || !PNG_SIG.every((s, i) => b[i] === s)) return false;
+  const dv = new DataView(buf);
+  let o = 8;
+  while (o + 8 <= b.length) {
+    const len = dv.getUint32(o);
+    const type = String.fromCharCode(b[o + 4], b[o + 5], b[o + 6], b[o + 7]);
+    if (visit(type, o, o + 8, len) === false) return true;
+    if (type === "IEND") break;
+    o += 12 + len;
+  }
+  return true;
+}
+
+const latin1 = (b, from, to) => {
+  let s = "";
+  for (let i = from; i < to; i++) s += String.fromCharCode(b[i]);
+  return s;
+};
+
+/** The text of the first `tEXt` chunk under `keyword`, or null. */
+function pngReadText(buf, keyword) {
+  const b = new Uint8Array(buf);
+  let found = null;
+  pngChunks(buf, (type, _start, data, len) => {
+    if (type !== "tEXt") return;
+    let z = data;
+    while (z < data + len && b[z] !== 0) z++;
+    if (latin1(b, data, z) === keyword) {
+      found = latin1(b, z + 1, data + len);
+      return false;
+    }
+  });
+  return found;
+}
+
+/** The same PNG with a `tEXt` chunk spliced in ahead of `IEND`.
+ *
+ *  `tEXt` is Latin-1 only, and a patch name can hold anything, so the payload
+ *  is escaped to ASCII first — `\uXXXX` is still valid JSON, so what an
+ *  `exiftool` dump prints is still the patch, and `JSON.parse` on the way back
+ *  in un-escapes it without being asked. */
+function pngWithText(buf, keyword, text) {
+  const b = new Uint8Array(buf);
+  let iend = -1;
+  pngChunks(buf, (type, start) => { if (type === "IEND") { iend = start; return false; } });
+  if (iend < 0) throw new Error("no IEND");
+  const ascii = text.replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  const kw = keyword;
+  const dataLen = kw.length + 1 + ascii.length;
+  const chunk = new Uint8Array(12 + dataLen);
+  const cdv = new DataView(chunk.buffer);
+  cdv.setUint32(0, dataLen);
+  for (let i = 0; i < 4; i++) chunk[4 + i] = "tEXt".charCodeAt(i);
+  for (let i = 0; i < kw.length; i++) chunk[8 + i] = kw.charCodeAt(i);
+  chunk[8 + kw.length] = 0;
+  for (let i = 0; i < ascii.length; i++) chunk[9 + kw.length + i] = ascii.charCodeAt(i);
+  // The CRC covers the type and the data, and not the length — a detail worth
+  // stating because getting it wrong produces a file every viewer still opens
+  // and every strict decoder rejects.
+  cdv.setUint32(8 + dataLen, crc32(chunk.subarray(4, 8 + dataLen)));
+  const out = new Uint8Array(b.length + chunk.length);
+  out.set(b.subarray(0, iend), 0);
+  out.set(chunk, iend);
+  out.set(b.subarray(iend), iend + chunk.length);
+  return out;
+}
+
+/** The sidecar carried by an exported SVG, or null. */
+function svgReadPatch(text) {
+  try {
+    const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+    if (doc.querySelector("parsererror")) return null;
+    const md = doc.querySelector("metadata#ricercar-patch") || doc.querySelector("metadata");
+    const body = md?.textContent?.trim();
+    return body && body.startsWith("{") ? body : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- the dialog ----------
+/** What the current settings would produce, in pixels.
+ *
+ *  Measured by drawing it, on the same stage and through the same frame the
+ *  file will get — the readout is a promise, and the only way to keep it is to
+ *  make it the same computation. The draw is a dozen plates of SVG with no
+ *  fonts to embed and no raster to make; it costs about what one rack rebuild
+ *  costs, which the app already does on every knob release. */
+function imageDims() {
+  const rack = exportRack(imageState.scope === "sel");
+  if (!rack || !rack.modules.length) return null;
+  const box = onExportStage(rack, exportFrame);
+  return {
+    w: Math.round(box.w * imageState.scale),
+    h: Math.round(box.h * imageState.scale),
+    n: rack.modules.length,
+  };
+}
+
+function imageSync() {
+  const panel = $("image-panel");
+  if (!panel || panel.classList.contains("hidden")) return;
+  const sel = selModule();
+  const opt = panel.querySelector('#ix-scope option[value="sel"]');
+  if (opt) {
+    opt.disabled = !sel;
+    opt.textContent = sel ? `selection — ${sel.title.toLowerCase()}` : "selection — nothing selected";
+  }
+  // A scope that has stopped existing (the module was deleted, or the bench
+  // moved to another patch) silently falls back rather than exporting nothing.
+  if (imageState.scope === "sel" && !sel) imageState.scope = "all";
+  $("ix-scope").value = imageState.scope;
+  const d = imageDims();
+  const dims = $("ix-dims");
+  dims.classList.remove("busy");
+  dims.textContent = d
+    ? `${d.w} × ${d.h} px · ${d.n} module${d.n === 1 ? "" : "s"} · ${imageState.fmt.toUpperCase()}`
+    : "nothing on the bench";
+  $("ix-go").disabled = !d;
+}
+
+async function runImageExport() {
+  const body = patchSidecar();
+  const rack = exportRack(imageState.scope === "sel");
+  if (!body || !rack || !rack.modules.length) return note("nothing on the bench to export");
+  const go = $("ix-go");
+  const dims = $("ix-dims");
+  go.disabled = true;
+  dims.classList.add("busy");
+  dims.textContent = "rendering…";
+  try {
+    // The selection carries the *whole* patch's sidecar, deliberately: the
+    // picture is of one branch, and the thing that opens when you drop it back
+    // in is the patch that branch came from. Cropping the sidecar to match
+    // would mean shipping a half-patch that the grammar has no root for.
+    const { svg, w, h } = await buildExportSvg(rack, {
+      transparent: imageState.bg === "transparent",
+      sidecar: body,
+    });
+    const stem = patchFileStem(body);
+    if (imageState.fmt === "svg") {
+      const text = serializeSvg(svg, w, h, imageState.scale);
+      saveBlob(new Blob([text], { type: "image/svg+xml" }), `${stem}.svg`);
+    } else {
+      // The PNG is rasterized from an SVG that declares no size of its own —
+      // `drawImage`'s explicit width and height are what set the scale, and
+      // the viewBox is what makes that a re-render rather than an upscale.
+      const text = serializeSvg(svg, w, h, 1);
+      const px = { w: Math.round(w * imageState.scale), h: Math.round(h * imageState.scale) };
+      const blob = await rasterize(text, px.w, px.h);
+      const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
+      saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
+    }
+    note(`exported ${stem} — the patch is inside the file`);
+  } catch (err) {
+    note(`the export failed: ${err.message || err}`, { urgent: true });
+  } finally {
+    imageSync();
+  }
+}
+
+function imagePanelInit() {
+  const panel = $("image-panel");
+  if (!panel) return;
+  imageLoad();
+  const bind = (id, get, set) => {
+    const el = $(id);
+    if (!el) return;
+    get(el);
+    el.addEventListener("input", () => { set(el); imageSave(); imageSync(); });
+  };
+  bind("ix-scope", (e) => { e.value = imageState.scope; }, (e) => { imageState.scope = e.value; });
+  bind("ix-scale", (e) => { e.value = String(imageState.scale); }, (e) => { imageState.scale = Number(e.value); });
+  bind("ix-bg", (e) => { e.value = imageState.bg; }, (e) => { imageState.bg = e.value; });
+  bind("ix-fmt", (e) => { e.value = imageState.fmt; }, (e) => { imageState.fmt = e.value; });
+  const close = () => {
+    panel.classList.add("hidden");
+    $("image-btn")?.setAttribute("aria-expanded", "false");
+  };
+  // Focus goes back to the ⋯, not to the menu item that opened this: the item
+  // lives *inside* `#ovf-menu`, which was hidden the moment the panel opened,
+  // and `focus()` on a `display:none` element is a no-op that drops the
+  // keyboard on the body. The ⋯ is the visible control this panel hangs off.
+  const dismiss = () => { close(); $("ovf-btn")?.focus(); };
+  $("image-close").onclick = dismiss;
+  $("ix-go").onclick = runImageExport;
+  $("image-btn").onclick = (ev) => {
+    ev.stopPropagation();
+    $("ovf-menu").classList.add("hidden");
+    $("ovf-btn").setAttribute("aria-expanded", "false");
+    $("scope-panel")?.classList.add("hidden");
+    const shut = panel.classList.toggle("hidden");
+    $("image-btn").setAttribute("aria-expanded", String(!shut));
+    if (!shut) { imageSync(); $("ix-scope").focus(); }
+  };
+  // The same dismissals every other popover in the header honours.
+  document.addEventListener("pointerdown", (ev) => {
+    if (panel.classList.contains("hidden")) return;
+    if (panel.contains(ev.target) || $("image-btn").contains(ev.target)) return;
+    close();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !panel.classList.contains("hidden")) dismiss();
+  });
+}
+
+// ---------- drag and drop ----------
+// `dragenter`/`dragleave` fire per element crossed, not per window, so the
+// veil is counted in rather than toggled — otherwise moving the pointer from
+// the bank onto the rack reads as "left the window" and the veil flickers off
+// under the file that is still being dragged.
+function dropInit() {
+  const veil = $("drop-veil");
+  if (!veil) return;
+  let depth = 0;
+  const show = (on) => veil.classList.toggle("hidden", !on);
+  const carriesFile = (ev) => [...(ev.dataTransfer?.types || [])].includes("Files");
+  window.addEventListener("dragenter", (ev) => {
+    if (!carriesFile(ev)) return;
+    depth++;
+    show(true);
+  });
+  window.addEventListener("dragover", (ev) => {
+    if (!carriesFile(ev)) return;
+    // Without this the browser navigates to the file and the app is gone.
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+  });
+  window.addEventListener("dragleave", () => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) show(false);
+  });
+  window.addEventListener("drop", async (ev) => {
+    if (!carriesFile(ev)) return;
+    ev.preventDefault();
+    depth = 0;
+    show(false);
+    const file = ev.dataTransfer.files[0];
+    if (!file) return;
+    const data = await readPatchFile(file);
+    if (data) loadPatchData(data);
+    else pendingLayout = null;
+  });
+}
 
 // The rack sizes itself from `#rack-scroll`'s client box, so a build that
 // happens before layout has settled (first paint, a view becoming visible,
@@ -13361,6 +14118,12 @@ buildNodeBank();
 scopeLoad();
 scopePanelInit();
 scopeApply();
+// The export dialog and the drop target. Both are inert until used, and both
+// are wired here rather than lazily so that a patch dragged onto the window
+// during the boot veil still lands.
+imagePanelInit();
+dropInit();
+selInit();
 renderNextStep(); // never leave the "what now?" control blank on first paint
 renderTray();
 bootLiveAudio();
