@@ -2924,6 +2924,16 @@ select:focus-visible,
    *trace*, down to the floor the player set. */
 .scope-shell .live-scope { opacity: var(--scope-floor, 0.35); transition: opacity 320ms ease; }
 .scope-shell.live .live-scope { opacity: 1; }
+/* …with one exception, and it is the reserve's other half. The fit keeps the
+   patch out from under the bezel; a *pan* can put eight plates under it, and
+   there the promise ("the trace never rides over a module") can only be kept by
+   the glass. So the whole housing — bezel included — ducks to the parked
+   presence the trace already uses, and the module underneath is readable
+   through it. Capped a little under the trace's own floor because this fade has
+   a different job: parked means "not asking for attention", ducked means "not
+   in your way", and the second one has to be got out of. */
+.scope-shell { transition: opacity 220ms ease; }
+.scope-shell.ducked { opacity: min(0.3, var(--scope-floor, 0.35)); }
 /* Four corners, three sizes. The scope is in the rack *frame*, so none of
    this moves when the camera does. */
 .scope-shell.corner-br { right: 8px; bottom: 8px; }

@@ -262,7 +262,11 @@ function restoreBookmarks(saved) {
       if (!Number.isFinite(slot) || slot < 1 || slot > BM_MAX) continue;
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zoom)) continue;
       if (out.some((b) => b.slot === slot)) continue;
-      out.push({ slot, x, y, zoom: clamp(zoom, FIT_MIN, ZOOM_MAX) });
+      // Clamped only against arithmetic, not against `FIT_MIN`: a bookmark
+      // taken while a fit held the camera below the preference is a place the
+      // player stood, and lifting it on the way back in would land them
+      // somewhere they never were.
+      out.push({ slot, x, y, zoom: clamp(zoom, ZOOM_ABS_MIN, ZOOM_MAX) });
     }
     if (out.length) bookmarks.set(String(id), out.sort((a, b) => a.slot - b.slot));
   }
@@ -287,12 +291,36 @@ function restorePositions(saved) {
 }
 
 // ---------- undo/redo (workbench edits) ----------
+//
+// A step on these stacks is a *state*, not a tree — `{json, locks, trays}`:
+//
+//  - `json` is the term, which is all this used to hold. It was enough for as
+//    long as the tree was the only thing an edit changed.
+//  - `locks` is what the player has pinned, because an edit can remove them and
+//    ⌘Z therefore has to be able to put them back. Extracting a locked module
+//    drops its lock ("6 locks went with what you removed"), and undoing that
+//    extraction used to bring the modules back with the dots dark — the pins
+//    silently gone, with the tree they named restored around them. `pruneLocks`
+//    stays exactly where it is, as the safety net it has always been; what it
+//    cannot be is the *only* mechanism, because pruning is one-way.
+//  - `trays` is what the edit put on the HELD shelf. Undoing an extraction puts
+//    the fragment back in the patch, so a shelf entry that survives it is a
+//    second copy of something that is wired up again — and it accumulated, one
+//    per extract/undo cycle, because nothing ever reclaimed it.
+//
+// The three are one transaction because they are one gesture. Anything else
+// makes ⌘Z a partial inverse, which is the worst kind: it looks like it worked.
 const undoStack = [];
 const redoStack = [];
 let restoreInFlight = false;
+/** The bench as a step: everything one edit can change and ⌘Z has to answer
+ *  for, except what the shelf owes — which only the edit itself knows. */
+function benchStep(trays) {
+  return { json: JSON.stringify(wb.tree), locks: [...wb.locks], trays: trays || [] };
+}
 function pushUndo() {
   if (!wb.tree) return;
-  undoStack.push(JSON.stringify(wb.tree));
+  undoStack.push(benchStep());
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
 }
@@ -318,12 +346,24 @@ let openEdit = null;
 let stagingBound = null;
 
 function stageUndo() {
-  openEdit = wb.tree ? { snap: JSON.stringify(wb.tree), trays: [] } : null;
+  // The locks travel in the snapshot for the same reason the tree does: they
+  // are read *now*, before the edit, and by reply time `wb.locks` has already
+  // been pruned against the tree that replaced this one.
+  openEdit = wb.tree ? { snap: benchStep(), trays: [] } : null;
   stagingBound = openEdit;
   return openEdit;
 }
 function commitStagedUndo() {
   if (!openEdit) return;
+  // Uids while the edit is open, because that is all `stageFragment` can hand
+  // back and a rejection has to be able to unstage by one. Records at commit,
+  // because from here the step may have to put them *back* on the shelf, and a
+  // uid whose entry has been spliced out names nothing. They are still on the
+  // shelf at this instant: `settleLanded` — which is what spends a dropped
+  // entry — runs immediately after this.
+  openEdit.snap.trays = openEdit.trays
+    .map((uid) => tray.find((t) => t.uid === uid))
+    .filter(Boolean);
   undoStack.push(openEdit.snap);
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
@@ -395,7 +435,7 @@ function noteOnLanding(text, opts) {
 // snapshot is not: a restore the engine refuses (the ceilings run on this
 // route now) used to consume the step anyway, so ⌘Z would eat one level of
 // history and give nothing back.
-let restorePending = null; // {kind: "undo"|"redo", cur: <tree json before>}
+let restorePending = null; // {kind: "undo"|"redo", cur: <the step being left>}
 
 // ⌘Z pressed ten times quickly is ten undos, not one. Both of these used to
 // answer "an edit is already in flight" by dropping the press — measured: ten
@@ -489,29 +529,49 @@ function performRestore(kind) {
     restoreBacklog = 0;
     return note(kind === "undo" ? "nothing to undo" : "nothing to redo");
   }
-  restorePending = { kind, cur: JSON.stringify(wb.tree) };
+  // The other side of the step, captured before the engine moves: the state a
+  // redo would come back to, locks and all.
+  restorePending = { kind, cur: benchStep() };
   restoreInFlight = true;
   structInFlight = true;
   beliefStale();
-  send({ type: "edit_set_tree", json: stack[stack.length - 1] });
+  send({ type: "edit_set_tree", json: stack[stack.length - 1].json });
 }
 // Which direction the restore that just landed went. `restorePending` is
 // cleared by `settleRestore`, and the revert check needs the answer after
 // that — an undo and a redo are the same message on the wire.
 let lastSettledRestore = null;
 
-/** The restore landed: only now does the step actually move. */
+/** The restore landed: only now does the step actually move.
+ *
+ *  Symmetric by construction. The step being taken off one stack carries the
+ *  state to go back to *and* the shelf entries the edit it undoes had staged;
+ *  the step pushed onto the other carries the state we are leaving and the very
+ *  same entries, so redo re-stages exactly what undo reclaimed. Both stacks
+ *  hold the same record objects, which is what lets the shelf entry keep its
+ *  uid across the round trip — a re-staged fragment the player had already
+ *  hovered is the same fragment, not a new one that looks like it. */
 function settleRestore() {
   lastSettledRestore = restorePending ? restorePending.kind : null;
   if (!restorePending) return;
-  if (restorePending.kind === "undo") {
-    undoStack.pop();
-    redoStack.push(restorePending.cur);
-  } else {
-    redoStack.pop();
-    undoStack.push(restorePending.cur);
-  }
+  const undoing = restorePending.kind === "undo";
+  const from = undoing ? undoStack : redoStack;
+  const to = undoing ? redoStack : undoStack;
+  const step = from.pop();
+  const cur = restorePending.cur;
   restorePending = null;
+  // Only reachable if the stack emptied between the request and the reply,
+  // which nothing does today — but a step that is not there cannot be the
+  // state to go back to, and inventing one would put a phantom on the far
+  // stack.
+  if (!step) return;
+  cur.trays = step.trays;
+  to.push(cur);
+  // The tree is already back — the engine sent it. These are the parts of the
+  // step the engine has never heard of.
+  wb.locks = new Set(step.locks);
+  if (undoing) for (const t of step.trays) unstage(t.uid);
+  else restage(step.trays);
 }
 
 // ---------- worker protocol ----------
@@ -660,39 +720,35 @@ worker.onmessage = (e) => {
       const layout = pendingLayout;
       pendingLayout = null;
       if (m.id > 0) {
-        // File the layout under the id it landed as, *before* benching it, so
-        // the first render already draws the arrangement the sender chose. The
-        // mids match because uids survive the round trip: the exported tree
-        // carries them, `ensure_uids` on admission keeps every id it is given
-        // and only mints for the ones that have none.
-        let placed = 0;
-        if (layout) {
-          const map = new Map();
-          for (const [mid, x, y] of layout) {
-            if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
-              map.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
-            }
-          }
-          if (map.size) {
-            ffLayouts.set(String(m.id), map);
-            ffLast = String(m.id);
-            ffTrim();
-            placed = map.size;
-            // A layout nobody can see is not carried, it is stored. The file
-            // said where these modules go; showing them anywhere else would
-            // make the feature indistinguishable from not having shipped it.
-            if (layoutMode !== "freeform") {
-              layoutMode = "freeform";
-              try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
-              syncLayoutBtn();
-            }
-          }
-        }
+        // Filed under the id it landed as, *before* benching it, so the first
+        // render already draws the arrangement the sender chose.
+        const placed = adoptLayout(m.id, layout);
         openOnBench(m.id);
         note(`patch imported as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
         scheduleSave();
+      } else if (m.duplicate > 0) {
+        // The bank already holds this exact patch. That is not a failure —
+        // patches travel, and being sent one you already own is the ordinary
+        // way that goes — so it is answered the way finding your own patch is
+        // answered: by name, and by opening it. It used to be answered with
+        // "could not import that patch (duplicate, or it failed the safety
+        // vet)", one sentence hedging between a success and a refusal, leaving
+        // the player to work out which had happened to them.
+        //
+        // The sender's arrangement is taken only where this player has none of
+        // their own for it: the patch is already theirs, and a dropped picture
+        // is not a reason to move plates they placed by hand.
+        if (!ffLayouts.has(String(m.duplicate))) adoptLayout(m.duplicate, layout);
+        note(`${nameOf(m.duplicate)} is already in the bank — opening it.`);
+        openOnBench(m.duplicate);
+        scheduleSave();
       } else {
-        note("could not import that patch (duplicate, or it failed the safety vet)");
+        // …and the other half of that old sentence, on its own and said
+        // plainly. Nothing entered the bank and nothing was displaced.
+        note(
+          "that patch did not pass the safety vet — what it renders is silent, runaway, or not audio at all — so the bank would not take it.",
+          { urgent: true },
+        );
       }
       break;
     }
@@ -905,6 +961,11 @@ worker.onmessage = (e) => {
         }
       }
       const structural = m.edited === "structure" || m.edited === "restore";
+      // `edit_set_tree` answers "restore" whether it came from ⌘Z or from a
+      // client-side rewrite, so the two are told apart by which of them is
+      // holding a receipt: only undo/redo leave a `restorePending`. Read before
+      // anything below can clear it.
+      const settlingRestore = m.edited === "restore" && restorePending !== null;
       if (m.edited !== undefined) {
         wb.dirty = true;
         if (structural) {
@@ -929,16 +990,35 @@ worker.onmessage = (e) => {
           cancelPending();
           endConnectPick();
         }
+        // Undo and redo are settled *here*, ahead of the prune, because a
+        // restore does not prune — it replaces. The step carries the lock set
+        // from the far side of the edit, and pruning the near side's locks
+        // against the tree that just came back would be the app deciding what
+        // a ⌘Z meant before reading what it said.
+        if (settlingRestore) {
+          restoreInFlight = false;
+          settleRestore();
+        }
         // One rule for every edit, from an op to a whole-tree rewrite to a
         // ⌘Z: a lock names a *node*, so it survives unless that node is gone.
         // This replaced a page of per-op key remapping (`lockRemapFor`) and a
         // second copy of the same reasoning inside `applyTreeRewrite`, which
         // tracked node objects by reference — both of them standing in for an
         // identity the term did not have and now does.
+        //
+        // Still the safety net after a restore, and still the whole mechanism
+        // for everything else. What it no longer does after one is *speak*: a
+        // restored set that loses an id here is a snapshot older than the rack
+        // it landed on, which is a thing to drop quietly, not a removal the
+        // player just performed and should be told about. (A client-side
+        // rewrite also answers "restore" and is a real removal — it is told
+        // apart by the receipt, exactly as `settleRestore` tells them apart.)
         const droppedLocks = pruneLocks();
-        if (droppedLocks > 0) {
+        if (droppedLocks > 0 || settlingRestore) {
           locksRemember(); // the set that survived is the set to remember
-          note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
+          if (droppedLocks > 0 && !settlingRestore) {
+            note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
+          }
         }
       }
       if (m.buffer && m.buffer.length > 0) {
@@ -959,12 +1039,14 @@ worker.onmessage = (e) => {
       const paramNonLive =
         m.edited !== undefined && !structural && nonLiveAddrs.has(m.edited);
       const subjectLoad = m.subject !== undefined;
-      // `edit_set_tree` answers "restore" whether it came from ⌘Z or from a
-      // client-side rewrite, so the two are told apart by which of them is
-      // holding a receipt: only undo/redo leave a `restorePending`.
+      // A restore with no receipt is a client-side rewrite rather than a ⌘Z:
+      // the lane is cleared for both, but only the one with a receipt has a
+      // step to settle — and that one settled further up, ahead of the lock
+      // prune it has to precede. Saying so here keeps the revert check below
+      // from reading a direction off a rewrite.
       if (m.edited === "restore") {
         restoreInFlight = false;
-        settleRestore();
+        if (!settlingRestore) lastSettledRestore = null;
       }
       if (structural) {
         structInFlight = false;
@@ -1042,6 +1124,16 @@ worker.onmessage = (e) => {
     // until it lands and nothing else would ever ask again.
     case "not_ready": {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
+      break;
+    }
+    // The engine worker's degradation log (a re-issued draw, a retired one, a
+    // bank entry rendered serially). Not a console warning, because none of
+    // these is a fault — see the note over `ricLog` in worker.js — and not a
+    // toast either: the player did nothing, and nothing about their patch
+    // changed. It lands in the same array the worklet's messages do, which is
+    // the one place "why was that boot slow" can still be answered afterwards.
+    case "log": {
+      (window.__ricLog = window.__ricLog || []).push(m);
       break;
     }
     case "edit_rejected": {
@@ -4474,6 +4566,39 @@ function ffTrim() {
   while (ffLayouts.size > FF_KEEP) ffLayouts.delete(ffLayouts.keys().next().value);
 }
 
+/** File an arriving patch's hand arrangement under the id it landed as, and
+ *  switch to freeform so it is actually visible — a layout nobody can see is
+ *  not carried, it is stored, and drawing the sender's patch anywhere but where
+ *  they put it would make the whole sidecar field indistinguishable from not
+ *  having shipped it. Returns how many plates it placed.
+ *
+ *  The mids match because uids survive the round trip: the exported tree
+ *  carries them, and `ensure_uids` on admission keeps every id it is given and
+ *  only mints for the ones that have none.
+ *
+ *  Two callers now: a patch that entered the bank, and a patch that turned out
+ *  to be one the bank already had. They differ in whether they may overwrite,
+ *  which is the caller's decision, not this function's. */
+function adoptLayout(id, layout) {
+  if (!Array.isArray(layout)) return 0;
+  const map = new Map();
+  for (const [mid, x, y] of layout) {
+    if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
+      map.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
+    }
+  }
+  if (!map.size) return 0;
+  ffLayouts.set(String(id), map);
+  ffLast = String(id);
+  ffTrim();
+  if (layoutMode !== "freeform") {
+    layoutMode = "freeform";
+    try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+    syncLayoutBtn();
+  }
+  return map.size;
+}
+
 /** The positions to draw the *current* rack with, inheriting the layout of the
  *  patch this one came from when it is the first time we have seen this id.
  *
@@ -5307,7 +5432,14 @@ function buildRack(svg, rack, opts) {
     // A socket nothing is plugged into. The node under it is real — the
     // grammar has no hole — but the player unplugged it and must be able to
     // see that, so the plate is drawn as the absence it stands for.
-    const isEmpty = interactive && !m.is_mod && m.kind !== "amp" && placeholders.has(m.key);
+    //
+    // Not gated on `interactive`, and this was a lie in the exports: the
+    // control well, the ⋯ and the lock dot are this app's chrome and are right
+    // to be left out of a picture, but an empty socket is not chrome — it is
+    // what the patch *is*. Printed as an ordinary plate, an export said a
+    // module was there, and the sender's whole reason for exporting a patch
+    // with a hole in it ("here, fill this in") was erased on the way out.
+    const isEmpty = !m.is_mod && m.kind !== "amp" && placeholders.has(m.key);
     const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}${isEmpty ? " placeholder" : ""}`;
     const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
     // Compact is the zoomed-out reading mode: title and jacks, and none of
@@ -6266,8 +6398,31 @@ const FIT_MAX = 2.2;
 // an empty grey field by accident — which is a thing a hand does, not a thing
 // a fit does. So the fit may go below it, as far as legibility survives, and
 // the wheel and the keys may not.
+//
+// `FIT_MIN` is now the *preference* rather than the limit, for the same reason
+// it was already allowed past `ZOOM_MIN`. A twenty-module patch scattered by
+// hand needs 0.19× in a 1280×900 frame, and at 0.22× Home left a plate outside
+// the frame — the one thing Home exists to make impossible. A fit that cannot
+// contain the patch has failed at its whole job, and a floor that causes that
+// failure is not protecting anything: nobody arrives at 0.19× by accident,
+// they arrive there by pressing the key that means "show me all of it".
+//
+// So: fit-to-contain wins. Below `FIT_MIN` a fit keeps going, and it carries
+// the floor down with it (`zoomFloor`) so that the clamp on the way out of
+// `applyView` does not immediately take back what it went below for.
 const FIT_MIN = 0.22;
+// The one hard stop, and it is arithmetic rather than taste: a zero or negative
+// zoom is a division by zero in every transform on this page.
+const ZOOM_ABS_MIN = 0.02;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+// The floor `applyView` actually enforces. `FIT_MIN` until a fit needs to go
+// lower, and back up the moment a fit that does not need to lands.
+let zoomFloor = FIT_MIN;
+/** Let the camera sit at `z`, however low, until something re-fits. */
+function allowZoomBelow(z) {
+  zoomFloor = clamp(Math.min(FIT_MIN, z), ZOOM_ABS_MIN, FIT_MIN);
+}
 
 const view = { x: 0, y: 0, zoom: 1 };
 let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
@@ -6300,10 +6455,11 @@ function rackToClient(rx, ry) {
 
 function applyView() {
   const { w, h } = frameSize();
-  // The absolute floor, not the manual one: this runs on every frame of the
+  // The floor in force, not the manual one: this runs on every frame of the
   // tween a fit rides in on, so clamping to `ZOOM_MIN` here would take back
-  // whatever `fitBox` went below it for.
-  view.zoom = clamp(view.zoom, FIT_MIN, ZOOM_MAX);
+  // whatever `fitBox` went below it for — and clamping to `FIT_MIN` would take
+  // back whatever it went below *that* for.
+  view.zoom = clamp(view.zoom, zoomFloor, ZOOM_MAX);
   const vw = w / view.zoom;
   const vh = h / view.zoom;
   // A soft leash, not a cage: you can push the patch to the frame edge but
@@ -6323,6 +6479,11 @@ function applyView() {
   // Same argument for the pick chip: it is pinned to a plate, and the plate
   // is in the world.
   positionPickChip();
+  // The scope is *not* in the world — that is the point of parenting it to the
+  // frame — but what is underneath it moved, so whether it is in the way is a
+  // question this answers. Debounced: the answer only matters where the pan
+  // stops.
+  scheduleScopeDuck();
   if (effectiveLod() !== lodApplied) scheduleRelod();
 }
 
@@ -6578,17 +6739,84 @@ function scopeReserve() {
   return z;
 }
 
+// ---- the other half of the reserve: ducking ----
+//
+// The reserve is a promise about *fits*, and the plan's promise is bigger than
+// that: the trace never rides over a module at any scroll or pan position. A
+// space-drag can put eight plates under the bezel, and the reserve has nothing
+// to say about it — the player moved the patch, not the scope.
+//
+// Moving the scope out of the way in reply would be worse: its corner is a
+// setting, and a corner that reassigns itself under a pan is an instrument
+// that will not stay where it was bolted. So the glass gets out of the way
+// instead — the scope fades to the same parked presence it takes when the
+// patch goes quiet, which is the state the player has already been shown for
+// "this is still here and not asking for your attention". It comes back the
+// moment the plates pan out from under it.
+//
+// Geometry, not hit-testing: every plate's screen rect comes from the camera
+// (`rackBoxes` is in rack units and the transform is three multiplies), so a
+// forty-plate patch costs forty rect comparisons and one `getBoundingClientRect`
+// rather than forty of them. And it is debounced rather than run per frame — a
+// pan is a stream of `applyView` calls and the answer only matters where the
+// hand stops.
+let scopeDuckTimer = null;
+let scopeDucked = false;
+
+function scopeOverPlates() {
+  const shell = $("scope-shell");
+  if (!shell || shell.classList.contains("hidden") || !wb.rack) return false;
+  const sr = shell.getBoundingClientRect();
+  if (!sr.width || !sr.height) return false;
+  const f = $("rack-svg").getBoundingClientRect();
+  for (const b of rackBoxes.values()) {
+    const x = f.left + (b.x - view.x) * view.zoom;
+    const y = f.top + (b.y - view.y) * view.zoom;
+    if (x < sr.right && x + b.w * view.zoom > sr.left &&
+        y < sr.bottom && y + b.h * view.zoom > sr.top) return true;
+  }
+  return false;
+}
+
+function scopeDuckSync() {
+  const shell = $("scope-shell");
+  if (!shell) return;
+  const duck = currentView === "play" && scopeOverPlates();
+  if (duck === scopeDucked) return;
+  scopeDucked = duck;
+  shell.classList.toggle("ducked", duck);
+}
+
+/** Ask the question once the camera has stopped moving. Cheap enough to call
+ *  from every `applyView` precisely because all it does there is reset a
+ *  timer. */
+function scheduleScopeDuck() {
+  if (scopeDuckTimer != null) clearTimeout(scopeDuckTimer);
+  scopeDuckTimer = setTimeout(() => {
+    scopeDuckTimer = null;
+    scopeDuckSync();
+  }, 110);
+}
+
 function fitBox(box, animate, coMotion) {
   const { w, h } = frameSize();
   const pad = 20;
   const ins = scopeReserve();
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
+  // No floor on the way down. Whatever it takes to hold the box is what the
+  // fit is: a plate the fit leaves outside the frame is the defect this trades
+  // against, and a patch drawn small is not a defect, it is a patch drawn
+  // small — the wheel is right there.
   const z = clamp(
     Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h)),
-    FIT_MIN,
+    ZOOM_ABS_MIN,
     FIT_MAX,
   );
+  // Both ends of the tween, so a fit *up* from a sub-floor camera does not get
+  // its first frames clamped out from under it — the floor rises again only
+  // when neither where we are nor where we are going needs it down.
+  allowZoomBelow(Math.min(z, view.zoom));
   // Centre in what is left, not in the whole frame: the reserve is only a
   // reserve if the content is actually placed beside it.
   const cx = pad + ins.l + availW / 2;
@@ -6815,6 +7043,10 @@ function bmJump(slot) {
   if (!b) return note(`no bookmark ${slot} on this patch — shift-click the minimap to set one.`);
   const { w, h } = frameSize();
   viewUserSet = true;
+  // A bookmark can have been taken below the preference floor — a big patch
+  // fitted at 0.19× is exactly the kind of patch bookmarks are for — so the
+  // floor makes room for it rather than landing the camera somewhere else.
+  allowZoomBelow(Math.min(b.zoom, view.zoom));
   tweenView(
     { zoom: b.zoom, x: b.x - w / (2 * b.zoom), y: b.y - h / (2 * b.zoom) },
     MOTION_MS,
@@ -7166,7 +7398,7 @@ const structQueue = [];
 function sendStruct(op, landed) {
   queueStruct({ type: "edit_structure", op }, landed || null);
 }
-function queueStruct(msg, landed, tag) {
+function queueStruct(msg, landed, tag, waiting) {
   if (structInFlight) {
     // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
     // deeper than a rapid double-click means the worker is wedged, and
@@ -7179,17 +7411,27 @@ function queueStruct(msg, landed, tag) {
     // same reason it waits on the reply: nothing has happened yet. It cannot
     // ride *on* `msg`, which is structured-cloned to the worker and would
     // choke on the undo closure.
-    structQueue.push({ msg, landed: landed || null, tag });
+    const held = { trays: waiting ? [...waiting] : [] };
+    structQueue.push({ msg, landed: landed || null, tag, staged: held.trays });
     // Waiting its turn is still in flight as far as the shelf is concerned.
     if (landed && landed.drop != null) setTrayPending(landed.drop, true);
-    // Nothing went out, so nothing may be charged to the edit that is out.
-    stagingBound = null;
+    // Nothing went out, so nothing may be charged to the edit that *is* out —
+    // that edit's rejection would take this fragment with it, and it describes
+    // a chain the queued op has not removed yet. It is charged to its own op
+    // instead, which is what `held` is: the shelf entries this gesture staged,
+    // carried on the queue entry until the op is posted and there is an undo
+    // step to hand them to. Untracked, they were the one route left by which a
+    // ⌘Z could restore the tree and leave a duplicate on HELD.
+    stagingBound = held;
     return;
   }
   structInFlight = true;
   bindLanded(landed);
   if (landed && landed.drop != null) setTrayPending(landed.drop, true);
   stageUndo();
+  // …and here is where they are handed over: whatever the gesture staged while
+  // it was waiting belongs to the edit that is now going out.
+  if (waiting && waiting.length && openEdit) openEdit.trays.push(...waiting);
   beliefStale();
   // Both halves of WS-8 §3's edit row come from here, because this is the one
   // place every structural gesture in the app funnels through: the op that is
@@ -7399,7 +7641,7 @@ function drainStruct() {
   if (structInFlight) return;
   if (structQueue.length) {
     const q = structQueue.shift();
-    queueStruct(q.msg, q.landed, q.tag);
+    queueStruct(q.msg, q.landed, q.tag, q.staged);
     return;
   }
   // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
@@ -9522,6 +9764,28 @@ function setTrayPending(uid, on) {
 function unstage(uid) {
   const i = tray.findIndex((t) => t.uid === uid);
   if (i >= 0) tray.splice(i, 1);
+  renderTray();
+  trayChanged();
+}
+
+/** Put shelf entries a ⌘Z reclaimed back, for the ⌘⇧Z that re-does the edit
+ *  that staged them. The same records, so the entry keeps its uid: a redo
+ *  restages the fragment the player was holding, not a copy of it.
+ *
+ *  `pending` is cleared on the way in. It means "an edit is in flight for this
+ *  entry", and the edit in flight is the redo that just landed — a record put
+ *  back inert is a chain on the shelf that cannot be picked up again. Idempotent
+ *  on uid, because a redo of an edit whose fragment is somehow still shelved
+ *  must not shelve it twice. */
+function restage(recs) {
+  let added = 0;
+  for (const rec of recs || []) {
+    if (tray.some((t) => t.uid === rec.uid)) continue;
+    rec.pending = false;
+    tray.push(rec);
+    added += 1;
+  }
+  if (!added) return;
   renderTray();
   trayChanged();
 }
@@ -12464,6 +12728,10 @@ function scopeApply() {
   for (const c of ["tl", "tr", "bl", "br"]) shell.classList.toggle(`corner-${c}`, scopeState.corner === c);
   for (const s of ["s", "m", "l"]) shell.classList.toggle(`size-${s}`, scopeState.size.toLowerCase() === s);
   shell.style.setProperty("--scope-floor", String(scopeState.floor));
+  // The corner and the size are what decide whether the bezel is over anything,
+  // so changing either is a reason to re-ask — the camera has not moved, and
+  // nothing else would.
+  scheduleScopeDuck();
   $("scope-cap").textContent =
     (scopeState.tap === "post" ? "post-master" : "pre-master") +
     (scopeState.mode === "spectrum" ? " · spectrum" : "") +
@@ -13575,6 +13843,22 @@ $("patch-export-btn").onclick = () => {
  *  after it is identical by construction. */
 function loadPatchData(data) {
   const tree = data.tree || data; // accept bare trees too
+  // A file that parsed as JSON but is not a *term* is turned away here, by
+  // name, rather than sent to an engine whose only answer is a zero. That zero
+  // has to stand for something: everything else that produces one is a patch
+  // the bank refused, and a hand-edited or foreign JSON file arriving at *that*
+  // message would have the app telling the player their patch runs away when
+  // what actually happened is that it was never a patch. The shape is the whole
+  // check — `{amp: {…}, root: {<Tag>: …}}` — because anything deeper is the
+  // engine's serde to answer, and it does.
+  const looksLikeATerm =
+    tree && typeof tree === "object" && !Array.isArray(tree) &&
+    tree.amp && typeof tree.amp === "object" &&
+    tree.root && typeof tree.root === "object" && Object.keys(tree.root).length === 1;
+  if (!looksLikeATerm) {
+    pendingLayout = null;
+    return note("that file is JSON, but it isn't a patch this build understands.");
+  }
   // Held until the engine says which id the patch landed as — that id is the
   // key the layout has to be filed under, and it does not exist yet. Cleared
   // either way in `patch_imported`, so a refused import cannot leave a
@@ -13947,6 +14231,11 @@ function onExportStage(rack, fn) {
       // it from writing `rackContent`/`rackBoxes`/`rackFrame`, which belong to
       // the on-screen build and to the camera pointing at it.
       fit: true,
+      // The holes, which are part of the patch rather than part of the app.
+      // Keyed by trace path, and `exportRack` keeps every key it passes through
+      // (a scoped export filters modules; it does not renumber them), so the
+      // bench's set is the right set for a subtree too.
+      placeholders: placeholderKeys,
       mode: places ? "freeform" : "compact",
       places,
     });

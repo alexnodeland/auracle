@@ -4,10 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RICERCAR — taste-learning synthesizer</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- The tab icon, inline. It was an SVG data URI carrying raw `<`, `>`, `'`
+     and spaces — legal enough that Chrome drew it and illegal enough that a
+     browser which rejects the URL falls back to `/favicon.ico`, which this app
+     does not serve: an unconditional 404 in the console of a build whose
+     acceptance bar is a *clean* console. A 113-byte base64 PNG has neither
+     problem — no URL escaping to get wrong, and no browser old enough to want
+     an .ico instead. 16×16, the bezel's own `#171a1f` under a phosphor trace,
+     because the favicon is the smallest place the instrument still has to look
+     like itself. -->
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAOElEQVR42mMQl5InCTEMfg19HzbSUgNENX49pGsASsMRsk5MLgSRrgGP7VhdSFUNWAOA2hqokJYAvKaL4UmsFaEAAAAASUVORK5CYII=">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=67">
+<link rel="stylesheet" href="style.css?b=68">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +38,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=117";
+    s.src = "main.js?b=118";
     document.head.appendChild(s);
   }
 })();
