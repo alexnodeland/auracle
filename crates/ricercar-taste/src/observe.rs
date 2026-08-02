@@ -41,6 +41,52 @@ pub const PHI_SCHEMA: u32 = 2;
 /// under the profile's persisted standardizer, and carry no names.
 pub const PHI_SCHEMA_STANDARDIZED: u32 = 1;
 
+/// **How** a preference was collected — not what it was.
+///
+/// Every variant conditions the same latent utility and every variant enters
+/// the likelihood identically: [`FitSet`] never reads this field, and it is
+/// deliberately not a covariate. Two ways of asking the same question are not
+/// two questions, and a per-provenance weight or intercept would be a modeling
+/// claim nobody has evidence for yet.
+///
+/// It is recorded because the *evidence* for that claim is exactly what is
+/// missing. A hand edit committed with "my edit is better" ticked is a
+/// **self-report**: the player asserts an improvement, usually without having
+/// heard the two back to back. The same commit routed through a real duel is a
+/// **heard comparison**. If self-reports turn out to be systematically
+/// over-confident — and every intuition says they are — the way to find out is
+/// to score the two streams separately against the model's own forecasts
+/// ([`crate::ObservationLog`] plus the session layer's prequential
+/// calibration), which requires having tagged them from the start.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Provenance {
+    /// The app dealt a pair, the user heard both and picked one. The default,
+    /// and what every observation written before provenance existed was.
+    #[default]
+    Duel,
+    /// A hand edit committed after hearing the edit against the original.
+    HeardEdit,
+    /// A hand edit committed with "my edit is better" asserted, unheard.
+    SelfReport,
+}
+
+impl Provenance {
+    /// Stable wire/display name (`"duel"`, `"heard_edit"`, `"self_report"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Provenance::Duel => "duel",
+            Provenance::HeardEdit => "heard_edit",
+            Provenance::SelfReport => "self_report",
+        }
+    }
+
+    /// True for the default, so it can be omitted from the wire form.
+    pub fn is_duel(&self) -> bool {
+        matches!(self, Provenance::Duel)
+    }
+}
+
 /// What the user did, and the feature vector(s) it was about.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Feedback {
@@ -111,16 +157,32 @@ pub struct Observation {
     pub feature_names: Vec<String>,
     /// Which φ schema the vectors are in ([`PHI_SCHEMA`] for raw values).
     pub schema_version: u32,
+    /// How this preference was collected. Omitted from the wire form when it
+    /// is [`Provenance::Duel`], which is what every log written before this
+    /// field existed contains.
+    #[serde(default, skip_serializing_if = "Provenance::is_duel")]
+    pub provenance: Provenance,
 }
 
 impl Observation {
-    /// A fresh observation in the current schema.
+    /// A fresh observation in the current schema, from a heard duel.
     pub fn new(feedback: Feedback, session: usize, feature_names: &[String]) -> Self {
+        Self::tagged(feedback, session, feature_names, Provenance::Duel)
+    }
+
+    /// A fresh observation carrying an explicit provenance.
+    pub fn tagged(
+        feedback: Feedback,
+        session: usize,
+        feature_names: &[String],
+        provenance: Provenance,
+    ) -> Self {
         Self {
             feedback,
             session,
             feature_names: feature_names.to_vec(),
             schema_version: PHI_SCHEMA,
+            provenance,
         }
     }
 
@@ -168,6 +230,8 @@ enum ObservationRepr {
         feature_names: Vec<String>,
         #[serde(default)]
         schema_version: u32,
+        #[serde(default)]
+        provenance: Provenance,
     },
     Legacy(LegacyObservation),
 }
@@ -180,6 +244,7 @@ impl<'de> Deserialize<'de> for Observation {
                 session,
                 feature_names,
                 schema_version,
+                provenance,
             } => Observation {
                 feedback,
                 session,
@@ -189,6 +254,7 @@ impl<'de> Deserialize<'de> for Observation {
                 } else {
                     schema_version
                 },
+                provenance,
             },
             ObservationRepr::Legacy(o) => {
                 let (feedback, session) = match o {
@@ -210,6 +276,7 @@ impl<'de> Deserialize<'de> for Observation {
                     session,
                     feature_names: Vec::new(),
                     schema_version: PHI_SCHEMA_STANDARDIZED,
+                    provenance: Provenance::Duel,
                 }
             }
         })
@@ -251,6 +318,17 @@ impl ObservationLog {
             .map(|o| o.session() + 1)
             .max()
             .unwrap_or(0)
+    }
+
+    /// How many observations were collected each way. A count, not a weight:
+    /// nothing downstream of the likelihood reads it, and the panel shows it
+    /// so "the model learned this from a heard comparison" and "…from a
+    /// checkbox" are distinguishable claims on screen as well as in the log.
+    pub fn n_with(&self, provenance: Provenance) -> usize {
+        self.observations
+            .iter()
+            .filter(|o| o.provenance == provenance)
+            .count()
     }
 
     /// Every raw φ in the log, for fitting a standardizer. Only observations

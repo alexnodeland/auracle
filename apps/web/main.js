@@ -387,6 +387,63 @@ function requestRestore(kind) {
   performRestore(kind);
 }
 
+// ---------- the implicit stream (WS-8 §3) ----------
+// Log what the player does with their edits now, so a model can be fit on it
+// later. None of this enters the likelihood — a revert is confounded with
+// plain curiosity, and the fit the app shows a number from is not the place to
+// smuggle in an unvalidated signal. It is written because it cannot be written
+// retroactively: an edit-level preference model is the natural v2 and it is
+// unbuildable without a year of this log.
+//
+// It lands in the engine's `events` list, which rides in the same
+// `SessionState` blob as the observation log and therefore persists with it —
+// "alongside the observation log" in the plan means alongside on disk too.
+function logImplicit(kind, detail, opts = {}) {
+  send({
+    type: "log_edit",
+    kind,
+    id: opts.id != null ? opts.id : (wb.subjectId != null ? wb.subjectId : 0),
+    value: opts.value || 0,
+    detail: detail || null,
+    withPhi: !!opts.withPhi,
+  });
+}
+
+// What the last landed edit was, and whether the player can possibly have
+// heard it. The gate matters: an undo pressed reflexively two keystrokes after
+// an edit is a correction of a typo, not a preference, and logging it as one
+// would poison the very column a v2 model would key off.
+let lastEdit = null;      // {at, op} — the edit an undo would reverse
+let heardSinceEdit = false;
+// Long enough to be a judgement rather than a reflex. The plan's number, and
+// it matches the ~1.5 s the phrase render takes to become audible at all.
+const REVERT_DWELL_MS = 2000;
+/** Whatever gesture is going out next, in one place, so the revert that may
+ *  reverse it can name it. */
+let pendingEditTag = null;
+
+function markEditLanded() {
+  lastEdit = { at: Date.now(), op: pendingEditTag };
+  heardSinceEdit = heldNotes.size > 0;
+}
+/** The player is hearing the patch — through the keyboard, or ▶. */
+function markHeard() {
+  heardSinceEdit = true;
+}
+/** An undo just landed. Was it a revert of something the player actually
+ *  heard and sat with? */
+function noteRevertIfAudible() {
+  const e = lastEdit;
+  lastEdit = null;
+  if (!e || !heardSinceEdit) return;
+  const dwell = Date.now() - e.at;
+  if (dwell < REVERT_DWELL_MS) return;
+  // `withPhi` attaches the bench's φ on both sides — the engine holds the
+  // vector from before this restore and the one from after it, which is the
+  // only place the *direction* of the move exists.
+  logImplicit("revert", { op: e.op, dwell_ms: dwell }, { value: dwell, withPhi: true });
+}
+
 function performRestore(kind) {
   const stack = kind === "undo" ? undoStack : redoStack;
   if (stack.length === 0 || !wb.tree) {
@@ -398,10 +455,17 @@ function performRestore(kind) {
   restorePending = { kind, cur: JSON.stringify(wb.tree) };
   restoreInFlight = true;
   structInFlight = true;
+  beliefStale();
   send({ type: "edit_set_tree", json: stack[stack.length - 1] });
 }
+// Which direction the restore that just landed went. `restorePending` is
+// cleared by `settleRestore`, and the revert check needs the answer after
+// that — an undo and a redo are the same message on the wire.
+let lastSettledRestore = null;
+
 /** The restore landed: only now does the step actually move. */
 function settleRestore() {
+  lastSettledRestore = restorePending ? restorePending.kind : null;
   if (!restorePending) return;
   if (restorePending.kind === "undo") {
     undoStack.pop();
@@ -458,6 +522,11 @@ worker.onmessage = (e) => {
       // before you press it. Fetching only on first press would leave that
       // count reading 0 — a number that is wrong rather than merely absent.
       if (!presetRows) send({ type: "presets" });
+      // The same argument for the honesty meter. Forecasts persist with the
+      // session, but nothing asked for them until the *next* vote — so a
+      // returning player's TRUST tab opened on "0 of 20 forecasts" while the
+      // engine was holding twenty-five of them. Wrong, not merely absent.
+      send({ type: "calibration" });
       // Claim the deal before it goes out. On a full restore the worker posts
       // `playable` and `filled` in the same synchronous turn (the fill loop —
       // and therefore its yield — never runs), so `filled` would otherwise see
@@ -673,10 +742,6 @@ worker.onmessage = (e) => {
     case "calibration": {
       engineCalib = m.calib;
       if (currentView === "taste") drawTaste();
-      break;
-    }
-    case "explained": {
-      renderExplain(m.id, m.ex);
       break;
     }
     case "status": {
@@ -897,6 +962,21 @@ worker.onmessage = (e) => {
       );
       if (!knobDragging) renderRack();
       renderBank();
+      // Both readouts are derived from this reply and nothing else, so they
+      // cannot drift from the tree the rack below them is drawing.
+      applyBelief(m);
+      renderBudget();
+      // The undo that just landed may have been a *revert* — the implicit
+      // stream's most informative row, and one that can only be recognised
+      // here, with both sides of the edit in hand.
+      // Told apart the same way the restore itself is: `edit_set_tree` answers
+      // "restore" for a ⌘Z *and* for every client-side rewrite, and only
+      // undo/redo leave a receipt. A rewrite is an edit like any other — it is
+      // the thing a later ⌘Z would revert — so it must land here as one.
+      if (m.edited !== undefined) {
+        if (m.edited === "restore" && lastSettledRestore === "undo") noteRevertIfAudible();
+        else markEditLanded();
+      }
       // The selection ring on the taste map is drawn at wb.subjectId, so a
       // bench change while the map is up must repaint it — clicking a dot
       // used to leave the ring on the old patch.
@@ -964,6 +1044,19 @@ worker.onmessage = (e) => {
       drainStruct();
       break;
     }
+    // The answer to "is there a duel to deal here, and what does the other
+    // side sound like". `differs` is the engine's own tree comparison, not the
+    // panel's `dirty` flag: turn a knob and turn it back and there is nothing
+    // to ask about, and an answer to a question with no content is a row of
+    // noise in the preference log.
+    case "edit_duel": {
+      if (!m.differs || !m.buffer || m.buffer.length === 0) {
+        sendCommit("none", { evolving: m.then === "evolve" });
+      } else {
+        openCommitDuel(m, m.then);
+      }
+      break;
+    }
     case "committed": {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
@@ -972,15 +1065,34 @@ worker.onmessage = (e) => {
         wb.dirty = false;
         livePatchId = m.id;
         setLiveLabel(nameOf(m.id));
-        note(`committed as patch #${m.id}${$("improve-check").checked ? " · taught: your edit beat the original" : ""}.${madeRoom(evicted)}`);
+        // Say what was taught, from what actually happened rather than from
+        // the state of a checkbox: three of these four sentences were
+        // unsayable before the outcome had a direction.
+        const taught =
+          m.outcome === "heard_edited" ? " · taught: your edit won the comparison"
+          : m.outcome === "heard_original" ? " · taught: the original won — the model learns most from that"
+          : m.outcome === "self_edited" ? " · taught: you say your edit is better"
+          : "";
+        note(`committed as patch #${m.id}${taught}.${madeRoom(evicted)}`);
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
         }
       } else {
         pendingEvolve = false;
-        note("commit failed (duplicate or unvetted state)");
+        // A patch the bank already holds is not a new candidate — but if the
+        // player answered a comparison on the way in, the engine scored it
+        // against the twin rather than dropping it, and saying "failed" about
+        // a vote that was recorded is the wrong sentence.
+        note(m.outcome && m.outcome !== "none"
+          ? "that patch is already in the bank — nothing new to add, but your pick was recorded."
+          : "commit failed (duplicate or unvetted state)");
       }
+      // A commit that carried an answer just added a forecast, and the trust
+      // view is the place that answer is visible. Without this it only
+      // refreshed on the next *dealt* duel — so the observation the player
+      // was asked for appeared to go nowhere.
+      if (m.outcome && m.outcome !== "none") send({ type: "calibration" });
       refreshInstruments();
       renderRack();
       scheduleSave();
@@ -1897,6 +2009,9 @@ function liveNoteOn(note_, vel = 1.0) {
   ensureAudio();
   live.noteOn(note_, vel);
   heldNotes.add(note_);
+  // The audibility gate on the revert log: this note is the player hearing
+  // whatever edit is currently on the bench.
+  markHeard();
   paintKey(note_, true);
   startScope();
   setSignalFlow(true);
@@ -2628,25 +2743,155 @@ function renderCheckBadge() {
   }
 }
 
-// Why does the model like this? Utility is linear *within* a style lens, so the
-// per-feature contributions are exact — no SHAP, no surrogate, no sampling.
-function renderExplain(id, ex) {
-  const holder = $("explain");
-  if (!holder) return;
-  if (!ex || !ex.contributions || ex.contributions.length === 0) {
-    holder.classList.add("hidden");
+// ---------- the live utility readout ----------
+// What the model believes about the patch under your hands, above the rack,
+// updated on every edit.
+//
+// This replaces a WHY line that was fetched once — for the candidate you
+// loaded — and then described it through any number of edits, silently. The
+// bench re-featurizes on every edit whether or not anyone looks at the result,
+// so `θ · φ_std` and its exact per-feature decomposition are a dot product
+// away; the stale version was never the cheaper one, only the wrong one.
+//
+// Two rules make it honest rather than decorative:
+//
+//  - **The delta is against the last number this readout showed**, not against
+//    the loaded candidate. "0.71 (was 0.66) ▲" is a statement about the edit
+//    you just made, which is the only thing a player can act on.
+//  - **Stale is drawn, not guessed.** An edit in flight means the number on
+//    screen describes the tree *before* it. Dimming and saying so is strictly
+//    better than showing a wrong number confidently for half a second — this
+//    is the objective the player is steering against, and a readout that lies
+//    under motion teaches them to ignore it.
+const belief = { u: null, sd: 0, prev: null, lens: "", top: [], stale: false, has: false };
+
+/** An edit has gone out; whatever is on screen is about to be untrue. */
+function beliefStale() {
+  if (!belief.has || belief.stale) return;
+  belief.stale = true;
+  renderBelief();
+}
+
+function applyBelief(m) {
+  const u = m.utility;
+  const ex = m.explain;
+  if (!u || !u.ok) {
+    // No posterior yet (or a bench that failed vetting): say what is missing
+    // rather than draw a zero, which reads as "the model hates this".
+    belief.has = false;
+    belief.stale = false;
+    belief.u = null;
+    belief.prev = null;
+  } else {
+    // A subject load is a new patch, not a move: it has no "was".
+    if (m.subject !== undefined) belief.prev = null;
+    else if (belief.has) belief.prev = belief.u;
+    belief.u = u.u;
+    belief.sd = u.sd;
+    belief.lens = u.lens || "";
+    belief.top = ex && ex.contributions ? ex.contributions.slice(0, 3) : [];
+    belief.has = true;
+    belief.stale = false;
+  }
+  renderBelief();
+}
+
+function renderBelief() {
+  const el = $("belief");
+  if (!el) return;
+  if (!belief.has) {
+    el.classList.remove("stale");
+    el.innerHTML = wb.subjectId == null
+      ? ""
+      : `<span class="ex-why">model's guess</span> <span class="bl-none">not yet — it needs a few picks first</span>`;
     return;
   }
-  holder.classList.remove("hidden");
-  const top = ex.contributions.slice(0, 3);
-  const parts = top.map((c) => {
-    const nice = niceName(c.name);
+  el.classList.toggle("stale", belief.stale);
+  // Drawn on the bank's scale, not the model's. The posterior mean is an
+  // unbounded log-odds and the bank's bars have always shown `sq()` of it, so
+  // a raw 1.43 above the rack would be a *different number for the same claim*
+  // sitting a few hundred pixels from the bar it contradicts. The contributions
+  // below stay in utility units — they are an exact decomposition of that
+  // quantity and squashing them would make them stop summing.
+  const u = sq(belief.u);
+  const prev = belief.prev == null ? null : sq(belief.prev);
+  const d = prev == null ? null : u - prev;
+  // 0.005 is half a printed digit: below it the arrow would point at a change
+  // the number it sits next to does not show.
+  const arrow = d == null || Math.abs(d) < 0.005 ? "" :
+    `<span class="bl-arrow ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"}</span>`;
+  const was = prev == null ? "" :
+    `<span class="bl-was">(was ${prev.toFixed(2)})</span>`;
+  const parts = belief.top.map((c) => {
     const sign = c.contribution >= 0 ? "+" : "−";
-    return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(nice)}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
+    return `<b class="${c.contribution >= 0 ? "up" : "down"}">${esc(niceName(c.name))}</b> ${sign}${Math.abs(c.contribution).toFixed(2)}`;
   });
-  holder.innerHTML =
-    `<span class="ex-why">why:</span> ${parts.join(" · ")} ` +
-    `<span class="ex-lens">under your <b>${esc(ex.style_name || `style ${ex.style + 1}`)}</b> lens</span>`;
+  el.innerHTML =
+    `<span class="ex-why">model's guess</span> <b class="bl-u">${u.toFixed(2)}</b> ${was}${arrow}` +
+    (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
+    (belief.lens ? ` <span class="ex-lens">under your <b>${esc(belief.lens)}</b> lens</span>` : "") +
+    (belief.stale ? ` <span class="bl-stale">· re-measuring…</span>` : "");
+  el.title = belief.stale
+    ? "An edit is in flight — this describes the patch before it."
+    : `The same score the bank's bars draw. Posterior-mean utility ${belief.u.toFixed(2)} ± ${belief.sd.toFixed(2)}; the named features are its exact decomposition, in utility units.`;
+}
+
+// ---------- the structural budget ----------
+// The ceilings evolution can actually search, drawn from the tree, live.
+//
+// R2 in the plan, and the highest-severity silent-data-loss risk in it: a
+// hand-built patch past MAX_SIZE / MAX_DEPTH / MAX_MOD_DEPTH is refused now
+// (`validate_tree`), but a patch *at* them is worse than refused — it is
+// accepted, has almost no mass under the prior, and the next ⚡ mutates it back
+// inside the ceilings, so the structure disappears on the one action the whole
+// instrument is built around. The number has to be visible while there is
+// still room to spend.
+const BUDGET = { size: 24, depth: 9, mod: 4 };
+
+/** ModNode depth, mirroring `ModNode::depth` exactly — an `Op` wraps its
+ *  input, a `Pair` takes the deeper of two, everything else is a leaf. */
+function modDepthOf(m) {
+  if (!m || m === "None") return 0;
+  const tag = nodeTag(m);
+  const v = m[tag];
+  if (tag === "Op") return 1 + modDepthOf(v && v.input);
+  if (tag === "Pair") return 1 + Math.max(modDepthOf(v && v.a), modDepthOf(v && v.b));
+  return 1;
+}
+
+/** `{size, depth, mod}` of the bench tree, in the engine's own terms: audio
+ *  nodes only for size and depth (a modulator is not a module in the ceiling's
+ *  sense), deepest modulation term for mod. */
+function treeBudget(tree) {
+  let size = 0;
+  let depth = 0;
+  let mod = 0;
+  walkTreeKeys(tree, (n, key) => {
+    size += 1;
+    depth = Math.max(depth, keyIndices(key).length + 1);
+    const v = n[nodeTag(n)];
+    if (v) mod = Math.max(mod, modDepthOf(v.modulation));
+  });
+  return { size, depth, mod };
+}
+
+function renderBudget() {
+  const el = $("budget");
+  if (!el) return;
+  if (!wb.tree) { el.innerHTML = ""; return; }
+  const b = treeBudget(wb.tree);
+  const cell = (n, max, label) => {
+    // "Tight" one short of the ceiling, not at it: told at the ceiling the
+    // player has already spent the room the warning was about.
+    const cls = n >= max ? "full" : n >= max - 1 ? "tight" : "";
+    return `<span class="bg-cell ${cls}"><b>${n}</b>/${max} ${label}</span>`;
+  };
+  el.innerHTML =
+    cell(b.size, BUDGET.size, "modules") +
+    `<span class="bg-sep">·</span>` +
+    cell(b.depth, BUDGET.depth, "depth") +
+    `<span class="bg-sep">·</span>` +
+    cell(b.mod, BUDGET.mod, "mod depth");
 }
 
 // Which candidate is sounding, everywhere it can be asked: the EVOLVE cards,
@@ -3590,8 +3835,10 @@ document.addEventListener("click", (e) => {
 
 // ---------- workbench ----------
 function openOnBench(id) {
+  // No separate `explain` request any more: the bench reply carries the
+  // decomposition of the tree it is describing, so the readout can never name
+  // a patch other than the one on screen. See `renderBelief`.
   send({ type: "edit_begin", id });
-  send({ type: "explain", id });
 }
 
 // The categorical sites that reach the running voices without a recompile.
@@ -3618,6 +3865,11 @@ function sendEdit(addr, value, isIndex) {
   const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
   if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
   else if (live) live.param(addr, value);
+  // The readout above the rack describes the tree before this write until the
+  // bench answers with the new φ. Say so rather than leave a stale number
+  // looking current.
+  beliefStale();
+  pendingEditTag = { op: "param", addr };
   // Genome second: the worker validates, re-renders the phrase, updates φ.
   if (editInFlight) {
     editQueue = { addr, value, isIndex };
@@ -3628,8 +3880,10 @@ function sendEdit(addr, value, isIndex) {
 }
 
 function playBench() {
-  if (wb.buffer) playBuffer(wb.buffer, $("rack-play"));
-  else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
+  if (wb.buffer) {
+    markHeard();
+    playBuffer(wb.buffer, $("rack-play"));
+  } else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
 }
 
 // Layout constants.
@@ -6046,7 +6300,7 @@ const structQueue = [];
 function sendStruct(op, landed) {
   queueStruct({ type: "edit_structure", op }, landed || null);
 }
-function queueStruct(msg, landed) {
+function queueStruct(msg, landed, tag) {
   if (structInFlight) {
     // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
     // deeper than a rapid double-click means the worker is wedged, and
@@ -6059,7 +6313,7 @@ function queueStruct(msg, landed) {
     // same reason it waits on the reply: nothing has happened yet. It cannot
     // ride *on* `msg`, which is structured-cloned to the worker and would
     // choke on the undo closure.
-    structQueue.push({ msg, landed: landed || null });
+    structQueue.push({ msg, landed: landed || null, tag });
     // Waiting its turn is still in flight as far as the shelf is concerned.
     if (landed && landed.drop != null) setTrayPending(landed.drop, true);
     // Nothing went out, so nothing may be charged to the edit that is out.
@@ -6070,7 +6324,34 @@ function queueStruct(msg, landed) {
   bindLanded(landed);
   if (landed && landed.drop != null) setTrayPending(landed.drop, true);
   stageUndo();
+  beliefStale();
+  // Both halves of WS-8 §3's edit row come from here, because this is the one
+  // place every structural gesture in the app funnels through: the op that is
+  // about to happen, and the module it is about to happen to. A whole-tree
+  // rewrite has no `StructOp` to report — it *is* the tree — so it says so
+  // rather than inventing one.
+  pendingEditTag = editTagOf(msg, tag);
+  logImplicit("edit", pendingEditTag);
   send(msg);
+}
+
+/** `{op, kind, key}` for a structural message, from the payload the engine is
+ *  about to be handed. `node`/`m` carry an explicit fragment whose serde tag
+ *  is the module kind (`{"Reverb":{…}}`).
+ *
+ *  A client-side rewrite has no `StructOp` to report — it *is* a tree — so it
+ *  carries the verb the player used instead. "duplicate" and "bypass" are
+ *  real gestures with real intent behind them, and logging nine different ones
+ *  as `set_tree` would throw away the only thing that distinguishes them. */
+function editTagOf(msg, tag) {
+  if (msg.type !== "edit_structure") return tag || { op: "set_tree" };
+  const o = msg.op || {};
+  const frag = o.node || o.m;
+  return {
+    op: o.op || "?",
+    key: o.key,
+    kind: o.kind || (frag && frag !== "None" ? nodeTag(frag) : undefined),
+  };
 }
 
 // ---------- locks, keyed by node identity ----------
@@ -6177,7 +6458,7 @@ function drainStruct() {
   if (structInFlight) return;
   if (structQueue.length) {
     const q = structQueue.shift();
-    queueStruct(q.msg, q.landed);
+    queueStruct(q.msg, q.landed, q.tag);
     return;
   }
   // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
@@ -6205,7 +6486,10 @@ function drainStruct() {
 //
 // `fn(tree, marks)` mutates the clone in place. Returning a **string** is a
 // refusal and that string is what the player is told — never a silent no-op.
-function applyTreeRewrite(fn) {
+// `tag` names the gesture for the implicit stream (WS-8 §3), because the wire
+// message is only ever "here is a tree" and the intent behind it — duplicate,
+// bypass, reconnect, unplug — is exactly what a later model would want.
+function applyTreeRewrite(fn, tag) {
   if (!wb.tree) { note("no patch on the bench"); return false; }
   // Deliberately NOT queued, unlike an op. An op is a description of an edit
   // and is re-aimed at whatever tree it lands on; a whole-tree replace *is* a
@@ -6231,7 +6515,7 @@ function applyTreeRewrite(fn) {
   if (typeof refusal === "string") { note(refusal); return false; }
   placeholderPending = keysOfNodes(tree, marks);
 
-  queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) });
+  queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) }, null, tag);
   return true;
 }
 
@@ -6448,7 +6732,7 @@ function duplicateModule(key) {
     dup[tag][f[0]] = node;
     if (!setNodeAtIn(tree, key, dup)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "duplicate", key, kind: rackKindAt(key) });
   if (!ok) return;
   noteOnLanding(`a second ${name} now sits after the first, with the same settings.`,
     { undo: doUndo, undoLabel: "take it out" });
@@ -6470,7 +6754,7 @@ function extractModule(key) {
     if (!marks.includes(node)) doomed = node;
     marks.push(hole);
     return null;
-  });
+  }, { op: "extract", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   noteOnLanding(
@@ -6506,7 +6790,7 @@ function bypassModule(key) {
     head = headFragment(node);
     if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "bypass", key, kind: rackKindAt(key) });
   if (!ok) return;
   const inNames = MOD_BY_KIND[rackKindAt(key)]?.inNames;
   const uid = head ? stageFragment(head, false, { rewrap: true, note: "bypassed" }) : null;
@@ -6583,7 +6867,7 @@ function deleteModule(key, x, y) {
     head = headFragment(n);
     if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "delete_rewrite", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = head ? stageFragment(head, false, { rewrap: true }) : null;
   noteOnLanding(`${name} deleted — it is held below.`,
@@ -6609,7 +6893,7 @@ function deleteKeeping(key, keep, name) {
     if (dropped && !marks.includes(dropped)) doomed = dropped;
     if (!setNodeAtIn(tree, key, survivor)) return "that module has moved — try again";
     return null;
-  });
+  }, { op: "delete_keeping", key, kind: rackKindAt(key) });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   noteOnLanding(
@@ -7263,19 +7547,126 @@ function startEvolveFrom(id) {
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
   // that is on screen on the way out.
-  send({ type: "refine_from", id, locks: [...lockedAddrs()] });
+  const locks = [...lockedAddrs()];
+  logImplicit("evolve_from", { locks: locks.length }, { id });
+  send({ type: "refine_from", id, locks });
 }
 
-$("rack-play").onclick = () => playBench();
-$("rack-commit").onclick = () => {
-  send({ type: "edit_commit", asImprovement: $("improve-check").checked });
+// ---------- commit deals a real duel (WS-8 §1) ----------
+// The hand edit is the richest preference signal in the app, and it was
+// collected as an unverified checkbox: a claim about a comparison the player
+// had usually never made. Worse, the checkbox had no *off* — `false` meant
+// "said nothing", so an edit someone heard and rejected left no trace at all,
+// and the log only ever saw edits that won. A preference log made only of
+// successes is a biased sample of exactly the kind the model cannot defend
+// against.
+//
+// So a commit that actually changed the patch plays both versions, takes the
+// pick, and records it in whichever direction it went. The express checkbox
+// stays for people who are sure — it is faster, and forcing a duel on someone
+// who already knows is how you teach them to stop committing — but its answers
+// are tagged `self_report` so the two streams can be scored against each other
+// instead of averaged. Which of them is better calibrated is a question this
+// build can now answer and previously could not even ask.
+let commitDuel = null; // {orig, edit, origSide, then}
+
+/** Commit the bench. Deals the duel first when there is something to compare
+ *  and the player has not already told us the answer. */
+function commitBench(opts = {}) {
+  if (wb.subjectId == null) return;
+  if ($("improve-check").checked) {
+    // The express path: asserted, not heard, and tagged as such.
+    return sendCommit("self_edited", opts);
+  }
+  if (!wb.dirty || !wb.vetOk) return sendCommit("none", opts);
+  // The engine answers whether the tree really differs (a knob turned and
+  // turned back is not an edit) and hands back the original's audio in the
+  // same round trip.
+  send({ type: "edit_duel", then: opts.evolving ? "evolve" : "" });
+}
+
+function sendCommit(outcome, opts = {}) {
+  if (opts.evolving) note("committing your edits, then evolving…");
+  logImplicit("commit", { outcome, dirty: wb.dirty });
+  send({ type: "edit_commit", outcome });
+}
+
+function openCommitDuel(m, then) {
+  if (!wb.buffer) return sendCommit("none", { evolving: then === "evolve" });
+  const orig = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
+  orig.copyToChannel(m.buffer, 0);
+  // Randomise which side holds the original. The pick is a preference
+  // judgement and position bias is real; the app already does this for the
+  // dealt duel, and the answer here goes into the same log.
+  commitDuel = { orig, edit: wb.buffer, origSide: Math.random() < 0.5 ? "a" : "b", then };
+  // Shown before drawn, deliberately: `scopeCtx` sizes the backing store from
+  // `clientWidth`, which is 0 while the overlay is `display:none`, and a
+  // waveform drawn into a 0-wide canvas is a blank card.
+  $("cduel").classList.remove("hidden");
+  for (const side of ["a", "b"]) {
+    const isOrig = side === commitDuel.origSide;
+    $(`cd-name-${side}`).textContent = isOrig ? "the original" : "your edit";
+    drawWave($(`cd-scope-${side}`), (isOrig ? orig : wb.buffer).getChannelData(0));
+  }
+  $(`cd-play-${commitDuel.origSide === "a" ? "a" : "b"}`).focus();
+  nbAnnounce("Which one is better? Play A and B, then pick one.");
+}
+
+function closeCommitDuel() {
+  commitDuel = null;
+  $("cduel").classList.add("hidden");
+}
+
+function cdPlay(side) {
+  if (!commitDuel) return;
+  const buf = side === commitDuel.origSide ? commitDuel.orig : commitDuel.edit;
+  playBuffer(buf, $(`cd-play-${side}`));
+}
+
+function cdPick(side) {
+  if (!commitDuel) return;
+  const editWon = side !== commitDuel.origSide;
+  const then = commitDuel.then;
+  closeCommitDuel();
+  stopAudition();
+  sendCommit(editWon ? "heard_edited" : "heard_original", { evolving: then === "evolve" });
+  note(editWon
+    ? "taught: you heard both and your edit won."
+    : "taught: you heard both and the original won — that is the more useful half.");
+}
+
+$("cd-play-a").onclick = () => cdPlay("a");
+$("cd-play-b").onclick = () => cdPlay("b");
+$("cd-pick-a").onclick = () => cdPick("a");
+$("cd-pick-b").onclick = () => cdPick("b");
+$("cd-skip").onclick = () => {
+  const then = commitDuel && commitDuel.then;
+  closeCommitDuel();
+  sendCommit("none", { evolving: then === "evolve" });
 };
+// The overlay owns the keyboard while it is up — the keys underneath it play
+// notes, and a stray `a` while a modal asks a question is a note, not an answer.
+window.addEventListener("keydown", (e) => {
+  if (!commitDuel) return;
+  const k = e.key;
+  if (k === "Escape") { e.preventDefault(); $("cd-skip").click(); }
+  else if (k === "1") { e.preventDefault(); cdPlay("a"); }
+  else if (k === "2") { e.preventDefault(); cdPlay("b"); }
+  else if (k === "ArrowLeft") { e.preventDefault(); cdPick("a"); }
+  else if (k === "ArrowRight") { e.preventDefault(); cdPick("b"); }
+  else e.stopPropagation();
+}, true);
+
+$("rack-play").onclick = () => playBench();
+$("rack-commit").onclick = () => commitBench();
 $("rack-evolve").onclick = () => {
   if (wb.subjectId == null) return;
   if (wb.dirty) {
+    // The edit is about to become the seed of a whole generation. If there was
+    // ever a moment to ask which of the two it should breed from, this is it —
+    // so the same duel runs, and the evolve waits behind the answer.
     pendingEvolve = true;
-    note("committing your edits, then evolving…");
-    send({ type: "edit_commit", asImprovement: $("improve-check").checked });
+    commitBench({ evolving: true });
   } else {
     startEvolveFrom(wb.subjectId);
   }
@@ -9459,7 +9850,7 @@ function connectMove(srcKey, targetKey) {
     marks.push(hole);
     if (victim && !marks.includes(victim)) doomed = victim;
     return null;
-  });
+  }, { op: "reconnect", key: srcKey, kind: rackKindAt(srcKey) });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, false) : null;
   const undo = { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" };
@@ -9493,7 +9884,7 @@ function connectBranch(srcKey, targetKey) {
     mix.Mix[f[1]] = JSON.parse(JSON.stringify(src));
     if (!setNodeAtIn(tree, targetKey, mix)) return "that socket has moved — try the cable again";
     return null;
-  });
+  }, { op: "branch_here", key: srcKey, kind: rackKindAt(srcKey) });
   if (!ok) return;
   noteOnLanding(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
 }
@@ -9517,7 +9908,7 @@ function connectMoveMod(srcKey, targetKey) {
     owner[oTag].modulation = "None";
     target[tTag].modulation = m;
     return null;
-  });
+  }, { op: "reconnect_mod", key: from });
   if (!ok) return;
   const uid = doomed ? stageFragment(doomed, true) : null;
   noteOnLanding(
@@ -9564,14 +9955,21 @@ function logLinkQuery(chosen) {
   const l = pendingTarget && pendingTarget.link;
   if (!l || l.logged) return; // the pick and the cancel both land here
   l.logged = true;
-  linkSearchLog.push({
+  const row = {
     q: ($("nb-q").value || "").trim(),
     kind: l.kind,
     src: rackKindAt(l.srcKey) || l.srcKey,
     chosen: chosen || null,
     ms: Date.now() - l.at,
-  });
+  };
+  linkSearchLog.push(row);
   window.__ricLinkSearch = linkSearchLog;
+  // …and into the store that survives the tab. This array was a debugging
+  // window, which is to say the only explicit statement of intent in the whole
+  // app was being thrown away on every reload. A typed query aimed at a socket
+  // is the one place a player says what they *want* rather than choosing from
+  // what is offered.
+  logImplicit("link_search", row, { value: row.ms });
 }
 
 // ---- click source, then click target ----
@@ -10212,7 +10610,7 @@ function onWireUp(ev) {
       if (!marks.includes(old2)) doomed = old2;
       marks.push(hole);
       return null;
-    });
+    }, { op: "unplug", key: w.childKey, kind: rackKindAt(w.childKey) });
     if (!ok) return;
     const uid = doomed ? stageFragment(doomed, false) : null;
     noteOnLanding(
@@ -10651,7 +11049,41 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
       : `check duels (picked at random) are the unbiased measure — ${E.check_n} of ${SKILL_MIN_N} so far`,
     x0, y0 + side + 66 * dpr
   );
+  // Where the answers came from. Committing a hand edit after hearing it
+  // against the original is a different act from ticking "my edit is better",
+  // and the model has no way to know which it was told — so the two are
+  // scored apart, and the split is drawn rather than left in the log. Silent
+  // until there is something to compare: one stream is not a comparison.
+  const streams = (E.by_provenance || []).filter((p) => p.n > 0);
+  if (streams.length > 1) {
+    // Right-aligned against the panel's own edge, on the headline's baseline:
+    // the three lines under the plot are full sentences with no room for a
+    // fourth, and the plot is a square in a wide panel — the whole right half
+    // of that line is empty.
+    ctx.fillStyle = INK.amberDim;
+    ctx.textAlign = "right";
+    ctx.fillText(
+      streams
+        .map((p) => `${PROVENANCE_NAME[p.provenance] || p.provenance} ${p.n}: ${skillPct(p.skill)}`)
+        .join("  ·  "),
+      w - 24 * dpr, y0 + side + 48 * dpr
+    );
+    ctx.textAlign = "left";
+  }
 }
+
+/** Brier skill as a signed percentage — a negative skill is worse than a coin
+ *  flip and has to look like it, not like a small positive number. */
+function skillPct(s) {
+  return `${s >= 0 ? "+" : "−"}${Math.abs(Math.round(s * 100))}%`;
+}
+
+// How a preference reached the log, in the words the app uses for it.
+const PROVENANCE_NAME = {
+  duel: "dealt duels",
+  heard_edit: "edits you heard",
+  self_report: "edits you asserted",
+};
 
 // Reliability is computed by the engine, which is the only place that has
 // both the forecast and the *outcome*. There is deliberately no client-side

@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=52">
+<link rel="stylesheet" href="style.css?b=54">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=84";
+    s.src = "main.js?b=93";
     document.head.appendChild(s);
   }
 })();
@@ -131,7 +131,11 @@
           </div>
           <div class="rack-tools">
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="rack-play" disabled>▶ sample</button></span>
-            <label class="toggle" title="When committed, also teach the model that your edit beat the original">
+            <!-- The express path. Commit normally plays both versions and asks;
+                 tick this when you already know, and it commits straight away.
+                 The two answers are logged distinguishably, because an
+                 assertion and a heard comparison are not the same evidence. -->
+            <label class="toggle" title="Skip the comparison: commit and tell the model your edit is better without hearing them back to back">
               <input type="checkbox" id="improve-check"><span>my edit is better</span>
             </label>
             <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn" id="rack-commit" disabled>commit</button></span>
@@ -158,9 +162,24 @@
           <span class="bt-copy">This patch is live under your fingers. <b>Drag a knob</b> — the
             sound changes instantly. Click a <b>lock dot</b> (hover a knob) or a module's <b>▢</b>
             to pin what you love, then <b>⚡ evolve from this</b> breeds variations that keep your
-            locks. Made it better by hand? Tick <b>my edit is better</b> and <b>commit</b> — that
-            teaches the model too. The rail on the right is the module catalogue — its <b>?</b> walks you through it.</span>
+            locks. Changed it by hand? <b>commit</b> plays your version against the original and
+            asks which you prefer — either answer teaches the model, and “the original” teaches it most. The rail on the right is the module catalogue — its <b>?</b> walks you through it.</span>
           <button class="util-btn" id="bt-close">got it</button>
+        </div>
+        <!-- What the model currently believes about the patch under your
+             hands, and how much room that patch has left. Above the rack
+             because it is the objective you are steering against, and it has
+             to be in the same glance as the thing you are steering.
+
+             The WHY line this replaces sat *below* the rack, was fetched once
+             for the candidate you loaded, and then went on describing it
+             through any number of edits — it named features of a patch you had
+             already edited away, silently and with no way to tell. This one is
+             recomputed from the bench on every reply and says so when it is
+             waiting. -->
+        <div class="belief-row mono" id="belief-row">
+          <div class="belief" id="belief" role="status"></div>
+          <div class="budget" id="budget" title="What evolution can search. A hand-built patch past these ceilings is refused, and one at them has no room to grow."></div>
         </div>
         <div class="play-body">
           <div class="play-canvas">
@@ -258,7 +277,6 @@
             </div>
           </aside>
         </div>
-        <div class="explain mono hidden" id="explain"></div>
         <!-- Teaching without leaving the instrument. This carries the same
              pips and the same forecast line as EVOLVE — a stripped-down copy
              of the loop teaches the user there is nothing here. -->
@@ -440,6 +458,45 @@
     <div class="warm-foot">
       <button class="util-btn" id="warm-skip">skip</button>
       <button class="hw-btn small" id="warm-go" disabled>teach it</button>
+    </div>
+  </div>
+</section>
+
+<!-- The commit duel. A hand edit is the richest preference signal in the app
+     and it used to be collected as an unverified checkbox — a claim about a
+     comparison the player had usually never made, with no way at all to say
+     the more informative thing, which is "I heard both and the original was
+     better". So a commit that actually changed something asks, plays both,
+     and records what was heard in whichever direction it went. The express
+     checkbox survives for people who are sure; its answers are tagged so the
+     two can be scored against each other rather than averaged. -->
+<section id="cduel" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="cd-title">
+  <div class="warm-card panel cduel-card">
+    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="boot-title" id="cd-title">WHICH ONE IS BETTER?</div>
+    <p class="warm-sub">You changed this patch. Play them both and pick — it teaches the model
+      either way, and “the original won” teaches it the most.</p>
+    <div class="cduel-grid">
+      <div class="cduel-cell">
+        <div class="cd-head"><span class="cd-letter">A</span><span class="cd-name" id="cd-name-a"></span></div>
+        <canvas class="cd-scope" id="cd-scope-a" aria-hidden="true"></canvas>
+        <div class="cd-row">
+          <button class="util-btn cd-play" id="cd-play-a">▶ play</button>
+          <button class="hw-btn small cd-pick" id="cd-pick-a">this one</button>
+        </div>
+      </div>
+      <div class="cduel-cell">
+        <div class="cd-head"><span class="cd-letter">B</span><span class="cd-name" id="cd-name-b"></span></div>
+        <canvas class="cd-scope" id="cd-scope-b" aria-hidden="true"></canvas>
+        <div class="cd-row">
+          <button class="util-btn cd-play" id="cd-play-b">▶ play</button>
+          <button class="hw-btn small cd-pick" id="cd-pick-b">this one</button>
+        </div>
+      </div>
+    </div>
+    <div class="warm-foot">
+      <button class="util-btn" id="cd-skip" title="Commit the edit without teaching the model anything">commit without teaching</button>
+      <span class="cd-hint silk-dim mono">1 / 2 play · ← → pick · esc skip</span>
     </div>
   </div>
 </section>

@@ -2910,6 +2910,49 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 @media (pointer: coarse) { .wi-play { width: 34px; height: 34px; } }
 .warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
 
+/* ---------- the commit duel ---------- */
+/* Deliberately the warm-start's card, not a new one: it is the same act — the
+   instrument asking a question it will learn from — and a second dialect for
+   it would teach the player that these are different kinds of question. Two
+   cells, a letter each, and the two things you can do to each of them side by
+   side: hear it, choose it. */
+.cduel-card { width: min(680px, 92vw); }
+.cduel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.cduel-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #1f242b, #15181d);
+  text-align: left;
+}
+.cd-head { display: flex; align-items: baseline; gap: var(--s2); }
+.cd-letter {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.18em;
+  color: var(--phos-b);
+}
+.cd-name { font-size: var(--t-body); color: var(--silk); }
+/* The waveform is the only thing on the card that is *of* the sound, so it
+   gets the plate's own recess rather than sitting on the card's face. */
+.cd-scope {
+  width: 100%;
+  height: 54px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+}
+.cd-row { display: flex; gap: var(--s2); align-items: center; }
+.cd-play { flex: 1; }
+.cd-pick { flex: 1; }
+.cd-hint { font-size: var(--t-micro); }
+@media (max-width: 700px) {
+  .cduel-grid { grid-template-columns: 1fr; }
+}
+
 /* ---------- boot ---------- */
 .boot { transition: opacity 420ms cubic-bezier(0.4, 0, 0.2, 1); }
 .boot.done { opacity: 0; pointer-events: none; }
@@ -2957,20 +3000,72 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
    Utility is linear within a style lens, so these contributions are exact.
    "The model likes this" is a claim; "it likes this because it's bright and
    has a long tail, under your Dark Drones lens" is one you can check by ear. */
-.explain {
+/* ---------- the belief row: what the model thinks, above the rack ---------- */
+/* One row, two claims, opposite ends: what the model makes of the patch you
+   are holding (left, where reading starts) and how much structural room that
+   patch has left (right, under COMMIT, which is the button both numbers are
+   about). The row keeps its height when either half is empty — it sits between
+   the toolbar and the rack, and a row that collapses would move the whole
+   canvas every time a patch is loaded. */
+.belief-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: 22px;
+  padding: 0 var(--s1);
+}
+.belief {
   display: flex;
   align-items: baseline;
   gap: var(--s2);
-  flex-wrap: wrap;
+  /* One line, always. Wrapping would make the row's height a function of how
+     many characters the model's top three features happen to have, and this
+     row sits directly above the canvas — a second line moves the whole rack
+     every time a patch is loaded. The score is first and the decomposition is
+     last, so what gets clipped on a narrow frame is what matters least. */
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: var(--t-body);
   color: var(--silk-dim);
   padding: var(--s1) 0;
+  transition: opacity 160ms ease;
 }
-.explain .ex-why { color: var(--phos-b); letter-spacing: 0.1em; text-transform: uppercase; font-size: var(--t-micro); }
-.explain b.up { color: var(--phos-b); font-weight: 400; }
-.explain b.down { color: var(--silk-dim); font-weight: 400; }
-.explain .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
-.explain .ex-lens b { color: var(--phos-b); font-weight: 400; }
+.belief > * { flex: 0 0 auto; }
+.belief .ex-why { color: var(--phos-b); letter-spacing: 0.1em; text-transform: uppercase; font-size: var(--t-micro); }
+.belief b.up { color: var(--phos-b); font-weight: 400; }
+.belief b.down { color: var(--silk-dim); font-weight: 400; }
+.belief .ex-lens { font-family: var(--font-voice); font-style: italic; color: var(--silk-dim); }
+.belief .ex-lens b { color: var(--phos-b); font-weight: 400; }
+/* The number itself is the loudest thing in the row: it is what changes. */
+.belief .bl-u { color: var(--silk); font-weight: 500; font-size: var(--t-lead); }
+.belief .bl-was { color: var(--silk-mute); }
+.belief .bl-sep, .belief .bl-none { color: var(--silk-mute); }
+.belief .bl-arrow.up { color: var(--phos-a); }
+.belief .bl-arrow.down { color: var(--silk-mute); }
+/* Stale is drawn, never guessed: an edit is in flight and this number is about
+   the tree before it. Dimmed rather than hidden, because a number that
+   disappears and comes back is a flicker under every knob turn. */
+.belief.stale { opacity: 0.45; }
+.belief .bl-stale { color: var(--phos-b-dim); font-style: italic; }
+
+/* The ceilings evolution can search. Quiet until it is nearly spent. */
+.budget {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--t-micro);
+  color: var(--silk-mute);
+  white-space: nowrap;
+}
+.budget .bg-sep { opacity: 0.45; }
+.budget .bg-cell b { color: var(--silk-dim); font-weight: 400; }
+.budget .bg-cell.tight b { color: var(--phos-b); }
+.budget .bg-cell.full { color: var(--led-red); }
+.budget .bg-cell.full b { color: var(--led-red); }
 
 /* A duel drawn at random rather than by the acquisition function. */
 .duel-pred.check { color: var(--phos-b); }

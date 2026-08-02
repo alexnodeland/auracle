@@ -530,6 +530,14 @@ function postBench(extra) {
       buffer: arr,
       treeJson: engine.edit_tree_json(),
       makeup: engine.edit_makeup(),
+      // What the model makes of the patch that is on the bench *now*. It rides
+      // with the bench reply rather than being asked for separately because it
+      // is derived from the same featurization that reply already paid for —
+      // a dot product against a vector the engine is holding anyway — and
+      // because a readout that arrives on its own schedule is a readout that
+      // can be a message behind the rack it sits above.
+      utility: JSON.parse(engine.edit_utility()),
+      explain: JSON.parse(engine.edit_explain()),
       ...extra,
     },
     [arr.buffer]
@@ -798,17 +806,6 @@ self.onmessage = async (e) => {
       }
       break;
     }
-    case "explain": {
-      // Exact per-feature contributions under the candidate's best style lens.
-      // Utility is linear within a lens, so this is a decomposition, not a
-      // surrogate approximation.
-      try {
-        post({ type: "explained", id: m.id, ex: JSON.parse(engine.explain(m.id) || "null") });
-      } catch (_) {
-        post({ type: "explained", id: m.id, ex: null });
-      }
-      break;
-    }
     case "calibration": {
       try {
         post({ type: "calibration", calib: JSON.parse(engine.calibration()) });
@@ -928,13 +925,53 @@ self.onmessage = async (e) => {
       break;
     }
     case "edit_commit": {
-      const id = Number(engine.edit_commit(m.asImprovement));
+      // `outcome` is a string now, not a boolean: `"heard_original"` — the
+      // player listened to both and preferred the patch they started from —
+      // is the direction the old flag could not carry at all. See
+      // `WasmEngine::edit_commit`.
+      const id = Number(engine.edit_commit(m.outcome || "none"));
       post({
         type: "committed",
         id,
+        outcome: m.outcome || "none",
         views: tasteViews(),
         status: status(),
       });
+      break;
+    }
+    // Everything a commit duel needs, in one round trip: is there anything to
+    // compare, and the original's audio to compare against. Rendering here
+    // rather than through the `render` path keeps the pair honest — both
+    // buffers come from the same engine, the same phrase and the same makeup
+    // policy, so a preference between them is a preference about the patches.
+    case "edit_duel": {
+      const differs = engine.edit_differs_from_original();
+      const id = Number(engine.edit_original_id());
+      const arr = new Float32Array(differs && id > 0 ? engine.render_of(id) : 0);
+      post(
+        {
+          type: "edit_duel",
+          differs,
+          id,
+          buffer: arr,
+          sampleRate: engine.sample_rate(),
+          ...(m.then ? { then: m.then } : {}),
+        },
+        [arr.buffer]
+      );
+      break;
+    }
+    // The implicit stream (WS-8 §3). Fire-and-forget by design: nothing in the
+    // app waits on a log line, and a reply would only be another message on
+    // the queue between a gesture and its sound.
+    case "log_edit": {
+      engine.log_edit_event(
+        m.kind,
+        m.id || 0,
+        m.value || 0,
+        m.detail ? JSON.stringify(m.detail) : "",
+        !!m.withPhi
+      );
       break;
     }
     case "refine_from": {
