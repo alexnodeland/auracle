@@ -1990,6 +1990,9 @@ function healParamMiss(addr) {
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD, master);
+  // The analysers exist for the first time here, so this is the first moment
+  // the persisted fft size, window and tap can actually be applied to one.
+  scopeApply();
   live.onMessage((m) => {
     (window.__ricLog = window.__ricLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
@@ -4467,6 +4470,194 @@ function hitPad(g, x, y, w, h) {
   g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
 }
 
+/** A screw's rotation, in degrees, hashed off the module's identity and the
+ *  screw's corner. FNV-1a, plus a final avalanche — without it two plates
+ *  whose uids differ by one came out with visibly the same four angles,
+ *  because FNV's last multiply only stirs the high bits and `% 71` was
+ *  reading a difference of exactly one multiplied constant. Four screws that
+ *  repeat across the rack is the tell this rule exists to remove. */
+function screwAngle(mid, i) {
+  const s = `${mid}:${i}`;
+  let h = 2166136261;
+  for (let j = 0; j < s.length; j++) {
+    h ^= s.charCodeAt(j);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= h >>> 13;
+  h = Math.imul(h, 0x5bd1e995);
+  h ^= h >>> 15;
+  return ((h >>> 0) % 71) - 35;
+}
+
+// ---------- the readout flash ----------
+// Green is reserved for things that carry signal. A knob's readout does not
+// — it reports — so it sits in `--silk-dim` and borrows `--phos-a` for ~400ms
+// when it changes, which is the moment it *is* about the sound. Three
+// payoffs: the plate calms, the cables become the brightest green on screen
+// (correct: they are what you are reading), and every parameter change gets a
+// free highlight that says "this edit reached the instrument".
+//
+// A map rather than a class on the element, because `renderRack` is a full
+// teardown: the element that was flashing is gone by the time the flash would
+// have ended, and the one that replaces it has to inherit the state.
+const KNOB_FLASH_MS = 420;
+const knobFlash = new Map();
+function markKnobChanged(addr) {
+  knobFlash.set(addr, performance.now() + KNOB_FLASH_MS);
+  // The map is per-session and knob addresses are positional, so a long
+  // session with many splices would otherwise accumulate dead keys.
+  if (knobFlash.size > 200) {
+    const now = performance.now();
+    for (const [k, t] of knobFlash) if (t < now) knobFlash.delete(k);
+  }
+}
+
+// ---------- cable terminations ----------
+// A cable used to stop at a coordinate. On a real panel it stops in a *plug*,
+// and the difference is most of why the old rack read as a flowchart: a line
+// that ends on a dot is a graph edge, a line that disappears into a barrel
+// sunk in a nut is a patch lead. The barrel is 7 across and 11 along the
+// cable's axis; the strain-relief boot is the 3-unit sleeve the lead actually
+// emerges from, so the cable leaves the plug rather than the socket.
+//
+// Orientation is one number: `rot` is the direction the cable departs in, so
+// an `out` jack is 0, an `in` jack is 180 (the lead comes from the left), and
+// a mod tab is 90 (the lead comes up from the bus below). Drawn inside the
+// jack group, which means it inherits the jack's transform for free — and,
+// more importantly, it rides the plate through a FLIP tween instead of having
+// to be re-placed every frame the way the cable itself is.
+function plugArt(rot) {
+  const g = svgEl("g", rot ? { transform: `rotate(${rot})` } : {}, "plug");
+  g.appendChild(svgEl("rect", { x: 1.5, y: -3.5, width: 11, height: 7, rx: 3 }, "plug-barrel"));
+  g.appendChild(svgEl("rect", { x: 3, y: -3.5, width: 3, height: 7, rx: 1.4 }, "plug-collar"));
+  g.appendChild(svgEl("rect", { x: 11.5, y: -2, width: 3.4, height: 4, rx: 1.6 }, "plug-boot"));
+  return g;
+}
+
+// Five stops inside the green family — hue ±14°, lightness ±10% off
+// `--phos-a` (#8ef0b1 ≈ hsl(141 76% 75%)). Green still unambiguously means
+// audio; what the ramp buys is that two cables converging on one mixer are
+// two *different* greens, so you can follow either one back to where it came
+// from. Amber stays unsplit: there is only ever one modulation story per
+// cable and splitting it would compete with the amber-means-the-model law.
+const AUDIO_INK = [
+  "hsl(127, 74%, 68%)",
+  "hsl(134, 75%, 71%)",
+  "hsl(141, 76%, 75%)",
+  "hsl(148, 77%, 79%)",
+  "hsl(155, 78%, 82%)",
+];
+
+/** Which stop each audio cable takes, keyed by its *source* — the term is a
+ *  tree, so a module has exactly one outgoing cable and its source names it.
+ *  Seeded by the source's index so the assignment is stable across a render,
+ *  then bumped by two whenever a target has already taken that stop, which is
+ *  the acceptance condition: no two converging cables share a green. */
+function audioInkStops(rack) {
+  const order = new Map(rack.modules.map((m, i) => [m.key, i]));
+  const taken = new Map();
+  const stop = new Map();
+  for (const w of rack.wires) {
+    if (w.kind === "mod") continue;
+    let seen = taken.get(w.to);
+    if (!seen) taken.set(w.to, (seen = new Set()));
+    let s = (order.get(w.from) ?? 0) % AUDIO_INK.length;
+    // Two, not one: adjacent stops are 7° and 4% apart by construction, which
+    // is a ramp you can read as an ordering and not as a distinction.
+    for (let i = 0; i < AUDIO_INK.length && seen.has(s); i++) s = (s + 2) % AUDIO_INK.length;
+    seen.add(s);
+    stop.set(w.from, s);
+  }
+  return stop;
+}
+
+// ---------- differential flow ----------
+// Uniform perpetual motion on every cable is noise: it says "this is a synth"
+// and nothing else. Motion scaled by the level actually present at that point
+// in the chain is a meter — crossfade a mixer to one side and the other
+// branch visibly stops, which is a fact about the patch you can otherwise
+// only get by ear.
+//
+// The level is estimated from the patch rather than measured, because the
+// analyser hangs off the master and there is no per-node tap: sources are
+// unity, and every cable inherits its source's level times whatever its
+// consumer does to it. That is cheap (one pass over ≤24 modules per render,
+// and the render is the only thing that can change the answer) and it is
+// exactly right for the case that matters — a mixer's balance knob.
+function wireLevels(rack) {
+  const byKey = new Map(rack.modules.map((m) => [m.key, m]));
+  // Each module has exactly one consumer — the term is a tree — so one wire
+  // out, indexed by its source.
+  const outWire = new Map();
+  for (const w of rack.wires) if (w.kind !== "mod") outWire.set(w.from, w);
+  // How much of a child's signal its consumer passes on. Only two consumers
+  // actually attenuate: a mixer's balance, at equal power because that is the
+  // law the DSP crossfades under (describe.rs `bal`), and the second input of
+  // the three dynamics modules — a sidechain key is not summed into the
+  // output at all, so its cable is drawn as a permanently quiet one.
+  const weight = (to, w) => {
+    if (!to) return 1;
+    const second = w.from === `${to.key}/1`;
+    if (to.kind === "mix") {
+      const b = to.knobs.find((k) => k.addr.endsWith("#bal"));
+      const v = b ? b.value : 0.5;
+      return second ? Math.sin(v * Math.PI / 2) : Math.cos(v * Math.PI / 2);
+    }
+    if (second && MOD_BY_KIND[to.kind]?.inNames?.[1] === "key") return 0.5;
+    return 1;
+  };
+  // The quantity drawn is *reach*: how much of what is on this cable arrives
+  // at the amp. Not "how much signal is present here" — that number would
+  // leave the four cables upstream of a muted mixer branch running at full
+  // speed with only the last one stopping, which reads as a fault rather than
+  // as a branch that has been turned off. Reach makes the whole limb go
+  // still, together, which is what the ear hears.
+  //
+  // `column` is the distance from the sink, so ascending order visits every
+  // consumer before the modules that feed it — no recursion, and no cycle to
+  // guard against (there cannot be one; the term is a tree).
+  const reach = new Map();
+  for (const m of [...rack.modules].sort((a, b) => a.column - b.column)) {
+    const w = outWire.get(m.key);
+    // No consumer: this is the amp, and everything it has reaches the ear.
+    reach.set(m.key, w ? (reach.get(w.to) ?? 1) * weight(byKey.get(w.to), w) : 1);
+  }
+  const lvl = new Map();
+  for (const w of rack.wires) {
+    if (w.kind === "mod") continue;
+    lvl.set(w.from, reach.get(w.from) ?? 1);
+  }
+  return lvl;
+}
+
+// ---------- the mod-slot housing ----------
+// An empty modulation slot used to render as an orphan ring floating below
+// the plate, and a filled one as the same ring with a cable in it — so
+// "this module can be modulated at X" was only legible on the modules that
+// already were. The tab is a permanent 96×22 housing notched into the bottom
+// edge, identical in silhouette whether or not anything is plugged into it:
+// occupancy reads from the stroke (dashed → solid), never from whether the
+// element exists.
+//
+// One function, because `wirePathD` has to land the cable in the jack and the
+// renderer has to draw the jack in the tab, and a housing whose cable arrives
+// somewhere else is worse than no housing.
+const MOD_TAB_W = 96;
+const MOD_TAB_H = 22;
+// How far below the plate's bottom edge the tab's centre line sits. Not zero:
+// a tab centred exactly on the edge is half over the last knob row, and the
+// bottom row's readout — the one piece of text on the plate that had just
+// been given the contrast — lands underneath it. Seven units puts the tab's
+// top edge 4 below the deepest descender and still leaves a third of the
+// housing inside the panel, which is what makes it read as notched in rather
+// than as a badge stuck on.
+const MOD_TAB_DY = 7;
+function modTab(w) {
+  const tw = Math.min(MOD_TAB_W, w - 8);
+  const x = (w - tw) / 2;
+  return { x, w: tw, jx: x + 13, jy: MOD_TAB_DY };
+}
+
 // ---------- cable routing ----------
 // Hoisted out of `buildRack` because a cable's shape is a function of where
 // its two plates are, and during a relayout that is a different answer every
@@ -4531,8 +4722,11 @@ function wirePathD(w, pos, modByKey) {
       return chainRoute(x1, y1, to.x, to.y + to.h / 2);
     }
     // Into an audio module's bottom jack: out along the mod row, then one
-    // vertical into the plate's bottom edge.
-    return modRoute(x1, y1, to.x + to.w / 2, to.y + to.h);
+    // vertical into the plate's bottom edge. The jack is no longer at the
+    // plate's midpoint — it sits at the left end of the mod tab (§4) — and a
+    // cable that arrives at the old midpoint would terminate on the tab's
+    // silkscreen instead of in its socket.
+    return modRoute(x1, y1, to.x + modTab(to.w).jx, to.y + to.h + MOD_TAB_DY);
   }
   // Audio cables land on the target's in jack.
   const x2 = to.x;
@@ -4733,8 +4927,22 @@ function buildRack(svg, rack, opts) {
     <radialGradient id="jackNut" cx="0.35" cy="0.3" r="0.85">
       <stop offset="0" stop-color="#4a505b"/><stop offset="1" stop-color="#1a1d22"/>
     </radialGradient>
-    <filter id="plateShadow" x="-30%" y="-30%" width="180%" height="190%">
-      <feDropShadow dx="1" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.55"/>
+    <linearGradient id="bevelTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <!-- One blur reads as a CSS card: a single soft shadow puts the plate at
+         a constant distance from a surface it never touches. An object
+         sitting on a surface has two shadows — a tight dark contact shadow
+         where it meets the panel, and a wide soft cast further out. Merged
+         rather than chained, so the cast is a shadow of the plate and not a
+         shadow of the contact shadow. -->
+    <filter id="plateShadow" x="-40%" y="-40%" width="200%" height="220%">
+      <feDropShadow in="SourceGraphic" dx="0" dy="1" stdDeviation="1"
+                    flood-color="#000" flood-opacity="0.8" result="contact"/>
+      <feDropShadow in="SourceGraphic" dx="0" dy="5" stdDeviation="7"
+                    flood-color="#000" flood-opacity="0.35" result="cast"/>
+      <feMerge><feMergeNode in="cast"/><feMergeNode in="contact"/></feMerge>
     </filter>
     <g id="screw">
       <circle r="3.1" fill="url(#jackNut)"/>
@@ -4815,6 +5023,18 @@ function buildRack(svg, rack, opts) {
   const mGroups = [];
   const mWires = [];
 
+  // Which green each cable takes, and how much signal it is carrying. Both
+  // are properties of the patch, not of the frame, so they are computed once
+  // per build and read by the loop below rather than per cable.
+  const inkStop = audioInkStops(rack);
+  const flow = wireLevels(rack);
+  // Which sockets have something in them, so the plug art (§1) goes only
+  // where a lead actually terminates. The term is total, so every audio
+  // socket is occupied; a mod tab is the one socket in the instrument that
+  // can honestly be empty, which is exactly why it needed a housing.
+  const cabled = new Set(rack.wires.filter((w) => w.kind !== "mod").map((w) => w.from));
+  const modIn = new Set(rack.wires.filter((w) => w.kind === "mod").map((w) => w.to));
+
   for (const w of rack.wires) {
     // Orthogonal routing for modulation, span-proportional cubics for audio —
     // all of it in `wirePathD` (above), because the same shape has to be
@@ -4833,6 +5053,19 @@ function buildRack(svg, rack, opts) {
     // cable rather than near it — "insert after wavefolder" has to point at
     // the run that is about to be cut, and there may be four of them.
     const wireEl = svgEl("path", { d, "data-from": w.from, "data-to": w.to }, `wire ${w.kind}`);
+    if (w.kind !== "mod") {
+      // The ramp, and the meter. Inline because both are per-cable facts
+      // about this patch — a class per stop would be five rules that say the
+      // same thing, and a level is a number, not a state.
+      wireEl.style.stroke = AUDIO_INK[inkStop.get(w.from) ?? 2];
+      const lv = Math.max(0, Math.min(1, flow.get(w.from) ?? 1));
+      // Floor at 0.2: a silent cable is still a cable, and drawing it away to
+      // nothing would say "unplugged", which is a different and much worse
+      // claim. It stops moving instead — that is the part you read as level.
+      wireEl.style.strokeOpacity = (0.2 + 0.62 * lv).toFixed(3);
+      if (lv < 0.06) wireEl.classList.add("still");
+      else wireEl.style.animationDuration = `${Math.round(560 / Math.max(0.1, lv))}ms`;
+    }
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
@@ -4863,7 +5096,7 @@ function buildRack(svg, rack, opts) {
   // `textLength` + `spacingAndGlyphs` squeezes tracking first and glyphs only
   // as far as it must, which is exactly how a real panel handles a long name.
   const fitLabels = () => {
-    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint")) {
+    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint, .mod-tab-name")) {
       const avail = Number(t.dataset.fit || 0);
       if (!avail) continue;
       let w = 0;
@@ -4939,21 +5172,63 @@ function buildRack(svg, rack, opts) {
     // these it renders as a rounded div and the rack reads as a wiring
     // diagram rather than an instrument you could put your hands on.
     if (!compact && !isEmpty) {
-      plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
-      plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
-      for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
-        const use = svgEl("use", { x: sx, y: sy }, "plate-screw");
+      // A raised bevel, not a drawn outline. Three elements, all of them
+      // agreeing with the 315° lamp: a 2px lit top edge over a 6px gradient
+      // falling away from it (the roll-off is what makes the edge read as
+      // *raised* rather than as a white line), a 2px shade along the bottom,
+      // and a 1px lit left edge — the one the lamp also catches.
+      plateG.appendChild(svgEl("rect", { x: 1, y: 1, width: p.w - 2, height: 6, fill: "url(#bevelTop)" }, "plate-roll"));
+      plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 2, rx: 1 }, "plate-lit"));
+      plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 2.5, width: p.w - 2, height: 2, rx: 1 }, "plate-shade"));
+      plateG.appendChild(svgEl("rect", { x: 0.5, y: 2, width: 1, height: p.h - 4 }, "plate-edge"));
+      // Four screws, each at its own angle. A rack of identical screwdriver
+      // slots is the single loudest tell that a panel was generated rather
+      // than built — nobody has ever bolted four screws in at the same
+      // rotation. Hashed off the module's own identity so the pattern is
+      // this plate's, stable across every rebuild, and different from its
+      // neighbour's even when they are the same kind of module.
+      [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]].forEach(([sx, sy], si) => {
+        const use = svgEl("use", { transform: `translate(${sx},${sy}) rotate(${screwAngle(mid, si)})` }, "plate-screw");
         use.setAttribute("href", "#screw");
         plateG.appendChild(use);
-      }
+      });
     }
-    const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
+    // The control well (§5): a recessed 56×20 pocket top-right holding the
+    // two verbs that live on every plate. Before this they were two glyphs
+    // floating on bare panel, which is why "the only two entry points to all
+    // structure editing" read as decoration — nothing said they were
+    // controls. The well says it at rest, and it is where bypass and solo go
+    // when they land. Narrow plates get a shorter pocket: 56 units on a
+    // 96-unit plate would leave the silkscreen nowhere to be.
+    const wellW = interactive ? (p.w >= 168 ? 56 : 44) : 0;
+    const wellX = p.w - wellW - 4;
+    const lockedIn = isModuleLockedIn(m);
+    if (interactive && !compact) {
+      plateG.appendChild(svgEl("rect", {
+        x: wellX, y: 5, width: wellW, height: 20, rx: 3,
+      }, `ctrl-well${lockedIn ? " locked" : ""}`));
+    }
+    // Title: 13px at 500 in `--silk-mute`. A silkscreened panel name is large
+    // and quiet — it is the one piece of text on the plate that never
+    // changes, so it has no business owning the contrast. The hairline under
+    // it turns the name into a masthead and gives the knob grid something to
+    // hang from. A 96-unit plate takes the same type one step down: with a
+    // control well beside it there is not room for 13px without condensing
+    // the glyphs, and a squeezed title is worse than a small one.
+    const narrow = p.w < 168;
+    const title = svgEl("text", { x: 14, y: 18 },
+      `mod-title${narrow ? " narrow" : ""}${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
     title.textContent = isEmpty ? "empty" : m.title;
     // A title is silkscreened onto the panel, so it belongs under the cables
     // — but it must not be *squeezed* by them: the fit pass measures against
     // the room left between the left edge and the control well.
-    title.dataset.fit = String(Math.max(38, p.w - 52));
+    title.dataset.fit = String(Math.max(30, (interactive ? wellX : p.w - 8) - 20));
     plateG.appendChild(title);
+    if (!compact && !isEmpty) {
+      plateG.appendChild(svgEl("rect", {
+        x: 14, y: 25, width: Math.max(20, p.w - 26), height: 1,
+      }, "plate-rule"));
+    }
     if (isEmpty) {
       // The plate says what it is *for*, because "empty" alone reads as a
       // fault rather than as an invitation.
@@ -4964,11 +5239,29 @@ function buildRack(svg, rack, opts) {
     }
 
     if (interactive) {
+      // "Plate hover" is not a CSS state anything can express here: the
+      // faceplate is in one layer and the controls on it are in another, so
+      // `g:hover` never fires for a pointer resting on bare panel and the
+      // well would only light when you were already on it. Two listeners on
+      // the plate mark both groups instead, which is what makes the well
+      // brighten as the hand approaches rather than as it arrives.
+      const hot = (on) => {
+        plateG.classList.toggle("plate-hot", on);
+        g.classList.toggle("plate-hot", on);
+      };
+      for (const el of [plateG, g]) {
+        el.addEventListener("pointerenter", () => hot(true));
+        el.addEventListener("pointerleave", () => hot(false));
+      }
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
       // The glyph lives in a group so a finger can be given more to aim at
-      // than the 10px ellipsis itself.
+      // than the 10px ellipsis itself. Both glyphs sit in the well now: the
+      // amp has no lock, so its ⋯ takes the whole pocket.
+      const hasLock = m.kind !== "amp" && !isEmpty;
+      const menuX = wellX + (hasLock ? wellW * 0.3 : wellW / 2);
+      const lockX = wellX + wellW * 0.72;
       const menuG = svgEl("g", {}, "mod-menu-btn");
-      const menuBtn = svgEl("text", { x: p.w - 38, y: 17 });
+      const menuBtn = svgEl("text", { x: menuX, y: 19 });
       menuBtn.textContent = "⋯";
       const mt = svgEl("title", {});
       mt.textContent = m.kind === "amp"
@@ -4976,17 +5269,17 @@ function buildRack(svg, rack, opts) {
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
-      hitPad(menuG, p.w - 38, 13, 24, 26);
+      hitPad(menuG, menuX, 15, 24, 26);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
       });
       g.appendChild(menuG);
 
-      if (m.kind !== "amp" && !isEmpty) {
-        const lockOn = isModuleLockedIn(m);
+      if (hasLock) {
+        const lockOn = lockedIn;
         const lockG = svgEl("g", {}, `mod-lock${lockOn ? " on" : ""}`);
-        const mlock = svgEl("text", { x: p.w - 16, y: 17 });
+        const mlock = svgEl("text", { x: lockX, y: 19 });
         mlock.textContent = lockOn ? "▣" : "▢";
         const mtitle = svgEl("title", {});
         mtitle.textContent = lockOn
@@ -4994,7 +5287,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (evolution keeps it exactly as-is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        hitPad(lockG, p.w - 14, 13, 24, 26);
+        hitPad(lockG, lockX, 15, 24, 26);
         lockG.addEventListener("click", () => {
           const on = isModuleLockedIn(m);
           for (const a of moduleLockAddrs(m)) setLock(a, !on);
@@ -5005,7 +5298,7 @@ function buildRack(svg, rack, opts) {
     }
 
     // ---- labeled jacks (green = audio, amber = modulation) ----
-    const addJack = (gx, gy, cls, label, labelSide, data) => {
+    const addJack = (gx, gy, cls, label, labelSide, data, plugRot) => {
       const jg = svgEl("g", { transform: `translate(${gx},${gy})` }, `jack${cls ? " " + cls : ""}`);
       if (interactive && data) {
         for (const [dk, dv] of Object.entries(data)) jg.setAttribute(dk, dv);
@@ -5015,14 +5308,22 @@ function buildRack(svg, rack, opts) {
       jg.appendChild(svgEl("circle", { r: 6.5 }, "j-nut"));
       jg.appendChild(svgEl("circle", { r: 3.4 }, "j-bore"));
       jg.appendChild(svgEl("path", { d: "M -4.4 -3.2 A 5.4 5.4 0 0 1 1.2 -5.3" }, "j-spec"));
+      // The lead in the socket, if there is one. Under the hit circle so it
+      // can never take a press away from the jack, and above the bore
+      // because a plug that is in a socket covers it. Not in compact: at
+      // 0.4× it is two more rects per jack and no information at all.
+      if (plugRot != null && !compact) jg.appendChild(plugArt(plugRot));
       jg.appendChild(svgEl("circle", { r: 5.5 }));
       const attrs =
         labelSide === "right" ? { x: 9, y: 3 } :
         labelSide === "left" ? { x: -9, y: 3, "text-anchor": "end" } :
+        labelSide === "none" ? null :
         { x: 0, y: 15, "text-anchor": "middle" };
-      const t = svgEl("text", attrs);
-      t.textContent = label;
-      jg.appendChild(t);
+      if (attrs) {
+        const t = svgEl("text", attrs);
+        t.textContent = label;
+        jg.appendChild(t);
+      }
       g.appendChild(jg);
       // A socket is a place you can put something, so it is a control — the
       // rack had no keyboard path to one, which made wiring the only gesture
@@ -5050,10 +5351,19 @@ function buildRack(svg, rack, opts) {
       // wiring, and moving one out of the middle is a different edit from
       // moving the chain.
       const top = m.key.endsWith("/m");
-      const oj = addJack(p.w, p.h / 2, "modjack", "out", "left", top ? { "data-outkey": m.key } : null);
+      const oj = addJack(p.w, p.h / 2, "modjack", "out", "left", top ? { "data-outkey": m.key } : null, 0);
       if (interactive && top) attachOutJack(oj, m.key, "mod");
+      // A link *arriving* from further down a CV chain lands on this plate's
+      // left edge, where there is no socket to draw — the chain's internal
+      // wiring is not a patch point. It still gets a plug, because the cable
+      // has to end in something; it just gets no ring and no label.
+      if (!compact && modIn.has(m.key)) {
+        const inPlug = svgEl("g", { transform: `translate(0,${p.h / 2})` }, "jack modjack bare");
+        inPlug.appendChild(plugArt(180));
+        g.appendChild(inPlug);
+      }
     } else if (m.kind === "amp") {
-      const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" });
+      const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" }, 180);
       if (interactive) {
         claimGesture(j);
         j.addEventListener("pointerdown", (ev) => {
@@ -5073,7 +5383,7 @@ function buildRack(svg, rack, opts) {
           ? [[p.h * 0.38, names[0], `${m.key}/0`], [p.h * 0.68, names[1], `${m.key}/1`]]
           : [[p.h / 2, names[0], `${m.key}/0`]];
         for (const [jy, lbl, ck] of ins) {
-          const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck });
+          const j = addJack(0, jy, "", lbl, "right", { "data-childkey": ck }, cabled.has(ck) ? 180 : null);
           if (interactive) {
             claimGesture(j);
             j.addEventListener("pointerdown", (ev) => {
@@ -5091,19 +5401,39 @@ function buildRack(svg, rack, opts) {
       // …except on a hole, which has nothing to give: the cable leaving it
       // exists only because the term is total, and offering to drag it would
       // be offering to move an absence.
-      const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key });
+      const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key },
+        cabled.has(m.key) ? 0 : null);
       if (interactive && !isEmpty) attachOutJack(oj, m.key, "audio");
-      // The mod jack names the port it drives. On a four-knob module an
-      // unlabelled "mod" input is a mystery — and now that eight different
-      // modules carry one, "mod" would mean eight different things.
-      // A hole does not advertise a mod destination either — "→ pitch" on an
+      // The mod slot, in its permanent housing. The jack names the port it
+      // drives — on a four-knob module an unlabelled "mod" input is a
+      // mystery, and now that eight different modules carry one, "mod" would
+      // mean eight different things.
+      // A hole does not advertise a mod destination either — "pitch" on an
       // empty socket names a port on a module the player has not chosen yet.
       const modDest = isEmpty ? null : kindModTarget(m.kind);
       if (modDest) {
-        const j = addJack(p.w / 2, p.h, "modjack", `→ ${modDest}`, "below", { "data-modkey": m.key });
-        if (rack.wires.some((w) => w.kind === "mod" && w.to === m.key)) {
-          j.classList.add("pulse");
+        const filled = modIn.has(m.key);
+        const tab = modTab(p.w);
+        if (!compact) {
+          // Notched into the bottom edge, half in and half out, so it reads
+          // as part of the panel rather than as a badge stuck under it.
+          plateG.appendChild(svgEl("rect", {
+            x: tab.x, y: p.h + tab.jy - MOD_TAB_H / 2, width: tab.w, height: MOD_TAB_H, rx: 3,
+          }, `mod-tab${filled ? " filled" : ""}`));
+          const nm = svgEl("text", {
+            x: tab.x + tab.w - 8, y: p.h + tab.jy + 3.5, "text-anchor": "end",
+          }, `mod-tab-name${filled ? " filled" : ""}`);
+          nm.textContent = modDest;
+          nm.dataset.fit = String(Math.max(24, tab.w - 34));
+          plateG.appendChild(nm);
         }
+        // The label is carried but not drawn: the tab already prints the
+        // destination in silkscreen, and printing it twice would be the one
+        // thing the housing was built to stop. It still has to reach the
+        // accessible name.
+        const j = addJack(tab.jx, p.h + tab.jy, "modjack", `${modDest} mod`, "none", { "data-modkey": m.key },
+          filled ? 90 : null);
+        if (filled) j.classList.add("pulse");
         if (interactive) {
           claimGesture(j);
           j.addEventListener("pointerdown", (ev) => {
@@ -5124,6 +5454,14 @@ function buildRack(svg, rack, opts) {
       fkind && fkind.kind.t === "enum"
         ? (fkind.kind.options[Math.round(fkind.value)] || "").replace(/^svf /, "svf-")
         : null;
+    // Which knobs on this plate are *actually being moved by something else*
+    // right now. The mod cable's destination is a port, not always a knob
+    // (a vco's slot lands on a pitch offset with no knob of its own), so the
+    // rule is: the port if it has a knob, and always the mod-depth knob,
+    // which is the one whose value the incoming cable is scaled by.
+    const modPort = modIn.has(m.key) ? kindModTarget(m.kind) : null;
+    const isModulated = (k) =>
+      modPort != null && (k.label === modPort || k.label === "mod depth");
     // The knob detail is the whole of the difference between the two levels
     // of detail, so it is one conditional rather than a second renderer.
     if (!compact && !isEmpty) m.knobs.forEach((k, i) => {
@@ -5150,7 +5488,7 @@ function buildRack(svg, rack, opts) {
         if (k.value > 0.004) {
           kg.appendChild(
             svgEl("path", { d: arcPath(KNOB_R + 3, 0, k.value) },
-              `knob-arc${m.is_mod ? " modside" : ""}`)
+              `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`)
           );
         }
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
@@ -5271,6 +5609,13 @@ function buildRack(svg, rack, opts) {
       if (k.kind.t === "continuous") {
         const val = svgEl("text", { y: KNOB_R + 25 }, "knob-value");
         val.textContent = knobUnit(k.addr, k.value, m.kind, variant);
+        // Still inside its window: this readout changed a moment ago and the
+        // teardown must not be what ends the flash.
+        const until = knobFlash.get(k.addr);
+        if (until != null && until > performance.now()) {
+          val.classList.add("flashing");
+          setTimeout(() => val.classList.remove("flashing"), until - performance.now());
+        }
         kg.appendChild(val);
       }
       g.appendChild(kg);
@@ -5883,15 +6228,54 @@ function tweenView(t, ms, ease) {
   viewTween = requestAnimationFrame(step);
 }
 
+/** The band the scope's bezel occupies, as padding the fit has to respect.
+ *  The scope is parented to the frame, so it cannot desync under a pan any
+ *  more — but a corner overlay over an auto-fitted patch will still sit on a
+ *  plate, and "the trace is over the module I am reading" is the complaint.
+ *  A fit that lands the patch beside the scope instead of under it is the
+ *  cheap ninety percent: the overlap can still be created by hand, with a
+ *  pan or a zoom, and that is a place the player put it. */
+function scopeReserve() {
+  const z = { l: 0, r: 0, t: 0, b: 0 };
+  const shell = $("scope-shell");
+  const frame = $("rack-frame");
+  if (!shell || !frame || shell.classList.contains("hidden")) return z;
+  const fr = frame.getBoundingClientRect();
+  const sr = shell.getBoundingClientRect();
+  if (!sr.width || !fr.width) return z;
+  // Push the patch out of the scope's way along whichever axis costs less —
+  // a corner-anchored box only ever has to be cleared one way.
+  const overW = sr.width + 14;
+  const overH = sr.height + 14;
+  // …but not at any price. On a short frame the bezel is a third of the
+  // height, and a fit that gives it a third of the height draws the patch too
+  // small to read. Past that the honest trade is the other way: let the scope
+  // sit over a corner of the rack, where the player can move either one.
+  if (Math.min(overW / fr.width, overH / fr.height) > 0.38) return z;
+  if (overW <= overH) {
+    if (sr.left - fr.left < fr.right - sr.right) z.l = overW; else z.r = overW;
+  } else {
+    if (sr.top - fr.top < fr.bottom - sr.bottom) z.t = overH; else z.b = overH;
+  }
+  return z;
+}
+
 function fitBox(box, animate, coMotion) {
   const { w, h } = frameSize();
   const pad = 20;
+  const ins = scopeReserve();
+  const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
+  const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
   const z = clamp(
-    Math.min((w - pad * 2) / Math.max(1, box.w), (h - pad * 2) / Math.max(1, box.h)),
+    Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h)),
     ZOOM_MIN,
     FIT_MAX,
   );
-  const t = { zoom: z, x: box.x + box.w / 2 - w / (2 * z), y: box.y + box.h / 2 - h / (2 * z) };
+  // Centre in what is left, not in the whole frame: the reserve is only a
+  // reserve if the content is actually placed beside it.
+  const cx = pad + ins.l + availW / 2;
+  const cy = pad + ins.t + availH / 2;
+  const t = { zoom: z, x: box.x + box.w / 2 - cx / z, y: box.y + box.h / 2 - cy / z };
   viewUserSet = false;
   if (animate) tweenView(t, coMotion ? MOTION_MS : 180, coMotion ? EASE_MOTION : null);
   else { Object.assign(view, t); applyView(); }
@@ -6296,6 +6680,10 @@ function stopEdgePan() {
 // anywhere in the app; this is the one place that needs one.
 let roSettled = false;
 new ResizeObserver(() => {
+  // The scope's canvas is sized in percentages of this same frame, so a
+  // resize re-backs it at a new pixel size and blanks whatever was on it.
+  // Repaint before the refit, which is about to read the bezel's new box.
+  if (scopeRaf == null) scopeApply();
   if (!roSettled) { roSettled = true; return; } // the observer's own first call
   if (!wb.rack) return;
   if (viewUserSet && !contentFullyVisible()) applyView();
@@ -7314,7 +7702,20 @@ function paintKnob(kg, knob) {
   const valText = kg.querySelector(".knob-value");
   const kind = kg.dataset.kind;
   const variant = kg.dataset.variant;
-  if (valText) valText.textContent = knobUnit(knob.addr, v, kind, variant);
+  if (valText) {
+    const next = knobUnit(knob.addr, v, kind, variant);
+    // Only on a *change*. A drag emits a move per pixel and the readout
+    // quantises to two significant figures, so most frames say the same
+    // thing — and a flash retriggered sixty times a second is a steady glow,
+    // which is exactly the always-on green this is meant to retire.
+    if (valText.textContent !== next) {
+      valText.textContent = next;
+      markKnobChanged(knob.addr);
+      valText.classList.add("flashing");
+      clearTimeout(valText._flash);
+      valText._flash = setTimeout(() => valText.classList.remove("flashing"), KNOB_FLASH_MS);
+    }
+  }
   kg.setAttribute("aria-valuenow", v.toFixed(3));
   kg.setAttribute("aria-valuetext", knobUnit(knob.addr, v, kind, variant));
 }
@@ -7329,6 +7730,9 @@ function attachKnobDrag(el, mod, knob) {
     const startY = ev.clientY;
     const startV = knob.value;
     const kg = el.parentNode;
+    // The arc's glow is no longer unconditional (§6): it means "this one is
+    // moving", so a drag has to say so. Hover says it too, in CSS.
+    kg.classList.add("dragging");
     const onMove = (mv) => {
       // Shift is a fine-adjust gear, as on every hardware-modelled plugin.
       const travel = mv.shiftKey ? 700 : 140;
@@ -7342,6 +7746,7 @@ function attachKnobDrag(el, mod, knob) {
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
       knobDragging = false;
+      kg.classList.remove("dragging");
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
@@ -11111,24 +11516,149 @@ function onWireUp(ev) {
 // while something is sounding, so idling costs nothing.
 let scopeRaf = null;
 let scopeBuf = null;
+let scopeBins = null;
 let scopeQuiet = 0;
+let scopeLast = 0;
+
+// Everything about the scope that is a *choice*, persisted. Six of these were
+// constants buried in the draw loop — the fft size, the trigger, the colour,
+// the glow, how long it waits before parking, and which side of the master
+// gain it listens to. A scope you cannot aim is a decoration; one you have to
+// re-aim after every reload is worse, so the whole thing goes to localStorage
+// through the same merge-on-load `nbState` uses: unknown keys in storage are
+// ignored, missing keys keep their default, and a shipped default can change
+// without stranding anyone's saved settings.
+const SCOPE_STORE = "ricercar-scope";
+const scopeState = {
+  mode: "scope",     // off | scope | spectrum
+  tap: "pre",        // pre | post  — the instrument, or what you hear
+  fft: 2048,
+  smooth: 0.6,       // the analyser's own window
+  colour: "green",   // green | amber | ice
+  glow: true,
+  trigger: true,
+  gain: 1,
+  floor: 0.55,       // how present the trace and its grid stay once it parks
+  park: 1.5,         // seconds of silence before it parks
+  corner: "br",
+  size: "M",
+  freeze: false,
+};
+const SCOPE_INK = {
+  green: { line: "#8ef0b1", glow: "rgba(142,240,177,0.75)" },
+  amber: { line: "#ffb454", glow: "rgba(255,180,84,0.75)" },
+  ice: { line: "#cfe6ff", glow: "rgba(207,230,255,0.7)" },
+};
+function scopeLoad() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SCOPE_STORE) || "{}");
+    for (const k of Object.keys(scopeState)) if (k in saved) scopeState[k] = saved[k];
+  } catch (e) { /* a corrupt blob is not worth a boot failure */ }
+}
+function scopeSave() {
+  try { localStorage.setItem(SCOPE_STORE, JSON.stringify(scopeState)); } catch (e) {}
+}
+/** The analyser the current tap points at, or null before audio exists. */
+function scopeAnalyser() {
+  if (!live) return null;
+  return scopeState.tap === "post" ? (live.analyserPost || live.analyser) : live.analyser;
+}
 
 function scopeShouldRun() {
-  return live && live.analyser && (heldNotes.size > 0 || scopeQuiet < 90);
+  return scopeState.mode !== "off" && scopeAnalyser() != null &&
+    (heldNotes.size > 0 || scopeQuiet < scopeState.park * 60);
+}
+
+/** Push the persisted settings at the DOM and the analyser. Called on boot,
+ *  on every control in the panel, and whenever live audio (re)appears. */
+function scopeApply() {
+  const shell = $("scope-shell");
+  if (!shell) return;
+  shell.classList.toggle("hidden", scopeState.mode === "off");
+  for (const c of ["tl", "tr", "bl", "br"]) shell.classList.toggle(`corner-${c}`, scopeState.corner === c);
+  for (const s of ["s", "m", "l"]) shell.classList.toggle(`size-${s}`, scopeState.size.toLowerCase() === s);
+  shell.style.setProperty("--scope-floor", String(scopeState.floor));
+  $("scope-cap").textContent =
+    (scopeState.tap === "post" ? "post-master" : "pre-master") +
+    (scopeState.mode === "spectrum" ? " · spectrum" : "") +
+    (scopeState.freeze ? " · frozen" : "");
+  const an = scopeAnalyser();
+  if (an) {
+    // fftSize only accepts powers of two in range; a stored value from a
+    // future build that dropped one would otherwise throw on assignment.
+    try { an.fftSize = scopeState.fft; } catch (e) {}
+    an.smoothingTimeConstant = scopeState.smooth;
+  }
+  scopeBuf = null;
+  scopeBins = null;
+  if (scopeState.mode === "off") {
+    if (scopeRaf != null) cancelAnimationFrame(scopeRaf);
+    scopeRaf = null;
+    shell.classList.remove("live");
+  } else {
+    // Paint the graticule now, whether or not anything is sounding. A parked
+    // scope with an empty screen is a hole in the panel; one with its grid up
+    // is an instrument waiting for a signal, which is what it is.
+    const canvas = $("live-scope");
+    if (canvas && canvas.clientWidth) {
+      const ctx = scopeCtx(canvas);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      scopeGraticule(ctx, canvas.width, canvas.height, window.devicePixelRatio || 1);
+    }
+    if (live) startScope();
+  }
+}
+
+// The graticule. 8×4 divisions at 6% phosphor: enough to read amplitude and
+// period off the trace, faint enough that it never competes with it. Drawn in
+// the canvas rather than in CSS so it scales with the device pixel ratio the
+// trace is drawn at, and so a frozen trace keeps its grid.
+function scopeGraticule(ctx, w, h, dpr) {
+  ctx.strokeStyle = "rgba(142,240,177,0.06)";
+  ctx.lineWidth = Math.max(1, dpr * 0.5);
+  ctx.beginPath();
+  for (let i = 1; i < 8; i++) {
+    const x = Math.round((w * i) / 8) + 0.5;
+    ctx.moveTo(x, 0); ctx.lineTo(x, h);
+  }
+  for (let i = 1; i < 4; i++) {
+    const y = Math.round((h * i) / 4) + 0.5;
+    ctx.moveTo(0, y); ctx.lineTo(w, y);
+  }
+  ctx.stroke();
 }
 
 function startScope() {
-  if (scopeRaf != null || !live || !live.analyser) return;
+  if (scopeRaf != null || scopeState.mode === "off" || !scopeAnalyser()) return;
   scopeQuiet = 0;
-  const draw = () => {
+  const draw = (now) => {
     const canvas = $("live-scope");
-    const on = currentView === "play" && wb.rack;
+    const shell = $("scope-shell");
+    const on = currentView === "play" && wb.rack && scopeState.mode !== "off";
     if (!on) {
       scopeRaf = null;
-      canvas.style.opacity = "0";
+      shell.classList.remove("live");
       return;
     }
-    const an = live.analyser;
+    // Reduced motion does not mean "no instrument" — a scope that never
+    // updates is a broken scope — it means "do not animate at 60 Hz". Ten
+    // frames a second still reads as a live trace and stops being motion you
+    // have to look away from.
+    const budget = prefersStill() ? 100 : 0;
+    if (budget && now - scopeLast < budget) { scopeRaf = requestAnimationFrame(draw); return; }
+    scopeLast = now;
+
+    const an = scopeAnalyser();
+    if (!an) { scopeRaf = null; return; }
+    const ctx = scopeCtx(canvas);
+    const { width: w, height: h } = canvas;
+    const dpr = window.devicePixelRatio || 1;
+    // Freeze holds the last frame drawn, grid and all: nothing is cleared and
+    // nothing is fetched, so the loop costs one branch while it is on.
+    if (scopeState.freeze) {
+      scopeRaf = requestAnimationFrame(draw);
+      return;
+    }
     if (!scopeBuf || scopeBuf.length !== an.fftSize) scopeBuf = new Float32Array(an.fftSize);
     an.getFloatTimeDomainData(scopeBuf);
     let peak = 0;
@@ -11139,37 +11669,120 @@ function startScope() {
     if (heldNotes.size > 0 || peak > 1e-4) scopeQuiet = 0;
     else scopeQuiet += 1;
 
-    const ctx = scopeCtx(canvas);
-    const { width: w, height: h } = canvas;
     ctx.clearRect(0, 0, w, h);
-    canvas.style.opacity = peak > 1e-4 ? "1" : "0";
-    if (peak > 1e-4) {
-      const dpr = window.devicePixelRatio || 1;
-      const mid = h / 2;
-      // Trigger on the first rising zero crossing so the trace stands still
-      // instead of skating sideways.
-      let start = 0;
-      for (let i = 1; i < scopeBuf.length / 2; i++) {
-        if (scopeBuf[i - 1] <= 0 && scopeBuf[i] > 0) { start = i; break; }
-      }
-      const n = Math.floor(scopeBuf.length / 2);
-      ctx.strokeStyle = INK.green;
+    scopeGraticule(ctx, w, h, dpr);
+    const lit = peak > 1e-4;
+    shell.classList.toggle("live", lit);
+    if (lit) {
+      const ink = SCOPE_INK[scopeState.colour] || SCOPE_INK.green;
+      ctx.strokeStyle = ink.line;
+      ctx.fillStyle = ink.line;
       ctx.lineWidth = 1.5 * dpr;
-      ctx.shadowColor = "rgba(142,240,177,0.75)";
-      ctx.shadowBlur = 8 * dpr;
-      ctx.beginPath();
-      for (let x = 0; x < w; x++) {
-        const s = scopeBuf[start + Math.floor((x / w) * n)] || 0;
-        const y = mid - s * mid * 0.86;
-        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      if (scopeState.glow) {
+        ctx.shadowColor = ink.glow;
+        ctx.shadowBlur = 8 * dpr;
       }
-      ctx.stroke();
+      if (scopeState.mode === "spectrum") {
+        // One `getByteFrequencyData` away the whole time. A spectrum answers
+        // "what did that filter actually take out" in a way a waveform never
+        // does, and this instrument is mostly filters.
+        if (!scopeBins || scopeBins.length !== an.frequencyBinCount) {
+          scopeBins = new Uint8Array(an.frequencyBinCount);
+        }
+        an.getByteFrequencyData(scopeBins);
+        // Log-spaced columns: linear bins give three quarters of the width to
+        // the top two octaves, where a synth patch has almost nothing.
+        const cols = Math.max(24, Math.min(96, Math.floor(w / (4 * dpr))));
+        const bw = w / cols;
+        const n = scopeBins.length;
+        for (let c = 0; c < cols; c++) {
+          const lo = Math.floor(Math.pow(n, c / cols));
+          const hi = Math.max(lo + 1, Math.floor(Math.pow(n, (c + 1) / cols)));
+          let m = 0;
+          for (let i = lo; i < hi && i < n; i++) if (scopeBins[i] > m) m = scopeBins[i];
+          const bh = Math.min(h, (m / 255) * h * scopeState.gain);
+          ctx.fillRect(c * bw + 0.5, h - bh, Math.max(1, bw - 1.5 * dpr), bh);
+        }
+      } else {
+        const mid = h / 2;
+        // Trigger on the first rising zero crossing so the trace stands still
+        // instead of skating sideways. Off, it free-runs — which is what you
+        // want for noise and for anything percussive.
+        let start = 0;
+        if (scopeState.trigger) {
+          for (let i = 1; i < scopeBuf.length / 2; i++) {
+            if (scopeBuf[i - 1] <= 0 && scopeBuf[i] > 0) { start = i; break; }
+          }
+        }
+        const n = Math.floor(scopeBuf.length / 2);
+        ctx.beginPath();
+        for (let x = 0; x < w; x++) {
+          const s = (scopeBuf[start + Math.floor((x / w) * n)] || 0) * scopeState.gain;
+          const y = mid - Math.max(-1, Math.min(1, s)) * mid * 0.86;
+          x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
       ctx.shadowBlur = 0;
     }
     if (scopeShouldRun()) scopeRaf = requestAnimationFrame(draw);
-    else { scopeRaf = null; canvas.style.opacity = "0"; }
+    else { scopeRaf = null; shell.classList.remove("live"); }
   };
   scopeRaf = requestAnimationFrame(draw);
+}
+
+// ---------- the scope's settings panel ----------
+// Hung off the header's ⋯ rather than given its own gear on the rack: it is a
+// preference, and preferences live where the app's other preferences live.
+function scopePanelInit() {
+  const panel = $("scope-panel");
+  if (!panel) return;
+  const bind = (id, get, set) => {
+    const el = $(id);
+    if (!el) return;
+    get(el);
+    el.addEventListener("input", () => { set(el); scopeSave(); scopeApply(); });
+  };
+  bind("sp-mode", (e) => { e.value = scopeState.mode; }, (e) => { scopeState.mode = e.value; });
+  bind("sp-tap", (e) => { e.value = scopeState.tap; }, (e) => { scopeState.tap = e.value; });
+  bind("sp-fft", (e) => { e.value = String(scopeState.fft); }, (e) => { scopeState.fft = Number(e.value); });
+  bind("sp-smooth", (e) => { e.value = String(scopeState.smooth); }, (e) => { scopeState.smooth = Number(e.value); });
+  bind("sp-colour", (e) => { e.value = scopeState.colour; }, (e) => { scopeState.colour = e.value; });
+  bind("sp-corner", (e) => { e.value = scopeState.corner; }, (e) => { scopeState.corner = e.value; });
+  bind("sp-size", (e) => { e.value = scopeState.size; }, (e) => { scopeState.size = e.value; });
+  bind("sp-park", (e) => { e.value = String(scopeState.park); }, (e) => { scopeState.park = Number(e.value); });
+  bind("sp-gain",
+    (e) => { e.value = String(scopeState.gain); $("sp-gain-v").textContent = `${scopeState.gain.toFixed(2)}×`; },
+    (e) => { scopeState.gain = Number(e.value); $("sp-gain-v").textContent = `${scopeState.gain.toFixed(2)}×`; });
+  bind("sp-floor",
+    (e) => { e.value = String(scopeState.floor); $("sp-floor-v").textContent = scopeState.floor.toFixed(2); },
+    (e) => { scopeState.floor = Number(e.value); $("sp-floor-v").textContent = scopeState.floor.toFixed(2); });
+  bind("sp-trigger", (e) => { e.checked = !!scopeState.trigger; }, (e) => { scopeState.trigger = e.checked; });
+  bind("sp-glow", (e) => { e.checked = !!scopeState.glow; }, (e) => { scopeState.glow = e.checked; });
+  bind("sp-freeze", (e) => { e.checked = !!scopeState.freeze; }, (e) => { scopeState.freeze = e.checked; });
+  const close = () => {
+    panel.classList.add("hidden");
+    $("scope-btn")?.setAttribute("aria-expanded", "false");
+  };
+  $("scope-close").onclick = close;
+  $("scope-btn").onclick = (ev) => {
+    ev.stopPropagation();
+    $("ovf-menu").classList.add("hidden");
+    $("ovf-btn").setAttribute("aria-expanded", "false");
+    const shut = panel.classList.toggle("hidden");
+    $("scope-btn").setAttribute("aria-expanded", String(!shut));
+    if (!shut) $("sp-mode").focus();
+  };
+  // The same dismissals the ⋯ menu itself honours, so the panel never
+  // outlives the gesture that opened it.
+  document.addEventListener("pointerdown", (ev) => {
+    if (panel.classList.contains("hidden")) return;
+    if (panel.contains(ev.target) || $("scope-btn").contains(ev.target)) return;
+    close();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !panel.classList.contains("hidden")) { close(); $("scope-btn").focus(); }
+  });
 }
 
 // Audio cables only look alive while audio is actually flowing — before this,
@@ -12502,6 +13115,11 @@ async function spawnFarm() {
 // ---------- boot ----------
 buildPiano();
 buildNodeBank();
+// Before `bootLiveAudio`, so the bezel is already in the right corner at the
+// right size on the first paint rather than jumping there when audio arrives.
+scopeLoad();
+scopePanelInit();
+scopeApply();
 renderNextStep(); // never leave the "what now?" control blank on first paint
 renderTray();
 bootLiveAudio();

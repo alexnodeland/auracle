@@ -95,7 +95,8 @@
      words. The 10px floor stands for everything else. */
   --t-rack-micro: 9px;
   --t-rack-label: 10px;
-  --t-rack-title: 11px;
+  --t-rack-value: 11px;
+  --t-rack-title: 13px;
 
   /* spacing scale */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
@@ -579,7 +580,51 @@ button, input, select, textarea { font: inherit; color: inherit; }
   gap: 14px;
   flex-wrap: wrap;
 }
-.rack-tools { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Four ranked groups with a 20px gutter between them (§10), not one run of
+   equal pills. The gutter is what does the ranking work — inside a group the
+   buttons touch, so they read as one control with several positions. */
+.rack-tools { margin-left: auto; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.seg { display: flex; align-items: center; }
+.seg > * { display: flex; }
+/* A segmented control: shared border, square inner corners, no gaps. */
+.seg .seg-item {
+  border-radius: 0;
+  margin-left: -1px;
+  white-space: nowrap;
+}
+.seg > :first-child .seg-item, .seg > .seg-item:first-child {
+  border-top-left-radius: 3px; border-bottom-left-radius: 3px; margin-left: 0;
+}
+.seg > :last-child .seg-item, .seg > .seg-item:last-child {
+  border-top-right-radius: 3px; border-bottom-right-radius: 3px;
+}
+/* The teach group's checkbox is a label, not a button: give it the same
+   height and the same well so the pair reads as one control. */
+.seg-teach .toggle.seg-item {
+  border: 1px solid var(--hairline);
+  background: var(--bezel);
+  padding: 4px var(--s2);
+  height: 24px;
+}
+.seg .seg-item:hover:not(:disabled) { position: relative; z-index: 1; }
+/* Locks are a preparation, not an act: 90% and quiet, so they sit below the
+   teaching pair and far below EVOLVE without needing to be hidden. */
+.seg-locks .seg-item {
+  font-size: calc(var(--t-micro) * 0.9);
+  padding: 5px 8px;
+  color: var(--silk-mute);
+}
+.seg-locks .seg-item:hover:not(:disabled) { color: var(--silk); }
+/* The only filled amber button in the view. Everything else in this row is a
+   dark pill; this is the act the whole app exists to perform. */
+.evolve-slot { margin-left: auto; }
+#rack-evolve:not(:disabled) {
+  color: #1a1204;
+  background: linear-gradient(180deg, #ffc978, var(--phos-b) 62%, #d18f2c);
+  border-color: #6b4a12;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 3px 0 #3a2708, 0 6px 14px rgba(255,180,84,0.18);
+}
+#rack-evolve:not(:disabled):hover { filter: brightness(1.06); }
 .tool-sep { width: 1px; height: 18px; background: var(--hairline); margin: 0 2px; }
 .toggle {
   display: flex; align-items: center; gap: 6px;
@@ -702,29 +747,59 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mod-plate { fill: url(#plateGrad); stroke: #2c313a; stroke-width: 1; }
 .mod-plate.modside { stroke: #57431f; }
 .mod-plate.locked { stroke: var(--phos-b); stroke-dasharray: 4 3; }
+/* Hierarchy by ratio, not by a pixel. The three pieces of text on a plate had
+   one size between them and the brightest of them was the one that never
+   changed — so the plate read as a caption block rather than as a control
+   surface. Now: the name is large and quiet (silkscreen is *printed*, and
+   printed things are the calmest thing on any panel), the knob label is small
+   and quieter still, and the readout — the only text on the plate that ever
+   moves — owns the contrast. */
 .mod-title {
   font-family: var(--font-silk);
   font-size: var(--t-rack-title);
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-weight: 500;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  fill: var(--silk);
+  fill: var(--silk-mute);
 }
+/* A one-knob plate is 96 units wide and gives up ~44 of them to the control
+   well. 13px there means condensing the glyphs, and a squeezed name reads as
+   a rendering fault; one step down reads as a smaller panel, which it is. */
+.mod-title.narrow { font-size: 11px; letter-spacing: 0.12em; }
 .mod-title.modside { fill: var(--phos-b); }
+/* The masthead rule. One hairline is the difference between a name floating
+   on a plate and a name that the knob grid hangs from. */
+/* Not `--hairline`: that token is tuned against the app's near-black panels
+   and disappears entirely on the plate gradient, which is two stops lighter.
+   A rule you cannot see is a rule that is not there. */
+.plate-rule { fill: rgba(255,255,255,0.09); pointer-events: none; }
 .knob-label {
   font-family: var(--font-silk);
   font-size: var(--t-rack-label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  fill: var(--silk-dim);
+  fill: var(--silk-mute);
   text-anchor: middle;
 }
+/* Silkscreen is printed on the panel; it is not a control and must never take
+   a press. It never did anything with one either — the label and the readout
+   sit in the knob's group but outside its hit circle, so a press on "71%" was
+   simply swallowed — and now that the faceplate under them is draggable in
+   freeform, swallowed means the plate does not move. */
+.mod-title, .knob-label, .knob-value, .plate-hint { pointer-events: none; }
+/* Green is reserved for things that carry signal — cables, jacks, arcs, the
+   scope trace. A readout carries a *report*, so it is neutral at rest and
+   borrows the phosphor for the ~400ms after it changes, which is the only
+   moment it is about the sound. `--silk-dim` is brighter than the
+   `--silk-mute` above it, which is what makes it the brightest text here. */
 .knob-value {
   font-family: var(--font-mono);
-  font-size: var(--t-rack-micro);
-  fill: var(--phos-a-dim);
+  font-size: var(--t-rack-value);
+  fill: var(--silk-dim);
   text-anchor: middle;
+  transition: fill 380ms ease-out;
 }
+.knob-value.flashing { fill: var(--phos-a); transition: none; }
 .knob-body { fill: url(#knobGrad); stroke: #000; stroke-width: 1; cursor: ns-resize; }
 /* A knob's face is bigger than its body: the ticks, the travel track and the
    value arc all ride outside r, and all of them read as part of the control.
@@ -758,15 +833,82 @@ button, input, select, textarea { font: inherit; color: inherit; }
    The shadow is on the whole layer at the same 315° offset as .mod-plate's, so
    a cable casts onto the panel it lies on and the two agree about the lamp. */
 .wire { fill: none; stroke-linecap: round; pointer-events: none; }
+/* The stroke is set per cable in JS (the five-stop green ramp, and the level
+   at that point in the chain); this is the fallback for anything drawn
+   outside `buildRack` — the drag band, the duel minis' cutouts. */
 .wire.audio { stroke: rgba(142,240,177,0.72); stroke-width: 2.2; }
-.wire.audio-case { stroke: #0c0e12; stroke-width: 4.8; }
+/* The casing was an opaque near-black, which worked over a black void and
+   became a visible dark stripe the moment the ground plane arrived under it.
+   Translucent black sits on whatever it is over — panel, dots, pool — and
+   still separates two crossing cables, which is the whole job. */
+.wire.audio-case { stroke: rgba(0,0,0,0.5); stroke-width: 5.5; }
 .wire.mod {
   stroke: rgba(255,180,84,0.62); stroke-width: 1.8; stroke-dasharray: 6 4;
   filter: drop-shadow(0 0 3px rgba(255,180,84,0.35));
 }
-.wire.mod-case { stroke: #0c0e12; stroke-width: 4; }
+.wire.mod-case { stroke: rgba(0,0,0,0.5); stroke-width: 4.5; }
 .rack-wires { filter: drop-shadow(1px 3px 3px rgba(0,0,0,0.55)); }
 .port { fill: #0a0b0d; stroke: #3a3f48; stroke-width: 1; }
+
+/* ---- cable terminations ----
+   The plug in the socket. A barrel, a knurled collar, and the strain-relief
+   boot the lead emerges from — which is the point: a cable that starts at a
+   coordinate is a graph edge, and a cable that starts in a boot is a patch
+   lead. Everything here is inert; the jack's own hit circle is above it. */
+.plug, .plug * { pointer-events: none; }
+.plug-barrel { fill: url(#jackNut); stroke: rgba(0,0,0,0.7); stroke-width: 0.8; }
+.plug-collar { fill: rgba(0,0,0,0.35); }
+.plug-boot { fill: #14171c; stroke: rgba(0,0,0,0.6); stroke-width: 0.6; }
+/* A bare plug: a link arriving mid-CV-chain, where there is no patch point to
+   draw a socket for. */
+.jack.bare { cursor: default; }
+
+/* ---- the mod-slot housing ----
+   Same silhouette empty or filled, always: occupancy is carried by the
+   stroke, never by whether the element is there. That is what makes "this
+   module can be modulated, here" a fact you can read at rest on every plate
+   instead of one you learn by accident after cabling one. */
+.mod-tab {
+  fill: rgba(10,7,3,0.55);
+  stroke: var(--phos-b-deep);
+  stroke-width: 1;
+  stroke-dasharray: 3 2.5;
+  pointer-events: none;
+}
+.mod-tab.filled { fill: rgba(24,16,5,0.75); stroke-dasharray: none; }
+.mod-tab-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-rack-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  fill: var(--phos-b);
+  opacity: 0.45;
+  pointer-events: none;
+}
+/* Occupied, not shouting. The destination name is silkscreen either way —
+   what changed is the stroke around it and the cable in it — and at full
+   amber it out-ranked the knob readouts, which are the one thing on the plate
+   that is allowed to be the brightest. */
+.mod-tab-name.filled { opacity: 0.8; }
+
+/* ---- the control well ----
+   A recessed pocket, so the two structure verbs read as controls that live
+   somewhere rather than as glyphs that happen to be printed there. It lifts
+   as the hand approaches the plate — `.plate-hot` is set on both the plate
+   group and the control group in JS, because they are in different layers and
+   no CSS selector spans them. */
+.ctrl-well {
+  fill: rgba(0,0,0,0.25);
+  stroke: var(--hairline);
+  stroke-width: 1;
+  pointer-events: none;
+  transition: fill 140ms ease, stroke 140ms ease;
+}
+.plate-hot .ctrl-well { fill: rgba(255,255,255,0.04); stroke: var(--silk-mute); }
+/* "What have I pinned?" is asked before every ⚡, so a locked plate answers it
+   without being hovered, poked or focused. */
+.ctrl-well.locked { fill: rgba(255,180,84,0.16); stroke: var(--phos-b); }
+.plate-hot .mod-menu-btn, .plate-hot .mod-lock { fill: var(--silk); }
 
 /* Plates and cables on their way out (see the motion system in main.js). They
    are clones of what was on screen a frame ago, stripped of every attribute
@@ -2710,20 +2852,104 @@ select:focus-visible,
    moves. Parented inside the viewport it was percentage-positioned against
    the scroll content: it rode over modules and slid out from under itself on
    every pan. */
-.live-scope {
+/* The bezel. A trace drawn straight onto the panel is a decal; a trace behind
+   glass in a housing is an instrument. Inset highlight top-left agrees with
+   the 315° lamp everything else on the rack is lit by, and the inner shadow
+   is the glass sitting below the bezel's lip. */
+.scope-shell {
   position: absolute;
-  right: 1px; bottom: 1px;
-  width: 42%;
-  height: 34%;
   z-index: 4;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 320ms ease;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  background: var(--bezel);
+  box-shadow: var(--lift), inset 0 0 12px rgba(0,0,0,0.9), 0 4px 14px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+.scope-shell.hidden { display: none; }
+/* The bezel does not fade — it is hardware bolted to the frame, and hardware
+   that dissolves when the patch goes quiet is not hardware. What fades is the
+   *trace*, down to the floor the player set. */
+.scope-shell .live-scope { opacity: var(--scope-floor, 0.35); transition: opacity 320ms ease; }
+.scope-shell.live .live-scope { opacity: 1; }
+/* Four corners, three sizes. The scope is in the rack *frame*, so none of
+   this moves when the camera does. */
+.scope-shell.corner-br { right: 8px; bottom: 8px; }
+.scope-shell.corner-bl { left: 8px; bottom: 8px; }
+.scope-shell.corner-tr { right: 8px; top: 8px; }
+.scope-shell.corner-tl { left: 8px; top: 8px; }
+.scope-shell.size-s { width: 24%; height: 22%; min-width: 150px; min-height: 70px; }
+.scope-shell.size-m { width: 36%; height: 30%; min-width: 200px; min-height: 90px; }
+.scope-shell.size-l { width: 50%; height: 42%; min-width: 260px; min-height: 120px; }
+.live-scope { display: block; width: 100%; height: 100%; }
+/* The caption names the tap. "What the instrument does" and "what I hear" are
+   two different signals and the app used to pick one silently. */
+.scope-cap {
+  position: absolute;
+  left: 7px; bottom: 4px;
+  font-size: var(--t-rack-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--silk-mute);
+  pointer-events: none;
+  /* A spectrum fills the bottom of the screen, which is exactly where the
+     caption is: the halo keeps it readable without a plate behind it. */
+  text-shadow: 0 0 4px var(--bezel), 0 0 8px var(--bezel);
 }
 
-/* ---------- rack material ---------- */
-.plate-lit { fill: rgba(255,255,255,0.07); pointer-events: none; }
-.plate-shade { fill: rgba(0,0,0,0.6); pointer-events: none; }
+/* ---------- the scope's settings panel ---------- */
+.scope-panel {
+  position: absolute;
+  right: 0; top: calc(100% + 6px);
+  z-index: 60;
+  width: 300px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: var(--s3);
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+  text-align: left;
+}
+.scope-panel.hidden { display: none; }
+.sp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s2); }
+.sp-title {
+  font-family: var(--font-silk); font-size: var(--t-micro);
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--silk-dim);
+}
+.sp-grid { display: flex; flex-direction: column; gap: 6px; }
+.sp-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: var(--t-micro); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--silk-dim); cursor: pointer;
+}
+.sp-row select, .sp-row input[type="range"] {
+  flex: 0 0 130px;
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  color: var(--silk); background: var(--bezel);
+  border: 1px solid var(--hairline); border-radius: 3px;
+  padding: 2px 4px;
+}
+.sp-row.sp-check { justify-content: flex-start; }
+.sp-row.sp-check input { flex: none; }
+.sp-val { font-family: var(--font-mono); font-style: normal; color: var(--phos-a-dim); margin-left: 6px; }
+.sp-note {
+  margin-top: var(--s2);
+  font-family: var(--font-voice); font-style: italic;
+  font-size: var(--t-micro); color: var(--silk-dim); line-height: 1.5;
+}
+
+/* ---------- rack material ----------
+   A bevel is a lit edge *and the roll-off behind it*. One 1px white line is a
+   border; a 2px highlight over a 6px gradient falling away from it is an edge
+   with thickness, and the eye reads the second as an object. Bottom shade and
+   left edge complete the 315° lamp the plate, knob, screw and nut all agree
+   on. */
+.plate-lit { fill: rgba(255,255,255,0.13); pointer-events: none; }
+.plate-roll { pointer-events: none; }
+.plate-shade { fill: rgba(0,0,0,0.75); pointer-events: none; }
+.plate-edge { fill: rgba(255,255,255,0.06); pointer-events: none; }
 .plate-screw { opacity: 0.85; pointer-events: none; }
 .mod-plate { transition: stroke 260ms cubic-bezier(0.2, 0, 0.6, 1); }
 /* Note-on lights the amp plate: picture tied to sound, at the module where
@@ -2734,15 +2960,30 @@ select:focus-visible,
 .knob-track { fill: none; stroke: var(--hairline); stroke-width: 2.5; stroke-linecap: round; }
 /* The value arc is the single change that turns a clock hand into a control
    you can read across the room. */
+/* The glow used to be unconditional, which meant ten knobs glowing at all
+   times: a blur region per knob for the compositor to paint every frame, and
+   — worse — a signal that meant nothing because it was always on. It now
+   means "this one is moving": under the hand, being dragged, or being driven
+   by a cable. */
 .knob-arc {
   fill: none;
   stroke: var(--phos-a);
   stroke-width: 2.5;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 3px rgba(142,240,177,0.55));
   pointer-events: none;
 }
-.knob-arc.modside { stroke: var(--phos-b); filter: drop-shadow(0 0 3px rgba(255,180,84,0.55)); }
+.knob-arc.modside { stroke: var(--phos-b); }
+g:hover > .knob-arc, .dragging > .knob-arc, .knob-arc.modulated {
+  filter: drop-shadow(0 0 3px rgba(142,240,177,0.55));
+}
+g:hover > .knob-arc.modside, .dragging > .knob-arc.modside, .knob-arc.modside.modulated {
+  filter: drop-shadow(0 0 3px rgba(255,180,84,0.55));
+}
+/* A knob a cable is actually driving pulses at rest — the one place on the
+   plate where "something else is turning this" has to be legible without
+   tracing the amber run back to its source. */
+.knob-arc.modulated { animation: arcbreathe 2.4s ease-in-out infinite; }
+@keyframes arcbreathe { 50% { opacity: 0.55; } }
 
 .j-nut { fill: url(#jackNut); pointer-events: none; }
 .j-bore { fill: #050607; pointer-events: none; }
@@ -2769,10 +3010,20 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
    to read as available without competing with the ones actually locked. */
 @media (pointer: coarse) { .lock-dot { opacity: 0.4; } }
 
-/* Audio cables only travel while audio does. */
+/* Audio cables only travel while audio does — and each one travels at the
+   speed of the level actually present at that point in the chain (the
+   per-cable duration is set in JS). Uniform perpetual motion is noise;
+   differential motion is a meter you can read without playing a note. */
 #rack-svg.flowing .wire.audio {
   stroke-dasharray: 1 15;
   animation: flow 760ms linear infinite;
+}
+/* Crossfade a mixer all the way over and the branch you turned down does not
+   slow down — it stops, and goes solid, which is what "nothing is going
+   through here" looks like on a real panel. */
+#rack-svg.flowing .wire.audio.still {
+  animation: none;
+  stroke-dasharray: none;
 }
 @keyframes flow { to { stroke-dashoffset: -16; } }
 
@@ -3185,9 +3436,11 @@ input[type="range"]::-moz-range-thumb {
 .knob-ticks line { stroke: #3a4049; stroke-width: 1; opacity: 0.55; }
 
 /* The value arc carried a full-strength glow on every knob, which made
-   parameter values brighter than the cables carrying the signal. */
-.knob-arc { filter: drop-shadow(0 0 2px rgba(142, 240, 177, 0.35)); }
-.knob-arc.modside { filter: drop-shadow(0 0 2px rgba(255, 180, 84, 0.35)); }
+   parameter values brighter than the cables carrying the signal. It was
+   halved here and is now off entirely at rest (see `.knob-arc` above): a glow
+   that is always on is not a signal, it is a texture, and it cost a blur
+   region per knob on every paint. */
+.knob-arc { filter: none; }
 
 /* A duel that is settling must not look live. */
 .duel-card.dealing { opacity: 0.55; }
@@ -3216,7 +3469,26 @@ input[type="range"]::-moz-range-thumb {
 
 /* ---------- stage header: the patch is the headline ----------
    The patch being played/edited was set smaller than "PICKS 0". */
-.subject-block { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Transport sits against the name of the thing it plays (§10). */
+.subject-block { display: flex; flex-direction: row; align-items: center; gap: 10px; min-width: 0; }
+.subject-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.xport {
+  width: 30px; height: 30px; flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--phos-a-deep);
+  background: radial-gradient(circle at 35% 30%, #1a2620, #0b0f0d 78%);
+  color: var(--phos-a);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 0 0 2px;
+  cursor: pointer;
+  box-shadow: var(--lift), 0 2px 0 #0a0b0d;
+  transition: border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+.xport:hover:not(:disabled) { border-color: var(--phos-a); box-shadow: var(--lift), 0 0 12px rgba(142,240,177,0.24); }
+.xport:disabled { color: var(--silk-mute); border-color: var(--hairline); cursor: default; box-shadow: none; }
+.xport.playing { color: #0b0f0d; background: var(--phos-a); border-color: var(--phos-a); }
+.xport:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .subject-name {
   font-size: var(--t-title);
   font-weight: 500;

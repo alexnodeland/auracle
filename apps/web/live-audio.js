@@ -228,11 +228,22 @@ export async function initLiveAudio(audioCtx, build, dest) {
   analyser.smoothingTimeConstant = 0.6;
   node.connect(analyser);
   node.connect(gain).connect(dest || audioCtx.destination);
+  // …and a second tap after the master gain. Which of the two the scope draws
+  // is a real choice — "what the instrument is doing" and "what is coming out
+  // of the speakers" differ by everything the volume control does — and it
+  // used to be made silently, in this file, for everyone. An analyser is a
+  // pass-through with nothing connected downstream, so this costs one FFT
+  // only while something is actually reading it.
+  const analyserPost = audioCtx.createAnalyser();
+  analyserPost.fftSize = 2048;
+  analyserPost.smoothingTimeConstant = 0.6;
+  gain.connect(analyserPost);
   node.port.postMessage({ type: "init", bytes }, [bytes]);
 
   return {
     node,
     analyser,
+    analyserPost,
     onMessage(fn) {
       node.port.onmessage = (e) => fn(e.data);
     },
