@@ -231,6 +231,50 @@ mod tests {
         }
     }
 
+    /// The two categorical sites that reach the running voices without a
+    /// recompile have a live handle on **every** module that advertises them.
+    ///
+    /// `oct` is live because it rides the pitch [`compile`]r's one `Offset`,
+    /// and every pitched source goes through `wire_pitch` to get there. A
+    /// future source that hand-wires its own pitch would still describe an
+    /// `oct` chip and would silently be back to a full patch swap per click —
+    /// which is invisible in a diff and audible as a dropout, so it is checked
+    /// here rather than left to be noticed.
+    #[test]
+    fn every_advertised_live_site_has_a_live_handle() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0x1_11E);
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..200 {
+            let tree = prior.sample_with_rng(&mut rng);
+            let rack = describe::describe(&tree);
+            let voice = compile(&tree, SR).expect("compiles");
+            for m in &rack.modules {
+                for knob in &m.knobs {
+                    let site = knob.addr.rsplit('#').next().unwrap_or("");
+                    if site != "table" && site != "oct" {
+                        continue;
+                    }
+                    seen.insert(site.to_string());
+                    assert!(
+                        voice.params.contains_key(&knob.addr),
+                        "{} advertises {site} with no live handle — clicking it \
+                         is a full patch swap",
+                        m.kind
+                    );
+                }
+            }
+        }
+        assert_eq!(
+            seen,
+            ["oct", "table"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<std::collections::BTreeSet<_>>(),
+            "the draw never produced both live sites, so this proved nothing"
+        );
+    }
+
     /// Every knob address in the rack description is a real trace site, every
     /// continuous/enum knob is editable through it, and the edit is exactly a
     /// one-site trace change (the panel cannot drift from the genome).

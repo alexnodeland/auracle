@@ -3594,9 +3594,29 @@ function openOnBench(id) {
   send({ type: "explain", id });
 }
 
+// The categorical sites that reach the running voices without a recompile.
+//
+// `isIndex` used to be a synonym for "not live", because it was: every enum
+// selected a quiver output port at compile time. Two of them never did.
+// `table` is a *crossfade position* on the wavetable's stack — the port's own
+// comment in compile.rs says so — and `oct` is a V/Oct offset that was already
+// being summed as CV into the pitch node every other modulation lands on.
+// Both were baked constants for no reason but the assumption in this line, and
+// both cost a fade-out, a per-quantum voice rebuild and a re-attack of every
+// held note to move a number that is one addition on a wire.
+//
+// The rest of the enums (`wave`, `fkind`, `dmode`, `rmode`) stay non-live and
+// must: they choose a port at compile time, so making them live means a
+// crossfading selector network, which changes the rendered signal for every
+// existing patch and invalidates the bank's featurisation and the taste
+// posterior. That needs a measured evolution revalidation, not this stage.
+const LIVE_INDEX_SITES = new Set(["table", "oct"]);
+
 function sendEdit(addr, value, isIndex) {
-  // Sound first: continuous knobs write straight into the running voices.
-  if (isIndex) nonLiveAddrs.add(addr);
+  // Sound first: continuous knobs — and the two live categorical sites —
+  // write straight into the running voices.
+  const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
+  if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
   else if (live) live.param(addr, value);
   // Genome second: the worker validates, re-renders the phrase, updates φ.
   if (editInFlight) {
@@ -4897,10 +4917,15 @@ function buildRack(svg, rack, opts) {
         const txt = svgEl("text", { y: 4 }, "enum-text");
         txt.textContent = enumDisplay(k);
         if (interactive) {
+          const sweepable = LIVE_INDEX_SITES.has(k.addr.split("#").pop());
           const tt = svgEl("title", {});
-          tt.textContent = `${k.label} — click to cycle`;
+          tt.textContent = sweepable
+            ? `${k.label} — click to cycle, drag up/down to sweep (live)`
+            : `${k.label} — click to cycle`;
           body.appendChild(tt);
           body.addEventListener("click", (ev) => {
+            // The click a sweep leaves behind on its way up is not a cycle.
+            if (Date.now() - enumSweptAt < 300) return;
             pushUndo();
             const n = k.kind.t === "octave" ? 5 : k.kind.options.length;
             const next = (Math.round(k.value) + (ev.shiftKey ? n - 1 : 1)) % n;
@@ -4908,6 +4933,13 @@ function buildRack(svg, rack, opts) {
             txt.textContent = enumDisplay(k);
             sendEdit(k.addr, next, true);
           });
+          // A live categorical site is worth dragging. `table` is a crossfade
+          // position and every step now ramps over the live path's ~25 ms
+          // smoother, so dragging it *morphs* the oscillator rather than
+          // switching it; `oct` slides. The other enums are deliberately left
+          // click-only — each of their steps is a full patch swap, and a drag
+          // across four of them would be four dropouts.
+          if (sweepable) attachEnumSweep(body, txt, k);
         }
         kg.appendChild(body);
         kg.appendChild(txt);
@@ -7009,6 +7041,71 @@ function attachKnobDrag(el, mod, knob) {
     el.addEventListener("pointerup", onUp);
     // A cancelled touch used to leave knobDragging latched true, which froze
     // every subsequent rack repaint.
+    el.addEventListener("pointercancel", onUp);
+  });
+}
+
+/** When a sweep last moved, so the click it leaves behind is not read as a
+ *  cycle of the chip it just finished dragging. */
+let enumSweptAt = 0;
+
+/** Drag an enum chip up/down to step through its options.
+ *
+ *  Only offered on the two sites that reach the voices without a recompile
+ *  (`LIVE_INDEX_SITES`), which is what makes a drag a musical gesture instead
+ *  of a burst of dropouts. One index per 26 px, so the whole eight-table stack
+ *  is about one plate's height of travel; `shift` quadruples it for picking a
+ *  single table out of a sweep.
+ *
+ *  A step that lands on the value already showing sends nothing: the pointer
+ *  produces a move event per pixel, and the engine does not need to be told
+ *  four hundred times that the table is still `saw`.
+ *
+ *  The click handler above stays: this suppresses the click only when the
+ *  drag actually moved, so a tap still cycles. */
+function attachEnumSweep(el, txt, knob) {
+  claimGesture(el);
+  el.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    el.setPointerCapture(ev.pointerId);
+    const n = knob.kind.t === "octave" ? 5 : knob.kind.options.length;
+    const startY = ev.clientY;
+    const startV = Math.round(knob.value);
+    let moved = false;
+    let last = startV;
+    const onMove = (mv) => {
+      const travel = mv.shiftKey ? 104 : 26;
+      const next = Math.min(n - 1, Math.max(0,
+        startV + Math.round((startY - mv.clientY) / travel)));
+      if (Math.abs(mv.clientY - startY) > 3) moved = true;
+      if (next === last) return;
+      // One undo step for the whole sweep, taken at the first real step so a
+      // drag that never leaves its starting value costs nothing.
+      if (last === startV) {
+        pushUndo();
+        knobDragging = true;
+      }
+      last = next;
+      knob.value = next;
+      txt.textContent = enumDisplay(knob);
+      sendEdit(knob.addr, next, true);
+    };
+    const onUp = () => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      // The browser fires `click` after `pointerup` on the same element, and
+      // the cycle handler would add a ninth table to an eight-table sweep. A
+      // timestamp rather than a one-shot capture listener, for the same reason
+      // `menuOpenedAt` is one: a pointerdown that never produces a click must
+      // not leave a suppressor behind to eat the *next* one.
+      if (moved) enumSweptAt = Date.now();
+      if (!knobDragging) return;
+      knobDragging = false;
+      renderRack();
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
     el.addEventListener("pointercancel", onUp);
   });
 }
