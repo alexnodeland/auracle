@@ -131,9 +131,13 @@
             </label>
             <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn" id="rack-commit" disabled>commit</button></span>
             <span class="tool-sep"></span>
-            <!-- Arrangement, not zoom: which shape the rack is drawn in. It
-                 moves next to the level-of-detail switch once that exists. -->
+            <!-- Three camera controls in one group: which shape the rack is
+                 drawn in, how much of each plate is drawn, and whether the
+                 map is up. Arrangement and detail are different questions and
+                 stay different buttons — Reaktor's mistake is folding them. -->
             <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn" id="rack-layout" aria-pressed="false">chain</button></span>
+            <span class="tt" title="Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."><button class="util-btn" id="rack-lod" aria-pressed="false">detail auto</button></span>
+            <span class="tt" title="Show the minimap (bottom-left of the rack)"><button class="util-btn" id="rack-map-btn" aria-pressed="false">map</button></span>
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-knobs" disabled>lock knobs</button></span>
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-structure" disabled>lock wiring</button></span>
             <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn" id="lock-clear" disabled>clear locks</button></span>
@@ -150,9 +154,21 @@
         </div>
         <div class="play-body">
           <div class="play-canvas">
-            <div class="rack-scroll" id="rack-scroll">
-              <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack — arrow keys to move between controls, up/down to adjust"></svg>
+            <!-- The frame and the viewport are two different things now. The
+                 frame holds everything that must NOT move when the camera
+                 moves — the scope, the minimap, the empty-state — and
+                 `.rack-scroll` inside it is the clipping viewport the rack
+                 pans and zooms behind. The scope in particular used to be
+                 absolutely positioned *inside* the scroller, which meant it
+                 scrolled with the patch and rode over modules. -->
+            <div class="rack-frame" id="rack-frame">
+              <div class="rack-scroll" id="rack-scroll">
+                <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack — arrow keys to move between controls, up/down to adjust"></svg>
+              </div>
               <canvas class="live-scope" id="live-scope" aria-hidden="true"></canvas>
+              <!-- Where you are in the patch, and the fastest way to be
+                   somewhere else. Bottom-left, out of the scope's corner. -->
+              <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap — click to navigate"></svg>
               <div class="rack-empty" id="rack-empty">Pick a patch from the bank — then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
             <!-- Held, not "tray". Placement goes direct from the node bank
@@ -413,6 +429,9 @@
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a vote</p>
+        <div class="help-h">the rack canvas</div>
+        <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
+        <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
         <div class="help-h">performance</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>

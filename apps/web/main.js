@@ -1692,6 +1692,15 @@ document.addEventListener("keydown", (e) => {
     if (!restoreInFlight) e.shiftKey ? doRedo() : doUndo();
     return;
   }
+  // Camera zoom, on the bindings every expert already has in their fingers.
+  // Checked here because the meta/ctrl bail-out below is what keeps browser
+  // chords out of the note handler, and these are browser chords we want.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && currentView === "play" &&
+      !e.target?.closest?.("input, select, textarea, [contenteditable]")) {
+    if (e.key === "0") { e.preventDefault(); zoomActual(); return; }
+    if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomStep(1 / 1.25); return; }
+    if (e.key === "=" || e.key === "+") { e.preventDefault(); zoomStep(1.25); return; }
+  }
   // A module in hand takes the arrow keys and Enter, so it is asked first.
   if (nbArmedKeys(e)) { e.preventDefault(); return; }
   if (e.key === "Escape") {
@@ -1732,6 +1741,16 @@ document.addEventListener("keydown", (e) => {
   // Optional-chained: a keydown whose target is the document (rather than an
   // element) has no `closest`, and an exception here kills the note handler.
   if (e.target?.closest?.("input:not([type=range]), select, textarea, [contenteditable]")) return;
+  // Fit-all and fit-selection. `Home` is checked against `defaultPrevented`
+  // because four list widgets bind it to "go to the first row" on themselves,
+  // and those handlers have already run by the time it bubbles here — the
+  // list you are inside of wins, and everywhere else it means the canvas.
+  // `.` is the second half of the conventional pair; its partner `F` is not
+  // available, being the note F on the computer keybed (see KEYMAP).
+  if (currentView === "play" && !e.defaultPrevented) {
+    if (e.key === "Home") { e.preventDefault(); fitAll(true); return; }
+    if (e.key === ".") { e.preventDefault(); fitSelection(true); return; }
+  }
   const noteKey = k in KEYMAP || k === "z" || k === "x";
   if (!noteKey && e.target?.closest?.("button, [role=tab], [data-addr], input[type=range]")) return;
   if (k in KEYMAP) {
@@ -1748,7 +1767,9 @@ document.addEventListener("keydown", (e) => {
   }
   if (k === "z") return octave(-1);
   if (k === "x") return octave(1);
-  if (k === " ") { e.preventDefault(); return toggleAudition(); }
+  // Over the rack, space arms the pan drag and the audition waits for the
+  // key to come back up; anywhere else it is the audition it always was.
+  if (k === " ") { e.preventDefault(); if (rackSpaceDown()) return; return toggleAudition(); }
   if (k === "[") return stepBank(-1);
   if (k === "]") return stepBank(1);
   // Global, like `[`/`]` and `1`-`5`, because the help lists it beside them.
@@ -1777,6 +1798,7 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => {
   const k = e.key.toLowerCase();
+  if (k === " " && rackSpaceUp()) return;
   const midi = downComputerKeys.get(k);
   if (midi !== undefined) {
     downComputerKeys.delete(k);
@@ -1785,6 +1807,10 @@ document.addEventListener("keyup", (e) => {
 });
 window.addEventListener("blur", () => {
   downComputerKeys.clear();
+  // A space held when the window went away never sends its keyup, and a
+  // sticky pan modifier eats the next click on a knob.
+  spacePan = false;
+  $("rack-scroll")?.classList.remove("grabbing");
   panic();
 });
 // A buffered vote must not die with the tab.
@@ -3518,14 +3544,25 @@ function renderRack() {
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
   renderSubject();
-  if (!hasRack) { svg.innerHTML = ""; nbSync(); return; }
+  if (!hasRack) {
+    svg.innerHTML = "";
+    rackBoxes = new Map();
+    rackContent = { w: frameSize().w, h: frameSize().h };
+    syncMapBtn();
+    nbSync();
+    return;
+  }
 
   buildRack(svg, wb.rack, {
     interactive: true,
     locks: wb.locks,
-    minW: $("rack-scroll").clientWidth - 4,
-    minH: $("rack-scroll").clientHeight - 4,
+    compact: effectiveLod() === "compact",
   });
+  // The camera is pointed after the build, not during it: a rebuild that
+  // changed the patch's bounding box asks for a fit, and one that did not
+  // (a knob release, a lock toggle, a bench reply) must leave the view
+  // exactly where the player put it.
+  aimCamera();
 
   // One roving tab stop for the whole rack, so Tab lands on a control instead
   // of skipping the patch editor entirely.
@@ -3583,10 +3620,9 @@ function buildRack(svg, rack, opts) {
   const {
     interactive = false,
     locks = new Set(),
-    minW = 0,
-    minH = 0,
     fit = false,
     mode = layoutMode,
+    compact = false,
   } = opts || {};
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
@@ -3610,7 +3646,15 @@ function buildRack(svg, rack, opts) {
     <g id="screw">
       <circle r="3.1" fill="url(#jackNut)"/>
       <path d="M -2 0.6 L 2 -0.6" stroke="#07080a" stroke-width="0.9" stroke-linecap="round"/>
-    </g>`;
+    </g>
+    <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1.2" cy="1.2" r="1.05" fill="rgba(255,255,255,0.025)"/>
+    </pattern>
+    <radialGradient id="patchPool" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.045"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.018"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>`;
   svg.appendChild(defs);
 
   // Arrangement is decided by `layout` and consumed here. The renderer never
@@ -3619,32 +3663,20 @@ function buildRack(svg, rack, opts) {
   const L = layout(rack, mode);
   const natW = L.natW + 30;
   const natH = L.natH + 24;
-  const svgW = Math.max(minW, natW);
-  const svgH = Math.max(minH, natH);
-  // Fill the frame. The rack used to stretch its SVG to the container while
-  // laying content out at a fixed pitch from x=15, so a two-module patch sat
-  // in the top-left corner of a 1440×690 canvas — 5% ink, and the hero of the
-  // product was the emptiest thing on screen. Zooming the viewBox scales the
-  // whole panel, so knobs and 8px labels grow with it. Capped at 2.2× so a
-  // nine-module chain still lays out at 1×.
-  const zoom = fit
-    ? 1
-    : Math.min(2.2, Math.max(1, Math.min(svgW / natW, svgH / natH)));
-  const viewW = svgW / zoom;
-  const viewH = svgH / zoom;
-  if (fit) {
-    svg.removeAttribute("width");
-    svg.removeAttribute("height");
-    svg.setAttribute("viewBox", `0 0 ${natW} ${natH}`);
-  } else {
-    svg.setAttribute("width", svgW);
-    svg.setAttribute("height", svgH);
-    svg.setAttribute("viewBox", `0 0 ${viewW} ${viewH}`);
-  }
-  const layoutH = fit ? natH : viewH;
-  // ...and centre horizontally, which it never did (vertical always was).
-  const xOff = fit ? 15 : Math.max(15, (viewW - natW) / 2 + 15);
-  const yOff = (layoutH - L.natH) / 2;
+  // Content is laid out at its natural size at a fixed origin, always. It used
+  // to be laid out into whatever box the frame happened to be, at a
+  // magnification derived on the spot and baked into the viewBox — which is
+  // why the rack could only ever zoom *in*: `Math.max(1, …)` floored the fit
+  // factor at unity, so past about six columns the patch, and the amp with
+  // it, simply ran off the right-hand edge. Where you are looking is now a
+  // camera (`view`, below) and not a property of the last render, so the two
+  // callers can each get what they want: the duel minis take the natural box
+  // as their viewBox, and the workbench points the camera at it.
+  const xOff = 15;
+  const yOff = 12;
+  svg.removeAttribute("width");
+  svg.removeAttribute("height");
+  if (fit) svg.setAttribute("viewBox", `0 0 ${natW} ${natH}`);
   const pos = new Map();
   for (const [k, b] of L.pos) {
     pos.set(k, { x: b.x + xOff, y: b.y + yOff, w: b.w, h: b.h, perRow: b.perRow });
@@ -3663,6 +3695,24 @@ function buildRack(svg, rack, opts) {
   const plateLayer = svgEl("g", {}, "rack-plates");
   const wireLayer = svgEl("g", {}, "rack-wires");
   const ctrlLayer = svgEl("g", {}, "rack-controls");
+  // Underneath all three: a floor. A canvas you can pan needs something that
+  // moves with the world or the motion is invisible — you cannot tell a pan
+  // from a relayout in a black void. The dots are in rack coordinates, so they
+  // travel and scale with the patch; the pool of light sits on the patch's own
+  // bounds so the rack reads as an object standing on a surface rather than
+  // as ink floating in one. Off for the duel minis, which are cutouts.
+  if (!fit) {
+    const ground = svgEl("g", {}, "rack-ground");
+    ground.appendChild(svgEl("ellipse", {
+      cx: xOff + L.natW / 2, cy: yOff + L.natH / 2,
+      rx: Math.max(240, L.natW * 0.78), ry: Math.max(180, L.natH * 0.82),
+      fill: "url(#patchPool)",
+    }, "rack-pool"));
+    // One rect, deliberately far bigger than any reachable view: the pattern
+    // tiles for free and this costs less than tracking the camera.
+    ground.appendChild(svgEl("rect", { x: -6000, y: -6000, width: 16000, height: 16000 }, "rack-dots"));
+    svg.appendChild(ground);
+  }
   svg.appendChild(plateLayer);
   svg.appendChild(wireLayer);
   svg.appendChild(ctrlLayer);
@@ -3821,18 +3871,24 @@ function buildRack(svg, rack, opts) {
     ctrlLayer.appendChild(g);
     const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}`;
     const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
-    plate.setAttribute("filter", "url(#plateShadow)");
+    // Compact is the zoomed-out reading mode: title and jacks, and none of
+    // the material that only means anything at a size where you could grab
+    // it. A 1px bevel and a 3px screw at 0.4× are four elements of noise per
+    // plate and a blurred filter region the compositor still has to paint.
+    if (!compact) plate.setAttribute("filter", "url(#plateShadow)");
     plateG.appendChild(plate);
     // Faceplate material: a lit top edge and a shaded bottom edge give the
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
     // diagram rather than an instrument you could put your hands on.
-    plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
-    plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
-    for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
-      const use = svgEl("use", { x: sx, y: sy }, "plate-screw");
-      use.setAttribute("href", "#screw");
-      plateG.appendChild(use);
+    if (!compact) {
+      plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
+      plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
+      for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
+        const use = svgEl("use", { x: sx, y: sy }, "plate-screw");
+        use.setAttribute("href", "#screw");
+        plateG.appendChild(use);
+      }
     }
     const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}`);
     title.textContent = m.title;
@@ -3987,7 +4043,9 @@ function buildRack(svg, rack, opts) {
       fkind && fkind.kind.t === "enum"
         ? (fkind.kind.options[Math.round(fkind.value)] || "").replace(/^svf /, "svf-")
         : null;
-    m.knobs.forEach((k, i) => {
+    // The knob detail is the whole of the difference between the two levels
+    // of detail, so it is one conditional rather than a second renderer.
+    if (!compact) m.knobs.forEach((k, i) => {
       const { x, y } = knobPos(m, i, box);
       const pitch = knobPitch(m, i, box);
       const kg = svgEl("g", { transform: `translate(${x},${y})` });
@@ -4128,7 +4186,487 @@ function buildRack(svg, rack, opts) {
 
   // Must run after insertion — `getBBox` needs a laid-out element.
   fitLabels();
+
+  // Hand the camera the two things it needs and cannot recompute: how big the
+  // patch is, and where each module sits. The minimap, every fit, and
+  // "scroll that control into view" all read these rather than measuring the
+  // DOM, which would be a layout flush per pan frame.
+  if (!fit) {
+    rackContent = { w: natW, h: natH };
+    rackBoxes = pos;
+    lodApplied = compact ? "compact" : "full";
+  }
 }
+
+// ===========================================================================
+// CANVAS NAVIGATION — one camera, no scrollbars
+// ===========================================================================
+// The rack frame used to be an `overflow: auto` div wrapped around an SVG
+// sized in pixels, with the magnification chosen at build time and baked into
+// the viewBox. That arrangement can only zoom in. Past about six columns the
+// patch ran off the right-hand edge and the amp — the anchor of the entire
+// mental model — left the screen, with no fit, no pan and no map back to it.
+//
+// So there is a camera. `view.x/y` is the viewBox origin in rack units and
+// `view.zoom` is CSS pixels per rack unit, which is enough to make every
+// conversion two lines instead of a matrix chain, and it is the *only* thing
+// that decides what you are looking at. Zoom range is 0.3×–2.5×; the old
+// 2.2× magnification for small patches survives as the cap on the initial
+// fit, where it was always the good idea, rather than as a floor everything
+// else kept hitting.
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 2.5;
+const FIT_MAX = 2.2;
+const PREFERS_STILL = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+const view = { x: 0, y: 0, zoom: 1 };
+let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
+let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
+let viewUserSet = false;              // has the player aimed the camera themselves?
+let camAimed = false;                 // first fit done?
+let camSig = "";                      // bounding-box signature of the last build
+let viewTween = null;
+
+function frameSize() {
+  const el = $("rack-scroll");
+  return { w: Math.max(80, el.clientWidth), h: Math.max(80, el.clientHeight) };
+}
+function contentBox() {
+  return { x: 0, y: 0, w: rackContent.w, h: rackContent.h };
+}
+// The SVG fills the frame's content box exactly and its viewBox has the frame's
+// aspect ratio, so there is never any letterboxing to account for and these two
+// are exact inverses. Measuring the SVG rather than the frame keeps the 1px
+// border out of the arithmetic.
+function clientToRack(cx, cy) {
+  const r = $("rack-svg").getBoundingClientRect();
+  return { x: view.x + (cx - r.left) / view.zoom, y: view.y + (cy - r.top) / view.zoom };
+}
+function rackToClient(rx, ry) {
+  const r = $("rack-svg").getBoundingClientRect();
+  return { x: r.left + (rx - view.x) * view.zoom, y: r.top + (ry - view.y) * view.zoom };
+}
+
+function applyView() {
+  const { w, h } = frameSize();
+  view.zoom = clamp(view.zoom, ZOOM_MIN, ZOOM_MAX);
+  const vw = w / view.zoom;
+  const vh = h / view.zoom;
+  // A soft leash, not a cage: you can push the patch to the frame edge but
+  // not past it, so "where did my patch go" needs a bug rather than a flick.
+  const slack = 90 / view.zoom;
+  view.x = clamp(view.x, -vw + slack, rackContent.w - slack);
+  view.y = clamp(view.y, -vh + slack, rackContent.h - slack);
+  $("rack-svg").setAttribute(
+    "viewBox",
+    `${view.x.toFixed(2)} ${view.y.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}`,
+  );
+  updateEdgeFade(vw);
+  drawMinimap();
+  // A cable in flight is anchored in rack space, so anything that moves the
+  // world has to redraw it or the cable detaches from the jack it came out of.
+  if (wire) redrawWireBand();
+  if (effectiveLod() !== lodApplied) scheduleRelod();
+}
+
+/** 48px of fade on whichever horizontal edge actually has patch beyond it.
+ *  A hard cut mid-plate says "the window ends here"; a fade says "there is
+ *  more this way", and the fitted case keeps its full contrast either side. */
+function updateEdgeFade(vw) {
+  const el = $("rack-scroll");
+  const l = view.x > 4;
+  const r = view.x + vw < rackContent.w - 4;
+  el.style.setProperty("--fade-l", l ? "48px" : "0px");
+  el.style.setProperty("--fade-r", r ? "48px" : "0px");
+  el.classList.toggle("faded", l || r);
+}
+
+// ---------- level of detail ----------
+// Explicit switch, automatic default (Reaktor's Compact/Ports, with the
+// override users always end up wanting). `auto` is a threshold on zoom rather
+// than on module count, because the thing that makes a knob unreadable is how
+// many pixels it got, not how many friends it has.
+let lodMode = localStorage.getItem("ricercar-lod") || "auto";
+let lodApplied = "full";
+let relodRaf = null;
+
+function effectiveLod() {
+  if (lodMode === "full" || lodMode === "compact") return lodMode;
+  return view.zoom < 0.55 ? "compact" : "full";
+}
+// Deferred by a frame on purpose: this is reached from applyView, which is
+// reached from renderRack, and a synchronous rebuild there would re-enter the
+// renderer mid-render. A frame's latency on a detail switch is free.
+function scheduleRelod() {
+  if (relodRaf != null) return;
+  relodRaf = requestAnimationFrame(() => {
+    relodRaf = null;
+    if (effectiveLod() !== lodApplied && wb.rack) renderRack();
+  });
+}
+function syncLodBtn() {
+  const b = $("rack-lod");
+  if (!b) return;
+  b.textContent = lodMode === "auto" ? "detail auto" : lodMode === "full" ? "detail full" : "detail lite";
+  b.setAttribute("aria-pressed", String(lodMode !== "auto"));
+  b.closest(".tt").title =
+    lodMode === "auto"
+      ? "Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."
+      : lodMode === "full"
+        ? "Detail: full, at every zoom. Click for plates without knobs."
+        : "Detail: plates, titles and jacks only. Click to go back to automatic.";
+}
+$("rack-lod").onclick = () => {
+  lodMode = lodMode === "auto" ? "full" : lodMode === "full" ? "compact" : "auto";
+  try { localStorage.setItem("ricercar-lod", lodMode); } catch (_) {}
+  syncLodBtn();
+  renderRack();
+};
+syncLodBtn();
+
+// ---------- fits and moves ----------
+function cancelTween() {
+  if (viewTween != null) cancelAnimationFrame(viewTween);
+  viewTween = null;
+}
+
+/** Move the camera to `t` over ~180ms. Short enough not to be a wait, long
+ *  enough that the player's eye tracks the patch instead of re-finding it. */
+function tweenView(t, ms) {
+  cancelTween();
+  if (PREFERS_STILL) { Object.assign(view, t); applyView(); return; }
+  const from = { x: view.x, y: view.y, zoom: view.zoom };
+  const t0 = performance.now();
+  const dur = ms || 180;
+  const step = (now) => {
+    const u = clamp((now - t0) / dur, 0, 1);
+    const e = 1 - (1 - u) * (1 - u) * (1 - u); // ease-out cubic, the app's curve
+    // Zoom interpolates geometrically: linear zoom on a big change ramps the
+    // apparent speed instead of holding it, which is what makes a fit feel
+    // like a lurch.
+    view.zoom = from.zoom * Math.pow(t.zoom / from.zoom, e);
+    view.x = from.x + (t.x - from.x) * e;
+    view.y = from.y + (t.y - from.y) * e;
+    applyView();
+    viewTween = u < 1 ? requestAnimationFrame(step) : null;
+  };
+  viewTween = requestAnimationFrame(step);
+}
+
+function fitBox(box, animate) {
+  const { w, h } = frameSize();
+  const pad = 20;
+  const z = clamp(
+    Math.min((w - pad * 2) / Math.max(1, box.w), (h - pad * 2) / Math.max(1, box.h)),
+    ZOOM_MIN,
+    FIT_MAX,
+  );
+  const t = { zoom: z, x: box.x + box.w / 2 - w / (2 * z), y: box.y + box.h / 2 - h / (2 * z) };
+  viewUserSet = false;
+  if (animate) tweenView(t);
+  else { Object.assign(view, t); applyView(); }
+}
+function fitAll(animate) {
+  if (!wb.rack) return;
+  fitBox(contentBox(), animate);
+  nbAnnounce?.(`fit — ${Math.round(view.zoom * 100)}%`);
+}
+/** Fit "the selection". There is no selection object yet (that arrives with
+ *  node identity), so the honest reading is: whatever the keyboard is on. */
+function fitSelection(animate) {
+  if (!wb.rack) return;
+  const el = document.activeElement?.closest?.("[data-addr], .jack");
+  const key = el && (el.dataset?.addr?.split("#")[0] || el.getAttribute("data-modkey") ||
+    (el.getAttribute("data-childkey") || "").replace(/\/[01]$/, ""));
+  const b = key && rackBoxes.get(key);
+  if (!b) return fitAll(animate);
+  fitBox({ x: b.x - 40, y: b.y - 40, w: b.w + 80, h: b.h + 80 }, animate);
+}
+function zoomAt(clientX, clientY, factor) {
+  const before = clientToRack(clientX, clientY);
+  const z = clamp(view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  if (z === view.zoom) return;
+  cancelTween();
+  view.zoom = z;
+  // Put the same rack point back under the same pixel: that identity is the
+  // whole of "anchored at the cursor", and it is why this cannot be a zoom
+  // followed by a centring.
+  const after = clientToRack(clientX, clientY);
+  view.x += before.x - after.x;
+  view.y += before.y - after.y;
+  viewUserSet = true;
+  applyView();
+}
+/** Keyboard zoom has no cursor to anchor to, so it anchors the frame centre. */
+function zoomStep(factor) {
+  const r = $("rack-svg").getBoundingClientRect();
+  zoomAt(r.left + r.width / 2, r.top + r.height / 2, factor);
+}
+function zoomActual() {
+  const r = $("rack-svg").getBoundingClientRect();
+  zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / view.zoom);
+}
+function panBy(dxClient, dyClient) {
+  cancelTween();
+  view.x += dxClient / view.zoom;
+  view.y += dyClient / view.zoom;
+  viewUserSet = true;
+  applyView();
+}
+function contentFullyVisible() {
+  const { w, h } = frameSize();
+  return view.x <= 1 && view.y <= 1 &&
+    view.x + w / view.zoom >= rackContent.w - 1 &&
+    view.y + h / view.zoom >= rackContent.h - 1;
+}
+
+/** Called after every interactive build. Auto-fit on load and whenever a
+ *  structural edit changes the bounding box — animated, so the player is
+ *  carried to the new framing rather than teleported. A knob release, a lock
+ *  toggle or a bench reply leaves the box alone and so leaves the camera
+ *  alone; and once the player has aimed it themselves we only intervene when
+ *  the patch has actually grown out of the frame. */
+function aimCamera() {
+  syncMapBtn();
+  const sig = `${Math.round(rackContent.w)}x${Math.round(rackContent.h)}:${rackBoxes.size}`;
+  const changed = sig !== camSig;
+  camSig = sig;
+  if (!camAimed) { camAimed = true; fitBox(contentBox(), false); return; }
+  if (changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true);
+  else applyView();
+}
+
+/** Bring a control into view without the browser's help. `scrollIntoView` and
+ *  the implicit scroll-on-focus used to yank the canvas — including on hover,
+ *  which moved the rack out from under the pointer that caused it. There is
+ *  no scroller left to yank, so explicit navigation pans the camera instead,
+ *  by the minimum that makes the control visible. */
+function ensureRackVisible(el) {
+  if (!el || !wb.rack) return;
+  const r = el.getBoundingClientRect();
+  const f = $("rack-svg").getBoundingClientRect();
+  const m = 36;
+  let dx = 0, dy = 0;
+  if (r.left < f.left + m) dx = r.left - (f.left + m);
+  else if (r.right > f.right - m) dx = r.right - (f.right - m);
+  if (r.top < f.top + m) dy = r.top - (f.top + m);
+  else if (r.bottom > f.bottom - m) dy = r.bottom - (f.bottom - m);
+  if (dx === 0 && dy === 0) return;
+  tweenView({ zoom: view.zoom, x: view.x + dx / view.zoom, y: view.y + dy / view.zoom }, 160);
+}
+
+// ---------- minimap ----------
+// Forty lines of SVG against "lost in a field of nodes", and it doubles as the
+// fit-all affordance: the viewport rect is the only place in the app that says
+// how much of the patch you are currently looking at.
+const MM_W = 172;
+const MM_H = 116;
+let mmT = null;        // {s, ox, oy} — rack units → map units
+let mmBuiltFor = null; // which rackBoxes the node rects were drawn from
+let mapOn = localStorage.getItem("ricercar-map") === "1";
+
+function syncMapBtn() {
+  const b = $("rack-map-btn");
+  const el = $("rack-map");
+  if (!b || !el) return;
+  const show = mapOn && !!wb.rack;
+  el.classList.toggle("hidden", !show);
+  b.setAttribute("aria-pressed", String(mapOn));
+  b.closest(".tt").title = mapOn ? "Hide the minimap" : "Show the minimap (bottom-left of the rack)";
+  if (show) { mmBuiltFor = null; drawMinimap(); }
+}
+$("rack-map-btn").onclick = () => {
+  mapOn = !mapOn;
+  try { localStorage.setItem("ricercar-map", mapOn ? "1" : "0"); } catch (_) {}
+  syncMapBtn();
+};
+
+function drawMinimap() {
+  const el = $("rack-map");
+  if (!el || !mapOn || !wb.rack) return;
+  const pad = 7;
+  const s = Math.min((MM_W - pad * 2) / Math.max(1, rackContent.w), (MM_H - pad * 2) / Math.max(1, rackContent.h));
+  mmT = { s, ox: (MM_W - rackContent.w * s) / 2, oy: (MM_H - rackContent.h * s) / 2 };
+  // The node rects only change when the rack is rebuilt; the viewport rect
+  // changes on every pan frame. Splitting them keeps a pan at two attribute
+  // writes instead of an innerHTML reparse per frame.
+  if (mmBuiltFor !== rackBoxes) {
+    mmBuiltFor = rackBoxes;
+    el.setAttribute("viewBox", `0 0 ${MM_W} ${MM_H}`);
+    const kinds = new Map((wb.rack.modules || []).map((m) => [m.key, m]));
+    const rects = [...rackBoxes.entries()].map(([k, b]) => {
+      const m = kinds.get(k);
+      const cls = m?.kind === "amp" ? "mm-node amp" : m?.is_mod ? "mm-node mod" : "mm-node";
+      return `<rect class="${cls}" x="${(mmT.ox + b.x * s).toFixed(1)}" y="${(mmT.oy + b.y * s).toFixed(1)}" ` +
+        `width="${Math.max(1.5, b.w * s).toFixed(1)}" height="${Math.max(1.5, b.h * s).toFixed(1)}" rx="0.8"/>`;
+    });
+    el.innerHTML = `<g class="mm-nodes">${rects.join("")}</g><rect class="mm-view" id="mm-view" rx="1.5"/>`;
+  }
+  const vr = $("mm-view");
+  if (!vr) return;
+  const { w, h } = frameSize();
+  // Clamped to the map so a camera pushed off the patch still shows a rect on
+  // the side it went — a viewport marker you can lose is worse than none.
+  const x0 = clamp(mmT.ox + view.x * s, 0.5, MM_W - 3);
+  const y0 = clamp(mmT.oy + view.y * s, 0.5, MM_H - 3);
+  const x1 = clamp(mmT.ox + (view.x + w / view.zoom) * s, x0 + 2.5, MM_W - 0.5);
+  const y1 = clamp(mmT.oy + (view.y + h / view.zoom) * s, y0 + 2.5, MM_H - 0.5);
+  vr.setAttribute("x", x0.toFixed(1));
+  vr.setAttribute("y", y0.toFixed(1));
+  vr.setAttribute("width", (x1 - x0).toFixed(1));
+  vr.setAttribute("height", (y1 - y0).toFixed(1));
+}
+
+/** Click or drag the map to put that part of the patch in the middle. */
+function mmNavigate(ev) {
+  if (!mmT) return;
+  const r = $("rack-map").getBoundingClientRect();
+  const rx = ((ev.clientX - r.left) * (MM_W / r.width) - mmT.ox) / mmT.s;
+  const ry = ((ev.clientY - r.top) * (MM_H / r.height) - mmT.oy) / mmT.s;
+  const { w, h } = frameSize();
+  cancelTween();
+  view.x = rx - w / (2 * view.zoom);
+  view.y = ry - h / (2 * view.zoom);
+  viewUserSet = true;
+  applyView();
+}
+$("rack-map").addEventListener("pointerdown", (ev) => {
+  ev.preventDefault();
+  $("rack-map").setPointerCapture(ev.pointerId);
+  mmNavigate(ev);
+});
+$("rack-map").addEventListener("pointermove", (ev) => {
+  if (ev.buttons & 1) mmNavigate(ev);
+});
+
+// ---------- pointer and wheel ----------
+let rackHover = false;
+let spacePan = false;   // space is down over the rack
+let spacePanned = false; // ...and it was used to drag, so it is not an audition
+
+$("rack-scroll").addEventListener("pointerenter", () => { rackHover = true; });
+$("rack-scroll").addEventListener("pointerleave", () => { rackHover = false; });
+
+$("rack-scroll").addEventListener("wheel", (ev) => {
+  if (!wb.rack) return;
+  // The frame has nothing to scroll any more, so the wheel is unambiguously
+  // the camera's — and taking it here is also what stops the *page* from
+  // scrolling out from under a pinch.
+  ev.preventDefault();
+  if (ev.ctrlKey || ev.metaKey) {
+    // A trackpad pinch arrives as a wheel event with ctrlKey set. That is the
+    // entirety of pinch support on the web, and it is why pinch and
+    // ctrl+wheel cannot be given different behaviour even if we wanted to.
+    zoomAt(ev.clientX, ev.clientY, Math.exp(-ev.deltaY * 0.0022));
+    return;
+  }
+  const k = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? frameSize().h : 1;
+  let dx = ev.deltaX * k;
+  let dy = ev.deltaY * k;
+  if (ev.shiftKey && dx === 0) { dx = dy; dy = 0; } // the mouse-wheel horizontal
+  panBy(dx, dy);
+}, { passive: false });
+
+// Pan drags. Capture phase, because a knob or a jack under the pointer would
+// otherwise claim the same press — the modifier decides, not the target.
+$("rack-scroll").addEventListener("pointerdown", (ev) => {
+  if (!wb.rack) return;
+  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
+  const wants =
+    ev.button === 1 ||                        // middle-drag, everywhere
+    (ev.button === 0 && spacePan) ||          // space-drag, the graph-editor idiom
+    (ev.button === 0 && !onControl && !armed); // ...and the bare canvas, which is
+                                              // the only pan a finger can reach
+  if (!wants) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  spacePanned = spacePan;
+  const el = $("rack-scroll");
+  el.classList.add("grabbing");
+  el.setPointerCapture(ev.pointerId);
+  let px = ev.clientX, py = ev.clientY;
+  const move = (mv) => {
+    panBy(px - mv.clientX, py - mv.clientY);
+    px = mv.clientX;
+    py = mv.clientY;
+  };
+  const up = () => {
+    el.classList.remove("grabbing");
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", up);
+    el.removeEventListener("pointercancel", up);
+  };
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+}, true);
+// Chrome on Windows/Linux answers a middle press with autoscroll unless the
+// click that follows is refused too.
+$("rack-scroll").addEventListener("auxclick", (ev) => { if (ev.button === 1) ev.preventDefault(); });
+
+/** Space over the rack is the pan modifier every graph editor has, and space
+ *  everywhere is this app's audition toggle. Both survive: over the rack the
+ *  key arms a pan, and if it is released without one the audition happens
+ *  then. The only cost is that the toggle fires on release instead of press,
+ *  which is under the threshold of noticing. */
+function rackSpaceDown() {
+  if (!rackHover || currentView !== "play" || !wb.rack) return false;
+  spacePan = true;
+  spacePanned = false;
+  $("rack-scroll").classList.add("grabbing");
+  return true;
+}
+function rackSpaceUp() {
+  if (!spacePan) return false;
+  spacePan = false;
+  $("rack-scroll").classList.remove("grabbing");
+  if (!spacePanned) toggleAudition();
+  return true;
+}
+
+// ---------- auto-pan while a cable is out ----------
+// The inverse of the hover-scroll that was just removed: the canvas moves when
+// the *player* drags something to the edge, and only then. VCV's rule.
+let edgePan = null; // {x, y, cx, cy}
+let edgeRaf = null;
+
+function edgePanFrom(clientX, clientY) {
+  const f = $("rack-svg").getBoundingClientRect();
+  const m = 46;
+  // Only from inside: dragging *to* the edge asks for more canvas, and a
+  // pointer parked out in the node bank is not asking for anything.
+  if (clientX < f.left || clientX > f.right || clientY < f.top || clientY > f.bottom) return stopEdgePan();
+  const vel = (d) => (d < m ? -((m - Math.max(d, 0)) / m) * 13 : 0);
+  const x = vel(clientX - f.left) - vel(f.right - clientX);
+  const y = vel(clientY - f.top) - vel(f.bottom - clientY);
+  if (x === 0 && y === 0) return stopEdgePan();
+  edgePan = { x, y, cx: clientX, cy: clientY };
+  if (edgeRaf != null) return;
+  const step = () => {
+    if (!edgePan || !wire) { edgeRaf = null; return; }
+    panBy(edgePan.x, edgePan.y);
+    edgeRaf = requestAnimationFrame(step);
+  };
+  edgeRaf = requestAnimationFrame(step);
+}
+function stopEdgePan() {
+  edgePan = null;
+  if (edgeRaf != null) cancelAnimationFrame(edgeRaf);
+  edgeRaf = null;
+}
+
+// ---------- the frame changed shape ----------
+// The node-bank divider changes the frame's width without a window resize, and
+// nothing refit — the patch just got clipped. There was no ResizeObserver
+// anywhere in the app; this is the one place that needs one.
+let roSettled = false;
+new ResizeObserver(() => {
+  if (!roSettled) { roSettled = true; return; } // the observer's own first call
+  if (!wb.rack) return;
+  if (viewUserSet && !contentFullyVisible()) applyView();
+  else fitBox(contentBox(), camAimed);
+}).observe($("rack-scroll"));
 
 // ---------- structural edits ----------
 // Structural edits are strictly serialized, one in flight at a time.
@@ -4548,7 +5086,12 @@ function focusRackControl(i) {
   if (els.length === 0) return;
   const el = els[Math.max(0, Math.min(els.length - 1, i))];
   els.forEach((e) => e.setAttribute("tabindex", e === el ? "0" : "-1"));
-  el.focus();
+  // `focus()` scrolls its nearest scrollable ancestor by default, which used
+  // to jerk the whole rack — and the page under it — sideways on every arrow
+  // press. Moving the keyboard around the patch is explicit navigation, so it
+  // gets a camera move, by the minimum that makes the control visible.
+  el.focus({ preventScroll: true });
+  ensureRackVisible(el);
 }
 
 function knobByAddr(addr) {
@@ -5775,8 +6318,9 @@ function nbRenderInPatch() {
       const g = $("rack-svg").querySelector(`.jack[data-childkey="${b.dataset.key}/0"], [data-addr^="${b.dataset.key}#"]`);
       const el = g || $("rack-svg").querySelector(`[data-addr^="${b.dataset.key}#"]`);
       if (el) {
-        el.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
-        if (el.hasAttribute("data-addr")) { el.setAttribute("tabindex", "0"); el.focus(); }
+        // Explicit navigation — the one case that *should* move the canvas.
+        ensureRackVisible(el);
+        if (el.hasAttribute("data-addr")) { el.setAttribute("tabindex", "0"); el.focus({ preventScroll: true }); }
       }
     };
   });
@@ -6249,7 +6793,7 @@ function nbArmedKeys(ev) {
     armedIdx = (armedIdx + d + armedSockets.length) % armedSockets.length;
     const j = armedSockets[armedIdx];
     j.classList.add("hot");
-    j.scrollIntoView({ block: "nearest", inline: "nearest" });
+    ensureRackVisible(j);
     nbAnnounce(`socket ${armedIdx + 1} of ${armedSockets.length} — ${socketLabel(j)}`);
     return true;
   }
@@ -6307,9 +6851,19 @@ function startWireDrag(spec, ev) {
   } else if (spec.mode === "tray-mod" || spec.mode === "palette-mod") {
     rackSvg.querySelectorAll('.jack[data-modkey]').forEach((j) => j.classList.add("legal"));
   }
-  drawWireBand(ev.clientX, ev.clientY, ev.clientX, ev.clientY, spec.kind);
   wire.sx = ev.clientX;
   wire.sy = ev.clientY;
+  wire.tx = ev.clientX;
+  wire.ty = ev.clientY;
+  // Where the cable comes *out of* is a place on the patch, not a place on
+  // the screen — so if it started on the rack it is remembered in rack units
+  // and re-projected every frame. Without this the band stays nailed to the
+  // pixel the press happened on while the world moves underneath it, which is
+  // exactly what the auto-pan below does on purpose and what a zoom does by
+  // accident. A drag that began in the node bank has no rack anchor: the chip
+  // it came from really is at a fixed place on the screen.
+  if (rackSvg.contains(ev.target)) wire.anchor = clientToRack(ev.clientX, ev.clientY);
+  redrawWireBand();
   document.addEventListener("pointermove", onWireMove);
   document.addEventListener("pointerup", onWireUp, { once: true });
   // A touch the browser reclaims (an OS edge gesture, a second finger, a
@@ -6331,9 +6885,22 @@ function drawWireBand(x1, y1, x2, y2, kind) {
     `<path class="${kind}" d="M ${x1} ${y1} C ${x1 + dx} ${y1 + 20}, ${x2 - dx} ${y2 + 20}, ${x2} ${y2}"/>`;
 }
 
+/** Re-project the band from whatever is still true about it. Called on every
+ *  pointer move, and by `applyView` on every frame the camera moves — a cable
+ *  that detaches from its jack while the canvas slides is the desync the
+ *  overlay's client coordinates used to guarantee. */
+function redrawWireBand() {
+  if (!wire) return;
+  const a = wire.anchor ? rackToClient(wire.anchor.x, wire.anchor.y) : { x: wire.sx, y: wire.sy };
+  drawWireBand(a.x, a.y, wire.tx, wire.ty, wire.kind);
+}
+
 function onWireMove(ev) {
   if (!wire) return;
-  drawWireBand(wire.sx, wire.sy, ev.clientX, ev.clientY, wire.kind);
+  wire.tx = ev.clientX;
+  wire.ty = ev.clientY;
+  redrawWireBand();
+  edgePanFrom(ev.clientX, ev.clientY);
 }
 
 function onWireCancel() {
@@ -6342,6 +6909,7 @@ function onWireCancel() {
 }
 
 function endWireDrag() {
+  stopEdgePan();
   document.removeEventListener("pointermove", onWireMove);
   document.removeEventListener("pointerup", onWireUp);
   document.removeEventListener("pointercancel", onWireCancel);

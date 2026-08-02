@@ -79,17 +79,18 @@
   --t-title: 17px;   /* view + module titles, counters */
   --t-hero: 22px;    /* wordmark */
 
-  /* The rack draws into a viewBox that is zoomed 1×–2.2× to fill its frame,
-     so its type floor has to hold at the *worst* case (zoom 1, small window).
+  /* The rack draws through a camera the player aims (0.3×–2.5×, fitted to the
+     frame on load and capped at 2.2× there), so its type floor has to hold at
+     the *worst legible* case — call it zoom 1, a small window, detail full.
      These are the rendered sizes there; everything above 1× is a bonus. They
      are separate tokens rather than reused DOM ones because the module
      geometry (MOD_W / COL_W / KNOB_ROW in main.js) is sized around them. */
   /* 9px, deliberately one under the DOM floor, and the exception is argued
      rather than hidden: this tier carries mono *numerals* (`1.3 ms`,
      `−22.7 dB`) with uniform advance widths, read as values rather than prose.
-     Note the rack is NOT always magnified — zoom clamps at 1.0, and on a
-     1000px-wide window most patches render there, so treat 9px as the real
-     rendered size and not a best case. `.jack text` shares this token for
+     Note the rack is NOT always magnified — a patch of any size fits at 1× or
+     below, and the player can zoom further out than that, so treat 9px as the
+     real rendered size and not a best case. `.jack text` shares this token for
      `in`/`out`, which are port symbols from a closed set of two rather than
      words. The 10px floor stands for everything else. */
   --t-rack-micro: 9px;
@@ -618,20 +619,70 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 /* ---- workbench rack ---- */
+/* The frame is the fixed object; the viewport inside it is what the camera
+   looks through. Anything parented to the frame (scope, minimap, empty
+   state) is guaranteed not to move when the patch pans. */
+.rack-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .rack-scroll {
   position: relative;
   touch-action: none;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  /* Not `auto`. Scrollbars were the only way out of a patch that had grown
+     past the frame, and they could only ever reach content the baked-in
+     magnification had already decided to draw. The viewBox is the scroller
+     now, and it goes both ways. */
+  overflow: hidden;
   border-radius: 6px;
   border: 1px solid var(--hairline);
-  background:
-    radial-gradient(circle 2px at 24px 12px, rgba(255,255,255,0.02) 0 1.5px, transparent 2px),
-    linear-gradient(180deg, #0b0c0f, #0e1013);
+  /* The dot grid moved into the SVG so it parallaxes with the patch instead
+     of staying nailed to the frame — a ground plane you can't move over is
+     not a ground plane, it is wallpaper. */
+  background: linear-gradient(180deg, #0b0c0f, #0e1013);
   box-shadow: inset 0 0 22px rgba(0,0,0,0.85), inset 0 0 2px 1px #000;
 }
-#rack-svg { display: block; }
+/* A hard cut mid-plate says "the window ends here"; a fade says "there is
+   more this way". Applied only on the side that actually has content past
+   it, so a fitted patch keeps its full contrast right to the hairline. */
+.rack-scroll.faded {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l, 0px),
+    #000 calc(100% - var(--fade-r, 0px)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l, 0px),
+    #000 calc(100% - var(--fade-r, 0px)), transparent 100%);
+}
+.rack-scroll.grabbing { cursor: grabbing; }
+.rack-scroll.grabbing * { cursor: grabbing !important; }
+#rack-svg { display: block; width: 100%; height: 100%; }
+/* The ground plane and the pool of light under the patch. Both are drawn in
+   rack coordinates, which is the whole point: they are the parallax
+   reference that tells you the canvas moved. */
+.rack-dots { fill: url(#dotGrid); pointer-events: none; }
+.rack-pool { pointer-events: none; }
+
+/* ---- minimap ---- */
+.rack-map {
+  position: absolute;
+  left: 10px; bottom: 10px;
+  width: 172px; height: 116px;
+  z-index: 6;
+  border-radius: 5px;
+  border: 1px solid var(--hairline);
+  background: rgba(6, 8, 10, 0.82);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+  cursor: crosshair;
+  touch-action: none;
+}
+.rack-map.hidden { display: none; }
+.mm-node { fill: rgba(142,240,177,0.34); }
+.mm-node.mod { fill: rgba(255,180,84,0.34); }
+.mm-node.amp { fill: rgba(142,240,177,0.7); }
+.mm-view { fill: rgba(255,255,255,0.05); stroke: var(--phos-b); stroke-width: 1.2; }
 .rack-empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1317,7 +1368,7 @@ input, textarea, .bi-rename {
    the same material in two different form factors read as an accident. */
 .play-body { flex: 1; min-height: 0; display: flex; gap: 10px; margin-right: -14px; }
 .play-canvas { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.play-canvas .rack-scroll { flex: 1; }
+.play-canvas .rack-frame { flex: 1; }
 
 /* ================= the node bank — the instrument's catalogue =================
    It was the only panel in the app made of nothing: no lift, no cast, no
@@ -2136,12 +2187,12 @@ input, textarea, .bi-rename {
   .bank-item .bi-kill { color: var(--silk-dim); }
 
   /* Law 2 — gesture ownership.
-     The rack frame scrolls (a nine-module patch is wider than any tablet),
-     and `touch-action: none` on it meant a finger could not move the rack at
-     all: the patch simply ended at the frame edge. Panning belongs to the
-     frame; the controls take their own gestures back individually. */
-  .rack-scroll { touch-action: pan-x pan-y; }
-  .rack-scroll, .bank-list, .nb-body, .tray-items { overscroll-behavior: contain; }
+     The rack frame no longer scrolls: it is a camera, and the drag and the
+     pinch are both handled in JS against the viewBox. Handing the browser
+     `pan-x pan-y` here would give it a scroll that does not exist and eat
+     the one-finger pan before the app ever sees it. */
+  .rack-scroll { touch-action: none; }
+  .bank-list, .nb-body, .tray-items { overscroll-behavior: contain; }
 
   /* A knob held for half a second is a gesture, not a request for the iOS
      callout menu and a selection of the label underneath it. */
@@ -2259,13 +2310,17 @@ select:focus-visible,
 .nextstep.inert { color: var(--silk-dim); border-color: var(--hairline); background: none; cursor: default; }
 
 /* ---------- the live scope ----------
-   Sits in the rack's own frame, behind the modules, so the circuit you are
-   looking at is the thing that appears to be running. */
+   Sits in the rack's *frame*, so the circuit you are looking at is the thing
+   that appears to be running — and so the trace stays put when the camera
+   moves. Parented inside the viewport it was percentage-positioned against
+   the scroll content: it rode over modules and slid out from under itself on
+   every pan. */
 .live-scope {
   position: absolute;
-  right: 0; bottom: 0;
+  right: 1px; bottom: 1px;
   width: 42%;
   height: 34%;
+  z-index: 4;
   pointer-events: none;
   opacity: 0;
   transition: opacity 320ms ease;
