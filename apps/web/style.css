@@ -1994,6 +1994,101 @@ input, textarea, .bi-rename {
 }
 @keyframes jack-pulse { 50% { stroke-width: 3; } }
 .wiring .jack:not(.legal) { opacity: 0.35; }
+/* The output a cable is currently coming out of, while it is out. */
+.wiring .jack[data-outkey].hot { opacity: 1; }
+.wiring .jack[data-outkey].hot circle { stroke: var(--phos-a); stroke-width: 2.4; }
+
+/* ---- an empty socket ----
+   The grammar has no hole: every input is filled, so an unplugged socket is
+   still a real node underneath. The plate is what says otherwise — dashed,
+   unpopulated, and asking for something. */
+.mod-plate.placeholder {
+  fill: rgba(255, 255, 255, 0.012);
+  stroke: var(--silk-dim);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 5;
+}
+.mod-title.empty { fill: var(--silk-dim); }
+.plate-hint {
+  font-family: var(--font-mono);
+  font-size: var(--t-rack-micro);
+  fill: var(--silk-mute);
+  pointer-events: none;
+}
+
+/* ---- pick mode ----
+   Arming used to be invisible on the canvas. Dimming is the cheapest way to
+   say "not these", and it leaves the targets at full contrast rather than
+   painting a highlight over half the rack. */
+#rack-svg.picking g[data-key].dimmed { opacity: 0.28; }
+#rack-svg.picking g[data-key] { transition: opacity 140ms cubic-bezier(0.2, 0, 0.6, 1); }
+.pick-caret path {
+  stroke: var(--phos-a);
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+  filter: drop-shadow(0 0 5px rgba(142, 240, 177, 0.8));
+  animation: caret-pulse 900ms ease-in-out infinite;
+}
+@keyframes caret-pulse { 50% { opacity: 0.35; } }
+.pick-halo {
+  fill: none;
+  stroke: var(--phos-a);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+  opacity: 0.75;
+  pointer-events: none;
+}
+/* Amber is the app's one word for "something here goes away". */
+.pick-halo.replaces { stroke: var(--phos-b); opacity: 0.95; stroke-width: 1.8; }
+
+.pick-chip {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -100%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--surface-pop);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  letter-spacing: 0.06em;
+  color: var(--silk);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.pick-chip .pick-chip-text { text-transform: uppercase; }
+.pick-chip kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--silk-mute);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.pick-chip-x {
+  background: none; border: none; padding: 0 2px; cursor: pointer;
+  color: var(--silk-dim); font-size: var(--t-micro); line-height: 1;
+}
+.pick-chip-x:hover { color: var(--led-red); }
+
+/* The chooser's second line: what this row will do to the patch, in the
+   patch's own words, before it happens. */
+.ctx-menu .cm-item.cm-two { line-height: 1.35; }
+.ctx-menu .cm-item .cm-sub {
+  display: block;
+  margin-top: 2px;
+  max-width: 30ch;
+  white-space: normal;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
+}
+.ctx-menu .cm-item:hover .cm-sub { color: var(--silk-mute); }
 
 #wire-overlay {
   position: fixed;

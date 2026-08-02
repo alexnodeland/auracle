@@ -227,13 +227,18 @@ function pushUndo() {
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
 }
+// Undo and redo post a whole tree, which cannot be re-aimed at a tree that
+// moved under it — so they wait for the lane to clear rather than racing the
+// edit still in flight, which would restore over the top of it.
 function doUndo() {
+  if (structInFlight) return note("still applying the last edit — give it a moment");
   if (undoStack.length === 0 || !wb.tree) return note("nothing to undo");
   redoStack.push(JSON.stringify(wb.tree));
   restoreInFlight = true;
   send({ type: "edit_set_tree", json: undoStack.pop() });
 }
 function doRedo() {
+  if (structInFlight) return note("still applying the last edit — give it a moment");
   if (redoStack.length === 0 || !wb.tree) return note("nothing to redo");
   undoStack.push(JSON.stringify(wb.tree));
   restoreInFlight = true;
@@ -567,6 +572,8 @@ worker.onmessage = (e) => {
         // addresses says anything about this one's, and a survivor here is
         // the same stale-entry dropout a structural edit used to leave.
         nonLiveAddrs.clear();
+        placeholderKeys = new Set();
+        placeholderPending = null;
         undoStack.length = 0;
         redoStack.length = 0;
         note(`${nameOf(m.subject)} on the bench`);
@@ -593,6 +600,18 @@ worker.onmessage = (e) => {
           // session, which is a dropout and an envelope retrigger roughly
           // twice a second for as long as you keep turning it.
           nonLiveAddrs.clear();
+          // Same fact, same consequence: a rewrite says where its empty
+          // sockets ended up, and anything else moved the addresses without
+          // telling us, so the holes are forgotten rather than drawn on
+          // whatever now happens to live at that key.
+          placeholderKeys = placeholderPending || new Set();
+          placeholderPending = null;
+          // And for the same reason, anything still *aiming* at a key is
+          // aiming at a key that has moved. A handoff or a half-made cable
+          // that survives an edit does not point where the player pointed it
+          // — it points at whatever now lives at that address.
+          cancelPending();
+          endConnectPick();
         }
         if (m.edited === "restore" && wb.locks.size > 0) {
           wb.locks.clear(); // restored tree may have different addresses
@@ -680,7 +699,16 @@ worker.onmessage = (e) => {
       break;
     }
     case "edit_rejected": {
-      if (m.error) note(`edit rejected: ${m.error}`);
+      if (m.error) {
+        note(`edit rejected: ${m.error}`);
+        // An op that never reached the tree left a snapshot of the tree it
+        // was going to change, and the next ⌘Z would restore the patch the
+        // user is already looking at — a dead keystroke. This matters more
+        // now that a whole-tree rewrite can be rejected by the ceilings
+        // (`validate_tree`) and not only by `apply_struct_op`. `addr`-carrying
+        // rejections are parameter edits and never pushed one.
+        undoStack.pop();
+      }
       editInFlight = false;
       // A rejected op never reached the tree, so nothing was posted early and
       // nothing is in flight; the next one may go. `restoreInFlight` matters
@@ -689,6 +717,7 @@ worker.onmessage = (e) => {
       // session, since both are gated on it.
       structInFlight = false;
       restoreInFlight = false;
+      placeholderPending = null; // the tree it described never happened
       if (editQueue) {
         const q = editQueue;
         editQueue = null;
@@ -1707,6 +1736,7 @@ document.addEventListener("keydown", (e) => {
     // One dismissal law for the keyboard too: Escape closes whatever floats,
     // and hands focus back to the control that opened it.
     cancelPending();
+    endConnectPick();
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
       $("ovf-btn").setAttribute("aria-expanded", "false");
@@ -3557,6 +3587,7 @@ function renderRack() {
     interactive: true,
     locks: wb.locks,
     compact: effectiveLod() === "compact",
+    placeholders: placeholderKeys,
   });
   // The camera is pointed after the build, not during it: a rebuild that
   // changed the patch's bounding box asks for a fit, and one that did not
@@ -3573,6 +3604,10 @@ function renderRack() {
   // sockets. Re-light them, or a knob turn while something is in hand would
   // silently leave the user holding a module with nowhere visible to put it.
   nbSync();
+  // Same argument for a cable half-connected by clicks, and for everything
+  // pick mode draws — all of it lives in the DOM the build just replaced.
+  connectSync();
+  pickFeedback();
 
   // Cache the amp faceplate for the per-note flash (see flashAmp).
   // Match the module *kind*, not its silkscreen: the title renders as
@@ -3623,6 +3658,7 @@ function buildRack(svg, rack, opts) {
     fit = false,
     mode = layoutMode,
     compact = false,
+    placeholders = new Set(),
   } = opts || {};
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
@@ -3810,7 +3846,10 @@ function buildRack(svg, rack, opts) {
     // and wider than the ink, so a run crossing a plate cuts a channel through
     // it instead of tinting it.
     const caseEl = svgEl("path", { d }, `wire ${w.kind}-case`);
-    const wireEl = svgEl("path", { d }, `wire ${w.kind}`);
+    // The ink carries the endpoints so pick mode can put its caret on *this*
+    // cable rather than near it — "insert after wavefolder" has to point at
+    // the run that is about to be cut, and there may be four of them.
+    const wireEl = svgEl("path", { d, "data-from": w.from, "data-to": w.to }, `wire ${w.kind}`);
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
       // patch looks alive where it sounds alive.
@@ -3840,7 +3879,7 @@ function buildRack(svg, rack, opts) {
   // `textLength` + `spacingAndGlyphs` squeezes tracking first and glyphs only
   // as far as it must, which is exactly how a real panel handles a long name.
   const fitLabels = () => {
-    for (const t of svg.querySelectorAll(".knob-label, .mod-title")) {
+    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint")) {
       const avail = Number(t.dataset.fit || 0);
       if (!avail) continue;
       let w = 0;
@@ -3865,11 +3904,20 @@ function buildRack(svg, rack, opts) {
     // over them. Same transform, same `data-kind`, so every existing selector
     // (`g[data-kind="amp"] .mod-plate`, `[data-addr]`, `.jack[data-childkey]`)
     // still finds what it went looking for.
-    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind });
-    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind });
+    //
+    // `data-key` rides along on both: a drop on a module *body* has to know
+    // which module it landed on, and pick mode has to be able to dim, halo
+    // and pin a chip to one plate. `data-kind` alone cannot name a plate —
+    // a patch routinely carries three filters.
+    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key });
+    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key });
     plateLayer.appendChild(plateG);
     ctrlLayer.appendChild(g);
-    const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}`;
+    // A socket nothing is plugged into. The node under it is real — the
+    // grammar has no hole — but the player unplugged it and must be able to
+    // see that, so the plate is drawn as the absence it stands for.
+    const isEmpty = interactive && !m.is_mod && m.kind !== "amp" && placeholders.has(m.key);
+    const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}${isEmpty ? " placeholder" : ""}`;
     const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
     // Compact is the zoomed-out reading mode: title and jacks, and none of
     // the material that only means anything at a size where you could grab
@@ -3881,7 +3929,7 @@ function buildRack(svg, rack, opts) {
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
     // diagram rather than an instrument you could put your hands on.
-    if (!compact) {
+    if (!compact && !isEmpty) {
       plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
       plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
       for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
@@ -3890,13 +3938,21 @@ function buildRack(svg, rack, opts) {
         plateG.appendChild(use);
       }
     }
-    const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}`);
-    title.textContent = m.title;
+    const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
+    title.textContent = isEmpty ? "empty" : m.title;
     // A title is silkscreened onto the panel, so it belongs under the cables
     // — but it must not be *squeezed* by them: the fit pass measures against
     // the room left between the left edge and the control well.
     title.dataset.fit = String(Math.max(38, p.w - 46));
     plateG.appendChild(title);
+    if (isEmpty) {
+      // The plate says what it is *for*, because "empty" alone reads as a
+      // fault rather than as an invitation.
+      const hint = svgEl("text", { x: p.w / 2, y: p.h / 2 + 8, "text-anchor": "middle" }, "plate-hint");
+      hint.textContent = "drop a source here";
+      hint.dataset.fit = String(Math.max(40, p.w - 24));
+      plateG.appendChild(hint);
+    }
 
     if (interactive) {
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
@@ -3918,7 +3974,7 @@ function buildRack(svg, rack, opts) {
       });
       g.appendChild(menuG);
 
-      if (m.kind !== "amp") {
+      if (m.kind !== "amp" && !isEmpty) {
         const lockOn = isModuleLockedIn(m);
         const lockG = svgEl("g", {}, `mod-lock${lockOn ? " on" : ""}`);
         const mlock = svgEl("text", { x: p.w - 16, y: 17 });
@@ -3973,6 +4029,7 @@ function buildRack(svg, rack, opts) {
     // While a module is in hand, a socket is a destination, not a cable to
     // pull: the same press has to mean "place here" instead of "unplug this".
     const placeGuard = (j, ev) => {
+      if (connectPick) { ev.preventDefault(); connectClick(j); return true; }
       if (!armed) return false;
       ev.preventDefault();
       nbSocketClick(j);
@@ -3980,7 +4037,13 @@ function buildRack(svg, rack, opts) {
     };
     const isSource = SOURCE_KINDS.includes(m.kind);
     if (m.is_mod) {
-      addJack(p.w, p.h / 2, "modjack", "out", "left");
+      // A modulator's output is a cable source too, but only the one sitting
+      // *in* the slot: the deeper links of a CV chain are the chain's own
+      // wiring, and moving one out of the middle is a different edit from
+      // moving the chain.
+      const top = m.key.endsWith("/m");
+      const oj = addJack(p.w, p.h / 2, "modjack", "out", "left", top ? { "data-outkey": m.key } : null);
+      if (interactive && top) attachOutJack(oj, m.key, "mod");
     } else if (m.kind === "amp") {
       const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" });
       if (interactive) {
@@ -4013,11 +4076,21 @@ function buildRack(svg, rack, opts) {
           }
         }
       }
-      addJack(p.w, p.h / 2, "", "out", "left");
+      // Every `out` used to be decoration: no data attribute, no listener, so
+      // there was literally no gesture in the product that connected A to B.
+      // It is now the primary cable source, which is what the drawing has
+      // been promising since the first plate was rendered.
+      // …except on a hole, which has nothing to give: the cable leaving it
+      // exists only because the term is total, and offering to drag it would
+      // be offering to move an absence.
+      const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key });
+      if (interactive && !isEmpty) attachOutJack(oj, m.key, "audio");
       // The mod jack names the port it drives. On a four-knob module an
       // unlabelled "mod" input is a mystery — and now that eight different
       // modules carry one, "mod" would mean eight different things.
-      const modDest = kindModTarget(m.kind);
+      // A hole does not advertise a mod destination either — "→ pitch" on an
+      // empty socket names a port on a module the player has not chosen yet.
+      const modDest = isEmpty ? null : kindModTarget(m.kind);
       if (modDest) {
         const j = addJack(p.w / 2, p.h, "modjack", `→ ${modDest}`, "below", { "data-modkey": m.key });
         if (rack.wires.some((w) => w.kind === "mod" && w.to === m.key)) {
@@ -4045,7 +4118,7 @@ function buildRack(svg, rack, opts) {
         : null;
     // The knob detail is the whole of the difference between the two levels
     // of detail, so it is one conditional rather than a second renderer.
-    if (!compact) m.knobs.forEach((k, i) => {
+    if (!compact && !isEmpty) m.knobs.forEach((k, i) => {
       const { x, y } = knobPos(m, i, box);
       const pitch = knobPitch(m, i, box);
       const kg = svgEl("g", { transform: `translate(${x},${y})` });
@@ -4267,6 +4340,9 @@ function applyView() {
   // A cable in flight is anchored in rack space, so anything that moves the
   // world has to redraw it or the cable detaches from the jack it came out of.
   if (wire) redrawWireBand();
+  // Same argument for the pick chip: it is pinned to a plate, and the plate
+  // is in the world.
+  positionPickChip();
   if (effectiveLod() !== lodApplied) scheduleRelod();
 }
 
@@ -4476,6 +4552,13 @@ function syncMapBtn() {
   b.closest(".tt").title = mapOn ? "Hide the minimap" : "Show the minimap (bottom-left of the rack)";
   if (show) { mmBuiltFor = null; drawMinimap(); }
 }
+// The chip is dismissible by mouse as well as by esc — a keyboard-only
+// escape hatch is not one.
+$("pick-chip").querySelector(".pick-chip-x").onclick = () => {
+  cancelPending();
+  endConnectPick();
+  disarm();
+};
 $("rack-map-btn").onclick = () => {
   mapOn = !mapOn;
   try { localStorage.setItem("ricercar-map", mapOn ? "1" : "0"); } catch (_) {}
@@ -4683,6 +4766,9 @@ new ResizeObserver(() => {
 let structInFlight = false;
 const structQueue = [];
 function sendStruct(op) {
+  queueStruct({ type: "edit_structure", op });
+}
+function queueStruct(msg) {
   if (structInFlight) {
     // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
     // deeper than a rapid double-click means the worker is wedged, and
@@ -4691,17 +4777,76 @@ function sendStruct(op) {
     if (structQueue.length >= 8) {
       return note("still applying the last edit — give it a moment");
     }
-    structQueue.push(op);
+    structQueue.push(msg);
     return;
   }
   structInFlight = true;
   pushUndo();
-  send({ type: "edit_structure", op });
+  send(msg);
 }
 function drainStruct() {
   if (structInFlight || structQueue.length === 0) return;
-  sendStruct(structQueue.shift());
+  queueStruct(structQueue.shift());
 }
+
+// ---------- client-side tree rewrites ----------
+// `StructOp` has no `Move`, and most of the connection grammar is moves:
+// reconnect an output into another socket, promote a branch over its parent,
+// join a second source through a Mix. Expressed as op pairs those cost two
+// renders, two vets and two undo steps for one gesture — and the tree in
+// between is one the player never asked to hear.
+//
+// So the rewrite happens here, on a copy of the bench tree, and goes back as
+// one whole-tree replace: one round trip, one atomic undo step, one
+// re-render. The engine now validates on the way in (`validate_tree`, the
+// MAX_SIZE / MAX_DEPTH / MAX_MOD_DEPTH ceilings this route used to skip
+// entirely), so a rewrite that would put the patch outside the prior's
+// support comes back as `edit_rejected` carrying the reason, rather than as a
+// patch the next ⚡ silently mutates back inside the ceilings.
+//
+// `fn(tree, marks)` mutates the clone in place. Returning a **string** is a
+// refusal and that string is what the player is told — never a silent no-op.
+function applyTreeRewrite(fn) {
+  if (!wb.tree) { note("no patch on the bench"); return false; }
+  // Deliberately NOT queued, unlike an op. An op is a description of an edit
+  // and is re-aimed at whatever tree it lands on; a whole-tree replace *is* a
+  // tree, computed from the one on screen. Held until the tree has moved on,
+  // it would post a patch that silently discards the edit in front of it.
+  if (structInFlight) {
+    note("still applying the last edit — give it a moment");
+    return false;
+  }
+  const tree = JSON.parse(JSON.stringify(wb.tree));
+  const marks = [];
+  for (const k of placeholderKeys) {
+    const n = nodeAtIn(tree, k);
+    if (n) marks.push(n);
+  }
+  const refusal = fn(tree, marks);
+  if (typeof refusal === "string") { note(refusal); return false; }
+  placeholderPending = keysOfNodes(tree, marks);
+  queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) });
+  return true;
+}
+
+// ---------- empty sockets ----------
+// An unplugged socket has to look empty. The grammar cannot express that: the
+// term is total, every input is filled, and adding a `Silence` production
+// would move φ_struct's family counts and cost an evolution revalidation run
+// (WS-1 §7, and the standing rule that a green `make check` says nothing
+// about search health). So the engine keeps its substitute node and the UI
+// knows which one it is: a plate drawn as a hole, and the first place the
+// next module wants to go.
+//
+// Tracked by key, which is a position, so it survives exactly as long as the
+// positions do — every rewrite carries it across by object identity, and any
+// edit that goes through the op path drops it. Making it survive a reload is
+// the `uid` work in phase 2.
+let placeholderKeys = new Set();
+let placeholderPending = null;
+
+function placeholderNode() { return SEED_VCO(); }
+function isPlaceholderKey(key) { return placeholderKeys.has(key); }
 
 // The module vocabulary lives in exactly one place now (MODULES / the node
 // bank), so this menu no longer reprints it. "replace with…" and "insert
@@ -5793,17 +5938,88 @@ function nodeChildrenJSON(n) {
   return childFields(m).map((f) => v[f]).filter(Boolean);
 }
 
+/** The child indices in a trace key: `node/0/1` → `[0, 1]`. */
+function keyIndices(key) {
+  return key === "node" ? [] : key.slice(5).split("/").map(Number);
+}
+
 function nodeAtKey(key) {
   if (!wb.tree) return null;
-  let cur = wb.tree.root;
-  if (key !== "node") {
-    for (const i of key.slice(5).split("/").map(Number)) {
-      const ch = nodeChildrenJSON(cur);
-      if (!ch[i]) return null;
-      cur = ch[i];
-    }
+  return nodeAtIn(wb.tree, key);
+}
+
+/** `nodeAtKey`, but against a tree you are *holding* rather than the bench's.
+ *  Every rewrite works on a clone, so it needs the walk without the global. */
+function nodeAtIn(tree, key) {
+  let cur = tree.root;
+  for (const i of keyIndices(key)) {
+    const ch = nodeChildrenJSON(cur);
+    if (!ch[i]) return null;
+    cur = ch[i];
   }
   return cur;
+}
+
+/** Put `node` at `key`. The parent's serde field name comes from the module
+ *  table for the same reason `nodeChildrenJSON` reads it there: the binaries
+ *  do not agree on their field names (`a`/`b`, `input`/`key`,
+ *  `carrier`/`modulator`), and guessing one silently writes a field the
+ *  engine will not deserialize. */
+function setNodeAtIn(tree, key, node) {
+  const path = keyIndices(key);
+  if (path.length === 0) { tree.root = node; return true; }
+  let cur = tree.root;
+  for (let d = 0; d < path.length - 1; d++) {
+    cur = nodeChildrenJSON(cur)[path[d]];
+    if (!cur) return false;
+  }
+  const tag = nodeTag(cur);
+  const field = childFields(MOD_BY_TAG[tag] || {})[path[path.length - 1]];
+  if (!field || !cur[tag]) return false;
+  cur[tag][field] = node;
+  return true;
+}
+
+/** Every audio node in a tree, with the key it sits at *now*. */
+function walkTreeKeys(tree, visit) {
+  const rec = (n, key) => {
+    visit(n, key);
+    const tag = nodeTag(n);
+    const v = n[tag];
+    if (!v) return;
+    childFields(MOD_BY_TAG[tag] || {}).forEach((f, i) => {
+      if (v[f]) rec(v[f], `${key}/${i}`);
+    });
+  };
+  if (tree && tree.root) rec(tree.root, "node");
+}
+
+/** Where a set of *node objects* ended up, as keys. A rewrite moves subtrees
+ *  by reference, so object identity is the only handle on "the same node"
+ *  that survives one — keys are positions and the positions are what moved.
+ *  (A real `uid` is WS-4 §6; this is what there is until then.) */
+function keysOfNodes(tree, nodes) {
+  const out = new Set();
+  if (!nodes || nodes.length === 0) return out;
+  walkTreeKeys(tree, (n, key) => { if (nodes.includes(n)) out.add(key); });
+  return out;
+}
+
+/** Is `k` the key `root`, or a key inside its subtree? This is the cycle test:
+ *  the term is a tree, so a module cannot be plugged into itself or into
+ *  anything it already feeds. */
+function keyInside(k, root) {
+  return k === root || k.startsWith(`${root}/`);
+}
+
+/** The key of the module a socket is drawn on: an input jack `node/0/1` hangs
+ *  off the plate at `node/0`. The root's socket is the exception — the tree's
+ *  root is `node` and the plate that carries its jack is the amp, whose rack
+ *  key is `amp` and is not a trace address at all. */
+function socketOwnerKey(childKey) {
+  if (childKey === "node") return "amp";
+  const i = childKey.lastIndexOf("/");
+  return i < 0 ? childKey : childKey.slice(0, i);
 }
 
 function modAtKey(key) {
@@ -6213,9 +6429,22 @@ function renderNodeBank() {
     if (hit) shown += 1;
 
     // Unavailable is explained, never silent — see the per-group note below.
-    const blocked = !hasRack || (m.sort === "mod" && !hasModSocket);
+    // A handoff from the canvas (the ⋯ menu, or a cable dropped in empty
+    // space) narrows this further: the socket is already chosen, so a module
+    // that cannot sit in it is dimmed *now* rather than refused after the
+    // click. The reason rides on the chip so it is readable, not just
+    // announced.
+    const mismatch = !!pendingTarget && !pendingTarget.accepts.includes(m.sort);
+    const blocked = !hasRack || (m.sort === "mod" && !hasModSocket) || mismatch;
     chip.classList.toggle("unavailable", blocked);
     chip.setAttribute("aria-disabled", String(blocked));
+    if (mismatch) {
+      chip.title = pendingTarget.accepts.includes("mod")
+        ? `${m.name} carries audio — that jack carries control voltage.`
+        : `${m.name} moves knobs; it does not carry audio, so it cannot go in the signal path.`;
+    } else if (chip.title) {
+      chip.title = "";
+    }
     // Roving tab stop, set per group below: nineteen tab stops in a sidebar
     // would put the whole catalogue between the search field and the rack.
     chip.tabIndex = -1;
@@ -6442,9 +6671,16 @@ function pickModule(kind) {
   if (pendingTarget) {
     const p = pendingTarget;
     if (!p.accepts.includes(m.sort)) {
-      note(`${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`);
+      note(
+        p.accepts.includes("mod")
+          ? `${m.name} is an audio module — that jack carries control voltage. Pick something from the amber groups, or esc to cancel.`
+          : m.sort === "mod"
+            ? `${m.name} moves knobs; it does not carry audio, so it cannot ${p.mode === "replace" ? "replace" : "go after"} that. It goes in a mod ○.`
+            : `${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`,
+      );
       return;
     }
+    logLinkQuery(kind);
     cancelPending();
     placeModule(kind, p.mode, p.key);
     return;
@@ -6470,6 +6706,7 @@ function arm(kind) {
     return;
   }
   $("rack-scroll").classList.add("placing");
+  pickFeedback();
   armStatus();
   nbAnnounce(`${m.name} in hand. ${armedSockets.length} sockets available. Arrow keys to step, Enter to place.`);
 }
@@ -6498,7 +6735,7 @@ function lightSockets() {
     // nothing is lost and the socket stays green.
     const key = j.getAttribute("data-childkey") || j.getAttribute("data-modkey");
     const evicts =
-      armed.sort === "source" ||
+      (armed.sort === "source" && !isPlaceholderKey(key)) ||
       (armed.sort === "mod" && armed.modSort === "leaf" && modAtKey(key));
     if (evicts) j.classList.add("replaces");
     const label = socketLabel(j);
@@ -6512,17 +6749,31 @@ function lightSockets() {
     j.addEventListener("pointerenter", onSocketHover);
     j.addEventListener("pointerleave", onSocketLeave);
   }
+  // An empty socket is where the next module obviously wants to go, so it
+  // starts under the cursor rather than waiting to be found.
+  const hole = armedSockets.findIndex((j) => isPlaceholderKey(j.getAttribute("data-childkey")));
+  if (hole >= 0) {
+    armedIdx = hole;
+    armedSockets[hole].classList.add("hot");
+  }
 }
 
-/** Echo the socket's promise into the status line the rail already reserves. */
+/** Echo the socket's promise into the status line the rail already reserves —
+ *  and onto the canvas, where the decision is actually being made. */
 function onSocketHover(ev) {
   if (!armed) return;
   const j = ev.currentTarget;
   $("nb-status").innerHTML =
     `<b>${esc(socketLabel(j))}</b> <span class="sp-dim">· click to place · esc to put it down</span>`;
+  // The socket key doubles as a plate key: an audio socket names its
+  // occupant, a mod socket names its owner. Both are the plate the promise
+  // is about, which is the plate the chip should be pinned to.
+  pickHoverKey = j.getAttribute("data-childkey") || j.getAttribute("data-modkey") || null;
+  pickFeedback();
 }
 function onSocketLeave() {
-  if (armed) armStatus();
+  pickHoverKey = null;
+  if (armed) { armStatus(); pickFeedback(); }
 }
 
 function socketLabel(jack) {
@@ -6541,6 +6792,9 @@ function socketLabel(jack) {
     if (here) return `${kindName(owner)} → ${dest} — replaces the ${fragLabel(here, true)}`;
     return `${kindName(owner)} — modulate ${dest} with ${name}`;
   }
+  // A hole is not an occupant: nothing is displaced and nothing is held, so
+  // the promise must not be worded as if something were about to be lost.
+  if (isPlaceholderKey(key)) return `fills the empty socket with ${name}`;
   const occupant = nodeAtKey(key);
   const what = occupant ? fragLabel(occupant, false) : "the socket";
   return armed && armed.sort === "source"
@@ -6559,6 +6813,7 @@ function disarm() {
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
+  pickFeedback();
 }
 
 // ---------- the catalogue's walkthrough ----------
@@ -6652,9 +6907,12 @@ function endNbTour() {
 /** Put down a pending ⋯ handoff — from Escape, a view change, or a new patch. */
 function cancelPending() {
   if (!pendingTarget) return;
+  logLinkQuery(null); // an abandoned search is as informative as a chosen one
   pendingTarget = null;
   $("nb-status").textContent = "";
   nbAnnounce("cancelled");
+  renderNodeBank(); // the compatibility filter comes off with the handoff
+  pickFeedback();
 }
 
 /** The rack's ⋯ menu hands off here: open the rail, wait for a module. */
@@ -6677,6 +6935,7 @@ function armFromRack(mode, key) {
   $("nb-status").innerHTML =
     `<b>${what} ${esc(name)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
   nbAnnounce(`Choose a module to ${what} ${name}.`);
+  pickFeedback();
 }
 
 function placeModule(kind, mode, key) {
@@ -6745,6 +7004,526 @@ function nbSocketClick(jack) {
   if (!key) return false;
   placeModule(armed.kind, armed.sort === "source" ? "replace" : "insert", key);
   return true;
+}
+
+// ===========================================================================
+// CONNECTION GRAMMAR — outputs are cable sources
+// ===========================================================================
+// The rack drew labelled `out` nuts on every plate and attached nothing to
+// them: no data attribute, no listener, and `onWireUp` read a drop on a jack
+// as a cancel. So the instrument rendered a patchbay and implemented a splice
+// tool — the one thing a patchbay is *for* was the one gesture missing.
+//
+// One grammar, four ways in, all of them the same edit underneath:
+//   · drag out → in            (the cable)
+//   · click out, click in      (touch, long distances, motor accessibility)
+//   · drag out → module body   (forgiveness: one input fits, use it)
+//   · drag out → empty space   (link-drag search: pick what goes next)
+//
+// The term is a strict tree — `Box<AudioNode>`, one parent, one consumer — so
+// "connect A to B" can only mean *move* A into B's socket. Fan-out is not
+// expressible and is never drawn as if it were; what it gets instead is the
+// second row of the chooser, "branch here", which is a `Mix` with both sides
+// in it. The grammar's biggest limitation, offered as a musical verb.
+
+/** Every socket this output may legally reach, and — when there are none —
+ *  the sentence that says why. A refusal in this app is always spoken. */
+function connectTargets(srcKey, kind) {
+  const svg = $("rack-svg");
+  if (kind === "mod") {
+    const owner = srcKey.replace(/\/m$/, "");
+    const jacks = [...svg.querySelectorAll(".jack[data-modkey]")]
+      .filter((j) => j.getAttribute("data-modkey") !== owner);
+    return {
+      attr: "data-modkey",
+      jacks,
+      reason: "nothing else in this patch takes modulation — add a filter, or a delay, and its mod input appears",
+    };
+  }
+  // Cycle rejection, stated rather than silent: a module cannot feed itself,
+  // and it cannot feed anything it is already feeding, because that is a loop
+  // and the term is a tree.
+  const jacks = [...svg.querySelectorAll(".jack[data-childkey]")]
+    .filter((j) => !keyInside(j.getAttribute("data-childkey"), srcKey));
+  return {
+    attr: "data-childkey",
+    jacks,
+    reason: srcKey === "node"
+      ? "this is the last module in the chain — its output already goes to the amp, and there is nowhere further downstream"
+      : "every socket downstream of this module is fed by it — plugging it into its own chain would be a loop, and the patch is a tree",
+  };
+}
+
+/** Wire up an `out` nut: press to pull a cable, click to pick a target. */
+function attachOutJack(j, key, kind) {
+  claimGesture(j);
+  j.addEventListener("pointerdown", (ev) => {
+    if (connectPick) {
+      ev.preventDefault();
+      // Pressing the source again puts the cable down; pressing a different
+      // output re-aims it, which is what a hand at a patchbay does.
+      if (connectPick.srcKey === key) endConnectPick("cable put down");
+      else beginConnectPick(key, kind);
+      return;
+    }
+    if (armed) {
+      ev.preventDefault();
+      return note(`${kindName(armed.kind)} is in your hand — it goes in a lit ○, not an output. esc to put it down.`);
+    }
+    const t = connectTargets(key, kind);
+    ev.preventDefault();
+    if (t.jacks.length === 0) return note(t.reason);
+    startWireDrag(
+      {
+        mode: kind === "mod" ? "connect-mod" : "connect-audio",
+        srcKey: key,
+        kind,
+        attr: t.attr,
+        legalKeys: new Set(t.jacks.map((x) => x.getAttribute(t.attr))),
+      },
+      ev,
+    );
+  });
+}
+
+/** Forgiveness beats precision: the nuts are 6px, so a near miss lands. */
+function nearestLegalJack(cx, cy, w, maxPx) {
+  let best = null;
+  let bestD = maxPx;
+  for (const j of $("rack-svg").querySelectorAll(`.jack[${w.attr}]`)) {
+    if (!w.legalKeys.has(j.getAttribute(w.attr))) continue;
+    const r = j.getBoundingClientRect();
+    const d = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
+    if (d < bestD) { bestD = d; best = j; }
+  }
+  return best;
+}
+
+/** A drop on a module's *body*. Auto-connects when exactly one of its inputs
+ *  fits; when two do — a ducker's `in` and its `key` are not interchangeable
+ *  — it says so rather than guessing, because guessing a sidechain wrong is
+ *  a different patch. */
+function bodyTarget(cx, cy, w) {
+  const el = document.elementFromPoint(cx, cy);
+  const g = el && el.closest ? el.closest("g[data-key]") : null;
+  if (!g) return null;
+  const mk = g.getAttribute("data-key");
+  const cands = [...$("rack-svg").querySelectorAll(`.jack[${w.attr}]`)].filter((j) => {
+    const k = j.getAttribute(w.attr);
+    return w.legalKeys.has(k) && (w.attr === "data-modkey" ? k === mk : socketOwnerKey(k) === mk);
+  });
+  if (cands.length === 1) return cands[0];
+  if (cands.length > 1) {
+    note(`${kindName(rackKindAt(mk))} has two inputs and they are not the same job — drop on one of the lit ○`);
+    return "spoken";
+  }
+  // Over a plate, and none of its inputs will take this. That is a refusal,
+  // not a miss — falling through to "what goes next" here would answer a
+  // question the player did not ask, and leave the bank aimed at a socket
+  // they were not aiming at.
+  const name = kindName(rackKindAt(mk)) || "that module";
+  note(
+    w.attr === "data-modkey"
+      ? `${name} is where this modulator already is — drop it on another module's mod ○`
+      : `nothing on ${name} can take this cable — everything it feeds is downstream of the source, and the patch is a tree`,
+  );
+  return "spoken";
+}
+
+// ---- the chooser: move, or branch ----
+// Both rows say what will happen to the patch, in the patch's own words,
+// before either happens. The default is move; branch is one click away and
+// is never hidden, because "you cannot have two consumers" is a true fact
+// about the grammar and a useless answer to a musician.
+function offerConnect(srcKey, targetKey, kind, cx, cy) {
+  if (kind === "mod") return connectMoveMod(srcKey, targetKey);
+  const srcName = kindName(rackKindAt(srcKey)) || "that";
+  const here = nodeAtKey(targetKey);
+  const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
+  // A hole is not a decision. Dropping into one is unambiguously a move.
+  if (isPlaceholderKey(targetKey)) return connectMove(srcKey, targetKey);
+  const hereName = here ? fragLabel(here, false) : "what is there";
+  openChooser(cx, cy, `${srcName} → ${ownerName}`, [
+    {
+      label: "move it here",
+      sub: `${srcName} leaves where it is — its old socket becomes a hole — and ${hereName} is held below.`,
+      run: () => connectMove(srcKey, targetKey),
+    },
+    {
+      label: "branch here",
+      sub: `a copy of ${srcName} joins ${hereName} through a mix. Nothing moves. (A copy: one output cannot feed two places.)`,
+      run: () => connectBranch(srcKey, targetKey),
+    },
+  ]);
+}
+
+/** A two-row popover in the context menu's own element, so there is exactly
+ *  one floating menu in the app and one law that dismisses it. */
+function openChooser(x, y, head, rows) {
+  const menu = $("ctx-menu");
+  menu.innerHTML =
+    `<div class="cm-head">${esc(head)}</div>` +
+    rows.map((r, i) =>
+      `<button class="cm-item cm-two" data-i="${i}">${esc(r.label)}` +
+      `<span class="cm-sub">${esc(r.sub)}</span></button>`).join("");
+  menu.querySelectorAll(".cm-item").forEach((btn) => {
+    btn.onclick = () => {
+      menu.classList.add("hidden");
+      rows[Number(btn.dataset.i)].run();
+    };
+  });
+  menu.classList.remove("hidden");
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - mw - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - mh - 8))}px`;
+  menu.querySelector(".cm-item")?.focus();
+}
+
+/** Move the module at `srcKey` into the socket at `targetKey`. One rewrite,
+ *  one undo step: the vacated socket becomes a hole and whatever was in the
+ *  target is held below. */
+function connectMove(srcKey, targetKey) {
+  const srcName = kindName(rackKindAt(srcKey)) || "that";
+  const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    if (keyInside(targetKey, srcKey)) {
+      return "that socket is downstream of this module — plugging it in there would be a loop, and the patch is a tree";
+    }
+    const src = nodeAtIn(tree, srcKey);
+    if (!src) return "that module has moved — try the cable again";
+    // The hole goes in *first*, so that if the target is an ancestor of the
+    // source the subtree being displaced is read with the hole already in it
+    // — otherwise it would be held below with a second live copy of the very
+    // module we just promoted inside it.
+    const hole = placeholderNode();
+    if (!setNodeAtIn(tree, srcKey, hole)) return "that module has moved — try the cable again";
+    const victim = nodeAtIn(tree, targetKey);
+    if (!setNodeAtIn(tree, targetKey, src)) return "that socket has moved — try the cable again";
+    marks.push(hole);
+    if (victim && !marks.includes(victim)) doomed = victim;
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  const undo = { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" };
+  note(
+    doomed
+      ? `${srcName} now feeds ${ownerName} — the ${fragLabel(doomed, false)} it displaced is held below, and its old socket is empty.`
+      : `${srcName} now feeds ${ownerName} — its old socket is empty.`,
+    undo,
+  );
+}
+
+/** The sanctioned answer to fan-out: a `Mix` at the target socket with what
+ *  was there on one side and a copy of the source on the other. Honest copy
+ *  — the term cannot share a node, and the toast says "a copy" for the same
+ *  reason the socket labels say "replaces". */
+function connectBranch(srcKey, targetKey) {
+  const srcName = kindName(rackKindAt(srcKey)) || "that";
+  const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
+  let hereName = "";
+  const ok = applyTreeRewrite((tree) => {
+    if (keyInside(targetKey, srcKey)) {
+      return "that socket is downstream of this module — branching into it would be a loop, and the patch is a tree";
+    }
+    const src = nodeAtIn(tree, srcKey);
+    const here = nodeAtIn(tree, targetKey);
+    if (!src || !here) return "that socket has moved — try the cable again";
+    hereName = fragLabel(here, false);
+    const spec = MOD_BY_KIND.mix;
+    const mix = spec.frag();
+    const f = childFields(spec);
+    mix.Mix[f[0]] = here;
+    mix.Mix[f[1]] = JSON.parse(JSON.stringify(src));
+    if (!setNodeAtIn(tree, targetKey, mix)) return "that socket has moved — try the cable again";
+    return null;
+  });
+  if (!ok) return;
+  note(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
+}
+
+/** Modulation has one slot per module, so its only verb is move. */
+function connectMoveMod(srcKey, targetKey) {
+  const srcMod = modAtKey(srcKey.replace(/\/m$/, ""));
+  if (!srcMod) return note("that modulator has moved — try the cable again");
+  const from = srcKey.replace(/\/m$/, "");
+  const dest = kindModTarget(rackKindAt(targetKey)) || "mod";
+  let doomed = null;
+  const ok = applyTreeRewrite((tree) => {
+    const owner = nodeAtIn(tree, from);
+    const target = nodeAtIn(tree, targetKey);
+    if (!owner || !target) return "that modulator has moved — try the cable again";
+    const oTag = nodeTag(owner), tTag = nodeTag(target);
+    const m = owner[oTag]?.modulation;
+    if (!m || m === "None") return "there is no modulator on that jack any more";
+    const had = target[tTag]?.modulation;
+    if (had && had !== "None") doomed = had;
+    owner[oTag].modulation = "None";
+    target[tTag].modulation = m;
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, true) : null;
+  note(
+    `${fragLabel(srcMod, true)} → ${dest} on ${kindName(rackKindAt(targetKey))}` +
+    (doomed ? ` — the ${fragLabel(doomed, true)} it replaced is held below.` : ""),
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
+  );
+}
+
+// ---- link-drag search ----
+// Release a cable into nothing and the question stops being "where does this
+// go" and becomes "what goes next" — which is the node bank's question. The
+// query the player then types is the only explicit statement of intent in the
+// app, so it is kept; WS-8 gives it a home in the implicit stream.
+const linkSearchLog = [];
+
+function openLinkSearch(w) {
+  const isMod = w.kind === "mod";
+  const key = isMod ? w.srcKey.replace(/\/m$/, "") : w.srcKey;
+  const srcName = isMod
+    ? fragLabel(modAtKey(key) || {}, true)
+    : kindName(rackKindAt(w.srcKey)) || "that";
+  pendingTarget = {
+    mode: "insert",
+    key,
+    accepts: isMod ? ["mod"] : ["proc", "combine"],
+    link: { srcKey: w.srcKey, kind: w.kind, at: Date.now() },
+  };
+  if (nbState.collapsed) nbSetCollapsed(false);
+  const q = $("nb-q");
+  q.value = "";
+  renderNodeBank();
+  q.focus();
+  $("nb-status").innerHTML =
+    `<b>after ${esc(srcName)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
+  nbAnnounce(`Cable dropped. Choose a module to put after ${srcName}.`);
+  pickFeedback();
+}
+
+/** The query string, kept with what it was aimed at and what it produced. */
+function logLinkQuery(chosen) {
+  const l = pendingTarget && pendingTarget.link;
+  if (!l || l.logged) return; // the pick and the cancel both land here
+  l.logged = true;
+  linkSearchLog.push({
+    q: ($("nb-q").value || "").trim(),
+    kind: l.kind,
+    src: rackKindAt(l.srcKey) || l.srcKey,
+    chosen: chosen || null,
+    ms: Date.now() - l.at,
+  });
+  window.__ricLinkSearch = linkSearchLog;
+}
+
+// ---- click source, then click target ----
+// The same grammar without a drag: for touch, for a target three screens
+// away, and for anyone who cannot hold a button down while aiming.
+let connectPick = null; // {srcKey, kind, attr, legalKeys}
+
+function beginConnectPick(srcKey, kind) {
+  endConnectPick();
+  const t = connectTargets(srcKey, kind);
+  if (t.jacks.length === 0) return note(t.reason);
+  connectPick = {
+    srcKey,
+    kind,
+    attr: t.attr,
+    legalKeys: new Set(t.jacks.map((j) => j.getAttribute(t.attr))),
+  };
+  connectSync();
+  const name = kind === "mod"
+    ? fragLabel(modAtKey(srcKey.replace(/\/m$/, "")) || {}, true)
+    : kindName(rackKindAt(srcKey)) || "that";
+  $("nb-status").innerHTML =
+    `<b>cable out of ${esc(name)}</b> — click a lit ○ <span class="sp-dim">· esc to put it down</span>`;
+  nbAnnounce(`Cable out of ${name}. ${t.jacks.length} sockets available.`);
+  pickFeedback();
+}
+
+/** Re-light after a rebuild; the DOM the lighting lived on is thrown away on
+ *  every bench reply. */
+function connectSync() {
+  const svg = $("rack-svg");
+  // `wire` owns the class while a cable is physically out; only take it off
+  // when neither gesture is running.
+  if (!connectPick) {
+    if (!wire) svg.classList.remove("wiring");
+    return;
+  }
+  svg.classList.add("wiring");
+  if (!wb.rack) return endConnectPick();
+  let lit = 0;
+  for (const j of svg.querySelectorAll(`.jack[${connectPick.attr}]`)) {
+    if (!connectPick.legalKeys.has(j.getAttribute(connectPick.attr))) continue;
+    j.classList.add("legal");
+    lit += 1;
+  }
+  const from = svg.querySelector(`.jack[data-outkey="${cssKey(connectPick.srcKey)}"]`);
+  if (from) from.classList.add("hot");
+  if (lit === 0) endConnectPick();
+}
+
+function endConnectPick(msg) {
+  if (!connectPick) return;
+  connectPick = null;
+  const svg = $("rack-svg");
+  svg.classList.remove("wiring");
+  svg.querySelectorAll(".jack.legal, .jack.hot").forEach((j) => j.classList.remove("legal", "hot"));
+  $("nb-status").textContent = "";
+  if (msg) note(msg);
+  pickFeedback();
+}
+
+/** A press on any socket while a cable is out of an output. */
+function connectClick(jack) {
+  if (!connectPick) return false;
+  const key = jack.getAttribute(connectPick.attr);
+  const w = connectPick;
+  if (!key) return false;
+  if (!w.legalKeys.has(key)) {
+    note(connectTargets(w.srcKey, w.kind).reason);
+    return true;
+  }
+  const r = jack.getBoundingClientRect();
+  endConnectPick();
+  offerConnect(w.srcKey, key, w.kind, r.left + r.width / 2, r.bottom + 6);
+  return true;
+}
+
+/** CSS.escape for a trace key. Keys are `node/0/1`, and `/` is a combinator
+ *  in a selector — an unescaped one silently matches nothing. */
+function cssKey(k) {
+  return window.CSS && CSS.escape ? CSS.escape(k) : k.replace(/\//g, "\\/");
+}
+
+// ===========================================================================
+// PICK-MODE FEEDBACK — the canvas says what is about to happen
+// ===========================================================================
+// Arming used to be invisible on the canvas: the decision was announced in a
+// rail a thousand pixels from the plate it was about to edit, and the target
+// was named by its trace id ("wavefolder·3"), which the player has never
+// seen. So: dim what is not a target, put a caret on the exact cable that
+// will be cut, an amber halo on a plate that will be replaced, and a chip on
+// the target plate naming it by the title silkscreened on it.
+let pickHoverKey = null;  // the plate under the pointer while sockets are lit
+let pickChipKey = null;   // the plate the chip is currently pinned to
+
+function pickFeedback() {
+  const svg = $("rack-svg");
+  const chip = $("pick-chip");
+  if (!svg || !chip) return;
+  pickChipKey = null;
+  svg.querySelectorAll("g[data-key].dimmed").forEach((g) => g.classList.remove("dimmed"));
+  svg.querySelectorAll(".pick-caret, .pick-halo").forEach((e) => e.remove());
+  svg.classList.remove("picking");
+  chip.classList.add("hidden");
+  if (!wb.rack) return;
+
+  // Three ways to be armed, one vocabulary:
+  //   targets  — every plate that can receive the thing in hand
+  //   aimKey   — the one plate this is aimed at, if there is one
+  //   caretKey — the trace key whose *outgoing* cable gets cut
+  //   replaces — amber: something on that plate goes away
+  let targets = null;
+  let aimKey = null;
+  let caretKey = null;
+  let replaces = false;
+  let verb = "";
+  if (pendingTarget) {
+    // The ⋯ handoff and the link-drag search both name one module and act on
+    // its slot: `insert_tree` at key K puts the new module between K and its
+    // parent, so from the signal's point of view it lands after K.
+    aimKey = pendingTarget.key;
+    replaces = pendingTarget.mode === "replace";
+    caretKey = replaces ? null : aimKey;
+    verb = replaces ? "replace" : "insert after";
+    targets = new Set([aimKey]);
+  } else if (connectPick) {
+    verb = "cable into";
+    targets = new Set([...connectPick.legalKeys].map(
+      (k) => (connectPick.attr === "data-modkey" ? k : socketOwnerKey(k)),
+    ));
+    targets.add(connectPick.srcKey);
+  } else if (armed && armedSockets.length) {
+    const isMod = armed.sort === "mod";
+    targets = new Set(armedSockets.map((j) => {
+      const k = j.getAttribute("data-childkey");
+      return k ? socketOwnerKey(k) : j.getAttribute("data-modkey");
+    }));
+    // Every lit socket is a candidate, so the only one worth naming is the
+    // one under the pointer. The socket key IS a plate key for audio — the
+    // occupant's — which is exactly the plate the promise is about.
+    if (pickHoverKey && rackBoxes.has(pickHoverKey)) {
+      aimKey = pickHoverKey;
+      if (isMod) {
+        replaces = armed.modSort === "leaf" && !!modAtKey(pickHoverKey);
+        verb = replaces ? "replace the modulator on" : "modulate";
+      } else if (armed.sort === "source") {
+        replaces = !isPlaceholderKey(pickHoverKey);
+        verb = replaces ? "replace" : "fill";
+      } else {
+        caretKey = pickHoverKey;
+        verb = "insert before";
+      }
+    }
+  } else {
+    return;
+  }
+
+  svg.classList.add("picking");
+  for (const g of svg.querySelectorAll("g[data-key]")) {
+    if (!targets.has(g.getAttribute("data-key"))) g.classList.add("dimmed");
+  }
+  if (!aimKey) return;
+  pickChipKey = aimKey;
+
+  // The caret goes on the run that is about to be cut, measured off the path
+  // itself so it sits *on* the curve rather than near it. A patch routinely
+  // carries four cables into the same column; "near it" is not an answer.
+  if (caretKey) {
+    const w = svg.querySelector(`.rack-wires path.wire[data-from="${cssKey(caretKey)}"]`);
+    if (w) {
+      try {
+        const pt = w.getPointAtLength(w.getTotalLength() / 2);
+        const c = svgEl("g", { transform: `translate(${pt.x},${pt.y})` }, "pick-caret");
+        c.appendChild(svgEl("path", { d: "M 0 -11 L 0 11" }));
+        c.appendChild(svgEl("path", { d: "M -5 -11 L 5 -11 M -5 11 L 5 11" }));
+        svg.querySelector(".rack-controls")?.appendChild(c);
+      } catch (_) { /* a path with no length: nothing to point at */ }
+    }
+  }
+  const b = rackBoxes.get(aimKey);
+  if (b) {
+    const halo = svgEl("rect", {
+      x: b.x - 5, y: b.y - 5, width: b.w + 10, height: b.h + 10, rx: 9,
+    }, `pick-halo${replaces ? " replaces" : ""}`);
+    svg.querySelector(".rack-controls")?.appendChild(halo);
+  }
+
+  // …and the chip, pinned to that plate, naming it with the title
+  // silkscreened on it — never the trace id, which the player has never seen.
+  // "the title on the plate" — and on a hole the plate says EMPTY, not the
+  // kind of the substitute node standing in for one.
+  const mod = wb.rack.modules.find((m) => m.key === aimKey);
+  const title = isPlaceholderKey(aimKey) ? "the empty socket" : mod ? mod.title : "the output";
+  chip.querySelector(".pick-chip-text").textContent = `${verb} ${title}`;
+  chip.classList.remove("hidden");
+  positionPickChip();
+}
+
+/** The chip lives in the frame, not the scroller, so it is re-aimed whenever
+ *  the camera moves rather than riding away with the patch. */
+function positionPickChip() {
+  const chip = $("pick-chip");
+  if (!chip || chip.classList.contains("hidden")) return;
+  const b = pickChipKey && rackBoxes.get(pickChipKey);
+  if (!b) return chip.classList.add("hidden");
+  const fr = $("rack-frame").getBoundingClientRect();
+  const p = rackToClient(b.x + b.w / 2, b.y);
+  chip.style.left = `${Math.round(p.x - fr.left)}px`;
+  chip.style.top = `${Math.round(p.y - fr.top - 8)}px`;
 }
 
 // ---- keyboard ----
@@ -6850,6 +7629,13 @@ function startWireDrag(spec, ev) {
     });
   } else if (spec.mode === "tray-mod" || spec.mode === "palette-mod") {
     rackSvg.querySelectorAll('.jack[data-modkey]').forEach((j) => j.classList.add("legal"));
+  } else if (spec.legalKeys) {
+    // A cable out of an output. Everything the tree allows lights; everything
+    // it does not stays dark AND gets a reason when you drop on it, which is
+    // the difference between a rule and a shrug.
+    for (const j of rackSvg.querySelectorAll(`.jack[${spec.attr}]`)) {
+      if (spec.legalKeys.has(j.getAttribute(spec.attr))) j.classList.add("legal");
+    }
   }
   wire.sx = ev.clientX;
   wire.sy = ev.clientY;
@@ -6966,13 +7752,50 @@ function onWireUp(ev) {
     if (old) stageFragment(old, true);
     if (w.item.uid) unstage(w.item.uid);
     note(`${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`);
+  } else if (w.mode === "connect-audio" || w.mode === "connect-mod") {
+    // No movement at all is a click, not a miss — the same gesture without a
+    // drag, for touch and for long distances.
+    if (Math.hypot(ev.clientX - w.sx, ev.clientY - w.sy) <= 6) {
+      beginConnectPick(w.srcKey, w.kind);
+      return;
+    }
+    let target = jack && jack.hasAttribute(w.attr) ? jack : null;
+    if (target && !w.legalKeys.has(target.getAttribute(w.attr))) {
+      return note(connectTargets(w.srcKey, w.kind).reason);
+    }
+    if (!target) target = nearestLegalJack(ev.clientX, ev.clientY, w, 24);
+    if (!target) {
+      const body = bodyTarget(ev.clientX, ev.clientY, w);
+      if (body === "spoken") return;
+      target = body;
+    }
+    // Nothing under the cable: the question becomes "what goes next".
+    if (!target) return openLinkSearch(w);
+    offerConnect(w.srcKey, target.getAttribute(w.attr), w.kind, ev.clientX, ev.clientY);
   } else if (w.mode === "unplug-audio") {
     if (jack) return; // dropped back on a jack: treat as cancel
-    const old = nodeAtKey(w.childKey);
-    if (!old) return;
-    stageFragment(old, false);
-    sendStruct({ op: "replace_tree", key: w.childKey, node: MOD_BY_KIND.vco.frag() });
-    note("unplugged — the chain is held below; a fresh vco holds the socket");
+    // The socket is left visibly empty. The engine still needs a node there —
+    // the term is total — but the plate says "empty" and the next module goes
+    // there by default, instead of a fresh vco quietly pretending the unplug
+    // did nothing.
+    let doomed = null;
+    const ok = applyTreeRewrite((tree, marks) => {
+      const old2 = nodeAtIn(tree, w.childKey);
+      if (!old2) return "that cable is no longer there";
+      const hole = placeholderNode();
+      if (!setNodeAtIn(tree, w.childKey, hole)) return "that cable is no longer there";
+      if (!marks.includes(old2)) doomed = old2;
+      marks.push(hole);
+      return null;
+    });
+    if (!ok) return;
+    const uid = doomed ? stageFragment(doomed, false) : null;
+    note(
+      doomed
+        ? `unplugged — the ${fragLabel(doomed, false)} is held below and the socket is empty.`
+        : "unplugged — the socket is empty.",
+      { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
+    );
   } else if (w.mode === "unplug-mod") {
     if (jack) return;
     const old = modAtKey(w.key);
