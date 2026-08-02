@@ -658,6 +658,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .rack-scroll.grabbing { cursor: grabbing; }
 .rack-scroll.grabbing * { cursor: grabbing !important; }
+/* Freeform: the faceplate says it can be picked up, and the controls on it
+   keep saying they are controls. The plate layer is the only thing under the
+   pointer on bare panel — knobs, jacks and the ⋯/▢ well all sit in the
+   control layer above it and set their own cursors — so this one selector is
+   the whole affordance. */
+.rack-scroll.freeform:not(.placing) .rack-plates g[data-mid] { cursor: grab; }
+.rack-scroll.moving-plate, .rack-scroll.moving-plate * { cursor: grabbing !important; }
 #rack-svg { display: block; width: 100%; height: 100%; }
 /* The ground plane and the pool of light under the patch. Both are drawn in
    rack coordinates, which is the whole point: they are the parallax

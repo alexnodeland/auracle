@@ -221,7 +221,32 @@ function uiState() {
     // supposed to mean "recoverable"; before this it meant "recoverable until
     // you refresh", which is not a promise worth making.
     held: trayState(),
+    // Where you put the modules (WS-4 §8). Flattened to arrays because this
+    // blob is stored as-is and a Map is not: `[[subject, [[mid, x, y], …]], …]`.
+    // Rounded, because a hand position is a grid cell or a pixel, never 14
+    // digits of it.
+    positions: [...ffLayouts]
+      .filter(([, m]) => m.size)
+      .map(([id, m]) => [id, [...m].map(([mid, p]) => [mid, Math.round(p.x), Math.round(p.y)])]),
   };
+}
+
+/** The inverse, tolerant of a save written before positions existed — which is
+ *  every save on disk right now. An absent key and an empty map mean the same
+ *  thing (no module has been placed by hand), so there is nothing to migrate. */
+function restorePositions(saved) {
+  if (!Array.isArray(saved)) return;
+  for (const [id, list] of saved) {
+    if (!Array.isArray(list) || !list.length) continue;
+    const m = new Map();
+    for (const [mid, x, y] of list) {
+      if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
+        m.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
+      }
+    }
+    if (m.size) { ffLayouts.set(String(id), m); ffLast = String(id); }
+  }
+  ffTrim();
 }
 
 // ---------- undo/redo (workbench edits) ----------
@@ -526,9 +551,39 @@ worker.onmessage = (e) => {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
+      const layout = pendingLayout;
+      pendingLayout = null;
       if (m.id > 0) {
+        // File the layout under the id it landed as, *before* benching it, so
+        // the first render already draws the arrangement the sender chose. The
+        // mids match because uids survive the round trip: the exported tree
+        // carries them, `ensure_uids` on admission keeps every id it is given
+        // and only mints for the ones that have none.
+        let placed = 0;
+        if (layout) {
+          const map = new Map();
+          for (const [mid, x, y] of layout) {
+            if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
+              map.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
+            }
+          }
+          if (map.size) {
+            ffLayouts.set(String(m.id), map);
+            ffLast = String(m.id);
+            ffTrim();
+            placed = map.size;
+            // A layout nobody can see is not carried, it is stored. The file
+            // said where these modules go; showing them anywhere else would
+            // make the feature indistinguishable from not having shipped it.
+            if (layoutMode !== "freeform") {
+              layoutMode = "freeform";
+              try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+              syncLayoutBtn();
+            }
+          }
+        }
         openOnBench(m.id);
-        note(`patch imported as ${nameOf(m.id)}.${madeRoom(evicted)}`);
+        note(`patch imported as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
         scheduleSave();
       } else {
         note("could not import that patch (duplicate, or it failed the safety vet)");
@@ -3630,7 +3685,21 @@ function knobPos(mod, i, box) {
 // the mode you want back after a reload. One button in the rack chrome for
 // now; it gets its proper home beside the level-of-detail selector when that
 // lands, and `compact` becomes the export default after that.
-let layoutMode = localStorage.getItem("ricercar-layout") === "compact" ? "compact" : "chain";
+const LAYOUT_MODES = ["chain", "compact", "freeform"];
+let layoutMode = LAYOUT_MODES.includes(localStorage.getItem("ricercar-layout"))
+  ? localStorage.getItem("ricercar-layout")
+  : "chain";
+
+// The freeform grid, and the fixed inset `buildRack` lays content out at.
+// Both are needed by the snap: the dot grid is painted in *rack* coordinates
+// (`#dotGrid`, 24px, origin 0) while `layout` works in an un-inset space, so a
+// plate snapped to a multiple of 24 in layout space would land 15px off the
+// dots it is visibly aiming at. `snapL` does the round trip once, in one
+// place, so the hand and the offered-slot placer agree.
+const GRID = 24;
+const RACK_OFF_X = 15;
+const RACK_OFF_Y = 12;
+const snapL = (v, off) => Math.round((v + off) / GRID) * GRID - off;
 
 // ---------- layout ----------
 // The seam. Cables, plates and knobs were already pure consumers of a
@@ -3644,11 +3713,28 @@ let layoutMode = localStorage.getItem("ricercar-layout") === "compact" ? "compac
 //   compact — the same layering packed tight. This is the mode a screenshot
 //             or an export wants, where bounding box beats legibility.
 //
+//   freeform — the hand's mode. Positions come from the player, keyed by node
+//             identity, and everything the player has *not* placed is offered
+//             a slot next to the neighbour it is wired to. Chain is its seed,
+//             so a patch that arrives from evolution with no layout at all
+//             opens readable rather than in a heap at the origin.
+//
 // The layering itself is not recomputed: `RackModule.column` out of
 // describe.rs is already a correct longest-path-from-sink, and re-deriving it
 // in JS would be a second implementation of the same fact that can disagree
 // with the engine.
-function layout(rack, mode) {
+//
+// `places` is the freeform store — `Map<mid,{x,y}>` in layout space. It is
+// passed in rather than read from module scope because `layout` is also the
+// duel minis' arrangement function, and a mini draws a *different patch* than
+// the one whose hand positions are on file.
+function layout(rack, mode, places) {
+  if (mode === "freeform") return layoutFree(rack, layoutFlow(rack, "chain"), places);
+  return layoutFlow(rack, mode);
+}
+
+// The two flow arrangements: layered, and derived entirely from the term.
+function layoutFlow(rack, mode) {
   const box = new Map();
   const byKey = new Map();
   for (const m of rack.modules) {
@@ -3845,6 +3931,188 @@ function layout(rack, mode) {
   return { pos, natW: x - GUTTER, natH: maxY - minY };
 }
 
+// ---------- freeform ----------
+// Everything above is a function of the term. This is the one arrangement that
+// is not: it is a function of what the player did with their hands, and the
+// term only gets a say about the modules the player has not touched yet.
+//
+// Two rules do all the work.
+//
+//   1. A stored position is honoured exactly. Not "as a hint", not "as a seed
+//      for a relaxation pass" — a hand position that a layout pass is allowed
+//      to improve is not a hand position. This is why relayout is a *command*
+//      (WS-4 §3): switching to chain is a thing you ask for, never a thing the
+//      renderer decides for you because the patch grew.
+//
+//   2. A module with no stored position is offered a slot beside the neighbour
+//      it is wired to — upstream of its consumer for audio, under it for
+//      modulation — and then slid down the grid until it is clear of anything
+//      already placed. That is what "an evolved child does not appear at 0,0"
+//      means in practice: a generation of ⚡ typically keeps most of the tree
+//      (uids are inherited, WS-4 §6), so the two or three genuinely new
+//      modules arrive next to the modules they feed.
+//
+// Placement runs right to left — the sink first — so a consumer is on the
+// board before the thing that feeds it asks where the consumer went.
+function layoutFree(rack, seed, places) {
+  const store = places || new Map();
+  const pos = new Map();
+  const placed = [];
+  // The consumer of each module, which is the anchor an unplaced module wants.
+  const parent = new Map();
+  for (const w of rack.wires) parent.set(w.from, w.to);
+
+  // A hair over the gutter: two plates that merely touch read as one wide
+  // plate, and the offered slot should never produce that by itself.
+  const CLEAR = 12;
+  const hits = (x, y, w, h) =>
+    placed.some((b) =>
+      x < b.x + b.w + CLEAR && x + w + CLEAR > b.x &&
+      y < b.y + b.h + CLEAR && y + h + CLEAR > b.y);
+  const put = (m, x, y) => {
+    const s = seed.pos.get(m.key);
+    // Layout space has an origin, and the camera's content box starts there.
+    // Clamping here rather than normalising afterwards is deliberate: a
+    // normalising pass would shift *every* plate the moment the leftmost one
+    // moved, so a stored position would silently stop meaning what it said.
+    const b = { x: Math.max(0, x), y: Math.max(0, y), w: s.w, h: s.h, perRow: s.perRow };
+    pos.set(m.key, b);
+    placed.push(b);
+  };
+
+  for (const m of rack.modules) {
+    const p = store.get(midOf(m));
+    if (p) put(m, p.x, p.y);
+  }
+
+  // Keys whose position is a hand position or descends from one. Only these
+  // are worth anchoring to; see below.
+  const rooted = new Set(pos.keys());
+  const rest = rack.modules
+    .filter((m) => !pos.has(m.key))
+    .sort((a, b) => seed.pos.get(b.key).x - seed.pos.get(a.key).x);
+  for (const m of rest) {
+    const s = seed.pos.get(m.key);
+    const pk = parent.get(m.key);
+    // The consumer is only worth chasing if it is *rooted* in a hand position
+    // — placed by the player, or placed relative to something that was.
+    // Anchoring to it unconditionally would mean the first plate dropped in an
+    // untouched patch re-derived every other position in the rack, and a hand
+    // edit that reflows everything it did not touch is the thing §3 forbids.
+    // So the default is the seed, unrounded: with nothing placed, freeform is
+    // the chain layout to the pixel, and entering the mode changes nothing
+    // until you do something. Rootedness is transitive so that a whole new
+    // *chain* — a duplicate and the modulator that came with it — arrives
+    // beside the module it feeds rather than at its flow-layout coordinates,
+    // which describe an arrangement this rack is no longer in.
+    const pb = pk && rooted.has(pk) ? pos.get(pk) : null;
+    let ax = s.x;
+    let ay = s.y;
+    if (pb) {
+      rooted.add(m.key);
+      // Modulation goes under the module it drives — the mod jack is on the
+      // bottom edge, so anywhere else means a cable across a faceplate.
+      // Audio goes upstream, left, on the consumer's own centreline.
+      ax = m.is_mod ? pb.x + (pb.w - s.w) / 2 : pb.x - s.w - GUTTER;
+      ay = m.is_mod ? pb.y + pb.h + GUTTER + 18 : pb.y + (pb.h - s.h) / 2;
+      ax = Math.max(0, snapL(ax, RACK_OFF_X));
+      ay = Math.max(0, snapL(ay, RACK_OFF_Y));
+    }
+    // Clear of anything already on the board, either way: a plate the player
+    // has not placed must never be the one that ends up hidden.
+    for (let n = 0; n < 80 && hits(ax, ay, s.w, s.h); n++) ay += GRID;
+    put(m, ax, ay);
+  }
+
+  let natW = 0;
+  let natH = 0;
+  for (const b of pos.values()) {
+    natW = Math.max(natW, b.x + b.w);
+    natH = Math.max(natH, b.y + b.h);
+  }
+  return { pos, natW, natH };
+}
+
+// ---------- freeform positions, kept ----------
+// `Map<subject, Map<mid,{x,y}>>`, in layout space (WS-4 §8). Keyed by subject
+// because a `mid` is only unique where uids are: the amp and any unsettled
+// tree fall back to `k<key>`, and every patch in the bank has a `kamp`.
+//
+// Rides in the same `ui` blob as HELD and the bank filter, so hand positions
+// survive a reload the way the plan says they must. Old saves simply have no
+// `positions` key and start empty — nothing to migrate, because an absent
+// layout and an empty one mean the same thing here.
+const ffLayouts = new Map();
+const FF_KEEP = 60;       // subjects' worth of layout; the bank holds 40
+let ffLast = null;        // the subject whose layout was most recently written
+// A layout read out of an imported file, waiting for the engine to say which
+// id that patch landed as. See the `patch_imported` handler.
+let pendingLayout = null;
+
+function ffKey() {
+  return wb.subjectId == null ? "bench" : String(wb.subjectId);
+}
+
+/** The store for the current subject, creating it on first write. */
+function ffStore(create) {
+  const k = ffKey();
+  let m = ffLayouts.get(k);
+  if (!m && create) {
+    m = new Map();
+    ffLayouts.set(k, m);
+    ffTrim();
+  }
+  if (m && create) ffLast = k;
+  return m || null;
+}
+function ffTrim() {
+  // Insertion order is eviction order, which is what a Map already gives us.
+  while (ffLayouts.size > FF_KEEP) ffLayouts.delete(ffLayouts.keys().next().value);
+}
+
+/** The positions to draw the *current* rack with, inheriting the layout of the
+ *  patch this one came from when it is the first time we have seen this id.
+ *
+ *  Inheritance is by evidence rather than by provenance: uids are minted from
+ *  one monotonic counter for the whole session, so a patch that shares a uid
+ *  with the last one the player arranged is that patch's descendant — a commit,
+ *  or a generation of ⚡. That is the acceptance criterion "positions persist
+ *  for surviving nodes" (§5 P2.2), and it holds without the UI having to know
+ *  which message benched the new tree. */
+function ffPlaces() {
+  const k = ffKey();
+  const mine = ffLayouts.get(k);
+  if (mine) return mine;
+  const src = ffLast != null ? ffLayouts.get(ffLast) : null;
+  if (!src || !wb.rack) return null;
+  if (!wb.rack.modules.some((m) => m.uid && src.has(`u${m.uid}`))) return null;
+  const copy = new Map(src);
+  ffLayouts.set(k, copy);
+  ffLast = k;
+  ffTrim();
+  return copy;
+}
+
+/** Snap everything on screen to the grid and pin it — the "apply grid" verb.
+ *  The seed is whatever is currently drawn, which for a patch arriving without
+ *  a layout is the chain arrangement, exactly as ruled. */
+function applyGrid() {
+  if (!wb.rack || !rackBoxes.size) return;
+  const store = ffStore(true);
+  for (const m of wb.rack.modules) {
+    const b = rackBoxes.get(m.key);
+    if (!b) continue;
+    store.set(midOf(m), {
+      x: Math.max(0, snapL(b.x - RACK_OFF_X, RACK_OFF_X)),
+      y: Math.max(0, snapL(b.y - RACK_OFF_Y, RACK_OFF_Y)),
+    });
+  }
+  camHold = true;
+  renderRack();
+  scheduleSave();
+  note(`${store.size} modules pinned to the grid — drag any of them from here.`);
+}
+
 function moduleLockAddrs(mod) {
   return [...mod.structural_addrs, ...mod.knobs.map((k) => k.addr)];
 }
@@ -3978,6 +4246,22 @@ function wirePathD(w, pos, modByKey) {
   const y2 = toMod && MOD_BY_KIND[toMod.kind]?.ins === 2
     ? to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68)
     : to.y + to.h / 2;
+  // A consumer *behind* its source. The flow layouts cannot produce this — a
+  // node's parent is always one layer to the right — but freeform can, and the
+  // span-proportional cubic below degenerates into a straight line drawn
+  // backwards through both plates when it happens. Route it the way the mod
+  // cables are routed instead: out, down to a bus level clear of both plates,
+  // back, and up into the socket. A cubic bowed wide enough to clear a long
+  // backwards run balloons with the distance; a right-angle run reads the same
+  // at any length, and it says "this one goes backwards" at a glance.
+  // The threshold is 8 rather than something comfortable on purpose: the
+  // tightest gap either flow layout can produce is the 28px gutter, so this
+  // branch is unreachable from chain or compact and cannot change how an
+  // existing patch draws.
+  if (x2 < x1 + 8) {
+    const yb = Math.max(from.y + from.h, to.y + to.h) + 26;
+    return orth([[x1, y1], [x1 + 26, y1], [x1 + 26, yb], [x2 - 26, yb], [x2 - 26, y2], [x2, y2]]);
+  }
   // Sag proportional to span. A flat `max(24, span/2)` put control point 1
   // *past* control point 2 whenever the span was under 48px — which it is
   // between adjacent columns — so short runs kinked into a V instead of
@@ -4042,6 +4326,12 @@ function renderRack() {
     locks: lockedAddrs(),
     compact: effectiveLod() === "compact",
     placeholders: placeholderKeys,
+    // Only the workbench has hand positions; the duel minis draw other
+    // patches, whose layout this player has never touched. An *empty* store is
+    // still a store: freeform with nothing placed is the chain arrangement,
+    // and it has to draw through the freeform path so the first drop does not
+    // switch arrangements underneath the plate being dropped.
+    places: layoutMode === "freeform" ? (ffPlaces() || new Map()) : null,
   });
   // Then play the difference. This has to happen before the camera is aimed,
   // because whether anything is moving is what decides whether the camera
@@ -4120,10 +4410,16 @@ function buildRack(svg, rack, opts) {
     interactive = false,
     locks = new Set(),
     fit = false,
-    mode = layoutMode,
     compact = false,
     placeholders = new Set(),
+    places = null,
   } = opts || {};
+  // A caller with no hand positions to draw cannot draw freeform: the duel
+  // minis inherit the workbench's mode for chain-vs-compact, but "where the
+  // player put the plates" is a fact about one patch and they are showing
+  // another. Chain is the honest fallback, and it is freeform's own seed.
+  let { mode = layoutMode } = opts || {};
+  if (mode === "freeform" && !places) mode = "chain";
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
   // Light comes from 315° (top-left) everywhere: plate bevel, knob body,
@@ -4160,7 +4456,7 @@ function buildRack(svg, rack, opts) {
   // Arrangement is decided by `layout` and consumed here. The renderer never
   // computes a coordinate of its own any more — that separation is what lets a
   // second mode be a second y-assignment instead of a second renderer.
-  const L = layout(rack, mode);
+  const L = layout(rack, mode, places);
   const natW = L.natW + 30;
   const natH = L.natH + 24;
   // Content is laid out at its natural size at a fixed origin, always. It used
@@ -4172,8 +4468,8 @@ function buildRack(svg, rack, opts) {
   // camera (`view`, below) and not a property of the last render, so the two
   // callers can each get what they want: the duel minis take the natural box
   // as their viewBox, and the workbench points the camera at it.
-  const xOff = 15;
-  const yOff = 12;
+  const xOff = RACK_OFF_X;
+  const yOff = RACK_OFF_Y;
   svg.removeAttribute("width");
   svg.removeAttribute("height");
   if (fit) svg.setAttribute("viewBox", `0 0 ${natW} ${natH}`);
@@ -4958,6 +5254,114 @@ function startRackMotion(before) {
   return true;
 }
 
+// ===========================================================================
+// FREEFORM — the plate is a thing you can pick up
+// ===========================================================================
+// The gesture is deliberately *not* a listener on the plate. Every control on
+// a faceplate already owns its own press — knobs via `attachKnobDrag`, jacks
+// via `startWireDrag`, ⋯ and ▢ via their click handlers and their 24px pads —
+// and a second handler underneath them would be a race decided by whichever
+// element happened to be on top. Instead this runs in the same capture-phase
+// handler on `#rack-scroll` that already arbitrates the pan, from the same
+// `onControl` test, so there is exactly one place in the app that decides what
+// a press on the rack means. In freeform, that decision reads:
+//
+//     a control  → the control                (unchanged)
+//     a plate    → move the plate             (new)
+//     bare canvas→ pan the camera             (unchanged)
+//
+// and space-drag, middle-drag, right-click and long-press all keep the meaning
+// they had, because they are tested first.
+//
+// `rackFrame` (WS-4 §9) is the whole seam: it already holds live element
+// references and the `pos` map `wirePathD` consumes, so moving a plate is two
+// attribute writes and a re-route, with no rebuild and no layout flush.
+let plateDrag = null;
+
+/** Paint one plate at a rack-space position and re-route everything plugged
+ *  into it. Writes the `transform` *attribute*, not `style.transform`: the
+ *  motion system owns the inline style, and the two would fight — and the
+ *  attribute is where the next `captureRackMotion` expects to find the truth
+ *  (via `it.cx`, which is why this sets it). */
+function movePlateTo(it, x, y) {
+  it.cx = x;
+  it.cy = y;
+  const tf = `translate(${x.toFixed(2)},${y.toFixed(2)})`;
+  it.plateG.setAttribute("transform", tf);
+  it.g.setAttribute("transform", tf);
+  // `rackFrame.pos` *is* `rackBoxes` — the same Map object — so mutating it
+  // here keeps fit-selection, the minimap and drop-on-body hit testing honest
+  // about where the plate is, mid-drag, for free.
+  const b = rackFrame.pos.get(it.key);
+  if (b) { b.x = x; b.y = y; }
+  for (const w of rackFrame.wires) {
+    const d = wirePathD(w.w, rackFrame.pos, rackFrame.mods);
+    if (d == null) continue;
+    w.caseEl.setAttribute("d", d);
+    w.inkEl.setAttribute("d", d);
+  }
+}
+
+/** True if this press was taken. */
+function startPlateDrag(ev) {
+  if (!rackFrame || !wb.rack) return false;
+  const g = ev.target?.closest?.("g[data-mid]");
+  const mid = g && g.getAttribute("data-mid");
+  const it = mid && rackFrame.groups.find((q) => q.mid === mid);
+  if (!it) return false;
+  ev.preventDefault();
+  ev.stopPropagation();
+  // A tween writing `style.transform` every frame would drag the plate back
+  // out of the hand that is holding it.
+  cancelRackMotion();
+  const el = $("rack-scroll");
+  el.classList.add("moving-plate");
+  // Capture keeps the plate under a pointer that leaves the frame — and the
+  // guard keeps a pointer the browser has already forgotten (a cancelled
+  // touch, a synthesised press) from throwing on the way in. The listeners
+  // below are on `el` either way, so the drag degrades to "while the pointer
+  // is over the rack" rather than to nothing.
+  try { el.setPointerCapture(ev.pointerId); } catch (_) {}
+  const grab = clientToRack(ev.clientX, ev.clientY);
+  const from = { x: it.cx ?? it.x, y: it.cy ?? it.y };
+  let at = { ...from };
+  plateDrag = it;
+
+  const move = (mv) => {
+    const p = clientToRack(mv.clientX, mv.clientY);
+    let x = from.x + (p.x - grab.x);
+    let y = from.y + (p.y - grab.y);
+    // Snap is on by default and `shift` escapes it — the way every editor
+    // that has a grid does it, and the reason the grid is drawn at all.
+    if (!mv.shiftKey) {
+      x = Math.round(x / GRID) * GRID;
+      y = Math.round(y / GRID) * GRID;
+    }
+    at = { x: Math.max(RACK_OFF_X, x), y: Math.max(RACK_OFF_Y, y) };
+    movePlateTo(it, at.x, at.y);
+  };
+  const up = () => {
+    el.classList.remove("moving-plate");
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", up);
+    el.removeEventListener("pointercancel", up);
+    plateDrag = null;
+    ffStore(true).set(it.mid, { x: at.x - RACK_OFF_X, y: at.y - RACK_OFF_Y });
+    // One rebuild, so the content box, the minimap rects and any unplaced
+    // neighbour that now has to make room all agree with the drop. The camera
+    // is held: the player just told us what they were looking at, and a fit
+    // triggered by the bounding box they themselves changed would answer a
+    // 24px nudge by moving the entire world.
+    camHold = true;
+    renderRack();
+    scheduleSave();
+  };
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+  return true;
+}
+
 // ---------- focus retention ----------
 // A rebuild used to drop the keyboard on the floor: `innerHTML = ""` removes
 // the focused element, focus falls to `<body>`, and the roving tabstop resets
@@ -5033,6 +5437,7 @@ let rackContent = { w: 640, h: 360 }; // natural size of the last interactive bu
 let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
 let viewUserSet = false;              // has the player aimed the camera themselves?
 let camAimed = false;                 // first fit done?
+let camHold = false;                  // leave the next build's framing alone
 let camSig = "";                      // bounding-box signature of the last build
 let viewTween = null;
 
@@ -5272,8 +5677,15 @@ function aimCamera(coMotion) {
   const sig = `${Math.round(rackContent.w)}x${Math.round(rackContent.h)}:${rackBoxes.size}`;
   const changed = sig !== camSig;
   camSig = sig;
+  // One render whose framing the player has already chosen with their hands —
+  // a freeform drop, or "apply grid". The bounding box changed by definition
+  // in both cases, and answering that with a fit would move the whole world in
+  // reply to a 24px nudge. The signature is still updated, so the *next* real
+  // structural edit is compared against what is actually on screen.
+  const hold = camHold;
+  camHold = false;
   if (!camAimed) { camAimed = true; fitBox(contentBox(), false); return; }
-  if (changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true, coMotion);
+  if (!hold && changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true, coMotion);
   else applyView();
 }
 
@@ -5428,6 +5840,15 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
   // thing the gesture is actually about.
   releaseTextEntry();
   const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
+  // In freeform, a plain press on a faceplate moves the module. Tested after
+  // the modifier gestures below would be too late — they are tested here, in
+  // order, and space still wins so the pan modifier keeps working over a plate
+  // exactly as it does over the canvas. `armed`/`connectPick` win too: while a
+  // module is in hand or a cable is half-drawn, a plate is a *destination*.
+  if (
+    layoutMode === "freeform" && ev.button === 0 && !spacePan && !armed && !connectPick &&
+    !onControl && startPlateDrag(ev)
+  ) return;
   const wants =
     ev.button === 1 ||                        // middle-drag, everywhere
     (ev.button === 0 && spacePan) ||          // space-drag, the graph-editor idiom
@@ -6776,26 +7197,40 @@ $("lock-clear").onclick = () => {
   wb.locks.clear();
   renderRack();
 };
-// The arrangement switch. Deliberately a plain toggle rather than a menu: two
+// The arrangement switch. Deliberately a plain cycle rather than a menu: three
 // modes is not a menu's worth of choice, and the label says which one you are
 // in rather than which one you would get, because the rack in front of you is
-// the only preview either mode needs.
+// the only preview any of them needs.
+//
+// Switching is a *command* (WS-4 §3): chain and compact never overwrite the
+// hand positions, they merely stop drawing them, so freeform is exactly where
+// you left it when you come back — including after a reload.
+const LAYOUT_TIP = {
+  chain: "Chain: the signal path on one baseline. Click to pack it tight.",
+  compact: "Compact: layers packed tight. Click to place modules by hand.",
+  freeform: "Freeform: drag plates where you like — they snap to the grid, " +
+    "hold shift to place freely. Click for the straight signal chain.",
+};
 function syncLayoutBtn() {
   const b = $("rack-layout");
   if (!b) return;
-  b.textContent = layoutMode === "compact" ? "compact" : "chain";
-  b.setAttribute("aria-pressed", String(layoutMode === "compact"));
-  b.closest(".tt").title =
-    layoutMode === "compact"
-      ? "Compact: layers packed tight. Click for the straight signal chain."
-      : "Chain: the signal path on one baseline. Click to pack it tight.";
+  b.textContent = layoutMode;
+  b.setAttribute("aria-pressed", String(layoutMode !== "chain"));
+  b.closest(".tt").title = LAYOUT_TIP[layoutMode];
+  // "apply grid" only exists in the mode it acts on, and the frame advertises
+  // that a plate can be picked up — a draggable object with a default cursor
+  // is a draggable object nobody discovers.
+  const g = $("rack-grid");
+  if (g) g.closest(".tt").classList.toggle("hidden", layoutMode !== "freeform");
+  $("rack-scroll").classList.toggle("freeform", layoutMode === "freeform");
 }
 $("rack-layout").onclick = () => {
-  layoutMode = layoutMode === "chain" ? "compact" : "chain";
+  layoutMode = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
   try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
   syncLayoutBtn();
   renderRack();
 };
+$("rack-grid").onclick = () => applyGrid();
 syncLayoutBtn();
 
 
@@ -10556,7 +10991,35 @@ $("taste-reset-btn").onclick = () => {
 $("patch-export-btn").onclick = () => {
   if (!wb.tree) return note("nothing on the bench to export");
   const name = wb.subjectId != null ? nameOf(wb.subjectId) : "patch";
-  const payload = JSON.stringify({ ricercar_patch: 1, name, tree: wb.tree }, null, 1);
+  const body = { ricercar_patch: 1, name, tree: wb.tree };
+  // The layout rides along (WS-4 §8), keyed by the same node identities the
+  // tree itself now carries — so a patch you send someone arrives arranged the
+  // way you arranged it. Purely additive: the field is absent when nothing has
+  // been placed by hand, and an older build that has never heard of `layout`
+  // ignores it and loads the tree exactly as before, which is why this is
+  // still `ricercar_patch: 1`.
+  // `ffPlaces`, not `ffStore`: a patch that inherited its layout from the one
+  // it was bred from has that layout even if it has not been drawn in freeform
+  // since. Nothing placed by hand at all means no `layout` key — a chain-mode
+  // patch is shared as a patch, not as an arrangement.
+  const store = ffPlaces();
+  const pins = [];
+  if (store && store.size) {
+    for (const m of wb.rack?.modules || []) {
+      const mid = midOf(m);
+      const p = store.get(mid) ||
+        // Not placed by hand, but on screen in the arrangement being shared —
+        // the modules a generation of ⚡ added since, sitting in their offered
+        // slots. The recipient should get the picture the sender is looking
+        // at, not that picture minus everything the sender never dragged.
+        (layoutMode === "freeform" && rackBoxes.get(m.key)
+          ? { x: rackBoxes.get(m.key).x - RACK_OFF_X, y: rackBoxes.get(m.key).y - RACK_OFF_Y }
+          : null);
+      if (p) pins.push([mid, Math.round(p.x), Math.round(p.y)]);
+    }
+  }
+  if (pins.length) body.layout = { grid: GRID, pos: pins };
+  const payload = JSON.stringify(body, null, 1);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
   a.download = `${name.replace(/[^\w-]+/g, "_").slice(0, 32)}.ricercar.json`;
@@ -10570,8 +11033,14 @@ $("patch-import-input").onchange = async (e) => {
   try {
     const data = JSON.parse(await file.text());
     const tree = data.tree || data; // accept bare trees too
+    // Held until the engine says which id the patch landed as — that id is the
+    // key the layout has to be filed under, and it does not exist yet. Cleared
+    // either way in `patch_imported`, so a refused import cannot leave a
+    // layout waiting to be adopted by the *next* one.
+    pendingLayout = Array.isArray(data.layout?.pos) ? data.layout.pos : null;
     send({ type: "import_patch", json: JSON.stringify(tree), name: data.name || "" });
   } catch (_) {
+    pendingLayout = null;
     note("that file isn't a patch");
   }
 };
@@ -11087,6 +11556,7 @@ bootMidi();
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
     restoreTray(saved.ui.held);
+    restorePositions(saved.ui.positions);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.

@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=51">
+<link rel="stylesheet" href="style.css?b=52">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=82";
+    s.src = "main.js?b=83";
     document.head.appendChild(s);
   }
 })();
@@ -141,6 +141,11 @@
                  map is up. Arrangement and detail are different questions and
                  stay different buttons — Reaktor's mistake is folding them. -->
             <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn" id="rack-layout" aria-pressed="false">chain</button></span>
+            <!-- Only in freeform, because it is the only mode it means
+                 anything in: it pins whatever is currently on screen to the
+                 24px grid so a patch that arrived from evolution with no
+                 layout has one to start dragging from. -->
+            <span class="tt hidden" title="Snap every module to the 24px grid and pin it there."><button class="util-btn" id="rack-grid">apply grid</button></span>
             <span class="tt" title="Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."><button class="util-btn" id="rack-lod" aria-pressed="false">detail auto</button></span>
             <span class="tt" title="Show the minimap (bottom-left of the rack)"><button class="util-btn" id="rack-map-btn" aria-pressed="false">map</button></span>
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-knobs" disabled>lock knobs</button></span>
@@ -453,6 +458,7 @@
         <div class="help-h">the rack canvas</div>
         <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
         <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
+        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a plate by its faceplate and it snaps to the grid — hold <kbd>shift</kbd> to place it freely. <b>apply grid</b> pins everything where it currently sits, which is how you start from an evolved patch. Positions are kept per patch, survive a reload and a generation of ⚡, and travel with an exported patch file.</p>
         <div class="help-h">performance</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>
