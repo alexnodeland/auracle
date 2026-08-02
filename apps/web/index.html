@@ -4,10 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RICERCAR — taste-learning synthesizer</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- The tab icon, inline. It was an SVG data URI carrying raw `<`, `>`, `'`
+     and spaces — legal enough that Chrome drew it and illegal enough that a
+     browser which rejects the URL falls back to `/favicon.ico`, which this app
+     does not serve: an unconditional 404 in the console of a build whose
+     acceptance bar is a *clean* console. A 113-byte base64 PNG has neither
+     problem — no URL escaping to get wrong, and no browser old enough to want
+     an .ico instead. 16×16, the bezel's own `#171a1f` under a phosphor trace,
+     because the favicon is the smallest place the instrument still has to look
+     like itself. -->
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAOElEQVR42mMQl5InCTEMfg19HzbSUgNENX49pGsASsMRsk5MLgSRrgGP7VhdSFUNWAOA2hqokJYAvKaL4UmsFaEAAAAASUVORK5CYII=">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=64">
+<link rel="stylesheet" href="style.css?b=68">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +38,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=107";
+    s.src = "main.js?b=118";
     document.head.appendChild(s);
   }
 })();
@@ -59,7 +68,12 @@
           <label class="ovf-item" role="menuitem" tabindex="0">Load taste profile<input id="import-input" type="file" accept=".json" hidden></label>
           <div class="ovf-sep"></div>
           <button id="patch-export-btn" class="ovf-item" role="menuitem">Export this patch</button>
-          <label class="ovf-item" role="menuitem" tabindex="0">Import a patch<input id="patch-import-input" type="file" accept=".json" hidden></label>
+          <button id="image-btn" class="ovf-item" role="menuitem">Export as image…</button>
+          <!-- One import for all three: the .json sidecar, and the .png/.svg
+               that carry the very same sidecar inside them. There is no second
+               "import an image" route because there is no second kind of
+               file — an exported picture *is* an exported patch. -->
+          <label class="ovf-item" role="menuitem" tabindex="0">Import a patch<input id="patch-import-input" type="file" accept=".json,.png,.svg" hidden></label>
           <div class="ovf-sep"></div>
           <button id="scope-btn" class="ovf-item" role="menuitem">Scope &amp; analyser…</button>
           <div class="ovf-sep"></div>
@@ -138,6 +152,48 @@
             <label class="sp-row sp-check"><input type="checkbox" id="sp-freeze"><span>freeze the trace</span></label>
           </div>
           <p class="sp-note">Pre-master is what the instrument does; post-master is what you hear.</p>
+        </div>
+        <!-- The export dialog (WS-7 §3). A single "save a PNG" button is a
+             screenshot key; a design tool asks the four questions it cannot
+             guess — how much of the patch, at what size, on what, and in
+             which format — and then tells you exactly what you are about to
+             get. It hangs off the same ⋯ as the scope panel and wears the
+             same shell, because it is the same kind of thing: a preference
+             you set once and a command you run often. -->
+        <div class="scope-panel image-panel hidden" id="image-panel" role="dialog" aria-label="Export the patch as an image">
+          <div class="sp-head">
+            <span class="sp-title">export image</span>
+            <button class="util-btn sq" id="image-close" aria-label="Close">×</button>
+          </div>
+          <div class="sp-grid">
+            <label class="sp-row"><span>scope</span>
+              <select id="ix-scope">
+                <option value="all">whole patch</option>
+                <option value="sel">selection</option>
+              </select></label>
+            <label class="sp-row"><span>size</span>
+              <select id="ix-scale">
+                <option value="1">1×</option>
+                <option value="2">2×</option>
+                <option value="3">3×</option>
+              </select></label>
+            <label class="sp-row"><span>background</span>
+              <select id="ix-bg">
+                <option value="solid">solid</option>
+                <option value="transparent">transparent</option>
+              </select></label>
+            <label class="sp-row"><span>format</span>
+              <select id="ix-fmt">
+                <option value="png">PNG</option>
+                <option value="svg">SVG</option>
+              </select></label>
+          </div>
+          <!-- Figma's readout, and for the same reason: the one number you
+               want before you press the button is the one you get afterwards
+               by opening the file. -->
+          <div class="ix-dims mono" id="ix-dims">—</div>
+          <button class="ix-go" id="ix-go">export</button>
+          <p class="sp-note">The patch rides inside the file. Drop the picture back onto ricercar and it opens as a patch.</p>
         </div>
       </div>
     </div>
@@ -237,7 +293,13 @@
                    layout has one to start dragging from. -->
               <span class="tt hidden" title="Snap every module to the 24px grid and pin it there."><button class="util-btn seg-item" id="rack-grid">apply grid</button></span>
               <span class="tt" title="Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
-              <span class="tt" title="Show the minimap (bottom-left of the rack)"><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
+              <!-- A fourth way of reading the rack, and the only one that
+                   draws the model onto it. Off by default: it is a second
+                   colour law over the first, and it speaks about families of
+                   module rather than about any one plate — its tooltip says
+                   so, and so does every plate's. -->
+              <span class="tt" title="Tint each plate by what the model believes about its family of module — amber toward, red away, stronger where it is certain. Off by default."><button class="util-btn seg-item" id="rack-belief" aria-pressed="false">belief</button></span>
+              <span class="tt" title="Show the minimap (bottom-left of the rack). Shift-click it to bookmark a spot; shift+1–9 jumps to one."><button class="util-btn seg-item" id="rack-map-btn" aria-pressed="false">map</button></span>
             </div>
             <!-- Quieter and smaller than the rest on purpose: locking is a
                  preparation for evolving, not an act of its own. -->
@@ -678,6 +740,18 @@ document.getElementById("hg-anyway").addEventListener("click", function () {
   location.reload();
 });
 </script>
+
+<!-- drop target — the other half of the share loop. A patch arrives as a file
+     from a chat window or a forum post, and the gesture that puts it there is
+     a drag, not a trip through a file picker in an overflow menu. Inert until
+     something is actually dragged over the window. -->
+<div id="drop-veil" class="drop-veil hidden" aria-hidden="true">
+  <div class="dv-card">
+    <div class="dv-mark">↓</div>
+    <div class="dv-line">drop a patch to open it</div>
+    <div class="dv-sub mono">.ricercar.json · .png · .svg</div>
+  </div>
+</div>
 
 <!-- boot overlay -->
 <section id="boot" class="boot">

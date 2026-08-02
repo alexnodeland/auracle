@@ -6,6 +6,59 @@ the project is pre-1.0.
 
 ## [Unreleased]
 
+### Added — φ_struct sees how a patch is *arranged*
+
+- **Two arrangement coordinates in φ_struct**, so the taste model can hold an
+  opinion about routing and not only about contents: `chain_balance` (mean
+  source-to-root path over the longest one — an asymmetric branch, whichever
+  side the chain is on) and `frac_sidechained` (binary nodes whose `/1` — a
+  ducker's key, a vocoder's modulator — is a chain rather than a bare
+  oscillator). `filter(mix(a, b))` and `mix(filter(a), b)` were *the same
+  point* in φ before this: same counts, different instrument.
+- Both are ratios of shape sums, never linear in any count, which is what keeps
+  them clear of the two exact identities that put `size`, `depth` and `n_mix`
+  out of φ in the first place. VIF over 300 draws: 2.7 and 2.4, against
+  `mod_density` 5.6 and the standing `rolloff_mean` 19.6.
+- **Four columns were written and two were cut, both by measurement**, and that
+  is the more useful half of the change:
+  - `branch_width_max` came back at VIF 10.4 and took `n_vco` from 3.1 to 9.1.
+    WS-8 §4 asked for a parallelism coordinate on the reading that serial and
+    parallel patches "differ only in `n_mix`". They do not: the leaf count is
+    `1 + Σ binaries` exactly, so a patch cannot gain a mixer without gaining a
+    source, and the source counts have been in φ since v1. A synthetic listener
+    who "likes wide patches" was already learned to Spearman 0.709 by the *old*
+    feature set, which says the same thing independently.
+  - `mod_at_source` measured *well* — VIF 3.0, full spread — and is out on a
+    tie the harness could not break. An 8-seed search-health run made three
+    columns look like an unambiguous regression (climb +1.714 → +1.320, best
+    patch 8.154 → 6.503, 7/8 seeds climbing → 5/8). At 16 seeds the harness's
+    standard error on that quantity turned out to be ±0.64, and the paired
+    differences are +0.35 ± 0.73 for two columns and −0.33 ± 0.74 for three:
+    neither a regression nor an improvement anything here can see. So the tie
+    goes to cost — every column is a dimension of posterior variance the cold
+    start pays down — and to scope: two columns answer the question this wave
+    was asked, and the third answers a different one. It stays as a display
+    field, for a wave with evidence to spend and its own measurement.
+- **The routing-lock copy now claims learning.** WS-8 §4 sequenced that
+  deliberately: until these columns landed, "lock wiring" could only promise
+  that evolution would leave the routing alone.
+- **The pre/post evolution measurement, in one line each** (before → after,
+  same seeds): pool climb +1.714 → +1.723 · MH acceptance 46.5% → 49.6% ·
+  locked refine beat its parent 66% → 69% · fitted-vs-true ranking 0.318 →
+  0.389 · true best survived the generation 98% → 100% · closed-loop
+  calibration r 0.693 → 0.688 (se ±0.018). And for a synthetic listener whose
+  taste *is* a routing preference: fit-vs-truth 0.662 → 0.705, true utility
+  gain +2.016 → +2.669, and a pool that ends up 82% sidechained rather than
+  71.6%. The full table is on `search_health`'s module doc.
+- `search_health` gained three modes. `--routing` is a synthetic listener whose
+  taste *is* a routing preference; it walks the term rather than reading
+  `StructFeatures`, so the same measurement compiles and runs on both sides of
+  a feature-set change. `--climb` runs the pool-climb gate alone at any seed
+  count and prints the per-seed numbers, because ±0.4 in the mean gain is
+  inside the seed-to-seed spread and the aggregate cannot tell a regression
+  from a lottery. `--tail` runs the expensive back half alone, so an
+  interrupted comparison run does not have to start over.
+
 ### Changed
 
 - Two open questions about the search loop are now **answered in the code**

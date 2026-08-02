@@ -722,6 +722,101 @@ mod tests {
         assert_eq!(f.n_filter_family(), 1.0);
         assert_eq!(f.n_time(), 1.0);
         assert_eq!(f.to_vec().len(), StructFeatures::NAMES.len());
+        // Shape. Levels are delay(1) · filter(1) · mix(1) · vco+noise(2), so
+        // the tree is two wide at its widest; both sources sit four nodes from
+        // the root, so it is perfectly balanced; the mix's `/1` is a bare
+        // noise source, so nothing is sidechained; and the one filled slot is
+        // on the filter, one step down a four-deep tree.
+        assert_eq!(f.branch_width_max, 2.0);
+        assert_eq!(f.chain_balance, 1.0);
+        assert_eq!(f.frac_sidechained, 0.0);
+        assert!((f.mod_at_source - 1.0 / 3.0).abs() < 1e-12);
+    }
+
+    /// The wave-3 shape coordinates: two patches with **identical counts** and
+    /// different routing must land on different φ.
+    ///
+    /// This is WS-8 §4's acceptance test in one assertion. `filter(mix(a, b))`
+    /// filters the sum; `mix(filter(a), b)` filters one layer and leaves the
+    /// other dry. One filter, two VCOs, one mixer either way — so under the
+    /// twenty-three columns that shipped before this wave the two patches were
+    /// *the same point*, and no amount of voting could have taught the model
+    /// which one the user meant.
+    #[test]
+    fn shape_separates_serial_from_parallel() {
+        let mix = |a: AudioNode, b: AudioNode| AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(a),
+            b: Box::new(b),
+        };
+        let filter = |input: AudioNode| AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: ricercar_grammar::term::FilterKind::SvfLp,
+            cutoff: 0.5,
+            resonance: 0.2,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+            input: Box::new(input),
+        };
+        let src = || vco(Waveform::Saw).root;
+
+        let sum_then_filter = struct_features(&PatchTree {
+            amp: amp(),
+            root: filter(mix(src(), src())),
+        });
+        let filter_one_layer = struct_features(&PatchTree {
+            amp: amp(),
+            root: mix(filter(src()), src()),
+        });
+
+        // Every count agrees, which is the point.
+        for (a, b) in [
+            (sum_then_filter.n_vco, filter_one_layer.n_vco),
+            (sum_then_filter.n_filter, filter_one_layer.n_filter),
+            (sum_then_filter.n_mix, filter_one_layer.n_mix),
+            (sum_then_filter.size, filter_one_layer.size),
+            (sum_then_filter.depth, filter_one_layer.depth),
+        ] {
+            assert_eq!(a, b);
+        }
+        // Both are two wide, which is why width is not the coordinate that
+        // does the work here (and, per the module doc, is not a φ coordinate
+        // at all). Balance is: sources at three and three against three and
+        // two.
+        assert_eq!(sum_then_filter.branch_width_max, 2.0);
+        assert_eq!(filter_one_layer.branch_width_max, 2.0);
+        assert_eq!(sum_then_filter.chain_balance, 1.0);
+        assert!((filter_one_layer.chain_balance - 5.0 / 6.0).abs() < 1e-12);
+        assert_ne!(sum_then_filter.to_vec(), filter_one_layer.to_vec());
+
+        // A serial chain is one node wide however long it gets — the property
+        // the proposal tilt reads to decide whether to offer a binary at all.
+        let serial = struct_features(&PatchTree {
+            amp: amp(),
+            root: filter(filter(filter(src()))),
+        });
+        assert_eq!(serial.branch_width_max, 1.0);
+        assert_eq!(serial.chain_balance, 1.0);
+
+        // `frac_sidechained` asks whether the second input is a chain of its
+        // own. Bare source on the right: no. A filter on the right: yes.
+        assert_eq!(
+            struct_features(&PatchTree {
+                amp: amp(),
+                root: mix(src(), src()),
+            })
+            .frac_sidechained,
+            0.0
+        );
+        assert_eq!(
+            struct_features(&PatchTree {
+                amp: amp(),
+                root: mix(src(), filter(src())),
+            })
+            .frac_sidechained,
+            1.0
+        );
     }
 
     /// Pipeline over prior samples: most draws featurize; quarantines are

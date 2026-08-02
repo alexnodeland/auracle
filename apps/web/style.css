@@ -735,6 +735,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mm-node.mod { fill: rgba(255,180,84,0.34); }
 .mm-node.amp { fill: rgba(142,240,177,0.7); }
 .mm-view { fill: rgba(255,255,255,0.05); stroke: var(--phos-b); stroke-width: 1.2; }
+/* Bookmarks. Amber, because a bookmark is a decision about where to look and
+   the amber channel is where this instrument keeps decisions — and filled
+   rather than outlined so a pip reads as a marker on the map rather than as a
+   second, smaller viewport rect. Drawn under `.mm-view`, which is the one
+   thing on the map that must never be obscured. */
+.mm-pip {
+  fill: rgba(255, 180, 84, 0.9);
+  stroke: rgba(10, 8, 5, 0.85);
+  stroke-width: 1;
+}
+.mm-pip-n {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 600;
+  fill: #120c04;
+  text-anchor: middle;
+  pointer-events: none;
+}
 .rack-empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -747,6 +765,40 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mod-plate { fill: url(#plateGrad); stroke: #2c313a; stroke-width: 1; }
 .mod-plate.modside { stroke: #57431f; }
 .mod-plate.locked { stroke: var(--phos-b); stroke-dasharray: 4 3; }
+/* The opt-in belief tint. A stroke rather than a fill, and inset rather than
+   on the plate's own edge, so it can never be confused with the dashed amber
+   `locked` outline — one says "the model leans this way about this family",
+   the other says "you pinned this", and they are routinely on at once.
+   `stroke-opacity` is written per plate: it carries the model's certainty. */
+.belief-edge { fill: none; stroke-width: 2; pointer-events: none; }
+.belief-edge.pos { stroke: var(--phos-b); }
+.belief-edge.neg { stroke: var(--led-red); }
+
+/* ---- the per-port probe (WS-9) ---- */
+/* A CRT window in the same idiom as the big scope's bezel, clipped to a
+   module's out ○ by a short lead. Nothing here is interactive except the
+   tooltip, so the whole group is pointer-transparent apart from the bezel
+   itself, which has to be hoverable for the title to be readable. */
+.port-trace { pointer-events: none; }
+.pt-lead { fill: none; stroke: var(--phos-a-deep); stroke-width: 1.4; }
+.pt-bezel {
+  fill: var(--bezel);
+  stroke: var(--hairline);
+  stroke-width: 1;
+  pointer-events: auto;
+}
+.pt-zero { stroke: rgba(142, 240, 177, 0.16); stroke-width: 0.8; }
+.pt-wave { fill: var(--phos-a); fill-opacity: 0.82; stroke: none; }
+.pt-msg {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  fill: var(--silk-mute);
+  pointer-events: none;
+}
+/* Stale: the patch has moved and the render on screen is of the one before
+   it. Dimmed rather than emptied — a picture of a moment ago is worth more
+   than a blank box, and the tooltip says which it is. */
+.port-trace.stale { opacity: 0.45; }
 /* Hierarchy by ratio, not by a pixel. The three pieces of text on a plate had
    one size between them and the brightest of them was the one that never
    changed — so the plate read as a caption block rather than as a control
@@ -2872,6 +2924,16 @@ select:focus-visible,
    *trace*, down to the floor the player set. */
 .scope-shell .live-scope { opacity: var(--scope-floor, 0.35); transition: opacity 320ms ease; }
 .scope-shell.live .live-scope { opacity: 1; }
+/* …with one exception, and it is the reserve's other half. The fit keeps the
+   patch out from under the bezel; a *pan* can put eight plates under it, and
+   there the promise ("the trace never rides over a module") can only be kept by
+   the glass. So the whole housing — bezel included — ducks to the parked
+   presence the trace already uses, and the module underneath is readable
+   through it. Capped a little under the trace's own floor because this fade has
+   a different job: parked means "not asking for attention", ducked means "not
+   in your way", and the second one has to be got out of. */
+.scope-shell { transition: opacity 220ms ease; }
+.scope-shell.ducked { opacity: min(0.3, var(--scope-floor, 0.35)); }
 /* Four corners, three sizes. The scope is in the rack *frame*, so none of
    this moves when the camera does. */
 .scope-shell.corner-br { right: 8px; bottom: 8px; }
@@ -2954,6 +3016,86 @@ select:focus-visible,
   margin-top: var(--s2);
   font-family: var(--font-voice); font-style: italic;
   font-size: var(--t-micro); color: var(--silk-dim); line-height: 1.5;
+}
+
+/* ---------- the image-export dialog (WS-7 §3) ----------
+   Deliberately the *same* shell as the scope panel — same surface, same
+   shadow, same row grammar — because a second popover with its own look would
+   say these are two different kinds of thing, and they are not: both are a
+   handful of settings hung off the header's ⋯. Only the width and the two
+   pieces the scope panel has no equivalent of are new. */
+.image-panel { width: 268px; }
+/* `flex: 0 0 130px` alone does not hold a `<select>` to 130px: a flex item's
+   `min-width` is `auto`, so the longest option ("selection — nothing
+   selected") sets a floor and that one row grows wider than the four beside
+   it. The rows have to agree or the panel reads as four controls and an
+   accident. */
+.image-panel .sp-row select { min-width: 0; }
+/* The measured result, before the button rather than after the download. Its
+   own recessed strip so it reads as a readout and not as another control. */
+.ix-dims {
+  margin-top: var(--s3);
+  padding: 6px 8px;
+  border: 1px solid var(--hairline); border-radius: 3px;
+  background: var(--bezel);
+  font-size: var(--t-micro); color: var(--phos-a-dim);
+  text-align: center;
+}
+.ix-dims.busy { color: var(--silk-dim); }
+/* The only filled control in the panel, because it is the only one that does
+   anything — everything above it just describes what it will do. */
+.ix-go {
+  margin-top: var(--s2);
+  width: 100%;
+  padding: 7px 0;
+  border: 1px solid var(--phos-b-deep); border-radius: 3px;
+  background: linear-gradient(180deg, #3a2a12, #241a0c);
+  color: var(--phos-b);
+  font-family: var(--font-silk); font-size: var(--t-label);
+  letter-spacing: 0.16em; text-transform: uppercase;
+  cursor: pointer;
+}
+.ix-go:hover { border-color: var(--phos-b); background: linear-gradient(180deg, #4a3517, #2c200e); }
+.ix-go:disabled { opacity: 0.4; cursor: default; }
+.sp-row select:disabled { opacity: 0.45; }
+.sp-row option:disabled { color: var(--silk-mute); }
+
+/* ---------- the drop target ----------
+   A veil rather than a rim light on the frame: a dragged file has no obvious
+   home in a three-pane app, and the honest answer is "anywhere". */
+.drop-veil {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(7, 8, 10, 0.72);
+  backdrop-filter: blur(2px);
+  /* The veil must never eat the dragleave that dismisses it. */
+  pointer-events: none;
+}
+.drop-veil.hidden { display: none; }
+.dv-card {
+  padding: var(--s5) var(--s6);
+  border: 1px dashed var(--phos-a-deep); border-radius: 8px;
+  background: var(--surface-pop); box-shadow: var(--shadow-pop);
+  text-align: center;
+}
+.dv-mark { font-size: 26px; color: var(--phos-a); line-height: 1; }
+.dv-line {
+  margin-top: var(--s2);
+  font-family: var(--font-silk); font-size: var(--t-title);
+  letter-spacing: 0.1em; color: var(--silk);
+}
+.dv-sub { margin-top: var(--s1); font-size: var(--t-micro); color: var(--silk-dim); letter-spacing: 0.1em; }
+
+/* ---------- the offscreen export stage ----------
+   `buildRack` draws into a live document or it draws nothing: `fitLabels`
+   needs `getBBox`, and the whole style-inlining pass reads `getComputedStyle`,
+   both of which want a laid-out element in a real stylesheet's scope. So the
+   export renders on stage and off screen, rather than in a detached fragment
+   where every colour would come back as an initial value. */
+.export-stage {
+  position: fixed; left: -20000px; top: 0;
+  width: 1200px; height: 900px;
+  opacity: 0; pointer-events: none;
 }
 
 /* ---------- rack material ----------

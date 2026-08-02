@@ -235,7 +235,41 @@ function uiState() {
     // lock is keyed by node identity now: under the old trace-address keys a
     // restored lock would have named whatever had since moved into that slot.
     locks: [...lockStore].filter(([, s]) => s.size).map(([id, s]) => [id, [...s]]),
+    // Where you like to stand in a big patch (WS-9). Nine slots per subject,
+    // stored as a *centre plus a zoom* rather than as a viewBox: the frame is
+    // resizable — the node-bank divider drags it — and a corner recorded at
+    // one frame width points somewhere else at another. Flattened for the
+    // same reason `positions` is: this blob is stored as-is and a Map is not.
+    marks: [...bookmarks]
+      .filter(([, l]) => l.length)
+      .map(([id, l]) => [
+        id,
+        l.map((b) => [b.slot, Math.round(b.x), Math.round(b.y), Number(b.zoom.toFixed(3))]),
+      ]),
   };
+}
+
+/** The inverse, tolerant of a save written before bookmarks existed — which is
+ *  every save on disk right now. A slot outside 1-9, or a coordinate that is
+ *  not a number, is dropped rather than restored: a bookmark that jumps the
+ *  camera somewhere impossible is worse than one that is missing. */
+function restoreBookmarks(saved) {
+  if (!Array.isArray(saved)) return;
+  for (const [id, list] of saved) {
+    if (!Array.isArray(list) || !list.length) continue;
+    const out = [];
+    for (const [slot, x, y, zoom] of list) {
+      if (!Number.isFinite(slot) || slot < 1 || slot > BM_MAX) continue;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zoom)) continue;
+      if (out.some((b) => b.slot === slot)) continue;
+      // Clamped only against arithmetic, not against `FIT_MIN`: a bookmark
+      // taken while a fit held the camera below the preference is a place the
+      // player stood, and lifting it on the way back in would land them
+      // somewhere they never were.
+      out.push({ slot, x, y, zoom: clamp(zoom, ZOOM_ABS_MIN, ZOOM_MAX) });
+    }
+    if (out.length) bookmarks.set(String(id), out.sort((a, b) => a.slot - b.slot));
+  }
 }
 
 /** The inverse, tolerant of a save written before positions existed — which is
@@ -257,12 +291,36 @@ function restorePositions(saved) {
 }
 
 // ---------- undo/redo (workbench edits) ----------
+//
+// A step on these stacks is a *state*, not a tree — `{json, locks, trays}`:
+//
+//  - `json` is the term, which is all this used to hold. It was enough for as
+//    long as the tree was the only thing an edit changed.
+//  - `locks` is what the player has pinned, because an edit can remove them and
+//    ⌘Z therefore has to be able to put them back. Extracting a locked module
+//    drops its lock ("6 locks went with what you removed"), and undoing that
+//    extraction used to bring the modules back with the dots dark — the pins
+//    silently gone, with the tree they named restored around them. `pruneLocks`
+//    stays exactly where it is, as the safety net it has always been; what it
+//    cannot be is the *only* mechanism, because pruning is one-way.
+//  - `trays` is what the edit put on the HELD shelf. Undoing an extraction puts
+//    the fragment back in the patch, so a shelf entry that survives it is a
+//    second copy of something that is wired up again — and it accumulated, one
+//    per extract/undo cycle, because nothing ever reclaimed it.
+//
+// The three are one transaction because they are one gesture. Anything else
+// makes ⌘Z a partial inverse, which is the worst kind: it looks like it worked.
 const undoStack = [];
 const redoStack = [];
 let restoreInFlight = false;
+/** The bench as a step: everything one edit can change and ⌘Z has to answer
+ *  for, except what the shelf owes — which only the edit itself knows. */
+function benchStep(trays) {
+  return { json: JSON.stringify(wb.tree), locks: [...wb.locks], trays: trays || [] };
+}
 function pushUndo() {
   if (!wb.tree) return;
-  undoStack.push(JSON.stringify(wb.tree));
+  undoStack.push(benchStep());
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
 }
@@ -288,12 +346,24 @@ let openEdit = null;
 let stagingBound = null;
 
 function stageUndo() {
-  openEdit = wb.tree ? { snap: JSON.stringify(wb.tree), trays: [] } : null;
+  // The locks travel in the snapshot for the same reason the tree does: they
+  // are read *now*, before the edit, and by reply time `wb.locks` has already
+  // been pruned against the tree that replaced this one.
+  openEdit = wb.tree ? { snap: benchStep(), trays: [] } : null;
   stagingBound = openEdit;
   return openEdit;
 }
 function commitStagedUndo() {
   if (!openEdit) return;
+  // Uids while the edit is open, because that is all `stageFragment` can hand
+  // back and a rejection has to be able to unstage by one. Records at commit,
+  // because from here the step may have to put them *back* on the shelf, and a
+  // uid whose entry has been spliced out names nothing. They are still on the
+  // shelf at this instant: `settleLanded` — which is what spends a dropped
+  // entry — runs immediately after this.
+  openEdit.snap.trays = openEdit.trays
+    .map((uid) => tray.find((t) => t.uid === uid))
+    .filter(Boolean);
   undoStack.push(openEdit.snap);
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
@@ -365,7 +435,7 @@ function noteOnLanding(text, opts) {
 // snapshot is not: a restore the engine refuses (the ceilings run on this
 // route now) used to consume the step anyway, so ⌘Z would eat one level of
 // history and give nothing back.
-let restorePending = null; // {kind: "undo"|"redo", cur: <tree json before>}
+let restorePending = null; // {kind: "undo"|"redo", cur: <the step being left>}
 
 // ⌘Z pressed ten times quickly is ten undos, not one. Both of these used to
 // answer "an edit is already in flight" by dropping the press — measured: ten
@@ -459,29 +529,49 @@ function performRestore(kind) {
     restoreBacklog = 0;
     return note(kind === "undo" ? "nothing to undo" : "nothing to redo");
   }
-  restorePending = { kind, cur: JSON.stringify(wb.tree) };
+  // The other side of the step, captured before the engine moves: the state a
+  // redo would come back to, locks and all.
+  restorePending = { kind, cur: benchStep() };
   restoreInFlight = true;
   structInFlight = true;
   beliefStale();
-  send({ type: "edit_set_tree", json: stack[stack.length - 1] });
+  send({ type: "edit_set_tree", json: stack[stack.length - 1].json });
 }
 // Which direction the restore that just landed went. `restorePending` is
 // cleared by `settleRestore`, and the revert check needs the answer after
 // that — an undo and a redo are the same message on the wire.
 let lastSettledRestore = null;
 
-/** The restore landed: only now does the step actually move. */
+/** The restore landed: only now does the step actually move.
+ *
+ *  Symmetric by construction. The step being taken off one stack carries the
+ *  state to go back to *and* the shelf entries the edit it undoes had staged;
+ *  the step pushed onto the other carries the state we are leaving and the very
+ *  same entries, so redo re-stages exactly what undo reclaimed. Both stacks
+ *  hold the same record objects, which is what lets the shelf entry keep its
+ *  uid across the round trip — a re-staged fragment the player had already
+ *  hovered is the same fragment, not a new one that looks like it. */
 function settleRestore() {
   lastSettledRestore = restorePending ? restorePending.kind : null;
   if (!restorePending) return;
-  if (restorePending.kind === "undo") {
-    undoStack.pop();
-    redoStack.push(restorePending.cur);
-  } else {
-    redoStack.pop();
-    undoStack.push(restorePending.cur);
-  }
+  const undoing = restorePending.kind === "undo";
+  const from = undoing ? undoStack : redoStack;
+  const to = undoing ? redoStack : undoStack;
+  const step = from.pop();
+  const cur = restorePending.cur;
   restorePending = null;
+  // Only reachable if the stack emptied between the request and the reply,
+  // which nothing does today — but a step that is not there cannot be the
+  // state to go back to, and inventing one would put a phantom on the far
+  // stack.
+  if (!step) return;
+  cur.trays = step.trays;
+  to.push(cur);
+  // The tree is already back — the engine sent it. These are the parts of the
+  // step the engine has never heard of.
+  wb.locks = new Set(step.locks);
+  if (undoing) for (const t of step.trays) unstage(t.uid);
+  else restage(step.trays);
 }
 
 // ---------- worker protocol ----------
@@ -630,39 +720,35 @@ worker.onmessage = (e) => {
       const layout = pendingLayout;
       pendingLayout = null;
       if (m.id > 0) {
-        // File the layout under the id it landed as, *before* benching it, so
-        // the first render already draws the arrangement the sender chose. The
-        // mids match because uids survive the round trip: the exported tree
-        // carries them, `ensure_uids` on admission keeps every id it is given
-        // and only mints for the ones that have none.
-        let placed = 0;
-        if (layout) {
-          const map = new Map();
-          for (const [mid, x, y] of layout) {
-            if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
-              map.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
-            }
-          }
-          if (map.size) {
-            ffLayouts.set(String(m.id), map);
-            ffLast = String(m.id);
-            ffTrim();
-            placed = map.size;
-            // A layout nobody can see is not carried, it is stored. The file
-            // said where these modules go; showing them anywhere else would
-            // make the feature indistinguishable from not having shipped it.
-            if (layoutMode !== "freeform") {
-              layoutMode = "freeform";
-              try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
-              syncLayoutBtn();
-            }
-          }
-        }
+        // Filed under the id it landed as, *before* benching it, so the first
+        // render already draws the arrangement the sender chose.
+        const placed = adoptLayout(m.id, layout);
         openOnBench(m.id);
         note(`patch imported as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
         scheduleSave();
+      } else if (m.duplicate > 0) {
+        // The bank already holds this exact patch. That is not a failure —
+        // patches travel, and being sent one you already own is the ordinary
+        // way that goes — so it is answered the way finding your own patch is
+        // answered: by name, and by opening it. It used to be answered with
+        // "could not import that patch (duplicate, or it failed the safety
+        // vet)", one sentence hedging between a success and a refusal, leaving
+        // the player to work out which had happened to them.
+        //
+        // The sender's arrangement is taken only where this player has none of
+        // their own for it: the patch is already theirs, and a dropped picture
+        // is not a reason to move plates they placed by hand.
+        if (!ffLayouts.has(String(m.duplicate))) adoptLayout(m.duplicate, layout);
+        note(`${nameOf(m.duplicate)} is already in the bank — opening it.`);
+        openOnBench(m.duplicate);
+        scheduleSave();
       } else {
-        note("could not import that patch (duplicate, or it failed the safety vet)");
+        // …and the other half of that old sentence, on its own and said
+        // plainly. Nothing entered the bank and nothing was displaced.
+        note(
+          "that patch did not pass the safety vet — what it renders is silent, runaway, or not audio at all — so the bank would not take it.",
+          { urgent: true },
+        );
       }
       break;
     }
@@ -875,6 +961,11 @@ worker.onmessage = (e) => {
         }
       }
       const structural = m.edited === "structure" || m.edited === "restore";
+      // `edit_set_tree` answers "restore" whether it came from ⌘Z or from a
+      // client-side rewrite, so the two are told apart by which of them is
+      // holding a receipt: only undo/redo leave a `restorePending`. Read before
+      // anything below can clear it.
+      const settlingRestore = m.edited === "restore" && restorePending !== null;
       if (m.edited !== undefined) {
         wb.dirty = true;
         if (structural) {
@@ -899,16 +990,35 @@ worker.onmessage = (e) => {
           cancelPending();
           endConnectPick();
         }
+        // Undo and redo are settled *here*, ahead of the prune, because a
+        // restore does not prune — it replaces. The step carries the lock set
+        // from the far side of the edit, and pruning the near side's locks
+        // against the tree that just came back would be the app deciding what
+        // a ⌘Z meant before reading what it said.
+        if (settlingRestore) {
+          restoreInFlight = false;
+          settleRestore();
+        }
         // One rule for every edit, from an op to a whole-tree rewrite to a
         // ⌘Z: a lock names a *node*, so it survives unless that node is gone.
         // This replaced a page of per-op key remapping (`lockRemapFor`) and a
         // second copy of the same reasoning inside `applyTreeRewrite`, which
         // tracked node objects by reference — both of them standing in for an
         // identity the term did not have and now does.
+        //
+        // Still the safety net after a restore, and still the whole mechanism
+        // for everything else. What it no longer does after one is *speak*: a
+        // restored set that loses an id here is a snapshot older than the rack
+        // it landed on, which is a thing to drop quietly, not a removal the
+        // player just performed and should be told about. (A client-side
+        // rewrite also answers "restore" and is a real removal — it is told
+        // apart by the receipt, exactly as `settleRestore` tells them apart.)
         const droppedLocks = pruneLocks();
-        if (droppedLocks > 0) {
+        if (droppedLocks > 0 || settlingRestore) {
           locksRemember(); // the set that survived is the set to remember
-          note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
+          if (droppedLocks > 0 && !settlingRestore) {
+            note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
+          }
         }
       }
       if (m.buffer && m.buffer.length > 0) {
@@ -929,12 +1039,14 @@ worker.onmessage = (e) => {
       const paramNonLive =
         m.edited !== undefined && !structural && nonLiveAddrs.has(m.edited);
       const subjectLoad = m.subject !== undefined;
-      // `edit_set_tree` answers "restore" whether it came from ⌘Z or from a
-      // client-side rewrite, so the two are told apart by which of them is
-      // holding a receipt: only undo/redo leave a `restorePending`.
+      // A restore with no receipt is a client-side rewrite rather than a ⌘Z:
+      // the lane is cleared for both, but only the one with a receipt has a
+      // step to settle — and that one settled further up, ahead of the lock
+      // prune it has to precede. Saying so here keeps the revert check below
+      // from reading a direction off a rewrite.
       if (m.edited === "restore") {
         restoreInFlight = false;
-        settleRestore();
+        if (!settlingRestore) lastSettledRestore = null;
       }
       if (structural) {
         structInFlight = false;
@@ -1014,6 +1126,16 @@ worker.onmessage = (e) => {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
       break;
     }
+    // The engine worker's degradation log (a re-issued draw, a retired one, a
+    // bank entry rendered serially). Not a console warning, because none of
+    // these is a fault — see the note over `ricLog` in worker.js — and not a
+    // toast either: the player did nothing, and nothing about their patch
+    // changed. It lands in the same array the worklet's messages do, which is
+    // the one place "why was that boot slow" can still be answered afterwards.
+    case "log": {
+      (window.__ricLog = window.__ricLog || []).push(m);
+      break;
+    }
     case "edit_rejected": {
       const refusedRestore = restorePending !== null;
       if (m.error) {
@@ -1031,6 +1153,23 @@ worker.onmessage = (e) => {
         discardStagedUndo();
         // A refused restore consumes no step: the stacks were never touched.
         restorePending = null;
+      } else if (m.addr) {
+        // `edit_param` said no: the address is not on this genome. This was the
+        // one refusal in the app that was still silent — the worker sends this
+        // shape with no `error` string, so the branch above skipped it and the
+        // knob stayed exactly where the hand left it while the engine held a
+        // different value. Silent *and* wrong, which is the combination the
+        // whole explained-rejection rule exists to rule out.
+        //
+        // Said, and then undone on screen: a re-render off the bench snaps the
+        // control back to what the patch actually holds, so the picture and
+        // the sound agree again.
+        const label = addrLabel(m.addr);
+        note(
+          `${label} isn't on this patch any more — that change did not land.`,
+          { urgent: true },
+        );
+        if (wb.rack) renderRack();
       }
       editInFlight = false;
       // A rejected op never reached the tree, so nothing was posted early and
@@ -1099,7 +1238,8 @@ worker.onmessage = (e) => {
     // already begun cannot be recalled and the player has usually moved on by
     // the time it lands. Dropping it here is the cancellation.
     case "preview": {
-      onPreviewArrived(m);
+      if (m.tag === "port") onPortTrace(m);
+      else onPreviewArrived(m);
       break;
     }
     case "committed": {
@@ -2345,6 +2485,16 @@ document.addEventListener("keydown", (e) => {
   if (currentView === "play" && !e.defaultPrevented) {
     if (e.key === "Home") { e.preventDefault(); fitAll(true); return; }
     if (e.key === ".") { e.preventDefault(); fitSelection(true); return; }
+    // The minimap's shift-click, from the keyboard. Read off `code` rather
+    // than `key`: shift+1 *is* "!" on a US layout and "&" on a French one, and
+    // a bookmark is a slot number rather than a character — matching on the
+    // character would bind the feature to one keyboard. The unshifted digits
+    // are the bank's 1-5 rating keys and stay theirs.
+    if (e.shiftKey && /^Digit[1-9]$/.test(e.code || "")) {
+      e.preventDefault();
+      bmJump(Number(e.code.slice(5)));
+      return;
+    }
   }
   const noteKey = k in KEYMAP || k === "z" || k === "x";
   if (!noteKey && e.target?.closest?.("button, [role=tab], [data-addr], input[type=range]")) return;
@@ -4416,6 +4566,39 @@ function ffTrim() {
   while (ffLayouts.size > FF_KEEP) ffLayouts.delete(ffLayouts.keys().next().value);
 }
 
+/** File an arriving patch's hand arrangement under the id it landed as, and
+ *  switch to freeform so it is actually visible — a layout nobody can see is
+ *  not carried, it is stored, and drawing the sender's patch anywhere but where
+ *  they put it would make the whole sidecar field indistinguishable from not
+ *  having shipped it. Returns how many plates it placed.
+ *
+ *  The mids match because uids survive the round trip: the exported tree
+ *  carries them, and `ensure_uids` on admission keeps every id it is given and
+ *  only mints for the ones that have none.
+ *
+ *  Two callers now: a patch that entered the bank, and a patch that turned out
+ *  to be one the bank already had. They differ in whether they may overwrite,
+ *  which is the caller's decision, not this function's. */
+function adoptLayout(id, layout) {
+  if (!Array.isArray(layout)) return 0;
+  const map = new Map();
+  for (const [mid, x, y] of layout) {
+    if (typeof mid === "string" && Number.isFinite(x) && Number.isFinite(y)) {
+      map.set(mid, { x: Math.max(0, x), y: Math.max(0, y) });
+    }
+  }
+  if (!map.size) return 0;
+  ffLayouts.set(String(id), map);
+  ffLast = String(id);
+  ffTrim();
+  if (layoutMode !== "freeform") {
+    layoutMode = "freeform";
+    try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+    syncLayoutBtn();
+  }
+  return map.size;
+}
+
 /** The positions to draw the *current* rack with, inheriting the layout of the
  *  patch this one came from when it is the first time we have seen this id.
  *
@@ -4857,6 +5040,22 @@ function renderRack() {
   reason("lock-knobs", "Pick a patch from the bank first");
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
+  // Locking the wiring now *teaches* as well as pins, and the copy is allowed
+  // to say so. WS-8 §4 sequenced this deliberately: until φ_struct carried an
+  // arrangement coordinate the model had no column in which "this branch is
+  // keyed off that one" was something a person could have an opinion about,
+  // so the only honest promise was that evolution would leave the routing
+  // alone. φ now measures how the branches are balanced and what is
+  // sidechained, so a pinned routing is evidence the posterior can fit rather
+  // than only a fence. (How *many* branches a patch has was always visible, as
+  // the source counts — see `structural.rs`'s wave-3 section for why the
+  // column that tried to say it again was thrown out.)
+  const wiringTip = $("lock-structure").closest(".tt");
+  if (wiringTip && hasRack) {
+    wiringTip.title = "Lock the wiring — evolution keeps this routing, and the model learns "
+      + "from it: how the branches are balanced and what is keyed off what are things it "
+      + "measures now.";
+  }
   renderSubject();
   if (!hasRack) {
     svg.innerHTML = "";
@@ -4973,6 +5172,16 @@ function buildRack(svg, rack, opts) {
   // another. Chain is the honest fallback, and it is freeform's own seed.
   let { mode = layoutMode } = opts || {};
   if (mode === "freeform" && !places) mode = "chain";
+  // Decided before anything is drawn, because the probe is part of the
+  // picture: which module it is on can change without the rack changing (the
+  // selection moved), and the answer has to be settled by the time the module
+  // loop reaches that plate. Interactive only — the duel minis and the export
+  // stage are pictures of a patch, not places you are standing in.
+  if (interactive) portTraceSync();
+  // The belief tint is a read of the posterior, and the posterior is the same
+  // for every plate — so the support counts are gathered once per build rather
+  // than once per module.
+  const beliefSup = interactive && beliefOverlay && !compact ? nbSupport() : null;
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
   // Light comes from 315° (top-left) everywhere: plate bevel, knob body,
@@ -5079,6 +5288,9 @@ function buildRack(svg, rack, opts) {
   svg.appendChild(plateLayer);
   svg.appendChild(wireLayer);
   svg.appendChild(ctrlLayer);
+  // The one thing that must be above every plate *and* every control: the
+  // per-port probe window. Built in the loop, appended after it.
+  let probeArt = null;
   const modByKey = new Map(rack.modules.map((m) => [m.key, m]));
   // What the motion system will need after the next teardown: the elements it
   // has to move, and the identity that says which of them is "the same one".
@@ -5220,7 +5432,14 @@ function buildRack(svg, rack, opts) {
     // A socket nothing is plugged into. The node under it is real — the
     // grammar has no hole — but the player unplugged it and must be able to
     // see that, so the plate is drawn as the absence it stands for.
-    const isEmpty = interactive && !m.is_mod && m.kind !== "amp" && placeholders.has(m.key);
+    //
+    // Not gated on `interactive`, and this was a lie in the exports: the
+    // control well, the ⋯ and the lock dot are this app's chrome and are right
+    // to be left out of a picture, but an empty socket is not chrome — it is
+    // what the patch *is*. Printed as an ordinary plate, an export said a
+    // module was there, and the sender's whole reason for exporting a patch
+    // with a hole in it ("here, fill this in") was erased on the way out.
+    const isEmpty = !m.is_mod && m.kind !== "amp" && placeholders.has(m.key);
     const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}${isEmpty ? " placeholder" : ""}`;
     const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
     // Compact is the zoomed-out reading mode: title and jacks, and none of
@@ -5229,6 +5448,13 @@ function buildRack(svg, rack, opts) {
     // plate and a blurred filter region the compositor still has to paint.
     if (!compact) plate.setAttribute("filter", "url(#plateShadow)");
     plateG.appendChild(plate);
+    // The opt-in belief tint, immediately over the panel and under everything
+    // printed on it — an edge, the way a coloured band on a resistor is an
+    // edge, rather than a wash that would fight the silkscreen.
+    if (beliefSup && !isEmpty) {
+      const edge = beliefEdge(m, p, beliefSup);
+      if (edge) plateG.appendChild(edge);
+    }
     // Faceplate material: a lit top edge and a shaded bottom edge give the
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
@@ -5466,6 +5692,14 @@ function buildRack(svg, rack, opts) {
       const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key },
         cabled.has(m.key) ? 0 : null);
       if (interactive && !isEmpty) attachOutJack(oj, m.key, "audio");
+      // …and the probe clipped onto it, if this is the plate it is on. Held
+      // back rather than appended here: the module loop paints in tree order,
+      // so a plate drawn later would paint over a window that has to be
+      // readable. It goes on last, over everything.
+      if (interactive && !compact && mid === portTrace.mid) {
+        probeArt = svgEl("g", { transform: `translate(${p.x},${p.y})` });
+        probeArt.appendChild(portTraceArt(p, m));
+      }
       // The mod slot, in its permanent housing. The jack names the port it
       // drives — on a four-knob module an unlabelled "mod" input is a
       // mystery, and now that eight different modules carry one, "mod" would
@@ -5683,6 +5917,8 @@ function buildRack(svg, rack, opts) {
       g.appendChild(kg);
     });
   }
+
+  if (probeArt) ctrlLayer.appendChild(probeArt);
 
   // Must run after insertion — `getBBox` needs a laid-out element.
   fitLabels();
@@ -6124,7 +6360,16 @@ function restoreRackFocus(mark) {
   setRackStop(el);
   // No `ensureRackVisible`: this is not navigation. The player did not move,
   // the patch did, and the camera's own answer to that is `aimCamera`.
-  el.focus({ preventScroll: true });
+  //
+  // …and for the same reason it is not a *selection* move either. `selInit`
+  // reads focus as "what the player is on", which is right for a keyboard walk
+  // and wrong for this: a plate click updates the selection on pointerdown,
+  // the rebuild that follows restores focus to wherever the keyboard was
+  // standing, and the selection would be silently dragged back there. Measured
+  // — clicking a second plate with the probe on moved it for one frame and
+  // then returned it to the first.
+  restoringFocus = true;
+  try { el.focus({ preventScroll: true }); } finally { restoringFocus = false; }
 }
 
 // ===========================================================================
@@ -6153,8 +6398,31 @@ const FIT_MAX = 2.2;
 // an empty grey field by accident — which is a thing a hand does, not a thing
 // a fit does. So the fit may go below it, as far as legibility survives, and
 // the wheel and the keys may not.
+//
+// `FIT_MIN` is now the *preference* rather than the limit, for the same reason
+// it was already allowed past `ZOOM_MIN`. A twenty-module patch scattered by
+// hand needs 0.19× in a 1280×900 frame, and at 0.22× Home left a plate outside
+// the frame — the one thing Home exists to make impossible. A fit that cannot
+// contain the patch has failed at its whole job, and a floor that causes that
+// failure is not protecting anything: nobody arrives at 0.19× by accident,
+// they arrive there by pressing the key that means "show me all of it".
+//
+// So: fit-to-contain wins. Below `FIT_MIN` a fit keeps going, and it carries
+// the floor down with it (`zoomFloor`) so that the clamp on the way out of
+// `applyView` does not immediately take back what it went below for.
 const FIT_MIN = 0.22;
+// The one hard stop, and it is arithmetic rather than taste: a zero or negative
+// zoom is a division by zero in every transform on this page.
+const ZOOM_ABS_MIN = 0.02;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+// The floor `applyView` actually enforces. `FIT_MIN` until a fit needs to go
+// lower, and back up the moment a fit that does not need to lands.
+let zoomFloor = FIT_MIN;
+/** Let the camera sit at `z`, however low, until something re-fits. */
+function allowZoomBelow(z) {
+  zoomFloor = clamp(Math.min(FIT_MIN, z), ZOOM_ABS_MIN, FIT_MIN);
+}
 
 const view = { x: 0, y: 0, zoom: 1 };
 let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
@@ -6187,10 +6455,11 @@ function rackToClient(rx, ry) {
 
 function applyView() {
   const { w, h } = frameSize();
-  // The absolute floor, not the manual one: this runs on every frame of the
+  // The floor in force, not the manual one: this runs on every frame of the
   // tween a fit rides in on, so clamping to `ZOOM_MIN` here would take back
-  // whatever `fitBox` went below it for.
-  view.zoom = clamp(view.zoom, FIT_MIN, ZOOM_MAX);
+  // whatever `fitBox` went below it for — and clamping to `FIT_MIN` would take
+  // back whatever it went below *that* for.
+  view.zoom = clamp(view.zoom, zoomFloor, ZOOM_MAX);
   const vw = w / view.zoom;
   const vh = h / view.zoom;
   // A soft leash, not a cage: you can push the patch to the frame edge but
@@ -6210,6 +6479,11 @@ function applyView() {
   // Same argument for the pick chip: it is pinned to a plate, and the plate
   // is in the world.
   positionPickChip();
+  // The scope is *not* in the world — that is the point of parenting it to the
+  // frame — but what is underneath it moved, so whether it is in the way is a
+  // question this answers. Debounced: the answer only matters where the pan
+  // stops.
+  scheduleScopeDuck();
   if (effectiveLod() !== lodApplied) scheduleRelod();
 }
 
@@ -6267,6 +6541,92 @@ $("rack-lod").onclick = () => {
   renderRack();
 };
 syncLodBtn();
+
+// ---------- belief overlay ----------
+// WS-9: which parts of your patch the model has an opinion about, at a glance.
+// It lives beside the arrangement and detail switches because it is the same
+// kind of control — a way of *reading* the rack, not a way of changing it —
+// and it is off by default because it is a second colour law running over the
+// first, and the first one (green carries signal, amber is the model's mind)
+// has to be legible on its own.
+//
+// The honesty, which is the whole design: φ_struct counts **families**.
+// `n_filter` says how many filters a patch has; there is no coordinate in
+// which *this* filter is distinguishable from the one two plates along. So the
+// tint is a statement about the family, every tooltip says so in words, and
+// nothing is drawn at all for a coefficient that is not resolved — the same
+// law `nbPaintTheta` runs under, for the same reason: a tint without evidence
+// is a lie with a colour.
+let beliefOverlay = localStorage.getItem("ricercar-belief") === "1";
+function syncBeliefBtn() {
+  const b = $("rack-belief");
+  if (!b) return;
+  b.setAttribute("aria-pressed", String(beliefOverlay));
+  b.closest(".tt").title = beliefOverlay
+    ? "Belief tint: on. Amber edge = you lean toward that family of module, red = away, "
+      + "stronger where the model is more certain. It is a family belief — φ counts how many "
+      + "filters a patch has, not which filter. Click to turn it off."
+    : "Tint each plate by what the model believes about its family of module — amber toward, "
+      + "red away, stronger where it is certain. Off by default.";
+}
+$("rack-belief").onclick = () => {
+  beliefOverlay = !beliefOverlay;
+  try { localStorage.setItem("ricercar-belief", beliefOverlay ? "1" : "0"); } catch (_) {}
+  syncBeliefBtn();
+  renderRack();
+  // A control whose whole effect can be "nothing visibly changed" owes the
+  // player the reason: an unfitted posterior, or a bank too thin to resolve
+  // any coefficient, paints no edges at all and looks exactly like a dead
+  // button.
+  if (beliefOverlay && wb.rack) {
+    const sup = nbSupport();
+    const lit = wb.rack.modules.filter((m) => beliefResolved(m, sup)).length;
+    if (lit === 0) {
+      note("belief tint on — but the model has no resolved lean about anything in this patch yet. Make a few more picks.");
+    }
+  }
+};
+syncBeliefBtn();
+
+/** What the posterior has resolved about this module's family, or null — which
+ *  is the answer for anything the taste model does not measure, has not been
+ *  fitted for, has too few patches carrying, or has looked at and found no
+ *  lean in. Nothing at all is drawn for any of those, the same law
+ *  `nbPaintTheta` runs under: a tint without evidence is a lie with a colour. */
+function beliefResolved(m, sup) {
+  const spec = MOD_BY_KIND[m.kind];
+  if (!spec || !spec.phi) return null;
+  const t = nbTheta(m.kind);
+  if (beliefState(t, sup.byPhi[spec.phi] || 0) !== "resolved") return null;
+  return { spec, t };
+}
+
+/** The tint for one plate, or null when there is nothing resolved to say.
+ *
+ *  Opacity is *confidence*, not enthusiasm: |θ| / (|θ| + σ), so a large
+ *  coefficient with a large σ tints no harder than a small certain one — which
+ *  is the reading "saturation scaled by 1/σ" asks for and the one the player
+ *  will make anyway from a stronger colour. */
+function beliefEdge(m, p, sup) {
+  const hit = beliefResolved(m, sup);
+  if (!hit) return null;
+  const { spec, t } = hit;
+  const conf = Math.abs(t.mean) / (Math.abs(t.mean) + Math.max(1e-6, t.std));
+  const r = svgEl("rect", {
+    x: 2, y: 2, width: Math.max(1, p.w - 4), height: Math.max(1, p.h - 4), rx: 4,
+    "stroke-opacity": (0.18 + 0.72 * conf).toFixed(3),
+  }, `belief-edge ${t.mean >= 0 ? "pos" : "neg"}`);
+  const tt = svgEl("title", {});
+  tt.textContent =
+    `Family belief, not this module: in ${styleName(views.styles[t.style], t.style)} ` +
+    `(${Math.round(t.share * 100)}% of your bank) you lean ` +
+    `${t.mean >= 0 ? "toward" : "away from"} ${niceName(spec.phi)} — ` +
+    `θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
+    `from ${sup.byPhi[spec.phi] || 0} of ${sup.total} patches. The model counts how many of ` +
+    `these a patch has; it has no opinion about this one in particular.`;
+  r.appendChild(tt);
+  return r;
+}
 
 // ---------- fits and moves ----------
 function cancelTween() {
@@ -6379,17 +6739,84 @@ function scopeReserve() {
   return z;
 }
 
+// ---- the other half of the reserve: ducking ----
+//
+// The reserve is a promise about *fits*, and the plan's promise is bigger than
+// that: the trace never rides over a module at any scroll or pan position. A
+// space-drag can put eight plates under the bezel, and the reserve has nothing
+// to say about it — the player moved the patch, not the scope.
+//
+// Moving the scope out of the way in reply would be worse: its corner is a
+// setting, and a corner that reassigns itself under a pan is an instrument
+// that will not stay where it was bolted. So the glass gets out of the way
+// instead — the scope fades to the same parked presence it takes when the
+// patch goes quiet, which is the state the player has already been shown for
+// "this is still here and not asking for your attention". It comes back the
+// moment the plates pan out from under it.
+//
+// Geometry, not hit-testing: every plate's screen rect comes from the camera
+// (`rackBoxes` is in rack units and the transform is three multiplies), so a
+// forty-plate patch costs forty rect comparisons and one `getBoundingClientRect`
+// rather than forty of them. And it is debounced rather than run per frame — a
+// pan is a stream of `applyView` calls and the answer only matters where the
+// hand stops.
+let scopeDuckTimer = null;
+let scopeDucked = false;
+
+function scopeOverPlates() {
+  const shell = $("scope-shell");
+  if (!shell || shell.classList.contains("hidden") || !wb.rack) return false;
+  const sr = shell.getBoundingClientRect();
+  if (!sr.width || !sr.height) return false;
+  const f = $("rack-svg").getBoundingClientRect();
+  for (const b of rackBoxes.values()) {
+    const x = f.left + (b.x - view.x) * view.zoom;
+    const y = f.top + (b.y - view.y) * view.zoom;
+    if (x < sr.right && x + b.w * view.zoom > sr.left &&
+        y < sr.bottom && y + b.h * view.zoom > sr.top) return true;
+  }
+  return false;
+}
+
+function scopeDuckSync() {
+  const shell = $("scope-shell");
+  if (!shell) return;
+  const duck = currentView === "play" && scopeOverPlates();
+  if (duck === scopeDucked) return;
+  scopeDucked = duck;
+  shell.classList.toggle("ducked", duck);
+}
+
+/** Ask the question once the camera has stopped moving. Cheap enough to call
+ *  from every `applyView` precisely because all it does there is reset a
+ *  timer. */
+function scheduleScopeDuck() {
+  if (scopeDuckTimer != null) clearTimeout(scopeDuckTimer);
+  scopeDuckTimer = setTimeout(() => {
+    scopeDuckTimer = null;
+    scopeDuckSync();
+  }, 110);
+}
+
 function fitBox(box, animate, coMotion) {
   const { w, h } = frameSize();
   const pad = 20;
   const ins = scopeReserve();
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
+  // No floor on the way down. Whatever it takes to hold the box is what the
+  // fit is: a plate the fit leaves outside the frame is the defect this trades
+  // against, and a patch drawn small is not a defect, it is a patch drawn
+  // small — the wheel is right there.
   const z = clamp(
     Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h)),
-    FIT_MIN,
+    ZOOM_ABS_MIN,
     FIT_MAX,
   );
+  // Both ends of the tween, so a fit *up* from a sub-floor camera does not get
+  // its first frames clamped out from under it — the floor rises again only
+  // when neither where we are nor where we are going needs it down.
+  allowZoomBelow(Math.min(z, view.zoom));
   // Centre in what is left, not in the whole frame: the reserve is only a
   // reserve if the content is actually placed beside it.
   const cx = pad + ins.l + availW / 2;
@@ -6542,7 +6969,92 @@ const MM_W = 172;
 const MM_H = 116;
 let mmT = null;        // {s, ox, oy} — rack units → map units
 let mmBuiltFor = null; // which rackBoxes the node rects were drawn from
+let mmMarkSig = "";    // …and which bookmarks the pips were drawn from
 let mapOn = localStorage.getItem("ricercar-map") === "1";
+
+// ---- bookmarks (WS-9) ----
+// Nine places you can be, per patch. `shift+click` on the map stores the spot
+// under the pointer; `shift+1`…`shift+9` go back to it, on the motion
+// system's own curve so it reads as the camera travelling rather than cutting.
+//
+// The gesture belongs on the *map* rather than on a key because a bookmark is
+// a place, and the map is the only surface in this app where places are
+// visible: the pip lands exactly where the click did, so storing one and
+// finding one again are the same picture. Shift-clicking a pip clears it —
+// the map has no room for a delete affordance and does not need one.
+//
+// Slots are auto-assigned, lowest free first, and they are what the keyboard
+// names. Nine because that is how many digits there are, and a tenth bookmark
+// with no key to reach it would be a place you cannot go.
+const BM_MAX = 9;
+const bookmarks = new Map(); // subject id → [{slot, x, y, zoom}], x/y a centre
+
+function bmKey() { return wb.subjectId == null ? null : String(wb.subjectId); }
+function bmList() { const k = bmKey(); return (k && bookmarks.get(k)) || []; }
+
+/** Redraw the pips and get the new set onto disk. Bookmarks ride in the same
+ *  `ui` blob as the hand positions and the locks — same lifetime, same key,
+ *  and the same reason: a viewpoint you have to set again after a reload is
+ *  not a viewpoint, it is a keystroke. */
+function bmChanged() {
+  mmMarkSig = "";
+  drawMinimap();
+  scheduleSave();
+}
+
+/** Store the point under a shift-click, or clear the pip it landed on. */
+function bmAdd(rx, ry) {
+  const k = bmKey();
+  if (!k) return note("no patch on the bench — a bookmark is a place inside a patch");
+  const list = [...(bookmarks.get(k) || [])];
+  // A pip is a target as well as a mark. Measured in *map* units, because the
+  // thing being aimed at is 5.5 map units across whatever the patch's scale is.
+  const near = list.find((b) => Math.hypot(b.x - rx, b.y - ry) * mmT.s < 8);
+  if (near) {
+    bookmarks.set(k, list.filter((b) => b !== near));
+    bmChanged();
+    return note(`bookmark ${near.slot} cleared.`);
+  }
+  const used = new Set(list.map((b) => b.slot));
+  let slot = 0;
+  for (let i = 1; i <= BM_MAX && !slot; i++) if (!used.has(i)) slot = i;
+  // A full set is a refusal, and refusals are spoken — with the way out in the
+  // same sentence, because "shift-click a pip" is not a gesture anyone would
+  // guess from a map with nine numbers on it.
+  if (!slot) {
+    return note(
+      `all ${BM_MAX} bookmarks on this patch are taken — shift-click a numbered pip to clear one.`,
+      { urgent: true },
+    );
+  }
+  list.push({ slot, x: rx, y: ry, zoom: view.zoom });
+  list.sort((a, b) => a.slot - b.slot);
+  bookmarks.set(k, list);
+  bmChanged();
+  note(`bookmark ${slot} set — shift+${slot} comes back here.`);
+}
+
+function bmJump(slot) {
+  if (!wb.rack) return note("no patch on the bench");
+  const b = bmList().find((x) => x.slot === slot);
+  // The empty slot is the commonest press of this key and it used to be the
+  // one thing a keyboard shortcut can do that is indistinguishable from a
+  // broken keyboard: nothing at all.
+  if (!b) return note(`no bookmark ${slot} on this patch — shift-click the minimap to set one.`);
+  const { w, h } = frameSize();
+  viewUserSet = true;
+  // A bookmark can have been taken below the preference floor — a big patch
+  // fitted at 0.19× is exactly the kind of patch bookmarks are for — so the
+  // floor makes room for it rather than landing the camera somewhere else.
+  allowZoomBelow(Math.min(b.zoom, view.zoom));
+  tweenView(
+    { zoom: b.zoom, x: b.x - w / (2 * b.zoom), y: b.y - h / (2 * b.zoom) },
+    MOTION_MS,
+    EASE_MOTION,
+  );
+  if (!mapOn) note(`bookmark ${slot}.`);
+  nbAnnounce?.(`bookmark ${slot} — ${Math.round(b.zoom * 100)}%`);
+}
 
 function syncMapBtn() {
   const b = $("rack-map-btn");
@@ -6551,8 +7063,10 @@ function syncMapBtn() {
   const show = mapOn && !!wb.rack;
   el.classList.toggle("hidden", !show);
   b.setAttribute("aria-pressed", String(mapOn));
-  b.closest(".tt").title = mapOn ? "Hide the minimap" : "Show the minimap (bottom-left of the rack)";
-  if (show) { mmBuiltFor = null; drawMinimap(); }
+  b.closest(".tt").title = mapOn
+    ? "Hide the minimap. Shift-click it to bookmark a spot; shift+1–9 jumps to one."
+    : "Show the minimap (bottom-left of the rack). Shift-click it to bookmark a spot; shift+1–9 jumps to one.";
+  if (show) { mmBuiltFor = null; mmMarkSig = ""; drawMinimap(); }
 }
 // The chip is dismissible by mouse as well as by esc — a keyboard-only
 // escape hatch is not one.
@@ -6586,7 +7100,31 @@ function drawMinimap() {
       return `<rect class="${cls}" x="${(mmT.ox + b.x * s).toFixed(1)}" y="${(mmT.oy + b.y * s).toFixed(1)}" ` +
         `width="${Math.max(1.5, b.w * s).toFixed(1)}" height="${Math.max(1.5, b.h * s).toFixed(1)}" rx="0.8"/>`;
     });
-    el.innerHTML = `<g class="mm-nodes">${rects.join("")}</g><rect class="mm-view" id="mm-view" rx="1.5"/>`;
+    el.innerHTML = `<g class="mm-nodes">${rects.join("")}</g><g class="mm-marks"></g>` +
+      `<rect class="mm-view" id="mm-view" rx="1.5"/>`;
+    mmMarkSig = ""; // the group the pips lived in was just thrown away
+  }
+  // The pips are a third layer for the same reason the first two are split:
+  // this function runs on every frame of every pan, and an innerHTML reparse
+  // per frame is exactly what that split exists to avoid. Nine entries make a
+  // cheap signature; the DOM write happens only when it moves.
+  const marks = bmList();
+  const sig = `${bmKey()}|${mmT.s.toFixed(4)}|${mmT.ox.toFixed(1)}|${mmT.oy.toFixed(1)}|` +
+    marks.map((b) => `${b.slot}:${Math.round(b.x)}:${Math.round(b.y)}`).join(",");
+  if (sig !== mmMarkSig) {
+    mmMarkSig = sig;
+    const layer = el.querySelector(".mm-marks");
+    if (layer) {
+      layer.innerHTML = marks.map((b) => {
+        // Clamped inside the map: a bookmark set at one zoom and read at
+        // another can sit outside the patch bounds, and a pip you cannot see
+        // is a slot you cannot clear.
+        const cx = clamp(mmT.ox + b.x * s, 6, MM_W - 6).toFixed(1);
+        const cy = clamp(mmT.oy + b.y * s, 6, MM_H - 6).toFixed(1);
+        return `<circle class="mm-pip" cx="${cx}" cy="${cy}" r="5.6"/>` +
+          `<text class="mm-pip-n" x="${cx}" y="${(Number(cy) + 2.6).toFixed(1)}">${b.slot}</text>`;
+      }).join("");
+    }
   }
   const vr = $("mm-view");
   if (!vr) return;
@@ -6603,21 +7141,33 @@ function drawMinimap() {
   vr.setAttribute("height", (y1 - y0).toFixed(1));
 }
 
+/** Where on the patch a pointer over the map is, in rack units. */
+function mmPoint(ev) {
+  const r = $("rack-map").getBoundingClientRect();
+  return {
+    x: ((ev.clientX - r.left) * (MM_W / r.width) - mmT.ox) / mmT.s,
+    y: ((ev.clientY - r.top) * (MM_H / r.height) - mmT.oy) / mmT.s,
+  };
+}
 /** Click or drag the map to put that part of the patch in the middle. */
 function mmNavigate(ev) {
   if (!mmT) return;
-  const r = $("rack-map").getBoundingClientRect();
-  const rx = ((ev.clientX - r.left) * (MM_W / r.width) - mmT.ox) / mmT.s;
-  const ry = ((ev.clientY - r.top) * (MM_H / r.height) - mmT.oy) / mmT.s;
+  const p = mmPoint(ev);
   const { w, h } = frameSize();
   cancelTween();
-  view.x = rx - w / (2 * view.zoom);
-  view.y = ry - h / (2 * view.zoom);
+  view.x = p.x - w / (2 * view.zoom);
+  view.y = p.y - h / (2 * view.zoom);
   viewUserSet = true;
   applyView();
 }
 $("rack-map").addEventListener("pointerdown", (ev) => {
   ev.preventDefault();
+  // Shift is "remember here", not "go here" — and it deliberately takes no
+  // pointer capture, because it is a press rather than a drag.
+  if (ev.shiftKey) {
+    if (mmT) { const p = mmPoint(ev); bmAdd(p.x, p.y); }
+    return;
+  }
   // Same guard as the plate drag: a pointer the browser has already forgotten
   // (a cancelled touch, a synthesised press) throws on capture, and the
   // `pointermove` listener below is on the element either way — so the drag
@@ -6626,7 +7176,7 @@ $("rack-map").addEventListener("pointerdown", (ev) => {
   mmNavigate(ev);
 });
 $("rack-map").addEventListener("pointermove", (ev) => {
-  if (ev.buttons & 1) mmNavigate(ev);
+  if ((ev.buttons & 1) && !ev.shiftKey) mmNavigate(ev);
 });
 
 // ---------- pointer and wheel ----------
@@ -6848,7 +7398,7 @@ const structQueue = [];
 function sendStruct(op, landed) {
   queueStruct({ type: "edit_structure", op }, landed || null);
 }
-function queueStruct(msg, landed, tag) {
+function queueStruct(msg, landed, tag, waiting) {
   if (structInFlight) {
     // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
     // deeper than a rapid double-click means the worker is wedged, and
@@ -6861,17 +7411,27 @@ function queueStruct(msg, landed, tag) {
     // same reason it waits on the reply: nothing has happened yet. It cannot
     // ride *on* `msg`, which is structured-cloned to the worker and would
     // choke on the undo closure.
-    structQueue.push({ msg, landed: landed || null, tag });
+    const held = { trays: waiting ? [...waiting] : [] };
+    structQueue.push({ msg, landed: landed || null, tag, staged: held.trays });
     // Waiting its turn is still in flight as far as the shelf is concerned.
     if (landed && landed.drop != null) setTrayPending(landed.drop, true);
-    // Nothing went out, so nothing may be charged to the edit that is out.
-    stagingBound = null;
+    // Nothing went out, so nothing may be charged to the edit that *is* out —
+    // that edit's rejection would take this fragment with it, and it describes
+    // a chain the queued op has not removed yet. It is charged to its own op
+    // instead, which is what `held` is: the shelf entries this gesture staged,
+    // carried on the queue entry until the op is posted and there is an undo
+    // step to hand them to. Untracked, they were the one route left by which a
+    // ⌘Z could restore the tree and leave a duplicate on HELD.
+    stagingBound = held;
     return;
   }
   structInFlight = true;
   bindLanded(landed);
   if (landed && landed.drop != null) setTrayPending(landed.drop, true);
   stageUndo();
+  // …and here is where they are handed over: whatever the gesture staged while
+  // it was waiting belongs to the edit that is now going out.
+  if (waiting && waiting.length && openEdit) openEdit.trays.push(...waiting);
   beliefStale();
   // Both halves of WS-8 §3's edit row come from here, because this is the one
   // place every structural gesture in the app funnels through: the op that is
@@ -7081,7 +7641,7 @@ function drainStruct() {
   if (structInFlight) return;
   if (structQueue.length) {
     const q = structQueue.shift();
-    queueStruct(q.msg, q.landed, q.tag);
+    queueStruct(q.msg, q.landed, q.tag, q.staged);
     return;
   }
   // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
@@ -7144,12 +7704,35 @@ function applyTreeRewrite(fn, tag) {
 
 // ---------- empty sockets ----------
 // An unplugged socket has to look empty. The grammar cannot express that: the
-// term is total, every input is filled, and adding a `Silence` production
-// would move φ_struct's family counts and cost an evolution revalidation run
-// (WS-1 §7, and the standing rule that a green `make check` says nothing
-// about search health). So the engine keeps its substitute node and the UI
-// knows which one it is: a plate drawn as a hole, and the first place the
-// next module wants to go.
+// term is total and every input is filled. So the engine keeps its substitute
+// node and the UI knows which one it is: a plate drawn as a hole, and the
+// first place the next module wants to go.
+//
+// WS-1 §7 deferred a real `Silence` production to phase 3, to be batched with
+// the φ_struct arrangement columns so that one evolution revalidation would
+// pay for both. Phase 3 ran that revalidation (two columns shipped, two were
+// cut by it) and **did not ship `Silence`**, for two reasons that are not
+// about the labour:
+//
+// - **There is no prior weight that is right.** A production the prior can
+//   draw is a production evolution will *propose*: give `Silence` mass and ⚡
+//   starts offering patches with deliberately dead branches, and manufactures
+//   its own quarantines every time a draw bottoms out in one. Give it none and
+//   every patch containing one sits outside the prior's support, which is
+//   risk R2 exactly — `refine_from` mutates the user's hole away and the
+//   structure they built evaporates on the button they press most.
+// - **Batching it would have cost the measurement its meaning.** A seventh
+//   source changes the source categorical, so it moves the *prior*, which
+//   moves pool composition, which moves every search-health number. Run in the
+//   same wave as a feature-space change, a regression could not have been
+//   attributed to either. The whole point of the pre/post run is attribution.
+//
+// An empty socket is an editing state — a hole you are about to fill — not a
+// musical idea, and the substitute plus a `.placeholder` plate says that
+// honestly. What is genuinely still wrong is that the hole *makes a sound*.
+// The fix that does not touch the prior is a compile-time one (a substitute
+// the compiler renders at zero gain), and it belongs with the liveness work,
+// not here.
 //
 // Tracked by key, which is a position, so it survives exactly as long as the
 // positions do — every rewrite carries it across by object identity, and any
@@ -7262,6 +7845,18 @@ function openStructMenu(mod, x, y) {
       run: () => armFromRack("insert", key, { accepts: ["mod"], verb: "modulate" }),
     });
   }
+  // The probe (WS-9). A verb about *reading* the patch rather than editing it,
+  // so it sits after the edits and before the fence that `delete` is behind.
+  const tracedHere = portTraceOn && portTrace.mid === midOf(mod);
+  rows.push({
+    label: tracedHere ? "stop probing this output" : "probe this output",
+    sub: tracedHere
+      ? "takes the little scope off the out ○"
+      : "a little scope on the out ○ — the patch rendered as if it ended here",
+    disabled: isPlaceholderKey(key),
+    why: "this socket is empty — there is nothing here to listen to",
+    run: () => togglePortTrace(mod),
+  });
   if (ins === 2) {
     rows.push({
       label: "swap the two inputs",
@@ -7876,6 +8471,18 @@ function eqBand(x) {
 }
 
 // Anything else — mixes, depths, amounts — is a plain percentage.
+/** The name a player would recognise for a parameter address. An address is
+ *  `node/0#cutoff` — a position and a port — and neither half is notation
+ *  anyone has been shown, so the plate's own silkscreen answers where it can
+ *  and the port name is the fallback. */
+function addrLabel(addr) {
+  for (const m of wb.rack?.modules || []) {
+    for (const k of m.knobs || []) if (k.addr === addr) return `${m.title} ${k.label}`;
+  }
+  const port = String(addr || "").split("#").pop();
+  return port ? `the ${port} control` : "that control";
+}
+
 function knobUnit(addr, value, kind, variant) {
   const site = addr.split("#").pop();
   const f =
@@ -9161,6 +9768,28 @@ function unstage(uid) {
   trayChanged();
 }
 
+/** Put shelf entries a ⌘Z reclaimed back, for the ⌘⇧Z that re-does the edit
+ *  that staged them. The same records, so the entry keeps its uid: a redo
+ *  restages the fragment the player was holding, not a copy of it.
+ *
+ *  `pending` is cleared on the way in. It means "an edit is in flight for this
+ *  entry", and the edit in flight is the redo that just landed — a record put
+ *  back inert is a chain on the shelf that cannot be picked up again. Idempotent
+ *  on uid, because a redo of an edit whose fragment is somehow still shelved
+ *  must not shelve it twice. */
+function restage(recs) {
+  let added = 0;
+  for (const rec of recs || []) {
+    if (tray.some((t) => t.uid === rec.uid)) continue;
+    rec.pending = false;
+    tray.push(rec);
+    added += 1;
+  }
+  if (!added) return;
+  renderTray();
+  trayChanged();
+}
+
 // The shelf used to be `const tray = []` and nothing else, so everything you
 // had pulled out of a patch died on reload — the one place in the app where
 // "removed, but recoverable" quietly stopped being true after a refresh. It
@@ -9980,11 +10609,18 @@ function renderSpecDock() {
 //
 // Three honesty rules, and the first is the one the plan singled out:
 //
-//  1. **The structural half of φ is order-invariant.** `n_filter` counts
-//     filters; it does not care which cable they sit on. So this number prices
-//     *what* you are adding and not *where* — the same figure at every lit
-//     socket — and the copy says so rather than letting a per-socket
-//     annotation imply a per-socket opinion the model does not have.
+//  1. **The count half of φ is order-invariant.** `n_filter` counts filters;
+//     it does not care which cable they sit on. So this number prices *what*
+//     you are adding and not *where* — the same figure at every lit socket —
+//     and the copy says so rather than letting a per-socket annotation imply a
+//     per-socket opinion the model does not have.
+//     φ *does* carry two arrangement coordinates now (branch balance and
+//     sidechaining), and those genuinely differ by socket — which is exactly
+//     why they are excluded here rather than folded in. They are ratios, so
+//     their delta is not a unit step and cannot be read off a scale; pricing
+//     them needs the candidate tree, and the honest place for that is the
+//     audition, not an arithmetic shortcut that would quietly turn "prices
+//     what, not where" into a lie.
 //  2. **It is the module-count coordinates only.** The audio half of φ
 //     (brightness, rolloff, the tail) needs a render to know, and the two
 //     modulation ratios move in ways one insertion does not determine. Those
@@ -10206,6 +10842,13 @@ function previewInvalidate() {
   preview.failed = null;
   preview.playOnArrive = false;
   if (armed) renderSpecDock();
+  // The probe is a render of the bench too, so it goes stale on exactly the
+  // same events — but it is not thrown away: a dimmed picture of the patch a
+  // moment ago is worth more than an empty box, and it says which it is.
+  if (portTrace.mid) {
+    portTrace.stale = true;
+    portTraceAsk(PT_SETTLE_MS);
+  }
 }
 
 /** Ask for one. `play` means the player pressed ▶ and is waiting for sound. */
@@ -11116,7 +11759,7 @@ function connectSync() {
     return;
   }
   svg.classList.add("wiring");
-  if (!wb.rack) return endConnectPick();
+  if (!wb.rack) return endConnectPick("the patch went away — the cable is back on its hook");
   let lit = 0;
   for (const j of svg.querySelectorAll(`.jack[${connectPick.attr}]`)) {
     if (!connectPick.legalKeys.has(j.getAttribute(connectPick.attr))) continue;
@@ -11125,7 +11768,10 @@ function connectSync() {
   }
   const from = svg.querySelector(`.jack[data-outkey="${cssKey(connectPick.srcKey)}"]`);
   if (from) from.classList.add("hot");
-  if (lit === 0) endConnectPick();
+  // A rebuild moved the patch out from under a held cable and nothing it could
+  // reach survived. Dropping the gesture silently left the player clicking at
+  // sockets that had stopped being targets between one frame and the next.
+  if (lit === 0) endConnectPick("that edit left the cable nowhere to go — it is back on its hook");
 }
 
 function endConnectPick(msg) {
@@ -11716,7 +12362,19 @@ function onWireUp(ev) {
     if (!target) return openLinkSearch(w);
     offerConnect(w.srcKey, target.getAttribute(w.attr), w.kind, ev.clientX, ev.clientY);
   } else if (w.mode === "unplug-audio") {
-    if (jack) return; // dropped back on a jack: treat as cancel
+    // Dropped on a jack. Landing back on the one it came out of is a cancel
+    // and needs no sentence; landing on a *different* one reads as "move this
+    // cable" and does nothing at all, which is the silent no-op the audit went
+    // looking for. Say what the gesture for it is — the cable moves from the
+    // output end, not from the input end, because an input has only one thing
+    // it could be moved to and an output has the whole patch.
+    if (jack) {
+      const to = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
+      if (to && to !== w.childKey) {
+        note("a cable is moved from its out ○, not its in ○ — drag from the output you want to re-aim");
+      }
+      return;
+    }
     // The socket is left visibly empty. The engine still needs a node there —
     // the term is total — but the plate says "empty" and the next module goes
     // there by default, instead of a fresh vco quietly pretending the unplug
@@ -11741,13 +12399,264 @@ function onWireUp(ev) {
       { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
     );
   } else if (w.mode === "unplug-mod") {
-    if (jack) return;
-    if (!modAtKey(w.key)) return;
+    if (jack) {
+      const to = jack.getAttribute("data-modkey");
+      if (to && to !== w.key) {
+        note("a modulator is moved from its own out ○ — drag from the modulator's plate, not from the slot it sits in");
+      }
+      return;
+    }
+    // The slot emptied under the gesture (a bench reply landed mid-drag).
+    // Silence here left the player looking at a cable they had just pulled out
+    // of a socket that no longer had anything in it.
+    if (!modAtKey(w.key)) {
+      return note("that modulation slot is already empty");
+    }
     // Staged *after* the post, not before: `stageFragment` binds the fragment
     // to the edit that is going out, so an op that the engine refuses takes
     // its own shelf entry back with it.
     unplugMod(w.key);
   }
+}
+
+// ===========================================================================
+// PER-PORT SCOPE — a probe you can clip onto one module's out ○
+// ===========================================================================
+// WS-9's teaching surface: the rack draws a chain of stages and never says
+// what any one of them *did*. A small window on the selected module's output
+// says it, and it is the only place in the app where "what does a wavefolder
+// actually do to a saw" is a thing you can look at rather than infer.
+//
+// **Where the signal comes from, and why it is not a tap.** The obvious
+// implementation is a second `AnalyserNode` hung off the node in question, and
+// it is not reachable: the worklet compiles the whole term into one voice
+// graph inside quiver and exposes exactly one output to the WebAudio graph —
+// `wireLevels` says the same thing in its own comment, which is why the
+// differential flow animation *estimates* levels from the patch instead of
+// measuring them. There is no per-node port to attach to, and manufacturing
+// one means either splitting the compile (a second voice bank per probed
+// module — the crossfade cost from WS-5 §6, for a picture) or teaching quiver
+// to expose interior taps (grammar and DSP work, not editor work).
+//
+// So the nearest honest thing, and it is honest rather than approximate: ask
+// the engine to render **the patch with everything after this module removed**
+// — `replace_tree` at the root with this node's own subtree, through
+// `preview_op`, which already exists for pre-placement audition and already
+// clones the bench rather than touching it. That is the signal at this out ○,
+// exactly, played through the same amp envelope and the same phrase. What it
+// is *not* is live: it is an offline render, asked for on demand, and every
+// piece of copy on it says so. The alternative — a live-looking trace that is
+// really the master analyser — would be a lie about which stage you are
+// looking at, which is the one thing a teaching surface may not be.
+//
+// Off by default (it costs a render), one module at a time, toggled from that
+// module's ⋯ menu, and it follows the selection thereafter.
+const PORT_TRACE_SECONDS = 0.7;
+const PT_W = 66;   // the probe window, in rack units
+const PT_H = 30;
+const PT_BINS = 54;
+// How long the patch has to hold still before the probe pays for a new render.
+// A knob drag is a bench reply every few tens of milliseconds and each one
+// makes the drawn trace untrue; rendering per reply would put a full phrase
+// render on the critical path of a knob turn, which is the exact mistake WS-5
+// §2 was written to undo. So: mark it stale (the window dims and says so) and
+// re-render once the hand stops.
+const PT_SETTLE_MS = 520;
+// Deliberately *not* persisted, unlike the arrangement, detail, map and belief
+// switches. Those are reading modes with a pressed button in the chrome saying
+// so; the probe's only indicator is the window itself, and the window is drawn
+// on one module. Restore the flag across a reload and you get "on" with
+// nothing selected yet — a state that is on, invisible, and has no control
+// showing it, which is exactly the silent state this pass went looking for.
+// A probe is a tool you clip on; putting your tools away at the end of the
+// session is the honest default.
+let portTraceOn = false;
+const portTrace = {
+  mid: null,      // which module the probe is on
+  key: null,      // …at which trace key, when it was asked for
+  token: 0,
+  inflight: false,
+  peaks: null,    // [[min,max], …] normalised to the render's own peak
+  stale: false,   // the patch moved under the render currently drawn
+  failed: false,
+  timer: null,
+};
+
+/** The module the probe should be on. Selection follows the keyboard, and the
+ *  keyboard visits plates a trace cannot be taken from — a modulator carries
+ *  CV rather than audio, the amp is the master the big scope already shows,
+ *  and a hole has nothing in it. Rather than blanking the window at every such
+ *  step (which reads as the feature breaking), the probe stays where it was
+ *  until the selection lands somewhere it can actually move to. */
+function portTraceTarget() {
+  if (!portTraceOn || !wb.rack) return null;
+  const ok = (x) => x && !x.is_mod && x.kind !== "amp" && !isPlaceholderKey(x.key);
+  const sel = selModule();
+  if (ok(sel)) return { mid: midOf(sel), key: sel.key };
+  const held = portTrace.mid && wb.rack.modules.find((x) => midOf(x) === portTrace.mid);
+  return ok(held) ? { mid: midOf(held), key: held.key } : null;
+}
+
+/** Called from the top of every interactive build: decide what the probe is
+ *  on now, and ask for a render if what is drawn is of something else. */
+function portTraceSync() {
+  const t = portTraceTarget();
+  if (!t) {
+    clearTimeout(portTrace.timer);
+    portTrace.timer = null;
+    portTrace.mid = null;
+    portTrace.peaks = null;
+    return;
+  }
+  if (portTrace.mid !== t.mid) {
+    portTrace.mid = t.mid;
+    portTrace.key = t.key;
+    portTrace.peaks = null;
+    portTrace.failed = false;
+    portTrace.stale = false;
+    portTraceAsk(0);
+  } else if (portTrace.stale && !portTrace.inflight) {
+    portTrace.key = t.key; // the same module, at a key an edit may have moved
+    portTraceAsk(PT_SETTLE_MS);
+  }
+}
+
+function portTraceAsk(delay) {
+  clearTimeout(portTrace.timer);
+  portTrace.timer = setTimeout(() => {
+    portTrace.timer = null;
+    const t = portTraceTarget();
+    if (!t || wb.subjectId == null) return;
+    // Read the subtree out of the bench tree at request time, not at draw
+    // time: this is the one piece of the request that an edit in flight can
+    // have moved, and a probe rendered from a stale subtree would be a picture
+    // of a patch nobody is holding.
+    const node = nodeAtKey(t.key);
+    if (!node) return;
+    portTrace.inflight = true;
+    portTrace.stale = false;
+    portTrace.token += 1;
+    send({
+      type: "preview_render",
+      tag: "port",
+      token: portTrace.token,
+      key: t.key,
+      op: { op: "replace_tree", key: "node", node },
+      seconds: PORT_TRACE_SECONDS,
+    });
+  }, delay);
+}
+
+/** Min/max per column, normalised to the render's own peak. Normalised, and
+ *  said so in the tooltip: the probe is for reading *shape* — what the stage
+ *  did to the envelope and the edge — and a window scaled in absolute terms
+ *  would draw an early stage as a flat line whenever a later gain stage is the
+ *  loud one. */
+function tracePeaks(buf, n) {
+  let peak = 1e-6;
+  for (let i = 0; i < buf.length; i++) {
+    const a = buf[i] < 0 ? -buf[i] : buf[i];
+    if (a > peak) peak = a;
+  }
+  const out = [];
+  const step = buf.length / n;
+  for (let i = 0; i < n; i++) {
+    const a = Math.floor(i * step);
+    const b = Math.max(a + 1, Math.min(buf.length, Math.floor((i + 1) * step)));
+    let lo = 0, hi = 0;
+    for (let j = a; j < b; j++) {
+      if (buf[j] < lo) lo = buf[j];
+      if (buf[j] > hi) hi = buf[j];
+    }
+    out.push([lo / peak, hi / peak]);
+  }
+  return out;
+}
+
+function onPortTrace(m) {
+  if (m.token !== portTrace.token) return; // superseded: the cancellation
+  portTrace.inflight = false;
+  if (m.buffer && m.buffer.length > 0) {
+    portTrace.peaks = tracePeaks(m.buffer, PT_BINS);
+    portTrace.failed = false;
+  } else {
+    // The grammar refused the truncation, or the truncated patch failed
+    // vetting. Say it in the window — an empty box reads as "this module makes
+    // silence", which is a claim about the patch rather than about the render.
+    portTrace.peaks = null;
+    portTrace.failed = true;
+  }
+  if (wb.rack) renderRack();
+}
+
+/** The probe itself: a bezelled window sitting **above** the plate, right edge
+ *  flush with the panel's, and a lead running down the outside of that edge
+ *  into the out ○ — so it reads as a meter clipped to the jack rather than as
+ *  a label floating next to it.
+ *
+ *  Above, and not in the gutter beside the jack where it obviously belongs:
+ *  the gutter is 28 units and the window is 66, so a probe in it lands on the
+ *  next plate's knobs — measured, in the browser, on a filter feeding a mix.
+ *  Above the plate is the one direction with room in every arrangement: layers
+ *  are laid out left to right, modulators hang below, and a stacked sibling is
+ *  the only thing that can be there at all. Drawn in the control layer, so no
+ *  cable can ever cross the window. */
+function portTraceArt(p, m) {
+  const x0 = Math.max(0, p.w - PT_W);
+  const y0 = -PT_H - 12;
+  const gg = svgEl(
+    "g",
+    { transform: `translate(${x0},${y0})` },
+    `port-trace${portTrace.stale || portTrace.inflight ? " stale" : ""}`,
+  );
+  // Down the right-hand side of the panel and into the socket, 8 units out in
+  // the gutter — a line, not a window, so it costs the neighbour nothing.
+  const jy = -y0 + p.h / 2;   // the out ○, in this group's coordinates
+  const jx = p.w - x0;
+  gg.appendChild(svgEl("path", {
+    d: `M ${jx - 8} ${PT_H} L ${jx - 8} ${PT_H + 6} L ${jx + 8} ${PT_H + 6} ` +
+       `L ${jx + 8} ${jy} L ${jx} ${jy}`,
+  }, "pt-lead"));
+  gg.appendChild(svgEl("rect", { width: PT_W, height: PT_H, rx: 3 }, "pt-bezel"));
+  gg.appendChild(svgEl("line", { x1: 3, y1: PT_H / 2, x2: PT_W - 3, y2: PT_H / 2 }, "pt-zero"));
+  if (portTrace.peaks && portTrace.peaks.length > 1) {
+    const n = portTrace.peaks.length;
+    const iw = PT_W - 8;
+    const half = (PT_H - 8) / 2;
+    const px = (i) => (4 + (i * iw) / (n - 1)).toFixed(1);
+    const py = (v) => (PT_H / 2 - v * half).toFixed(1);
+    const top = portTrace.peaks.map((q, i) => `${px(i)},${py(q[1])}`);
+    const bot = portTrace.peaks.map((q, i) => `${px(i)},${py(q[0])}`).reverse();
+    gg.appendChild(svgEl("polygon", { points: top.concat(bot).join(" ") }, "pt-wave"));
+  } else {
+    const t = svgEl("text", { x: PT_W / 2, y: PT_H / 2 + 3, "text-anchor": "middle" }, "pt-msg");
+    t.textContent = portTrace.failed ? "nothing to render" : "rendering…";
+    gg.appendChild(t);
+  }
+  const tt = svgEl("title", {});
+  tt.textContent =
+    `What leaves ${m.title || kindName(m.kind)}: the patch rendered with everything after this ` +
+    `module removed — ${PORT_TRACE_SECONDS}s of the same phrase through the same amp envelope, ` +
+    `scaled to its own peak. Rendered offline on demand, not a live tap: the analyser hangs off ` +
+    `the master and the compiled voice has no interior port to listen to.` +
+    (portTrace.stale || portTrace.inflight ? " The patch has moved — this is the previous render." : "");
+  gg.appendChild(tt);
+  return gg;
+}
+
+/** The ⋯ row. Moves the probe when it is somewhere else, takes it off when it
+ *  is already here — one row that reads as its own state. */
+function togglePortTrace(m) {
+  const mid = midOf(m);
+  const here = portTraceOn && portTrace.mid === mid;
+  portTraceOn = !here;
+  if (portTraceOn) selMid = mid;
+  renderRack();
+  note(
+    portTraceOn
+      ? `probing ${m.title || kindName(m.kind)} — the window on its out ○ is an offline render of the patch cut off here, not a live tap.`
+      : "output probe off.",
+  );
 }
 
 // ---------- live scope ----------
@@ -11819,6 +12728,10 @@ function scopeApply() {
   for (const c of ["tl", "tr", "bl", "br"]) shell.classList.toggle(`corner-${c}`, scopeState.corner === c);
   for (const s of ["s", "m", "l"]) shell.classList.toggle(`size-${s}`, scopeState.size.toLowerCase() === s);
   shell.style.setProperty("--scope-floor", String(scopeState.floor));
+  // The corner and the size are what decide whether the bezel is over anything,
+  // so changing either is a reason to re-ask — the camera has not moved, and
+  // nothing else would.
+  scheduleScopeDuck();
   $("scope-cap").textContent =
     (scopeState.tap === "post" ? "post-master" : "pre-master") +
     (scopeState.mode === "spectrum" ? " · spectrum" : "") +
@@ -12128,6 +13041,14 @@ const NICE_NAMES = {
   n_rand: "S&H mods", n_lfo: "LFO mods", n_env: "env mods", n_follow: "followers",
   n_mod_shape: "shaped mod", n_mod_logic: "gated mod", mod_depth_mean: "mod chaining",
   depth: "patch depth", size: "patch size",
+  // The wave-3 arrangement coordinates. These are the only φ columns that
+  // describe the *graph* rather than its contents, so the labels have to say
+  // routing out loud — "chain balance 0.31" in the WHY line would read as a
+  // knob. `branch_width_max` and `mod_at_source` are here for the same reason
+  // `size` and `depth` are: they are display fields the measurement kept out
+  // of φ, and a name that appears in a save file should still resolve.
+  branch_width_max: "parallel width", chain_balance: "even branches",
+  frac_sidechained: "sidechained inputs", mod_at_source: "mod placement",
   mod_density: "mod density", amp_attack: "amp attack", amp_sustain: "amp sustain",
   amp_release: "amp release",
 };
@@ -12846,8 +13767,15 @@ $("taste-reset-btn").onclick = () => {
 };
 
 // ---------- patch share (single-patch files) ----------
-$("patch-export-btn").onclick = () => {
-  if (!wb.tree) return note("nothing on the bench to export");
+/** The share payload, for every file the app can write.
+ *
+ *  Extracted from the JSON export because there are now three carriers for it
+ *  — a `.ricercar.json`, a PNG `tEXt` chunk and an SVG `<metadata>` — and the
+ *  one thing that must never differ between them is what is inside. A picture
+ *  that loaded as a slightly different patch than the sidecar beside it would
+ *  be worse than no picture at all. */
+function patchSidecar() {
+  if (!wb.tree) return null;
   const name = wb.subjectId != null ? nameOf(wb.subjectId) : "patch";
   const body = { ricercar_patch: 1, name, tree: wb.tree };
   // The layout rides along (WS-4 §8), keyed by the same node identities the
@@ -12877,31 +13805,838 @@ $("patch-export-btn").onclick = () => {
     }
   }
   if (pins.length) body.layout = { grid: GRID, pos: pins };
-  const payload = JSON.stringify(body, null, 1);
+  return body;
+}
+
+/** One filename rule for every carrier, so a patch's three files sort next to
+ *  each other in a downloads folder. */
+function patchFileStem(body) {
+  return (body?.name || "patch").replace(/[^\w-]+/g, "_").slice(0, 32) || "patch";
+}
+
+/** Hand a blob to the browser as a download. */
+function saveBlob(blob, filename) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
-  a.download = `${name.replace(/[^\w-]+/g, "_").slice(0, 32)}.ricercar.json`;
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
   a.click();
-  URL.revokeObjectURL(a.href);
+  // A `revoke` in the same tick races the download in Safari; one turn is
+  // enough and the object is small.
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
+}
+
+$("patch-export-btn").onclick = () => {
+  const body = patchSidecar();
+  if (!body) return note("nothing on the bench to export");
+  saveBlob(
+    new Blob([JSON.stringify(body, null, 1)], { type: "application/json" }),
+    `${patchFileStem(body)}.ricercar.json`,
+  );
 };
+
+/** Open a parsed sidecar (or a bare tree) on the bench.
+ *
+ *  The single funnel every arrival goes through — file picker, drag-and-drop,
+ *  and whatever carried it (JSON, PNG, SVG). Before this there was one route
+ *  and the parse, the layout hand-off and the send were inline in its
+ *  listener; now the *sniffing* is what differs per carrier and everything
+ *  after it is identical by construction. */
+function loadPatchData(data) {
+  const tree = data.tree || data; // accept bare trees too
+  // A file that parsed as JSON but is not a *term* is turned away here, by
+  // name, rather than sent to an engine whose only answer is a zero. That zero
+  // has to stand for something: everything else that produces one is a patch
+  // the bank refused, and a hand-edited or foreign JSON file arriving at *that*
+  // message would have the app telling the player their patch runs away when
+  // what actually happened is that it was never a patch. The shape is the whole
+  // check — `{amp: {…}, root: {<Tag>: …}}` — because anything deeper is the
+  // engine's serde to answer, and it does.
+  const looksLikeATerm =
+    tree && typeof tree === "object" && !Array.isArray(tree) &&
+    tree.amp && typeof tree.amp === "object" &&
+    tree.root && typeof tree.root === "object" && Object.keys(tree.root).length === 1;
+  if (!looksLikeATerm) {
+    pendingLayout = null;
+    return note("that file is JSON, but it isn't a patch this build understands.");
+  }
+  // Held until the engine says which id the patch landed as — that id is the
+  // key the layout has to be filed under, and it does not exist yet. Cleared
+  // either way in `patch_imported`, so a refused import cannot leave a
+  // layout waiting to be adopted by the *next* one.
+  pendingLayout = Array.isArray(data.layout?.pos) ? data.layout.pos : null;
+  send({ type: "import_patch", json: JSON.stringify(tree), name: data.name || "" });
+}
+
+/** Read a dropped or picked file as a patch, whatever shape it arrived in.
+ *
+ *  Returns the sidecar object, or null with the reason already spoken. The
+ *  sniff is on *content*, not on the extension: a PNG renamed `.dat` still
+ *  starts with the PNG signature, and a file called `.png` that is really a
+ *  JPEG has no chunk to find. */
+async function readPatchFile(file) {
+  const buf = await file.arrayBuffer();
+  const head = new Uint8Array(buf, 0, Math.min(8, buf.byteLength));
+  const isPng = head.length === 8 && PNG_SIG.every((b, i) => head[i] === b);
+  let json = null;
+  if (isPng) {
+    json = pngReadText(buf, PATCH_KEYWORD);
+    if (json == null) {
+      note("that PNG has no patch inside it — only images ricercar exported carry one");
+      return null;
+    }
+  } else {
+    const text = new TextDecoder().decode(buf);
+    if (/^\s*</.test(text)) {
+      json = svgReadPatch(text);
+      if (json == null) {
+        note("that SVG has no patch inside it — only images ricercar exported carry one");
+        return null;
+      }
+    } else {
+      json = text;
+    }
+  }
+  try {
+    return JSON.parse(json);
+  } catch (_) {
+    note("that file isn't a patch");
+    return null;
+  }
+}
+
 $("patch-import-input").onchange = async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
   if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    const tree = data.tree || data; // accept bare trees too
-    // Held until the engine says which id the patch landed as — that id is the
-    // key the layout has to be filed under, and it does not exist yet. Cleared
-    // either way in `patch_imported`, so a refused import cannot leave a
-    // layout waiting to be adopted by the *next* one.
-    pendingLayout = Array.isArray(data.layout?.pos) ? data.layout.pos : null;
-    send({ type: "import_patch", json: JSON.stringify(tree), name: data.name || "" });
-  } catch (_) {
-    pendingLayout = null;
-    note("that file isn't a patch");
-  }
+  const data = await readPatchFile(file);
+  if (data) loadPatchData(data);
+  else pendingLayout = null;
 };
+
+// ===========================================================================
+// IMAGE EXPORT — a picture of the patch that *is* the patch (WS-7)
+// ===========================================================================
+// Two halves that only make sense together.
+//
+// The first is a style-inlining pass, and it is not optional (WS-7 §2). Every
+// colour, stroke and type token on the rack lives in an external, class-based
+// stylesheet — `.mod-plate { fill: url(#plateGrad) }`, `.knob-value { fill:
+// var(--silk-dim) }` — none of which travels with a serialized SVG. The naive
+// `XMLSerializer → drawImage → toDataURL` therefore produces a black
+// skeleton: correct geometry, no paint, and no text at all once the webfont
+// fails to resolve. So the export renders the rack on an offscreen stage
+// *inside the live document*, where the stylesheet still applies, reads the
+// computed value of every paint property back off each element, and writes it
+// on as an attribute. Everything a `var(--…)` resolves to becomes a literal
+// for free, which is the whole reason to do it this way round rather than
+// shipping a hand-copied subset of style.css that drifts the first time
+// anyone edits a colour.
+//
+// The second is the round trip. The same `{ricercar_patch:1,…}` sidecar the
+// JSON export writes rides *inside* the image — a PNG `tEXt` chunk, an SVG
+// `<metadata>` element — and the import path sniffs for it. A screenshot
+// posted to a forum is then a patch someone can open, which is a share loop
+// rather than a file format.
+
+/** The keyword the sidecar rides under, in both carriers. PNG `tEXt` keywords
+ *  are Latin-1, 1–79 bytes, and conventionally lowercase-ish; this one is also
+ *  what an `exiftool` dump will print, so it is a word and not a UUID. */
+const PATCH_KEYWORD = "ricercar";
+const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+// The padding, in rack user units, that surrounds an exported patch on all
+// four sides. Uniform by construction: the padding is applied to the viewBox,
+// not to the layout, so it cannot interact with the arrangement.
+const EXPORT_PAD = 26;
+
+// What the dialog remembers, in `scopeState`'s shape and with `scopeState`'s
+// merge-on-load rule (an unknown key in the saved blob is ignored, a missing
+// one keeps its default) — a settings panel you have to re-answer on every
+// reload is a settings panel that becomes a button with extra steps.
+const IMAGE_STORE = "ricercar-image-export";
+const imageState = {
+  scope: "all",        // all | sel
+  scale: 2,            // 1 | 2 | 3
+  bg: "solid",         // solid | transparent
+  fmt: "png",          // png | svg
+};
+function imageLoad() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(IMAGE_STORE) || "{}");
+    for (const k of Object.keys(imageState)) if (k in saved) imageState[k] = saved[k];
+  } catch (e) { /* a corrupt blob is not worth a boot failure */ }
+}
+function imageSave() {
+  try { localStorage.setItem(IMAGE_STORE, JSON.stringify(imageState)); } catch (e) {}
+}
+
+// ---------- selection ----------
+// The app has no selection *object* — `fitSelection` says so in as many words
+// — and its honest reading of "the selection" is whatever the keyboard is on.
+// This is that reading, made durable: `document.activeElement` is no use to a
+// dialog, because opening the dialog is what takes the focus away. So the last
+// module the keyboard (or a plate click) landed on is remembered by `mid`,
+// which survives both the rebuild and the focus move.
+let selMid = null;
+// Set while `restoreRackFocus` is putting the keyboard back after a rebuild.
+// See there for why that must not count as the player selecting anything.
+let restoringFocus = false;
+function selInit() {
+  const scroll = $("rack-scroll");
+  if (!scroll) return;
+  scroll.addEventListener("focusin", (ev) => {
+    if (restoringFocus) return;
+    const g = ev.target.closest?.("g.mod-group");
+    const mid = g?.getAttribute("data-mid");
+    if (!mid || mid === selMid) return;
+    selMid = mid;
+    selMoved();
+  });
+  // …and "last-clicked", literally. A press on bare panel does not focus
+  // anything (only knobs, jacks and the plate's own tabstop do), so a player
+  // who has never touched the keyboard had no selection at all. Capture
+  // phase, because a plate press is claimed by the freeform drag before it
+  // reaches anything else.
+  //
+  // This only *records*: rebuilding the rack from inside a pointerdown would
+  // tear out the element the gesture is about to capture. The redraw that
+  // moves the probe waits for the pointer to come back up.
+  scroll.addEventListener("pointerdown", (ev) => {
+    const mid = ev.target.closest?.("g[data-mid]")?.getAttribute("data-mid");
+    if (mid) selMid = mid;
+  }, true);
+  // The pointer path records on the way down and redraws on the way up, so a
+  // press that turns into a drag never rebuilds under its own hand.
+  scroll.addEventListener("pointerup", () => selMoved());
+}
+
+/** The selection moved, so anything drawn *for* the selection has to catch up.
+ *  Only the probe is, today. Deferred by a frame in every case: this is
+ *  reached from inside a `focus()` call and from a `pointerup` that a drag may
+ *  still be finishing, and a rebuild from either would tear out the element
+ *  the gesture is holding. */
+let selRaf = null;
+function selMoved() {
+  if (!portTraceOn || selRaf != null) return;
+  selRaf = requestAnimationFrame(() => {
+    selRaf = null;
+    if (portTraceOn && wb.rack && portTraceTarget()?.mid !== portTrace.mid) renderRack();
+  });
+}
+/** The module the selection names, if the current patch still contains it. */
+function selModule() {
+  if (selMid == null || !wb.rack) return null;
+  return wb.rack.modules.find((m) => midOf(m) === selMid) || null;
+}
+
+/** The patch, or the selected module and everything feeding it.
+ *
+ *  Keys are paths (`node/0/1`), so a subtree is a prefix test — which is also
+ *  why "the selection" can only ever be a subtree here: the term is a strict
+ *  tree and there is no such thing as an arbitrary set of modules with wiring
+ *  between them. `column` is renumbered relative to the new root, because
+ *  `layoutFlow` derives its layer count from the maximum and would otherwise
+ *  leave one empty column per layer it cut away. */
+function exportRack(scoped) {
+  const rack = wb.rack;
+  if (!rack) return null;
+  const m = scoped ? selModule() : null;
+  // `amp` is the envelope wrapping the term, not a node in it: its audio input
+  // is `node`, not `amp/0`, so the prefix test would answer "the output stage"
+  // with a picture of one plate. Selecting the output is selecting the patch,
+  // which is also what a player means by it.
+  if (!m || m.key === "amp") return rack;
+  const inSub = (k) => k === m.key || k.startsWith(`${m.key}/`);
+  const modules = rack.modules.filter((x) => inSub(x.key));
+  const minCol = Math.min(...modules.map((x) => x.column));
+  return {
+    modules: modules.map((x) => ({ ...x, column: x.column - minCol })),
+    wires: rack.wires.filter((w) => inSub(w.from) && inSub(w.to)),
+  };
+}
+
+// ---------- fonts ----------
+// The rack's type is `--font-silk` (Jost, on the titles and knob labels) and
+// `--font-mono` (IBM Plex Mono, on every value and port name). Both are
+// self-hosted woff2 in `fonts/`, which is exactly why they can be embedded:
+// an SVG rasterized through `drawImage` may not fetch anything over the
+// network, but a `data:` URI is not a fetch. Whole files, not subsets —
+// subsetting woff2 in the browser means shipping a font parser and a brotli
+// re-compressor, which is not "trivially possible" by any reading; the three
+// faces the rack uses total ~47 kB, which is smaller than one plate's worth of
+// PNG.
+const EXPORT_FONTS = [
+  { file: "fonts/jost-var.woff2", family: "Jost", weight: "300 700", style: "normal" },
+  { file: "fonts/plexmono-400.woff2", family: "IBM Plex Mono", weight: "400", style: "normal" },
+  { file: "fonts/plexmono-600.woff2", family: "IBM Plex Mono", weight: "600", style: "normal" },
+];
+let fontCssPromise = null;
+function base64Of(bytes) {
+  let s = "";
+  // `apply` on the whole array blows the argument limit somewhere north of
+  // 100 kB; 32 kB chunks are well under every engine's ceiling.
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+/** `@font-face` rules with the faces inlined, fetched once per session. */
+function exportFontCss() {
+  if (!fontCssPromise) {
+    fontCssPromise = Promise.all(
+      EXPORT_FONTS.map(async (f) => {
+        const res = await fetch(f.file);
+        if (!res.ok) throw new Error(f.file);
+        const b64 = base64Of(new Uint8Array(await res.arrayBuffer()));
+        return `@font-face{font-family:"${f.family}";font-style:${f.style};` +
+          `font-weight:${f.weight};src:url(data:font/woff2;base64,${b64}) format("woff2");}`;
+      }),
+    ).then((rules) => rules.join("\n"))
+      // A missing font must not cost the user the export. The stack the
+      // inliner writes ends in `monospace`/`sans-serif`, so the picture is
+      // still styled and still readable — it is only wearing the wrong face.
+      .catch(() => "");
+  }
+  return fontCssPromise;
+}
+
+// ---------- style inlining ----------
+// Every paint-bearing property, and nothing else. Layout properties are not
+// here on purpose: SVG geometry is in attributes, and copying computed `width`
+// or `transform` onto a `<g>` would fight the attributes that are already
+// correct.
+const INLINE_PROPS = [
+  "fill", "fill-opacity", "fill-rule",
+  "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "stroke-dashoffset",
+  "stroke-linecap", "stroke-linejoin", "stroke-miterlimit",
+  "opacity", "mix-blend-mode", "filter", "paint-order", "shape-rendering",
+  "font-family", "font-size", "font-weight", "font-style", "letter-spacing",
+  "text-anchor", "dominant-baseline",
+];
+// Each property's initial value, so a declaration that says nothing can be
+// left out. It has to be per property and not one shared set of "empty
+// looking" strings: `none` is the initial `stroke` and it is emphatically
+// *not* the initial `fill`, so a shared set drops `.wire { fill: none }` and
+// every cable in the picture comes out as a filled black wedge between its
+// endpoints. (It did. That is why this comment is here.)
+const INLINE_INITIAL = {
+  fill: "rgb(0, 0, 0)",
+  "fill-opacity": "1",
+  "fill-rule": "nonzero",
+  stroke: "none",
+  "stroke-width": "1px",
+  "stroke-opacity": "1",
+  "stroke-dasharray": "none",
+  "stroke-dashoffset": "0px",
+  "stroke-linecap": "butt",
+  "stroke-linejoin": "miter",
+  "stroke-miterlimit": "4",
+  opacity: "1",
+  "mix-blend-mode": "normal",
+  filter: "none",
+  "paint-order": "normal",
+  "shape-rendering": "auto",
+  "font-size": "16px",
+  "font-weight": "400",
+  "font-style": "normal",
+  "letter-spacing": "normal",
+  "text-anchor": "start",
+  "dominant-baseline": "auto",
+};
+// Classes that move. Stripped *before* the computed style is read, because a
+// running animation is what the computed style would report: a `.pulse` mod
+// cable sampled mid-cycle bakes whatever stroke-opacity that frame happened to
+// hold into the file, so half the cables in the picture would come out at
+// random brightnesses. (`.flowing` needs no stripping — it is scoped to
+// `#rack-svg` and the export stage is not it, which is the kind of accident
+// worth writing down before someone "tidies" that selector.)
+const ANIM_CLASSES = ["pulse", "flashing", "struck", "plate-hot", "modulated", "dragging", "hot"];
+
+/** Absolute `url(…)` references, made relative again.
+ *
+ *  `getComputedStyle` resolves `url(#plateGrad)` against the document base, so
+ *  it comes back as `url("http://localhost:8642/#plateGrad")` — a reference to
+ *  a gradient in a *page*, which is nothing at all once the file is standing
+ *  on its own. Every id it could name is in the clone's own `<defs>`. */
+const relUrls = (v) => v.replace(/url\(["']?[^)"']*#([^)"']+)["']?\)/g, "url(#$1)");
+
+const XLINK_NS = "http://www.w3.org/1999/xlink";
+
+function inlineStyles(root) {
+  const all = [root, ...root.querySelectorAll("*")];
+  for (const el of all) {
+    for (const c of ANIM_CLASSES) el.classList?.remove(c);
+    el.style.animation = "none";
+    el.style.transition = "none";
+  }
+  for (const el of all) {
+    const cs = getComputedStyle(el);
+    let css = "";
+    for (const p of INLINE_PROPS) {
+      const v = cs.getPropertyValue(p);
+      if (!v || v === INLINE_INITIAL[p]) continue;
+      css += `${p}:${relUrls(v)};`;
+    }
+    // Silkscreen is uppercased by CSS, and CSS `text-transform` is a property
+    // a vector editor is entitled not to implement — Illustrator and Inkscape
+    // both read the *content*. So the transform is applied to the text itself
+    // and the property is dropped, which is also what makes the `textLength`
+    // the label fitter already wrote still describe the string beside it.
+    if (el.tagName === "text" && cs.textTransform === "uppercase") {
+      el.textContent = el.textContent.toUpperCase();
+    }
+    el.setAttribute("style", css);
+    // Nothing in the file is clickable, focusable or queryable — it is a
+    // picture. Dropping this lot is also about a third of the byte count.
+    for (const a of [...el.attributes]) {
+      if (a.name.startsWith("data-") || a.name.startsWith("aria-") ||
+          a.name === "tabindex" || a.name === "role" || a.name === "class") {
+        el.removeAttribute(a.name);
+      }
+    }
+    // SVG 1.1 renderers only know `xlink:href` on `<use>`; browsers only need
+    // `href`. Both cost nine bytes each and buy the vector-editor half of the
+    // acceptance criterion.
+    if (el.tagName === "use" && el.getAttribute("href")) {
+      el.setAttributeNS(XLINK_NS, "xlink:href", el.getAttribute("href"));
+    }
+  }
+}
+
+/** Draw one patch on the offscreen stage and hand the live `<svg>` to `fn`.
+ *
+ *  Compact is the export arrangement (WS-4 §2, WS-7 §5) — bounding box beats
+ *  legibility when the result is a still picture that has to fit in a forum
+ *  post. Freeform is the one exception, and it has to be: a player who placed
+ *  every plate by hand has said where they go, and re-packing their patch for
+ *  them would throw that away.
+ *
+ *  The stage is torn down on the way out whatever happens, so a throw in the
+ *  middle of an export cannot leave a second rack parked on the document. */
+function onExportStage(rack, fn) {
+  const stage = document.createElement("div");
+  stage.className = "export-stage";
+  const svg = document.createElementNS(SVG_NS, "svg");
+  stage.appendChild(svg);
+  document.body.appendChild(stage);
+  try {
+    const places = layoutMode === "freeform" ? ffPlaces() : null;
+    buildRack(svg, rack, {
+      // Not interactive: the control well, the lock glyph and the ⋯ are the
+      // app's chrome, not the instrument's front panel, and a picture of a
+      // patch should not have this app's buttons printed on it.
+      interactive: false,
+      // `fit` is what makes this the natural-size render the duel minis
+      // already prove works standalone — and, just as importantly, what keeps
+      // it from writing `rackContent`/`rackBoxes`/`rackFrame`, which belong to
+      // the on-screen build and to the camera pointing at it.
+      fit: true,
+      // The holes, which are part of the patch rather than part of the app.
+      // Keyed by trace path, and `exportRack` keeps every key it passes through
+      // (a scoped export filters modules; it does not renumber them), so the
+      // bench's set is the right set for a subtree too.
+      placeholders: placeholderKeys,
+      mode: places ? "freeform" : "compact",
+      places,
+    });
+    return fn(svg);
+  } finally {
+    stage.remove();
+  }
+}
+
+/** The padded frame the file gets, measured off what was actually drawn.
+ *
+ *  Not `layout`'s `natW`/`natH`: those describe the *arrangement's* extent from
+ *  its own origin, and in freeform the origin is the bench's, not the patch's.
+ *  Export a four-module branch out of a patch whose plates start 800 units in
+ *  and that difference is 800 units of empty picture down the left-hand side.
+ *  `getBBox` on the built tree is the honest answer to "how big is this", and
+ *  it is exact in the one place the estimate was worst: it includes the mod
+ *  tabs and the cable runs, not just the plate boxes. */
+function exportFrame(svg) {
+  let bb;
+  try { bb = svg.getBBox(); } catch (_) { bb = { x: 0, y: 0, width: 640, height: 360 }; }
+  const pad = EXPORT_PAD;
+  return {
+    x: Math.round(bb.x) - pad,
+    y: Math.round(bb.y) - pad,
+    w: Math.round(bb.width) + pad * 2,
+    h: Math.round(bb.height) + pad * 2,
+  };
+}
+
+/** Render one patch to a standalone, fully-styled SVG element. */
+async function buildExportSvg(rack, opts) {
+  const { transparent = false, sidecar = null } = opts || {};
+  // Everything that needs the element *laid out* — `getBBox` for the frame,
+  // `getComputedStyle` for every paint — happens inside the stage callback;
+  // everything after it works on a detached tree, which serializes fine.
+  const { svg, x, y, w, h } = onExportStage(rack, (el) => {
+    const box = exportFrame(el);
+    inlineStyles(el);
+    el.remove();
+    return { svg: el, ...box };
+  });
+  const pad = EXPORT_PAD;
+  svg.setAttribute("viewBox", `${x} ${y} ${w} ${h}`);
+  svg.setAttribute("xmlns", SVG_NS);
+  svg.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:xlink", XLINK_NS);
+
+  // The stylesheet the file carries: the embedded faces, and nothing else.
+  // Everything that *can* be an attribute already is one — a rule here would
+  // be a second place a colour lives.
+  const style = document.createElementNS(SVG_NS, "style");
+  style.textContent = await exportFontCss();
+  svg.insertBefore(style, svg.firstChild);
+
+  // The ground, under everything, inside the padding. `fit` builds skip the
+  // rack's own floor because the duel minis are cutouts — but an exported
+  // picture is not a cutout, it is the bench, and the dot grid and the pool
+  // of light under the patch are what make it read as an object standing on
+  // a surface rather than as ink floating in a rectangle.
+  if (!transparent) {
+    const ground = document.createElementNS(SVG_NS, "g");
+    const grad = document.createElementNS(SVG_NS, "linearGradient");
+    grad.setAttribute("id", "exportBg");
+    grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0");
+    grad.setAttribute("x2", "0"); grad.setAttribute("y2", "1");
+    // The frame's own background, literal rather than tokenised: this one
+    // lives in `.rack-scroll`, which is not an element the export renders.
+    grad.innerHTML = '<stop offset="0" stop-color="#0b0c0f"/><stop offset="1" stop-color="#0e1013"/>';
+    ground.appendChild(grad);
+    const rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("x", String(x)); rect.setAttribute("y", String(y));
+    rect.setAttribute("width", String(w)); rect.setAttribute("height", String(h));
+    rect.setAttribute("fill", "url(#exportBg)");
+    ground.appendChild(rect);
+    const dots = document.createElementNS(SVG_NS, "rect");
+    dots.setAttribute("x", String(x)); dots.setAttribute("y", String(y));
+    dots.setAttribute("width", String(w)); dots.setAttribute("height", String(h));
+    dots.setAttribute("fill", "url(#dotGrid)");
+    ground.appendChild(dots);
+    const pool = document.createElementNS(SVG_NS, "ellipse");
+    pool.setAttribute("cx", String(x + w / 2)); pool.setAttribute("cy", String(y + h / 2));
+    pool.setAttribute("rx", String(Math.max(240, (w - pad * 2) * 0.78)));
+    pool.setAttribute("ry", String(Math.max(180, (h - pad * 2) * 0.82)));
+    pool.setAttribute("fill", "url(#patchPool)");
+    ground.appendChild(pool);
+    svg.insertBefore(ground, style.nextSibling);
+  }
+
+  // The patch itself, riding inside the picture. `<metadata>` is the element
+  // SVG reserves for exactly this, and building it through the DOM means the
+  // serializer does the XML escaping — a patch name with an `&` in it would
+  // otherwise produce a file no parser will open.
+  if (sidecar) {
+    const md = document.createElementNS(SVG_NS, "metadata");
+    md.setAttribute("id", "ricercar-patch");
+    md.textContent = JSON.stringify(sidecar);
+    svg.insertBefore(md, svg.firstChild);
+  }
+  return { svg, w, h };
+}
+
+/** The serialized file, with the XML declaration a standalone `.svg` wants. */
+function serializeSvg(svg, w, h, scale) {
+  svg.setAttribute("width", String(Math.round(w * scale)));
+  svg.setAttribute("height", String(Math.round(h * scale)));
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(svg);
+}
+
+/** SVG text → PNG bytes at the size the file declares.
+ *
+ *  The rasterizer is the browser's own SVG renderer, reached through an
+ *  `<img>`: it re-renders the vectors at the requested size rather than
+ *  scaling a 1× bitmap, which is what makes 2× and 3× worth offering. The
+ *  embedded `data:` fonts are the reason text survives the trip — an SVG
+ *  loaded as an image is not allowed to fetch anything. */
+function rasterize(svgText, w, h) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob"))), "image/png");
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("svg did not load")); };
+    img.src = url;
+  });
+}
+
+// ---------- PNG tEXt ----------
+// A PNG is a signature and then a chain of length/type/data/CRC chunks. `tEXt`
+// is the simplest of them — a Latin-1 keyword, a NUL, and Latin-1 text — and
+// anything may sit between the header and `IEND`, so carrying the patch is a
+// splice and not a re-encode. Written by hand because the alternative is a
+// dependency to insert eleven bytes plus a checksum.
+let crcTable = null;
+function crc32(bytes) {
+  if (!crcTable) {
+    crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      crcTable[n] = c >>> 0;
+    }
+  }
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** Walk the chunk chain, calling back with each chunk's type and data span. */
+function pngChunks(buf, visit) {
+  const b = new Uint8Array(buf);
+  if (b.length < 8 || !PNG_SIG.every((s, i) => b[i] === s)) return false;
+  const dv = new DataView(buf);
+  let o = 8;
+  while (o + 8 <= b.length) {
+    const len = dv.getUint32(o);
+    const type = String.fromCharCode(b[o + 4], b[o + 5], b[o + 6], b[o + 7]);
+    if (visit(type, o, o + 8, len) === false) return true;
+    if (type === "IEND") break;
+    o += 12 + len;
+  }
+  return true;
+}
+
+const latin1 = (b, from, to) => {
+  let s = "";
+  for (let i = from; i < to; i++) s += String.fromCharCode(b[i]);
+  return s;
+};
+
+/** The text of the first `tEXt` chunk under `keyword`, or null. */
+function pngReadText(buf, keyword) {
+  const b = new Uint8Array(buf);
+  let found = null;
+  pngChunks(buf, (type, _start, data, len) => {
+    if (type !== "tEXt") return;
+    let z = data;
+    while (z < data + len && b[z] !== 0) z++;
+    if (latin1(b, data, z) === keyword) {
+      found = latin1(b, z + 1, data + len);
+      return false;
+    }
+  });
+  return found;
+}
+
+/** The same PNG with a `tEXt` chunk spliced in ahead of `IEND`.
+ *
+ *  `tEXt` is Latin-1 only, and a patch name can hold anything, so the payload
+ *  is escaped to ASCII first — `\uXXXX` is still valid JSON, so what an
+ *  `exiftool` dump prints is still the patch, and `JSON.parse` on the way back
+ *  in un-escapes it without being asked. */
+function pngWithText(buf, keyword, text) {
+  const b = new Uint8Array(buf);
+  let iend = -1;
+  pngChunks(buf, (type, start) => { if (type === "IEND") { iend = start; return false; } });
+  if (iend < 0) throw new Error("no IEND");
+  const ascii = text.replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  const kw = keyword;
+  const dataLen = kw.length + 1 + ascii.length;
+  const chunk = new Uint8Array(12 + dataLen);
+  const cdv = new DataView(chunk.buffer);
+  cdv.setUint32(0, dataLen);
+  for (let i = 0; i < 4; i++) chunk[4 + i] = "tEXt".charCodeAt(i);
+  for (let i = 0; i < kw.length; i++) chunk[8 + i] = kw.charCodeAt(i);
+  chunk[8 + kw.length] = 0;
+  for (let i = 0; i < ascii.length; i++) chunk[9 + kw.length + i] = ascii.charCodeAt(i);
+  // The CRC covers the type and the data, and not the length — a detail worth
+  // stating because getting it wrong produces a file every viewer still opens
+  // and every strict decoder rejects.
+  cdv.setUint32(8 + dataLen, crc32(chunk.subarray(4, 8 + dataLen)));
+  const out = new Uint8Array(b.length + chunk.length);
+  out.set(b.subarray(0, iend), 0);
+  out.set(chunk, iend);
+  out.set(b.subarray(iend), iend + chunk.length);
+  return out;
+}
+
+/** The sidecar carried by an exported SVG, or null. */
+function svgReadPatch(text) {
+  try {
+    const doc = new DOMParser().parseFromString(text, "image/svg+xml");
+    if (doc.querySelector("parsererror")) return null;
+    const md = doc.querySelector("metadata#ricercar-patch") || doc.querySelector("metadata");
+    const body = md?.textContent?.trim();
+    return body && body.startsWith("{") ? body : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- the dialog ----------
+/** What the current settings would produce, in pixels.
+ *
+ *  Measured by drawing it, on the same stage and through the same frame the
+ *  file will get — the readout is a promise, and the only way to keep it is to
+ *  make it the same computation. The draw is a dozen plates of SVG with no
+ *  fonts to embed and no raster to make; it costs about what one rack rebuild
+ *  costs, which the app already does on every knob release. */
+function imageDims() {
+  const rack = exportRack(imageState.scope === "sel");
+  if (!rack || !rack.modules.length) return null;
+  const box = onExportStage(rack, exportFrame);
+  return {
+    w: Math.round(box.w * imageState.scale),
+    h: Math.round(box.h * imageState.scale),
+    n: rack.modules.length,
+  };
+}
+
+function imageSync() {
+  const panel = $("image-panel");
+  if (!panel || panel.classList.contains("hidden")) return;
+  const sel = selModule();
+  const opt = panel.querySelector('#ix-scope option[value="sel"]');
+  if (opt) {
+    opt.disabled = !sel;
+    opt.textContent = sel ? `selection — ${sel.title.toLowerCase()}` : "selection — nothing selected";
+  }
+  // A scope that has stopped existing (the module was deleted, or the bench
+  // moved to another patch) silently falls back rather than exporting nothing.
+  if (imageState.scope === "sel" && !sel) imageState.scope = "all";
+  $("ix-scope").value = imageState.scope;
+  const d = imageDims();
+  const dims = $("ix-dims");
+  dims.classList.remove("busy");
+  dims.textContent = d
+    ? `${d.w} × ${d.h} px · ${d.n} module${d.n === 1 ? "" : "s"} · ${imageState.fmt.toUpperCase()}`
+    : "nothing on the bench";
+  $("ix-go").disabled = !d;
+}
+
+async function runImageExport() {
+  const body = patchSidecar();
+  const rack = exportRack(imageState.scope === "sel");
+  if (!body || !rack || !rack.modules.length) return note("nothing on the bench to export");
+  const go = $("ix-go");
+  const dims = $("ix-dims");
+  go.disabled = true;
+  dims.classList.add("busy");
+  dims.textContent = "rendering…";
+  try {
+    // The selection carries the *whole* patch's sidecar, deliberately: the
+    // picture is of one branch, and the thing that opens when you drop it back
+    // in is the patch that branch came from. Cropping the sidecar to match
+    // would mean shipping a half-patch that the grammar has no root for.
+    const { svg, w, h } = await buildExportSvg(rack, {
+      transparent: imageState.bg === "transparent",
+      sidecar: body,
+    });
+    const stem = patchFileStem(body);
+    if (imageState.fmt === "svg") {
+      const text = serializeSvg(svg, w, h, imageState.scale);
+      saveBlob(new Blob([text], { type: "image/svg+xml" }), `${stem}.svg`);
+    } else {
+      // The PNG is rasterized from an SVG that declares no size of its own —
+      // `drawImage`'s explicit width and height are what set the scale, and
+      // the viewBox is what makes that a re-render rather than an upscale.
+      const text = serializeSvg(svg, w, h, 1);
+      const px = { w: Math.round(w * imageState.scale), h: Math.round(h * imageState.scale) };
+      const blob = await rasterize(text, px.w, px.h);
+      const withPatch = pngWithText(await blob.arrayBuffer(), PATCH_KEYWORD, JSON.stringify(body));
+      saveBlob(new Blob([withPatch], { type: "image/png" }), `${stem}.png`);
+    }
+    note(`exported ${stem} — the patch is inside the file`);
+  } catch (err) {
+    note(`the export failed: ${err.message || err}`, { urgent: true });
+  } finally {
+    imageSync();
+  }
+}
+
+function imagePanelInit() {
+  const panel = $("image-panel");
+  if (!panel) return;
+  imageLoad();
+  const bind = (id, get, set) => {
+    const el = $(id);
+    if (!el) return;
+    get(el);
+    el.addEventListener("input", () => { set(el); imageSave(); imageSync(); });
+  };
+  bind("ix-scope", (e) => { e.value = imageState.scope; }, (e) => { imageState.scope = e.value; });
+  bind("ix-scale", (e) => { e.value = String(imageState.scale); }, (e) => { imageState.scale = Number(e.value); });
+  bind("ix-bg", (e) => { e.value = imageState.bg; }, (e) => { imageState.bg = e.value; });
+  bind("ix-fmt", (e) => { e.value = imageState.fmt; }, (e) => { imageState.fmt = e.value; });
+  const close = () => {
+    panel.classList.add("hidden");
+    $("image-btn")?.setAttribute("aria-expanded", "false");
+  };
+  // Focus goes back to the ⋯, not to the menu item that opened this: the item
+  // lives *inside* `#ovf-menu`, which was hidden the moment the panel opened,
+  // and `focus()` on a `display:none` element is a no-op that drops the
+  // keyboard on the body. The ⋯ is the visible control this panel hangs off.
+  const dismiss = () => { close(); $("ovf-btn")?.focus(); };
+  $("image-close").onclick = dismiss;
+  $("ix-go").onclick = runImageExport;
+  $("image-btn").onclick = (ev) => {
+    ev.stopPropagation();
+    $("ovf-menu").classList.add("hidden");
+    $("ovf-btn").setAttribute("aria-expanded", "false");
+    $("scope-panel")?.classList.add("hidden");
+    const shut = panel.classList.toggle("hidden");
+    $("image-btn").setAttribute("aria-expanded", String(!shut));
+    if (!shut) { imageSync(); $("ix-scope").focus(); }
+  };
+  // The same dismissals every other popover in the header honours.
+  document.addEventListener("pointerdown", (ev) => {
+    if (panel.classList.contains("hidden")) return;
+    if (panel.contains(ev.target) || $("image-btn").contains(ev.target)) return;
+    close();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !panel.classList.contains("hidden")) dismiss();
+  });
+}
+
+// ---------- drag and drop ----------
+// `dragenter`/`dragleave` fire per element crossed, not per window, so the
+// veil is counted in rather than toggled — otherwise moving the pointer from
+// the bank onto the rack reads as "left the window" and the veil flickers off
+// under the file that is still being dragged.
+function dropInit() {
+  const veil = $("drop-veil");
+  if (!veil) return;
+  let depth = 0;
+  const show = (on) => veil.classList.toggle("hidden", !on);
+  const carriesFile = (ev) => [...(ev.dataTransfer?.types || [])].includes("Files");
+  window.addEventListener("dragenter", (ev) => {
+    if (!carriesFile(ev)) return;
+    depth++;
+    show(true);
+  });
+  window.addEventListener("dragover", (ev) => {
+    if (!carriesFile(ev)) return;
+    // Without this the browser navigates to the file and the app is gone.
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+  });
+  window.addEventListener("dragleave", () => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) show(false);
+  });
+  window.addEventListener("drop", async (ev) => {
+    if (!carriesFile(ev)) return;
+    ev.preventDefault();
+    depth = 0;
+    show(false);
+    const file = ev.dataTransfer.files[0];
+    if (!file) return;
+    const data = await readPatchFile(file);
+    if (data) loadPatchData(data);
+    else pendingLayout = null;
+  });
+}
 
 // The rack sizes itself from `#rack-scroll`'s client box, so a build that
 // happens before layout has settled (first paint, a view becoming visible,
@@ -13361,6 +15096,12 @@ buildNodeBank();
 scopeLoad();
 scopePanelInit();
 scopeApply();
+// The export dialog and the drop target. Both are inert until used, and both
+// are wired here rather than lazily so that a patch dragged onto the window
+// during the boot veil still lands.
+imagePanelInit();
+dropInit();
+selInit();
 renderNextStep(); // never leave the "what now?" control blank on first paint
 renderTray();
 bootLiveAudio();
@@ -13420,6 +15161,7 @@ bootMidi();
     for (const id of saved.ui.born || []) lastBorn.add(id);
     restoreTray(saved.ui.held);
     restorePositions(saved.ui.positions);
+    restoreBookmarks(saved.ui.marks);
     restoreLocks(saved.ui.locks);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the

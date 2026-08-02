@@ -1615,6 +1615,22 @@ impl Engine {
         prior.source_weights = src.try_into().expect("source weight arity");
         // Mix inherits the sources' average tilt — it is the node that exists
         // to combine them, and it is the one column the identity removed.
+        //
+        // Wave 3 tried to replace this proxy with a measurement: a
+        // `branch_width_max` φ coordinate, so that "I like parallel routing"
+        // would be a thing a user could say and this line could hand back. The
+        // VIF sweep threw the column out (10.4, and it took every source count
+        // with it), and the reason is the same identity that removed `n_mix`
+        // in the first place — the leaf count is `1 + Σ binaries` exactly, so
+        // a patch cannot gain a mixer without gaining a source. Which means
+        // this proxy was never a proxy. Wanting more sources *is* wanting more
+        // binaries, as an equation, and the average below is reading the
+        // evidence for both. The wave-3 coordinates that did survive
+        // (`chain_balance`, `frac_sidechained`, `mod_at_source`) describe how
+        // a patch is arranged rather than how wide it is, and none of them
+        // maps onto a single production's weight, so none of them belongs
+        // here: a tilt is a claim about one categorical outcome, and
+        // "asymmetric" is not an outcome any one production produces.
         let binary_tilt = sources.iter().sum::<f64>() / sources.len() as f64;
         let (drive, mod_fx) = (g("n_drive"), g("n_mod_fx"));
         // `n_filter` and `n_time` are families now too — the eq and the

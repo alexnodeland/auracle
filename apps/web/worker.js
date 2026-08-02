@@ -16,6 +16,28 @@ const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 
 const status = () => JSON.parse(engine.status());
 
+// ---------- the degradation log ----------
+//
+// Three of this file's messages are not developer errors: a draw that timed
+// out and is re-issued, a draw retired after its attempts, and a bank entry the
+// farm did not finish that is rendered here instead. All three are the
+// *designed* answer to a machine under load — they are what "a dying farm costs
+// time and never content" looks like from the inside — and on a busy laptop
+// they fire on an ordinary boot.
+//
+// `console.warn` is the wrong channel for that. It puts a working degradation
+// path in the same tray as a genuine fault, which costs twice: the console gate
+// this build is held to ("zero errors, zero warnings on a clean boot") goes red
+// for something that is fine, and a real warning arrives next to three that are
+// noise and is read as noise too.
+//
+// So they go to the app's own log instead, verbatim, where they are still there
+// for anyone asking why a boot was slow — `window.__ricLog` on the main thread,
+// the same array the live-audio worklet's messages land in. This worker has no
+// `window`, so it posts and main appends.
+const ricLog = (text, detail) =>
+  post({ type: "log", at: Date.now(), text, ...(detail || {}) });
+
 // ---------- long-op signalling ----------
 //
 // `engine.fit()` and the refine loop are *synchronous* wasm calls that run for
@@ -299,8 +321,10 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
       if (state.worker) state.worker.job = null;
       if (retirable && state.tries >= MAX_TRIES) {
         // The one path that can change pool content versus a clean run. Say so
-        // — a silently different bank is far worse than a slow one.
-        console.warn(`[ricercar] draw ${i} retired after ${state.tries} attempts`);
+        // — a silently different bank is far worse than a slow one. In the log
+        // rather than the console: it is contention, not a fault.
+        ricLog(`[ricercar] draw ${i} retired after ${state.tries} attempts`,
+          { kind: "draw_retired", i, tries: state.tries });
         results.set(i, { ok: false });
       } else {
         queue.unshift({ i, tree: state.tree, tries: retirable ? state.tries : state.tries - 1 });
@@ -310,7 +334,7 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
     const onTimeout = (i) => {
       const state = inflight.get(i);
       if (!state || finished) return;
-      console.warn(`[ricercar] draw ${i} timed out; re-issuing`);
+      ricLog(`[ricercar] draw ${i} timed out; re-issuing`, { kind: "draw_timeout", i });
       requeue(i, state, true);
       pump();
     };
@@ -459,7 +483,8 @@ async function restoreSession(saved, farmed, stages) {
       // in a rare case and keeps the bank exactly what `import_state` builds,
       // in exactly its order, which is what `deferred_restore_equals_import_state`
       // pins.
-      console.warn(`[ricercar] bank entry ${i} not farmed; rendering in-worker`);
+      ricLog(`[ricercar] bank entry ${i} not farmed; rendering in-worker`,
+        { kind: "bank_in_worker", i });
       if (engine.bank_render(i)) landed++;
     },
     stop: () => false,
@@ -482,6 +507,48 @@ async function restoreSession(saved, farmed, stages) {
     if (engine.bank_render(i)) landed++;
   }
   return engine.restore_finish();
+}
+
+// ---------- "the bank already has this one" ----------
+//
+// The engine's own duplicate test is `PatchTree == PatchTree`, which is
+// structural and — deliberately — blind to `Uid` (`impl PartialEq for Uid` is
+// unconditionally true: identity travels with a node, it does not define it).
+// Reproducing that here means comparing the *shape*, not the bytes: two
+// serializations of the same tree differ in key order and in whether the uids
+// that survived a round trip are printed at all.
+//
+// So both sides are canonicalized — keys sorted, `uid` dropped, numbers put
+// through `JSON.parse` so a hand-formatted file and serde's output agree — and
+// compared as strings. Anything this gets wrong falls back to the honest
+// "it did not go in" message, which is where it was before.
+function canonTree(v) {
+  if (Array.isArray(v)) return v.map(canonTree);
+  if (v && typeof v === "object") {
+    const out = {};
+    for (const k of Object.keys(v).sort()) {
+      if (k === "uid") continue;
+      out[k] = canonTree(v[k]);
+    }
+    return out;
+  }
+  return v;
+}
+function canonJson(s) {
+  try {
+    return JSON.stringify(canonTree(JSON.parse(s)));
+  } catch (_) {
+    return null;
+  }
+}
+/** The id of the bank entry that *is* this tree, or 0. */
+function bankTwinOf(json) {
+  const want = canonJson(json);
+  if (want == null) return 0; // unparseable: not a duplicate, a bad file
+  for (const row of JSON.parse(engine.ranked())) {
+    if (canonJson(engine.tree_json_of(row.id)) === want) return row.id;
+  }
+  return 0;
 }
 
 // Everything the taste instruments need, in one bundle.
@@ -990,6 +1057,12 @@ self.onmessage = async (e) => {
       post(
         {
           type: "preview",
+          // Which stream asked. Two different features render through this one
+          // case now — the pre-placement audition and the per-port probe — and
+          // they keep separate token counters, so without a name for the
+          // stream each one's reply would look like a stale reply to the
+          // other and be dropped as the cancellation.
+          tag: m.tag || null,
           token: m.token,
           key: m.key || null,
           kind: m.kind || null,
@@ -1054,7 +1127,24 @@ self.onmessage = async (e) => {
     }
     case "import_patch": {
       const id = Number(engine.import_patch(m.json, m.name || ""));
-      post({ type: "patch_imported", id, views: tasteViews(), status: status() });
+      // `import_patch` answers 0 for two opposite things — "the bank already
+      // has this patch" and "this patch does not survive the vet" — because
+      // `commit_edit` returns `None` for both. One is a success the app should
+      // be pleased about (the picture you were sent is a patch you already
+      // own); the other is a refusal. Reported as one, they became the single
+      // sentence that hedged between them: "duplicate, or it failed the safety
+      // vet", which tells the player to go and find out for themselves.
+      //
+      // So the answer is looked up here rather than guessed at in the UI: on a
+      // 0, find the twin. Only on the failure path, so an ordinary import pays
+      // nothing for it, and over the bank's forty entries at most.
+      post({
+        type: "patch_imported",
+        id,
+        duplicate: id > 0 ? 0 : bankTwinOf(m.json),
+        views: tasteViews(),
+        status: status(),
+      });
       break;
     }
     case "save": {
