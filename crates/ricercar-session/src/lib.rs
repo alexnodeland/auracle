@@ -1630,6 +1630,100 @@ mod tests {
         );
     }
 
+    /// A profile written under the **previous φ width** still loads, and its
+    /// votes still count for the coordinates they were measured on.
+    ///
+    /// This is the migration a *feature-set* change produces, as distinct from
+    /// the schema change above: the log is already raw and already named, so
+    /// nothing needs inverting — but the standardizer that shipped with the
+    /// profile has the wrong dimension, and every vote is now short a few
+    /// coordinates. Both halves have to be right or the failure is silent:
+    /// keeping the old standardizer would transform vectors of one width
+    /// against means of another, and dropping the votes would read as "this
+    /// user has no opinion" about coordinates they voted on hundreds of times.
+    ///
+    /// Wave 3 is the case in hand — `chain_balance`, `frac_sidechained` and
+    /// `mod_at_source` did not exist — but the test is written against
+    /// "whatever the last three coordinates are" so it keeps testing the
+    /// mechanism rather than this particular wave.
+    #[test]
+    fn a_profile_written_under_a_narrower_phi_still_counts() {
+        use ricercar_taste::{Feedback, Observation, ObservationLog};
+
+        let names = phi_names();
+        let old_names: Vec<String> = names[..names.len() - 3].to_vec();
+        let d = old_names.len();
+        // A vote whose winner is higher on every coordinate it knows about.
+        let (a, b): (Vec<f64>, Vec<f64>) = (
+            (0..d).map(|i| 1.0 + i as f64 * 0.01).collect(),
+            vec![0.0; d],
+        );
+        let mut log = ObservationLog::new();
+        log.push(Observation::new(
+            Feedback::Duel {
+                a: a.clone(),
+                b: b.clone(),
+                chose_a: true,
+            },
+            0,
+            &old_names,
+        ));
+        let profile = Profile {
+            log,
+            standardizer: Some(ricercar_taste::Standardizer {
+                mean: vec![0.0; d],
+                std: vec![1.0; d],
+            }),
+        };
+
+        let mut rng = StdRng::seed_from_u64(0x3C0);
+        let mut engine = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 8,
+                ..fast()
+            },
+        );
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        engine.import_profile(profile);
+
+        // The profile's standardizer is obsolete by width, so it is dropped
+        // and a fresh one fit from the live pool. Carrying it would silently
+        // mis-scale every coordinate.
+        let sz = engine.standardizer.as_ref().expect("standardizer refit");
+        assert_eq!(sz.dimension(), names.len());
+        // The vote keeps the names it was recorded under — it is not
+        // re-stamped, because it genuinely says nothing about the new
+        // coordinates and claiming otherwise would be a fabricated zero.
+        assert_eq!(engine.log.observations[0].feature_names, old_names);
+        // It is therefore not eligible to fit the standardizer (wrong width)…
+        assert_eq!(engine.log.raw_rows(&names).len(), 0);
+
+        // …and it still lands in the fit, projected by name.
+        let data = ricercar_taste::FitSet::build(&engine.log, &names, sz);
+        let ricercar_taste::Feedback::Duel {
+            a: za,
+            b: zb,
+            chose_a,
+        } = &data.rows[0].0
+        else {
+            panic!("modality changed");
+        };
+        assert!(chose_a);
+        assert_eq!(za.len(), names.len());
+        for j in 0..d {
+            assert_eq!(za[j], (a[j] - sz.mean[j]) / sz.std[j], "{} lost", names[j]);
+            assert!(za[j] > zb[j], "{} flipped", names[j]);
+        }
+        // The three that did not exist are imputed at the mean, which is
+        // exactly zero in standardized space: "this vote says nothing here".
+        for j in d..names.len() {
+            assert_eq!(za[j], 0.0, "{} invented evidence", names[j]);
+            assert_eq!(zb[j], 0.0, "{} invented evidence", names[j]);
+        }
+    }
+
     /// A session saved under the **v1 palette** still loads — bank, votes and
     /// all — after the palette grew modulation slots on modules that already
     /// shipped.

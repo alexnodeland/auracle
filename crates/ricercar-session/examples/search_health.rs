@@ -13,7 +13,29 @@
 //! cargo run -p ricercar-session --example search_health --release
 //! cargo run -p ricercar-session --example search_health --release -- 8   # seeds
 //! cargo run -p ricercar-session --example search_health --release -- --budget-ab
+//! cargo run -p ricercar-session --example search_health --release -- --routing
+//! cargo run -p ricercar-session --example search_health --release -- --climb 16
+//! cargo run -p ricercar-session --example search_health --release -- --tail
 //! ```
+//!
+//! `--tail` is measurements 4 and 3 alone — the back half of the default run,
+//! and the expensive half.
+//!
+//! `--climb` runs measurement 1 alone, at whatever seed count is asked for,
+//! and prints the **per-seed** final utilities as well as the mean. That is
+//! the iteration loop for anything that touches φ or the prior: measurement 1
+//! is the gate a feature-set change is most likely to fail, it is a third of
+//! the runtime, and a change of ±0.4 in the mean gain is inside the
+//! seed-to-seed spread — so the aggregate alone cannot tell a regression from
+//! a lottery. The seeds are the same list in both arms, so the paired
+//! differences below the table are the number to read.
+//!
+//! `--routing` is measurement 5 and it is the odd one out: everything else
+//! here asks whether a change *broke* the search, and it asks whether a change
+//! **bought** anything. It compiles against a feature set that does not have
+//! the wave-3 shape columns — it walks the term itself rather than reading
+//! `StructFeatures` — precisely so the same binary can be run on both sides of
+//! that change and the two numbers compared.
 //!
 //! ## 1. Does the pool climb?
 //!
@@ -55,6 +77,37 @@
 //! The split matters because they do different work: parameter moves polish a
 //! topology, structural moves find a different one, and a palette expansion
 //! can starve the second without touching the first.
+//!
+//! ## The wave-3 φ reading, so it does not have to be re-derived
+//!
+//! `chain_balance` and `frac_sidechained` joined φ_struct. Both arms below are
+//! the same seed list; "before" is the 23-column φ_struct, "after" is the same
+//! plus those two. Nothing regresses, three things improve, and the one number
+//! that moved the wrong way is inside the noise:
+//!
+//! ```text
+//!                                              before     after
+//! 1  pool climb, mean gain (8 seeds)            +1.714    +1.723
+//! 1  pool climb, mean gain (16 seeds, paired)             +0.35 ± 0.73
+//! 1  best patch found (16 seeds, paired)                  −1.00 ± 0.63
+//! 2  MH acceptance                               46.5%     49.6%
+//! 2  structural share of accepted                29.8%     31.4%
+//! 3  locked refine beat its parent (shipped)      66%       69%
+//! 4  fitted vs true utility (spearman)           0.318     0.389
+//! 4  fitted ranking across refits                0.556     0.619
+//! 4  true best survived the generation            98%      100%
+//! 5  routing listener: fit vs truth              0.662     0.705
+//! 5  routing listener: true mean gain           +2.016    +2.669
+//! 5  routing listener: pool sidechained          71.6%     82.0%
+//! closed_loop_sweep mean r (13 seeds)        0.693±0.018  0.688±0.018
+//! ```
+//!
+//! The best-patch line is the only negative and it is 1.6 standard errors, on
+//! a quantity a single lucky seed moves a long way (one before-arm seed
+//! returned a max of 16.4 against a fleet median of 7.4). Measurement 4 is the
+//! one worth reading twice: giving the model two more things to be right about
+//! made its ranking agree with the truth *more*, for a synthetic listener who
+//! has no opinion about routing at all.
 //!
 //! ## 3. Does locked refinement still land?
 //!
@@ -593,9 +646,396 @@ fn mean(xs: &[f64]) -> f64 {
     xs.iter().sum::<f64>() / xs.len().max(1) as f64
 }
 
+/// Measurement 1 on its own, with the per-seed numbers printed.
+///
+/// The aggregate table hides the only thing that makes a before/after
+/// comparison readable: these curves are noisy per seed, and the mean of eight
+/// of them moves by a few tenths on nothing at all. Both arms run the same
+/// seed list, so the per-seed column pairs up across a rebuild and the
+/// difference of the paired means is what a claim should be made on.
+///
+/// # How much this harness can actually resolve
+///
+/// Written down so the next feature-set change does not learn it the
+/// expensive way. Measured on the wave-3 φ columns, **16 seeds, standard
+/// error ±0.64 on the mean gain**. Two arms that differed by a whole
+/// coordinate came back at +0.35 ± 0.73 and −0.33 ± 0.74 against the same
+/// baseline — which is to say this measurement cannot see a change of half a
+/// unit, and an eight-seed run of it (se ≈ 0.9) will happily hand you one.
+///
+/// The wave-3 8-seed run reported +1.714 → +1.320, best patch 8.154 → 6.503,
+/// and 7-of-8 seeds climbing down to 5-of-8: three numbers all pointing the
+/// same way, all inside the noise, and a column was very nearly cut on them.
+/// So: **16 seeds minimum for a decision, and read the paired difference and
+/// its standard error, never the two means side by side.** If a change needs
+/// to be detected below that resolution, the fix is more seeds — the run is
+/// embarrassingly parallel — not a closer reading of eight.
+fn climb_report(seeds: &[u64]) {
+    let curves: Vec<Vec<(f64, f64)>> = std::thread::scope(|s| {
+        let hs: Vec<_> = seeds
+            .iter()
+            .map(|&x| s.spawn(move || climb(x, None)))
+            .collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    println!("== 1. pool true utility per refinement generation ==");
+    println!(
+        "(pool 48, {TEACH_DUELS} duels, {GENERATIONS} generations, {} seeds)",
+        seeds.len()
+    );
+    println!(
+        "{:<6} {:>10} {:>10} {:>10}",
+        "gen", "mean u", "max u", "Δ mean"
+    );
+    let mut prev = f64::NAN;
+    for g in 0..=GENERATIONS {
+        let ms: Vec<f64> = curves.iter().map(|c| c[g].0).collect();
+        let xs: Vec<f64> = curves.iter().map(|c| c[g].1).collect();
+        let m = mean(&ms);
+        println!(
+            "{g:<6} {m:>10.3} {:>10.3} {:>10}",
+            mean(&xs),
+            if prev.is_nan() {
+                "—".into()
+            } else {
+                format!("{:+.3}", m - prev)
+            }
+        );
+        prev = m;
+    }
+    let gain: Vec<f64> = curves.iter().map(|c| c[GENERATIONS].0 - c[0].0).collect();
+    let up = gain.iter().filter(|g| **g > 0.0).count();
+    let g_mean = mean(&gain);
+    // Standard error of the mean gain, so "it moved" and "it moved more than
+    // this harness can see" are distinguishable claims.
+    let var =
+        gain.iter().map(|g| (g - g_mean).powi(2)).sum::<f64>() / (gain.len().max(2) - 1) as f64;
+    println!(
+        "  mean gain: {g_mean:+.3} ± {:.3} (se)   climbed on {up}/{}",
+        (var / gain.len() as f64).sqrt(),
+        gain.len()
+    );
+    println!(
+        "{:<8} {:>10} {:>10} {:>10}",
+        "seed", "final mean", "final max", "gain"
+    );
+    for (i, c) in curves.iter().enumerate() {
+        println!(
+            "{:<8x} {:>10.3} {:>10.3} {:>+10.3}",
+            seeds[i],
+            c[GENERATIONS].0,
+            c[GENERATIONS].1,
+            c[GENERATIONS].0 - c[0].0
+        );
+    }
+    println!();
+}
+
+// ---------------------------------------------------------------------------
+// Measurement 5: a listener whose taste is about **routing**.
+// ---------------------------------------------------------------------------
+//
+// Every synthetic user in this repo is linear in the same φ the model is
+// linear in, which is the right way to ask "how fast does it estimate
+// coefficients" and the wrong way to ask "can it learn *this*". The user here
+// wants **asymmetric** routing: one branch processed and the other left dry,
+// with the second input of a binary being a chain of its own rather than a
+// bare oscillator. That is a statement φ_struct could not represent at all
+// until the wave-3 shape columns landed, because a count vector has no place
+// to put it.
+//
+// The taste is deliberately *not* "likes branching". A first version of this
+// measurement used branch width, and the before/after arms came out nearly
+// identical (Spearman 0.709 on a feature set with no topology coordinate at
+// all) — because wanting a wider tree is wanting more sources, and the source
+// counts have been in φ since v1. It was measuring a proxy, not the thing.
+// `frac_sidechained` and `chain_balance` are the two shape quantities that a
+// count vector provably cannot reach: `filter(mix(a, b))` and
+// `mix(filter(a), b)` have identical counts and differ in both.
+//
+// The shape term is computed **from the term**, by the two little walks below,
+// and deliberately not by reading `StructFeatures`. Two reasons, and the
+// second is why it is worth the duplication:
+//
+// - The ground truth must be byte-identical on both sides of the feature
+//   change or the before/after numbers are measuring two different users.
+// - It has to *compile* against a `StructFeatures` that does not have the
+//   fields yet, which is the only way to get the "before" arm at all.
+//
+// What is reported is not θ recovery — there is no θ* to recover, since the
+// user is not linear in φ on either arm — but the three things that matter to
+// a player: does the fitted ranking agree with the truth, does the pool climb
+// in *true* utility, and does the search actually go and find the sidechained
+// routings, or does it stay in the flat stacks the prior draws by default.
+//
+// Wave 3's reading, 8 seeds, before → after:
+//
+//   fit vs truth (spearman)      0.662 → 0.705
+//   true mean utility gain      +2.016 → +2.669
+//   true best patch              7.648 → 8.483
+//   pool with a sidechained in   71.6% → 82.0%   (from 13.5% at generation 0)
+//
+// All four move the same way, which is the shape a real effect has. Note the
+// *before* arm is far from blind — 71.6% — because an asymmetric routing also
+// sounds different, and the audio half of φ hears that. What the columns buy
+// is the model knowing *why*.
+
+/// Weight on the shape term, against audio coefficients of 2.0/1.5/1.0 on
+/// unit-variance z-scores. Chosen so routing is a real part of this listener's
+/// taste and not the whole of it — a user who only cared about topology would
+/// be a strawman for a feature set built to carry timbre.
+const ROUTING_WEIGHT: f64 = 2.0;
+
+/// Mean source-to-root path length over the longest one. 1.0 when every
+/// source sits the same distance from the amp — a serial chain, or a mix of
+/// two equal branches; below 1.0 when one branch is a chain and the other is
+/// a bare oscillator.
+fn chain_balance(root: &PatchTree) -> f64 {
+    fn go(
+        n: &ricercar_grammar::term::AudioNode,
+        d: usize,
+        sum: &mut usize,
+        max: &mut usize,
+        k: &mut usize,
+    ) {
+        let kids = n.children();
+        if kids.is_empty() {
+            *k += 1;
+            *sum += d + 1;
+            *max = (*max).max(d + 1);
+        }
+        for c in kids {
+            go(c, d + 1, sum, max, k);
+        }
+    }
+    let (mut sum, mut max, mut k) = (0, 0, 0);
+    go(&root.root, 0, &mut sum, &mut max, &mut k);
+    if k == 0 || max == 0 {
+        return 1.0;
+    }
+    (sum as f64 / k as f64) / max as f64
+}
+
+/// Of the binary nodes, the fraction whose second child is itself a processor
+/// rather than a bare source.
+fn sidechained(root: &PatchTree) -> f64 {
+    fn go(n: &ricercar_grammar::term::AudioNode, bin: &mut usize, side: &mut usize) {
+        let kids = n.children();
+        if kids.len() == 2 {
+            *bin += 1;
+            *side += usize::from(!kids[1].children().is_empty());
+        }
+        for c in kids {
+            go(c, bin, side);
+        }
+    }
+    let (mut bin, mut side) = (0, 0);
+    go(&root.root, &mut bin, &mut side);
+    if bin == 0 {
+        0.0
+    } else {
+        side as f64 / bin as f64
+    }
+}
+
+/// The routing listener's true utility: the usual audio taste, plus a real
+/// preference for an asymmetric, sidechained routing.
+///
+/// Both terms are zero for every serial chain **and** for a symmetric mix of
+/// two bare oscillators, so nothing here can be predicted from how many
+/// sources a patch has — which is the whole point.
+fn routing_utility(user: &SyntheticUser, phi_std: &[f64], tree: &PatchTree) -> f64 {
+    let shape = sidechained(tree) + (1.0 - chain_balance(tree));
+    user.utility(phi_std) + ROUTING_WEIGHT * shape
+}
+
+/// What one seed of measurement 5 reports.
+struct Routing {
+    /// Spearman ρ between the fitted utility and the truth, after teaching.
+    fit_vs_truth: f64,
+    /// True utility (mean, max) before and after the generations.
+    before: (f64, f64),
+    after: (f64, f64),
+    /// Share of the pool carrying a sidechained binary, before and after.
+    /// This is the one a reader should look at first: it is "did the search go
+    /// and find the thing the user asked for", in one number.
+    branchy_before: f64,
+    branchy_after: f64,
+}
+
+fn routing(seed: u64) -> Routing {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let user = ground_truth();
+    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg(48));
+    engine.begin_session();
+    engine.fill_pool(&mut rng);
+
+    // Teach with the routing listener rather than the plain one — the whole
+    // question is whether these votes reach anything.
+    for _ in 0..4 {
+        for _ in 0..(TEACH_DUELS / 4) {
+            let Some((a, b)) = engine.next_duel(&mut rng) else {
+                break;
+            };
+            let ua = routing_utility(&user, &engine.pool[a].phi_std, &engine.pool[a].tree);
+            let ub = routing_utility(&user, &engine.pool[b].phi_std, &engine.pool[b].tree);
+            let chose_a = rng.gen_bool((1.0 / (1.0 + (ub - ua).exp())).clamp(1e-9, 1.0 - 1e-9));
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+    }
+
+    let truth = |e: &Engine| -> Vec<f64> {
+        e.pool
+            .iter()
+            .map(|c| routing_utility(&user, &c.phi_std, &c.tree))
+            .collect()
+    };
+    let fitted = |e: &Engine| -> Vec<f64> {
+        let p = e.posterior.clone();
+        e.pool
+            .iter()
+            .map(|c| match (&p, c.phi_std.is_empty()) {
+                (Some(p), false) => p.utility_mix(&c.phi_std).0,
+                _ => 0.0,
+            })
+            .collect()
+    };
+    let branchy = |e: &Engine| -> f64 {
+        let n = e.pool.len().max(1) as f64;
+        e.pool.iter().filter(|c| sidechained(&c.tree) > 0.0).count() as f64 / n
+    };
+    let summarize = |us: &[f64]| -> (f64, f64) {
+        (
+            mean(us),
+            us.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+        )
+    };
+
+    let fit_vs_truth = spearman(&fitted(&engine), &truth(&engine));
+    let before = summarize(&truth(&engine));
+    let branchy_before = branchy(&engine);
+    for _ in 0..GENERATIONS {
+        engine.refine(&mut rng);
+    }
+    Routing {
+        fit_vs_truth,
+        before,
+        after: summarize(&truth(&engine)),
+        branchy_before,
+        branchy_after: branchy(&engine),
+    }
+}
+
+fn routing_report(seeds: &[u64]) {
+    println!("== 5. a listener whose taste is about routing ==");
+    println!(
+        "(same audio taste, plus {ROUTING_WEIGHT:.1} × (sidechained fraction + 1 − chain balance))"
+    );
+    let rows: Vec<Routing> = std::thread::scope(|s| {
+        let hs: Vec<_> = seeds.iter().map(|&x| s.spawn(move || routing(x))).collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    println!(
+        "  fitted vs true utility (spearman):   {:.3}",
+        mean(&rows.iter().map(|r| r.fit_vs_truth).collect::<Vec<_>>())
+    );
+    println!(
+        "  true mean u   {:.3} -> {:.3}   ({:+.3} over {GENERATIONS} generations)",
+        mean(&rows.iter().map(|r| r.before.0).collect::<Vec<_>>()),
+        mean(&rows.iter().map(|r| r.after.0).collect::<Vec<_>>()),
+        mean(
+            &rows
+                .iter()
+                .map(|r| r.after.0 - r.before.0)
+                .collect::<Vec<_>>()
+        ),
+    );
+    println!(
+        "  true max u    {:.3} -> {:.3}",
+        mean(&rows.iter().map(|r| r.before.1).collect::<Vec<_>>()),
+        mean(&rows.iter().map(|r| r.after.1).collect::<Vec<_>>()),
+    );
+    println!(
+        "  pool with a sidechained input:  {:.1}% -> {:.1}%",
+        100.0 * mean(&rows.iter().map(|r| r.branchy_before).collect::<Vec<_>>()),
+        100.0 * mean(&rows.iter().map(|r| r.branchy_after).collect::<Vec<_>>()),
+    );
+    println!();
+}
+
+/// Measurements 4 and 3, which are the back half of the default run.
+///
+/// Split out because they are also the *expensive* half — an hour of wall
+/// clock in, a comparison run that gets interrupted has nothing to show for
+/// itself. `--tail` re-runs exactly these against the same seeds, so a
+/// before/after pair does not have to recompute measurements 1 and 2 to get
+/// at them.
+fn tail_report(seeds: &[u64]) {
+    println!("== 4. does eviction keep what is good? ==");
+    println!("(fit↔truth: does the model know? · stability: does its ranking hold still?)");
+    let rets: Vec<Retention> = std::thread::scope(|s| {
+        let hs: Vec<_> = seeds
+            .iter()
+            .map(|&x| s.spawn(move || retention(x)))
+            .collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let vs_truth: Vec<f64> = rets.iter().flat_map(|r| r.fit_vs_truth.clone()).collect();
+    let stability: Vec<f64> = rets.iter().flat_map(|r| r.fit_stability.clone()).collect();
+    let kept: usize = rets.iter().map(|r| r.best_kept).sum();
+    let chances: usize = rets.iter().map(|r| r.best_chances).sum();
+    println!(
+        "  fitted vs true utility (spearman):  {:.3}",
+        mean(&vs_truth)
+    );
+    println!(
+        "  fitted ranking across refits:       {:.3}",
+        mean(&stability)
+    );
+    println!(
+        "  true-best survived the generation:   {kept}/{chances} = {:.0}%",
+        100.0 * kept as f64 / chances.max(1) as f64
+    );
+    println!();
+
+    println!("== 3. locked refine_from hit rate ==");
+    println!("(a third of each seed's knobs locked at random; a hit is a new patch that beats the evictee)");
+    println!(
+        "{:<8} {:>12} {:>8} {:>14} {:>8}",
+        "steps", "landed", "rate", "beat parent", "rate"
+    );
+    let shipped = SessionConfig::default().refine_steps;
+    for steps in [shipped / 2, shipped, 2 * shipped, 4 * shipped] {
+        let rs: Vec<(usize, usize, usize)> = std::thread::scope(|s| {
+            let hs: Vec<_> = seeds
+                .iter()
+                .map(|&x| s.spawn(move || refine_hits(x, steps, 8)))
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let (l, i, t) = rs
+            .iter()
+            .fold((0, 0, 0), |(a, b, c), (d, e, f)| (a + d, b + e, c + f));
+        println!(
+            "{}{:<7} {:>12} {:>7.0}% {:>14} {:>7.0}%",
+            if steps == shipped { "*" } else { " " },
+            steps,
+            format!("{l}/{t}"),
+            100.0 * l as f64 / t.max(1) as f64,
+            format!("{i}/{t}"),
+            100.0 * i as f64 / t.max(1) as f64,
+        );
+    }
+    println!("(* = shipped SessionConfig::refine_steps)");
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let ab = args.iter().any(|a| a == "--budget-ab");
+    let routing_only = args.iter().any(|a| a == "--routing");
+    let climb_only = args.iter().any(|a| a == "--climb");
+    let tail_only = args.iter().any(|a| a == "--tail");
     let n_seeds: usize = args
         .iter()
         .find_map(|a| a.parse::<usize>().ok())
@@ -604,6 +1044,18 @@ fn main() {
 
     if ab {
         budget_ab(&seeds);
+        return;
+    }
+    if routing_only {
+        routing_report(&seeds);
+        return;
+    }
+    if climb_only {
+        climb_report(&seeds);
+        return;
+    }
+    if tail_only {
+        tail_report(&seeds);
         return;
     }
 
@@ -679,60 +1131,5 @@ fn main() {
     );
     println!();
 
-    println!("== 4. does eviction keep what is good? ==");
-    println!("(fit↔truth: does the model know? · stability: does its ranking hold still?)");
-    let rets: Vec<Retention> = std::thread::scope(|s| {
-        let hs: Vec<_> = seeds
-            .iter()
-            .map(|&x| s.spawn(move || retention(x)))
-            .collect();
-        hs.into_iter().map(|h| h.join().unwrap()).collect()
-    });
-    let vs_truth: Vec<f64> = rets.iter().flat_map(|r| r.fit_vs_truth.clone()).collect();
-    let stability: Vec<f64> = rets.iter().flat_map(|r| r.fit_stability.clone()).collect();
-    let kept: usize = rets.iter().map(|r| r.best_kept).sum();
-    let chances: usize = rets.iter().map(|r| r.best_chances).sum();
-    println!(
-        "  fitted vs true utility (spearman):  {:.3}",
-        mean(&vs_truth)
-    );
-    println!(
-        "  fitted ranking across refits:       {:.3}",
-        mean(&stability)
-    );
-    println!(
-        "  true-best survived the generation:   {kept}/{chances} = {:.0}%",
-        100.0 * kept as f64 / chances.max(1) as f64
-    );
-    println!();
-
-    println!("== 3. locked refine_from hit rate ==");
-    println!("(a third of each seed's knobs locked at random; a hit is a new patch that beats the evictee)");
-    println!(
-        "{:<8} {:>12} {:>8} {:>14} {:>8}",
-        "steps", "landed", "rate", "beat parent", "rate"
-    );
-    let shipped = SessionConfig::default().refine_steps;
-    for steps in [shipped / 2, shipped, 2 * shipped, 4 * shipped] {
-        let rs: Vec<(usize, usize, usize)> = std::thread::scope(|s| {
-            let hs: Vec<_> = seeds
-                .iter()
-                .map(|&x| s.spawn(move || refine_hits(x, steps, 8)))
-                .collect();
-            hs.into_iter().map(|h| h.join().unwrap()).collect()
-        });
-        let (l, i, t) = rs
-            .iter()
-            .fold((0, 0, 0), |(a, b, c), (d, e, f)| (a + d, b + e, c + f));
-        println!(
-            "{}{:<7} {:>12} {:>7.0}% {:>14} {:>7.0}%",
-            if steps == shipped { "*" } else { " " },
-            steps,
-            format!("{l}/{t}"),
-            100.0 * l as f64 / t.max(1) as f64,
-            format!("{i}/{t}"),
-            100.0 * i as f64 / t.max(1) as f64,
-        );
-    }
-    println!("(* = shipped SessionConfig::refine_steps)");
+    tail_report(&seeds);
 }

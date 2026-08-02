@@ -4857,6 +4857,22 @@ function renderRack() {
   reason("lock-knobs", "Pick a patch from the bank first");
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
+  // Locking the wiring now *teaches* as well as pins, and the copy is allowed
+  // to say so. WS-8 §4 sequenced this deliberately: until φ_struct carried an
+  // arrangement coordinate the model had no column in which "this branch is
+  // keyed off that one" was something a person could have an opinion about,
+  // so the only honest promise was that evolution would leave the routing
+  // alone. φ now measures how the branches are balanced and what is
+  // sidechained, so a pinned routing is evidence the posterior can fit rather
+  // than only a fence. (How *many* branches a patch has was always visible, as
+  // the source counts — see `structural.rs`'s wave-3 section for why the
+  // column that tried to say it again was thrown out.)
+  const wiringTip = $("lock-structure").closest(".tt");
+  if (wiringTip && hasRack) {
+    wiringTip.title = "Lock the wiring — evolution keeps this routing, and the model learns "
+      + "from it: how the branches are balanced and what is keyed off what are things it "
+      + "measures now.";
+  }
   renderSubject();
   if (!hasRack) {
     svg.innerHTML = "";
@@ -7144,12 +7160,35 @@ function applyTreeRewrite(fn, tag) {
 
 // ---------- empty sockets ----------
 // An unplugged socket has to look empty. The grammar cannot express that: the
-// term is total, every input is filled, and adding a `Silence` production
-// would move φ_struct's family counts and cost an evolution revalidation run
-// (WS-1 §7, and the standing rule that a green `make check` says nothing
-// about search health). So the engine keeps its substitute node and the UI
-// knows which one it is: a plate drawn as a hole, and the first place the
-// next module wants to go.
+// term is total and every input is filled. So the engine keeps its substitute
+// node and the UI knows which one it is: a plate drawn as a hole, and the
+// first place the next module wants to go.
+//
+// WS-1 §7 deferred a real `Silence` production to phase 3, to be batched with
+// the φ_struct arrangement columns so that one evolution revalidation would
+// pay for both. Phase 3 ran that revalidation (two columns shipped, two were
+// cut by it) and **did not ship `Silence`**, for two reasons that are not
+// about the labour:
+//
+// - **There is no prior weight that is right.** A production the prior can
+//   draw is a production evolution will *propose*: give `Silence` mass and ⚡
+//   starts offering patches with deliberately dead branches, and manufactures
+//   its own quarantines every time a draw bottoms out in one. Give it none and
+//   every patch containing one sits outside the prior's support, which is
+//   risk R2 exactly — `refine_from` mutates the user's hole away and the
+//   structure they built evaporates on the button they press most.
+// - **Batching it would have cost the measurement its meaning.** A seventh
+//   source changes the source categorical, so it moves the *prior*, which
+//   moves pool composition, which moves every search-health number. Run in the
+//   same wave as a feature-space change, a regression could not have been
+//   attributed to either. The whole point of the pre/post run is attribution.
+//
+// An empty socket is an editing state — a hole you are about to fill — not a
+// musical idea, and the substitute plus a `.placeholder` plate says that
+// honestly. What is genuinely still wrong is that the hole *makes a sound*.
+// The fix that does not touch the prior is a compile-time one (a substitute
+// the compiler renders at zero gain), and it belongs with the liveness work,
+// not here.
 //
 // Tracked by key, which is a position, so it survives exactly as long as the
 // positions do — every rewrite carries it across by object identity, and any
@@ -9980,11 +10019,18 @@ function renderSpecDock() {
 //
 // Three honesty rules, and the first is the one the plan singled out:
 //
-//  1. **The structural half of φ is order-invariant.** `n_filter` counts
-//     filters; it does not care which cable they sit on. So this number prices
-//     *what* you are adding and not *where* — the same figure at every lit
-//     socket — and the copy says so rather than letting a per-socket
-//     annotation imply a per-socket opinion the model does not have.
+//  1. **The count half of φ is order-invariant.** `n_filter` counts filters;
+//     it does not care which cable they sit on. So this number prices *what*
+//     you are adding and not *where* — the same figure at every lit socket —
+//     and the copy says so rather than letting a per-socket annotation imply a
+//     per-socket opinion the model does not have.
+//     φ *does* carry two arrangement coordinates now (branch balance and
+//     sidechaining), and those genuinely differ by socket — which is exactly
+//     why they are excluded here rather than folded in. They are ratios, so
+//     their delta is not a unit step and cannot be read off a scale; pricing
+//     them needs the candidate tree, and the honest place for that is the
+//     audition, not an arithmetic shortcut that would quietly turn "prices
+//     what, not where" into a lie.
 //  2. **It is the module-count coordinates only.** The audio half of φ
 //     (brightness, rolloff, the tail) needs a render to know, and the two
 //     modulation ratios move in ways one insertion does not determine. Those
@@ -12128,6 +12174,14 @@ const NICE_NAMES = {
   n_rand: "S&H mods", n_lfo: "LFO mods", n_env: "env mods", n_follow: "followers",
   n_mod_shape: "shaped mod", n_mod_logic: "gated mod", mod_depth_mean: "mod chaining",
   depth: "patch depth", size: "patch size",
+  // The wave-3 arrangement coordinates. These are the only φ columns that
+  // describe the *graph* rather than its contents, so the labels have to say
+  // routing out loud — "chain balance 0.31" in the WHY line would read as a
+  // knob. `branch_width_max` and `mod_at_source` are here for the same reason
+  // `size` and `depth` are: they are display fields the measurement kept out
+  // of φ, and a name that appears in a save file should still resolve.
+  branch_width_max: "parallel width", chain_balance: "even branches",
+  frac_sidechained: "sidechained inputs", mod_at_source: "mod placement",
   mod_density: "mod density", amp_attack: "amp attack", amp_sustain: "amp sustain",
   amp_release: "amp release",
 };

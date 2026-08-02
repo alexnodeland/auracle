@@ -10,8 +10,9 @@
 //! [`StructFeatures`] keeps a raw counter per kind — the Styles tab and the
 //! auto-namer both want "two filters", not "two subtractive stages" — but
 //! [`StructFeatures::NAMES`] and [`StructFeatures::to_vec`] collapse the
-//! forty-one module kinds into fourteen family counts plus five term-level
-//! numbers. Two reasons, and the second is the load-bearing one:
+//! forty-one module kinds into fourteen family counts plus seven term-level
+//! numbers — five about modulation and the amp envelope, two about how the
+//! term is arranged. Two reasons, and the second is the load-bearing one:
 //!
 //! - **Nothing meaningful distinguishes them.** `n_fold`, `n_distortion` and
 //!   `n_bitcrush` all answer "how much nonlinear colour"; `n_chorus`,
@@ -169,6 +170,145 @@
 //! It is averaged over the *filled* slots only, so it is not a second reading
 //! of `mod_density` — measured, the two come back at 3.8 and 4.1 rather than
 //! at the double figures a restatement would give.
+//!
+//! # Wave 3: two coordinates that carry *arrangement*
+//!
+//! Everything above counts **what is in** the patch. Nothing above says
+//! **how it is put together**. `filter(mix(vco, vco))` and
+//! `mix(filter(vco), vco)` have byte-identical φ under the twenty-three
+//! columns that shipped before this wave — one filter, two VCOs, one mixer
+//! that is not a column anyway — and they are two different instruments: one
+//! filters the sum, the other filters a layer and leaves the other dry. Two
+//! coordinates fix that. **Four were written.** The two that were cut, and
+//! why, are the more useful half of this section, because both were cut by
+//! measurement rather than by argument and the arguments for them had looked
+//! fine.
+//!
+//! ## `branch_width_max`: the identity, walking back in
+//!
+//! WS-8 §4 asked for a **parallelism** coordinate on the reading that serial
+//! `vco→filter→drive` and parallel `mix(vco→filter, vco→drive)` "differ only
+//! in `n_mix`, which is deliberately not a φ column". That reading is wrong,
+//! and the identity two sections up is the reason: the leaf count is
+//! `1 + Σ binaries` **exactly**, so a patch cannot gain a mixer without
+//! gaining a source, and the six source counts have been in φ since v1. The
+//! serial patch has one VCO and the parallel one has two. φ could always see
+//! that.
+//!
+//! `branch_width_max` — the largest number of audio nodes sharing one level of
+//! the tree — was written, put through the VIF sweep, and came back at
+//! **10.4**, taking `n_vco` from 3.1 to 9.1 and every other source count with
+//! it. On trees this size (mean 3.1 nodes, mean depth 2.6) the widest level
+//! *is* the leaf set, so the column was very nearly `Σ sources`, which is very
+//! nearly `1 + Σ binaries`: the same rank deficiency `size` and `n_mix` were
+//! removed for, under a new name.
+//!
+//! The evolution measurement said the same thing independently. A synthetic
+//! listener whose taste was "likes wide patches" was learned to Spearman 0.709
+//! by the *old* feature set, with no arrangement coordinate at all — because
+//! wanting a wider tree is wanting more sources, and it was reading the source
+//! counts. So the honest statement of what was missing is not *parallelism*
+//! but **arrangement**: given the same modules, how are they wired.
+//!
+//! ## `mod_at_source`: a tie the measurement could not break
+//!
+//! The modulation half of φ carries density and chain length and **no
+//! destination**, so "an LFO on the filter" and "an LFO on the oscillator" are
+//! the same patch to the model. `mod_at_source` — mean over the filled slots
+//! of the owning module's distance from the root, over the tree's depth — is
+//! the obvious fix, and it measured well: VIF 3.0, spread across the whole
+//! `[0, 1]` range, no exact dependency anywhere near it.
+//!
+//! It is not in φ, and the honest reason is not the one the first run
+//! suggested. Over 8 seeds, three new columns took `search_health`'s pool
+//! climb from `+1.714` to `+1.320`, the best patch found from `8.154` to
+//! `6.503`, and the seeds that climbed from 7 of 8 to 5 of 8 — which reads as
+//! an unambiguous regression and was very nearly acted on as one. Re-run at
+//! **16 seeds with the per-seed numbers printed** (`--climb`, added for
+//! exactly this), the harness turned out to have a standard error of **±0.64**
+//! on that quantity, and the paired differences against the same seed list
+//! are:
+//!
+//! ```text
+//! two columns:    gain +0.35 ± 0.73     best patch −1.00 ± 0.63
+//! three columns:  gain −0.33 ± 0.74     best patch −0.93 ± 0.76
+//! ```
+//!
+//! Neither is a regression this instrument can see, and neither is an
+//! improvement. So the tie is broken on cost rather than on evidence, and the
+//! cost is real even when it is not measurable: **every column is a dimension
+//! of posterior variance the cold start has to pay down**, which is the
+//! general form of the near-indicator argument several sections up. Two
+//! columns answer the question this wave was asked — given the same modules,
+//! how are they wired — and the third answers a different one. It stays as a
+//! display field and is the obvious candidate for the next wave with evidence
+//! to spend, measured on its own so the attribution survives.
+//!
+//! The first reading is written down rather than quietly deleted because the
+//! failure it represents is the expensive one: an eight-seed run of a noisy
+//! harness looks exactly like a finding.
+//!
+//! ## The two that stayed
+//!
+//! Both are **ratios of shape sums**, and that is the design constraint, not a
+//! stylistic one. Every identity in the sections above is a *linear* equation
+//! over counts; a ratio of two path sums is not linear in any count, so
+//! neither can supply a term an identity needs, and neither re-admits `size`,
+//! `depth` or `n_mix` through a side door. Being ratios also keeps them
+//! scale-free, which is why they do not simply re-measure `depth` (VIF 21.7,
+//! dropped). Over 300 draws: `chain_balance` **2.7**, `frac_sidechained`
+//! **2.4**. The cost, stated rather than buried: the source counts rise a
+//! little (`n_vco` 3.1 → 4.3, `n_supersaw` 2.7 → 3.5) because how a patch is
+//! arranged is *correlated* with how many sources it has even though it is not
+//! determined by it, and `mod_density` and `mod_depth_mean` move by a tenth.
+//! Compare `branch_width_max`'s 10.4 and 3.1 → 9.1, which is the difference
+//! between a correlated column and a redundant one.
+//!
+//! - `chain_balance` — mean source-to-root path length over the longest one.
+//!   1.0 when every source is the same distance from the amp (a serial chain,
+//!   or a symmetric mix); below 1.0 when one branch is a long chain and the
+//!   other is a bare oscillator. This is the coordinate that separates the two
+//!   patches at the top: 1.000 for `filter(mix(vco, vco))`, 0.833 for
+//!   `mix(filter(vco), vco)`. It is the load-bearing one — it catches an
+//!   asymmetric branch whichever side the chain is on.
+//! - `frac_sidechained` — of the binary nodes, the fraction whose **`/1`**
+//!   child is not a bare source. That is the half `chain_balance` cannot say:
+//!   *which* side. `/1` is the ducker's key, the compressor's sidechain and
+//!   the vocoder's modulator, so the difference between a key that is a raw
+//!   pulse and one that is a whole drum bus lands here and nowhere else.
+//!   0 when there are no binaries, on the same rule as `mod_density`.
+//!
+//! ## What the evolution loop said
+//!
+//! The standing rule is that a green `make check` says nothing about search
+//! health, so both columns went through `search_health` and
+//! `closed_loop_sweep` on both sides of the change. The table lives on
+//! `ricercar-session`'s `search_health` module doc, next to the harness that
+//! produced it; the short version is that nothing regressed, the MH acceptance
+//! rate and the locked-refine hit rate went up slightly, and the calibration
+//! `r` was flat at 0.693 → 0.688 (se ±0.018).
+//!
+//! Two readings are worth repeating here because they are about *these
+//! columns* rather than about the harness:
+//!
+//! - **The model's ranking got better, for a listener who does not care about
+//!   routing.** Spearman between the fitted utility and the truth went 0.318 →
+//!   0.389 and the true best patch survived its generation 48 times out of 48
+//!   rather than 47. Two more coordinates to be wrong about did not make the
+//!   ranking noisier; on this evidence they made the pool easier to tell
+//!   apart.
+//! - **For a listener who *does* care, all four numbers move together.** A
+//!   synthetic user who wants an asymmetric, sidechained routing is fitted at
+//!   0.705 rather than 0.662, and the search leaves them a pool that is 82%
+//!   sidechained rather than 71.6%. The before arm is not blind — an
+//!   asymmetric routing also *sounds* different, and the audio half of φ hears
+//!   that — so what the columns buy is the model knowing why.
+//!
+//! What they deliberately do *not* carry: node order along a serial chain.
+//! `drive(filter(vco))` and `filter(drive(vco))` remain indistinguishable, and
+//! fixing that needs a coordinate per ordered pair of families — 91 of them —
+//! which is the near-indicator disaster the family scheme exists to avoid.
+//! The honest reading is that φ now sees the *graph*, not the *sequence*.
 
 use ricercar_grammar::term::{AudioNode, ModNode, ModOp, PairOp, PatchTree};
 use serde::{Deserialize, Serialize};
@@ -282,6 +422,26 @@ pub struct StructFeatures {
     pub size: f64,
     /// Fraction of modulation slots actually filled.
     pub mod_density: f64,
+    /// Largest number of audio nodes sharing one level of the tree. 1 for any
+    /// serial chain. **Not a φ coordinate** — a VIF sweep caught it at 10.4,
+    /// dragging every source count with it, because on trees this size it is
+    /// very nearly the leaf count and the leaf count is `1 + Σ binaries`
+    /// exactly. See the module doc's wave-3 section. Kept for display.
+    pub branch_width_max: f64,
+    /// Mean source-to-root path length divided by the longest one. 1.0 when
+    /// every source sits the same distance from the amp.
+    pub chain_balance: f64,
+    /// Of the binary nodes, the fraction whose `/1` child is not a bare
+    /// source. 0 when the tree has no binary node.
+    pub frac_sidechained: f64,
+    /// Mean over the *filled* modulation slots of the owning module's
+    /// distance from the root, over the tree's depth. 0 = modulation at the
+    /// output stage, 1 = modulation at the sources. **Not a φ coordinate** —
+    /// it is well conditioned (VIF 3.0) and answers a real question, and the
+    /// evolution measurement could not show that it paid for its dimension;
+    /// see the module doc's wave-3 section. Kept for display, and the obvious
+    /// candidate for the next wave that has evidence to spend.
+    pub mod_at_source: f64,
     /// Amp attack (normalized).
     pub amp_attack: f64,
     /// Amp sustain (normalized).
@@ -292,7 +452,13 @@ pub struct StructFeatures {
 
 impl StructFeatures {
     /// Feature names in `to_vec` order.
-    pub const NAMES: [&'static str; 23] = [
+    ///
+    /// **Append-only.** The audio names come first in `Features::phi_names`,
+    /// so the end of this array is the end of φ — and a legacy observation
+    /// logged without names is re-read *positionally* by `FitSet::build`.
+    /// Appending leaves every one of those positions meaning what it meant;
+    /// inserting in the middle would silently re-label every vote ever cast.
+    pub const NAMES: [&'static str; 25] = [
         "n_vco",
         "n_supersaw",
         "n_noise",
@@ -316,6 +482,8 @@ impl StructFeatures {
         "amp_attack",
         "amp_sustain",
         "amp_release",
+        "chain_balance",
+        "frac_sidechained",
     ];
 
     /// Nonlinear colour: wavefolder + distortion + bitcrusher + ring mod.
@@ -423,6 +591,8 @@ impl StructFeatures {
             self.amp_attack,
             self.amp_sustain,
             self.amp_release,
+            self.chain_balance,
+            self.frac_sidechained,
         ]
     }
 }
@@ -437,20 +607,13 @@ pub fn struct_features(tree: &PatchTree) -> StructFeatures {
         amp_release: tree.amp.release,
         ..Default::default()
     };
-    let mut mod_slots = 0usize;
-    let mut mod_filled = 0usize;
-    let mut depth_sum = 0usize;
-    walk(
-        &tree.root,
-        &mut f,
-        &mut ModTally {
-            slots: &mut mod_slots,
-            filled: &mut mod_filled,
-            depth_sum: &mut depth_sum,
-        },
-    );
-    f.mod_density = if mod_slots > 0 {
-        mod_filled as f64 / mod_slots as f64
+    let mut t = Tally {
+        tree_depth: f.depth as usize,
+        ..Default::default()
+    };
+    walk(&tree.root, &mut f, &mut t, 0);
+    f.mod_density = if t.slots > 0 {
+        t.filled as f64 / t.slots as f64
     } else {
         0.0
     };
@@ -458,26 +621,72 @@ pub fn struct_features(tree: &PatchTree) -> StructFeatures {
     // has no modulation term whose depth could be measured, and folding a zero
     // in for it would make the coordinate a second, noisier reading of
     // `mod_density`.
-    f.mod_depth_mean = if mod_filled > 0 {
-        depth_sum as f64 / mod_filled as f64
+    f.mod_depth_mean = if t.filled > 0 {
+        t.depth_sum as f64 / t.filled as f64
+    } else {
+        0.0
+    };
+    // The shape numbers. Two of the four reach φ, and both of those are
+    // *ratios*, so that neither is linear in any count — see the module doc's
+    // wave-3 section for why that is the load-bearing property and not a
+    // stylistic one, and for what the other two cost.
+    f.branch_width_max = t.level_width.iter().copied().max().unwrap_or(0) as f64;
+    // `leaf_depth_max` is the longest source-to-root path, not `tree.depth()`:
+    // for an audio tree they are the same number (every leaf is a source), and
+    // taking it from the walk keeps the ratio's two halves measured by the
+    // same pass. A one-node tree gives 1/1.
+    f.chain_balance = if t.leaves > 0 && t.leaf_depth_max > 0 {
+        (t.leaf_depth_sum as f64 / t.leaves as f64) / t.leaf_depth_max as f64
+    } else {
+        0.0
+    };
+    f.frac_sidechained = if t.binaries > 0 {
+        t.sidechained as f64 / t.binaries as f64
+    } else {
+        0.0
+    };
+    f.mod_at_source = if t.filled > 0 {
+        t.mod_site_sum / t.filled as f64
     } else {
         0.0
     };
     f
 }
 
-/// The three running numbers a walk collects about modulation slots.
+/// The running numbers a walk collects that are not per-kind counters:
+/// modulation slots, and the shape sums the wave-3 coordinates are ratios of.
 ///
-/// A struct rather than three `&mut usize` parameters because `walk` threads
-/// them through twenty-six arms and a transposed pair of `usize`s at one call
-/// site would be silent.
-struct ModTally<'a> {
+/// One owned struct rather than a fistful of `&mut usize` parameters because
+/// `walk` threads it through twenty-six arms, and a transposed pair of
+/// `usize`s at one call site would be silent.
+#[derive(Default)]
+struct Tally {
     /// Modulation slots seen (one per module that owns one).
-    slots: &'a mut usize,
+    slots: usize,
     /// Of those, the ones carrying a term.
-    filled: &'a mut usize,
+    filled: usize,
     /// Sum of those terms' nesting depths.
-    depth_sum: &'a mut usize,
+    depth_sum: usize,
+    /// Audio nodes seen at each distance from the root, indexed by distance.
+    /// Its maximum is `branch_width_max`.
+    level_width: Vec<usize>,
+    /// Source leaves seen.
+    leaves: usize,
+    /// Sum of their path lengths to the root, in nodes (a root leaf is 1).
+    leaf_depth_sum: usize,
+    /// The longest of those paths.
+    leaf_depth_max: usize,
+    /// Nodes with two audio children.
+    binaries: usize,
+    /// Of those, the ones whose `/1` child is itself a processor.
+    sidechained: usize,
+    /// Sum over filled slots of the owning module's distance from the root,
+    /// already divided by the tree's depth — so it is a sum of fractions in
+    /// `[0, 1]` and the mean needs no second normalisation.
+    mod_site_sum: f64,
+    /// Depth of the whole tree, needed to normalise `mod_site_sum` as the
+    /// walk goes rather than in a second pass.
+    tree_depth: usize,
 }
 
 /// Count one modulation slot, and every node in the term hanging off it.
@@ -488,13 +697,23 @@ struct ModTally<'a> {
 /// chain inflate the denominator would make a patch with one long chain read
 /// as less modulated than one with a single LFO. Depth is the coordinate that
 /// carries chain length, and it is separate for that reason.
-fn count_mod(m: &ModNode, f: &mut StructFeatures, t: &mut ModTally) {
-    *t.slots += 1;
+/// `d` is the owning module's distance from the root, which is what
+/// `mod_at_source` is a mean of — the slot's own position in the *audio* tree,
+/// as distinct from `mod_depth_mean`, which measures the CV term hanging off
+/// it. A one-node tree has no interval to normalise against and its only
+/// module *is* the source, so it reads 1.
+fn count_mod(m: &ModNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
+    t.slots += 1;
     if matches!(m, ModNode::None) {
         return;
     }
-    *t.filled += 1;
-    *t.depth_sum += m.depth();
+    t.filled += 1;
+    t.depth_sum += m.depth();
+    t.mod_site_sum += if t.tree_depth > 1 {
+        d as f64 / (t.tree_depth - 1) as f64
+    } else {
+        1.0
+    };
     count_mod_nodes(m, f);
 }
 
@@ -532,7 +751,33 @@ fn count_mod_nodes(m: &ModNode, f: &mut StructFeatures) {
     }
 }
 
-fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut ModTally) {
+fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
+    // Shape first, and taken from `AudioNode::children` rather than from the
+    // match below: that method is the term's own statement of each
+    // production's arity, and it is spelled out there without a wildcard for
+    // exactly this reason, so a production added later cannot make these
+    // coordinates quietly wrong while still compiling.
+    if t.level_width.len() <= d {
+        t.level_width.resize(d + 1, 0);
+    }
+    t.level_width[d] += 1;
+    let kids = n.children();
+    match kids.len() {
+        0 => {
+            t.leaves += 1;
+            t.leaf_depth_sum += d + 1;
+            t.leaf_depth_max = t.leaf_depth_max.max(d + 1);
+        }
+        2 => {
+            t.binaries += 1;
+            // `children` orders them as the keys do — `/0` is the through
+            // path (mix a, comp/gate input, duck input, vocoder carrier) and
+            // `/1` is the second one. "Not a bare source" is "has children of
+            // its own", which is the same test one line up.
+            t.sidechained += usize::from(!kids[1].children().is_empty());
+        }
+        _ => {}
+    }
     // Sources with no slot, then the unary processors, then the six binary
     // nodes — every arm bumps exactly one counter, which is the identity
     // `size ≡ Σ n_*` the module doc rests on. The arms that recurse into two
@@ -649,14 +894,14 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut ModTally) {
         }
         AudioNode::Mix { a, b, .. } => {
             f.n_mix += 1.0;
-            walk(a, f, t);
-            walk(b, f, t);
+            walk(a, f, t, d + 1);
+            walk(b, f, t, d + 1);
             return;
         }
         AudioNode::RingMod { a, b, .. } => {
             f.n_ringmod += 1.0;
-            walk(a, f, t);
-            walk(b, f, t);
+            walk(a, f, t, d + 1);
+            walk(b, f, t, d + 1);
             return;
         }
         // The 2B binaries are the shape neither branch above had: two audio
@@ -671,9 +916,9 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut ModTally) {
             ..
         } => {
             f.n_comp += 1.0;
-            count_mod(modulation, f, t);
-            walk(input, f, t);
-            walk(sidechain, f, t);
+            count_mod(modulation, f, t, d);
+            walk(input, f, t, d + 1);
+            walk(sidechain, f, t, d + 1);
             return;
         }
         AudioNode::Duck {
@@ -683,9 +928,9 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut ModTally) {
             ..
         } => {
             f.n_duck += 1.0;
-            count_mod(modulation, f, t);
-            walk(input, f, t);
-            walk(key, f, t);
+            count_mod(modulation, f, t, d);
+            walk(input, f, t, d + 1);
+            walk(key, f, t, d + 1);
             return;
         }
         AudioNode::Gate {
@@ -695,9 +940,9 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut ModTally) {
             ..
         } => {
             f.n_gate += 1.0;
-            count_mod(modulation, f, t);
-            walk(input, f, t);
-            walk(sidechain, f, t);
+            count_mod(modulation, f, t, d);
+            walk(input, f, t, d + 1);
+            walk(sidechain, f, t, d + 1);
             return;
         }
         AudioNode::Vocoder {
@@ -707,16 +952,16 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut ModTally) {
             ..
         } => {
             f.n_vocoder += 1.0;
-            count_mod(modulation, f, t);
-            walk(carrier, f, t);
-            walk(modulator, f, t);
+            count_mod(modulation, f, t, d);
+            walk(carrier, f, t, d + 1);
+            walk(modulator, f, t, d + 1);
             return;
         }
     };
     if let Some(m) = modulation {
-        count_mod(m, f, t);
+        count_mod(m, f, t, d);
     }
     if let Some(i) = input {
-        walk(i, f, t);
+        walk(i, f, t, d + 1);
     }
 }
