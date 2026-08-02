@@ -214,6 +214,10 @@ function uiState() {
     // able to prevent it.
     bank: bankFilter,
     born: [...lastBorn],
+    // What you pulled out of a patch and have not put back. "Removed" is
+    // supposed to mean "recoverable"; before this it meant "recoverable until
+    // you refresh", which is not a promise worth making.
+    held: trayState(),
   };
 }
 
@@ -227,22 +231,83 @@ function pushUndo() {
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
 }
+
+// ---- transactional structural undo ----
+// A structural edit is a *proposal* until the engine says it landed. Pushing
+// its snapshot at post time (which is what this used to do) meant every
+// rejected op left a phantom step: the next ⌘Z restored the patch already on
+// screen, which reads as a dead keystroke, and a second ⌘Z was needed to
+// reach the edit the player actually wanted back.
+//
+// So the snapshot is *staged* when the message goes out — it has to be taken
+// then, because by the time the reply arrives `wb.tree` is already the new
+// tree — and only committed to the stack on the bench reply. A rejection
+// discards it, along with anything the same gesture put in HELD: staging a
+// fragment for an edit that never happened would leave the player holding a
+// copy of a chain that is still in the patch.
+let openEdit = null;
+// The edit posted by the most recent `queueStruct`, or null if that call
+// merely queued. `stageFragment` binds to this rather than to `openEdit`, so
+// a fragment staged alongside a *queued* op is never charged to the edit
+// currently in flight (and so never destroyed by that edit's rejection).
+let stagingBound = null;
+
+function stageUndo() {
+  openEdit = wb.tree ? { snap: JSON.stringify(wb.tree), trays: [] } : null;
+  stagingBound = openEdit;
+  return openEdit;
+}
+function commitStagedUndo() {
+  if (!openEdit) return;
+  undoStack.push(openEdit.snap);
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+  openEdit = null;
+}
+function discardStagedUndo() {
+  if (!openEdit) return;
+  for (const uid of openEdit.trays) unstage(uid);
+  openEdit = null;
+}
+
 // Undo and redo post a whole tree, which cannot be re-aimed at a tree that
 // moved under it — so they wait for the lane to clear rather than racing the
-// edit still in flight, which would restore over the top of it.
+// edit still in flight, which would restore over the top of it. They hold the
+// same lane an op does, because a whole-tree replace and an op are the same
+// round trip to the same engine and the second one to arrive wins.
+//
+// The stacks are not touched until the reply, for the same reason the undo
+// snapshot is not: a restore the engine refuses (the ceilings run on this
+// route now) used to consume the step anyway, so ⌘Z would eat one level of
+// history and give nothing back.
+let restorePending = null; // {kind: "undo"|"redo", cur: <tree json before>}
 function doUndo() {
   if (structInFlight) return note("still applying the last edit — give it a moment");
   if (undoStack.length === 0 || !wb.tree) return note("nothing to undo");
-  redoStack.push(JSON.stringify(wb.tree));
+  restorePending = { kind: "undo", cur: JSON.stringify(wb.tree) };
   restoreInFlight = true;
-  send({ type: "edit_set_tree", json: undoStack.pop() });
+  structInFlight = true;
+  send({ type: "edit_set_tree", json: undoStack[undoStack.length - 1] });
 }
 function doRedo() {
   if (structInFlight) return note("still applying the last edit — give it a moment");
   if (redoStack.length === 0 || !wb.tree) return note("nothing to redo");
-  undoStack.push(JSON.stringify(wb.tree));
+  restorePending = { kind: "redo", cur: JSON.stringify(wb.tree) };
   restoreInFlight = true;
-  send({ type: "edit_set_tree", json: redoStack.pop() });
+  structInFlight = true;
+  send({ type: "edit_set_tree", json: redoStack[redoStack.length - 1] });
+}
+/** The restore landed: only now does the step actually move. */
+function settleRestore() {
+  if (!restorePending) return;
+  if (restorePending.kind === "undo") {
+    undoStack.pop();
+    redoStack.push(restorePending.cur);
+  } else {
+    redoStack.pop();
+    undoStack.push(restorePending.cur);
+  }
+  restorePending = null;
 }
 
 // ---------- worker protocol ----------
@@ -641,8 +706,18 @@ worker.onmessage = (e) => {
       const paramNonLive =
         m.edited !== undefined && !structural && nonLiveAddrs.has(m.edited);
       const subjectLoad = m.subject !== undefined;
-      if (m.edited === "restore") restoreInFlight = false;
-      if (structural) structInFlight = false;
+      // `edit_set_tree` answers "restore" whether it came from ⌘Z or from a
+      // client-side rewrite, so the two are told apart by which of them is
+      // holding a receipt: only undo/redo leave a `restorePending`.
+      if (m.edited === "restore") {
+        restoreInFlight = false;
+        settleRestore();
+      }
+      if (structural) {
+        structInFlight = false;
+        // It landed, so the step it displaced is now history worth keeping.
+        commitStagedUndo();
+      }
       // Structural edits already reached the voices from the worker's early
       // `tree_json` post. Swapping the identical tree in again would buy a
       // second fade-out, rebuild and re-attack for no change in sound; all
@@ -701,13 +776,15 @@ worker.onmessage = (e) => {
     case "edit_rejected": {
       if (m.error) {
         note(`edit rejected: ${m.error}`);
-        // An op that never reached the tree left a snapshot of the tree it
-        // was going to change, and the next ⌘Z would restore the patch the
-        // user is already looking at — a dead keystroke. This matters more
-        // now that a whole-tree rewrite can be rejected by the ceilings
-        // (`validate_tree`) and not only by `apply_struct_op`. `addr`-carrying
-        // rejections are parameter edits and never pushed one.
-        undoStack.pop();
+        // Nothing happened, so nothing is owed to history — and nothing that
+        // rode along with the edit is owed to HELD either. Without this the
+        // next ⌘Z restored the patch the user is already looking at (a dead
+        // keystroke), and a "held below" toast pointed at a chain that had
+        // never left the patch. `addr`-carrying rejections are parameter
+        // edits and stage nothing.
+        discardStagedUndo();
+        // A refused restore consumes no step: the stacks were never touched.
+        restorePending = null;
       }
       editInFlight = false;
       // A rejected op never reached the tree, so nothing was posted early and
@@ -1746,7 +1823,7 @@ document.addEventListener("keydown", (e) => {
       endBankTour();
       $("bank-tour-btn").focus();
     }
-    $("ctx-menu").classList.add("hidden");
+    closeMenu();
     return;
   }
   // `/` is the index. It is deliberately checked before the text-entry guard's
@@ -3180,8 +3257,11 @@ function offerBankTourAfterFirstGeneration() {
 let presetRows = null;
 
 document.addEventListener("click", (e) => {
-  if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn")) {
-    $("ctx-menu").classList.add("hidden");
+  // …but not the click that a long-press produces on its way up, which lands
+  // on the very plate the menu was just opened for.
+  if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn") &&
+      Date.now() - menuOpenedAt > 350) {
+    closeMenu();
   }
   // One dismissal law for every popover: a click that is not inside it closes
   // it. The ovf button used to stopPropagation, which kept THIS handler from
@@ -3547,6 +3627,17 @@ function claimGesture(el) {
 // then be seen as an outside click that closes it again.
 function fingerPad(g, x, y, w, h) {
   if (!COARSE) return;
+  hitPad(g, x, y, w, h);
+}
+
+// The same trick, unconditionally. ⋯ and ▢ are the only two entry points to
+// structural editing on the whole faceplate and they measure 6×13 CSS pixels —
+// under half the 24×24 minimum, for a mouse as much as for a thumb, and the
+// aim cost lands on the *most consequential* control on the plate. The two
+// pads deliberately meet between the glyphs rather than around them: the strip
+// where they overlap is the gap between the two, so whichever wins there, no
+// glyph is ever stolen from.
+function hitPad(g, x, y, w, h) {
   g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
 }
 
@@ -3595,9 +3686,12 @@ function renderRack() {
   // exactly where the player put it.
   aimCamera();
 
-  // One roving tab stop for the whole rack, so Tab lands on a control instead
-  // of skipping the patch editor entirely.
-  const first = $("rack-svg").querySelector("[data-addr]");
+  // One roving tab stop for the whole rack, so Tab lands on the patch editor
+  // instead of skipping it. It enters at a *module*, not at a knob: the module
+  // is the thing the structural verbs act on, and from there ←/→ is one press
+  // into its controls.
+  const first = $("rack-svg").querySelector("g.mod-group") ||
+                $("rack-svg").querySelector("[data-addr]");
   if (first) first.setAttribute("tabindex", "0");
 
   // The rack is rebuilt from scratch on every edit, which throws away the lit
@@ -3910,9 +4004,22 @@ function buildRack(svg, rack, opts) {
     // and pin a chip to one plate. `data-kind` alone cannot name a plate —
     // a patch routinely carries three filters.
     const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key });
-    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key });
+    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key }, "mod-group");
     plateLayer.appendChild(plateG);
     ctrlLayer.appendChild(g);
+    if (interactive) {
+      // A module is a thing you can act on, so it is a stop. The rack's roving
+      // tabstop used to hold knobs only, which meant every structural verb in
+      // the app — the ones behind ⋯, the ones behind a right-click — was
+      // unreachable without a pointer. ↑/↓ walk the plates, ←/→ drop into
+      // their knobs, Enter opens the same menu the ⋯ opens.
+      g.setAttribute("role", "group");
+      g.setAttribute("tabindex", "-1");
+      g.setAttribute("aria-label", `${m.title} module`);
+      g.appendChild(svgEl("rect", {
+        x: -3, y: -3, width: p.w + 6, height: p.h + 6, rx: 8,
+      }, "plate-focus"));
+    }
     // A socket nothing is plugged into. The node under it is real — the
     // grammar has no hole — but the player unplugged it and must be able to
     // see that, so the plate is drawn as the absence it stands for.
@@ -3943,7 +4050,7 @@ function buildRack(svg, rack, opts) {
     // A title is silkscreened onto the panel, so it belongs under the cables
     // — but it must not be *squeezed* by them: the fit pass measures against
     // the room left between the left edge and the control well.
-    title.dataset.fit = String(Math.max(38, p.w - 46));
+    title.dataset.fit = String(Math.max(38, p.w - 52));
     plateG.appendChild(title);
     if (isEmpty) {
       // The plate says what it is *for*, because "empty" alone reads as a
@@ -3959,7 +4066,7 @@ function buildRack(svg, rack, opts) {
       // The glyph lives in a group so a finger can be given more to aim at
       // than the 10px ellipsis itself.
       const menuG = svgEl("g", {}, "mod-menu-btn");
-      const menuBtn = svgEl("text", { x: p.w - 32, y: 17 });
+      const menuBtn = svgEl("text", { x: p.w - 38, y: 17 });
       menuBtn.textContent = "⋯";
       const mt = svgEl("title", {});
       mt.textContent = m.kind === "amp"
@@ -3967,7 +4074,7 @@ function buildRack(svg, rack, opts) {
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
-      fingerPad(menuG, p.w - 29, 13, 26, 28);
+      hitPad(menuG, p.w - 38, 13, 24, 26);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
@@ -3985,7 +4092,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (evolution keeps it exactly as-is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        fingerPad(lockG, p.w - 13, 13, 26, 28);
+        hitPad(lockG, p.w - 14, 13, 24, 26);
         lockG.addEventListener("click", () => {
           const addrs = moduleLockAddrs(m);
           const on = isModuleLockedIn(m);
@@ -4688,6 +4795,55 @@ $("rack-scroll").addEventListener("pointerdown", (ev) => {
 // click that follows is refused too.
 $("rack-scroll").addEventListener("auxclick", (ev) => { if (ev.button === 1) ev.preventDefault(); });
 
+// ---------- the plate is the menu's real hit target ----------
+// The ⋯ was the *sole* route to every structural verb in the app. It is now a
+// discoverability aid: right-click anywhere on a plate — or hold a finger on
+// one — and the same menu opens, aimed at the same module. Both gestures are
+// what every graph editor and every desktop already trained the hand to do,
+// and neither of them needs a 24px target.
+function menuForPlate(target, x, y) {
+  const g = target?.closest?.("g[data-key]");
+  const key = g && g.getAttribute("data-key");
+  if (!key || !wb.rack) return false;
+  const mod = wb.rack.modules.find((m) => m.key === key);
+  if (!mod) return false;
+  openStructMenu(mod, x, y);
+  return true;
+}
+$("rack-svg").addEventListener("contextmenu", (ev) => {
+  if (!menuForPlate(ev.target, ev.clientX, ev.clientY)) return;
+  ev.preventDefault();
+});
+// Long-press, for the pointer that has no second button. Registered after the
+// pan handler on the same element and phase, so the pan's `stopPropagation`
+// (which is aimed at the descendants) still leaves this one to run — and a
+// press that turns into a drag cancels the timer before it can fire.
+$("rack-scroll").addEventListener("pointerdown", (ev) => {
+  if (ev.pointerType === "mouse" || ev.button !== 0) return;
+  if (ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock")) return;
+  const sx = ev.clientX, sy = ev.clientY;
+  let timer = setTimeout(() => {
+    timer = null;
+    if (menuForPlate(document.elementFromPoint(sx, sy), sx, sy)) {
+      // A menu that opens under a finger already resting on the canvas must
+      // not also be a pan that started 500 ms ago.
+      $("rack-scroll").classList.remove("grabbing");
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+    }
+  }, 500);
+  const cancel = (mv) => {
+    if (mv && mv.type === "pointermove" && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 8) return;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    document.removeEventListener("pointermove", cancel);
+    document.removeEventListener("pointerup", cancel);
+    document.removeEventListener("pointercancel", cancel);
+  };
+  document.addEventListener("pointermove", cancel);
+  document.addEventListener("pointerup", cancel);
+  document.addEventListener("pointercancel", cancel);
+}, true);
+
 /** Space over the rack is the pan modifier every graph editor has, and space
  *  everywhere is this app's audition toggle. Both survive: over the rack the
  *  key arms a pan, and if it is released without one the audition happens
@@ -4778,10 +4934,12 @@ function queueStruct(msg) {
       return note("still applying the last edit — give it a moment");
     }
     structQueue.push(msg);
+    // Nothing went out, so nothing may be charged to the edit that is out.
+    stagingBound = null;
     return;
   }
   structInFlight = true;
-  pushUndo();
+  stageUndo();
   send(msg);
 }
 function drainStruct() {
@@ -4848,63 +5006,469 @@ let placeholderPending = null;
 function placeholderNode() { return SEED_VCO(); }
 function isPlaceholderKey(key) { return placeholderKeys.has(key); }
 
-// The module vocabulary lives in exactly one place now (MODULES / the node
-// bank), so this menu no longer reprints it. "replace with…" and "insert
-// after…" hand off to the rail with this socket already chosen and lit —
-// the inventory, its glyphs, its search and its one-sentence descriptions are
-// all things a nineteen-item context menu could never carry.
+// ---------- the structure menu ----------
+// It was nineteen flat items, fourteen of which were the modulator inventory
+// reprinted from the node bank — with `delete` last, and on a short window
+// below the fold entirely. The module *vocabulary* lives in exactly one place
+// now (MODULES / the node bank), so this menu carries only **verbs** and hands
+// the nouns off to the rail, which has their glyphs, their one-line blurbs,
+// their ports and their θ±σ.
+//
+// Seven verbs, in the order a patch is actually edited — replace · insert
+// before · insert after · duplicate · extract to HELD · bypass · delete — plus
+// `modulate → <port>` as a single row that arms the rail filtered to the amber
+// sorts, and, on the six binaries only, the one op that is meaningless
+// anywhere else. `delete` is fenced off behind a rule and printed in the red
+// the rest of the app reserves for loss.
 function openStructMenu(mod, x, y) {
-  const menu = $("ctx-menu");
-  const items = [];
-  const item = (label, act, danger) =>
-    items.push(`<button class="cm-item${danger ? " danger" : ""}" data-act='${JSON.stringify(act)}'>${label}</button>`);
-  const head = (t) => items.push(`<div class="cm-head">${t}</div>`);
-
   if (mod.kind === "amp") {
-    head("output");
-    item("add a module here…", { arm: "insert", key: "node" });
-  } else if (mod.is_mod) {
+    // A one-item menu is not a menu; it is a button wearing one. The amp's ⋯
+    // has exactly one thing to offer, so it performs it.
+    armFromRack("insert", "node");
+    return;
+  }
+  if (mod.is_mod) {
     // A modulator is edited through the slot it sits in, which belongs to its
-    // parent — that is why this menu names the parent's key.
+    // parent — that is why these rows name the parent's key.
     const parentKey = mod.key.replace(/\/m$/, "");
-    head(`modulating ${kindName(rackKindAt(parentKey) || "")} → ${kindModTarget(rackKindAt(parentKey)) || "?"}`);
-    for (const k of MOD_KINDS) {
-      if (k !== mod.kind) item(kindName(k), { op: { op: "set_mod", key: parentKey, kind: k } });
-    }
-    head("");
-    item("unplug this modulator", { op: { op: "set_mod", key: parentKey, kind: "none" } }, true);
-  } else {
-    head(kindName(mod.kind));
-    item("replace with…", { arm: "replace", key: mod.key });
-    item("insert after…", { arm: "insert", key: mod.key });
-    const target = kindModTarget(mod.kind);
-    if (target) {
-      head(`modulate → ${target}`);
-      for (const k of MOD_KINDS) item(kindName(k), { op: { op: "set_mod", key: mod.key, kind: k } });
-      if (modAtKey(mod.key)) item("none", { op: { op: "set_mod", key: mod.key, kind: "none" } });
-    }
-    if (MOD_BY_KIND[mod.kind]?.ins === 2) {
-      head(kindName(mod.kind));
-      item("swap the two inputs", { op: { op: "swap_mix", key: mod.key } });
-    }
-    head("");
-    item("delete", { op: { op: "delete", key: mod.key } }, true);
+    const owner = rackKindAt(parentKey) || "";
+    const port = kindModTarget(owner) || "?";
+    showMenu(x, y, {
+      glyph: MOD_BY_KIND[mod.kind]?.glyph,
+      title: mod.title || kindName(mod.kind),
+      sub: `modulating ${kindName(owner)} → ${port}`,
+    }, [
+      {
+        label: "replace with…",
+        sub: "pick another modulator from the rail",
+        run: () => armFromRack("insert", parentKey, { accepts: ["mod"], verb: "modulate" }),
+      },
+      {
+        label: "unplug this modulator",
+        sub: "it goes to HELD; the knob stops moving",
+        danger: true,
+        sep: true,
+        run: () => unplugMod(parentKey),
+      },
+    ]);
+    return;
   }
 
-  menu.innerHTML = items.join("");
+  const key = mod.key;
+  const node = nodeAtKey(key);
+  const spec = MOD_BY_KIND[mod.kind];
+  const fields = childFields(spec || {});
+  const ins = fields.length;
+  const inNames = spec?.inNames || (ins === 2 ? ["a", "b"] : ["in"]);
+  const rows = [];
+  rows.push({
+    label: "replace with…",
+    sub: "keeps what feeds it",
+    run: () => armFromRack("replace", key),
+  });
+  rows.push({
+    label: "insert before…",
+    sub: ins === 0 ? "" : `a new module between ${inNames[0]} and this`,
+    disabled: ins === 0,
+    why: "a source has no input — there is no wire on this side of it",
+    run: () => armFromRack("insert", `${key}/0`, { verb: "insert before", aim: key }),
+  });
+  rows.push({
+    label: "insert after…",
+    sub: "a new module between this and what it feeds",
+    run: () => armFromRack("insert", key),
+  });
+  rows.push({
+    label: "duplicate",
+    sub: ins === 0 ? "" : "a second one, in series, with the same settings",
+    disabled: ins === 0,
+    why: "a source has nothing to chain into — branch from its out ○ instead",
+    run: () => duplicateModule(key),
+  });
+  rows.push({
+    label: "extract to HELD",
+    sub: "leaves the socket empty; drag it back any time",
+    run: () => extractModule(key),
+  });
+  rows.push({
+    label: "bypass",
+    sub: ins === 0 ? "" : `${inNames[0]} passes straight through`,
+    disabled: ins === 0,
+    why: "a source generates the signal — there is nothing to pass through it",
+    run: () => bypassModule(key),
+  });
+  const port = kindModTarget(mod.kind);
+  if (port) {
+    rows.push({
+      label: `modulate → ${port}`,
+      sub: modAtKey(key)
+        ? `replaces the ${fragLabel(modAtKey(key), true)} already on it`
+        : "arms the rail at the modulators",
+      run: () => armFromRack("insert", key, { accepts: ["mod"], verb: "modulate" }),
+    });
+  }
+  if (ins === 2) {
+    rows.push({
+      label: "swap the two inputs",
+      sub: `${inNames[0]} ⇄ ${inNames[1]}`,
+      run: () => sendStruct({ op: "swap_mix", key }),
+    });
+  }
+  rows.push({
+    label: "delete",
+    sub: deleteBlurb(key, node, fields, inNames),
+    danger: true,
+    sep: true,
+    run: (ev) => deleteModule(key, ev.clientX || x, ev.clientY || y),
+  });
+  showMenu(x, y, {
+    glyph: spec?.glyph,
+    title: isPlaceholderKey(key) ? "empty" : mod.title || kindName(mod.kind),
+    sub: `${mod.knobs?.length || 0} knobs · ${subtreeSize(node || {})} modules from here down`,
+  }, rows);
+}
+
+/** One line, said before the click, about what `delete` is going to cost. */
+function deleteBlurb(key, node, fields, inNames) {
+  if (!node) return "";
+  const tag = nodeTag(node);
+  if (fields.length === 2) {
+    const a = subtreeSize(node[tag][fields[0]] || {});
+    const b = subtreeSize(node[tag][fields[1]] || {});
+    return `two inputs — you choose which survives (${inNames[0]} ${a}, ${inNames[1]} ${b})`;
+  }
+  const par = parentOfKey(key);
+  if (par && par.binary) {
+    return `takes this whole branch and the ${kindName(rackKindAt(par.key))} above it`;
+  }
+  return fields.length === 0 ? "a lone source cannot be deleted" : "one module; what it feeds moves up";
+}
+
+/** The parent of a trace key, and whether that parent is one of the six
+ *  binaries — which is the fact that decides what `delete` really destroys. */
+function parentOfKey(key) {
+  if (key === "node") return null;
+  const pk = key.slice(0, key.lastIndexOf("/"));
+  const p = nodeAtKey(pk);
+  if (!p) return null;
+  return { key: pk, node: p, binary: childFields(MOD_BY_TAG[nodeTag(p)] || {}).length === 2 };
+}
+
+// ---------- the destructive verbs, staged and named ----------
+// The rule the whole group is written to: **"removed" always means
+// "recoverable without ⌘Z"**. Every one of these puts what it took on the
+// HELD shelf *before* the edit goes out, names the loss in the toast in the
+// patch's own words, and hangs an inline undo off it — because the player who
+// needs the undo is the one who has just discovered that the verb meant
+// something bigger than they thought, and hunting for a keystroke is not the
+// moment to learn one.
+
+/** A module without the chain under it: its primary input is swapped for a
+ *  bare source, which `insert_tree`'s graft overwrites with whatever socket it
+ *  is dropped into. So a head put on the shelf comes back with its own
+ *  parameters and lands *in* a wire rather than over it. */
+function headFragment(node) {
+  const tag = nodeTag(node);
+  const f = childFields(MOD_BY_TAG[tag] || {});
+  const clone = JSON.parse(JSON.stringify(node));
+  if (f.length > 0) clone[tag][f[0]] = SEED_VCO();
+  return clone;
+}
+
+/** A second one in series, same settings. The clone's own copy of the input is
+ *  thrown away and the *original* node is spliced under it, so this costs one
+ *  module (plus a binary's second branch), not a whole second chain. */
+function duplicateModule(key) {
+  const here = nodeAtKey(key);
+  if (!here) return note("that module has moved");
+  const name = kindName(rackKindAt(key)) || fragLabel(here, false);
+  const ok = applyTreeRewrite((tree) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const tag = nodeTag(node);
+    const f = childFields(MOD_BY_TAG[tag] || {});
+    if (f.length === 0) return "a source has nothing to chain into — branch from its out ○ instead";
+    const dup = JSON.parse(JSON.stringify(node));
+    dup[tag][f[0]] = node;
+    if (!setNodeAtIn(tree, key, dup)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  note(`a second ${name} now sits after the first, with the same settings.`,
+    { undo: doUndo, undoLabel: "take it out" });
+}
+
+/** Take the module and everything under it off the patch and onto the shelf,
+ *  leaving the socket visibly empty. The unplug gesture, from the menu. */
+function extractModule(key) {
+  const here = nodeAtKey(key);
+  if (!here) return note("that module has moved");
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const hole = placeholderNode();
+    if (!setNodeAtIn(tree, key, hole)) return "that module has moved — try again";
+    if (!marks.includes(node)) doomed = node;
+    marks.push(hole);
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  note(
+    doomed
+      ? `${fragLabel(doomed, false)} is held below — the socket is empty.`
+      : "the socket is empty.",
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
+  );
+}
+
+/** Bypass, the verb every DAW user reaches for, as a client-side rewrite: the
+ *  module's first input is routed straight through to whatever it fed, and the
+ *  module itself — parameters and all — goes to HELD flagged `rewrap`, so
+ *  dropping it back on a ○ splices it in rather than over. That is the
+ *  un-bypass, and it restores the settings, which is the whole point of
+ *  bypassing rather than deleting. (A side map keyed by `uid` is the phase-2
+ *  version; the shelf is what there is until a node has an identity.) */
+function bypassModule(key) {
+  const here = nodeAtKey(key);
+  if (!here) return note("that module has moved");
+  const name = kindName(rackKindAt(key)) || fragLabel(here, false);
+  const f = childFields(MOD_BY_TAG[nodeTag(here)] || {});
+  if (f.length === 0) return note(`${name} generates the signal — there is nothing to pass through it.`);
+  const lost = f.length === 2 ? subtreeSize(here[nodeTag(here)][f[1]] || {}) : 0;
+  let head = null;
+  const ok = applyTreeRewrite((tree) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const tag = nodeTag(node);
+    const ff = childFields(MOD_BY_TAG[tag] || {});
+    const through = node[tag][ff[0]];
+    if (!through) return "there is nothing plugged into it to pass through";
+    head = headFragment(node);
+    if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  const inNames = MOD_BY_KIND[rackKindAt(key)]?.inNames;
+  const uid = head ? stageFragment(head, false, { rewrap: true, note: "bypassed" }) : null;
+  note(
+    lost > 1
+      ? `${name} bypassed — its ${inNames ? inNames[1] : "second"} branch (${lost} modules) is held with it.`
+      : `${name} bypassed — it is held below with its settings; drag it back onto a ○ to switch it in again.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "switch it back in" },
+  );
+}
+
+/** `delete` on a binary used to silently eat one of its two branches: the
+ *  engine keeps the primary input and drops the other, and nothing on screen
+ *  said which one or how big it was. So the loss is pre-flighted here — the UI
+ *  knows `MODULES[kind].ins` and it knows the tree — named, and *chosen*. */
+function deleteModule(key, x, y) {
+  const node = nodeAtKey(key);
+  if (!node) return note("that module has moved");
+  const tag = nodeTag(node);
+  const spec = MOD_BY_KIND[rackKindAt(key)] || MOD_BY_TAG[tag];
+  const f = childFields(spec || {});
+  const name = kindName(rackKindAt(key)) || fragLabel(node, false);
+
+  if (f.length === 2) {
+    const names = spec?.inNames || ["a", "b"];
+    return openChooser(x, y, `delete ${name} — which input survives?`, [0, 1].map((i) => {
+      const keepName = fragLabel(node[tag][f[i]] || {}, false);
+      const dropSize = subtreeSize(node[tag][f[1 - i]] || {});
+      return {
+        label: `delete, keep ${names[i]}`,
+        sub: `${keepName} takes ${name}'s place · discards ${names[1 - i]} ` +
+             `(${dropSize} module${dropSize === 1 ? "" : "s"}) to HELD`,
+        run: () => deleteKeeping(key, i, name),
+      };
+    }));
+  }
+
+  // A child of a binary is a *branch*: the engine collapses the parent to the
+  // sibling, so deleting it also deletes the module that was combining them.
+  // Two modules and a whole subtree go for one click, which is exactly the
+  // kind of edit that has to be said out loud first.
+  const par = parentOfKey(key);
+  if (par && par.binary) {
+    const pf = childFields(MOD_BY_TAG[nodeTag(par.node)] || {});
+    const mine = Number(key.slice(key.lastIndexOf("/") + 1));
+    const sib = fragLabel(par.node[nodeTag(par.node)][pf[1 - mine]] || {}, false);
+    const pname = kindName(rackKindAt(par.key)) || "the module above";
+    return openChooser(x, y, `delete this branch?`, [{
+      label: `delete ${name} and the ${pname}`,
+      sub: `${sib} feeds straight through · this branch ` +
+           `(${subtreeSize(node)} module${subtreeSize(node) === 1 ? "" : "s"}) goes to HELD`,
+      danger: true,
+      run: () => deleteKeeping(par.key, 1 - mine, pname),
+    }]);
+  }
+
+  if (f.length === 0) {
+    // Deliberately still sent: the engine's refusal is the right sentence, and
+    // it is the one the player should hear from the thing that refuses.
+    return sendStruct({ op: "delete", key });
+  }
+
+  // The plain case — one module out of a chain, what it feeds moves up. No
+  // confirm: the loss is one module and the toast's undo is right there.
+  let head = null;
+  const ok = applyTreeRewrite((tree) => {
+    const n = nodeAtIn(tree, key);
+    if (!n) return "that module has moved — try again";
+    const t = nodeTag(n);
+    const through = n[t][childFields(MOD_BY_TAG[t] || {})[0]];
+    if (!through) return "a lone source cannot be deleted — replace it instead";
+    head = headFragment(n);
+    if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  const uid = head ? stageFragment(head, false, { rewrap: true }) : null;
+  note(`${name} deleted — it is held below.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" });
+}
+
+/** Collapse the binary at `key` onto child `keep`; the other branch goes to
+ *  HELD whole, so "discards 3 modules" is a statement about where they went. */
+function deleteKeeping(key, keep, name) {
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const tag = nodeTag(node);
+    const f = childFields(MOD_BY_TAG[tag] || {});
+    if (f.length !== 2) return "that module no longer has two inputs";
+    const survivor = node[tag][f[keep]];
+    const dropped = node[tag][f[1 - keep]];
+    if (!survivor) return "that module has moved — try again";
+    if (dropped && !marks.includes(dropped)) doomed = dropped;
+    if (!setNodeAtIn(tree, key, survivor)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  note(
+    doomed
+      ? `${name} deleted — ${fragLabel(doomed, false)} is held below.`
+      : `${name} deleted.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
+  );
+}
+
+/** Pull the modulator out of a slot. The op path, because a modulation slot is
+ *  one field and `set_mod` says exactly that. */
+function unplugMod(ownerKey) {
+  const old = modAtKey(ownerKey);
+  sendStruct({ op: "set_mod", key: ownerKey, kind: "none" });
+  const uid = old ? stageFragment(old, true) : null;
+  note(
+    old ? `${fragLabel(old, true)} unplugged — it is held below.` : "modulation unplugged.",
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
+  );
+}
+
+// ---------- one floating menu, one keyboard ----------
+// `#ctx-menu` is the app's only popover of this shape, so the structure menu,
+// the connect chooser and the delete confirm are the same element with the
+// same dismissal law, the same flip-up, and the same `role="menu"` keyboard:
+// ↑/↓ rove, Home/End jump, type-ahead selects by first letters, Enter runs,
+// Escape closes and hands focus back.
+let menuRows = [];
+let menuTypeahead = { buf: "", at: 0 };
+// A long-press opens the menu and *then* releases, and that release is a click
+// on the plate underneath — which the app-wide "a click outside closes it" law
+// would read as a dismissal. One timestamp is cheaper than an exception.
+let menuOpenedAt = 0;
+// Whatever had the keyboard when the menu took it. One dismissal law needs one
+// restoration law, or Escape leaves focus on a hidden element and the next
+// keystroke goes nowhere.
+let menuOpener = null;
+
+function showMenu(x, y, head, rows) {
+  const menu = $("ctx-menu");
+  menuRows = rows;
+  if (!menu.contains(document.activeElement)) menuOpener = document.activeElement;
+  const headHtml = head.title
+    ? `<div class="cm-title">` +
+      (head.glyph ? `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${head.glyph}</svg>` : "") +
+      `<span class="cm-title-name">${esc(head.title)}</span></div>` +
+      (head.sub ? `<div class="cm-head">${esc(head.sub)}</div>` : "")
+    : `<div class="cm-head">${esc(head.sub || "")}</div>`;
+  menu.innerHTML = headHtml + rows.map((r, i) =>
+    `<button class="cm-item cm-two${r.danger ? " danger" : ""}${r.sep ? " cm-sep" : ""}"` +
+    ` role="menuitem" tabindex="-1" data-i="${i}"${r.disabled ? ` disabled aria-disabled="true" title="${esc(r.why || "")}"` : ""}>` +
+    `${esc(r.label)}${r.sub ? `<span class="cm-sub">${esc(r.sub)}</span>` : ""}</button>`).join("");
+  menu.setAttribute("role", "menu");
   menu.querySelectorAll(".cm-item").forEach((btn) => {
-    btn.onclick = () => {
-      menu.classList.add("hidden");
-      const act = JSON.parse(btn.dataset.act);
-      if (act.op) sendStruct(act.op);
-      else armFromRack(act.arm, act.key);
+    btn.onclick = (ev) => {
+      const r = menuRows[Number(btn.dataset.i)];
+      if (!r || btn.disabled) return;
+      closeMenu();
+      r.run(ev);
     };
   });
   menu.classList.remove("hidden");
+  // Measure unclamped, then place. The old code only ever clamped *downward*,
+  // so a menu opened near the bottom of a short window had its last rows —
+  // `delete` among them — rendered off-screen with no way to reach them.
+  menu.style.left = "0px";
+  menu.style.top = "0px";
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  menu.style.left = `${Math.min(x, window.innerWidth - mw - 8)}px`;
-  menu.style.top = `${Math.min(y, window.innerHeight - mh - 8)}px`;
+  const left = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
+  let top = y;
+  if (y + mh > window.innerHeight - 8) {
+    top = y - mh >= 8 ? y - mh : Math.max(8, window.innerHeight - mh - 8);
+  }
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  // `max-height: 70vh` can still bite on a laptop in landscape. Say so with an
+  // edge shadow rather than letting the list end in a clean cut that reads as
+  // "that is all of them".
+  menu.classList.toggle("cm-clamped", menu.scrollHeight > menu.clientHeight + 1);
+  menuTypeahead = { buf: "", at: 0 };
+  menuOpenedAt = Date.now();
+  menu.querySelector(".cm-item:not([disabled])")?.focus();
 }
+
+function closeMenu() {
+  const menu = $("ctx-menu");
+  const had = menu.contains(document.activeElement);
+  menu.classList.add("hidden");
+  menu.classList.remove("cm-clamped");
+  menuRows = [];
+  if (had && menuOpener && menuOpener.isConnected) {
+    try { menuOpener.focus({ preventScroll: true }); } catch (_) {}
+  }
+  menuOpener = null;
+}
+
+$("ctx-menu").addEventListener("keydown", (ev) => {
+  const menu = $("ctx-menu");
+  const items = [...menu.querySelectorAll(".cm-item:not([disabled])")];
+  if (items.length === 0) return;
+  const i = items.indexOf(document.activeElement);
+  const go = (n) => {
+    items[Math.max(0, Math.min(items.length - 1, n))].focus();
+    ev.preventDefault();
+  };
+  if (ev.key === "ArrowDown") return go(i < 0 ? 0 : (i + 1) % items.length);
+  if (ev.key === "ArrowUp") return go(i <= 0 ? items.length - 1 : i - 1);
+  if (ev.key === "Home") return go(0);
+  if (ev.key === "End") return go(items.length - 1);
+  if (ev.key === "Escape") { ev.preventDefault(); return closeMenu(); }
+  // Type-ahead: the verbs are words, and a menu of words that cannot be
+  // reached by typing them is a menu that only a mouse can read.
+  if (ev.key.length === 1 && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+    const now = Date.now();
+    menuTypeahead.buf = now - menuTypeahead.at > 700 ? ev.key : menuTypeahead.buf + ev.key;
+    menuTypeahead.at = now;
+    const q = menuTypeahead.buf.toLowerCase();
+    const hit = items.find((b) => (b.textContent || "").trim().toLowerCase().startsWith(q));
+    if (hit) { hit.focus(); ev.preventDefault(); }
+  }
+});
 
 /** The engine `kind` of the rack module at a trace key, if the rack has one. */
 function rackKindAt(key) {
@@ -5225,12 +5789,24 @@ function attachKnobDrag(el, mod, knob) {
 function rackControls() {
   return [...$("rack-svg").querySelectorAll("[data-addr]")];
 }
+/** Every module plate, in layout order. */
+function rackPlates() {
+  return [...$("rack-svg").querySelectorAll("g.mod-group")];
+}
+/** Everything the one roving stop can sit on. Plates and knobs share it, so
+ *  Tab always returns to wherever the keyboard last was inside the rack. */
+function rackStops() {
+  return [...$("rack-svg").querySelectorAll("g.mod-group, [data-addr]")];
+}
+function setRackStop(el) {
+  for (const e of rackStops()) e.setAttribute("tabindex", e === el ? "0" : "-1");
+}
 
 function focusRackControl(i) {
   const els = rackControls();
   if (els.length === 0) return;
   const el = els[Math.max(0, Math.min(els.length - 1, i))];
-  els.forEach((e) => e.setAttribute("tabindex", e === el ? "0" : "-1"));
+  setRackStop(el);
   // `focus()` scrolls its nearest scrollable ancestor by default, which used
   // to jerk the whole rack — and the page under it — sideways on every arrow
   // press. Moving the keyboard around the patch is explicit navigation, so it
@@ -5248,9 +5824,81 @@ function knobByAddr(addr) {
   return null;
 }
 
+// ---- the module layer of the same tabstop ----
+// Everything structural in this app lived behind two 6×13px glyphs and a
+// pointer. With a plate focused the whole verb set is one key away, the menu
+// that opens is a real `role="menu"`, and every result is spoken on the live
+// region the node bank already owns.
+function focusPlate(el, say) {
+  if (!el) return;
+  setRackStop(el);
+  el.focus({ preventScroll: true });
+  ensureRackVisible(el);
+  if (say !== false) {
+    const key = el.getAttribute("data-key");
+    const m = wb.rack?.modules.find((x) => x.key === key);
+    const plates = rackPlates();
+    nbAnnounce(
+      `${isPlaceholderKey(key) ? "empty socket" : m?.title || key} — ` +
+      `module ${plates.indexOf(el) + 1} of ${plates.length}. ` +
+      `Enter for the structure menu, right and left for its knobs.`,
+    );
+  }
+}
+
 $("rack-svg").addEventListener("keydown", (e) => {
+  const plate = e.target.closest?.("g.mod-group");
+  if (plate && !e.target.closest?.("[data-addr]")) {
+    const plates = rackPlates();
+    const i = plates.indexOf(plate);
+    const key = plate.getAttribute("data-key");
+    const mod = wb.rack?.modules.find((x) => x.key === key);
+    const knobs = [...plate.querySelectorAll("[data-addr]")];
+    const box = plate.getBoundingClientRect();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      focusPlate(plates[Math.max(0, Math.min(plates.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]);
+    } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (knobs.length === 0) return nbAnnounce("this module has no knobs");
+      const k = e.key === "ArrowRight" ? knobs[0] : knobs[knobs.length - 1];
+      focusRackControl(rackControls().indexOf(k));
+    } else if (e.key === "Enter" || e.key === "F2") {
+      e.preventDefault();
+      if (mod) openStructMenu(mod, box.left + 24, box.bottom + 4);
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      // Through the same confirm the pointer gets: on a binary this is the
+      // survivor choice, and a Delete key is not a licence to skip it.
+      if (mod && mod.kind !== "amp" && !mod.is_mod) deleteModule(key, box.left + 24, box.bottom + 4);
+      else if (mod?.is_mod) unplugMod(key.replace(/\/m$/, ""));
+    } else if (e.key === "/") {
+      // Stopped here, or the global `/` would take it and open the rail with
+      // no socket chosen — which is the same rail, aimed at nothing.
+      e.preventDefault();
+      e.stopPropagation();
+      if (mod && mod.kind !== "amp" && !mod.is_mod) armFromRack("insert", key);
+      else armFromRack("insert", "node");
+    } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
+      e.preventDefault();
+      const addrs = moduleLockAddrs(mod);
+      const on = isModuleLocked(mod);
+      for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
+      nbAnnounce(on ? `${mod.title} unlocked` : `${mod.title} locked`);
+      renderRack();
+      focusPlate($("rack-svg").querySelector(`g.mod-group[data-key="${cssKey(key)}"]`), false);
+    }
+    return;
+  }
   const kg = e.target.closest?.("[data-addr]");
   if (!kg) return;
+  // Escape backs out to the plate the knob is on, which is the only way to
+  // reach the structural verbs without reaching for the mouse again.
+  if (e.key === "Escape" && plate) {
+    e.preventDefault();
+    focusPlate(plate);
+    return;
+  }
   const els = rackControls();
   const i = els.indexOf(kg);
   const knob = knobByAddr(kg.dataset.addr);
@@ -6053,17 +6701,66 @@ function fragLabel(frag, isMod) {
   return name + (size > 1 ? `·${size}` : "");
 }
 
-function stageFragment(frag, isMod) {
+/** Put a fragment on the shelf. `opts.rewrap` marks a head-only module that
+ *  wants to be spliced back *into* a wire rather than to take the socket —
+ *  what bypass leaves behind. */
+function stageFragment(frag, isMod, opts) {
   if (!frag) return null;
   const uid = trayUid++;
-  tray.push({ uid, isMod, frag, label: fragLabel(frag, isMod) });
+  const o = opts || {};
+  // A `rewrap` head carries a stand-in input that `graft` will overwrite the
+  // moment it goes back in, so counting it would print "wavefolder·2" for one
+  // bypassed wavefolder — a number about an implementation detail.
+  const label = o.rewrap
+    ? (modEntry(frag)?.name ?? nodeTag(frag).toLowerCase())
+    : fragLabel(frag, isMod);
+  tray.push({ uid, isMod, frag, label, ...o });
+  // Staging is part of the edit that caused it: if the engine refuses that
+  // edit, this fragment describes a chain that never left the patch, and a
+  // shelf holding a duplicate of something still wired up is a lie.
+  if (stagingBound) stagingBound.trays.push(uid);
   renderTray();
+  trayChanged();
   return uid;
 }
 
 function unstage(uid) {
   const i = tray.findIndex((t) => t.uid === uid);
   if (i >= 0) tray.splice(i, 1);
+  renderTray();
+  trayChanged();
+}
+
+// The shelf used to be `const tray = []` and nothing else, so everything you
+// had pulled out of a patch died on reload — the one place in the app where
+// "removed, but recoverable" quietly stopped being true after a refresh. It
+// rides in the same `ui` blob as the rest of the surface's state.
+function trayChanged() {
+  if (booted) scheduleSave();
+}
+function trayState() {
+  return {
+    // The subject it was pulled out of, so the shelf can say where a fragment
+    // came from. Deliberately not a *gate*: a held chain is a chain, and it
+    // is legal in any patch — refusing to show it because the bench happens
+    // to have opened something else would make the shelf lie by omission.
+    from: wb.subjectId ?? null,
+    items: tray.map((t) => ({
+      isMod: t.isMod, frag: t.frag, label: t.label,
+      rewrap: !!t.rewrap, note: t.note || "",
+    })),
+  };
+}
+function restoreTray(saved) {
+  if (!saved || !Array.isArray(saved.items)) return;
+  for (const it of saved.items) {
+    if (!it || !it.frag) continue;
+    tray.push({
+      uid: trayUid++, isMod: !!it.isMod, frag: it.frag,
+      label: it.label || fragLabel(it.frag, !!it.isMod),
+      rewrap: !!it.rewrap, note: it.note || "",
+    });
+  }
   renderTray();
 }
 
@@ -6103,7 +6800,7 @@ function renderTray() {
   nbRenderRail();
   if (tray.length === 0) {
     holder.innerHTML =
-      '<span class="tray-hint mono">Anything you unplug is held here until you reload. Save the patch to keep it for good.</span>';
+      '<span class="tray-hint mono">Anything you unplug, delete or bypass is held here — and stays here across a reload. Drag it back onto a ○ to put it in.</span>';
     return;
   }
   for (const t of tray) {
@@ -6112,10 +6809,10 @@ function renderTray() {
     el.innerHTML = `
       <div class="ti-head">
         <span class="t-jack" title="Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack"></span>
-        <span class="ti-name">${t.label}</span>
+        <span class="ti-name">${esc(t.label)}${t.note ? ` <span class="ti-why">${esc(t.note)}</span>` : ""}</span>
         <button class="t-x" title="Discard">✕</button>
       </div>
-      <div class="ti-params mono">${fragParamStrip(t.frag) || "—"}</div>`;
+      <div class="ti-params mono">${esc(fragParamStrip(t.frag)) || "—"}</div>`;
     el.querySelector(".t-x").onclick = () => unstage(t.uid);
     const tjack = el.querySelector(".t-jack");
     claimGesture(tjack); // the tray scrolls sideways; the cable pull is not that
@@ -6916,10 +7613,20 @@ function cancelPending() {
 }
 
 /** The rack's ⋯ menu hands off here: open the rail, wait for a module. */
-function armFromRack(mode, key) {
-  // Both menu items act on the audio tree; a modulation slot is offered by its
-  // own items on the same menu, which name their destination port.
-  pendingTarget = { mode, key, accepts: ["source", "proc", "combine"] };
+// `opts.accepts` narrows the rail (the `modulate → port` row hands off to the
+// amber sorts only); `opts.verb`/`opts.aim` let a row say what it means when
+// the key it acts on is not the plate the player clicked — "insert before this
+// filter" is `insert_tree` at the filter's *input*, and the chip must name the
+// filter, not whatever happens to feed it.
+function armFromRack(mode, key, opts) {
+  const o = opts || {};
+  pendingTarget = {
+    mode,
+    key,
+    accepts: o.accepts || ["source", "proc", "combine"],
+    verb: o.verb || null,
+    aim: o.aim || null,
+  };
   if (nbState.collapsed) nbSetCollapsed(false);
   const q = $("nb-q");
   q.value = "";
@@ -6929,11 +7636,11 @@ function armFromRack(mode, key) {
   // this node's slot puts the new module between it and its parent, so from
   // the signal's point of view the new module comes after it — the same edit
   // the socket labels describe as "before" the node downstream of it.
-  const here = nodeAtKey(key);
+  const here = nodeAtKey(o.aim || key);
   const name = here ? fragLabel(here, false) : "the output";
-  const what = mode === "replace" ? "replace" : "insert after";
+  const what = o.verb || (mode === "replace" ? "replace" : "insert after");
   $("nb-status").innerHTML =
-    `<b>${what} ${esc(name)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
+    `<b>${esc(what)} ${esc(name)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
   nbAnnounce(`Choose a module to ${what} ${name}.`);
   pickFeedback();
 }
@@ -7157,26 +7864,10 @@ function offerConnect(srcKey, targetKey, kind, cx, cy) {
   ]);
 }
 
-/** A two-row popover in the context menu's own element, so there is exactly
- *  one floating menu in the app and one law that dismisses it. */
+/** A short popover in the context menu's own element, so there is exactly one
+ *  floating menu in the app, one law that dismisses it, and one keyboard. */
 function openChooser(x, y, head, rows) {
-  const menu = $("ctx-menu");
-  menu.innerHTML =
-    `<div class="cm-head">${esc(head)}</div>` +
-    rows.map((r, i) =>
-      `<button class="cm-item cm-two" data-i="${i}">${esc(r.label)}` +
-      `<span class="cm-sub">${esc(r.sub)}</span></button>`).join("");
-  menu.querySelectorAll(".cm-item").forEach((btn) => {
-    btn.onclick = () => {
-      menu.classList.add("hidden");
-      rows[Number(btn.dataset.i)].run();
-    };
-  });
-  menu.classList.remove("hidden");
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - mw - 8))}px`;
-  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - mh - 8))}px`;
-  menu.querySelector(".cm-item")?.focus();
+  showMenu(x, y, { sub: head }, rows);
 }
 
 /** Move the module at `srcKey` into the socket at `targetKey`. One rewrite,
@@ -7435,11 +8126,15 @@ function pickFeedback() {
     // The ⋯ handoff and the link-drag search both name one module and act on
     // its slot: `insert_tree` at key K puts the new module between K and its
     // parent, so from the signal's point of view it lands after K.
-    aimKey = pendingTarget.key;
+    // `aim` is the plate the *row* was about when that is not the key the op
+    // acts on ("insert before this filter" inserts at the filter's input), so
+    // the chip and the halo stay on the module the player pointed at while the
+    // caret stays on the wire that is actually being cut.
+    aimKey = pendingTarget.aim || pendingTarget.key;
     replaces = pendingTarget.mode === "replace";
-    caretKey = replaces ? null : aimKey;
-    verb = replaces ? "replace" : "insert after";
-    targets = new Set([aimKey]);
+    caretKey = replaces ? null : pendingTarget.key;
+    verb = pendingTarget.verb || (replaces ? "replace" : "insert after");
+    targets = new Set([aimKey, pendingTarget.key]);
   } else if (connectPick) {
     verb = "cable into";
     targets = new Set([...connectPick.legalKeys].map(
@@ -7724,8 +8419,22 @@ function onWireUp(ev) {
       return;
     }
     const frag = w.item.frag;
-    if (SOURCE_TAGS.includes(nodeTag(frag))) {
-      // A source takes the socket; whatever was there is held below.
+    // Which of the two edits a held fragment means is decided by what it *is*,
+    // not by where it lands. `insert_tree` grafts the socket's occupant in as
+    // the fragment's own first input — which is exactly right for one module
+    // (bypass's `rewrap` head especially: it comes back with its parameters
+    // and the wire runs through it again) and silently discards the tail of a
+    // multi-module chain, which is why a chain takes the socket instead and
+    // says what it displaced.
+    // A palette fragment is always one module wearing a default input, so it
+    // always splices; only the shelf can hand you a whole chain.
+    const fromTray = w.mode === "tray-audio";
+    const splice = !SOURCE_TAGS.includes(nodeTag(frag)) &&
+                   (!fromTray || w.item.rewrap || subtreeSize(frag) === 1);
+    if (splice) {
+      sendStruct({ op: "insert_tree", key: childKey, node: frag });
+      note(w.item.rewrap ? `${label} is back in the wire, with its settings.` : `${label} patched into the wire.`);
+    } else {
       const old = nodeAtKey(childKey);
       sendStruct({ op: "replace_tree", key: childKey, node: frag });
       if (old && subtreeSize(old) > 1) {
@@ -7734,9 +8443,6 @@ function onWireUp(ev) {
       } else {
         note(`${label} took the socket.`);
       }
-    } else {
-      sendStruct({ op: "insert_tree", key: childKey, node: frag });
-      note(`${label} patched into the wire.`);
     }
     if (w.item.uid) unstage(w.item.uid);
   } else if (w.mode === "tray-mod" || w.mode === "palette-mod") {
@@ -7798,11 +8504,11 @@ function onWireUp(ev) {
     );
   } else if (w.mode === "unplug-mod") {
     if (jack) return;
-    const old = modAtKey(w.key);
-    if (!old) return;
-    stageFragment(old, true);
-    sendStruct({ op: "set_mod", key: w.key, kind: "none" });
-    note("modulation unplugged — it is held below");
+    if (!modAtKey(w.key)) return;
+    // Staged *after* the post, not before: `stageFragment` binds the fragment
+    // to the edit that is going out, so an op that the engine refuses takes
+    // its own shelf entry back with it.
+    unplugMod(w.key);
   }
 }
 
@@ -9193,6 +9899,7 @@ bootMidi();
     if (saved.ui.oct != null) { octShift = saved.ui.oct; buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
+    restoreTray(saved.ui.held);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.

@@ -2090,6 +2090,76 @@ input, textarea, .bi-rename {
 }
 .ctx-menu .cm-item:hover .cm-sub { color: var(--silk-mute); }
 
+/* ---- the structure menu's header, borrowed from the node bank's spec card ----
+   The menu and the card describe the same objects, so they say so in the same
+   language: the module's own transfer-function glyph, then its silkscreen. */
+.ctx-menu .cm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 4px;
+}
+.ctx-menu .cm-title-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--silk);
+}
+/* Physical distance is the point: `delete` is not one more row in the list,
+   and a hand travelling to it should have to notice that it did. */
+.ctx-menu .cm-item.cm-sep {
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--hairline);
+}
+.ctx-menu .cm-item.danger { color: var(--silk); }
+.ctx-menu .cm-item.danger::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: 1px;
+  background: var(--led-red);
+  box-shadow: 0 0 5px rgba(255,87,71,0.5);
+}
+/* A verb that cannot apply here still prints — the list of what a module can
+   do should not change shape under the hand — but it is dimmed and it says
+   why on hover, which is this app's standing treatment for a refusal. */
+.ctx-menu .cm-item[disabled] {
+  color: var(--silk-dim);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ctx-menu .cm-item[disabled]:hover { background: none; color: var(--silk-dim); }
+/* Clamped at 70vh: end the list in a fade, not in a clean cut that reads as
+   "that is all of them". */
+.ctx-menu.cm-clamped {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+}
+
+/* A module plate is a tabstop now; it needs a ring like every other one. */
+.plate-focus { fill: none; stroke: none; pointer-events: none; }
+.mod-group:focus { outline: none; }
+.mod-group:focus-visible .plate-focus {
+  stroke: var(--phos-a);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+/* Why a fragment is on the shelf, when it did not simply come out of a socket. */
+.ti-why {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--phos-b);
+  letter-spacing: 0.04em;
+  margin-left: 5px;
+}
+
 #wire-overlay {
   position: fixed;
   inset: 0;
