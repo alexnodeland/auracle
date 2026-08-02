@@ -228,6 +228,13 @@ function uiState() {
     positions: [...ffLayouts]
       .filter(([, m]) => m.size)
       .map(([id, m]) => [id, [...m].map(([mid, p]) => [mid, Math.round(p.x), Math.round(p.y)])]),
+    // What you pinned, per patch. "What have I already decided before I press
+    // ⚡" is the one question the lock dots exist to answer, and a reload used
+    // to answer it with "nothing" — every pin in the session gone, silently,
+    // with the rack looking exactly as it had. Safe to persist only because a
+    // lock is keyed by node identity now: under the old trace-address keys a
+    // restored lock would have named whatever had since moved into that slot.
+    locks: [...lockStore].filter(([, s]) => s.size).map(([id, s]) => [id, [...s]]),
   };
 }
 
@@ -841,6 +848,12 @@ worker.onmessage = (e) => {
         // nodes carry the seed's identities through `inherit_uids`. Both keep
         // their locks — which is the loop this whole editor exists to serve.
         pruneLocks();
+        // …and if nothing was carried, this patch may have pins of its own —
+        // from earlier in the session, or from before the last reload. The
+        // store is only ever read here, where a patch arrives with an empty
+        // set, so a carried lock always wins over a remembered one.
+        locksRestoreFor(m.subject);
+        locksRemember();
         // A different patch entirely: nothing learned about the old one's
         // addresses says anything about this one's, and a survivor here is
         // the same stale-entry dropout a structural edit used to leave.
@@ -894,6 +907,7 @@ worker.onmessage = (e) => {
         // identity the term did not have and now does.
         const droppedLocks = pruneLocks();
         if (droppedLocks > 0) {
+          locksRemember(); // the set that survived is the set to remember
           note(`${droppedLocks} lock${droppedLocks > 1 ? "s" : ""} went with what you removed — the rest stayed with their modules.`);
         }
       }
@@ -1050,7 +1064,30 @@ worker.onmessage = (e) => {
     // to ask about, and an answer to a question with no content is a row of
     // noise in the preference log.
     case "edit_duel": {
-      if (!m.differs || !m.buffer || m.buffer.length === 0) {
+      if (!m.differs) {
+        // The engine has compared the trees and they are the same one: a knob
+        // turned and turned back, or a pair of structural edits that cancelled
+        // (duplicate, then delete). Two things follow, and the app used to do
+        // neither.
+        //
+        // First, the panel's `dirty` flag is now known to be wrong, so it goes
+        // — the subject line said "· edited" and COMMIT stayed lit over a
+        // patch byte-identical to the one in the bank, and the only commit
+        // that button could produce was a duplicate the engine would refuse.
+        clearBenchDirty();
+        // Second, "there is nothing to commit" is not a failure of ⚡. The
+        // generation is what was asked for; the commit was only ever the thing
+        // standing in front of it. Routing this through `sendCommit("none")`
+        // sent a doomed commit, got `id: 0` back, and dropped the generation on
+        // the floor with a note about a duplicate — for the one gesture that
+        // could not have been more clearly a request to evolve.
+        if (m.then === "evolve") {
+          pendingEvolve = false;
+          if (wb.subjectId != null) startEvolveFrom(wb.subjectId);
+        } else {
+          note(`nothing to commit — ${nameOf(wb.subjectId)} is exactly what it was.`);
+        }
+      } else if (!m.buffer || m.buffer.length === 0) {
         sendCommit("none", { evolving: m.then === "evolve" });
       } else {
         openCommitDuel(m, m.then);
@@ -1087,7 +1124,6 @@ worker.onmessage = (e) => {
           startEvolveFrom(m.id);
         }
       } else {
-        pendingEvolve = false;
         // A patch the bank already holds is not a new candidate — but if the
         // player answered a comparison on the way in, the engine scored it
         // against the twin rather than dropping it, and saying "failed" about
@@ -1095,6 +1131,16 @@ worker.onmessage = (e) => {
         note(m.outcome && m.outcome !== "none"
           ? "that patch is already in the bank — nothing new to add, but your pick was recorded."
           : "commit failed (duplicate or unvetted state)");
+        // …and the generation still runs. ⚡ on an edited patch commits *and
+        // then* evolves; a commit the bank had no room for is a reason to
+        // evolve from the seed instead of a reason to swallow the gesture.
+        // The other half of this lives in `edit_duel`, which now avoids
+        // sending the doomed commit at all — this is the case that arrives
+        // any other way (an unvetted tree, an express self-report).
+        if (pendingEvolve) {
+          pendingEvolve = false;
+          if (wb.subjectId != null) startEvolveFrom(wb.subjectId);
+        }
       }
       // A commit that carried an answer just added a forecast, and the trust
       // view is the place that answer is visible. Without this it only
@@ -4382,10 +4428,26 @@ function ffTrim() {
 function ffPlaces() {
   const k = ffKey();
   const mine = ffLayouts.get(k);
-  if (mine) return mine;
+  // Drawing from a layout is the same evidence of "this is the arrangement in
+  // front of the player" as writing one, so it has to move `ffLast` too. It
+  // did not, and a layout that came off disk was therefore never a *source*
+  // for inheritance: bench a patch whose positions were restored, press ⚡,
+  // and the child compared its uids against whatever subject happened to have
+  // been dragged last — a patch it shares nothing with — so the test below
+  // failed and every survivor fell back to the chain seed.
+  if (mine) { ffLast = k; return mine; }
   const src = ffLast != null ? ffLayouts.get(ffLast) : null;
   if (!src || !wb.rack) return null;
-  if (!wb.rack.modules.some((m) => m.uid && src.has(`u${m.uid}`))) return null;
+  // Asked through `midOf`, which is how the store is keyed, rather than by
+  // re-deriving `u${uid}` here — the same rule spelled twice is the same rule
+  // waiting to drift.
+  //
+  // The amp stays out of it on purpose. It is the envelope, not a node: uid 0,
+  // key `amp`, therefore mid `kamp` in *every* patch in the bank. Letting it
+  // count would make any layout inherit into any patch, which is the positional
+  // bleed identity was introduced to end — so it may ride along inside an
+  // overlap, but it can never be the whole of one.
+  if (!wb.rack.modules.some((m) => m.uid && src.has(midOf(m)))) return null;
   const copy = new Map(src);
   ffLayouts.set(k, copy);
   ffLast = k;
@@ -6084,6 +6146,14 @@ function restoreRackFocus(mark) {
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 2.5;
 const FIT_MAX = 2.2;
+// …and the floor a *fit* may reach past it. "Home shows you the whole patch"
+// is the promise the key makes, and 0.3× could not keep it: fourteen modules
+// in a 787×295 frame need 0.28×, so Home clipped three plates by six pixels
+// and left no clue that it had. A floor is there to stop you zooming out into
+// an empty grey field by accident — which is a thing a hand does, not a thing
+// a fit does. So the fit may go below it, as far as legibility survives, and
+// the wheel and the keys may not.
+const FIT_MIN = 0.22;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 const view = { x: 0, y: 0, zoom: 1 };
@@ -6117,7 +6187,10 @@ function rackToClient(rx, ry) {
 
 function applyView() {
   const { w, h } = frameSize();
-  view.zoom = clamp(view.zoom, ZOOM_MIN, ZOOM_MAX);
+  // The absolute floor, not the manual one: this runs on every frame of the
+  // tween a fit rides in on, so clamping to `ZOOM_MIN` here would take back
+  // whatever `fitBox` went below it for.
+  view.zoom = clamp(view.zoom, FIT_MIN, ZOOM_MAX);
   const vw = w / view.zoom;
   const vh = h / view.zoom;
   // A soft leash, not a cage: you can push the patch to the frame edge but
@@ -6228,6 +6301,51 @@ function tweenView(t, ms, ease) {
   viewTween = requestAnimationFrame(step);
 }
 
+// What the bezel may cost the patch, as a fraction of the frame along the axis
+// the fit clears it on. A third of a short frame handed to the scope draws the
+// circuit too small to read; this is where that trade turns.
+const SCOPE_CAP = 0.38;
+// …and how far the bezel may be shrunk in service of it. Below this it stops
+// being an instrument and becomes a smudge, and the honest answer is the old
+// one: let it sit over the corner, where the player can move either one.
+const SCOPE_MIN_SCALE = 0.4;
+
+/** Hold the bezel inside the cap by *shrinking* it, so that the reserve below
+ *  never has to be skipped. This used to be a bail-out: a bezel over the cap
+ *  meant no reserve at all, so the size control had a cliff in it — at
+ *  1700×1000 an L bezel is 41% of the rack frame, the reserve was skipped
+ *  entirely, and the fit put four plates underneath the glass. A guarantee
+ *  with a hole in it at one
+ *  setting is not a guarantee, and "the trace is over the module I am reading"
+ *  is exactly the complaint the reserve exists to answer. So the scope
+ *  degrades instead: it keeps its proportions and its corner, and gives up
+ *  only the size it cannot have. */
+function scopeCapBezel(shell, fr) {
+  const cur = parseFloat(shell.style.getPropertyValue("--scope-scale")) || 1;
+  const r = shell.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  // Every dimension in the size classes carries the factor, so the natural
+  // size is what is on screen divided by it — no second measurement, and no
+  // copy of the CSS in here.
+  const natW = r.width / cur;
+  const natH = r.height / cur;
+  // The reserve only ever clears one axis, so the bezel only has to fit under
+  // the cap on one of them: take whichever costs the least shrinking.
+  const s = clamp(
+    Math.max((SCOPE_CAP * fr.width - 14) / natW, (SCOPE_CAP * fr.height - 14) / natH),
+    SCOPE_MIN_SCALE,
+    1,
+  );
+  if (Math.abs(s - cur) > 0.005) {
+    shell.style.setProperty("--scope-scale", s.toFixed(3));
+    // The canvas is sized in percentages of the bezel, so it has just been
+    // re-backed at a new pixel size and blanked. A parked scope has no frame
+    // coming to repaint it; the running one repaints itself in a sixtieth of
+    // a second either way.
+    if (scopeRaf == null) scopeApply();
+  }
+}
+
 /** The band the scope's bezel occupies, as padding the fit has to respect.
  *  The scope is parented to the frame, so it cannot desync under a pan any
  *  more — but a corner overlay over an auto-fitted patch will still sit on a
@@ -6241,17 +6359,18 @@ function scopeReserve() {
   const frame = $("rack-frame");
   if (!shell || !frame || shell.classList.contains("hidden")) return z;
   const fr = frame.getBoundingClientRect();
+  if (!fr.width) return z;
+  scopeCapBezel(shell, fr);
   const sr = shell.getBoundingClientRect();
-  if (!sr.width || !fr.width) return z;
+  if (!sr.width) return z;
   // Push the patch out of the scope's way along whichever axis costs less —
   // a corner-anchored box only ever has to be cleared one way.
   const overW = sr.width + 14;
   const overH = sr.height + 14;
-  // …but not at any price. On a short frame the bezel is a third of the
-  // height, and a fit that gives it a third of the height draws the patch too
-  // small to read. Past that the honest trade is the other way: let the scope
-  // sit over a corner of the rack, where the player can move either one.
-  if (Math.min(overW / fr.width, overH / fr.height) > 0.38) return z;
+  // The cap holds by construction now, except on a frame so small that even a
+  // shrunken bezel eats it — where skipping the reserve is still the right
+  // answer, because there is no fit left to protect.
+  if (Math.min(overW / fr.width, overH / fr.height) > SCOPE_CAP + 0.005) return z;
   if (overW <= overH) {
     if (sr.left - fr.left < fr.right - sr.right) z.l = overW; else z.r = overW;
   } else {
@@ -6268,7 +6387,7 @@ function fitBox(box, animate, coMotion) {
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
   const z = clamp(
     Math.min(availW / Math.max(1, box.w), availH / Math.max(1, box.h)),
-    ZOOM_MIN,
+    FIT_MIN,
     FIT_MAX,
   );
   // Centre in what is left, not in the whole frame: the reserve is only a
@@ -6276,6 +6395,16 @@ function fitBox(box, animate, coMotion) {
   const cx = pad + ins.l + availW / 2;
   const cy = pad + ins.t + availH / 2;
   const t = { zoom: z, x: box.x + box.w / 2 - cx / z, y: box.y + box.h / 2 - cy / z };
+  // …but the reserve is the weaker of the two promises. At the floor the patch
+  // can be bigger than what the reserve leaves, and centring it in a box it
+  // overflows spills it equally both ways — half of that spill going straight
+  // off the frame, which is how a scope in a *top* corner put a plate fifteen
+  // pixels below the bottom edge. So: if the patch fits the frame at all, it is
+  // held inside the frame, and the reserve gets whatever is left. A plate under
+  // the glass is a nuisance; a plate off the edge is gone.
+  const fit = (lo, hi, v) => (lo <= hi ? clamp(v, lo, hi) : v);
+  t.x = fit(box.x + box.w - (w - pad) / z, box.x - pad / z, t.x);
+  t.y = fit(box.y + box.h - (h - pad) / z, box.y - pad / z, t.y);
   viewUserSet = false;
   if (animate) tweenView(t, coMotion ? MOTION_MS : 180, coMotion ? EASE_MOTION : null);
   else { Object.assign(view, t); applyView(); }
@@ -6304,7 +6433,11 @@ function fitSelection(animate) {
 }
 function zoomAt(clientX, clientY, factor) {
   const before = clientToRack(clientX, clientY);
-  const z = clamp(view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  // The hand keeps its own floor — but it cannot be a floor that *lifts* you.
+  // A fit is allowed below `ZOOM_MIN` to contain a big patch, and clamping to
+  // it here would turn the next scroll-out over that patch into a zoom *in*,
+  // which is the control doing the opposite of what it was pushed to do.
+  const z = clamp(view.zoom * factor, Math.min(ZOOM_MIN, view.zoom), ZOOM_MAX);
   if (z === view.zoom) return;
   cancelTween();
   view.zoom = z;
@@ -6485,7 +6618,11 @@ function mmNavigate(ev) {
 }
 $("rack-map").addEventListener("pointerdown", (ev) => {
   ev.preventDefault();
-  $("rack-map").setPointerCapture(ev.pointerId);
+  // Same guard as the plate drag: a pointer the browser has already forgotten
+  // (a cancelled touch, a synthesised press) throws on capture, and the
+  // `pointermove` listener below is on the element either way — so the drag
+  // degrades to "while the pointer is over the map" rather than to a throw.
+  try { $("rack-map").setPointerCapture(ev.pointerId); } catch (_) {}
   mmNavigate(ev);
 });
 $("rack-map").addEventListener("pointermove", (ev) => {
@@ -6791,6 +6928,80 @@ function editTagOf(msg, tag) {
 // all — the envelope wraps the term — so it has no uid and its addresses ride
 // through unchanged, which is also why they survive everything.
 
+// Locks per patch, and across reloads. `wb.locks` is the set for whatever is
+// on the bench; this is every set the session has produced, keyed by subject
+// id, and it is what rides in the `ui` blob. Two things it buys, in order of
+// how much they were missed:
+//
+//  1. A reload keeps your pins. The plan's loop is hand-build, pin, breed —
+//     and half of it evaporated on every refresh, with no sign that it had.
+//  2. Benching a patch you had pinned before gives them back. Locks were only
+//     ever carried *forward* (a commit, a ⚡ child); going back to a patch in
+//     the bank arrived at a rack with the dots dark and nothing to say why.
+//
+// Persisting them is only honest because a lock names a node. Under the old
+// trace-address keys a restored lock would have pinned whatever had since
+// moved into that address — which is the failure mode the whole identity pass
+// exists to have ended.
+const lockStore = new Map();
+const LOCK_KEEP = 60; // same order as the layout store; the bank holds 40
+
+function lockKey() {
+  return wb.subjectId == null ? "bench" : String(wb.subjectId);
+}
+
+/** Write the bench's locks back to the store, and ask for a save. Every
+ *  mutation of `wb.locks` goes through here — a lock nobody wrote down is a
+ *  lock that survives until the tab closes, which is the bug. */
+function locksRemember() {
+  const k = lockKey();
+  // Nothing changed, nothing to write — and nothing to save. This is called on
+  // every bench reply as well as every toggle, and a save round trip per patch
+  // click for a set that is identical to the one already stored is a cost
+  // paid for no information.
+  const prev = lockStore.get(k);
+  const same = wb.locks.size === (prev ? prev.size : 0) &&
+    (!prev || [...wb.locks].every((id) => prev.has(id)));
+  if (same) return;
+  if (wb.locks.size) {
+    lockStore.delete(k); // re-insert, so eviction order stays recency order
+    lockStore.set(k, new Set(wb.locks));
+    while (lockStore.size > LOCK_KEEP) lockStore.delete(lockStore.keys().next().value);
+  } else {
+    // An empty set is not a set worth keeping: "no locks" is what an absent
+    // entry already means, and keeping it would let a cleared patch evict a
+    // pinned one.
+    lockStore.delete(k);
+  }
+  scheduleSave();
+}
+
+/** Give a patch back the locks it had, if the bench arrived without any. The
+ *  guard is the whole of the rule: a non-empty set here was *carried* — by a
+ *  commit or by ⚡ — and carried locks are the live ones, so the store never
+ *  overwrites them. */
+function locksRestoreFor(id) {
+  if (wb.locks.size) return;
+  const saved = lockStore.get(String(id));
+  if (!saved || !saved.size) return;
+  wb.locks = new Set(saved);
+  // Against this rack, not the one they were set on: the store can outlive a
+  // patch's own eviction and reuse of an id, and a lock that names nothing
+  // here has to go rather than sit in the count as a phantom.
+  pruneLocks();
+}
+
+/** The inverse of the `ui` blob's `locks`, tolerant of a save from before it
+ *  existed — which is every save on disk right now. */
+function restoreLocks(saved) {
+  if (!Array.isArray(saved)) return;
+  for (const [id, list] of saved) {
+    if (!Array.isArray(list) || !list.length) continue;
+    lockStore.set(String(id), new Set(list.filter((x) => typeof x === "string")));
+  }
+  while (lockStore.size > LOCK_KEEP) lockStore.delete(lockStore.keys().next().value);
+}
+
 /** Address ↔ identity, both ways, for the rack currently on the bench.
  *  Rebuilt lazily and thrown away whenever `wb.rack` is replaced, because
  *  every address in it is only meaningful against that one rack. */
@@ -6838,6 +7049,7 @@ function setLock(addr, on) {
   const id = lockIdOf(addr);
   if (on) wb.locks.add(id);
   else wb.locks.delete(id);
+  locksRemember();
 }
 
 /** The locked set as trace addresses against the current rack — what
@@ -7998,6 +8210,24 @@ function startEvolveFrom(id) {
 // build can now answer and previously could not even ask.
 let commitDuel = null; // {orig, edit, origSide, then}
 
+/** The bench is the bank's patch again. `wb.dirty` is the panel's own belief
+ *  about whether anything has changed and it can only ever be an upper bound —
+ *  it goes up on every edit and knows nothing about edits that cancel. The
+ *  engine's tree comparison is the fact; when it says "identical", this is how
+ *  the panel stops saying otherwise. */
+function clearBenchDirty() {
+  if (!wb.dirty) return;
+  wb.dirty = false;
+  if (wb.subjectId != null) {
+    // The worklet is holding a tree byte-identical to the stored patch, so it
+    // is playing that patch — "(edited)" was a caption on a difference that
+    // does not exist.
+    livePatchId = wb.subjectId;
+    setLiveLabel(nameOf(wb.subjectId));
+  }
+  renderRack(); // the subject line and COMMIT both read `dirty`
+}
+
 /** Commit the bench. Deals the duel first when there is something to compare
  *  and the player has not already told us the answer. */
 function commitBench(opts = {}) {
@@ -8111,6 +8341,7 @@ $("lock-structure").onclick = () => {
 };
 $("lock-clear").onclick = () => {
   wb.locks.clear();
+  locksRemember(); // clearing is a decision too, and it has to survive a reload
   renderRack();
 };
 // The arrangement switch. Deliberately a plain cycle rather than a menu: three
@@ -10411,8 +10642,14 @@ function armFromRack(mode, key, opts) {
   // this node's slot puts the new module between it and its parent, so from
   // the signal's point of view the new module comes after it — the same edit
   // the socket labels describe as "before" the node downstream of it.
-  const here = nodeAtKey(o.aim || key);
-  const name = here ? fragLabel(here, false) : "the output";
+  // Named the way the pick chip names it — the title silkscreened on the
+  // plate. `fragLabel` answers in the term's vocabulary (`eq·3` is a kind plus
+  // a subtree size), and §13 rules trace ids out of copy the player reads: the
+  // `·3` is notation nobody has been shown and it reads like an instance id.
+  // Where a whole chain is what goes away, `chainTitle` says so in words.
+  const aimKey = o.aim || key;
+  const here = nodeAtKey(aimKey);
+  const name = here ? (mode === "replace" ? chainTitle(aimKey) : plateTitle(aimKey)) : "the output";
   const what = o.verb || (mode === "replace" ? "replace" : "insert after");
   pendingTarget.prompt = `${what} ${name} — pick a module`;
   $("nb-status").innerHTML =
@@ -10790,9 +11027,13 @@ const linkSearchLog = [];
 function openLinkSearch(w) {
   const isMod = w.kind === "mod";
   const key = isMod ? w.srcKey.replace(/\/m$/, "") : w.srcKey;
+  // The plate's own title for an audio source, the same as the pick chip and
+  // the ⋯ handoff. A modulator has no plate of its own — it is drawn in the
+  // slot on its host — so it keeps `fragLabel`, which for a modulator is just
+  // its name and carries no subtree count to leak.
   const srcName = isMod
     ? fragLabel(modAtKey(key) || {}, true)
-    : kindName(rackKindAt(w.srcKey)) || "that";
+    : plateTitle(w.srcKey) || "that";
   pendingTarget = {
     mode: "insert",
     key,
@@ -13179,6 +13420,7 @@ bootMidi();
     for (const id of saved.ui.born || []) lastBorn.add(id);
     restoreTray(saved.ui.held);
     restorePositions(saved.ui.positions);
+    restoreLocks(saved.ui.locks);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.
