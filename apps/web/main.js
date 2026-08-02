@@ -108,7 +108,52 @@ let knobDragging = false;
 
 // Addresses with no live audio handle (enums, structural sites): edits to
 // these need a voice re-patch when the engine confirms them.
+//
+// Cleared on every structural edit — see the `bench` handler. Trace addresses
+// are positional, so an insert renumbers them, and an entry learned before the
+// edit afterwards names a different knob: one that is perfectly live, forced
+// into a full patch swap on every bench reply for the rest of the session.
 const nonLiveAddrs = new Set();
+
+// What the *voices* are running, as the exact string the engine sent — not a
+// re-serialization of `wb.tree`, because only the original bytes can answer
+// "is the tree the bench is describing the one already in the worklet?", and a
+// round trip through JSON.parse is not obliged to give back the same bytes.
+let liveTreeJson = null;
+let liveMakeup = null;
+// What the *bench* holds, which is routinely ahead of the voices: a continuous
+// knob turn is written straight into the running voices and deliberately never
+// re-patched, so the genome moves and the compiled tree does not. This is what
+// `param_miss` heals from when that assumption turns out to be wrong.
+let benchTreeJson = null;
+let benchMakeup = null;
+// Bumped on every tree that reaches the voices. The `param_miss` self-heal
+// keys off it so a burst of misses against one tree costs one re-patch rather
+// than one per knob write.
+let liveRev = 0;
+let healedRev = -1;
+// The tree handed to the worklet ahead of its vet (see the worker's
+// apply/featurize split), so the bench reply can tell "already playing this"
+// from "this is new".
+let liveOptimisticJson = null;
+let liveMuted = false;
+
+function setLivePatchJson(json, makeup) {
+  liveTreeJson = json;
+  liveMakeup = makeup;
+  liveRev += 1;
+}
+
+// The one place the instrument is silenced without touching the player's
+// fader. `alarm()` has claimed "Muted" on an unvetted state since the beginning
+// and it was never true: continuous knobs write straight into the running
+// voices, and structural edits now do too, so by the time the vet says the
+// patch can run away it is already the thing making noise.
+function setLiveMuted(on) {
+  if (!live || on === liveMuted) return;
+  liveMuted = on;
+  live.setVolume(on ? 0 : 1);
+}
 
 // ---------- persistence (IndexedDB autosave) ----------
 // One record: {session: <engine SessionState JSON>, ui: {stars, cut, vol, oct, perf}}.
@@ -169,6 +214,10 @@ function uiState() {
     // able to prevent it.
     bank: bankFilter,
     born: [...lastBorn],
+    // What you pulled out of a patch and have not put back. "Removed" is
+    // supposed to mean "recoverable"; before this it meant "recoverable until
+    // you refresh", which is not a promise worth making.
+    held: trayState(),
   };
 }
 
@@ -182,17 +231,166 @@ function pushUndo() {
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
 }
-function doUndo() {
-  if (undoStack.length === 0 || !wb.tree) return note("nothing to undo");
-  redoStack.push(JSON.stringify(wb.tree));
-  restoreInFlight = true;
-  send({ type: "edit_set_tree", json: undoStack.pop() });
+
+// ---- transactional structural undo ----
+// A structural edit is a *proposal* until the engine says it landed. Pushing
+// its snapshot at post time (which is what this used to do) meant every
+// rejected op left a phantom step: the next ⌘Z restored the patch already on
+// screen, which reads as a dead keystroke, and a second ⌘Z was needed to
+// reach the edit the player actually wanted back.
+//
+// So the snapshot is *staged* when the message goes out — it has to be taken
+// then, because by the time the reply arrives `wb.tree` is already the new
+// tree — and only committed to the stack on the bench reply. A rejection
+// discards it, along with anything the same gesture put in HELD: staging a
+// fragment for an edit that never happened would leave the player holding a
+// copy of a chain that is still in the patch.
+let openEdit = null;
+// The edit posted by the most recent `queueStruct`, or null if that call
+// merely queued. `stageFragment` binds to this rather than to `openEdit`, so
+// a fragment staged alongside a *queued* op is never charged to the edit
+// currently in flight (and so never destroyed by that edit's rejection).
+let stagingBound = null;
+
+function stageUndo() {
+  openEdit = wb.tree ? { snap: JSON.stringify(wb.tree), trays: [] } : null;
+  stagingBound = openEdit;
+  return openEdit;
 }
-function doRedo() {
-  if (redoStack.length === 0 || !wb.tree) return note("nothing to redo");
-  undoStack.push(JSON.stringify(wb.tree));
+function commitStagedUndo() {
+  stagedLockRemap = null;
+  if (!openEdit) return;
+  undoStack.push(openEdit.snap);
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+  openEdit = null;
+}
+function discardStagedUndo() {
+  stagedLockRemap = null;
+  pendingRewriteLocks = null; // the tree those keys described never happened
+  if (!openEdit) return;
+  for (const uid of openEdit.trays) unstage(uid);
+  openEdit = null;
+}
+
+// What an edit owes *if it lands*, held until the reply for exactly the reason
+// its undo snapshot is.
+//
+// The sentence, first. Said at post time — which is what every placement used
+// to do — it is a claim about an edit the engine has not accepted yet: hit the
+// depth ceiling and the app announced "wavefolder patched into the wire",
+// offered to take it back out, and only much later mentioned that nothing had
+// happened. A confirmation is a statement of fact, so it waits for the fact.
+//
+// And the shelf entry, which is the same mistake with a body count. Dropping a
+// held chain onto a socket took it off HELD at post time, so an edit the engine
+// then refused left the patch untouched *and* the chain gone from the one place
+// the app promises "removed, but recoverable" — the only route in this app to
+// destroying work outright. It comes off the shelf when the engine has it, and
+// not before; until then it is marked `pending` and cannot be dragged again,
+// because a shelf entry you can still pick up is a shelf entry you can place
+// twice.
+let landedNote = null;
+let landedDrops = [];
+/** Pay what the edit that just landed owes. */
+function settleLanded() {
+  const l = landedNote;
+  landedNote = null;
+  for (const uid of landedDrops) unstage(uid);
+  landedDrops = [];
+  if (l) note(l.text, l.opts);
+}
+/** …and take it all back when the engine refuses: nothing was announced,
+ *  and nothing left the shelf. */
+function forgetLanded() {
+  landedNote = null;
+  for (const uid of landedDrops) setTrayPending(uid, false);
+  landedDrops = [];
+}
+/** Bind an edit's promises at the moment it is queued or posted. */
+function bindLanded(landed) {
+  landedNote = landed && landed.text ? { text: landed.text, opts: landed.opts || {} } : null;
+  landedDrops = landed && landed.drop != null ? [landed.drop] : [];
+}
+/** The same promise for a whole-tree rewrite, which cannot carry its sentence
+ *  through `sendStruct`: the text usually describes what the rewrite *found*,
+ *  so it is only knowable after the mutation has run. Called immediately after
+ *  a successful `applyTreeRewrite`, while that rewrite is the edit in flight —
+ *  the engine validates these too (the ceilings), so they can be refused, and
+ *  a refused one must not have announced itself. */
+function noteOnLanding(text, opts) {
+  if (!structInFlight) return note(text, opts); // nothing is pending to wait on
+  landedNote = { text, opts: opts || {} };
+}
+
+// How the edit in flight moves a trace address, or null if it cannot be known.
+// Computed at *send* time, because it is a statement about the tree the op was
+// aimed at, and consumed by the bench reply — see `lockRemapFor`.
+let stagedLockRemap = null;
+
+// Undo and redo post a whole tree, which cannot be re-aimed at a tree that
+// moved under it — so they wait for the lane to clear rather than racing the
+// edit still in flight, which would restore over the top of it. They hold the
+// same lane an op does, because a whole-tree replace and an op are the same
+// round trip to the same engine and the second one to arrive wins.
+//
+// The stacks are not touched until the reply, for the same reason the undo
+// snapshot is not: a restore the engine refuses (the ceilings run on this
+// route now) used to consume the step anyway, so ⌘Z would eat one level of
+// history and give nothing back.
+let restorePending = null; // {kind: "undo"|"redo", cur: <tree json before>}
+
+// ⌘Z pressed ten times quickly is ten undos, not one. Both of these used to
+// answer "an edit is already in flight" by dropping the press — measured: ten
+// fast presses advanced the patch one step and swallowed nine, with a toast
+// that read like a hint rather than a refusal. So the request is *counted*.
+//
+// Counted, and never queued as a tree: a queued tree is a statement about a
+// tree that has since moved, and posting one would restore over the top of
+// whatever landed in between. Each drain re-reads the live stack and sends the
+// step the player would get if they pressed it right then. Undo and redo
+// requests cancel each other, because that is what they mean.
+let restoreBacklog = 0; // >0 undos owed, <0 redos owed
+const RESTORE_BACKLOG_MAX = 60; // the depth of the stack itself
+
+function doUndo() { requestRestore("undo"); }
+function doRedo() { requestRestore("redo"); }
+
+function requestRestore(kind) {
+  const step = kind === "undo" ? 1 : -1;
+  // A restore is a whole tree, so it also waits behind ops that are still
+  // queued — those are aimed at the tree it would replace.
+  if (structInFlight || structQueue.length) {
+    restoreBacklog = clamp(restoreBacklog + step, -RESTORE_BACKLOG_MAX, RESTORE_BACKLOG_MAX);
+    return;
+  }
+  performRestore(kind);
+}
+
+function performRestore(kind) {
+  const stack = kind === "undo" ? undoStack : redoStack;
+  if (stack.length === 0 || !wb.tree) {
+    // Nothing left to land on, so the rest of the burst has nothing to do
+    // either — said once rather than once per press.
+    restoreBacklog = 0;
+    return note(kind === "undo" ? "nothing to undo" : "nothing to redo");
+  }
+  restorePending = { kind, cur: JSON.stringify(wb.tree) };
   restoreInFlight = true;
-  send({ type: "edit_set_tree", json: redoStack.pop() });
+  structInFlight = true;
+  send({ type: "edit_set_tree", json: stack[stack.length - 1] });
+}
+/** The restore landed: only now does the step actually move. */
+function settleRestore() {
+  if (!restorePending) return;
+  if (restorePending.kind === "undo") {
+    undoStack.pop();
+    redoStack.push(restorePending.cur);
+  } else {
+    redoStack.pop();
+    undoStack.push(restorePending.cur);
+  }
+  restorePending = null;
 }
 
 // ---------- worker protocol ----------
@@ -405,8 +603,18 @@ worker.onmessage = (e) => {
       break;
     }
     case "tree_json": {
-      if (m.json && m.json !== "null" && live) {
-        live.setPatch(m.json, m.makeup);
+      if (!(m.json && m.json !== "null" && live)) break;
+      live.setPatch(m.json, m.makeup);
+      setLivePatchJson(m.json, m.makeup);
+      if (m.edited !== undefined) {
+        // The bench speaking early: the worker posts the edited tree the
+        // instant it is adopted and featurizes afterwards, so this arrives
+        // ~half a second before the `bench` reply that vets it. The patch is
+        // in the voices now; the vet lands later and mutes if it fails.
+        liveOptimisticJson = m.json;
+        livePatchId = null;
+        setLiveLabel(`${nameOf(wb.subjectId)} (edited)`);
+      } else {
         livePatchId = m.id;
         setLiveLabel(nameOf(m.id));
       }
@@ -508,6 +716,12 @@ worker.onmessage = (e) => {
         wb.subjectId = m.subject;
         wb.dirty = false;
         wb.locks = new Set();
+        // A different patch entirely: nothing learned about the old one's
+        // addresses says anything about this one's, and a survivor here is
+        // the same stale-entry dropout a structural edit used to leave.
+        nonLiveAddrs.clear();
+        placeholderKeys = new Set();
+        placeholderPending = null;
         undoStack.length = 0;
         redoStack.length = 0;
         note(`${nameOf(m.subject)} on the bench`);
@@ -522,16 +736,65 @@ worker.onmessage = (e) => {
           };
         }
       }
+      const structural = m.edited === "structure" || m.edited === "restore";
       if (m.edited !== undefined) {
         wb.dirty = true;
-        if (m.edited === "restore" && wb.locks.size > 0) {
-          wb.locks.clear(); // restored tree may have different addresses
+        if (structural) {
+          // Everything keyed by trace address is invalidated by the same
+          // fact — the addresses moved. Locks were already being cleared
+          // here; `nonLiveAddrs` never was, and it is the more expensive
+          // omission: one stale entry makes a genuinely live knob force a
+          // full patch swap on every bench reply for the rest of the
+          // session, which is a dropout and an envelope retrigger roughly
+          // twice a second for as long as you keep turning it.
+          nonLiveAddrs.clear();
+          // Same fact, same consequence: a rewrite says where its empty
+          // sockets ended up, and anything else moved the addresses without
+          // telling us, so the holes are forgotten rather than drawn on
+          // whatever now happens to live at that key.
+          placeholderKeys = placeholderPending || new Set();
+          placeholderPending = null;
+          // And for the same reason, anything still *aiming* at a key is
+          // aiming at a key that has moved. A handoff or a half-made cable
+          // that survives an edit does not point where the player pointed it
+          // — it points at whatever now lives at that address.
+          cancelPending();
+          endConnectPick();
         }
+        if (m.edited === "restore" && wb.locks.size > 0) {
+          // Two very different restores arrive on this one route. A rewrite
+          // built the tree it is replacing with, so it knows where every
+          // locked module went (`applyTreeRewrite`) and the locks travel. A
+          // ⌘Z is putting back a tree these locks were never about, so they
+          // come off — silently, because restoring an earlier patch and
+          // finding its earlier locks is not news.
+          const lost = wb.locks.size;
+          if (!restorePending && pendingRewriteLocks) {
+            wb.locks = pendingRewriteLocks;
+            const dropped = lost - wb.locks.size;
+            if (dropped > 0) {
+              note(`${dropped} lock${dropped > 1 ? "s" : ""} went with what you removed — the rest moved with the patch.`);
+            }
+          } else {
+            wb.locks.clear();
+          }
+        }
+        pendingRewriteLocks = null;
         if (m.edited === "structure" && wb.locks.size > 0) {
-          // Structural edits shift trace addresses; stale locks would pin
-          // the wrong sites.
-          wb.locks.clear();
-          note("structure changed — locks cleared");
+          // Structural edits shift trace addresses. They used to be cleared
+          // wholesale, which meant the loop this editor exists to serve —
+          // pin a routing, then breed around it — could not be completed.
+          // Each op's remapping is known, so the locks travel with the nodes
+          // and only the sites the edit actually destroyed are lost.
+          if (stagedLockRemap) {
+            const dropped = remapLocks(stagedLockRemap);
+            if (dropped > 0) {
+              note(`${dropped} lock${dropped > 1 ? "s" : ""} went with what you removed — the rest moved with the patch.`);
+            }
+          } else {
+            wb.locks.clear();
+            note("structure changed — locks cleared");
+          }
         }
       }
       if (m.buffer && m.buffer.length > 0) {
@@ -543,23 +806,54 @@ worker.onmessage = (e) => {
       }
       if (m.treeJson && m.treeJson !== "null") {
         wb.tree = JSON.parse(m.treeJson);
+        benchTreeJson = m.treeJson;
+        benchMakeup = m.makeup;
       }
       // The keyboard follows the bench — but continuous knob turns were
       // already applied live inside the worklet (zero-recompile), so only
       // subject loads, structural changes, and non-live params re-patch.
-      const structural = m.edited === "structure" || m.edited === "restore";
       const paramNonLive =
         m.edited !== undefined && !structural && nonLiveAddrs.has(m.edited);
       const subjectLoad = m.subject !== undefined;
-      if (m.edited === "restore") restoreInFlight = false;
-      if (
+      // `edit_set_tree` answers "restore" whether it came from ⌘Z or from a
+      // client-side rewrite, so the two are told apart by which of them is
+      // holding a receipt: only undo/redo leave a `restorePending`.
+      if (m.edited === "restore") {
+        restoreInFlight = false;
+        settleRestore();
+      }
+      if (structural) {
+        structInFlight = false;
+        // It landed, so the step it displaced is now history worth keeping —
+        // and only now is the sentence about it a true one, and only now is
+        // the shelf entry it came from really spent.
+        commitStagedUndo();
+        settleLanded();
+      }
+      // Structural edits already reached the voices from the worker's early
+      // `tree_json` post. Swapping the identical tree in again would buy a
+      // second fade-out, rebuild and re-attack for no change in sound; all
+      // that is left to reconcile is the makeup gain, which the early post
+      // could not know because measuring it *is* the expensive half.
+      const spokeEarly = liveOptimisticJson !== null && liveOptimisticJson === m.treeJson;
+      liveOptimisticJson = null;
+      if (spokeEarly) {
+        if (live && m.makeup != null) live.setMakeup(m.makeup);
+        liveMakeup = m.makeup;
+      } else if (
         m.treeJson && m.treeJson !== "null" && live &&
         (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
       ) {
         live.setPatch(m.treeJson, m.makeup);
+        setLivePatchJson(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
         setLiveLabel(wb.dirty ? `${nameOf(wb.subjectId)} (edited)` : nameOf(wb.subjectId));
       }
+      // Optimism's other half: the sound arrived before the verdict. A patch
+      // that fails vetting can self-oscillate, and it is already in the
+      // voices, so the mute has to be real. Any vet that passes lifts it.
+      if (wb.vetOk) setLiveMuted(false);
+      else if (spokeEarly) setLiveMuted(true);
       alarm(
         wb.vetOk
           ? null
@@ -580,6 +874,7 @@ worker.onmessage = (e) => {
       } else if (auditionOnSettle) {
         auditionOnSettle = false;
       }
+      drainStruct();
       break;
     }
     // A request that arrived before the engine finished booting. The worker
@@ -591,13 +886,47 @@ worker.onmessage = (e) => {
       break;
     }
     case "edit_rejected": {
-      if (m.error) note(`edit rejected: ${m.error}`);
+      const refusedRestore = restorePending !== null;
+      if (m.error) {
+        // Urgent, because this sentence is the only thing standing between the
+        // player and a false belief about their own patch: they made a gesture,
+        // and it did not happen. Queued behind ordinary confirmations it
+        // arrived seconds late and, under a burst, not at all.
+        note(`edit rejected: ${m.error}`, { urgent: true });
+        // Nothing happened, so nothing is owed to history — and nothing that
+        // rode along with the edit is owed to HELD either. Without this the
+        // next ⌘Z restored the patch the user is already looking at (a dead
+        // keystroke), and a "held below" toast pointed at a chain that had
+        // never left the patch. `addr`-carrying rejections are parameter
+        // edits and stage nothing.
+        discardStagedUndo();
+        // A refused restore consumes no step: the stacks were never touched.
+        restorePending = null;
+      }
       editInFlight = false;
+      // A rejected op never reached the tree, so nothing was posted early and
+      // nothing is in flight; the next one may go. `restoreInFlight` matters
+      // now that a whole-tree replace can *be* rejected (the ceiling check):
+      // left set, it would wedge undo and redo shut for the rest of the
+      // session, since both are gated on it.
+      structInFlight = false;
+      restoreInFlight = false;
+      placeholderPending = null; // the tree it described never happened
+      // The edit never landed, so the sentence that would have announced it is
+      // not owed — and must not be said on top of the next edit that does land.
+      // The shelf keeps what the engine would not take: a refused drop leaves
+      // the chain exactly where the player left it, draggable again.
+      forgetLanded();
+      // A refused restore means ⌘Z is aimed at a route the engine is turning
+      // down; replaying the rest of the burst would say the same thing ten
+      // times over. The stacks are untouched, so nothing is lost by stopping.
+      if (refusedRestore) restoreBacklog = 0;
       if (editQueue) {
         const q = editQueue;
         editQueue = null;
         sendEdit(q.addr, q.value, q.isIndex);
       }
+      drainStruct();
       break;
     }
     case "committed": {
@@ -915,38 +1244,187 @@ const MAX_TOASTS = 3;
 // One window, shared by the toast and by whatever it is holding back.
 const UNDO_WINDOW_MS = 7000;
 
+// ---------- the toast lane ----------
+// Transient chrome used to stack upward from the bottom centre of the window,
+// which is exactly where PICK A / PICK B live. The app's recovery affordance
+// was covering the app's core preference-learning action — and every "TAKE IT
+// OUT" toast landed on the one pair of buttons the whole instrument exists to
+// collect. Three rules, and the first two are geometric so the collision
+// cannot silently come back with the next feature:
+//
+//   1. ONE LANE, anchored to the rack frame's top-right — under the header,
+//      over dead canvas, nowhere near the teaching strip.
+//   2. A RESERVED RECT: whatever teaching strip is on screen is measured and
+//      the lane is pushed clear of it, whatever the window size.
+//   3. ONE VISIBLE TOAST, with a stacking counter. Three toasts saying
+//      different things at once is not three times the information.
+//
+// The queue matters for more than tidiness: a toast's time-to-live starts when
+// it becomes *visible*, so an undo that waits its turn still gets its full
+// seven seconds rather than expiring behind someone else's confirmation.
+//
+// Rule 4 arrived later, from the acceptance walkthrough: a REFUSAL IS NOT A
+// REMARK. Everything above treats the lane as first-in-first-out, which is
+// right for confirmations and wrong for the one message class that answers a
+// gesture the player has already made and still believes in. Measured on the
+// depth ceiling: the refusal surfaced eight seconds after the edit it was
+// about, and under a burst it never surfaced at all — it carries no action, so
+// the staleness drop and the backlog trim both cut exactly it. So `urgent`
+// jumps the queue, displaces what is on screen, and is exempt from both cuts.
+const toastQueue = [];
+let toastLive = null;
+/** A queued remark about a patch state that has moved on is worse than
+ *  silence. An undo is exempt: being still actionable is its whole point.
+ *  So is a refusal — an unheard "that did not happen" is the one omission
+ *  that leaves the player believing something false. */
+const TOAST_STALE_MS = 9000;
+
 function note(text, opts = {}) {
-  const holder = $("toasts");
   const el = document.createElement("div");
   el.className = `toast${opts.kind ? " " + opts.kind : ""}`;
   const msg = document.createElement("span");
+  msg.className = "toast-msg";
   msg.textContent = text;
   el.appendChild(msg);
+  const entry = { el, opts, born: Date.now(), timer: null };
   if (opts.undo) {
     const b = document.createElement("button");
     b.className = "toast-undo";
     b.textContent = opts.undoLabel || "undo";
     b.onclick = () => {
       opts.undo();
-      el.remove();
+      dismissToast(entry, true);
     };
     el.appendChild(b);
   }
-  holder.appendChild(el);
-  while (holder.children.length > MAX_TOASTS) holder.firstChild.remove();
-  // Must not outlive the action it can still cancel (see the cut handler).
-  const ttl = opts.undo ? UNDO_WINDOW_MS : 4200;
-  setTimeout(() => {
-    // Retire the *action* on the window boundary, not when the animation
-    // finishes — the 300 ms fade kept a clickable undo on screen past the
-    // moment its commit had already fired.
-    const b = el.querySelector(".toast-undo");
-    if (b) { b.disabled = true; b.style.pointerEvents = "none"; }
-    el.classList.add("out");
-    setTimeout(() => el.remove(), 300);
-  }, ttl);
+  const stack = document.createElement("span");
+  stack.className = "toast-stack mono hidden";
+  el.appendChild(stack);
+  if (opts.urgent) preemptToast(entry);
+  else toastQueue.push(entry);
+  trimToastQueue();
+  toastPump();
   return el;
 }
+
+/** Put a refusal at the head of the lane and take the floor for it. Whatever
+ *  was on screen is *interrupted*, not spent: it goes back into the queue
+ *  right behind the refusal with its undo button still live, and its window
+ *  restarts when it is visible again — the same rule every queued toast
+ *  already gets. Cutting it instead would answer one silent failure by
+ *  creating another. */
+function preemptToast(entry) {
+  toastQueue.unshift(entry);
+  const held = toastLive;
+  if (!held) return;
+  clearTimeout(held.timer);
+  held.timer = null;
+  held.el.classList.remove("out");
+  held.el.remove();
+  toastLive = null;
+  toastQueue.splice(1, 0, held);
+}
+
+/** Keep the backlog shallow, and spend the cut on remarks rather than on
+ *  anything still carrying an action — or on a refusal, which is the one
+ *  thing in the lane that cannot be said later instead. */
+function trimToastQueue() {
+  while (toastQueue.length > MAX_TOASTS) {
+    let i = toastQueue.findIndex((t) => !t.opts.undo && !t.opts.urgent);
+    if (i < 0) i = toastQueue.findIndex((t) => !t.opts.urgent);
+    // Last resort takes from the back, never the front: the head is where the
+    // refusal that just pre-empted is sitting.
+    toastQueue.splice(i >= 0 ? i : toastQueue.length - 1, 1);
+  }
+  renderToastStack();
+}
+
+function toastPump() {
+  if (toastLive) return;
+  while (toastQueue.length && !toastQueue[0].opts.undo && !toastQueue[0].opts.urgent &&
+         Date.now() - toastQueue[0].born > TOAST_STALE_MS) {
+    toastQueue.shift();
+  }
+  const t = toastQueue.shift();
+  if (!t) return;
+  toastLive = t;
+  $("toasts").appendChild(t.el);
+  positionToastLane();
+  renderToastStack();
+  // Must not outlive the action it can still cancel (see the cut handler).
+  t.timer = setTimeout(() => dismissToast(t), t.opts.undo ? UNDO_WINDOW_MS : 4200);
+}
+
+function renderToastStack() {
+  const c = toastLive && toastLive.el.querySelector(".toast-stack");
+  if (!c) return;
+  const n = toastQueue.length;
+  c.textContent = n ? `+${n}` : "";
+  c.classList.toggle("hidden", n === 0);
+  c.title = n ? `${n} more waiting` : "";
+}
+
+function dismissToast(t, immediate) {
+  if (toastLive !== t) {
+    // Never made it to the lane: drop it out of the queue rather than leaving
+    // a dead entry to be shown after its moment has passed.
+    const i = toastQueue.indexOf(t);
+    if (i >= 0) toastQueue.splice(i, 1);
+    return;
+  }
+  clearTimeout(t.timer);
+  // Retire the *action* on the window boundary, not when the animation
+  // finishes — the 300 ms fade kept a clickable undo on screen past the moment
+  // its commit had already fired.
+  const b = t.el.querySelector(".toast-undo");
+  if (b) { b.disabled = true; b.style.pointerEvents = "none"; }
+  t.el.classList.add("out");
+  const gone = () => {
+    t.el.remove();
+    toastLive = null;
+    toastPump();
+  };
+  if (immediate) gone();
+  else setTimeout(gone, 300);
+}
+
+/** Anchor the lane, then push it clear of whatever teaching strip is up.
+ *  Rule 2 above: the reserved rect is measured, not assumed. */
+function positionToastLane() {
+  const holder = $("toasts");
+  if (!holder || !holder.firstChild) return;
+  const frame = $("rack-frame");
+  const fr = currentView === "play" && frame ? frame.getBoundingClientRect() : null;
+  let top = fr && fr.height > 0 ? fr.top + 10 : 64;
+  let right = fr && fr.width > 0 ? Math.max(12, window.innerWidth - fr.right + 10) : 16;
+  holder.style.top = `${Math.round(top)}px`;
+  holder.style.right = `${Math.round(right)}px`;
+
+  // The reserved rects. A teaching strip is the one thing in the app that a
+  // transient may never cover, so its box is measured and stepped around —
+  // above it if there is room under the menubar, below it if there is not.
+  // Two passes, because clearing one strip can walk into another.
+  const reserved = [$("play-duel"), $("duel-mid"), document.querySelector(".duel-controls")]
+    .filter((el) => el && !el.classList.contains("hidden") && el.offsetParent !== null);
+  for (let pass = 0; pass < 2; pass++) {
+    const lane = holder.getBoundingClientRect();
+    let moved = false;
+    for (const el of reserved) {
+      const r = el.getBoundingClientRect();
+      if (r.height === 0) continue;
+      const hits = lane.bottom > r.top && lane.top < r.bottom &&
+                   lane.right > r.left && lane.left < r.right;
+      if (!hits) continue;
+      const above = r.top - lane.height - 8;
+      top = above >= 56 ? above : r.bottom + 8;
+      holder.style.top = `${Math.round(top)}px`;
+      moved = true;
+      break;
+    }
+    if (!moved) break;
+  }
+}
+window.addEventListener("resize", positionToastLane);
 
 // A toast whose undo can no longer fire must say so — see commitPendingVote,
 // which retires a vote's undo early when a refit claims it.
@@ -1126,6 +1604,9 @@ function showView(name) {
     t.setAttribute("aria-selected", String(on));
   });
   if (name === "play") refitRack();
+  // The lane is anchored to the rack frame, which only exists in PLAY, and it
+  // has to clear whichever teaching strip this view puts up.
+  positionToastLane();
   if (name === "taste") drawTaste();
   if (name === "evolve") {
     drawLineage();
@@ -1321,6 +1802,35 @@ function renderFailed(id, reason) {
   note(`Couldn't render ${nameOf(id)} — ${reason || "the engine returned no audio"}.`);
 }
 
+// The worklet reporting that an address it was asked to write does not exist
+// in the patch it is running. That is the gesture→sound contract broken: the
+// knob moved, the genome moved, and the sound did not.
+//
+// Remembering the address for next time was never a fix. `nonLiveAddrs` is
+// consulted *synchronously* when the bench reply lands, and this message
+// arrives asynchronously from the audio thread — the only reason annotating
+// ever appeared to work is that the worklet answers in ~3 ms and the worker in
+// ~500, so the note usually beat the reply it was meant for. It is a race, and
+// the first knob of a session is where it loses. So heal it here rather than
+// filing it: hand the voices the tree the bench actually holds, and the
+// address exists again.
+//
+// Once per tree, though, and only when the voices are genuinely behind. A knob
+// drag is a stream of writes, every one of them misses until the re-patch
+// lands, and a re-patch per write is a dropout per write — the exact storm
+// this is meant to end. When the worklet already has the newest tree the miss
+// means the address has no live handle at all (an enum, a structural site);
+// re-patching would buy a dropout and change nothing, and the bench reply's
+// own non-live path already covers it.
+function healParamMiss(addr) {
+  nonLiveAddrs.add(addr);
+  if (!live || !benchTreeJson || benchTreeJson === "null") return;
+  if (benchTreeJson === liveTreeJson || healedRev === liveRev) return;
+  live.setPatch(benchTreeJson, benchMakeup);
+  setLivePatchJson(benchTreeJson, benchMakeup);
+  healedRev = liveRev;
+}
+
 // ---------- live instrument ----------
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
@@ -1328,7 +1838,7 @@ async function bootLiveAudio() {
   live.onMessage((m) => {
     (window.__ricLog = window.__ricLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
-    if (m.type === "param_miss") nonLiveAddrs.add(m.addr);
+    if (m.type === "param_miss") healParamMiss(m.addr);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
       downloadWav(m.samples, m.sampleRate);
     }
@@ -1563,8 +2073,20 @@ document.addEventListener("keydown", (e) => {
     // In EVOLVE, ⌘Z takes back the vote still inside its undo window;
     // everywhere else it is the workbench edit undo.
     if (!e.shiftKey && currentView === "evolve" && retractVote()) return;
-    if (!restoreInFlight) e.shiftKey ? doRedo() : doUndo();
+    // Unconditional: a restore already in flight is a reason to *queue* the
+    // press, not to discard it — which is what this gate did, silently, to
+    // nine presses out of ten in a burst. `requestRestore` owns the waiting.
+    e.shiftKey ? doRedo() : doUndo();
     return;
+  }
+  // Camera zoom, on the bindings every expert already has in their fingers.
+  // Checked here because the meta/ctrl bail-out below is what keeps browser
+  // chords out of the note handler, and these are browser chords we want.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && currentView === "play" &&
+      !e.target?.closest?.("input, select, textarea, [contenteditable]")) {
+    if (e.key === "0") { e.preventDefault(); zoomActual(); return; }
+    if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomStep(1 / 1.25); return; }
+    if (e.key === "=" || e.key === "+") { e.preventDefault(); zoomStep(1.25); return; }
   }
   // A module in hand takes the arrow keys and Enter, so it is asked first.
   if (nbArmedKeys(e)) { e.preventDefault(); return; }
@@ -1572,6 +2094,7 @@ document.addEventListener("keydown", (e) => {
     // One dismissal law for the keyboard too: Escape closes whatever floats,
     // and hands focus back to the control that opened it.
     cancelPending();
+    endConnectPick();
     if (!$("ovf-menu").classList.contains("hidden")) {
       $("ovf-menu").classList.add("hidden");
       $("ovf-btn").setAttribute("aria-expanded", "false");
@@ -1581,7 +2104,7 @@ document.addEventListener("keydown", (e) => {
       endBankTour();
       $("bank-tour-btn").focus();
     }
-    $("ctx-menu").classList.add("hidden");
+    closeMenu();
     return;
   }
   // `/` is the index. It is deliberately checked before the text-entry guard's
@@ -1606,6 +2129,16 @@ document.addEventListener("keydown", (e) => {
   // Optional-chained: a keydown whose target is the document (rather than an
   // element) has no `closest`, and an exception here kills the note handler.
   if (e.target?.closest?.("input:not([type=range]), select, textarea, [contenteditable]")) return;
+  // Fit-all and fit-selection. `Home` is checked against `defaultPrevented`
+  // because four list widgets bind it to "go to the first row" on themselves,
+  // and those handlers have already run by the time it bubbles here — the
+  // list you are inside of wins, and everywhere else it means the canvas.
+  // `.` is the second half of the conventional pair; its partner `F` is not
+  // available, being the note F on the computer keybed (see KEYMAP).
+  if (currentView === "play" && !e.defaultPrevented) {
+    if (e.key === "Home") { e.preventDefault(); fitAll(true); return; }
+    if (e.key === ".") { e.preventDefault(); fitSelection(true); return; }
+  }
   const noteKey = k in KEYMAP || k === "z" || k === "x";
   if (!noteKey && e.target?.closest?.("button, [role=tab], [data-addr], input[type=range]")) return;
   if (k in KEYMAP) {
@@ -1622,7 +2155,9 @@ document.addEventListener("keydown", (e) => {
   }
   if (k === "z") return octave(-1);
   if (k === "x") return octave(1);
-  if (k === " ") { e.preventDefault(); return toggleAudition(); }
+  // Over the rack, space arms the pan drag and the audition waits for the
+  // key to come back up; anywhere else it is the audition it always was.
+  if (k === " ") { e.preventDefault(); if (rackSpaceDown()) return; return toggleAudition(); }
   if (k === "[") return stepBank(-1);
   if (k === "]") return stepBank(1);
   // Global, like `[`/`]` and `1`-`5`, because the help lists it beside them.
@@ -1651,6 +2186,7 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => {
   const k = e.key.toLowerCase();
+  if (k === " " && rackSpaceUp()) return;
   const midi = downComputerKeys.get(k);
   if (midi !== undefined) {
     downComputerKeys.delete(k);
@@ -1659,6 +2195,10 @@ document.addEventListener("keyup", (e) => {
 });
 window.addEventListener("blur", () => {
   downComputerKeys.clear();
+  // A space held when the window went away never sends its keyup, and a
+  // sticky pan modifier eats the next click on a knob.
+  spacePan = false;
+  $("rack-scroll")?.classList.remove("grabbing");
   panic();
 });
 // A buffered vote must not die with the tab.
@@ -2998,8 +3538,11 @@ function offerBankTourAfterFirstGeneration() {
 let presetRows = null;
 
 document.addEventListener("click", (e) => {
-  if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn")) {
-    $("ctx-menu").classList.add("hidden");
+  // …but not the click that a long-press produces on its way up, which lands
+  // on the very plate the menu was just opened for.
+  if (!e.target.closest(".ctx-menu") && !e.target.closest(".mod-menu-btn") &&
+      Date.now() - menuOpenedAt > 350) {
+    closeMenu();
   }
   // One dismissal law for every popover: a click that is not inside it closes
   // it. The ovf button used to stopPropagation, which kept THIS handler from
@@ -3037,29 +3580,289 @@ function playBench() {
 // Layout constants.
 // Sized around the rack type tokens in style.css: the plate has to fit a
 // 10px knob label and a 9px unit readout at zoom 1, not just at zoom 2.
-const MOD_W = 168;
-const COL_W = 196;
+//
+// Width is content-driven now, the way height already was. Every plate being
+// 168 units wide meant a one-knob drive wore the same faceplate as a
+// four-knob filter: half of the rack was empty plate, an eight-module chain
+// overflowed a 1700px frame for no reason, and the panel read as a flowchart
+// rather than as gear — real racks have a wide/narrow HP rhythm you can see
+// from across the room. Three steps, because two is not a rhythm and four is
+// noise at this plate count.
+const PLATE_W = [96, 168, 240];
+// Knobs per row, indexed the same as PLATE_W: the pitch stays ~56-80 units at
+// every step, which is what the 10px silkscreen label was measured against.
+const PLATE_COLS = [1, 2, 3];
 const KNOB_R = 15;
-const KNOBS_PER_ROW = 2;
 
 // Row pitch has to clear the knob's tick ring plus its label and its unit
 // readout — the readout grew from "0.41" to "24 ms".
 const KNOB_ROW = 64;
 
-function moduleHeight(mod) {
-  const rows = Math.max(1, Math.ceil(mod.knobs.length / KNOBS_PER_ROW));
-  return 36 + rows * KNOB_ROW;
+// One gutter serves two jobs: the horizontal space between layers, and the
+// vertical clearance a branch input departs the spine by. Keeping them the
+// same number is what makes the arrangement read as a grid rather than as two
+// unrelated spacings that happen to be near each other.
+const GUTTER = 28;
+// Two plates stacked inside one layer.
+const STACK_GAP = 16;
+
+// An enum chip is a 62-unit plate, not a 30-unit knob, so it costs two slots.
+// Without that a vco's `wave` and `octave` chips sat on a 56-unit pitch and
+// overlapped by 6 units on every single patch — the collision the SILK
+// abbreviation table was papering over one label at a time.
+function plateStep(mod) {
+  const slots =
+    mod.knobs.length + mod.knobs.filter((k) => k.kind.t !== "continuous").length;
+  const step = slots <= 1 ? 0 : slots <= 4 ? 1 : 2;
+  // A binary node's two input labels are content too: `carrier` and `mod`
+  // printed inside a 96-unit plate land on top of the one knob it has. Two
+  // named sockets buy a step, the same way a chip does.
+  return MOD_BY_KIND[mod.kind]?.ins === 2 ? Math.max(1, step) : step;
 }
 
-function knobPos(mod, i) {
-  const row = Math.floor(i / KNOBS_PER_ROW);
-  const inRow = mod.knobs.length - row * KNOBS_PER_ROW >= KNOBS_PER_ROW
-    ? KNOBS_PER_ROW
-    : mod.knobs.length - row * KNOBS_PER_ROW;
-  const col = i % KNOBS_PER_ROW;
-  const x = (MOD_W / (inRow + 1)) * (col + 1);
-  const y = 50 + row * KNOB_ROW;
-  return { x, y };
+/** Plate geometry for one module: width, height, and its knob grid. */
+function moduleBox(mod) {
+  const step = plateStep(mod);
+  const perRow = PLATE_COLS[step];
+  const rows = Math.max(1, Math.ceil(mod.knobs.length / perRow));
+  return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW, perRow };
+}
+
+// Knob pitch for the row `i` lands in — a short last row centres itself, so a
+// four-knob module on a three-wide plate puts its orphan knob in the middle
+// instead of hard against the left edge.
+function knobPitch(mod, i, box) {
+  const row = Math.floor(i / box.perRow);
+  const inRow = Math.min(box.perRow, mod.knobs.length - row * box.perRow);
+  return box.w / (inRow + 1);
+}
+
+function knobPos(mod, i, box) {
+  const row = Math.floor(i / box.perRow);
+  return {
+    x: knobPitch(mod, i, box) * ((i % box.perRow) + 1),
+    y: 50 + row * KNOB_ROW,
+  };
+}
+
+// Which arrangement the rack draws in. Persisted, because it is a reading
+// preference rather than a property of the patch — the mode you can read is
+// the mode you want back after a reload. One button in the rack chrome for
+// now; it gets its proper home beside the level-of-detail selector when that
+// lands, and `compact` becomes the export default after that.
+let layoutMode = localStorage.getItem("ricercar-layout") === "compact" ? "compact" : "chain";
+
+// ---------- layout ----------
+// The seam. Cables, plates and knobs were already pure consumers of a
+// `key → box` map; this pulls the map out of the renderer so that a new
+// arrangement is a new y-assignment rather than a second copy of buildRack.
+//
+// Two modes ship now:
+//   chain   — the reading mode. The trunk is one straight horizontal run and
+//             every departure from it means something: up is a second audio
+//             input, down is modulation. Nothing else is allowed to bend it.
+//   compact — the same layering packed tight. This is the mode a screenshot
+//             or an export wants, where bounding box beats legibility.
+//
+// The layering itself is not recomputed: `RackModule.column` out of
+// describe.rs is already a correct longest-path-from-sink, and re-deriving it
+// in JS would be a second implementation of the same fact that can disagree
+// with the engine.
+function layout(rack, mode) {
+  const box = new Map();
+  const byKey = new Map();
+  for (const m of rack.modules) {
+    box.set(m.key, moduleBox(m));
+    byKey.set(m.key, m);
+  }
+  const maxCol = Math.max(...rack.modules.map((m) => m.column));
+  // Flip the column so signal flows left to right and the amp — the anchor of
+  // the whole mental model — sits at the right edge where the ear expects it.
+  const layerOf = (k) => maxCol - byKey.get(k).column;
+  const layers = [];
+  for (let l = 0; l <= maxCol; l++) layers.push([]);
+  for (const m of rack.modules) layers[maxCol - m.column].push(m.key);
+
+  // A node's parent is one layer to the right, always: every wire runs from a
+  // child to its consumer and `column` is the distance from the sink.
+  const parent = new Map();
+  for (const w of rack.wires) parent.set(w.from, w.to);
+  const kidsOf = (k) =>
+    (k === "amp" ? ["node"] : [`${k}/0`, `${k}/1`, `${k}/m`]).filter((c) => byKey.has(c));
+
+  // 2×2 alternating median sweeps. The term is a strict tree (term.rs is
+  // `Box<AudioNode>` — one parent per node), so the downward sweep alone
+  // already converges on a zero-crossing order and the upward one only
+  // centres a parent over its children; both are cheap and they are what
+  // compact mode reads its stacking order from.
+  const indexIn = (l) => {
+    const m = new Map();
+    layers[l].forEach((k, i) => m.set(k, i));
+    return m;
+  };
+  const median = (xs) => {
+    if (!xs.length) return null;
+    const s = xs.slice().sort((a, b) => a - b);
+    return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  };
+  // A node with no neighbour in the fixed layer holds its current position
+  // rather than being swept to one end — the standard barycentre treatment,
+  // and here it means a leaf keeps the engine's depth-first order, which is
+  // the order the player built the patch in.
+  const orderBy = (keys, weight) =>
+    keys
+      .map((k, i) => ({ k, i, w: weight(k) }))
+      .map((e) => (e.w == null ? { ...e, w: e.i } : e))
+      .sort((a, b) => a.w - b.w || a.i - b.i)
+      .map((e) => e.k);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let l = maxCol - 1; l >= 0; l--) {
+      const above = indexIn(l + 1);
+      layers[l] = orderBy(layers[l], (k) => above.get(parent.get(k)) ?? null);
+    }
+    for (let l = 1; l <= maxCol; l++) {
+      const below = indexIn(l - 1);
+      layers[l] = orderBy(layers[l], (k) =>
+        median(kidsOf(k).map((c) => below.get(c)).filter((v) => v != null)));
+    }
+  }
+
+  const cy = new Map(); // centre y, before normalisation
+  const pinned = new Set(); // the spine: never moved by the overlap pass
+
+  if (mode === "compact") {
+    // Minimum bounding box: pack every layer from a shared top edge. No spine,
+    // because straightening the trunk costs vertical space and an export is
+    // being read as a picture, not traced with a finger.
+    for (const keys of layers) {
+      let y = 0;
+      for (const k of keys) {
+        const b = box.get(k);
+        cy.set(k, y + b.h / 2);
+        y += b.h + STACK_GAP;
+      }
+    }
+  } else {
+    // SPINE RULE. Walk the repeated `/0` chain down from the sink and pin every
+    // module on it to one shared baseline. That run is the signal path; a
+    // player traces it with a finger, and a staircase makes them stop and
+    // re-read at every step.
+    const root = byKey.has("amp") ? "amp" : layers[maxCol][0];
+    for (let k = root; k && byKey.has(k); k = k === "amp" ? "node" : `${k}/0`) {
+      if (byKey.get(k).is_mod) break;
+      pinned.add(k);
+    }
+    // Audio: `/0` continues the local baseline, `/1` is the deliberate
+    // departure. The sign is fixed upward rather than the plan's ±, because
+    // modulation owns "below" — if a branch could also go down, the two kinds
+    // of departure would look identical at a glance, which is the one thing
+    // this rule exists to prevent.
+    const placeAudio = (key, y) => {
+      cy.set(key, y);
+      const h = box.get(key).h;
+      const kids = key === "amp" ? ["node"] : [`${key}/0`, `${key}/1`];
+      kids.forEach((c, i) => {
+        if (!byKey.has(c) || byKey.get(c).is_mod) return;
+        const ch = box.get(c).h;
+        placeAudio(c, i === 0 ? y : y - (h / 2 + GUTTER + ch / 2));
+      });
+    };
+    placeAudio(root, 0);
+
+    // Modulation gets its own band under the whole audio field. Chains are
+    // packed into rows by the layers they span — two modulators that never
+    // share a column share a row — so the band costs the least height it can
+    // while still never colliding, and a chain never has to kink to dodge a
+    // neighbour the way a per-layer push-down would make it.
+    let audioBottom = -Infinity;
+    for (const [k, y] of cy) audioBottom = Math.max(audioBottom, y + box.get(k).h / 2);
+    const chains = [];
+    for (const m of rack.modules) {
+      if (!m.is_mod || !m.key.endsWith("/m")) continue;
+      const rel = new Map();
+      (function walk(key, y) {
+        rel.set(key, y);
+        const h = box.get(key).h;
+        [`${key}/0`, `${key}/1`].forEach((c, i) => {
+          if (!byKey.has(c)) return;
+          walk(c, i === 0 ? y : y + (h / 2 + GUTTER + box.get(c).h / 2));
+        });
+      })(m.key, 0);
+      const ch = { rel, top: Infinity, bot: -Infinity, l0: Infinity, l1: -Infinity };
+      for (const [k, y] of rel) {
+        ch.top = Math.min(ch.top, y - box.get(k).h / 2);
+        ch.bot = Math.max(ch.bot, y + box.get(k).h / 2);
+        ch.l0 = Math.min(ch.l0, layerOf(k));
+        ch.l1 = Math.max(ch.l1, layerOf(k));
+      }
+      chains.push(ch);
+    }
+    const rows = [];
+    for (const ch of chains) {
+      let r = rows.findIndex((row) => row.every((c) => c.l1 < ch.l0 || c.l0 > ch.l1));
+      if (r < 0) r = rows.push([]) - 1;
+      rows[r].push(ch);
+    }
+    // Clearance is a gutter plus the `→ cut` label the mod jack prints under
+    // the plate it belongs to; without the second term the band lands on top
+    // of the very text that says what it modulates.
+    let top = audioBottom + GUTTER + 18;
+    for (const row of rows) {
+      for (const c of row) for (const [k, y] of c.rel) cy.set(k, top + (y - c.top));
+      top += Math.max(...row.map((c) => c.bot - c.top)) + STACK_GAP;
+    }
+  }
+
+  // Priority method: the spine is immovable and everything else yields around
+  // it. A layer is resolved outward from its pinned plate in both directions
+  // and never through it — resolving a layer top-down would bend the trunk,
+  // which is the whole thing we just spent the y-assignment straightening.
+  for (const keys of layers) {
+    const ord = keys.slice().sort((a, b) => cy.get(a) - cy.get(b));
+    const p = ord.findIndex((k) => pinned.has(k));
+    const anchor = p >= 0 ? p : 0;
+    for (let i = anchor - 1; i >= 0; i--) {
+      const lim =
+        cy.get(ord[i + 1]) - box.get(ord[i + 1]).h / 2 - STACK_GAP - box.get(ord[i]).h / 2;
+      if (cy.get(ord[i]) > lim) cy.set(ord[i], lim);
+    }
+    for (let i = anchor + 1; i < ord.length; i++) {
+      const lim =
+        cy.get(ord[i - 1]) + box.get(ord[i - 1]).h / 2 + STACK_GAP + box.get(ord[i]).h / 2;
+      if (cy.get(ord[i]) < lim) cy.set(ord[i], lim);
+    }
+  }
+
+  // Layer bands are as wide as their widest plate, and plates are right-
+  // aligned inside them so every `out` jack in a layer departs from the same
+  // x. Cables then read as a bundle rather than as a ragged fan.
+  const bandW = layers.map((keys) => Math.max(...keys.map((k) => box.get(k).w)));
+  const xs = [];
+  let x = 0;
+  for (let l = 0; l < layers.length; l++) {
+    xs[l] = x;
+    x += bandW[l] + GUTTER;
+  }
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const m of rack.modules) {
+    const b = box.get(m.key);
+    minY = Math.min(minY, cy.get(m.key) - b.h / 2);
+    maxY = Math.max(maxY, cy.get(m.key) + b.h / 2);
+  }
+  const pos = new Map();
+  for (const m of rack.modules) {
+    const b = box.get(m.key);
+    const l = maxCol - m.column;
+    pos.set(m.key, {
+      x: xs[l] + bandW[l] - b.w,
+      y: cy.get(m.key) - b.h / 2 - minY,
+      w: b.w,
+      h: b.h,
+      perRow: b.perRow,
+    });
+  }
+  return { pos, natW: x - GUTTER, natH: maxY - minY };
 }
 
 function moduleLockAddrs(mod) {
@@ -3105,6 +3908,17 @@ function claimGesture(el) {
 // then be seen as an outside click that closes it again.
 function fingerPad(g, x, y, w, h) {
   if (!COARSE) return;
+  hitPad(g, x, y, w, h);
+}
+
+// The same trick, unconditionally. ⋯ and ▢ are the only two entry points to
+// structural editing on the whole faceplate and they measure 6×13 CSS pixels —
+// under half the 24×24 minimum, for a mouse as much as for a thumb, and the
+// aim cost lands on the *most consequential* control on the plate. The two
+// pads deliberately meet between the glyphs rather than around them: the strip
+// where they overlap is the gap between the two, so whichever wins there, no
+// glyph is ever stolen from.
+function hitPad(g, x, y, w, h) {
   g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
 }
 
@@ -3132,24 +3946,43 @@ function renderRack() {
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
   renderSubject();
-  if (!hasRack) { svg.innerHTML = ""; nbSync(); return; }
+  if (!hasRack) {
+    svg.innerHTML = "";
+    rackBoxes = new Map();
+    rackContent = { w: frameSize().w, h: frameSize().h };
+    syncMapBtn();
+    nbSync();
+    return;
+  }
 
   buildRack(svg, wb.rack, {
     interactive: true,
     locks: wb.locks,
-    minW: $("rack-scroll").clientWidth - 4,
-    minH: $("rack-scroll").clientHeight - 4,
+    compact: effectiveLod() === "compact",
+    placeholders: placeholderKeys,
   });
+  // The camera is pointed after the build, not during it: a rebuild that
+  // changed the patch's bounding box asks for a fit, and one that did not
+  // (a knob release, a lock toggle, a bench reply) must leave the view
+  // exactly where the player put it.
+  aimCamera();
 
-  // One roving tab stop for the whole rack, so Tab lands on a control instead
-  // of skipping the patch editor entirely.
-  const first = $("rack-svg").querySelector("[data-addr]");
+  // One roving tab stop for the whole rack, so Tab lands on the patch editor
+  // instead of skipping it. It enters at a *module*, not at a knob: the module
+  // is the thing the structural verbs act on, and from there ←/→ is one press
+  // into its controls.
+  const first = $("rack-svg").querySelector("g.mod-group") ||
+                $("rack-svg").querySelector("[data-addr]");
   if (first) first.setAttribute("tabindex", "0");
 
   // The rack is rebuilt from scratch on every edit, which throws away the lit
   // sockets. Re-light them, or a knob turn while something is in hand would
   // silently leave the user holding a module with nowhere visible to put it.
   nbSync();
+  // Same argument for a cable half-connected by clicks, and for everything
+  // pick mode draws — all of it lives in the DOM the build just replaced.
+  connectSync();
+  pickFeedback();
 
   // Cache the amp faceplate for the per-note flash (see flashAmp).
   // Match the module *kind*, not its silkscreen: the title renders as
@@ -3194,7 +4027,14 @@ function renderSubject() {
 // Shared rack renderer: the interactive workbench and the read-only duel
 // minis draw through the same code, so the circuit always looks the same.
 function buildRack(svg, rack, opts) {
-  const { interactive = false, locks = new Set(), minW = 0, minH = 0, fit = false } = opts || {};
+  const {
+    interactive = false,
+    locks = new Set(),
+    fit = false,
+    mode = layoutMode,
+    compact = false,
+    placeholders = new Set(),
+  } = opts || {};
   svg.innerHTML = "";
   const defs = svgEl("defs", {});
   // Light comes from 315° (top-left) everywhere: plate bevel, knob body,
@@ -3217,66 +4057,122 @@ function buildRack(svg, rack, opts) {
     <g id="screw">
       <circle r="3.1" fill="url(#jackNut)"/>
       <path d="M -2 0.6 L 2 -0.6" stroke="#07080a" stroke-width="0.9" stroke-linecap="round"/>
-    </g>`;
+    </g>
+    <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1.2" cy="1.2" r="1.05" fill="rgba(255,255,255,0.025)"/>
+    </pattern>
+    <radialGradient id="patchPool" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.045"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.018"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>`;
   svg.appendChild(defs);
 
-  // Columns: amp (col 0) sits rightmost; deeper modules leftward.
-  const maxCol = Math.max(...rack.modules.map((m) => m.column));
-  const byCol = new Map();
-  for (const m of rack.modules) {
-    const cx = maxCol - m.column;
-    if (!byCol.has(cx)) byCol.set(cx, []);
-    byCol.get(cx).push(m);
-  }
-  const nCols = maxCol + 1;
+  // Arrangement is decided by `layout` and consumed here. The renderer never
+  // computes a coordinate of its own any more — that separation is what lets a
+  // second mode be a second y-assignment instead of a second renderer.
+  const L = layout(rack, mode);
+  const natW = L.natW + 30;
+  const natH = L.natH + 24;
+  // Content is laid out at its natural size at a fixed origin, always. It used
+  // to be laid out into whatever box the frame happened to be, at a
+  // magnification derived on the spot and baked into the viewBox — which is
+  // why the rack could only ever zoom *in*: `Math.max(1, …)` floored the fit
+  // factor at unity, so past about six columns the patch, and the amp with
+  // it, simply ran off the right-hand edge. Where you are looking is now a
+  // camera (`view`, below) and not a property of the last render, so the two
+  // callers can each get what they want: the duel minis take the natural box
+  // as their viewBox, and the workbench points the camera at it.
+  const xOff = 15;
+  const yOff = 12;
+  svg.removeAttribute("width");
+  svg.removeAttribute("height");
+  if (fit) svg.setAttribute("viewBox", `0 0 ${natW} ${natH}`);
   const pos = new Map();
-  let maxHeight = 0;
-  for (const [, mods] of byCol) {
-    let stack = 0;
-    for (const m of mods) stack += moduleHeight(m) + 16;
-    maxHeight = Math.max(maxHeight, stack);
-  }
-  const natW = nCols * COL_W + 30;
-  const natH = maxHeight + 24;
-  const svgW = Math.max(minW, natW);
-  const svgH = Math.max(minH, natH);
-  // Fill the frame. The rack used to stretch its SVG to the container while
-  // laying content out at a fixed pitch from x=15, so a two-module patch sat
-  // in the top-left corner of a 1440×690 canvas — 5% ink, and the hero of the
-  // product was the emptiest thing on screen. Zooming the viewBox scales the
-  // whole panel, so knobs and 8px labels grow with it. Capped at 2.2× so a
-  // nine-module chain still lays out at 1×.
-  const zoom = fit
-    ? 1
-    : Math.min(2.2, Math.max(1, Math.min(svgW / natW, svgH / natH)));
-  const viewW = svgW / zoom;
-  const viewH = svgH / zoom;
-  if (fit) {
-    svg.removeAttribute("width");
-    svg.removeAttribute("height");
-    svg.setAttribute("viewBox", `0 0 ${natW} ${natH}`);
-  } else {
-    svg.setAttribute("width", svgW);
-    svg.setAttribute("height", svgH);
-    svg.setAttribute("viewBox", `0 0 ${viewW} ${viewH}`);
-  }
-  const layoutH = fit ? natH : viewH;
-  // ...and centre horizontally, which it never did (vertical always was).
-  const xOff = fit ? 15 : Math.max(15, (viewW - natW) / 2 + 15);
-  for (const [cx, mods] of byCol) {
-    const total = mods.reduce((s, m) => s + moduleHeight(m) + 16, -16);
-    let y = (layoutH - total) / 2;
-    for (const m of mods) {
-      const h = moduleHeight(m);
-      pos.set(m.key, { x: xOff + cx * COL_W, y, w: MOD_W, h });
-      y += h + 16;
-    }
+  for (const [k, b] of L.pos) {
+    pos.set(k, { x: b.x + xOff, y: b.y + yOff, w: b.w, h: b.h, perRow: b.perRow });
   }
 
-  // Wires under modules.
-  const wireLayer = svgEl("g", {});
+  // Three layers, in this order: plates, then cables, then controls.
+  //
+  // Cables used to paint *under* the plates, so a run that crossed a module
+  // simply vanished and reappeared — the graph told you two modules were
+  // connected and then hid the evidence. Front-panel cables are physically
+  // true for this instrument, so they go on top, with a casing and a cast
+  // shadow (see .rack-wires in style.css) that makes a crossing read as a
+  // cable lying on a panel rather than as a line drawn through it. Controls
+  // then go above the cables, because a cable that covers a knob you have to
+  // grab is a worse problem than the one we just fixed.
+  const plateLayer = svgEl("g", {}, "rack-plates");
+  const wireLayer = svgEl("g", {}, "rack-wires");
+  const ctrlLayer = svgEl("g", {}, "rack-controls");
+  // Underneath all three: a floor. A canvas you can pan needs something that
+  // moves with the world or the motion is invisible — you cannot tell a pan
+  // from a relayout in a black void. The dots are in rack coordinates, so they
+  // travel and scale with the patch; the pool of light sits on the patch's own
+  // bounds so the rack reads as an object standing on a surface rather than
+  // as ink floating in one. Off for the duel minis, which are cutouts.
+  if (!fit) {
+    const ground = svgEl("g", {}, "rack-ground");
+    ground.appendChild(svgEl("ellipse", {
+      cx: xOff + L.natW / 2, cy: yOff + L.natH / 2,
+      rx: Math.max(240, L.natW * 0.78), ry: Math.max(180, L.natH * 0.82),
+      fill: "url(#patchPool)",
+    }, "rack-pool"));
+    // One rect, deliberately far bigger than any reachable view: the pattern
+    // tiles for free and this costs less than tracking the camera.
+    ground.appendChild(svgEl("rect", { x: -6000, y: -6000, width: 16000, height: 16000 }, "rack-dots"));
+    svg.appendChild(ground);
+  }
+  svg.appendChild(plateLayer);
   svg.appendChild(wireLayer);
+  svg.appendChild(ctrlLayer);
   const modByKey = new Map(rack.modules.map((m) => [m.key, m]));
+
+  // Orthogonal routing for modulation. The old cubics anchored on "the source
+  // is left of and above the target" and drew crossed kinks the moment the
+  // layout stopped guaranteeing it. A right angle is also what a patch cable
+  // does when it is tied to a rail, which is what the mod band is.
+  //
+  // `orth` takes a polyline and rounds its corners, clamping each radius to
+  // half the shorter of the two segments so a short run can never make a
+  // corner overshoot back into the one before it.
+  const orth = (raw) => {
+    const p = [raw[0]];
+    for (const q of raw.slice(1)) {
+      const last = p[p.length - 1];
+      if (Math.abs(q[0] - last[0]) > 0.5 || Math.abs(q[1] - last[1]) > 0.5) p.push(q);
+    }
+    if (p.length < 2) return `M ${p[0][0]} ${p[0][1]}`;
+    let d = `M ${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
+    for (let i = 1; i < p.length - 1; i++) {
+      const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
+      const la = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+      const r = Math.min(12, la / 2, lc / 2);
+      d += ` L ${(b[0] + ((a[0] - b[0]) / la) * r).toFixed(1)} ${(b[1] + ((a[1] - b[1]) / la) * r).toFixed(1)}`;
+      d += ` Q ${b[0].toFixed(1)} ${b[1].toFixed(1)}` +
+        ` ${(b[0] + ((c[0] - b[0]) / lc) * r).toFixed(1)} ${(b[1] + ((c[1] - b[1]) / lc) * r).toFixed(1)}`;
+    }
+    const e = p[p.length - 1];
+    return `${d} L ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
+  };
+  // The mod jack is on the plate's *bottom* edge, so the cable has to arrive
+  // from below or it crosses the panel it is plugging into — which is exactly
+  // what happens in compact mode, where a modulator often sits above its
+  // target. Drop to a bus level under both plates first, then rise into it.
+  // In chain mode the modulator is already below and both jogs collapse away,
+  // leaving the plain out-and-up the mod band was designed to read as.
+  const modRoute = (x1, y1, x2, y2) => {
+    const yb = Math.max(y1, y2 + 26);
+    const xm = yb > y1 + 0.5 ? x1 + 22 : x1;
+    return orth([[x1, y1], [xm, y1], [xm, yb], [x2, yb], [x2, y2]]);
+  };
+  // Into the left edge of the next plate in a CV chain: leave horizontally,
+  // step across at the midpoint, arrive horizontally.
+  const chainRoute = (x1, y1, x2, y2) =>
+    orth([[x1, y1], [(x1 + x2) / 2, y1], [(x1 + x2) / 2, y2], [x2, y2]]);
+
   for (const w of rack.wires) {
     const from = pos.get(w.from);
     const to = pos.get(w.to);
@@ -3285,17 +4181,30 @@ function buildRack(svg, rack, opts) {
     const y1 = from.y + from.h / 2;
     let x2, y2, d;
     if (w.kind === "mod") {
-      // Mod cables land on the target's bottom mod jack.
-      x2 = to.x + to.w / 2;
-      y2 = to.y + to.h;
-      const dx = Math.max(24, (x2 - x1) / 2);
-      d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + 16}, ${x2} ${y2 + 26}, ${x2} ${y2}`;
+      const toMod = modByKey.get(w.to);
+      if (toMod && toMod.is_mod) {
+        // A link inside a CV chain: both plates sit on the same mod row, so
+        // the honest route is a straight run into the next plate's left edge.
+        x2 = to.x;
+        y2 = to.y + to.h / 2;
+        d = chainRoute(x1, y1, x2, y2);
+      } else {
+        // Into an audio module's bottom jack: out along the mod row, then one
+        // vertical into the plate's bottom edge.
+        x2 = to.x + to.w / 2;
+        y2 = to.y + to.h;
+        d = modRoute(x1, y1, x2, y2);
+      }
     } else {
-      // Audio cables land on the target's in jack (mix: a or b).
+      // Audio cables land on the target's in jack.
       const toMod = modByKey.get(w.to);
       x2 = to.x;
       y2 = to.y + to.h / 2;
-      if (toMod && toMod.kind === "mix") {
+      // A binary node's two sockets sit at 0.38/0.68 of the plate — all six of
+      // them, not just `mix`. Testing for `kind === "mix"` left a ducker's key
+      // cable and a vocoder's carrier cable landing on the plate edge halfway
+      // between the two jacks they were supposed to terminate in.
+      if (toMod && MOD_BY_KIND[toMod.kind]?.ins === 2) {
         y2 = to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68);
       }
       // Sag proportional to span. A flat `max(24, span/2)` put control point 1
@@ -3308,8 +4217,14 @@ function buildRack(svg, rack, opts) {
       const sag = Math.min(span * 0.22, 46) + Math.abs(y2 - y1) * 0.06;
       d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
     }
-    const glowEl = svgEl("path", { d }, `wire ${w.kind}-glow`);
-    const wireEl = svgEl("path", { d }, `wire ${w.kind}`);
+    // The casing is the cable's jacket, not a glow: it is background-coloured
+    // and wider than the ink, so a run crossing a plate cuts a channel through
+    // it instead of tinting it.
+    const caseEl = svgEl("path", { d }, `wire ${w.kind}-case`);
+    // The ink carries the endpoints so pick mode can put its caret on *this*
+    // cable rather than near it — "insert after wavefolder" has to point at
+    // the run that is about to be cut, and there may be four of them.
+    const wireEl = svgEl("path", { d, "data-from": w.from, "data-to": w.to }, `wire ${w.kind}`);
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
       // patch looks alive where it sounds alive.
@@ -3324,12 +4239,12 @@ function buildRack(svg, rack, opts) {
           if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
         }
       }
-      for (const el of [glowEl, wireEl]) {
-        el.classList.add("pulse");
-        el.style.animationDuration = `${dur.toFixed(2)}s`;
-      }
+      // Only the ink breathes. A casing that pulsed would read as the cable
+      // itself thinning and thickening, which is not what modulation does.
+      wireEl.classList.add("pulse");
+      wireEl.style.animationDuration = `${dur.toFixed(2)}s`;
     }
-    wireLayer.appendChild(glowEl);
+    wireLayer.appendChild(caseEl);
     wireLayer.appendChild(wireEl);
   }
 
@@ -3339,7 +4254,7 @@ function buildRack(svg, rack, opts) {
   // `textLength` + `spacingAndGlyphs` squeezes tracking first and glyphs only
   // as far as it must, which is exactly how a real panel handles a long name.
   const fitLabels = () => {
-    for (const t of svg.querySelectorAll(".knob-label, .mod-title")) {
+    for (const t of svg.querySelectorAll(".knob-label, .mod-title, .plate-hint")) {
       const avail = Number(t.dataset.fit || 0);
       if (!avail) continue;
       let w = 0;
@@ -3358,32 +4273,81 @@ function buildRack(svg, rack, opts) {
 
   for (const m of rack.modules) {
     const p = pos.get(m.key);
-    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind });
-    const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}`;
+    const box = { w: p.w, h: p.h, perRow: p.perRow };
+    // `plateG` is the faceplate — panel, bevel, screws, silkscreen — and lives
+    // under the cables. `g` is everything you can put a hand on, and lives
+    // over them. Same transform, same `data-kind`, so every existing selector
+    // (`g[data-kind="amp"] .mod-plate`, `[data-addr]`, `.jack[data-childkey]`)
+    // still finds what it went looking for.
+    //
+    // `data-key` rides along on both: a drop on a module *body* has to know
+    // which module it landed on, and pick mode has to be able to dim, halo
+    // and pin a chip to one plate. `data-kind` alone cannot name a plate —
+    // a patch routinely carries three filters.
+    const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key });
+    const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, "data-kind": m.kind, "data-key": m.key }, "mod-group");
+    plateLayer.appendChild(plateG);
+    ctrlLayer.appendChild(g);
+    if (interactive) {
+      // A module is a thing you can act on, so it is a stop. The rack's roving
+      // tabstop used to hold knobs only, which meant every structural verb in
+      // the app — the ones behind ⋯, the ones behind a right-click — was
+      // unreachable without a pointer. ↑/↓ walk the plates, ←/→ drop into
+      // their knobs, Enter opens the same menu the ⋯ opens.
+      g.setAttribute("role", "group");
+      g.setAttribute("tabindex", "-1");
+      g.setAttribute("aria-label", `${m.title} module`);
+      g.appendChild(svgEl("rect", {
+        x: -3, y: -3, width: p.w + 6, height: p.h + 6, rx: 8,
+      }, "plate-focus"));
+    }
+    // A socket nothing is plugged into. The node under it is real — the
+    // grammar has no hole — but the player unplugged it and must be able to
+    // see that, so the plate is drawn as the absence it stands for.
+    const isEmpty = interactive && !m.is_mod && m.kind !== "amp" && placeholders.has(m.key);
+    const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}${isEmpty ? " placeholder" : ""}`;
     const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
-    plate.setAttribute("filter", "url(#plateShadow)");
-    g.appendChild(plate);
+    // Compact is the zoomed-out reading mode: title and jacks, and none of
+    // the material that only means anything at a size where you could grab
+    // it. A 1px bevel and a 3px screw at 0.4× are four elements of noise per
+    // plate and a blurred filter region the compositor still has to paint.
+    if (!compact) plate.setAttribute("filter", "url(#plateShadow)");
+    plateG.appendChild(plate);
     // Faceplate material: a lit top edge and a shaded bottom edge give the
     // plate thickness, and four screws say it is bolted to a rail. Without
     // these it renders as a rounded div and the rack reads as a wiring
     // diagram rather than an instrument you could put your hands on.
-    g.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
-    g.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
-    for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
-      const use = svgEl("use", { x: sx, y: sy }, "plate-screw");
-      use.setAttribute("href", "#screw");
-      g.appendChild(use);
+    if (!compact && !isEmpty) {
+      plateG.appendChild(svgEl("rect", { x: 1, y: 0.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-lit"));
+      plateG.appendChild(svgEl("rect", { x: 1, y: p.h - 1.5, width: p.w - 2, height: 1, rx: 0.5 }, "plate-shade"));
+      for (const [sx, sy] of [[7, 7], [p.w - 7, 7], [7, p.h - 7], [p.w - 7, p.h - 7]]) {
+        const use = svgEl("use", { x: sx, y: sy }, "plate-screw");
+        use.setAttribute("href", "#screw");
+        plateG.appendChild(use);
+      }
     }
-    const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}`);
-    title.textContent = m.title;
-    g.appendChild(title);
+    const title = svgEl("text", { x: 14, y: 18 }, `mod-title${m.is_mod ? " modside" : ""}${isEmpty ? " empty" : ""}`);
+    title.textContent = isEmpty ? "empty" : m.title;
+    // A title is silkscreened onto the panel, so it belongs under the cables
+    // — but it must not be *squeezed* by them: the fit pass measures against
+    // the room left between the left edge and the control well.
+    title.dataset.fit = String(Math.max(38, p.w - 52));
+    plateG.appendChild(title);
+    if (isEmpty) {
+      // The plate says what it is *for*, because "empty" alone reads as a
+      // fault rather than as an invitation.
+      const hint = svgEl("text", { x: p.w / 2, y: p.h / 2 + 8, "text-anchor": "middle" }, "plate-hint");
+      hint.textContent = "drop a source here";
+      hint.dataset.fit = String(Math.max(40, p.w - 24));
+      plateG.appendChild(hint);
+    }
 
     if (interactive) {
       // Structure menu (⋯) — every module; the amp offers insert-at-output.
       // The glyph lives in a group so a finger can be given more to aim at
       // than the 10px ellipsis itself.
       const menuG = svgEl("g", {}, "mod-menu-btn");
-      const menuBtn = svgEl("text", { x: p.w - 32, y: 17 });
+      const menuBtn = svgEl("text", { x: p.w - 38, y: 17 });
       menuBtn.textContent = "⋯";
       const mt = svgEl("title", {});
       mt.textContent = m.kind === "amp"
@@ -3391,14 +4355,14 @@ function buildRack(svg, rack, opts) {
         : "Restructure: replace, insert, delete, rewire";
       menuBtn.appendChild(mt);
       menuG.appendChild(menuBtn);
-      fingerPad(menuG, p.w - 29, 13, 26, 28);
+      hitPad(menuG, p.w - 38, 13, 24, 26);
       menuG.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openStructMenu(m, ev.clientX, ev.clientY);
       });
       g.appendChild(menuG);
 
-      if (m.kind !== "amp") {
+      if (m.kind !== "amp" && !isEmpty) {
         const lockOn = isModuleLockedIn(m);
         const lockG = svgEl("g", {}, `mod-lock${lockOn ? " on" : ""}`);
         const mlock = svgEl("text", { x: p.w - 16, y: 17 });
@@ -3409,7 +4373,7 @@ function buildRack(svg, rack, opts) {
           : "Lock this whole module (evolution keeps it exactly as-is)";
         mlock.appendChild(mtitle);
         lockG.appendChild(mlock);
-        fingerPad(lockG, p.w - 13, 13, 26, 28);
+        hitPad(lockG, p.w - 14, 13, 24, 26);
         lockG.addEventListener("click", () => {
           const addrs = moduleLockAddrs(m);
           const on = isModuleLockedIn(m);
@@ -3453,6 +4417,7 @@ function buildRack(svg, rack, opts) {
     // While a module is in hand, a socket is a destination, not a cable to
     // pull: the same press has to mean "place here" instead of "unplug this".
     const placeGuard = (j, ev) => {
+      if (connectPick) { ev.preventDefault(); connectClick(j); return true; }
       if (!armed) return false;
       ev.preventDefault();
       nbSocketClick(j);
@@ -3460,7 +4425,13 @@ function buildRack(svg, rack, opts) {
     };
     const isSource = SOURCE_KINDS.includes(m.kind);
     if (m.is_mod) {
-      addJack(p.w, p.h / 2, "modjack", "out", "left");
+      // A modulator's output is a cable source too, but only the one sitting
+      // *in* the slot: the deeper links of a CV chain are the chain's own
+      // wiring, and moving one out of the middle is a different edit from
+      // moving the chain.
+      const top = m.key.endsWith("/m");
+      const oj = addJack(p.w, p.h / 2, "modjack", "out", "left", top ? { "data-outkey": m.key } : null);
+      if (interactive && top) attachOutJack(oj, m.key, "mod");
     } else if (m.kind === "amp") {
       const j = addJack(0, p.h / 2, "", "in", "right", { "data-childkey": "node" });
       if (interactive) {
@@ -3493,11 +4464,21 @@ function buildRack(svg, rack, opts) {
           }
         }
       }
-      addJack(p.w, p.h / 2, "", "out", "left");
+      // Every `out` used to be decoration: no data attribute, no listener, so
+      // there was literally no gesture in the product that connected A to B.
+      // It is now the primary cable source, which is what the drawing has
+      // been promising since the first plate was rendered.
+      // …except on a hole, which has nothing to give: the cable leaving it
+      // exists only because the term is total, and offering to drag it would
+      // be offering to move an absence.
+      const oj = addJack(p.w, p.h / 2, "", "out", "left", isEmpty ? null : { "data-outkey": m.key });
+      if (interactive && !isEmpty) attachOutJack(oj, m.key, "audio");
       // The mod jack names the port it drives. On a four-knob module an
       // unlabelled "mod" input is a mystery — and now that eight different
       // modules carry one, "mod" would mean eight different things.
-      const modDest = kindModTarget(m.kind);
+      // A hole does not advertise a mod destination either — "→ pitch" on an
+      // empty socket names a port on a module the player has not chosen yet.
+      const modDest = isEmpty ? null : kindModTarget(m.kind);
       if (modDest) {
         const j = addJack(p.w / 2, p.h, "modjack", `→ ${modDest}`, "below", { "data-modkey": m.key });
         if (rack.wires.some((w) => w.kind === "mod" && w.to === m.key)) {
@@ -3523,8 +4504,11 @@ function buildRack(svg, rack, opts) {
       fkind && fkind.kind.t === "enum"
         ? (fkind.kind.options[Math.round(fkind.value)] || "").replace(/^svf /, "svf-")
         : null;
-    m.knobs.forEach((k, i) => {
-      const { x, y } = knobPos(m, i);
+    // The knob detail is the whole of the difference between the two levels
+    // of detail, so it is one conditional rather than a second renderer.
+    if (!compact && !isEmpty) m.knobs.forEach((k, i) => {
+      const { x, y } = knobPos(m, i, box);
+      const pitch = knobPitch(m, i, box);
       const kg = svgEl("g", { transform: `translate(${x},${y})` });
       const locked = locks.has(k.addr);
 
@@ -3583,7 +4567,9 @@ function buildRack(svg, rack, opts) {
           attachKnobDrag(hit, m, k);
         }
       } else {
-        const bw = 62;
+        // The chip is as wide as its slot allows, capped at the 62 units the
+        // longest option name ("triangle", "notch out") was drawn against.
+        const bw = Math.max(40, Math.min(62, pitch - 4));
         const body = svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body");
         const txt = svgEl("text", { y: 4 }, "enum-text");
         txt.textContent = enumDisplay(k);
@@ -3647,7 +4633,7 @@ function buildRack(svg, rack, opts) {
       lbl.textContent = silkLabel(k.label);
       // Available width is the knob pitch less a hair of breathing room.
       lbl.dataset.fit = String(
-        Math.max(24, MOD_W / (Math.min(KNOBS_PER_ROW, m.knobs.length) + 1) - 6)
+        Math.max(24, pitch - 6)
       );
       kg.appendChild(lbl);
       if (k.kind.t === "continuous") {
@@ -3657,76 +4643,1329 @@ function buildRack(svg, rack, opts) {
       }
       g.appendChild(kg);
     });
-    svg.appendChild(g);
   }
 
   // Must run after insertion — `getBBox` needs a laid-out element.
   fitLabels();
+
+  // Hand the camera the two things it needs and cannot recompute: how big the
+  // patch is, and where each module sits. The minimap, every fit, and
+  // "scroll that control into view" all read these rather than measuring the
+  // DOM, which would be a layout flush per pan frame.
+  if (!fit) {
+    rackContent = { w: natW, h: natH };
+    rackBoxes = pos;
+    lodApplied = compact ? "compact" : "full";
+  }
 }
+
+// ===========================================================================
+// CANVAS NAVIGATION — one camera, no scrollbars
+// ===========================================================================
+// The rack frame used to be an `overflow: auto` div wrapped around an SVG
+// sized in pixels, with the magnification chosen at build time and baked into
+// the viewBox. That arrangement can only zoom in. Past about six columns the
+// patch ran off the right-hand edge and the amp — the anchor of the entire
+// mental model — left the screen, with no fit, no pan and no map back to it.
+//
+// So there is a camera. `view.x/y` is the viewBox origin in rack units and
+// `view.zoom` is CSS pixels per rack unit, which is enough to make every
+// conversion two lines instead of a matrix chain, and it is the *only* thing
+// that decides what you are looking at. Zoom range is 0.3×–2.5×; the old
+// 2.2× magnification for small patches survives as the cap on the initial
+// fit, where it was always the good idea, rather than as a floor everything
+// else kept hitting.
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 2.5;
+const FIT_MAX = 2.2;
+const PREFERS_STILL = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+const view = { x: 0, y: 0, zoom: 1 };
+let rackContent = { w: 640, h: 360 }; // natural size of the last interactive build
+let rackBoxes = new Map();            // key → {x,y,w,h} in rack units
+let viewUserSet = false;              // has the player aimed the camera themselves?
+let camAimed = false;                 // first fit done?
+let camSig = "";                      // bounding-box signature of the last build
+let viewTween = null;
+
+function frameSize() {
+  const el = $("rack-scroll");
+  return { w: Math.max(80, el.clientWidth), h: Math.max(80, el.clientHeight) };
+}
+function contentBox() {
+  return { x: 0, y: 0, w: rackContent.w, h: rackContent.h };
+}
+// The SVG fills the frame's content box exactly and its viewBox has the frame's
+// aspect ratio, so there is never any letterboxing to account for and these two
+// are exact inverses. Measuring the SVG rather than the frame keeps the 1px
+// border out of the arithmetic.
+function clientToRack(cx, cy) {
+  const r = $("rack-svg").getBoundingClientRect();
+  return { x: view.x + (cx - r.left) / view.zoom, y: view.y + (cy - r.top) / view.zoom };
+}
+function rackToClient(rx, ry) {
+  const r = $("rack-svg").getBoundingClientRect();
+  return { x: r.left + (rx - view.x) * view.zoom, y: r.top + (ry - view.y) * view.zoom };
+}
+
+function applyView() {
+  const { w, h } = frameSize();
+  view.zoom = clamp(view.zoom, ZOOM_MIN, ZOOM_MAX);
+  const vw = w / view.zoom;
+  const vh = h / view.zoom;
+  // A soft leash, not a cage: you can push the patch to the frame edge but
+  // not past it, so "where did my patch go" needs a bug rather than a flick.
+  const slack = 90 / view.zoom;
+  view.x = clamp(view.x, -vw + slack, rackContent.w - slack);
+  view.y = clamp(view.y, -vh + slack, rackContent.h - slack);
+  $("rack-svg").setAttribute(
+    "viewBox",
+    `${view.x.toFixed(2)} ${view.y.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}`,
+  );
+  updateEdgeFade(vw);
+  drawMinimap();
+  // A cable in flight is anchored in rack space, so anything that moves the
+  // world has to redraw it or the cable detaches from the jack it came out of.
+  if (wire) redrawWireBand();
+  // Same argument for the pick chip: it is pinned to a plate, and the plate
+  // is in the world.
+  positionPickChip();
+  if (effectiveLod() !== lodApplied) scheduleRelod();
+}
+
+/** 48px of fade on whichever horizontal edge actually has patch beyond it.
+ *  A hard cut mid-plate says "the window ends here"; a fade says "there is
+ *  more this way", and the fitted case keeps its full contrast either side. */
+function updateEdgeFade(vw) {
+  const el = $("rack-scroll");
+  const l = view.x > 4;
+  const r = view.x + vw < rackContent.w - 4;
+  el.style.setProperty("--fade-l", l ? "48px" : "0px");
+  el.style.setProperty("--fade-r", r ? "48px" : "0px");
+  el.classList.toggle("faded", l || r);
+}
+
+// ---------- level of detail ----------
+// Explicit switch, automatic default (Reaktor's Compact/Ports, with the
+// override users always end up wanting). `auto` is a threshold on zoom rather
+// than on module count, because the thing that makes a knob unreadable is how
+// many pixels it got, not how many friends it has.
+let lodMode = localStorage.getItem("ricercar-lod") || "auto";
+let lodApplied = "full";
+let relodRaf = null;
+
+function effectiveLod() {
+  if (lodMode === "full" || lodMode === "compact") return lodMode;
+  return view.zoom < 0.55 ? "compact" : "full";
+}
+// Deferred by a frame on purpose: this is reached from applyView, which is
+// reached from renderRack, and a synchronous rebuild there would re-enter the
+// renderer mid-render. A frame's latency on a detail switch is free.
+function scheduleRelod() {
+  if (relodRaf != null) return;
+  relodRaf = requestAnimationFrame(() => {
+    relodRaf = null;
+    if (effectiveLod() !== lodApplied && wb.rack) renderRack();
+  });
+}
+function syncLodBtn() {
+  const b = $("rack-lod");
+  if (!b) return;
+  b.textContent = lodMode === "auto" ? "detail auto" : lodMode === "full" ? "detail full" : "detail lite";
+  b.setAttribute("aria-pressed", String(lodMode !== "auto"));
+  b.closest(".tt").title =
+    lodMode === "auto"
+      ? "Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."
+      : lodMode === "full"
+        ? "Detail: full, at every zoom. Click for plates without knobs."
+        : "Detail: plates, titles and jacks only. Click to go back to automatic.";
+}
+$("rack-lod").onclick = () => {
+  lodMode = lodMode === "auto" ? "full" : lodMode === "full" ? "compact" : "auto";
+  try { localStorage.setItem("ricercar-lod", lodMode); } catch (_) {}
+  syncLodBtn();
+  renderRack();
+};
+syncLodBtn();
+
+// ---------- fits and moves ----------
+function cancelTween() {
+  if (viewTween != null) cancelAnimationFrame(viewTween);
+  viewTween = null;
+}
+
+/** Move the camera to `t` over ~180ms. Short enough not to be a wait, long
+ *  enough that the player's eye tracks the patch instead of re-finding it. */
+function tweenView(t, ms) {
+  cancelTween();
+  if (PREFERS_STILL) { Object.assign(view, t); applyView(); return; }
+  const from = { x: view.x, y: view.y, zoom: view.zoom };
+  const t0 = performance.now();
+  const dur = ms || 180;
+  const step = (now) => {
+    const u = clamp((now - t0) / dur, 0, 1);
+    const e = 1 - (1 - u) * (1 - u) * (1 - u); // ease-out cubic, the app's curve
+    // Zoom interpolates geometrically: linear zoom on a big change ramps the
+    // apparent speed instead of holding it, which is what makes a fit feel
+    // like a lurch.
+    view.zoom = from.zoom * Math.pow(t.zoom / from.zoom, e);
+    view.x = from.x + (t.x - from.x) * e;
+    view.y = from.y + (t.y - from.y) * e;
+    applyView();
+    viewTween = u < 1 ? requestAnimationFrame(step) : null;
+  };
+  viewTween = requestAnimationFrame(step);
+}
+
+function fitBox(box, animate) {
+  const { w, h } = frameSize();
+  const pad = 20;
+  const z = clamp(
+    Math.min((w - pad * 2) / Math.max(1, box.w), (h - pad * 2) / Math.max(1, box.h)),
+    ZOOM_MIN,
+    FIT_MAX,
+  );
+  const t = { zoom: z, x: box.x + box.w / 2 - w / (2 * z), y: box.y + box.h / 2 - h / (2 * z) };
+  viewUserSet = false;
+  if (animate) tweenView(t);
+  else { Object.assign(view, t); applyView(); }
+}
+function fitAll(animate) {
+  if (!wb.rack) return;
+  fitBox(contentBox(), animate);
+  nbAnnounce?.(`fit — ${Math.round(view.zoom * 100)}%`);
+}
+/** Fit "the selection". There is no selection object yet (that arrives with
+ *  node identity), so the honest reading is: whatever the keyboard is on. */
+function fitSelection(animate) {
+  if (!wb.rack) return;
+  // The plate is a tabstop in its own right — the whole structural keyboard
+  // hangs off it — and it was the one focus this could not read, so a player
+  // arrowing between modules got fit-all from a key that promises the
+  // opposite. `closest` still finds the innermost match, so a focused knob is
+  // answered with its knob's key rather than its plate's.
+  const el = document.activeElement?.closest?.("[data-addr], .jack, g[data-key]");
+  const key = el && (el.dataset?.addr?.split("#")[0] || el.getAttribute("data-modkey") ||
+    (el.getAttribute("data-childkey") || "").replace(/\/[01]$/, "") ||
+    el.getAttribute("data-key"));
+  const b = key && rackBoxes.get(key);
+  if (!b) return fitAll(animate);
+  fitBox({ x: b.x - 40, y: b.y - 40, w: b.w + 80, h: b.h + 80 }, animate);
+}
+function zoomAt(clientX, clientY, factor) {
+  const before = clientToRack(clientX, clientY);
+  const z = clamp(view.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  if (z === view.zoom) return;
+  cancelTween();
+  view.zoom = z;
+  // Put the same rack point back under the same pixel: that identity is the
+  // whole of "anchored at the cursor", and it is why this cannot be a zoom
+  // followed by a centring.
+  const after = clientToRack(clientX, clientY);
+  view.x += before.x - after.x;
+  view.y += before.y - after.y;
+  viewUserSet = true;
+  applyView();
+}
+/** Give up a text field's focus in favour of the canvas. Only text entry is
+ *  taken: a focused knob or plate is a tabstop the player is deliberately on,
+ *  and the rack frame — not the body — receives the focus so the keyboard
+ *  stays somewhere meaningful. */
+function releaseTextEntry() {
+  const a = document.activeElement;
+  if (!a || !a.matches?.("input:not([type=range]), select, textarea, [contenteditable]")) return;
+  a.blur();
+  const frame = $("rack-frame");
+  if (!frame) return;
+  if (!frame.hasAttribute("tabindex")) frame.setAttribute("tabindex", "-1");
+  frame.focus({ preventScroll: true });
+}
+
+/** Keyboard zoom has no cursor to anchor to, so it anchors the frame centre. */
+function zoomStep(factor) {
+  const r = $("rack-svg").getBoundingClientRect();
+  zoomAt(r.left + r.width / 2, r.top + r.height / 2, factor);
+}
+function zoomActual() {
+  const r = $("rack-svg").getBoundingClientRect();
+  zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / view.zoom);
+}
+function panBy(dxClient, dyClient) {
+  cancelTween();
+  view.x += dxClient / view.zoom;
+  view.y += dyClient / view.zoom;
+  viewUserSet = true;
+  applyView();
+}
+function contentFullyVisible() {
+  const { w, h } = frameSize();
+  return view.x <= 1 && view.y <= 1 &&
+    view.x + w / view.zoom >= rackContent.w - 1 &&
+    view.y + h / view.zoom >= rackContent.h - 1;
+}
+
+/** Called after every interactive build. Auto-fit on load and whenever a
+ *  structural edit changes the bounding box — animated, so the player is
+ *  carried to the new framing rather than teleported. A knob release, a lock
+ *  toggle or a bench reply leaves the box alone and so leaves the camera
+ *  alone; and once the player has aimed it themselves we only intervene when
+ *  the patch has actually grown out of the frame. */
+function aimCamera() {
+  syncMapBtn();
+  const sig = `${Math.round(rackContent.w)}x${Math.round(rackContent.h)}:${rackBoxes.size}`;
+  const changed = sig !== camSig;
+  camSig = sig;
+  if (!camAimed) { camAimed = true; fitBox(contentBox(), false); return; }
+  if (changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true);
+  else applyView();
+}
+
+/** Bring a control into view without the browser's help. `scrollIntoView` and
+ *  the implicit scroll-on-focus used to yank the canvas — including on hover,
+ *  which moved the rack out from under the pointer that caused it. There is
+ *  no scroller left to yank, so explicit navigation pans the camera instead,
+ *  by the minimum that makes the control visible. */
+function ensureRackVisible(el) {
+  if (!el || !wb.rack) return;
+  const r = el.getBoundingClientRect();
+  const f = $("rack-svg").getBoundingClientRect();
+  const m = 36;
+  let dx = 0, dy = 0;
+  if (r.left < f.left + m) dx = r.left - (f.left + m);
+  else if (r.right > f.right - m) dx = r.right - (f.right - m);
+  if (r.top < f.top + m) dy = r.top - (f.top + m);
+  else if (r.bottom > f.bottom - m) dy = r.bottom - (f.bottom - m);
+  if (dx === 0 && dy === 0) return;
+  tweenView({ zoom: view.zoom, x: view.x + dx / view.zoom, y: view.y + dy / view.zoom }, 160);
+}
+
+// ---------- minimap ----------
+// Forty lines of SVG against "lost in a field of nodes", and it doubles as the
+// fit-all affordance: the viewport rect is the only place in the app that says
+// how much of the patch you are currently looking at.
+const MM_W = 172;
+const MM_H = 116;
+let mmT = null;        // {s, ox, oy} — rack units → map units
+let mmBuiltFor = null; // which rackBoxes the node rects were drawn from
+let mapOn = localStorage.getItem("ricercar-map") === "1";
+
+function syncMapBtn() {
+  const b = $("rack-map-btn");
+  const el = $("rack-map");
+  if (!b || !el) return;
+  const show = mapOn && !!wb.rack;
+  el.classList.toggle("hidden", !show);
+  b.setAttribute("aria-pressed", String(mapOn));
+  b.closest(".tt").title = mapOn ? "Hide the minimap" : "Show the minimap (bottom-left of the rack)";
+  if (show) { mmBuiltFor = null; drawMinimap(); }
+}
+// The chip is dismissible by mouse as well as by esc — a keyboard-only
+// escape hatch is not one.
+$("pick-chip").querySelector(".pick-chip-x").onclick = () => {
+  cancelPending();
+  endConnectPick();
+  disarm();
+};
+$("rack-map-btn").onclick = () => {
+  mapOn = !mapOn;
+  try { localStorage.setItem("ricercar-map", mapOn ? "1" : "0"); } catch (_) {}
+  syncMapBtn();
+};
+
+function drawMinimap() {
+  const el = $("rack-map");
+  if (!el || !mapOn || !wb.rack) return;
+  const pad = 7;
+  const s = Math.min((MM_W - pad * 2) / Math.max(1, rackContent.w), (MM_H - pad * 2) / Math.max(1, rackContent.h));
+  mmT = { s, ox: (MM_W - rackContent.w * s) / 2, oy: (MM_H - rackContent.h * s) / 2 };
+  // The node rects only change when the rack is rebuilt; the viewport rect
+  // changes on every pan frame. Splitting them keeps a pan at two attribute
+  // writes instead of an innerHTML reparse per frame.
+  if (mmBuiltFor !== rackBoxes) {
+    mmBuiltFor = rackBoxes;
+    el.setAttribute("viewBox", `0 0 ${MM_W} ${MM_H}`);
+    const kinds = new Map((wb.rack.modules || []).map((m) => [m.key, m]));
+    const rects = [...rackBoxes.entries()].map(([k, b]) => {
+      const m = kinds.get(k);
+      const cls = m?.kind === "amp" ? "mm-node amp" : m?.is_mod ? "mm-node mod" : "mm-node";
+      return `<rect class="${cls}" x="${(mmT.ox + b.x * s).toFixed(1)}" y="${(mmT.oy + b.y * s).toFixed(1)}" ` +
+        `width="${Math.max(1.5, b.w * s).toFixed(1)}" height="${Math.max(1.5, b.h * s).toFixed(1)}" rx="0.8"/>`;
+    });
+    el.innerHTML = `<g class="mm-nodes">${rects.join("")}</g><rect class="mm-view" id="mm-view" rx="1.5"/>`;
+  }
+  const vr = $("mm-view");
+  if (!vr) return;
+  const { w, h } = frameSize();
+  // Clamped to the map so a camera pushed off the patch still shows a rect on
+  // the side it went — a viewport marker you can lose is worse than none.
+  const x0 = clamp(mmT.ox + view.x * s, 0.5, MM_W - 3);
+  const y0 = clamp(mmT.oy + view.y * s, 0.5, MM_H - 3);
+  const x1 = clamp(mmT.ox + (view.x + w / view.zoom) * s, x0 + 2.5, MM_W - 0.5);
+  const y1 = clamp(mmT.oy + (view.y + h / view.zoom) * s, y0 + 2.5, MM_H - 0.5);
+  vr.setAttribute("x", x0.toFixed(1));
+  vr.setAttribute("y", y0.toFixed(1));
+  vr.setAttribute("width", (x1 - x0).toFixed(1));
+  vr.setAttribute("height", (y1 - y0).toFixed(1));
+}
+
+/** Click or drag the map to put that part of the patch in the middle. */
+function mmNavigate(ev) {
+  if (!mmT) return;
+  const r = $("rack-map").getBoundingClientRect();
+  const rx = ((ev.clientX - r.left) * (MM_W / r.width) - mmT.ox) / mmT.s;
+  const ry = ((ev.clientY - r.top) * (MM_H / r.height) - mmT.oy) / mmT.s;
+  const { w, h } = frameSize();
+  cancelTween();
+  view.x = rx - w / (2 * view.zoom);
+  view.y = ry - h / (2 * view.zoom);
+  viewUserSet = true;
+  applyView();
+}
+$("rack-map").addEventListener("pointerdown", (ev) => {
+  ev.preventDefault();
+  $("rack-map").setPointerCapture(ev.pointerId);
+  mmNavigate(ev);
+});
+$("rack-map").addEventListener("pointermove", (ev) => {
+  if (ev.buttons & 1) mmNavigate(ev);
+});
+
+// ---------- pointer and wheel ----------
+let rackHover = false;
+let spacePan = false;   // space is down over the rack
+let spacePanned = false; // ...and it was used to drag, so it is not an audition
+
+$("rack-scroll").addEventListener("pointerenter", () => { rackHover = true; });
+$("rack-scroll").addEventListener("pointerleave", () => { rackHover = false; });
+
+$("rack-scroll").addEventListener("wheel", (ev) => {
+  if (!wb.rack) return;
+  // The frame has nothing to scroll any more, so the wheel is unambiguously
+  // the camera's — and taking it here is also what stops the *page* from
+  // scrolling out from under a pinch.
+  ev.preventDefault();
+  if (ev.ctrlKey || ev.metaKey) {
+    // A trackpad pinch arrives as a wheel event with ctrlKey set. That is the
+    // entirety of pinch support on the web, and it is why pinch and
+    // ctrl+wheel cannot be given different behaviour even if we wanted to.
+    zoomAt(ev.clientX, ev.clientY, Math.exp(-ev.deltaY * 0.0022));
+    return;
+  }
+  const k = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? frameSize().h : 1;
+  let dx = ev.deltaX * k;
+  let dy = ev.deltaY * k;
+  if (ev.shiftKey && dx === 0) { dx = dy; dy = 0; } // the mouse-wheel horizontal
+  panBy(dx, dy);
+}, { passive: false });
+
+// Pan drags. Capture phase, because a knob or a jack under the pointer would
+// otherwise claim the same press — the modifier decides, not the target.
+$("rack-scroll").addEventListener("pointerdown", (ev) => {
+  if (!wb.rack) return;
+  // Whatever this press turns out to be, it is a press on the canvas — and the
+  // camera gestures below call `preventDefault`, which suppresses the implicit
+  // blur a click would otherwise perform. So the node bank's search field kept
+  // focus straight through clicking and panning the rack, and every camera key
+  // after it went into the text field: `Home` moved the caret instead of
+  // fitting the patch, and `.` typed a full stop. Hand the focus back to the
+  // thing the gesture is actually about.
+  releaseTextEntry();
+  const onControl = ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock");
+  const wants =
+    ev.button === 1 ||                        // middle-drag, everywhere
+    (ev.button === 0 && spacePan) ||          // space-drag, the graph-editor idiom
+    (ev.button === 0 && !onControl && !armed); // ...and the bare canvas, which is
+                                              // the only pan a finger can reach
+  if (!wants) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  spacePanned = spacePan;
+  const el = $("rack-scroll");
+  el.classList.add("grabbing");
+  el.setPointerCapture(ev.pointerId);
+  let px = ev.clientX, py = ev.clientY;
+  const move = (mv) => {
+    panBy(px - mv.clientX, py - mv.clientY);
+    px = mv.clientX;
+    py = mv.clientY;
+  };
+  const up = () => {
+    el.classList.remove("grabbing");
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", up);
+    el.removeEventListener("pointercancel", up);
+  };
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+}, true);
+// Chrome on Windows/Linux answers a middle press with autoscroll unless the
+// click that follows is refused too.
+$("rack-scroll").addEventListener("auxclick", (ev) => { if (ev.button === 1) ev.preventDefault(); });
+
+// ---------- the plate is the menu's real hit target ----------
+// The ⋯ was the *sole* route to every structural verb in the app. It is now a
+// discoverability aid: right-click anywhere on a plate — or hold a finger on
+// one — and the same menu opens, aimed at the same module. Both gestures are
+// what every graph editor and every desktop already trained the hand to do,
+// and neither of them needs a 24px target.
+function menuForPlate(target, x, y) {
+  const g = target?.closest?.("g[data-key]");
+  const key = g && g.getAttribute("data-key");
+  if (!key || !wb.rack) return false;
+  const mod = wb.rack.modules.find((m) => m.key === key);
+  if (!mod) return false;
+  openStructMenu(mod, x, y);
+  return true;
+}
+$("rack-svg").addEventListener("contextmenu", (ev) => {
+  if (!menuForPlate(ev.target, ev.clientX, ev.clientY)) return;
+  ev.preventDefault();
+});
+// Long-press, for the pointer that has no second button. Registered after the
+// pan handler on the same element and phase, so the pan's `stopPropagation`
+// (which is aimed at the descendants) still leaves this one to run — and a
+// press that turns into a drag cancels the timer before it can fire.
+$("rack-scroll").addEventListener("pointerdown", (ev) => {
+  if (ev.pointerType === "mouse" || ev.button !== 0) return;
+  if (ev.target?.closest?.("[data-addr], .jack, .mod-menu-btn, .mod-lock")) return;
+  const sx = ev.clientX, sy = ev.clientY;
+  let timer = setTimeout(() => {
+    timer = null;
+    if (menuForPlate(document.elementFromPoint(sx, sy), sx, sy)) {
+      // A menu that opens under a finger already resting on the canvas must
+      // not also be a pan that started 500 ms ago.
+      $("rack-scroll").classList.remove("grabbing");
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (_) {}
+    }
+  }, 500);
+  const cancel = (mv) => {
+    if (mv && mv.type === "pointermove" && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 8) return;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    document.removeEventListener("pointermove", cancel);
+    document.removeEventListener("pointerup", cancel);
+    document.removeEventListener("pointercancel", cancel);
+  };
+  document.addEventListener("pointermove", cancel);
+  document.addEventListener("pointerup", cancel);
+  document.addEventListener("pointercancel", cancel);
+}, true);
+
+/** Space over the rack is the pan modifier every graph editor has, and space
+ *  everywhere is this app's audition toggle. Both survive: over the rack the
+ *  key arms a pan, and if it is released without one the audition happens
+ *  then. The only cost is that the toggle fires on release instead of press,
+ *  which is under the threshold of noticing. */
+function rackSpaceDown() {
+  if (!rackHover || currentView !== "play" || !wb.rack) return false;
+  spacePan = true;
+  spacePanned = false;
+  $("rack-scroll").classList.add("grabbing");
+  return true;
+}
+function rackSpaceUp() {
+  if (!spacePan) return false;
+  spacePan = false;
+  $("rack-scroll").classList.remove("grabbing");
+  if (!spacePanned) toggleAudition();
+  return true;
+}
+
+// ---------- auto-pan while a cable is out ----------
+// The inverse of the hover-scroll that was just removed: the canvas moves when
+// the *player* drags something to the edge, and only then. VCV's rule.
+let edgePan = null; // {x, y, cx, cy}
+let edgeRaf = null;
+
+function edgePanFrom(clientX, clientY) {
+  const f = $("rack-svg").getBoundingClientRect();
+  const m = 46;
+  // Only from inside: dragging *to* the edge asks for more canvas, and a
+  // pointer parked out in the node bank is not asking for anything.
+  if (clientX < f.left || clientX > f.right || clientY < f.top || clientY > f.bottom) return stopEdgePan();
+  const vel = (d) => (d < m ? -((m - Math.max(d, 0)) / m) * 13 : 0);
+  const x = vel(clientX - f.left) - vel(f.right - clientX);
+  const y = vel(clientY - f.top) - vel(f.bottom - clientY);
+  if (x === 0 && y === 0) return stopEdgePan();
+  edgePan = { x, y, cx: clientX, cy: clientY };
+  if (edgeRaf != null) return;
+  const step = () => {
+    if (!edgePan || !wire) { edgeRaf = null; return; }
+    panBy(edgePan.x, edgePan.y);
+    edgeRaf = requestAnimationFrame(step);
+  };
+  edgeRaf = requestAnimationFrame(step);
+}
+function stopEdgePan() {
+  edgePan = null;
+  if (edgeRaf != null) cancelAnimationFrame(edgeRaf);
+  edgeRaf = null;
+}
+
+// ---------- the frame changed shape ----------
+// The node-bank divider changes the frame's width without a window resize, and
+// nothing refit — the patch just got clipped. There was no ResizeObserver
+// anywhere in the app; this is the one place that needs one.
+let roSettled = false;
+new ResizeObserver(() => {
+  if (!roSettled) { roSettled = true; return; } // the observer's own first call
+  if (!wb.rack) return;
+  if (viewUserSet && !contentFullyVisible()) applyView();
+  else fitBox(contentBox(), camAimed);
+}).observe($("rack-scroll"));
 
 // ---------- structural edits ----------
-function sendStruct(op) {
-  pushUndo();
-  send({ type: "edit_structure", op });
+// Structural edits are strictly serialized, one in flight at a time.
+//
+// Two reasons, and the second is the one with a body count. Every op addresses
+// a node by its *position* in the tree, so an op built against the tree on
+// screen and applied after another op has already reshaped that tree does not
+// mean what the player meant — it means whatever now happens to live at that
+// key. And the persisted console log from earlier builds carries
+// `recursive use of an object detected … at WasmEngine.edit_structure`, which
+// is what overlapping calls into one wasm object look like from the outside.
+// Queue rather than drop: the ops came from deliberate gestures, and each is
+// re-sent only once the tree it will land on is the tree it was aimed at.
+let structInFlight = false;
+const structQueue = [];
+/** Post a structural op. `landed` is what it earns *if the engine accepts it* —
+ *  `{text, opts}` for the confirmation, `{drop}` for a HELD entry that is only
+ *  really gone once the module is really in the patch. See `landedNote`;
+ *  neither is spent here. */
+function sendStruct(op, landed) {
+  queueStruct({ type: "edit_structure", op }, landed || null);
+}
+function queueStruct(msg, landed) {
+  if (structInFlight) {
+    // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
+    // deeper than a rapid double-click means the worker is wedged, and
+    // replaying a minute of stale intent into a tree that has moved on is
+    // worse than saying so.
+    if (structQueue.length >= 8) {
+      return note("still applying the last edit — give it a moment");
+    }
+    // The confirmation travels with the op rather than being said now, for the
+    // same reason it waits on the reply: nothing has happened yet. It cannot
+    // ride *on* `msg`, which is structured-cloned to the worker and would
+    // choke on the undo closure.
+    structQueue.push({ msg, landed: landed || null });
+    // Waiting its turn is still in flight as far as the shelf is concerned.
+    if (landed && landed.drop != null) setTrayPending(landed.drop, true);
+    // Nothing went out, so nothing may be charged to the edit that is out.
+    stagingBound = null;
+    return;
+  }
+  structInFlight = true;
+  bindLanded(landed);
+  if (landed && landed.drop != null) setTrayPending(landed.drop, true);
+  stageUndo();
+  // Taken here, against the tree the op is aimed at. By the time the reply
+  // lands `wb.rack` is the *new* rack and "was that node's parent binary?"
+  // can no longer be asked.
+  stagedLockRemap = lockRemapFor(msg);
+  send(msg);
 }
 
-// The module vocabulary lives in exactly one place now (MODULES / the node
-// bank), so this menu no longer reprints it. "replace with…" and "insert
-// after…" hand off to the rail with this socket already chosen and lit —
-// the inventory, its glyphs, its search and its one-sentence descriptions are
-// all things a nineteen-item context menu could never carry.
-function openStructMenu(mod, x, y) {
-  const menu = $("ctx-menu");
-  const items = [];
-  const item = (label, act, danger) =>
-    items.push(`<button class="cm-item${danger ? " danger" : ""}" data-act='${JSON.stringify(act)}'>${label}</button>`);
-  const head = (t) => items.push(`<div class="cm-head">${t}</div>`);
+// ---------- locks across a structural edit ----------
+// A lock is a trace address (`node/0#cut`), and a trace address is a
+// *position*, so every structural edit moves some locks and destroys others.
+// Clearing the whole set was honest and it broke the one loop the graph editor
+// exists to serve: hand-build a routing, pin it, breed around it. You cannot
+// pin anything if pinning is undone by the next edit.
+//
+// Every op the UI can send has known, small key-remapping semantics — read off
+// `apply_struct_op` in mutate.rs — so the set is carried through them instead
+// of thrown away. This is the interim treatment: the real fix is a stable
+// `uid` on the node (WS-4 §6, phase 2), after which none of this is needed.
+// A whole-tree replace (`edit_set_tree`, which is undo, redo and every
+// client-side rewrite) is the one route that genuinely says nothing about
+// where anything went, and it still clears.
+//
+// Returns `key → newKey | null` (null = that site no longer exists), or null
+// for "cannot be known, clear them".
+function reRoot(k, from, to) { return to + k.slice(from.length); }
 
-  if (mod.kind === "amp") {
-    head("output");
-    item("add a module here…", { arm: "insert", key: "node" });
-  } else if (mod.is_mod) {
-    // A modulator is edited through the slot it sits in, which belongs to its
-    // parent — that is why this menu names the parent's key.
-    const parentKey = mod.key.replace(/\/m$/, "");
-    head(`modulating ${kindName(rackKindAt(parentKey) || "")} → ${kindModTarget(rackKindAt(parentKey)) || "?"}`);
-    for (const k of MOD_KINDS) {
-      if (k !== mod.kind) item(kindName(k), { op: { op: "set_mod", key: parentKey, kind: k } });
+/** A lock address split into the three things that move independently: the
+ *  audio node it hangs off, the modulation chain below it if any, and the
+ *  parameter site itself. `amp#attack` has no audio node in the tree at all
+ *  (the envelope wraps the term), which is exactly why it survives everything.
+ */
+function lockParts(addr) {
+  const h = addr.indexOf("#");
+  const key = h < 0 ? addr : addr.slice(0, h);
+  const site = h < 0 ? "" : addr.slice(h);
+  const segs = key.split("/");
+  const i = segs.indexOf("m");
+  return i < 0
+    ? { owner: key, tail: "", site }
+    : { owner: segs.slice(0, i).join("/"), tail: `/${segs.slice(i).join("/")}`, site };
+}
+
+function lockRemapFor(msg) {
+  if (!msg || msg.type !== "edit_structure") return null;
+  const op = msg.op || {};
+  const key = op.key;
+  if (!key) return null;
+  switch (op.op) {
+    // The new module takes the socket and the old occupant becomes its first
+    // input — `graft` always wires `old` into index 0 — so a whole subtree
+    // slides one level deeper and nothing is lost.
+    case "insert_tree":
+      return (k) => (keyInside(k, key) ? reRoot(k, key, `${key}/0`) : k);
+    // Everything at and below the key is replaced wholesale.
+    case "replace_tree":
+      return (k) => (keyInside(k, key) ? null : k);
+    // Two shapes. Pulling one branch out of a binary collapses the parent to
+    // the surviving sibling, which therefore climbs into the parent's key;
+    // anything else is spliced out and its own input climbs into its key.
+    case "delete": {
+      const cut = key.lastIndexOf("/");
+      const parentKey = cut > 0 ? key.slice(0, cut) : null;
+      const binary = parentKey && MOD_BY_KIND[rackKindAt(parentKey)]?.ins === 2;
+      if (binary) {
+        const sib = `${parentKey}/${key.slice(cut + 1) === "0" ? "1" : "0"}`;
+        return (k) =>
+          keyInside(k, sib) ? reRoot(k, sib, parentKey)
+          : keyInside(k, parentKey) ? null
+          : k;
+      }
+      const child = `${key}/0`;
+      return (k) =>
+        keyInside(k, child) ? reRoot(k, child, key)
+        : keyInside(k, key) ? null
+        : k;
     }
-    head("");
-    item("unplug this modulator", { op: { op: "set_mod", key: parentKey, kind: "none" } }, true);
-  } else {
-    head(kindName(mod.kind));
-    item("replace with…", { arm: "replace", key: mod.key });
-    item("insert after…", { arm: "insert", key: mod.key });
-    const target = kindModTarget(mod.kind);
-    if (target) {
-      head(`modulate → ${target}`);
-      for (const k of MOD_KINDS) item(kindName(k), { op: { op: "set_mod", key: mod.key, kind: k } });
-      if (modAtKey(mod.key)) item("none", { op: { op: "set_mod", key: mod.key, kind: "none" } });
+    // The two branches exchange places, so the locks on them do too.
+    case "swap_mix": {
+      const a = `${key}/0`, b = `${key}/1`;
+      return (k) =>
+        keyInside(k, a) ? reRoot(k, a, b)
+        : keyInside(k, b) ? reRoot(k, b, a)
+        : k;
     }
-    if (MOD_BY_KIND[mod.kind]?.ins === 2) {
-      head(kindName(mod.kind));
-      item("swap the two inputs", { op: { op: "swap_mix", key: mod.key } });
+    // The whole modulation term under the owner is replaced; the audio tree
+    // around it does not move at all.
+    case "set_mod":
+    case "set_mod_tree":
+      return (k) => (keyInside(k, `${key}/m`) ? null : k);
+    default:
+      return null;
+  }
+}
+
+/** Carry `wb.locks` through the edit that just landed. Returns how many sites
+ *  the edit took with it, so the toast only speaks when something was lost. */
+function remapLocks(remap) {
+  let dropped = 0;
+  const next = new Set();
+  for (const addr of wb.locks) {
+    const hash = addr.indexOf("#");
+    const k = hash < 0 ? addr : addr.slice(0, hash);
+    const nk = remap(k);
+    if (nk === null) { dropped += 1; continue; }
+    next.add(hash < 0 ? nk : nk + addr.slice(hash));
+  }
+  wb.locks = next;
+  return dropped;
+}
+function drainStruct() {
+  if (structInFlight) return;
+  if (structQueue.length) {
+    const q = structQueue.shift();
+    queueStruct(q.msg, q.landed);
+    return;
+  }
+  // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
+  // step — one per reply, each read off the stack as it stands now.
+  if (restoreBacklog === 0) return;
+  const kind = restoreBacklog > 0 ? "undo" : "redo";
+  restoreBacklog -= restoreBacklog > 0 ? 1 : -1;
+  performRestore(kind);
+}
+
+// ---------- client-side tree rewrites ----------
+// `StructOp` has no `Move`, and most of the connection grammar is moves:
+// reconnect an output into another socket, promote a branch over its parent,
+// join a second source through a Mix. Expressed as op pairs those cost two
+// renders, two vets and two undo steps for one gesture — and the tree in
+// between is one the player never asked to hear.
+//
+// So the rewrite happens here, on a copy of the bench tree, and goes back as
+// one whole-tree replace: one round trip, one atomic undo step, one
+// re-render. The engine now validates on the way in (`validate_tree`, the
+// MAX_SIZE / MAX_DEPTH / MAX_MOD_DEPTH ceilings this route used to skip
+// entirely), so a rewrite that would put the patch outside the prior's
+// support comes back as `edit_rejected` carrying the reason, rather than as a
+// patch the next ⚡ silently mutates back inside the ceilings.
+//
+// `fn(tree, marks)` mutates the clone in place. Returning a **string** is a
+// refusal and that string is what the player is told — never a silent no-op.
+function applyTreeRewrite(fn) {
+  if (!wb.tree) { note("no patch on the bench"); return false; }
+  // Deliberately NOT queued, unlike an op. An op is a description of an edit
+  // and is re-aimed at whatever tree it lands on; a whole-tree replace *is* a
+  // tree, computed from the one on screen. Held until the tree has moved on,
+  // it would post a patch that silently discards the edit in front of it.
+  if (structInFlight) {
+    note("still applying the last edit — give it a moment");
+    return false;
+  }
+  const tree = JSON.parse(JSON.stringify(wb.tree));
+  const marks = [];
+  for (const k of placeholderKeys) {
+    const n = nodeAtIn(tree, k);
+    if (n) marks.push(n);
+  }
+  // Locks ride the rewrite the same way the holes do. An op has a known key
+  // remapping (`lockRemapFor`); a whole-tree replace does not — but this route
+  // *builds* the new tree, and a rewrite moves subtrees by reference, so the
+  // node object is a handle on "the same module" that a key is not. Note where
+  // each locked site hangs before the mutation, ask where those objects ended
+  // up after it, and a delete that splices one module out of a chain no longer
+  // silently takes every lock in the patch with it.
+  const anchors = [];  // {node, addrs:[{tail, site}]}
+  const fixed = [];    // addresses with no audio node under them — the amp's
+  const byOwner = new Map();
+  for (const addr of wb.locks) {
+    const p = lockParts(addr);
+    if (!byOwner.has(p.owner)) byOwner.set(p.owner, []);
+    byOwner.get(p.owner).push(p);
+  }
+  for (const [owner, parts] of byOwner) {
+    // "amp" is not a path into the term — the envelope wraps it — and
+    // `keyIndices` would happily read it as `node/0`. Anything that is not a
+    // tree key cannot move, so it is carried through verbatim.
+    if (owner !== "node" && !owner.startsWith("node/")) {
+      for (const p of parts) fixed.push(p.owner + p.tail + p.site);
+      continue;
     }
-    head("");
-    item("delete", { op: { op: "delete", key: mod.key } }, true);
+    // A key that does not resolve is already stale; it is dropped rather than
+    // carried, because carrying it would pin whatever moves in later.
+    const n = nodeAtIn(tree, owner);
+    if (n) anchors.push({ node: n, parts });
   }
 
-  menu.innerHTML = items.join("");
+  const refusal = fn(tree, marks);
+  if (typeof refusal === "string") { note(refusal); return false; }
+  placeholderPending = keysOfNodes(tree, marks);
+
+  const where = new Map();
+  const live = anchors.map((a) => a.node);
+  if (live.length) walkTreeKeys(tree, (n, key) => { if (live.includes(n)) where.set(n, key); });
+  const next = new Set(fixed);
+  for (const a of anchors) {
+    const k = where.get(a.node);
+    if (k === undefined) continue; // the rewrite removed that module
+    for (const p of a.parts) next.add(k + p.tail + p.site);
+  }
+  pendingRewriteLocks = next;
+
+  queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) });
+  return true;
+}
+/** Where the locks land after the rewrite in flight, or null when the restore
+ *  came from ⌘Z — an undo puts back a tree these locks were never about. */
+let pendingRewriteLocks = null;
+
+// ---------- empty sockets ----------
+// An unplugged socket has to look empty. The grammar cannot express that: the
+// term is total, every input is filled, and adding a `Silence` production
+// would move φ_struct's family counts and cost an evolution revalidation run
+// (WS-1 §7, and the standing rule that a green `make check` says nothing
+// about search health). So the engine keeps its substitute node and the UI
+// knows which one it is: a plate drawn as a hole, and the first place the
+// next module wants to go.
+//
+// Tracked by key, which is a position, so it survives exactly as long as the
+// positions do — every rewrite carries it across by object identity, and any
+// edit that goes through the op path drops it. Making it survive a reload is
+// the `uid` work in phase 2.
+let placeholderKeys = new Set();
+let placeholderPending = null;
+
+function placeholderNode() { return SEED_VCO(); }
+function isPlaceholderKey(key) { return placeholderKeys.has(key); }
+
+// ---------- the structure menu ----------
+// It was nineteen flat items, fourteen of which were the modulator inventory
+// reprinted from the node bank — with `delete` last, and on a short window
+// below the fold entirely. The module *vocabulary* lives in exactly one place
+// now (MODULES / the node bank), so this menu carries only **verbs** and hands
+// the nouns off to the rail, which has their glyphs, their one-line blurbs,
+// their ports and their θ±σ.
+//
+// Seven verbs, in the order a patch is actually edited — replace · insert
+// before · insert after · duplicate · extract to HELD · bypass · delete — plus
+// `modulate → <port>` as a single row that arms the rail filtered to the amber
+// sorts, and, on the six binaries only, the one op that is meaningless
+// anywhere else. `delete` is fenced off behind a rule and printed in the red
+// the rest of the app reserves for loss.
+function openStructMenu(mod, x, y) {
+  if (mod.kind === "amp") {
+    // A one-item menu is not a menu; it is a button wearing one. The amp's ⋯
+    // has exactly one thing to offer, so it performs it.
+    armFromRack("insert", "node");
+    return;
+  }
+  if (mod.is_mod) {
+    // A modulator is edited through the slot it sits in, which belongs to its
+    // parent — that is why these rows name the parent's key.
+    const parentKey = mod.key.replace(/\/m$/, "");
+    const owner = rackKindAt(parentKey) || "";
+    const port = kindModTarget(owner) || "?";
+    showMenu(x, y, {
+      glyph: MOD_BY_KIND[mod.kind]?.glyph,
+      title: mod.title || kindName(mod.kind),
+      sub: `modulating ${kindName(owner)} → ${port}`,
+    }, [
+      {
+        label: "replace with…",
+        sub: "pick another modulator from the rail",
+        run: () => armFromRack("insert", parentKey, { accepts: ["mod"], verb: "modulate" }),
+      },
+      {
+        label: "unplug this modulator",
+        sub: "it goes to HELD; the knob stops moving",
+        danger: true,
+        sep: true,
+        run: () => unplugMod(parentKey),
+      },
+    ]);
+    return;
+  }
+
+  const key = mod.key;
+  const node = nodeAtKey(key);
+  const spec = MOD_BY_KIND[mod.kind];
+  const fields = childFields(spec || {});
+  const ins = fields.length;
+  const inNames = spec?.inNames || (ins === 2 ? ["a", "b"] : ["in"]);
+  const rows = [];
+  rows.push({
+    label: "replace with…",
+    sub: "keeps what feeds it",
+    run: () => armFromRack("replace", key),
+  });
+  rows.push({
+    label: "insert before…",
+    sub: ins === 0 ? "" : `a new module between ${inNames[0]} and this`,
+    disabled: ins === 0,
+    why: "a source has no input — there is no wire on this side of it",
+    run: () => armFromRack("insert", `${key}/0`, { verb: "insert before", aim: key }),
+  });
+  rows.push({
+    label: "insert after…",
+    sub: "a new module between this and what it feeds",
+    run: () => armFromRack("insert", key),
+  });
+  rows.push({
+    label: "duplicate",
+    sub: ins === 0 ? "" : "a second one, in series, with the same settings",
+    disabled: ins === 0,
+    why: "a source has nothing to chain into — branch from its out ○ instead",
+    run: () => duplicateModule(key),
+  });
+  rows.push({
+    label: "extract to HELD",
+    sub: "leaves the socket empty; drag it back any time",
+    run: () => extractModule(key),
+  });
+  rows.push({
+    label: "bypass",
+    sub: ins === 0 ? "" : `${inNames[0]} passes straight through`,
+    disabled: ins === 0,
+    why: "a source generates the signal — there is nothing to pass through it",
+    run: () => bypassModule(key),
+  });
+  const port = kindModTarget(mod.kind);
+  if (port) {
+    rows.push({
+      label: `modulate → ${port}`,
+      sub: modAtKey(key)
+        ? `replaces the ${fragLabel(modAtKey(key), true)} already on it`
+        : "arms the rail at the modulators",
+      run: () => armFromRack("insert", key, { accepts: ["mod"], verb: "modulate" }),
+    });
+  }
+  if (ins === 2) {
+    rows.push({
+      label: "swap the two inputs",
+      sub: `${inNames[0]} ⇄ ${inNames[1]}`,
+      // The one structural verb in this menu that said nothing at all. On a
+      // ducker or a vocoder it is the difference between the two patches, and
+      // on a mix it is inaudible — either way the player is owed a receipt and
+      // the undo that goes with it. Like every other confirmation here it is
+      // said on the reply, so a refused swap stays silent.
+      run: () => sendStruct({ op: "swap_mix", key }, {
+        text: `${plateTitle(key)}: ${inNames[0]} and ${inNames[1]} swapped.`,
+        opts: { undo: doUndo, undoLabel: "swap them back" },
+      }),
+    });
+  }
+  rows.push({
+    label: "delete",
+    sub: deleteBlurb(key, node, fields, inNames),
+    danger: true,
+    sep: true,
+    run: (ev) => deleteModule(key, ev.clientX || x, ev.clientY || y),
+  });
+  showMenu(x, y, {
+    glyph: spec?.glyph,
+    title: isPlaceholderKey(key) ? "empty" : mod.title || kindName(mod.kind),
+    sub: `${mod.knobs?.length || 0} knobs · ${subtreeSize(node || {})} modules from here down`,
+  }, rows);
+}
+
+/** One line, said before the click, about what `delete` is going to cost. */
+function deleteBlurb(key, node, fields, inNames) {
+  if (!node) return "";
+  const tag = nodeTag(node);
+  if (fields.length === 2) {
+    const a = subtreeSize(node[tag][fields[0]] || {});
+    const b = subtreeSize(node[tag][fields[1]] || {});
+    return `two inputs — you choose which survives (${inNames[0]} ${a}, ${inNames[1]} ${b})`;
+  }
+  const par = parentOfKey(key);
+  if (par && par.binary) {
+    return `takes this whole branch and the ${kindName(rackKindAt(par.key))} above it`;
+  }
+  return fields.length === 0 ? "a lone source cannot be deleted" : "one module; what it feeds moves up";
+}
+
+/** The parent of a trace key, and whether that parent is one of the six
+ *  binaries — which is the fact that decides what `delete` really destroys. */
+function parentOfKey(key) {
+  if (key === "node") return null;
+  const pk = key.slice(0, key.lastIndexOf("/"));
+  const p = nodeAtKey(pk);
+  if (!p) return null;
+  return { key: pk, node: p, binary: childFields(MOD_BY_TAG[nodeTag(p)] || {}).length === 2 };
+}
+
+// ---------- the destructive verbs, staged and named ----------
+// The rule the whole group is written to: **"removed" always means
+// "recoverable without ⌘Z"**. Every one of these puts what it took on the
+// HELD shelf *before* the edit goes out, names the loss in the toast in the
+// patch's own words, and hangs an inline undo off it — because the player who
+// needs the undo is the one who has just discovered that the verb meant
+// something bigger than they thought, and hunting for a keystroke is not the
+// moment to learn one.
+
+/** A module without the chain under it: its primary input is swapped for a
+ *  bare source, which `insert_tree`'s graft overwrites with whatever socket it
+ *  is dropped into. So a head put on the shelf comes back with its own
+ *  parameters and lands *in* a wire rather than over it. */
+function headFragment(node) {
+  const tag = nodeTag(node);
+  const f = childFields(MOD_BY_TAG[tag] || {});
+  const clone = JSON.parse(JSON.stringify(node));
+  if (f.length > 0) clone[tag][f[0]] = SEED_VCO();
+  return clone;
+}
+
+/** A second one in series, same settings. The clone's own copy of the input is
+ *  thrown away and the *original* node is spliced under it, so this costs one
+ *  module (plus a binary's second branch), not a whole second chain. */
+function duplicateModule(key) {
+  const here = nodeAtKey(key);
+  if (!here) return note("that module has moved");
+  const name = kindName(rackKindAt(key)) || fragLabel(here, false);
+  const ok = applyTreeRewrite((tree) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const tag = nodeTag(node);
+    const f = childFields(MOD_BY_TAG[tag] || {});
+    if (f.length === 0) return "a source has nothing to chain into — branch from its out ○ instead";
+    const dup = JSON.parse(JSON.stringify(node));
+    dup[tag][f[0]] = node;
+    if (!setNodeAtIn(tree, key, dup)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  noteOnLanding(`a second ${name} now sits after the first, with the same settings.`,
+    { undo: doUndo, undoLabel: "take it out" });
+}
+
+/** Take the module and everything under it off the patch and onto the shelf,
+ *  leaving the socket visibly empty. The unplug gesture, from the menu. */
+function extractModule(key) {
+  const here = nodeAtKey(key);
+  if (!here) return note("that module has moved");
+  // Named before the rewrite goes out, off the rack the player is looking at.
+  const what = chainTitle(key);
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const hole = placeholderNode();
+    if (!setNodeAtIn(tree, key, hole)) return "that module has moved — try again";
+    if (!marks.includes(node)) doomed = node;
+    marks.push(hole);
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  noteOnLanding(
+    doomed
+      ? `${what} is held below — the socket is empty.`
+      : "the socket is empty.",
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
+  );
+}
+
+/** Bypass, the verb every DAW user reaches for, as a client-side rewrite: the
+ *  module's first input is routed straight through to whatever it fed, and the
+ *  module itself — parameters and all — goes to HELD flagged `rewrap`, so
+ *  dropping it back on a ○ splices it in rather than over. That is the
+ *  un-bypass, and it restores the settings, which is the whole point of
+ *  bypassing rather than deleting. (A side map keyed by `uid` is the phase-2
+ *  version; the shelf is what there is until a node has an identity.) */
+function bypassModule(key) {
+  const here = nodeAtKey(key);
+  if (!here) return note("that module has moved");
+  const name = kindName(rackKindAt(key)) || fragLabel(here, false);
+  const f = childFields(MOD_BY_TAG[nodeTag(here)] || {});
+  if (f.length === 0) return note(`${name} generates the signal — there is nothing to pass through it.`);
+  const lost = f.length === 2 ? subtreeSize(here[nodeTag(here)][f[1]] || {}) : 0;
+  let head = null;
+  const ok = applyTreeRewrite((tree) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const tag = nodeTag(node);
+    const ff = childFields(MOD_BY_TAG[tag] || {});
+    const through = node[tag][ff[0]];
+    if (!through) return "there is nothing plugged into it to pass through";
+    head = headFragment(node);
+    if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  const inNames = MOD_BY_KIND[rackKindAt(key)]?.inNames;
+  const uid = head ? stageFragment(head, false, { rewrap: true, note: "bypassed" }) : null;
+  noteOnLanding(
+    lost > 1
+      ? `${name} bypassed — its ${inNames ? inNames[1] : "second"} branch (${lost} modules) is held with it.`
+      : `${name} bypassed — it is held below with its settings; drag it back onto a ○ to switch it in again.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "switch it back in" },
+  );
+}
+
+/** `delete` on a binary used to silently eat one of its two branches: the
+ *  engine keeps the primary input and drops the other, and nothing on screen
+ *  said which one or how big it was. So the loss is pre-flighted here — the UI
+ *  knows `MODULES[kind].ins` and it knows the tree — named, and *chosen*. */
+function deleteModule(key, x, y) {
+  const node = nodeAtKey(key);
+  if (!node) return note("that module has moved");
+  const tag = nodeTag(node);
+  const spec = MOD_BY_KIND[rackKindAt(key)] || MOD_BY_TAG[tag];
+  const f = childFields(spec || {});
+  const name = kindName(rackKindAt(key)) || fragLabel(node, false);
+
+  if (f.length === 2) {
+    const names = spec?.inNames || ["a", "b"];
+    return openChooser(x, y, `delete ${name} — which input survives?`, [0, 1].map((i) => {
+      // Both branches are plates on screen, so both are named the way the rack
+      // names them — a survivor choice is exactly the wrong place to make the
+      // player decode a label they have never been shown.
+      const keepName = plateTitle(`${key}/${i}`);
+      const dropSize = subtreeSize(node[tag][f[1 - i]] || {});
+      return {
+        label: `delete, keep ${names[i]}`,
+        sub: `${keepName} takes ${name}'s place · discards ${names[1 - i]} ` +
+             `(${dropSize} module${dropSize === 1 ? "" : "s"}) to HELD`,
+        run: () => deleteKeeping(key, i, name),
+      };
+    }));
+  }
+
+  // A child of a binary is a *branch*: the engine collapses the parent to the
+  // sibling, so deleting it also deletes the module that was combining them.
+  // Two modules and a whole subtree go for one click, which is exactly the
+  // kind of edit that has to be said out loud first.
+  const par = parentOfKey(key);
+  if (par && par.binary) {
+    const mine = Number(key.slice(key.lastIndexOf("/") + 1));
+    const sib = plateTitle(`${par.key}/${1 - mine}`);
+    const pname = kindName(rackKindAt(par.key)) || "the module above";
+    return openChooser(x, y, `delete this branch?`, [{
+      label: `delete ${name} and the ${pname}`,
+      sub: `${sib} feeds straight through · this branch ` +
+           `(${subtreeSize(node)} module${subtreeSize(node) === 1 ? "" : "s"}) goes to HELD`,
+      danger: true,
+      run: () => deleteKeeping(par.key, 1 - mine, pname),
+    }]);
+  }
+
+  if (f.length === 0) {
+    // Deliberately still sent: the engine's refusal is the right sentence, and
+    // it is the one the player should hear from the thing that refuses.
+    return sendStruct({ op: "delete", key });
+  }
+
+  // The plain case — one module out of a chain, what it feeds moves up. No
+  // confirm: the loss is one module and the toast's undo is right there.
+  let head = null;
+  const ok = applyTreeRewrite((tree) => {
+    const n = nodeAtIn(tree, key);
+    if (!n) return "that module has moved — try again";
+    const t = nodeTag(n);
+    const through = n[t][childFields(MOD_BY_TAG[t] || {})[0]];
+    if (!through) return "a lone source cannot be deleted — replace it instead";
+    head = headFragment(n);
+    if (!setNodeAtIn(tree, key, through)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  const uid = head ? stageFragment(head, false, { rewrap: true }) : null;
+  noteOnLanding(`${name} deleted — it is held below.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" });
+}
+
+/** Collapse the binary at `key` onto child `keep`; the other branch goes to
+ *  HELD whole, so "discards 3 modules" is a statement about where they went. */
+function deleteKeeping(key, keep, name) {
+  // Named while it is still in the rack, and by its plate: this sentence is
+  // the receipt for a branch the player just agreed to lose.
+  const droppedName = chainTitle(`${key}/${1 - keep}`);
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    const node = nodeAtIn(tree, key);
+    if (!node) return "that module has moved — try again";
+    const tag = nodeTag(node);
+    const f = childFields(MOD_BY_TAG[tag] || {});
+    if (f.length !== 2) return "that module no longer has two inputs";
+    const survivor = node[tag][f[keep]];
+    const dropped = node[tag][f[1 - keep]];
+    if (!survivor) return "that module has moved — try again";
+    if (dropped && !marks.includes(dropped)) doomed = dropped;
+    if (!setNodeAtIn(tree, key, survivor)) return "that module has moved — try again";
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  noteOnLanding(
+    doomed
+      ? `${name} deleted — ${droppedName} is held below.`
+      : `${name} deleted.`,
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
+  );
+}
+
+/** Pull the modulator out of a slot. The op path, because a modulation slot is
+ *  one field and `set_mod` says exactly that. */
+function unplugMod(ownerKey) {
+  const old = modAtKey(ownerKey);
+  let uid = null;
+  sendStruct({ op: "set_mod", key: ownerKey, kind: "none" }, {
+    text: old ? `${fragLabel(old, true)} unplugged — it is held below.` : "modulation unplugged.",
+    opts: { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
+  });
+  uid = old ? stageFragment(old, true) : null;
+}
+
+// ---------- one floating menu, one keyboard ----------
+// `#ctx-menu` is the app's only popover of this shape, so the structure menu,
+// the connect chooser and the delete confirm are the same element with the
+// same dismissal law, the same flip-up, and the same `role="menu"` keyboard:
+// ↑/↓ rove, Home/End jump, type-ahead selects by first letters, Enter runs,
+// Escape closes and hands focus back.
+let menuRows = [];
+let menuTypeahead = { buf: "", at: 0 };
+// A long-press opens the menu and *then* releases, and that release is a click
+// on the plate underneath — which the app-wide "a click outside closes it" law
+// would read as a dismissal. One timestamp is cheaper than an exception.
+let menuOpenedAt = 0;
+// Whatever had the keyboard when the menu took it. One dismissal law needs one
+// restoration law, or Escape leaves focus on a hidden element and the next
+// keystroke goes nowhere.
+let menuOpener = null;
+
+function showMenu(x, y, head, rows) {
+  const menu = $("ctx-menu");
+  menuRows = rows;
+  if (!menu.contains(document.activeElement)) menuOpener = document.activeElement;
+  const headHtml = head.title
+    ? `<div class="cm-title">` +
+      (head.glyph ? `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${head.glyph}</svg>` : "") +
+      `<span class="cm-title-name">${esc(head.title)}</span></div>` +
+      (head.sub ? `<div class="cm-head">${esc(head.sub)}</div>` : "")
+    : `<div class="cm-head">${esc(head.sub || "")}</div>`;
+  menu.innerHTML = headHtml + rows.map((r, i) =>
+    `<button class="cm-item cm-two${r.danger ? " danger" : ""}${r.sep ? " cm-sep" : ""}"` +
+    ` role="menuitem" tabindex="-1" data-i="${i}"${r.disabled ? ` disabled aria-disabled="true" title="${esc(r.why || "")}"` : ""}>` +
+    `${esc(r.label)}${r.sub ? `<span class="cm-sub">${esc(r.sub)}</span>` : ""}</button>`).join("");
+  menu.setAttribute("role", "menu");
   menu.querySelectorAll(".cm-item").forEach((btn) => {
-    btn.onclick = () => {
-      menu.classList.add("hidden");
-      const act = JSON.parse(btn.dataset.act);
-      if (act.op) sendStruct(act.op);
-      else armFromRack(act.arm, act.key);
+    btn.onclick = (ev) => {
+      const r = menuRows[Number(btn.dataset.i)];
+      if (!r || btn.disabled) return;
+      closeMenu();
+      r.run(ev);
     };
   });
   menu.classList.remove("hidden");
+  // Measure unclamped, then place. The old code only ever clamped *downward*,
+  // so a menu opened near the bottom of a short window had its last rows —
+  // `delete` among them — rendered off-screen with no way to reach them.
+  menu.style.left = "0px";
+  menu.style.top = "0px";
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  menu.style.left = `${Math.min(x, window.innerWidth - mw - 8)}px`;
-  menu.style.top = `${Math.min(y, window.innerHeight - mh - 8)}px`;
+  const left = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
+  let top = y;
+  if (y + mh > window.innerHeight - 8) {
+    top = y - mh >= 8 ? y - mh : Math.max(8, window.innerHeight - mh - 8);
+  }
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  // `max-height: 70vh` can still bite on a laptop in landscape. Say so with an
+  // edge shadow rather than letting the list end in a clean cut that reads as
+  // "that is all of them".
+  menu.classList.toggle("cm-clamped", menu.scrollHeight > menu.clientHeight + 1);
+  menuTypeahead = { buf: "", at: 0 };
+  menuOpenedAt = Date.now();
+  menu.querySelector(".cm-item:not([disabled])")?.focus();
 }
+
+function closeMenu() {
+  const menu = $("ctx-menu");
+  const had = menu.contains(document.activeElement);
+  menu.classList.add("hidden");
+  menu.classList.remove("cm-clamped");
+  menuRows = [];
+  if (had && menuOpener && menuOpener.isConnected) {
+    try { menuOpener.focus({ preventScroll: true }); } catch (_) {}
+  }
+  menuOpener = null;
+}
+
+$("ctx-menu").addEventListener("keydown", (ev) => {
+  const menu = $("ctx-menu");
+  const items = [...menu.querySelectorAll(".cm-item:not([disabled])")];
+  if (items.length === 0) return;
+  const i = items.indexOf(document.activeElement);
+  const go = (n) => {
+    items[Math.max(0, Math.min(items.length - 1, n))].focus();
+    ev.preventDefault();
+  };
+  if (ev.key === "ArrowDown") return go(i < 0 ? 0 : (i + 1) % items.length);
+  if (ev.key === "ArrowUp") return go(i <= 0 ? items.length - 1 : i - 1);
+  if (ev.key === "Home") return go(0);
+  if (ev.key === "End") return go(items.length - 1);
+  if (ev.key === "Escape") { ev.preventDefault(); return closeMenu(); }
+  // Type-ahead: the verbs are words, and a menu of words that cannot be
+  // reached by typing them is a menu that only a mouse can read.
+  if (ev.key.length === 1 && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+    const now = Date.now();
+    menuTypeahead.buf = now - menuTypeahead.at > 700 ? ev.key : menuTypeahead.buf + ev.key;
+    menuTypeahead.at = now;
+    const q = menuTypeahead.buf.toLowerCase();
+    const hit = items.find((b) => (b.textContent || "").trim().toLowerCase().startsWith(q));
+    if (hit) { hit.focus(); ev.preventDefault(); }
+  }
+});
 
 /** The engine `kind` of the rack module at a trace key, if the rack has one. */
 function rackKindAt(key) {
@@ -3773,7 +6012,7 @@ $("promote-b").onclick = () => {
   showView("play");
 };
 
-// Faceplate silkscreen. Two knobs share a `MOD_W / 3` pitch (~56 user units),
+// Faceplate silkscreen. Two knobs on a 168-unit plate share a 56-unit pitch,
 // and at the rack label size anything past seven characters overruns its
 // neighbour — `resonance` measures 68 units against a 56 unit pitch, which
 // printed as `RESONANCMOD DEPTH` on the filter. Hardware panels abbreviate for
@@ -4047,13 +6286,30 @@ function attachKnobDrag(el, mod, knob) {
 function rackControls() {
   return [...$("rack-svg").querySelectorAll("[data-addr]")];
 }
+/** Every module plate, in layout order. */
+function rackPlates() {
+  return [...$("rack-svg").querySelectorAll("g.mod-group")];
+}
+/** Everything the one roving stop can sit on. Plates and knobs share it, so
+ *  Tab always returns to wherever the keyboard last was inside the rack. */
+function rackStops() {
+  return [...$("rack-svg").querySelectorAll("g.mod-group, [data-addr]")];
+}
+function setRackStop(el) {
+  for (const e of rackStops()) e.setAttribute("tabindex", e === el ? "0" : "-1");
+}
 
 function focusRackControl(i) {
   const els = rackControls();
   if (els.length === 0) return;
   const el = els[Math.max(0, Math.min(els.length - 1, i))];
-  els.forEach((e) => e.setAttribute("tabindex", e === el ? "0" : "-1"));
-  el.focus();
+  setRackStop(el);
+  // `focus()` scrolls its nearest scrollable ancestor by default, which used
+  // to jerk the whole rack — and the page under it — sideways on every arrow
+  // press. Moving the keyboard around the patch is explicit navigation, so it
+  // gets a camera move, by the minimum that makes the control visible.
+  el.focus({ preventScroll: true });
+  ensureRackVisible(el);
 }
 
 function knobByAddr(addr) {
@@ -4065,9 +6321,81 @@ function knobByAddr(addr) {
   return null;
 }
 
+// ---- the module layer of the same tabstop ----
+// Everything structural in this app lived behind two 6×13px glyphs and a
+// pointer. With a plate focused the whole verb set is one key away, the menu
+// that opens is a real `role="menu"`, and every result is spoken on the live
+// region the node bank already owns.
+function focusPlate(el, say) {
+  if (!el) return;
+  setRackStop(el);
+  el.focus({ preventScroll: true });
+  ensureRackVisible(el);
+  if (say !== false) {
+    const key = el.getAttribute("data-key");
+    const m = wb.rack?.modules.find((x) => x.key === key);
+    const plates = rackPlates();
+    nbAnnounce(
+      `${isPlaceholderKey(key) ? "empty socket" : m?.title || key} — ` +
+      `module ${plates.indexOf(el) + 1} of ${plates.length}. ` +
+      `Enter for the structure menu, right and left for its knobs.`,
+    );
+  }
+}
+
 $("rack-svg").addEventListener("keydown", (e) => {
+  const plate = e.target.closest?.("g.mod-group");
+  if (plate && !e.target.closest?.("[data-addr]")) {
+    const plates = rackPlates();
+    const i = plates.indexOf(plate);
+    const key = plate.getAttribute("data-key");
+    const mod = wb.rack?.modules.find((x) => x.key === key);
+    const knobs = [...plate.querySelectorAll("[data-addr]")];
+    const box = plate.getBoundingClientRect();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      focusPlate(plates[Math.max(0, Math.min(plates.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]);
+    } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (knobs.length === 0) return nbAnnounce("this module has no knobs");
+      const k = e.key === "ArrowRight" ? knobs[0] : knobs[knobs.length - 1];
+      focusRackControl(rackControls().indexOf(k));
+    } else if (e.key === "Enter" || e.key === "F2") {
+      e.preventDefault();
+      if (mod) openStructMenu(mod, box.left + 24, box.bottom + 4);
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      // Through the same confirm the pointer gets: on a binary this is the
+      // survivor choice, and a Delete key is not a licence to skip it.
+      if (mod && mod.kind !== "amp" && !mod.is_mod) deleteModule(key, box.left + 24, box.bottom + 4);
+      else if (mod?.is_mod) unplugMod(key.replace(/\/m$/, ""));
+    } else if (e.key === "/") {
+      // Stopped here, or the global `/` would take it and open the rail with
+      // no socket chosen — which is the same rail, aimed at nothing.
+      e.preventDefault();
+      e.stopPropagation();
+      if (mod && mod.kind !== "amp" && !mod.is_mod) armFromRack("insert", key);
+      else armFromRack("insert", "node");
+    } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
+      e.preventDefault();
+      const addrs = moduleLockAddrs(mod);
+      const on = isModuleLocked(mod);
+      for (const a of addrs) on ? wb.locks.delete(a) : wb.locks.add(a);
+      nbAnnounce(on ? `${mod.title} unlocked` : `${mod.title} locked`);
+      renderRack();
+      focusPlate($("rack-svg").querySelector(`g.mod-group[data-key="${cssKey(key)}"]`), false);
+    }
+    return;
+  }
   const kg = e.target.closest?.("[data-addr]");
   if (!kg) return;
+  // Escape backs out to the plate the knob is on, which is the only way to
+  // reach the structural verbs without reaching for the mouse again.
+  if (e.key === "Escape" && plate) {
+    e.preventDefault();
+    focusPlate(plate);
+    return;
+  }
   const els = rackControls();
   const i = els.indexOf(kg);
   const knob = knobByAddr(kg.dataset.addr);
@@ -4133,6 +6461,27 @@ $("lock-clear").onclick = () => {
   wb.locks.clear();
   renderRack();
 };
+// The arrangement switch. Deliberately a plain toggle rather than a menu: two
+// modes is not a menu's worth of choice, and the label says which one you are
+// in rather than which one you would get, because the rack in front of you is
+// the only preview either mode needs.
+function syncLayoutBtn() {
+  const b = $("rack-layout");
+  if (!b) return;
+  b.textContent = layoutMode === "compact" ? "compact" : "chain";
+  b.setAttribute("aria-pressed", String(layoutMode === "compact"));
+  b.closest(".tt").title =
+    layoutMode === "compact"
+      ? "Compact: layers packed tight. Click for the straight signal chain."
+      : "Chain: the signal path on one baseline. Click to pack it tight.";
+}
+$("rack-layout").onclick = () => {
+  layoutMode = layoutMode === "chain" ? "compact" : "chain";
+  try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+  syncLayoutBtn();
+  renderRack();
+};
+syncLayoutBtn();
 
 
 // ===========================================================================
@@ -4734,17 +7083,88 @@ function nodeChildrenJSON(n) {
   return childFields(m).map((f) => v[f]).filter(Boolean);
 }
 
+/** The child indices in a trace key: `node/0/1` → `[0, 1]`. */
+function keyIndices(key) {
+  return key === "node" ? [] : key.slice(5).split("/").map(Number);
+}
+
 function nodeAtKey(key) {
   if (!wb.tree) return null;
-  let cur = wb.tree.root;
-  if (key !== "node") {
-    for (const i of key.slice(5).split("/").map(Number)) {
-      const ch = nodeChildrenJSON(cur);
-      if (!ch[i]) return null;
-      cur = ch[i];
-    }
+  return nodeAtIn(wb.tree, key);
+}
+
+/** `nodeAtKey`, but against a tree you are *holding* rather than the bench's.
+ *  Every rewrite works on a clone, so it needs the walk without the global. */
+function nodeAtIn(tree, key) {
+  let cur = tree.root;
+  for (const i of keyIndices(key)) {
+    const ch = nodeChildrenJSON(cur);
+    if (!ch[i]) return null;
+    cur = ch[i];
   }
   return cur;
+}
+
+/** Put `node` at `key`. The parent's serde field name comes from the module
+ *  table for the same reason `nodeChildrenJSON` reads it there: the binaries
+ *  do not agree on their field names (`a`/`b`, `input`/`key`,
+ *  `carrier`/`modulator`), and guessing one silently writes a field the
+ *  engine will not deserialize. */
+function setNodeAtIn(tree, key, node) {
+  const path = keyIndices(key);
+  if (path.length === 0) { tree.root = node; return true; }
+  let cur = tree.root;
+  for (let d = 0; d < path.length - 1; d++) {
+    cur = nodeChildrenJSON(cur)[path[d]];
+    if (!cur) return false;
+  }
+  const tag = nodeTag(cur);
+  const field = childFields(MOD_BY_TAG[tag] || {})[path[path.length - 1]];
+  if (!field || !cur[tag]) return false;
+  cur[tag][field] = node;
+  return true;
+}
+
+/** Every audio node in a tree, with the key it sits at *now*. */
+function walkTreeKeys(tree, visit) {
+  const rec = (n, key) => {
+    visit(n, key);
+    const tag = nodeTag(n);
+    const v = n[tag];
+    if (!v) return;
+    childFields(MOD_BY_TAG[tag] || {}).forEach((f, i) => {
+      if (v[f]) rec(v[f], `${key}/${i}`);
+    });
+  };
+  if (tree && tree.root) rec(tree.root, "node");
+}
+
+/** Where a set of *node objects* ended up, as keys. A rewrite moves subtrees
+ *  by reference, so object identity is the only handle on "the same node"
+ *  that survives one — keys are positions and the positions are what moved.
+ *  (A real `uid` is WS-4 §6; this is what there is until then.) */
+function keysOfNodes(tree, nodes) {
+  const out = new Set();
+  if (!nodes || nodes.length === 0) return out;
+  walkTreeKeys(tree, (n, key) => { if (nodes.includes(n)) out.add(key); });
+  return out;
+}
+
+/** Is `k` the key `root`, or a key inside its subtree? This is the cycle test:
+ *  the term is a tree, so a module cannot be plugged into itself or into
+ *  anything it already feeds. */
+function keyInside(k, root) {
+  return k === root || k.startsWith(`${root}/`);
+}
+
+/** The key of the module a socket is drawn on: an input jack `node/0/1` hangs
+ *  off the plate at `node/0`. The root's socket is the exception — the tree's
+ *  root is `node` and the plate that carries its jack is the amp, whose rack
+ *  key is `amp` and is not a trace address at all. */
+function socketOwnerKey(childKey) {
+  if (childKey === "node") return "amp";
+  const i = childKey.lastIndexOf("/");
+  return i < 0 ? childKey : childKey.slice(0, i);
 }
 
 function modAtKey(key) {
@@ -4778,17 +7198,102 @@ function fragLabel(frag, isMod) {
   return name + (size > 1 ? `·${size}` : "");
 }
 
-function stageFragment(frag, isMod) {
+/** The name on the plate at a trace key — the words the player has actually
+ *  read off the rack. `fragLabel` answers in the term's own vocabulary
+ *  (`wavefolder·3` is a kind plus a subtree size), which is right for a
+ *  fragment on the shelf and a leak everywhere the thing being named is still
+ *  a plate on screen: `·3` is notation nobody has been shown, and the number
+ *  reads like an instance id. The pick chip has always named plates this way;
+ *  these are the surfaces that had not. */
+function plateTitle(key) {
+  if (isPlaceholderKey(key)) return "the empty socket";
+  const m = wb.rack?.modules.find((x) => x.key === key);
+  const here = nodeAtKey(key);
+  return m?.title || kindName(rackKindAt(key)) || (here ? fragLabel(here, false) : "that module");
+}
+
+/** …and how to name a whole subtree that is about to leave the patch: the
+ *  plate at its head, plus an honest count of what is going with it. That
+ *  count is the one true thing `·3` was saying, so it is kept — in the words
+ *  the rest of the app already uses for it ("a 3-module chain"). */
+function chainTitle(key) {
+  const here = nodeAtKey(key);
+  const n = here ? subtreeSize(here) : 1;
+  const title = plateTitle(key);
+  return n > 1 ? `${title} (a ${n}-module chain)` : title;
+}
+
+/** Put a fragment on the shelf. `opts.rewrap` marks a head-only module that
+ *  wants to be spliced back *into* a wire rather than to take the socket —
+ *  what bypass leaves behind. */
+function stageFragment(frag, isMod, opts) {
   if (!frag) return null;
   const uid = trayUid++;
-  tray.push({ uid, isMod, frag, label: fragLabel(frag, isMod) });
+  const o = opts || {};
+  // A `rewrap` head carries a stand-in input that `graft` will overwrite the
+  // moment it goes back in, so counting it would print "wavefolder·2" for one
+  // bypassed wavefolder — a number about an implementation detail.
+  const label = o.rewrap
+    ? (modEntry(frag)?.name ?? nodeTag(frag).toLowerCase())
+    : fragLabel(frag, isMod);
+  tray.push({ uid, isMod, frag, label, ...o });
+  // Staging is part of the edit that caused it: if the engine refuses that
+  // edit, this fragment describes a chain that never left the patch, and a
+  // shelf holding a duplicate of something still wired up is a lie.
+  if (stagingBound) stagingBound.trays.push(uid);
   renderTray();
+  trayChanged();
   return uid;
+}
+
+/** Mark a shelf entry as belonging to an edit that is still in flight. It stays
+ *  visible — the module is not in the patch yet, and a shelf that empties on a
+ *  promise is how the chain got lost in the first place — but it is inert until
+ *  the engine has answered, so the same chain cannot be placed twice. */
+function setTrayPending(uid, on) {
+  const t = tray.find((x) => x.uid === uid);
+  if (!t || !!t.pending === !!on) return;
+  t.pending = !!on;
+  renderTray();
 }
 
 function unstage(uid) {
   const i = tray.findIndex((t) => t.uid === uid);
   if (i >= 0) tray.splice(i, 1);
+  renderTray();
+  trayChanged();
+}
+
+// The shelf used to be `const tray = []` and nothing else, so everything you
+// had pulled out of a patch died on reload — the one place in the app where
+// "removed, but recoverable" quietly stopped being true after a refresh. It
+// rides in the same `ui` blob as the rest of the surface's state.
+function trayChanged() {
+  if (booted) scheduleSave();
+}
+function trayState() {
+  return {
+    // The subject it was pulled out of, so the shelf can say where a fragment
+    // came from. Deliberately not a *gate*: a held chain is a chain, and it
+    // is legal in any patch — refusing to show it because the bench happens
+    // to have opened something else would make the shelf lie by omission.
+    from: wb.subjectId ?? null,
+    items: tray.map((t) => ({
+      isMod: t.isMod, frag: t.frag, label: t.label,
+      rewrap: !!t.rewrap, note: t.note || "",
+    })),
+  };
+}
+function restoreTray(saved) {
+  if (!saved || !Array.isArray(saved.items)) return;
+  for (const it of saved.items) {
+    if (!it || !it.frag) continue;
+    tray.push({
+      uid: trayUid++, isMod: !!it.isMod, frag: it.frag,
+      label: it.label || fragLabel(it.frag, !!it.isMod),
+      rewrap: !!it.rewrap, note: it.note || "",
+    });
+  }
   renderTray();
 }
 
@@ -4828,24 +7333,33 @@ function renderTray() {
   nbRenderRail();
   if (tray.length === 0) {
     holder.innerHTML =
-      '<span class="tray-hint mono">Anything you unplug is held here until you reload. Save the patch to keep it for good.</span>';
+      '<span class="tray-hint mono">Anything you unplug, delete or bypass is held here — and stays here across a reload. Drag it back onto a ○ to put it in.</span>';
     return;
   }
   for (const t of tray) {
     const el = document.createElement("div");
-    el.className = "tray-item" + (t.isMod ? " mod" : "");
+    el.className = "tray-item" + (t.isMod ? " mod" : "") + (t.pending ? " pending" : "");
+    const jackTitle = t.pending
+      ? "going into the patch — waiting for the engine"
+      : `Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack`;
     el.innerHTML = `
       <div class="ti-head">
-        <span class="t-jack" title="Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack"></span>
-        <span class="ti-name">${t.label}</span>
+        <span class="t-jack" title="${esc(jackTitle)}"></span>
+        <span class="ti-name">${esc(t.label)}${t.note ? ` <span class="ti-why">${esc(t.note)}</span>` : ""}</span>
         <button class="t-x" title="Discard">✕</button>
       </div>
-      <div class="ti-params mono">${fragParamStrip(t.frag) || "—"}</div>`;
-    el.querySelector(".t-x").onclick = () => unstage(t.uid);
+      <div class="ti-params mono">${esc(fragParamStrip(t.frag)) || "—"}</div>`;
+    // Discarding something the engine is in the middle of accepting would race
+    // its own reply, so the ✕ waits with it.
+    el.querySelector(".t-x").onclick = () => {
+      if (t.pending) return note("that one is going into the patch — give it a moment");
+      unstage(t.uid);
+    };
     const tjack = el.querySelector(".t-jack");
     claimGesture(tjack); // the tray scrolls sideways; the cable pull is not that
     tjack.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();
+      if (t.pending) return;
       startWireDrag({ mode: t.isMod ? "tray-mod" : "tray-audio", item: t, kind: t.isMod ? "mod" : "audio" }, ev);
     });
     holder.appendChild(el);
@@ -5007,6 +7521,16 @@ function buildNodeBank() {
     for (const m of members) list.appendChild(nbChip(m));
     const fold = sec.querySelector(".nb-fold");
     fold.onclick = () => {
+      // Inert while a placement is armed. Folding a group under the pointer
+      // while pick mode stays silently armed is how a player ends up with a
+      // module in hand and no memory of picking one up.
+      if (armed || pendingTarget) {
+        return note(
+          armed
+            ? `${kindName(armed.kind)} is in your hand — click a lit socket, or esc to put it down.`
+            : "A socket is waiting for a module — pick one, or esc to cancel.",
+        );
+      }
       const shut = sec.classList.toggle("folded");
       fold.setAttribute("aria-expanded", String(!shut));
       nbState.groups[g.id] = !shut;
@@ -5027,10 +7551,9 @@ function buildNodeBank() {
     // A dimmed chip still answers when clicked. Returning silently is how a
     // disabled control teaches nothing about why it is disabled.
     if (chip.classList.contains("unavailable")) {
-      const m = MOD_BY_KIND[chip.dataset.kind];
-      note(!wb.rack
-        ? "No patch loaded — pick one from the bank on the left first."
-        : `Nothing in this patch takes modulation yet — add a filter and ${m.name} has somewhere to go.`);
+      // The same sentence the chip already carries on hover, so the two
+      // channels cannot drift — and so a click is never answered with silence.
+      note(chip.title || "That module can't go here.");
       return;
     }
     pickModule(chip.dataset.kind);
@@ -5046,7 +7569,9 @@ function buildNodeBank() {
   });
   groups.addEventListener("focusin", (ev) => {
     const chip = ev.target.closest(".nb-item");
-    if (chip) nbSpecShow(chip);
+    // Only the keyboard gets a floating card, and it is anchored over the rail
+    // rather than over the canvas — see nbSpecPaint.
+    if (chip) nbSpecShow(chip, { float: true });
   });
   groups.addEventListener("pointerout", (ev) => {
     if (!ev.relatedTarget || !ev.relatedTarget.closest(".nb-item")) nbSpecHide();
@@ -5096,6 +7621,7 @@ function buildNodeBank() {
   nbSetCollapsed(nbState.collapsed, true);
   nbInitResize();
   renderNodeBank();
+  renderSpecDock();
 }
 
 // ---- collapse: a drawer with an identity and a memory ----
@@ -5137,6 +7663,86 @@ function nbInitResize() {
   });
 }
 
+/** While something is in your hand the group headers stop being controls
+ *  (WS-2 §2): the rail's job for the length of a placement is to narrow, not
+ *  to rearrange itself under the pointer. Called from every place that changes
+ *  what is in hand, because arming does not otherwise re-render the rail. */
+function nbSetHolding() {
+  const holding = !!(armed || pendingTarget);
+  const groups = $("nb-groups");
+  if (!groups) return holding;
+  groups.classList.toggle("armed", holding);
+  for (const fold of groups.querySelectorAll(".nb-fold")) {
+    fold.setAttribute("aria-disabled", String(holding));
+    fold.title = holding ? "Folding is off while a placement is armed — esc to put it down." : "";
+  }
+  return holding;
+}
+
+/** Why a chip is dimmed, in one sentence, in the player's terms. The reasons
+ *  are genuinely different — no patch / nothing to modulate / wrong sort for
+ *  the socket you already chose — and collapsing them into "unavailable" is
+ *  what makes a filtered palette feel arbitrary. A *wrong* reason is worse
+ *  than a collapsed one: the mismatch branch had two arms for three cases, so
+ *  every source chip dimmed by an insert socket was told it "moves knobs" and
+ *  "does not carry audio", which is false about all six of them. */
+function chipBlockedWhy(m, { hasRack, hasModSocket, mismatch }) {
+  if (!hasRack) return "No patch loaded — pick one from the bank on the left first.";
+  if (mismatch) {
+    if (pendingTarget.accepts.includes("mod")) {
+      return `${m.name} carries audio — that jack carries control voltage. Pick something amber.`;
+    }
+    // A source has no input, so there is no wire to splice it into: it starts
+    // the signal rather than passing one through. The socket already chosen is
+    // an insert, and the only thing a source can do to a socket is take it.
+    if (m.sort === "source") {
+      return `${m.name} has no input — it starts a signal rather than passing one through, so it cannot go into a wire. It can only replace what feeds something.`;
+    }
+    return `${m.name} moves knobs; it does not carry audio, so it cannot sit in the signal path — it goes in a mod slot.`;
+  }
+  if (m.sort === "mod" && !hasModSocket) {
+    return `Nothing in this patch takes modulation yet — add a filter and ${m.name} has somewhere to go.`;
+  }
+  return "";
+}
+
+/** The belief cell. A bar without evidence is a lie with a shape, so anything
+ *  short of a resolved coefficient draws a mark that is not a bar.
+ *  Shared by the catalogue chips and the in-patch chips: the model must not
+ *  speak loudest about the modules you are merely browsing and go silent about
+ *  the ones you actually built with (WS-2 §7). */
+function nbPaintTheta(cell, m, byPhi, total) {
+  if (!cell) return;
+  const t = nbTheta(m.kind);
+  const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
+  const state = m.phi ? beliefState(t, sup) : "unmeasured";
+  if (state !== "resolved") {
+    cell.className = "ni-theta " + (state === "flat" ? "flat" : "thin");
+    cell.innerHTML = "";
+    cell.title =
+      state === "unmeasured" ? "Not something the taste model measures directly."
+      : state === "unfitted" ? "The model hasn't been fitted yet — make a few picks."
+      : state === "thin" ? `Too little to go on — ${sup} of ${total} patches carry this.`
+      : `The model has looked and has no lean either way (θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}).`;
+    return;
+  }
+  // 16px of travel each side of the zero rule (see .ni-theta), so the
+  // clamps are the geometry rather than a number that overflows it.
+  const scale = 14; // px per unit θ
+  const len = Math.max(2, Math.min(15, Math.abs(t.mean) * scale));
+  const whisk = Math.min(16, (Math.abs(t.mean) + t.std) * scale);
+  const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
+  cell.className = "ni-theta" + (t.mean >= 0 ? " pos" : " neg");
+  cell.innerHTML =
+    `<i class="tb-whisk" style="width:${whisk}px"></i>` +
+    `<i class="tb-bar" style="width:${len}px;background:${color}"></i>`;
+  cell.title =
+    `In ${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank) ` +
+    `you lean ${t.mean >= 0 ? "toward" : "away from"} this ` +
+    `— θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
+    `from ${sup} of ${total} patches.`;
+}
+
 // ---- render: filter, availability, and the model's belief ----
 function renderNodeBank() {
   const groups = $("nb-groups");
@@ -5154,45 +7760,29 @@ function renderNodeBank() {
     if (hit) shown += 1;
 
     // Unavailable is explained, never silent — see the per-group note below.
-    const blocked = !hasRack || (m.sort === "mod" && !hasModSocket);
+    // A handoff from the canvas (the ⋯ menu, or a cable dropped in empty
+    // space) narrows this further: the socket is already chosen, so a module
+    // that cannot sit in it is dimmed *now* rather than refused after the
+    // click. The reason rides on the chip so it is readable, not just
+    // announced.
+    const mismatch = !!pendingTarget && !pendingTarget.accepts.includes(m.sort);
+    const blocked = !hasRack || (m.sort === "mod" && !hasModSocket) || mismatch;
     chip.classList.toggle("unavailable", blocked);
     chip.setAttribute("aria-disabled", String(blocked));
+    // Every dimmed chip carries the sentence that explains it, on the chip
+    // itself rather than only in the announcement — a disabled control that
+    // does not say why teaches the player that the app is arbitrary.
+    const why = blocked ? chipBlockedWhy(m, { hasRack, hasModSocket, mismatch }) : "";
+    if (why) chip.title = why;
+    else if (chip.title) chip.title = "";
     // Roving tab stop, set per group below: nineteen tab stops in a sidebar
     // would put the whole catalogue between the search field and the rack.
     chip.tabIndex = -1;
 
-    // The belief row. A bar without evidence is a lie with a shape, so anything
-    // short of a resolved coefficient draws a mark that is not a bar.
-    const t = nbTheta(m.kind);
-    const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
-    const cell = chip.querySelector(".ni-theta");
-    const state = m.phi ? beliefState(t, sup) : "unmeasured";
-    if (state !== "resolved") {
-      cell.className = "ni-theta " + (state === "flat" ? "flat" : "thin");
-      cell.innerHTML = "";
-      cell.title =
-        state === "unmeasured" ? "Not something the taste model measures directly."
-        : state === "unfitted" ? "The model hasn't been fitted yet — make a few picks."
-        : state === "thin" ? `Too little to go on — ${sup} of ${total} patches carry this.`
-        : `The model has looked and has no lean either way (θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}).`;
-    } else {
-      // 16px of travel each side of the zero rule (see .ni-theta), so the
-      // clamps are the geometry rather than a number that overflows it.
-      const scale = 14; // px per unit θ
-      const len = Math.max(2, Math.min(15, Math.abs(t.mean) * scale));
-      const whisk = Math.min(16, (Math.abs(t.mean) + t.std) * scale);
-      const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
-      cell.className = "ni-theta" + (t.mean >= 0 ? " pos" : " neg");
-      cell.innerHTML =
-        `<i class="tb-whisk" style="width:${whisk}px"></i>` +
-        `<i class="tb-bar" style="width:${len}px;background:${color}"></i>`;
-      cell.title =
-        `In ${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank) ` +
-        `you lean ${t.mean >= 0 ? "toward" : "away from"} this ` +
-        `— θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
-        `from ${sup} of ${total} patches.`;
-    }
+    nbPaintTheta(chip.querySelector(".ni-theta"), m, byPhi, total);
   }
+
+  nbSetHolding();
 
   // Group-level counts, folding and the explained-unavailable copy.
   for (const g of NB_GROUPS) {
@@ -5243,24 +7833,37 @@ function nbRenderInPatch() {
   sec.classList.toggle("hidden", real.length === 0);
   if (real.length === 0) { list.innerHTML = ""; return; }
   $("nb-inpatch-n").textContent = String(real.length);
+  // The same three columns the catalogue chip has, including the belief cell:
+  // the model was speaking loudest about modules you were merely shopping for
+  // and going silent about the ones you had actually built with (WS-2 §7).
   list.innerHTML = real
     .map((m) => {
       const d = MOD_BY_KIND[m.kind];
       return (
-        `<button class="nb-chip${d.sort === "mod" ? " mod" : ""}" type="button" data-key="${esc(m.key)}" ` +
+        `<button class="nb-chip${d.sort === "mod" ? " mod" : ""}" type="button" ` +
+        `data-key="${esc(m.key)}" data-kind="${esc(m.kind)}" ` +
         `title="${esc(d.name)} — jump to it in the rack">` +
         `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${d.glyph}</svg>` +
-        `<span>${esc(d.name)}</span></button>`
+        `<span>${esc(d.name)}</span>` +
+        `<span class="ni-theta" aria-hidden="true"></span></button>`
       );
     })
     .join("");
+  const { byPhi, total } = nbSupport();
+  list.classList.toggle("has-belief", !!(views && views.styles && views.styles.length));
   list.querySelectorAll(".nb-chip").forEach((b) => {
+    nbPaintTheta(b.querySelector(".ni-theta"), MOD_BY_KIND[b.dataset.kind], byPhi, total);
+    // …and the same spec card. A module in your patch deserves at least the
+    // transparency one you are browsing gets.
+    b.addEventListener("pointerover", () => nbSpecShow(b));
+    b.addEventListener("focus", () => nbSpecShow(b));
     b.onclick = () => {
       const g = $("rack-svg").querySelector(`.jack[data-childkey="${b.dataset.key}/0"], [data-addr^="${b.dataset.key}#"]`);
       const el = g || $("rack-svg").querySelector(`[data-addr^="${b.dataset.key}#"]`);
       if (el) {
-        el.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
-        if (el.hasAttribute("data-addr")) { el.setAttribute("tabindex", "0"); el.focus(); }
+        // Explicit navigation — the one case that *should* move the canvas.
+        ensureRackVisible(el);
+        if (el.hasAttribute("data-addr")) { el.setAttribute("tabindex", "0"); el.focus({ preventScroll: true }); }
       }
     };
   });
@@ -5287,20 +7890,41 @@ function nbRenderRail() {
 }
 
 // ---- the spec card ----
+// Two surfaces, one body of copy.
+//
+// The DOCK is the primary one: a reserved strip in the bench's lower band that
+// keeps whatever it last described. The card used to float over the graph it
+// was describing, so you could read what a module does OR look at where it
+// would land, never both — while ~40% of the bench sat empty underneath.
+// Reading left to right: what it is, what it does, what the model thinks of
+// it. Its height is reserved whatever is in it, so nothing under the pointer
+// ever moves.
+//
+// The FLOATING variant survives for the keyboard path only, where the card has
+// to be beside the chip that has focus, and it is anchored clear of the canvas.
 let specTimer = null;
-function nbSpecShow(chip) {
+function nbSpecShow(chip, opts) {
   clearTimeout(specTimer);
-  specTimer = setTimeout(() => nbSpecPaint(chip), 180);
+  // `float` is the keyboard path only. A pointer already knows where it is
+  // pointing; a card that follows it over the canvas is the thing that made
+  // the spec and the landing site mutually exclusive to look at.
+  const float = !!(opts && opts.float);
+  const kind = chip.dataset.kind;
+  specTimer = setTimeout(() => nbSpecPaint(kind, float ? chip : null), 180);
 }
 function nbSpecHide() {
   clearTimeout(specTimer);
   $("nb-spec").classList.add("hidden");
+  // The dock deliberately keeps its subject. It is a place you read *from*,
+  // not a tooltip: leaving the chip to look at where the module would go must
+  // not take the description away at the moment it becomes useful.
 }
 
-function nbSpecPaint(chip) {
-  const m = MOD_BY_KIND[chip.dataset.kind];
-  if (!m) return;
-  const card = $("nb-spec");
+/** The kind the dock is currently describing, or null for the resting line. */
+let specSubject = null;
+
+/** Everything both surfaces say about a module, derived once. */
+function specParts(m) {
   const { byPhi, total } = nbSupport();
   const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
   const t = nbTheta(m.kind);
@@ -5351,21 +7975,79 @@ function nbSpecPaint(chip) {
       `<br><span class="sp-dim">The model does not separate ${esc(shared.join(", "))} — ` +
       `they share one coordinate, so this belief is about all of them.</span>`;
   }
+  return { ports, belief, params: fragParamStrip(m.frag()) || "—" };
+}
 
+function specGlyph(m, cls) {
+  return `<svg class="sp-glyph${cls || ""}${m.sort === "mod" ? " mod" : ""}" viewBox="0 0 20 14" aria-hidden="true">${m.glyph}</svg>`;
+}
+
+function nbSpecPaint(kind, chip) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return;
+  specSubject = kind;
+  renderSpecDock();
+  if (!chip) return;
+  // The keyboard's card. Compact — the dock already carries the long form —
+  // and pinned to the right edge, over the rail it came from rather than over
+  // the canvas the player is about to place into.
+  const p = specParts(m);
+  const card = $("nb-spec");
   card.innerHTML =
-    `<div class="sp-head"><svg class="sp-glyph${m.sort === "mod" ? " mod" : ""}" viewBox="0 0 20 14" aria-hidden="true">${m.glyph}</svg>` +
-    `<span class="panel-label">${esc(m.name)}</span></div>` +
-    `<p class="sp-blurb">${esc(m.blurb)}</p>` +
-    `<div class="sp-ports mono">${esc(ports)}</div>` +
-    `<div class="sp-params mono">${esc(fragParamStrip(m.frag()) || "—")}</div>` +
-    `<div class="sp-model mono">${belief}</div>` +
-    `<div class="sp-heard mono"><b>heard as</b> ${esc(m.heard)}</div>`;
-
+    `<div class="sp-head">${specGlyph(m)}<span class="panel-label">${esc(m.name)}</span></div>` +
+    `<div class="sp-ports mono">${esc(p.ports)}</div>` +
+    `<div class="sp-model mono">${p.belief}</div>`;
   const r = chip.getBoundingClientRect();
   card.classList.remove("hidden");
   const ch = card.offsetHeight;
   card.style.top = `${Math.max(8, Math.min(window.innerHeight - ch - 8, r.top - 6))}px`;
-  card.style.right = `${Math.round(window.innerWidth - r.left + 10)}px`;
+  card.style.right = `8px`;
+}
+
+/** The docked strip. Three states, and only one of them is a description:
+ *  resting, describing, and — while something is in your hand — collapsed to
+ *  one line, because the question has changed from "what is this" to "where
+ *  is it going", and that one is answered on the canvas. */
+function renderSpecDock() {
+  const dock = $("spec-dock");
+  if (!dock) return;
+  const held = armed ? MOD_BY_KIND[armed.kind] : null;
+  if (held) {
+    dock.className = "spec-dock armed";
+    dock.innerHTML =
+      `<div class="sd-line">${specGlyph(held, " small")}` +
+      `<b>${esc(held.name)}</b><span class="sd-verb">in hand</span>` +
+      `<span class="sd-blurb">${esc(held.blurb)}</span>` +
+      `<span class="sd-hint mono">${armedSockets.length} socket${armedSockets.length === 1 ? "" : "s"} lit` +
+      ` · click one, or <kbd>esc</kbd> to put it down</span></div>`;
+    return;
+  }
+  if (pendingTarget) {
+    dock.className = "spec-dock armed";
+    dock.innerHTML =
+      `<div class="sd-line"><b>${esc(pendingTarget.prompt || "pick a module")}</b>` +
+      `<span class="sd-hint mono">the socket is already chosen — anything dimmed cannot go in it` +
+      ` · <kbd>esc</kbd> to cancel</span></div>`;
+    return;
+  }
+  const m = specSubject ? MOD_BY_KIND[specSubject] : null;
+  if (!m) {
+    dock.className = "spec-dock rest";
+    dock.innerHTML =
+      `<div class="sd-rest mono">Point at a module — in the catalogue or in this patch — and this strip ` +
+      `says what it does to a signal, where it can legally go, and what the model currently thinks of it.</div>`;
+    return;
+  }
+  const p = specParts(m);
+  dock.className = "spec-dock";
+  dock.innerHTML =
+    `<div class="sd-id">${specGlyph(m)}` +
+    `<div class="sd-idtext"><div class="panel-label sd-name">${esc(m.name)}</div>` +
+    `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
+    `<div class="sd-body"><p class="sp-blurb">${esc(m.blurb)}</p>` +
+    `<div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
+    `<span class="sp-heard"><b>heard as</b> ${esc(m.heard)}</span></div></div>` +
+    `<div class="sd-model mono">${p.belief}</div>`;
 }
 
 // ---- arm and place ----
@@ -5382,9 +8064,21 @@ function pickModule(kind) {
   if (pendingTarget) {
     const p = pendingTarget;
     if (!p.accepts.includes(m.sort)) {
-      note(`${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`);
+      note(
+        p.accepts.includes("mod")
+          ? `${m.name} is an audio module — that jack carries control voltage. Pick something from the amber groups, or esc to cancel.`
+          : m.sort === "mod"
+            ? `${m.name} moves knobs; it does not carry audio, so it cannot ${p.mode === "replace" ? "replace" : "go after"} that. It goes in a mod ○.`
+            // Same correction as `chipBlockedWhy`: telling someone holding a
+            // vco to "pick an audio module" answers a question they did not
+            // get wrong. What is missing is an input, not audio.
+            : m.sort === "source"
+              ? `${m.name} has no input — it starts a signal rather than passing one through, so it cannot go into a wire. Replace something with it instead, or esc to cancel.`
+              : `${m.name} can't ${p.mode === "replace" ? "replace" : "go after"} that — pick an audio module, or esc to cancel.`,
+      );
       return;
     }
+    logLinkQuery(kind);
     cancelPending();
     placeModule(kind, p.mode, p.key);
     return;
@@ -5410,6 +8104,9 @@ function arm(kind) {
     return;
   }
   $("rack-scroll").classList.add("placing");
+  pickFeedback();
+  renderSpecDock();
+  nbSetHolding();
   armStatus();
   nbAnnounce(`${m.name} in hand. ${armedSockets.length} sockets available. Arrow keys to step, Enter to place.`);
 }
@@ -5438,7 +8135,7 @@ function lightSockets() {
     // nothing is lost and the socket stays green.
     const key = j.getAttribute("data-childkey") || j.getAttribute("data-modkey");
     const evicts =
-      armed.sort === "source" ||
+      (armed.sort === "source" && !isPlaceholderKey(key)) ||
       (armed.sort === "mod" && armed.modSort === "leaf" && modAtKey(key));
     if (evicts) j.classList.add("replaces");
     const label = socketLabel(j);
@@ -5452,17 +8149,31 @@ function lightSockets() {
     j.addEventListener("pointerenter", onSocketHover);
     j.addEventListener("pointerleave", onSocketLeave);
   }
+  // An empty socket is where the next module obviously wants to go, so it
+  // starts under the cursor rather than waiting to be found.
+  const hole = armedSockets.findIndex((j) => isPlaceholderKey(j.getAttribute("data-childkey")));
+  if (hole >= 0) {
+    armedIdx = hole;
+    armedSockets[hole].classList.add("hot");
+  }
 }
 
-/** Echo the socket's promise into the status line the rail already reserves. */
+/** Echo the socket's promise into the status line the rail already reserves —
+ *  and onto the canvas, where the decision is actually being made. */
 function onSocketHover(ev) {
   if (!armed) return;
   const j = ev.currentTarget;
   $("nb-status").innerHTML =
     `<b>${esc(socketLabel(j))}</b> <span class="sp-dim">· click to place · esc to put it down</span>`;
+  // The socket key doubles as a plate key: an audio socket names its
+  // occupant, a mod socket names its owner. Both are the plate the promise
+  // is about, which is the plate the chip should be pinned to.
+  pickHoverKey = j.getAttribute("data-childkey") || j.getAttribute("data-modkey") || null;
+  pickFeedback();
 }
 function onSocketLeave() {
-  if (armed) armStatus();
+  pickHoverKey = null;
+  if (armed) { armStatus(); pickFeedback(); }
 }
 
 function socketLabel(jack) {
@@ -5481,11 +8192,17 @@ function socketLabel(jack) {
     if (here) return `${kindName(owner)} → ${dest} — replaces the ${fragLabel(here, true)}`;
     return `${kindName(owner)} — modulate ${dest} with ${name}`;
   }
-  const occupant = nodeAtKey(key);
-  const what = occupant ? fragLabel(occupant, false) : "the socket";
+  // A hole is not an occupant: nothing is displaced and nothing is held, so
+  // the promise must not be worded as if something were about to be lost.
+  if (isPlaceholderKey(key)) return `fills the empty socket with ${name}`;
+  // By the title on the plate, not by the trace id — this line is read at the
+  // moment of the decision, with the plate itself right there to compare it
+  // to. And "after", because that is the op: the socket's occupant keeps
+  // feeding it, and the new module goes between the occupant and its parent.
+  const what = plateTitle(key);
   return armed && armed.sort === "source"
     ? `replaces ${what}`
-    : `insert ${name} before ${what}`;
+    : `insert ${name} after ${what}`;
 }
 
 function disarm() {
@@ -5499,6 +8216,9 @@ function disarm() {
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
+  renderSpecDock();
+  nbSetHolding();
+  pickFeedback();
 }
 
 // ---------- the catalogue's walkthrough ----------
@@ -5592,16 +8312,30 @@ function endNbTour() {
 /** Put down a pending ⋯ handoff — from Escape, a view change, or a new patch. */
 function cancelPending() {
   if (!pendingTarget) return;
+  logLinkQuery(null); // an abandoned search is as informative as a chosen one
   pendingTarget = null;
   $("nb-status").textContent = "";
   nbAnnounce("cancelled");
+  renderNodeBank(); // the compatibility filter comes off with the handoff
+  renderSpecDock();
+  pickFeedback();
 }
 
 /** The rack's ⋯ menu hands off here: open the rail, wait for a module. */
-function armFromRack(mode, key) {
-  // Both menu items act on the audio tree; a modulation slot is offered by its
-  // own items on the same menu, which name their destination port.
-  pendingTarget = { mode, key, accepts: ["source", "proc", "combine"] };
+// `opts.accepts` narrows the rail (the `modulate → port` row hands off to the
+// amber sorts only); `opts.verb`/`opts.aim` let a row say what it means when
+// the key it acts on is not the plate the player clicked — "insert before this
+// filter" is `insert_tree` at the filter's *input*, and the chip must name the
+// filter, not whatever happens to feed it.
+function armFromRack(mode, key, opts) {
+  const o = opts || {};
+  pendingTarget = {
+    mode,
+    key,
+    accepts: o.accepts || ["source", "proc", "combine"],
+    verb: o.verb || null,
+    aim: o.aim || null,
+  };
   if (nbState.collapsed) nbSetCollapsed(false);
   const q = $("nb-q");
   q.value = "";
@@ -5611,12 +8345,15 @@ function armFromRack(mode, key) {
   // this node's slot puts the new module between it and its parent, so from
   // the signal's point of view the new module comes after it — the same edit
   // the socket labels describe as "before" the node downstream of it.
-  const here = nodeAtKey(key);
+  const here = nodeAtKey(o.aim || key);
   const name = here ? fragLabel(here, false) : "the output";
-  const what = mode === "replace" ? "replace" : "insert after";
+  const what = o.verb || (mode === "replace" ? "replace" : "insert after");
+  pendingTarget.prompt = `${what} ${name} — pick a module`;
   $("nb-status").innerHTML =
-    `<b>${what} ${esc(name)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
+    `<b>${esc(what)} ${esc(name)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
   nbAnnounce(`Choose a module to ${what} ${name}.`);
+  renderSpecDock();
+  pickFeedback();
 }
 
 function placeModule(kind, mode, key) {
@@ -5640,28 +8377,31 @@ function placeModule(kind, mode, key) {
     // recursive, and "drop a quantizer on this cable" should not first cost
     // you the modulator that made the cable worth quantizing.
     const wraps = (m.modSort === "op" || m.modSort === "pair") && old;
-    sendStruct({ op: "set_mod_tree", key, m: wrapMod(m, old) });
-    if (old && !wraps) staged = stageFragment(old, true);
-    note(
-      wraps
+    // Every one of these sentences is a confirmation, so it is handed to the
+    // send and said on the reply — never here, where the engine has not yet
+    // agreed that any of it is true. See `landedNote`.
+    sendStruct({ op: "set_mod_tree", key, m: wrapMod(m, old) }, {
+      text: wraps
         ? `${m.name} now shapes the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest}.`
         : old
           ? `${m.name} replaced the ${fragLabel(old, true)} on ${kindName(owner)} → ${dest} — the old one is held below.`
           : `${m.name} → ${dest} on ${kindName(owner)}`,
-      undo,
-    );
+      opts: undo,
+    });
+    if (old && !wraps) staged = stageFragment(old, true);
   } else if (mode === "replace" || m.sort === "source") {
     const old = nodeAtKey(key);
-    sendStruct({ op: "replace_tree", key, node: m.frag() });
-    if (old && subtreeSize(old) > 1) {
-      staged = stageFragment(old, false);
-      note(`${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`, undo);
-    } else {
-      note(`${m.name} took the socket.`, undo);
-    }
+    const chain = old && subtreeSize(old) > 1;
+    sendStruct({ op: "replace_tree", key, node: m.frag() }, {
+      text: chain
+        ? `${m.name} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
+        : `${m.name} took the socket.`,
+      opts: undo,
+    });
+    if (chain) staged = stageFragment(old, false);
   } else {
-    sendStruct({ op: "insert_tree", key, node: m.frag() });
-    note(`${m.name} patched into the wire.`, undo);
+    sendStruct({ op: "insert_tree", key, node: m.frag() },
+      { text: `${m.name} patched into the wire.`, opts: undo });
   }
   disarm();
   $("nb-status").textContent = "";
@@ -5685,6 +8425,644 @@ function nbSocketClick(jack) {
   if (!key) return false;
   placeModule(armed.kind, armed.sort === "source" ? "replace" : "insert", key);
   return true;
+}
+
+// ===========================================================================
+// CONNECTION GRAMMAR — outputs are cable sources
+// ===========================================================================
+// The rack drew labelled `out` nuts on every plate and attached nothing to
+// them: no data attribute, no listener, and `onWireUp` read a drop on a jack
+// as a cancel. So the instrument rendered a patchbay and implemented a splice
+// tool — the one thing a patchbay is *for* was the one gesture missing.
+//
+// One grammar, four ways in, all of them the same edit underneath:
+//   · drag out → in            (the cable)
+//   · click out, click in      (touch, long distances, motor accessibility)
+//   · drag out → module body   (forgiveness: one input fits, use it)
+//   · drag out → empty space   (link-drag search: pick what goes next)
+//
+// The term is a strict tree — `Box<AudioNode>`, one parent, one consumer — so
+// "connect A to B" can only mean *move* A into B's socket. Fan-out is not
+// expressible and is never drawn as if it were; what it gets instead is the
+// second row of the chooser, "branch here", which is a `Mix` with both sides
+// in it. The grammar's biggest limitation, offered as a musical verb.
+
+/** Every socket this output may legally reach, and — when there are none —
+ *  the sentence that says why. A refusal in this app is always spoken. */
+function connectTargets(srcKey, kind) {
+  const svg = $("rack-svg");
+  if (kind === "mod") {
+    const owner = srcKey.replace(/\/m$/, "");
+    const jacks = [...svg.querySelectorAll(".jack[data-modkey]")]
+      .filter((j) => j.getAttribute("data-modkey") !== owner);
+    return {
+      attr: "data-modkey",
+      jacks,
+      reason: "nothing else in this patch takes modulation — add a filter, or a delay, and its mod input appears",
+    };
+  }
+  // Cycle rejection, stated rather than silent: a module cannot feed itself,
+  // and it cannot feed anything it is already feeding, because that is a loop
+  // and the term is a tree.
+  const jacks = [...svg.querySelectorAll(".jack[data-childkey]")]
+    .filter((j) => !keyInside(j.getAttribute("data-childkey"), srcKey));
+  return {
+    attr: "data-childkey",
+    jacks,
+    reason: srcKey === "node"
+      ? "this is the last module in the chain — its output already goes to the amp, and there is nowhere further downstream"
+      : "every socket downstream of this module is fed by it — plugging it into its own chain would be a loop, and the patch is a tree",
+  };
+}
+
+/** Wire up an `out` nut: press to pull a cable, click to pick a target. */
+function attachOutJack(j, key, kind) {
+  claimGesture(j);
+  j.addEventListener("pointerdown", (ev) => {
+    if (connectPick) {
+      ev.preventDefault();
+      // Pressing the source again puts the cable down; pressing a different
+      // output re-aims it, which is what a hand at a patchbay does.
+      if (connectPick.srcKey === key) endConnectPick("cable put down");
+      else beginConnectPick(key, kind);
+      return;
+    }
+    if (armed) {
+      ev.preventDefault();
+      return note(`${kindName(armed.kind)} is in your hand — it goes in a lit ○, not an output. esc to put it down.`);
+    }
+    const t = connectTargets(key, kind);
+    ev.preventDefault();
+    if (t.jacks.length === 0) return note(t.reason);
+    startWireDrag(
+      {
+        mode: kind === "mod" ? "connect-mod" : "connect-audio",
+        srcKey: key,
+        kind,
+        attr: t.attr,
+        legalKeys: new Set(t.jacks.map((x) => x.getAttribute(t.attr))),
+      },
+      ev,
+    );
+  });
+}
+
+/** Forgiveness beats precision: the nuts are 6px, so a near miss lands. */
+function nearestLegalJack(cx, cy, w, maxPx) {
+  let best = null;
+  let bestD = maxPx;
+  for (const j of $("rack-svg").querySelectorAll(`.jack[${w.attr}]`)) {
+    if (!w.legalKeys.has(j.getAttribute(w.attr))) continue;
+    const r = j.getBoundingClientRect();
+    const d = Math.hypot(cx - (r.left + r.width / 2), cy - (r.top + r.height / 2));
+    if (d < bestD) { bestD = d; best = j; }
+  }
+  return best;
+}
+
+/** A drop on a module's *body*. Auto-connects when exactly one of its inputs
+ *  fits; when two do — a ducker's `in` and its `key` are not interchangeable
+ *  — it says so rather than guessing, because guessing a sidechain wrong is
+ *  a different patch. */
+function bodyTarget(cx, cy, w) {
+  const el = document.elementFromPoint(cx, cy);
+  const g = el && el.closest ? el.closest("g[data-key]") : null;
+  if (!g) return null;
+  const mk = g.getAttribute("data-key");
+  const cands = [...$("rack-svg").querySelectorAll(`.jack[${w.attr}]`)].filter((j) => {
+    const k = j.getAttribute(w.attr);
+    return w.legalKeys.has(k) && (w.attr === "data-modkey" ? k === mk : socketOwnerKey(k) === mk);
+  });
+  if (cands.length === 1) return cands[0];
+  if (cands.length > 1) {
+    note(`${kindName(rackKindAt(mk))} has two inputs and they are not the same job — drop on one of the lit ○`);
+    return "spoken";
+  }
+  // Over a plate, and none of its inputs will take this. That is a refusal,
+  // not a miss — falling through to "what goes next" here would answer a
+  // question the player did not ask, and leave the bank aimed at a socket
+  // they were not aiming at.
+  const name = kindName(rackKindAt(mk)) || "that module";
+  note(
+    w.attr === "data-modkey"
+      ? `${name} is where this modulator already is — drop it on another module's mod ○`
+      : `nothing on ${name} can take this cable — everything it feeds is downstream of the source, and the patch is a tree`,
+  );
+  return "spoken";
+}
+
+// ---- the chooser: move, or branch ----
+// Both rows say what will happen to the patch, in the patch's own words,
+// before either happens. The default is move; branch is one click away and
+// is never hidden, because "you cannot have two consumers" is a true fact
+// about the grammar and a useless answer to a musician.
+function offerConnect(srcKey, targetKey, kind, cx, cy) {
+  if (kind === "mod") return connectMoveMod(srcKey, targetKey);
+  const srcName = kindName(rackKindAt(srcKey)) || "that";
+  const here = nodeAtKey(targetKey);
+  const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
+  // A hole is not a decision. Dropping into one is unambiguously a move.
+  if (isPlaceholderKey(targetKey)) return connectMove(srcKey, targetKey);
+  // Two namings, because the two rows do different things to the same socket:
+  // move displaces the whole subtree to HELD, branch mixes into its head.
+  const hereName = here ? plateTitle(targetKey) : "what is there";
+  const hereChain = here ? chainTitle(targetKey) : "what is there";
+  openChooser(cx, cy, `${srcName} → ${ownerName}`, [
+    {
+      label: "move it here",
+      sub: `${srcName} leaves where it is — its old socket becomes a hole — and ${hereChain} is held below.`,
+      run: () => connectMove(srcKey, targetKey),
+    },
+    {
+      label: "branch here",
+      sub: `a copy of ${srcName} joins ${hereName} through a mix. Nothing moves. (A copy: one output cannot feed two places.)`,
+      run: () => connectBranch(srcKey, targetKey),
+    },
+  ]);
+}
+
+/** A short popover in the context menu's own element, so there is exactly one
+ *  floating menu in the app, one law that dismisses it, and one keyboard. */
+function openChooser(x, y, head, rows) {
+  showMenu(x, y, { sub: head }, rows);
+}
+
+/** Move the module at `srcKey` into the socket at `targetKey`. One rewrite,
+ *  one undo step: the vacated socket becomes a hole and whatever was in the
+ *  target is held below. */
+function connectMove(srcKey, targetKey) {
+  const srcName = kindName(rackKindAt(srcKey)) || "that";
+  const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
+  const hereChain = chainTitle(targetKey); // named before the tree moves
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    if (keyInside(targetKey, srcKey)) {
+      return "that socket is downstream of this module — plugging it in there would be a loop, and the patch is a tree";
+    }
+    const src = nodeAtIn(tree, srcKey);
+    if (!src) return "that module has moved — try the cable again";
+    // The hole goes in *first*, so that if the target is an ancestor of the
+    // source the subtree being displaced is read with the hole already in it
+    // — otherwise it would be held below with a second live copy of the very
+    // module we just promoted inside it.
+    const hole = placeholderNode();
+    if (!setNodeAtIn(tree, srcKey, hole)) return "that module has moved — try the cable again";
+    const victim = nodeAtIn(tree, targetKey);
+    if (!setNodeAtIn(tree, targetKey, src)) return "that socket has moved — try the cable again";
+    marks.push(hole);
+    if (victim && !marks.includes(victim)) doomed = victim;
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  const undo = { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" };
+  noteOnLanding(
+    doomed
+      ? `${srcName} now feeds ${ownerName} — the ${hereChain} it displaced is held below, and its old socket is empty.`
+      : `${srcName} now feeds ${ownerName} — its old socket is empty.`,
+    undo,
+  );
+}
+
+/** The sanctioned answer to fan-out: a `Mix` at the target socket with what
+ *  was there on one side and a copy of the source on the other. Honest copy
+ *  — the term cannot share a node, and the toast says "a copy" for the same
+ *  reason the socket labels say "replaces". */
+function connectBranch(srcKey, targetKey) {
+  const srcName = kindName(rackKindAt(srcKey)) || "that";
+  const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
+  const hereName = plateTitle(targetKey); // the plate it will mix with
+  const ok = applyTreeRewrite((tree) => {
+    if (keyInside(targetKey, srcKey)) {
+      return "that socket is downstream of this module — branching into it would be a loop, and the patch is a tree";
+    }
+    const src = nodeAtIn(tree, srcKey);
+    const here = nodeAtIn(tree, targetKey);
+    if (!src || !here) return "that socket has moved — try the cable again";
+    const spec = MOD_BY_KIND.mix;
+    const mix = spec.frag();
+    const f = childFields(spec);
+    mix.Mix[f[0]] = here;
+    mix.Mix[f[1]] = JSON.parse(JSON.stringify(src));
+    if (!setNodeAtIn(tree, targetKey, mix)) return "that socket has moved — try the cable again";
+    return null;
+  });
+  if (!ok) return;
+  noteOnLanding(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
+}
+
+/** Modulation has one slot per module, so its only verb is move. */
+function connectMoveMod(srcKey, targetKey) {
+  const srcMod = modAtKey(srcKey.replace(/\/m$/, ""));
+  if (!srcMod) return note("that modulator has moved — try the cable again");
+  const from = srcKey.replace(/\/m$/, "");
+  const dest = kindModTarget(rackKindAt(targetKey)) || "mod";
+  let doomed = null;
+  const ok = applyTreeRewrite((tree) => {
+    const owner = nodeAtIn(tree, from);
+    const target = nodeAtIn(tree, targetKey);
+    if (!owner || !target) return "that modulator has moved — try the cable again";
+    const oTag = nodeTag(owner), tTag = nodeTag(target);
+    const m = owner[oTag]?.modulation;
+    if (!m || m === "None") return "there is no modulator on that jack any more";
+    const had = target[tTag]?.modulation;
+    if (had && had !== "None") doomed = had;
+    owner[oTag].modulation = "None";
+    target[tTag].modulation = m;
+    return null;
+  });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, true) : null;
+  noteOnLanding(
+    `${fragLabel(srcMod, true)} → ${dest} on ${kindName(rackKindAt(targetKey))}` +
+    (doomed ? ` — the ${fragLabel(doomed, true)} it replaced is held below.` : ""),
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "put it back" },
+  );
+}
+
+// ---- link-drag search ----
+// Release a cable into nothing and the question stops being "where does this
+// go" and becomes "what goes next" — which is the node bank's question. The
+// query the player then types is the only explicit statement of intent in the
+// app, so it is kept; WS-8 gives it a home in the implicit stream.
+const linkSearchLog = [];
+
+function openLinkSearch(w) {
+  const isMod = w.kind === "mod";
+  const key = isMod ? w.srcKey.replace(/\/m$/, "") : w.srcKey;
+  const srcName = isMod
+    ? fragLabel(modAtKey(key) || {}, true)
+    : kindName(rackKindAt(w.srcKey)) || "that";
+  pendingTarget = {
+    mode: "insert",
+    key,
+    accepts: isMod ? ["mod"] : ["proc", "combine"],
+    prompt: `after ${srcName} — pick a module`,
+    link: { srcKey: w.srcKey, kind: w.kind, at: Date.now() },
+  };
+  if (nbState.collapsed) nbSetCollapsed(false);
+  const q = $("nb-q");
+  q.value = "";
+  renderNodeBank();
+  q.focus();
+  $("nb-status").innerHTML =
+    `<b>after ${esc(srcName)}</b> — pick a module <span class="sp-dim">· esc to cancel</span>`;
+  nbAnnounce(`Cable dropped. Choose a module to put after ${srcName}.`);
+  renderSpecDock();
+  pickFeedback();
+}
+
+/** The query string, kept with what it was aimed at and what it produced. */
+function logLinkQuery(chosen) {
+  const l = pendingTarget && pendingTarget.link;
+  if (!l || l.logged) return; // the pick and the cancel both land here
+  l.logged = true;
+  linkSearchLog.push({
+    q: ($("nb-q").value || "").trim(),
+    kind: l.kind,
+    src: rackKindAt(l.srcKey) || l.srcKey,
+    chosen: chosen || null,
+    ms: Date.now() - l.at,
+  });
+  window.__ricLinkSearch = linkSearchLog;
+}
+
+// ---- click source, then click target ----
+// The same grammar without a drag: for touch, for a target three screens
+// away, and for anyone who cannot hold a button down while aiming.
+let connectPick = null; // {srcKey, kind, attr, legalKeys}
+
+function beginConnectPick(srcKey, kind) {
+  endConnectPick();
+  const t = connectTargets(srcKey, kind);
+  if (t.jacks.length === 0) return note(t.reason);
+  connectPick = {
+    srcKey,
+    kind,
+    attr: t.attr,
+    legalKeys: new Set(t.jacks.map((j) => j.getAttribute(t.attr))),
+  };
+  connectSync();
+  const name = kind === "mod"
+    ? fragLabel(modAtKey(srcKey.replace(/\/m$/, "")) || {}, true)
+    : kindName(rackKindAt(srcKey)) || "that";
+  $("nb-status").innerHTML =
+    `<b>cable out of ${esc(name)}</b> — click a lit ○ <span class="sp-dim">· esc to put it down</span>`;
+  nbAnnounce(`Cable out of ${name}. ${t.jacks.length} sockets available.`);
+  pickFeedback();
+}
+
+/** Re-light after a rebuild; the DOM the lighting lived on is thrown away on
+ *  every bench reply. */
+function connectSync() {
+  const svg = $("rack-svg");
+  // `wire` owns the class while a cable is physically out; only take it off
+  // when neither gesture is running.
+  if (!connectPick) {
+    if (!wire) svg.classList.remove("wiring");
+    return;
+  }
+  svg.classList.add("wiring");
+  if (!wb.rack) return endConnectPick();
+  let lit = 0;
+  for (const j of svg.querySelectorAll(`.jack[${connectPick.attr}]`)) {
+    if (!connectPick.legalKeys.has(j.getAttribute(connectPick.attr))) continue;
+    j.classList.add("legal");
+    lit += 1;
+  }
+  const from = svg.querySelector(`.jack[data-outkey="${cssKey(connectPick.srcKey)}"]`);
+  if (from) from.classList.add("hot");
+  if (lit === 0) endConnectPick();
+}
+
+function endConnectPick(msg) {
+  if (!connectPick) return;
+  connectPick = null;
+  const svg = $("rack-svg");
+  svg.classList.remove("wiring");
+  svg.querySelectorAll(".jack.legal, .jack.hot").forEach((j) => j.classList.remove("legal", "hot"));
+  $("nb-status").textContent = "";
+  if (msg) note(msg);
+  pickFeedback();
+}
+
+/** A press on any socket while a cable is out of an output. */
+function connectClick(jack) {
+  if (!connectPick) return false;
+  const key = jack.getAttribute(connectPick.attr);
+  const w = connectPick;
+  if (!key) return false;
+  if (!w.legalKeys.has(key)) {
+    note(connectTargets(w.srcKey, w.kind).reason);
+    return true;
+  }
+  const r = jack.getBoundingClientRect();
+  endConnectPick();
+  offerConnect(w.srcKey, key, w.kind, r.left + r.width / 2, r.bottom + 6);
+  return true;
+}
+
+/** CSS.escape for a trace key. Keys are `node/0/1`, and `/` is a combinator
+ *  in a selector — an unescaped one silently matches nothing. */
+function cssKey(k) {
+  return window.CSS && CSS.escape ? CSS.escape(k) : k.replace(/\//g, "\\/");
+}
+
+// ===========================================================================
+// PICK-MODE FEEDBACK — the canvas says what is about to happen
+// ===========================================================================
+// Arming used to be invisible on the canvas: the decision was announced in a
+// rail a thousand pixels from the plate it was about to edit, and the target
+// was named by its trace id ("wavefolder·3"), which the player has never
+// seen. So: dim what is not a target, put a caret on the exact cable that
+// will be cut, an amber halo on a plate that will be replaced, and a chip on
+// the target plate naming it by the title silkscreened on it.
+let pickHoverKey = null;  // the plate under the pointer while sockets are lit
+let pickChipKey = null;   // the plate the chip is currently pinned to
+
+function pickFeedback() {
+  const svg = $("rack-svg");
+  const chip = $("pick-chip");
+  if (!svg || !chip) return;
+  pickChipKey = null;
+  svg.querySelectorAll("g[data-key].dimmed").forEach((g) => g.classList.remove("dimmed"));
+  svg.querySelectorAll(".pick-caret, .pick-halo, .pick-ghost").forEach((e) => e.remove());
+  svg.classList.remove("picking");
+  chip.classList.add("hidden");
+  if (!wb.rack) return;
+
+  // Three ways to be armed, one vocabulary:
+  //   targets  — every plate that can receive the thing in hand
+  //   aimKey   — the one plate this is aimed at, if there is one
+  //   caretKey — the trace key whose *outgoing* cable gets cut
+  //   replaces — amber: something on that plate goes away
+  let targets = null;
+  let aimKey = null;
+  let caretKey = null;
+  let replaces = false;
+  let verb = "";
+  if (pendingTarget) {
+    // The ⋯ handoff and the link-drag search both name one module and act on
+    // its slot: `insert_tree` at key K puts the new module between K and its
+    // parent, so from the signal's point of view it lands after K.
+    // `aim` is the plate the *row* was about when that is not the key the op
+    // acts on ("insert before this filter" inserts at the filter's input), so
+    // the chip and the halo stay on the module the player pointed at while the
+    // caret stays on the wire that is actually being cut.
+    aimKey = pendingTarget.aim || pendingTarget.key;
+    replaces = pendingTarget.mode === "replace";
+    caretKey = replaces ? null : pendingTarget.key;
+    verb = pendingTarget.verb || (replaces ? "replace" : "insert after");
+    targets = new Set([aimKey, pendingTarget.key]);
+  } else if (connectPick) {
+    verb = "cable into";
+    targets = new Set([...connectPick.legalKeys].map(
+      (k) => (connectPick.attr === "data-modkey" ? k : socketOwnerKey(k)),
+    ));
+    targets.add(connectPick.srcKey);
+  } else if (armed && armedSockets.length) {
+    const isMod = armed.sort === "mod";
+    targets = new Set(armedSockets.map((j) => {
+      const k = j.getAttribute("data-childkey");
+      return k ? socketOwnerKey(k) : j.getAttribute("data-modkey");
+    }));
+    // Every lit socket is a candidate, so the only one worth naming is the
+    // one under the pointer. The socket key IS a plate key for audio — the
+    // occupant's — which is exactly the plate the promise is about.
+    if (pickHoverKey && rackBoxes.has(pickHoverKey)) {
+      aimKey = pickHoverKey;
+      if (isMod) {
+        replaces = armed.modSort === "leaf" && !!modAtKey(pickHoverKey);
+        verb = replaces ? "replace the modulator on" : "modulate";
+      } else if (armed.sort === "source") {
+        replaces = !isPlaceholderKey(pickHoverKey);
+        verb = replaces ? "replace" : "fill";
+      } else {
+        caretKey = pickHoverKey;
+        // The same op as the ⋯ handoff above, and therefore the same word for
+        // it: `insert_tree` at this socket puts the module between its
+        // occupant and whatever the occupant feeds, so the signal reaches it
+        // *after* the plate the chip is naming. This said "insert before" and
+        // the menu said "insert after" about the identical edit.
+        verb = "insert after";
+      }
+    }
+  } else {
+    return;
+  }
+
+  svg.classList.add("picking");
+  for (const g of svg.querySelectorAll("g[data-key]")) {
+    if (!targets.has(g.getAttribute("data-key"))) g.classList.add("dimmed");
+  }
+  if (!aimKey) return;
+  pickChipKey = aimKey;
+
+  // The caret goes on the run that is about to be cut, measured off the path
+  // itself so it sits *on* the curve rather than near it. A patch routinely
+  // carries four cables into the same column; "near it" is not an answer.
+  let caretPt = null;
+  if (caretKey) {
+    const w = svg.querySelector(`.rack-wires path.wire[data-from="${cssKey(caretKey)}"]`);
+    if (w) {
+      try {
+        const pt = w.getPointAtLength(w.getTotalLength() / 2);
+        caretPt = { x: pt.x, y: pt.y };
+        const c = svgEl("g", { transform: `translate(${pt.x},${pt.y})` }, "pick-caret");
+        c.appendChild(svgEl("path", { d: "M 0 -11 L 0 11" }));
+        c.appendChild(svgEl("path", { d: "M -5 -11 L 5 -11 M -5 11 L 5 11" }));
+        svg.querySelector(".rack-controls")?.appendChild(c);
+      } catch (_) { /* a path with no length: nothing to point at */ }
+    }
+  }
+  const b = rackBoxes.get(aimKey);
+  if (b) {
+    const halo = svgEl("rect", {
+      x: b.x - 5, y: b.y - 5, width: b.w + 10, height: b.h + 10, rx: 9,
+    }, `pick-halo${replaces ? " replaces" : ""}`);
+    svg.querySelector(".rack-controls")?.appendChild(halo);
+  }
+  // The ghost. Only the `armed` branch can draw one, because it is the only
+  // one of the three that knows *which module* — the ⋯ handoff and a dropped
+  // cable are both still waiting for the player to name it.
+  if (armed && b) drawPickGhost(svg, armed, b, caretPt);
+
+  // …and the chip, pinned to that plate, naming it with the title
+  // silkscreened on it — never the trace id, which the player has never seen.
+  // "the title on the plate" — and on a hole the plate says EMPTY, not the
+  // kind of the substitute node standing in for one.
+  const mod = wb.rack.modules.find((m) => m.key === aimKey);
+  const title = isPlaceholderKey(aimKey) ? "the empty socket" : mod ? mod.title : "the output";
+  chip.querySelector(".pick-chip-text").textContent = `${verb} ${title}`;
+  chip.classList.remove("hidden");
+  positionPickChip();
+}
+
+// ---------- the ghost plate ----------
+// Everything else in pick mode says where the module goes; this says what will
+// be *there*. The card knows the module's ports, its defaults and what the
+// model thinks of it, and then the player had to imagine the object. So the
+// faceplate is drawn for real — same geometry function, same plate, same knob
+// travel — greyed, at the position the module will actually take.
+//
+// It is a member of the caret/chip system rather than a second one: it reads
+// the same `aimKey`/`caretKey` the caret does, so the caret marks the cable
+// that gets cut and the ghost sits on it.
+
+/** A `RackModule`-shaped stand-in for a module that does not exist yet, read
+ *  off the same `frag()` the placement will send. `moduleBox`, `knobPos` and
+ *  `plateStep` are pure functions of this shape, so the ghost's geometry is
+ *  the geometry the real plate will get — not an approximation of it. */
+function ghostModule(kind) {
+  const m = MOD_BY_KIND[kind];
+  if (!m) return null;
+  const frag = m.frag();
+  const tag = nodeTag(frag);
+  const body = frag[tag] || {};
+  const named = modEntry(frag)?.params;
+  // `kind` means two different things depending on the shape. On a CV `Op` or
+  // `Pair` it is the module's own identity, already silkscreened on the title,
+  // and printing it would leak the enum variant. On an audio node it is a
+  // faceplate chip the player can cycle — a filter's mode — and dropping it
+  // would draw a three-knob plate where a four-slot one is about to land.
+  const identity = tag === "Op" || tag === "Pair";
+  const knobs = [];
+  for (const [k, v] of Object.entries(body)) {
+    if (v && typeof v === "object") continue;   // a subterm, not a parameter
+    if (v === "None") continue;                 // an empty modulation slot
+    if (k === "kind" && identity) continue;
+    const slot = k === "p0" ? 0 : k === "p1" ? 1 : -1;
+    if (slot >= 0 && named && !named[slot]) continue; // a one-parameter op
+    const label = k === "kind" ? "mode" : slot >= 0 && named ? named[slot] : k.replace(/_/g, " ");
+    knobs.push(
+      typeof v === "number"
+        ? { addr: "", label, value: v, kind: { t: "continuous" } }
+        // `SvfLp` is a Rust variant name, not a silkscreen; the real plate
+        // prints "svf lp" and the ghost must not print anything else.
+        : { addr: "", label, value: String(v).replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase(), kind: { t: "enum" } },
+    );
+  }
+  return { key: "__ghost", kind, title: m.name, column: 0, is_mod: m.sort === "mod", knobs };
+}
+
+function drawPickGhost(svg, hand, b, caretPt) {
+  const mod = ghostModule(hand.kind);
+  if (!mod) return;
+  const box = moduleBox(mod);
+  // Where it lands, said three ways, because the three placements are three
+  // different edits: a modulator hangs below the plate it drives, a source
+  // takes the socket outright, and a processor is spliced into the cable the
+  // caret is already pointing at.
+  let cx, cy;
+  if (hand.sort === "mod") {
+    cx = b.x + b.w / 2;
+    cy = b.y + b.h + GUTTER + box.h / 2;
+  } else if (hand.sort === "source") {
+    cx = b.x + b.w / 2;
+    cy = b.y + b.h / 2;
+  } else if (caretPt) {
+    // On the cable the caret is marking — but never overlapping the plate the
+    // chip is naming. "insert before WAVEFOLDER" is unreadable advice if the
+    // wavefolder is the thing hidden behind the proposal.
+    cx = Math.max(caretPt.x, b.x + b.w + 8 + box.w / 2);
+    cy = caretPt.y;
+  } else {
+    cx = b.x + b.w + GUTTER + box.w / 2;
+    cy = b.y + b.h / 2;
+  }
+  const g = svgEl(
+    "g",
+    { transform: `translate(${(cx - box.w / 2).toFixed(1)},${(cy - box.h / 2).toFixed(1)})` },
+    `pick-ghost${mod.is_mod ? " modside" : ""}`,
+  );
+  g.appendChild(svgEl("rect", { width: box.w, height: box.h, rx: 5 }, "mod-plate"));
+  const title = svgEl("text", { x: 14, y: 18 }, `mod-title${mod.is_mod ? " modside" : ""}`);
+  title.textContent = mod.title;
+  g.appendChild(title);
+  mod.knobs.forEach((k, i) => {
+    const { x, y } = knobPos(mod, i, box);
+    const pitch = knobPitch(mod, i, box);
+    const kg = svgEl("g", { transform: `translate(${x},${y})` });
+    if (k.kind.t === "continuous") {
+      kg.appendChild(svgEl("path", { d: arcPath(KNOB_R + 3, 0, 1) }, "knob-track"));
+      if (k.value > 0.004) {
+        kg.appendChild(svgEl("path", { d: arcPath(KNOB_R + 3, 0, k.value) },
+          `knob-arc${mod.is_mod ? " modside" : ""}`));
+      }
+      kg.appendChild(svgEl("circle", { r: KNOB_R }, "knob-body"));
+      const ang = (-135 + 270 * k.value) * (Math.PI / 180);
+      kg.appendChild(svgEl("line", {
+        x1: (Math.sin(ang) * KNOB_R * 0.45).toFixed(2),
+        y1: (-Math.cos(ang) * KNOB_R * 0.45).toFixed(2),
+        x2: (Math.sin(ang) * (KNOB_R - 3)).toFixed(2),
+        y2: (-Math.cos(ang) * (KNOB_R - 3)).toFixed(2),
+      }, `knob-ind${mod.is_mod ? " modside" : ""}`));
+    } else {
+      const bw = Math.max(40, Math.min(62, pitch - 4));
+      kg.appendChild(svgEl("rect", { x: -bw / 2, y: -11, width: bw, height: 22, rx: 3 }, "enum-body"));
+      const txt = svgEl("text", { y: 4 }, "enum-text");
+      txt.textContent = String(k.value);
+      kg.appendChild(txt);
+    }
+    const lbl = svgEl("text", { y: KNOB_R + 15 }, "knob-label");
+    lbl.textContent = silkLabel(k.label);
+    kg.appendChild(lbl);
+    g.appendChild(kg);
+  });
+  svg.querySelector(".rack-controls")?.appendChild(g);
+}
+
+/** The chip lives in the frame, not the scroller, so it is re-aimed whenever
+ *  the camera moves rather than riding away with the patch. */
+function positionPickChip() {
+  const chip = $("pick-chip");
+  if (!chip || chip.classList.contains("hidden")) return;
+  const b = pickChipKey && rackBoxes.get(pickChipKey);
+  if (!b) return chip.classList.add("hidden");
+  const fr = $("rack-frame").getBoundingClientRect();
+  const p = rackToClient(b.x + b.w / 2, b.y);
+  chip.style.left = `${Math.round(p.x - fr.left)}px`;
+  chip.style.top = `${Math.round(p.y - fr.top - 8)}px`;
 }
 
 // ---- keyboard ----
@@ -5733,7 +9111,12 @@ function nbArmedKeys(ev) {
     armedIdx = (armedIdx + d + armedSockets.length) % armedSockets.length;
     const j = armedSockets[armedIdx];
     j.classList.add("hot");
-    j.scrollIntoView({ block: "nearest", inline: "nearest" });
+    ensureRackVisible(j);
+    // The keyboard walk is an aim like any other: the caret, the halo, the
+    // chip and the ghost all read `pickHoverKey`, so stepping without setting
+    // it left the canvas saying nothing for the one route that needs it most.
+    pickHoverKey = j.getAttribute("data-childkey") || j.getAttribute("data-modkey") || null;
+    pickFeedback();
     nbAnnounce(`socket ${armedIdx + 1} of ${armedSockets.length} — ${socketLabel(j)}`);
     return true;
   }
@@ -5790,10 +9173,27 @@ function startWireDrag(spec, ev) {
     });
   } else if (spec.mode === "tray-mod" || spec.mode === "palette-mod") {
     rackSvg.querySelectorAll('.jack[data-modkey]').forEach((j) => j.classList.add("legal"));
+  } else if (spec.legalKeys) {
+    // A cable out of an output. Everything the tree allows lights; everything
+    // it does not stays dark AND gets a reason when you drop on it, which is
+    // the difference between a rule and a shrug.
+    for (const j of rackSvg.querySelectorAll(`.jack[${spec.attr}]`)) {
+      if (spec.legalKeys.has(j.getAttribute(spec.attr))) j.classList.add("legal");
+    }
   }
-  drawWireBand(ev.clientX, ev.clientY, ev.clientX, ev.clientY, spec.kind);
   wire.sx = ev.clientX;
   wire.sy = ev.clientY;
+  wire.tx = ev.clientX;
+  wire.ty = ev.clientY;
+  // Where the cable comes *out of* is a place on the patch, not a place on
+  // the screen — so if it started on the rack it is remembered in rack units
+  // and re-projected every frame. Without this the band stays nailed to the
+  // pixel the press happened on while the world moves underneath it, which is
+  // exactly what the auto-pan below does on purpose and what a zoom does by
+  // accident. A drag that began in the node bank has no rack anchor: the chip
+  // it came from really is at a fixed place on the screen.
+  if (rackSvg.contains(ev.target)) wire.anchor = clientToRack(ev.clientX, ev.clientY);
+  redrawWireBand();
   document.addEventListener("pointermove", onWireMove);
   document.addEventListener("pointerup", onWireUp, { once: true });
   // A touch the browser reclaims (an OS edge gesture, a second finger, a
@@ -5815,9 +9215,22 @@ function drawWireBand(x1, y1, x2, y2, kind) {
     `<path class="${kind}" d="M ${x1} ${y1} C ${x1 + dx} ${y1 + 20}, ${x2 - dx} ${y2 + 20}, ${x2} ${y2}"/>`;
 }
 
+/** Re-project the band from whatever is still true about it. Called on every
+ *  pointer move, and by `applyView` on every frame the camera moves — a cable
+ *  that detaches from its jack while the canvas slides is the desync the
+ *  overlay's client coordinates used to guarantee. */
+function redrawWireBand() {
+  if (!wire) return;
+  const a = wire.anchor ? rackToClient(wire.anchor.x, wire.anchor.y) : { x: wire.sx, y: wire.sy };
+  drawWireBand(a.x, a.y, wire.tx, wire.ty, wire.kind);
+}
+
 function onWireMove(ev) {
   if (!wire) return;
-  drawWireBand(wire.sx, wire.sy, ev.clientX, ev.clientY, wire.kind);
+  wire.tx = ev.clientX;
+  wire.ty = ev.clientY;
+  redrawWireBand();
+  edgePanFrom(ev.clientX, ev.clientY);
 }
 
 function onWireCancel() {
@@ -5826,6 +9239,7 @@ function onWireCancel() {
 }
 
 function endWireDrag() {
+  stopEdgePan();
   document.removeEventListener("pointermove", onWireMove);
   document.removeEventListener("pointerup", onWireUp);
   document.removeEventListener("pointercancel", onWireCancel);
@@ -5854,21 +9268,34 @@ function onWireUp(ev) {
       return;
     }
     const frag = w.item.frag;
-    if (SOURCE_TAGS.includes(nodeTag(frag))) {
-      // A source takes the socket; whatever was there is held below.
-      const old = nodeAtKey(childKey);
-      sendStruct({ op: "replace_tree", key: childKey, node: frag });
-      if (old && subtreeSize(old) > 1) {
-        stageFragment(old, false);
-        note(`${label} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`);
-      } else {
-        note(`${label} took the socket.`);
-      }
+    // Which of the two edits a held fragment means is decided by what it *is*,
+    // not by where it lands. `insert_tree` grafts the socket's occupant in as
+    // the fragment's own first input — which is exactly right for one module
+    // (bypass's `rewrap` head especially: it comes back with its parameters
+    // and the wire runs through it again) and silently discards the tail of a
+    // multi-module chain, which is why a chain takes the socket instead and
+    // says what it displaced.
+    // A palette fragment is always one module wearing a default input, so it
+    // always splices; only the shelf can hand you a whole chain.
+    const fromTray = w.mode === "tray-audio";
+    const splice = !SOURCE_TAGS.includes(nodeTag(frag)) &&
+                   (!fromTray || w.item.rewrap || subtreeSize(frag) === 1);
+    if (splice) {
+      sendStruct({ op: "insert_tree", key: childKey, node: frag }, {
+        text: w.item.rewrap ? `${label} is back in the wire, with its settings.` : `${label} patched into the wire.`,
+        drop: w.item.uid ?? null,
+      });
     } else {
-      sendStruct({ op: "insert_tree", key: childKey, node: frag });
-      note(`${label} patched into the wire.`);
+      const old = nodeAtKey(childKey);
+      const chain = old && subtreeSize(old) > 1;
+      sendStruct({ op: "replace_tree", key: childKey, node: frag }, {
+        text: chain
+          ? `${label} took the socket — the ${subtreeSize(old)}-module chain it replaced is held below.`
+          : `${label} took the socket.`,
+        drop: w.item.uid ?? null,
+      });
+      if (chain) stageFragment(old, false);
     }
-    if (w.item.uid) unstage(w.item.uid);
   } else if (w.mode === "tray-mod" || w.mode === "palette-mod") {
     const modKey = jack && jack.getAttribute("data-modkey");
     const label = w.item.kindId ? kindName(w.item.kindId) : fragLabel(w.item.frag, true);
@@ -5878,24 +9305,63 @@ function onWireUp(ev) {
       return;
     }
     const old = modAtKey(modKey);
-    sendStruct({ op: "set_mod_tree", key: modKey, m: w.item.frag });
+    sendStruct({ op: "set_mod_tree", key: modKey, m: w.item.frag }, {
+      text: `${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`,
+      drop: w.item.uid ?? null,
+    });
     if (old) stageFragment(old, true);
-    if (w.item.uid) unstage(w.item.uid);
-    note(`${label} → ${kindModTarget(rackKindAt(modKey)) || "mod"} on ${kindName(rackKindAt(modKey))}`);
+  } else if (w.mode === "connect-audio" || w.mode === "connect-mod") {
+    // No movement at all is a click, not a miss — the same gesture without a
+    // drag, for touch and for long distances.
+    if (Math.hypot(ev.clientX - w.sx, ev.clientY - w.sy) <= 6) {
+      beginConnectPick(w.srcKey, w.kind);
+      return;
+    }
+    let target = jack && jack.hasAttribute(w.attr) ? jack : null;
+    if (target && !w.legalKeys.has(target.getAttribute(w.attr))) {
+      return note(connectTargets(w.srcKey, w.kind).reason);
+    }
+    if (!target) target = nearestLegalJack(ev.clientX, ev.clientY, w, 24);
+    if (!target) {
+      const body = bodyTarget(ev.clientX, ev.clientY, w);
+      if (body === "spoken") return;
+      target = body;
+    }
+    // Nothing under the cable: the question becomes "what goes next".
+    if (!target) return openLinkSearch(w);
+    offerConnect(w.srcKey, target.getAttribute(w.attr), w.kind, ev.clientX, ev.clientY);
   } else if (w.mode === "unplug-audio") {
     if (jack) return; // dropped back on a jack: treat as cancel
-    const old = nodeAtKey(w.childKey);
-    if (!old) return;
-    stageFragment(old, false);
-    sendStruct({ op: "replace_tree", key: w.childKey, node: MOD_BY_KIND.vco.frag() });
-    note("unplugged — the chain is held below; a fresh vco holds the socket");
+    // The socket is left visibly empty. The engine still needs a node there —
+    // the term is total — but the plate says "empty" and the next module goes
+    // there by default, instead of a fresh vco quietly pretending the unplug
+    // did nothing.
+    const pulled = chainTitle(w.childKey); // while it is still in the rack
+    let doomed = null;
+    const ok = applyTreeRewrite((tree, marks) => {
+      const old2 = nodeAtIn(tree, w.childKey);
+      if (!old2) return "that cable is no longer there";
+      const hole = placeholderNode();
+      if (!setNodeAtIn(tree, w.childKey, hole)) return "that cable is no longer there";
+      if (!marks.includes(old2)) doomed = old2;
+      marks.push(hole);
+      return null;
+    });
+    if (!ok) return;
+    const uid = doomed ? stageFragment(doomed, false) : null;
+    noteOnLanding(
+      doomed
+        ? `unplugged — the ${pulled} is held below and the socket is empty.`
+        : "unplugged — the socket is empty.",
+      { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
+    );
   } else if (w.mode === "unplug-mod") {
     if (jack) return;
-    const old = modAtKey(w.key);
-    if (!old) return;
-    stageFragment(old, true);
-    sendStruct({ op: "set_mod", key: w.key, kind: "none" });
-    note("modulation unplugged — it is held below");
+    if (!modAtKey(w.key)) return;
+    // Staged *after* the post, not before: `stageFragment` binds the fragment
+    // to the edit that is going out, so an op that the engine refuses takes
+    // its own shelf entry back with it.
+    unplugMod(w.key);
   }
 }
 
@@ -7286,6 +10752,7 @@ bootMidi();
     if (saved.ui.oct != null) { octShift = saved.ui.oct; buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
+    restoreTray(saved.ui.held);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.
@@ -7314,4 +10781,7 @@ bootMidi();
 })();
 
 // Debug/testing hook (no UI surface).
-window.__ric = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs };
+// `note` rides along because the toast lane's guarantee — that nothing
+// transient ever lands on PICK A / PICK B — is only testable by forcing a
+// toast at a moment the app would not normally produce one.
+window.__ric = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note };

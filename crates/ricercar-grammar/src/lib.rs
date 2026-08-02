@@ -47,7 +47,7 @@ pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap};
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
-pub use mutate::{apply_struct_op, ModKind, NodeKind, StructError, StructOp};
+pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
 pub use term::{AudioNode, ModNode, PatchTree};
@@ -523,6 +523,84 @@ mod tests {
                 PatchTree::from_trace(&inserted.to_trace()).unwrap(),
                 inserted
             );
+            // "Swap the two inputs" is offered on every binary in the rack
+            // menu, and for five of the six it used to be a guaranteed
+            // rejection — a verb the UI printed and the engine refused. It
+            // now applies to all six, and it has to actually exchange the
+            // branches, not merely return Ok.
+            let before = describe::describe(&tree);
+            let kind_at = |r: &describe::RackDescription, k: &str| {
+                r.modules
+                    .iter()
+                    .find(|m| m.key == k)
+                    .unwrap_or_else(|| panic!("{kind:?}: no module at {k}"))
+                    .kind
+                    .clone()
+            };
+            let swapped = mutate::apply_struct_op(&tree, &StructOp::SwapMix { key: "node".into() })
+                .unwrap_or_else(|e| panic!("{kind:?}: swap the two inputs: {e}"));
+            let after = describe::describe(&swapped);
+            assert_eq!(kind_at(&after, "node/0"), kind_at(&before, "node/1"));
+            assert_eq!(kind_at(&after, "node/1"), kind_at(&before, "node/0"));
+            assert!(compile(&swapped, SR).is_ok());
+            assert_eq!(PatchTree::from_trace(&swapped.to_trace()).unwrap(), swapped);
+        }
+    }
+
+    /// The ceilings have to hold on *both* routes into the bench.
+    ///
+    /// `apply_struct_op` has always checked them on its way out; the whole-tree
+    /// replace behind undo/redo and the editor's client-side rewrites did not,
+    /// and that is the route a graph editor leans on hardest. A tree that
+    /// `apply_struct_op` would refuse must be refused by `validate_tree` too,
+    /// or the ceiling is decorative.
+    #[test]
+    fn validate_tree_refuses_what_apply_struct_op_refuses() {
+        use mutate::{NodeKind, StructOp};
+        let mut tree = presets::presets()[0].1.clone();
+        assert!(
+            validate_tree(&tree).is_ok(),
+            "a preset is inside the ceilings"
+        );
+        // Stack filters at the root until the depth ceiling bites. The op that
+        // finally fails is the one whose *result* is out of bounds, so build
+        // that result by hand and check the validator agrees.
+        let mut over = None;
+        for _ in 0..(mutate::MAX_DEPTH + mutate::MAX_SIZE + 4) {
+            let op = StructOp::Insert {
+                key: "node".into(),
+                kind: NodeKind::Filter,
+            };
+            match mutate::apply_struct_op(&tree, &op) {
+                Ok(next) => tree = next,
+                Err(_) => {
+                    // Same edit, ceiling check skipped: exactly what
+                    // `edit_set_tree` used to hand the engine.
+                    let mut raw = tree.clone();
+                    raw.root = default_filter_over(raw.root);
+                    over = Some(raw);
+                    break;
+                }
+            }
+        }
+        let over = over.expect("the ceilings must bite within a bounded number of inserts");
+        assert!(
+            validate_tree(&over).is_err(),
+            "validate_tree let through a tree apply_struct_op refuses"
+        );
+    }
+
+    /// A filter wrapping `inner`, built without going through the op vocabulary
+    /// — the point of the test above is to construct a tree the vocabulary
+    /// would never return.
+    fn default_filter_over(inner: term::AudioNode) -> term::AudioNode {
+        term::AudioNode::Filter {
+            kind: term::FilterKind::SvfLp,
+            cutoff: 0.5,
+            resonance: 0.2,
+            mod_depth: 0.0,
+            input: Box::new(inner),
+            modulation: term::ModNode::None,
         }
     }
 

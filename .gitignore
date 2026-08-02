@@ -6,3 +6,4 @@ pkg/
 .playwright-mcp/
 *.jpeg
 site/
+.panel/

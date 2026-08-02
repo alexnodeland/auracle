@@ -269,7 +269,12 @@ pub enum StructOp {
         /// New modulation kind.
         kind: ModKind,
     },
-    /// Swap the two inputs of the mixer at `key`.
+    /// Swap the two audio inputs of the binary node at `key`.
+    ///
+    /// Named for the only production that accepted it when it was written; it
+    /// now applies to all six two-input kinds, because "swap the two inputs"
+    /// is a musical move on every one of them and the menu has always
+    /// offered it on every one of them.
     SwapMix {
         /// Node key.
         key: String,
@@ -854,13 +859,23 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let slot = node_at_mut(&mut out.root, &path)
                 .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
-            match slot {
-                AudioNode::Mix { a, b, balance } => {
-                    std::mem::swap(a, b);
-                    *balance = 1.0 - *balance;
-                }
-                _ => return Err(StructError::Invalid("not a mixer".into())),
+            // Mix is the one binary whose knob is anchored to a *side*: the
+            // crossfade has to mirror or an edit that only reorders the two
+            // branches would also change the balance you hear. Every other
+            // binary's knob names a process (threshold, amount, dry/wet), not
+            // a side, so it stays put — and on those four the swap is the
+            // whole point: exchanging a ducker's `in` and `key` is the
+            // difference between the pad ducking under the kick and the kick
+            // ducking under the pad, and there was no other way to say it.
+            if let AudioNode::Mix { balance, .. } = slot {
+                *balance = 1.0 - *balance;
             }
+            let Some((a, b)) = binary_children_mut(slot) else {
+                return Err(StructError::Invalid(
+                    "this module has only one input — there is nothing to swap".into(),
+                ));
+            };
+            std::mem::swap(a, b);
         }
         StructOp::ReplaceTree { key, node } => {
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
@@ -1277,12 +1292,37 @@ fn max_mod_depth_of(n: &mut AudioNode) -> usize {
     best
 }
 
-fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
+/// Every ceiling a hand-built patch has to respect, in one callable place.
+///
+/// [`apply_struct_op`] has always enforced these on its way out. The whole-tree
+/// replace route (the wasm `edit_set_tree`, which is what undo/redo and every
+/// client-side rewrite go through) never did — and that is precisely the route
+/// a graph editor uses for move/reconnect. A forty-node hand-built patch is not
+/// merely large: it sits outside the range the standardizer was fitted on, has
+/// ~zero mass under the prior, and the next refinement mutates it straight back
+/// inside these ceilings, so the structure the player built by hand evaporates
+/// the first time they press evolve, silently. Same ceilings, both routes.
+///
+/// Takes a shared reference — a caller validating a tree does not necessarily
+/// own it — and pays one clone of a ≤24-node term for it, because the mod-depth
+/// walk reuses the `_mut` accessors that already know which productions carry a
+/// slot rather than standing up a second copy of that table to drift.
+pub fn validate_tree(tree: &PatchTree) -> Result<(), String> {
+    let mut probe = tree.clone();
+    check_ceilings(&mut probe).map_err(|e| e.to_string())
+}
+
+fn check_ceilings(tree: &mut PatchTree) -> Result<(), StructError> {
     if tree.root.size() > MAX_SIZE || tree.root.depth() > MAX_DEPTH {
         return Err(StructError::TooBig(MAX_SIZE, MAX_DEPTH));
     }
     if max_mod_depth_of(&mut tree.root) > MAX_MOD_DEPTH {
         return Err(StructError::ModTooDeep(MAX_MOD_DEPTH));
     }
+    Ok(())
+}
+
+fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
+    check_ceilings(&mut tree)?;
     Ok(tree)
 }

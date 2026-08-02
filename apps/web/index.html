@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23171a1f'/%3E%3Cpath d='M2 8 L5 8 L6.5 4 L9.5 12 L11 8 L14 8' stroke='%23ffb454' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=49">
+<link rel="stylesheet" href="style.css?b=50">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -29,7 +29,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=71";
+    s.src = "main.js?b=75";
     document.head.appendChild(s);
   }
 })();
@@ -123,7 +123,12 @@
             <div class="subject-name" id="rack-subject">no patch loaded</div>
             <div class="subject-meta" id="rack-meta"></div>
           </div>
-          <button class="nextstep" id="nextstep" title="What to do next"></button>
+          <!-- A reserved row, not an inline chip: the callout's position must
+               not be a function of how long the patch's name happens to be.
+               The row keeps its height when the button is empty. -->
+          <div class="callout-row">
+            <button class="nextstep" id="nextstep" title="What to do next"></button>
+          </div>
           <div class="rack-tools">
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="rack-play" disabled>▶ sample</button></span>
             <label class="toggle" title="When committed, also teach the model that your edit beat the original">
@@ -131,6 +136,13 @@
             </label>
             <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn" id="rack-commit" disabled>commit</button></span>
             <span class="tool-sep"></span>
+            <!-- Three camera controls in one group: which shape the rack is
+                 drawn in, how much of each plate is drawn, and whether the
+                 map is up. Arrangement and detail are different questions and
+                 stay different buttons — Reaktor's mistake is folding them. -->
+            <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn" id="rack-layout" aria-pressed="false">chain</button></span>
+            <span class="tt" title="Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."><button class="util-btn" id="rack-lod" aria-pressed="false">detail auto</button></span>
+            <span class="tt" title="Show the minimap (bottom-left of the rack)"><button class="util-btn" id="rack-map-btn" aria-pressed="false">map</button></span>
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-knobs" disabled>lock knobs</button></span>
             <span class="tt" title="Pick a patch from the bank first"><button class="util-btn" id="lock-structure" disabled>lock wiring</button></span>
             <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn" id="lock-clear" disabled>clear locks</button></span>
@@ -147,11 +159,39 @@
         </div>
         <div class="play-body">
           <div class="play-canvas">
-            <div class="rack-scroll" id="rack-scroll">
-              <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack — arrow keys to move between controls, up/down to adjust"></svg>
+            <!-- The frame and the viewport are two different things now. The
+                 frame holds everything that must NOT move when the camera
+                 moves — the scope, the minimap, the empty-state — and
+                 `.rack-scroll` inside it is the clipping viewport the rack
+                 pans and zooms behind. The scope in particular used to be
+                 absolutely positioned *inside* the scroller, which meant it
+                 scrolled with the patch and rode over modules. -->
+            <div class="rack-frame" id="rack-frame">
+              <div class="rack-scroll" id="rack-scroll">
+                <svg id="rack-svg" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Patch rack — arrow keys to move between controls, up/down to adjust"></svg>
+              </div>
               <canvas class="live-scope" id="live-scope" aria-hidden="true"></canvas>
+              <!-- Where you are in the patch, and the fastest way to be
+                   somewhere else. Bottom-left, out of the scope's corner. -->
+              <svg class="rack-map hidden" id="rack-map" xmlns="http://www.w3.org/2000/svg" aria-label="Patch minimap — click to navigate"></svg>
+              <!-- What is about to happen, pinned to the plate it will happen
+                   to, named by the title silkscreened on that plate. The rail
+                   1000px away used to be the only place this was said, and it
+                   said it with the trace id. -->
+              <div class="pick-chip hidden" id="pick-chip" role="status">
+                <span class="pick-chip-text"></span>
+                <kbd>esc</kbd>
+                <button class="pick-chip-x" type="button" aria-label="Cancel">✕</button>
+              </div>
               <div class="rack-empty" id="rack-empty">Pick a patch from the bank — then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
+            <!-- The spec card, docked. It used to float over the graph it was
+                 describing — you could read what a module does or look at
+                 where it would go, never both — while the bench's lower band
+                 sat empty. Reading left to right: what it is, what it does,
+                 what the model thinks of it. The strip keeps its height
+                 whatever is in it, so nothing under the pointer ever moves. -->
+            <div class="spec-dock" id="spec-dock"></div>
             <!-- Held, not "tray". Placement goes direct from the node bank
                  now, so the only thing that lands here is what you unplugged —
                  and the strip says its own terms rather than implying they
@@ -410,6 +450,9 @@
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
         <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a vote</p>
+        <div class="help-h">the rack canvas</div>
+        <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
+        <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
         <div class="help-h">performance</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>

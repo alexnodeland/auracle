@@ -497,6 +497,27 @@ function tasteViews() {
   };
 }
 
+// The edited tree on its own, posted the instant it is real — before anything
+// is featurized or rendered.
+//
+// Every structural edit used to reach the ear only through `postBench`, which
+// is to say only after a full offline phrase render: something close to half a
+// second of still hearing the patch you no longer have, to buy an audio swap
+// that costs the worklet 23 ms. Splitting apply from featurize lets the voices
+// be told first and the bench catch up. Vetting therefore becomes *optimistic*
+// — main speaks to `LivePoly` now and mutes if the late vet says no — and the
+// makeup gain riding along here is still the previous edit's, because measuring
+// the new one is the expensive half; main corrects it from the bench reply with
+// a bare `setMakeup` rather than a second swap.
+function postLiveTree(edited) {
+  post({
+    type: "tree_json",
+    edited,
+    json: engine.edit_tree_json(),
+    makeup: engine.edit_makeup(),
+  });
+}
+
 function postBench(extra) {
   const buf = engine.edit_render();
   const arr = new Float32Array(buf);
@@ -942,9 +963,17 @@ self.onmessage = async (e) => {
       break;
     }
     case "edit_set_tree": {
-      const err = engine.edit_set_tree(m.json);
-      if (err === "") postBench({ edited: "restore" });
-      else post({ type: "edit_rejected", error: err });
+      // Also the ceiling gate: a whole-tree replace is the one route into the
+      // bench that does not pass through `apply_struct_op`, so the wasm side
+      // now validates before adopting and the rejection comes back here.
+      const err = engine.edit_set_tree_apply(m.json);
+      if (err !== "") {
+        post({ type: "edit_rejected", error: err });
+        break;
+      }
+      postLiveTree("restore");
+      engine.edit_revet();
+      postBench({ edited: "restore" });
       break;
     }
     case "import_patch": {
@@ -1013,9 +1042,14 @@ self.onmessage = async (e) => {
       break;
     }
     case "edit_structure": {
-      const err = engine.edit_structure(JSON.stringify(m.op));
-      if (err === "") postBench({ edited: "structure" });
-      else post({ type: "edit_rejected", error: err });
+      const err = engine.edit_structure_apply(JSON.stringify(m.op));
+      if (err !== "") {
+        post({ type: "edit_rejected", error: err });
+        break;
+      }
+      postLiveTree("structure");
+      engine.edit_revet();
+      postBench({ edited: "structure" });
       break;
     }
     // ---- taste instruments ----

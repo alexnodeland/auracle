@@ -79,17 +79,18 @@
   --t-title: 17px;   /* view + module titles, counters */
   --t-hero: 22px;    /* wordmark */
 
-  /* The rack draws into a viewBox that is zoomed 1×–2.2× to fill its frame,
-     so its type floor has to hold at the *worst* case (zoom 1, small window).
+  /* The rack draws through a camera the player aims (0.3×–2.5×, fitted to the
+     frame on load and capped at 2.2× there), so its type floor has to hold at
+     the *worst legible* case — call it zoom 1, a small window, detail full.
      These are the rendered sizes there; everything above 1× is a bonus. They
      are separate tokens rather than reused DOM ones because the module
      geometry (MOD_W / COL_W / KNOB_ROW in main.js) is sized around them. */
   /* 9px, deliberately one under the DOM floor, and the exception is argued
      rather than hidden: this tier carries mono *numerals* (`1.3 ms`,
      `−22.7 dB`) with uniform advance widths, read as values rather than prose.
-     Note the rack is NOT always magnified — zoom clamps at 1.0, and on a
-     1000px-wide window most patches render there, so treat 9px as the real
-     rendered size and not a best case. `.jack text` shares this token for
+     Note the rack is NOT always magnified — a patch of any size fits at 1× or
+     below, and the player can zoom further out than that, so treat 9px as the
+     real rendered size and not a best case. `.jack text` shares this token for
      `in`/`out`, which are port symbols from a closed set of two rather than
      words. The 10px floor stands for everything else. */
   --t-rack-micro: 9px;
@@ -618,20 +619,70 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 /* ---- workbench rack ---- */
+/* The frame is the fixed object; the viewport inside it is what the camera
+   looks through. Anything parented to the frame (scope, minimap, empty
+   state) is guaranteed not to move when the patch pans. */
+.rack-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .rack-scroll {
   position: relative;
   touch-action: none;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  /* Not `auto`. Scrollbars were the only way out of a patch that had grown
+     past the frame, and they could only ever reach content the baked-in
+     magnification had already decided to draw. The viewBox is the scroller
+     now, and it goes both ways. */
+  overflow: hidden;
   border-radius: 6px;
   border: 1px solid var(--hairline);
-  background:
-    radial-gradient(circle 2px at 24px 12px, rgba(255,255,255,0.02) 0 1.5px, transparent 2px),
-    linear-gradient(180deg, #0b0c0f, #0e1013);
+  /* The dot grid moved into the SVG so it parallaxes with the patch instead
+     of staying nailed to the frame — a ground plane you can't move over is
+     not a ground plane, it is wallpaper. */
+  background: linear-gradient(180deg, #0b0c0f, #0e1013);
   box-shadow: inset 0 0 22px rgba(0,0,0,0.85), inset 0 0 2px 1px #000;
 }
-#rack-svg { display: block; }
+/* A hard cut mid-plate says "the window ends here"; a fade says "there is
+   more this way". Applied only on the side that actually has content past
+   it, so a fitted patch keeps its full contrast right to the hairline. */
+.rack-scroll.faded {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l, 0px),
+    #000 calc(100% - var(--fade-r, 0px)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l, 0px),
+    #000 calc(100% - var(--fade-r, 0px)), transparent 100%);
+}
+.rack-scroll.grabbing { cursor: grabbing; }
+.rack-scroll.grabbing * { cursor: grabbing !important; }
+#rack-svg { display: block; width: 100%; height: 100%; }
+/* The ground plane and the pool of light under the patch. Both are drawn in
+   rack coordinates, which is the whole point: they are the parallax
+   reference that tells you the canvas moved. */
+.rack-dots { fill: url(#dotGrid); pointer-events: none; }
+.rack-pool { pointer-events: none; }
+
+/* ---- minimap ---- */
+.rack-map {
+  position: absolute;
+  left: 10px; bottom: 10px;
+  width: 172px; height: 116px;
+  z-index: 6;
+  border-radius: 5px;
+  border: 1px solid var(--hairline);
+  background: rgba(6, 8, 10, 0.82);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+  cursor: crosshair;
+  touch-action: none;
+}
+.rack-map.hidden { display: none; }
+.mm-node { fill: rgba(142,240,177,0.34); }
+.mm-node.mod { fill: rgba(255,180,84,0.34); }
+.mm-node.amp { fill: rgba(142,240,177,0.7); }
+.mm-view { fill: rgba(255,255,255,0.05); stroke: var(--phos-b); stroke-width: 1.2; }
 .rack-empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -689,11 +740,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .lock-dot.on circle { fill: var(--phos-b); stroke: var(--phos-b); filter: drop-shadow(0 0 3px rgba(255,180,84,0.8)); }
 .mod-lock { font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim); cursor: pointer; }
 .mod-lock.on { fill: var(--phos-b); }
+/* Cables run *over* the faceplates now (see .rack-wires in main.js): under
+   them, a run that crossed a module simply vanished and reappeared — the graph
+   asserted a connection and then hid the evidence. Front-panel cables are
+   physically true for this instrument, and they only read that way with two
+   things: a casing, and a shadow.
+
+   The casing is the cable's jacket — background-coloured and wider than the
+   ink, so a crossing cuts a channel through the plate instead of tinting it.
+   The shadow is on the whole layer at the same 315° offset as .mod-plate's, so
+   a cable casts onto the panel it lies on and the two agree about the lamp. */
 .wire { fill: none; stroke-linecap: round; pointer-events: none; }
-.wire.audio { stroke: rgba(142,240,177,0.62); stroke-width: 3; }
-.wire.audio-glow { stroke: #0a1a10; stroke-width: 5.5; }
-.wire.mod { stroke: rgba(255,180,84,0.55); stroke-width: 1.8; stroke-dasharray: 6 4; }
-.wire.mod-glow { stroke: rgba(255,180,84,0.12); stroke-width: 5; }
+.wire.audio { stroke: rgba(142,240,177,0.72); stroke-width: 2.2; }
+.wire.audio-case { stroke: #0c0e12; stroke-width: 4.8; }
+.wire.mod {
+  stroke: rgba(255,180,84,0.62); stroke-width: 1.8; stroke-dasharray: 6 4;
+  filter: drop-shadow(0 0 3px rgba(255,180,84,0.35));
+}
+.wire.mod-case { stroke: #0c0e12; stroke-width: 4; }
+.rack-wires { filter: drop-shadow(1px 3px 3px rgba(0,0,0,0.55)); }
 .port { fill: #0a0b0d; stroke: #3a3f48; stroke-width: 1; }
 
 /* ---- EVOLVE view ---- */
@@ -1303,7 +1368,7 @@ input, textarea, .bi-rename {
    the same material in two different form factors read as an accident. */
 .play-body { flex: 1; min-height: 0; display: flex; gap: 10px; margin-right: -14px; }
 .play-canvas { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.play-canvas .rack-scroll { flex: 1; }
+.play-canvas .rack-frame { flex: 1; }
 
 /* ================= the node bank — the instrument's catalogue =================
    It was the only panel in the app made of nothing: no lift, no cast, no
@@ -1455,10 +1520,17 @@ input, textarea, .bi-rename {
   background: linear-gradient(180deg, #14171b 70%, rgba(20, 23, 27, 0));
   padding-bottom: 2px;
 }
+/* A group header is NOT a chip, and it must not read as one. The caret sits in
+   its own 14px gutter, the row has no plate, no bevel, no lift and no press —
+   the only thing hover changes is the label's brightness. Everything below it
+   is a pressable object with a shelf to travel into; a header that shared that
+   language invited the same click, and clicking one while a module was in your
+   hand folded a group away while pick mode stayed silently armed. */
 .nb-fold {
-  display: flex;
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 6px;
+  gap: 0 6px;
   width: 100%;
   background: none;
   border: none;
@@ -1473,6 +1545,14 @@ input, textarea, .bi-rename {
   color: var(--phos-a-dim);
 }
 .nb-group.amber .nb-fold { color: var(--phos-b-dim); }
+.nb-fold:hover { color: var(--phos-a); }
+.nb-group.amber .nb-fold:hover { color: var(--phos-b); }
+/* Inert while something is in your hand: the rail's job for the length of a
+   placement is to narrow, not to rearrange itself under the pointer. The row
+   still answers when clicked (see the handler) — a control that goes quiet
+   teaches nothing about why. */
+#nb-groups.armed .nb-fold,
+#nb-groups.armed .nb-fold:hover { color: var(--silk-mute); cursor: default; }
 .nb-caret {
   width: 7px; height: 5px;
   flex: 0 0 auto;
@@ -1581,9 +1661,9 @@ input, textarea, .bi-rename {
 /* The belief column only exists once the model has been fitted at all — 19
    identical placeholders on a fresh session is noise pretending to be data. */
 .ni-theta { display: none; }
-#nb-groups.has-belief .ni-theta { position: relative; width: 34px; height: 9px; display: block; }
+.has-belief .ni-theta { position: relative; width: 34px; height: 9px; display: block; }
 /* The zero line, drawn only where there is a bar to be left or right OF it. */
-#nb-groups.has-belief .ni-theta:not(.thin):not(.flat)::before {
+.has-belief .ni-theta:not(.thin):not(.flat)::before {
   content: "";
   position: absolute;
   left: 17px; top: 0; bottom: 0;
@@ -1593,7 +1673,7 @@ input, textarea, .bi-rename {
 }
 /* No support: a dash. Never a short bar — "the model barely likes this" and
    "the model has never seen this" must not look alike. */
-#nb-groups.has-belief .ni-theta.thin::after {
+.has-belief .ni-theta.thin::after {
   content: "";
   position: absolute;
   left: 13px; right: 13px; top: 4px;
@@ -1604,7 +1684,7 @@ input, textarea, .bi-rename {
 /* "Looked, and found no lean" is a *third* mark: a dot sitting on zero. It has
    to be distinguishable from both the dash (no evidence) and the shortest bar
    the geometry can draw, or the honesty the ladder buys is spent again here. */
-#nb-groups.has-belief .ni-theta.flat::after {
+.has-belief .ni-theta.flat::after {
   content: "";
   position: absolute;
   /* Centred on the zero rule at 17px, so "no lean" sits exactly where a bar
@@ -1746,6 +1826,19 @@ input, textarea, .bi-rename {
   transition: border-color 120ms ease-out, color 120ms ease-out;
 }
 .nb-chip .nb-glyph { width: 14px; height: 10px; }
+/* The belief cell rides on the in-patch chip too — narrower, because the chip
+   is a pill in a wrapping row rather than a full-width catalogue row, but the
+   same three marks and the same refusal to draw a bar without evidence. */
+.nb-chips.has-belief .ni-theta { width: 24px; margin-left: 2px; }
+.nb-chips.has-belief .ni-theta:not(.thin):not(.flat)::before { left: 12px; }
+.nb-chips.has-belief .ni-theta.thin::after { left: 8px; right: 8px; }
+.nb-chips.has-belief .ni-theta.flat::after { left: 10.5px; }
+.nb-chips.has-belief .ni-theta.pos .tb-bar, .nb-chips.has-belief .ni-theta.pos .tb-whisk { left: 13px; }
+.nb-chips.has-belief .ni-theta.neg .tb-bar, .nb-chips.has-belief .ni-theta.neg .tb-whisk { right: 12px; }
+/* The bar's length is written inline in px against 16 units of travel; in the
+   narrower cell it is clamped rather than rescaled, so a long bar reads as
+   "off the end", never as a shorter belief than the catalogue is showing. */
+.nb-chips.has-belief .ni-theta .tb-bar, .nb-chips.has-belief .ni-theta .tb-whisk { max-width: 11px; }
 .nb-chip:hover { border-color: var(--phos-a-dim); color: var(--phos-a); }
 .nb-chip.mod:hover { border-color: var(--phos-b-dim); color: var(--phos-b); }
 
@@ -1761,6 +1854,67 @@ input, textarea, .bi-rename {
   pointer-events: none;
 }
 .nb-spec.hidden { display: none; }
+
+/* ---- the docked spec strip ----
+   The card's real home. It reads left to right the way the chip does — what it
+   is, what it does, what the model thinks — and it holds a reserved height so
+   that nothing on the bench moves as its content changes. The floating card
+   above is now the keyboard's copy only. */
+.spec-dock {
+  flex: 0 0 clamp(96px, 13vh, 150px);
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr) 300px;
+  gap: var(--s4);
+  align-items: start;
+  padding: 11px var(--s4);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #14171b, #101317);
+  box-shadow: var(--lift);
+  overflow: hidden;
+}
+/* Resting and armed are one line, so they span the whole strip rather than
+   leaving two empty columns where the description used to be. */
+.spec-dock.rest, .spec-dock.armed {
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+.sd-rest {
+  font-size: var(--t-micro);
+  line-height: 1.7;
+  color: var(--silk-mute);
+  max-width: 68ch;
+}
+.sd-id { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
+.sd-idtext { min-width: 0; }
+.sd-name { display: block; margin-bottom: 3px; }
+.sd-ports { font-size: var(--t-micro); line-height: 1.6; color: var(--phos-a-dim); }
+.sd-body { min-width: 0; }
+.sd-body .sp-blurb { margin: 0 0 6px; }
+.sd-strip { display: flex; flex-wrap: wrap; gap: 4px var(--s4); font-size: var(--t-micro); line-height: 1.6; }
+.sd-model {
+  font-size: var(--t-micro);
+  line-height: 1.6;
+  color: var(--silk-dim);
+  border-left: 1px solid var(--hairline);
+  padding-left: var(--s4);
+  min-width: 0;
+}
+/* One line, and it names the thing in your hand — the strip stops being a
+   description the moment the question becomes "where does this go". */
+.sd-line { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; min-width: 0; }
+.sd-line b { font-family: var(--font-silk); font-size: var(--t-body); color: var(--phos-a); letter-spacing: 0.02em; }
+.sd-verb {
+  font-size: var(--t-micro); letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--silk-mute);
+}
+.sd-blurb {
+  font-family: var(--font-voice); font-style: italic; font-size: var(--t-body);
+  color: var(--silk-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sd-hint { font-size: var(--t-micro); color: var(--silk-mute); margin-left: auto; white-space: nowrap; }
+.sd-hint kbd { font-size: var(--t-micro); color: var(--silk-dim); }
+.sp-glyph.small { width: 24px; height: 17px; }
 .sp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sp-glyph { width: 34px; height: 24px; overflow: visible; }
 .sp-glyph .gl { fill: none; stroke: var(--phos-a); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
@@ -1887,6 +2041,12 @@ input, textarea, .bi-rename {
   font-size: var(--t-label); cursor: pointer; padding: 0 2px;
 }
 .tray-item .t-x:hover { color: var(--led-red); }
+/* On its way into the patch: it stays on the shelf until the engine has taken
+   it (a shelf that empties on a promise is how a held chain got lost), but it
+   is inert while it waits, so it cannot be placed twice. */
+.tray-item.pending { opacity: 0.5; }
+.tray-item.pending .t-jack { cursor: progress; box-shadow: none; }
+.tray-item.pending .t-x { cursor: default; }
 
 /* ---- jacks & wires ---- */
 .jack { cursor: crosshair; }
@@ -1929,6 +2089,202 @@ input, textarea, .bi-rename {
 }
 @keyframes jack-pulse { 50% { stroke-width: 3; } }
 .wiring .jack:not(.legal) { opacity: 0.35; }
+/* The output a cable is currently coming out of, while it is out. */
+.wiring .jack[data-outkey].hot { opacity: 1; }
+.wiring .jack[data-outkey].hot circle { stroke: var(--phos-a); stroke-width: 2.4; }
+
+/* ---- an empty socket ----
+   The grammar has no hole: every input is filled, so an unplugged socket is
+   still a real node underneath. The plate is what says otherwise — dashed,
+   unpopulated, and asking for something. */
+.mod-plate.placeholder {
+  fill: rgba(255, 255, 255, 0.012);
+  stroke: var(--silk-dim);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 5;
+}
+.mod-title.empty { fill: var(--silk-dim); }
+.plate-hint {
+  font-family: var(--font-mono);
+  font-size: var(--t-rack-micro);
+  fill: var(--silk-mute);
+  pointer-events: none;
+}
+
+/* ---- pick mode ----
+   Arming used to be invisible on the canvas. Dimming is the cheapest way to
+   say "not these", and it leaves the targets at full contrast rather than
+   painting a highlight over half the rack. */
+#rack-svg.picking g[data-key].dimmed { opacity: 0.28; }
+#rack-svg.picking g[data-key] { transition: opacity 140ms cubic-bezier(0.2, 0, 0.6, 1); }
+.pick-caret path {
+  stroke: var(--phos-a);
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+  filter: drop-shadow(0 0 5px rgba(142, 240, 177, 0.8));
+  animation: caret-pulse 900ms ease-in-out infinite;
+}
+@keyframes caret-pulse { 50% { opacity: 0.35; } }
+.pick-halo {
+  fill: none;
+  stroke: var(--phos-a);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+  opacity: 0.75;
+  pointer-events: none;
+}
+/* Amber is the app's one word for "something here goes away". */
+.pick-halo.replaces { stroke: var(--phos-b); opacity: 0.95; stroke-width: 1.8; }
+
+/* ---- the ghost plate ----
+   The module in your hand, drawn where it will land, at rack scale. Greyed and
+   desaturated so it can never be mistaken for a module that is already in the
+   patch, and dashed so its edge reads as a proposal rather than a panel. It is
+   not a target for anything — the sockets under it still are. */
+/* Nearly opaque, and desaturated to the bone. An insertion genuinely lands in
+   the 28-unit gutter between two plates, so a translucent ghost there reads as
+   a smear across both of them; a near-solid grey card reads as an object lying
+   on the panel, which is what a proposal should look like. Grey plus a dashed
+   edge is what keeps it from being mistaken for a module already in the patch,
+   since every real plate in the rack is lit green or amber. */
+.pick-ghost {
+  pointer-events: none;
+  opacity: 0.92;
+  /* The cast is what says "above the panel, not part of it". */
+  filter: grayscale(0.85) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.75));
+  animation: ghost-in 160ms cubic-bezier(0.2, 0, 0.6, 1);
+}
+@keyframes ghost-in { from { opacity: 0; transform: scale(0.97); } }
+.pick-ghost .mod-plate {
+  fill: #10131a;
+  stroke: var(--phos-a);
+  stroke-width: 1.3;
+  stroke-dasharray: 6 4;
+}
+.pick-ghost.modside .mod-plate { stroke: var(--phos-b); }
+.pick-ghost .knob-body { filter: none; }
+@media (prefers-reduced-motion: reduce) {
+  .pick-ghost { animation: none; }
+}
+
+.pick-chip {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -100%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--surface-pop);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  letter-spacing: 0.06em;
+  color: var(--silk);
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.pick-chip .pick-chip-text { text-transform: uppercase; }
+.pick-chip kbd {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--silk-mute);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.pick-chip-x {
+  background: none; border: none; padding: 0 2px; cursor: pointer;
+  color: var(--silk-dim); font-size: var(--t-micro); line-height: 1;
+}
+.pick-chip-x:hover { color: var(--led-red); }
+
+/* The chooser's second line: what this row will do to the patch, in the
+   patch's own words, before it happens. */
+.ctx-menu .cm-item.cm-two { line-height: 1.35; }
+.ctx-menu .cm-item .cm-sub {
+  display: block;
+  margin-top: 2px;
+  max-width: 30ch;
+  white-space: normal;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
+}
+.ctx-menu .cm-item:hover .cm-sub { color: var(--silk-mute); }
+
+/* ---- the structure menu's header, borrowed from the node bank's spec card ----
+   The menu and the card describe the same objects, so they say so in the same
+   language: the module's own transfer-function glyph, then its silkscreen. */
+.ctx-menu .cm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 4px;
+}
+.ctx-menu .cm-title-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--silk);
+}
+/* Physical distance is the point: `delete` is not one more row in the list,
+   and a hand travelling to it should have to notice that it did. */
+.ctx-menu .cm-item.cm-sep {
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--hairline);
+}
+.ctx-menu .cm-item.danger { color: var(--silk); }
+.ctx-menu .cm-item.danger::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: 1px;
+  background: var(--led-red);
+  box-shadow: 0 0 5px rgba(255,87,71,0.5);
+}
+/* A verb that cannot apply here still prints — the list of what a module can
+   do should not change shape under the hand — but it is dimmed and it says
+   why on hover, which is this app's standing treatment for a refusal. */
+.ctx-menu .cm-item[disabled] {
+  color: var(--silk-dim);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ctx-menu .cm-item[disabled]:hover { background: none; color: var(--silk-dim); }
+/* Clamped at 70vh: end the list in a fade, not in a clean cut that reads as
+   "that is all of them". */
+.ctx-menu.cm-clamped {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+}
+
+/* A module plate is a tabstop now; it needs a ring like every other one. */
+.plate-focus { fill: none; stroke: none; pointer-events: none; }
+.mod-group:focus { outline: none; }
+.mod-group:focus-visible .plate-focus {
+  stroke: var(--phos-a);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+/* Why a fragment is on the shelf, when it did not simply come out of a socket. */
+.ti-why {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--phos-b);
+  letter-spacing: 0.04em;
+  margin-left: 5px;
+}
 
 #wire-overlay {
   position: fixed;
@@ -1955,7 +2311,6 @@ input, textarea, .bi-rename {
   /* The chip gets its own row so it stops fighting the 8-control toolbar
      for wrap space, and the toolbar tightens. */
   .stage-toolbar { row-gap: 6px; }
-  #nextstep { order: 10; flex-basis: 100%; text-align: left; }
   .rack-tools { gap: 6px; }
   .util-btn { padding: 6px 8px; }
 }
@@ -1968,6 +2323,11 @@ input, textarea, .bi-rename {
 @media (max-height: 860px) {
   :root { --keybar-h: 108px; }
   .tray { flex: 0 0 52px; }
+  /* The canvas is the elastic part everywhere else in this block, and the spec
+     strip is the newest claim on it — so it gives ground first. Its height is
+     still reserved, just smaller: the blurb wraps rather than the strip
+     appearing and disappearing under the pointer. */
+  .spec-dock { flex: 0 0 92px; padding: 8px var(--s4); }
   /* Below this the rack cannot hold both a patch and a 268px catalogue, so the
      rail folds itself to the 34px group tab rather than squeezing the canvas. */
   .nb-body { width: clamp(180px, 15vw, 220px); }
@@ -2041,10 +2401,8 @@ input, textarea, .bi-rename {
 
 /* ---------- living modulation (tier 4) ---------- */
 .wire.mod.pulse { animation: modpulse linear infinite; }
-.wire.mod-glow.pulse { animation: modglow linear infinite; }
 .jack.modjack.pulse circle { animation: jackpulse 1.2s ease-in-out infinite; }
 @keyframes modpulse { 0%,100% { stroke-opacity: 0.45; } 50% { stroke-opacity: 1; } }
-@keyframes modglow { 0%,100% { stroke-opacity: 0.10; } 50% { stroke-opacity: 0.45; } }
 @keyframes jackpulse { 0%,100% { fill-opacity: 0.55; } 50% { fill-opacity: 1; } }
 
 /* ---------- duel staging ---------- */
@@ -2124,12 +2482,12 @@ input, textarea, .bi-rename {
   .bank-item .bi-kill { color: var(--silk-dim); }
 
   /* Law 2 — gesture ownership.
-     The rack frame scrolls (a nine-module patch is wider than any tablet),
-     and `touch-action: none` on it meant a finger could not move the rack at
-     all: the patch simply ended at the frame edge. Panning belongs to the
-     frame; the controls take their own gestures back individually. */
-  .rack-scroll { touch-action: pan-x pan-y; }
-  .rack-scroll, .bank-list, .nb-body, .tray-items { overscroll-behavior: contain; }
+     The rack frame no longer scrolls: it is a camera, and the drag and the
+     pinch are both handled in JS against the viewBox. Handing the browser
+     `pan-x pan-y` here would give it a scroll that does not exist and eat
+     the one-finger pan before the app ever sees it. */
+  .rack-scroll { touch-action: none; }
+  .bank-list, .nb-body, .tray-items { overscroll-behavior: contain; }
 
   /* A knob held for half a second is a gesture, not a request for the iOS
      callout menu and a selection of the label underneath it. */
@@ -2146,7 +2504,7 @@ input, textarea, .bi-rename {
 
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .wire.pulse, .wire.mod.pulse, .wire.mod-glow.pulse,
+  .wire.pulse, .wire.mod.pulse,
   .jack.modjack.pulse circle, .duel-card.deal { animation: none !important; }
 }
 
@@ -2230,7 +2588,24 @@ select:focus-visible,
 .ovf-sep { height: 1px; background: var(--hairline); margin: var(--s1) 6px; }
 
 /* ---------- next step ----------
-   Nothing in the app ever answered "what now?". This always does. */
+   Nothing in the app ever answered "what now?". This always does.
+
+   It gets a RESERVED ROW of its own, left-aligned under the title, and that
+   row keeps its height whether or not there is a callout in it. It used to
+   sit inline between the patch name and the tool row, so its x was decided by
+   the character count of whatever patch was on the bench — "Gritty Swell" and
+   "Noisy Pad 2" put the app's one piece of guidance in two different places —
+   and at some widths it wrapped to a second row and pushed the canvas down.
+   A chip that moves when the content behind it changes is a chip nobody
+   learns the position of. */
+.callout-row {
+  flex-basis: 100%;
+  order: 10;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  margin-top: -2px;
+}
 .nextstep {
   font-family: var(--font-voice);
   font-style: italic;
@@ -2247,13 +2622,17 @@ select:focus-visible,
 .nextstep.inert { color: var(--silk-dim); border-color: var(--hairline); background: none; cursor: default; }
 
 /* ---------- the live scope ----------
-   Sits in the rack's own frame, behind the modules, so the circuit you are
-   looking at is the thing that appears to be running. */
+   Sits in the rack's *frame*, so the circuit you are looking at is the thing
+   that appears to be running — and so the trace stays put when the camera
+   moves. Parented inside the viewport it was percentage-positioned against
+   the scroll content: it rode over modules and slid out from under itself on
+   every pan. */
 .live-scope {
   position: absolute;
-  right: 0; bottom: 0;
+  right: 1px; bottom: 1px;
   width: 42%;
   height: 34%;
+  z-index: 4;
   pointer-events: none;
   opacity: 0;
   transition: opacity 320ms ease;
@@ -2365,24 +2744,32 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 .duel-centre { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 
 /* ---------- toasts & the alarm strip ---------- */
+/* One lane, top-right of the rack frame, positioned by `positionToastLane`.
+   It used to stack up from the bottom centre — straight over PICK A / PICK B,
+   so the recovery affordance obscured the app's core teaching action. The
+   z-index is deliberately BELOW anything holding a pressed state or a teaching
+   strip (see the rule below), so this class of collision cannot come back by
+   accident: even a mispositioned lane would pass under them. */
 .toasts {
   position: fixed;
-  left: 50%;
-  bottom: calc(var(--keybar-h) + var(--s5));
-  transform: translateX(-50%);
-  z-index: 58;
+  top: 64px;
+  right: 16px;
+  z-index: 46;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: center;
+  align-items: flex-end;
   pointer-events: none;
 }
+/* The primary teaching affordances, and every control that holds a state,
+   sit above transient chrome — always. */
+.play-duel, .duel-mid, [aria-pressed] { position: relative; z-index: 50; }
 .toast {
   pointer-events: auto;
   display: flex;
   align-items: center;
   gap: var(--s3);
-  max-width: 62vw;
+  max-width: min(360px, 62vw);
   font-size: var(--t-body);
   color: var(--silk);
   background: linear-gradient(180deg, #21262e, #171a1f);
@@ -2393,8 +2780,20 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
   box-shadow: var(--cast);
   animation: toast-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
 }
-.toast.out { opacity: 0; transform: translateY(6px); transition: opacity 280ms ease, transform 280ms ease; }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+.toast.out { opacity: 0; transform: translateY(-6px); transition: opacity 280ms ease, transform 280ms ease; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } }
+.toast-msg { flex: 1; min-width: 0; }
+/* What the lane is holding back. A queue with no counter is a queue that
+   looks like dropped messages. */
+.toast-stack {
+  flex: 0 0 auto;
+  font-size: var(--t-micro);
+  color: var(--silk-mute);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.toast-stack.hidden { display: none; }
 .toast-undo {
   font-size: var(--t-micro);
   letter-spacing: 0.14em;
