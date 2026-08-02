@@ -3902,6 +3902,101 @@ function hitPad(g, x, y, w, h) {
   g.appendChild(svgEl("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, fill: "transparent" }));
 }
 
+// ---------- cable routing ----------
+// Hoisted out of `buildRack` because a cable's shape is a function of where
+// its two plates are, and during a relayout that is a different answer every
+// frame. One generator, two callers: the build asks for the resting shape and
+// the motion system asks for the shape at 37% of the way there. A plate that
+// tweens while its cable stays where it was does not read as a module moving,
+// it reads as a cable coming unplugged.
+//
+// `orth` takes a polyline and rounds its corners, clamping each radius to
+// half the shorter of the two segments so a short run can never make a corner
+// overshoot back into the one before it.
+function orth(raw) {
+  const p = [raw[0]];
+  for (const q of raw.slice(1)) {
+    const last = p[p.length - 1];
+    if (Math.abs(q[0] - last[0]) > 0.5 || Math.abs(q[1] - last[1]) > 0.5) p.push(q);
+  }
+  if (p.length < 2) return `M ${p[0][0]} ${p[0][1]}`;
+  let d = `M ${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
+  for (let i = 1; i < p.length - 1; i++) {
+    const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
+    const la = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    const r = Math.min(12, la / 2, lc / 2);
+    d += ` L ${(b[0] + ((a[0] - b[0]) / la) * r).toFixed(1)} ${(b[1] + ((a[1] - b[1]) / la) * r).toFixed(1)}`;
+    d += ` Q ${b[0].toFixed(1)} ${b[1].toFixed(1)}` +
+      ` ${(b[0] + ((c[0] - b[0]) / lc) * r).toFixed(1)} ${(b[1] + ((c[1] - b[1]) / lc) * r).toFixed(1)}`;
+  }
+  const e = p[p.length - 1];
+  return `${d} L ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
+}
+// The mod jack is on the plate's *bottom* edge, so the cable has to arrive
+// from below or it crosses the panel it is plugging into — which is exactly
+// what happens in compact mode, where a modulator often sits above its
+// target. Drop to a bus level under both plates first, then rise into it.
+// In chain mode the modulator is already below and both jogs collapse away,
+// leaving the plain out-and-up the mod band was designed to read as.
+function modRoute(x1, y1, x2, y2) {
+  const yb = Math.max(y1, y2 + 26);
+  const xm = yb > y1 + 0.5 ? x1 + 22 : x1;
+  return orth([[x1, y1], [xm, y1], [xm, yb], [x2, yb], [x2, y2]]);
+}
+// Into the left edge of the next plate in a CV chain: leave horizontally,
+// step across at the midpoint, arrive horizontally.
+function chainRoute(x1, y1, x2, y2) {
+  return orth([[x1, y1], [(x1 + x2) / 2, y1], [(x1 + x2) / 2, y2], [x2, y2]]);
+}
+
+/** The `d` for one cable, given where the plates are *now*. `null` when either
+ *  end is missing, which is a wire the caller should skip rather than draw. */
+function wirePathD(w, pos, modByKey) {
+  const from = pos.get(w.from);
+  const to = pos.get(w.to);
+  if (!from || !to) return null;
+  const x1 = from.x + from.w;
+  const y1 = from.y + from.h / 2;
+  const toMod = modByKey.get(w.to);
+  if (w.kind === "mod") {
+    if (toMod && toMod.is_mod) {
+      // A link inside a CV chain: both plates sit on the same mod row, so
+      // the honest route is a straight run into the next plate's left edge.
+      return chainRoute(x1, y1, to.x, to.y + to.h / 2);
+    }
+    // Into an audio module's bottom jack: out along the mod row, then one
+    // vertical into the plate's bottom edge.
+    return modRoute(x1, y1, to.x + to.w / 2, to.y + to.h);
+  }
+  // Audio cables land on the target's in jack.
+  const x2 = to.x;
+  // A binary node's two sockets sit at 0.38/0.68 of the plate — all six of
+  // them, not just `mix`. Testing for `kind === "mix"` left a ducker's key
+  // cable and a vocoder's carrier cable landing on the plate edge halfway
+  // between the two jacks they were supposed to terminate in.
+  const y2 = toMod && MOD_BY_KIND[toMod.kind]?.ins === 2
+    ? to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68)
+    : to.y + to.h / 2;
+  // Sag proportional to span. A flat `max(24, span/2)` put control point 1
+  // *past* control point 2 whenever the span was under 48px — which it is
+  // between adjacent columns — so short runs kinked into a V instead of
+  // hanging. A constant sag was also 40% of a short span and 4% of a long
+  // one, so cables never read as the same kind of object.
+  const span = Math.max(1, x2 - x1);
+  const dx = Math.min(span * 0.42, 90);
+  const sag = Math.min(span * 0.22, 46) + Math.abs(y2 - y1) * 0.06;
+  return `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
+}
+
+/** A module's identity as the motion system spells it. `uid` is the real
+ *  answer (WS-4 §6); the amp has none — it is the envelope, not a node — and
+ *  a tree that has not been settled yet has none either, so both fall back to
+ *  the position, which is exactly as stable as the old behaviour was. */
+function midOf(m) {
+  return m && m.uid ? `u${m.uid}` : `k${m ? m.key : "?"}`;
+}
+
 function renderRack() {
   const svg = $("rack-svg");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
@@ -3929,11 +4024,18 @@ function renderRack() {
   if (!hasRack) {
     svg.innerHTML = "";
     rackBoxes = new Map();
+    rackFrame = null;
+    cancelRackMotion();
     rackContent = { w: frameSize().w, h: frameSize().h };
     syncMapBtn();
     nbSync();
     return;
   }
+
+  // Measured before the teardown, because after it there is nothing left to
+  // measure: where every plate was, and where the keyboard was standing.
+  const before = captureRackMotion();
+  const focusMark = markRackFocus();
 
   buildRack(svg, wb.rack, {
     interactive: true,
@@ -3941,11 +4043,15 @@ function renderRack() {
     compact: effectiveLod() === "compact",
     placeholders: placeholderKeys,
   });
+  // Then play the difference. This has to happen before the camera is aimed,
+  // because whether anything is moving is what decides whether the camera
+  // travels on the motion curve or on its own.
+  const moving = startRackMotion(before);
   // The camera is pointed after the build, not during it: a rebuild that
   // changed the patch's bounding box asks for a fit, and one that did not
   // (a knob release, a lock toggle, a bench reply) must leave the view
   // exactly where the player put it.
-  aimCamera();
+  aimCamera(moving);
 
   // One roving tab stop for the whole rack, so Tab lands on the patch editor
   // instead of skipping it. It enters at a *module*, not at a knob: the module
@@ -3954,6 +4060,9 @@ function renderRack() {
   const first = $("rack-svg").querySelector("g.mod-group") ||
                 $("rack-svg").querySelector("[data-addr]");
   if (first) first.setAttribute("tabindex", "0");
+  // …unless the keyboard was already somewhere, in which case it stays there.
+  // Strictly after the default stop is set, or both would claim tabindex 0.
+  restoreRackFocus(focusMark);
 
   // The rack is rebuilt from scratch on every edit, which throws away the lit
   // sockets. Re-light them, or a knob turn while something is in hand would
@@ -4108,95 +4217,21 @@ function buildRack(svg, rack, opts) {
   svg.appendChild(wireLayer);
   svg.appendChild(ctrlLayer);
   const modByKey = new Map(rack.modules.map((m) => [m.key, m]));
-
-  // Orthogonal routing for modulation. The old cubics anchored on "the source
-  // is left of and above the target" and drew crossed kinks the moment the
-  // layout stopped guaranteeing it. A right angle is also what a patch cable
-  // does when it is tied to a rail, which is what the mod band is.
-  //
-  // `orth` takes a polyline and rounds its corners, clamping each radius to
-  // half the shorter of the two segments so a short run can never make a
-  // corner overshoot back into the one before it.
-  const orth = (raw) => {
-    const p = [raw[0]];
-    for (const q of raw.slice(1)) {
-      const last = p[p.length - 1];
-      if (Math.abs(q[0] - last[0]) > 0.5 || Math.abs(q[1] - last[1]) > 0.5) p.push(q);
-    }
-    if (p.length < 2) return `M ${p[0][0]} ${p[0][1]}`;
-    let d = `M ${p[0][0].toFixed(1)} ${p[0][1].toFixed(1)}`;
-    for (let i = 1; i < p.length - 1; i++) {
-      const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
-      const la = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      const lc = Math.hypot(c[0] - b[0], c[1] - b[1]);
-      const r = Math.min(12, la / 2, lc / 2);
-      d += ` L ${(b[0] + ((a[0] - b[0]) / la) * r).toFixed(1)} ${(b[1] + ((a[1] - b[1]) / la) * r).toFixed(1)}`;
-      d += ` Q ${b[0].toFixed(1)} ${b[1].toFixed(1)}` +
-        ` ${(b[0] + ((c[0] - b[0]) / lc) * r).toFixed(1)} ${(b[1] + ((c[1] - b[1]) / lc) * r).toFixed(1)}`;
-    }
-    const e = p[p.length - 1];
-    return `${d} L ${e[0].toFixed(1)} ${e[1].toFixed(1)}`;
-  };
-  // The mod jack is on the plate's *bottom* edge, so the cable has to arrive
-  // from below or it crosses the panel it is plugging into — which is exactly
-  // what happens in compact mode, where a modulator often sits above its
-  // target. Drop to a bus level under both plates first, then rise into it.
-  // In chain mode the modulator is already below and both jogs collapse away,
-  // leaving the plain out-and-up the mod band was designed to read as.
-  const modRoute = (x1, y1, x2, y2) => {
-    const yb = Math.max(y1, y2 + 26);
-    const xm = yb > y1 + 0.5 ? x1 + 22 : x1;
-    return orth([[x1, y1], [xm, y1], [xm, yb], [x2, yb], [x2, y2]]);
-  };
-  // Into the left edge of the next plate in a CV chain: leave horizontally,
-  // step across at the midpoint, arrive horizontally.
-  const chainRoute = (x1, y1, x2, y2) =>
-    orth([[x1, y1], [(x1 + x2) / 2, y1], [(x1 + x2) / 2, y2], [x2, y2]]);
+  // What the motion system will need after the next teardown: the elements it
+  // has to move, and the identity that says which of them is "the same one".
+  const mGroups = [];
+  const mWires = [];
 
   for (const w of rack.wires) {
-    const from = pos.get(w.from);
-    const to = pos.get(w.to);
-    if (!from || !to) continue;
-    const x1 = from.x + from.w;
-    const y1 = from.y + from.h / 2;
-    let x2, y2, d;
-    if (w.kind === "mod") {
-      const toMod = modByKey.get(w.to);
-      if (toMod && toMod.is_mod) {
-        // A link inside a CV chain: both plates sit on the same mod row, so
-        // the honest route is a straight run into the next plate's left edge.
-        x2 = to.x;
-        y2 = to.y + to.h / 2;
-        d = chainRoute(x1, y1, x2, y2);
-      } else {
-        // Into an audio module's bottom jack: out along the mod row, then one
-        // vertical into the plate's bottom edge.
-        x2 = to.x + to.w / 2;
-        y2 = to.y + to.h;
-        d = modRoute(x1, y1, x2, y2);
-      }
-    } else {
-      // Audio cables land on the target's in jack.
-      const toMod = modByKey.get(w.to);
-      x2 = to.x;
-      y2 = to.y + to.h / 2;
-      // A binary node's two sockets sit at 0.38/0.68 of the plate — all six of
-      // them, not just `mix`. Testing for `kind === "mix"` left a ducker's key
-      // cable and a vocoder's carrier cable landing on the plate edge halfway
-      // between the two jacks they were supposed to terminate in.
-      if (toMod && MOD_BY_KIND[toMod.kind]?.ins === 2) {
-        y2 = to.y + to.h * (w.from === `${w.to}/0` ? 0.38 : 0.68);
-      }
-      // Sag proportional to span. A flat `max(24, span/2)` put control point 1
-      // *past* control point 2 whenever the span was under 48px — which it is
-      // between adjacent columns — so short runs kinked into a V instead of
-      // hanging. A constant sag was also 40% of a short span and 4% of a long
-      // one, so cables never read as the same kind of object.
-      const span = Math.max(1, x2 - x1);
-      const dx = Math.min(span * 0.42, 90);
-      const sag = Math.min(span * 0.22, 46) + Math.abs(y2 - y1) * 0.06;
-      d = `M ${x1} ${y1} C ${x1 + dx} ${y1 + sag}, ${x2 - dx} ${y2 + sag}, ${x2} ${y2}`;
-    }
+    // Orthogonal routing for modulation, span-proportional cubics for audio —
+    // all of it in `wirePathD` (above), because the same shape has to be
+    // computable mid-relayout from a set of interpolated plate positions.
+    const d = wirePathD(w, pos, modByKey);
+    if (d == null) continue;
+    // Identity for a cable is the identity of the two plates it joins, so a
+    // run that survives an edit is recognised as the same run even though
+    // both its endpoints were renamed by the splice.
+    const wid = `${midOf(modByKey.get(w.from))}>${midOf(modByKey.get(w.to))}`;
     // The casing is the cable's jacket, not a glow: it is background-coloured
     // and wider than the ink, so a run crossing a plate cuts a channel through
     // it instead of tinting it.
@@ -4205,6 +4240,7 @@ function buildRack(svg, rack, opts) {
     // cable rather than near it — "insert after wavefolder" has to point at
     // the run that is about to be cut, and there may be four of them.
     const wireEl = svgEl("path", { d, "data-from": w.from, "data-to": w.to }, `wire ${w.kind}`);
+    mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
       // patch looks alive where it sounds alive.
@@ -4270,11 +4306,16 @@ function buildRack(svg, rack, opts) {
     // the rebuild — which is what a FLIP tween, a sticky hand position and a
     // selection that survives a splice all need. `0` on the amp, which is the
     // envelope rather than a node.
-    const ids = { "data-kind": m.kind, "data-key": m.key, "data-uid": m.uid };
+    // `data-mid` is that same identity made total: the amp and any tree that
+    // has not been settled yet have no uid, and the motion system, the focus
+    // restore and the selection cannot have a module they are unable to name.
+    const mid = midOf(m);
+    const ids = { "data-kind": m.kind, "data-key": m.key, "data-uid": m.uid, "data-mid": mid };
     const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids });
     const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids }, "mod-group");
     plateLayer.appendChild(plateG);
     ctrlLayer.appendChild(g);
+    mGroups.push({ mid, key: m.key, plateG, g, x: p.x, y: p.y, w: p.w, h: p.h });
     if (interactive) {
       // A module is a thing you can act on, so it is a stop. The rack's roving
       // tabstop used to hold knobs only, which meant every structural verb in
@@ -4642,7 +4683,328 @@ function buildRack(svg, rack, opts) {
     rackContent = { w: natW, h: natH };
     rackBoxes = pos;
     lodApplied = compact ? "compact" : "full";
+    // And the motion system's own record of this build. It is deliberately
+    // the live element references rather than a description of them: FLIP
+    // works by writing transforms onto the *new* DOM, and re-querying for
+    // thirty groups on every frame of a 260 ms tween is a selector engine
+    // doing the work a variable already did.
+    rackFrame = {
+      pos,
+      mods: modByKey,
+      groups: mGroups,
+      wires: mWires,
+      mids: new Set(mGroups.map((it) => it.mid)),
+      wids: new Set(mWires.map((it) => it.wid)),
+    };
   }
+}
+
+// ===========================================================================
+// MOTION — the rack moves instead of cutting
+// ===========================================================================
+// `renderRack` is a full teardown: `svg.innerHTML = ""` and thirty fresh
+// plates on every edit, knob release, lock toggle, bench reply and resize
+// (risk R8). That is a hard cut, and a cut is the one thing a graph editor
+// cannot afford — after an insert the player has to re-find every module by
+// reading it, because nothing on screen said "this one moved, that one is
+// new, and the one you deleted was *there*".
+//
+// This does not replace the teardown; it makes the teardown invisible. FLIP:
+// measure where everything is before the rebuild, let the rebuild put
+// everything where it now belongs, then play the difference. What makes it
+// possible at all is `uid` (WS-4 §6) — without a name that outlives a splice
+// there is no such thing as "the same plate", only two renders that happen to
+// contain a filter each.
+//
+// Three motions, one curve, one duration:
+//   survivors  tween from their old position to their new one, and every
+//              cable is re-routed each frame from the interpolated positions
+//              so the patch deforms as one object rather than as plates
+//              sliding out from under their wiring;
+//   arrivals   fade and scale up from 0.96;
+//   departures leave a ghost that fades, shrinks and drops 6px, so a deletion
+//              is *seen* leaving rather than simply never having been there.
+const MOTION_MS = 260;
+const STILL_MQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+/** Live, not a snapshot: the OS switch can be thrown while the app is open,
+ *  and a page that only honours it at load time honours it by luck. */
+function prefersStill() { return STILL_MQ.matches; }
+
+// The app's easing curve, in CSS for the WAAPI fades and in JS for the rAF
+// loop that drives the tween — the same numbers both times, because a camera
+// on one curve and its plates on another reads as two motions fighting, which
+// is precisely what §9 asks for one of.
+const EASE_CSS = "cubic-bezier(0.2,0,0.6,1)";
+function bezierEase(x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
+  const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
+  const fx = (t) => ((ax * t + bx) * t + cx) * t;
+  const dfx = (t) => (3 * ax * t + 2 * bx) * t + cx;
+  return (u) => {
+    if (u <= 0) return 0;
+    if (u >= 1) return 1;
+    // Newton from t = u. Six steps is well past convergence for a curve this
+    // gentle, and the guard on a flat derivative keeps a pathological control
+    // point from dividing by nothing.
+    let t = u;
+    for (let i = 0; i < 6; i++) {
+      const e = fx(t) - u;
+      if (Math.abs(e) < 1e-5) break;
+      const d = dfx(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= e / d;
+    }
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return ((ay * t + by) * t + cy) * t;
+  };
+}
+const EASE_MOTION = bezierEase(0.2, 0, 0.6, 1);
+
+let rackFrame = null;  // the last interactive build, as the motion system sees it
+let rackTween = null;  // rAF handle for the survivors' tween
+
+/** A CSS transform placing a plate at (x,y) and scaled about its own centre.
+ *  Written out rather than left to `transform-origin`, because a CSS
+ *  transform on an SVG element *replaces* its `transform` attribute — there is
+ *  no offsetting it, so every keyframe has to carry the whole position. */
+function xform(x, y, s, w, h) {
+  if (s === 1) return `translate(${x.toFixed(2)}px,${y.toFixed(2)}px)`;
+  return `translate(${(x + w / 2).toFixed(2)}px,${(y + h / 2).toFixed(2)}px) ` +
+    `scale(${s}) translate(${(-w / 2).toFixed(2)}px,${(-h / 2).toFixed(2)}px)`;
+}
+
+// A ghost keeps its paint and gives up its name. A clone that still answered
+// to `[data-addr]` or `.mod-group` would be a second copy of the module as far
+// as every query in the app is concerned: the roving tabstop would walk into
+// it, `connectSync` would light its jacks, `elementFromPoint` could hand a
+// cable drop to a plate that no longer exists, and `ampPlateEl` could end up
+// pointing at a faceplate that is fading out.
+const GHOST_STRIP = [
+  "data-addr", "data-key", "data-uid", "data-mid", "data-kind", "data-childkey",
+  "data-modkey", "data-outkey", "data-from", "data-to", "id", "tabindex", "role",
+  "aria-label", "aria-valuenow", "aria-valuetext",
+];
+function ghostOf(el) {
+  const c = el.cloneNode(true);
+  for (const n of [c, ...c.querySelectorAll("*")]) {
+    for (const a of GHOST_STRIP) n.removeAttribute(a);
+    n.classList?.remove("mod-group");
+  }
+  return c;
+}
+
+/** Everything the motion system needs about the render that is about to be
+ *  thrown away. Must be read *before* `buildRack`, because after it the old
+ *  DOM is gone and with it every position the player last saw. */
+function captureRackMotion() {
+  if (!rackFrame || !wb.rack) return null;
+  // Asked here rather than only at playback time: the capture's expensive part
+  // is cloning the departing plates, and there is no point paying for ghosts
+  // nobody has asked to see.
+  if (prefersStill()) return null;
+  const prev = new Map();
+  for (const it of rackFrame.groups) {
+    // Mid-tween, "where it was" is where it *is* on screen, not where the
+    // last build meant to put it. A bench reply landing 100 ms into an insert
+    // would otherwise snap every plate back to its pre-edit position and
+    // replay the whole move from the start.
+    prev.set(it.mid, { x: it.cx ?? it.x, y: it.cy ?? it.y, w: it.w, h: it.h });
+  }
+  const keep = new Set(wb.rack.modules.map(midOf));
+  const ghosts = [];
+  for (const it of rackFrame.groups) {
+    if (keep.has(it.mid)) continue;
+    ghosts.push({ ...prev.get(it.mid), nodes: [ghostOf(it.plateG), ghostOf(it.g)] });
+  }
+  // A deleted module's cables go with it. Nothing redraws them — the rebuild
+  // simply does not contain them — so without a ghost they blink out a quarter
+  // of a second before the plate they were plugged into.
+  if (ghosts.length) {
+    for (const it of rackFrame.wires) {
+      const [f, t] = it.wid.split(">");
+      if (keep.has(f) && keep.has(t)) continue;
+      ghosts.push({ wire: true, nodes: [ghostOf(it.caseEl), ghostOf(it.inkEl)] });
+    }
+  }
+  return { prev, ghosts, wids: rackFrame.wids, count: rackFrame.groups.length };
+}
+
+function cancelRackMotion() {
+  if (rackTween != null) cancelAnimationFrame(rackTween);
+  rackTween = null;
+}
+
+/** Play the difference between `before` and the build that just landed.
+ *  Returns whether anything is actually moving, which is what tells the camera
+ *  to travel on the same curve rather than on its own. */
+function startRackMotion(before) {
+  cancelRackMotion();
+  if (!before || !rackFrame || prefersStill()) return false;
+  const moves = [];
+  const enters = [];
+  for (const it of rackFrame.groups) {
+    const o = before.prev.get(it.mid);
+    if (!o) { enters.push(it); continue; }
+    // Half a pixel is not a move; animating it costs a frame budget and buys
+    // a shimmer. Most renders — a knob release, a lock toggle, a bench reply —
+    // land entirely in this branch and start no animation at all.
+    if (Math.abs(o.x - it.x) < 0.4 && Math.abs(o.y - it.y) < 0.4) continue;
+    it.ox = o.x;
+    it.oy = o.y;
+    moves.push(it);
+  }
+  // Nothing survived: this is not a relayout, it is a different patch. Two
+  // unrelated racks cross-fading through each other is a double exposure, not
+  // a motion, so the departing one is simply gone and the new one fades up.
+  const ghosts = rackFrame.groups.length - enters.length === 0 && before.count > 0
+    ? []
+    : before.ghosts;
+  const arriving = rackFrame.wires.filter((it) => !before.wids.has(it.wid));
+  if (!moves.length && !enters.length && !arriving.length && !ghosts.length) return false;
+
+  const fade = { duration: MOTION_MS, easing: EASE_CSS };
+  for (const it of enters) {
+    for (const el of [it.plateG, it.g]) {
+      el.animate(
+        [{ opacity: 0, transform: xform(it.x, it.y, 0.96, it.w, it.h) },
+         { opacity: 1, transform: xform(it.x, it.y, 1, it.w, it.h) }],
+        fade,
+      );
+    }
+  }
+  for (const it of arriving) {
+    for (const el of [it.caseEl, it.inkEl]) el.animate([{ opacity: 0 }, { opacity: 1 }], fade);
+  }
+  if (ghosts.length) {
+    const layer = svgEl("g", {}, "rack-exit");
+    // Departing cables go in a `.rack-wires` of their own so they keep the
+    // cast shadow that rule carries — a wire that changed material on its way
+    // out would read as a different object leaving than the one that was
+    // there.
+    const wireBin = svgEl("g", {}, "rack-wires");
+    for (const gh of ghosts) {
+      for (const n of gh.nodes) (gh.wire ? wireBin : layer).appendChild(n);
+    }
+    layer.appendChild(wireBin);
+    $("rack-svg").appendChild(layer);
+    for (const gh of ghosts) {
+      // A cable has no plate to shrink: its geometry is absolute, so a
+      // transform would slide it off its own endpoints on the way out.
+      const kf = gh.wire
+        ? [{ opacity: 1 }, { opacity: 0 }]
+        : [{ opacity: 1, transform: xform(gh.x, gh.y, 1, gh.w, gh.h) },
+           { opacity: 0, transform: xform(gh.x, gh.y + 6, 0.96, gh.w, gh.h) }];
+      for (const n of gh.nodes) n.animate(kf, { ...fade, fill: "forwards" });
+    }
+    // The next teardown would take the layer with it anyway; this is for the
+    // case where there isn't one.
+    setTimeout(() => layer.remove(), MOTION_MS + 60);
+  }
+
+  if (!moves.length) return enters.length > 0 || ghosts.length > 0;
+
+  // Promote the movers for the duration. Every faceplate carries
+  // `filter: url(#plateShadow)`, and a filtered SVG element under a changing
+  // transform is re-rasterised from scratch on every frame unless the
+  // compositor has been told to keep it: measured on an 18-module patch, the
+  // tween ran at 25-33 ms a frame with the plates and at 8 ms without them
+  // (the compact level of detail, which drops the filter), while rewriting
+  // all 34 cable paths per frame cost nothing measurable. Dropped again on
+  // the last frame — a permanent `will-change` is a permanent layer, which is
+  // the memory version of the same mistake.
+  for (const it of moves) {
+    it.plateG.style.willChange = "transform";
+    it.g.style.willChange = "transform";
+  }
+
+  const t0 = performance.now();
+  const step = (now) => {
+    const u = Math.min(1, (now - t0) / MOTION_MS);
+    const e = EASE_MOTION(u);
+    // The whole layout at this instant: final positions for everything that
+    // did not move, interpolated ones for everything that did. The cables are
+    // then re-routed from it, which is the difference between "the patch is
+    // deforming" and "the plates are sliding out from under their wiring".
+    const at = new Map(rackFrame.pos);
+    for (const it of moves) {
+      it.cx = it.ox + (it.x - it.ox) * e;
+      it.cy = it.oy + (it.y - it.oy) * e;
+      const tf = xform(it.cx, it.cy, 1, it.w, it.h);
+      it.plateG.style.transform = tf;
+      it.g.style.transform = tf;
+      at.set(it.key, { ...rackFrame.pos.get(it.key), x: it.cx, y: it.cy });
+    }
+    for (const it of rackFrame.wires) {
+      const d = wirePathD(it.w, at, rackFrame.mods);
+      if (d == null) continue;
+      it.caseEl.setAttribute("d", d);
+      it.inkEl.setAttribute("d", d);
+    }
+    if (u < 1) { rackTween = requestAnimationFrame(step); return; }
+    rackTween = null;
+    // Hand the plates back to their `transform` attribute, which has held the
+    // final position all along — the last frame already agrees with it, so
+    // dropping the inline style is invisible.
+    for (const it of moves) {
+      it.cx = it.x;
+      it.cy = it.y;
+      it.plateG.style.transform = "";
+      it.g.style.transform = "";
+      it.plateG.style.willChange = "";
+      it.g.style.willChange = "";
+    }
+  };
+  step(t0);
+  return true;
+}
+
+// ---------- focus retention ----------
+// A rebuild used to drop the keyboard on the floor: `innerHTML = ""` removes
+// the focused element, focus falls to `<body>`, and the roving tabstop resets
+// to the first plate. Every bench reply — one per knob release, several per
+// structural edit — therefore threw a keyboard user back to the start of the
+// rack. Identity fixes this the same way it fixes the locks: focus is not on
+// "the third knob of the fourth plate", it is on `#cut` of the module named
+// `u41`, and that survives a splice that renumbers every key in the patch.
+
+/** Where the keyboard is, in terms that outlive the rebuild. */
+function markRackFocus() {
+  const a = document.activeElement;
+  if (!a || !$("rack-svg").contains(a)) return null;
+  const g = a.closest?.("g.mod-group");
+  const mid = g?.getAttribute("data-mid");
+  if (!mid) return null;
+  const addr = a.getAttribute?.("data-addr");
+  // A knob is named by its parameter, which is what does *not* move when the
+  // module does — the same slice `lockIdOf` takes.
+  const hash = addr ? addr.indexOf("#") : -1;
+  if (hash >= 0) return { mid, param: addr.slice(hash) };
+  for (const attr of ["data-childkey", "data-modkey", "data-outkey"]) {
+    const v = a.getAttribute?.(attr);
+    // A socket is named by which socket it is: `/0`, `/1`, or the module's
+    // own key for an out or a mod jack.
+    if (v != null) return { mid, attr, tail: v.slice(v.lastIndexOf("/")) };
+  }
+  return { mid };
+}
+
+/** Put it back. Silent when the module it named is gone — a deleted plate has
+ *  no focus to keep, and stealing focus for the plate that took its place
+ *  would be the app deciding what the player is looking at. */
+function restoreRackFocus(mark) {
+  if (!mark) return;
+  const g = $("rack-svg").querySelector(`g.mod-group[data-mid="${mark.mid}"]`);
+  if (!g) return;
+  let el = g;
+  if (mark.param) el = g.querySelector(`[data-addr$="${mark.param}"]`) || g;
+  else if (mark.attr) {
+    el = [...g.querySelectorAll(`.jack[${mark.attr}]`)]
+      .find((j) => j.getAttribute(mark.attr).endsWith(mark.tail)) || g;
+  }
+  setRackStop(el);
+  // No `ensureRackVisible`: this is not navigation. The player did not move,
+  // the patch did, and the camera's own answer to that is `aimCamera`.
+  el.focus({ preventScroll: true });
 }
 
 // ===========================================================================
@@ -4664,7 +5026,6 @@ function buildRack(svg, rack, opts) {
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 2.5;
 const FIT_MAX = 2.2;
-const PREFERS_STILL = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 const view = { x: 0, y: 0, zoom: 1 };
@@ -4782,16 +5143,20 @@ function cancelTween() {
 }
 
 /** Move the camera to `t` over ~180ms. Short enough not to be a wait, long
- *  enough that the player's eye tracks the patch instead of re-finding it. */
-function tweenView(t, ms) {
+ *  enough that the player's eye tracks the patch instead of re-finding it.
+ *  `ease` overrides the default curve: when the rack itself is moving, the
+ *  camera rides the *rack's* curve and duration, so a structural edit is one
+ *  motion rather than a fit racing a relayout. */
+function tweenView(t, ms, ease) {
   cancelTween();
-  if (PREFERS_STILL) { Object.assign(view, t); applyView(); return; }
+  if (prefersStill()) { Object.assign(view, t); applyView(); return; }
   const from = { x: view.x, y: view.y, zoom: view.zoom };
   const t0 = performance.now();
   const dur = ms || 180;
+  const curve = ease || ((u) => 1 - (1 - u) * (1 - u) * (1 - u)); // ease-out cubic
   const step = (now) => {
     const u = clamp((now - t0) / dur, 0, 1);
-    const e = 1 - (1 - u) * (1 - u) * (1 - u); // ease-out cubic, the app's curve
+    const e = curve(u);
     // Zoom interpolates geometrically: linear zoom on a big change ramps the
     // apparent speed instead of holding it, which is what makes a fit feel
     // like a lurch.
@@ -4804,7 +5169,7 @@ function tweenView(t, ms) {
   viewTween = requestAnimationFrame(step);
 }
 
-function fitBox(box, animate) {
+function fitBox(box, animate, coMotion) {
   const { w, h } = frameSize();
   const pad = 20;
   const z = clamp(
@@ -4814,7 +5179,7 @@ function fitBox(box, animate) {
   );
   const t = { zoom: z, x: box.x + box.w / 2 - w / (2 * z), y: box.y + box.h / 2 - h / (2 * z) };
   viewUserSet = false;
-  if (animate) tweenView(t);
+  if (animate) tweenView(t, coMotion ? MOTION_MS : 180, coMotion ? EASE_MOTION : null);
   else { Object.assign(view, t); applyView(); }
 }
 function fitAll(animate) {
@@ -4896,14 +5261,19 @@ function contentFullyVisible() {
  *  carried to the new framing rather than teleported. A knob release, a lock
  *  toggle or a bench reply leaves the box alone and so leaves the camera
  *  alone; and once the player has aimed it themselves we only intervene when
- *  the patch has actually grown out of the frame. */
-function aimCamera() {
+ *  the patch has actually grown out of the frame.
+ *
+ *  `coMotion` says the rack is tweening underneath: the fit then borrows the
+ *  motion system's duration and curve so the two arrive together. A 180 ms
+ *  ease-out camera over a 260 ms bezier relayout is two animations disagreeing
+ *  about where the patch is, which is worse than either alone. */
+function aimCamera(coMotion) {
   syncMapBtn();
   const sig = `${Math.round(rackContent.w)}x${Math.round(rackContent.h)}:${rackBoxes.size}`;
   const changed = sig !== camSig;
   camSig = sig;
   if (!camAimed) { camAimed = true; fitBox(contentBox(), false); return; }
-  if (changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true);
+  if (changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true, coMotion);
   else applyView();
 }
 
@@ -8705,6 +9075,11 @@ function connectSync() {
   // when neither gesture is running.
   if (!connectPick) {
     if (!wire) svg.classList.remove("wiring");
+    // A cable held in the hand rather than put down by a click: the `wire`
+    // gesture's lit sockets were drawn once at pointerdown and died with the
+    // DOM they were drawn on, so a rebuild mid-drag left the player dragging
+    // a cable across a rack with nothing lit.
+    else lightWireTargets();
     return;
   }
   svg.classList.add("wiring");
@@ -9103,13 +9478,21 @@ function nbDragFrom(chip, ev) {
 // ---------- wire drawing ----------
 let wire = null; // {mode, item?, childKey?, key?, kind}
 
-function startWireDrag(spec, ev) {
-  if (wire) return; // one cable at a time — no re-entrant drags
-  wire = spec;
+/** Light every socket the cable in hand can legally land in.
+ *
+ *  Split out of `startWireDrag` because the lighting lives on DOM that a
+ *  rebuild throws away, and a rebuild can land in the middle of a drag: a
+ *  bench reply from an earlier edit, or the level-of-detail switch tripping
+ *  when the edge-pan carries the camera past 0.55×. The lit set is the only
+ *  thing on screen saying where the cable may go, so it has to be rebuilt with
+ *  the rack rather than survive it. */
+function lightWireTargets() {
+  const spec = wire;
+  if (!spec) return;
   const rackSvg = $("rack-svg");
   rackSvg.classList.add("wiring");
-  // Light up legal targets. A palette drag lights the same sockets a tray drag
-  // does — the two gestures differ only in where the module came from.
+  // A palette drag lights the same sockets a tray drag does — the two gestures
+  // differ only in where the module came from.
   if (spec.mode === "tray-audio" || spec.mode === "palette-audio") {
     rackSvg.querySelectorAll('.jack[data-childkey]').forEach((j) => {
       j.classList.add("legal");
@@ -9126,6 +9509,12 @@ function startWireDrag(spec, ev) {
       if (spec.legalKeys.has(j.getAttribute(spec.attr))) j.classList.add("legal");
     }
   }
+}
+
+function startWireDrag(spec, ev) {
+  if (wire) return; // one cable at a time — no re-entrant drags
+  wire = spec;
+  lightWireTargets();
   wire.sx = ev.clientX;
   wire.sy = ev.clientY;
   wire.tx = ev.clientX;
@@ -9137,7 +9526,7 @@ function startWireDrag(spec, ev) {
   // exactly what the auto-pan below does on purpose and what a zoom does by
   // accident. A drag that began in the node bank has no rack anchor: the chip
   // it came from really is at a fixed place on the screen.
-  if (rackSvg.contains(ev.target)) wire.anchor = clientToRack(ev.clientX, ev.clientY);
+  if ($("rack-svg").contains(ev.target)) wire.anchor = clientToRack(ev.clientX, ev.clientY);
   redrawWireBand();
   document.addEventListener("pointermove", onWireMove);
   document.addEventListener("pointerup", onWireUp, { once: true });

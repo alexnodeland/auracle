@@ -761,6 +761,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rack-wires { filter: drop-shadow(1px 3px 3px rgba(0,0,0,0.55)); }
 .port { fill: #0a0b0d; stroke: #3a3f48; stroke-width: 1; }
 
+/* Plates and cables on their way out (see the motion system in main.js). They
+   are clones of what was on screen a frame ago, stripped of every attribute
+   anything queries by, so they are pictures rather than modules — and the
+   `*` here is belt to that braces: a ghost must never be able to take a click,
+   a cable drop or a hover away from the plate that replaced it, and a class
+   selector beats the `pointer-events` presentation attribute a child might
+   otherwise win with. */
+.rack-exit, .rack-exit * { pointer-events: none; }
+
 /* ---- EVOLVE view ---- */
 .duel-row {
   flex: 1;

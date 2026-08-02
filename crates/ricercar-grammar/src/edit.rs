@@ -70,6 +70,18 @@ pub fn split_addr(addr: &str) -> (&str, &str) {
 /// Continuous values are clamped to `[0, 1]`; enum indices are clamped to the
 /// site's arity. Structural sites are rejected — restructuring is evolution's
 /// job (or a future explicit structure-edit surface), not a knob gesture.
+///
+/// Identity is carried across, because a knob turn changes no structure and
+/// therefore renames nothing. That has to be said explicitly: this edit is
+/// performed on the *trace* — a map from address to value — and
+/// [`PatchTree::from_trace`] rebuilds the term through the genome decoder,
+/// which has never heard of a [`crate::term::Uid`] and cannot. So every node
+/// comes back anonymous unless it is told otherwise, which is the same round
+/// trip (and the same fix) as the refinement path in `record_child`. Left
+/// alone it is not a cosmetic loss: every lock id collapses onto the same
+/// `0#site`, a re-render looks to the motion system like the entire patch
+/// arriving at once, and every hand-placed position is orphaned — by turning
+/// one knob.
 pub fn set_param(tree: &PatchTree, addr: &str, value: ParamValue) -> Result<PatchTree, EditError> {
     let (_, site) = split_addr(addr);
     if is_structural(site) {
@@ -93,5 +105,11 @@ pub fn set_param(tree: &PatchTree, addr: &str, value: ParamValue) -> Result<Patc
         }
         _ => return Err(EditError::KindMismatch(addr.into())),
     }
-    PatchTree::from_trace(&trace).map_err(|e| EditError::Decode(e.to_string()))
+    let mut edited = PatchTree::from_trace(&trace).map_err(|e| EditError::Decode(e.to_string()))?;
+    // Positional and shallow-by-variant, and a param edit changes neither, so
+    // the match is total: every node gets its own identity back. Deliberately
+    // *not* followed by `ensure_uids` — a tree that was never settled must
+    // stay unsettled rather than mint a fresh set of ids on every knob turn.
+    edited.inherit_uids(tree);
+    Ok(edited)
 }

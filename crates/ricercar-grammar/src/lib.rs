@@ -746,6 +746,52 @@ mod tests {
         }
     }
 
+    /// **R6, the other half.** Turning a knob must not rename the patch.
+    ///
+    /// `set_param` edits the *trace* and decodes it back, which is the same
+    /// anonymising round trip refinement takes — and it is on the hottest path
+    /// in the app. It went unnoticed because nothing in the engine reads a uid:
+    /// the loss only shows in the panel, where after one knob turn every lock
+    /// id collapses onto `0#site`, the motion system sees the whole rack
+    /// arrive at once, and every hand-placed position is orphaned. Measured in
+    /// the browser, not deduced from the code, which is why the assertion is
+    /// on `describe` — what the panel actually reads.
+    #[test]
+    fn identity_survives_a_knob_turn() {
+        let mut tree = presets::presets()[2].1.clone();
+        tree.ensure_uids();
+        let before = describe::describe(&tree);
+        // A continuous site somewhere below the root, so this is not just a
+        // statement about the amp.
+        let addr = before
+            .modules
+            .iter()
+            .filter(|m| m.key != "amp")
+            .find_map(|m| {
+                m.knobs
+                    .iter()
+                    .find(|k| k.kind == describe::KnobKind::Continuous)
+                    .map(|k| k.addr.clone())
+            })
+            .expect("a preset with a knob on it");
+        let edited = set_param(&tree, &addr, ParamValue::Continuous(0.375)).expect("a plain knob");
+        let after = describe::describe(&edited);
+        assert_eq!(before.modules.len(), after.modules.len());
+        for (x, y) in before.modules.iter().zip(&after.modules) {
+            assert_eq!(x.key, y.key);
+            assert_eq!(x.uid, y.uid, "a knob turn renamed {}", x.key);
+        }
+        // …and the edit itself still happened.
+        let value_at = |t: &PatchTree| {
+            t.to_trace()
+                .choices
+                .iter()
+                .find(|(k, _)| &***k == addr.as_str())
+                .map(|(_, c)| c.value.clone())
+        };
+        assert_ne!(value_at(&edited), value_at(&tree));
+    }
+
     /// Settling reaches **every** module the rack draws, in every patch the
     /// prior can produce.
     ///
