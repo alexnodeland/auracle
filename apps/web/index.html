@@ -16,7 +16,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAOElEQVR42mMQl5InCTEMfg19HzbSUgNENX49pGsASsMRsk5MLgSRrgGP7VhdSFUNWAOA2hqokJYAvKaL4UmsFaEAAAAASUVORK5CYII=">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?b=68">
+<link rel="stylesheet" href="style.css?b=69">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
      under ~1000px with a coarse pointer there is no honest way to show it, so
      we say so instead of shipping a broken one. This runs before anything
@@ -38,7 +38,7 @@
   } else {
     var s = document.createElement("script");
     s.type = "module";
-    s.src = "main.js?b=118";
+    s.src = "main.js?b=133";
     document.head.appendChild(s);
   }
 })();
@@ -287,12 +287,30 @@
                  stay different buttons — Reaktor's mistake is folding them. -->
             <div class="seg seg-view" role="group" aria-label="How the rack is drawn">
               <span class="tt" title="Chain: the signal path on one baseline. Click to pack it tight."><button class="util-btn seg-item" id="rack-layout" aria-pressed="false">chain</button></span>
-              <!-- Only in freeform, because it is the only mode it means
-                   anything in: it pins whatever is currently on screen to the
-                   24px grid so a patch that arrived from evolution with no
-                   layout has one to start dragging from. -->
-              <span class="tt hidden" title="Snap every module to the 24px grid and pin it there."><button class="util-btn seg-item" id="rack-grid">apply grid</button></span>
-              <span class="tt" title="Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
+              <!-- Two verbs that only *act* in freeform, and hold their slots
+                   everywhere else (see `.tt.held`): a control that appears
+                   moves the control beside it, and the control beside this one
+                   is the mode toggle you just pressed.
+
+                   One word each, because two of them at "apply grid" /
+                   "reset positions" wrapped this group onto a second row at
+                   1280 — 35px out of the same vertical budget M4 is fighting
+                   for. The tooltip carries the sentence.
+
+                   `snap` pins whatever is currently on screen to the 24px grid,
+                   so a patch that arrived from evolution with no layout has one
+                   to start dragging from. -->
+              <span class="tt held" title="Snap every module to the 24px grid and pin it there. If the hand layout has spread past anything the frame can show, this re-lays it from the signal chain instead."><button class="util-btn seg-item" id="rack-grid" disabled>snap</button></span>
+              <!-- The way back. Freeform never rearranges your plates — that is
+                   its contract and the reason a recovery *verb* has to exist:
+                   a persisted layout can strand the view completely, and
+                   cycling the mode (which does work) is not a thing anything
+                   on screen said. -->
+              <span class="tt held" title="Throw away the hand positions for this patch and lay it back out along the signal chain."><button class="util-btn seg-item" id="rack-reseed" disabled>reset</button></span>
+              <!-- The tooltip is rewritten by `syncLodBtn` on boot and on every
+                   frame resize: the threshold is a function of the frame's
+                   height now, so the only honest number is the live one. -->
+              <span class="tt" title="Detail: automatic. Plates lose their knobs once they are drawn too small to grab."><button class="util-btn seg-item" id="rack-lod" aria-pressed="false">detail auto</button></span>
               <!-- A fourth way of reading the rack, and the only one that
                    draws the model onto it. Off by default: it is a second
                    colour law over the first, and it speaks about families of
@@ -374,14 +392,35 @@
                 <kbd>esc</kbd>
                 <button class="pick-chip-x" type="button" aria-label="Cancel">✕</button>
               </div>
+              <!-- The frame's own way out of a stranded freeform layout. It
+                   appears only when the fit has genuinely failed — under 0.3×
+                   *and* an arrangement measurably larger than the chain — so
+                   it is never advice about a patch that is merely big. -->
+              <div class="fit-hint hidden" id="fit-hint" role="status">
+                <span class="fh-copy">This layout has spread past the frame.</span>
+                <button class="util-btn" type="button" id="fh-reseed">reset positions</button>
+              </div>
               <div class="rack-empty" id="rack-empty">Pick a patch from the bank — then play it below, turn its knobs, lock what you love, and ⚡ evolve the rest.</div>
             </div>
+            <!-- The final say on the split below, and the in-house pattern for
+                 it: the node bank's rail is dragged the same way, on the other
+                 axis. The automatic budget (a one-line strip whenever there is
+                 nothing to describe) reclaims ~70px for the patcher; this is
+                 how a player takes more, or gives it back. -->
+            <div class="dock-resize" id="dock-resize" role="separator"
+                 aria-orientation="horizontal" tabindex="0"
+                 aria-label="Resize the spec strip — drag, or up and down arrows"
+                 title="Drag to give the canvas more room. The strip is one line whenever it has nothing to describe."></div>
             <!-- The spec card, docked. It used to float over the graph it was
                  describing — you could read what a module does or look at
                  where it would go, never both — while the bench's lower band
                  sat empty. Reading left to right: what it is, what it does,
-                 what the model thinks of it. The strip keeps its height
-                 whatever is in it, so nothing under the pointer ever moves. -->
+                 what the model thinks of it. It reserves its height, so nothing
+                 under the pointer moves as its content changes — but there are
+                 two heights now (M4): a description gets the full strip, and
+                 "point at a module" gets one line, because 120px of that
+                 sentence was the difference between a patch with knobs on it
+                 and a block diagram at 1280×900. -->
             <div class="spec-dock" id="spec-dock"></div>
             <!-- Held, not "tray". Placement goes direct from the node bank
                  now, so the only thing that lands here is what you unplugged —

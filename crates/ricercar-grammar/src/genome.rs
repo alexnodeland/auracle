@@ -1695,6 +1695,102 @@ impl TraceGenome for PatchTree {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Parameter domains
+// ---------------------------------------------------------------------------
+
+/// The declared range of **every** continuous site in this grammar.
+///
+/// Not a convention: [`crate::prior`] samples every one of them from `u01()`,
+/// so a value outside this interval has zero prior mass by construction and is
+/// a corruption rather than an unusual patch. Stated once, here, so the check
+/// and the repair below cannot drift from the generative model — and so that
+/// the day a site wants a different range, this is the line that has to change.
+pub const PARAM_DOMAIN: std::ops::RangeInclusive<f64> = 0.0..=1.0;
+
+/// Is `v` a legal value for a continuous site?
+///
+/// Non-finite fails: `NaN` compares false against every bound, and an infinity
+/// is exactly the runaway this gate exists to stop.
+pub fn in_domain(v: f64) -> bool {
+    v.is_finite() && PARAM_DOMAIN.contains(&v)
+}
+
+impl PatchTree {
+    /// Every continuous site of this term that sits outside [`PARAM_DOMAIN`],
+    /// as `(trace address, value)`, in address order.
+    ///
+    /// Reads the **trace**, not the term, and that is the whole point: the
+    /// trace enumerates exactly the continuous sites, by construction, from the
+    /// same walk the prior samples. A hand-written match over 26 productions
+    /// would be a second table of "which fields are knobs" — and the first
+    /// module somebody forgot to add to it would be the one the next sentinel
+    /// escaped through.
+    pub fn domain_violations(&self) -> Vec<(String, f64)> {
+        let mut out: Vec<(String, f64)> = self
+            .to_trace()
+            .choices
+            .iter()
+            .filter_map(|(a, c)| match c.value {
+                ChoiceValue::F64(v) if !in_domain(v) => Some((a.to_string(), v)),
+                _ => None,
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// Pull every out-of-domain continuous site back into [`PARAM_DOMAIN`].
+    /// Returns how many sites were repaired (0 = the term was already clean,
+    /// and nothing was rebuilt).
+    ///
+    /// **Repair, not refusal, and the asymmetry is deliberate.** A term over
+    /// the size/depth ceilings cannot be fixed without deciding which modules
+    /// to delete, so those are refused. A knob outside its range *can* be
+    /// fixed, exactly and locally, and the alternative — refusing — would mean
+    /// a saved session that already contains one becomes an app the player
+    /// cannot edit, load or evolve their way out of. Corruption must not be
+    /// load-bearing.
+    ///
+    /// `NaN` clamps to the middle of the range rather than to an end: it
+    /// carries no information about which way it went, and pinning it to a
+    /// boundary would state one.
+    ///
+    /// Identities survive. The rebuild goes through the trace, which does not
+    /// carry `uid`s, so the repaired term inherits them back from the term it
+    /// replaced — same rule, and the same reason, as [`crate::set_param`].
+    pub fn clamp_domains(&mut self) -> usize {
+        let mut trace = self.to_trace();
+        let mut fixed = 0usize;
+        for c in trace.choices.values_mut() {
+            if let ChoiceValue::F64(v) = c.value {
+                if !in_domain(v) {
+                    let repaired = if v.is_nan() {
+                        (PARAM_DOMAIN.start() + PARAM_DOMAIN.end()) / 2.0
+                    } else {
+                        v.clamp(*PARAM_DOMAIN.start(), *PARAM_DOMAIN.end())
+                    };
+                    c.value = ChoiceValue::F64(repaired);
+                    fixed += 1;
+                }
+            }
+        }
+        if fixed == 0 {
+            return 0;
+        }
+        // Decoding can only fail on a *structurally* broken trace, and this one
+        // came from `to_trace` on a live term with nothing but leaf values
+        // touched. If it somehow does, keep the term we have: a patch with a
+        // bad knob is worth more to the player than no patch at all, and every
+        // consumer downstream of here has its own guard.
+        if let Ok(mut repaired) = PatchTree::from_trace(&trace) {
+            repaired.inherit_uids(self);
+            *self = repaired;
+        }
+        fixed
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1793,5 +1889,153 @@ mod tests {
         // writes the new sites, and that trace round-trips.
         let back = PatchTree::from_trace(&tree.to_trace()).expect("re-encoded trace decodes");
         assert_eq!(back, tree);
+    }
+}
+
+#[cfg(test)]
+mod domain_tests {
+    use super::*;
+    use crate::mutate::{apply_struct_op, validate_tree, StructOp};
+    use crate::term::{FilterKind, Waveform};
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    fn filter_over_vco(cutoff: f64) -> PatchTree {
+        PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 0.6,
+                release: 0.2,
+            },
+            root: AudioNode::Filter {
+                uid: Uid(7),
+                kind: FilterKind::SvfBp,
+                cutoff,
+                resonance: 0.4,
+                mod_depth: 0.5,
+                input: Box::new(AudioNode::Vco {
+                    uid: Uid(9),
+                    wave: Waveform::Saw,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.3,
+                    modulation: ModNode::None,
+                }),
+                modulation: ModNode::None,
+            },
+        }
+    }
+
+    /// The generative model's own claim, checked rather than trusted: every
+    /// continuous site the prior can draw lands inside [`PARAM_DOMAIN`]. If
+    /// this ever fails, the domain constant is wrong and every gate built on
+    /// it is refusing legitimate patches.
+    #[test]
+    fn every_prior_draw_is_in_domain() {
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(20260802);
+        for _ in 0..400 {
+            let t = prior.sample_with_rng(&mut rng);
+            assert!(
+                t.domain_violations().is_empty(),
+                "the prior drew an out-of-domain site: {:?}",
+                t.domain_violations()
+            );
+        }
+    }
+
+    /// The sentinel, exactly as it was found in the shipped session: four
+    /// sites of one patch at `1e30`. Repair moves all four and nothing else,
+    /// and every node keeps the identity it had — locks and hand-placed
+    /// positions ride on `uid`, so a repair that reissued them would fix a
+    /// number by destroying the player's arrangement.
+    #[test]
+    fn clamp_repairs_the_sentinel_and_keeps_identity() {
+        let mut t = filter_over_vco(1e30);
+        t.amp.sustain = 1e30;
+        assert_eq!(t.domain_violations().len(), 2);
+
+        assert_eq!(t.clamp_domains(), 2);
+        assert!(t.domain_violations().is_empty());
+        assert_eq!(t.amp.sustain, 1.0);
+        assert_eq!(t.amp.attack, 0.1, "a clean site must not move");
+        let AudioNode::Filter {
+            uid,
+            cutoff,
+            resonance,
+            input,
+            ..
+        } = &t.root
+        else {
+            panic!("the repair changed the term's shape");
+        };
+        assert_eq!(*cutoff, 1.0);
+        assert_eq!(*resonance, 0.4);
+        assert_eq!(*uid, Uid(7), "the repair reissued an identity");
+        let AudioNode::Vco { uid, .. } = &**input else {
+            panic!("the repair changed the child");
+        };
+        assert_eq!(*uid, Uid(9));
+
+        // Idempotent, and free on a clean term.
+        assert_eq!(t.clamp_domains(), 0);
+    }
+
+    /// NaN carries no direction, so it lands in the middle rather than being
+    /// pinned to an end that would state one.
+    #[test]
+    fn nan_lands_mid_range() {
+        let mut t = filter_over_vco(f64::NAN);
+        assert_eq!(t.clamp_domains(), 1);
+        let AudioNode::Filter { cutoff, .. } = &t.root else {
+            unreachable!()
+        };
+        assert_eq!(*cutoff, 0.5);
+    }
+
+    /// `validate_tree` is the predicate and names the site — the WS-1 rider
+    /// used to speak only about size and depth, which is why a value could
+    /// walk through it.
+    #[test]
+    fn validate_tree_refuses_an_out_of_domain_site() {
+        assert!(validate_tree(&filter_over_vco(0.6)).is_ok());
+        let err = validate_tree(&filter_over_vco(1e30)).expect_err("must refuse");
+        assert!(
+            err.contains("node#cut"),
+            "the reason must name the site: {err}"
+        );
+        assert!(err.contains("out of range"), "{err}");
+    }
+
+    /// The route the corruption actually travelled: an explicit fragment
+    /// handed to `apply_struct_op` (a HELD subtree, a bank drop) is adopted
+    /// verbatim, so `finish()` has to be the funnel that cleans it.
+    #[test]
+    fn an_explicit_fragment_cannot_seat_a_bad_value() {
+        let host = filter_over_vco(0.6);
+        let bad = AudioNode::Fold {
+            uid: Uid::NEW,
+            threshold: 1e30,
+            mod_depth: 0.3,
+            input: Box::new(AudioNode::Noise {
+                uid: Uid::NEW,
+                color: crate::term::NoiseColor::White,
+            }),
+            modulation: ModNode::None,
+        };
+        let out = apply_struct_op(
+            &host,
+            &StructOp::InsertTree {
+                key: "node/0".into(),
+                node: bad,
+            },
+        )
+        .expect("a repairable fragment must still land");
+        assert!(
+            out.domain_violations().is_empty(),
+            "finish() seated {:?}",
+            out.domain_violations()
+        );
     }
 }

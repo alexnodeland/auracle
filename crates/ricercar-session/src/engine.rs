@@ -929,6 +929,12 @@ pub struct Engine {
     /// them is free, because an index that is never absorbed never happened.
     issue_cursor: u64,
     next_id: u64,
+    /// What the last session restore had to mend — see
+    /// [`Engine::repair_report`]. Saved terms whose knobs were out of range,
+    /// log cells clamped, and observations dropped as uninterpretable.
+    repaired_terms: usize,
+    repaired_cells: usize,
+    dropped_observations: usize,
 }
 
 impl Engine {
@@ -958,6 +964,9 @@ impl Engine {
             draw_cursor: 0,
             issue_cursor: 0,
             next_id: 1,
+            repaired_terms: 0,
+            repaired_cells: 0,
+            dropped_observations: 0,
         }
     }
 
@@ -1792,6 +1801,28 @@ impl Engine {
             current = g;
             trace = t;
         }
+        // The mutation boundary, and the reason the clamp is *here* rather than
+        // at the knob that draws the number: everything downstream of this line
+        // — φ, the observation log, the faceplate, the exported PNG — takes the
+        // term as given, so a value that leaves this function wrong is wrong in
+        // six places by the time anyone can see it.
+        //
+        // The kernel should never produce one. Every continuous site is
+        // `Uniform(0,1)`, whose `log_prob` is −∞ outside the unit interval, so
+        // a proposal that escapes scores `log α = −∞` and is rejected — and
+        // that is measured, not assumed: `ricercar-grammar --example
+        // mh_escape` runs 8 chains × 20 000 single-site transitions through
+        // this exact kernel and observes zero escapes. So this is a belt on a
+        // proven brace, costing one trace walk per accepted child, and its real
+        // job is to be the line that has to be deleted before the invariant can
+        // be broken again.
+        debug_assert_eq!(
+            current.domain_violations().len(),
+            0,
+            "MH seated an out-of-domain site: {:?}",
+            current.domain_violations()
+        );
+        current.clamp_domains();
         (current != *seed).then_some(current)
     }
 
@@ -2637,9 +2668,48 @@ impl Engine {
         self.style_names = state.style_names;
         self.events = state.events;
         self.forecasts = state.forecasts;
+        // The implicit stream stores raw φ on both sides of a hand edit, so it
+        // is the fourth carrier of the corruption after the pool, the log and
+        // the HELD tray — and the only one nothing reads yet, which is exactly
+        // why it would have been the one still poisoned on the day it was
+        // first fitted on.
+        let names = phi_names();
+        for e in &mut self.events {
+            self.repaired_cells +=
+                crate::migrate::repair_phi_pair(&mut e.phi_before, &mut e.phi_after, &names);
+        }
         self.pool.clear();
         self.audio_lru.clear();
-        state.bank
+        // Every saved term, repaired on the way in. This is the *only* place a
+        // tree written by an older build enters the engine, and a bank entry
+        // carrying a knob outside its range would otherwise be quarantined by
+        // the featurizer a few lines later and silently disappear from the
+        // player's bank — losing four patches to fix a bug in one number.
+        // Repair keeps the patch and loses only the corruption, which is the
+        // standing rule for saved state: migration, never deletion.
+        let mut bank = state.bank;
+        for entry in &mut bank {
+            if entry.tree.clamp_domains() > 0 {
+                self.repaired_terms += 1;
+            }
+        }
+        bank
+    }
+
+    /// How many saved terms, log cells and whole observations the last
+    /// [`Engine::import_state_deferred`] had to repair. All three are zero for
+    /// a session written by a build that has this gate.
+    ///
+    /// Reported rather than logged because the frontend is the only thing that
+    /// can tell the player their profile was mended, and a silent repair of the
+    /// evidence a model is fitted on is exactly the kind of quiet the rest of
+    /// this app was built to stop.
+    pub fn repair_report(&self) -> (usize, usize, usize) {
+        (
+            self.repaired_terms,
+            self.repaired_cells,
+            self.dropped_observations,
+        )
     }
 
     /// Reinstate one restored bank entry with its saved identity, from a
@@ -2707,6 +2777,13 @@ impl Engine {
     /// imported θ geometry stays valid until the next fit refreshes it.
     pub fn import_profile(&mut self, profile: Profile) {
         self.log = profile.log;
+        // A fresh restore reports on *itself*. `import_state_deferred` runs
+        // this first and then counts the bank, so clearing all three here is
+        // also what keeps a standalone "load taste profile" from inheriting the
+        // patch count of whatever was loaded before it.
+        self.repaired_terms = 0;
+        self.repaired_cells = 0;
+        self.dropped_observations = 0;
         let names = phi_names();
         if let Some(sz) = &profile.standardizer {
             if crate::migrate::needs_migration(&self.log) {
@@ -2728,8 +2805,18 @@ impl Engine {
         // names or the evidence is imputed away as "no opinion".
         crate::migrate::apply_renames(&mut self.log);
         crate::migrate::stamp_names(&mut self.log, &names);
+        // After the names are stamped, because the repair is by name — and
+        // before the standardizer is adopted, because a standardizer fitted
+        // over a poisoned column is itself poisoned. When anything was
+        // repaired the saved one is *discarded* and re-fitted from the
+        // repaired rows plus the pool: keeping it would mean the load re-read
+        // its own corruption back out of the scale it set.
+        let (clamped, dropped) = crate::migrate::repair_log(&mut self.log);
+        self.repaired_cells = clamped;
+        self.dropped_observations = dropped;
+        let poisoned = clamped > 0 || dropped > 0;
         match profile.standardizer {
-            Some(sz) if sz.dimension() == names.len() => {
+            Some(sz) if sz.dimension() == names.len() && !poisoned => {
                 let sz = Arc::new(sz);
                 for c in &mut self.pool {
                     c.phi_std = sz.transform(&c.features.phi());

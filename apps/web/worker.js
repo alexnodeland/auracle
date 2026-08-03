@@ -705,6 +705,15 @@ self.onmessage = async (e) => {
             stages,
             label: `recalled ${restored} patches`,
           });
+          // Say so when the restore had to mend something. A profile fitted on
+          // values that were not measurements is the one kind of silent repair
+          // this app should never make — and the numbers are zero for every
+          // session written since the domain gate shipped, so the message only
+          // ever appears when it is true.
+          try {
+            const rep = JSON.parse(engine.repair_report());
+            if (rep.terms || rep.cells || rep.dropped) post({ type: "repaired", repair: rep });
+          } catch (_) { /* an engine without the report is an engine with nothing to report */ }
         }
 
         // `playable` is the message the boot veil lifts on. It must fire exactly

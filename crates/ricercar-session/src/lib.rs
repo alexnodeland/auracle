@@ -1654,8 +1654,18 @@ mod tests {
         let old_names: Vec<String> = names[..names.len() - 3].to_vec();
         let d = old_names.len();
         // A vote whose winner is higher on every coordinate it knows about.
+        //
+        // Strictly *inside* [0,1] rather than the `1.0 + i·0.01` this used to
+        // be, and the reason is a real gate rather than a cosmetic one:
+        // `migrate::repair_log` now pulls the unit-bounded coordinates back
+        // into their range on load, so a synthetic row that put `mod_density`
+        // at 1.19 was arriving repaired and the assertion below was reading
+        // the repair rather than the projection. The property under test —
+        // every coordinate strictly higher on the winner — is unchanged.
         let (a, b): (Vec<f64>, Vec<f64>) = (
-            (0..d).map(|i| 1.0 + i as f64 * 0.01).collect(),
+            (0..d)
+                .map(|i| (i as f64 + 1.0) / (d as f64 + 1.0))
+                .collect(),
             vec![0.0; d],
         );
         let mut log = ObservationLog::new();

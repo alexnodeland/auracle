@@ -6,6 +6,171 @@ the project is pre-1.0.
 
 ## [Unreleased]
 
+### Fixed — a hole that stays a hole, a view that cannot be stranded, and a patcher that fits on a laptop
+
+The rest of the closing gate: the dissenting panelist's two named blockers (M2,
+M3), the one-line durability bug the chair pulled in on impact (m1), the two
+polish items ruled to ship alongside M2 (p4, p5), and the demo gate (M4).
+
+- **An empty socket is named by the node standing in it, not by where that node
+  sits.** `placeholderKeys` was a set of trace addresses, so it survived exactly
+  as long as the addresses did: the client-side rewrite path carried holes
+  across by object identity and **every** `StructOp` — insert, delete, replace,
+  set_mod, swap_mix, at any key in the patch — forgot them. Unplug, then insert
+  anything anywhere, and the dashed EMPTY plate silently became a full vco with
+  knobs on it. A hole is now keyed by `uid`, the same identity locks are keyed
+  by and for the same reason, so it rides through any edit inside the node that
+  moved. Verified in the browser: an insert that does not touch the hole and an
+  insert that moves it from `node/0/1` to `node/0/0/1` both leave it a hole,
+  and dropping a source *into* it clears the mark on the frame the module lands.
+- **A hole survives a reload,** in `holeStore`/`ui.holes`, the same shape and
+  the same argument as `lockStore`/`ui.locks` — persisting it is only honest
+  because it names a node. It also survives ⌘Z/⇧⌘Z, because `benchStep` carries
+  it: pruning gets undo right for free and could never have got redo right.
+- **`case "committed"` files the child's locks — and its holes — under the
+  child.** One line and its twin (m1). The commit reply carries no `m.subject`
+  so it never reaches `case "bench"`, and IDB ended with an entry for the parent
+  and none for the patch the player had actually authored: pins evaporating on
+  reload for the one patch that mattered most, with the next ⚡ then breeding
+  away the routing they meant to hold. Verified end to end through a commit, a
+  full page reload, and re-benching the child.
+- **Canvas, bank and accessibility tree agree about absence** (p4). The IN THIS
+  PATCH list printed "vco" and the plate's `aria-label` said "vco module" about
+  a socket the canvas was drawing as empty. All three route through one
+  predicate now; the chip is dashed, reads "empty", and carries no θ, because a
+  belief about vcos is not a belief about a hole.
+- **The EMPTY plate stops shouting** (p5). It was inheriting the plate of
+  whatever it replaced — up to 240×164 with a recessed control well — giving the
+  most visual weight on the panel to the thing that is not there. It renders at
+  the narrow 96-unit width, one row tall, title and hint only, no well.
+- **Freeform can no longer strand the view, and now says so if it has.**
+  `contentBox()` returns the modules' bounding box instead of the layout
+  canvas's extent, so a fit is a fit of what is drawn — a persisted layout that
+  put every plate at y ≈ 3400 had Home dutifully framing 3744 units of which
+  3400 were empty. The minimap reads the same box. `applyGrid` re-seeds from the
+  **chain** when what is drawn is degenerate, instead of pinning the stranding —
+  the one command that looked like a rescue was the one that made the damage
+  permanent. A stored layout that places under two thirds of the rack's nodes is
+  dropped wholesale rather than applied, and the inheritance test rose from
+  "*some* uid in common" (1 in 18) to the same floor. A **reset** verb sits in
+  the freeform controls, and below 0.30× with a measurably worse-than-chain
+  arrangement the frame itself offers it. Measured on a reproduced stranding:
+  0.049× → 0.249× at 1280×900, 0.080× → 0.403× at 1700×1000.
+- **The patcher fits on a laptop** (M4). The docked spec card collapses to a
+  single line when it has nothing to describe (and stays one line while armed,
+  so a placement in progress never resizes the canvas underneath itself); the
+  short-laptop media query's breakpoint moves from 860px to 940px, which is
+  where it was always meant to apply — 1280×900 is the plan's own second test
+  size; a **draggable divider** above the strip gives the player the final say,
+  the node bank's rail pattern on the other axis, persisted and keyboard-
+  operable; and the auto-LOD threshold scales with the frame's height, because
+  what makes a knob small in a 364px band is the band, not the patch. Result at
+  1280×900: rack frame **295 → 364px**, and **5 of 5** stock presets open in
+  full detail with knobs (First Bass 0.67, Sub & Sparkle 0.61, Acid Line 0.67,
+  Reese 0.44, Anvil 0.67 against a 0.40 threshold) where 5 of 5 opened as
+  knob-less block diagrams. At 1700×1000 the frame is 489px, the threshold 0.54,
+  and all five are in full detail.
+- **The freeform verbs hold their slots** (m6, taken because M3 would otherwise
+  have made it worse). `apply grid` used to be `display: none` outside freeform,
+  so entering the mode slid the layout toggle ~100px under the pointer that had
+  just pressed it and a second press fired *apply grid* — a command that
+  rewrites every position. Both verbs are now reserved and disabled, and both
+  are one word (`snap`, `reset`), because two long labels wrapped the group onto
+  a second row at 1280 and cost 35px of the very budget M4 is fighting for.
+
+### Fixed — the sentinel: a knob outside its range, and everything downstream that believed it
+
+The closing panel's one non-negotiable item, found independently by three
+reviewers from three unrelated surfaces: a faceplate reading "SUSTAIN 1200.0
+dB", a HELD fragment printing `1e+30` for every parameter, and six cells of
+exactly `1e30` inside the raw φ of the persisted observation log.
+
+- **Every continuous site in the grammar has a declared range, and it is now
+  written down** — `PARAM_DOMAIN`, one constant, next to the `u01()` the prior
+  actually samples from. `PatchTree::domain_violations` reports the sites that
+  leave it and `PatchTree::clamp_domains` pulls them back, both by walking the
+  **trace** rather than matching 26 productions: the trace enumerates exactly
+  the continuous sites, by construction, so there is no second table of "which
+  fields are knobs" for the next module to be left out of.
+- **`validate_tree` — the WS-1 rider — now speaks about values.** It has always
+  gated size, depth and modulation depth; it had nothing to say about a knob,
+  which is why a value could walk through it into `edit_set_tree`, into
+  `finish()`, into φ, into the exported PNG's `tEXt` chunk and into the log.
+- **Domains are repaired, ceilings are refused,** and the asymmetry is the
+  point: a 40-node patch cannot be clamped without deciding what to delete, and
+  a knob can be fixed exactly. Refusing would have meant a saved session that
+  already contains one becomes an app the player cannot edit their way out of.
+  `finish()` (so every `ReplaceTree`/`InsertTree`/`SetModTree` fragment the
+  panel hands in), `edit_set_tree_apply`, `import_patch` and the refinement
+  boundary all repair; identities survive, so locks and hand-placed positions
+  ride through the repair.
+- **The featurizer's quarantine caught only audio pathology.** `sustain = 1e30`
+  *renders fine* — the limiter bounds the voice — so it passed the vet and its φ
+  became evidence. `featurize` now refuses an out-of-domain term before the
+  render, and refuses a non-finite coordinate after it.
+- **`Standardizer::fit` gained a runaway-column detector — and it is a detector,
+  not a trim, because the trim was measured and thrown out.** One escaped row
+  gave `amp_sustain` a mean of ~1.2e29 and a σ of ~5.5e29, which standardizes
+  every real patch to the same place: a dead coordinate the model can never
+  learn from while the belief line still prints a contribution for it. The first
+  fix was routine winsorization at 2% per tail; the 16-seed paired run took it
+  straight back out (`+1.877 ± 0.362` → `+0.204 ± 1.347` mean gain, 15/16 → 11/16
+  seeds climbing, one seed at −18.2). Trimming a real tail is not free. So the
+  shipped rule uses the plain moments **unless** a column's plain σ exceeds its
+  winsorized σ by more than `RUNAWAY_RATIO`, which makes it a bit-identical no-op
+  on clean data by construction rather than by luck. The threshold was measured
+  too — a new `winsor_ratio` example fits 150 clean 48-patch pools and reports
+  the largest ratio any column reaches (14.6, `rms_std`), against ~2×10²⁹ for a
+  single `1e30`; `1e6` sits five orders above the first and twenty-three below
+  the second. Non-finite cells are dropped from their column instead of turning
+  it into NaN.
+- **Saved state is migrated, not deleted.** On load, every bank term is
+  clamped, the observation log's unit coordinates are clamped **by name**
+  (never positionally), the implicit-event stream's stored φ pairs are clamped
+  positionally *only* at the live φ width, votes carrying a non-finite cell are
+  dropped, and — if anything at all was repaired — the persisted standardizer is
+  discarded and refit, because a scale fitted over a poisoned column is itself
+  poisoned. The frontend says what was mended and how much of it, with counts.
+  HELD fragments are UI state and are repaired on their own path in the client.
+- **The panel's formatters now fail loudly.** Every knob unit was a *map*, not a
+  check: handed `1e30` they answered "1200.0 dB", "Infinity kHz" and
+  "1e+32%" — three plausible-looking readings of the same corruption. One guard
+  in `knobUnit` renders anything outside 0–1 as `⚠ out of range`.
+- **Where it came from.** `1e30` appears as a literal in no workspace source and
+  in none of the vendored dependencies (`fugue-evo` 0.3.1, `fugue-ppl` 0.1.0 /
+  0.2.0 / 0.2.1, `quiver-dsp` 0.1.x / 0.2.0), and the MH kernel *cannot* seat
+  one: every continuous site is `Uniform(0,1)`, whose `log_prob` is −∞ outside
+  the unit interval, so an escaped proposal scores `log α = −∞` and is
+  rejected. That is measured, not argued — a new `mh_escape` example runs 8
+  chains × 20 000 single-site transitions through the shipped kernel and
+  observes zero escapes, and a full closed-loop seed (40-patch pool, 60 duels,
+  6 refine generations) produces none either. In the shipped session the fault
+  is traceable to one event: bank entry #23 (`origin: prior`) is clean, its
+  hand-edited child #41 has the same amp envelope with `sustain`, `cut`, `res`
+  and `mdepth` all at exactly `1e30` and a freshly-minted `uid` on the root
+  filter, and #43/#55/#56 inherit from it. So it entered at the **hand-edit /
+  whole-tree-replace boundary** — the one route into a term that went through
+  neither `set_param`'s clamp nor the kernel's support check — in a session
+  carried across builds, and that boundary is exactly what now has a gate.
+- **The φ revalidation, since this touches φ.** 16 seeds, paired, same list both
+  arms: pool climb `+1.877 ± 0.362`, climbing on 15/16 — **bit-identical on
+  every seed**, which is the intended result and is a property of the design
+  rather than a lucky null: the domain gate cannot fire on a synthetic loop that
+  never had a bad value, and the standardizer is the plain moments unless a
+  column is runaway. VIF over 300 draws is likewise identical to the digit (no φ
+  column moved; `amp_sustain` 1.4, `rolloff_mean:p2` 19.6). What *did* move is
+  the coordinate the fault was killing: in the shipped profile `amp_sustain`
+  comes back with mean 0.647 and σ 0.284, so two patches at opposite ends of the
+  knob are 3.5 σ apart — against ~4×10⁻³⁰ σ before the repair. It is a live
+  coordinate again, and that is the only number in this section that is supposed
+  to be different.
+- New regression tests: the prior's own claim (400 draws, every site in
+  domain), the sentinel repaired with identities intact, NaN landing mid-range
+  rather than pinned to an end, an explicit fragment that cannot seat a bad
+  value, the quarantine refusing the exact `1e30` term, clean columns fitting
+  bit-identically over four differently-shaped distributions, one escaped row
+  that can no longer kill a column, and the log repair being idempotent.
+
 ### Added — φ_struct sees how a patch is *arranged*
 
 - **Two arrangement coordinates in φ_struct**, so the taste model can hold an

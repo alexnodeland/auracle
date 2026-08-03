@@ -28,6 +28,35 @@ pub enum FeaturizeError {
     /// The render was quarantined by the vetting gate.
     #[error("quarantined: {0}")]
     Quarantined(#[from] VetFailure),
+    /// A continuous site of the term sits outside its declared range, so the
+    /// φ this would produce is not a measurement of anything.
+    ///
+    /// The quarantine used to catch only *audio* pathology — a render that was
+    /// silent, clipped or DC-dominated — which is a gate on the sound and not
+    /// on the term. `amp.sustain = 1e30` renders perfectly well (the limiter
+    /// bounds it), so it passed the vet, and its φ then entered the observation
+    /// log where one row's outlier set the whole `amp_sustain` column's scale
+    /// and killed the coordinate. A row the model cannot interpret must not be
+    /// recorded as evidence, and this is the last place that can say so.
+    #[error("out of domain: {value} at {site} (every knob is normalized 0–1)")]
+    OutOfDomain {
+        /// The offending trace address.
+        site: String,
+        /// The value found there.
+        value: f64,
+    },
+    /// An extracted coordinate is not a finite number.
+    ///
+    /// Distinct from [`Self::OutOfDomain`]: the term was legal, so this is the
+    /// *measurement* having gone wrong (an audio descriptor over a degenerate
+    /// buffer), and it names the coordinate rather than a genome site.
+    #[error("feature {name} is not finite ({value})")]
+    NonFiniteFeature {
+        /// The φ coordinate's name.
+        name: String,
+        /// The value computed for it.
+        value: f64,
+    },
 }
 
 /// Everything the taste model and audition path need for one candidate.
@@ -75,6 +104,14 @@ pub struct VettedCandidate {
 
 /// Run the full pipeline for one term.
 pub fn featurize(tree: &PatchTree, spec: &PhraseSpec) -> Result<VettedCandidate, FeaturizeError> {
+    // Before the render, not after: a term with a knob outside its range is not
+    // a candidate that happens to sound bad, it is a term whose φ would be a
+    // lie, and the ~600 ms render is wasted on it either way. This is the gate
+    // that keeps the observation log clean — every row in the log came through
+    // here.
+    if let Some((site, value)) = tree.domain_violations().into_iter().next() {
+        return Err(FeaturizeError::OutOfDomain { site, value });
+    }
     let mut render = render_phrase(tree, spec)?;
     let report = vet(&render.samples, &VetConfig::for_spec(spec))?;
     // A signal that passed the RMS floor always clears the loudness gate in
@@ -83,14 +120,24 @@ pub fn featurize(tree: &PatchTree, spec: &PhraseSpec) -> Result<VettedCandidate,
         .ok_or(VetFailure::Silent { rms: report.rms })?;
     let audio = audio_features(&render);
     let structural = struct_features(tree);
-    Ok(VettedCandidate {
-        render,
-        features: Features {
-            audio,
-            structural,
-            vet: report,
-            lufs_before: norm.lufs_before,
-            gain_db: norm.gain_db,
-        },
-    })
+    let features = Features {
+        audio,
+        structural,
+        vet: report,
+        lufs_before: norm.lufs_before,
+        gain_db: norm.gain_db,
+    };
+    // The second half of the same guard, on the vector rather than the term.
+    // Costs one pass over 37 doubles against a render that took most of a
+    // second, and it is the only thing standing between a NaN out of a
+    // spectral descriptor and a posterior fit that returns all-NaN θ.
+    for (name, value) in Features::phi_names().iter().zip(features.phi()) {
+        if !value.is_finite() {
+            return Err(FeaturizeError::NonFiniteFeature {
+                name: (*name).to_string(),
+                value,
+            });
+        }
+    }
+    Ok(VettedCandidate { render, features })
 }

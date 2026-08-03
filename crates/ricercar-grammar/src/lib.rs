@@ -47,6 +47,7 @@ pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap};
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
+pub use genome::{in_domain, PARAM_DOMAIN};
 pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
