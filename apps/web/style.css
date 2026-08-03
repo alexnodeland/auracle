@@ -753,6 +753,36 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-anchor: middle;
   pointer-events: none;
 }
+/* A control that does not apply right now, holding its slot.
+   `display: none` on a button inside a horizontal group moves every button to
+   its right — and the layout-mode toggle was to its right, so entering
+   freeform slid the toggle ~100 px under the pointer that had just pressed it
+   and a second press fired *apply grid*, which rewrites every position (m6).
+   The fixed-slot rule is already how the evolve callout keeps its row; this is
+   the same rule for the same reason. */
+.tt.held { visibility: hidden; }
+
+/* The frame's own recovery hint (M3(e)). Centred rather than cornered: it is
+   about the whole view, not about anything under it, and at the zoom that
+   summons it there is nothing under it anyway. */
+.fit-hint {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px 9px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface-pop);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-voice); font-style: italic;
+  font-size: var(--t-body);
+  color: var(--silk-dim);
+  pointer-events: auto;
+}
+.fit-hint.hidden { display: none; }
+
 .rack-empty {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1659,6 +1689,21 @@ input, textarea, .bi-rename {
 }
 .nb-resize:hover { background: linear-gradient(90deg, transparent, rgba(142,240,177,0.18)); }
 
+/* The same handle on the other axis, above the spec strip (M4). It sits in the
+   8px gap `.play-canvas` already leaves between the frame and the dock, so it
+   costs no height of its own — the grip only appears under the pointer, the
+   way the rail's does. */
+.dock-resize {
+  flex: 0 0 8px;
+  margin: -4px 0;
+  cursor: row-resize;
+  border-radius: 2px;
+  z-index: 2;
+}
+.dock-resize:hover,
+.dock-resize:focus-visible { background: linear-gradient(0deg, transparent, rgba(142,240,177,0.18)); }
+.dock-resize:focus-visible { outline: 1px solid var(--phos-a-deep); outline-offset: -1px; }
+
 .nb-body {
   width: clamp(196px, 17vw, 268px);
   padding: 0 0 10px;
@@ -2036,6 +2081,20 @@ input, textarea, .bi-rename {
   transition: border-color 120ms ease-out, color 120ms ease-out;
 }
 .nb-chip .nb-glyph { width: 14px; height: 10px; }
+/* An empty socket in the in-patch list (p4). It used to print the substitute
+   node's name — "vco" — beside a canvas drawing a dashed EMPTY plate, so the
+   two surfaces disagreed about a destructive act the player had just made. It
+   borrows the plate's own language instead: the dashed stroke, the muted
+   silkscreen colour, and no belief cell, because the model has no opinion
+   about absence. */
+.nb-chip.empty {
+  color: var(--silk-mute);
+  border-style: dashed;
+  background: none;
+}
+.nb-chip.empty .nb-glyph .gl { stroke: var(--silk-mute); stroke-width: 1.2; }
+.nb-chip.empty:hover { color: var(--silk-dim); border-color: var(--silk-mute); }
+.nb-chip.empty .ni-theta { display: none; }
 /* The belief cell rides on the in-patch chip too — narrower, because the chip
    is a pill in a wrapping row rather than a full-width catalogue row, but the
    same three marks and the same refusal to draw a bar without evidence. */
@@ -2070,8 +2129,23 @@ input, textarea, .bi-rename {
    is, what it does, what the model thinks — and it holds a reserved height so
    that nothing on the bench moves as its content changes. The floating card
    above is now the keyboard's copy only. */
+/* Two heights, and which one is in force is decided by whether there is
+   anything to describe (M4).
+
+   The strip reserves its height so that nothing under the pointer moves as its
+   content changes — that rule is right and it stays. What was wrong is *which*
+   height was reserved: 96–150 px of "Point at a module…" held permanently
+   against a rack frame that was 295 px at 1280×900, which is how five of five
+   stock presets came to open as knob-less block diagrams on a standard laptop.
+   A sentence gets a sentence's worth of room. A description gets a
+   description's.
+
+   Resting and armed share the one-line height on purpose: arming is a gesture
+   that happens over the canvas, and a canvas that resizes under a placement in
+   progress would be a worse defect than the one this fixes. */
+.play-canvas { --spec-h: clamp(96px, 13vh, 150px); --spec-line: 46px; }
 .spec-dock {
-  flex: 0 0 clamp(96px, 13vh, 150px);
+  flex: 0 0 var(--spec-h);
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr) 300px;
   gap: var(--s4);
@@ -2088,12 +2162,20 @@ input, textarea, .bi-rename {
 .spec-dock.rest, .spec-dock.armed {
   grid-template-columns: 1fr;
   align-items: center;
+  /* `min`, so the divider above still gives feedback when it is dragged past
+     the line height — a control with no visible effect in the state you happen
+     to be in is a control you stop trusting. */
+  flex-basis: min(var(--spec-h), var(--spec-line));
+  padding-top: 6px; padding-bottom: 6px;
 }
 .sd-rest {
   font-size: var(--t-micro);
   line-height: 1.7;
   color: var(--silk-mute);
-  max-width: 68ch;
+  /* One line, and it ends in an ellipsis rather than wrapping out of a strip
+     that is now one line tall. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
 }
 .sd-id { display: flex; align-items: flex-start; gap: 9px; min-width: 0; }
 .sd-idtext { min-width: 0; }
@@ -2175,6 +2257,10 @@ input, textarea, .bi-rename {
   border: 1px solid var(--hairline); border-radius: 3px;
   background: rgba(0, 0, 0, 0.35);
 }
+/* The armed strip is one line tall now (M4), and the preview scope is the only
+   thing in it that is not text. 30px still reads as a waveform — it is a
+   "does this sound like anything" glance, not a measurement. */
+.spec-dock.armed .pv-scope { height: 30px; }
 .pv-label { font-size: var(--t-micro); color: var(--silk-mute); white-space: nowrap; }
 /* Rendering is a half-second of somebody else's CPU: say so by dimming the
    thing that is about to change rather than by adding a spinner. */
@@ -2596,15 +2682,20 @@ input, textarea, .bi-rename {
   .rack-tools { gap: var(--s1); }
   .duel-mid { gap: var(--s3); }
 }
-/* Short laptops: the deck is the elastic part, so give the fixed chrome less. */
-@media (max-height: 860px) {
+/* Short laptops: the deck is the elastic part, so give the fixed chrome less.
+   The breakpoint was 860px, which put the plan's own second test size — 1280×900,
+   a MacBook — on the *tall* side of a rule written for exactly that machine.
+   940 covers it. Nothing in the block changed; it simply now applies where it
+   was always meant to. */
+@media (max-height: 940px) {
   :root { --keybar-h: 108px; }
   .tray { flex: 0 0 52px; }
   /* The canvas is the elastic part everywhere else in this block, and the spec
      strip is the newest claim on it — so it gives ground first. Its height is
      still reserved, just smaller: the blurb wraps rather than the strip
      appearing and disappearing under the pointer. */
-  .spec-dock { flex: 0 0 92px; padding: 8px var(--s4); }
+  .play-canvas { --spec-h: 92px; }
+  .spec-dock { padding: 8px var(--s4); }
   /* Below this the rack cannot hold both a patch and a 268px catalogue, so the
      rail folds itself to the 34px group tab rather than squeezing the canvas. */
   .nb-body { width: clamp(180px, 15vw, 220px); }

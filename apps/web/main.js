@@ -263,6 +263,13 @@ function uiState() {
     // lock is keyed by node identity now: under the old trace-address keys a
     // restored lock would have named whatever had since moved into that slot.
     locks: [...lockStore].filter(([, s]) => s.size).map(([id, s]) => [id, [...s]]),
+    // Which sockets you left empty, per patch. Same shape and same argument as
+    // `locks` above: unplugging is a destructive act the app promises to keep
+    // showing, and a reload used to quietly refill every hole with the vco
+    // that was standing in it — the plate came back with knobs on it and
+    // nothing said the patch had changed. Safe to persist for the same one
+    // reason locks are: a hole is keyed by node identity now (M2).
+    holes: [...holeStore].filter(([, s]) => s.size).map(([id, s]) => [id, [...s]]),
     // Where you like to stand in a big patch (WS-9). Nine slots per subject,
     // stored as a *centre plus a zoom* rather than as a viewBox: the frame is
     // resizable — the node-bank divider drags it — and a corner recorded at
@@ -344,7 +351,19 @@ let restoreInFlight = false;
 /** The bench as a step: everything one edit can change and ⌘Z has to answer
  *  for, except what the shelf owes — which only the edit itself knows. */
 function benchStep(trays) {
-  return { json: JSON.stringify(wb.tree), locks: [...wb.locks], trays: trays || [] };
+  return {
+    json: JSON.stringify(wb.tree),
+    locks: [...wb.locks],
+    // …and which sockets were empty. A hole is a uid now, so pruning carries
+    // it one way for free — undo an unplug and the node the mark named is not
+    // in the restored tree, so it goes. Redo could not get it back from
+    // pruning alone: the tree comes back carrying the same uid, but nothing
+    // would remember that the uid meant "empty". The step remembers, exactly
+    // as it does for locks, and for the same reason — a partial inverse is
+    // the worst kind.
+    holes: [...placeholderUids],
+    trays: trays || [],
+  };
 }
 function pushUndo() {
   if (!wb.tree) return;
@@ -598,6 +617,10 @@ function settleRestore() {
   // The tree is already back — the engine sent it. These are the parts of the
   // step the engine has never heard of.
   wb.locks = new Set(step.locks);
+  // `settlePlaceholders` runs after this on the same reply and prunes whatever
+  // the restored tree no longer contains, so this only has to be the set as it
+  // stood — it does not have to be right about the tree.
+  placeholderUids = new Set(step.holes || []);
   if (undoing) for (const t of step.trays) unstage(t.uid);
   else restage(step.trays);
 }
@@ -983,8 +1006,13 @@ worker.onmessage = (e) => {
         // addresses says anything about this one's, and a survivor here is
         // the same stale-entry dropout a structural edit used to leave.
         nonLiveAddrs.clear();
-        placeholderKeys = new Set();
+        // A different patch entirely, so its holes are the ones on file for
+        // *it* — not the ones the last patch had. Restored before the tree
+        // lands, because `settlePlaceholders` at the bottom of this handler is
+        // what prunes them against the rack that actually arrived.
+        placeholderUids = new Set();
         placeholderPending = null;
+        holesRestoreFor(m.subject);
         undoStack.length = 0;
         redoStack.length = 0;
         note(`${nameOf(m.subject)} on the bench`);
@@ -1016,12 +1044,16 @@ worker.onmessage = (e) => {
           // session, which is a dropout and an envelope retrigger roughly
           // twice a second for as long as you keep turning it.
           nonLiveAddrs.clear();
-          // Same fact, same consequence: a rewrite says where its empty
-          // sockets ended up, and anything else moved the addresses without
-          // telling us, so the holes are forgotten rather than drawn on
-          // whatever now happens to live at that key.
-          placeholderKeys = placeholderPending || new Set();
-          placeholderPending = null;
+          // The holes are deliberately *not* cleared here any more, and that
+          // is the whole of M2. They used to be, because they were keyed by
+          // trace address and the addresses had just moved — so every op path
+          // in the app turned an EMPTY plate back into a full vco one gesture
+          // later. A hole names a node now, and a node survives an edit unless
+          // it is the thing the edit removed. `settlePlaceholders`, below the
+          // tree parse, does the only two jobs left: read back the uid the
+          // engine minted for a hole this rewrite just made, and drop the
+          // marks whose node is gone.
+          //
           // And for the same reason, anything still *aiming* at a key is
           // aiming at a key that has moved. A handoff or a half-made cable
           // that survives an edit does not point where the player pointed it
@@ -1072,6 +1104,13 @@ worker.onmessage = (e) => {
         benchTreeJson = m.treeJson;
         benchMakeup = m.makeup;
       }
+      // Every reply, not only the structural ones, and after the tree lands
+      // because the tree is the only thing that can answer either half: which
+      // uid the engine gave a hole this edit made, and which marks now name a
+      // node that is no longer in the patch. Cheap on the common path — a
+      // knob turn has nothing pending and nothing to prune, and the store
+      // write is guarded exactly the way `locksRemember`'s is.
+      settlePlaceholders();
       // The keyboard follows the bench — but continuous knob turns were
       // already applied live inside the worklet (zero-recompile), so only
       // subject loads, structural changes, and non-live params re-patch.
@@ -1287,6 +1326,21 @@ worker.onmessage = (e) => {
       if (m.id > 0) {
         wb.subjectId = m.id;
         wb.dirty = false;
+        // The bench is now a different patch — the child this commit inserted
+        // — and everything keyed by subject has to be told, or it stays filed
+        // under the parent. `lockKey()` and `ffKey()`/`holesRemember()` all
+        // read `wb.subjectId`, so setting it first is the whole of the
+        // threading: the commit reply carries no `m.subject` and never reaches
+        // `case "bench"`, which is the one place that used to do this.
+        //
+        // m1: without the lock write, IDB ended with an entry for the parent
+        // and none for the child. #56 loaded with every dot dark while #41
+        // still showed its six — pins evaporating on reload for the one patch
+        // the player actually authored, and the next ⚡ then breeding away the
+        // routing they had held. `wb.locks` itself is already right; it was
+        // only ever the *store* that never heard about the new id.
+        locksRemember();
+        holesRemember();
         livePatchId = m.id;
         setLiveLabel(nameOf(m.id));
         // Say what was taught, from what actually happened rather than from
@@ -4190,8 +4244,25 @@ function plateStep(mod) {
   return MOD_BY_KIND[mod.kind]?.ins === 2 ? Math.max(1, step) : step;
 }
 
-/** Plate geometry for one module: width, height, and its knob grid. */
-function moduleBox(mod) {
+/** Is this rack module standing in for an empty socket? One predicate, asked
+ *  by the renderer, the layout and the bank, so the three cannot disagree
+ *  about what is and is not there. `placeholders` is a set of **uids** (see
+ *  `placeholderUids`); the amp is not a node and modulators are never holes. */
+function isEmptySocket(mod, placeholders) {
+  return !!mod && !mod.is_mod && mod.kind !== "amp"
+    && !!mod.uid && !!placeholders && placeholders.has(mod.uid);
+}
+
+/** Plate geometry for one module: width, height, and its knob grid.
+ *
+ *  A hole is the exception, and p5 is the reason: it was inheriting the plate
+ *  of whatever it replaced, so unplugging a three-knob filter left a 240×164
+ *  dashed box with a control well in it — the most visual weight on the panel
+ *  given to the thing that is *not* there. It draws nothing but a title and a
+ *  hint, so it takes the narrowest plate in the set and one row's height. The
+ *  socket still reads as a socket; it just stops shouting. */
+function moduleBox(mod, isEmpty) {
+  if (isEmpty) return { w: PLATE_W[0], h: 36 + KNOB_ROW, perRow: 1 };
   const step = plateStep(mod);
   const perRow = PLATE_COLS[step];
   const rows = Math.max(1, Math.ceil(mod.knobs.length / perRow));
@@ -4263,17 +4334,22 @@ const snapL = (v, off) => Math.round((v + off) / GRID) * GRID - off;
 // passed in rather than read from module scope because `layout` is also the
 // duel minis' arrangement function, and a mini draws a *different patch* than
 // the one whose hand positions are on file.
-function layout(rack, mode, places) {
-  if (mode === "freeform") return layoutFree(rack, layoutFlow(rack, "chain"), places);
-  return layoutFlow(rack, mode);
+// `holes` is the empty-socket set (uids), passed rather than read from module
+// scope for the same reason `places` is: this is also the duel minis' and the
+// export stage's arrangement function, and which sockets are empty is a fact
+// about *one* patch. A caller drawing another passes nothing and gets full
+// plates, which is the honest answer about a patch nobody has unplugged.
+function layout(rack, mode, places, holes) {
+  if (mode === "freeform") return layoutFree(rack, layoutFlow(rack, "chain", holes), places);
+  return layoutFlow(rack, mode, holes);
 }
 
 // The two flow arrangements: layered, and derived entirely from the term.
-function layoutFlow(rack, mode) {
+function layoutFlow(rack, mode, holes) {
   const box = new Map();
   const byKey = new Map();
   for (const m of rack.modules) {
-    box.set(m.key, moduleBox(m));
+    box.set(m.key, moduleBox(m, isEmptySocket(m, holes)));
     byKey.set(m.key, m);
   }
   const maxCol = Math.max(...rack.modules.map((m) => m.column));
@@ -4588,6 +4664,67 @@ function ffKey() {
   return wb.subjectId == null ? "bench" : String(wb.subjectId);
 }
 
+// How much of the current rack a stored layout has to actually place before it
+// counts as this patch's arrangement rather than as a leftover. Two thirds,
+// and both ends of that were measured rather than picked: a fossil layout
+// reproduced from the panel's failure places 3 of 18 nodes (0.17) and is
+// refused; a commit keeps every identity (1.00) and a generation of ⚡ keeps
+// 0.8–0.95, and neither is touched. That gap matters more than the exact
+// number — freeform's first rule is that a stored position is honoured
+// exactly, and this must never be the thing that quietly moves one.
+const FF_MIN_COVERAGE = 0.67;
+
+/** The fraction of the rack's *nodes* a stored layout has a position for.
+ *  The amp is excluded for the reason `ffPlaces` gives below: `kamp` is in
+ *  every patch in the bank, so counting it would let any layout claim any
+ *  patch. */
+function ffCoverage(store) {
+  if (!store || !wb.rack) return 1;
+  const nodes = wb.rack.modules.filter((m) => m.uid);
+  if (!nodes.length) return 1;
+  let hit = 0;
+  for (const m of nodes) if (store.has(midOf(m))) hit += 1;
+  return hit / nodes.length;
+}
+
+/** How many times *bigger* the chain arrangement would draw this patch than
+ *  the arrangement currently on screen does. 1 is "no better".
+ *
+ *  Measured as a ratio of fit zooms rather than of areas, and the first attempt
+ *  at this got it wrong in a way worth recording: a 19-module patch stacked in
+ *  one 96-unit-wide, 6600-unit-tall column has a *smaller* bounding area than
+ *  its chain layout and would have scored 0.65 — "tighter than the chain" —
+ *  while fitting on screen at 0.049× and being completely unreadable. Fit is
+ *  set by the worse of the two axes, so the thing to compare is the fit, which
+ *  is exactly what the player is suffering.
+ *
+ *  Measured on the reproduced stranding: 0.049× drawn against 0.249× from the
+ *  chain at 1280×900, and 0.080× against 0.403× at 1700×1000 — 5.0 either way,
+ *  which is also the reassuring part. It is a ratio of two fits in the same
+ *  frame, so it does not move with the window. A hand layout that spreads a
+ *  patch out to breathe sits nearer 1.5–2.5. */
+function layoutSprawl() {
+  if (!wb.rack || !rackBoxes.size) return 1;
+  const { w, h } = frameSize();
+  const fitOf = (bw, bh) => Math.min(w / Math.max(1, bw), h / Math.max(1, bh));
+  const drawn = contentBox();
+  const chain = layoutFlow(wb.rack, "chain", placeholderSet());
+  const zd = fitOf(drawn.w, drawn.h);
+  if (!(zd > 0)) return 1;
+  return fitOf(chain.natW + 30, chain.natH + 24) / zd;
+}
+// Two thresholds, because the two consumers are not asking the same question.
+//
+// The frame hint only *offers* a way out; being wrong costs a sentence the
+// player can ignore, so it is set low enough to catch a stranding that is only
+// half as bad as the one on record. `applyGrid`'s re-seed **rewrites every
+// position in the patch**, and being wrong there costs a hand arrangement, so
+// it wants to be sure. 5.0 is the measured stranding; 4 leaves the re-seed a
+// quarter of margin under it and stays well clear of the 1.5–2.5 an airy hand
+// layout scores.
+const SPRAWL_HINT = 3;
+const SPRAWL_RESEED = 4;
+
 /** The store for the current subject, creating it on first write. */
 function ffStore(create) {
   const k = ffKey();
@@ -4657,7 +4794,24 @@ function ffPlaces() {
   // and the child compared its uids against whatever subject happened to have
   // been dragged last — a patch it shares nothing with — so the test below
   // failed and every survivor fell back to the chain seed.
-  if (mine) { ffLast = k; return mine; }
+  if (mine) {
+    // M3(d). A stored layout is honoured exactly — rule 1 of the mode, and it
+    // is not being weakened here. What is being refused is a layout that is
+    // barely *about* this patch. The inheritance branch below already demands
+    // evidence of a shared identity before it copies someone else's positions;
+    // the subject's own entry demanded none, so a layout written against a
+    // patch that has since been evolved out from under it (uids replaced, a
+    // few survivors) placed three plates by hand and let `layoutFree` slide
+    // the other ten down the grid, one 24-unit step at a time, until they were
+    // clear — which is exactly how a 13-module patch became a 3744-unit
+    // column. Below the threshold the layout is not a hand arrangement any
+    // more, it is a fossil, and dropping it wholesale gives the chain seed
+    // back rather than the column.
+    if (ffCoverage(mine) >= FF_MIN_COVERAGE) { ffLast = k; return mine; }
+    ffLayouts.delete(k);
+    if (ffLast === k) ffLast = null;
+    scheduleSave();
+  }
   const src = ffLast != null ? ffLayouts.get(ffLast) : null;
   if (!src || !wb.rack) return null;
   // Asked through `midOf`, which is how the store is keyed, rather than by
@@ -4669,7 +4823,18 @@ function ffPlaces() {
   // count would make any layout inherit into any patch, which is the positional
   // bleed identity was introduced to end — so it may ride along inside an
   // overlap, but it can never be the whole of one.
-  if (!wb.rack.modules.some((m) => m.uid && src.has(midOf(m)))) return null;
+  //
+  // M3(d), and this is the half the report's wording is actually about: the
+  // test was "*some* uid in common", which is 1 in 18. One shared node means
+  // one plate placed at its remembered coordinate and seventeen laid out from
+  // the chain seed around it — and if that one coordinate is 3000 units down,
+  // the patch is drawn readable with a single plate stranded far below it, and
+  // Home dutifully fits all 3700 units of the result. A descendant that has
+  // *mostly* survived is what inheritance is for (a commit keeps everything; a
+  // generation of ⚡ typically keeps 80-95%), so the same floor the subject's
+  // own entry answers to applies here. Below it the chain layout is not a
+  // consolation prize, it is the correct answer.
+  if (ffCoverage(src) < FF_MIN_COVERAGE) return null;
   const copy = new Map(src);
   ffLayouts.set(k, copy);
   ffLast = k;
@@ -4679,22 +4844,74 @@ function ffPlaces() {
 
 /** Snap everything on screen to the grid and pin it — the "apply grid" verb.
  *  The seed is whatever is currently drawn, which for a patch arriving without
- *  a layout is the chain arrangement, exactly as ruled. */
+ *  a layout is the chain arrangement, exactly as ruled.
+ *
+ *  …with one exception, and it is M3(c). "Seed from what is drawn" is right
+ *  whenever what is drawn is an arrangement; it is precisely wrong when what is
+ *  drawn is a 3744-unit column, because then apply-grid *pins the stranding* —
+ *  the one command in the mode that looks like it should rescue you was the
+ *  command that made the damage permanent. So a degenerate layout is seeded
+ *  from the chain instead, and the toast says which of the two happened. */
 function applyGrid() {
   if (!wb.rack || !rackBoxes.size) return;
+  const stranded = layoutSprawl() > SPRAWL_RESEED;
+  // `rackBoxes` is in *rack* space (layout space plus the fixed inset
+  // `buildRack` draws at) and `layoutFlow` answers in layout space, so the
+  // chain seed is lifted into rack space here rather than teaching the one
+  // snap expression below to know which of its two callers it is serving.
+  let seed = rackBoxes;
+  if (stranded) {
+    seed = new Map();
+    for (const [k, b] of layoutFlow(wb.rack, "chain", placeholderSet()).pos) {
+      seed.set(k, { x: b.x + RACK_OFF_X, y: b.y + RACK_OFF_Y });
+    }
+  }
   const store = ffStore(true);
+  store.clear();
   for (const m of wb.rack.modules) {
-    const b = rackBoxes.get(m.key);
+    const b = seed.get(m.key);
     if (!b) continue;
     store.set(midOf(m), {
       x: Math.max(0, snapL(b.x - RACK_OFF_X, RACK_OFF_X)),
       y: Math.max(0, snapL(b.y - RACK_OFF_Y, RACK_OFF_Y)),
     });
   }
-  camHold = true;
+  camHold = !stranded; // a re-seed *should* move the camera; a snap should not
   renderRack();
+  if (stranded) fitAll(true);
   scheduleSave();
-  note(`${store.size} modules pinned to the grid — drag any of them from here.`);
+  note(stranded
+    ? `${store.size} modules re-laid from the signal chain and pinned — the old arrangement had spread past anything the frame could show.`
+    : `${store.size} modules pinned to the grid — drag any of them from here.`);
+}
+
+/** "Reset positions" — M3(b), the recovery verb the mode did not have.
+ *
+ *  Freeform's contract is that the app never rearranges your plates. That is
+ *  the right contract and it is why there has to be a *verb*: recovery existed
+ *  (leave the mode and come back) but nothing on screen said so, and a player
+ *  looking at a sliver of patch at 0.03× has no reason to believe the layout
+ *  button is the way out. This throws the stored arrangement away, redraws from
+ *  the chain seed, and refits — one click, undoable by the ordinary means
+ *  (drag them back), and it says how many positions it dropped so it cannot be
+ *  mistaken for a no-op. */
+function resetPositions() {
+  if (!wb.rack) return;
+  const k = ffKey();
+  const had = ffLayouts.get(k);
+  const n = had ? had.size : 0;
+  ffLayouts.delete(k);
+  if (ffLast === k) ffLast = null;
+  // `camHold` off on purpose: the whole point of the verb is that the camera
+  // is somewhere useless, so this is the one relayout that must move it.
+  camHold = false;
+  viewUserSet = false;
+  renderRack();
+  fitAll(true);
+  scheduleSave();
+  note(n
+    ? `${n} hand position${n > 1 ? "s" : ""} cleared — the patch is back on the signal chain. Drag any plate to start again.`
+    : "nothing was hand-placed — the patch is already on the signal chain.");
 }
 
 function moduleLockAddrs(mod) {
@@ -5102,6 +5319,7 @@ function renderRack() {
     rackFrame = null;
     cancelRackMotion();
     rackContent = { w: frameSize().w, h: frameSize().h };
+    syncFitHint(); // nothing drawn is not a stranded layout
     syncMapBtn();
     nbSync();
     return;
@@ -5116,7 +5334,7 @@ function renderRack() {
     interactive: true,
     locks: lockedAddrs(),
     compact: effectiveLod() === "compact",
-    placeholders: placeholderKeys,
+    placeholders: placeholderSet(),
     // Only the workbench has hand positions; the duel minis draw other
     // patches, whose layout this player has never touched. An *empty* store is
     // still a store: freeform with nothing placed is the chain arrangement,
@@ -5271,7 +5489,7 @@ function buildRack(svg, rack, opts) {
   // Arrangement is decided by `layout` and consumed here. The renderer never
   // computes a coordinate of its own any more — that separation is what lets a
   // second mode be a second y-assignment instead of a second renderer.
-  const L = layout(rack, mode, places);
+  const L = layout(rack, mode, places, placeholders);
   const natW = L.natW + 30;
   const natH = L.natH + 24;
   // Content is laid out at its natural size at a fixed origin, always. It used
@@ -5449,6 +5667,22 @@ function buildRack(svg, rack, opts) {
     // has not been settled yet have no uid, and the motion system, the focus
     // restore and the selection cannot have a module they are unable to name.
     const mid = midOf(m);
+    // A socket nothing is plugged into. The node under it is real — the
+    // grammar has no hole — but the player unplugged it and must be able to
+    // see that, so the plate is drawn as the absence it stands for.
+    //
+    // Not gated on `interactive`, and this was a lie in the exports: the
+    // control well, the ⋯ and the lock dot are this app's chrome and are right
+    // to be left out of a picture, but an empty socket is not chrome — it is
+    // what the patch *is*. Printed as an ordinary plate, an export said a
+    // module was there, and the sender's whole reason for exporting a patch
+    // with a hole in it ("here, fill this in") was erased on the way out.
+    //
+    // Read *here*, above the tabstop, because p4 is the same fact reaching the
+    // accessibility tree: a screen reader was told "vco module" about a socket
+    // the canvas was drawing as empty and the bank was about to list as a vco.
+    // Three surfaces, one predicate.
+    const isEmpty = isEmptySocket(m, placeholders);
     const ids = { "data-kind": m.kind, "data-key": m.key, "data-uid": m.uid, "data-mid": mid };
     const plateG = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids });
     const g = svgEl("g", { transform: `translate(${p.x},${p.y})`, ...ids }, "mod-group");
@@ -5463,22 +5697,14 @@ function buildRack(svg, rack, opts) {
       // their knobs, Enter opens the same menu the ⋯ opens.
       g.setAttribute("role", "group");
       g.setAttribute("tabindex", "-1");
-      g.setAttribute("aria-label", `${m.title} module`);
+      g.setAttribute(
+        "aria-label",
+        isEmpty ? "empty socket — drop a source here" : `${m.title} module`,
+      );
       g.appendChild(svgEl("rect", {
         x: -3, y: -3, width: p.w + 6, height: p.h + 6, rx: 8,
       }, "plate-focus"));
     }
-    // A socket nothing is plugged into. The node under it is real — the
-    // grammar has no hole — but the player unplugged it and must be able to
-    // see that, so the plate is drawn as the absence it stands for.
-    //
-    // Not gated on `interactive`, and this was a lie in the exports: the
-    // control well, the ⋯ and the lock dot are this app's chrome and are right
-    // to be left out of a picture, but an empty socket is not chrome — it is
-    // what the patch *is*. Printed as an ordinary plate, an export said a
-    // module was there, and the sender's whole reason for exporting a patch
-    // with a hole in it ("here, fill this in") was erased on the way out.
-    const isEmpty = !m.is_mod && m.kind !== "amp" && placeholders.has(m.key);
     const plateCls = `mod-plate${m.is_mod ? " modside" : ""}${isModuleLockedIn(m) ? " locked" : ""}${isEmpty ? " placeholder" : ""}`;
     const plate = svgEl("rect", { width: p.w, height: p.h, rx: 5 }, plateCls);
     // Compact is the zoomed-out reading mode: title and jacks, and none of
@@ -5530,7 +5756,12 @@ function buildRack(svg, rack, opts) {
     const wellW = interactive ? (p.w >= 168 ? 56 : 44) : 0;
     const wellX = p.w - wellW - 4;
     const lockedIn = isModuleLockedIn(m);
-    if (interactive && !compact) {
+    // …except on a hole, which has no controls to recess. The pocket was the
+    // heaviest thing on the EMPTY plate and it advertised two verbs, one of
+    // which (▢ lock) is already withheld from a socket and the other of which
+    // (⋯) survives below on bare panel. p5's point stands: a recessed well is
+    // the panel saying "there is apparatus here", and there is not.
+    if (interactive && !compact && !isEmpty) {
       plateG.appendChild(svgEl("rect", {
         x: wellX, y: 5, width: wellW, height: 20, rx: 3,
       }, `ctrl-well${lockedIn ? " locked" : ""}`));
@@ -5558,10 +5789,12 @@ function buildRack(svg, rack, opts) {
     }
     if (isEmpty) {
       // The plate says what it is *for*, because "empty" alone reads as a
-      // fault rather than as an invitation.
-      const hint = svgEl("text", { x: p.w / 2, y: p.h / 2 + 8, "text-anchor": "middle" }, "plate-hint");
-      hint.textContent = "drop a source here";
-      hint.dataset.fit = String(Math.max(40, p.w - 24));
+      // fault rather than as an invitation. Two words shorter than it was: the
+      // plate is 96 units wide now (p5), and "drop a source here" condensed
+      // into that is a squeezed line where a short one says the same thing.
+      const hint = svgEl("text", { x: p.w / 2, y: p.h / 2 + 10, "text-anchor": "middle" }, "plate-hint");
+      hint.textContent = "drop a source";
+      hint.dataset.fit = String(Math.max(40, p.w - 12));
       plateG.appendChild(hint);
     }
 
@@ -6476,8 +6709,33 @@ function frameSize() {
   const el = $("rack-scroll");
   return { w: Math.max(80, el.clientWidth), h: Math.max(80, el.clientHeight) };
 }
+/** The box a fit is a fit *of*: the union of the plates, not the extent of the
+ *  layout canvas they happen to be drawn on.
+ *
+ *  These are the same box in every flow arrangement, because a flow arrangement
+ *  starts at the origin by construction. They are not the same box in freeform,
+ *  where a hand position is honoured exactly and the origin stays put — so a
+ *  patch whose plates all sit at y ≈ 3400 had `rackContent.h` of 3744 and a
+ *  "fit" that dutifully framed 3744 units of which 3400 were empty. Home did
+ *  its arithmetic correctly and produced a ~30 px sliver of patch at the bottom
+ *  of an otherwise black frame, with nothing on screen to say what had
+ *  happened. That is M3's first line: fit what is there.
+ *
+ *  The pad is the outermost plate's shadow and jack barrels, which are drawn
+ *  outside its box and would otherwise be shaved by an exact fit. */
 function contentBox() {
-  return { x: 0, y: 0, w: rackContent.w, h: rackContent.h };
+  if (!rackBoxes.size) return { x: 0, y: 0, w: rackContent.w, h: rackContent.h };
+  const PAD = 18;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const b of rackBoxes.values()) {
+    if (b.x < x0) x0 = b.x;
+    if (b.y < y0) y0 = b.y;
+    if (b.x + b.w > x1) x1 = b.x + b.w;
+    if (b.y + b.h > y1) y1 = b.y + b.h;
+  }
+  x0 = Math.max(0, x0 - PAD);
+  y0 = Math.max(0, y0 - PAD);
+  return { x: x0, y: y0, w: Math.max(1, x1 + PAD - x0), h: Math.max(1, y1 + PAD - y0) };
 }
 // The SVG fills the frame's content box exactly and its viewBox has the frame's
 // aspect ratio, so there is never any letterboxing to account for and these two
@@ -6523,6 +6781,9 @@ function applyView() {
   // question this answers. Debounced: the answer only matters where the pan
   // stops.
   scheduleScopeDuck();
+  // Cheap on every frame that is not the failure case: the zoom test
+  // short-circuits before anything is laid out. See `syncFitHint`.
+  syncFitHint();
   if (effectiveLod() !== lodApplied) scheduleRelod();
 }
 
@@ -6547,9 +6808,43 @@ let lodMode = localStorage.getItem("ricercar-lod") || "auto";
 let lodApplied = "full";
 let relodRaf = null;
 
+// The threshold `auto` switches at in a *tall* frame. 0.55× is where a 30-unit
+// knob stops being something you could put a finger on, which is the right
+// number and is not changing.
+const LOD_AUTO = 0.55;
+// The frame height that number is *for*, and the floor the scaling stops at.
+// Both are measured rather than chosen. 500 px is the rack band on a full-size
+// window, where 0.55 was calibrated and where nothing about this changes. The
+// number that fixed it is the other end: at 1280×900 the band is 364 px and
+// five stock presets fit at 0.44–0.67, so the threshold has to be under 0.44
+// for the gate's own target to be met. 500 puts it at 0.400 — 9% of headroom
+// under the worst preset rather than 3% — and the floor keeps it from chasing
+// a genuinely tiny window down to where a knob really is four pixels of ring.
+const LOD_REF_H = 500;
+const LOD_MIN_SCALE = 0.62; // → 0.341× at or below a 310px band
+
+/** The zoom `auto` gives up knobs at, for the frame we actually have.
+ *
+ *  A fixed threshold punishes a short frame twice. At 1280×900 the rack band is
+ *  ~395 px even after the dock collapses, so *every* stock preset fits at
+ *  0.4–0.7× — and a constant 0.55 turned the whole 1280 experience into block
+ *  diagrams, which is M4's visible half. But the knob is not unreadable at
+ *  0.45× in a 300 px frame and readable at 0.56× in a 700 px one: what changed
+ *  is how much of the frame the patch was allowed to have, not how big a knob
+ *  came out.
+ *
+ *  So the threshold rides with the frame, floored: a knob at 0.34× is genuinely
+ *  four pixels of ring and no amount of arithmetic makes it a control. The
+ *  floor is where "compact" starts being the honest answer rather than a
+ *  punishment for owning a laptop. */
+function lodThreshold() {
+  const h = frameSize().h;
+  return LOD_AUTO * clamp(h / LOD_REF_H, LOD_MIN_SCALE, 1);
+}
+
 function effectiveLod() {
   if (lodMode === "full" || lodMode === "compact") return lodMode;
-  return view.zoom < 0.55 ? "compact" : "full";
+  return view.zoom < lodThreshold() ? "compact" : "full";
 }
 // Deferred by a frame on purpose: this is reached from applyView, which is
 // reached from renderRack, and a synchronous rebuild there would re-enter the
@@ -6568,7 +6863,10 @@ function syncLodBtn() {
   b.setAttribute("aria-pressed", String(lodMode !== "auto"));
   b.closest(".tt").title =
     lodMode === "auto"
-      ? "Detail: automatic. Plates lose their knobs when you zoom out past 0.55×."
+      // The number is read out rather than written in, because it is a
+      // function of the frame now (`lodThreshold`) and a tooltip that says
+      // 0.55 in a frame that switches at 0.34 is a tooltip that lies.
+      ? `Detail: automatic. Plates lose their knobs when you zoom out past ${lodThreshold().toFixed(2)}×.`
       : lodMode === "full"
         ? "Detail: full, at every zoom. Click for plates without knobs."
         : "Detail: plates, titles and jacks only. Click to go back to automatic.";
@@ -6948,9 +7246,13 @@ function panBy(dxClient, dyClient) {
 }
 function contentFullyVisible() {
   const { w, h } = frameSize();
-  return view.x <= 1 && view.y <= 1 &&
-    view.x + w / view.zoom >= rackContent.w - 1 &&
-    view.y + h / view.zoom >= rackContent.h - 1;
+  // Against the plates' box for the same reason `contentBox` is: in freeform
+  // this used to answer "no" for a patch entirely on screen, merely because
+  // 3000 units of empty layout canvas above it were not.
+  const b = contentBox();
+  return view.x <= b.x + 1 && view.y <= b.y + 1 &&
+    view.x + w / view.zoom >= b.x + b.w - 1 &&
+    view.y + h / view.zoom >= b.y + b.h - 1;
 }
 
 /** Called after every interactive build. Auto-fit on load and whenever a
@@ -7124,8 +7426,15 @@ function drawMinimap() {
   const el = $("rack-map");
   if (!el || !mapOn || !wb.rack) return;
   const pad = 7;
-  const s = Math.min((MM_W - pad * 2) / Math.max(1, rackContent.w), (MM_H - pad * 2) / Math.max(1, rackContent.h));
-  mmT = { s, ox: (MM_W - rackContent.w * s) / 2, oy: (MM_H - rackContent.h * s) / 2 };
+  // The plates' box, not the layout canvas — the map is a picture of where the
+  // patch is, and a freeform layout whose origin is 3000 units above the
+  // nearest plate drew the whole rack as one pixel in the bottom corner of an
+  // empty map. The offset folds the box's origin into `ox`/`oy`, so the
+  // rack→map transform stays one multiply and the click handler's inverse
+  // needs no change at all.
+  const cb = contentBox();
+  const s = Math.min((MM_W - pad * 2) / Math.max(1, cb.w), (MM_H - pad * 2) / Math.max(1, cb.h));
+  mmT = { s, ox: (MM_W - cb.w * s) / 2 - cb.x * s, oy: (MM_H - cb.h * s) / 2 - cb.y * s };
   // The node rects only change when the rack is rebuilt; the viewport rect
   // changes on every pan frame. Splitting them keeps a pan at two attribute
   // writes instead of an innerHTML reparse per frame.
@@ -7410,6 +7719,10 @@ new ResizeObserver(() => {
   // resize re-backs it at a new pixel size and blanks whatever was on it.
   // Repaint before the refit, which is about to read the bezel's new box.
   if (scopeRaf == null) scopeApply();
+  // The auto-LOD threshold is a function of the frame's height now, so the
+  // tooltip that quotes it has to be re-read when the frame changes shape —
+  // which the divider above the spec strip does on every drag frame.
+  syncLodBtn();
   if (!roSettled) { roSettled = true; return; } // the observer's own first call
   if (!wb.rack) return;
   if (viewUserSet && !contentFullyVisible()) applyView();
@@ -7722,11 +8035,11 @@ function applyTreeRewrite(fn, tag) {
     return false;
   }
   const tree = JSON.parse(JSON.stringify(wb.tree));
-  const marks = [];
-  for (const k of placeholderKeys) {
-    const n = nodeAtIn(tree, k);
-    if (n) marks.push(n);
-  }
+  // The holes already in this tree, as node objects. They need no *tracking*
+  // any more — each one carries its uid inside the JSON being moved, exactly
+  // as a locked node does — but the rewrites still ask "is this subtree a
+  // hole?" before staging it to HELD, and that question wants the objects.
+  const marks = holeNodesIn(tree);
   // Locks need nothing here any more. A rewrite moves subtrees by reference
   // and each of those nodes carries its own `uid` in the JSON being moved, so
   // the identity travels inside the thing that travelled — the tracking this
@@ -7735,6 +8048,10 @@ function applyTreeRewrite(fn, tag) {
   // because the node had no name of its own.
   const refusal = fn(tree, marks);
   if (typeof refusal === "string") { note(refusal); return false; }
+  // Only the holes this rewrite *made* need saying — one of them is a bare
+  // `SEED_VCO()` with no identity yet, and the engine mints it on the way in.
+  // The keys are the handle until then; `settlePlaceholders` trades them for
+  // uids against the tree that comes back.
   placeholderPending = keysOfNodes(tree, marks);
 
   queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) }, null, tag);
@@ -7773,15 +8090,153 @@ function applyTreeRewrite(fn, tag) {
 // the compiler renders at zero gain), and it belongs with the liveness work,
 // not here.
 //
-// Tracked by key, which is a position, so it survives exactly as long as the
-// positions do — every rewrite carries it across by object identity, and any
-// edit that goes through the op path drops it. Making it survive a reload is
-// the `uid` work in phase 2.
-let placeholderKeys = new Set();
-let placeholderPending = null;
+// ---- what a hole is *named by* ----
+//
+// It was named by its trace key, which is a position, and that made it survive
+// exactly as long as the positions did: the client-side rewrite path carried
+// holes across by object identity, and every `StructOp` — insert, delete,
+// replace, set_mod, swap_mix, at any key in the patch — forgot them. The
+// symptom was a lie told one gesture late. Unplug: a correct dashed EMPTY
+// plate. Insert anything, anywhere, even at a key that does not move the hole:
+// the plate silently becomes a full vco with knobs, the bank lists "vco", and
+// the accessibility tree says "vco module". The player is then editing a patch
+// that contains a source they believe is silent, and the model is taught on it.
+//
+// So a hole is named by the **uid of the node standing in the socket** — the
+// same identity locks are keyed by, for the same reason and with the same
+// consequences (see `lockStore`). `apply_struct_op` works on a clone and
+// splices in place, so every node that lives through an edit carries its uid
+// across inside the `memmove` that carried its knobs. A hole therefore survives
+// every op for free, and stops surviving at exactly the moment it should: when
+// the node standing in the socket is replaced (`Replace` with a source mints a
+// fresh node, so the mark prunes itself) or deleted.
+//
+// Two seams the identity does not cross by itself:
+//
+//  - **A hole this session just made has no uid yet.** `placeholderNode()` is
+//    a bare `SEED_VCO()`; the engine mints on `ensure_uids` at the end of
+//    `edit_set_tree_apply`. So the rewrite path files its new holes as *keys*
+//    in `placeholderPending`, and `settlePlaceholders` reads the uid back out
+//    of the tree the engine returns — the structure it returns is the
+//    structure we sent, so the key is exact.
+//  - **A reload has no session.** `holeStore` is the same shape as `lockStore`
+//    and rides in the same `ui` blob, keyed by subject, so a socket you
+//    emptied is still empty tomorrow. Persisting it is only honest for the
+//    same reason persisting a lock is: it names a node, not a slot.
+const HOLE_KEEP = 60; // as the lock store; the bank holds 40
+// The bank chip's glyph for a hole (p4). Every other chip's glyph is a
+// waveform or a curve — a picture of what the module does to a signal — so the
+// hole gets the one thing that is not a signal: the dashed outline the plate
+// on the canvas is drawn with, at chip scale.
+const EMPTY_GLYPH =
+  `<rect class="gl" x="1.5" y="2" width="17" height="10" rx="2" fill="none" stroke-dasharray="3 2.5"/>`;
+let placeholderUids = new Set();
+let placeholderPending = null;      // Set<trace key>, awaiting the minted uids
+const holeStore = new Map();        // subject key → Set<uid>
 
 function placeholderNode() { return SEED_VCO(); }
-function isPlaceholderKey(key) { return placeholderKeys.has(key); }
+
+/** The uid on a *tree JSON* node, or 0 for one the engine has not settled.
+ *  `Uid` is `#[serde(transparent)]`, so it is a bare number in the wire tree,
+ *  and `skip_serializing_if = "Uid::is_new"` means an unsettled node has no
+ *  field at all. */
+function uidOfJSON(n) {
+  if (!n || typeof n === "string") return 0;
+  const v = n[nodeTag(n)];
+  return v && typeof v.uid === "number" ? v.uid : 0;
+}
+
+/** Is the module at this trace key an empty socket? Asked by every surface
+ *  that has to tell the truth about absence — the plate, the bank chip, the
+ *  aria-label, the structure menu, the connect verbs, the pick chip. */
+function isPlaceholderKey(key) {
+  if (!placeholderUids.size) return false;
+  const uid = wb.rack?.modules.find((m) => m.key === key)?.uid;
+  return !!uid && placeholderUids.has(uid);
+}
+
+/** The hole set as the renderer and the layout want it: uids, passed as an
+ *  argument rather than read from module scope, so that the one caller drawing
+ *  a *different* patch (a duel mini) gets full plates by simply not passing it.
+ *  `settlePlaceholders` is what keeps the set true of the current rack. */
+function placeholderSet() {
+  return placeholderUids;
+}
+
+/** The hole marks the bench tree currently carries, as node objects. The
+ *  rewrite path needs these so that a subtree it is about to displace is not
+ *  staged to HELD when it is only a hole. */
+function holeNodesIn(tree) {
+  const out = [];
+  if (!placeholderUids.size) return out;
+  walkTreeKeys(tree, (n) => {
+    if (placeholderUids.has(uidOfJSON(n))) out.push(n);
+  });
+  return out;
+}
+
+/** Write the bench's holes back to the store, and ask for a save. Same law as
+ *  `locksRemember`, including the no-op guard: this runs on every bench reply,
+ *  and a save round trip for a set identical to the stored one buys nothing. */
+function holesRemember() {
+  const k = lockKey();
+  const prev = holeStore.get(k);
+  const same = placeholderUids.size === (prev ? prev.size : 0) &&
+    (!prev || [...placeholderUids].every((u) => prev.has(u)));
+  if (same) return;
+  if (placeholderUids.size) {
+    holeStore.delete(k); // re-insert, so eviction order stays recency order
+    holeStore.set(k, new Set(placeholderUids));
+    while (holeStore.size > HOLE_KEEP) holeStore.delete(holeStore.keys().next().value);
+  } else {
+    holeStore.delete(k);
+  }
+  scheduleSave();
+}
+
+/** Give a patch back the holes it had. Unlike locks there is nothing to
+ *  *carry*: a hole is a fact about one tree, and the arriving set is only ever
+ *  empty here (the subject block clears it), so there is no precedence rule to
+ *  state. */
+function holesRestoreFor(id) {
+  const saved = holeStore.get(String(id));
+  if (!saved || !saved.size) return;
+  placeholderUids = new Set(saved);
+}
+
+/** The inverse of the `ui` blob's `holes`, tolerant of a save from before it
+ *  existed — which is every save on disk right now. */
+function restoreHoles(saved) {
+  if (!Array.isArray(saved)) return;
+  for (const [id, list] of saved) {
+    if (!Array.isArray(list) || !list.length) continue;
+    holeStore.set(String(id), new Set(list.filter((x) => typeof x === "number" && x > 0)));
+  }
+  while (holeStore.size > HOLE_KEEP) holeStore.delete(holeStore.keys().next().value);
+}
+
+/** Resolve the holes a rewrite just made, then drop the ones whose node is
+ *  gone. Called on every bench reply that carries a tree, because "the node
+ *  standing in this socket is still there" is a question only the new tree can
+ *  answer — and a hole that has been filled has to stop being drawn on the
+ *  very frame the module lands. */
+function settlePlaceholders() {
+  if (placeholderPending) {
+    // The engine returns the structure it was given, so a key computed against
+    // the tree we posted addresses the same node in the tree that came back —
+    // this is only reading off the identity it minted on the way through.
+    for (const k of placeholderPending) {
+      const uid = uidOfJSON(nodeAtIn(wb.tree, k));
+      if (uid) placeholderUids.add(uid);
+    }
+    placeholderPending = null;
+  }
+  if (placeholderUids.size && wb.rack) {
+    const live = new Set(wb.rack.modules.map((m) => m.uid).filter(Boolean));
+    for (const u of [...placeholderUids]) if (!live.has(u)) placeholderUids.delete(u);
+  }
+  holesRemember();
+}
 
 // ---------- the structure menu ----------
 // It was nineteen flat items, fourteen of which were the modulator inventory
@@ -9025,12 +9480,27 @@ function syncLayoutBtn() {
   b.textContent = layoutMode;
   b.setAttribute("aria-pressed", String(layoutMode !== "chain"));
   b.closest(".tt").title = LAYOUT_TIP[layoutMode];
-  // "apply grid" only exists in the mode it acts on, and the frame advertises
-  // that a plate can be picked up — a draggable object with a default cursor
-  // is a draggable object nobody discovers.
-  const g = $("rack-grid");
-  if (g) g.closest(".tt").classList.toggle("hidden", layoutMode !== "freeform");
-  $("rack-scroll").classList.toggle("freeform", layoutMode === "freeform");
+  // "apply grid" and "reset positions" only *act* in the mode they belong to,
+  // and the frame advertises that a plate can be picked up — a draggable
+  // object with a default cursor is a draggable object nobody discovers.
+  //
+  // Held, not hidden. They used to be pulled out of the flow, which moved the
+  // mode button underneath the pointer that had just pressed it (m6): enter
+  // freeform, and the toggle slid ~100 px left because a verb had been
+  // inserted to its left, so a second press in the same place fired *apply
+  // grid* — a command that rewrites every position. M3 adds a second verb to
+  // that group, which would have doubled the shift, so the slot is reserved at
+  // all times instead. This is m6's fix arriving as the cost of not making m6
+  // worse; the rule is WS-6 §9's, already applied to the evolve callout.
+  const ff = layoutMode === "freeform";
+  for (const id of ["rack-grid", "rack-reseed"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.disabled = !ff;
+    el.closest(".tt").classList.toggle("held", !ff);
+  }
+  $("rack-scroll").classList.toggle("freeform", ff);
+  syncFitHint();
 }
 $("rack-layout").onclick = () => {
   layoutMode = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
@@ -9039,6 +9509,33 @@ $("rack-layout").onclick = () => {
   renderRack();
 };
 $("rack-grid").onclick = () => applyGrid();
+$("rack-reseed").onclick = () => resetPositions();
+
+/** The frame's own way out of a stranded layout — M3(e).
+ *
+ *  Everything above is a control in the chrome, 900 px from the thing that
+ *  went wrong, and the failure mode is precisely that the player is looking at
+ *  a sliver of patch in a black frame with no reason to believe any of those
+ *  buttons is the answer. So the frame says it, where the damage is, and only
+ *  when there is damage: freeform, a fit that landed under 0.3×, and an
+ *  arrangement measurably bigger than the chain would be. Two conditions
+ *  rather than one because a genuinely large patch fitted small is not
+ *  stranded — it is large, and telling it to re-seed would be wrong. */
+// The zoom under which a fit has stopped being a view of a patch. `ZOOM_MIN`
+// is 0.30× for exactly this reason — it is the floor the *hand* is not allowed
+// past — so a fit that had to go below it is, by the camera's own definition,
+// showing you something you could not have chosen to look at.
+const FIT_STRANDED_ZOOM = ZOOM_MIN;
+function syncFitHint() {
+  const el = $("fit-hint");
+  if (!el) return;
+  // Cheapest test first on purpose: this runs on every frame of every pan, and
+  // `layoutSprawl` lays out a chain arrangement to answer.
+  const show = !!wb.rack && layoutMode === "freeform" && rackBoxes.size > 2
+    && view.zoom < FIT_STRANDED_ZOOM && layoutSprawl() > SPRAWL_HINT;
+  el.classList.toggle("hidden", !show);
+}
+$("fh-reseed").onclick = () => resetPositions();
 syncLayoutBtn();
 
 
@@ -10277,6 +10774,72 @@ function nbInitResize() {
   });
 }
 
+// ---- the spec strip can be dragged shorter; the height is remembered ----
+// M4's third lever, and the one all three panelists could name a precedent for:
+// the node bank's rail already drags, so the split above the strip drags the
+// same way with the same memory. It is deliberately a *player's* control on top
+// of an automatic budget rather than instead of one — the automatic half is
+// what makes the default right on a laptop, and this is what makes it theirs.
+const SPEC_H_MIN = 34;   // one line of the resting sentence and its padding
+const SPEC_H_MAX = 300;
+/** The reserved height, read off the variable rather than off the element.
+ *  While the strip is collapsed the element is one line tall and its rendered
+ *  height is *not* what the divider is setting — the divider sets the height
+ *  the strip takes when it has something to describe. */
+function specDockHeight(px) {
+  const el = document.querySelector(".play-canvas");
+  if (px == null) {
+    // Measured, not parsed. The default is `clamp(96px, 13vh, 150px)` and the
+    // short-laptop media query overrides it to 92px; `getPropertyValue` hands
+    // back whichever *expression* is in force, unevaluated, so the only honest
+    // way to ask "how tall is that right now" is to give the number to a box
+    // and measure the box. Once the divider has been used the value is a plain
+    // px string and this costs one layout read on the first drag only.
+    const inline = parseFloat(el?.style.getPropertyValue("--spec-h"));
+    if (Number.isFinite(inline)) return inline;
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:absolute;visibility:hidden;width:0;height:var(--spec-h)";
+    el.appendChild(probe);
+    const h = probe.getBoundingClientRect().height;
+    probe.remove();
+    return h > 0 ? h : 120;
+  }
+  const v = clamp(Math.round(px), SPEC_H_MIN, SPEC_H_MAX);
+  el?.style.setProperty("--spec-h", `${v}px`);
+  return v;
+}
+(function initDockResize() {
+  const h = $("dock-resize");
+  if (!h) return;
+  const stored = Number(localStorage.getItem("ricercar-spec-h"));
+  if (Number.isFinite(stored) && stored > 0) specDockHeight(stored);
+  const save = (v) => { try { localStorage.setItem("ricercar-spec-h", String(v)); } catch (_) {} };
+  h.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    const startY = ev.clientY;
+    const startH = specDockHeight(null);
+    let last = startH;
+    // Dragging *up* makes the strip taller, because the handle is on its top
+    // edge and the edge follows the hand. The rack's ResizeObserver refits
+    // behind it, so the patch stays framed for the whole drag.
+    const move = (mv) => { last = specDockHeight(startH + (startY - mv.clientY)); };
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      save(last);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  });
+  // A divider a keyboard cannot move is a divider half the users do not have.
+  h.addEventListener("keydown", (ev) => {
+    const step = ev.key === "ArrowUp" ? 16 : ev.key === "ArrowDown" ? -16 : 0;
+    if (!step) return;
+    ev.preventDefault();
+    save(specDockHeight(specDockHeight(null) + step));
+  });
+})();
+
 /** While something is in your hand the group headers stop being controls
  *  (WS-2 §2): the rail's job for the length of a placement is to narrow, not
  *  to rearrange itself under the pointer. Called from every place that changes
@@ -10450,15 +11013,24 @@ function nbRenderInPatch() {
   // The same three columns the catalogue chip has, including the belief cell:
   // the model was speaking loudest about modules you were merely shopping for
   // and going silent about the ones you had actually built with (WS-2 §7).
+  const holes = placeholderSet();
   list.innerHTML = real
     .map((m) => {
       const d = MOD_BY_KIND[m.kind];
+      // p4: the canvas draws a dashed EMPTY plate and this list was printing
+      // "vco" beside it — the *same* substitute node, named two ways, one of
+      // them a lie about a destructive act the player had just performed. The
+      // placeholder tag routes through here and through the plate's
+      // aria-label, so canvas, bank and accessibility tree now agree. The θ
+      // cell goes with it: a belief about vcos is not a belief about a hole.
+      const empty = isEmptySocket(m, holes);
       return (
-        `<button class="nb-chip${d.sort === "mod" ? " mod" : ""}" type="button" ` +
-        `data-key="${esc(m.key)}" data-kind="${esc(m.kind)}" ` +
-        `title="${esc(d.name)} — jump to it in the rack">` +
-        `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${d.glyph}</svg>` +
-        `<span>${esc(d.name)}</span>` +
+        `<button class="nb-chip${d.sort === "mod" ? " mod" : ""}${empty ? " empty" : ""}" type="button" ` +
+        `data-key="${esc(m.key)}" data-kind="${esc(m.kind)}"${empty ? ` data-empty="1"` : ""} ` +
+        `title="${empty ? "An empty socket — jump to it in the rack, then drop a source in" : `${esc(d.name)} — jump to it in the rack`}" ` +
+        `aria-label="${empty ? "empty socket" : esc(d.name)}">` +
+        `<svg class="nb-glyph" viewBox="0 0 20 14" aria-hidden="true">${empty ? EMPTY_GLYPH : d.glyph}</svg>` +
+        `<span>${empty ? "empty" : esc(d.name)}</span>` +
         `<span class="ni-theta" aria-hidden="true"></span></button>`
       );
     })
@@ -10466,14 +11038,24 @@ function nbRenderInPatch() {
   const { byPhi, total } = nbSupport();
   list.classList.toggle("has-belief", !!(views && views.styles && views.styles.length));
   list.querySelectorAll(".nb-chip").forEach((b) => {
-    nbPaintTheta(b.querySelector(".ni-theta"), MOD_BY_KIND[b.dataset.kind], byPhi, total);
-    // …and the same spec card. A module in your patch deserves at least the
-    // transparency one you are browsing gets.
-    b.addEventListener("pointerover", () => nbSpecShow(b));
-    b.addEventListener("focus", () => nbSpecShow(b));
+    // No θ on a hole, and no spec card either: both would be describing the
+    // substitute node rather than the socket, which is the whole of what p4
+    // objects to.
+    if (!b.dataset.empty) {
+      nbPaintTheta(b.querySelector(".ni-theta"), MOD_BY_KIND[b.dataset.kind], byPhi, total);
+      // …and the same spec card. A module in your patch deserves at least the
+      // transparency one you are browsing gets.
+      b.addEventListener("pointerover", () => nbSpecShow(b));
+      b.addEventListener("focus", () => nbSpecShow(b));
+    }
+    // Jumping to it stays, empty or not — a socket you cannot find is the one
+    // thing worse than a socket named wrong. A hole has no knobs, so the plate
+    // group is the target rather than a control on it.
     b.onclick = () => {
-      const g = $("rack-svg").querySelector(`.jack[data-childkey="${b.dataset.key}/0"], [data-addr^="${b.dataset.key}#"]`);
-      const el = g || $("rack-svg").querySelector(`[data-addr^="${b.dataset.key}#"]`);
+      const sel = `[data-addr^="${b.dataset.key}#"]`;
+      const el = $("rack-svg").querySelector(`.jack[data-childkey="${b.dataset.key}/0"], ${sel}`)
+        || $("rack-svg").querySelector(sel)
+        || $("rack-svg").querySelector(`g.mod-group[data-key="${b.dataset.key}"]`);
       if (el) {
         // Explicit navigation — the one case that *should* move the canvas.
         ensureRackVisible(el);
@@ -10665,9 +11247,14 @@ function renderSpecDock() {
   const m = specSubject ? MOD_BY_KIND[specSubject] : null;
   if (!m) {
     dock.className = "spec-dock rest";
+    // One line of copy for a strip that is now one line tall (M4). The three
+    // things it promised — what it does to a signal, where it can legally go,
+    // what the model thinks — are still the three things it delivers; they no
+    // longer have to be enumerated in advance while holding 120 px of the
+    // patcher's vertical budget to say so.
     dock.innerHTML =
-      `<div class="sd-rest mono">Point at a module — in the catalogue or in this patch — and this strip ` +
-      `says what it does to a signal, where it can legally go, and what the model currently thinks of it.</div>`;
+      `<div class="sd-rest mono">Point at a module — in the catalogue or in this patch — ` +
+      `and this strip says what it does, where it can go, and what the model thinks of it.</div>`;
     return;
   }
   const p = specParts(m);
@@ -14320,10 +14907,10 @@ function onExportStage(rack, fn) {
       // the on-screen build and to the camera pointing at it.
       fit: true,
       // The holes, which are part of the patch rather than part of the app.
-      // Keyed by trace path, and `exportRack` keeps every key it passes through
-      // (a scoped export filters modules; it does not renumber them), so the
-      // bench's set is the right set for a subtree too.
-      placeholders: placeholderKeys,
+      // Keyed by node identity, so a scoped export — which filters modules
+      // rather than renumbering them — carries exactly the holes that are
+      // inside the subtree it kept.
+      placeholders: placeholderSet(),
       mode: places ? "freeform" : "compact",
       places,
     });
@@ -15251,6 +15838,7 @@ bootMidi();
     restorePositions(saved.ui.positions);
     restoreBookmarks(saved.ui.marks);
     restoreLocks(saved.ui.locks);
+    restoreHoles(saved.ui.holes);
     // `selectBank` re-applies the `active` class, which the markup hard-codes
     // onto the first chip — restoring the variable alone would leave the
     // highlight and the list disagreeing.

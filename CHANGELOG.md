@@ -6,6 +6,78 @@ the project is pre-1.0.
 
 ## [Unreleased]
 
+### Fixed — a hole that stays a hole, a view that cannot be stranded, and a patcher that fits on a laptop
+
+The rest of the closing gate: the dissenting panelist's two named blockers (M2,
+M3), the one-line durability bug the chair pulled in on impact (m1), the two
+polish items ruled to ship alongside M2 (p4, p5), and the demo gate (M4).
+
+- **An empty socket is named by the node standing in it, not by where that node
+  sits.** `placeholderKeys` was a set of trace addresses, so it survived exactly
+  as long as the addresses did: the client-side rewrite path carried holes
+  across by object identity and **every** `StructOp` — insert, delete, replace,
+  set_mod, swap_mix, at any key in the patch — forgot them. Unplug, then insert
+  anything anywhere, and the dashed EMPTY plate silently became a full vco with
+  knobs on it. A hole is now keyed by `uid`, the same identity locks are keyed
+  by and for the same reason, so it rides through any edit inside the node that
+  moved. Verified in the browser: an insert that does not touch the hole and an
+  insert that moves it from `node/0/1` to `node/0/0/1` both leave it a hole,
+  and dropping a source *into* it clears the mark on the frame the module lands.
+- **A hole survives a reload,** in `holeStore`/`ui.holes`, the same shape and
+  the same argument as `lockStore`/`ui.locks` — persisting it is only honest
+  because it names a node. It also survives ⌘Z/⇧⌘Z, because `benchStep` carries
+  it: pruning gets undo right for free and could never have got redo right.
+- **`case "committed"` files the child's locks — and its holes — under the
+  child.** One line and its twin (m1). The commit reply carries no `m.subject`
+  so it never reaches `case "bench"`, and IDB ended with an entry for the parent
+  and none for the patch the player had actually authored: pins evaporating on
+  reload for the one patch that mattered most, with the next ⚡ then breeding
+  away the routing they meant to hold. Verified end to end through a commit, a
+  full page reload, and re-benching the child.
+- **Canvas, bank and accessibility tree agree about absence** (p4). The IN THIS
+  PATCH list printed "vco" and the plate's `aria-label` said "vco module" about
+  a socket the canvas was drawing as empty. All three route through one
+  predicate now; the chip is dashed, reads "empty", and carries no θ, because a
+  belief about vcos is not a belief about a hole.
+- **The EMPTY plate stops shouting** (p5). It was inheriting the plate of
+  whatever it replaced — up to 240×164 with a recessed control well — giving the
+  most visual weight on the panel to the thing that is not there. It renders at
+  the narrow 96-unit width, one row tall, title and hint only, no well.
+- **Freeform can no longer strand the view, and now says so if it has.**
+  `contentBox()` returns the modules' bounding box instead of the layout
+  canvas's extent, so a fit is a fit of what is drawn — a persisted layout that
+  put every plate at y ≈ 3400 had Home dutifully framing 3744 units of which
+  3400 were empty. The minimap reads the same box. `applyGrid` re-seeds from the
+  **chain** when what is drawn is degenerate, instead of pinning the stranding —
+  the one command that looked like a rescue was the one that made the damage
+  permanent. A stored layout that places under two thirds of the rack's nodes is
+  dropped wholesale rather than applied, and the inheritance test rose from
+  "*some* uid in common" (1 in 18) to the same floor. A **reset** verb sits in
+  the freeform controls, and below 0.30× with a measurably worse-than-chain
+  arrangement the frame itself offers it. Measured on a reproduced stranding:
+  0.049× → 0.249× at 1280×900, 0.080× → 0.403× at 1700×1000.
+- **The patcher fits on a laptop** (M4). The docked spec card collapses to a
+  single line when it has nothing to describe (and stays one line while armed,
+  so a placement in progress never resizes the canvas underneath itself); the
+  short-laptop media query's breakpoint moves from 860px to 940px, which is
+  where it was always meant to apply — 1280×900 is the plan's own second test
+  size; a **draggable divider** above the strip gives the player the final say,
+  the node bank's rail pattern on the other axis, persisted and keyboard-
+  operable; and the auto-LOD threshold scales with the frame's height, because
+  what makes a knob small in a 364px band is the band, not the patch. Result at
+  1280×900: rack frame **295 → 364px**, and **5 of 5** stock presets open in
+  full detail with knobs (First Bass 0.67, Sub & Sparkle 0.61, Acid Line 0.67,
+  Reese 0.44, Anvil 0.67 against a 0.40 threshold) where 5 of 5 opened as
+  knob-less block diagrams. At 1700×1000 the frame is 489px, the threshold 0.54,
+  and all five are in full detail.
+- **The freeform verbs hold their slots** (m6, taken because M3 would otherwise
+  have made it worse). `apply grid` used to be `display: none` outside freeform,
+  so entering the mode slid the layout toggle ~100px under the pointer that had
+  just pressed it and a second press fired *apply grid* — a command that
+  rewrites every position. Both verbs are now reserved and disabled, and both
+  are one word (`snap`, `reset`), because two long labels wrapped the group onto
+  a second row at 1280 and cost 35px of the very budget M4 is fighting for.
+
 ### Fixed — the sentinel: a knob outside its range, and everything downstream that believed it
 
 The closing panel's one non-negotiable item, found independently by three
