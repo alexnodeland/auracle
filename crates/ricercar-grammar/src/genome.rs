@@ -1762,7 +1762,7 @@ impl PatchTree {
     pub fn clamp_domains(&mut self) -> usize {
         let mut trace = self.to_trace();
         let mut fixed = 0usize;
-        for (_, c) in trace.choices.iter_mut() {
+        for c in trace.choices.values_mut() {
             if let ChoiceValue::F64(v) = c.value {
                 if !in_domain(v) {
                     let repaired = if v.is_nan() {
