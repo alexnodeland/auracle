@@ -850,4 +850,40 @@ mod tests {
         }
         assert!(ok * 2 > n, "only {ok}/{n} prior samples featurized");
     }
+
+    /// A term with a knob outside its range never becomes a row.
+    ///
+    /// The heart of M1: `amp.sustain = 1e30` **renders fine** — quiver's
+    /// limiter bounds the voice — so it sailed through a vet gate that only
+    /// asks about the audio, and its φ went into the observation log where it
+    /// killed the `amp_sustain` column. The quarantine has to be able to
+    /// refuse the *term*, not just the sound it makes.
+    #[test]
+    fn an_out_of_domain_term_is_quarantined() {
+        let spec = PhraseSpec::default();
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(31);
+        let (mut tree, _) = run(
+            PriorHandler {
+                rng: &mut rng,
+                trace: Trace::default(),
+            },
+            prior.model(),
+        );
+        // The exact shape found in the shipped session.
+        tree.amp.sustain = 1e30;
+        match featurize(&tree, &spec) {
+            Err(FeaturizeError::OutOfDomain { site, value }) => {
+                assert_eq!(site, "amp#sustain");
+                assert_eq!(value, 1e30);
+            }
+            other => panic!("the sentinel got through the quarantine: {other:?}"),
+        }
+        // …and the same term, repaired, is an ordinary candidate again.
+        assert_eq!(tree.clamp_domains(), 1);
+        assert!(!matches!(
+            featurize(&tree, &spec),
+            Err(FeaturizeError::OutOfDomain { .. })
+        ));
+    }
 }

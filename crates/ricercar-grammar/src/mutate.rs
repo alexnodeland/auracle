@@ -324,6 +324,15 @@ pub enum StructError {
     /// voice is willing to carry.
     #[error("modulation chain would exceed depth {0}")]
     ModTooDeep(usize),
+    /// A continuous site would be seated outside its declared range
+    /// ([`crate::PARAM_DOMAIN`]).
+    ///
+    /// Reported by [`validate_tree`], the predicate. It is deliberately *not*
+    /// how `apply_struct_op` and the whole-tree replace behave — see
+    /// [`PatchTree::clamp_domains`] for why a domain fault is repaired rather
+    /// than refused.
+    #[error("{0} is out of range at {1} (every knob is normalized 0–1)")]
+    OutOfDomain(f64, String),
 }
 
 fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
@@ -1369,7 +1378,18 @@ fn max_mod_depth_of(n: &mut AudioNode) -> usize {
 /// own it — and pays one clone of a ≤24-node term for it, because the mod-depth
 /// walk reuses the `_mut` accessors that already know which productions carry a
 /// slot rather than standing up a second copy of that table to drift.
+///
+/// **Also the parameter-domain predicate.** It used to speak only about size
+/// and depth, which left the one thing a term can be wrong about that no other
+/// gate looked at: a *value*. `amp.sustain = 1e30` walked through this function,
+/// through `finish()`, into φ, into the exported PNG and into the persisted
+/// observation log, and every surface downstream reported it as a number
+/// ("SUSTAIN 1200.0 dB") because none of them had been told what a knob's range
+/// is. Now they have, once, at [`crate::PARAM_DOMAIN`].
 pub fn validate_tree(tree: &PatchTree) -> Result<(), String> {
+    if let Some((addr, v)) = tree.domain_violations().into_iter().next() {
+        return Err(StructError::OutOfDomain(v, addr).to_string());
+    }
     let mut probe = tree.clone();
     check_ceilings(&mut probe).map_err(|e| e.to_string())
 }
@@ -1385,6 +1405,14 @@ fn check_ceilings(tree: &mut PatchTree) -> Result<(), StructError> {
 }
 
 fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
+    // Domains first, and repaired rather than refused. `ReplaceTree`,
+    // `InsertTree` and `SetModTree` adopt a fragment the panel handed in
+    // verbatim — including a fragment staged to HELD by a build that predates
+    // this gate — so this is the funnel every explicit subtree passes through.
+    // A `#[cfg(debug_assertions)]` shout is on the *engine's own* moves, in
+    // `ricercar_features::struct_features`: nothing this crate generates should
+    // ever need repairing, and a silent clamp there would hide a real bug.
+    tree.clamp_domains();
     check_ceilings(&mut tree)?;
     // Identity survives a structural edit for free, and the reason is worth
     // stating: [`apply_struct_op`] works on a *clone* of the incoming tree and

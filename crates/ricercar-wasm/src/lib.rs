@@ -974,9 +974,14 @@ impl WasmEngine {
     /// Import a shared patch (tree JSON + optional name) into the bank.
     /// Returns the new id, or 0 (bad JSON / duplicate / vet failure).
     pub fn import_patch(&mut self, tree_json: &str, name: &str) -> u32 {
-        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+        let Ok(mut tree) = serde_json::from_str::<PatchTree>(tree_json) else {
             return 0;
         };
+        // A shared file is untrusted input by definition, and the pictures
+        // already in circulation carry whatever the build that wrote them had
+        // on the bench — including `1e30`. Repair on the way in, so an imported
+        // patch cannot reintroduce a fault the session has just been mended of.
+        tree.clamp_domains();
         match self.engine.commit_edit(None, tree, EditOutcome::Untold) {
             Some(id) => {
                 self.engine.set_name(id, name);
@@ -1101,6 +1106,14 @@ impl WasmEngine {
             Ok(t) => t,
             Err(e) => return format!("bad tree: {e}"),
         };
+        // Domains are repaired, ceilings are refused, and the split is the same
+        // one `finish()` makes: a knob outside its range has one obviously
+        // right answer and a 40-node patch does not. It matters here because a
+        // rewrite is computed from the tree already on the bench — so if that
+        // tree came out of a session written before this gate, refusing would
+        // mean the player cannot edit their way out of the corruption, only
+        // look at it.
+        tree.clamp_domains();
         if let Err(e) = validate_tree(&tree) {
             return e;
         }
@@ -1473,6 +1486,20 @@ impl WasmEngine {
             }
             Err(_) => 0,
         }
+    }
+
+    /// What the last restore had to mend, as JSON
+    /// `{"terms":n,"cells":n,"dropped":n}` — saved patches whose knobs were
+    /// outside their range, observation-log cells clamped back inside it, and
+    /// votes dropped because a coordinate was not a number.
+    ///
+    /// All three are 0 for any session written by a build that carries the
+    /// domain gate. Non-zero means the profile *was* being fitted on values
+    /// that were not measurements, and the player is entitled to be told so
+    /// rather than have it quietly corrected under them.
+    pub fn repair_report(&self) -> String {
+        let (terms, cells, dropped) = self.engine.repair_report();
+        format!(r#"{{"terms":{terms},"cells":{cells},"dropped":{dropped}}}"#)
     }
 
     /// Export the portable profile (observation log + its standardizer — θ

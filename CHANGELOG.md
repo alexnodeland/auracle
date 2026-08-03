@@ -6,6 +6,99 @@ the project is pre-1.0.
 
 ## [Unreleased]
 
+### Fixed — the sentinel: a knob outside its range, and everything downstream that believed it
+
+The closing panel's one non-negotiable item, found independently by three
+reviewers from three unrelated surfaces: a faceplate reading "SUSTAIN 1200.0
+dB", a HELD fragment printing `1e+30` for every parameter, and six cells of
+exactly `1e30` inside the raw φ of the persisted observation log.
+
+- **Every continuous site in the grammar has a declared range, and it is now
+  written down** — `PARAM_DOMAIN`, one constant, next to the `u01()` the prior
+  actually samples from. `PatchTree::domain_violations` reports the sites that
+  leave it and `PatchTree::clamp_domains` pulls them back, both by walking the
+  **trace** rather than matching 26 productions: the trace enumerates exactly
+  the continuous sites, by construction, so there is no second table of "which
+  fields are knobs" for the next module to be left out of.
+- **`validate_tree` — the WS-1 rider — now speaks about values.** It has always
+  gated size, depth and modulation depth; it had nothing to say about a knob,
+  which is why a value could walk through it into `edit_set_tree`, into
+  `finish()`, into φ, into the exported PNG's `tEXt` chunk and into the log.
+- **Domains are repaired, ceilings are refused,** and the asymmetry is the
+  point: a 40-node patch cannot be clamped without deciding what to delete, and
+  a knob can be fixed exactly. Refusing would have meant a saved session that
+  already contains one becomes an app the player cannot edit their way out of.
+  `finish()` (so every `ReplaceTree`/`InsertTree`/`SetModTree` fragment the
+  panel hands in), `edit_set_tree_apply`, `import_patch` and the refinement
+  boundary all repair; identities survive, so locks and hand-placed positions
+  ride through the repair.
+- **The featurizer's quarantine caught only audio pathology.** `sustain = 1e30`
+  *renders fine* — the limiter bounds the voice — so it passed the vet and its φ
+  became evidence. `featurize` now refuses an out-of-domain term before the
+  render, and refuses a non-finite coordinate after it.
+- **`Standardizer::fit` gained a runaway-column detector — and it is a detector,
+  not a trim, because the trim was measured and thrown out.** One escaped row
+  gave `amp_sustain` a mean of ~1.2e29 and a σ of ~5.5e29, which standardizes
+  every real patch to the same place: a dead coordinate the model can never
+  learn from while the belief line still prints a contribution for it. The first
+  fix was routine winsorization at 2% per tail; the 16-seed paired run took it
+  straight back out (`+1.877 ± 0.362` → `+0.204 ± 1.347` mean gain, 15/16 → 11/16
+  seeds climbing, one seed at −18.2). Trimming a real tail is not free. So the
+  shipped rule uses the plain moments **unless** a column's plain σ exceeds its
+  winsorized σ by more than `RUNAWAY_RATIO`, which makes it a bit-identical no-op
+  on clean data by construction rather than by luck. The threshold was measured
+  too — a new `winsor_ratio` example fits 150 clean 48-patch pools and reports
+  the largest ratio any column reaches (14.6, `rms_std`), against ~2×10²⁹ for a
+  single `1e30`; `1e6` sits five orders above the first and twenty-three below
+  the second. Non-finite cells are dropped from their column instead of turning
+  it into NaN.
+- **Saved state is migrated, not deleted.** On load, every bank term is
+  clamped, the observation log's unit coordinates are clamped **by name**
+  (never positionally), the implicit-event stream's stored φ pairs are clamped
+  positionally *only* at the live φ width, votes carrying a non-finite cell are
+  dropped, and — if anything at all was repaired — the persisted standardizer is
+  discarded and refit, because a scale fitted over a poisoned column is itself
+  poisoned. The frontend says what was mended and how much of it, with counts.
+  HELD fragments are UI state and are repaired on their own path in the client.
+- **The panel's formatters now fail loudly.** Every knob unit was a *map*, not a
+  check: handed `1e30` they answered "1200.0 dB", "Infinity kHz" and
+  "1e+32%" — three plausible-looking readings of the same corruption. One guard
+  in `knobUnit` renders anything outside 0–1 as `⚠ out of range`.
+- **Where it came from.** `1e30` appears as a literal in no workspace source and
+  in none of the vendored dependencies (`fugue-evo` 0.3.1, `fugue-ppl` 0.1.0 /
+  0.2.0 / 0.2.1, `quiver-dsp` 0.1.x / 0.2.0), and the MH kernel *cannot* seat
+  one: every continuous site is `Uniform(0,1)`, whose `log_prob` is −∞ outside
+  the unit interval, so an escaped proposal scores `log α = −∞` and is
+  rejected. That is measured, not argued — a new `mh_escape` example runs 8
+  chains × 20 000 single-site transitions through the shipped kernel and
+  observes zero escapes, and a full closed-loop seed (40-patch pool, 60 duels,
+  6 refine generations) produces none either. In the shipped session the fault
+  is traceable to one event: bank entry #23 (`origin: prior`) is clean, its
+  hand-edited child #41 has the same amp envelope with `sustain`, `cut`, `res`
+  and `mdepth` all at exactly `1e30` and a freshly-minted `uid` on the root
+  filter, and #43/#55/#56 inherit from it. So it entered at the **hand-edit /
+  whole-tree-replace boundary** — the one route into a term that went through
+  neither `set_param`'s clamp nor the kernel's support check — in a session
+  carried across builds, and that boundary is exactly what now has a gate.
+- **The φ revalidation, since this touches φ.** 16 seeds, paired, same list both
+  arms: pool climb `+1.877 ± 0.362`, climbing on 15/16 — **bit-identical on
+  every seed**, which is the intended result and is a property of the design
+  rather than a lucky null: the domain gate cannot fire on a synthetic loop that
+  never had a bad value, and the standardizer is the plain moments unless a
+  column is runaway. VIF over 300 draws is likewise identical to the digit (no φ
+  column moved; `amp_sustain` 1.4, `rolloff_mean:p2` 19.6). What *did* move is
+  the coordinate the fault was killing: in the shipped profile `amp_sustain`
+  comes back with mean 0.647 and σ 0.284, so two patches at opposite ends of the
+  knob are 3.5 σ apart — against ~4×10⁻³⁰ σ before the repair. It is a live
+  coordinate again, and that is the only number in this section that is supposed
+  to be different.
+- New regression tests: the prior's own claim (400 draws, every site in
+  domain), the sentinel repaired with identities intact, NaN landing mid-range
+  rather than pinned to an end, an explicit fragment that cannot seat a bad
+  value, the quarantine refusing the exact `1e30` term, clean columns fitting
+  bit-identically over four differently-shaped distributions, one escaped row
+  that can no longer kill a column, and the log repair being idempotent.
+
 ### Added — φ_struct sees how a patch is *arranged*
 
 - **Two arrangement coordinates in φ_struct**, so the taste model can hold an

@@ -282,6 +282,12 @@ mod tests {
 
     /// The standardizer normalizes to zero mean / unit variance and
     /// round-trips dimension.
+    ///
+    /// The tolerances are still exact, and that is the point: `fit` gained a
+    /// runaway-column detector, not a routine trim, so on clean data it is the
+    /// plain moments to the last bit. If this test ever needs loosening, the
+    /// robustification has started charging the honest columns for the
+    /// dishonest ones.
     #[test]
     fn standardizer_standardizes() {
         let mut rng = StdRng::seed_from_u64(55);
@@ -295,8 +301,8 @@ mod tests {
             let col: Vec<f64> = transformed.iter().map(|r| r[dim]).collect();
             let mean = col.iter().sum::<f64>() / col.len() as f64;
             let var = col.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / col.len() as f64;
-            assert!(mean.abs() < 1e-9);
-            assert!((var - 1.0).abs() < 1e-9);
+            assert!(mean.abs() < 1e-9, "dim {dim} is not centred: {mean}");
+            assert!((var - 1.0).abs() < 1e-9, "dim {dim} scale drifted: {var}");
         }
         // Constant column: std floored, no NaN.
         assert!(transformed.iter().all(|r| r[1].abs() < 1e-9));

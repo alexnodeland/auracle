@@ -192,6 +192,34 @@ async function idbDel(key) {
   });
 }
 
+// What the last restore had to mend, held from the `repaired` message until
+// the boot veil is down — see the two handlers, and `announceRepair`.
+let pendingRepair = null;
+
+/** Tell the player their saved evidence was altered, once, when they can see it.
+ *
+ *  Deliberately not phrased as an error: nothing they did caused it, and
+ *  nothing of theirs was thrown away except the votes that had stopped being
+ *  interpretable. Deliberately carrying counts: "we fixed something" with no
+ *  number is the kind of reassurance that is indistinguishable from a shrug. */
+function announceRepair() {
+  const r = pendingRepair;
+  pendingRepair = null;
+  if (!r) return;
+  const bits = [];
+  if (r.terms) bits.push(`${r.terms} patch${r.terms > 1 ? "es" : ""}`);
+  if (r.cells) bits.push(`${r.cells} value${r.cells > 1 ? "s" : ""} in your taste log`);
+  if (r.dropped) bits.push(`${r.dropped} unreadable vote${r.dropped > 1 ? "s" : ""} dropped`);
+  if (!bits.length) return;
+  // `urgent`, because `toastPump` drops anything that went stale in the queue
+  // behind the boot's own chatter, and a notice that saved evidence changed is
+  // not allowed to lose that race.
+  note(
+    `Repaired on load: ${bits.join(", ")}. Your taste model was re-fitted from the mended data.`,
+    { urgent: true },
+  );
+}
+
 let saveTimer = null;
 function scheduleSave() {
   clearTimeout(saveTimer);
@@ -609,12 +637,23 @@ worker.onmessage = (e) => {
       if (booted) renderFillHint();
       break;
     }
+    case "repaired": {
+      // A saved session carried values that were outside a knob's range, so
+      // the model was being fitted on numbers that measured nothing. Held, not
+      // shown: this arrives mid-restore, behind the boot veil, where a toast
+      // lives out its four seconds against a black screen and is gone before
+      // the player has seen the app at all. `case "playable"` posts it the
+      // moment there is somebody to read it.
+      pendingRepair = m.repair || null;
+      break;
+    }
     case "playable": {
       // The bank is duel-able — not full. Hand the app over now and let the
       // remaining patches land behind it; the fill loop yields to the worker's
       // message queue, so everything below is serviced while it runs.
       dropBootVeil();
       applyStatus(m.status);
+      announceRepair();
       // The preset library is static and tiny, and its size shows on the chip
       // before you press it. Fetching only on first press would leave that
       // count reading 0 — a number that is wrong rather than merely absent.
@@ -8483,7 +8522,22 @@ function addrLabel(addr) {
   return port ? `the ${port} control` : "that control";
 }
 
+// The one gate between a genome value and every physical number on the panel.
+//
+// Every formatter above is a *map*, not a check: they take the normalized site
+// as read and print where it lands. Handed `1e30` they answered "SUSTAIN
+// 1200.0 dB", "CUTOFF Infinity kHz" and "MOD 1e+32%" — three different
+// plausible-looking readings of the same corruption, none of which says
+// anything is wrong, and the first of which rode into an exported PNG and out
+// into the world. A knob is normalized 0–1 by definition (`PARAM_DOMAIN` in
+// the grammar), so anything else is a fault, and a fault has to *read* as one.
+//
+// The engine now repairs these on load and refuses to seat new ones, so this
+// should be unreachable — which is exactly why it is worth keeping: it is the
+// only surface that can tell us the day it stops being.
+const OUT_OF_RANGE = "⚠ out of range";
 function knobUnit(addr, value, kind, variant) {
+  if (!Number.isFinite(value) || value < -1e-9 || value > 1 + 1e-9) return OUT_OF_RANGE;
   const site = addr.split("#").pop();
   const f =
     (kind && variant && KNOB_UNITS[`${kind}:${variant}#${site}`]) ||
@@ -9810,15 +9864,49 @@ function trayState() {
     })),
   };
 }
+// Fields of a term node that are numbers but are *not* knobs, so the domain
+// repair below must leave them alone. `uid` is an identity (215 is a name, not
+// a value out of range) and `octave` is a signed offset the grammar encodes as
+// an index. Everything else numeric in a fragment is a normalized 0–1 site.
+const NON_KNOB_FIELDS = new Set(["uid", "octave"]);
+
+/** Pull every knob in a staged fragment back inside 0–1, in place; returns how
+ *  many it moved.
+ *
+ *  The engine repairs the *session* on load, but HELD is UI state: the tray
+ *  survives a reload out of IndexedDB and hands its fragments straight to
+ *  `ReplaceTree`/`InsertTree`, so a subtree staged by a build that predates the
+ *  domain gate would carry `1e30` back into a healed patch on the next drag.
+ *  Three of the shipped tray's items do. This is the same clamp the grammar
+ *  does, at the only other door into a term. */
+function repairFrag(node) {
+  if (!node || typeof node !== "object") return 0;
+  let fixed = 0;
+  for (const [k, v] of Object.entries(node)) {
+    if (v && typeof v === "object") { fixed += repairFrag(v); continue; }
+    if (typeof v !== "number" || NON_KNOB_FIELDS.has(k)) continue;
+    if (!Number.isFinite(v) || v < 0 || v > 1) {
+      node[k] = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.5;
+      fixed += 1;
+    }
+  }
+  return fixed;
+}
+
 function restoreTray(saved) {
   if (!saved || !Array.isArray(saved.items)) return;
+  let repaired = 0;
   for (const it of saved.items) {
     if (!it || !it.frag) continue;
+    repaired += repairFrag(it.frag);
     tray.push({
       uid: trayUid++, isMod: !!it.isMod, frag: it.frag,
       label: it.label || fragLabel(it.frag, !!it.isMod),
       rewrap: !!it.rewrap, note: it.note || "",
     });
+  }
+  if (repaired > 0) {
+    note(`${repaired} out-of-range knob${repaired > 1 ? "s were" : " was"} repaired in the held tray.`);
   }
   renderTray();
 }

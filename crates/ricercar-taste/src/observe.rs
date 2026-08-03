@@ -287,7 +287,50 @@ impl<'de> Deserialize<'de> for Observation {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ObservationLog {
     /// The observations, in arrival order.
+    ///
+    /// Read **row by row**, and a row that will not parse is skipped rather
+    /// than failing the log. That is a one-line attribute standing in for a
+    /// very large failure: this `Vec` is nested inside `Profile`, which is
+    /// nested inside `SessionState`, so a single unreadable cell anywhere in
+    /// the log used to abort the whole deserialize — and the caller's only
+    /// recovery is to start a **new session**. Losing one vote is a rounding
+    /// error; losing the bank, the lineage, the pins and every vote because of
+    /// it is the exact opposite of the promise the raw-φ log was built on.
+    /// Observed, not imagined: one `null` in one φ vector silently replaced a
+    /// forty-patch, gen-39 session with an empty one.
+    ///
+    /// It is deliberately not *quiet* about the cost — [`Self::load`] and the
+    /// session layer both re-serialize what they read, so a skipped row is
+    /// gone from disk on the next save. That is the right trade only because
+    /// a row that cannot be parsed cannot be interpreted either; there is
+    /// nothing in it to keep.
+    #[serde(deserialize_with = "tolerant_observations")]
     pub observations: Vec<Observation>,
+}
+
+/// Deserialize a `Vec<Observation>`, dropping the entries that fail.
+///
+/// `#[serde(untagged)]` is what makes "try, and fall back" possible without a
+/// self-describing format: it buffers each element before matching, so the
+/// [`IgnoredAny`](serde::de::IgnoredAny) arm can accept whatever the first arm
+/// refused.
+fn tolerant_observations<'de, D>(d: D) -> Result<Vec<Observation>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Row {
+        Readable(Box<Observation>),
+        Unreadable(serde::de::IgnoredAny),
+    }
+    Ok(Vec::<Row>::deserialize(d)?
+        .into_iter()
+        .filter_map(|r| match r {
+            Row::Readable(o) => Some(*o),
+            Row::Unreadable(_) => None,
+        })
+        .collect())
 }
 
 impl ObservationLog {
@@ -429,5 +472,46 @@ impl FitSet {
     /// Number of distinct sessions referenced (`max session index + 1`).
     pub fn n_sessions(&self) -> usize {
         self.rows.iter().map(|(_, s)| s + 1).max().unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod tolerance_tests {
+    use super::*;
+
+    /// One unreadable row must cost one vote, not the profile.
+    ///
+    /// The regression this exists for is not hypothetical: a `null` where a φ
+    /// coordinate should be made `Profile` — and therefore `SessionState`, and
+    /// therefore the bank, the lineage, the pins and every vote — fail to
+    /// deserialize, and the app booted as if it had never been used.
+    #[test]
+    fn an_unreadable_row_does_not_take_the_log_with_it() {
+        let json = r#"{"observations":[
+          {"feedback":{"Duel":{"a":[1.0,2.0],"b":[0.5,0.25],"chose_a":true}},
+           "session":0,"feature_names":["x","y"],"schema_version":2},
+          {"feedback":{"Duel":{"a":[1.0,null],"b":[0.5,0.25],"chose_a":true}},
+           "session":0,"feature_names":["x","y"],"schema_version":2},
+          {"feedback":{"KeepKill":{"x":[0.2,0.3],"kept":false}},
+           "session":1,"feature_names":["x","y"],"schema_version":2}
+        ]}"#;
+        let log: ObservationLog = serde_json::from_str(json).expect("the log must still load");
+        assert_eq!(log.observations.len(), 2, "the readable rows must survive");
+        assert_eq!(log.observations[1].session, 1, "and keep their order");
+    }
+
+    /// …and a log with nothing wrong with it is unaffected, including the
+    /// legacy and pre-provenance forms the untagged fallback sits in front of.
+    #[test]
+    fn tolerance_does_not_change_a_clean_log() {
+        let json = r#"{"observations":[
+          {"feedback":{"Stars":{"x":[0.1],"rating":3}},"session":2,
+           "feature_names":["x"],"schema_version":2,"provenance":"self_report"},
+          {"Duel":{"a":[0.4],"b":[0.9],"chose_a":false,"session":0}}
+        ]}"#;
+        let log: ObservationLog = serde_json::from_str(json).expect("loads");
+        assert_eq!(log.observations.len(), 2);
+        assert_eq!(log.observations[0].provenance, Provenance::SelfReport);
+        assert!(!log.observations[1].is_raw(), "legacy row must stay legacy");
     }
 }

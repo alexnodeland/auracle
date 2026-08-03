@@ -486,6 +486,38 @@ impl StructFeatures {
         "frac_sidechained",
     ];
 
+    /// The φ_struct coordinates that are bounded to `[0, 1]` — three
+    /// normalized genome sites read straight off the term, and four ratios of
+    /// two counts.
+    ///
+    /// A subset of [`Self::NAMES`] and *not* a reordering of it: the counts
+    /// have no upper bound, so a range check over the whole vector could only
+    /// be a finiteness check. Named here so the debug assertion below, the
+    /// featurizer's quarantine and the saved-log repair all read one list
+    /// instead of three that drift.
+    pub const UNIT_NAMES: [&'static str; 7] = [
+        "mod_density",
+        "mod_depth_mean",
+        "amp_attack",
+        "amp_sustain",
+        "amp_release",
+        "chain_balance",
+        "frac_sidechained",
+    ];
+
+    /// This term's values for [`Self::UNIT_NAMES`], in that order.
+    pub fn unit_coordinates(&self) -> [f64; 7] {
+        [
+            self.mod_density,
+            self.mod_depth_mean,
+            self.amp_attack,
+            self.amp_sustain,
+            self.amp_release,
+            self.chain_balance,
+            self.frac_sidechained,
+        ]
+    }
+
     /// Nonlinear colour: wavefolder + distortion + bitcrusher + ring mod.
     pub fn n_drive(&self) -> f64 {
         self.n_fold + self.n_distortion + self.n_bitcrush + self.n_ringmod
@@ -650,6 +682,27 @@ pub fn struct_features(tree: &PatchTree) -> StructFeatures {
     } else {
         0.0
     };
+    // The invariant, shouted where it is cheapest to hear it. Every coordinate
+    // in `UNIT_NAMES` is either a normalized genome site read straight through
+    // or a ratio of two counts, so all seven live in [0,1] for any term the
+    // grammar can produce — and `amp_sustain` sat at 1e30 for four patches and
+    // six cells of the persisted log precisely because nothing ever said so.
+    //
+    // `debug_assert` and not a clamp: by the time a term reaches the featurizer
+    // it has already been through `finish()`/`clamp_domains`, so a violation
+    // here is a hole in *that*, and quietly repairing it a second time would be
+    // how the hole stays open. Release builds are covered by the quarantine in
+    // `crate::featurize`, which refuses the row rather than trusting it.
+    #[cfg(debug_assertions)]
+    {
+        for (name, v) in StructFeatures::UNIT_NAMES.iter().zip(f.unit_coordinates()) {
+            debug_assert!(
+                v.is_finite() && (0.0..=1.0).contains(&v),
+                "φ_struct coordinate {name} left its domain: {v} (term: {})",
+                tree.root.to_sexpr()
+            );
+        }
+    }
     f
 }
 

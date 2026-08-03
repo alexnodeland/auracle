@@ -250,6 +250,126 @@ pub fn stamp_names(log: &mut ObservationLog, names: &[String]) {
     }
 }
 
+/// Which coordinates of a raw-φ row have a bound this can enforce.
+///
+/// Only [`StructFeatures::UNIT_NAMES`] do: the module counts are unbounded
+/// above and the audio descriptors live on axes whose range depends on the
+/// stimulus, so for those the only defensible check is finiteness.
+fn unit_mask(names: &[String]) -> Vec<bool> {
+    use ricercar_features::StructFeatures;
+    names
+        .iter()
+        .map(|n| StructFeatures::UNIT_NAMES.contains(&n.as_str()))
+        .collect()
+}
+
+/// Clamp one raw-φ row's unit-bounded coordinates in place, against a mask
+/// from [`unit_mask`]. Returns how many cells moved.
+fn clamp_row(row: &mut [f64], unit: &[bool]) -> usize {
+    let mut hits = 0;
+    for (x, is_unit) in row.iter_mut().zip(unit) {
+        if *is_unit && !(0.0..=1.0).contains(x) {
+            *x = x.clamp(0.0, 1.0);
+            hits += 1;
+        }
+    }
+    hits
+}
+
+/// The same repair for the implicit-event stream's stored `phi_before` /
+/// `phi_after` pairs — the *fourth* carrier of raw φ in a saved session, after
+/// the pool, the log and the HELD tray, and the one that is easiest to forget
+/// because nothing reads it yet.
+///
+/// That is exactly why it has to be repaired: the stream exists so a later
+/// model can be fitted on hand edits, and a corpus that is quietly wrong on the
+/// day it is first used is worse than one that is missing.
+///
+/// Matched **positionally** against the live φ names, which the log's repair
+/// refuses to do — the difference is that an event carries no names of its own,
+/// so position is the only interpretation it has, and the length guard is what
+/// makes that safe.
+///
+/// A row of a different width is **left exactly alone**, and that is a decision
+/// rather than a gap. φ has been 12 + n_struct, 13 + n_struct and now 15 + 25
+/// columns wide; a 38-wide row is either 13 audio over today's 25 structural
+/// coordinates or 15 audio over the 23 that predate wave 3, and nothing in the
+/// row says which. Aligning it to the live names would clamp *a* coordinate —
+/// just not necessarily the one that is out of range. So a stale row keeps its
+/// bad cell, which costs nothing (no consumer reads this stream yet, and every
+/// consumer that ever does will have to reconcile widths before it can) and is
+/// the only reading that cannot invent evidence.
+pub fn repair_phi_pair(before: &mut [f64], after: &mut [f64], names: &[String]) -> usize {
+    let unit = unit_mask(names);
+    let mut hits = 0;
+    for row in [before, after] {
+        if row.len() == names.len() {
+            hits += clamp_row(row, &unit);
+        }
+    }
+    hits
+}
+
+/// Pull out-of-domain cells in a stored log back inside their coordinate's
+/// range, and drop the rows that cannot be repaired. Returns
+/// `(cells clamped, observations dropped)`.
+///
+/// The other half of the sentinel fix, and the half that is not optional. A
+/// gate that stops the *next* bad row does nothing about the ones already on
+/// disk: six cells of exactly `1e30` sat in the raw φ of fifty stored
+/// observations, and every fit after this load would have re-read them, re-fit
+/// the standardizer on them and re-poisoned the posterior — the fault would
+/// have looked fixed while the profile stayed broken.
+///
+/// **Repaired by name, never positionally.** Every observation carries its own
+/// coordinate names ([`ObservationLog`]'s whole design), and only the seven in
+/// [`StructFeatures::UNIT_NAMES`] have a bound this can enforce: the counts are
+/// unbounded above and the audio descriptors live on axes whose range depends
+/// on the stimulus, so for those the only defensible check is finiteness. A row
+/// with a non-finite cell anywhere is dropped rather than patched, because
+/// there is no value to clamp it to that is not an invention.
+///
+/// Idempotent, and a no-op on a clean log — which every log written after this
+/// ships will be.
+pub fn repair_log(log: &mut ObservationLog) -> (usize, usize) {
+    let mut clamped = 0usize;
+    let before = log.observations.len();
+    log.observations.retain(|o| {
+        o.feedback
+            .phis()
+            .iter()
+            .all(|v| v.iter().all(|x| x.is_finite()))
+    });
+    let dropped = before - log.observations.len();
+    for o in &mut log.observations {
+        // Positional repair on an unnamed log would be a guess about which
+        // coordinate is which, and a wrong guess clamps a legitimate count.
+        if o.feature_names.is_empty() {
+            continue;
+        }
+        let unit = unit_mask(&o.feature_names);
+        // Counted outside the closure: `map_phi` takes an `Fn`, and a `Cell`
+        // is a smaller thing to explain than a second walk that has to agree
+        // with the first about what "out of range" means.
+        let hits = std::cell::Cell::new(0usize);
+        o.feedback = o.feedback.map_phi(|v| {
+            v.iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    if unit.get(i).copied().unwrap_or(false) && !(0.0..=1.0).contains(x) {
+                        hits.set(hits.get() + 1);
+                        x.clamp(0.0, 1.0)
+                    } else {
+                        *x
+                    }
+                })
+                .collect()
+        });
+        clamped += hits.get();
+    }
+    (clamped, dropped)
+}
+
 /// Rewrite [`RENAMES`]'d coordinate names in a log's stored name lists.
 ///
 /// Cheap, idempotent, and the difference between a renamed coordinate keeping
@@ -269,4 +389,127 @@ pub fn apply_renames(log: &mut ObservationLog) -> usize {
         touched += usize::from(hit);
     }
     touched
+}
+
+#[cfg(test)]
+mod repair_tests {
+    use super::*;
+    use ricercar_features::{Features, StructFeatures};
+    use ricercar_taste::{Feedback, Observation};
+
+    fn names() -> Vec<String> {
+        Features::phi_names()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    fn row(names: &[String], set: &[(&str, f64)]) -> Vec<f64> {
+        let mut v = vec![0.5; names.len()];
+        for (n, x) in set {
+            let i = names.iter().position(|m| m == n).expect("known coordinate");
+            v[i] = *x;
+        }
+        v
+    }
+
+    /// Six cells of exactly `1e30`, which is what the shipped profile held.
+    /// Repair pulls them back inside the coordinate's range and leaves the
+    /// vote standing — the player's preference is still their preference; only
+    /// one number in it was never a measurement.
+    #[test]
+    fn repair_clamps_the_sentinel_and_keeps_the_vote() {
+        let n = names();
+        let mut log = ObservationLog::default();
+        for _ in 0..3 {
+            log.observations.push(Observation::new(
+                Feedback::Duel {
+                    a: row(&n, &[("amp_sustain", 1e30), ("n_vco", 4.0)]),
+                    b: row(&n, &[("amp_sustain", 1e30)]),
+                    chose_a: true,
+                },
+                0,
+                &n,
+            ));
+        }
+        let (clamped, dropped) = repair_log(&mut log);
+        assert_eq!((clamped, dropped), (6, 0));
+        assert_eq!(log.observations.len(), 3);
+
+        let i = n.iter().position(|m| m == "amp_sustain").unwrap();
+        let j = n.iter().position(|m| m == "n_vco").unwrap();
+        for o in &log.observations {
+            for phi in o.feedback.phis() {
+                assert_eq!(phi[i], 1.0, "the unit coordinate was not repaired");
+            }
+            // An unbounded coordinate is left exactly alone: four oscillators
+            // is a patch, not corruption, and a repair that clamped counts
+            // would be inventing evidence.
+            assert_eq!(o.feedback.phis()[0][j], 4.0);
+        }
+        // Idempotent — a second load must not find anything to do.
+        assert_eq!(repair_log(&mut log), (0, 0));
+    }
+
+    /// A NaN cannot be clamped to anything that is not an invention, so the
+    /// whole observation goes. One vote is a smaller loss than a posterior of
+    /// NaNs.
+    #[test]
+    fn a_non_finite_vote_is_dropped() {
+        let n = names();
+        let mut log = ObservationLog::default();
+        log.observations.push(Observation::new(
+            Feedback::KeepKill {
+                x: row(&n, &[("mod_depth_mean", f64::NAN)]),
+                kept: true,
+            },
+            0,
+            &n,
+        ));
+        log.observations.push(Observation::new(
+            Feedback::KeepKill {
+                x: row(&n, &[]),
+                kept: false,
+            },
+            0,
+            &n,
+        ));
+        assert_eq!(repair_log(&mut log), (0, 1));
+        assert_eq!(log.observations.len(), 1);
+    }
+
+    /// The implicit stream's φ pairs are repaired positionally, and only when
+    /// the width matches the live feature set — a row from a different φ is a
+    /// row this cannot interpret, and guessing at it is how a "repair" invents
+    /// evidence.
+    #[test]
+    fn implicit_event_phi_is_repaired_only_at_the_right_width() {
+        let n = names();
+        let mut before = row(&n, &[("amp_sustain", 1e30)]);
+        let mut after = row(&n, &[("amp_sustain", 0.4), ("n_vco", 3.0)]);
+        assert_eq!(repair_phi_pair(&mut before, &mut after, &n), 1);
+        let i = n.iter().position(|m| m == "amp_sustain").unwrap();
+        assert_eq!(before[i], 1.0);
+        assert_eq!(after[i], 0.4);
+
+        // A stale-width row is left exactly as it was found.
+        let mut stale = vec![1e30; 3];
+        let mut empty: Vec<f64> = Vec::new();
+        assert_eq!(repair_phi_pair(&mut stale, &mut empty, &n), 0);
+        assert_eq!(stale, vec![1e30; 3]);
+    }
+
+    /// Every name the repair enforces a bound on has to still be a φ
+    /// coordinate. Rename one and this fails here rather than by quietly
+    /// enforcing nothing.
+    #[test]
+    fn every_unit_name_is_a_live_coordinate() {
+        let n = names();
+        for name in StructFeatures::UNIT_NAMES {
+            assert!(
+                n.iter().any(|m| m == name),
+                "{name} is no longer in φ — the domain repair is a no-op for it"
+            );
+        }
+    }
 }
