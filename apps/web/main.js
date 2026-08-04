@@ -1279,12 +1279,12 @@ worker.onmessage = (e) => {
     }
     // The engine worker's degradation log (a re-issued draw, a retired one, a
     // bank entry rendered serially). Not a console warning, because none of
-    // these is a fault — see the note over `ricLog` in worker.js — and not a
+    // these is a fault — see the note over `logNote` in worker.js — and not a
     // toast either: the player did nothing, and nothing about their patch
     // changed. It lands in the same array the worklet's messages do, which is
     // the one place "why was that boot slow" can still be answered afterwards.
     case "log": {
-      (window.__ricLog = window.__ricLog || []).push(m);
+      (window.__aurLog = window.__aurLog || []).push(m);
       break;
     }
     case "edit_rejected": {
@@ -2346,7 +2346,7 @@ async function bootLiveAudio() {
   // the persisted fft size, window and tap can actually be applied to one.
   scopeApply();
   live.onMessage((m) => {
-    (window.__ricLog = window.__ricLog || []).push(m);
+    (window.__aurLog = window.__aurLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
     if (m.type === "param_miss") healParamMiss(m.addr);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
@@ -2360,7 +2360,7 @@ async function bootLiveAudio() {
   renderVolVal();
   applyPerfUi();
   live.node.onprocessorerror = (e) => {
-    (window.__ricLog = window.__ricLog || []).push({ type: "processor_error", e: String(e) });
+    (window.__aurLog = window.__aurLog || []).push({ type: "processor_error", e: String(e) });
     note("live audio engine crashed — reload to recover");
   };
   // If a patch arrived before audio was ready, load it now.
@@ -15944,4 +15944,9 @@ bootMidi();
 // `note` rides along because the toast lane's guarantee — that nothing
 // transient ever lands on PICK A / PICK B — is only testable by forcing a
 // toast at a moment the app would not normally produce one.
-window.__ric = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note };
+window.__aur = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note };
+// The probe was `window.__ric` for as long as the app was called Ricercar, and
+// hand-written browser checks in the notes still reach for it. Aliased rather
+// than dropped: an alias costs one line, and a probe that silently became
+// `undefined` would read as the app being broken.
+window.__ric = window.__aur;

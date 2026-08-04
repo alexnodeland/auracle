@@ -32,10 +32,10 @@ const status = () => JSON.parse(engine.status());
 // noise and is read as noise too.
 //
 // So they go to the app's own log instead, verbatim, where they are still there
-// for anyone asking why a boot was slow — `window.__ricLog` on the main thread,
+// for anyone asking why a boot was slow — `window.__aurLog` on the main thread,
 // the same array the live-audio worklet's messages land in. This worker has no
 // `window`, so it posts and main appends.
-const ricLog = (text, detail) =>
+const logNote = (text, detail) =>
   post({ type: "log", at: Date.now(), text, ...(detail || {}) });
 
 // ---------- long-op signalling ----------
@@ -323,7 +323,7 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
         // The one path that can change pool content versus a clean run. Say so
         // — a silently different bank is far worse than a slow one. In the log
         // rather than the console: it is contention, not a fault.
-        ricLog(`[auracle] draw ${i} retired after ${state.tries} attempts`,
+        logNote(`[auracle] draw ${i} retired after ${state.tries} attempts`,
           { kind: "draw_retired", i, tries: state.tries });
         results.set(i, { ok: false });
       } else {
@@ -334,7 +334,7 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
     const onTimeout = (i) => {
       const state = inflight.get(i);
       if (!state || finished) return;
-      ricLog(`[auracle] draw ${i} timed out; re-issuing`, { kind: "draw_timeout", i });
+      logNote(`[auracle] draw ${i} timed out; re-issuing`, { kind: "draw_timeout", i });
       requeue(i, state, true);
       pump();
     };
@@ -483,7 +483,7 @@ async function restoreSession(saved, farmed, stages) {
       // in a rare case and keeps the bank exactly what `import_state` builds,
       // in exactly its order, which is what `deferred_restore_equals_import_state`
       // pins.
-      ricLog(`[auracle] bank entry ${i} not farmed; rendering in-worker`,
+      logNote(`[auracle] bank entry ${i} not farmed; rendering in-worker`,
         { kind: "bank_in_worker", i });
       if (engine.bank_render(i)) landed++;
     },
