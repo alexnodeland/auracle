@@ -2,7 +2,7 @@ name: Pages
 
 # Publishes the web instrument to GitHub Pages. The app is fully static and
 # every asset path in apps/web is relative, so it runs unchanged from the
-# project subpath (…github.io/ricercar/) — no base-href rewriting needed.
+# project subpath (…github.io/auracle/) — no base-href rewriting needed.
 
 on:
   push:

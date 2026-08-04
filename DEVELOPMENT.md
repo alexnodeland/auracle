@@ -1,6 +1,6 @@
 # Development Guide
 
-This document is for people working **on** Ricercar (rather than playing it).
+This document is for people working **on** Auracle (rather than playing it).
 For the design rationale and decisions log see [`DESIGN.md`](./DESIGN.md); for
 the web app's internals see [`apps/web/README.md`](./apps/web/README.md).
 
@@ -8,18 +8,18 @@ the web app's internals see [`apps/web/README.md`](./apps/web/README.md).
 
 ```
 crates/
-  ricercar-grammar/    the genome: typed PCFG terms, trace codec, compiler,
+  auracle-grammar/    the genome: typed PCFG terms, trace codec, compiler,
                        structural edit ops, describe (rack view), presets
-  ricercar-features/   phrase render → vet → LUFS-normalize → φ features
-  ricercar-taste/      max-of-experts taste model + MCMC posterior
-  ricercar-session/    two-loop engine, acquisition, persistence
-  ricercar-wasm/       WasmEngine (worker) + LivePoly (AudioWorklet)
+  auracle-features/   phrase render → vet → LUFS-normalize → φ features
+  auracle-taste/      max-of-experts taste model + MCMC posterior
+  auracle-session/    two-loop engine, acquisition, persistence
+  auracle-wasm/       WasmEngine (worker) + LivePoly (AudioWorklet)
 apps/web/              the instrument (vanilla JS, no build step)
 ```
 
 The in-house foundations come from **crates.io** (`quiver-dsp`,
 `fugue-ppl`, `fugue-evo`), so a single clone builds. To hack on them
-alongside Ricercar, put sibling checkouts at `../quiver` and
+alongside Auracle, put sibling checkouts at `../quiver` and
 `../fugue-ecosystem/{fugue,fugue-evo}` and uncomment the
 `[patch.crates-io]` block at the bottom of the workspace `Cargo.toml`
 (don't commit the uncommented patch).

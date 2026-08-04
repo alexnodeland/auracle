@@ -52,4 +52,4 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p ricercar-wasm --target wasm32-unknown-unknown --release
+      - run: cargo check -p auracle-wasm --target wasm32-unknown-unknown --release

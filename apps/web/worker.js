@@ -1,4 +1,4 @@
-// RICERCAR engine worker: owns the wasm engine so rendering and MCMC never
+// AURACLE engine worker: owns the wasm engine so rendering and MCMC never
 // block the UI thread. Audio buffers cross as transferable Float32Arrays.
 // Candidates are addressed by stable id everywhere.
 //
@@ -32,10 +32,10 @@ const status = () => JSON.parse(engine.status());
 // noise and is read as noise too.
 //
 // So they go to the app's own log instead, verbatim, where they are still there
-// for anyone asking why a boot was slow — `window.__ricLog` on the main thread,
+// for anyone asking why a boot was slow — `window.__aurLog` on the main thread,
 // the same array the live-audio worklet's messages land in. This worker has no
 // `window`, so it posts and main appends.
-const ricLog = (text, detail) =>
+const logNote = (text, detail) =>
   post({ type: "log", at: Date.now(), text, ...(detail || {}) });
 
 // ---------- long-op signalling ----------
@@ -172,7 +172,7 @@ let farmSink = null;
 function farmDrop(f, reason) {
   if (!f || !f.alive) return;
   f.alive = false;
-  console.warn(`[ricercar] farm worker ${f.index} out: ${reason || "unknown"}`);
+  console.warn(`[auracle] farm worker ${f.index} out: ${reason || "unknown"}`);
   if (farmSink) farmSink.lost(f);
 }
 
@@ -323,7 +323,7 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
         // The one path that can change pool content versus a clean run. Say so
         // — a silently different bank is far worse than a slow one. In the log
         // rather than the console: it is contention, not a fault.
-        ricLog(`[ricercar] draw ${i} retired after ${state.tries} attempts`,
+        logNote(`[auracle] draw ${i} retired after ${state.tries} attempts`,
           { kind: "draw_retired", i, tries: state.tries });
         results.set(i, { ok: false });
       } else {
@@ -334,7 +334,7 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
     const onTimeout = (i) => {
       const state = inflight.get(i);
       if (!state || finished) return;
-      ricLog(`[ricercar] draw ${i} timed out; re-issuing`, { kind: "draw_timeout", i });
+      logNote(`[auracle] draw ${i} timed out; re-issuing`, { kind: "draw_timeout", i });
       requeue(i, state, true);
       pump();
     };
@@ -447,7 +447,7 @@ async function restoreSession(saved, farmed, stages) {
     jobs = JSON.parse(engine.import_session_deferred(saved));
   } catch (err) {
     // A binary without the deferred surface (stale cache): today's path.
-    console.warn("[ricercar] deferred restore unavailable:", err);
+    console.warn("[auracle] deferred restore unavailable:", err);
     return engine.import_session(saved);
   }
   if (!Array.isArray(jobs) || jobs.length === 0) {
@@ -483,7 +483,7 @@ async function restoreSession(saved, farmed, stages) {
       // in a rare case and keeps the bank exactly what `import_state` builds,
       // in exactly its order, which is what `deferred_restore_equals_import_state`
       // pins.
-      ricLog(`[ricercar] bank entry ${i} not farmed; rendering in-worker`,
+      logNote(`[auracle] bank entry ${i} not farmed; rendering in-worker`,
         { kind: "bank_in_worker", i });
       if (engine.bank_render(i)) landed++;
     },
@@ -646,13 +646,13 @@ self.onmessage = async (e) => {
       // `filled` was ever posted. `finally` reaps; `catch` drops the veil into
       // a degraded state rather than hanging on it.
       try {
-        const mod = await import(`./pkg/ricercar_wasm.js?v=${V}`);
+        const mod = await import(`./pkg/auracle_wasm.js?v=${V}`);
         await mod.default({
           // Main compiled the binary once and shares the `WebAssembly.Module`
           // with every worker; instantiating from it skips a second compile of
           // ~2 MB. Absent (or unsupported), fetch it as before.
           module_or_path:
-            m.module || new URL(`./pkg/ricercar_wasm_bg.wasm?v=${V}`, self.location.href),
+            m.module || new URL(`./pkg/auracle_wasm_bg.wasm?v=${V}`, self.location.href),
         });
         WasmEngine = mod.WasmEngine;
         engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);
@@ -668,12 +668,12 @@ self.onmessage = async (e) => {
             farmSetup(m.farmPorts);
             farmed = await farmHandshake(FARM_HANDSHAKE_MS);
           } catch (err) {
-            console.warn("[ricercar] farm unavailable:", err);
+            console.warn("[auracle] farm unavailable:", err);
             farmed = false;
           }
         }
         if (!farmed && farm.length) {
-          console.warn("[ricercar] no farm worker reported ready; filling serially");
+          console.warn("[auracle] no farm worker reported ready; filling serially");
           farmShutdown();
         }
 
@@ -837,7 +837,7 @@ self.onmessage = async (e) => {
           }
         }
       } catch (err) {
-        console.error("[ricercar] boot failed:", err);
+        console.error("[auracle] boot failed:", err);
         post({ type: "boot_failed", error: String((err && err.message) || err) });
       } finally {
         farmShutdown();

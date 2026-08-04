@@ -1,4 +1,4 @@
-# Contributing to Ricercar
+# Contributing to Auracle
 
 Thanks for your interest in contributing! This document covers the workflow
 and the quality bar. It follows the same conventions as
@@ -15,7 +15,7 @@ Be respectful and constructive.
 
 1. **Fork and clone** — a single clone builds; the in-house foundations
    (`quiver-dsp`, `fugue-ppl`, `fugue-evo`) come from crates.io. To change
-   them alongside Ricercar, see the `[patch.crates-io]` note in
+   them alongside Auracle, see the `[patch.crates-io]` note in
    [`DEVELOPMENT.md`](../DEVELOPMENT.md).
 2. **Install Rust** (stable) via [rustup](https://rustup.rs/), plus
    [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) if you're touching

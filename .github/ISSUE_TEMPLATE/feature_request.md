@@ -6,7 +6,7 @@ labels: enhancement
 
 ## The idea
 
-<!-- What should Ricercar do? -->
+<!-- What should Auracle do? -->
 
 ## Why it matters
 

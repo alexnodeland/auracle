@@ -1,4 +1,4 @@
-/* RICERCAR — a full instrument: menu bar, bank, staged views, keyboard dock.
+/* AURACLE — a full instrument: menu bar, bank, staged views, keyboard dock.
    Two-phosphor language: green = audio, amber = the model's mind.
 
    The token layer below is load-bearing and has three laws:
@@ -203,7 +203,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex;
   align-items: baseline;
 }
-/* The final R is the "model is thinking" indicator — one mark, two jobs.
+/* The final E is the "model is thinking" indicator — one mark, two jobs.
    At rest it takes the *text* tier, not the stroke tier: it is a letter of the
    wordmark before it is an indicator, so it has to stay readable. */
 .wordmark b {
@@ -214,9 +214,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .wordmark b.thinking {
   color: var(--phos-b);
   text-shadow: 0 0 14px rgba(255, 180, 84, 0.75);
-  animation: seek 1.1s ease-in-out infinite;
+  animation: listen 1.1s ease-in-out infinite;
 }
-@keyframes seek { 50% { opacity: 0.55; } }
+@keyframes listen { 50% { opacity: 0.55; } }
 .viewtabs { display: flex; gap: 6px; }
 .viewtab {
   font-family: var(--font-silk);

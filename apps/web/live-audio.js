@@ -198,11 +198,11 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor("ricercar-voice", EvoVoiceProcessor);
+registerProcessor("auracle-voice", EvoVoiceProcessor);
 `;
 
 export async function initLiveAudio(audioCtx, build, dest) {
-  const glue = await (await fetch(`./pkg/ricercar_wasm.js?v=${build}`)).text();
+  const glue = await (await fetch(`./pkg/auracle_wasm.js?v=${build}`)).text();
   const inlined = glue
     .replace(/^export class /gm, "class ")
     .replace(/^export (function|const|let) /gm, "$1 ")
@@ -212,9 +212,9 @@ export async function initLiveAudio(audioCtx, build, dest) {
   await audioCtx.audioWorklet.addModule(blobUrl);
   URL.revokeObjectURL(blobUrl);
 
-  const bytes = await (await fetch(`./pkg/ricercar_wasm_bg.wasm?v=${build}`)).arrayBuffer();
+  const bytes = await (await fetch(`./pkg/auracle_wasm_bg.wasm?v=${build}`)).arrayBuffer();
 
-  const node = new AudioWorkletNode(audioCtx, "ricercar-voice", {
+  const node = new AudioWorkletNode(audioCtx, "auracle-voice", {
     numberOfInputs: 0,
     numberOfOutputs: 1,
     outputChannelCount: [2],

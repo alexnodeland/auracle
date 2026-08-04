@@ -1,4 +1,4 @@
-# Ricercar development targets. `make check` is the CI gate.
+# Auracle development targets. `make check` is the CI gate.
 
 CARGO := cargo
 # Homebrew's rustc shadows rustup's and lacks the wasm std — always prefer
@@ -55,7 +55,7 @@ clippy: lint
 
 ## wasm: build the web app's engine into apps/web/pkg
 wasm:
-	$(WASM_PATH) $(WASM_RUSTFLAGS) wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
+	$(WASM_PATH) $(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:
@@ -63,10 +63,10 @@ serve:
 
 ## bundle: what the release workflow ships — a runnable web zip in dist/
 bundle: wasm
-	rm -rf dist && mkdir -p dist/ricercar-web
-	cp -r apps/web/. dist/ricercar-web/
-	printf '# Running Ricercar\n\nPrebuilt web instrument — serve statically and open the URL:\n\n    python3 serve.py    # -> http://localhost:8642\n' > dist/ricercar-web/RUNNING.md
-	cd dist && zip -qr ricercar-web.zip ricercar-web
+	rm -rf dist && mkdir -p dist/auracle-web
+	cp -r apps/web/. dist/auracle-web/
+	printf '# Running Auracle\n\nPrebuilt web instrument — serve statically and open the URL:\n\n    python3 serve.py    # -> http://localhost:8642\n' > dist/auracle-web/RUNNING.md
+	cd dist && zip -qr auracle-web.zip auracle-web
 
 ## site: what the Pages workflow publishes — site/ served at any subpath
 site: wasm

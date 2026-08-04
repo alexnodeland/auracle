@@ -1,0 +1,19 @@
+[package]
+name = "auracle-session"
+description = "The two-loop engine: patch-space SMC, acquisition, observation stream, taste profiles"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+fugue-evo.workspace = true
+fugue-ppl.workspace = true
+auracle-grammar.workspace = true
+auracle-features.workspace = true
+auracle-taste.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
