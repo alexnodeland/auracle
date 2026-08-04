@@ -245,7 +245,7 @@ to a pinned `role="alert"` strip that stays until resolved.
   re-fits **at most** every 6 duels, and only when the engine's own
   `status().needs_refit` says the between-fit importance updates have run out
   of road — signalled by the wordmark's final **E**, which is the "listening"
-  light (*auracle*: aural + oracle) rather than a separate LED. The duel pair's
+  light rather than a separate LED. The duel pair's
   audio is requested ahead of the fit, so the cards are always audible while
   it runs. Profiles export the log **with** its standardizer.
 

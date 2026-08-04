@@ -4,11 +4,9 @@
 
 **A synthesizer that searches for your sound.**
 
-*Auracle — an **aural oracle**: it listens, it learns, and it tells you what you
-are going to like. Built on
-[fugue-evo](https://github.com/alexnodeland/fugue-evo) (evolution as Bayesian
-inference) and [quiver](https://github.com/alexnodeland/quiver) (patch-graph
-DSP). Formerly known as Ricercar, and before that EvoSynth.*
+*Built on [fugue-evo](https://github.com/alexnodeland/fugue-evo) (evolution as
+Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
+(patch-graph DSP).*
 
 [![CI](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml)
 [![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/auracle/)
