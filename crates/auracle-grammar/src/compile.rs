@@ -2819,7 +2819,7 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     // and `Svf::tick` evaluates three transcendentals per sample — measured at
     // 0.057 s of render per patch, ~18% of a typical voice — so putting one on
     // every patch taxes the 91% that have no rectifying nonlinearity at all.
-    let block_dc = makes_dc(&tree.root) || std::env::var("RIC_DCB_ALWAYS").is_ok();
+    let block_dc = makes_dc(&tree.root) || std::env::var("AUR_DCB_ALWAYS").is_ok();
     let left = c.voice_tail("", audio_out.left, env, block_dc)?;
     let right = match audio_out.right {
         Some(r) => Some(c.voice_tail("R", r, env, block_dc)?),

@@ -289,7 +289,7 @@ evaluates three f64 transcendentals per sample (`pow` for the cutoff map,
 `pow` for keytrack, `tan` for the TPT prewarp), measured at ~0.057 s of render
 per patch. `compile.rs` now inserts it **only when the tree contains a diode
 ladder** — the one module whose `diode_sat` is asymmetric and actually emits
-DC — which is ~9% of prior draws. `RIC_DCB_ALWAYS=1` forces it everywhere if a
+DC — which is ~9% of prior draws. `AUR_DCB_ALWAYS=1` forces it everywhere if a
 new DC source is ever added to the palette. The 72.17 s final number was taken
 on an otherwise idle machine, `user ≈ real` (72.17 vs 72.56), and lands
 *below* the pre-pass baseline, so the remaining additions (per-channel stereo
