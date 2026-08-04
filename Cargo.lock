@@ -12,6 +12,78 @@ dependencies = [
 ]
 
 [[package]]
+name = "auracle-features"
+version = "0.1.0"
+dependencies = [
+ "auracle-grammar",
+ "fugue-evo",
+ "fugue-ppl",
+ "quiver-dsp",
+ "rand",
+ "rustfft",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "auracle-grammar"
+version = "0.1.0"
+dependencies = [
+ "fugue-evo",
+ "fugue-ppl",
+ "quiver-dsp",
+ "rand",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "auracle-session"
+version = "0.1.0"
+dependencies = [
+ "auracle-features",
+ "auracle-grammar",
+ "auracle-taste",
+ "fugue-evo",
+ "fugue-ppl",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "auracle-taste"
+version = "0.1.0"
+dependencies = [
+ "auracle-features",
+ "fugue-evo",
+ "fugue-ppl",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "auracle-wasm"
+version = "0.1.0"
+dependencies = [
+ "auracle-features",
+ "auracle-grammar",
+ "auracle-session",
+ "auracle-taste",
+ "console_error_panic_hook",
+ "getrandom",
+ "rand",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -362,78 +434,6 @@ name = "rawpointer"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
-
-[[package]]
-name = "ricercar-features"
-version = "0.1.0"
-dependencies = [
- "fugue-evo",
- "fugue-ppl",
- "quiver-dsp",
- "rand",
- "ricercar-grammar",
- "rustfft",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "ricercar-grammar"
-version = "0.1.0"
-dependencies = [
- "fugue-evo",
- "fugue-ppl",
- "quiver-dsp",
- "rand",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "ricercar-session"
-version = "0.1.0"
-dependencies = [
- "fugue-evo",
- "fugue-ppl",
- "rand",
- "ricercar-features",
- "ricercar-grammar",
- "ricercar-taste",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "ricercar-taste"
-version = "0.1.0"
-dependencies = [
- "fugue-evo",
- "fugue-ppl",
- "rand",
- "ricercar-features",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "ricercar-wasm"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "getrandom",
- "rand",
- "ricercar-features",
- "ricercar-grammar",
- "ricercar-session",
- "ricercar-taste",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "rustfft"

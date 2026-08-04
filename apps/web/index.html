@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RICERCAR — taste-learning synthesizer</title>
+<title>AURACLE — taste-learning synthesizer</title>
 <!-- The tab icon, inline. It was an SVG data URI carrying raw `<`, `>`, `'`
      and spaces — legal enough that Chrome drew it and illegal enough that a
      browser which rejects the URL falls back to `/favicon.ico`, which this app
@@ -25,7 +25,7 @@
 <script>
 (function () {
   var forced = false;
-  try { forced = sessionStorage.getItem("ricercar-anyway") === "1"; } catch (e) {}
+  try { forced = sessionStorage.getItem("auracle-anyway") === "1"; } catch (e) {}
   var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
   var handheld = !forced && coarse && Math.min(window.innerWidth, window.innerHeight) < 620;
   if (handheld) {
@@ -49,8 +49,8 @@
 
   <!-- ===================== menu bar ===================== -->
   <header class="menubar">
-    <!-- ricercar: "to seek out". The final R is the seeking light. -->
-    <div class="wordmark" title="Ricercar — to seek out">RICERCA<b id="wm-r">R</b></div>
+    <!-- auracle: aural + oracle. The final E is the listening light. -->
+    <div class="wordmark" title="Auracle — an aural oracle">AURACL<b id="wm-lamp">E</b></div>
     <nav class="viewtabs" role="tablist" aria-label="Views">
       <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play">play</button>
       <button class="viewtab" data-view="evolve" role="tab" aria-selected="false" aria-controls="view-evolve">evolve</button>
@@ -193,7 +193,7 @@
                by opening the file. -->
           <div class="ix-dims mono" id="ix-dims">—</div>
           <button class="ix-go" id="ix-go">export</button>
-          <p class="sp-note">The patch rides inside the file. Drop the picture back onto ricercar and it opens as a patch.</p>
+          <p class="sp-note">The patch rides inside the file. Drop the picture back onto auracle and it opens as a patch.</p>
         </div>
       </div>
     </div>
@@ -461,7 +461,7 @@
                 <div class="nb-chips" id="nb-inpatch-list"></div>
               </section>
               <div id="nb-groups"></div>
-              <p class="nb-none hidden" id="nb-none">Nothing called that. Ricercar has no sampler and no sequencer — it is one voice you play.</p>
+              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler and no sequencer — it is one voice you play.</p>
               <div class="nb-legend">
                 <span class="lg-row"><i class="lg-swatch"></i>audio</span>
                 <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
@@ -775,7 +775,7 @@
 // The escape hatch, for the one person who wants to see it break. Session-
 // scoped: closing the tab puts the gate back.
 document.getElementById("hg-anyway").addEventListener("click", function () {
-  try { sessionStorage.setItem("ricercar-anyway", "1"); } catch (e) {}
+  try { sessionStorage.setItem("auracle-anyway", "1"); } catch (e) {}
   location.reload();
 });
 </script>
@@ -788,7 +788,7 @@ document.getElementById("hg-anyway").addEventListener("click", function () {
   <div class="dv-card">
     <div class="dv-mark">↓</div>
     <div class="dv-line">drop a patch to open it</div>
-    <div class="dv-sub mono">.ricercar.json · .png · .svg</div>
+    <div class="dv-sub mono">.auracle.json · .png · .svg</div>
   </div>
 </div>
 

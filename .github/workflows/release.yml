@@ -36,11 +36,11 @@ jobs:
 
       - name: Assemble web bundle
         run: |
-          BUNDLE="ricercar-${GITHUB_REF_NAME}-web"
+          BUNDLE="auracle-${GITHUB_REF_NAME}-web"
           mkdir -p "dist/$BUNDLE"
           cp -r apps/web/. "dist/$BUNDLE/"
           cat > "dist/$BUNDLE/RUNNING.md" <<'EOF'
-          # Running Ricercar
+          # Running Auracle
 
           This is the prebuilt web instrument — no toolchain needed, just a
           static file server (module workers require http, not file://):
@@ -58,6 +58,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "dist/ricercar-${GITHUB_REF_NAME}-web.zip" \
-            --title "Ricercar $GITHUB_REF_NAME" \
+            "dist/auracle-${GITHUB_REF_NAME}-web.zip" \
+            --title "Auracle $GITHUB_REF_NAME" \
             --generate-notes

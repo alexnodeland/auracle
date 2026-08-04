@@ -1,10 +1,32 @@
 # Changelog
 
-All notable changes to Ricercar are documented here, grouped by development
+All notable changes to Auracle are documented here, grouped by development
 pass. The format is based on [Keep a Changelog](https://keepachangelog.com/);
-the project is pre-1.0.
+the project is pre-1.0. Entries below 0.1.0 were written when the project was
+called Ricercar (and, earlier, EvoSynth) and name it as it was then — a
+changelog that edits its own past is not a record.
 
 ## [Unreleased]
+
+### Renamed — Ricercar → Auracle
+
+The project is now **Auracle** (aural + oracle): it listens, it learns, and it
+tells you what you are going to like. "Ricercar" was a musician's in-joke that
+most people could neither pronounce nor spell.
+
+- Crates `ricercar-*` → `auracle-*`, wasm artifacts `auracle_wasm*`, worklet
+  processor `auracle-voice`, the workspace and every intra-workspace path dep.
+- The wordmark is `AURACLE` with the final **E** as the "model is listening"
+  light — the same one mark, two jobs the final R used to do.
+- **Nothing a player saved is lost, and nothing of theirs is deleted.** The
+  IndexedDB autosave is now `auracle`, with an adopt-on-boot chain that reads
+  `ricercar` then `evosynth`; every `ricercar-*` / `evosynth-*` localStorage
+  preference is copied to `auracle-*` at import time, before any of it is read,
+  and never overwrites an answer this build already has.
+- Exported patches are `.auracle.json`, PNG `tEXt` keyword `auracle`, SVG
+  `metadata#auracle-patch`. **Files exported by any older build still open**:
+  the JSON path never read the marker (a patch is recognized by its shape), and
+  the PNG and SVG readers try the old names after the new one.
 
 ### Fixed — a hole that stays a hole, a view that cannot be stranded, and a patcher that fits on a laptop
 

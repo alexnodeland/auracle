@@ -1,23 +1,23 @@
 <div align="center">
 
-# 🎼 Ricercar
+# 🎼 Auracle
 
 **A synthesizer that searches for your sound.**
 
-*Ricercar — the searching, pre-fugue form of Bach's Musical Offering; Italian
-for "to seek". Built on [fugue-evo](https://github.com/alexnodeland/fugue-evo)
-(evolution as Bayesian inference) and
-[quiver](https://github.com/alexnodeland/quiver) (patch-graph DSP).
-Formerly known as EvoSynth.*
+*Auracle — an **aural oracle**: it listens, it learns, and it tells you what you
+are going to like. Built on
+[fugue-evo](https://github.com/alexnodeland/fugue-evo) (evolution as Bayesian
+inference) and [quiver](https://github.com/alexnodeland/quiver) (patch-graph
+DSP). Formerly known as Ricercar, and before that EvoSynth.*
 
-[![CI](https://github.com/alexnodeland/ricercar/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/ricercar/actions/workflows/ci.yml)
-[![Pages](https://github.com/alexnodeland/ricercar/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/ricercar/)
+[![CI](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml)
+[![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/auracle/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
 
 </div>
 
-Ricercar is a playable modular synthesizer that **models your taste over
+Auracle is a playable modular synthesizer that **models your taste over
 time**. It generates patches by evolutionary search, collects your feedback on
 what it plays — A/B duels, star ratings, keep/kill triage, your own hand
 edits — and fits a persistent Bayesian model of what you like. Evolution then
@@ -28,7 +28,7 @@ generating patches in your style, and able to say why.
 ## Table of Contents
 
 - [Project Status](#-project-status)
-- [Why Ricercar?](#-why-ricercar)
+- [Why Auracle?](#-why-auracle)
 - [Features](#-features)
 - [Architecture](#-architecture)
 - [Quick Start](#-quick-start)
@@ -39,14 +39,14 @@ generating patches in your style, and able to say why.
 
 ## 🚧 Project Status
 
-Ricercar is **pre-1.0 and under active development**. The live build at
-[alexnodeland.github.io/ricercar](https://alexnodeland.github.io/ricercar/)
+Auracle is **pre-1.0 and under active development**. The live build at
+[alexnodeland.github.io/auracle](https://alexnodeland.github.io/auracle/)
 always tracks `main`; you can also build and run it locally (one clone; its
 foundations come from crates.io). The instrument is fully playable and the
 taste loop is closed, but the public API and the save format may change
 between commits without notice.
 
-## 🤔 Why Ricercar?
+## 🤔 Why Auracle?
 
 Sound design tools make you choose between exploring (presets, randomizers —
 fast but shallow) and constructing (patching from scratch — deep but slow).
@@ -54,7 +54,7 @@ Genetic-algorithm synths tried to bridge this with star-a-generation
 workflows, but they forget everything between sessions and can't tell you
 *why* they suggest what they suggest.
 
-Ricercar treats the problem as inference:
+Auracle treats the problem as inference:
 
 | Idea | What it buys |
 |---|---|
@@ -118,27 +118,27 @@ Two loops around one observation stream:
 
 | Crate | Role |
 |---|---|
-| `ricercar-grammar` | Typed PCFG over quiver combinator terms; term ⇄ trace codec; term → `Patch` compiler with live parameter handles; structural edit ops; presets |
-| `ricercar-features` | Deterministic phrase rendering, vet gate, BS.1770 LUFS normalization, audio + structural features (φ) |
-| `ricercar-taste` | Max-of-experts utility, three likelihoods, recency weighting, MCMC posterior, label alignment, portable profiles |
-| `ricercar-session` | Two-loop engine: pool, duel acquisition (uniform by default; BALD selectable), locked refinement, taste-tilted proposals, session persistence |
-| `ricercar-wasm` | `WasmEngine` (worker-side brain) and `LivePoly` (worklet-side instrument) |
+| `auracle-grammar` | Typed PCFG over quiver combinator terms; term ⇄ trace codec; term → `Patch` compiler with live parameter handles; structural edit ops; presets |
+| `auracle-features` | Deterministic phrase rendering, vet gate, BS.1770 LUFS normalization, audio + structural features (φ) |
+| `auracle-taste` | Max-of-experts utility, three likelihoods, recency weighting, MCMC posterior, label alignment, portable profiles |
+| `auracle-session` | Two-loop engine: pool, duel acquisition (uniform by default; BALD selectable), locked refinement, taste-tilted proposals, session persistence |
+| `auracle-wasm` | `WasmEngine` (worker-side brain) and `LivePoly` (worklet-side instrument) |
 | `apps/web` | The instrument: PLAY / EVOLVE / TASTE, patch bank, keyboard dock |
 
 ## 🚀 Quick Start
 
-**Play it in the browser: https://alexnodeland.github.io/ricercar/** — every
+**Play it in the browser: https://alexnodeland.github.io/auracle/** — every
 push to `main` builds the wasm engine and deploys the instrument to GitHub
 Pages. Nothing to install; your bank and taste model live in your browser.
 
-To build it yourself: Ricercar's foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
+To build it yourself: Auracle's foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
 [`fugue-ppl`](https://crates.io/crates/fugue-ppl),
 [`fugue-evo`](https://crates.io/crates/fugue-evo)) come from crates.io — one
 clone is all you need:
 
 ```bash
-git clone https://github.com/alexnodeland/ricercar.git
-cd ricercar
+git clone https://github.com/alexnodeland/auracle.git
+cd auracle
 ```
 
 Build and run the instrument:
@@ -156,7 +156,7 @@ app for the full key map and gesture guide.
 
 - [`DESIGN.md`](./DESIGN.md) — the canonical design document: genome,
   taste model, engine, safety layers, decisions log, roadmap.
-- [`DEVELOPMENT.md`](./DEVELOPMENT.md) — working *on* Ricercar: layout,
+- [`DEVELOPMENT.md`](./DEVELOPMENT.md) — working *on* Auracle: layout,
   workflow, quality bar, sharp edges.
 - [`apps/web/README.md`](./apps/web/README.md) — the web app's
   architecture (worklet assembly, worker protocol, workbench).

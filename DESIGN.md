@@ -1,8 +1,8 @@
-# Ricercar — Design
+# Auracle — Design
 
 **An evolutionary synthesizer that models your preferences over time.**
 
-Ricercar generates synthesizer patches by evolutionary search, collects human
+Auracle generates synthesizer patches by evolutionary search, collects human
 feedback on what it plays, and fits a persistent probabilistic model of the
 user's taste from that feedback. Over time the synth stops asking and starts
 knowing: it generates patches *in your taste*, and can explain why.
@@ -23,8 +23,8 @@ Built on two in-house libraries:
 | Iteration | Year | What it proved | What it lacked |
 |---|---|---|---|
 | **neuralCompressor** (C++/Arduino pedal) | 2020 | The interaction model: human-based GA, fit/unfit foot-switch, mutate/crossover knobs | The engine — EA and DSP were never implemented |
-| **ricercar v1** (Next.js/Tone.js + FastAPI/DEAP) | 2025 | A working interactive GA over a fixed ~30-param subtractive synth; parameter locking; lineage tracking | Preference *persistence* (ratings died each generation), topology evolution, principled inference |
-| **Ricercar** (this project) | 2026– | — | — |
+| **evosynth v1** (Next.js/Tone.js + FastAPI/DEAP) | 2025 | A working interactive GA over a fixed ~30-param subtractive synth; parameter locking; lineage tracking | Preference *persistence* (ratings died each generation), topology evolution, principled inference |
+| **Auracle** (this project) | 2026– | — | — |
 
 The generational thesis: v0 had the interaction but no engine; v1 had an engine
 but a naive one and no memory of the user; this version does it properly.
@@ -203,7 +203,7 @@ upstream in this project's kickoff:
   routing buffers. Containment at the graph boundary; per-module input
   sanitization remains defense-in-depth for a module's own state.
 
-**Layer 1 — the vetting gate (ricercar-features).** *No candidate is ever
+**Layer 1 — the vetting gate (auracle-features).** *No candidate is ever
 played live unvetted.* Audition plays **pre-rendered, LUFS-normalized
 buffers**; the standard-phrase render doubles as a health check producing a
 vet report: all-finite, peak ceiling, not-silent (RMS floor), DC fraction,
@@ -216,7 +216,7 @@ pathological region rather than repeatedly sampling it.
 
 **Layer 3 — the live path (free-play).** Only vetted patches are
 free-playable, and the compiled output chain is mandatory:
-`… → Limiter → StereoOutput` (limiter compiled in by `ricercar-grammar`, not
+`… → Limiter → StereoOutput` (limiter compiled in by `auracle-grammar`, not
 optional), on top of quiver's scatter sanitization. Parameter priors are
 bounded (V/Oct range, resonance, delay feedback), so the grammar can't even
 express the most degenerate settings.
@@ -234,17 +234,17 @@ actionable message.
 Core-library-first; every frontend is a thin shell.
 
 ```
-ricercar/
+auracle/
   crates/
-    ricercar-grammar    typed PCFG over quiver combinator terms; GenomePrior impl;
+    auracle-grammar    typed PCFG over quiver combinator terms; GenomePrior impl;
                         term → quiver Patch compiler; v1 palette
-    ricercar-features   standard-phrase headless rendering (quiver), LUFS norm,
+    auracle-features   standard-phrase headless rendering (quiver), LUFS norm,
                         φ_audio + φ_struct extraction
-    ricercar-taste      utility model (mixture-BLR), three likelihoods,
+    auracle-taste      utility model (mixture-BLR), three likelihoods,
                         (θ, z, τ) posterior via fugue; profile persistence
-    ricercar-session    two-loop engine, acquisition, candidate pool,
+    auracle-session    two-loop engine, acquisition, candidate pool,
                         observation log, taste profiles
-    ricercar-wasm       wasm-bindgen surface for the web app
+    auracle-wasm       wasm-bindgen surface for the web app
   apps/
     web                 first frontend: AudioWorklet playback, worker-based
                         candidate rendering, duel/grid/radio modes
@@ -279,10 +279,10 @@ All modes are emitters into the same observation stream:
 | # | Deliverable | Demo / gate |
 |---|---|---|
 | M0 | Workspace scaffold, CI | `cargo check` green |
-| M1 | `ricercar-grammar`: PCFG, palette, term→Patch compiler | Play random grammar samples (already fun) |
-| M2 | `ricercar-features`: phrase renderer, LUFS, feature vector | Feature vectors stable & reproducible for fixed seeds |
-| M3 | `ricercar-taste`: mixture-BLR (K=1), 3 likelihoods, **synthetic user** | Posterior recovers ground-truth θ*; regret shrinks |
-| M4 | `ricercar-session`: two-loop engine + acquisition | Headless closed loop vs synthetic user |
+| M1 | `auracle-grammar`: PCFG, palette, term→Patch compiler | Play random grammar samples (already fun) |
+| M2 | `auracle-features`: phrase renderer, LUFS, feature vector | Feature vectors stable & reproducible for fixed seeds |
+| M3 | `auracle-taste`: mixture-BLR (K=1), 3 likelihoods, **synthetic user** | Posterior recovers ground-truth θ*; regret shrinks |
+| M4 | `auracle-session`: two-loop engine + acquisition | Headless closed loop vs synthetic user |
 | M5 | WASM + web app: duel mode + bench | A human can teach it their taste |
 | M6 | Grid & radio modes; K>1 style discovery; named profiles | Styles discovered & pinnable |
 

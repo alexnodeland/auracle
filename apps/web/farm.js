@@ -1,4 +1,4 @@
-// RICERCAR render farm worker — a wasm instance and nothing else.
+// AURACLE render farm worker — a wasm instance and nothing else.
 //
 // It owns no Engine, no pool, no RNG and no session state. Its whole job is
 // `farm_render(tree, phrase) -> {features, samples}`, which is a pure function
@@ -90,13 +90,13 @@ self.onmessage = async (e) => {
   if (m.type !== "boot") return;
   port = m.port;
   try {
-    const glue = await import(m.glue || `./pkg/ricercar_wasm.js?v=${V}`);
+    const glue = await import(m.glue || `./pkg/auracle_wasm.js?v=${V}`);
     // `module` is the already-compiled WebAssembly.Module main shares across
     // every instance — one compile, N instantiations. When structured-cloning
     // it is unsupported the farm fetches the binary itself: N compiles and a
     // slower start, still correct.
     await glue.default({
-      module_or_path: m.module || new URL(m.url || `./pkg/ricercar_wasm_bg.wasm?v=${V}`, self.location.href),
+      module_or_path: m.module || new URL(m.url || `./pkg/auracle_wasm_bg.wasm?v=${V}`, self.location.href),
     });
     wasm = glue;
   } catch (err) {

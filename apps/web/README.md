@@ -1,4 +1,4 @@
-# Ricercar web app
+# Auracle web app
 
 A full instrument (Animoog-Z-style app frame): menu bar with three views,
 patch-bank sidebar, and a **playable keyboard** docked at the bottom — the
@@ -117,7 +117,7 @@ to a pinned `role="alert"` strip that stays until resolved.
   inlined behind a TextDecoder/TextEncoder polyfill — worklets have neither
   fetch nor text codecs) and transfers the **raw wasm bytes** for a
   synchronous in-worklet compile (a transferred `WebAssembly.Module` arrives
-  as a messageerror in some engines). `LivePoly` (ricercar-wasm) holds N
+  as a messageerror in some engines). `LivePoly` (auracle-wasm) holds N
   compiled copies of the patch — the same `compile()` path evolution uses,
   limiter included — with oldest-note stealing and silent-tail voice
   parking. Every workbench edit re-patches the live instrument.
@@ -141,7 +141,7 @@ to a pinned `role="alert"` strip that stays until resolved.
   engine worker — after which main is out of the data path and no audition
   buffer ever touches the UI thread. No nested workers (Safari shipped those
   only in 16.4), no SharedArrayBuffer, no COOP/COEP, no build or server
-  change. Override with `?farm=k` or `localStorage["ricercar-renderers"]`;
+  change. Override with `?farm=k` or `localStorage["auracle-renderers"]`;
   `0` is today's serial path exactly.
 
   **The pool is identical at every width, including 0.** Two properties make
@@ -244,8 +244,8 @@ to a pinned `role="alert"` strip that stays until resolved.
 - All feedback surfaces emit into one observation stream; the posterior
   re-fits **at most** every 6 duels, and only when the engine's own
   `status().needs_refit` says the between-fit importance updates have run out
-  of road — signalled by the wordmark's final **R**, which is the "seeking"
-  light (*ricercar*: to seek out) rather than a separate LED. The duel pair's
+  of road — signalled by the wordmark's final **E**, which is the "listening"
+  light (*auracle*: aural + oracle) rather than a separate LED. The duel pair's
   audio is requested ahead of the fit, so the cards are always audible while
   it runs. Profiles export the log **with** its standardizer.
 
@@ -273,7 +273,7 @@ on most machines.
 
 ```bash
 # build the wasm package into apps/web/pkg (needs rustup's toolchain, not Homebrew's)
-PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
+PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
 
 # serve (any static server; module workers require http, not file://)
 cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds

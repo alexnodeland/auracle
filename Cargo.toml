@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/ricercar-grammar",
-    "crates/ricercar-features",
-    "crates/ricercar-taste",
-    "crates/ricercar-session",
-    "crates/ricercar-wasm",
+    "crates/auracle-grammar",
+    "crates/auracle-features",
+    "crates/auracle-taste",
+    "crates/auracle-session",
+    "crates/auracle-wasm",
 ]
 
 [workspace.package]
@@ -13,7 +13,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Alex Nodeland"]
 license = "MIT"
-repository = "https://github.com/alexnodeland/ricercar"
+repository = "https://github.com/alexnodeland/auracle"
 
 # Everything the user waits on is render-bound, so release builds trade
 # compile time for codegen quality. `panic = "abort"` also drops unwinding
@@ -45,15 +45,15 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 
 # Intra-workspace
-ricercar-grammar = { path = "crates/ricercar-grammar", version = "0.1.0" }
-ricercar-features = { path = "crates/ricercar-features", version = "0.1.0" }
-ricercar-taste = { path = "crates/ricercar-taste", version = "0.1.0" }
-ricercar-session = { path = "crates/ricercar-session", version = "0.1.0" }
+auracle-grammar = { path = "crates/auracle-grammar", version = "0.1.0" }
+auracle-features = { path = "crates/auracle-features", version = "0.1.0" }
+auracle-taste = { path = "crates/auracle-taste", version = "0.1.0" }
+auracle-session = { path = "crates/auracle-session", version = "0.1.0" }
 
-# Working on quiver / fugue / fugue-evo alongside ricercar? Uncomment to use
+# Working on quiver / fugue / fugue-evo alongside auracle? Uncomment to use
 # sibling checkouts instead of the registry (must stay at the end of this
 # file — [patch.crates-io] is a top-level table):
-# Working on quiver / fugue / fugue-evo alongside ricercar? Uncomment to use
+# Working on quiver / fugue / fugue-evo alongside auracle? Uncomment to use
 # sibling checkouts instead of the registry (must stay at the end of this
 # file — [patch.crates-io] is a top-level table):
 # [patch.crates-io]

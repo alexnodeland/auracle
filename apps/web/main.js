@@ -1,4 +1,4 @@
-// RICERCAR — a full instrument. Main thread: app frame (PLAY/EVOLVE/TASTE),
+// AURACLE — a full instrument. Main thread: app frame (PLAY/EVOLVE/TASTE),
 // patch bank, the interactive rack, taste instruments, and the live keyboard
 // (AudioWorklet synthesis via live-audio.js). All engine compute (rendering,
 // MCMC, evolution) lives in worker.js; candidates are addressed by stable id.
@@ -162,7 +162,7 @@ function setLiveMuted(on) {
 // One record: {session: <engine SessionState JSON>, ui: {stars, cut, vol, oct, perf}}.
 function idbOpen() {
   return new Promise((resolve) => {
-    const req = indexedDB.open("ricercar", 1);
+    const req = indexedDB.open("auracle", 1);
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => resolve(null); // private mode etc: run without saves
@@ -191,6 +191,79 @@ async function idbDel(key) {
     tx.onerror = () => resolve();
   });
 }
+
+// ---------- the names this app used to have ----------
+// EVOSYNTH → RICERCAR → AURACLE. A rename is the app's problem, not the
+// player's: everything they saved under an older name is adopted on the next
+// boot, and nothing under the old name is deleted, so a rollback to a previous
+// build still finds its own state where it left it.
+
+/** Older IndexedDB names, newest first — a player who has both should be handed
+ *  the one they used last. */
+const LEGACY_DB_NAMES = ["ricercar", "evosynth"];
+
+/** Older localStorage prefixes, newest first. Every preference this app has
+ *  ever written is `<name>-<what>`, so a prefix covers all of them; `evosynth`
+ *  only ever wrote `evosynth-helped`, but the sweep costs the same. */
+const LEGACY_PREFIXES = ["ricercar-", "evosynth-"];
+
+/** The autosave held under a previous name, or null.
+ *
+ *  Opened *without* a version and with no upgrade path: this must read a
+ *  database that already exists and must never bring one into being. Opening it
+ *  as `open(name, 1)` + `onupgradeneeded` created an empty phantom DB for every
+ *  brand-new user, and left the connection open so it could never afterwards be
+ *  deleted — that bug is why this is a function and not two lines. */
+function legacyIdbState(name) {
+  return new Promise((resolve) => {
+    let req;
+    try {
+      req = indexedDB.open(name);
+    } catch (_) {
+      return resolve(null); // private mode etc.
+    }
+    req.onupgradeneeded = () => {
+      // Only fires if the DB did not exist; abort so it is not created.
+      try { req.transaction.abort(); } catch (_) {}
+      resolve(null);
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("kv")) { db.close(); return resolve(null); }
+      const tx = db.transaction("kv", "readonly").objectStore("kv").get("state");
+      tx.onsuccess = () => { const v = tx.result || null; db.close(); resolve(v); };
+      tx.onerror = () => { db.close(); resolve(null); };
+    };
+    req.onerror = () => resolve(null);
+  });
+}
+
+/** Copy every preference left under an older name onto the current one.
+ *
+ *  Never overwrites: a key already written under `auracle-` is this build's
+ *  answer and wins over any inheritance, and because the prefixes are swept
+ *  newest-first the more recent legacy name wins over the older one. */
+function adoptLegacyPrefs() {
+  try {
+    const keys = Object.keys(localStorage);
+    for (const prefix of LEGACY_PREFIXES) {
+      for (const k of keys) {
+        if (!k.startsWith(prefix)) continue;
+        const target = `auracle-${k.slice(prefix.length)}`;
+        if (localStorage.getItem(target) == null) {
+          localStorage.setItem(target, localStorage.getItem(k));
+        }
+      }
+    }
+  } catch (_) {} // private mode, or a quota that is already full: not fatal
+}
+
+// Here, at import time, and not in the boot IIFE at the foot of this file:
+// module-level state below reads these preferences directly (`hasPlayed`,
+// `layoutMode`, `lodMode`, `mapOn`, the node-bank blob…), and all of that runs
+// long before the IIFE does. Inherited state has to be in place first or the
+// player's layout comes back one boot late.
+adoptLegacyPrefs();
 
 // What the last restore had to mend, held from the `repaired` message until
 // the boot veil is down — see the two handlers, and `announceRepair`.
@@ -702,8 +775,8 @@ worker.onmessage = (e) => {
       if (m.restored > 0) {
         note(`Welcome back — ${m.restored} patches and your taste restored.`);
       } else if (
-        !localStorage.getItem("ricercar-warmed") &&
-        !localStorage.getItem("ricercar-warm-deferred")
+        !localStorage.getItem("auracle-warmed") &&
+        !localStorage.getItem("auracle-warm-deferred")
       ) {
         setTimeout(openWarmStart, 500);
       } else if (fillTarget > fillPool) {
@@ -922,7 +995,7 @@ worker.onmessage = (e) => {
     }
     case "fitted": {
       fitting = false;
-      $("wm-r").classList.remove("thinking");
+      $("wm-lamp").classList.remove("thinking");
       applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
@@ -935,7 +1008,7 @@ worker.onmessage = (e) => {
       break;
     }
     case "refined": {
-      $("wm-r").classList.remove("thinking");
+      $("wm-lamp").classList.remove("thinking");
       $("evolve-btn").disabled = false;
       $("evolve-btn").textContent = "evolve pool";
       // The pool is fixed-size: every accepted child evicts the patch the
@@ -1018,11 +1091,11 @@ worker.onmessage = (e) => {
         note(`${nameOf(m.subject)} on the bench`);
         // First patch on the bench: a one-time walkthrough of the gestures
         // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
-        if (!localStorage.getItem("ricercar-bench-tour")) {
+        if (!localStorage.getItem("auracle-bench-tour")) {
           $("bench-tour").classList.remove("hidden");
           $("bt-close").onclick = () => {
             $("bench-tour").classList.add("hidden");
-            localStorage.setItem("ricercar-bench-tour", "1");
+            localStorage.setItem("auracle-bench-tour", "1");
             refitRack();
           };
         }
@@ -1387,7 +1460,7 @@ worker.onmessage = (e) => {
     }
     case "evolved_from": {
       $("rack-evolve").disabled = false;
-      $("wm-r").classList.remove("thinking");
+      $("wm-lamp").classList.remove("thinking");
       const evolveEvicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
@@ -1496,7 +1569,7 @@ worker.onmessage = (e) => {
       const blob = new Blob([m.json], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "ricercar-profile.json";
+      a.download = "auracle-profile.json";
       a.click();
       URL.revokeObjectURL(a.href);
       break;
@@ -1516,7 +1589,7 @@ worker.onmessage = (e) => {
 };
 
 let status = { observations: 0, generation: 0 };
-let hasPlayed = !!localStorage.getItem("ricercar-played");
+let hasPlayed = !!localStorage.getItem("auracle-played");
 
 function applyStatus(st) {
   status = st;
@@ -1528,11 +1601,11 @@ function applyStatus(st) {
   // vote at all — after that it lives in ⋯ only.
   if (
     st.observations >= 3 &&
-    localStorage.getItem("ricercar-warm-deferred") &&
-    !localStorage.getItem("ricercar-warmed") &&
-    !localStorage.getItem("ricercar-warm-reoffered")
+    localStorage.getItem("auracle-warm-deferred") &&
+    !localStorage.getItem("auracle-warmed") &&
+    !localStorage.getItem("auracle-warm-reoffered")
   ) {
-    localStorage.setItem("ricercar-warm-reoffered", "1");
+    localStorage.setItem("auracle-warm-reoffered", "1");
     note("Want the fast lane? Picking 3 favourites teaches it ~20 picks’ worth.", {
       undo: openWarmStart,
       undoLabel: "pick 3 favourites",
@@ -1586,7 +1659,7 @@ function teachLearned() {
   if (!copy) return;
   teachTakeover = true;
   $("duel-mid").classList.add("learning");
-  $("wm-r").classList.add("thinking");
+  $("wm-lamp").classList.add("thinking");
   copy.innerHTML = `● it just learned — <b class="teach-link">see what changed ▸</b>`;
   const link = copy.querySelector(".teach-link");
   if (link) link.onclick = () => showView("taste");
@@ -1650,7 +1723,7 @@ function pulseOnce(el) {
 // First-run coach: the app invites a sound before it asks for a vote.
 let coachEl = null;
 function showCoach() {
-  if (hasPlayed || localStorage.getItem("ricercar-played") || coachEl) return;
+  if (hasPlayed || localStorage.getItem("auracle-played") || coachEl) return;
   coachEl = document.createElement("div");
   coachEl.className = "coach";
   coachEl.textContent = "Press A–L or tap a key — you’re already holding a synth.";
@@ -1664,7 +1737,7 @@ function firstNotePlayed() {
   }
   if (hasPlayed) return;
   hasPlayed = true;
-  localStorage.setItem("ricercar-played", "1");
+  localStorage.setItem("auracle-played", "1");
   renderNextStep();
 }
 
@@ -2853,7 +2926,7 @@ function downloadWav(samples, sampleRate) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
   const who = (liveLabelText || "take").replace(/[^\w-]+/g, "_").slice(0, 32);
-  a.download = `ricercar-${who}.wav`;
+  a.download = `auracle-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);
   note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`);
@@ -3440,7 +3513,7 @@ $("skip-duel").onclick = () => {
 };
 $("evolve-btn").onclick = () => {
   $("evolve-btn").disabled = true;
-  $("wm-r").classList.add("thinking");
+  $("wm-lamp").classList.add("thinking");
   note("breeding a generation toward your taste…");
   send({ type: "refine" });
 };
@@ -4102,7 +4175,7 @@ function endBankTour() {
   tourAt = -1;
   $("bank-tour").classList.add("hidden");
   document.querySelectorAll(".bank-filters .bf").forEach((b) => b.classList.remove("tour-lit"));
-  localStorage.setItem("ricercar-bank-toured", "1");
+  localStorage.setItem("auracle-bank-toured", "1");
 }
 
 $("bank-tour-btn").onclick = () => (tourAt >= 0 ? endBankTour() : startBankTour(0));
@@ -4114,8 +4187,8 @@ $("tour-skip").onclick = endBankTour;
 // generation actually lands. Offer the explanation then rather than at boot,
 // where it would be one more thing to dismiss before making a sound.
 function offerBankTourAfterFirstGeneration() {
-  if (localStorage.getItem("ricercar-bank-toured")) return;
-  localStorage.setItem("ricercar-bank-toured", "1");
+  if (localStorage.getItem("auracle-bank-toured")) return;
+  localStorage.setItem("auracle-bank-toured", "1");
   // `note` takes `undo`/`undoLabel`, not `label`/`run` — that is `alarm`'s
   // shape. Passing the wrong one rendered a bare toast with no button, so the
   // single designed entry point to the walkthrough was consumed silently and
@@ -4292,8 +4365,8 @@ function knobPos(mod, i, box) {
 // now; it gets its proper home beside the level-of-detail selector when that
 // lands, and `compact` becomes the export default after that.
 const LAYOUT_MODES = ["chain", "compact", "freeform"];
-let layoutMode = LAYOUT_MODES.includes(localStorage.getItem("ricercar-layout"))
-  ? localStorage.getItem("ricercar-layout")
+let layoutMode = LAYOUT_MODES.includes(localStorage.getItem("auracle-layout"))
+  ? localStorage.getItem("auracle-layout")
   : "chain";
 
 // The freeform grid, and the fixed inset `buildRack` lays content out at.
@@ -4769,7 +4842,7 @@ function adoptLayout(id, layout) {
   ffTrim();
   if (layoutMode !== "freeform") {
     layoutMode = "freeform";
-    try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+    try { localStorage.setItem("auracle-layout", layoutMode); } catch (_) {}
     syncLayoutBtn();
   }
   return map.size;
@@ -6804,7 +6877,7 @@ function updateEdgeFade(vw) {
 // override users always end up wanting). `auto` is a threshold on zoom rather
 // than on module count, because the thing that makes a knob unreadable is how
 // many pixels it got, not how many friends it has.
-let lodMode = localStorage.getItem("ricercar-lod") || "auto";
+let lodMode = localStorage.getItem("auracle-lod") || "auto";
 let lodApplied = "full";
 let relodRaf = null;
 
@@ -6873,7 +6946,7 @@ function syncLodBtn() {
 }
 $("rack-lod").onclick = () => {
   lodMode = lodMode === "auto" ? "full" : lodMode === "full" ? "compact" : "auto";
-  try { localStorage.setItem("ricercar-lod", lodMode); } catch (_) {}
+  try { localStorage.setItem("auracle-lod", lodMode); } catch (_) {}
   syncLodBtn();
   renderRack();
 };
@@ -6894,7 +6967,7 @@ syncLodBtn();
 // nothing is drawn at all for a coefficient that is not resolved — the same
 // law `nbPaintTheta` runs under, for the same reason: a tint without evidence
 // is a lie with a colour.
-let beliefOverlay = localStorage.getItem("ricercar-belief") === "1";
+let beliefOverlay = localStorage.getItem("auracle-belief") === "1";
 function syncBeliefBtn() {
   const b = $("rack-belief");
   if (!b) return;
@@ -6908,7 +6981,7 @@ function syncBeliefBtn() {
 }
 $("rack-belief").onclick = () => {
   beliefOverlay = !beliefOverlay;
-  try { localStorage.setItem("ricercar-belief", beliefOverlay ? "1" : "0"); } catch (_) {}
+  try { localStorage.setItem("auracle-belief", beliefOverlay ? "1" : "0"); } catch (_) {}
   syncBeliefBtn();
   renderRack();
   // A control whose whole effect can be "nothing visibly changed" owes the
@@ -7311,7 +7384,7 @@ const MM_H = 116;
 let mmT = null;        // {s, ox, oy} — rack units → map units
 let mmBuiltFor = null; // which rackBoxes the node rects were drawn from
 let mmMarkSig = "";    // …and which bookmarks the pips were drawn from
-let mapOn = localStorage.getItem("ricercar-map") === "1";
+let mapOn = localStorage.getItem("auracle-map") === "1";
 
 // ---- bookmarks (WS-9) ----
 // Nine places you can be, per patch. `shift+click` on the map stores the spot
@@ -7418,7 +7491,7 @@ $("pick-chip").querySelector(".pick-chip-x").onclick = () => {
 };
 $("rack-map-btn").onclick = () => {
   mapOn = !mapOn;
-  try { localStorage.setItem("ricercar-map", mapOn ? "1" : "0"); } catch (_) {}
+  try { localStorage.setItem("auracle-map", mapOn ? "1" : "0"); } catch (_) {}
   syncMapBtn();
 };
 
@@ -9298,7 +9371,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
 
 function startEvolveFrom(id) {
   $("rack-evolve").disabled = true;
-  $("wm-r").classList.add("thinking");
+  $("wm-lamp").classList.add("thinking");
   note("⚡ evolving around the locked controls…");
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
@@ -9504,7 +9577,7 @@ function syncLayoutBtn() {
 }
 $("rack-layout").onclick = () => {
   layoutMode = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
-  try { localStorage.setItem("ricercar-layout", layoutMode); } catch (_) {}
+  try { localStorage.setItem("auracle-layout", layoutMode); } catch (_) {}
   syncLayoutBtn();
   renderRack();
 };
@@ -10492,7 +10565,7 @@ function renderTray() {
 // 6px drop target it cannot miss. Press-drag from a chip still works as the
 // expert path.
 
-const NB_STORE = "ricercar-nodebank";
+const NB_STORE = "auracle-nodebank";
 const nbState = {
   collapsed: false,
   width: 0, // 0 = follow the CSS clamp
@@ -10811,9 +10884,9 @@ function specDockHeight(px) {
 (function initDockResize() {
   const h = $("dock-resize");
   if (!h) return;
-  const stored = Number(localStorage.getItem("ricercar-spec-h"));
+  const stored = Number(localStorage.getItem("auracle-spec-h"));
   if (Number.isFinite(stored) && stored > 0) specDockHeight(stored);
-  const save = (v) => { try { localStorage.setItem("ricercar-spec-h", String(v)); } catch (_) {} };
+  const save = (v) => { try { localStorage.setItem("auracle-spec-h", String(v)); } catch (_) {} };
   h.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
     const startY = ev.clientY;
@@ -13353,7 +13426,7 @@ let scopeLast = 0;
 // through the same merge-on-load `nbState` uses: unknown keys in storage are
 // ignored, missing keys keep their default, and a shipped default can change
 // without stranding anyone's saved settings.
-const SCOPE_STORE = "ricercar-scope";
+const SCOPE_STORE = "auracle-scope";
 const scopeState = {
   mode: "scope",     // off | scope | spectrum
   tap: "pre",        // pre | post  — the instrument, or what you hear
@@ -14429,7 +14502,7 @@ $("taste-reset-btn").onclick = () => {
     run: async () => {
       clearTimeout(saveTimer); // a pending autosave would rewrite the record
       await idbDel("state");
-      for (const k of ["ricercar-warmed", "ricercar-warm-deferred", "ricercar-warm-reoffered", "ricercar-played", "ricercar-bench-tour"])
+      for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour"])
         localStorage.removeItem(k);
       location.reload();
     },
@@ -14445,20 +14518,25 @@ $("taste-reset-btn").onclick = () => {
 /** The share payload, for every file the app can write.
  *
  *  Extracted from the JSON export because there are now three carriers for it
- *  — a `.ricercar.json`, a PNG `tEXt` chunk and an SVG `<metadata>` — and the
+ *  — a `.auracle.json`, a PNG `tEXt` chunk and an SVG `<metadata>` — and the
  *  one thing that must never differ between them is what is inside. A picture
  *  that loaded as a slightly different patch than the sidecar beside it would
  *  be worse than no picture at all. */
 function patchSidecar() {
   if (!wb.tree) return null;
   const name = wb.subjectId != null ? nameOf(wb.subjectId) : "patch";
-  const body = { ricercar_patch: 1, name, tree: wb.tree };
+  // `auracle_patch`, formerly `ricercar_patch`: a marker, not a gate. Nothing
+  // reads it — `loadPatchData` decides what a file is from its *shape* — so a
+  // `.ricercar.json` written by an older build still opens, and this stays a
+  // human-readable "what is this file" line for anyone who opens it in an
+  // editor.
+  const body = { auracle_patch: 1, name, tree: wb.tree };
   // The layout rides along (WS-4 §8), keyed by the same node identities the
   // tree itself now carries — so a patch you send someone arrives arranged the
   // way you arranged it. Purely additive: the field is absent when nothing has
   // been placed by hand, and an older build that has never heard of `layout`
   // ignores it and loads the tree exactly as before, which is why this is
-  // still `ricercar_patch: 1`.
+  // still `auracle_patch: 1`.
   // `ffPlaces`, not `ffStore`: a patch that inherited its layout from the one
   // it was bred from has that layout even if it has not been drawn in freeform
   // since. Nothing placed by hand at all means no `layout` key — a chain-mode
@@ -14505,7 +14583,7 @@ $("patch-export-btn").onclick = () => {
   if (!body) return note("nothing on the bench to export");
   saveBlob(
     new Blob([JSON.stringify(body, null, 1)], { type: "application/json" }),
-    `${patchFileStem(body)}.ricercar.json`,
+    `${patchFileStem(body)}.auracle.json`,
   );
 };
 
@@ -14554,9 +14632,12 @@ async function readPatchFile(file) {
   const isPng = head.length === 8 && PNG_SIG.every((b, i) => head[i] === b);
   let json = null;
   if (isPng) {
-    json = pngReadText(buf, PATCH_KEYWORD);
+    for (const kw of PATCH_KEYWORDS_IN) {
+      json = pngReadText(buf, kw);
+      if (json != null) break;
+    }
     if (json == null) {
-      note("that PNG has no patch inside it — only images ricercar exported carry one");
+      note("that PNG has no patch inside it — only images auracle exported carry one");
       return null;
     }
   } else {
@@ -14564,7 +14645,7 @@ async function readPatchFile(file) {
     if (/^\s*</.test(text)) {
       json = svgReadPatch(text);
       if (json == null) {
-        note("that SVG has no patch inside it — only images ricercar exported carry one");
+        note("that SVG has no patch inside it — only images auracle exported carry one");
         return null;
       }
     } else {
@@ -14607,7 +14688,7 @@ $("patch-import-input").onchange = async (e) => {
 // shipping a hand-copied subset of style.css that drifts the first time
 // anyone edits a colour.
 //
-// The second is the round trip. The same `{ricercar_patch:1,…}` sidecar the
+// The second is the round trip. The same `{auracle_patch:1,…}` sidecar the
 // JSON export writes rides *inside* the image — a PNG `tEXt` chunk, an SVG
 // `<metadata>` element — and the import path sniffs for it. A screenshot
 // posted to a forum is then a patch someone can open, which is a share loop
@@ -14616,7 +14697,12 @@ $("patch-import-input").onchange = async (e) => {
 /** The keyword the sidecar rides under, in both carriers. PNG `tEXt` keywords
  *  are Latin-1, 1–79 bytes, and conventionally lowercase-ish; this one is also
  *  what an `exiftool` dump will print, so it is a word and not a UUID. */
-const PATCH_KEYWORD = "ricercar";
+const PATCH_KEYWORD = "auracle";
+/** Keywords a picture may already carry, because it was exported by a build
+ *  that had a different name. Written under `PATCH_KEYWORD`, read under any of
+ *  these: a patch someone exported and posted is a file that outlives the name
+ *  the app had when they made it. */
+const PATCH_KEYWORDS_IN = [PATCH_KEYWORD, "ricercar"];
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 // The padding, in rack user units, that surrounds an exported patch on all
@@ -14628,7 +14714,7 @@ const EXPORT_PAD = 26;
 // merge-on-load rule (an unknown key in the saved blob is ignored, a missing
 // one keeps its default) — a settings panel you have to re-answer on every
 // reload is a settings panel that becomes a button with extra steps.
-const IMAGE_STORE = "ricercar-image-export";
+const IMAGE_STORE = "auracle-image-export";
 const imageState = {
   scope: "all",        // all | sel
   scale: 2,            // 1 | 2 | 3
@@ -15005,7 +15091,7 @@ async function buildExportSvg(rack, opts) {
   // otherwise produce a file no parser will open.
   if (sidecar) {
     const md = document.createElementNS(SVG_NS, "metadata");
-    md.setAttribute("id", "ricercar-patch");
+    md.setAttribute("id", "auracle-patch");
     md.textContent = JSON.stringify(sidecar);
     svg.insertBefore(md, svg.firstChild);
   }
@@ -15140,7 +15226,12 @@ function svgReadPatch(text) {
   try {
     const doc = new DOMParser().parseFromString(text, "image/svg+xml");
     if (doc.querySelector("parsererror")) return null;
-    const md = doc.querySelector("metadata#ricercar-patch") || doc.querySelector("metadata");
+    // Older exports wrote `metadata#ricercar-patch`; the bare `metadata`
+    // fallback would catch those anyway, but naming them keeps the reason the
+    // fallback is safe visible instead of accidental.
+    const md = doc.querySelector("metadata#auracle-patch") ||
+      doc.querySelector("metadata#ricercar-patch") ||
+      doc.querySelector("metadata");
     const body = md?.textContent?.trim();
     return body && body.startsWith("{") ? body : null;
   } catch (_) {
@@ -15532,7 +15623,7 @@ function warmPreviewLoaded(id, evicted) {
 
 function closeWarmStart(mark = true) {
   $("warmstart").classList.add("hidden");
-  if (mark) localStorage.setItem("ricercar-warmed", "1");
+  if (mark) localStorage.setItem("auracle-warmed", "1");
 }
 
 $("warm-skip").onclick = () => {
@@ -15543,8 +15634,8 @@ $("warm-skip").onclick = () => {
   // highest-value-per-second elicitation in the product, so it is re-offered
   // once after a few duels and stays reachable from the ⋯ menu.
   closeWarmStart(false);
-  localStorage.setItem("ricercar-warm-deferred", "1");
-  localStorage.setItem("ricercar-helped", "1");
+  localStorage.setItem("auracle-warm-deferred", "1");
+  localStorage.setItem("auracle-helped", "1");
   note("Press a key to hear it. The ⋯ menu has the full keyboard map.");
 };
 
@@ -15590,7 +15681,7 @@ function warmPresetLoaded(index, id) {
   warmLoaded = null;
   send({ type: "fit" });
   fitting = true;
-  $("wm-r").classList.add("thinking");
+  $("wm-lamp").classList.add("thinking");
   note(`${n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
   if (first != null) openOnBench(first);
 }
@@ -15630,7 +15721,7 @@ $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {
   showHelp(false);
-  localStorage.setItem("ricercar-helped", "1");
+  localStorage.setItem("auracle-helped", "1");
 };
 $("help").addEventListener("click", (e) => {
   if (e.target === $("help")) showHelp(false);
@@ -15674,7 +15765,7 @@ window.addEventListener("resize", () => {
 function farmWidth() {
   const override =
     new URLSearchParams(location.search).get("farm") ??
-    localStorage.getItem("ricercar-renderers");
+    localStorage.getItem("auracle-renderers");
   if (override != null && override !== "") {
     const n = Number(override);
     if (Number.isFinite(n)) return Math.max(0, Math.min(8, Math.floor(n)));
@@ -15706,12 +15797,12 @@ async function spawnFarm() {
 
   let mod = null;
   try {
-    mod = await WebAssembly.compileStreaming(fetch(`./pkg/ricercar_wasm_bg.wasm?v=${BUILD}`));
+    mod = await WebAssembly.compileStreaming(fetch(`./pkg/auracle_wasm_bg.wasm?v=${BUILD}`));
     if (!canShareModule(mod)) mod = null;
   } catch (err) {
     // No shared module: the workers fetch it themselves. Slower start, and
     // nothing else changes.
-    console.warn("[ricercar] shared wasm module unavailable:", err);
+    console.warn("[auracle] shared wasm module unavailable:", err);
     mod = null;
   }
 
@@ -15739,8 +15830,8 @@ async function spawnFarm() {
         {
           type: "boot",
           module: mod,
-          url: `./pkg/ricercar_wasm_bg.wasm?v=${BUILD}`,
-          glue: `./pkg/ricercar_wasm.js?v=${BUILD}`,
+          url: `./pkg/auracle_wasm_bg.wasm?v=${BUILD}`,
+          glue: `./pkg/auracle_wasm.js?v=${BUILD}`,
           port: ch.port2,
           build: BUILD,
         },
@@ -15750,7 +15841,7 @@ async function spawnFarm() {
       ports.push(ch.port1);
     }
   } catch (err) {
-    console.warn("[ricercar] farm setup failed; filling serially:", err);
+    console.warn("[auracle] farm setup failed; filling serially:", err);
     for (const w of farmWorkers) {
       try { w.terminate(); } catch (_) {}
     }
@@ -15791,36 +15882,19 @@ bootMidi();
   try {
     farm = await spawnFarm();
   } catch (err) {
-    console.warn("[ricercar] farm unavailable; filling serially:", err);
+    console.warn("[auracle] farm unavailable; filling serially:", err);
   }
   let saved = await idbGet("state");
   if (!saved) {
-    // One-time migration: this app used to be called EVOSYNTH — adopt any
-    // save left behind under the old name so nobody loses their bank.
-    saved = await new Promise((resolve) => {
-      // Open *without* a version, and with no upgrade handler: this must
-      // read a database that already exists and must never bring one into
-      // being. Opening it with `open(name, 1)` + `onupgradeneeded` created an
-      // empty phantom `evosynth` DB for every brand-new user, and left the
-      // connection open so it could never afterwards be deleted.
-      const req = indexedDB.open("evosynth");
-      req.onupgradeneeded = () => {
-        // Only fires if the DB did not exist; abort so it is not created.
-        try { req.transaction.abort(); } catch (_) {}
-        resolve(null);
-      };
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("kv")) { db.close(); return resolve(null); }
-        const tx = db.transaction("kv", "readonly").objectStore("kv").get("state");
-        tx.onsuccess = () => { const v = tx.result || null; db.close(); resolve(v); };
-        tx.onerror = () => { db.close(); resolve(null); };
-      };
-      req.onerror = () => resolve(null);
-    });
-    if (saved) idbPut("state", saved);
+    // One-time migration: this app has been called EVOSYNTH and RICERCAR before
+    // it was called AURACLE — adopt any save left behind under an older name so
+    // nobody loses their bank. Newest legacy name first: a player who has both
+    // should be handed the one they used last.
+    for (const legacy of LEGACY_DB_NAMES) {
+      saved = await legacyIdbState(legacy);
+      if (saved) { idbPut("state", saved); break; }
+    }
   }
-  if (localStorage.getItem("evosynth-helped")) localStorage.setItem("ricercar-helped", "1");
   if (saved && saved.ui) {
     // Restore UI prefs before the engine finishes booting.
     for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);

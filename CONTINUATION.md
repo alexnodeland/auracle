@@ -252,7 +252,7 @@ The learning loop was invisible where it mattered: the first six votes produced
 no pixel change anywhere, and the only "it learned" signal was an 8px LED that
 flashed too fast to catch in 8 of 8 samples. Replaced by a teaching meter that
 never goes blank, a takeover beat at the refit, surprise-first forecast copy, and
-the wordmark's final **R** as the seeking light (*ricercar*: to seek out).
+the wordmark's final letter as the listening light (*auracle*: aural + oracle).
 `⌖ promote to play` rendered at **0px width**, severing the duel→bench path.
 `cut` deleted silently and irreversibly; it now holds the observation for the
 length of the undo window rather than logging a kill and compensating with a
@@ -336,7 +336,7 @@ gate now averages 5 seeds with loose per-seed floors, and runs at the
 examples are the reproduction commands.
 
 **quiver-dsp 0.2.0 is RELEASED**: PR alexnodeland/quiver#38 merged, tag
-v0.2.0, crates.io publish + GitHub release succeeded; ricercar consumes the
+v0.2.0, crates.io publish + GitHub release succeeded; auracle consumes the
 registry crate (byte-identical features re-verified against the registry
 tarball). One loose end: **npm publish failed with EOTP** — the npm account
 requires a 2FA one-time password CI cannot supply; fix is an npm Automation
@@ -382,7 +382,7 @@ The quiver branch memoizes every parameter-derived transcendental in module
 `tick()`s (recompute-only-on-input-change, bit-pattern keys, forced-recompute
 twin tests prove hit ≡ miss ≡ original). It is NOT yet published: the
 workspace carries a TEMPORARY `[patch.crates-io]` at the end of `Cargo.toml`
-pointing quiver-dsp at the sibling checkout. Before committing ricercar,
+pointing quiver-dsp at the sibling checkout. Before committing auracle,
 either publish quiver-dsp 0.1.2 from that branch and bump the dependency, or
 keep the patch deliberately.
 
@@ -502,7 +502,7 @@ which would kill the whole keyboard handler. Optional-chained.
 
 ### Uncommitted
 
-Nothing in this pass is committed. `crates/ricercar-session/src/{naming,calib,migrate}.rs`
+Nothing in this pass is committed. `crates/auracle-session/src/{naming,calib,migrate}.rs`
 and `apps/web/fonts/` are **untracked** — a stray `git checkout` during the pass
 already reverted `compile.rs`, `audio.rs` and `structural.rs` once (recovered).
 A tree snapshot sits in the session scratchpad.
@@ -739,7 +739,7 @@ phrase-vs-noodling mismatch.
 
 # (pass 2) — the instrument
 
-## Pass 2 (playtest-2 response): Ricercar is now a playable instrument
+## Pass 2 (playtest-2 response): Auracle is now a playable instrument
 
 User feedback: "this is a modular synthesizer — people will want to PLAY it";
 virtual keyboard + computer keys; patch is the main screen; no scrolling;
@@ -749,7 +749,7 @@ docked keyboard), **everything live** (duel cards load into the live synth;
 phrase button kept for fair A/B stimulus).
 
 What shipped:
-- `ricercar-wasm/src/live.rs` — `LivePoly`: N compiled copies of one patch
+- `auracle-wasm/src/live.rs` — `LivePoly`: N compiled copies of one patch
   (same `compile()` path as evolution, limiter included), MIDI note_on/off
   with oldest-note stealing, legato steal past N held notes, **silent-tail
   voice parking** (|L|+|R| < 1e-6 for 4096 frames → stop ticking). Native
@@ -786,7 +786,7 @@ Prior notes (pass 1) follow — still accurate for the engine layer.
 
 Working doc for resuming after context compaction. Durable design lives in
 `DESIGN.md` (canonical); lineage/decisions pointer in Claude memory
-(`ricercar-lineage`). This file: exact state, gotchas, next moves. Delete
+(`auracle-lineage`). This file: exact state, gotchas, next moves. Delete
 when stale.
 
 ## Where things stand
@@ -840,16 +840,16 @@ directions. `responsibilities(φ)` = posterior P(lens k is φ's argmax);
 
 ## What lives where (deltas from M5)
 
-- `ricercar-grammar`: + `describe.rs` (RackDescription: modules/knobs/wires,
+- `auracle-grammar`: + `describe.rs` (RackDescription: modules/knobs/wires,
   every knob addr is a live trace site — pinned by
   `rack_description_addresses_are_live`), + `edit.rs` (`set_param` via trace
   roundtrip; structural sites rejected), + `diff.rs` (`tree_diff` in
   trace-address terms, display-formatted values).
-- `ricercar-taste`: max-of-experts model (above); `TasteSample` lost
+- `auracle-taste`: max-of-experts model (above); `TasteSample` lost
   `styles`/`weights` fields; `utility_mix`, `prob_prefers(a,b)` (no style
   arg), `aligned()`, `responsibilities`, `style_share`;
   `MixtureSyntheticUser` (max-utility ground truth).
-- `ricercar-session`: `Candidate.id` (stable, u64) + `find(id)`; `Origin`
+- `auracle-session`: `Candidate.id` (stable, u64) + `find(id)`; `Origin`
   {Prior,Refined,Edited} replaced `refined: bool`; `LineageEvent` +
   `Engine.lineage`/`generation`; `refine_from(seed_id, locked)`;
   `commit_edit(original, tree, as_improvement)` (edited patches always land,
@@ -858,7 +858,7 @@ directions. `responsibilities(φ)` = posterior P(lens k is φ's argmax);
   re-standardizes the pool); `map.rs` = `taste_map()` (top-2 PCA by power
   iteration, deterministic start, pool + ≤400 history ghosts). K=3 default
   (`SessionConfig.k_styles`).
-- `ricercar-wasm`: id-based API (ids as **u32** over the boundary —
+- `auracle-wasm`: id-based API (ids as **u32** over the boundary —
   wasm-bindgen maps u64→BigInt, avoid); workbench (`edit_begin/param/
   render/describe/commit/cancel`, vet-withholds audio on failure);
   `refine_from(id, locks_json)`; `taste_map/styles/lineage`;
@@ -890,7 +890,7 @@ directions. `responsibilities(φ)` = posterior P(lens k is φ's argmax);
 
 ```bash
 cargo test --workspace --release
-PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/ricercar-wasm --target web --release --out-dir ../../apps/web/pkg
+PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
 cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds
 ```
 

@@ -1,0 +1,41 @@
+[package]
+name = "auracle-wasm"
+description = "wasm-bindgen surface over auracle-session for the web app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+auracle-session = { path = "../auracle-session", version = "0.1.0" }
+auracle-features = { path = "../auracle-features", version = "0.1.0" }
+auracle-taste = { path = "../auracle-taste", version = "0.1.0" }
+auracle-grammar = { path = "../auracle-grammar", version = "0.1.0" }
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+# wasm32-unknown-unknown entropy shim (rand → getrandom); we always seed
+# explicitly, but the js feature is required for the crate to compile at all.
+getrandom = { version = "0.2", features = ["js"] }
+
+# Post-link optimization. The explicit --enable-* set matches what rustc's
+# wasm32-unknown-unknown output already uses, so wasm-opt neither adds nor
+# forbids features — it only optimizes. Never add --fast-math: it licenses
+# value-changing float rewrites, and (term, spec) → bit-identical samples is
+# a contract (see auracle-features/src/render.rs).
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = [
+    "-O3",
+    "--enable-reference-types",
+    "--enable-multivalue",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int",
+    "--enable-sign-ext",
+]
