@@ -1,0 +1,230 @@
+/* AURACLE docs — the token layer, shared by /docs and /reference.
+ *
+ * This file *replaces* mdBook's own variables.css. mdBook merges a custom
+ * theme with its defaults file-by-file, so everything not shipped in
+ * `www/theme/` (general.css, chrome.css, book.js, the search machinery) is
+ * still mdBook's — which is deliberate. The sidebar, the resize handle and the
+ * elasticlunr search are working code with no design opinion worth forking;
+ * what they need from us is colour, and this is where colour lives.
+ *
+ * The palette is the instrument's, and it carries the app's own three laws
+ * (apps/web/style.css states them at length):
+ *
+ *   1. TEXT TIER vs STROKE TIER. Each phosphor exists twice. `*-dim` is the
+ *      text tier and clears 4.5:1 on its background; `*-deep` is for strokes
+ *      and fills, where contrast rules do not apply. One token cannot do both
+ *      jobs, and the app has the scars to prove it.
+ *   2. TRACKING LAW. Uppercase gets tracking. Lowercase and mono get none.
+ *   3. NO OFF-SYSTEM COLOUR. Every accent is signal-green or mind-amber.
+ *      Slate blues and pinks read as "generic docs site" and dissolve the
+ *      phosphor law — which is the entire visual argument that this
+ *      documentation belongs to that instrument.
+ *
+ * Green means *sound* and amber means *the model's mind*, exactly as in the
+ * app. In prose that maps onto: green is the interactive colour (links, code),
+ * amber is the orienting one (where you are, what to be careful about). A
+ * reader who has used the app already knows this, and a reader who has not
+ * learns it here before they get there.
+ *
+ * ## Two themes, not six
+ *
+ * mdBook ships five themes plus Auto. The instrument is dark-only and says so
+ * (`color-scheme: dark`), but documentation gets read in daylight and printed,
+ * which the instrument never is — so there are exactly two: `coal` is the rack
+ * and `light` is paper. They keep mdBook's own theme ids so none of its
+ * JavaScript has to be touched; `index.hbs` relabels the picker to "Rack" and
+ * "Paper" and drops the other three buttons (mdBook's book.js derives its
+ * theme list from the buttons that are actually present, so removing them is
+ * safe and removes the dead ids from localStorage's allowed set).
+ *
+ * Paper is a warm ink-on-stock scheme rather than an inverted rack: flipping a
+ * phosphor palette to light gives you glowing green links on white, which is
+ * how a CRT looks when it is broken. It keeps the *hues* and re-derives the
+ * values against a light ground.
+ */
+
+:root {
+    /* Layout. Wider than mdBook's 750px default: the reference's tables run to
+       five columns of feature names, and its display equations are set at
+       KaTeX's natural size rather than shrunk to fit. */
+    --sidebar-target-width: 310px;
+    --sidebar-width: min(var(--sidebar-target-width), 80vw);
+    --sidebar-resize-indicator-width: 8px;
+    --sidebar-resize-indicator-space: 2px;
+    --page-padding: 18px;
+    --content-max-width: 860px;
+    --menu-bar-height: 48px;
+    --searchbar-margin-block-start: 5px;
+
+    /* The instrument's three faces, self-hosted — see fonts/README.md for why
+       a local-only stack is a coin flip on the reader's machine. Jost for
+       prose, Plex Mono for anything that is a value or an identifier,
+       Newsreader italic for the voice in which the product speaks about
+       itself. */
+    --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+    --mono-font: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+
+    --code-font-size: 0.86em;
+}
+
+/* ─── RACK — the dark theme, and the default ───────────────────────────── */
+
+html.coal {
+    --rack: #0c0d10;
+    --panel: #171a1f;
+    --panel-hi: #1d2127;
+    --bezel: #07080a;
+    --hairline: #292e36;
+
+    /* silk — warm silkscreen ink */
+    --silk: #d9d4c8;        /* 13.1:1 on the rack */
+    --silk-dim: #9a958a;    /*  5.9:1 — every dimmed *text* */
+    --silk-mute: #6f6c63;   /*  non-text only: rules, disabled glyphs */
+
+    /* green phosphor — sound */
+    --phos-a: #8ef0b1;      /* 14.1:1 */
+    --phos-a-dim: #63a97c;  /*  5.2:1 */
+    --phos-a-deep: #3d6a4d; /*  strokes and fills only */
+
+    /* amber phosphor — the model's mind */
+    --phos-b: #ffb454;      /* 11.0:1 */
+    --phos-b-dim: #b8823c;  /*  5.4:1 */
+    --phos-b-deep: #7a5526; /*  strokes and fills only */
+
+    --led-red: #ff5747;
+
+    --bg: var(--rack);
+    --fg: var(--silk);
+
+    --sidebar-bg: #0a0b0e;
+    --sidebar-fg: #b3aea3;
+    --sidebar-non-existant: var(--silk-mute);
+    --sidebar-active: var(--phos-b);
+    --sidebar-spacer: var(--hairline);
+
+    --scrollbar: #3a3f47;
+
+    --icons: #6f6c63;
+    --icons-hover: var(--silk);
+
+    --links: var(--phos-a);
+    --inline-code-color: var(--phos-a-dim);
+
+    --theme-popup-bg: #14161a;
+    --theme-popup-border: var(--hairline);
+    --theme-hover: #1d2127;
+
+    --quote-bg: #12151a;
+    --quote-border: var(--hairline);
+
+    --warning-border: var(--phos-b);
+
+    --table-border-color: var(--hairline);
+    --table-header-bg: #1a1e24;
+    --table-alternate-bg: #101318;
+
+    --searchbar-border-color: var(--hairline);
+    --searchbar-bg: #14161a;
+    --searchbar-fg: var(--silk);
+    --searchbar-shadow-color: var(--phos-b-deep);
+    --searchresults-header-fg: var(--silk-dim);
+    --searchresults-border-color: var(--hairline);
+    --searchresults-li-bg: #12151a;
+    --search-mark-bg: var(--phos-b-deep);
+
+    --footnote-highlight: var(--phos-b-deep);
+    --overlay-bg: rgba(7, 8, 10, 0.62);
+
+    --color-scheme: dark;
+
+    /* mdBook tints the clipboard button with a filter rather than a colour.
+       These land on silk-dim at rest and silk on hover, matching --icons. */
+    --copy-button-filter: invert(66%) sepia(9%) saturate(279%) hue-rotate(9deg) brightness(93%) contrast(88%);
+    --copy-button-filter-hover: invert(92%) sepia(10%) saturate(268%) hue-rotate(2deg) brightness(101%) contrast(87%);
+
+    /* Local additions the layer in fonts/auracle.css reads. */
+    --lift: inset 1px 1px 0 rgba(255, 255, 255, 0.08);
+    --cast: 0 3px 8px rgba(0, 0, 0, 0.5);
+    --code-bg: #0f1116;
+    --kbd-bg: #1d2127;
+}
+
+/* ─── PAPER — the light theme ──────────────────────────────────────────── */
+
+html.light {
+    /* Warm stock rather than white: the whole palette is warm, and #fff under
+       these hues reads blue by contrast. */
+    --paper: #f7f4ed;
+    --panel: #efebe1;
+    --panel-hi: #e7e2d6;
+    --hairline: #d8d2c4;
+
+    --silk: #22242a;        /* 13.9:1 on paper */
+    --silk-dim: #5c5a54;    /*  6.4:1 */
+    --silk-mute: #8a867c;   /*  non-text only */
+
+    /* The same two hues, re-derived against a light ground. Both clear AA for
+       body text; the `-deep` tiers stay stroke-only as the law requires. */
+    --phos-a: #1c6b41;      /* 5.6:1 — the interactive colour */
+    --phos-a-dim: #2f7d52;  /* 4.6:1 */
+    --phos-a-deep: #96c4a9;
+
+    --phos-b: #8a5510;      /* 5.9:1 */
+    --phos-b-dim: #9c6620;  /* 4.8:1 */
+    --phos-b-deep: #d9b483;
+
+    --led-red: #b3271a;
+
+    --bg: var(--paper);
+    --fg: var(--silk);
+
+    --sidebar-bg: #efebe1;
+    --sidebar-fg: #3f3e3a;
+    --sidebar-non-existant: var(--silk-mute);
+    --sidebar-active: var(--phos-b);
+    --sidebar-spacer: var(--hairline);
+
+    --scrollbar: #bdb7a8;
+
+    --icons: #8a867c;
+    --icons-hover: var(--silk);
+
+    --links: var(--phos-a);
+    --inline-code-color: #8a3a10;
+
+    --theme-popup-bg: #fffdf8;
+    --theme-popup-border: var(--hairline);
+    --theme-hover: var(--panel-hi);
+
+    --quote-bg: #efebe1;
+    --quote-border: var(--hairline);
+
+    --warning-border: var(--phos-b);
+
+    --table-border-color: var(--hairline);
+    --table-header-bg: #e7e2d6;
+    --table-alternate-bg: #f2eee5;
+
+    --searchbar-border-color: var(--hairline);
+    --searchbar-bg: #fffdf8;
+    --searchbar-fg: var(--silk);
+    --searchbar-shadow-color: var(--phos-b-deep);
+    --searchresults-header-fg: var(--silk-dim);
+    --searchresults-border-color: var(--hairline);
+    --searchresults-li-bg: #f2eee5;
+    --search-mark-bg: #f2d9a8;
+
+    --footnote-highlight: var(--phos-b-deep);
+    --overlay-bg: rgba(34, 36, 42, 0.35);
+
+    --color-scheme: light;
+
+    --copy-button-filter: invert(52%) sepia(6%) saturate(233%) hue-rotate(9deg) brightness(96%) contrast(88%);
+    --copy-button-filter-hover: invert(10%) sepia(9%) saturate(637%) hue-rotate(191deg) brightness(96%) contrast(92%);
+
+    --lift: inset 1px 1px 0 rgba(255, 255, 255, 0.7);
+    --cast: 0 2px 6px rgba(34, 36, 42, 0.12);
+    --code-bg: #f0ece2;
+    --kbd-bg: #fffdf8;
+}

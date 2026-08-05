@@ -1,0 +1,20 @@
+<!-- Shared <head> additions for both books, injected by mdBook.
+
+     NOTE for anyone editing this file: handlebars parses partial syntax even
+     inside an HTML comment, so writing the injection point's own name here
+     with braces around it fails the build with "Can not include current
+     template in partial". Refer to it in prose, never in syntax.
+
+     Only things a page cannot carry itself: colour-scheme advertisement, so
+     form controls and scrollbars match the theme before any CSS parses, and
+     the social-card metadata that makes a pasted docs link legible in a chat
+     window. The per-page description is mdBook's own meta tag, fed by the
+     `description` key in book.toml. -->
+
+<meta name="color-scheme" content="dark light">
+
+<meta property="og:site_name" content="Auracle">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ description }}">
+<meta name="twitter:card" content="summary">

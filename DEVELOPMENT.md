@@ -2,7 +2,8 @@
 
 This document is for people working **on** Auracle (rather than playing it).
 For the design rationale and decisions log see [`DESIGN.md`](./DESIGN.md); for
-the web app's internals see [`apps/web/README.md`](./apps/web/README.md).
+the web app's internals see [`apps/web/README.md`](./apps/web/README.md); for the
+documentation site see [`www/README.md`](./www/README.md).
 
 ## Layout
 
@@ -15,6 +16,7 @@ crates/
   auracle-session/    two-loop engine, acquisition, persistence
   auracle-wasm/       WasmEngine (worker) + LivePoly (AudioWorklet)
 apps/web/              the instrument (vanilla JS, no build step)
+www/                   the site: landing page + two mdBooks + the shared theme
 ```
 
 The in-house foundations come from **crates.io** (`quiver-dsp`,
@@ -29,8 +31,25 @@ alongside Auracle, put sibling checkouts at `../quiver` and
 ```bash
 make check          # fmt-check + clippy -D warnings + release tests (CI gate)
 make wasm           # rebuild apps/web/pkg after any Rust change
-make serve          # http://localhost:8642
+make serve          # http://localhost:8642 — just the instrument
 ```
+
+The site is a second, independent gate:
+
+```bash
+make site-tools     # install the pinned doc toolchain (once)
+make site           # build all four sections into site/
+make site-serve     # http://localhost:8643 — the whole site, as published
+make site-check     # every link, asset and anchor must resolve
+make docs-serve     # live-reloading authoring loop for the guide
+make reference-serve
+```
+
+CI runs `make site` and `make site-check` on every PR, because the site's failure
+modes are invisible to `make check`: an undefined KaTeX macro is a build
+*warning*, a cross-section link only exists once four sections are assembled, and
+a root-absolute path works locally and 404s under the `/auracle/` project
+subpath.
 
 - **Tests run in release mode.** The grammar/features/session suites render
   real audio sample-by-sample; debug DSP is ~20× slower.
@@ -39,6 +58,9 @@ make serve          # http://localhost:8642
 - **The dev server sends `Cache-Control: no-store`** and the app
   version-stamps its worker/wasm URLs — both are needed; the browser's
   heuristic cache ignores late `no-store` on already-cached module workers.
+- **The instrument lives at `/play/` on the published site**, not at the root —
+  the root is the landing page. Nothing in the app assumes its own path (every
+  asset reference is relative), and `make site-check` is what keeps it that way.
 
 ## Quality bar
 
@@ -47,6 +69,11 @@ Every change must pass `make check`:
 1. `cargo fmt --all --check`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
 3. `cargo test --workspace --release`
+
+Changes that touch `www/`, `apps/web/` or any public API must also pass
+`make site && make site-check`. If you changed a doc comment that the reference
+quotes a number from, the number in the reference is now wrong — the books cite
+constants by name so they can be grepped.
 
 Beyond that, the codebase leans on **gate tests** rather than mocks: the
 closed-loop test fits a real posterior against a synthetic user; the
@@ -95,9 +122,10 @@ workflows watch that tag and nothing else has to be done by hand:
   Makefile, zips a runnable web bundle as `auracle-vX.Y.Z-web.zip`, and creates
   the GitHub Release with the changelog section as its notes.
 - [`pages.yml`](.github/workflows/pages.yml) deploys that same commit to
-  <https://alexnodeland.github.io/auracle/>. It also deploys on every push to
-  `main`; the tag deploy exists so the live site and the zip are provably the
-  same build. A `pages` concurrency group serializes the two.
+  <https://alexnodeland.github.io/auracle/> — the landing page, the instrument at
+  `/play/`, and both books. It also deploys on every push to `main`; the tag
+  deploy exists so the live site and the zip are provably the same build. A
+  `pages` concurrency group serializes the two.
 
 The steps, in order:
 
@@ -123,9 +151,10 @@ The steps, in order:
    git push origin v0.2.0
    ```
 
-6. **Watch both workflows**, then check the two things a green run does not
-   prove: download the attached zip, serve it, and confirm the app boots from
-   the bundle; and load the live site to confirm the deploy landed.
+6. **Watch both workflows**, then check the things a green run does not prove:
+   download the attached zip, serve it, and confirm the app boots from the
+   bundle; and load the live site — `/`, `/play/`, `/docs/`, `/reference/` and
+   `/reference/api/` — to confirm the deploy landed and the routes resolve.
 
 The release workflow **fails before building** if the tag and the workspace
 version disagree, or if `CHANGELOG.md` has no section for the tag. Both are

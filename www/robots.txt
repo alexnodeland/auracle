@@ -1,0 +1,9 @@
+# Everything here is public documentation and a public instrument; crawl it.
+#
+# The one exclusion is the generated rustdoc. It is thousands of pages of
+# machine-generated API listings that would dominate any search for "auracle" and
+# bury the two books written for people to read — and the crates' docs.rs copies
+# are the canonical searchable version of the same content anyway.
+User-agent: *
+Allow: /
+Disallow: /reference/api/

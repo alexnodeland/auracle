@@ -1,0 +1,70 @@
+# The product guide — for people playing Auracle.
+#
+# Pinned toolchain: mdBook 0.4.52 + mdbook-katex 0.9.4 + mdbook-admonish 1.20.0.
+# 0.4 is the current stack, not a stale one: mdBook 0.5.x changed the
+# preprocessor wire format and *both* preprocessors fail against it today
+# ("Unable to parse the input"), so 0.5 is a choice between the theme and the
+# math. `make site-tools` installs exactly these versions.
+
+[book]
+title = "Auracle User Guide"
+description = "Play Auracle: the three views, teaching it your taste, and reading what it learned."
+authors = ["Alex Nodeland"]
+language = "en"
+src = "src"
+
+[output.html]
+# One theme, two books — see www/theme/fonts/README.md for the constraints that
+# shape it and www/theme/index.hbs for the five places it diverges from
+# mdBook's default template.
+theme = "../theme"
+default-theme = "coal"
+preferred-dark-theme = "coal"
+# `coal` is the rack and `light` is paper; mdBook's other three theme ids are
+# not offered in the picker (index.hbs) and so are never reachable.
+copy-fonts = false
+
+git-repository-url = "https://github.com/alexnodeland/auracle"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/alexnodeland/auracle/edit/main/www/docs/{path}"
+
+# Relative, because the site is served from a project subpath
+# (alexnodeland.github.io/auracle/) and must also work from a `file://` copy and
+# from `make site-serve` at the root. Nothing on this site may hardcode /auracle.
+site-url = "./"
+
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 25
+use-boolean-and = true
+boost-title = 3
+boost-hierarchy = 2
+
+[output.html.playground]
+# Nothing here is runnable in the Rust playground — every snippet references
+# this workspace's crates. Turning it off drops the Run button, and with it
+# book.js's fetch of play.rust-lang.org for a crate list: the one external
+# request a deliberately self-contained site would otherwise still make.
+runnable = false
+copyable = true
+
+[output.html.print]
+enable = true
+
+[preprocessor.katex]
+after = ["links"]
+# The guide has little math, but the two places it does (what a Brier skill
+# score is, what the recency half-life does) are exactly where a reader needs
+# to see the actual expression rather than a paraphrase.
+no-css = true
+output = "htmlAndMathml"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.0.4"

@@ -1,0 +1,44 @@
+/* AURACLE docs — the identity faces.
+ *
+ * This file replaces mdBook's own fonts.css (Open Sans + Source Code Pro).
+ * The three faces are the instrument's, self-hosted for the reason
+ * apps/web/fonts/README.md gives at length: a local-only stack silently
+ * resolved to Trebuchet MS and Menlo on most machines, so the identity was a
+ * coin flip on the reader's OS. Naming a face you do not ship is a wish.
+ *
+ * The `.woff2` files beside this one are **copied in by the build** from
+ * `apps/web/fonts/` rather than committed here — one copy of each face in the
+ * repo, and the app is its source of truth. `make site` and `make docs-serve`
+ * both do it; `www/theme/fonts/*.woff2` is gitignored so a stale copy cannot
+ * be committed by accident.
+ */
+
+@font-face {
+    font-family: "Jost";
+    src: url("jost-var.woff2") format("woff2-variations");
+    font-weight: 300 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "IBM Plex Mono";
+    src: url("plexmono-400.woff2") format("woff2");
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "IBM Plex Mono";
+    src: url("plexmono-600.woff2") format("woff2");
+    font-weight: 600;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Newsreader";
+    src: url("newsreader-it.woff2") format("woff2-variations");
+    font-weight: 300 600;
+    font-style: italic;
+    font-display: swap;
+}

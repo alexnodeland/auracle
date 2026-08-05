@@ -1,0 +1,612 @@
+/* AURACLE docs — the style layer.
+ *
+ * ## Why this file is in `fonts/`
+ *
+ * It is not a font file and the directory is not the point. mdBook copies
+ * exactly one subdirectory of a custom theme verbatim — `theme/fonts/` — and
+ * silently drops every other one; `additional-css` does not help, because
+ * mdBook emits that path literally rather than through `path_to_root`, so a
+ * shared file above the book root gets a link that is wrong at every page
+ * depth and is never copied anyway. Two books share one theme here, so the
+ * only channel that survives both `mdbook build` and `mdbook serve` without a
+ * post-build patch step is this one. `index.hbs` links it directly (no
+ * `@import`, so it loads in parallel with the faces beside it).
+ *
+ * ## Where it sits in the cascade
+ *
+ * mdBook's own general.css and chrome.css are kept — the sidebar, resize
+ * handle and elasticlunr search are working code with no design opinion worth
+ * forking. index.hbs links them first and this file last, so everything here
+ * wins on conflict without a single `!important`. `variables.css` upstream
+ * carries the palette and the three phosphor laws; this file spends it.
+ */
+
+/* ─── Type ──────────────────────────────────────────────────────────────── */
+
+html {
+    font-family: var(--font-silk);
+}
+
+.content main {
+    font-size: 1.62rem;
+    line-height: 1.62;
+}
+
+/* TRACKING LAW, first half: uppercase gets tracking. The site's uppercase is
+   all in small labels — the header nav, table headers, the "on this page" rail
+   — and they are the places that look cheapest without it. */
+.menu-title,
+.site-nav a,
+.sidebar-heading,
+thead th,
+.admonition-title,
+.crate-tag {
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+/* TRACKING LAW, second half: lowercase and mono get none. Stated rather than
+   assumed, because a global `letter-spacing` on body copy is the single most
+   common way a themed docs site drifts off a design system. */
+.content p,
+.content li,
+.content code,
+.content pre {
+    letter-spacing: normal;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4 {
+    font-weight: 500;
+    line-height: 1.22;
+    letter-spacing: -0.005em;
+}
+
+.content h1 {
+    font-size: 2.9rem;
+    margin-block: 0.2em 0.9em;
+    padding-block-end: 0.45em;
+    border-block-end: 1px solid var(--hairline);
+}
+
+.content h2 {
+    font-size: 2.15rem;
+    margin-block-start: 2.4em;
+    color: var(--fg);
+}
+
+.content h3 {
+    font-size: 1.72rem;
+    margin-block-start: 2em;
+}
+
+.content h4 {
+    font-size: 1.5rem;
+    color: var(--silk-dim);
+}
+
+/* The anchor mdBook wraps every heading in must not read as a link — a page of
+   green headings has no hierarchy left. */
+.content .header:link,
+.content .header:visited {
+    color: inherit;
+}
+
+/* The voice. `<em>` inside a blockquote or a lede is the product talking about
+   itself, which in the app is Newsreader italic. Elsewhere `<em>` is ordinary
+   emphasis and stays in the body face. */
+.content > blockquote em,
+.content .lede {
+    font-family: var(--font-voice);
+    font-style: italic;
+}
+
+.content .lede {
+    font-size: 1.95rem;
+    line-height: 1.45;
+    color: var(--silk-dim);
+    margin-block-end: 1.6em;
+}
+
+/* ─── Links ─────────────────────────────────────────────────────────────── */
+
+.content a:link,
+.content a:visited {
+    color: var(--links);
+    text-decoration-color: var(--phos-a-deep);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+}
+
+.content a:hover {
+    text-decoration-color: currentcolor;
+}
+
+/* Keyboard focus has to be visible against both grounds and must not rely on
+   the UA ring, which `outline: 0` on `.page` already suppresses in places. */
+.content a:focus-visible,
+.site-nav a:focus-visible,
+.chapter li a:focus-visible,
+.icon-button:focus-visible {
+    outline: 2px solid var(--phos-b);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* ─── The cross-site header ─────────────────────────────────────────────── */
+
+/* Four sections live under one origin (/, /docs, /reference, /play) and the
+   thing that makes them one site rather than four is that this bar is present
+   and identical in all of them, with the current one marked. It is in
+   index.hbs so it is inside mdBook's menu bar rather than floating above it —
+   a second sticky bar would eat 48px of a laptop screen for nothing. */
+
+#menu-bar {
+    border-block-end: 1px solid var(--hairline);
+    background: var(--panel);
+}
+
+.menu-title {
+    font-size: 1.4rem;
+    font-weight: 500;
+    color: var(--fg);
+}
+
+/* The wordmark's final E is the app's "listening" lamp. Here it is inert
+   decoration and says so — it never animates, because a light that pulses
+   without meaning is worse than no light. */
+.menu-title .lamp,
+.site-nav .lamp {
+    color: var(--phos-a);
+}
+
+.site-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-inline-start: 1.4rem;
+}
+
+.site-nav a {
+    font-size: 1.15rem;
+    color: var(--silk-dim);
+    text-decoration: none;
+    padding: 4px 9px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.site-nav a:hover {
+    color: var(--fg);
+    background: var(--panel-hi);
+}
+
+/* Which section you are in. mdBook's handlebars has no equality helper and
+   both books render from one shared index.hbs, so the marker comes off the
+   `data-book` attribute the template stamps with the book title — which is
+   why the two titles have to keep a distinguishing word each ("Guide" and
+   "Reference"). Each book.toml says so at its `title` key.
+
+   Do not write a glob with a star-slash in a CSS comment: it closes the
+   comment early and the browser then eats the rule below it as error
+   recovery, silently. That is how this rule spent its first hour dead. */
+#body-container[data-book*="Guide"] .site-nav a.nav-docs,
+#body-container[data-book*="Reference"] .site-nav a.nav-reference {
+    color: var(--phos-b);
+    border-color: var(--phos-b-deep);
+}
+
+/* The instrument gets the one filled button on the page, as it does in the
+   app, because it is the one thing a reader of these pages most wants. */
+.site-nav a.play {
+    color: var(--phos-a);
+    border-color: var(--phos-a-deep);
+}
+
+.site-nav a.play:hover {
+    background: var(--phos-a-deep);
+    color: var(--rack, var(--paper));
+}
+
+/* Under ~700px the section labels would wrap the menu bar onto two lines.
+   The instrument link keeps its label — it is the one nav item worth the
+   space — and the rest fall back to their first letter via a data attribute
+   so the bar stays one line without losing any destination. */
+@media (max-width: 700px) {
+    .site-nav a:not(.play) span {
+        display: none;
+    }
+    .site-nav a:not(.play)::after {
+        content: attr(data-short);
+    }
+}
+
+/* ─── Sidebar ───────────────────────────────────────────────────────────── */
+
+.sidebar {
+    border-inline-end: 1px solid var(--hairline);
+}
+
+.sidebar-heading {
+    font-size: 1.08rem;
+    color: var(--silk-mute);
+    padding: 1.6rem var(--page-padding) 0.5rem;
+    margin: 0;
+}
+
+.chapter li a {
+    font-size: 1.42rem;
+    line-height: 1.4;
+    padding: 4px 0;
+}
+
+.chapter li a.active {
+    color: var(--sidebar-active);
+    font-weight: 500;
+}
+
+/* mdBook numbers chapters in the sidebar; the numbers are wayfinding, not
+   content, so they read as mono values rather than as prose. */
+.chapter li strong {
+    font-family: var(--mono-font);
+    font-weight: 400;
+    color: var(--silk-mute);
+    font-size: 0.92em;
+}
+
+.chapter .spacer {
+    background: var(--sidebar-spacer);
+}
+
+.chapter li.part-title {
+    font-family: var(--font-silk);
+    font-size: 1.12rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--silk-mute);
+    font-weight: 500;
+    margin-block: 1.8rem 0.4rem;
+}
+
+/* ─── Code ──────────────────────────────────────────────────────────────── */
+
+pre {
+    background: var(--code-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    padding: 0;
+}
+
+/* mdBook emits Rust blocks as `<pre><pre class="playground">` — a real nested
+   pair, not a wrapper div — so any border on `pre` draws twice, one inside the
+   other. The inner one carries the copy button and the code; the outer one
+   carries the frame. (`playground.runnable = false` in book.toml is the
+   related half: it keeps book.js from fetching play.rust-lang.org for a crate
+   list, which is the one thing that would put an external request back on a
+   deliberately self-contained site.) */
+pre pre {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+}
+
+pre > code {
+    display: block;
+    padding: 1.1rem 1.3rem;
+    line-height: 1.55;
+    background: transparent;
+}
+
+.content code {
+    font-family: var(--mono-font);
+}
+
+/* Inline code is a value or an identifier, so it is tinted rather than boxed —
+   a box per identifier turns a paragraph about `n_filter` into a fence. */
+.content :not(pre) > code {
+    color: var(--inline-code-color);
+    background: transparent;
+    padding: 0;
+    font-size: 0.92em;
+}
+
+/* ─── Tables ────────────────────────────────────────────────────────────── */
+
+/* mdBook centres tables; the reference's tables are read against the prose
+   beside them and want the same left edge. */
+.content table {
+    margin: 1.6em 0;
+    width: 100%;
+    font-size: 0.95em;
+}
+
+.content thead th {
+    font-size: 1.08rem;
+    font-weight: 500;
+    color: var(--silk-dim);
+    text-align: start;
+    padding: 8px 12px;
+}
+
+.content table td {
+    padding: 7px 12px;
+    border-color: var(--table-border-color);
+    vertical-align: top;
+}
+
+/* A cell that is only a value should read as one. Applies to the feature
+   tables in the reference, which are mostly names and numbers. */
+.content table code {
+    white-space: nowrap;
+}
+
+/* ─── Figures ───────────────────────────────────────────────────────────── */
+
+/* Screenshots are captured at 1440×900 and published 1:1 — the app has a 10px
+   type floor, so scaling a full frame down to fit a 750px column is what turns
+   legible UI into mush. Full frames therefore break out of the text column up
+   to the viewport, and detail figures are *crops* that are already narrow.
+   See www/SCREENSHOTS.md. */
+.content figure {
+    margin: 2.2em 0;
+}
+
+.content figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    background: var(--bezel, var(--panel));
+}
+
+/* A screenshot published at its captured size is wider than the 860px reading
+   column, so it breaks out of it. `margin-inline-start: 50%` plus a −50%
+   translate centres it on the column, and because mdBook centres `main` inside
+   `#content`, that is also the centre of the available area.
+
+   The width must subtract the SIDEBAR, not just the page padding. Measuring the
+   breakout against `100vw` alone is what slid the figure left under the sidebar
+   and off the right edge — the viewport is not the space the figure has. */
+.content figure.wide {
+    width: min(1440px, calc(100vw - var(--sidebar-width) - 4 * var(--page-padding)));
+    margin-inline-start: 50%;
+    transform: translateX(-50%);
+}
+
+/* With the sidebar collapsed the whole viewport is available again. */
+html:not(.sidebar-visible) .content figure.wide {
+    width: min(1440px, calc(100vw - 4 * var(--page-padding)));
+}
+
+.content figcaption {
+    margin-block-start: 0.7em;
+    font-size: 1.32rem;
+    line-height: 1.5;
+    color: var(--silk-dim);
+}
+
+.content figcaption strong {
+    color: var(--fg);
+    font-weight: 500;
+}
+
+/* ─── Callouts (mdbook-admonish) ────────────────────────────────────────── */
+
+/* admonish ships its own stylesheet with a six-colour palette. That palette is
+   the "no off-system colour" law's exact failure mode — blue notes and purple
+   tips beside green cables — so the colours are re-mapped onto the two
+   phosphors here, and `assets_version` in book.toml keeps admonish from
+   installing its own CSS at all. The *shapes* are admonish's and are fine.
+   Amber is the default because a callout is the model's-mind register: it is
+   the page stepping out of prose to tell you something about how to act. */
+.admonition {
+    margin: 1.8em 0;
+    padding: 0;
+    background: var(--quote-bg);
+    border: 1px solid var(--hairline);
+    border-inline-start: 3px solid var(--phos-b-deep);
+    border-radius: 4px;
+    box-shadow: none;
+    font-size: 0.98em;
+}
+
+.admonition > .admonition-title {
+    margin: 0;
+    padding: 0.6rem 1.2rem;
+    background: transparent;
+    border-block-end: 1px solid var(--hairline);
+    font-size: 1.12rem;
+    font-weight: 500;
+    color: var(--phos-b);
+}
+
+.admonition > .admonition-title p {
+    margin: 0;
+    display: inline;
+}
+
+.admonition > :last-child {
+    padding: 0.2rem 1.2rem 0.9rem;
+}
+
+.admonition > div > p:first-child {
+    margin-block-start: 0.8rem;
+}
+
+/* Two exceptions to amber, both earned. A warning about losing work is not the
+   same register as a note, and neither is a passage about what the model
+   *sounds* like. */
+.admonition.admonish-warning,
+.admonition.admonish-danger,
+.admonition.admonish-caution {
+    border-inline-start-color: var(--led-red);
+}
+
+.admonition.admonish-warning > .admonition-title,
+.admonition.admonish-danger > .admonition-title,
+.admonition.admonish-caution > .admonition-title {
+    color: var(--led-red);
+}
+
+.admonition.admonish-tip,
+.admonition.admonish-example,
+.admonition.admonish-success {
+    border-inline-start-color: var(--phos-a-deep);
+}
+
+.admonition.admonish-tip > .admonition-title,
+.admonition.admonish-example > .admonition-title,
+.admonition.admonish-success > .admonition-title {
+    color: var(--phos-a);
+}
+
+/* admonish's anchor link is a pseudo-element with its own icon; keep it but
+   make it inherit the title colour instead of shipping a blue chain. */
+.admonition-anchor-link:link,
+.admonition-anchor-link:visited {
+    color: inherit;
+    opacity: 0.45;
+}
+
+.admonition-anchor-link:hover {
+    opacity: 1;
+}
+
+/* ─── Blockquotes ───────────────────────────────────────────────────────── */
+
+.content blockquote {
+    margin: 1.8em 0;
+    padding: 0.2rem 1.4rem;
+    border: 0;
+    border-inline-start: 2px solid var(--hairline);
+    background: transparent;
+    color: var(--silk-dim);
+}
+
+/* ─── Math ──────────────────────────────────────────────────────────────── */
+
+/* KaTeX renders at build time (mdbook-katex, `no-css = true`) against the
+   vendored stylesheet beside this file, so a formula is finished markup and
+   needs no JavaScript. Two adjustments are still ours: a display equation is a
+   block in the reading flow and wants block spacing, and a long one has to be
+   able to scroll rather than push the page sideways. */
+.katex {
+    font-size: 1.06em;
+}
+
+.katex-display {
+    margin: 1.6em 0;
+    padding: 0.2em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* Wide content scrolls inside its own box. The page body must never scroll
+   horizontally — a reference full of five-column tables and display equations
+   is exactly where that happens. */
+.table-wrapper {
+    overflow-x: auto;
+}
+
+/* ─── kbd ───────────────────────────────────────────────────────────────── */
+
+/* The docs quote key names constantly (the app has a full key map), so this
+   gets to look like a key rather than like code. */
+kbd {
+    background: var(--kbd-bg);
+    border: 1px solid var(--hairline);
+    border-block-end-width: 2px;
+    border-radius: 3px;
+    box-shadow: none;
+    padding: 1px 6px;
+    font-family: var(--mono-font);
+    font-size: 0.86em;
+    line-height: 1.5;
+    color: var(--fg);
+    vertical-align: baseline;
+}
+
+/* ─── Search ────────────────────────────────────────────────────────────── */
+
+#searchbar {
+    font-family: var(--font-silk);
+    font-size: 1.5rem;
+    border-radius: 3px;
+}
+
+.searchresults-header {
+    font-family: var(--font-silk);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 1.08rem;
+}
+
+ul#searchresults span.teaser em {
+    color: var(--phos-b);
+    font-style: normal;
+    font-weight: 500;
+}
+
+/* ─── Footer ────────────────────────────────────────────────────────────── */
+
+/* Each page ends with where it sits and how to fix it — the repo link is the
+   only actionable thing a docs page can offer a reader who found it wrong. */
+.page-footer {
+    max-width: var(--content-max-width);
+    margin: 4rem auto 0;
+    padding-block-start: 1.4rem;
+    border-block-start: 1px solid var(--hairline);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1.6rem;
+    font-size: 1.28rem;
+    color: var(--silk-mute);
+}
+
+.page-footer a:link,
+.page-footer a:visited {
+    color: var(--silk-dim);
+    text-decoration-color: var(--hairline);
+}
+
+.page-footer a:hover {
+    color: var(--fg);
+}
+
+/* ─── Print ─────────────────────────────────────────────────────────────── */
+
+@media print {
+    /* The site header is navigation and navigation does not print. */
+    .site-nav,
+    .page-footer {
+        display: none;
+    }
+
+    /* Full-bleed figures have no viewport to bleed into on paper. */
+    .content figure.wide {
+        width: 100%;
+        margin-inline-start: 0;
+        transform: none;
+    }
+}
+
+/* ─── Motion ────────────────────────────────────────────────────────────── */
+
+/* mdBook animates the sidebar slide and the footnote highlight. Neither is
+   load-bearing, and this site has no motion of its own to protect. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
