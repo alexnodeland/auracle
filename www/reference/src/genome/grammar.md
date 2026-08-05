@@ -24,6 +24,17 @@ step is a second, undocumented grammar. A typed term needs neither: **every samp
 term compiles to a valid, sound-making patch**, because the type system constrains
 which productions can fire where.
 
+<figure class="viz" data-viz="term-tree">
+<figcaption><strong>Sample a few.</strong> Green is the Audio sort, amber is
+Modulation, and they are different <em>Rust types</em> — the dashed edges are
+modulation slots, and no amount of mutation can put one sort where the other
+belongs, because such a term cannot be constructed. Every tree here compiles and
+plays; there is no repair step anywhere in the pipeline. Press it repeatedly and
+watch small terms dominate: that is the prior's parsimony, with nothing penalising
+size. (A faithful miniature of the production weights, not the shipped
+grammar.)</figcaption>
+</figure>
+
 The sorts are quiver's signal kinds: Audio, V/Oct, Gate, CV. Auracle's `PatchTree`
 splits into `AudioNode` and `ModNode`, and the split is enforced by **Rust's own
 type system** — an ill-sorted term is not rejected at runtime, it cannot be

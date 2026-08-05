@@ -1482,6 +1482,166 @@
   /* Figures build when they first scroll into view. A reference page can carry
      three of them, and computing all of them at load would be work for content
      the reader may never reach. */
+  /* =======================================================================
+   * term-tree — a term sampled from the typed PCFG
+   *
+   * The representation decision everything else follows from, made concrete.
+   * Three things this shows that the prose cannot: the Audio/Mod sort split is
+   * *structural* (green subtree, amber subtree, never interchangeable); every
+   * sample is a playable patch with no repair step; and parsimony comes from the
+   * prior, so pressing resample enough times shows small terms dominating
+   * without anything penalising size.
+   *
+   * The production weights are the shape the real prior draws — a faithful
+   * miniature, not the shipped grammar, and the caption says so.
+   * ===================================================================== */
+  VIZ['term-tree'] = (root) => {
+    const { stage, controls, readout } = scaffold(root);
+    const W = 720, H = 300;
+    const s = svg(W, H, 'A patch term sampled from the typed grammar, drawn as a tree');
+    stage.appendChild(s);
+
+    const SOURCES = ['vco', 'supersaw', 'noise', 'wavetable', 'pluck', 'formant'];
+    const UNARY = ['filter', 'fold', 'delay', 'chorus', 'reverb', 'distortion', 'bitcrush', 'phaser'];
+    const BINARY = ['mix', 'ring mod', 'comp', 'duck'];
+    const MODS = ['lfo', 'env', 's&h rand', 'follower'];
+    const MODOPS = ['quantize', 'slew', 'rectify'];
+
+    let seed = 4;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const pick = (a) => a[Math.floor(rnd() * a.length)];
+
+    const MAX_DEPTH = 5;
+
+    /* One node = one set of choices at path `p`, exactly as the prior emits
+       them: `<p>#leaf` decides source-vs-processor (forced at max depth, which
+       is what guarantees termination), then a kind, then a modulation slot. */
+    function sampleAudio(p, depth) {
+      const forced = depth >= MAX_DEPTH;
+      const isSource = forced || rnd() < 0.20 + depth * 0.17;
+      if (isSource) {
+        return { sort: 'audio', kind: pick(SOURCES), path: p, kids: [], mod: null };
+      }
+      const binary = rnd() < 0.22;
+      const kind = binary ? pick(BINARY) : pick(UNARY);
+      const kids = [sampleAudio(p + '/0', depth + 1)];
+      if (binary) kids.push(sampleAudio(p + '/1', depth + 1));
+      // Nearly every module carries a slot; noise, mix and ring mod do not.
+      const slotless = kind === 'mix' || kind === 'ring mod';
+      const mod = (!slotless && rnd() < 0.4) ? sampleMod(p + '/m', 0) : null;
+      return { sort: 'audio', kind, path: p, kids, mod };
+    }
+
+    function sampleMod(p, depth) {
+      // A modulation term is a recursive sort: leaves, a shaper wrapping one, or
+      // a combiner over two.
+      if (depth >= 2 || rnd() < 0.66) {
+        return { sort: 'mod', kind: pick(MODS), path: p, kids: [] };
+      }
+      return { sort: 'mod', kind: pick(MODOPS), path: p, kids: [sampleMod(p + '/0', depth + 1)] };
+    }
+
+    let tree = null;
+    const g = el('g', {}); s.appendChild(g);
+
+    function layout(n, depth, cursor) {
+      // Post-order: children first, then centre the parent over them.
+      const all = [...n.kids, ...(n.mod ? [n.mod] : [])];
+      if (!all.length) {
+        n.x = cursor.i++; n.y = depth;
+        return n;
+      }
+      for (const k of all) layout(k, depth + 1, cursor);
+      n.x = all.reduce((a, k) => a + k.x, 0) / all.length;
+      n.y = depth;
+      return n;
+    }
+
+    function walk(n, fn) {
+      fn(n);
+      for (const k of n.kids) walk(k, fn);
+      if (n.mod) walk(n.mod, fn);
+    }
+
+    function draw() {
+      g.textContent = '';
+      const cursor = { i: 0 };
+      layout(tree, 0, cursor);
+
+      let maxD = 0, nAudio = 0, nMod = 0;
+      walk(tree, (n) => { maxD = Math.max(maxD, n.y); if (n.sort === 'audio') nAudio++; else nMod++; });
+
+      const cols = Math.max(1, cursor.i);
+      const cw = Math.min(96, (W - 60) / cols);
+      const rh = Math.min(50, (H - 54) / (maxD + 1));
+      const xOf = (n) => 34 + (n.x + 0.5) * cw;
+      const yOf = (n) => 26 + n.y * rh;
+
+      // Edges first, so nodes sit on top of them.
+      walk(tree, (n) => {
+        for (const k of n.kids) {
+          g.appendChild(el('path', {
+            d: `M${xOf(n)} ${yOf(n) + 9} C${xOf(n)} ${yOf(n) + 24}, ${xOf(k)} ${yOf(k) - 20}, ${xOf(k)} ${yOf(k) - 9}`,
+            fill: 'none', stroke: n.sort === 'audio' ? 'var(--phos-a-deep)' : 'var(--phos-b-deep)',
+            'stroke-width': 1.4,
+          }));
+        }
+        if (n.mod) {
+          g.appendChild(el('path', {
+            d: `M${xOf(n)} ${yOf(n) + 9} C${xOf(n)} ${yOf(n) + 24}, ${xOf(n.mod)} ${yOf(n.mod) - 20}, ${xOf(n.mod)} ${yOf(n.mod) - 9}`,
+            fill: 'none', stroke: 'var(--phos-b-deep)', 'stroke-width': 1.4, 'stroke-dasharray': '3 2',
+          }));
+        }
+      });
+
+      walk(tree, (n) => {
+        const audio = n.sort === 'audio';
+        const colour = audio ? 'var(--phos-a)' : 'var(--phos-b)';
+        const w = Math.max(38, Math.min(84, n.kind.length * 6.4 + 14));
+        g.appendChild(el('rect', {
+          x: xOf(n) - w / 2, y: yOf(n) - 9, width: w, height: 18, rx: 3,
+          fill: audio ? 'rgba(142,240,177,.10)' : 'rgba(255,180,84,.10)',
+          stroke: colour, 'stroke-width': 1.1,
+        }));
+        const t = el('text', {
+          x: xOf(n), y: yOf(n) + 3.5, 'text-anchor': 'middle',
+          class: audio ? 'v-num-a' : 'v-num-b',
+        });
+        t.setAttribute('font-size', '9.5');
+        t.textContent = n.kind;
+        g.appendChild(t);
+      });
+
+      const size = nAudio;
+      const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      readout.innerHTML =
+        `<i>${plural(nAudio, 'audio node')}</i>, <b>${plural(nMod, 'modulation node')}</b>, depth ${maxD} — ` +
+        `${size}/24 modules against the budget. ` +
+        `Every one of these compiles and plays: the sorts are Rust types, so an ` +
+        `<b>ill-sorted term cannot be constructed</b>, and there is no repair step ` +
+        `anywhere. Resample a few times and notice small terms winning — that is ` +
+        `the prior's parsimony, not a size penalty.`;
+    }
+
+    function resample() {
+      tree = sampleAudio('node', 0);
+      draw();
+    }
+
+    button(controls, 'sample another term', resample);
+    button(controls, 'until it is a big one', () => {
+      // Deeper terms pay more prior mass, so this takes a few tries — which is
+      // the point being made, felt rather than read.
+      for (let i = 0; i < 60; i++) {
+        tree = sampleAudio('node', 0);
+        let n = 0; walk(tree, (x) => { if (x.sort === 'audio') n++; });
+        if (n >= 7) break;
+      }
+      draw();
+    });
+    resample();
+  };
+
   /* Keys a figure's own controls own, kept away from the page.
    *
    * mdBook binds ArrowLeft/ArrowRight on `document` to move between chapters and
