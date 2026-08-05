@@ -14,8 +14,11 @@ everywhere the style is mentioned.
 
 ## MAP
 
-<figure class="wide">
+<figure>
 <img src="../img/taste-map.webp" alt="A dark field scattered with amber dots of varying size and brightness, three style chips above, and a legend reading less / would like and sure / unsure." loading="eager" width="1440" height="900">
+<figcaption><strong>MAP.</strong> Every patch you have heard, placed by sound
+and structure. Glow is how much it thinks you would like it; size is how sure
+it is.</figcaption>
 </figure>
 
 Every patch you have heard, placed by sound and structure. It is a 2D
@@ -38,8 +41,10 @@ Click any dot to open that patch on the workbench.
 
 ## STYLES
 
-<figure class="wide">
+<figure>
 <img src="../img/taste-styles.webp" alt="Three named style lenses stacked vertically, each with a pool-share percentage and five horizontal amber bars naming its strongest coordinates." loading="lazy" width="1440" height="900">
+<figcaption><strong>STYLES.</strong> Each lens with the share of the pool it
+claims and the five coordinates it weights hardest. A lens at ≈0% is idle.</figcaption>
 </figure>
 
 Your taste as separate lenses. Each shows its name, the share of the bank it
@@ -58,8 +63,11 @@ the model has capacity for, which is common and not a fault.
 
 ## DIRECTIONS
 
-<figure class="wide">
+<figure>
 <img src="../img/taste-directions.webp" alt="A coefficient plot: named perceptual coordinates down the left, horizontal amber bars extending left and right of a centre line, each with a thinner whisker showing the credible interval." loading="lazy" width="1440" height="900">
+<figcaption><strong>DIRECTIONS.</strong> Every coefficient with its credible
+interval. A long bar whose whisker crosses the centre line is a guess, and the
+display says so.</figcaption>
 </figure>
 
 What each lens listens for, coordinate by coordinate. Bar length is the weight;
@@ -77,8 +85,11 @@ one measures is [in the reference](../../reference/features/audio.html).
 
 ## TRUST — is its confidence honest?
 
-<figure class="wide">
+<figure>
 <img src="../img/taste-trust.webp" alt="A reliability diagram: dots plotted against a dashed diagonal labelled perfectly honest, each with a vertical whisker and a sample count, above a line reading 33 forecasts, Brier 0.268, not beating a coin flip yet." loading="lazy" width="1440" height="900">
+<figcaption><strong>TRUST.</strong> Forecasts against outcomes. On the dashed
+diagonal the model is exactly as confident as it deserves to be; the whiskers
+say how little each dot is standing on.</figcaption>
 </figure>
 
 This is the tab that makes the rest trustworthy.

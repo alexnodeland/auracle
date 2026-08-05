@@ -3,8 +3,11 @@
 <p class="lede">Two candidates, one question, and the machinery that turns your
 answer into a better next question.</p>
 
-<figure class="wide">
+<figure>
 <img src="../img/evolve.webp" alt="Two duel cards side by side with rendered waveforms, SAMPLE / BENCH / CHOOSE controls, a teaching meter above and a generation lineage log below." loading="eager" width="1440" height="900">
+<figcaption><strong>EVOLVE.</strong> Two candidates and one question. The meter
+above counts down to the next refit; the strip below says what the last
+generation changed.</figcaption>
 </figure>
 
 ## The duel
@@ -42,8 +45,11 @@ deliberating is how a session stops being fun. If you cannot tell, press
 
 The strip above the cards is the session's state of play:
 
-<figure class="wide">
+<figure>
 <img src="../img/teach-meter.webp" alt="The teaching meter: six pips, then the line 44 picks in. Every 6 it redraws your taste map. Beside it, ◇ unbiased probe — picks like this one score the honesty meter, a skip button, and EVOLVE POOL at the right end." loading="eager" width="1172" height="60">
+<figcaption><strong>The teaching meter.</strong> Six pips to the next refit, the
+count so far, and a mark on the duels that were drawn at random rather than
+chosen.</figcaption>
 </figure>
 
 The pips count down to the next **refit**. Between refits your votes still

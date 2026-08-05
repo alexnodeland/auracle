@@ -12,7 +12,7 @@ It is also just a synthesizer. Four-voice polyphony, a keyboard, MIDI, an
 arpeggiator, a patchable rack with typed cables and forty-one modules. You can
 ignore the model entirely and play it like an instrument.
 
-<figure class="wide">
+<figure>
 <img src="./img/play.webp" alt="The PLAY view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." loading="eager" width="1440" height="900">
 <figcaption><strong>PLAY.</strong> The current patch as a rack you can turn,
 rewire and lock, running live while you edit it.</figcaption>

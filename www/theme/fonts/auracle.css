@@ -411,26 +411,27 @@ pre > code {
 
 /* ─── Figures ───────────────────────────────────────────────────────────── */
 
-/* Screenshots are captured at 1440×900 and published 1:1 — the app has a 10px
-   type floor, so scaling a full frame down to fit a 750px column is what turns
-   legible UI into mush. Full frames therefore break out of the text column up
-   to the viewport, and detail figures are *crops* that are already narrow.
-   See www/SCREENSHOTS.md.
+/* Every figure sits INSIDE the reading column, a little narrower than the prose
+   so its edges read as an inset object rather than a second column. There is no
+   breakout tier and no per-figure width class: one cap, every figure, both
+   books.
 
-   The rule that keeps all of that true is one word in the img rule below:
-   figures are capped by the space they have, never stretched to fill it. Every
-   figure carries its captured `width`/`height`, so a crop lands at the size it
-   was cropped to and a frame lands as large as it fits. */
+   That is a deliberate trade. These shots are captured at 1440×900 and the app
+   has a 10px type floor, so a full frame at 780px is 0.54× and its UI labels
+   are texture rather than text. The frames are here to show a reader the shape
+   of a view, and the caption carries what the labels would have said; anything
+   whose *detail* is the point is published as a crop, at the size it was
+   cropped to. See www/SCREENSHOTS.md. */
 .content figure {
-    margin: 2.2em 0;
+    margin: 2.2em auto;
+    max-width: var(--figure-max-width);
 }
 
 /* `max-width`, never `width`. A crop is published at the size it was cropped
    to, so the column is a ceiling and never a target: `width: 100%` here is what
-   blew the 252px bank rail up to 862px — a 3.4× upscale of 10px type, and the
-   exact mush the 1:1 rule exists to prevent. Anything genuinely wider than the
-   space it is given still scales down to fit, which is a loss of detail rather
-   than an invention of it. */
+   blew the 252px bank rail up to 862px — a 3.4× upscale of 10px type. Anything
+   genuinely wider than the space it is given still scales down to fit, which is
+   a loss of detail rather than an invention of it. */
 .content figure img {
     display: block;
     margin-inline: auto;
@@ -441,29 +442,10 @@ pre > code {
     background: var(--bezel, var(--panel));
 }
 
-/* A screenshot published at its captured size is wider than the 860px reading
-   column, so it breaks out of it. `margin-inline-start: 50%` plus a −50%
-   translate centres it on the column, and because mdBook centres `main` inside
-   `#content`, that is also the centre of the available area.
-
-   The width must subtract the SIDEBAR, not just the page padding. Measuring the
-   breakout against `100vw` alone is what slid the figure left under the sidebar
-   and off the right edge — the viewport is not the space the figure has. */
-.content figure.wide {
-    width: min(1440px, calc(100vw - var(--sidebar-width) - 4 * var(--page-padding)));
-    margin-inline-start: 50%;
-    transform: translateX(-50%);
-}
-
-/* With the sidebar collapsed the whole viewport is available again. */
-html:not(.sidebar-visible) .content figure.wide {
-    width: min(1440px, calc(100vw - 4 * var(--page-padding)));
-}
-
-/* A caption is prose and wants a prose measure. Left to itself it takes the
-   width of the figure, which for a full-frame breakout is 1440px and about 170
-   characters a line. Capped and centred under the frame instead, so it sits
-   with the image whether the image is a 1440px frame or a 252px rail. */
+/* Every figure carries one. A screenshot with no caption asks the reader to
+   work out what they are looking at from a picture whose type is too small to
+   read; the caption is where the figure says what it is. Grey, so it reads as
+   apparatus rather than as prose. */
 .content figcaption {
     margin-block-start: 0.7em;
     margin-inline: auto;
@@ -677,11 +659,9 @@ ul#searchresults span.teaser em {
         display: none;
     }
 
-    /* Full-bleed figures have no viewport to bleed into on paper. */
-    .content figure.wide {
-        width: 100%;
-        margin-inline-start: 0;
-        transform: none;
+    /* Paper has its own column; the screen cap is meaningless on it. */
+    .content figure {
+        max-width: 100%;
     }
 }
 

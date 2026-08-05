@@ -4,6 +4,8 @@
 
 <figure>
 <img src="./img/bank.webp" alt="The bank rail: three bank tabs — evolution 40, my patches 1, presets 61 — above a list of rows, each with a name, prediction percentage, play button, five stars and a save icon." loading="eager" width="252" height="720">
+<figcaption><strong>The bank rail.</strong> Three collections, and a row for
+each patch carrying what the model predicts you would say about it.</figcaption>
 </figure>
 
 The rail on the left holds three of them:
@@ -21,11 +23,11 @@ evolving costs.
 
 Each row carries a name, an id, a prediction, stars and a save control:
 
-```text
-◇ Round Wash            80% #35
-  ▶ ★ ★ ★ ★ ★    💾
-  ───────────────────
-```
+<figure>
+<img src="./img/bank-row.webp" alt="One bank row, outlined in green because it is the row the cursor is on: a diamond glyph, the name Round Wash, the prediction 80% and the id #35 on the right, and below them a play triangle, five filled stars, a save icon, and a horizontal bar drawn at the same 80%." loading="lazy" width="252" height="70">
+<figcaption><strong>One row.</strong> The green outline is the row you are on.
+Everything else on it is described below.</figcaption>
+</figure>
 
 - **The name** is generated from what the patch is, and you can rename it.
 - **The percentage** is the model's prediction: roughly, how likely you are to
