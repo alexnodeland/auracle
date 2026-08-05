@@ -43,7 +43,7 @@
     <p class="eyebrow">Modular synthesizer · Evolutionary search · Runs in your browser</p>
     <h1 class="display">Pick the sound<br>you like better.</h1>
     <p class="voice">Auracle plays you two patches, learns which one you preferred, and
-    starts making more of it. The panel here is real — press play and choose.</p>
+    starts making more of it. The panel here is real. Press play and choose.</p>
     <div class="cta-row">
       <a class="btn btn-go" href="play/">Play the instrument&nbsp;▸</a>
       <a class="btn" href="docs/getting-started/first-session.html">Read the guide</a>
@@ -113,8 +113,7 @@
     <p class="honesty">
       A four-knob miniature. The real instrument measures
       <a href="reference/features/audio.html">forty coordinates</a> and fits a
-      posterior over up to five taste lenses — but the update running here is the
-      same Bradley–Terry likelihood.
+      posterior over up to five taste lenses.
     </p>
   </div>
 </section>
@@ -127,7 +126,7 @@
   <div class="thesis">
     <div class="tcol">
       <h3 class="tcol-h">Explore</h3>
-      <p>Presets and randomizers. Fast, and shallow — you audition until something
+      <p>Presets and randomizers. Fast, and shallow. You audition until something
       works, and nothing accumulates. Tomorrow you start over.</p>
     </div>
     <div class="tcol">
@@ -161,16 +160,16 @@
 
     <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0">
       <img src="assets/screens/play.webp" alt="The PLAY view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." width="1440" height="900" loading="eager" decoding="async">
-      <p class="shot-cap"><strong>PLAY.</strong> The patch is the subject: its whole
-      rack, knobs at true positions in musical units, editable and lockable while it
-      runs live under your hands.</p>
+      <p class="shot-cap"><strong>PLAY.</strong> The whole rack, with knobs at true
+      positions in musical units. Edit it and lock parts of it while it runs live
+      under your hands.</p>
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-evolve" aria-labelledby="tab-evolve" tabindex="0" hidden>
       <img src="assets/screens/evolve.webp" alt="The EVOLVE view: two duel cards side by side with rendered waveforms, a teaching meter reading forty-four picks in, and a generation lineage log below." width="1440" height="900" loading="lazy" decoding="async">
       <p class="shot-cap"><strong>EVOLVE.</strong> Duels under a meter that counts down
-      to the next refit, and a lineage log that says what each generation actually
-      changed — <span class="mono">attack 0.59→0.83, +noise, −distortion</span>.</p>
+      to the next refit, and a lineage log that says what each generation changed:
+      <span class="mono">attack 0.59→0.83, +noise, −distortion</span>.</p>
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-taste" aria-labelledby="tab-taste" tabindex="0" hidden>
@@ -184,7 +183,7 @@
 
 <!-- ─── how it learns ──────────────────────────────────────────────────── -->
 <section class="band">
-  <p class="eyebrow">What it actually does</p>
+  <p class="eyebrow">How it learns</p>
   <h2 class="h2">A model that can be wrong in public.</h2>
 
   <div class="learn">
@@ -206,8 +205,8 @@
       </div>
 
       <p>And every duel is <strong>forecast before you answer it</strong>, then scored
-      against a proper scoring rule. Which means the instrument can tell you when it
-      does not know yet — and early on, it does.</p>
+      against a proper scoring rule. So the instrument can tell you when it does not
+      know yet. Early on, it does.</p>
 
       <a class="inline-go" href="reference/">Read how it works&nbsp;▸</a>
     </div>
@@ -215,8 +214,7 @@
     <figure class="learn-fig">
       <img src="assets/screens/taste-directions.webp" alt="A coefficient plot: named perceptual coordinates down the left, horizontal amber bars extending left and right of a centre line, each with a thinner whisker showing the credible interval." width="1440" height="900" loading="lazy" decoding="async">
       <figcaption>Every coefficient with its credible interval. A long bar whose
-      whisker crosses the centre line is a guess, and the instrument says so rather
-      than rounding it to a claim.</figcaption>
+      whisker crosses the centre line is a guess, and the display says so.</figcaption>
     </figure>
   </div>
 </section>
@@ -227,21 +225,21 @@
   <h2 class="h2">Two loops, running at different speeds.</h2>
 
   <p class="band-lede">The machine evaluates thousands of candidates against what it
-  has learned about you, silently, and surfaces a curated few. That asymmetry is the
-  answer to the thing that kills every other interactive-evolution tool: being asked
-  to rate a whole population, every generation, until you quit.</p>
+  has learned about you, silently, and surfaces a curated few. Interactive-evolution
+  tools usually do the opposite: they ask you to rate a whole population, every
+  generation, until you quit.</p>
 
   <figure class="viz" data-viz="two-loops">
   <figcaption>Green flows continuously with no human in it. Amber moves at the pace
-  you answer questions — and carries your taste back into how the search
-  <em>proposes</em>, not just how it scores.</figcaption>
+  you answer questions, and carries your taste back into how the search
+  <em>proposes</em>, not only how it scores.</figcaption>
   </figure>
 </section>
 
 <!-- ─── the palette, by signal path ────────────────────────────────────── -->
 <section class="band">
-  <p class="eyebrow">Forty-one modules</p>
-  <h2 class="h2">Catalogued in signal-flow order, not alphabetically.</h2>
+  <p class="eyebrow">The module palette</p>
+  <h2 class="h2">Forty-one modules, from source to output.</h2>
 
   <ol class="path">
     <li><span class="path-n mono">sources</span><span class="path-b">A wavetable, a
@@ -256,19 +254,18 @@
     <li><span class="path-n mono">motion</span><span class="path-b">Chorus, phaser,
       flanger, tremolo, vibrato</span></li>
     <li><span class="path-n mono">dynamics</span><span class="path-b">Compressor,
-      ducker, noise gate — each with a <em>control</em> input, so sidechaining is a
-      typed connection rather than a convention</span></li>
+      ducker, noise gate, each with a <em>control</em> input you can sidechain
+      into</span></li>
     <li><span class="path-n mono">combine</span><span class="path-b">Crossfade and
       ring modulation, merging two chains into one</span></li>
     <li><span class="path-n mono">modulation</span><span class="path-b">LFO, envelope,
-      sample-and-hold, slew, follower, Euclidean — and these
-      <strong>chain</strong>: <span class="mono">s&amp;h rand → quantize → slew</span>
-      before it ever reaches a cutoff</span></li>
+      sample-and-hold, slew, follower, Euclidean. These <strong>chain</strong>:
+      <span class="mono">s&amp;h rand → quantize → slew</span> before it ever reaches a
+      cutoff</span></li>
   </ol>
 
   <p class="path-note">Every knob is an address in the genome, so turning one edits the
-  patch the search is working on — and locking one means refinement provably leaves it
-  alone.</p>
+  patch the search is working on. Lock a knob and refinement leaves it alone.</p>
 </section>
 
 <!-- ─── start ──────────────────────────────────────────────────────────── -->
@@ -293,8 +290,7 @@
 
     <a class="route" href="https://github.com/alexnodeland/auracle">
       <h3 class="route-h">Build it</h3>
-      <p>Rust workspace, five crates, one clone — the foundations come from
-      crates.io.</p>
+      <p>A Rust workspace of five crates. Clone it, build it, serve it.</p>
       <span class="route-go">Source&nbsp;▸</span>
     </a>
   </div>

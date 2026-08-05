@@ -19,20 +19,22 @@ make site-check     # every link and asset must resolve
 
 ## Four rules this site keeps
 
-**Everything is relative.** Pages serves from `alexnodeland.github.io/auracle/`,
-so a root-absolute `/docs/` works locally and 404s in production. `make
-site-check` treats one as an error rather than a warning. The only exception is
-`404.html`, which is served at arbitrary depth and therefore computes the site
-root in a few lines of JavaScript — see the comment in it.
+**Everything is relative.** The site is served from
+`alexnodeland.github.io/auracle/`, so a root-absolute `/docs/` works locally
+and 404s in production. `make site-check` treats one as an error rather than a
+warning. The only exception is `404.html`, which is served at arbitrary depth
+and therefore computes the site root in a few lines of JavaScript; see the
+comment in it.
 
 **No external requests.** No CDN, no font service, no analytics. The identity
 faces are self-hosted, KaTeX is vendored, and `make site-check` fails if a
 `<script src>` or `<link>` pointing off-origin reappears. Outbound *hyperlinks*
-are fine — the check is about subresources.
+are fine; the check is about subresources.
 
 **Screenshots are real and published 1:1.** The app has a 10px type floor, so a
-1440×900 frame scaled into a 750px column is unreadable. Frames are published at
-their captured size and detail figures are *crops*, never shrunken frames. See
+1440×900 frame scaled into a 750px column is unreadable. Frames are published
+at their captured size and detail figures are *crops*, never shrunken frames.
+See
 [SCREENSHOTS.md](./SCREENSHOTS.md).
 
 **One copy of each asset in the repo.** The three identity faces live in
@@ -90,19 +92,20 @@ written. They build lazily on scroll, and four rules keep them honest:
   prose quotes; the reliability diagram scores four hundred real forecasts. A
   drawing of a result is a claim about it.
 - **They re-theme without rebuilding.** Every paint attribute is a
-  `var(--phos-…)`, so a theme switch is a repaint and no JS knows which theme is
-  on.
-- **They work without a mouse.** Handles are focusable with arrow-key support and
-  `aria-valuetext`; sliders are real `<input type=range>`; every figure has a
-  `role="status"` readout, which is also the accessible equivalent of the picture.
-- **They respect reduced motion.** The animated ones render a static end-state and
-  say in words what the motion would have said — a stopped animation and a
+  `var(--phos-…)`, so a theme switch is a repaint and no JS knows which theme
+  is on.
+- **They work without a mouse.** Handles are focusable with arrow-key support
+  and `aria-valuetext`; sliders are real `<input type=range>`; every figure has
+  a `role="status"` readout, which is also the accessible equivalent of the
+  picture.
+- **They respect reduced motion.** The animated ones render a static end-state
+  and say in words what the motion would have said. A stopped animation and a
   finished diagram are different pictures.
 
 ```admonish warning title="Arrow keys must not escape a figure"
 mdBook binds ArrowLeft/ArrowRight on `document` to move between chapters, and
 exempts only its search box. So a focused slider or handle navigated away from the
-page mid-interaction, and `preventDefault` does not help — the document listener
+page mid-interaction, and `preventDefault` does not help; the document listener
 runs regardless. `guardKeys()` stops those keys at the figure. Any new control
 that consumes an arrow key is covered automatically; one that consumes some other
 key needs adding to `OWNED_KEYS`.
@@ -115,12 +118,12 @@ mdBook 0.4.52 · mdbook-katex 0.9.4 · mdbook-admonish 1.20.0
 ```
 
 **mdBook 0.5.x is not a drop-in.** It changed the preprocessor wire format, and
-both preprocessors fail against it today with `Unable to parse the input` — so
-0.5 is a choice between the theme and the math. Measured, not assumed. Revisit
-when both have released 0.5-compatible versions.
+both preprocessors fail against it today with `Unable to parse the input`, so
+0.5 is a choice between the theme and the math. Revisit when both have released
+0.5-compatible versions.
 
-`mdbook-katex` publishes **no prebuilt binaries at any version**, so CI compiles
-it once and caches the result keyed on all three versions.
+`mdbook-katex` publishes **no prebuilt binaries at any version**, so CI
+compiles it once and caches the result keyed on all three versions.
 
 ## Authoring
 
@@ -132,41 +135,42 @@ make reference-serve    # live-reloading reference
 Both stage the identity faces into the theme first, which is why they are
 Makefile targets rather than a bare `mdbook serve`.
 
-New page: add the file under `src/`, add it to `src/SUMMARY.md`. mdBook will not
-find it otherwise, and will not tell you.
+New page: add the file under `src/`, add it to `src/SUMMARY.md`. mdBook will
+not find it otherwise, and will not tell you.
 
 ### Things that fail quietly
 
 Collected because each cost real time:
 
 - **A KaTeX macro must be defined in `katex-macros.txt`, not in a
-  `[preprocessor.katex.macros]` table.** The table form parses without complaint
-  and is then ignored; every macro renders as "Undefined control sequence", which
-  is a build *warning*, so it deploys. CI greps for it.
-- **`*/` inside a CSS comment closes the comment**, and the browser then eats the
-  following rule as error recovery. A path glob in prose is enough to do it.
-- **`[hidden]` is a UA rule at type strength**, so any class that sets `display`
-  defeats it silently.
-- **`hidden` inside an HTML comment is still parsed by handlebars** if you write
-  a partial's name in braces — `head.hbs` says so at the top.
+  `[preprocessor.katex.macros]` table.** The table form parses without
+  complaint and is then ignored; every macro renders as "Undefined control
+  sequence", which is a build *warning*, so it deploys. CI greps for it.
+- **`*/` inside a CSS comment closes the comment**, and the browser then eats
+  the following rule as error recovery. A path glob in prose is enough to do
+  it.
+- **`[hidden]` is a UA rule at type strength**, so any class that sets
+  `display` defeats it silently.
+- **`hidden` inside an HTML comment is still parsed by handlebars** if you
+  write a partial's name in braces — `head.hbs` says so at the top.
 - **mdBook copies only the flat files in `theme/fonts/`.** Subdirectories are
   skipped with an INFO line, which is why the vendored KaTeX package is
   flattened.
-- **mdBook nests `<pre><pre class="playground">`** for Rust blocks, so a border on
-  `pre` draws twice.
+- **mdBook nests `<pre><pre class="playground">`** for Rust blocks, so a border
+  on `pre` draws twice.
 
 ## One known wart, kept on purpose
 
 Search teasers on math-heavy pages show the rendered formula **and** its TeX
-source: *"winsorized moments (μw,sw)(\mu…"*. mdBook indexes the page text,
-and `output = "htmlAndMathml"` puts KaTeX's `<annotation
+source: *"winsorized moments (μw,sw)(\mu…"*. mdBook indexes the page text, and
+`output = "htmlAndMathml"` puts KaTeX's `<annotation
 encoding="application/x-tex">` in it.
 
 Switching to `output = "html"` would tidy the teasers and would also remove the
-MathML, which is the only thing a screen reader can read — KaTeX marks its visual
-output `aria-hidden`. A slightly noisy teaser is a much smaller cost than
-inaccessible mathematics, so the annotation stays. Search itself ranks correctly;
-only the excerpt is ugly.
+MathML, which is the only thing a screen reader can read — KaTeX marks its
+visual output `aria-hidden`. A slightly noisy teaser is a much smaller cost
+than inaccessible mathematics, so the annotation stays. Search itself ranks
+correctly; only the excerpt is ugly.
 
 ## Regenerating the screenshots
 

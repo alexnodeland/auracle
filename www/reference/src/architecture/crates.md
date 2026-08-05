@@ -19,13 +19,13 @@ apps/web             the instrument — vanilla JS, no build step
 ```
 
 Dependencies run strictly downward: `grammar` knows nothing of features,
-`features` nothing of taste, `taste` nothing of the engine. `session` is the only
-crate that sees all of them, and `wasm` is a binding surface with no logic of its
-own worth naming.
+`features` nothing of taste, `taste` nothing of the engine. `session` is the
+only crate that sees all of them, and `wasm` is a binding surface with no logic
+of its own.
 
 ## auracle-grammar
 
-The **representation**, and the single most consequential crate.
+The **representation**, and the crate everything else is built on.
 
 | Module | Owns |
 |---|---|
@@ -39,14 +39,14 @@ The **representation**, and the single most consequential crate.
 | `describe` | The rack description the panel draws from |
 | `presets` | The 29-patch hand-made library |
 
-The load-bearing claim: **`genome`'s codec *is* the grammar's addressing.** They
-are not two schemes kept in sync, they are one, which is what makes a knob turn, a
-lock and an MH proposal all refer to the same thing.
+**`genome`'s codec *is* the grammar's addressing.** It is one scheme rather
+than two kept in sync, which is what makes a knob turn, a lock and an MH
+proposal refer to the same thing.
 
 ## auracle-features
 
-The **measurement** crate. One render serves three purposes — the vet report, the
-feature vector, and the audition buffer the user hears.
+The **measurement** crate. One render serves three purposes: the vet report,
+the feature vector, and the audition buffer the user hears.
 
 | Module | Owns |
 |---|---|
@@ -59,8 +59,9 @@ feature vector, and the audition buffer the user hears.
 | `pipeline` | The composition, in the one order that is safe |
 | `cache` | Render memoization; what makes the MH walk affordable |
 
-`pipeline::featurize` is the whole crate in forty lines, and its ordering is
-load-bearing — see [The vetting gate](../audition/vetting.md#the-order-is-the-design).
+`pipeline::featurize` is the whole crate in forty lines, and the order it
+composes them in matters; see
+[The vetting gate](../audition/vetting.md#the-order-is-the-design).
 
 ## auracle-taste
 
@@ -74,10 +75,10 @@ vectors and feedback events.
 | `standardize` | The affine transform, with runaway-column detection |
 | `synthetic` | `SyntheticUser` — the non-negotiable validation gate |
 
-`synthetic` is not a test helper that happens to live in `src/`. Validating the
-taste model against a simulated user with known ground truth, *before any UI
-existed*, was a milestone gate: assert the posterior concentrates on $\theta^*$ and
-that acquisition regret shrinks. It makes the core falsifiable headlessly.
+`synthetic` is not a test helper that happens to live in `src/`. It validates
+the taste model against a simulated user with known ground truth: assert the
+posterior concentrates on $\theta^*$, and that acquisition regret shrinks. That
+makes the core falsifiable headlessly.
 
 ## auracle-session
 
@@ -97,21 +98,20 @@ The **engine** every frontend drives.
 
 Two objects, on two threads, and the split matters:
 
-- **`WasmEngine`** — the whole `auracle-session` engine, in a Web Worker. Pool
+- **`WasmEngine`** is the whole `auracle-session` engine, in a Web Worker. Pool
   filling, posterior fits, refinement, workbench edits. Nothing real-time.
-- **`LivePoly`** — the instrument, in an AudioWorklet. Holds $N$ compiled copies
-  of the current patch, via **the same `compile()` path evolution uses**, limiter
-  included.
+- **`LivePoly`** is the instrument, in an AudioWorklet. It holds $N$ compiled
+  copies of the current patch, via **the same `compile()` path evolution
+  uses**, limiter included.
 
-That last point is the architectural payoff: what you play is not a
-re-implementation of what was evolved, it is the same compiled artifact. See
-[The web runtime](../runtime.md).
+So what you play is not a re-implementation of what was evolved; it is the same
+compiled artifact. See [The web runtime](../runtime.md).
 
 ## apps/web
 
-Vanilla JavaScript, no build step, no framework, no dependencies. Four files carry
-it: `main.js` (UI and Web Audio), `worker.js` (the engine), `farm.js` (a stateless
-render worker), `live-audio.js` (worklet assembly).
+Vanilla JavaScript, no build step, no framework, no dependencies. Four files
+carry it: `main.js` (UI and Web Audio), `worker.js` (the engine), `farm.js` (a
+stateless render worker), `live-audio.js` (worklet assembly).
 
 Its own architecture notes are in
 [`apps/web/README.md`](https://github.com/alexnodeland/auracle/blob/main/apps/web/README.md);
@@ -125,15 +125,15 @@ the parts that constrain the engine are in [The web runtime](../runtime.md).
 | `fugue-evo` **0.3.1** | Evolution as inference. `default-features = false` — `checkpoint`/`parallel` do not compile on wasm32 |
 | `fugue-ppl` **0.2.1** | The probabilistic programming layer |
 
-All three from the registry, so one clone builds. Hacking on them alongside
-Auracle is a `[patch.crates-io]` block at the bottom of the workspace manifest.
+All three come from the registry. To hack on them alongside Auracle, add a
+`[patch.crates-io]` block at the bottom of the workspace manifest.
 
 Two build settings worth knowing, both in `Cargo.toml`:
 
 - **Release builds use `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`.**
   Everything the user waits on is render-bound. `panic = "abort"` also drops
-  unwinding tables from the wasm bundle. None of these can change float results —
-  only `--fast-math`-style options could, and none is enabled anywhere.
+  unwinding tables from the wasm bundle. None of these can change float
+  results; only `--fast-math`-style options could, and none is enabled.
 - **`serde_json` with `float_roundtrip`.** The observation log is the profile's
-  source of truth and must reload bit-identically; serde_json's fast float parse
-  can be off by one ULP.
+  source of truth and must reload bit-identically; serde_json's fast float
+  parse can be off by one ULP.

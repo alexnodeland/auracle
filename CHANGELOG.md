@@ -52,6 +52,32 @@ The screenshots throughout are the real app in a taught session, published at
 their captured size — `www/SCREENSHOTS.md` records how to remake them and why
 scaling a frame of this app is not an option.
 
+### Changed — a plainer voice across the docs and the site
+
+An editing pass over every user-facing page: the landing page, both books, the
+README and the contributor docs. Nothing about the product changed, only how it
+is described.
+
+- **Headings name the thing rather than its presentation.** "Catalogued in
+  signal-flow order, not alphabetically" is now "Forty-one modules, from source
+  to output". The same went for "What to expect, honestly", "The memo is not an
+  optimization detail", "Why this page matters more than it looks" and a dozen
+  others. Two anchors moved with their headings, and every inbound link moved
+  with them.
+- **Implementation boasts came out.** A progress bar that is "honest rather than
+  decorative", a guarantee that "provably" holds, a patch that is "byte-for-byte"
+  the one that was evolved, a comment that is "the longest and most useful in the
+  workspace", a build whose foundations arrive in "one clone". Where the fact
+  underneath was load-bearing it stayed; where it was there to impress, it went.
+- **Retrospectives left the user-facing pages.** The guide no longer explains
+  which bugs the app used to have, how small a jack's hit area once was, or which
+  trap it "has already fallen into once". The reference keeps the ones that are
+  reference material: the sentinel incident, the two upstream quiver bugs, the
+  acquisition retraction.
+- **Fewer em dashes, and fewer "not X, but Y" constructions.** 688 em dashes down
+  to 152, with the parenthetical ones turned into parentheses and the rhetorical
+  ones into full stops.
+
 ### Fixed
 
 - The README's architecture diagram named Thompson sampling as the duel
