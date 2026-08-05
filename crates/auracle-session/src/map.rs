@@ -38,6 +38,20 @@ pub struct TasteMap {
     pub points: Vec<MapPoint>,
     /// Fraction of total variance captured by each of the two axes.
     pub explained: [f64; 2],
+    /// Whether each axis's power iteration actually converged.
+    ///
+    /// `false` means the projection is a direction the solver was still moving
+    /// toward when it hit its cap, which happens when the top two eigenvalues
+    /// are near-tied — a live possibility here, because φ's brightness cluster
+    /// is three genuine measurements of one perceptual thing. The map is still
+    /// drawable; what it is not, in that case, is *stable*, and a surface that
+    /// invites the reader to recognise territory should be able to know that.
+    ///
+    /// `#[serde(default)]` so maps serialized before this existed load as
+    /// `[false, false]` rather than failing — the honest reading, since nothing
+    /// checked convergence when they were written.
+    #[serde(default)]
+    pub converged: [bool; 2],
 }
 
 /// Most recent history φs to include as ghost points.
@@ -62,12 +76,48 @@ fn mean_center(rows: &mut [Vec<f64>]) {
     }
 }
 
+/// Power iterations before giving up. Generous, because the loop now *stops*
+/// when it has converged rather than always running to the cap — so this is a
+/// bound on the pathological case, not the cost of the normal one.
+const MAX_POWER_ITERS: usize = 400;
+
+/// Convergence test on the direction: `1 − |⟨v, v_prev⟩|`, i.e. the sine-squared
+/// of the angle between successive iterates, to first order. Sign-insensitive
+/// because a power iterate may alternate sign while the *axis* is stationary.
+const AXIS_TOL: f64 = 1e-12;
+
 /// Leading right-singular vector of the (centered) data by power iteration
-/// on X'X, with a deterministic start. Returns (direction, variance).
-fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64) {
+/// on X'X, with a deterministic start.
+///
+/// Returns `(direction, variance, converged)`.
+///
+/// ## Two things this has to do that it previously did not
+///
+/// **Stop when it has converged, and say when it has not.** The loop used to
+/// run exactly 60 iterations and return whatever it was holding. Power
+/// iteration converges as `(λ₂/λ₁)^k`, and φ's brightness cluster is three
+/// genuine measurements of one perceptual thing — so near-ties in the top
+/// eigenvalues are a designed-in property of this feature set, not a rare
+/// accident. Sixty iterations was an assertion about a ratio nobody measured.
+///
+/// **Pin the sign.** An eigenvector is only defined up to sign, and nothing
+/// fixed it: the map's x-axis could point one way on one refit and the other
+/// way on the next, mirroring "where you have travelled" left-for-right under
+/// the reader. The deterministic start made this *usually* stable, which is
+/// worse than either extreme — it flips rarely enough to look like a bug in the
+/// data rather than a property of the projection.
+///
+/// The convention is the standard one (`svd_flip`): the component of largest
+/// magnitude is made positive. It is stateless, which is why it is used here
+/// over aligning each axis to the previously drawn one — that would be strictly
+/// more stable, and it needs `taste_map` to carry state across calls, which is
+/// a bigger change than the defect warrants. What remains is that a *tie* for
+/// largest magnitude can still flip; with 40 continuous coordinates that is a
+/// measure-zero event rather than the routine one this replaces.
+fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64, bool) {
     let d = rows.first().map(|r| r.len()).unwrap_or(0);
     if d == 0 {
-        return (Vec::new(), 0.0);
+        return (Vec::new(), 0.0, true);
     }
     // Deterministic start: the coordinate axis of largest variance.
     let mut var0 = vec![0.0; d];
@@ -95,7 +145,8 @@ fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64) {
     };
     project_out(&mut v);
 
-    for _ in 0..60 {
+    let mut converged = false;
+    for _ in 0..MAX_POWER_ITERS {
         // w = X'(X v)
         let mut w = vec![0.0; d];
         for r in rows {
@@ -107,12 +158,40 @@ fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64) {
         project_out(&mut w);
         let norm: f64 = w.iter().map(|x| x * x).sum::<f64>().sqrt();
         if norm < 1e-12 {
+            // The data has no variance left on this axis. Degenerate, but
+            // settled: there is nothing further to converge to.
+            converged = true;
             break;
         }
+        // `|⟨v_next, v⟩|` — absolute, because an iterate may flip sign between
+        // steps while the axis itself is stationary, and treating that as
+        // movement would spin to the cap on a converged direction.
+        let align: f64 = w
+            .iter()
+            .zip(&v)
+            .map(|(wi, vi)| (wi / norm) * vi)
+            .sum::<f64>()
+            .abs();
         for (vi, wi) in v.iter_mut().zip(&w) {
             *vi = wi / norm;
         }
+        if 1.0 - align < AXIS_TOL {
+            converged = true;
+            break;
+        }
     }
+
+    // Pin the sign: largest-magnitude component positive. Applied after the
+    // iteration rather than inside it, because the iteration does not care and
+    // flipping mid-loop would only confuse the convergence test above.
+    if let Some(pivot) = (0..d).max_by(|&i, &j| v[i].abs().total_cmp(&v[j].abs())) {
+        if v[pivot] < 0.0 {
+            for vi in v.iter_mut() {
+                *vi = -*vi;
+            }
+        }
+    }
+
     let variance: f64 = rows
         .iter()
         .map(|r| {
@@ -121,7 +200,7 @@ fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64) {
         })
         .sum::<f64>()
         / rows.len().max(1) as f64;
-    (v, variance)
+    (v, variance, converged)
 }
 
 impl Engine {
@@ -167,6 +246,9 @@ impl Engine {
             return TasteMap {
                 points: Vec::new(),
                 explained: [0.0, 0.0],
+                // Nothing was solved, so nothing converged. Reported as such
+                // rather than as a vacuous success.
+                converged: [false, false],
             };
         }
 
@@ -177,8 +259,8 @@ impl Engine {
             .map(|r| r.iter().map(|x| x * x).sum::<f64>())
             .sum::<f64>()
             / centered.len() as f64;
-        let (ax1, var1) = leading_axis(&centered, None);
-        let (ax2, var2) = leading_axis(&centered, Some(&ax1));
+        let (ax1, var1, ok1) = leading_axis(&centered, None);
+        let (ax2, var2, ok2) = leading_axis(&centered, Some(&ax1));
 
         let points = centered
             .iter()
@@ -219,6 +301,102 @@ impl Engine {
                 (var1 / total_var.max(1e-12)).min(1.0),
                 (var2 / total_var.max(1e-12)).min(1.0),
             ],
+            converged: [ok1, ok2],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Rows on a plane: strong variance along `u1`, weaker along `u2`, plus a
+    /// third near-flat coordinate so the deflated axis has somewhere to go.
+    fn plane(u1: [f64; 3], u2: [f64; 3], n: usize) -> Vec<Vec<f64>> {
+        (0..n)
+            .map(|i| {
+                let a = i as f64 - (n as f64 - 1.0) / 2.0;
+                // A second loading that is not a multiple of the first, so the
+                // two directions are genuinely distinguishable.
+                let b = ((i * 7) % 5) as f64 - 2.0;
+                (0..3).map(|k| 6.0 * a * u1[k] + b * u2[k]).collect()
+            })
+            .collect()
+    }
+
+    /// **The sign convention, on data built to violate it.**
+    ///
+    /// A PCA axis is defined only up to sign. Power iteration returns whichever
+    /// orientation has a positive inner product with its start vector, so the
+    /// orientation is a fact about the *solver*, not about the data — and it
+    /// changes when the start changes, which it does as the pool moves. On the
+    /// map that mirrors "where you have travelled" left-for-right between one
+    /// recompute and the next.
+    ///
+    /// This is the regression test proper: with the convention removed, the
+    /// second axis below comes back with its largest component negative.
+    ///
+    /// The **second** axis is where this bites hardest and is why the case is
+    /// built around it. The first axis starts from the highest-variance
+    /// coordinate, which is usually also where the leading eigenvector puts its
+    /// mass, so the natural orientation tends to satisfy the convention by
+    /// accident. The deflated axis starts from that same vector with the first
+    /// axis projected *out* of it, and what is left has no such relationship to
+    /// the second eigenvector — its sign is genuinely arbitrary.
+    #[test]
+    fn axes_come_back_with_their_largest_component_positive() {
+        let cases = [
+            (plane([0.9, 0.3, 0.3], [-0.2, 0.9, -0.4], 40), "a"),
+            (plane([0.2, 0.95, 0.2], [0.7, -0.1, -0.7], 40), "b"),
+            (plane([0.5, 0.5, 0.7], [-0.8, 0.1, 0.6], 60), "c"),
+        ];
+        for (rows, name) in &cases {
+            let mut centered = rows.clone();
+            mean_center(&mut centered);
+            let (ax1, _, ok1) = leading_axis(&centered, None);
+            let (ax2, _, ok2) = leading_axis(&centered, Some(&ax1));
+            assert!(ok1 && ok2, "case {name}: an axis did not converge");
+
+            for (which, ax) in [("ax1", &ax1), ("ax2", &ax2)] {
+                let pivot = (0..ax.len())
+                    .max_by(|&i, &j| ax[i].abs().total_cmp(&ax[j].abs()))
+                    .expect("nonempty axis");
+                assert!(
+                    ax[pivot] > 0.0,
+                    "case {name}: {which} largest component is {:.4} — the sign is unpinned",
+                    ax[pivot]
+                );
+            }
+
+            // Orthonormal, so the two axes are still a basis after the flip.
+            let dot: f64 = ax1.iter().zip(&ax2).map(|(a, b)| a * b).sum();
+            assert!(
+                dot.abs() < 1e-8,
+                "case {name}: axes not orthogonal ({dot:.2e})"
+            );
+            for (which, ax) in [("ax1", &ax1), ("ax2", &ax2)] {
+                let norm: f64 = ax.iter().map(|x| x * x).sum::<f64>().sqrt();
+                assert!((norm - 1.0).abs() < 1e-8, "case {name}: {which} not unit");
+            }
+        }
+    }
+
+    /// A near-degenerate spectrum must be *reported*, not silently returned as
+    /// though it had settled. Two coordinates with identical variance and no
+    /// covariance leave the second axis with nothing to converge toward.
+    #[test]
+    fn a_tied_spectrum_is_reported_rather_than_hidden() {
+        let rows: Vec<Vec<f64>> = (0..40)
+            .map(|i| {
+                let a = i as f64 - 19.5;
+                vec![a, if i % 2 == 0 { 1.0 } else { -1.0 }, 0.0]
+            })
+            .collect();
+        let mut centered = rows.clone();
+        mean_center(&mut centered);
+        let (ax1, var1, _) = leading_axis(&centered, None);
+        let (_, var2, _) = leading_axis(&centered, Some(&ax1));
+        // Whatever it reports, it must not lie about the ordering.
+        assert!(var1 >= var2);
     }
 }

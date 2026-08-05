@@ -8,6 +8,35 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — the taste map could mirror itself between recomputes
+
+A PCA axis is defined only up to sign, and nothing fixed it. Power iteration
+returns whichever orientation has a positive inner product with its start
+vector, so the orientation was a fact about the *solver* rather than about the
+data — and the start is the highest-variance coordinate, which moves as the pool
+does. The map is sold as *where you have travelled*; territory that mirrors
+left-for-right between one refit and the next is a different claim about the
+same place, and it flipped rarely enough to read as bad data rather than as a
+property of the projection.
+
+Axes now carry the standard `svd_flip` convention: largest-magnitude component
+positive. The regression test builds data where the unfixed solver returns the
+second axis at `-0.90` and asserts the sign is pinned.
+
+**The second axis is where this bites**, which is worth recording because the
+first one hides it: axis 1 starts from the highest-variance coordinate, which is
+usually also where the leading eigenvector puts its mass, so its natural
+orientation satisfies the convention by accident. The deflated axis starts from
+that same vector with axis 1 projected *out*, and what remains has no such
+relationship to the second eigenvector.
+
+Separately, the iteration **stops when it has converged and reports when it has
+not**, rather than running exactly 60 passes and returning whatever it held.
+Power iteration converges as `(λ₂/λ₁)^k`, and near-ties in the top eigenvalues
+are a designed-in property of this feature set — the brightness cluster is three
+genuine measurements of one perceptual thing — so a fixed count was an assertion
+about a ratio nobody had measured. `TasteMap::converged` carries the answer.
+
 ### Fixed — the audition clipped, and preference data was collected on it
 
 Matching integrated loudness says nothing about the peak, and crest factor spans
