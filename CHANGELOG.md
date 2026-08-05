@@ -108,6 +108,23 @@ persistence format, vet thresholds) are gone, and the genuinely open ones took
 their place — tempered SMC, cross-island discovery, a feedback production, fit
 cost at the K cap, and the fugue-side `thin` parameter.
 
+### Added — a release badge, and the release status said out loud
+
+The README carries a `github/v/release` badge linking to the latest release. It
+currently reads **v0.1.0**, which is the point: the workspace, the changelog and
+the docs have all said 0.2.0 since 2026-08-04, but the `v0.2.0` tag was never
+pushed, so no 0.2.0 release and no 0.2.0 bundle exist. The badge is the one
+place that cannot drift from the truth.
+
+Two documents were asserting the release that was never cut:
+
+- The guide told readers to `unzip auracle-v0.2.0-web.zip`, a file that has
+  never existed on any release. The commands now use the same `vX.Y.Z`
+  placeholder the prose above them already used.
+- `DESIGN.md` said "Released at 0.2.0". It now says the workspace is at 0.2.0,
+  that the tag has not been pushed, and that the newest published release is
+  still `v0.1.0` — cut before the rename, and named Ricercar.
+
 ### Changed — the README's architecture diagram is a mermaid figure
 
 The ASCII box drawing became a `flowchart TD`, which GitHub renders natively and

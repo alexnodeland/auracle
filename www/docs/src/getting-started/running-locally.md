@@ -18,8 +18,8 @@ Every [release](https://github.com/alexnodeland/auracle/releases) attaches
 it and serve the directory over HTTP:
 
 ```bash
-unzip auracle-v0.2.0-web.zip
-cd auracle-v0.2.0-web
+unzip auracle-vX.Y.Z-web.zip
+cd auracle-vX.Y.Z-web
 python3 serve.py        # → http://localhost:8642
 ```
 

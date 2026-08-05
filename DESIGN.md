@@ -497,8 +497,13 @@ persist, and profiles export and import as a portable observation log plus its
 standardizer. **Grid and radio modes remain open**, and with them keep/kill's
 only intended UI surface.
 
-Released at **0.2.0**. See [`CHANGELOG.md`](./CHANGELOG.md) for the
-pass-by-pass record.
+The workspace is at **0.2.0** and `CHANGELOG.md` closes a `[0.2.0]` section,
+but the `v0.2.0` tag has not been pushed, so the newest published release is
+still `v0.1.0` (cut before the rename, and named Ricercar). Tagging is the one
+step of the release process that has not been taken; see
+[`DEVELOPMENT.md`](./DEVELOPMENT.md#cutting-a-release).
+
+See [`CHANGELOG.md`](./CHANGELOG.md) for the pass-by-pass record.
 
 ### The synthetic user (the M3 gate)
 

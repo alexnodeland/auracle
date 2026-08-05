@@ -8,6 +8,7 @@
 Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
 (patch-graph DSP).*
 
+[![Release](https://img.shields.io/github/v/release/alexnodeland/auracle?sort=semver&color=8ef0b1&label=release)](https://github.com/alexnodeland/auracle/releases/latest)
 [![CI](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml)
 [![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/auracle/)
 [![Docs](https://img.shields.io/badge/docs-guide%20%2B%20reference-8ef0b1)](https://alexnodeland.github.io/auracle/docs/)
