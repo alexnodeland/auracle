@@ -21,6 +21,8 @@ WASM_STACK := 8388608
 WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+        climb search-check budget-ab phi-stats norm-peak fit-bench \
+        closed-loop revalidate \
         wasm serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
@@ -55,6 +57,57 @@ lint-fix:
 	$(CARGO) clippy --workspace --all-targets --fix --allow-dirty
 
 clippy: lint
+
+# ─── search health ───────────────────────────────────────────────────────────
+#
+# `make check` is a gate on *correctness*. It says nothing about whether the
+# search still searches or whether the model still learns — those are
+# statistical properties of a loop, measured over seeds, and they cost minutes
+# of real audio rendering rather than seconds. A change can be green on `check`
+# and have halved the pool's climb.
+#
+# So they live here, and the standing rule is: **anything that touches φ, the
+# grammar prior, the audition stimulus, the surrogate or the MH kernel runs
+# `make revalidate` on both sides of the change, and the paired table goes in
+# the PR.** These targets exist so that is a command rather than a memory.
+#
+# `refinement_improves_pool` and `closed_loop_learns_synthetic_taste` are the
+# always-on floors under all of this and they DO run in `make check`. Floors,
+# not the measurement: they catch a loop that stopped working, not one that
+# quietly got worse.
+SEEDS ?= 16
+
+## climb: does the pool still climb? The iteration loop for any φ change.
+climb:
+	$(CARGO) run -p auracle-session --example search_health --release -- --climb $(SEEDS)
+
+## search-check: the full search-health battery (all five measurements)
+search-check:
+	$(CARGO) run -p auracle-session --example search_health --release
+
+## budget-ab: re-derive the shipped (refine_steps, refine_seeds) split
+budget-ab:
+	$(CARGO) run -p auracle-session --example search_health --release -- --budget-ab
+
+## phi-stats: composition, feature ranges, prevalence and VIF over prior draws
+phi-stats:
+	$(CARGO) run -p auracle-features --example pipeline_stats --release -- 1200
+
+## norm-peak: peak distribution of normalized renders against the ceiling
+norm-peak:
+	$(CARGO) run -p auracle-features --example norm_peak --release -- 150
+
+## fit-bench: posterior recovery against MCMC budget
+fit-bench:
+	$(CARGO) run -p auracle-taste --example fit_bench --release -- sweep 12
+
+## closed-loop: the taste-loop gate swept over seeds (the noisy instrument)
+closed-loop:
+	$(CARGO) run -p auracle-session --example closed_loop_sweep --release
+
+## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
+revalidate: phi-stats norm-peak climb search-check
+	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n\n'
 
 ## wasm: build the web app's engine into apps/web/pkg
 wasm:

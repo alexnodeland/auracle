@@ -201,10 +201,13 @@ impl RenderedPhrase {
 /// Bit-identical to what [`crate::featurize`] produced for the same term:
 /// [`crate::loudness::normalize_to`] measures a gain and then applies it as a
 /// *uniform scalar multiply* over the buffer, so replaying the recorded gain
-/// reproduces the same products exactly. `gain_db` is stored already clamped
-/// (`loudness::MAX_GAIN_DB`), so no clamp is re-applied here — clamping twice
-/// would be a no-op, and not clamping at all is what keeps this in lockstep
-/// with the one place the decision is made.
+/// reproduces the same products exactly. `gain_db` is stored already bounded —
+/// by `loudness::MAX_GAIN_DB` above and by `loudness::PEAK_CEILING` below — so
+/// no bound is re-applied here. Re-applying would be a no-op; *not* applying
+/// is what keeps this in lockstep with the one place the decision is made.
+///
+/// That single-scalar shape is why the peak ceiling is a gain reduction rather
+/// than a limiter: a limiter would have to exist here too, identically, forever.
 ///
 /// This is the second code path that must stay in lockstep with `featurize`'s
 /// normalization forever; `render_playback_is_bit_identical` is the test that

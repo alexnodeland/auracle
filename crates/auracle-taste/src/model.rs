@@ -51,7 +51,9 @@
 
 use fugue::runtime::handler::run;
 use fugue::runtime::interpreters::PriorHandler;
-use fugue::{adaptive_mcmc_chain, addr, factor, sample, Address, Model, ModelExt, Normal, Trace};
+use fugue::{
+    adaptive_mcmc_chain_thinned, addr, factor, sample, Address, Model, ModelExt, Normal, Trace,
+};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -60,6 +62,14 @@ use crate::observe::{Feedback, FitSet};
 
 /// SD of the maximum of K iid standard normals, K = 1..=5. See the module doc.
 pub const MAX_NORMAL_SD: [f64; 5] = [1.000, 0.826, 0.748, 0.701, 0.669];
+
+/// Posterior draws retained from a fit, after thinning.
+///
+/// The chain is thinned because single-site draws are heavily autocorrelated —
+/// 500 spread over the whole chain carry far more information than 500
+/// consecutive ones — and because every retained draw is a `TasteSample` the
+/// posterior holds for the rest of the session.
+pub const KEEP: usize = 500;
 
 /// Model configuration.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -210,7 +220,8 @@ fn obs_loglik(o: &Feedback, session: usize, s: &TasteSample) -> f64 {
 /// The MCMC site addresses of one taste program, built once.
 ///
 /// Single-site MH re-executes the whole program on **every step**, so every
-/// `sample()` node — `27·K + S + 5` of them, 141 at K = 5 — is reconstructed
+/// `sample()` node — `d·K + S + 5` of them, 206 at K = 5 and d = 40 — is
+/// reconstructed
 /// 26 000 times per fit. Building each address inline
 /// (`addr!(format!("theta{k}"), i)`) therefore cost a `format!` into a
 /// `String`, a re-allocation into `Arc<str>` and a SipHash of that string,
@@ -367,34 +378,44 @@ impl TasteModel {
     /// summary storage). Each MH step moves one site, so budget steps ≈
     /// `sites × desired effective sweeps`.
     ///
-    /// # Known waste: the thinning happens too late
+    /// # The chain is thinned at the driver, not after it
     ///
-    /// 97 % of the chain is discarded one line after it is built.
-    /// `adaptive_mcmc_chain` **materializes every step** — it pushes
-    /// `(TasteSample, Trace)` per iteration into a `Vec` it returns by value —
-    /// and only then does `step_by(stride)` keep every 20th. At K = 5 that is
-    /// ~10 000 `Trace` clones of 141 `BTreeMap` entries each held live at
-    /// once: hundreds of megabytes of transient wasm32 heap for 500 surviving
-    /// draws, and a plausible mobile-Safari OOM rather than mere waste.
+    /// 97 % of the chain is discarded, and it is discarded *as it is produced*.
+    /// That used to happen one line after the whole chain was built:
+    /// `adaptive_mcmc_chain` materialized every step — a `(TasteSample, Trace)`
+    /// per iteration pushed into a `Vec` returned by value — and only then did
+    /// `step_by(stride)` keep every 20th. At K = 5 that is ~10 000 `Trace`
+    /// clones of 206 `BTreeMap` entries held live at once to keep 500, scaling
+    /// with `n_samples`: a plausible mobile-Safari OOM rather than mere waste
+    /// on a 32-bit heap.
     ///
-    /// This cannot be fixed on the auracle side. The retention is inside
-    /// fugue's chain driver, and the pieces needed to reimplement that driver
-    /// here with the same RNG consumption — `single_site_mh_step`,
-    /// `propose_and_score`, `SingleSiteProposalHandler` — are private or
-    /// `pub(crate)` in fugue-ppl 0.2.1 (`DiminishingAdaptation` is the only
-    /// public part). Reproducing them would mean forking fugue's inference
-    /// core into this crate, which trades a memory spike for a correctness
-    /// hazard on every fugue upgrade.
+    /// It could not be fixed here — the retention was inside fugue's chain
+    /// driver, and the pieces needed to reimplement that driver with identical
+    /// RNG consumption (`single_site_mh_step`, `propose_and_score`,
+    /// `SingleSiteProposalHandler`) are private or `pub(crate)`. So it was
+    /// fixed *there*: `adaptive_mcmc_chain_thinned` (fugue-ppl 0.2.2) takes a
+    /// stride and pushes only on `i % thin == 0`.
     ///
-    /// The fugue-side API that would close it is small and additive: a
-    /// `thin: usize` parameter (or a
-    /// `FnMut(&A, &Trace)` sink) on `adaptive_mcmc_chain`, pushing only on
-    /// `i % thin == 0`. The chain's arithmetic and RNG draws are untouched by
-    /// it, so the surviving draws stay bit-identical — it only stops
-    /// retaining the ones that were always going to be dropped. Until then,
-    /// the peak scales with `n_samples`, which is why the session layer's
-    /// `SessionConfig::mcmc_samples` coming down from 30 000 to 10 000 is a
-    /// 3× memory win as well as a 3× time win.
+    /// **The draws are bit-identical to what the old code returned.** `thin`
+    /// gates the push and nothing else: every transition still runs, so the RNG
+    /// is consumed in the same order and quantity, and `0, stride, 2·stride, …`
+    /// is exactly what `step_by(stride)` kept. `fit_bench`'s per-fit checksum
+    /// is the auracle-side witness; fugue's own
+    /// `thinning_retains_exactly_the_draws_step_by_would` is the upstream one.
+    ///
+    /// Measured, `fit_bench 10000 3000` under `/usr/bin/time -l`:
+    ///
+    /// | | peak RSS | mature-fit checksum |
+    /// |---|---|---|
+    /// | before | 303.1 MB | `07d204764b58c88b` |
+    /// | after | **18.2 MB** | `07d204764b58c88b` |
+    ///
+    /// **16.7× less peak memory for the same draws** — the checksum is the
+    /// point of that table, not a footnote to it. What stays resident is the
+    /// 500 draws the posterior actually keeps, so the peak no longer scales
+    /// with `mcmc_samples` at all: the budget is free to be chosen on the
+    /// recovery tables (`SessionConfig::mcmc_samples`) rather than against a
+    /// memory ceiling.
     pub fn fit<R: Rng>(
         &self,
         rng: &mut R,
@@ -406,14 +427,16 @@ impl TasteModel {
         // every one of the `n_samples + n_warmup` reconstructions.
         let addrs = Arc::new(SiteAddrs::new(&self.cfg, data.n_sessions().max(1)));
         let model_fn = || self.model_at(data, &addrs);
-        let chain = adaptive_mcmc_chain(rng, model_fn, n_samples, n_warmup);
-        let keep = 500usize;
-        let stride = (chain.len() / keep).max(1);
-        let samples: Vec<TasteSample> = chain
-            .into_iter()
-            .step_by(stride)
-            .map(|(s, _): (TasteSample, Trace)| s)
-            .collect();
+        // The stride is known before the chain runs, because the driver pushes
+        // exactly `n_samples` draws — so asking it to retain only every
+        // `stride`-th is the same subsequence `step_by` produced, without ever
+        // holding the other 95% live. See `KEEP`.
+        let stride = (n_samples / KEEP).max(1);
+        let samples: Vec<TasteSample> =
+            adaptive_mcmc_chain_thinned(rng, model_fn, n_samples, n_warmup, stride)
+                .into_iter()
+                .map(|(s, _): (TasteSample, Trace)| s)
+                .collect();
         TastePosterior {
             cfg: self.cfg.clone(),
             weights: vec![1.0 / samples.len().max(1) as f64; samples.len()],

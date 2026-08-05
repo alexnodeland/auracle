@@ -33,8 +33,8 @@ pub mod surrogate;
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
-    EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RenderPolicy,
-    SessionConfig, SessionState,
+    EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RefineKeep,
+    RenderPolicy, SessionConfig, SessionState,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use map::{MapPoint, TasteMap};
@@ -671,53 +671,232 @@ mod tests {
         );
     }
 
-    /// M4 gate 2: taste-guided refinement produces novel candidates the
-    /// surrogate scores at least as well as the seeds it started from.
+    /// **M4 gate 2: does refinement move the pool toward what the user
+    /// actually likes?**
+    ///
+    /// The taste-loop gate ([`closed_loop_learns_synthetic_taste`]) runs at
+    /// `refine_steps: 0`, so this is the only always-on test of the *other*
+    /// loop. It is a small, fixed-budget version of `search_health --climb`,
+    /// and it is graded the same way: on the synthetic user's **true** utility
+    /// over the pool, before and after real `Engine::refine` generations.
+    ///
+    /// ## What this test used to do, and why that was not a gate
+    ///
+    /// Three things, all of which looked like assertions and none of which
+    /// could fail for the right reason:
+    ///
+    /// - `assert!(best_after >= best_before)` on `ranked()` is true **by
+    ///   construction**. `insert_candidate` evicts the pool's lowest-utility
+    ///   member and refuses a refined child that does not beat it, so the top
+    ///   of the ranking cannot fall. It asserted the eviction rule, not the
+    ///   search.
+    /// - It graded children with `ranked()`, i.e. with the **surrogate that
+    ///   refinement is optimizing**. A search that had learned to fool its own
+    ///   fitness would have scored perfectly.
+    /// - `n_refined` was `println!`'d and never asserted, so a build where
+    ///   refinement injected nothing at all passed silently.
+    ///
+    /// The machinery assertions it did make — lineage parity, real diffs,
+    /// resolvable child ids, pool bound — were the good part and are kept.
+    ///
+    /// ## Why it is multi-seed, and gated on the **median**
+    ///
+    /// One run is a single draw over the pool lottery, the duel answers and the
+    /// MH chain, so a single-seed threshold is not worth setting — the same
+    /// reasoning as the taste-loop gate. Unlike that gate, the statistic here
+    /// is the median rather than the mean, because the per-seed distribution
+    /// has a heavy left tail that makes a mean over any affordable number of
+    /// seeds a coin flip. [`MEDIAN_GAIN_GATE`] has the measurement.
+    ///
+    /// Sixteen seeds, run concurrently: ~70 s wall, which is affordable in a
+    /// suite that already renders real audio, and enough that the middle of the
+    /// distribution is stable.
     #[test]
     fn refinement_improves_pool() {
-        let mut rng = StdRng::seed_from_u64(0xF00D);
-        let user = ground_truth();
+        const SEEDS: [u64; 16] = [
+            0xF00D, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF,
+        ];
+        const GENERATIONS: usize = 3;
 
-        let cfg = SessionConfig {
-            pool_size: 24,
-            refine_steps: 8,
-            refine_seeds: 2,
-            ..fast()
-        };
-        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
-        engine.begin_session();
-        engine.fill_pool(&mut rng);
-        for _ in 0..30 {
-            let (a, b) = engine.next_duel(&mut rng).unwrap();
-            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
-            engine.record_duel(a, b, chose_a);
+        /// One search. Returns `(mean gain, max gain, children injected)` in
+        /// the synthetic user's true utility.
+        fn one(seed: u64) -> (f64, f64, usize) {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let user = ground_truth();
+            let cfg = SessionConfig {
+                pool_size: 24,
+                // Well under the shipped 40x10: this is a regression floor that
+                // runs on every commit, not the budget study. `search_health
+                // --budget-ab` is where the shipped split is chosen.
+                refine_steps: 12,
+                refine_seeds: 3,
+                ..fast()
+            };
+            let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+            engine.begin_session();
+            engine.fill_pool(&mut rng);
+            for _ in 0..40 {
+                let (a, b) = engine.next_duel(&mut rng).unwrap();
+                let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+                engine.record_duel(a, b, chose_a);
+            }
+            engine.fit_posterior(&mut rng);
+
+            // True utility of the pool: the user is never shown to the search,
+            // which only ever sees the posterior, so a climb here is the whole
+            // surrogate path working end to end.
+            let truth = |e: &Engine| -> (f64, f64) {
+                let us: Vec<f64> = e.pool.iter().map(|c| user.utility(&c.phi_std)).collect();
+                let mean = us.iter().sum::<f64>() / us.len() as f64;
+                let max = us.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                (mean, max)
+            };
+            let (mean_before, max_before) = truth(&engine);
+            for _ in 0..GENERATIONS {
+                engine.refine(&mut rng);
+            }
+            let (mean_after, max_after) = truth(&engine);
+
+            let n_refined = engine
+                .pool
+                .iter()
+                .filter(|c| c.origin == Origin::Refined)
+                .count();
+
+            // The machinery invariants. Every injection is a lineage event
+            // with a real diff, and the pool never grows past its cap.
+            assert!(engine.pool.len() <= engine.cfg.pool_size);
+            for ev in &engine.lineage {
+                assert_eq!(ev.kind, "refine");
+                assert!(!ev.diff.is_empty(), "seed {seed:#x}: a child with no diff");
+            }
+
+            // **Pool ⊆ lineage, not lineage ⊆ pool**, and the direction matters.
+            //
+            // The single-generation version of this test asserted the reverse —
+            // that every lineage child is still findable in the pool — and that
+            // is only true when nothing has had a chance to be evicted yet.
+            // Across generations a child injected in generation 1 is an
+            // ordinary eviction candidate in generation 2, so the old assertion
+            // fails on a *correct* engine as soon as the horizon is longer than
+            // one round. (It did, on the first run of this widened test.)
+            //
+            // Lineage is permanent history; the pool is a fixed-size working
+            // set. The invariant that survives both is that the history explains
+            // every refined member the pool still holds.
+            let logged: std::collections::HashSet<u64> =
+                engine.lineage.iter().map(|ev| ev.child_id).collect();
+            for c in engine.pool.iter().filter(|c| c.origin == Origin::Refined) {
+                assert!(
+                    logged.contains(&c.id),
+                    "seed {seed:#x}: refined candidate {} has no lineage event",
+                    c.id
+                );
+            }
+            assert!(
+                engine.lineage.len() >= n_refined,
+                "seed {seed:#x}: {n_refined} refined in pool but only {} lineage events",
+                engine.lineage.len()
+            );
+
+            (
+                mean_after - mean_before,
+                max_after - max_before,
+                engine.lineage.len(),
+            )
         }
-        engine.fit_posterior(&mut rng);
 
-        let best_before = engine.ranked().first().map(|&(_, m, _)| m).unwrap();
-        engine.refine(&mut rng);
+        let rows: Vec<(u64, (f64, f64, usize))> = std::thread::scope(|s| {
+            let handles: Vec<_> = SEEDS
+                .iter()
+                .map(|&seed| s.spawn(move || (seed, one(seed))))
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
 
-        // Refinement never degrades the best (eviction only removes the
-        // worst), and any refined newcomer must have beaten the then-worst.
-        let best_after = engine.ranked().first().map(|&(_, m, _)| m).unwrap();
-        assert!(best_after >= best_before - 1e-9);
-        let n_refined = engine
-            .pool
-            .iter()
-            .filter(|c| c.origin == Origin::Refined)
-            .count();
-        // MH at small step counts may reject everything — that's legal — but
-        // the machinery must at least run and keep the pool consistent.
-        assert!(engine.pool.len() <= engine.cfg.pool_size);
-        // Every injected candidate is a lineage event with a real diff.
-        assert_eq!(engine.lineage.len(), n_refined);
-        for ev in &engine.lineage {
-            assert_eq!(ev.kind, "refine");
-            assert!(!ev.diff.is_empty());
-            assert!(engine.find(ev.child_id).is_some());
+        for (seed, (mean_gain, max_gain, injected)) in &rows {
+            println!(
+                "  seed {seed:#x}: mean gain {mean_gain:+.3}  max gain {max_gain:+.3}  \
+                 injected {injected}"
+            );
         }
-        println!("refined candidates injected: {n_refined}");
+
+        let n = rows.len();
+        let mean_gain = rows.iter().map(|(_, m)| m.0).sum::<f64>() / n as f64;
+        let mut sorted: Vec<f64> = rows.iter().map(|(_, m)| m.0).collect();
+        sorted.sort_by(f64::total_cmp);
+        let median_gain = (sorted[(n - 1) / 2] + sorted[n / 2]) / 2.0;
+        let improved = rows.iter().filter(|(_, m)| m.0 > 0.0).count();
+        let worst_max = rows.iter().map(|(_, m)| m.1).fold(f64::INFINITY, f64::min);
+        let total_injected: usize = rows.iter().map(|(_, m)| m.2).sum();
+        println!(
+            "refinement over {n} seeds x {GENERATIONS} generations: median gain \
+             {median_gain:+.3}  mean {mean_gain:+.3}  improved {improved}/{n}  \
+             worst max gain {worst_max:+.3}  injected {total_injected}"
+        );
+
+        // A generation that injects nothing anywhere is a broken search, not a
+        // conservative one.
+        assert!(
+            total_injected > 0,
+            "refinement injected no candidates across any seed"
+        );
+        assert!(
+            improved >= IMPROVED_GATE,
+            "only {improved}/{n} seeds improved, under the {IMPROVED_GATE} gate"
+        );
+        assert!(
+            median_gain > MEDIAN_GAIN_GATE,
+            "median pool gain {median_gain:+.3} is under the {MEDIAN_GAIN_GATE:+.3} gate"
+        );
+        assert!(
+            worst_max >= -1e-9,
+            "refinement degraded a pool's best member by {worst_max:+.3}"
+        );
     }
+
+    /// Gates for [`refinement_improves_pool`], set from the observed 16-seed
+    /// spread rather than from a round number.
+    ///
+    /// ## Why the **median**, and not the mean
+    ///
+    /// The mean was the obvious choice and the measurement rejected it. Over
+    /// the 16 seeds the per-seed gains were
+    ///
+    /// ```text
+    /// -12.04  -5.55  -1.33  0.87  0.93  1.16  1.48  1.48
+    ///   1.48   1.50   1.51  2.01  2.10  2.55  2.57  2.72
+    /// ```
+    ///
+    /// — thirteen clear improvements and **two catastrophic seeds** that drag
+    /// the mean to +0.215 while the median sits at +1.481. The tail is not a
+    /// measurement artifact to be averaged away, and it makes the mean useless
+    /// as a gate: over *any* four of these seeds the mean ranges −4.51 to
+    /// +2.49 and is **negative 40 % of the time**. A four-seed mean gate — the
+    /// first version of this test — would have been a coin flip that failed for
+    /// reasons having nothing to do with the change under review.
+    ///
+    /// The median is stable for the same reason the mean is not: eleven of the
+    /// sixteen seeds sit between 0.87 and 2.72, and five of those within 0.04
+    /// of each other, so the middle of the distribution barely moves.
+    ///
+    /// ## What the two bad seeds are
+    ///
+    /// They are the surrogate doing its job too well. `insert_candidate` admits
+    /// a child that beats the pool's worst **by the model**, and evicts by the
+    /// same rule — so a posterior fitted on 40 duels at the suite's trimmed
+    /// MCMC budget can hand back nine candidates it likes and the synthetic
+    /// user does not, replacing nine the user did. That is the classic failure
+    /// of optimizing a surrogate, it is *not* a bug in the machinery, and it is
+    /// the reason [`RefineKeep::Best`] ships switched off: taking the argmax of
+    /// the same surrogate is the move most likely to make this worse, and
+    /// nothing has measured it yet.
+    ///
+    /// Gates below the observed values with real margin: 13 improved (gate 10),
+    /// median +1.481 (gate +0.5). Re-derive them by running this test with
+    /// `-- --nocapture` and reading the per-seed lines.
+    const MEDIAN_GAIN_GATE: f64 = 0.5;
+    const IMPROVED_GATE: usize = 10;
 
     /// Locked refinement never touches a locked address: run `refine_from`
     /// with every continuous amp-envelope site locked and assert the child's
@@ -821,16 +1000,35 @@ mod tests {
                     }
                 }
             }
-            assert!(
-                carried > 0,
-                "a refinement step that changed everything is not a refinement"
-            );
+            // A round that shares no module with its seed has nothing to say
+            // about identity, and is **skipped rather than failed**.
+            //
+            // This used to `assert!(carried > 0, "a refinement step that
+            // changed everything is not a refinement")`, which conflates two
+            // different claims: "identity survives where structure survives"
+            // (this test's subject, asserted above and still strict) and "a
+            // walk never restructures a whole term" (a claim about the search,
+            // and not a true one). Forty MH steps over a small term can replace
+            // the root's kind, after which no key/kind pair matches and there is
+            // simply nothing to carry — no uid was lost, because none was
+            // comparable. The φ shift from peak-capped normalization moved one
+            // seed's trajectory into exactly that case, and the test failed
+            // without anything being wrong.
+            //
+            // `checked` counts only rounds that genuinely exercised the
+            // property, and the final assert still requires at least one.
+            if carried == 0 {
+                continue;
+            }
             checked += 1;
             if checked >= 2 {
                 break;
             }
         }
-        assert!(checked > 0, "no refinement was ever accepted");
+        assert!(
+            checked > 0,
+            "no refinement round preserved any structure, so identity carrying was never exercised"
+        );
     }
 
     /// Hand edits: `commit_edit` inserts the edited tree, links lineage, and

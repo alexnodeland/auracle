@@ -70,8 +70,28 @@ pub struct Features {
     pub vet: VetReport,
     /// Integrated loudness before normalization (LUFS).
     pub lufs_before: f64,
-    /// Gain applied to reach [`TARGET_LUFS`] (dB).
+    /// Gain applied (dB) — toward [`TARGET_LUFS`], but never past
+    /// [`auracle_features::PEAK_CEILING`](crate::loudness::PEAK_CEILING).
     pub gain_db: f64,
+    /// Makeup gain given up so the render would not clip, in dB (≥ 0).
+    ///
+    /// Zero for most patches. Positive means this one auditions *below*
+    /// [`TARGET_LUFS`] because its crest factor would not let it reach the
+    /// target without going over full scale — so a surface comparing two
+    /// candidates' levels can say which of them was pulled down and by how
+    /// much, rather than presenting a peak-limited patch as a quiet one.
+    ///
+    /// `#[serde(default)]` is forward-looking rather than a migration.
+    /// Features cross the farm as [`crate::CachedFeatures`] within a single
+    /// boot, where the worker's version stamp guarantees one build on both
+    /// ends, and nothing persists them across boots today — `BankEntry` stores
+    /// trees, so a reloaded pool is re-featurized under whatever normalizer is
+    /// current. The default matters the moment the persistent render cache
+    /// lands, and the thing to note there is that a row written before this
+    /// ceiling carries a `gain_db` that *would* clip: normalization changing
+    /// has to invalidate the cache namespace, not merely default a field.
+    #[serde(default)]
+    pub peak_reduction_db: f64,
 }
 
 impl Features {
@@ -126,6 +146,7 @@ pub fn featurize(tree: &PatchTree, spec: &PhraseSpec) -> Result<VettedCandidate,
         vet: report,
         lufs_before: norm.lufs_before,
         gain_db: norm.gain_db,
+        peak_reduction_db: norm.peak_reduction_db,
     };
     // The second half of the same guard, on the vector rather than the term.
     // Costs one pass over 37 doubles against a render that took most of a

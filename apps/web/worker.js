@@ -277,6 +277,11 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
     const inflight = new Map(); // index -> {tree, tries, timer, worker}
     let cursor = startAt;
     let finished = false;
+    // Renders the farm's persistent cache answered without rendering. Counted
+    // here rather than in the farm workers because there are N of them and one
+    // wave is the unit anybody would want the rate for.
+    let served = 0;
+    let rendered = 0;
 
     const finish = () => {
       if (finished) return;
@@ -284,6 +289,16 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
       for (const s of inflight.values()) clearTimeout(s.timer);
       inflight.clear();
       farmSink = null;
+      // One line per wave, in the app's own log rather than the console: a
+      // cache that has stopped hitting is the difference between a 2 s boot and
+      // a 25 s one, and there is otherwise no way to notice it from outside.
+      if (served + rendered > 0) {
+        logNote(
+          `[auracle] render cache: ${served} served, ${rendered} rendered ` +
+            `(${Math.round((100 * served) / (served + rendered))}% hit)`,
+          { kind: "render_cache", served, rendered }
+        );
+      }
       resolve();
     };
 
@@ -410,7 +425,13 @@ function runFarm({ startAt, take, absorb, stop, wantAudio, after }) {
         // will do — but a real result always beats a watchdog retirement,
         // which is the one outcome that would change the bank.
         const prev = results.get(m.i);
-        if (!prev || (!prev.ok && m.ok)) results.set(m.i, m);
+        if (!prev || (!prev.ok && m.ok)) {
+          // Counted where duplicates are already resolved, so a re-issued job
+          // is one render in the tally rather than two.
+          if (m.hit) served++;
+          else rendered++;
+          results.set(m.i, m);
+        }
         pump();
       },
       lost: (f) => {
