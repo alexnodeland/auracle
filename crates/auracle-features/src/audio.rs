@@ -234,9 +234,22 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         (hops * hop as f64 / sr + 0.005).ln()
     };
 
+    // **DC-removed before counting.** A zero-crossing counter measures crossings
+    // of zero, not of the signal's own centre, so a constant offset suppresses
+    // them — a patch riding +0.3 with a ±0.2 oscillation crosses zero never and
+    // reads as maximally dark. The vet gate admits |mean|/rms up to 0.6, so that
+    // is a reachable render rather than a hypothetical one, and `zcr_mean` feeds
+    // a linear model as if it were a brightness measurement.
+    //
+    // Subtracting the mean is the whole fix: the crossing count of `x − x̄` is
+    // what the coordinate has always been trying to be. For a render with no
+    // offset — which is nearly all of them, `makes_dc` puts a blocker in front
+    // of every tube-mode patch — the mean is ~1e-4 of full scale and the count
+    // is unchanged.
+    let dc = x.iter().sum::<f64>() / n.max(1) as f64;
     let zcr_fraction = if n > 1 {
         x.windows(2)
-            .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
+            .filter(|w| ((w[0] - dc) >= 0.0) != ((w[1] - dc) >= 0.0))
             .count() as f64
             / (n - 1) as f64
     } else {
@@ -344,6 +357,18 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
                 fluxes.push(flux);
             }
             prev_mag = Some((mag, msum));
+        } else {
+            // **A silent frame breaks the chain rather than being skipped
+            // over.** Flux is the change between *adjacent* frames; carrying
+            // `prev_mag` across a gap would compare two frames that are not
+            // neighbours and report the difference as if it happened in one
+            // hop. A phrase with a rest in it — and this one has four — would
+            // then score a spurious burst of movement at every re-entry, which
+            // is the opposite of what a rest is.
+            //
+            // Dropping the sample is the honest reading: across a gap there is
+            // no adjacent pair to measure, so there is nothing to say.
+            prev_mag = None;
         }
         pos += HOP;
     }
