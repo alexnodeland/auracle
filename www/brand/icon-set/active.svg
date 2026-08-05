@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" role="img" aria-label="Fitting">
+  <!-- The model is fitting. The mark's own geometry reduced to one colour: the
+       ring it rests in, and the quadrant that sweeps. Rotate the bright arc to
+       animate it — this is the only icon in the set that is allowed to move. -->
+  <circle cx="12" cy="12" r="8" stroke-opacity="0.3"/>
+  <path d="M12 4a8 8 0 0 1 8 8" stroke-linecap="round"/>
+</svg>

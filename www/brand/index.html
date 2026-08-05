@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en" class="rack">
+<head>
+<meta charset="utf-8">
+<title>Brand — Auracle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Auracle's mark, logotype, lockups and icon set — the specification, and the reasoning behind each decision.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0d10">
+<meta name="robots" content="noindex">
+
+<link rel="icon" href="mark.svg">
+
+<style>
+/* The faces are copied to site/fonts by `make site-landing` — one source in
+   apps/web/fonts, as everywhere else. See www/theme/fonts/README.md. */
+@font-face {
+  font-family: "Jost";
+  src: url("../fonts/jost-var.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("../fonts/plexmono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* Tokens are the instrument's own, verbatim from www/landing/style.css. A
+   brand page painted in anything else would be arguing with itself. */
+:root {
+  --rack: #0c0d10;
+  --panel: #171a1f;
+  --panel-hi: #1d2127;
+  --bezel: #07080a;
+  --hairline: #292e36;
+
+  --silk: #d9d4c8;
+  --silk-dim: #9a958a;
+  --silk-mute: #6f6c63;
+
+  --phos-a: #8ef0b1;
+  --phos-a-dim: #63a97c;
+  --phos-a-deep: #3d6a4d;
+
+  --phos-b: #ffb454;
+  --phos-b-dim: #b8823c;
+
+  --led-red: #ff5747;
+  --paper: #e8e6e0;
+
+  --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
+  --s6: 32px; --s7: 48px; --s8: 72px;
+
+  --t-micro: 0.66rem;
+  --lift: inset 1px 1px 0 rgba(255, 255, 255, 0.07);
+  --frame: 1180px;
+  --gutter: clamp(20px, 5vw, 56px);
+
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--rack);
+  color: var(--silk);
+  font-family: var(--font-silk);
+  font-weight: 300;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: var(--frame); margin: 0 auto; padding-inline: var(--gutter); }
+
+a { color: var(--phos-a-dim); }
+a:focus-visible, .lk:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 3px; }
+
+/* ─── THE LOCKUP ──────────────────────────────────────────────────────────
+   This rule is the specification. Everything on this page is drawn with it,
+   so the spec and the specimen cannot drift apart. Sizes are in em against
+   the lockup's own font-size: set that one number and the rest follows. */
+
+.lk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.62em;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--silk);
+  text-decoration: none;
+}
+.lk .glyph {
+  width: 1.28em;
+  height: 1.28em;
+  flex: none;
+  /* Caps-only type sits high in its line box; without this the tile sags. */
+  transform: translateY(-0.035em);
+}
+.lk .wm { letter-spacing: 0.145em; }
+/* Tracking comes off as the mark gets bigger, or the word falls apart into
+   seven letters. This is the ramp. */
+.lk.lk-lg .wm { letter-spacing: 0.115em; }
+.lk.lk-xl .wm { letter-spacing: 0.095em; }
+
+.lk-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: 500;
+  line-height: 1;
+}
+.lk-stack .glyph { width: 2.6em; height: 2.6em; }
+.lk-stack .wm { letter-spacing: 0.14em; }
+.desc {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.32em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--silk-mute);
+}
+
+/* ─── page furniture ─────────────────────────────────────────────────── */
+
+.bar {
+  display: flex; align-items: center; height: 56px;
+  border-bottom: 1px solid var(--hairline);
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(12, 13, 16, 0.86);
+  backdrop-filter: blur(10px);
+}
+.bar-in { display: flex; align-items: center; width: 100%; }
+.bar-note {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--silk-mute); margin-inline-start: auto;
+}
+.bar-note a { text-decoration: none; }
+.bar-note a:hover { color: var(--silk); }
+
+.eyebrow {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--silk-mute); margin: 0 0 var(--s4);
+}
+.display {
+  font-size: clamp(2rem, 4.4vw, 3.1rem);
+  font-weight: 300; letter-spacing: -0.022em; line-height: 1.08;
+  text-wrap: balance; margin: 0 0 var(--s4);
+}
+.h2 {
+  font-size: clamp(1.4rem, 2.8vw, 1.95rem);
+  font-weight: 300; letter-spacing: -0.014em;
+  text-wrap: balance; margin: 0 0 var(--s4);
+}
+p.t { max-width: 62ch; color: var(--silk-dim); margin: 0 0 var(--s4); }
+p.t strong { color: var(--silk); font-weight: 400; }
+p.t em { color: var(--silk); font-style: italic; }
+code {
+  font-family: var(--font-mono); font-size: 0.84em; color: var(--phos-a-dim);
+}
+
+section { padding: var(--s8) 0; border-top: 1px solid var(--hairline); }
+section:first-of-type { border-top: 0; }
+
+.stage {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--s7); flex-wrap: wrap;
+  padding: var(--s8) var(--s6);
+  background: var(--bezel); border: 1px solid var(--hairline);
+  border-radius: 4px; box-shadow: var(--lift);
+  margin: var(--s5) 0 0;
+}
+.stage.paper { background: var(--paper); border-color: #c9c6bd; }
+.stage.paper .lk, .stage.paper .lk-stack { color: #1b1a18; }
+.cell { display: flex; flex-direction: column; align-items: center; gap: var(--s4); }
+.cap {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--silk-mute); text-align: center; line-height: 1.5;
+}
+.cap b { display: block; color: var(--phos-a-dim); font-weight: 400; }
+.stage.paper .cap { color: #6b6862; }
+.stage.paper .cap b { color: #3d6a4d; }
+
+/* the size ladder */
+.ladder {
+  display: flex; align-items: flex-end; gap: var(--s5);
+  padding: var(--s4) var(--s5);
+  background: var(--bezel); border: 1px solid var(--hairline);
+  border-radius: 4px; box-shadow: var(--lift);
+  width: fit-content; max-width: 100%; overflow-x: auto;
+  margin-top: var(--s5);
+}
+.rung { display: flex; flex-direction: column; align-items: center; gap: var(--s2); }
+.rung .px {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  color: var(--silk-mute); font-variant-numeric: tabular-nums;
+}
+
+/* the two-lamp comparison */
+.versus {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s4); margin-top: var(--s5);
+}
+.versus > div {
+  padding: var(--s7) var(--s5); background: var(--bezel);
+  border: 1px solid var(--hairline); border-radius: 4px; text-align: center;
+}
+.versus .verdict {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  margin: var(--s5) 0 0; line-height: 1.5;
+}
+.versus .no { border-color: rgba(255, 87, 71, 0.35); }
+.versus .no .verdict { color: var(--led-red); }
+.versus .no .wm b { font-weight: 500; color: var(--phos-a); }
+.versus .yes { border-color: var(--phos-a-deep); }
+.versus .yes .verdict { color: var(--phos-a-dim); }
+
+/* construction diagram */
+.constr {
+  display: inline-block; padding: 1.28em; margin-top: var(--s5);
+  font-size: 40px;
+  border: 1px dashed var(--phos-a-deep);
+  background: var(--bezel); border-radius: 3px;
+}
+.constr-inner { border: 1px solid var(--phos-b-dim); padding: 0.1em 0.14em; display: inline-block; }
+.constr-note {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--silk-mute); margin-top: var(--s4); line-height: 1.6;
+}
+.constr-note b { color: var(--phos-b-dim); font-weight: 400; }
+
+/* tables */
+.scroller { overflow-x: auto; }
+.spec {
+  width: 100%; border-collapse: collapse; margin-top: var(--s5);
+  font-size: 0.9rem; max-width: 78ch;
+}
+.spec th, .spec td {
+  text-align: left; padding: 10px var(--s4);
+  border-bottom: 1px solid var(--hairline); vertical-align: baseline;
+}
+.spec th {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--silk-mute); font-weight: 400;
+}
+.spec td { color: var(--silk-dim); }
+.spec td:first-child { color: var(--silk); }
+.spec td.num {
+  font-family: var(--font-mono); font-size: 0.82rem;
+  font-variant-numeric: tabular-nums; color: var(--phos-a-dim); white-space: nowrap;
+}
+
+/* the icon set */
+.iconset {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px; background: var(--hairline);
+  border: 1px solid var(--hairline); border-radius: 4px;
+  overflow: hidden; margin-top: var(--s5);
+}
+.iconset > div {
+  background: var(--bezel); padding: var(--s6) var(--s4) var(--s5);
+  display: flex; flex-direction: column; align-items: center; gap: var(--s4);
+  text-align: center;
+}
+/* Single colour, taking the colour of whatever it sits in — which is the
+   whole difference between these and the mark. */
+.ui-icon { width: 30px; height: 30px; color: var(--silk); }
+.iconset .name {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--phos-a-dim);
+}
+.iconset .use { font-size: 0.86rem; color: var(--silk-dim); line-height: 1.5; }
+
+/* icons taking their surroundings' colour, demonstrated */
+.tints { display: flex; gap: var(--s4); flex-wrap: wrap; margin-top: var(--s5); }
+.tint {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: 10px var(--s4);
+  border: 1px solid var(--hairline); border-radius: 3px;
+  font-size: 0.86rem; letter-spacing: 0.04em;
+}
+.tint .ui-icon { width: 20px; height: 20px; color: inherit; }
+.tint.rest { color: var(--silk-dim); }
+.tint.here { color: var(--phos-b); border-color: var(--phos-b-dim); }
+.tint.go { color: var(--phos-a); border-color: var(--phos-a-deep); }
+.tint.busy { color: var(--silk); }
+.tint.busy .ui-icon { animation: spin 1.1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .tint.busy .ui-icon { animation: none; }
+}
+
+/* don'ts */
+.donts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s4); margin-top: var(--s5);
+}
+.dont {
+  padding: var(--s6) var(--s4) var(--s4);
+  background: var(--bezel); border: 1px solid rgba(255, 87, 71, 0.3);
+  border-radius: 4px; display: flex; flex-direction: column;
+  align-items: center; gap: var(--s5); text-align: center;
+}
+.dont .why {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--led-red); line-height: 1.6; margin: 0;
+}
+.d-tint .glyph { filter: hue-rotate(180deg) saturate(1.4); }
+.d-squash .wm { transform: scaleY(0.68); display: inline-block; }
+.d-face .wm { font-family: Georgia, "Times New Roman", serif; letter-spacing: 0.04em; }
+.d-crowd .lk { gap: 0.14em; }
+
+@media (max-width: 780px) {
+  .versus { grid-template-columns: minmax(0, 1fr); }
+  .constr { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><defs>
+  <!-- Geometry mirrored from mark.svg and mark-active.svg. Those files are
+       canonical; if these ever disagree, they are the ones that are wrong. -->
+  <symbol id="mark" viewBox="0 0 32 32">
+    <rect width="32" height="32" rx="7" fill="#0c0d10"/>
+    <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/>
+    <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/>
+    <circle cx="16" cy="16" r="3" fill="#ffb454"/>
+  </symbol>
+  <symbol id="mark-active" viewBox="0 0 32 32">
+    <rect width="32" height="32" rx="7" fill="#0c0d10"/>
+    <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/>
+    <path d="M16 4a12 12 0 0 1 12 12" fill="none" stroke="#8ef0b1" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/>
+    <circle cx="16" cy="16" r="3" fill="#ffb454"/>
+  </symbol>
+  <symbol id="mark16" viewBox="0 0 16 16">
+    <rect width="16" height="16" rx="3.5" fill="#0c0d10"/>
+    <circle cx="8" cy="8" r="5" fill="none" stroke="#8ef0b1" stroke-width="2"/>
+    <circle cx="8" cy="8" r="1.6" fill="#ffb454"/>
+  </symbol>
+
+  <!-- The icon set. Single colour, currentColor, 24px grid, 2px stroke. -->
+  <symbol id="ic-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <path d="M6.5 11.9c0 8 11 8 11 0"/>
+    <circle cx="6.5" cy="9" r="2.9"/>
+    <circle cx="17.5" cy="9" r="2.9"/>
+  </symbol>
+  <symbol id="ic-evolve" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 18.8 12 5.2l7.5 13.6"/>
+    <path d="M8 13.5h8"/>
+  </symbol>
+  <symbol id="ic-taste" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <path d="M3 19h18"/>
+    <path d="M3 16c4.5 0 4.5-11 9-11s4.5 11 9 11"/>
+  </symbol>
+  <symbol id="ic-teach" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <path d="M7 18v-6"/><path d="M12 18V6"/><path d="M17 18v-8.5"/>
+  </symbol>
+  <symbol id="ic-active" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="8" stroke-opacity="0.3"/>
+    <path d="M12 4a8 8 0 0 1 8 8" stroke-linecap="round"/>
+  </symbol>
+</defs></svg>
+
+<header class="bar">
+  <div class="wrap bar-in">
+    <a class="lk" href="../" style="font-size:1.02rem"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></a>
+    <span class="bar-note"><a href="../">Back to the site</a></span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section>
+    <p class="eyebrow">Brand</p>
+    <h1 class="display">One mark, on every ground the instrument shows up on.</h1>
+    <p class="t">This page is the specification. It is also the specimen: every
+    lockup below is drawn by the <code>.lk</code> rule in this file's own stylesheet,
+    so the spec cannot quietly stop matching what ships.</p>
+    <p class="t">The vocabulary was already here — the rack at <code>#0c0d10</code>, two
+    phosphors where <strong>green is sound</strong> and <strong>amber is the model's
+    mind</strong>, and AURACLE set in Jost 500. What was missing was one decision about
+    how they go together, which is what follows.</p>
+    <p class="t">The files live in <code>www/brand/</code> and are copied into every
+    consumer at build time by <code>make site-brand</code>. Nothing else in the repo is
+    allowed to hold a mark: before that rule existed there were three different Auracle
+    icons in circulation at once.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The mark</p>
+    <h2 class="h2">Three rings and a core. An aura outward, a posterior inward.</h2>
+    <p class="t">Deep green outside, bright green inside, amber at the centre. Read
+    outward it radiates; read inward it is a distribution contracting onto one taste,
+    which is the same picture the instrument draws of itself. Two phosphors and no third.</p>
+    <p class="t"><strong>The tile is part of the mark.</strong> It stays dark on every
+    ground, including paper — the phosphor colours have no light-mode equivalent, and
+    inventing one would be a second brand to keep in sync.</p>
+
+    <div class="ladder">
+      <div class="rung"><svg width="96" height="96"><use href="#mark"/></svg><span class="px">96</span></div>
+      <div class="rung"><svg width="64" height="64"><use href="#mark"/></svg><span class="px">64</span></div>
+      <div class="rung"><svg width="32" height="32"><use href="#mark"/></svg><span class="px">32</span></div>
+      <div class="rung"><svg width="24" height="24"><use href="#mark"/></svg><span class="px">24</span></div>
+      <div class="rung"><svg width="16" height="16"><use href="#mark16"/></svg><span class="px">16</span></div>
+    </div>
+
+    <p class="t" style="margin-top:var(--s5)">The 16 in that row is not the same file.
+    At sixteen device pixels the outer ring is about half a pixel of deep green, and it
+    antialiases into a smudge that fills the gaps and turns three rings into one blob.
+    <code>mark-16.svg</code> is the same mark with that ring taken off and every edge
+    landing on a whole pixel. Use it wherever the output really is 16 square pixels —
+    today that is only the app's inline tab icon.</p>
+
+    <div class="stage paper">
+      <div class="cell">
+        <svg width="64" height="64"><use href="#mark"/></svg>
+        <span class="cap"><b>On paper</b>the tile does not invert</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">The logotype</p>
+    <h2 class="h2">Already correct. The lockup was the open question.</h2>
+    <p class="t">AURACLE is Jost 500, all caps, on a tracking ramp. Jost is a geometric
+    sans built for signage, which is what an instrument panel is; it is already the
+    product's face and redrawing it would be work that makes nothing better.</p>
+    <p class="t">The one real conflict was that <strong>the mark is a lamp and the
+    wordmark's final E was also a lamp</strong>. In the app that E is instrumentation —
+    <code>apps/web/main.js</code> calls <code>$("wm-lamp").classList.add("thinking")</code>
+    in seven places, so it genuinely lights while the model is fitting. Everywhere else it
+    was welded on, and the note that used to sit in the landing page's stylesheet already
+    conceded the point: <em>a light that pulses without meaning is worse than no
+    light</em>.</p>
+
+    <div class="versus">
+      <div class="no">
+        <span class="lk lk-lg" style="font-size:34px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACL<b>E</b></span></span>
+        <p class="verdict">Two lamps &middot; neither one live<br>the green pulls right, off the mark</p>
+      </div>
+      <div class="yes">
+        <span class="lk lk-lg" style="font-size:34px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <p class="verdict">One lamp &middot; the mark holds it<br>colour lands in exactly one place</p>
+      </div>
+    </div>
+
+    <p class="t" style="margin-top:var(--s6)"><strong>So: the mark carries the lamp and
+    the logotype is silk.</strong> The lit E stays in the app, where it is telling you
+    something true, and is therefore special again rather than ambient.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The lockups &middot; four, no more</p>
+    <h2 class="h2">One primary, one stacked, and the two halves alone.</h2>
+    <p class="t">A logo system fails by having too many members. These four cover every
+    surface Auracle has.</p>
+
+    <div class="stage">
+      <div class="cell">
+        <span class="lk lk-xl" style="font-size:52px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <span class="cap"><b>Primary &middot; horizontal</b>README, site bar, docs header, slides</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="cell">
+        <span class="lk-stack" style="font-size:44px">
+          <svg class="glyph"><use href="#mark"/></svg>
+          <span class="wm">AURACLE</span>
+          <span class="desc">A synthesizer that searches for your sound</span>
+        </span>
+        <span class="cap"><b>Stacked &middot; with descriptor</b>social card, boot screen, splash, print</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="cell">
+        <svg width="76" height="76"><use href="#mark"/></svg>
+        <span class="cap"><b>Mark alone</b>favicon, avatar, app icon</span>
+      </div>
+      <div class="cell">
+        <span class="lk lk-lg" style="font-size:34px"><span class="wm">AURACL<b style="font-weight:500;color:var(--phos-a)">E</b></span></span>
+        <span class="cap"><b>Logotype alone &middot; lamp live</b>the app only, where the E means something</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Construction</p>
+    <h2 class="h2">Clear space is one mark-height. Everything else scales from the cap.</h2>
+
+    <div class="constr">
+      <span class="constr-inner"><span class="lk lk-xl" style="font-size:40px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span></span>
+    </div>
+    <p class="constr-note"><b>Amber</b> &middot; the lockup's own bounding box<br>
+    Dashed &middot; the minimum clear space, one mark-height on all four sides &mdash;
+    nothing crosses it, including page gutters and card edges</p>
+
+    <div class="scroller">
+      <table class="spec">
+        <thead><tr><th>Quantity</th><th>Value</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Mark height</td><td class="num">1.28 &times; cap</td><td>A tile has to exceed the cap or it reads as sunk below the line</td></tr>
+          <tr><td>Gap, mark to word</td><td class="num">0.62 em</td><td>Wide enough to be a lockup, tight enough not to be two objects</td></tr>
+          <tr><td>Optical lift</td><td class="num">&minus;0.035 em</td><td>Caps sit high in the line box; without it the tile sags</td></tr>
+          <tr><td>Tracking, under 24px</td><td class="num">0.145 em</td><td>Small type needs air between letters to stay countable</td></tr>
+          <tr><td>Tracking, 24&ndash;48px</td><td class="num">0.115 em</td><td>The ramp &mdash; tracking comes off as size goes on</td></tr>
+          <tr><td>Tracking, over 48px</td><td class="num">0.095 em</td><td>Past this the word disintegrates into seven letters</td></tr>
+          <tr><td>Clear space</td><td class="num">1 &times; mark height</td><td>A rule that scales, rather than a pixel value that does not</td></tr>
+          <tr><td>Minimum, horizontal</td><td class="num">96 px wide</td><td>Below this the tracking closes up and the mark muddies</td></tr>
+          <tr><td>Minimum, mark alone</td><td class="num">16 px</td><td>And at exactly 16, use <code>mark-16.svg</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">The icon set</p>
+    <h2 class="h2">The marks that lost the vote, doing the jobs they were better at.</h2>
+    <p class="t">Five shapes were drawn as candidates for the mark. One won; the rest
+    turned out to name things the product already names, so they became the icon set.</p>
+    <p class="t">They are <strong>a different kind of object from the mark</strong>:
+    single colour, <code>currentColor</code>, no tile, 24px grid, 2px stroke. A UI icon
+    has to take the colour of the control it sits in, and the two-phosphor split belongs
+    to the brand mark alone — an icon that insists on its own colours is a sticker, not
+    an icon.</p>
+
+    <div class="iconset">
+      <div>
+        <svg class="ui-icon"><use href="#ic-play"/></svg>
+        <span class="name">play</span>
+        <span class="use">Two jacks and a cable. PLAY, the patch, wiring, the rack.</span>
+      </div>
+      <div>
+        <svg class="ui-icon"><use href="#ic-evolve"/></svg>
+        <span class="name">evolve</span>
+        <span class="use">A peak at the mode. EVOLVE, the duels, a proposal.</span>
+      </div>
+      <div>
+        <svg class="ui-icon"><use href="#ic-taste"/></svg>
+        <span class="name">taste</span>
+        <span class="use">A posterior over the ground. TASTE, the model's mind.</span>
+      </div>
+      <div>
+        <svg class="ui-icon"><use href="#ic-teach"/></svg>
+        <span class="name">teach</span>
+        <span class="use">A meter. Teaching it, and what it learns from.</span>
+      </div>
+      <div>
+        <svg class="ui-icon"><use href="#ic-active"/></svg>
+        <span class="name">active</span>
+        <span class="use">The mark's own ring, sweeping. The model is fitting.</span>
+      </div>
+    </div>
+
+    <p class="t" style="margin-top:var(--s6)">The first four are the guide's own chapters
+    — <code>views/play.md</code>, <code>views/evolve.md</code>, <code>views/taste.md</code>,
+    <code>teaching.md</code>. That is the test of whether an icon set is real: it names
+    things the product had already named, rather than inventing categories to fill a grid.</p>
+
+    <p class="t"><code>teach</code> is the one that left its candidate behind. It was
+    drawn as the wordmark's lit E, and a letterform cannot carry a meaning in a toolbar —
+    rotated into bars it is a meter, which is what the teach meter actually is.</p>
+
+    <p class="t">Taking the colour of the control, which is the whole point:</p>
+    <div class="tints">
+      <span class="tint rest"><svg class="ui-icon"><use href="#ic-play"/></svg>Resting</span>
+      <span class="tint here"><svg class="ui-icon"><use href="#ic-taste"/></svg>Where you are</span>
+      <span class="tint go"><svg class="ui-icon"><use href="#ic-evolve"/></svg>The one action</span>
+      <span class="tint busy"><svg class="ui-icon"><use href="#ic-active"/></svg>Fitting</span>
+    </div>
+    <p class="t" style="margin-top:var(--s4)"><code>active</code> is the only icon in the
+    set allowed to move, and only while a fit is actually running. It also honours
+    <code>prefers-reduced-motion</code>, as everything here does.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Wrong</p>
+    <h2 class="h2">Four ways to break it.</h2>
+    <div class="donts">
+      <div class="dont d-tint">
+        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <p class="why">Do not re-tint the mark. Two phosphors, no third.</p>
+      </div>
+      <div class="dont d-squash">
+        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <p class="why">Do not squash or stretch. Set the tracking instead.</p>
+      </div>
+      <div class="dont d-face">
+        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <p class="why">Do not reset the logotype. It is Jost 500, always.</p>
+      </div>
+      <div class="dont d-crowd">
+        <span class="lk" style="font-size:22px"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
+        <p class="why">Do not crowd the mark. One mark-height, minimum.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Where it all lives</p>
+    <h2 class="h2">One source, copied at build time.</h2>
+    <div class="scroller">
+      <table class="spec">
+        <thead><tr><th>File</th><th>Goes to</th><th>By</th></tr></thead>
+        <tbody>
+          <tr><td>mark.svg</td><td>site favicon, docs + reference favicons, this page</td><td class="num">make site-brand</td></tr>
+          <tr><td>mark-16.svg</td><td>the app's inline tab icon, as base64</td><td class="num">by hand, documented</td></tr>
+          <tr><td>mark-active.svg</td><td>beside a running fit</td><td class="num">&mdash;</td></tr>
+          <tr><td>favicon.png</td><td>the PNG fallback slot</td><td class="num">make site-landing</td></tr>
+          <tr><td>apple-touch-icon.png</td><td>site root</td><td class="num">make site-landing</td></tr>
+          <tr><td>og.png</td><td>site/assets/og.png</td><td class="num">make site-landing</td></tr>
+          <tr><td>lockup.png</td><td>the README, which has no fonts</td><td class="num">committed</td></tr>
+          <tr><td>icon-set/*.svg</td><td>this page. Drawn and named, not yet wired into the app's view tabs or the guide</td><td class="num">make site-extras</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="t" style="margin-top:var(--s6)">Rasters are committed rather than built, so
+    that neither CI nor a contributor needs a renderer installed to build the site. After
+    changing <code>mark.svg</code>, run <code>make brand-rasters</code> — and see
+    <code>www/brand/README.md</code> for the two that a renderer cannot make, because they
+    set the logotype and need real Jost outlines.</p>
+  </section>
+
+</main>
+</body>
+</html>

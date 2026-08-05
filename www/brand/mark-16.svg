@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="Auracle">
+  <!-- THE MARK, HINTED FOR 16px. Not a different mark — the same one with the
+       outer ring taken off, because at sixteen device pixels that ring is
+       0.55px of deep green and antialiases into a smudge that fills the gaps
+       and turns three rings into one blob.
+
+       Every edge here lands on a whole pixel at 16px: the ring is 2px on a
+       10px circle, the core is 3.2px. Use this wherever the output really is
+       16 square pixels — the app's inline tab icon is the only such place
+       today. Everything larger uses mark.svg, which keeps the third ring. -->
+  <rect width="16" height="16" rx="3.5" fill="#0c0d10"/>
+  <circle cx="8" cy="8" r="5" fill="none" stroke="#8ef0b1" stroke-width="2"/>
+  <circle cx="8" cy="8" r="1.6" fill="#ffb454"/>
+</svg>

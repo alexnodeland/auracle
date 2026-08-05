@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-label="Teach">
+  <!-- Teaching / the teach meter. The one icon that leaves its candidate
+       behind: the lit E is a letterform, and a letterform cannot carry a
+       meaning in a toolbar. Rotated into bars it is a meter, which is what the
+       teach meter actually is. -->
+  <path d="M7 18v-6"/>
+  <path d="M12 18V6"/>
+  <path d="M17 18v-8.5"/>
+</svg>

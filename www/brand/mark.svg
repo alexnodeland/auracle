@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Auracle">
+  <!-- THE MARK. Three concentric rings on the rack void: deep green outside,
+       bright green inside, amber core. Read outward it is an aura; read inward
+       it is a posterior contracting onto one taste, which is the same picture
+       the instrument draws of itself.
+
+       Two phosphors and no third — green is sound, amber is the model's mind,
+       exactly as in the app's palette. The tile is part of the mark and stays
+       dark on every ground: the phosphor colours have no light-mode equivalent
+       and inventing one would be a second brand to keep in sync.
+
+       Everything here survives 16px. Nothing in it is smaller than 2.2 units
+       at a 32-unit viewBox, which is the floor a favicon can still resolve.
+       See www/brand/index.html for the reasoning and the lockup rules. -->
+  <rect width="32" height="32" rx="7" fill="#0c0d10"/>
+  <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/>
+  <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/>
+  <circle cx="16" cy="16" r="3" fill="#ffb454"/>
+</svg>
