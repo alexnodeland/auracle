@@ -84,8 +84,42 @@ only how it is described.
   page that quotes it verbatim was updated in the same commit so the quotation
   stays true.
 
-### Fixed
+### Changed — `DESIGN.md` is an evergreen document now
 
+It had drifted into a historical record: a "v1 module palette (~10)" against a
+shipped palette of 41, `K = 3` against a shipped default of 5, `quiver-dsp`
+0.1.x against 0.2.0, and sibling path dependencies that have come from crates.io
+since 0.1.0. Every claim in it was re-checked against the code and the document
+now describes the system as it stands, with the design-versus-implementation
+gaps stated in place rather than left to be discovered.
+
+New or corrected: the full 41-production palette and the append-only categorical
+orders; φ's actual 15 + 25 split and why the axes are shaped as they are; the
+`s_K` prior correction that keeps `Var(u_a − u_b)` invariant to K; the shipped
+taste tilt (it was written as a "long-term" possibility); the measured 40 × 10
+refinement split; the acquisition measurement and why the default is uniform
+pairing; a new §1.6 on prequential calibration; the DC blocker in the mandatory
+output chain; `QUARANTINE_FITNESS = −50.0` rather than "−∞/large-negative"; and
+a posterior over `(θ, τ, cutpoints)` rather than the `(θ, z, τ, cutpoints)` left
+over from a rejected design.
+
+Section 6 was rewritten: the answered questions (phrase spec, acquisition,
+persistence format, vet thresholds) are gone, and the genuinely open ones took
+their place — tempered SMC, cross-island discovery, a feedback production, fit
+cost at the K cap, and the fugue-side `thin` parameter.
+
+### Fixed — three counts and one screen that does not exist
+
+- **The preset library is 61 patches across seven families, not 29.** The guide
+  and the reference had both been quoting the count from an earlier wave; a
+  screenshot in the guide had been showing `presets 61` next to prose saying
+  twenty-nine. The warm start's nine cards are also described correctly now:
+  one per family first, then filled out to nine, rather than "one per family".
+- **Keep/kill has no UI surface.** The guide's table of teaching signals sent
+  readers to a "Triage" screen that has never been built. The likelihood, the
+  per-session threshold and `Engine::record_keep` are all real and reachable
+  through the wasm binding, but nothing in `apps/web` calls them. The guide, the
+  reference and `DESIGN.md` now say so.
 - The README's architecture diagram named Thompson sampling as the duel
   acquisition rule. It is selectable, it is not the default, and it measurably
   loses; the default is uniform pairing. The diagram now says so.
