@@ -42,10 +42,9 @@ deliberating is how a session stops being fun. If you cannot tell, press
 
 The strip above the cards is the session's state of play:
 
-```text
-●●●●●○○   44 picks in. Every 6 it redraws your taste map.
-          ◇ unbiased probe — picks like this one score the honesty meter
-```
+<figure class="wide">
+<img src="../img/teach-meter.webp" alt="The teaching meter: six pips, then the line 44 picks in. Every 6 it redraws your taste map. Beside it, ◇ unbiased probe — picks like this one score the honesty meter, a skip button, and EVOLVE POOL at the right end." loading="eager" width="1172" height="60">
+</figure>
 
 The pips count down to the next **refit**. Between refits your votes still
 count: each one is folded into the model immediately by reweighting, so the

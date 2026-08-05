@@ -21,7 +21,7 @@ present. Publish at 1:1 — see the note in `encode-screens.sh` about why these
 frames are never scaled down.
 
 Save raw PNGs into one directory as `play.png`, `evolve.png`, `taste.png`,
-`styles.png`, `directions.png`, `trust.png`, `nodebank.png`.
+`styles.png`, `directions.png`, `trust.png`, `nodebank.png`, `warmstart.png`.
 
 ### The session state to capture in
 
@@ -56,6 +56,7 @@ product:
 | `styles.png` | TASTE › STYLES | — |
 | `directions.png` | TASTE › DIRECTIONS | — |
 | `trust.png` | TASTE › TRUST | — |
+| `warmstart.png` | PLAY | the three-pick card open, nothing picked yet — reachable from a taught session via **⋯** → *Re-run the three-pick warm start*, and dismissed with **SKIP**, which records nothing |
 
 Before capturing, confirm the console is clean — a shot of a broken app is
 worse than no shot, and the app logs its own failures loudly.

@@ -27,9 +27,9 @@ region.
 ## 1. The warm start: pick 3 of 9
 
 <figure>
-<img src="../img/bank.webp" alt="The bank rail showing three banks — evolution, my patches, presets — above a list of patch rows, each with a name, a prediction percentage, a play button, five stars and a save button." loading="lazy" width="252" height="720">
-<figcaption><strong>The bank.</strong> Every row carries what the model predicts
-you would say about it.</figcaption>
+<img src="../img/warm-start.webp" alt="A card headed WHICH THREE DO YOU LIKE?, with nine named presets in a three-by-three grid — First Bass, Acid Line, Solo Flight, Coin Toss, Ghost Bell, Morph Pad, Long Room, Ricochet, Wrong Number — each with a one-line description, and SKIP and PICK ANY THREE buttons below." loading="lazy" width="760" height="464">
+<figcaption><strong>The warm start.</strong> Nine presets, one per family. Three
+picks, eighteen observations.</figcaption>
 </figure>
 
 On first run you are shown nine presets, drawn one per family from the built-in

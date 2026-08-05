@@ -415,14 +415,26 @@ pre > code {
    type floor, so scaling a full frame down to fit a 750px column is what turns
    legible UI into mush. Full frames therefore break out of the text column up
    to the viewport, and detail figures are *crops* that are already narrow.
-   See www/SCREENSHOTS.md. */
+   See www/SCREENSHOTS.md.
+
+   The rule that keeps all of that true is one word in the img rule below:
+   figures are capped by the space they have, never stretched to fill it. Every
+   figure carries its captured `width`/`height`, so a crop lands at the size it
+   was cropped to and a frame lands as large as it fits. */
 .content figure {
     margin: 2.2em 0;
 }
 
+/* `max-width`, never `width`. A crop is published at the size it was cropped
+   to, so the column is a ceiling and never a target: `width: 100%` here is what
+   blew the 252px bank rail up to 862px — a 3.4× upscale of 10px type, and the
+   exact mush the 1:1 rule exists to prevent. Anything genuinely wider than the
+   space it is given still scales down to fit, which is a loss of detail rather
+   than an invention of it. */
 .content figure img {
     display: block;
-    width: 100%;
+    margin-inline: auto;
+    max-width: 100%;
     height: auto;
     border: 1px solid var(--hairline);
     border-radius: 4px;
@@ -448,8 +460,14 @@ html:not(.sidebar-visible) .content figure.wide {
     width: min(1440px, calc(100vw - 4 * var(--page-padding)));
 }
 
+/* A caption is prose and wants a prose measure. Left to itself it takes the
+   width of the figure, which for a full-frame breakout is 1440px and about 170
+   characters a line. Capped and centred under the frame instead, so it sits
+   with the image whether the image is a 1440px frame or a 252px rail. */
 .content figcaption {
     margin-block-start: 0.7em;
+    margin-inline: auto;
+    max-width: 62ch;
     font-size: 1.32rem;
     line-height: 1.5;
     color: var(--silk-dim);
@@ -641,6 +659,13 @@ ul#searchresults span.teaser em {
 
 .page-footer a:hover {
     color: var(--fg);
+}
+
+/* The credit is the last thing in the row and the least urgent thing in it, so
+   it goes to the end of the line rather than competing with the two links a
+   reader might actually want. */
+.page-footer-fine {
+    margin-inline-start: auto;
 }
 
 /* ─── Print ─────────────────────────────────────────────────────────────── */
