@@ -61,11 +61,51 @@ www/
     favicon.svg / favicon.png
   docs/             the product guide  (book.toml + src/)
   reference/        the technical reference (book.toml + src/ + katex-macros.txt)
+  viz/              the live-figure runtime, ONE source, three consumers
+    viz.js          twelve figures + the shared core
+    viz.css
   404.html
   robots.txt
   checklinks.py     the link/asset/anchor/subresource gate
   encode-screens.sh crop + encode raw captures into site assets
   SCREENSHOTS.md    how to recapture them
+```
+
+## Live figures
+
+Twelve of them, declared in markdown and built by `www/viz/viz.js`:
+
+```html
+<figure class="viz" data-viz="log-axis">
+<figcaption>…</figcaption>
+</figure>
+```
+
+An unknown name is left alone, so a figure can be referenced before it is
+written. They build lazily on scroll, and four rules keep them honest:
+
+- **They compute, they do not illustrate.** The K-weighting curve is evaluated
+  from the same biquad constants `auracle-features::loudness` uses and lands on
+  +4.0 dB at 10 kHz on its own; the log-axis figure reproduces the 0.009 the
+  prose quotes; the reliability diagram scores four hundred real forecasts. A
+  drawing of a result is a claim about it.
+- **They re-theme without rebuilding.** Every paint attribute is a
+  `var(--phos-…)`, so a theme switch is a repaint and no JS knows which theme is
+  on.
+- **They work without a mouse.** Handles are focusable with arrow-key support and
+  `aria-valuetext`; sliders are real `<input type=range>`; every figure has a
+  `role="status"` readout, which is also the accessible equivalent of the picture.
+- **They respect reduced motion.** The animated ones render a static end-state and
+  say in words what the motion would have said — a stopped animation and a
+  finished diagram are different pictures.
+
+```admonish warning title="Arrow keys must not escape a figure"
+mdBook binds ArrowLeft/ArrowRight on `document` to move between chapters, and
+exempts only its search box. So a focused slider or handle navigated away from the
+page mid-interaction, and `preventDefault` does not help — the document listener
+runs regardless. `guardKeys()` stops those keys at the figure. Any new control
+that consumes an arrow key is covered automatically; one that consumes some other
+key needs adding to `OWNED_KEYS`.
 ```
 
 ## The toolchain is pinned, and 0.4 is current

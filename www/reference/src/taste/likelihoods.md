@@ -7,6 +7,16 @@ All three enter as a **single `factor`** carrying the total weighted log-likelih
 from fugue's point of view the model has one observation node regardless of how many
 kinds of feedback the log contains.
 
+<figure class="viz" data-viz="likelihoods">
+<figcaption><strong>One latent quantity, three ways of asking about it.</strong>
+Move candidate A's utility and watch all three panels respond together — that is
+the claim this page makes, drawn. Drag τ to see a strict session and a generous
+one; drag the star cutpoints to see why ★★★ means <em>between two cutpoints</em>
+rather than the number three. Squeeze two cutpoints together and that rating
+nearly stops being reachable, which is exactly what a rater who never uses the
+middle of the scale looks like to the model.</figcaption>
+</figure>
+
 ## Pairwise duels — Bradley–Terry
 
 $$P(A \succ B) = \sigma\big(u(A) - u(B)\big)$$

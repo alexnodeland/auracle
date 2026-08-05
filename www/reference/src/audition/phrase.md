@@ -19,6 +19,14 @@ Pitches are V/Oct offsets from C4. The seed is installed into quiver's thread-lo
 RNG before rendering, so noise and analog drift are **bit-reproducible** — a patch's
 features are the same every time it is measured.
 
+<figure class="viz" data-viz="phrase">
+<figcaption><strong>Click a segment.</strong> Solid is gate-on, dashed is the
+release window after it, and the second lane is the dyad's own compiled voice.
+The amber band is the final 300 ms — the window <code>tail_ratio</code> is
+measured in, which is the reason the low note is <em>last</em> rather than
+anywhere else.</figcaption>
+</figure>
+
 ## Why each segment
 
 The original phrase was three short notes (0.6 s stab, 0.25 s stab, 0.8 s low note),

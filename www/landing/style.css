@@ -887,3 +887,11 @@ kbd {
   .bar, .panel, .shot-tabs { display: none; }
   .shot-pane[hidden] { display: block !important; }
 }
+
+/* The lede under a section heading — one sentence of orientation before a
+   figure that would otherwise arrive without context. */
+.band-lede {
+  max-width: 62ch;
+  margin-top: var(--s5);
+  color: var(--silk-dim);
+}

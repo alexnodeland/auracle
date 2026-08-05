@@ -46,6 +46,7 @@
         <link rel="stylesheet" href="{{ resource "fonts/fonts.css" }}">
         <link rel="stylesheet" href="{{ resource "fonts/katex.min.css" }}">
         <link rel="stylesheet" href="{{ resource "fonts/auracle.css" }}">
+        <link rel="stylesheet" href="{{ resource "fonts/viz.css" }}">
 
         <!-- AURACLE 2/5. All three highlight ids point at one file. mdBook
              switches code themes by toggling `disabled` on these three links,
@@ -346,6 +347,10 @@
         <script src="{{ resource "clipboard.min.js" }}"></script>
         <script src="{{ resource "highlight.js" }}"></script>
         <script src="{{ resource "book.js" }}"></script>
+        <!-- Live figures. Deferred and self-initialising: it builds each
+             <figure data-viz="…"> when that figure scrolls into view, and does
+             nothing at all on a page that has none. -->
+        <script src="{{ resource "fonts/viz.js" }}" defer></script>
 
         <!-- Custom JS scripts -->
         {{#each additional_js}}

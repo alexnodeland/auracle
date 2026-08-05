@@ -103,6 +103,12 @@ so about 150 observations ago is worth half as much as your latest. Your taste i
 allowed to change, and a model that weighted a vote from three sessions ago
 equally with one from a minute ago would fight you when it did.
 
+<figure class="viz" data-viz="recency">
+<figcaption><strong>How long what you told it keeps mattering.</strong> At the
+shipped half-life of 150, a vote from three hundred observations back still carries
+a quarter of a fresh one's weight — fading, not forgotten.</figcaption>
+</figure>
+
 ## What moves the model most
 
 Roughly in order:

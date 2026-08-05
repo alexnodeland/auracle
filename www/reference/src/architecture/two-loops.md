@@ -29,6 +29,13 @@ learned surrogate silently, and surface only a curated few. That is the answer t
 interactive evolution's classic failure mode — the human bottleneck, where a user
 is asked to rate a whole population per generation and quits from fatigue.
 
+<figure class="viz" data-viz="two-loops">
+<figcaption><strong>The same diagram, with the traffic moving.</strong> What the
+ASCII version above cannot show is the thing that matters most: the two loops run
+at <em>different speeds</em>. Green flows continuously with no human in it; amber
+moves at the pace you answer questions.</figcaption>
+</figure>
+
 ## The patch loop
 
 Machine-paced. No human in it.
