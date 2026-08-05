@@ -4,16 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AURACLE — taste-learning synthesizer</title>
-<!-- The tab icon, inline. It was an SVG data URI carrying raw `<`, `>`, `'`
-     and spaces — legal enough that Chrome drew it and illegal enough that a
-     browser which rejects the URL falls back to `/favicon.ico`, which this app
-     does not serve: an unconditional 404 in the console of a build whose
-     acceptance bar is a *clean* console. A 113-byte base64 PNG has neither
-     problem — no URL escaping to get wrong, and no browser old enough to want
-     an .ico instead. 16×16, the bezel's own `#171a1f` under a phosphor trace,
-     because the favicon is the smallest place the instrument still has to look
-     like itself. -->
-<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAOElEQVR42mMQl5InCTEMfg19HzbSUgNENX49pGsASsMRsk5MLgSRrgGP7VhdSFUNWAOA2hqokJYAvKaL4UmsFaEAAAAASUVORK5CYII=">
+<!-- The tab icon, inline, and still inline for the original reason: it was an
+     SVG data URI carrying raw `<`, `>`, `'` and spaces — legal enough that
+     Chrome drew it and illegal enough that a browser which rejects the URL
+     falls back to `/favicon.ico`, which this app does not serve: an
+     unconditional 404 in the console of a build whose acceptance bar is a
+     *clean* console. A base64 PNG has neither problem — no URL escaping to get
+     wrong, and no browser old enough to want an .ico instead. Staging a real
+     file here would trade that for a worse deal: `make bundle` ships this
+     directory as-is, so a favicon copied in at build time is a favicon the zip
+     is missing.
+     This is the ONE place in the repo allowed to hold its own copy of the
+     mark, and it is not hand-drawn — it is www/brand/mark-16.svg, the 16px
+     hinting of the real mark, encoded. To regenerate after the mark changes:
+       rsvg-convert -w 16 -h 16 www/brand/mark-16.svg | magick png:- -strip png:- | base64 -->
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAllBMVEUAAAANDRENDRAMDRAODhENDRANDRALDRAMDRAKDhEMDRAQFBVEb1VzwI+J56pyv45EblUbJiF2xpOO8LF1xZMaJSF6zJg0U0ISGBg1VEN6zZgPExQUGxoUHBt7zplDbVQTEhJ+XDB9WzA1VUNyvo6I5qr/tFQTGRmI5al8WjATGhk2V0V7z5lDbVM2VkR0xJEZJCBxvY2YHAK6AAAACnRSTlMATMr5S1DLyfhKeVT+GQAAAKhJREFUGNNVj9kSgjAMRcOiSFhEUnZZLLuC6P//nKUyo9yHTOekaU8AFFXDLZqqAyi4ywGOolq247pnzxJHA8T9i08yLEA8gej7FEZxnKTEMkQBbAqv63heUCmBQxFWN15hTY0ELcXIu45jT8M/GPG+AYcSrPhY4WMb8SjN5aMTzRJYjIq6758TLeu3QixgX7HltYqt6lnZtMN7zqS6vl/OBNCN3/qGCR969BD9CTRaTAAAAABJRU5ErkJggg==">
 <link rel="preload" href="fonts/jost-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css?b=70">

@@ -27,5 +27,13 @@ www/theme/fonts/plexmono-600.woff2
 www/theme/fonts/viz.js
 www/theme/fonts/viz.css
 
+# The mark lives once at www/brand. mdBook wants it under these exact names in
+# the theme, so `make site-brand` stages it there — the same arrangement as the
+# faces above, for the same reason: a committed second copy is one that will
+# eventually disagree with the first, which is exactly how this repo ended up
+# shipping three different icons at once.
+www/theme/favicon.svg
+www/theme/favicon.png
+
 # The guide's figures are copies of the landing page's screenshots.
 www/docs/src/img/

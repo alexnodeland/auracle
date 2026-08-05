@@ -155,12 +155,22 @@ thead th,
     color: var(--fg);
 }
 
-/* The wordmark's final E is the app's "listening" lamp. Here it is inert
-   decoration and says so — it never animates, because a light that pulses
-   without meaning is worse than no light. */
-.menu-title .lamp,
-.site-nav .lamp {
-    color: var(--phos-a);
+/* The final E used to be lit here, borrowed from the app's "listening" lamp.
+   It has gone back to the app, which is the only place it can actually change
+   — see www/brand/index.html. What carries the identity here instead is the
+   mark, sitting in front of the word as a lockup. */
+.site-nav a.site-home {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+    letter-spacing: 0.04em;
+}
+
+.site-nav a.site-home img {
+    width: 1.16em;
+    height: 1.16em;
+    flex: none;
+    transform: translateY(-0.03em);
 }
 
 .site-nav {

@@ -1,8 +1,6 @@
 <div align="center">
 
-# 🎼 Auracle
-
-**A synthesizer that searches for your sound.**
+<img src="www/brand/lockup.png" alt="Auracle — a synthesizer that searches for your sound" width="720">
 
 *Built on [fugue-evo](https://github.com/alexnodeland/fugue-evo) (evolution as
 Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
@@ -202,6 +200,9 @@ In the repo:
   workflow, quality bar, sharp edges.
 - [`www/README.md`](./www/README.md) — how the site is assembled, and the
   things about it that fail quietly.
+- [`www/brand/`](./www/brand/) — the mark, the lockups and the icon set, with
+  the [full spec](https://alexnodeland.github.io/auracle/brand/) at `/brand/`.
+  Read it before drawing anything.
 - [`apps/web/README.md`](./apps/web/README.md) — the web app's architecture
   (worklet assembly, worker protocol, workbench).
 - [`CHANGELOG.md`](./CHANGELOG.md) — notable changes by pass.

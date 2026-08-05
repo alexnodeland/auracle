@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Auracle, fitting">
+  <!-- THE MARK, LIT. The same geometry as mark.svg with one quadrant of the
+       outer ring swept bright: the instrument is fitting.
+
+       This is a state, not a second logo. It belongs where the state is real —
+       beside a running search, the way apps/web lights the wordmark's E from
+       `$("wm-lamp").classList.add("thinking")`. It must never be the favicon,
+       the README lockup or the social card, because in all three the light
+       would be permanently on and would therefore mean nothing.
+
+       The bright arc is also the first thing to disappear as the mark shrinks;
+       below roughly 20px it fuses with the ring and this becomes mark.svg. That
+       is the other reason the resting state is the one that ships everywhere. -->
+  <rect width="32" height="32" rx="7" fill="#0c0d10"/>
+  <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/>
+  <path d="M16 4a12 12 0 0 1 12 12" fill="none" stroke="#8ef0b1" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/>
+  <circle cx="16" cy="16" r="3" fill="#ffb454"/>
+</svg>

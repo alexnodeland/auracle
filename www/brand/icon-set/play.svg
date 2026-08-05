@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-label="Patch">
+  <!-- PLAY / the patch. Two jacks and a cable hanging between them. -->
+  <path d="M6.5 11.9c0 8 11 8 11 0"/>
+  <circle cx="6.5" cy="9" r="2.9"/>
+  <circle cx="17.5" cy="9" r="2.9"/>
+</svg>

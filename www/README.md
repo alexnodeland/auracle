@@ -53,14 +53,23 @@ www/
     hero.js         the interactive duel — real WebAudio, real Bradley–Terry
     assets/
       screens/      real app screenshots (webp)
-      og.png        the social card
+  brand/            the marks, ONE source, copied into every consumer
+    index.html      the spec — lockups, construction, the icon set. Builds to /brand/
+    mark.svg        THE mark. Becomes every favicon.svg on the site
+    mark-16.svg     the same mark hinted for a true 16px raster
+    mark-active.svg the mark with one quadrant lit — a state, never a favicon
+    icon-set/       the UI set: currentColor, 24px grid, no tile
+                    (NOT `icons/` — the common macOS global gitignore
+                     carries `Icon?`, which case-insensitively eats it)
+    og.png          the social card        lockup.png  the README banner
+    render.html     where lockup.png and og.png are screenshotted from
   theme/            ONE mdBook theme, shared by both books
     index.hbs       + the cross-site header; five marked divergences from mdBook's
     head.hbs
     highlight.css   phosphor code theme, serving both themes from one file
     css/variables.css   the palette, for `coal` (rack) and `light` (paper)
     fonts/          the faces, the vendored KaTeX package, and auracle.css
-    favicon.svg / favicon.png
+    favicon.svg / favicon.png   gitignored — staged from brand/ by `make site-brand`
   docs/             the product guide  (book.toml + src/)
   reference/        the technical reference (book.toml + src/ + katex-macros.txt)
   viz/              the live-figure runtime, ONE source, three consumers
