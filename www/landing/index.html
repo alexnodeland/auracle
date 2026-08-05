@@ -85,9 +85,32 @@
           </button>
         </article>
       </div>
+
+      <!-- What the model built from the picks. It takes the whole screen when it
+           arrives, because a new patch appearing beside the duel is a thing you
+           can miss, and the one claim this button makes is that it made you
+           something. Amber throughout: this came out of the model, not out of
+           the random draw the green cards are showing. -->
+      <article class="made" data-made hidden>
+        <header class="made-head">
+          <span class="made-tag">New · built for you</span>
+          <span class="made-name mono" data-made-name>—</span>
+        </header>
+        <canvas class="trace made-trace" data-made-trace width="520" height="86" role="img"
+                aria-label="Waveform of the patch built from your picks"></canvas>
+        <p class="made-from mono" data-made-from></p>
+        <div class="made-row">
+          <button class="card-play made-play" data-made-play type="button">
+            <span aria-hidden="true">▶</span> hear it again
+          </button>
+          <button class="card-play made-back" data-made-back type="button">
+            <span aria-hidden="true">◂</span> back to training <kbd>esc</kbd>
+          </button>
+        </div>
+      </article>
     </div>
 
-    <div class="pickrow">
+    <div class="pickrow" data-pickrow>
       <button class="pick" data-pick="a" type="button">Pick A <kbd>←</kbd></button>
       <button class="pick" data-pick="b" type="button">Pick B <kbd>→</kbd></button>
     </div>

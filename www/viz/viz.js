@@ -1212,7 +1212,11 @@
         x: b.x, y: b.y, width: b.w, height: b.h, rx: 4,
         fill: 'var(--panel, rgba(255,255,255,.03))', stroke: b.colour, 'stroke-width': 1.2, opacity: 0.95,
       }));
-      const t = el('text', { x: b.x + 12, y: b.y + 20, class: 'v-num', fill: b.colour });
+      // `style`, not a `fill` attribute: `.v-num` sets `fill` in CSS, and any
+      // author rule outranks a presentation attribute — so the attribute form
+      // painted these titles whatever `.v-num` said and silently threw away the
+      // one thing this figure encodes by colour.
+      const t = el('text', { x: b.x + 12, y: b.y + 20, class: 'v-num', style: `fill: ${b.colour}` });
       t.textContent = b.title;
       s.appendChild(t);
       const st = el('text', { x: b.x + b.w - 12, y: b.y + 20, 'text-anchor': 'end', class: 'v-axis' });
