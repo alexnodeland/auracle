@@ -39,7 +39,10 @@ Be respectful and constructive.
 1. Keep PRs focused; separate refactors from behavior changes.
 2. Update docs alongside code: `DESIGN.md` for design decisions,
    `DEVELOPMENT.md` for workflow/sharp edges, `CHANGELOG.md` under
-   `[Unreleased]` for anything user-visible.
+   `[Unreleased]` for anything user-visible. That section becomes the release
+   notes verbatim when a version is cut (see
+   [Cutting a release](../DEVELOPMENT.md#cutting-a-release)), so write it for
+   someone who has never seen the repo.
 3. Add or extend a **gate test** for new behavior (see
    [`DEVELOPMENT.md`](../DEVELOPMENT.md#quality-bar)) — property-style tests
    over random trees / synthetic users are preferred over mocks.
@@ -59,4 +62,4 @@ subject line and a body that explains *why*.
   wall-clock-free; there are chaos tests that will catch panics, but review
   for these properties explicitly.
 - UI changes should be exercised in a real browser with the console open;
-  `window.__ric` exposes the live engine for scripted checks.
+  `window.__aur` exposes the live engine for scripted checks.

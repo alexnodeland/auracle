@@ -8,6 +8,16 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-04
+
+The first release under the name **Auracle**, and the first one that is a
+*patcher* rather than a patchbay with a splice tool behind it. Since 0.1.0 the
+instrument gained wiring as a gesture, node identity that survives evolution,
+a navigable canvas, destructive verbs you can see and undo, a model that says
+what it believes and how sure it is, and an exported picture that is itself a
+patch. The prebuilt web bundle is attached below — unzip, `python3 serve.py`,
+play.
+
 ### Renamed — Ricercar → Auracle
 
 The project is now **Auracle** (aural + oracle): it listens, it learns, and it
