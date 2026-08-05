@@ -41,8 +41,11 @@
   fill: var(--silk-dim);
 }
 
+/* Axis names, units and the small print inside a box. `--silk-dim`, not
+   `--silk-mute`: law 1 says mute is the stroke tier and never carries a glyph,
+   and these are 9px glyphs on a dark panel — the tier below reads as unlit. */
 .viz .v-axis {
-  fill: var(--silk-mute);
+  fill: var(--silk-dim);
   font-size: 9px;
 }
 
@@ -56,9 +59,15 @@
   stroke-width: 1;
 }
 
-/* A value the reader is meant to read off rather than eyeball. */
+/* A value the reader is meant to read off rather than eyeball.
+   Every `--fg` here carries `var(--silk)` as its fallback. `fill` is inherited
+   and its initial value is black, so on a page that defines the phosphors but
+   not `--fg` an unqualified `var(--fg)` is invalid at computed-value time and
+   resolves to *black text on a black panel* — and worse, it does it at a
+   specificity that beats the `fill` presentation attribute the figure set, so a
+   label the figure had deliberately painted green went black too. */
 .viz .v-num {
-  fill: var(--fg);
+  fill: var(--fg, var(--silk));
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -106,7 +115,7 @@
 .viz-btn {
   font-family: var(--mono-font, ui-monospace, Menlo, monospace);
   font-size: 11px;
-  color: var(--fg);
+  color: var(--fg, var(--silk));
   background: var(--panel-hi, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--hairline);
   border-radius: 3px;
@@ -171,7 +180,7 @@
   color: var(--silk-dim);
 }
 
-.viz figcaption strong { color: var(--fg); font-weight: 500; }
+.viz figcaption strong { color: var(--fg, var(--silk)); font-weight: 500; }
 
 /* ─── motion ────────────────────────────────────────────────────────────── */
 

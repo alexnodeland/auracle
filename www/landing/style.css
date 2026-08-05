@@ -78,6 +78,13 @@
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
 
+  /* The names the shared figure runtime asks for. www/viz is loaded by both
+     books and this page and reads the surrounding page's tokens, but the books
+     spell two of them differently; without these aliases every figure here fell
+     back to the system mono and to an unresolvable foreground. */
+  --fg: var(--silk);
+  --mono-font: var(--font-mono);
+
   /* The display tier — this page's one extension to the app's scale. Jost at
      300 is a geometric sans built for signage; at these sizes with negative
      tracking it reads as an instrument panel rather than as a product page,
@@ -404,6 +411,15 @@ kbd {
   overflow: hidden;
 }
 
+/* Holding the height it had with two cards on it (hero.js pins the value), so
+   the built patch sits in the middle of the screen rather than at the top of a
+   screen that is mostly empty. */
+.crt[data-made-on] {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .scanlines {
   position: absolute;
   inset: 0;
@@ -473,6 +489,84 @@ kbd {
 }
 .card-play:hover { background: rgba(142, 240, 177, 0.09); }
 .card-play kbd { border-color: var(--phos-a-deep); color: var(--phos-a-dim); }
+
+/* ─── the patch it built ────────────────────────────────────────────────── */
+
+/* Amber, per the phosphor law: the duel's cards are candidates the page drew at
+   random (green — sound), and this one came out of the model (amber — mind). It
+   replaces the duel rather than joining it, so there is no question about which
+   of the three things on screen is the new one. */
+.made {
+  background: rgba(255, 180, 84, 0.03);
+  border: 1px solid var(--phos-b-deep);
+  border-radius: 3px;
+  padding: var(--s3);
+  box-shadow: inset 0 0 22px rgba(255, 180, 84, 0.05);
+}
+
+/* Lit while it is sounding — the same cue the duel cards use, in the other
+   phosphor, so "this is the one playing" reads the same in both states. */
+.made[data-armed] {
+  border-color: var(--phos-b);
+  background: rgba(255, 180, 84, 0.06);
+}
+
+.made-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s2);
+}
+
+.made-tag {
+  font-size: var(--t-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--rack);
+  background: var(--phos-b);
+  border-radius: 2px;
+  padding: 3px 7px;
+}
+
+.made-name {
+  font-size: 0.95rem;
+  color: var(--phos-b);
+  letter-spacing: 0;
+}
+
+.made-trace { filter: drop-shadow(0 0 4px rgba(255, 180, 84, 0.34)); }
+
+/* The coordinates it chose, spelled out. Without them "built for you" is a
+   claim; with them it is a receipt you can read against the bars above. */
+.made-from {
+  margin: var(--s2) 0 var(--s3);
+  font-size: var(--t-micro);
+  line-height: 1.7;
+  color: var(--phos-b-dim);
+}
+
+.made-from-lead {
+  color: var(--silk-dim);
+  margin-inline-end: 0.7em;
+  white-space: nowrap;
+}
+
+.made-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.made-play, .made-back {
+  color: var(--phos-b);
+  border-color: var(--phos-b-deep);
+}
+.made-play:hover, .made-back:hover { background: rgba(255, 180, 84, 0.1); }
+.made-play kbd, .made-back kbd { border-color: var(--phos-b-deep); color: var(--phos-b-dim); }
+.made-back { color: var(--silk-dim); border-color: var(--hairline); }
+.made-back:hover { background: rgba(217, 212, 200, 0.06); }
 
 .pickrow {
   display: grid;
@@ -908,6 +1002,9 @@ kbd {
   .panel { animation: power-on 0.6s ease-out both; }
   .card:nth-child(1) { animation: trace-in 0.5s ease-out 0.34s both; }
   .card:nth-child(2) { animation: trace-in 0.5s ease-out 0.46s both; }
+  /* Same sweep when the built patch replaces them — it starts on reveal, since
+     an animation on a display:none box does not run until the box exists. */
+  .made { animation: trace-in 0.45s ease-out both; }
 
   @keyframes power-on {
     from { opacity: 0; transform: translateY(10px); box-shadow: none; }

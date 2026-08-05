@@ -60,6 +60,7 @@
   const precision = new Float64Array(D).fill(PRIOR_PRECISION);
   let picks = 0;
   let pair = null;
+  let made = null;   // the patch it built, while that patch is on the screen
   let ctx = null;
   let master = null;
   let playing = null;
@@ -68,10 +69,22 @@
   const panel = document.getElementById('hero-duel');
   if (!panel) return;
 
+  const crtEl = panel.querySelector('.crt');
+  const duelEl = panel.querySelector('.duel');
+  const pickrowEl = panel.querySelector('[data-pickrow]');
+  const madeEl = panel.querySelector('[data-made]');
   const cards = {
     a: panel.querySelector('.card[data-side="a"]'),
     b: panel.querySelector('.card[data-side="b"]'),
+    // Keyed like the duel cards so `stop()` and `play()` treat the built patch
+    // as one more thing that can be lit, rather than as a special case.
+    made: madeEl,
   };
+  const madeName = panel.querySelector('[data-made-name]');
+  const madeFrom = panel.querySelector('[data-made-from]');
+  const madeTrace = panel.querySelector('[data-made-trace]');
+  const madePlayBtn = panel.querySelector('[data-made-play]');
+  const madeBackBtn = panel.querySelector('[data-made-back]');
   const barsEl = panel.querySelector('[data-bars]');
   const pipsEl = panel.querySelector('[data-pips]');
   const verdictEl = panel.querySelector('[data-verdict]');
@@ -249,7 +262,14 @@
 
   /* ── traces: render offline, draw the envelope ─────────────────────── */
 
-  async function renderTrace(canvas, z) {
+  /* Two inks, per the page's colour law: green is sound, amber is the model's
+   * mind. A candidate the page drew at random is green; the patch the model
+   * built out of theta is amber, and that is the only cue that has to survive
+   * being glanced at. */
+  const INK_A = { wave: '#8ef0b1', base: 'rgba(61, 106, 77, 0.55)' };
+  const INK_B = { wave: '#ffb454', base: 'rgba(122, 85, 38, 0.6)' };
+
+  async function renderTrace(canvas, z, ink = INK_A) {
     /* 44100, not a cheap 8000. An envelope does not need the bandwidth, but the
      * *filter* does: at 8 kHz Nyquist is 4 kHz, so Web Audio clamped every
      * cutoff above it and the offline render of a bright patch was a different
@@ -271,10 +291,10 @@
       // dishonesty this page is arguing against.
       return;
     }
-    drawEnvelope(canvas, data);
+    drawEnvelope(canvas, data, ink);
   }
 
-  function drawEnvelope(canvas, data) {
+  function drawEnvelope(canvas, data, ink) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = canvas.clientWidth || 520;
     const h = canvas.clientHeight || 86;
@@ -290,7 +310,7 @@
     for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
     const norm = peak > 0 ? 0.94 / peak : 0;
 
-    g.fillStyle = '#8ef0b1';
+    g.fillStyle = ink.wave;
     for (let x = 0; x < w; x++) {
       const from = Math.floor(x * per);
       const to = Math.min(data.length, Math.floor((x + 1) * per));
@@ -306,7 +326,7 @@
     }
 
     // The 0 dBFS baseline, as the instrument's cards draw it.
-    g.fillStyle = 'rgba(61, 106, 77, 0.55)';
+    g.fillStyle = ink.base;
     g.fillRect(0, mid, w, 1);
   }
 
@@ -477,7 +497,7 @@
   }
 
   /** What the model would build, given what it currently believes. */
-  function makeOne() {
+  async function makeOne() {
     let scale = 0;
     for (let i = 0; i < D; i++) scale = Math.max(scale, Math.abs(theta[i]));
     if (scale === 0) return;
@@ -489,10 +509,67 @@
       const conf = Math.abs(theta[i]) / (Math.abs(theta[i]) + sd(i));
       z[a.key] = Math.max(-1, Math.min(1, (theta[i] / scale) * conf));
     });
-    play(null, z);
-    say(`Playing what it would build for you: <strong>${nameOf(z)}</strong>. ` +
-        `The real instrument does this by evolving a patch grammar — ` +
-        `<a href="play/">try that version</a>.`);
+    made = z;
+    showMade(z);
+    // Sound first, picture second: the render is a few tens of milliseconds and
+    // the click should not wait on it.
+    play('made', z);
+    await renderTrace(madeTrace, z, INK_B);
+  }
+
+  /* The built patch takes the whole screen. It used to play under the duel with
+   * only a line of text to say what had happened, and the most common reaction
+   * was that the button had done nothing — the sound arrived but the thing that
+   * made it was nowhere on the page. A new patch has to *appear*. */
+  function showMade(z) {
+    stop();
+    madeName.textContent = nameOf(z);
+    // Non-breaking inside a pair and a middot between them, so a narrow column
+    // wraps between coordinates rather than between a name and its number.
+    madeFrom.innerHTML =
+      `<span class="made-from-lead">from your ${picks} ${picks === 1 ? 'pick' : 'picks'}</span>` +
+      AXES.map((a) => `${a.label}&nbsp;${signed(z[a.key])}`).join(' · ');
+    // Pin the screen at the height it has right now. One card is shorter than
+    // two, and letting the screen collapse would drag the button the visitor
+    // just pressed — and everything they were looking at — a few hundred pixels
+    // up the page, which is a good way to make a new patch arrive off-screen.
+    crtEl.style.minHeight = `${crtEl.offsetHeight}px`;
+    crtEl.setAttribute('data-made-on', '');
+    duelEl.hidden = true;
+    pickrowEl.hidden = true;
+    makeBtn.hidden = true;
+    madeEl.hidden = false;
+    say(`Built you <strong>${nameOf(z)}</strong> — a new patch, from the direction ` +
+        `your ${picks} picks point in. Nothing on the page had played it before. ` +
+        `The real instrument builds these by evolving a patch grammar; ` +
+        `<a href="play/">that version is here</a>.`);
+    madePlayBtn.focus();
+  }
+
+  /** Back to the duel that was on screen, with the model exactly as it was. */
+  function backToTraining() {
+    stop();
+    made = null;
+    madeEl.hidden = true;
+    crtEl.style.minHeight = '';
+    crtEl.removeAttribute('data-made-on');
+    duelEl.hidden = false;
+    pickrowEl.hidden = false;
+    // The canvases kept their bitmaps while hidden, but a resize while they were
+    // hidden measured them at zero — redraw rather than trust that.
+    if (pair) {
+      for (const side of ['a', 'b']) {
+        renderTrace(cards[side].querySelector('[data-trace]'), pair[side]);
+      }
+    }
+    renderVerdict();
+    makeBtn.innerHTML = 'Make me another&nbsp;▸';
+    pickBtns[0].focus();
+  }
+
+  /** A coordinate as the reader should check it against the bars: +0.72, −0.31. */
+  function signed(v) {
+    return (v < 0 ? '−' : '+') + Math.abs(v).toFixed(2);
   }
 
   /* ── wiring ────────────────────────────────────────────────────────── */
@@ -509,6 +586,8 @@
   });
 
   makeBtn.addEventListener('click', makeOne);
+  madePlayBtn.addEventListener('click', () => { if (made) play('made', made); });
+  madeBackBtn.addEventListener('click', backToTraining);
 
   // Keys, but only when the visitor is not typing into something and not
   // holding a modifier — the same rule the instrument uses for its note keys.
@@ -517,6 +596,13 @@
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (!isNearPanel()) return;
+    // While the built patch is up, the duel's keys would act on two cards
+    // nobody can see. Escape is the way back, and it is on the button too.
+    if (!madeEl.hidden) {
+      if (e.key === 'Escape') { e.preventDefault(); backToTraining(); }
+      else if (e.key === '1' && made) play('made', made);
+      return;
+    }
     switch (e.key) {
       case '1': if (pair) play('a', pair.a); break;
       case '2': if (pair) play('b', pair.b); break;
@@ -542,7 +628,15 @@
   window.addEventListener('resize', () => {
     window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(() => {
-      if (!pair) return;
+      // Only whatever is actually on screen: a hidden canvas measures zero wide
+      // and would be redrawn at the fallback size, which is a wrong picture.
+      if (made && !madeEl.hidden) {
+        // The pinned height was measured for the old width. It exists to stop a
+        // jump at the moment of the click, and that moment has passed.
+        crtEl.style.minHeight = '';
+        renderTrace(madeTrace, made, INK_B);
+      }
+      if (!pair || duelEl.hidden) return;
       for (const side of ['a', 'b']) {
         renderTrace(cards[side].querySelector('[data-trace]'), pair[side]);
       }

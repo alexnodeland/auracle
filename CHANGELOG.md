@@ -8,6 +8,46 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — "Make me one" builds something you can see
+
+The hero's payoff button played a patch and left the screen showing the two
+candidates it was not. The sound arrived, nothing appeared, and the most
+available reading was that the button had done nothing.
+
+The built patch now **replaces the duel** and takes the screen: an amber card —
+green is sound, amber is the model, as everywhere else on the page — with the
+generated name, its own waveform trace, and the coordinates it chose spelled out
+(`from your 5 picks · brightness +0.42 · movement −0.33 · grit +0.05 · weight
++0.01`), so "built for you" is a claim the reader can check against the bars
+directly below it rather than one they have to take. `hear it again` and `back
+to training` (or <kbd>esc</kbd>) sit under it; returning restores the same duel
+with the model untouched, and the button relabels to *Make me another*.
+
+The screen holds the height it had with two cards on it while the built patch is
+up. One card is shorter than two, and letting the panel collapse would have
+pulled the button just pressed — and everything around it — a few hundred pixels
+up the page, which is a good way to make a new patch arrive off-screen.
+
+### Fixed — figure labels were being painted black on a black panel
+
+Every label inside a figure on the landing page rendered black. `viz.css` styles
+readable values with `fill: var(--fg)`, and the landing page defines the whole
+phosphor palette but never defined `--fg` — an unresolvable `var()` in a `fill`
+is invalid at computed-value time, which falls back to the inherited value and
+then to the initial one, and the initial value of `fill` is black. The same rule
+outranks the `fill` presentation attribute a figure sets on its own elements, so
+the two-loops diagram's box titles, which encode *which loop this is* by colour,
+were painted black too and the figure lost the thing it was drawing.
+
+`--fg` and `--mono-font` are aliased on the landing page, every `var(--fg)` in
+the figure runtime carries `var(--silk)` as its fallback, and the diagram's
+titles are set as inline style so the figure's own colour wins.
+
+Separately, `.v-axis` — axis names, units, and the small print inside a box —
+was painting 9px glyphs in `--silk-mute`, which law 1 of the design system
+reserves for rules and strokes and forbids for text. It is `--silk-dim` now, the
+text tier, which lifts the same labels in both books in both themes.
+
 ### Changed — one rule for every figure in the books
 
 Figures had grown three tiers and a bug in each. Detail crops were stretched to
