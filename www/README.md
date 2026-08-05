@@ -115,6 +115,19 @@ Collected because each cost real time:
 - **mdBook nests `<pre><pre class="playground">`** for Rust blocks, so a border on
   `pre` draws twice.
 
+## One known wart, kept on purpose
+
+Search teasers on math-heavy pages show the rendered formula **and** its TeX
+source: *"winsorized moments (μw,sw)(\mu…"*. mdBook indexes the page text,
+and `output = "htmlAndMathml"` puts KaTeX's `<annotation
+encoding="application/x-tex">` in it.
+
+Switching to `output = "html"` would tidy the teasers and would also remove the
+MathML, which is the only thing a screen reader can read — KaTeX marks its visual
+output `aria-hidden`. A slightly noisy teaser is a much smaller cost than
+inaccessible mathematics, so the annotation stays. Search itself ranks correctly;
+only the excerpt is ugly.
+
 ## Regenerating the screenshots
 
 [SCREENSHOTS.md](./SCREENSHOTS.md) — the capture is manual (it needs a browser
