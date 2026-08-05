@@ -8,6 +8,37 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — the small batch from the gap sweep
+
+Four items that cost nothing to verify, kept apart from two that do.
+
+- **`FftPlanner` was rebuilt on every render.** Planning is where rustfft
+  computes the twiddle factors for the frame size, and a fresh planner per call
+  redid it for every candidate the search featurizes — thousands per generation,
+  for a table that depends only on a compile-time constant. Now `thread_local!`.
+  Bit-identical by construction, and **verified**: the feature table over 40
+  prior draws is byte-identical to `main`.
+- **`TastePosterior::aligned` used an unweighted reference mean** in its second
+  pass, while every other summary on the type respects the importance weights.
+  Draws stop being equally probable the moment `reweighted` folds a vote in, so
+  the label alignment was leaning on draws the evidence had already discounted —
+  hardest exactly when the weights have concentrated, which is when the
+  per-style summaries are most worth reading.
+- **The locked-refinement step compensation had a silent ceiling.** It is
+  `LOCK_SCALE_CAP` now, and the fact that a very heavily locked walk explores
+  less than the config nominally buys is written down rather than left to be
+  discovered. It is a cost bound, not a correction: `⚡ evolve from this` is a
+  button press with a person waiting behind it.
+- **A module doc claimed φ_audio was 12 dimensions.** It is 15. It now names
+  `AudioFeatures::NAMES` rather than repeating a count, so it cannot go stale
+  again.
+
+**Two related items are deliberately not here.** ZCR has no DC removal (the vet
+gate admits `|mean|/rms` up to 0.6, so a DC-offset patch reads as very dark) and
+spectral flux steps across a silent gap as though the frames were adjacent. Both
+are a few lines — and both move φ, so they owe a paired revalidation and will
+ride the next wave that is already paying for one, alongside `Silence`.
+
 ### Fixed — the taste map could mirror itself between recomputes
 
 A PCA axis is defined only up to sign, and nothing fixed it. Power iteration

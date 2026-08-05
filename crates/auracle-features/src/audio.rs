@@ -2,9 +2,11 @@
 //!
 //! Computed on Hann-windowed frames (2048 samples, 50% hop) of the mono
 //! render. Every field is finite by construction (renders are vetted first).
-//! Deliberately compact (12 dims) — the taste model is a mixture of *linear*
-//! experts, and interpretable axes ("bright", "noisy", "slow attack", "long
-//! tail") are the point.
+//! Deliberately compact — 15 dims, and every one of them named in
+//! [`AudioFeatures::NAMES`] rather than counted here, so this line cannot go
+//! stale again. The taste model is a mixture of *linear* experts, and
+//! interpretable axes ("bright", "noisy", "slow attack", "long tail") are the
+//! point.
 //!
 //! ## Why these coordinates and not the obvious ones
 //!
@@ -32,14 +34,22 @@
 //!   zero-inflated spike. A fine hop plus sub-window interpolation keeps it
 //!   continuous, and `ln(attack + 5 ms)` keeps the fast end resolved.
 
+use std::sync::Arc;
+
 use rustfft::num_complex::Complex;
-use rustfft::FftPlanner;
+use rustfft::{Fft, FftPlanner};
 use serde::{Deserialize, Serialize};
 
 use crate::render::RenderedPhrase;
 
 const FRAME: usize = 2048;
 const HOP: usize = 1024;
+
+thread_local! {
+    /// The forward transform for [`FRAME`], planned once per thread.
+    /// See the note at its use site for why this is safe to cache.
+    static FFT_PLAN: Arc<dyn Fft<f64>> = FftPlanner::<f64>::new().plan_fft_forward(FRAME);
+}
 
 /// Anchor of the log-frequency axis: below this, frequency is inaudible as
 /// pitch and the ratio scale stops meaning anything.
@@ -237,8 +247,20 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
     let zcr_mean = log_axis(zcr_fraction * sr / 2.0, sr / 2.0);
 
     // --- spectral, framewise ---
-    let mut planner = FftPlanner::<f64>::new();
-    let fft = planner.plan_fft_forward(FRAME);
+    // The planner is built once per thread, not once per render. Planning is
+    // where rustfft computes the twiddle factors for `FRAME`, and a fresh
+    // `FftPlanner` per call redoes that for every candidate the search
+    // featurizes — thousands per generation, for a table that depends only on a
+    // compile-time constant.
+    //
+    // Bit-identical by construction: a cached planner hands back the same
+    // algorithm for the same size, so the transform is the same arithmetic in
+    // the same order. This cannot move φ, which is why it does not owe a
+    // revalidation.
+    //
+    // `thread_local!` rather than a global: `FftPlanner` is not `Sync`, and the
+    // featurizer runs on whatever thread the harness or the farm puts it on.
+    let fft = FFT_PLAN.with(Arc::clone);
     let hann: Vec<f64> = (0..FRAME)
         .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / FRAME as f64).cos())
         .collect();
