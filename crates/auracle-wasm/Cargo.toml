@@ -11,10 +11,10 @@ repository.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-auracle-session = { path = "../auracle-session", version = "0.1.0" }
-auracle-features = { path = "../auracle-features", version = "0.1.0" }
-auracle-taste = { path = "../auracle-taste", version = "0.1.0" }
-auracle-grammar = { path = "../auracle-grammar", version = "0.1.0" }
+auracle-session = { path = "../auracle-session", version = "0.2.0" }
+auracle-features = { path = "../auracle-features", version = "0.2.0" }
+auracle-taste = { path = "../auracle-taste", version = "0.2.0" }
+auracle-grammar = { path = "../auracle-grammar", version = "0.2.0" }
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -127,7 +127,12 @@ Two loops around one observation stream:
 
 **Play it in the browser: https://alexnodeland.github.io/auracle/** — every
 push to `main` builds the wasm engine and deploys the instrument to GitHub
-Pages. Nothing to install; your bank and taste model live in your browser.
+Pages, and so does every tagged release. Nothing to install; your bank and
+taste model live in your browser.
+
+Prefer to run it yourself with no toolchain? Every
+[release](https://github.com/alexnodeland/auracle/releases) attaches a
+prebuilt web bundle — unzip it, `python3 serve.py`, open the URL.
 
 To build it yourself: Auracle's foundations ([`quiver-dsp`](https://crates.io/crates/quiver-dsp),
 [`fugue-ppl`](https://crates.io/crates/fugue-ppl),

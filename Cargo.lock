@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "auracle-features"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "auracle-grammar",
  "fugue-evo",
@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "auracle-grammar"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "fugue-evo",
  "fugue-ppl",
@@ -40,7 +40,7 @@ dependencies = [
 
 [[package]]
 name = "auracle-session"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "auracle-features",
  "auracle-grammar",
@@ -55,7 +55,7 @@ dependencies = [
 
 [[package]]
 name = "auracle-taste"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "auracle-features",
  "fugue-evo",
@@ -68,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "auracle-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "auracle-features",
  "auracle-grammar",

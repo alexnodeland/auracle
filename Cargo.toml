@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Alex Nodeland"]
 license = "MIT"
@@ -45,14 +45,11 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 
 # Intra-workspace
-auracle-grammar = { path = "crates/auracle-grammar", version = "0.1.0" }
-auracle-features = { path = "crates/auracle-features", version = "0.1.0" }
-auracle-taste = { path = "crates/auracle-taste", version = "0.1.0" }
-auracle-session = { path = "crates/auracle-session", version = "0.1.0" }
+auracle-grammar = { path = "crates/auracle-grammar", version = "0.2.0" }
+auracle-features = { path = "crates/auracle-features", version = "0.2.0" }
+auracle-taste = { path = "crates/auracle-taste", version = "0.2.0" }
+auracle-session = { path = "crates/auracle-session", version = "0.2.0" }
 
-# Working on quiver / fugue / fugue-evo alongside auracle? Uncomment to use
-# sibling checkouts instead of the registry (must stay at the end of this
-# file — [patch.crates-io] is a top-level table):
 # Working on quiver / fugue / fugue-evo alongside auracle? Uncomment to use
 # sibling checkouts instead of the registry (must stay at the end of this
 # file — [patch.crates-io] is a top-level table):

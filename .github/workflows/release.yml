@@ -1,5 +1,10 @@
 name: Release
 
+# A release is one gesture: push a `vX.Y.Z` tag on a green main. This workflow
+# packages the prebuilt web instrument and publishes the GitHub Release; the
+# Pages workflow watches the same tags and puts that same build on the live
+# site. See DEVELOPMENT.md § Cutting a release.
+
 on:
   push:
     tags:
@@ -17,6 +22,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      # Fail before spending six minutes on a build nobody can use. A tag whose
+      # number disagrees with the workspace's is the classic release bug: the
+      # asset says v0.3.0, every crate inside it says 0.2.0, and nothing
+      # downstream can tell which is true.
+      - name: Check the tag against the workspace version and the changelog
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          CARGO_VER="$(sed -n '/^\[workspace.package\]/,/^\[/p' Cargo.toml \
+            | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)"
+          if [ "$TAG_VER" != "$CARGO_VER" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match the workspace version $CARGO_VER — bump Cargo.toml or retag"
+            exit 1
+          fi
+          if ! grep -q "^## \[$TAG_VER\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$TAG_VER]' section — a release with no notes is not a release"
+            exit 1
+          fi
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -53,6 +76,28 @@ jobs:
           EOF
           (cd dist && zip -qr "$BUNDLE.zip" "$BUNDLE")
 
+      # The changelog is the release notes. It is written by hand, per pass, in
+      # the project's own voice — `--generate-notes` would replace that with a
+      # list of squashed PR titles, which is the same information with the
+      # reasoning removed. The section is extracted by its heading and the
+      # generated list is appended underneath as the commit-level detail.
+      - name: Extract the changelog section for this tag
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          awk -v ver="$TAG_VER" '
+            $0 ~ "^## \\[" ver "\\]" { inside = 1; next }
+            inside && /^## \[/ { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          # The guard above proved the heading exists; this catches a section
+          # that exists but is empty.
+          if [ ! -s release-notes.md ]; then
+            echo "::error::the '## [$TAG_VER]' section in CHANGELOG.md is empty"
+            exit 1
+          fi
+          echo "--- release-notes.md ---"
+          cat release-notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,4 +105,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "dist/auracle-${GITHUB_REF_NAME}-web.zip" \
             --title "Auracle $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
             --generate-notes

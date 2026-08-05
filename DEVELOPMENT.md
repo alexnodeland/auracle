@@ -83,4 +83,57 @@ survival). Prefer extending a gate over asserting implementation details.
 UI changes are verified live in a browser (Playwright) with **numeric audio
 assertions** — an `AnalyserNode` RMS, boundary-sample checks around patch
 swaps — plus a zero-console-error requirement. Debug hooks for this live at
-`window.__ric` / `window.__ricLog`.
+`window.__aur` / `window.__aurLog` (`window.__ric` is kept as an alias for
+notes written before the rename).
+
+## Cutting a release
+
+A release is **one gesture: push a `vX.Y.Z` tag on a green `main`.** Two
+workflows watch that tag and nothing else has to be done by hand:
+
+- [`release.yml`](.github/workflows/release.yml) builds the wasm through the
+  Makefile, zips a runnable web bundle as `auracle-vX.Y.Z-web.zip`, and creates
+  the GitHub Release with the changelog section as its notes.
+- [`pages.yml`](.github/workflows/pages.yml) deploys that same commit to
+  <https://alexnodeland.github.io/auracle/>. It also deploys on every push to
+  `main`; the tag deploy exists so the live site and the zip are provably the
+  same build. A `pages` concurrency group serializes the two.
+
+The steps, in order:
+
+1. **Land everything first.** The tag is cut from `main`, and CI must be green
+   on the commit you are about to tag — the release workflow does not re-run
+   the test suite, it packages what is already there.
+2. **Bump the version** in the workspace `Cargo.toml`: `[workspace.package]
+   version`, *and* the `version = "…"` on each intra-workspace dependency in
+   `[workspace.dependencies]` and in `crates/auracle-wasm/Cargo.toml`. Cargo
+   refuses to resolve a path dependency whose version requirement the member no
+   longer satisfies, so a half-bump fails loudly at `cargo check` — run it.
+3. **Close the changelog section.** Rename `## [Unreleased]` to
+   `## [X.Y.Z] — YYYY-MM-DD`, write the short paragraph under it that says what
+   this release *is*, and open a fresh empty `## [Unreleased]` above it. This
+   text becomes the release notes verbatim, so write it for someone who has
+   never seen the repo.
+4. **Open a PR for 2 and 3, merge it, wait for green.**
+5. **Tag and push:**
+
+   ```bash
+   git checkout main && git pull
+   git tag -a v0.2.0 -m "Auracle v0.2.0"
+   git push origin v0.2.0
+   ```
+
+6. **Watch both workflows**, then check the two things a green run does not
+   prove: download the attached zip, serve it, and confirm the app boots from
+   the bundle; and load the live site to confirm the deploy landed.
+
+The release workflow **fails before building** if the tag and the workspace
+version disagree, or if `CHANGELOG.md` has no section for the tag. Both are
+cheap to hit and expensive to notice later — an asset labelled v0.3.0 whose
+crates all say `0.2.0` is a bug report waiting to happen.
+
+To rehearse the bundle locally without tagging anything:
+
+```bash
+make bundle         # → dist/auracle-web.zip, the same assembly the workflow does
+```

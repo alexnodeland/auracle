@@ -23,4 +23,4 @@ labels: bug
 ## Console / logs
 
 <!-- For web-app issues: browser console output, and anything in
-     `window.__ricLog` if you can grab it. -->
+     `window.__aurLog` if you can grab it. -->

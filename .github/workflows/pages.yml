@@ -4,9 +4,15 @@ name: Pages
 # every asset path in apps/web is relative, so it runs unchanged from the
 # project subpath (…github.io/auracle/) — no base-href rewriting needed.
 
+# Two triggers, one site. `main` keeps the live build honest to the tip of the
+# repo, which is what the README promises. A `v*` tag deploys as well, so
+# cutting a release publishes the *exact* build that the zip was made from
+# rather than whatever landed on main in the meantime — the `pages` concurrency
+# group below serializes the two, so a tag and a main push can never interleave.
 on:
   push:
     branches: [main]
+    tags: ["v[0-9]+.*"]
   workflow_dispatch:
 
 permissions:
