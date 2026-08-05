@@ -103,6 +103,16 @@ This is the honest part of the design: importance weights **degenerate**, and ES
 so rather than letting the posterior quietly become one point wearing 500 hats. It is
 the trigger for paying for a real refit.
 
+<figure class="viz" data-viz="ess">
+<figcaption><strong>Fold observations in and watch the weights concentrate.</strong>
+Each bar is one posterior draw. Reweighting is exact and costs almost nothing, but
+the mass keeps collecting on fewer draws until a "posterior" of a handful of points
+would tell the acquisition rule it is certain when it is merely exhausted. Then
+press <em>resample</em>: ESS goes back to full and most of the draws are now
+duplicates of each other — the sample is impoverished rather than informative,
+which is exactly why this is a stopgap and not a substitute for a fit.</figcaption>
+</figure>
+
 ### Systematic resampling
 
 When weights have concentrated far enough, `resampled()` draws the weighted set back to

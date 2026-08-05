@@ -11,6 +11,7 @@
 <link rel="icon" href="favicon.svg">
 <link rel="shortcut icon" href="favicon.png">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="viz.css">
 
 <meta property="og:site_name" content="Auracle">
 <meta property="og:type" content="website">
@@ -220,6 +221,23 @@
   </div>
 </section>
 
+<!-- ─── architecture ───────────────────────────────────────────────────── -->
+<section class="band">
+  <p class="eyebrow">How it fits together</p>
+  <h2 class="h2">Two loops, running at different speeds.</h2>
+
+  <p class="band-lede">The machine evaluates thousands of candidates against what it
+  has learned about you, silently, and surfaces a curated few. That asymmetry is the
+  answer to the thing that kills every other interactive-evolution tool: being asked
+  to rate a whole population, every generation, until you quit.</p>
+
+  <figure class="viz" data-viz="two-loops">
+  <figcaption>Green flows continuously with no human in it. Amber moves at the pace
+  you answer questions — and carries your taste back into how the search
+  <em>proposes</em>, not just how it scores.</figcaption>
+  </figure>
+</section>
+
 <!-- ─── the palette, by signal path ────────────────────────────────────── -->
 <section class="band">
   <p class="eyebrow">Forty-one modules</p>
@@ -309,5 +327,6 @@
 </footer>
 
 <script src="hero.js"></script>
+<script src="viz.js" defer></script>
 </body>
 </html>

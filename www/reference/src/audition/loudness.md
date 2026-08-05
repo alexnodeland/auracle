@@ -47,6 +47,15 @@ and the highpass is the standard RBJ form. Deriving rather than tabulating is wh
 makes the measurement correct at 44 100 Hz, which is the rate the phrase actually
 renders at.
 
+<figure class="viz" data-viz="k-weighting">
+<figcaption><strong>The filter, evaluated — not drawn.</strong> This curve is
+computed in the page from the same constants listed above, through the same
+bilinear transform, so it is the response the pipeline actually applies. The two
+dashed curves are the shelf and the highpass; the solid one is their sum. Change
+the sample rate and the corners stay put, which is the property deriving the
+coefficients buys and tabulating them would lose.</figcaption>
+</figure>
+
 ## Block loudness and the two gates
 
 Blocks are **400 ms with 75% overlap**. Each block's loudness is

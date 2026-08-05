@@ -28,6 +28,14 @@ term is a probability rather than a hyperparameter.
 the search climbs the model's *mean* belief and is not seduced by a single confident-looking
 draw.
 
+<figure class="viz" data-viz="boltzmann">
+<figcaption><strong>Turn β and watch the target move.</strong> At β = 0 the target
+<em>is</em> the prior — the search browses, and simple terms dominate because that is
+what the prior says, not because anything penalises size. Turn it up and the mass
+walks out toward the region the taste model likes, paying prior probability to get
+there. One dial, and the trade it makes is visible rather than tuned.</figcaption>
+</figure>
+
 ## $\beta$
 
 `SessionConfig::beta`, default **2.0**.

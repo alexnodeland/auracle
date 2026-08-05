@@ -23,5 +23,9 @@ www/theme/fonts/newsreader-it.woff2
 www/theme/fonts/plexmono-400.woff2
 www/theme/fonts/plexmono-600.woff2
 
+# The figure runtime lives once at www/viz and is copied to its consumers.
+www/theme/fonts/viz.js
+www/theme/fonts/viz.css
+
 # The guide's figures are copies of the landing page's screenshots.
 www/docs/src/img/

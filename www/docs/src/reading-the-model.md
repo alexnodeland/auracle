@@ -35,6 +35,14 @@ A short bar with a tight interval is worth more than a long bar with a wide one.
 The former is a small preference the model is sure of; the latter is noise with
 confidence.
 
+<figure class="viz" data-viz="interval">
+<figcaption><strong>Drag the evidence slider.</strong> Early on every interval
+straddles zero, and the bars — which <em>are</em> pointing somewhere — mean nothing
+individually. As observations accumulate the intervals narrow and coefficients
+start clearing zero one at a time. Red whiskers are the ones that have not.
+</figcaption>
+</figure>
+
 The same logic runs the node bank's θ bars, which is why they draw a dash below
 five supporting patches: a coefficient fitted from three examples, rendered beside
 one fitted from three hundred, is a misleading comparison presented as a fair one.

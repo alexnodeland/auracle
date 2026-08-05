@@ -47,6 +47,15 @@ A linear model in that coordinate cannot represent *"I like my basses a shade
 brighter"*: the entire usable range is swallowed by the bright tail of the pool. The
 preference is not hard to learn, it is **inexpressible**.
 
+<figure class="viz" data-viz="log-axis">
+<figcaption><strong>Drag the low note, or use the two presets.</strong> Both rows
+place a frequency by ear — the same distance is the same interval — but they
+report different <em>coordinates</em>. On the linear axis one octave is worth
+forty times more at the top of the spectrum than at the bottom, so a single
+weight cannot mean "brighter" in both places. On the log axis an octave is an
+octave, which is what makes the coordinate weightable at all.</figcaption>
+</figure>
+
 So `log_axis` puts centroid, rolloff and ZCR on a shared **octaves-above-20 Hz**
 scale, normalized to $[0,1]$ at Nyquist:
 

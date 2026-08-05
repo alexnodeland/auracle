@@ -34,6 +34,15 @@ every judgement, **including a duel across two islands**, compares candidates on
 shared scale $u = \max_k u_k$. A dark drone and a bright pluck are both scored, each by
 whichever lens likes it most, and the comparison is well-formed.
 
+<figure class="viz" data-viz="max-experts">
+<figcaption><strong>Drag either lens.</strong> Each candidate is coloured by the
+lens that scores it highest and lit by how highly — the same encoding the
+instrument's taste map uses. Pull the lenses apart and two islands appear, each
+with its own idea of what "good" points at. Then press <em>compare K = 1</em>:
+one direction has to explain both islands at once, and the only direction that
+does lies between them, describing a taste nobody has.</figcaption>
+</figure>
+
 ## Two rejected designs, and why
 
 Recorded because the failure mode is specific and not obvious.

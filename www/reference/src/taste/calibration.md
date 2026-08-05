@@ -25,6 +25,15 @@ is wildly overconfident and accuracy cannot tell you.
 So the hit rate sits near chance **by construction** — a perfectly calibrated model looks
 like a coin flip, and the user concludes it is not learning.
 
+<figure class="viz" data-viz="reliability">
+<figcaption><strong>Four hundred real forecasts, scored.</strong> Move the
+confidence dial to make the forecaster over- or under-claim and watch the dots
+leave the diagonal. Then press <em>ask only near-ties</em>: the hit rate drops to
+around 50% and stays there <em>however good the model is</em>, because that is
+what asking hard questions does to a coin-flip tally. The skill score keeps
+moving, which is the whole reason it is the one on display.</figcaption>
+</figure>
+
 The second point is what makes accuracy actively harmful rather than merely crude: the
 metric penalizes the search for doing its job.
 

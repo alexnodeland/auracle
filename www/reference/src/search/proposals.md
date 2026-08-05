@@ -45,6 +45,15 @@ MCMC fit — a small thing that matters a lot for a mapping this easy to get sub
 $[\tfrac14, 4]$ bounds every multiplier, so **no module kind is ever starved or
 monopolized**.
 
+<figure class="viz" data-viz="tilt">
+<figcaption><strong>Hollow bars are the prior's own weights; filled bars are the
+tilted ones.</strong> Raise η and the model's opinions start pushing kinds around.
+Then turn the clamp off: the strongest coefficients drive their kinds toward
+never being proposed at all — and a prior that cannot <em>generate</em> an option
+can never be argued back into it, because the evidence would have to come from
+proposing it. Red is a multiplier sitting at a bound.</figcaption>
+</figure>
+
 Without it a confidently-fitted coefficient could drive a kind's proposal weight to
 effectively zero, and the search would stop being able to *discover* that it was wrong
 about that kind. A prior that has been argued out of considering an option cannot be

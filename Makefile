@@ -103,13 +103,15 @@ site-clean:
 	mkdir -p site
 
 ## site-landing: the hand-authored landing page
-site-landing:
+site-landing: site-fonts
 	mkdir -p site/fonts
 	cp -r www/landing/. site/
 	# The identity faces live once in the repo, with the instrument, and are
 	# copied to each consumer at build time — see www/theme/fonts/README.md.
 	cp apps/web/fonts/*.woff2 site/fonts/
 	cp www/theme/favicon.svg www/theme/favicon.png site/
+	# One runtime, three consumers — the landing page reads it from the root.
+	cp www/viz/viz.js www/viz/viz.css site/
 
 ## site-play: the instrument, at /play/
 site-play: wasm
@@ -138,10 +140,12 @@ site-reference: site-fonts
 	rm -f site/reference/fonts/*.md
 
 # mdBook copies theme/fonts/ verbatim, and that is the only directory it will
-# carry out of a shared theme — so the faces are staged into it before a build.
-# Gitignored, so a stale copy cannot be committed.
+# carry out of a shared theme — so the faces and the figure runtime are staged
+# into it before a build. Both are gitignored copies: the faces belong to
+# apps/web and the runtime to www/viz, and one source each is the whole point.
 site-fonts:
 	cp apps/web/fonts/*.woff2 www/theme/fonts/
+	cp www/viz/viz.js www/viz/viz.css www/theme/fonts/
 
 ## site-api: rustdoc for every crate, at /reference/api/
 site-api:
@@ -189,4 +193,5 @@ doc:
 clean:
 	$(CARGO) clean
 	rm -rf apps/web/pkg site www/docs/book www/reference/book
-	rm -f www/theme/fonts/*.woff2 www/docs/src/img/*.webp
+	rm -f www/theme/fonts/*.woff2 www/theme/fonts/viz.js www/theme/fonts/viz.css
+	rm -f www/docs/src/img/*.webp
