@@ -5,12 +5,12 @@ probabilistic context-free grammar whose non-terminals are signal kinds.</p>
 
 ## The representation decision
 
-The genome is **not** a raw patch graph and **not** a parameter vector. It is a
-*tree* — a term in quiver's Layer-1 combinator algebra — and the patch graph is the
-**compilation target**, not the genome.
+The genome is a *tree*: a term in quiver's Layer-1 combinator algebra. It is
+**not** a raw patch graph and **not** a parameter vector, and the patch graph
+is the **compilation target**.
 
-Everything follows from this. Written as a table, because the payoff is that one
-representation covers what usually needs three:
+Everything follows from this. One representation covers what usually needs
+three:
 
 | Level of evolution | In the term grammar |
 |---|---|
@@ -18,27 +18,26 @@ representation covers what usually needs three:
 | **Connectivity** | Interior structure — chains, parallel branches, modulation attachments |
 | **Node set** | Which productions fire — the module choice sites |
 
-A parameter-vector genome cannot change topology. A raw-graph genome can, but most
-of its mutations produce invalid graphs, so it needs a repair step — and a repair
-step is a second, undocumented grammar. A typed term needs neither: **every sampled
-term compiles to a valid, sound-making patch**, because the type system constrains
-which productions can fire where.
+A parameter-vector genome cannot change topology. A raw-graph genome can, but
+most of its mutations produce invalid graphs, so it needs a repair step, which
+is a second, undocumented grammar. A typed term needs neither: **every sampled
+term compiles to a valid, sound-making patch**, because the type system
+constrains which productions can fire where.
 
 <figure class="viz" data-viz="term-tree">
 <figcaption><strong>Sample a few.</strong> Green is the Audio sort, amber is
-Modulation, and they are different <em>Rust types</em> — the dashed edges are
+Modulation, and they are different <em>Rust types</em>. The dashed edges are
 modulation slots, and no amount of mutation can put one sort where the other
-belongs, because such a term cannot be constructed. Every tree here compiles and
-plays; there is no repair step anywhere in the pipeline. Press it repeatedly and
-watch small terms dominate: that is the prior's parsimony, with nothing penalising
-size. (A faithful miniature of the production weights, not the shipped
-grammar.)</figcaption>
+belongs, because such a term cannot be constructed. Press it repeatedly and
+watch small terms dominate: that is the prior's parsimony, with nothing
+penalising size. (A faithful miniature of the production weights, not the
+shipped grammar.)</figcaption>
 </figure>
 
-The sorts are quiver's signal kinds: Audio, V/Oct, Gate, CV. Auracle's `PatchTree`
-splits into `AudioNode` and `ModNode`, and the split is enforced by **Rust's own
-type system** — an ill-sorted term is not rejected at runtime, it cannot be
-constructed.
+The sorts are quiver's signal kinds: Audio, V/Oct, Gate, CV. Auracle's
+`PatchTree` splits into `AudioNode` and `ModNode`, and the split is enforced by
+**Rust's own type system**: an ill-sorted term is not rejected at runtime; it
+cannot be constructed.
 
 ## The grammar as a probabilistic program
 
@@ -58,48 +57,48 @@ probabilistic choices at path-keyed addresses:
 
 The amplitude envelope is fixed at `amp#attack` … `amp#release`.
 
-The three categorical orders — 6 sources, 20 processors, 8 modulation kinds — are
-the **persisted wire format**, because the codec writes the chosen index into the
-trace. They are append-only.
+The three categorical orders (6 sources, 20 processors, 8 modulation kinds) are
+the **persisted wire format**, because the codec writes the chosen index into
+the trace. They are append-only.
 
 ## Parsimony is the prior, not a penalty
 
 Deeper terms pay more prior mass **by construction**: each additional level of
-recursion multiplies in another `#leaf` Bernoulli that came out "processor", and
-each processor node draws its own parameters. There is no size penalty term
-anywhere, and there does not need to be one.
+recursion multiplies in another `#leaf` Bernoulli that came out "processor",
+and each processor node draws its own parameters. There is no size penalty term
+anywhere.
 
-This is worth dwelling on, because ad-hoc parsimony penalties are the norm in
-genetic programming and they are a persistent source of trouble — they need tuning,
-they interact badly with fitness scaling, and they make the target distribution
-something nobody has written down. Here the target *is* written down:
-$\pi_\beta \propto p_{\text{grammar}} \cdot e^{\beta u}$, and
+Ad-hoc parsimony penalties are the norm in genetic programming and a persistent
+source of trouble: they need tuning, they interact badly with fitness scaling,
+and they leave the target distribution unwritten. Here the target *is* written
+down: $\pi_\beta \propto p_{\text{grammar}} \cdot e^{\beta u}$, and
 $p_{\text{grammar}}$ is exactly the parsimony pressure.
 
 ## Modulation is a recursive sort
 
-A modulation input does not take "an LFO". It takes a **modulation term**, which can
-itself be built from modulation terms:
+A modulation input does not take "an LFO". It takes a **modulation term**,
+which can itself be built from modulation terms:
 
-- Five **leaves** — LFO, envelope, random (sample-and-hold), envelope follower,
+- Five **leaves**: LFO, envelope, random (sample-and-hold), envelope follower,
   Euclidean.
 - **`Op`** wraps one modulation term: quantize, slew, rectify, hold.
 - **`Pair`** combines two.
 
-So `s&h rand → quantize → slew` is a legal modulation term, and the rack draws the
-whole chain. Subterms live at `<p>/m/0` and `<p>/m/1` — the same child convention
-the audio tree uses, unambiguous because every modulation key sits below a `/m`.
+So `s&h rand → quantize → slew` is a legal modulation term, and the rack draws
+the whole chain. Subterms live at `<p>/m/0` and `<p>/m/1`, the same child
+convention the audio tree uses; it is unambiguous because every modulation key
+sits below a `/m`.
 
-Its parsimony pressure is `max_mod_depth`, and the renormalizations that enforce it
-live in `mod_weights_at`: at maximum depth only leaves remain available, and below a
-processor the "no modulation" option is removed so a slot that must be filled is
-filled.
+Its parsimony pressure is `max_mod_depth`, and the renormalizations that
+enforce it live in `mod_weights_at`: at maximum depth only leaves remain
+available, and below a processor the "no modulation" option is removed so a
+slot that must be filled is filled.
 
-A modulation slot hangs off every module with somewhere to send it. The exceptions
-are the ones without: `Noise`, whose only site is a colour switch, and `Mix` /
-`RingMod`, whose two inputs are both audio and whose single knob is the blend.
-Having two audio children is **not** itself an exception — the four dynamics
-productions take two subterms and carry a slot as well.
+A modulation slot hangs off every module with somewhere to send it. The
+exceptions are the ones without: `Noise`, whose only site is a colour switch,
+and `Mix` / `RingMod`, whose two inputs are both audio and whose single knob is
+the blend. Having two audio children is **not** itself an exception: the four
+dynamics productions take two subterms and carry a slot as well.
 
 ## The palette
 
@@ -113,44 +112,45 @@ processors  Mix  Filter  Fold  Delay  Chorus  Reverb  Distortion  Bitcrush
 modulators  Lfo  Adsr  SampleAndHold  SlewLimiter  EnvelopeFollower  …
 ```
 
-Six processors are **binary**. The distinction is not cosmetic:
+Six processors are **binary**:
 
 | Production | Second input | |
 |---|---|---|
 | `Mix`, `RingMod` | Audio | Merges two chains into one |
 | `Comp`, `Duck`, `Gate`, `Vocoder` | **Control** | Real sidechaining, in a typed tree |
 
-A compressor's sidechain is not an audio input, and the type system is what makes
-wiring it as one impossible rather than merely discouraged.
+A compressor's sidechain is not an audio input, and the type system makes
+wiring it as one impossible.
 
 ## What is not in the grammar
 
-**Feedback.** Terms are acyclic — there are no feedback combinator productions.
-Modules with *internal* feedback (delay, chorus, reverb) are fine, and there are
-plenty of them.
+**Feedback.** Terms are acyclic: there are no feedback combinator productions.
+Modules with *internal* feedback (delay, chorus, reverb) are fine, and there
+are plenty of them.
 
-This is a v1 constraint rather than a principle. A tamed feedback production, with a
-mandatory attenuator and limiter in the loop path, is the intended v2 grammar
-extension. Until then, cycles are not rejected — they are unrepresentable, which is
-also why cable dragging in the UI can simply not offer them.
+This is a v1 constraint rather than a principle. A tamed feedback production,
+with a mandatory attenuator and limiter in the loop path, is the intended v2
+grammar extension. Until then cycles are unrepresentable, which is why cable
+dragging in the UI does not offer them.
 
 ## Strict validation as an oracle
 
-Grammar output is compiled with quiver's `ValidationMode::Strict` in the test suite.
-Because the grammar is typed, **a `SignalMismatch` is by construction a bug in our
-grammar** — so Strict doubles as a property-test oracle: sample $N$ terms, compile
-all of them, and any error fails the test with quiver's actionable message.
+Grammar output is compiled with quiver's `ValidationMode::Strict` in the test
+suite. Because the grammar is typed, **a `SignalMismatch` is by construction a
+bug in our grammar**, so Strict doubles as a property-test oracle: sample $N$
+terms, compile all of them, and any error fails the test with quiver's
+actionable message.
 
 Patches are *wired* in `Warn` mode, though, with an allowlist test pinning the
-warning classes. Strict rejects two warning-class pairings the compiler deliberately
-uses — the clearest being a constant bipolar `Offset` feeding a unipolar knob — and
-the allowlist test is what keeps "we know about these two" from quietly becoming
-"we ignore all warnings".
+warning classes. Strict rejects two warning-class pairings the compiler
+deliberately uses, the clearest being a constant bipolar `Offset` feeding a
+unipolar knob. The allowlist test is what keeps "we know about these two" from
+quietly becoming "we ignore all warnings".
 
 ## Where this comes from
 
-The design mirrors fugue-evo's `ArithmeticGrammarPrior`, with quiver signal sorts in
-place of arithmetic types. That is deliberate: it means Auracle's genome gets
-subtree mutation, subtree-swap crossover, reversible-jump MH and tempered SMC from
-fugue-evo **unchanged**, because they operate on traces and this genome's trace
-encoding is honest.
+The design mirrors fugue-evo's `ArithmeticGrammarPrior`, with quiver signal
+sorts in place of arithmetic types. That is deliberate: Auracle's genome gets
+subtree mutation, subtree-swap crossover, reversible-jump MH and tempered SMC
+from fugue-evo **unchanged**, because they operate on traces and this genome's
+trace encoding is faithful.

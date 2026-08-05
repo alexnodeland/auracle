@@ -40,7 +40,7 @@
 - [The Boltzmann target](./search/target.md)
 - [Proposals, and the taste tilt](./search/proposals.md)
 - [Locks as conditional refinement](./search/locks.md)
-- [Refinement — what actually ships](./search/refinement.md)
+- [Refinement — what ships](./search/refinement.md)
 - [Acquisition](./search/acquisition.md)
 
 # Systems

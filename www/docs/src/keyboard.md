@@ -85,9 +85,9 @@ a name field does not play a melody. This is also why the bank's save key is
 | | |
 |---|---|
 | <kbd>/</kbd> | Focus the search index |
-| <kbd>Tab</kbd> | Reach the catalogue — one stop per group |
+| <kbd>Tab</kbd> | Reach the catalogue: one stop per group |
 | <kbd>↑</kbd> <kbd>↓</kbd> | Walk the entries |
-| <kbd>Enter</kbd> | Arm the module — it is now in your hand |
+| <kbd>Enter</kbd> | Arm the module. It is now in your hand |
 | <kbd>↑</kbd> <kbd>↓</kbd> | Then walk the **lit sockets**, each announced |
 | <kbd>Enter</kbd> | Place it |
 | <kbd>Esc</kbd> | Put it down |
@@ -99,7 +99,7 @@ The search matches by **sound as well as by name**: *grit*, *vowel*,
 
 | | |
 |---|---|
-| Drag a knob | Change it — you hear it immediately |
+| Drag a knob | Change it; you hear it immediately |
 | Click an enum plate | Cycle it (`saw`, `square`, `−2 oct`) |
 | Drag from an **out** jack | Pull a cable; every legal input lights up |
 | Drag a wired **in** jack off its socket | Unplug. The chain goes to **HELD** |
@@ -111,7 +111,7 @@ The search matches by **sound as well as by name**: *grit*, *vowel*,
 
 ## MIDI
 
-Plug in a keyboard and it works — no configuration:
+Plug in a keyboard and it works, with no configuration:
 
 | | |
 |---|---|
@@ -119,8 +119,8 @@ Plug in a keyboard and it works — no configuration:
 | Pitch bend | Yes |
 | Sustain pedal (CC 64) | Yes |
 
-Web MIDI is Chromium-only today. In Firefox and Safari the computer keyboard and
-the on-screen keys are unaffected.
+Web MIDI is Chromium-only today. In Firefox and Safari the computer keyboard
+and the on-screen keys are unaffected.
 
 ## Performance controls
 
@@ -129,7 +129,7 @@ Not keyboard-bound, but this is where people look for them:
 | | |
 |---|---|
 | **HOLD** | Latch notes |
-| **◼** | Panic — kill every voice |
+| **◼** | Panic. Kills every voice |
 | **ARP** | Pattern, division, BPM, octave range, gate, swing |
 | **UNI** | Stack all four voices, detuned |
 | **gld** | Glide between single notes; chords stay clean |

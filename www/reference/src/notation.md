@@ -1,7 +1,7 @@
 # Notation
 
-Fixed throughout. Where a symbol appears in the code under a different name, the
-code's name is given.
+Fixed throughout. Where a symbol appears in the code under a different name,
+the code's name is given.
 
 ## Objects
 
@@ -17,7 +17,7 @@ code's name is given.
 
 $\varphi$ is always the concatenation $[\varphi_{\text{audio}} ;
 \varphi_{\text{struct}}]$, in that order. It is written $\varphi$ rather than
-$\phi$ throughout — the code's `phi` is this vector.
+$\phi$ throughout; the code's `phi` is this vector.
 
 ## The taste model
 
@@ -47,17 +47,18 @@ $\phi$ throughout — the code's `phi` is this vector.
 
 ## Conventions
 
-- $\sigma(\cdot)$ is the **logistic** function $\sigma(v) = 1/(1+e^{-v})$, never a
-  standard deviation. Standard deviations are always subscripted ($\sigma_\theta$)
-  or written as $s$.
+- $\sigma(\cdot)$ is the **logistic** function $\sigma(v) = 1/(1+e^{-v})$,
+  never a standard deviation. Standard deviations are always subscripted
+  ($\sigma_\theta$) or written as $s$.
 - $\log$ is natural. Log-losses are in **nats**.
-- Indices are **0-based**, matching the code, including cutpoint indices — which
-  matters for reading the [ordinal likelihood](./taste/likelihoods.md#star-ratings--a-cumulative-logit).
-- Weights $w$ are always **normalized** unless stated: importance weights sum to
-  one, recency weights are relative to the newest observation being $1$.
+- Indices are **0-based**, matching the code, including cutpoint indices, which
+  matters for reading the [ordinal
+  likelihood](./taste/likelihoods.md#star-ratings--a-cumulative-logit).
+- Weights $w$ are always **normalized** unless stated: importance weights sum
+  to one, recency weights are relative to the newest observation being $1$.
 - "Standardized" always means *after* the affine transform in
-  [Standardization](./features/standardization.md). The taste model never sees raw
-  $\varphi$; the observation **log** never stores anything else.
+  [Standardization](./features/standardization.md). The taste model never sees
+  raw $\varphi$; the observation **log** never stores anything else.
 
 ## KaTeX macros
 
