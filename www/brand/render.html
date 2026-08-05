@@ -57,9 +57,15 @@ body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-
   width: 1440px; height: 360px; background: var(--rack);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px;
 }
-#banner .lk { font-size: 88px; }
+/* Both lines carry a start margin of one letter-space. letter-spacing is
+   applied after the *final* letter too, so a centred line's ink sits half a
+   letter-space left of true centre; a start margin of one full space puts it
+   back. It goes on the lockup rather than on .wm, or it would open the
+   specified 0.62em gap between the mark and the word. */
+#banner .lk { font-size: 88px; margin-inline-start: .095em; }
 #banner .tag {
   font-family: var(--font-mono); font-size: 22px; letter-spacing: .24em;
+  margin-inline-start: .24em;
   text-transform: uppercase; color: var(--silk-mute);
 }
 
