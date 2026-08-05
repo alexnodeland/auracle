@@ -13,15 +13,25 @@ name: Pages
 # enforces that: a root-absolute reference is an error, because it works locally
 # and 404s here.
 
-# Two triggers, one site. `main` keeps the live build honest to the tip of the
-# repo, which is what the README promises. A `v*` tag deploys as well, so cutting
-# a release publishes the *exact* build the zip was made from rather than
-# whatever landed on main in the meantime — the `pages` concurrency group below
-# serializes the two, so a tag and a main push can never interleave.
+# One trigger: `main`. The live site tracks the tip of the repo, which is what
+# the README promises.
+#
+# This used to fire on `v*` tags as well, on the reasoning that a release should
+# publish the exact build its zip was made from. It could never work: the
+# `github-pages` environment permits deployments from the `main` branch only, so
+# every tag build ran for two minutes and was then rejected at the deploy step
+# with "not allowed to deploy to github-pages due to environment protection
+# rules" — one guaranteed red run per release.
+#
+# It was also answering a question that does not arise. A tag is cut from a green
+# `main` (DEVELOPMENT.md § Cutting a release), so by the time it exists that
+# commit has already deployed from the branch. And the two claims cannot both
+# hold anyway: a site that always tracks `main` is not a site pinned to the last
+# tag. The site tracks `main`; the zip is pinned to the tag; the documented
+# process is what makes them the same build.
 on:
   push:
     branches: [main]
-    tags: ["v[0-9]+.*"]
   workflow_dispatch:
 
 permissions:
@@ -30,7 +40,8 @@ permissions:
   id-token: write
 
 # One deploy at a time; a newer main supersedes an in-flight one, but never
-# cancels a run that is already mid-deploy.
+# cancels a run that is already mid-deploy. Still worth keeping with a single
+# trigger: two pushes to main in quick succession would otherwise race.
 concurrency:
   group: pages
   cancel-in-progress: false
