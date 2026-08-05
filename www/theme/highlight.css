@@ -1,0 +1,191 @@
+/* AURACLE docs — syntax highlighting, in the phosphor palette.
+ *
+ * ## Why one file serves both themes
+ *
+ * mdBook ships three highlight stylesheets and switches between them by
+ * toggling `disabled` on three `<link>` elements it finds by id
+ * (`highlight-css`, `tomorrow-night-css`, `ayu-highlight-css`). Only
+ * `highlight.css` is an overridable theme file, so a custom dark theme
+ * normally inherits mdBook's generic tomorrow-night for code and drifts off
+ * palette exactly where a docs site is most colourful.
+ *
+ * `index.hbs` points all three ids at *this* file. The switching JavaScript
+ * still enables one and disables two, but they are the same stylesheet, so
+ * whichever wins gives the right answer — and the answer is theme-scoped
+ * below, per `html.coal` / `html.light`. No fork of book.js, one file to own.
+ *
+ * ## The palette
+ *
+ * Code is *sound-adjacent* on this site — it is the thing that makes the
+ * instrument — so it lives in green, with amber reserved for the two roles
+ * that genuinely differ in kind: literals (a value the reader will change) and
+ * types (the sort that makes a term legal). Everything else is silk. This is
+ * far fewer colours than a typical highlighter uses, deliberately: seven hues
+ * of rainbow in a code block beside a two-phosphor screenshot is the law in
+ * variables.css being broken in the one place readers look longest.
+ */
+
+/* ─── Shared structure ──────────────────────────────────────────────────── */
+
+/* `pre >` matters. highlight.js tags *inline* `<code>` with `.hljs` too, so an
+   unscoped `code.hljs { display: block }` — which is what mdBook's own
+   highlight themes ship — puts every inline identifier on a line of its own
+   and shreds the paragraph around it. */
+pre > code.hljs {
+    display: block;
+    overflow-x: auto;
+    background: transparent;
+    color: var(--fg);
+}
+
+.hljs-emphasis {
+    font-style: italic;
+}
+
+.hljs-strong {
+    font-weight: 600;
+}
+
+/* mdBook dims `# hidden` lines in Rust playground blocks. */
+.boring {
+    opacity: 0.55;
+}
+
+/* ─── Rack ──────────────────────────────────────────────────────────────── */
+
+html.coal .hljs-comment,
+html.coal .hljs-quote {
+    color: var(--silk-mute);
+    font-style: italic;
+}
+
+html.coal .hljs-keyword,
+html.coal .hljs-selector-tag,
+html.coal .hljs-literal,
+html.coal .hljs-doctag {
+    color: var(--phos-a);
+}
+
+html.coal .hljs-title,
+html.coal .hljs-section,
+html.coal .hljs-name,
+html.coal .hljs-title.function_ {
+    color: var(--phos-a-dim);
+    font-weight: 600;
+}
+
+/* Types and built-ins — the sort layer. */
+html.coal .hljs-type,
+html.coal .hljs-class .hljs-title,
+html.coal .hljs-built_in,
+html.coal .hljs-builtin-name {
+    color: var(--phos-b-dim);
+}
+
+/* Literals a reader will edit: strings, numbers, attribute values. */
+html.coal .hljs-string,
+html.coal .hljs-number,
+html.coal .hljs-regexp,
+html.coal .hljs-attr,
+html.coal .hljs-attribute,
+html.coal .hljs-symbol,
+html.coal .hljs-bullet {
+    color: var(--phos-b);
+}
+
+html.coal .hljs-variable,
+html.coal .hljs-template-variable,
+html.coal .hljs-params,
+html.coal .hljs-property {
+    color: var(--silk);
+}
+
+html.coal .hljs-meta,
+html.coal .hljs-meta .hljs-keyword {
+    color: var(--silk-dim);
+}
+
+html.coal .hljs-punctuation,
+html.coal .hljs-operator {
+    color: var(--silk-dim);
+}
+
+html.coal .hljs-deletion {
+    color: var(--led-red);
+}
+
+html.coal .hljs-addition {
+    color: var(--phos-a);
+}
+
+html.coal .hljs-link {
+    color: var(--phos-a-dim);
+    text-decoration: underline;
+}
+
+/* ─── Paper ─────────────────────────────────────────────────────────────── */
+
+html.light .hljs-comment,
+html.light .hljs-quote {
+    color: var(--silk-mute);
+    font-style: italic;
+}
+
+html.light .hljs-keyword,
+html.light .hljs-selector-tag,
+html.light .hljs-literal,
+html.light .hljs-doctag {
+    color: var(--phos-a);
+}
+
+html.light .hljs-title,
+html.light .hljs-section,
+html.light .hljs-name,
+html.light .hljs-title.function_ {
+    color: var(--phos-a-dim);
+    font-weight: 600;
+}
+
+html.light .hljs-type,
+html.light .hljs-class .hljs-title,
+html.light .hljs-built_in,
+html.light .hljs-builtin-name {
+    color: var(--phos-b-dim);
+}
+
+html.light .hljs-string,
+html.light .hljs-number,
+html.light .hljs-regexp,
+html.light .hljs-attr,
+html.light .hljs-attribute,
+html.light .hljs-symbol,
+html.light .hljs-bullet {
+    color: var(--phos-b);
+}
+
+html.light .hljs-variable,
+html.light .hljs-template-variable,
+html.light .hljs-params,
+html.light .hljs-property {
+    color: var(--silk);
+}
+
+html.light .hljs-meta,
+html.light .hljs-meta .hljs-keyword,
+html.light .hljs-punctuation,
+html.light .hljs-operator {
+    color: var(--silk-dim);
+}
+
+html.light .hljs-deletion {
+    color: var(--led-red);
+}
+
+html.light .hljs-addition {
+    color: var(--phos-a);
+}
+
+html.light .hljs-link {
+    color: var(--phos-a-dim);
+    text-decoration: underline;
+}

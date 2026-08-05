@@ -1,0 +1,71 @@
+# The technical reference — the model, the math, and the code that implements it.
+#
+# Same pinned toolchain as ../docs/book.toml; the note there explains why 0.4
+# rather than 0.5. This book is the one that actually needs KaTeX.
+
+[book]
+title = "Auracle Reference"
+description = "How Auracle works: the typed patch grammar, the audition pipeline, the taste posterior, and the search."
+authors = ["Alex Nodeland"]
+language = "en"
+src = "src"
+
+[output.html]
+theme = "../theme"
+default-theme = "coal"
+preferred-dark-theme = "coal"
+copy-fonts = false
+
+git-repository-url = "https://github.com/alexnodeland/auracle"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/alexnodeland/auracle/edit/main/www/reference/{path}"
+
+site-url = "./"
+
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 25
+use-boolean-and = true
+boost-title = 3
+boost-hierarchy = 2
+
+[output.html.playground]
+# Nothing here is runnable in the Rust playground — every snippet references
+# this workspace's crates. Turning it off drops the Run button, and with it
+# book.js's fetch of play.rust-lang.org for a crate list: the one external
+# request a deliberately self-contained site would otherwise still make.
+runnable = false
+copyable = true
+
+[output.html.print]
+enable = true
+
+[preprocessor.katex]
+after = ["links"]
+# Build-time rendering, so a formula is finished markup: no JavaScript, no
+# layout shift, and it prints. `no-css` suppresses the preprocessor's own
+# jsdelivr <link> — the stylesheet is vendored at
+# www/theme/fonts/katex/ and linked by index.hbs instead.
+no-css = true
+# MathML alongside the styled HTML: KaTeX marks its visual output
+# `aria-hidden`, so this is what a screen reader actually reads. Costs bytes in
+# the page and nothing at runtime.
+output = "htmlAndMathml"
+# Shorthands for the notation this book uses on nearly every page, so a symbol
+# cannot mean one thing on one page and something else on the next.
+#
+# A FILE, not an inline `[preprocessor.katex.macros]` table. The table form
+# parses without complaint and is then ignored, so every macro renders as
+# "Undefined control sequence" — a build warning rather than a build failure,
+# which is exactly the kind that ships. `make site-check` greps for it.
+macros = "./katex-macros.txt"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.0.4"

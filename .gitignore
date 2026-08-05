@@ -7,3 +7,21 @@ pkg/
 *.jpeg
 site/
 .panel/
+
+# ─── the site's build outputs ────────────────────────────────────────────────
+# `site/` above is the assembled site. These are the intermediates.
+www/docs/book/
+www/reference/book/
+
+# The identity faces live once in the repo, in apps/web/fonts, and are copied
+# into their consumers by `make site` / `make docs-serve`. Ignoring the copies is
+# what keeps a stale one from being committed — note this pattern deliberately
+# does NOT match the vendored KaTeX faces in the same directory, which ARE
+# committed (see www/theme/fonts/KATEX.md).
+www/theme/fonts/jost-var.woff2
+www/theme/fonts/newsreader-it.woff2
+www/theme/fonts/plexmono-400.woff2
+www/theme/fonts/plexmono-600.woff2
+
+# The guide's figures are copies of the landing page's screenshots.
+www/docs/src/img/

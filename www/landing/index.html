@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en" class="rack">
+<head>
+<meta charset="utf-8">
+<title>Auracle — a synthesizer that learns what you like</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A playable modular synthesizer that generates patches by evolutionary search, learns your taste from A/B picks, and can show you what it learned. Runs in the browser.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0d10">
+
+<link rel="icon" href="favicon.svg">
+<link rel="shortcut icon" href="favicon.png">
+<link rel="stylesheet" href="style.css">
+
+<meta property="og:site_name" content="Auracle">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Auracle — a synthesizer that learns what you like">
+<meta property="og:description" content="It plays you two patches. You pick one. It learns, and starts making more of it.">
+<meta property="og:image" content="assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+
+<a class="skip" href="#hero-duel">Skip to the demo</a>
+
+<!-- ─── header ─────────────────────────────────────────────────────────── -->
+<header class="bar">
+  <a class="mark" href="./" aria-label="Auracle">AURACL<b>E</b></a>
+  <nav class="bar-nav" aria-label="Sections">
+    <a href="docs/">Guide</a>
+    <a href="reference/">Reference</a>
+    <a href="https://github.com/alexnodeland/auracle">Source</a>
+    <a class="bar-play" href="play/">Play&nbsp;▸</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ─── hero ───────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Modular synthesizer · Evolutionary search · Runs in your browser</p>
+    <h1 class="display">Pick the sound<br>you like better.</h1>
+    <p class="voice">Auracle plays you two patches, learns which one you preferred, and
+    starts making more of it. The panel here is real — press play and choose.</p>
+    <div class="cta-row">
+      <a class="btn btn-go" href="play/">Play the instrument&nbsp;▸</a>
+      <a class="btn" href="docs/getting-started/first-session.html">Read the guide</a>
+    </div>
+    <p class="fineprint">Free, no account, nothing to install. Your patches and your
+    taste model stay in your browser.</p>
+  </div>
+
+  <!-- The signature element: a working duel. -->
+  <div class="panel" id="hero-duel">
+    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+    <div class="crt">
+      <div class="scanlines" aria-hidden="true"></div>
+
+      <div class="duel" role="group" aria-label="Which patch do you prefer?">
+        <article class="card" data-side="a">
+          <header class="card-head">
+            <span class="card-id">A</span>
+            <span class="card-name mono" data-name>—</span>
+          </header>
+          <canvas class="trace" data-trace width="520" height="86" role="img"
+                  aria-label="Waveform of patch A"></canvas>
+          <button class="card-play" data-play type="button">
+            <span aria-hidden="true">▶</span> hear&nbsp;A <kbd>1</kbd>
+          </button>
+        </article>
+
+        <article class="card" data-side="b">
+          <header class="card-head">
+            <span class="card-id">B</span>
+            <span class="card-name mono" data-name>—</span>
+          </header>
+          <canvas class="trace" data-trace width="520" height="86" role="img"
+                  aria-label="Waveform of patch B"></canvas>
+          <button class="card-play" data-play type="button">
+            <span aria-hidden="true">▶</span> hear&nbsp;B <kbd>2</kbd>
+          </button>
+        </article>
+      </div>
+    </div>
+
+    <div class="pickrow">
+      <button class="pick" data-pick="a" type="button">Pick A <kbd>←</kbd></button>
+      <button class="pick" data-pick="b" type="button">Pick B <kbd>→</kbd></button>
+    </div>
+
+    <!-- The model's mind. Amber, per the phosphor law. -->
+    <section class="mind" aria-labelledby="mind-h">
+      <header class="mind-head">
+        <h2 class="mind-title" id="mind-h">What it thinks you like</h2>
+        <span class="pips mono" data-pips aria-hidden="true"></span>
+      </header>
+
+      <ul class="bars" data-bars>
+        <!-- filled by hero.js so the labels and the model cannot disagree -->
+      </ul>
+
+      <p class="verdict" data-verdict role="status">Press <kbd>1</kbd> and <kbd>2</kbd>,
+      then pick the one you prefer.</p>
+
+      <button class="btn btn-make" data-make type="button" hidden>
+        Make me one&nbsp;▸
+      </button>
+    </section>
+
+    <p class="honesty">
+      A four-knob miniature. The real instrument measures
+      <a href="reference/features/audio.html">forty coordinates</a> and fits a
+      posterior over up to five taste lenses — but the update running here is the
+      same Bradley–Terry likelihood.
+    </p>
+  </div>
+</section>
+
+<!-- ─── the thesis ─────────────────────────────────────────────────────── -->
+<section class="band">
+  <p class="eyebrow">The problem</p>
+  <h2 class="h2">Sound design makes you choose between fast and deep.</h2>
+
+  <div class="thesis">
+    <div class="tcol">
+      <h3 class="tcol-h">Explore</h3>
+      <p>Presets and randomizers. Fast, and shallow — you audition until something
+      works, and nothing accumulates. Tomorrow you start over.</p>
+    </div>
+    <div class="tcol">
+      <h3 class="tcol-h">Construct</h3>
+      <p>Patch from scratch. Deep, and slow. You get exactly what you can already
+      imagine, at the speed you can build it.</p>
+    </div>
+    <div class="tcol tcol-ours">
+      <h3 class="tcol-h">Infer</h3>
+      <p>Auracle treats it as inference. It generates, you judge, it fits a model of
+      your taste and searches with it. The work you put in on Tuesday is still
+      there on Friday.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── showcase ───────────────────────────────────────────────────────── -->
+<section class="band">
+  <p class="eyebrow">The instrument</p>
+  <h2 class="h2">Three views, one loop.</h2>
+
+  <div class="shots">
+    <div class="shot-tabs" role="tablist" aria-label="Views">
+      <button class="shot-tab" role="tab" id="tab-play" aria-controls="pane-play"
+              aria-selected="true" data-tab="play">play</button>
+      <button class="shot-tab" role="tab" id="tab-evolve" aria-controls="pane-evolve"
+              aria-selected="false" tabindex="-1" data-tab="evolve">evolve</button>
+      <button class="shot-tab" role="tab" id="tab-taste" aria-controls="pane-taste"
+              aria-selected="false" tabindex="-1" data-tab="taste">taste</button>
+    </div>
+
+    <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0">
+      <img src="assets/screens/play.webp" alt="The PLAY view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." width="1440" height="900" loading="eager" decoding="async">
+      <p class="shot-cap"><strong>PLAY.</strong> The patch is the subject: its whole
+      rack, knobs at true positions in musical units, editable and lockable while it
+      runs live under your hands.</p>
+    </div>
+
+    <div class="shot-pane" role="tabpanel" id="pane-evolve" aria-labelledby="tab-evolve" tabindex="0" hidden>
+      <img src="assets/screens/evolve.webp" alt="The EVOLVE view: two duel cards side by side with rendered waveforms, a teaching meter reading forty-four picks in, and a generation lineage log below." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>EVOLVE.</strong> Duels under a meter that counts down
+      to the next refit, and a lineage log that says what each generation actually
+      changed — <span class="mono">attack 0.59→0.83, +noise, −distortion</span>.</p>
+    </div>
+
+    <div class="shot-pane" role="tabpanel" id="pane-taste" aria-labelledby="tab-taste" tabindex="0" hidden>
+      <img src="assets/screens/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and brightness, three named style chips above it, and a legend reading less / would like and sure / unsure." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>TASTE.</strong> Every patch you have heard, placed by
+      sound and structure. Glow is how much it thinks you would like it; size is how
+      sure it is.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── how it learns ──────────────────────────────────────────────────── -->
+<section class="band">
+  <p class="eyebrow">What it actually does</p>
+  <h2 class="h2">A model that can be wrong in public.</h2>
+
+  <div class="learn">
+    <div class="learn-copy">
+      <p>Your picks condition one latent quantity: how much you would like a patch.
+      Taste is a <strong>maximum over lenses</strong> rather than a single direction,
+      so you are allowed to love dark drones <em>and</em> bright plucks without the
+      model averaging them into a preference for neither.</p>
+
+      <div class="formula" aria-label="u of x equals the maximum over k of theta k dot phi of x">
+        <span class="mono">u(x) = max<sub>k</sub> θ<sub>k</sub> · φ(x)</span>
+      </div>
+
+      <p>Search then proposes <em>toward</em> you: the fitted taste reshapes the
+      grammar's own proposal weights, not just the score.</p>
+
+      <div class="formula" aria-label="pi beta of x is proportional to p grammar of x times e to the beta u of x">
+        <span class="mono">π<sub>β</sub>(x) ∝ p<sub>grammar</sub>(x) · e<sup>βu(x)</sup></span>
+      </div>
+
+      <p>And every duel is <strong>forecast before you answer it</strong>, then scored
+      against a proper scoring rule. Which means the instrument can tell you when it
+      does not know yet — and early on, it does.</p>
+
+      <a class="inline-go" href="reference/">Read how it works&nbsp;▸</a>
+    </div>
+
+    <figure class="learn-fig">
+      <img src="assets/screens/taste-directions.webp" alt="A coefficient plot: named perceptual coordinates down the left, horizontal amber bars extending left and right of a centre line, each with a thinner whisker showing the credible interval." width="1440" height="900" loading="lazy" decoding="async">
+      <figcaption>Every coefficient with its credible interval. A long bar whose
+      whisker crosses the centre line is a guess, and the instrument says so rather
+      than rounding it to a claim.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ─── the palette, by signal path ────────────────────────────────────── -->
+<section class="band">
+  <p class="eyebrow">Forty-one modules</p>
+  <h2 class="h2">Catalogued in signal-flow order, not alphabetically.</h2>
+
+  <ol class="path">
+    <li><span class="path-n mono">sources</span><span class="path-b">A wavetable, a
+      physically-modelled pluck, a formant oscillator that speaks vowels, supersaw,
+      VCO, noise</span></li>
+    <li><span class="path-n mono">shape</span><span class="path-b">Wavefolder,
+      distortion in three drive modes, bitcrush</span></li>
+    <li><span class="path-n mono">filter</span><span class="path-b">SVF, diode ladder,
+      parametric EQ, vocoder</span></li>
+    <li><span class="path-n mono">space</span><span class="path-b">Delay, reverb,
+      granular, pitch shift</span></li>
+    <li><span class="path-n mono">motion</span><span class="path-b">Chorus, phaser,
+      flanger, tremolo, vibrato</span></li>
+    <li><span class="path-n mono">dynamics</span><span class="path-b">Compressor,
+      ducker, noise gate — each with a <em>control</em> input, so sidechaining is a
+      typed connection rather than a convention</span></li>
+    <li><span class="path-n mono">combine</span><span class="path-b">Crossfade and
+      ring modulation, merging two chains into one</span></li>
+    <li><span class="path-n mono">modulation</span><span class="path-b">LFO, envelope,
+      sample-and-hold, slew, follower, Euclidean — and these
+      <strong>chain</strong>: <span class="mono">s&amp;h rand → quantize → slew</span>
+      before it ever reaches a cutoff</span></li>
+  </ol>
+
+  <p class="path-note">Every knob is an address in the genome, so turning one edits the
+  patch the search is working on — and locking one means refinement provably leaves it
+  alone.</p>
+</section>
+
+<!-- ─── start ──────────────────────────────────────────────────────────── -->
+<section class="band band-start">
+  <p class="eyebrow">Start</p>
+  <h2 class="h2">Nothing to install.</h2>
+
+  <div class="routes">
+    <a class="route route-first" href="play/">
+      <h3 class="route-h">Play it now</h3>
+      <p>The live build, tracking the tip of the repo. Pick three presets when it
+      asks, then answer duels.</p>
+      <span class="route-go">Open the instrument&nbsp;▸</span>
+    </a>
+
+    <a class="route" href="https://github.com/alexnodeland/auracle/releases">
+      <h3 class="route-h">Run it offline</h3>
+      <p>Every release attaches a prebuilt bundle. Unzip, serve the folder, open the
+      URL. No toolchain.</p>
+      <span class="route-go">Releases&nbsp;▸</span>
+    </a>
+
+    <a class="route" href="https://github.com/alexnodeland/auracle">
+      <h3 class="route-h">Build it</h3>
+      <p>Rust workspace, five crates, one clone — the foundations come from
+      crates.io.</p>
+      <span class="route-go">Source&nbsp;▸</span>
+    </a>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-in">
+    <div class="foot-mark">
+      <span class="mark mark-static">AURACL<b>E</b></span>
+      <p>A synthesizer that searches for your sound. Pre-1.0 and under active
+      development.</p>
+    </div>
+    <nav class="foot-nav" aria-label="Footer">
+      <a href="play/">Play</a>
+      <a href="docs/">Guide</a>
+      <a href="reference/">Reference</a>
+      <a href="reference/api/auracle_session/index.html">API docs</a>
+      <a href="https://github.com/alexnodeland/auracle">GitHub</a>
+      <a href="https://github.com/alexnodeland/auracle/blob/main/CHANGELOG.md">Changelog</a>
+    </nav>
+    <p class="foot-fine">
+      Built on <a href="https://github.com/alexnodeland/fugue-evo">fugue-evo</a>
+      (evolution as Bayesian inference) and
+      <a href="https://github.com/alexnodeland/quiver">quiver</a> (patch-graph DSP).
+      MIT licensed.
+    </p>
+  </div>
+</footer>
+
+<script src="hero.js"></script>
+</body>
+</html>

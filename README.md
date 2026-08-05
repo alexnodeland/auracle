@@ -10,6 +10,7 @@ Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
 
 [![CI](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml)
 [![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/auracle/)
+[![Docs](https://img.shields.io/badge/docs-guide%20%2B%20reference-8ef0b1)](https://alexnodeland.github.io/auracle/docs/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
 
@@ -37,12 +38,15 @@ generating patches in your style, and able to say why.
 
 ## 🚧 Project Status
 
-Auracle is **pre-1.0 and under active development**. The live build at
+Auracle is **pre-1.0 and under active development**. The live site at
 [alexnodeland.github.io/auracle](https://alexnodeland.github.io/auracle/)
-always tracks `main`; you can also build and run it locally (one clone; its
-foundations come from crates.io). The instrument is fully playable and the
-taste loop is closed, but the public API and the save format may change
-between commits without notice.
+always tracks `main` — landing page, the playable instrument at
+[`/play/`](https://alexnodeland.github.io/auracle/play/), the
+[user guide](https://alexnodeland.github.io/auracle/docs/) and the
+[technical reference](https://alexnodeland.github.io/auracle/reference/). You can
+also build and run it locally (one clone; its foundations come from crates.io).
+The instrument is fully playable and the taste loop is closed, but the public API
+and the save format may change between commits without notice.
 
 ## 🤔 Why Auracle?
 
@@ -108,8 +112,8 @@ Two loops around one observation stream:
   │ grammar prior ──► vet ──►│   pool       │ duels / stars / kill │
   │      ▲                   │──────────────►      observation log │
   │      └── MH refine on    │   duels by   │           │          │
-  │          π ∝ p·exp(βu),  │   Thompson   │           ▼          │
-  │          proposals tilted│   sampling   │  taste posterior     │
+  │          π ∝ p·exp(βu),  │   uniform    │           ▼          │
+  │          proposals tilted│   pairing    │  taste posterior     │
   │          by taste ◄──────┼──────────────┤  u(x) = maxₖ θₖ·φ(x) │
   └──────────────────────────┘              └──────────────────────┘
 ```
@@ -125,10 +129,10 @@ Two loops around one observation stream:
 
 ## 🚀 Quick Start
 
-**Play it in the browser: https://alexnodeland.github.io/auracle/** — every
-push to `main` builds the wasm engine and deploys the instrument to GitHub
-Pages, and so does every tagged release. Nothing to install; your bank and
-taste model live in your browser.
+**Play it in the browser: https://alexnodeland.github.io/auracle/play/** — every
+push to `main` builds the wasm engine and deploys the instrument to GitHub Pages,
+and so does every tagged release. Nothing to install; your bank and taste model
+live in your browser.
 
 Prefer to run it yourself with no toolchain? Every
 [release](https://github.com/alexnodeland/auracle/releases) attaches a
@@ -157,10 +161,25 @@ app for the full key map and gesture guide.
 
 ## 📚 Documentation
 
+Two books, published as part of the site and built from `www/`:
+
+- **[User Guide](https://alexnodeland.github.io/auracle/docs/)** — playing it.
+  The three views, teaching it your taste, reading what it learned, the full key
+  map, accessibility, troubleshooting. Start at
+  [Your first session](https://alexnodeland.github.io/auracle/docs/getting-started/first-session.html).
+- **[Reference](https://alexnodeland.github.io/auracle/reference/)** — how it
+  works, with the math. The typed PCFG, the audition pipeline, φ, the
+  max-of-experts posterior, the search, the safety layers. Plus
+  [rustdoc for every crate](https://alexnodeland.github.io/auracle/reference/api/auracle_session/index.html).
+
+In the repo:
+
 - [`DESIGN.md`](./DESIGN.md) — the canonical design document: genome,
   taste model, engine, safety layers, decisions log, roadmap.
 - [`DEVELOPMENT.md`](./DEVELOPMENT.md) — working *on* Auracle: layout,
   workflow, quality bar, sharp edges.
+- [`www/README.md`](./www/README.md) — how the site is assembled, and the
+  things about it that fail quietly.
 - [`apps/web/README.md`](./apps/web/README.md) — the web app's
   architecture (worklet assembly, worker protocol, workbench).
 - [`CHANGELOG.md`](./CHANGELOG.md) — notable changes by pass.
@@ -174,7 +193,17 @@ make fmt     # rustfmt
 make lint    # clippy
 ```
 
-See [`DEVELOPMENT.md`](./DEVELOPMENT.md) for the full guide.
+The site:
+
+```bash
+make site-tools   # install the pinned doc toolchain (once)
+make site         # build all four sections into site/
+make site-serve   # http://localhost:8643
+make site-check   # every link, asset and anchor must resolve
+```
+
+See [`DEVELOPMENT.md`](./DEVELOPMENT.md) for the full guide and
+[`www/README.md`](./www/README.md) for the site.
 
 ## 🤝 Contributing
 

@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+  # Keep in sync with the Makefile and pages.yml. See pages.yml for why 0.4.
+  MDBOOK_VERSION: 0.4.52
+  MDBOOK_KATEX_VERSION: 0.9.4
+  MDBOOK_ADMONISH_VERSION: 1.20.0
 
 jobs:
   fmt:
@@ -53,3 +57,69 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - run: cargo check -p auracle-wasm --target wasm32-unknown-unknown --release
+
+  # The site is built and link-checked on every PR, not only on deploy.
+  #
+  # Its failure modes are invisible to every other job here: a KaTeX macro that
+  # renders as "Undefined control sequence" (a build *warning*), a cross-section
+  # link that only exists once four sections are assembled, a root-absolute path
+  # that works locally and 404s under the /auracle/ project subpath. All of those
+  # would otherwise be found on the live site by a reader.
+  site:
+    name: Site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache the doc toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin
+          key: doc-tools-${{ runner.os }}-mdbook${{ env.MDBOOK_VERSION }}-katex${{ env.MDBOOK_KATEX_VERSION }}-admonish${{ env.MDBOOK_ADMONISH_VERSION }}
+
+      - name: Install the doc toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.local/bin
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          if ! command -v mdbook >/dev/null; then
+            curl -sSfL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+              | tar xz -C ~/.local/bin
+          fi
+          if ! command -v mdbook-admonish >/dev/null; then
+            curl -sSfL "https://github.com/tommilligan/mdbook-admonish/releases/download/v${MDBOOK_ADMONISH_VERSION}/mdbook-admonish-v${MDBOOK_ADMONISH_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+              | tar xz -C ~/.local/bin
+          fi
+          if ! command -v mdbook-katex >/dev/null; then
+            cargo install mdbook-katex --version "$MDBOOK_KATEX_VERSION" --locked --root ~/.local
+          fi
+
+      # Tee'd so the grep below can read it: mdbook-katex reports an undefined
+      # macro as a WARNING and exits 0, so a book full of raw `\E[u_\theta]` would
+      # otherwise build, deploy and be discovered by a reader.
+      - name: Build the site
+        run: |
+          set -euo pipefail
+          make site 2>&1 | tee /tmp/site-build.log
+
+      - name: Fail on unrendered math
+        run: |
+          if grep -q 'Rendering failed' /tmp/site-build.log; then
+            echo "::error::mdbook-katex could not render some math — see the build log above"
+            grep 'Rendering failed' /tmp/site-build.log | head -20
+            exit 1
+          fi
+          echo "all math rendered"
+
+      - name: Check every link and asset resolves
+        run: make site-check

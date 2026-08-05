@@ -1,0 +1,889 @@
+/* AURACLE — the landing page.
+ *
+ * Inherits the instrument's design system rather than inventing one. The token
+ * layer below is lifted from apps/web/style.css and carries the same three laws,
+ * which is the whole visual argument that this page belongs to that instrument:
+ *
+ *   1. TEXT TIER vs STROKE TIER. Each phosphor exists twice. `*-dim` is the text
+ *      tier and clears 4.5:1; `*-deep` is for strokes, glow and fills, where
+ *      contrast rules do not apply. One token cannot do both jobs.
+ *   2. TRACKING LAW. Uppercase gets tracking. Lowercase and mono get none.
+ *   3. NO OFF-SYSTEM COLOUR. Every accent is signal-green or mind-amber, and the
+ *      two mean different things: green is *sound*, amber is *the model's mind*.
+ *      A reader can decode which half of the product a section is about from its
+ *      colour alone, which is why a third accent would cost more than it added.
+ *
+ * The one deliberate extension is a DISPLAY TIER above the app's scale. The app
+ * tops out at 22px because it is an instrument panel with a 10px floor; a page
+ * that has to state a thesis needs sizes an instrument never does.
+ *
+ * No build step, no framework, no external requests — same as apps/web.
+ */
+
+/* ─── faces ─────────────────────────────────────────────────────────────── */
+/* Copied in from apps/web/fonts by `make site` — one copy of each face in the
+   repo, and the instrument owns it. See www/theme/fonts/README.md. */
+
+@font-face {
+  font-family: "Jost";
+  src: url("fonts/jost-var.woff2") format("woff2-variations");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/plexmono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/plexmono-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("fonts/newsreader-it.woff2") format("woff2-variations");
+  font-weight: 300 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ─── tokens ────────────────────────────────────────────────────────────── */
+
+:root {
+  --rack: #0c0d10;
+  --panel: #171a1f;
+  --panel-hi: #1d2127;
+  --bezel: #07080a;
+  --hairline: #292e36;
+
+  --silk: #d9d4c8;        /* 13.1:1 on the rack */
+  --silk-dim: #9a958a;    /*  5.9:1 — all dimmed TEXT */
+  --silk-mute: #6f6c63;   /*  non-text only: rules, disabled glyphs */
+
+  --phos-a: #8ef0b1;      /* green — sound.            14.1:1 */
+  --phos-a-dim: #63a97c;  /*                            5.2:1 */
+  --phos-a-deep: #3d6a4d; /*  strokes, glow, fills only */
+
+  --phos-b: #ffb454;      /* amber — the model's mind. 11.0:1 */
+  --phos-b-dim: #b8823c;  /*                            5.4:1 */
+  --phos-b-deep: #7a5526; /*  strokes, glow, fills only */
+
+  --led-red: #ff5747;
+
+  --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+
+  /* The display tier — this page's one extension to the app's scale. Jost at
+     300 is a geometric sans built for signage; at these sizes with negative
+     tracking it reads as an instrument panel rather than as a product page,
+     which is the entire reason it is not a serif or a grotesque. */
+  --t-display: clamp(2.4rem, 6.4vw, 4.6rem);
+  --t-h2: clamp(1.6rem, 3.2vw, 2.3rem);
+  --t-voice: clamp(1.05rem, 1.7vw, 1.28rem);
+  --t-body: 1rem;
+  --t-label: 0.7rem;   /* silk caps — panel labels */
+  --t-micro: 0.66rem;  /* mono — values */
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
+  --s6: 32px; --s7: 48px; --s8: 72px; --s9: 112px;
+
+  /* Light comes from 315°, everywhere, as it does on the rack. */
+  --lift: inset 1px 1px 0 rgba(255, 255, 255, 0.07);
+  --cast: 0 3px 8px rgba(0, 0, 0, 0.5);
+
+  --measure: 62ch;
+  --wide: 1440px;
+  --gutter: clamp(20px, 5vw, 64px);
+  /* The page frame. 1440 + two gutters, so a screenshot published at its
+     captured size fits inside it without being scaled down — see
+     www/SCREENSHOTS.md for why scaling a frame of this app is not an option.
+     Every section aligns to this, which is the only reason the eyebrows all
+     start at the same x. */
+  --frame: 1568px;
+
+  color-scheme: dark;
+}
+
+/* ─── reset ─────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* `hidden` is a UA rule at type-selector strength, so any class that sets
+   `display` silently defeats it — which is how "Make me one" appeared before the
+   model had anything to say. Restate it where it cannot lose. */
+[hidden] { display: none !important; }
+
+html {
+  background: var(--rack);
+  /* The rack void is not flat: the instrument lights its panels from above, and
+     one very low-contrast wash keeps a 2000px page from reading as a black
+     rectangle. Fixed rather than scrolling, so it never draws attention. */
+  background-image:
+    radial-gradient(1200px 620px at 50% -12%, rgba(142, 240, 177, 0.045), transparent 70%),
+    radial-gradient(900px 520px at 88% 8%, rgba(255, 180, 84, 0.032), transparent 70%);
+  background-attachment: fixed;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-silk);
+  font-size: var(--t-body);
+  font-weight: 300;
+  line-height: 1.62;
+  color: var(--silk);
+  overflow-x: hidden;
+}
+
+img, canvas { display: block; max-width: 100%; }
+h1, h2, h3 { margin: 0; font-weight: 400; line-height: 1.14; }
+p { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+
+a { color: var(--phos-a); text-decoration-color: var(--phos-a-deep); text-underline-offset: 0.18em; }
+a:hover { text-decoration-color: currentcolor; }
+
+:focus-visible {
+  outline: 2px solid var(--phos-b);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--silk-dim);
+  border: 1px solid var(--hairline);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 1.5;
+}
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.skip {
+  position: absolute;
+  inset-inline-start: -9999px;
+  top: var(--s3);
+  z-index: 20;
+  background: var(--panel);
+  border: 1px solid var(--phos-b-deep);
+  padding: var(--s2) var(--s4);
+  border-radius: 3px;
+}
+.skip:focus { inset-inline-start: var(--s4); }
+
+/* ─── header ────────────────────────────────────────────────────────────── */
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  padding: 0 var(--gutter);
+  height: 56px;
+  background: rgba(12, 13, 16, 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.mark {
+  font-size: 1.02rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--silk);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* The wordmark's final E is the instrument's "listening" lamp — it lights when
+   the model is fitting. Here it is inert and stays lit: a light that pulses
+   without meaning is worse than no light. */
+.mark b { font-weight: 500; color: var(--phos-a); }
+
+.bar-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-inline-start: auto;
+}
+
+.bar-nav a {
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  color: var(--silk-dim);
+  text-decoration: none;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.bar-nav a:hover { color: var(--silk); background: var(--panel-hi); }
+
+.bar-play { color: var(--phos-a) !important; border-color: var(--phos-a-deep) !important; }
+.bar-play:hover { background: var(--phos-a-deep) !important; color: var(--rack) !important; }
+
+/* ─── shared section furniture ──────────────────────────────────────────── */
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--silk-mute);
+  margin-bottom: var(--s4);
+}
+
+.display {
+  font-size: var(--t-display);
+  font-weight: 300;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.h2 {
+  font-size: var(--t-h2);
+  font-weight: 300;
+  letter-spacing: -0.014em;
+  max-width: 30ch;
+  text-wrap: balance;
+}
+
+/* The product's own voice — the register the instrument uses when it speaks
+   about itself. Italic Newsreader against geometric Jost is the page's whole
+   typographic contrast, and it is used only here and in figure captions. */
+.voice {
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-voice);
+  line-height: 1.5;
+  color: var(--silk-dim);
+  max-width: 44ch;
+}
+
+.band {
+  padding: var(--s9) var(--gutter);
+  max-width: var(--frame);
+  margin: 0 auto;
+  border-top: 1px solid var(--hairline);
+}
+
+/* Prose blocks stay narrow enough to read but keep the frame's left edge, so a
+   measure is a measure and not an indent. */
+.thesis, .path, .routes { max-width: 1040px; }
+.learn { max-width: 1300px; }
+.path-note { max-width: 60ch; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font-silk);
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+  color: var(--silk);
+  text-decoration: none;
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 11px 20px;
+  box-shadow: var(--lift), var(--cast);
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--silk-mute); }
+
+.btn-go {
+  color: var(--rack);
+  background: linear-gradient(180deg, #a5f5c2, var(--phos-a));
+  border-color: var(--phos-a);
+  font-weight: 500;
+}
+.btn-go:hover { background: var(--phos-a); border-color: #b6f8ce; }
+
+.inline-go {
+  display: inline-block;
+  margin-top: var(--s5);
+  font-size: 0.92rem;
+  letter-spacing: 0.03em;
+}
+
+/* ─── hero ──────────────────────────────────────────────────────────────── */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr);
+  gap: clamp(var(--s6), 5vw, var(--s8));
+  align-items: center;
+  padding: clamp(var(--s7), 7vh, var(--s8)) var(--gutter) var(--s9);
+  max-width: var(--frame);
+  margin: 0 auto;
+}
+
+.hero-copy { min-width: 0; }
+.display + .voice { margin-top: var(--s5); }
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s6);
+}
+
+.fineprint {
+  margin-top: var(--s4);
+  font-size: 0.82rem;
+  color: var(--silk-mute);
+  max-width: 42ch;
+}
+
+/* ─── the panel — the signature element ─────────────────────────────────── */
+
+.panel {
+  position: relative;
+  min-width: 0;
+  background: linear-gradient(180deg, var(--panel-hi), #12151a);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: var(--s4);
+  box-shadow: var(--lift), 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+/* Rack faceplates have screws. Four of them, in the corners, is what makes this
+   read as a panel bolted into a rack rather than a card with a border. */
+.screws { position: absolute; inset: 7px; pointer-events: none; }
+.screws i {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #4a5058, #202429 60%, #14171b);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.screws i:nth-child(1) { top: 0; left: 0; }
+.screws i:nth-child(2) { top: 0; right: 0; }
+.screws i:nth-child(3) { bottom: 0; left: 0; }
+.screws i:nth-child(4) { bottom: 0; right: 0; }
+
+/* The screen. The one place on the page that gets CRT treatment, because it is
+   the one place that is a screen — the app itself draws a scope here with a
+   "phosphor glow" toggle, so this is the product's vocabulary rather than an
+   effect borrowed from somewhere else. Kept to 3% so it reads as glass. */
+.crt {
+  position: relative;
+  background: radial-gradient(120% 140% at 50% 0%, #0f1318, var(--bezel));
+  border: 1px solid #040506;
+  border-radius: 3px;
+  padding: var(--s3);
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+.duel { display: grid; gap: var(--s3); }
+
+.card {
+  background: rgba(142, 240, 177, 0.022);
+  border: 1px solid #1b2126;
+  border-radius: 3px;
+  padding: var(--s3);
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+.card[data-armed] {
+  border-color: var(--phos-a-deep);
+  background: rgba(142, 240, 177, 0.05);
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.card-id {
+  font-size: var(--t-label);
+  letter-spacing: 0.16em;
+  color: var(--phos-a-dim);
+  font-weight: 500;
+}
+
+.card-name {
+  font-size: var(--t-micro);
+  color: var(--silk-mute);
+  letter-spacing: 0;
+}
+
+.trace {
+  width: 100%;
+  height: 70px;
+  /* Phosphor bloom on the trace, matching the instrument's scope. */
+  filter: drop-shadow(0 0 4px rgba(142, 240, 177, 0.32));
+}
+
+.card-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: var(--s2);
+  font-family: var(--font-silk);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  color: var(--phos-a);
+  background: transparent;
+  border: 1px solid var(--phos-a-deep);
+  border-radius: 3px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.card-play:hover { background: rgba(142, 240, 177, 0.09); }
+.card-play kbd { border-color: var(--phos-a-deep); color: var(--phos-a-dim); }
+
+.pickrow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s3);
+  margin-top: var(--s4);
+}
+
+.pick {
+  font-family: var(--font-silk);
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+  color: var(--silk);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 10px;
+  box-shadow: var(--lift);
+  cursor: pointer;
+}
+.pick:hover { border-color: var(--phos-a-deep); color: var(--phos-a); }
+.pick[disabled] { opacity: 0.42; cursor: not-allowed; }
+
+/* ─── the model's mind — amber, per the phosphor law ────────────────────── */
+
+.mind {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--hairline);
+}
+
+.mind-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.mind-title {
+  font-size: var(--t-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--phos-b-dim);
+  font-weight: 500;
+}
+
+.pips { font-size: var(--t-micro); color: var(--phos-b-deep); letter-spacing: 0.2em; }
+
+.bars { display: grid; gap: 7px; }
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 5.2em 1fr 3.6em;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.bar-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
+}
+
+/* A centre line with the weight extending left (dislikes) or right (likes), and
+   a thinner whisker for the posterior interval — the same encoding the
+   instrument's DIRECTIONS tab uses, so the two are readable as one idea. */
+.bar-track {
+  position: relative;
+  height: 14px;
+  border-inline-start: 1px solid var(--hairline);
+  border-inline-end: 1px solid var(--hairline);
+}
+.bar-track::before {
+  content: "";
+  position: absolute;
+  left: 50%; top: -2px; bottom: -2px;
+  width: 1px;
+  background: var(--silk-mute);
+}
+
+.bar-fill {
+  position: absolute;
+  top: 4px;
+  height: 6px;
+  background: var(--phos-b);
+  box-shadow: 0 0 6px rgba(255, 180, 84, 0.45);
+  transition: left 0.4s cubic-bezier(0.2, 0.7, 0.2, 1), width 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.bar-whisk {
+  position: absolute;
+  top: 6px;
+  height: 1px;
+  background: var(--phos-b-deep);
+  transition: left 0.4s ease, width 0.4s ease;
+}
+
+/* Caps at both ends. Without them a wide prior interval reads as an unstyled
+   rule rather than as "the model has no idea yet", which is the one thing this
+   row has to communicate before any picks exist. */
+.bar-whisk::before,
+.bar-whisk::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 7px;
+  background: var(--phos-b-deep);
+}
+.bar-whisk::before { left: 0; }
+.bar-whisk::after { right: 0; }
+
+.bar-val {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--phos-b-dim);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.verdict {
+  margin-top: var(--s3);
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  color: var(--silk-dim);
+  min-height: 2.9em;
+}
+.verdict strong { color: var(--phos-b); font-style: normal; font-weight: 500; }
+
+.btn-make {
+  margin-top: var(--s2);
+  color: var(--phos-b);
+  border-color: var(--phos-b-deep);
+  background: linear-gradient(180deg, rgba(255, 180, 84, 0.1), transparent);
+}
+.btn-make:hover { background: rgba(255, 180, 84, 0.16); border-color: var(--phos-b); }
+
+.honesty {
+  margin-top: var(--s3);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--silk-mute);
+}
+.honesty a { color: var(--silk-dim); }
+
+/* ─── thesis ────────────────────────────────────────────────────────────── */
+
+/* Two existing options and then Auracle's — so the third column is set apart
+   rather than numbered. The structure carries the argument: these are not three
+   steps in a sequence, they are two alternatives and a third way. */
+.thesis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: var(--s5);
+  margin-top: var(--s7);
+}
+
+.tcol { padding-top: var(--s4); border-top: 2px solid var(--hairline); }
+.tcol p { color: var(--silk-dim); font-size: 0.94rem; }
+
+.tcol-h {
+  font-size: 1.06rem;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--s3);
+  color: var(--silk-dim);
+}
+
+.tcol-ours { border-top-color: var(--phos-a); }
+.tcol-ours .tcol-h { color: var(--phos-a); }
+.tcol-ours p { color: var(--silk); }
+
+/* ─── showcase ──────────────────────────────────────────────────────────── */
+
+.shots { margin-top: var(--s7); }
+
+/* Quotes the instrument's own view tabs, deliberately: the page's chrome and
+   the product's chrome should be recognisably the same object. */
+.shot-tabs {
+  display: flex;
+  gap: var(--s2);
+  justify-content: center;
+  margin-bottom: var(--s5);
+}
+
+.shot-tab {
+  font-family: var(--font-silk);
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--silk-dim);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 8px 18px;
+  box-shadow: var(--lift);
+  cursor: pointer;
+}
+.shot-tab:hover { color: var(--silk); }
+.shot-tab[aria-selected="true"] { color: var(--phos-b); border-color: var(--phos-b-deep); }
+
+.shot-pane { max-width: var(--wide); margin: 0 auto; }
+
+.shot-pane img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: var(--bezel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.shot-cap {
+  max-width: 68ch;
+  margin: var(--s4) auto 0;
+  font-size: 0.9rem;
+  color: var(--silk-dim);
+  text-align: center;
+}
+.shot-cap strong { color: var(--silk); font-weight: 500; letter-spacing: 0.08em; }
+
+/* ─── how it learns ─────────────────────────────────────────────────────── */
+
+.learn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: clamp(var(--s6), 4vw, var(--s8));
+  align-items: start;
+  margin-top: var(--s7);
+}
+
+.learn-copy { min-width: 0; }
+.learn-copy p { color: var(--silk-dim); margin-bottom: var(--s4); }
+.learn-copy strong { color: var(--silk); font-weight: 500; }
+
+.formula {
+  margin: var(--s5) 0;
+  padding: var(--s4);
+  background: rgba(255, 180, 84, 0.045);
+  border-inline-start: 2px solid var(--phos-b-deep);
+  border-radius: 0 3px 3px 0;
+  overflow-x: auto;
+}
+.formula .mono { font-size: 0.95rem; color: var(--phos-b); white-space: nowrap; }
+
+.learn-fig { margin: 0; min-width: 0; }
+.learn-fig img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: var(--bezel);
+}
+.learn-fig figcaption {
+  margin-top: var(--s3);
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--silk-mute);
+}
+
+/* ─── the palette, by signal path ───────────────────────────────────────── */
+
+/* An ordered list because the order is real information — this is the signal
+   path, and it is the order the instrument's own catalogue uses. The markers are
+   the stage names rather than numbers, because "sources → shape → filter" tells
+   you something and "01 02 03" does not. */
+.path { margin-top: var(--s7); display: grid; gap: 0; }
+
+.path li {
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 1fr);
+  gap: var(--s5);
+  padding: var(--s4) 0;
+  border-top: 1px solid var(--hairline);
+  align-items: baseline;
+}
+.path li:last-child { border-bottom: 1px solid var(--hairline); }
+
+.path-n {
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--phos-a-dim);
+}
+
+.path-b { color: var(--silk-dim); font-size: 0.94rem; }
+.path-b strong { color: var(--silk); font-weight: 500; }
+.path-b .mono { font-size: 0.86em; color: var(--phos-b-dim); }
+
+.path-note {
+  margin-top: var(--s5);
+  max-width: 60ch;
+  font-size: 0.9rem;
+  color: var(--silk-mute);
+}
+
+/* ─── start ─────────────────────────────────────────────────────────────── */
+
+.routes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--s4);
+  margin-top: var(--s7);
+}
+
+.route {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s5);
+  text-decoration: none;
+  color: var(--silk-dim);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  box-shadow: var(--lift);
+}
+.route:hover { border-color: var(--silk-mute); }
+.route p { font-size: 0.9rem; }
+
+.route-h { font-size: 1.06rem; color: var(--silk); letter-spacing: 0.01em; }
+
+.route-go {
+  margin-top: auto;
+  padding-top: var(--s2);
+  font-size: 0.84rem;
+  letter-spacing: 0.04em;
+  color: var(--silk);
+}
+
+.route-first { border-color: var(--phos-a-deep); }
+.route-first:hover { border-color: var(--phos-a); }
+.route-first .route-h,
+.route-first .route-go { color: var(--phos-a); }
+
+/* ─── footer ────────────────────────────────────────────────────────────── */
+
+.foot {
+  border-top: 1px solid var(--hairline);
+  background: #0a0b0e;
+  padding: var(--s8) 0 var(--s7);
+}
+
+.foot-in { max-width: var(--frame); margin: 0 auto; padding: 0 var(--gutter); }
+
+.foot-mark { display: grid; gap: var(--s3); max-width: 46ch; }
+.mark-static { font-size: 0.94rem; }
+.foot-mark p { font-size: 0.88rem; color: var(--silk-mute); }
+
+.foot-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3) var(--s5);
+  margin: var(--s6) 0;
+  padding: var(--s5) 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+.foot-nav a { font-size: 0.88rem; color: var(--silk-dim); text-decoration: none; }
+.foot-nav a:hover { color: var(--silk); text-decoration: underline; }
+
+.foot-fine { font-size: 0.82rem; color: var(--silk-mute); max-width: 64ch; }
+.foot-fine a { color: var(--silk-dim); }
+
+/* ─── responsive ────────────────────────────────────────────────────────── */
+
+@media (max-width: 960px) {
+  .hero,
+  .learn {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Copy, then the panel, then the CTAs — so the thesis is read before the
+     demo is offered, and the demo is met before the ask. */
+  .hero-copy { display: contents; }
+  .hero { display: grid; gap: var(--s6); }
+  .eyebrow { order: 1; }
+  .display { order: 2; }
+  .voice { order: 3; max-width: none; }
+  .panel { order: 4; }
+  .cta-row { order: 5; margin-top: 0; }
+  .fineprint { order: 6; margin-top: 0; }
+  .voice, .h2 { max-width: 46ch; }
+}
+
+@media (max-width: 560px) {
+  .band { padding-top: var(--s8); padding-bottom: var(--s8); }
+  .path li { grid-template-columns: minmax(0, 1fr); gap: var(--s2); }
+  .bar-row { grid-template-columns: 4.4em 1fr 3.2em; gap: var(--s2); }
+  .bar-nav a:not(.bar-play) { display: none; }
+}
+
+/* ─── motion ────────────────────────────────────────────────────────────── */
+
+/* One orchestrated moment: the panel powers on. The bezel lifts, then the two
+   traces sweep in. Once, on load, ~900ms — and nothing else on the page
+   animates on scroll, because a page where everything arrives is a page where
+   nothing does. */
+@media (prefers-reduced-motion: no-preference) {
+  .panel { animation: power-on 0.6s ease-out both; }
+  .card:nth-child(1) { animation: trace-in 0.5s ease-out 0.34s both; }
+  .card:nth-child(2) { animation: trace-in 0.5s ease-out 0.46s both; }
+
+  @keyframes power-on {
+    from { opacity: 0; transform: translateY(10px); box-shadow: none; }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes trace-in {
+    from { opacity: 0; clip-path: inset(0 100% 0 0); }
+    to   { opacity: 1; clip-path: inset(0 0 0 0); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─── print ─────────────────────────────────────────────────────────────── */
+
+@media print {
+  html { background: #fff; }
+  body { color: #000; }
+  .bar, .panel, .shot-tabs { display: none; }
+  .shot-pane[hidden] { display: block !important; }
+}

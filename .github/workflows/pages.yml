@@ -1,14 +1,23 @@
 name: Pages
 
-# Publishes the web instrument to GitHub Pages. The app is fully static and
-# every asset path in apps/web is relative, so it runs unchanged from the
-# project subpath (…github.io/auracle/) — no base-href rewriting needed.
+# Publishes the whole site to GitHub Pages — four sections under one origin:
+#
+#   /                 the landing page
+#   /play/            the instrument
+#   /docs/            the product guide      (mdBook)
+#   /reference/       the technical reference (mdBook + KaTeX)
+#   /reference/api/   rustdoc for every crate
+#
+# Every asset path is relative, so the site runs unchanged from the project
+# subpath (…github.io/auracle/) with no base-href rewriting. `make site-check`
+# enforces that: a root-absolute reference is an error, because it works locally
+# and 404s here.
 
 # Two triggers, one site. `main` keeps the live build honest to the tip of the
-# repo, which is what the README promises. A `v*` tag deploys as well, so
-# cutting a release publishes the *exact* build that the zip was made from
-# rather than whatever landed on main in the meantime — the `pages` concurrency
-# group below serializes the two, so a tag and a main push can never interleave.
+# repo, which is what the README promises. A `v*` tag deploys as well, so cutting
+# a release publishes the *exact* build the zip was made from rather than
+# whatever landed on main in the meantime — the `pages` concurrency group below
+# serializes the two, so a tag and a main push can never interleave.
 on:
   push:
     branches: [main]
@@ -28,6 +37,14 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Pinned, and pinned together. mdBook 0.5.x changed the preprocessor wire
+  # format and both preprocessors fail against it, so 0.4 is the current stack
+  # rather than a stale one. The KaTeX stylesheet vendored at
+  # www/theme/fonts/katex.min.css is the pair to mdbook-katex 0.9.4 — bump them
+  # together or neither. Keep in sync with the Makefile.
+  MDBOOK_VERSION: 0.4.52
+  MDBOOK_KATEX_VERSION: 0.9.4
+  MDBOOK_ADMONISH_VERSION: 1.20.0
 
 jobs:
   build:
@@ -45,22 +62,51 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      # Through the Makefile, so the wasm stack size lives in exactly one
-      # place. Building wasm-pack directly here would ship a 1 MB stack, which
-      # the patch compiler overflows on a dozen-module patch — and it does so
-      # as "memory access out of bounds", nowhere near the flag that caused it.
-      - name: Build wasm engine
-        run: make wasm
+      # mdbook and mdbook-admonish ship prebuilt binaries; mdbook-katex does not
+      # publish any, so it has to be compiled — which is why the cache is keyed on
+      # all three versions and lands in a dedicated bin dir rather than
+      # ~/.cargo/bin (where it would fight rustup's shims).
+      - name: Cache the doc toolchain
+        id: doc-tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin
+          key: doc-tools-${{ runner.os }}-mdbook${{ env.MDBOOK_VERSION }}-katex${{ env.MDBOOK_KATEX_VERSION }}-admonish${{ env.MDBOOK_ADMONISH_VERSION }}
 
-      - name: Assemble site
+      - name: Install the doc toolchain
         run: |
-          mkdir -p site
-          cp -r apps/web/. site/
-          # serve.py is for local development; Pages is the server here.
-          rm -f site/serve.py
-          # Ship the wasm/glue as-is: Pages must not run the artifact through
-          # Jekyll, which would drop the underscore-prefixed wasm-bindgen files.
-          touch site/.nojekyll
+          set -euo pipefail
+          mkdir -p ~/.local/bin
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+
+          if ! command -v mdbook >/dev/null; then
+            curl -sSfL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+              | tar xz -C ~/.local/bin
+          fi
+          if ! command -v mdbook-admonish >/dev/null; then
+            curl -sSfL "https://github.com/tommilligan/mdbook-admonish/releases/download/v${MDBOOK_ADMONISH_VERSION}/mdbook-admonish-v${MDBOOK_ADMONISH_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+              | tar xz -C ~/.local/bin
+          fi
+          # No prebuilt binaries are published for this one, at any version.
+          if ! command -v mdbook-katex >/dev/null; then
+            cargo install mdbook-katex --version "$MDBOOK_KATEX_VERSION" --locked --root ~/.local
+          fi
+          mdbook --version && mdbook-katex --version && mdbook-admonish --version
+
+      # Through the Makefile, so every build path shares one definition of what
+      # the site is — and so the wasm stack size lives in exactly one place.
+      # Building wasm-pack directly here would ship a 1 MB stack, which the patch
+      # compiler overflows on a dozen-module patch, and it does so as "memory
+      # access out of bounds" nowhere near the flag that caused it.
+      - name: Build the site
+        run: make site
+
+      # A root-absolute link, a dead cross-section anchor or a reintroduced CDN
+      # request all pass every other check in this repo and only break in
+      # production. This is the gate for them.
+      - name: Check every link and asset resolves
+        run: make site-check
 
       # `enablement` is a no-op here (Pages is already set to the Actions
       # source) but makes the workflow self-bootstrapping in a fresh fork.

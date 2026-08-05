@@ -8,6 +8,56 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Documentation site
+
+The published site stops being "the instrument at a URL" and becomes a site with
+the instrument in it. Four sections under one origin, all built by `make site`:
+
+- **`/` — a landing page.** Hand-authored, in the instrument's own two-phosphor
+  design system rather than a new one. Its hero is a **working duel**: two
+  synthesized patches with real waveform traces rendered offline from the same
+  graph builder that plays them, an online Bradley–Terry update, and a posterior
+  whose credible intervals narrow as you pick. It is a four-coordinate miniature
+  of a forty-coordinate model and the page says so under the panel.
+- **`/play/` — the instrument.** Unchanged, and moved off the root. Every asset
+  path in `apps/web` was already relative, so this cost nothing.
+- **`/docs/` — a user guide.** Fifteen chapters on playing it: the three views,
+  the bank, the rack, wiring, performance, what the model learns from and what it
+  provably cannot, how to read its uncertainty, your data, the full key map,
+  accessibility (including its four known gaps), troubleshooting, glossary.
+- **`/reference/` — a technical reference.** Twenty-five chapters with the math
+  set in KaTeX: the typed PCFG, trace addresses, compilation, the audition phrase,
+  BS.1770 loudness, the vetting gate, both halves of φ, standardization, the
+  max-of-experts utility, the three likelihoods, the posterior and its
+  degeneracy diagnostics, calibration, the Boltzmann target, the taste tilt, locks
+  as conditional refinement, acquisition, safety, persistence, the web runtime.
+  Every constant is quoted from the code by name, every measured claim names the
+  harness that produced it, and where the design and the implementation differ —
+  refinement is local hill-climbing, not the designed tempered SMC — the page
+  says so in its first paragraph.
+- **`/reference/api/`** — rustdoc for all five crates.
+
+Both books share one mdBook theme carrying the app's phosphor palette and its
+three colour laws, with two themes (rack and paper) rather than mdBook's six.
+KaTeX renders at **build time** and its stylesheet and faces are vendored, so the
+whole site makes no external requests — a property `make site-check` now enforces,
+along with every link, asset, cross-section anchor and the absence of any
+root-absolute path (which would work locally and 404 under the project subpath).
+
+CI builds and checks the site on every PR, because none of its failure modes are
+visible to `make check`: an undefined KaTeX macro is a build *warning*, and a
+cross-section link does not exist until four sections are assembled.
+
+The screenshots throughout are the real app in a taught session, published at
+their captured size — `www/SCREENSHOTS.md` records how to remake them and why
+scaling a frame of this app is not an option.
+
+### Fixed
+
+- The README's architecture diagram named Thompson sampling as the duel
+  acquisition rule. It is selectable, it is not the default, and it measurably
+  loses; the default is uniform pairing. The diagram now says so.
+
 ## [0.2.0] — 2026-08-04
 
 The first release under the name **Auracle**, and the first one that is a

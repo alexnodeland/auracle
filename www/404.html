@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Not here — Auracle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0d10">
+<link rel="icon" href="favicon.svg">
+
+<!-- Self-contained rather than sharing style.css, because a 404 is served at an
+     arbitrary depth — /auracle/docs/typo/ — and a relative stylesheet link would
+     itself 404. The one page on the site that cannot rely on relative paths gets
+     its own styles inline, and the links below are absolute *within the origin's
+     project path*, which the script fills in from where this page was served. -->
+<style>
+  :root { color-scheme: dark; }
+  html {
+    background: #0c0d10;
+    background-image: radial-gradient(900px 500px at 50% -10%, rgba(142,240,177,.05), transparent 70%);
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    color: #d9d4c8;
+    font-family: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+    font-weight: 300;
+    line-height: 1.6;
+  }
+  .card { max-width: 46ch; }
+  .mark {
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: .16em;
+    color: #d9d4c8;
+    text-decoration: none;
+  }
+  .mark b { color: #8ef0b1; font-weight: 500; }
+  .code {
+    margin: 28px 0 10px;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: .7rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #6f6c63;
+  }
+  h1 { margin: 0 0 14px; font-size: clamp(1.7rem, 5vw, 2.4rem); font-weight: 300; letter-spacing: -.015em; }
+  p { margin: 0 0 22px; color: #9a958a; }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  a.go { color: #8ef0b1; text-decoration-color: #3d6a4d; text-underline-offset: .18em; }
+  a.go:hover { text-decoration-color: currentColor; }
+  .hint { margin-top: 26px; font-size: .82rem; color: #6f6c63; }
+</style>
+</head>
+<body>
+<div class="card">
+  <a class="mark" href="./" id="home">AURACL<b>E</b></a>
+
+  <p class="code">404 · no such page</p>
+  <h1>That page is not here.</h1>
+  <p>It may have moved when the documentation was reorganised, or the link may
+  have been wrong to begin with.</p>
+
+  <ul>
+    <li><a class="go" href="./" id="l-home">The landing page</a></li>
+    <li><a class="go" href="./play/" id="l-play">Play the instrument ▸</a></li>
+    <li><a class="go" href="./docs/" id="l-docs">The user guide</a> — how to play it</li>
+    <li><a class="go" href="./reference/" id="l-ref">The reference</a> — how it works</li>
+  </ul>
+
+  <p class="hint">If a link inside this site brought you here,
+  <a class="go" href="https://github.com/alexnodeland/auracle/issues">that is a bug worth reporting</a>.</p>
+</div>
+
+<script>
+  /* Point the links at the site root rather than at the current directory.
+     GitHub Pages serves this file for any missing path under the project, so
+     `./docs/` from /auracle/reference/genome/typo would resolve to
+     /auracle/reference/genome/docs/ — a second 404. The site root is the first
+     path segment on Pages (/auracle/) and "/" everywhere else, which is exactly
+     what a `<base>` cannot express without knowing which it is. */
+  (function () {
+    var seg = location.pathname.split('/').filter(Boolean);
+    // On a project Pages site the first segment is the repo; locally there is none.
+    var root = (location.hostname.endsWith('github.io') && seg.length) ? '/' + seg[0] + '/' : '/';
+    var map = { 'home': '', 'l-home': '', 'l-play': 'play/', 'l-docs': 'docs/', 'l-ref': 'reference/' };
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.setAttribute('href', root + map[id]);
+    });
+  })();
+</script>
+</body>
+</html>

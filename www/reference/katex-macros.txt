@@ -1,0 +1,16 @@
+% KaTeX macros for the reference book, one per line as `\name:definition`.
+%
+% Defined once here so a symbol cannot mean one thing on one page and something
+% else on the next — src/notation.md is the human-readable half of this file and
+% the two are meant to agree.
+%
+% mdbook-katex reads macros from a FILE (`macros = "./katex-macros.txt"`), not
+% from an inline `[preprocessor.katex.macros]` table. The table form parses
+% without complaint and is then ignored, so every macro silently renders as
+% "Undefined control sequence" — which is how this file came to exist.
+\R:\mathbb{R}
+\E:\mathbb{E}
+\phivec:\varphi
+\thetak:\theta_k
+\uof:u(x)
+\sig:\sigma
