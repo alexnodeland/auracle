@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Brand — Auracle</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Auracle's mark, logotype, lockups and icon set — the specification, and the reasoning behind each decision.">
+<meta name="description" content="Auracle's mark, logotype, lockups and icon set — the specification, and the rules that hold it together.">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0c0d10">
 <meta name="robots" content="noindex">
@@ -118,12 +118,23 @@ a:focus-visible, .lk:focus-visible { outline: 2px solid var(--phos-a); outline-o
   line-height: 1;
 }
 .lk-stack .glyph { width: 2.6em; height: 2.6em; }
-.lk-stack .wm { letter-spacing: 0.14em; }
+/* Tracked type centres wrong: letter-spacing is applied after the last letter
+   too, so a centred line's ink sits half a letter-space left of true centre. A
+   start margin of one full letter-space puts it back — on every line, which
+   `text-indent` would not do once the descriptor wraps. Both members of the
+   stack are corrected, or they are centred against each other by luck. */
+.lk-stack .wm { letter-spacing: 0.14em; margin-inline-start: 0.14em; }
 .desc {
   font-family: var(--font-mono);
   font-weight: 400;
   font-size: 0.32em;
   letter-spacing: 0.2em;
+  margin-inline-start: 0.2em;
+  /* The stack centres it as a box; this centres its lines inside that box, so
+     a descriptor that wraps stays centred rather than going ragged-right under
+     a centred wordmark. */
+  text-align: center;
+  text-wrap: balance;
   text-transform: uppercase;
   color: var(--silk-mute);
 }
@@ -392,14 +403,12 @@ section:first-of-type { border-top: 0; }
     <p class="t">This page is the specification. It is also the specimen: every
     lockup below is drawn by the <code>.lk</code> rule in this file's own stylesheet,
     so the spec cannot quietly stop matching what ships.</p>
-    <p class="t">The vocabulary was already here — the rack at <code>#0c0d10</code>, two
+    <p class="t">The vocabulary is the instrument's: the rack at <code>#0c0d10</code>, two
     phosphors where <strong>green is sound</strong> and <strong>amber is the model's
-    mind</strong>, and AURACLE set in Jost 500. What was missing was one decision about
-    how they go together, which is what follows.</p>
+    mind</strong>, and AURACLE set in Jost 500. What follows is how they go together.</p>
     <p class="t">The files live in <code>www/brand/</code> and are copied into every
-    consumer at build time by <code>make site-brand</code>. Nothing else in the repo is
-    allowed to hold a mark: before that rule existed there were three different Auracle
-    icons in circulation at once.</p>
+    consumer at build time by <code>make site-brand</code>. <strong>Nothing else in the
+    repo may hold a mark</strong> — one source, or the copies drift apart.</p>
   </section>
 
   <section>
@@ -424,8 +433,8 @@ section:first-of-type { border-top: 0; }
     At sixteen device pixels the outer ring is about half a pixel of deep green, and it
     antialiases into a smudge that fills the gaps and turns three rings into one blob.
     <code>mark-16.svg</code> is the same mark with that ring taken off and every edge
-    landing on a whole pixel. Use it wherever the output really is 16 square pixels —
-    today that is only the app's inline tab icon.</p>
+    landing on a whole pixel. Use it wherever the output really is 16 square pixels, such
+    as an inline tab icon; use <code>mark.svg</code> everywhere else.</p>
 
     <div class="stage paper">
       <div class="cell">
@@ -437,17 +446,15 @@ section:first-of-type { border-top: 0; }
 
   <section>
     <p class="eyebrow">The logotype</p>
-    <h2 class="h2">Already correct. The lockup was the open question.</h2>
+    <h2 class="h2">Jost 500 caps, and exactly one lamp in the lockup.</h2>
     <p class="t">AURACLE is Jost 500, all caps, on a tracking ramp. Jost is a geometric
-    sans built for signage, which is what an instrument panel is; it is already the
-    product's face and redrawing it would be work that makes nothing better.</p>
-    <p class="t">The one real conflict was that <strong>the mark is a lamp and the
-    wordmark's final E was also a lamp</strong>. In the app that E is instrumentation —
-    <code>apps/web/main.js</code> calls <code>$("wm-lamp").classList.add("thinking")</code>
-    in seven places, so it genuinely lights while the model is fitting. Everywhere else it
-    was welded on, and the note that used to sit in the landing page's stylesheet already
-    conceded the point: <em>a light that pulses without meaning is worse than no
-    light</em>.</p>
+    sans built for signage, which is what an instrument panel is — and it is the face the
+    instrument itself is set in.</p>
+    <p class="t">The mark is a lamp. <strong>The wordmark's final E must not be a second
+    one.</strong> In the app that E is instrumentation — it lights while the model is
+    fitting, and is a live reading of something true. Set anywhere it cannot light, it is
+    a light that is always on, and <em>a light that pulses without meaning is worse than
+    no light</em>.</p>
 
     <div class="versus">
       <div class="no">
@@ -460,9 +467,9 @@ section:first-of-type { border-top: 0; }
       </div>
     </div>
 
-    <p class="t" style="margin-top:var(--s6)"><strong>So: the mark carries the lamp and
-    the logotype is silk.</strong> The lit E stays in the app, where it is telling you
-    something true, and is therefore special again rather than ambient.</p>
+    <p class="t" style="margin-top:var(--s6)"><strong>The mark carries the lamp; the
+    logotype is silk.</strong> The lit E belongs to the app alone, which keeps it special
+    rather than ambient.</p>
   </section>
 
   <section>
@@ -532,10 +539,10 @@ section:first-of-type { border-top: 0; }
 
   <section>
     <p class="eyebrow">The icon set</p>
-    <h2 class="h2">The marks that lost the vote, doing the jobs they were better at.</h2>
-    <p class="t">Five shapes were drawn as candidates for the mark. One won; the rest
-    turned out to name things the product already names, so they became the icon set.</p>
-    <p class="t">They are <strong>a different kind of object from the mark</strong>:
+    <h2 class="h2">Five shapes, for five things the product already names.</h2>
+    <p class="t">The set is five: <code>play</code>, <code>evolve</code>,
+    <code>taste</code>, <code>teach</code>, <code>active</code>. They are
+    <strong>a different kind of object from the mark</strong>:
     single colour, <code>currentColor</code>, no tile, 24px grid, 2px stroke. A UI icon
     has to take the colour of the control it sits in, and the two-phosphor split belongs
     to the brand mark alone — an icon that insists on its own colours is a sticker, not
@@ -572,11 +579,12 @@ section:first-of-type { border-top: 0; }
     <p class="t" style="margin-top:var(--s6)">The first four are the guide's own chapters
     — <code>views/play.md</code>, <code>views/evolve.md</code>, <code>views/taste.md</code>,
     <code>teaching.md</code>. That is the test of whether an icon set is real: it names
-    things the product had already named, rather than inventing categories to fill a grid.</p>
+    things the product already names, rather than inventing categories to fill a grid.
+    An icon with no chapter behind it does not belong in the set.</p>
 
-    <p class="t"><code>teach</code> is the one that left its candidate behind. It was
-    drawn as the wordmark's lit E, and a letterform cannot carry a meaning in a toolbar —
-    rotated into bars it is a meter, which is what the teach meter actually is.</p>
+    <p class="t">Every one of them is a shape, never a letterform. A letter cannot carry a
+    meaning in a toolbar — <code>teach</code> is a meter for that reason, not a stylised
+    E.</p>
 
     <p class="t">Taking the colour of the control, which is the whole point:</p>
     <div class="tints">
@@ -627,7 +635,7 @@ section:first-of-type { border-top: 0; }
           <tr><td>apple-touch-icon.png</td><td>site root</td><td class="num">make site-landing</td></tr>
           <tr><td>og.png</td><td>site/assets/og.png</td><td class="num">make site-landing</td></tr>
           <tr><td>lockup.png</td><td>the README, which has no fonts</td><td class="num">committed</td></tr>
-          <tr><td>icon-set/*.svg</td><td>this page. Drawn and named, not yet wired into the app's view tabs or the guide</td><td class="num">make site-extras</td></tr>
+          <tr><td>icon-set/*.svg</td><td>site/brand/icon-set/, and this page</td><td class="num">make site-extras</td></tr>
         </tbody>
       </table>
     </div>
