@@ -26,6 +26,11 @@ projection (principal components of the feature space), and the footer tells
 you how much of the variance those two axes capture, typically around half.
 Worth knowing before you read too much into a distance.
 
+The orientation is pinned, so the map does not mirror itself between one
+recompute and the next — somewhere you recognise stays where you left it. The
+axes themselves still turn slowly as your taste and the bank move, because they
+are computed from the patches you have actually heard.
+
 | Channel | Means |
 |---|---|
 | **Glow** | Posterior mean utility — how much it thinks you would like it |

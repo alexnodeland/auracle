@@ -132,6 +132,50 @@ the app does on load. It runs through the same parallel path as the initial
 fill — `import_session_deferred` → `bank_absorb` → `restore_finish` — rather
 than serially. See [The web runtime](./runtime.md#the-render-farm).
 
+## The persistent render cache
+
+$\varphi$ is a pure function of $(\text{term}, \text{spec})$ — that is the
+[determinism contract](./runtime.md) — so a featurization this browser has
+already performed can be replayed instead of re-rendered. Without that, every
+reload re-renders the whole bank from nothing: ~48 candidates at ~0.5 s each,
+for numbers the machine computed yesterday.
+
+Farm workers consult an IndexedDB store (`auracle-renders`) before rendering and
+write back on a miss. The engine reports the hit rate per wave into the app's own
+log.
+
+### The key is not enough
+
+`render_key` addresses $(\text{term}, \text{spec})$, which is everything
+$\varphi$ depends on *given a fixed featurizer*. It hashes the **inputs**, and a
+change to the normalizer or to a descriptor's formula is a change to the
+**function** — the same key would then name a different measurement.
+
+`RENDER_EPOCH` is that missing coordinate and `cache_namespace` combines the two.
+A namespace mismatch orphans **every** stored row at once, which is the only
+correct granularity: a cache whose invalidation is anything less than total will
+one day serve a number from a featurizer that no longer exists. Bump the epoch on
+any change to a $\varphi$ coordinate, to loudness normalization (including
+`PEAK_CEILING` and `TARGET_LUFS`), to the vetting thresholds, or to the compiler's
+term → module mapping. When in doubt, bump: the cost is one cold boot.
+
+A hit is **checked rather than trusted** — `pre_featurized` re-derives the key
+from the tree the engine holds at that index and drops the row if it disagrees.
+
+### Two deliberate limits
+
+Cached rows carry $\varphi$ **without samples**, so a job that asked for audio
+still renders. Serving it a row would move the saving onto the first patches the
+player actually auditions, which is exactly where `wantAudio` exists to avoid it.
+
+Eviction is "clear everything" past a row cap, which is crude on purpose: an LRU
+needs an access-time write on every *hit*, turning the cheap path into a write,
+and what is being protected is a disk quota rather than a working set.
+
+It lives in the farm worker rather than in the engine's `runFarm` loop, whose
+absorb cursor, re-issue watchdog and speculative-work handling must not acquire
+asynchrony. A cache hit is simply a job that returns fast.
+
 ## Pins live engine-side
 
 `Candidate::pinned` and `BankEntry::pinned`, not a UI-side set.

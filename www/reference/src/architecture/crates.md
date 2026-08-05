@@ -53,11 +53,11 @@ the feature vector, and the audition buffer the user hears.
 | `phrase` | `PhraseSpec` — the standard stimulus |
 | `render` | Deterministic headless rendering through quiver |
 | `vet` | The quarantine gate |
-| `loudness` | ITU-R BS.1770 K-weighting and gated integrated loudness |
+| `loudness` | ITU-R BS.1770 K-weighting, gated integrated loudness, and the peak ceiling |
 | `audio` | $\varphi_{\text{audio}}$ — 15 perceptual descriptors |
 | `structural` | $\varphi_{\text{struct}}$ — 25 structural descriptors |
 | `pipeline` | The composition, in the one order that is safe |
-| `cache` | Render memoization; what makes the MH walk affordable |
+| `cache` | Render memoization and the persistent-cache namespace; what makes the MH walk affordable |
 
 `pipeline::featurize` is the whole crate in forty lines, and the order it
 composes them in matters; see

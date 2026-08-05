@@ -130,9 +130,10 @@ when it did not exist.
   escaped and parameters are domain-checked and repaired, so the blast radius
   is intended to be zero. It is still a parser handling untrusted input, and
   that is always a claim rather than a guarantee.
-- **Hearing damage** is mitigated (limiter, LUFS normalization, no unvetted
-  playback) but the output level is ultimately yours. Nothing stops you turning
-  a limiter-bounded signal up.
+- **Hearing damage** is mitigated (limiter, LUFS normalization to a
+  [peak ceiling](./audition/loudness.md#loudness-is-a-target-the-peak-is-a-limit),
+  no unvetted playback) but the output level is ultimately yours. Nothing stops
+  you turning a limiter-bounded signal up.
 - **Denial of service via a huge patch** is bounded by the module and depth
   ceilings, not by a time limit. A 24-module patch with granular and reverb is
   legitimately expensive.

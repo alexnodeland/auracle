@@ -32,8 +32,42 @@ pub fn refine<R: Rng>(&mut self, rng: &mut R) {
 standardizer, because there is no direction to climb in.
 
 **`refine_seed`** clones the seed's tree, walks `refine_steps` MH steps with no
-locks, and injects the final state as a child. It returns `None` if the walk
-was rejected or landed on a tree the pool already holds.
+locks, and injects one state of that walk as a child. It returns `None` if the
+walk was rejected or landed on a tree the pool already holds.
+
+### Which state of the walk gets injected
+
+A walk renders and featurizes ~40 candidates and injects **one**, and *which*
+one is a free choice that had never been measured. `SessionConfig::refine_keep`
+makes it selectable so the comparison stays runnable, the same rule the
+[acquisition](./acquisition.md) enum follows:
+
+| | |
+|---|---|
+| `RefineKeep::Last` | the state the walk ended on — **the default** |
+| `RefineKeep::Best` | the highest-$\log \pi_\beta$ state it occupied, seed included |
+
+The archive is **free**. Every trace the kernel returns already carries its own
+$\log \pi_\beta$, so `Best` is one `f64` compare per step and no extra render.
+
+It is scored on the **target**, not on fitness alone, and that is the load-bearing
+choice: taking the argmax of $\E[u]$ would discard the parsimony half of the very
+distribution the walk is sampling, and would do it with a bias — a bigger term
+has more modules to score well with, so fitness-argmax systematically returns the
+largest tree the walk touched.
+
+Under `Best` the seed is in the archive, so a walk that finds nothing better than
+where it started injects **nothing**, rather than whatever it happened to be
+standing on at step 40.
+
+```admonish warning title="Why the default has not moved"
+`Best` ships switched off. Argmax over a surrogate is the classic way to find
+that surrogate's *errors* rather than the user's preferences, and the always-on
+gate has already caught this happening: over 16 seeds, two produced pools
+**−12.0** and **−5.5** worse in the synthetic user's true utility after three
+generations, because `insert_candidate` admits and evicts by the model. Turning
+`Best` on without measuring it is the move most likely to make that worse.
+```
 
 **`refine_from(seed_id, locked)`** is the same thing from an explicit seed with
 an explicit [lock set](./locks.md), the `⚡ evolve from this` path.
