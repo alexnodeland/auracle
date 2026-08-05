@@ -146,6 +146,17 @@
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- AURACLE 6/6. The cross-site links again, for narrow viewports.
+                 Above 1000px they live in the menu bar; below it that bar has
+                 no room for them, and mdBook's `flex-wrap: wrap` turns "no
+                 room" into a silent second row rather than an overflow. The
+                 drawer is the mobile navigation, so they move here instead of
+                 shrinking to initials nobody can read. -->
+            <nav class="site-nav site-nav-drawer" aria-label="Auracle sections">
+                <a href="{{ path_to_root }}../"><span>Auracl<span class="lamp">e</span></span></a>
+                <a class="nav-docs" href="{{ path_to_root }}../docs/"><span>Guide</span></a>
+                <a class="nav-reference" href="{{ path_to_root }}../reference/"><span>Reference</span></a>
+            </nav>
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
@@ -192,12 +203,12 @@
                              identical in all of them is what makes them one
                              site. Inside mdBook's menu bar rather than above
                              it: a second sticky bar would cost 48px of a laptop
-                             screen for nothing. `data-short` is the fallback
-                             label under 700px (see fonts/auracle.css). -->
+                             screen for nothing. Under 1000px everything except
+                             the instrument moves to the drawer copy above. -->
                         <nav class="site-nav" aria-label="Auracle sections">
-                            <a href="{{ path_to_root }}../" data-short="A"><span>Auracl<span class="lamp">e</span></span></a>
-                            <a class="nav-docs" href="{{ path_to_root }}../docs/" data-short="G"><span>Guide</span></a>
-                            <a class="nav-reference" href="{{ path_to_root }}../reference/" data-short="R"><span>Reference</span></a>
+                            <a href="{{ path_to_root }}../"><span>Auracl<span class="lamp">e</span></span></a>
+                            <a class="nav-docs" href="{{ path_to_root }}../docs/"><span>Guide</span></a>
+                            <a class="nav-reference" href="{{ path_to_root }}../reference/"><span>Reference</span></a>
                             <a class="play" href="{{ path_to_root }}../play/"><span>Play&nbsp;▸</span></a>
                         </nav>
                     </div>

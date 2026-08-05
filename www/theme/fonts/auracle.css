@@ -212,16 +212,70 @@ thead th,
     color: var(--rack, var(--paper));
 }
 
-/* Under ~700px the section labels would wrap the menu bar onto two lines.
-   The instrument link keeps its label — it is the one nav item worth the
-   space — and the rest fall back to their first letter via a data attribute
-   so the bar stays one line without losing any destination. */
-@media (max-width: 700px) {
-    .site-nav a:not(.play) span {
+/* ─── Menu bar density ──────────────────────────────────────────────────── */
+
+/* mdBook ships the menu bar as `flex-wrap: wrap`, so when the cross-site nav,
+   the book title and the three right-hand icons stop fitting, the bar does not
+   overflow — it silently becomes two rows, and its height doubles at exactly
+   the width where vertical space is scarcest. One row, always. What does not
+   fit is removed by the queries below, deliberately and in a stated order. */
+#menu-bar {
+    flex-wrap: nowrap;
+}
+
+/* First to go: print, repository and edit. They are desk affordances — nobody
+   prints a book or opens a pull request on a phone — and they are the widest
+   thing in the bar that no reader is looking for. */
+@media (max-width: 1000px) {
+    #menu-bar .right-buttons {
         display: none;
     }
-    .site-nav a:not(.play)::after {
-        content: attr(data-short);
+}
+
+/* Second: the section labels. They move to the drawer rather than shrinking,
+   because the earlier version of this rule collapsed them to their initials
+   and "A G R" is not a navigation. The instrument keeps its place in the bar,
+   as the one destination worth a permanent button. */
+@media (max-width: 1000px) {
+    #menu-bar .site-nav {
+        margin-inline-start: 0.9rem;
+    }
+
+    #menu-bar .site-nav a:not(.play) {
+        display: none;
+    }
+}
+
+/* The drawer copy of the cross-site nav. Hidden while the bar is carrying
+   them, so only one of the two is ever in the accessibility tree. */
+.site-nav-drawer {
+    display: none;
+}
+
+@media (max-width: 1000px) {
+    /* mdBook pins the scrollbox to all four edges of the sidebar, so anything
+       else placed in there would sit underneath it. As a flex column the
+       scrollbox takes the remaining height instead, and the resize handle is
+       absolutely positioned so it stays where it was. */
+    .sidebar {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sidebar .sidebar-scrollbox {
+        position: relative;
+        inset: auto;
+        flex: 1 1 auto;
+    }
+
+    .site-nav-drawer {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        gap: 2px;
+        margin: 0;
+        padding: 0.85rem 10px 0.75rem;
+        border-block-end: 1px solid var(--hairline);
     }
 }
 
