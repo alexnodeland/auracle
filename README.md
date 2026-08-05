@@ -18,8 +18,8 @@ Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
 
 Auracle is a playable modular synthesizer that **models your taste over time**.
 It generates patches by evolutionary search, collects your feedback on what it
-plays (A/B duels, star ratings, keep/kill triage, your own hand edits) and fits
-a persistent Bayesian model of what you like. Evolution then *proposes toward
+plays (A/B duels, star ratings, your own hand edits) and fits a persistent
+Bayesian model of what you like. Evolution then *proposes toward
 you*: the fitted taste posterior reshapes the grammar's own proposal
 distribution. Over a session it stops guessing and starts proposing, and it can
 show you what it learned.
@@ -76,7 +76,7 @@ Auracle treats the problem as inference:
   running voices' atomics (no recompile) *and* the genome. Rewire by dragging
   typed jacks; structural edits are grammar operations, so an edit always
   leaves a playable patch. Undo/redo, per-knob and per-module locks.
-- **Forty-one modules** — six sources (a wavetable, a physically- modelled
+- **Forty-one modules** — six sources (a wavetable, a physically-modelled
   pluck and a formant oscillator among them), twenty processors, and fifteen
   modulators. Six processors are **binary**: a crossfade and a ring modulator
   that merge two chains into one, and a compressor, ducker, gate and vocoder
@@ -88,11 +88,12 @@ Auracle treats the problem as inference:
   parsimony pressure still applies. The node bank shows what each module does
   to a signal, where it can legally go, and, only where the evidence supports
   it, what the model has learned about it.
-- **A taste model that earns trust** — Bradley–Terry duels, ordinal stars, and
-  keep/kill feed one max-of-experts posterior (fitted style count grows with
-  evidence). It forecasts each duel *before* your vote and shows its running
-  calibration; styles are nameable and color-coded everywhere; old votes fade
-  with a recency half-life.
+- **A taste model that earns trust** — Bradley–Terry duels and ordinal stars
+  feed one max-of-experts posterior (fitted style count grows with evidence).
+  It forecasts each duel *before* your vote and shows its running calibration;
+  styles are nameable and color-coded everywhere; old votes fade with a recency
+  half-life. A keep/kill likelihood is fitted too, though no screen emits one
+  yet.
 - **Taste-directed evolution** — refinement warm-starts typed MH from your best
   patches and takes a short *local* walk on the Boltzmann target (the pool is
   moved uphill on `π_β`, not sampled from it), with kind-proposal weights
@@ -104,19 +105,38 @@ Auracle treats the problem as inference:
 
 ## 🏗 Architecture
 
-Two loops around one observation stream:
+Two loops around one observation stream, running at different speeds. The
+machine-paced one evaluates thousands of candidates against what it has learned
+about you and surfaces a curated few; the human-paced one advances only when you
+answer something.
 
+```mermaid
+flowchart TD
+    subgraph patch["patch loop · machine-paced"]
+        prior["grammar prior"]
+        vet["render · vet · measure φ"]
+        pool[("candidate pool")]
+        refine["MH refine toward π ∝ p·exp(βu)"]
+        prior --> vet
+        vet --> pool
+        pool --> refine
+        refine --> vet
+    end
+
+    subgraph taste["taste loop · human-paced"]
+        duel{{"which do you prefer?"}}
+        log[("observation log")]
+        post["posterior · u = maxₖ θₖ·φ"]
+        duel -->|"duels · stars · edits"| log
+        log --> post
+    end
+
+    pool -->|"uniform pairing"| duel
+    post -->|"θ tilts the proposals"| refine
 ```
-  patch loop (machine-paced)                taste loop (human-paced)
-  ┌──────────────────────────┐              ┌──────────────────────┐
-  │ grammar prior ──► vet ──►│   pool       │ duels / stars / kill │
-  │      ▲                   │──────────────►      observation log │
-  │      └── MH refine on    │   duels by   │           │          │
-  │          π ∝ p·exp(βu),  │   uniform    │           ▼          │
-  │          proposals tilted│   pairing    │  taste posterior     │
-  │          by taste ◄──────┼──────────────┤  u(x) = maxₖ θₖ·φ(x) │
-  └──────────────────────────┘              └──────────────────────┘
-```
+
+The [reference](https://alexnodeland.github.io/auracle/reference/architecture/two-loops.html)
+takes both apart.
 
 | Crate | Role |
 |---|---|
