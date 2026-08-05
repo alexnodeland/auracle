@@ -94,7 +94,8 @@ like loud" and present it as a preference about timbre.
 
 ### Pool
 
-The evolution bank: 48 vetted candidates the model reasons over and breeds from.
+The evolution bank: 40 vetted candidates the model reasons over and breeds from.
+(The engine's own default is 48; the web app configures 40.)
 
 ### Posterior
 

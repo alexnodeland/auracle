@@ -80,7 +80,7 @@ rule with none should not ship on a tie.**
 Two supporting reasons survived checking, one did not:
 
 - The `info_gain` BALD reports had **zero consumers** in the frontend.
-- BALD's repeat avoidance is real but barely needed over a 48-candidate pool that uniform
+- BALD's repeat avoidance is real but barely needed over a pool this size that uniform
   pairing already samples without repeating (gated by
   `duels_spread_over_candidates_not_just_pairs`).
 - `Random` makes **every** duel an unbiased

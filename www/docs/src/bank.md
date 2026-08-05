@@ -64,8 +64,11 @@ Stars are for teaching; **save** is what keeps.
 
 ## Eviction and pins
 
-The pool holds 48 vetted candidates. Injecting children removes the weakest to
+The pool holds **40** vetted candidates. Injecting children removes the weakest to
 make room, by posterior utility.
+
+(The engine's library default is 48; the web app asks for 40. If you see 48 quoted
+in the [reference](../reference/architecture/two-loops.html), that is why.)
 
 Saving pins a patch engine-side so eviction skips it. Pins are capped at a quarter
 of the pool, so the pool can never be pinned solid — a fully-pinned pool has no

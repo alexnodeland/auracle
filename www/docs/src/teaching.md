@@ -65,7 +65,7 @@ by the end of your first session and one that does not.
 The nine are **sampled one per family** from the 29-patch library, and only those
 nine are loaded. An earlier version rendered a card per preset and loaded every
 one of them, which at 29 would have been a scrolling first run that spent more
-than half a 48-slot pool before you had said anything. Library size and grid size
+than half a 40-slot pool before you had said anything. Library size and grid size
 are independent on purpose.
 
 Re-run it any time from **⋯** → *Re-run the three-pick warm start*.

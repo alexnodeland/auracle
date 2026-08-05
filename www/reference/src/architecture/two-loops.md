@@ -9,7 +9,7 @@ observation stream.</p>
 │  local MH toward π_β: subtree moves → struct-screen →       │
 │  render survivors → feature-score                          │
 └──────────────┬─────────────────────────────────────────────┘
-               │ candidate pool (48)
+               │ candidate pool (`pool_size`: 48 by default, 40 in the app)
                ▼
    acquisition: choose what to play
    (uniform by default; BALD selectable)
@@ -34,9 +34,9 @@ is asked to rate a whole population per generation and quits from fatigue.
 Machine-paced. No human in it.
 
 1. **Fill.** Sample terms from the grammar prior, compile, render, vet, featurize.
-   Pool target is 48 vetted candidates
-   (`SessionConfig::pool_size`), with at most 400 draws attempted per fill —
-   vet failures burn attempts.
+   Pool target is `SessionConfig::pool_size` vetted candidates — **48** by
+   default, though the web app passes **40** (`apps/web/main.js`) — with at most
+   400 draws attempted per fill, since vet failures burn attempts.
 2. **Refine.** Once a posterior exists, take the top
    `refine_seeds` candidates and run `refine_steps` Metropolis–Hastings steps from
    each. Defaults are **10 seeds × 40 steps**, both scaled from the palette's

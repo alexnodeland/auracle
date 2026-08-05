@@ -84,7 +84,7 @@ Re-run this before changing either number.
 The gap between design and implementation is real, and it is worth being clear that the
 implementation is not merely a shortcut.
 
-**A candidate pool is not a sample.** The pool's job is to hold ~48 patches worth
+**A candidate pool is not a sample.** The pool's job is to hold a few dozen patches worth
 auditioning. A correct sample from $\pi_\beta$ would include low-utility regions in
 proportion to their (small but nonzero) probability mass — which is right for estimating an
 expectation and wrong for filling a shortlist a person will listen to.
