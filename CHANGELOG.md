@@ -27,6 +27,14 @@ one-letter-space start margin: `letter-spacing` applies after the final letter
 too, so tracked type centres half a letter-space to the left of true centre
 unless it is corrected.
 
+The same correction reaches the **README banner**, which is a raster and had the
+same lean baked into it: measured against the 720px axis of the 1440px artboard,
+the lockup's ink sat 2.5px left of centre and the tagline 3.5px left. It is
+re-rendered from `render.html` — the compensation goes on the lockup rather than
+on the wordmark, or it would open the specified 0.62em gap between the mark and
+the word. `og.png` is unchanged; its type is set flush left, where the trailing
+space costs nothing.
+
 ### Changed — "Make me one" builds something you can see
 
 The hero's payoff button played a patch and left the screen showing the two
