@@ -72,8 +72,9 @@ candidates. The head shows your pin budget when you are near it.
 
 ## Presets
 
-Twenty-nine hand-made patches across several families, browsed in place:
-clicking one loads it on the workbench without adding it to the pool.
+Sixty-one hand-made patches across seven families — bass, lead, keys, pad,
+texture, perc, weird — browsed in place: clicking one loads it on the workbench
+without adding it to the pool.
 
 They are worth playing through early even if you intend to evolve everything.
 They are what the [warm start](./teaching.md#the-warm-start) samples from, and

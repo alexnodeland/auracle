@@ -49,6 +49,10 @@ $$P(\text{keep}) = \sigma\big(u(x) - \tau_s\big), \qquad \tau_s \sim \mathcal{N}
 
 $\tau_s$ is a **per-session latent**, one per session in the log.
 
+No frontend emits this today: `Engine::record_keep` and its wasm binding exist,
+but the triage surfaces that would call them are unbuilt, so every log written
+by the app so far contains duels and stars only.
+
 "Feeling picky today" is therefore *modelled* rather than treated as noise. A
 session where you kill almost everything is read as a strict session (a high
 $\tau_s$) rather than a transformation of your taste. Without the per-session

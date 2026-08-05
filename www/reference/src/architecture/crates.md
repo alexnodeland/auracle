@@ -37,7 +37,7 @@ The **representation**, and the crate everything else is built on.
 | `edit` | Single-site parameter writes by address |
 | `diff` | Human-readable diffs between two terms — what the lineage log prints |
 | `describe` | The rack description the panel draws from |
-| `presets` | The 29-patch hand-made library |
+| `presets` | The 61-patch hand-made library, in seven families |
 
 **`genome`'s codec *is* the grammar's addressing.** It is one scheme rather
 than two kept in sync, which is what makes a knob turn, a lock and an MH

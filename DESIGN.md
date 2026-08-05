@@ -7,16 +7,25 @@ feedback on what it plays, and fits a persistent probabilistic model of the
 user's taste from that feedback. Over a session it stops guessing and starts
 proposing: it generates patches *in your taste*, and can explain why.
 
-Built on two in-house libraries:
+This document describes the system as it currently stands. Where the design and
+the implementation differ, the difference is stated in place rather than left
+for the reader to discover — §1.4 is the main one. The pass-by-pass history is
+[`CHANGELOG.md`](./CHANGELOG.md); the worked-out math is the
+[technical reference](https://alexnodeland.github.io/auracle/reference/).
 
-- **[fugue-evo](https://github.com/alexnodeland/fugue-evo)** (0.3.x) —
-  evolution as Bayesian inference: priors as probabilistic programs
-  (`GenomePrior` → `fugue::Model<G>`), tempered SMC in trace space, typed MH
-  with automatic reversible-jump, grammar-based GP.
-- **[quiver](https://github.com/alexnodeland/quiver)** (`quiver-dsp` 0.1.x) —
-  modular synthesis: Arrow-style combinators (`>>>`, `***`, `&&&`), typed ports
-  (Audio / V-Oct / Gate / CV), patch graphs, headless rendering, `no_std` core,
-  first-class WASM.
+Built on two in-house libraries, both from crates.io:
+
+- **[fugue-evo](https://github.com/alexnodeland/fugue-evo)** 0.3.1 — evolution
+  as Bayesian inference: priors as probabilistic programs (`GenomePrior` →
+  `fugue::Model<G>`), tempered SMC in trace space, typed MH with automatic
+  reversible-jump, grammar-based GP. Built with `default-features = false`;
+  `checkpoint` and `parallel` do not compile on wasm32.
+- **[quiver](https://github.com/alexnodeland/quiver)** (`quiver-dsp` 0.2.0,
+  library name `quiver`) — modular synthesis: Arrow-style combinators (`>>>`,
+  `***`, `&&&`), typed ports (Audio / V-Oct / Gate / CV), patch graphs,
+  headless rendering, `no_std` core, first-class WASM.
+
+`fugue-ppl` 0.2.1 is the probabilistic-programming layer underneath fugue-evo.
 
 ## Lineage
 
@@ -51,50 +60,95 @@ generic trace moves, reversible-jump handled by fugue's MH):
 | Connectivity | Interior structure (`>>>` chains, `***`/`&&&` parallel/fanout, modulation attachments) |
 | Node set | Which productions fire (module choice sites) |
 
-**v1 constraint:** acyclic terms only — no feedback combinator productions.
-Modules with *internal* feedback (delay, chorus) are fine. A tamed feedback
-production (mandatory attenuator + limiter in the loop path) is a v2 grammar
-extension.
+**The palette: 41 productions.** Six sources, twenty processors, fifteen
+modulators. The three categorical orders are the persisted wire format — the
+codec writes the chosen index into the trace — so they are append-only.
 
-**v1 module palette** (~10, curated from quiver's 60+): `Vco`, `Supersaw`,
-`NoiseGenerator`, `Svf`, `DiodeLadderFilter`, `Adsr`, `Vca`, `Lfo`,
-`DelayLine`, `Chorus`, `Wavefolder`. Classic subtractive core plus two
-character modules so the taste model has real texture axes. Every compiled
-patch gets a hard-wired `Limiter` before the output: evolution *will* discover
-screaming resonance.
+```text
+sources (N_SOURCES = 6)
+  Vco  Supersaw  Noise  Wavetable  Pluck  Formant
 
-### 1.2 The taste model: latent utility, mixture of experts
+processors (N_OPS = 20)
+  Mix  Filter  Fold  Delay  Chorus  Reverb  Distortion  Bitcrush  Phaser
+  Flanger  Tremolo  Vibrato  Eq  Granular  RingMod  Shift  Comp  Duck
+  Gate  Vocoder
+
+modulators (5 leaves + 4 CV ops + 6 pair ops = 15)
+  leaves:   Lfo  Env  Rand  Follow  Euclid
+  CV ops:   Quantize  Slew  Rectify  Hold
+  pair ops: Min  Max  And  Or  Xor  Switch
+```
+
+`N_MODS = 8` is the categorical over what fills a modulation slot: nothing, one
+of the five leaves, an `Op`, or a `Pair`. `N_MOD_OPS = 4` and `N_PAIR_OPS = 6`
+choose which.
+
+Six processors are **binary**. `Mix` (crossfade) and `RingMod` take a second
+*audio* input and merge two chains; `Comp`, `Duck`, `Gate` and `Vocoder` take a
+second *control* input, which makes sidechaining a typed connection rather than
+a convention.
+
+**Modulation is a recursive sort, not a slot.** A modulation input takes a
+modulation *term*, which can itself be built from modulation terms: `Op` wraps
+one, `Pair` combines two. So `s&h rand → quantize → slew` is a legal term, and
+the same parsimony pressure that bounds the audio tree bounds these.
+
+**Acyclic terms only** — there are no feedback combinator productions. Modules
+with *internal* feedback (delay, chorus, reverb) are fine, and there are plenty.
+A tamed feedback production (mandatory attenuator + limiter in the loop path)
+remains the intended grammar extension; until then cycles are unrepresentable
+rather than rejected, which is why cable dragging in the UI can simply not offer
+them.
+
+Every compiled patch gets a hard-wired `Limiter` before the output: evolution
+*will* discover screaming resonance.
+
+### 1.2 The taste model: latent utility, max of experts
 
 A latent utility over patches:
 
 ```
-u(x) = max_k θ_k · φ(x)    K style lenses; a patch is as good as its best lens
-φ(x) = [ φ_audio(render(x)) ; φ_struct(term(x)) ]
+u(x) = max_k θ_k · z(x)    K style lenses; a patch is as good as its best lens
+z(x) = (φ(x) − μ) / s      standardized
+φ(x) = [ φ_audio(render(x)) ; φ_struct(term(x)) ]     ∈ ℝ⁴⁰
 ```
 
-- **φ_audio** — perceptual descriptors from a standardized offline render
-  (spectral centroid/spread/flux, loudness envelope stats, attack time,
-  harmonicity, roughness, …). Costs a render; generalizes across topologies.
-- **φ_struct** — free (no render): module histogram, term depth, modulation
-  density, parallel-branch count, …
+- **φ_audio** (15 dims) — perceptual descriptors of the standard render:
+  spectral centroid/rolloff/flatness/flux, ZCR, RMS mean and spread, crest,
+  attack time, tail ratio, bass fraction, and three segment-local coordinates
+  measured over one note's gate-on span. Frequency features live on a
+  **log axis**, because the model downstream is linear and a linear-Hz
+  coordinate cannot express "a shade brighter". Costs a render; generalizes
+  across topologies.
+- **φ_struct** (25 dims) — free, no render: fourteen module *family* counts
+  plus seven term-level numbers (modulation density and mean depth, the amp
+  envelope, chain balance, sidechained fraction). Families rather than
+  per-module columns: a per-kind column for a production the prior draws 2% of
+  the time is a coefficient fitted on a handful of rows.
 - **Max of experts** — taste is multi-modal ("ambient-me" vs "acid-me").
   Utility is the **max over K linear lenses**: each island of taste gets its
   own lens, and every judgment, including a duel *across* islands, compares
-  candidates on the shared scale `u = max_k u_k`. Two rejected designs, for the
-  record: a per-session style latent `z` (one mood per session, so it cannot
-  represent several islands inside a session) and a per-observation
+  candidates on the shared scale `u = max_k u_k`. Two rejected designs, for
+  the record: a per-session style latent `z` (one mood per session, so it
+  cannot represent several islands inside a session) and a per-observation
   marginalized lens (forces both duel items through the *same* lens, so
   cross-island duels are unrepresentable; a synthetic bimodal user exposed
   this, and the marginalized mixture failed to beat K = 1). With max-utility
   there are **no discrete latent sites at all**; K = 1 reduces exactly to
   Bayesian linear regression. Label permutation is resolved post-hoc
-  (`TastePosterior::aligned`); a lens that claims ≈0% of the pool is idle, so K
-  is an upper bound, not a claim.
+  (`TastePosterior::aligned`); a lens that claims ≈0% of the pool is idle,
+  so K is an upper bound, not a claim. **K = 5** by default.
+
+The `1/√d` prior on each θ coordinate carries an extra `1/s_K` factor, where
+`s_K` is the standard deviation of the maximum of K standard normals. Without
+it, `Var(u_a − u_b)` falls from 2.0 at K = 1 to 0.90 at K = 5, so raising K
+would quietly make the model *less* able to express a strong preference.
 
 The two-part feature space enables a **screening cascade**: a struct-only
 surrogate prunes candidates for free; survivors get rendered and scored in
-full. Long-term, θ_struct can feed back into the grammar's production weights,
-so the user's structural taste reshapes the *prior* itself.
+full. θ_struct also feeds back into the grammar's production weights — see
+§1.4 — so the user's structural taste reshapes the *prior* itself. That is
+shipped, not aspirational.
 
 ### 1.3 Observations: one utility, three likelihoods
 
@@ -103,13 +157,35 @@ All feedback modes condition the same `u` in one fugue program:
 | Signal | Likelihood | Notes |
 |---|---|---|
 | Pairwise duel (A vs B) | `p(A ≻ B) = σ(u(A) − u(B))` (Bradley–Terry) | Primary signal; best statistical properties, lowest cognitive load |
-| Keep / kill | `p(keep) = σ(u(x) − τ_session)` | τ is a per-session latent, so "feeling picky today" is modeled rather than treated as noise |
 | Star rating (0–5) | Ordinal regression with learned cutpoints | Treats ★★★ as "between cutpoints", not the number 3, which fixes scale drift |
+| Keep / kill | `p(keep) = σ(u(x) − τ_session)` | τ is a per-session latent, so "feeling picky today" is modeled rather than treated as noise |
 
-Implicit signals (listen time, replays, exports) are deliberately **out of
-scope for v1**.
+The posterior is over `(θ, τ, cutpoints)` — no discrete sites, so fugue's
+generic adaptive single-site MH applies with no custom kernel.
 
-### 1.4 Generation: the Gibbs posterior with learned fitness
+**Edit-beats-original is not a fourth likelihood.** Committing a hand edit with
+*my edit is better* records a duel (`edited ≻ original`) carrying a
+`Provenance` tag: `Duel`, `HeardEdit` or `SelfReport`. Calibration scores the
+three streams separately, because an asserted improvement and a heard one make
+the same claim in the log and there is no reason to assume they are equally
+reliable.
+
+**Every observation is recency-weighted** by `0.5^(h / 150)`, so taste is
+allowed to change. The cost is stated plainly: this is a discounted likelihood
+rather than a proper posterior over a stationary parameter, chosen because
+stationarity is the wrong assumption about a person.
+
+> **Keep/kill has no UI surface yet.** The likelihood, the per-session
+> threshold and `Engine::record_keep` are implemented and reachable through the
+> wasm binding, but nothing in `apps/web` calls it — the triage modes that would
+> emit it are the open half of M6 (§4). Duels and stars are what the app
+> actually records today.
+
+Implicit signals (listen time, replays, exports, hover duration) are
+deliberately **not recorded**. They are cheap to collect and easy to misread: a
+long listen can mean fascination or confusion, and the two have opposite signs.
+
+### 1.4 Generation: the Boltzmann target with learned fitness
 
 Generating patches in the user's taste is fugue-evo's `EvolutionModel` with the
 learned utility plugged in as fitness:
@@ -118,15 +194,52 @@ learned utility plugged in as fitness:
 π_β(x) ∝ p_grammar(x) · exp(β · E[u_θ(x)])
 ```
 
-β tunes conservatism: low β ≈ browse the prior, high β / `anneal` ≈ optimizer
-mode ("give me your best guess at my perfect patch").
+`p_grammar` is the parsimony pressure, and it is the actual prior probability of
+the term rather than a penalty added on: each extra level of recursion
+multiplies in another Bernoulli that came out "processor", plus that node's own
+parameter draws. There is no size-penalty term anywhere.
 
-**What ships today is not a sample from π_β.** Refinement runs a short adaptive
-single-site MH walk (a dozen steps) warm-started from each of the best pool
-members and keeps the final state: local hill-climbing *on* that target, which
-is what a candidate pool needs, rather than a draw *from* it. Tempered SMC with
-the crossover population kernel remains the design; the claim is stated here as
-an intention, not as a description of the code.
+β tunes conservatism: low β ≈ browse the prior, high β ≈ optimizer mode ("give
+me your best guess at my perfect patch"). **Default 2.0.**
+
+**The taste tilt.** Once a posterior exists, the fitted structural coefficients
+reshape the grammar's *categorical proposal weights*, not only the score:
+
+```
+w'_i ∝ w_i · clamp(exp(η · t_i), 1/4, 4)      η = proposal_tilt, default 0.6
+```
+
+The clamp is load-bearing: without it a confidently-fitted coefficient could
+drive a kind's proposal weight to effectively zero, and a prior that cannot
+*generate* an option can never be argued back into it. Each `t_i` is
+share-weighted across lenses and shrunk by its own uncertainty
+(`θ · |θ|/(|θ|+σ)`), a smooth ramp rather than a significance cut — a threshold
+crossing would present to the user as a different instrument arriving
+mid-session.
+
+The tilt reads the **structural** half of θ. `n_filter` maps onto the filter
+production; `centroid_mean` maps onto no single production, so the audio half
+influences scoring only.
+
+**What ships is not a sample from π_β.** Refinement runs a short adaptive
+single-site MH walk warm-started from each of the best pool members and keeps
+the final state: local hill-climbing *on* that target, which is what a candidate
+pool needs, rather than a draw *from* it. The split is **40 steps × 10 seeds**,
+both scaled from `N_OPS` so a palette change does not silently change the
+search's character, and both measured — moving in either direction scores worse
+against a synthetic user. Tempered SMC with the crossover population kernel
+remains the design; the claim is stated here as an intention, not as a
+description of the code.
+
+**Locks are exact.** Freezing a set of trace addresses and rejecting any
+proposal that changes, deletes **or creates** one of them is Metropolis-within-
+Gibbs on the conditional posterior. All three directions matter: checking only
+the current trace would let a *birth* at a locked address through while
+rejecting the death that undoes it, which breaks detailed balance and lets the
+chain drift into locked structure it can never leave. The guarantee is over
+**addresses**, not subtrees — a structural move can grow a brand-new address
+inside a locked module, and that case is symmetric, so it costs nothing in
+correctness.
 
 ### 1.5 The two-loop engine
 
@@ -135,172 +248,273 @@ an intention, not as a description of the code.
 │  local MH toward π_β: grammar prior → subtree moves →     │
 │  struct-screen → render survivors → feature-score          │
 └──────────────┬────────────────────────────────────────────┘
-               │ candidate pool
+               │ candidate pool (pool_size 48; the web app asks for 40)
                ▼
    acquisition: choose what to play the user
-   (exploit: high E[u]   /   explore: max expected info gain on θ)
+   (uniform random pairing by default; BALD selectable)
                │ audition + feedback events
                ▼
 ┌─ taste loop (slow, human-paced, persistent) ──────────────┐
-│  observe events → posterior over (θ, z, τ, cutpoints)      │
+│  observe events → posterior over (θ, τ, cutpoints)         │
 │  persisted across sessions = the user model                │
 └───────────────────────────────────────────────────────────┘
 ```
 
-The acquisition step is where θ's posterior *uncertainty* earns its keep: early
-sessions ask informative questions (duels the model can't rank); a confident
-model mostly serves things the user will like. This is preferential Bayesian
-optimization with SMC as the candidate generator. It also addresses interactive
-evolution's classic failure (the human bottleneck, which v1 hit): the machine
-evolves thousands of candidates against the surrogate silently and surfaces
-only a curated few.
+The asymmetry is the point: the machine evaluates thousands of candidates
+against the surrogate silently and surfaces only a curated few. That is what
+addresses interactive evolution's classic failure, the human bottleneck that
+v1 hit — being asked to rate a whole population every generation until you quit.
+
+The taste loop runs at two speeds. Between refits, each new observation folds
+into the existing draws by **importance sampling**, which is exact and costs
+`O(S)`; that is what makes the next question respond to the last answer. A
+**refit** is full MCMC over the log (10 000 post-warmup steps after 3 000
+warmup, thinned to ≤ 500 draws). The trigger is not "every n duels" — it fires
+when the reweighted posterior's effective sample size has degraded far enough
+that resampling was needed.
+
+**On acquisition.** The design's argument is that θ's posterior *uncertainty*
+lets early sessions ask informative questions (duels the model cannot rank)
+while a confident model mostly serves things the user will like. That framing is
+right, and the measurement says the machinery is not currently paying for
+itself: over 20 seeds with common random numbers, in both a static i.i.d. pool
+and an evolving one, **BALD ties uniform random pairing** on every metric while
+Thompson sampling loses decisively (it is a best-arm rule, and finding the top
+patch is not the objective). So the default is uniform pairing, which has no
+tuning constants and makes *every* duel an unbiased calibration sample. BALD is
+kept and selectable; the tie is a measurement that should stay re-runnable, and
+a larger pool or a longer session is where it would be expected to break.
+
+This is still preferential Bayesian optimization: a latent objective, an
+expensive oracle, a cheap surrogate, and a generator of candidates.
+
+### 1.6 Calibration: the model can be wrong in public
+
+Every duel is **forecast before it is answered** — `record_duel` scores the
+posterior's `P(A wins)` and only then appends the observation — so every
+forecast is a genuine out-of-sample, one-step-ahead prediction.
+
+Those forecasts are scored with **Brier skill** against the always-say-0.5
+baseline, not accuracy. Accuracy is not a proper scoring rule: a model that says
+0.51 every time and is right 51% of the time scores identically to one that says
+0.99 and is right 51% of the time. Worse, an information-seeking pairing rule
+deliberately asks near-ties, so a hit rate is pinned near chance *by
+construction* and a perfectly calibrated model would look like a coin flip.
+
+Because acquisition chooses which duels get scored, a fraction are drawn
+uniformly at random and flagged as **check duels**; calibration restricted to
+those is unbiased. With the shipped default rule every duel is already such a
+sample.
 
 ---
 
 ## 2. Audition & feature pipeline
 
-- **Standard phrase:** every candidate auto-renders a fixed short phrase used
-  for *both* default playback and φ_audio. Features are only comparable across
-  patches under an identical stimulus. The v2 phrase (~5 s) covers what the
-  grammar can express: a long held root (slow attacks, sub-Hz modulation), a C5
-  stab (upper-register response), a two-voice dyad (polyphonic stacking), and a
-  low note with a long release window (bass register, tails). Audio feature
-  names carry a stimulus tag (`centroid_mean:p2`) because a stimulus change
-  changes what every audio value *means*. The tag is what lets the by-name
-  observation log migrate honestly across phrase generations. Free-play
-  (keyboard) is always available on any candidate before judging. **Later:**
-  discovered styles pick their own audition phrase (bass style → bassline, pad
-  style → chord swell).
-- **Loudness normalization:** every render is LUFS-normalized before audition
-  *and* feature extraction. Louder always wins A/B; unnormalized loudness would
-  poison θ.
-- **Deterministic renders:** fixed RNG seed for noise/analog drift so a patch's
-  features are reproducible across the SMC loop.
+- **Standard phrase:** every candidate auto-renders a fixed phrase used for
+  *both* default playback and φ_audio. Features are only comparable across
+  patches under an identical stimulus. The shipped phrase is **~5.05 s at
+  44.1 kHz**, four notes: a **C4 held 1.8 s** (slow attacks, sub-Hz modulation
+  over a register-constant span), a **C5 stab** (upper-register response), a
+  **C4+E4 dyad** on a second voice (polyphonic stacking and intermodulation),
+  and a **C3 with a 1.1 s release window kept last** (bass register, and a tail
+  measurement that sees release and reverb rather than a truncated chord).
+  Audio feature names carry a stimulus tag (`centroid_mean:p2`) because a
+  stimulus change changes what every audio value *means*. The tag is what lets
+  the by-name observation log migrate honestly across phrase generations.
+  Free-play (keyboard) is always available on any candidate before judging.
+  **Later:** discovered styles pick their own audition phrase (bass style →
+  bassline, pad style → chord swell); the tag is the mechanism that would let
+  that happen without invalidating history.
+- **Loudness normalization:** every render is normalized to **−18 LUFS**
+  (ITU-R BS.1770 K-weighting, 400 ms gated blocks) before audition *and*
+  feature extraction. Louder always wins A/B; unnormalized loudness would
+  poison θ. The boost is capped at +30 dB — a patch needing more is a vetting
+  problem, not something to amplify.
+- **Deterministic renders:** a fixed RNG seed (`0xE05_F00D`) for noise and
+  analog drift, so a patch's features are bit-reproducible every time it is
+  measured.
+- **Memoized renders:** the MH walk re-scores its own current state on every
+  step, so without a memo one render in two would recompute a number the walk
+  already has. This is what makes the walk affordable, not a micro-optimization.
 - **Output safety:** hard-wired `Limiter` on every evolved patch.
 
 ### 2.1 Robustness & safety: randomly composed graphs must not hurt anyone
 
 Evolution *will* generate pathological patches: screaming resonance, silent
-duds, NaN-poisoned state, astronomically high pitches. Safety is layered:
+duds, NaN-poisoned state, astronomically high pitches. Safety is layered.
 
-**Layer 0 — quiver (verified 2026-07-28, hardened where needed).** Quiver was
-already substantially hardened for this: denormals flushed at graph scatter
+**Layer 0 — quiver.** Verified 2026-07-28 and hardened where needed. Quiver was
+already substantially prepared for this: denormals flushed at graph scatter
 (Q108), NaN-latch protection on stateful modules (Q160 family:
-filters/limiter/EQ sanitize inputs so non-finite samples can't poison recursive
-state), soft-clipped SVF state, cycle detection with named-path errors,
-actionable `PatchError`s (`InvalidPort` lists available ports), and
+filters/limiter/EQ sanitize inputs so non-finite samples can't poison
+recursive state), soft-clipped SVF state, cycle detection with named-path
+errors, actionable `PatchError`s (`InvalidPort` lists available ports), and
 `ValidationMode::Strict` for typed connections. Two gaps were found and fixed
 upstream:
 
-- **Q198.** Oscillator phase accumulators latched NaN permanently (`NaN −
-  floor(NaN)`) on non-finite pitch, and the `while phase >= 1.0` wrap style
-  (Wavetable, FormantOsc) **spun the audio thread forever** on an `inf`
-  increment (`voct_to_hz` overflows at extreme V/Oct). Fixed with a shared O(1)
-  `wrap_phase` that recovers non-finite values.
-- **Q199.** Graph scatter now zeroes non-finite module outputs, so one module's
-  NaN/Inf can never poison another module's state through the routing buffers.
-  Containment at the graph boundary; per-module input sanitization remains
-  defense-in-depth for a module's own state.
+- **Q198.** Oscillator phase accumulators latched NaN permanently
+  (`NaN − floor(NaN)`) on non-finite pitch, and the `while phase >= 1.0` wrap
+  style (Wavetable, FormantOsc) **spun the audio thread forever** on an `inf`
+  increment (`voct_to_hz` overflows at extreme V/Oct). Fixed with a shared
+  O(1) `wrap_phase` that recovers non-finite values.
+- **Q199.** Graph scatter now zeroes non-finite module outputs, so one
+  module's NaN/Inf can never poison another module's state through the
+  routing buffers. Containment at the graph boundary; per-module input
+  sanitization remains defense-in-depth for a module's own state.
 
-**Layer 1 — the vetting gate (auracle-features).** *No candidate is ever played
-live unvetted.* Audition plays **pre-rendered, LUFS-normalized buffers**; the
-standard-phrase render doubles as a health check producing a vet report:
-all-finite, peak ceiling, not-silent (RMS floor), DC fraction, clip fraction.
-Failures are quarantined — never played, never shown.
+**Layer 1 — the vetting gate (auracle-features).** *No candidate is ever
+played live unvetted.* Audition plays **pre-rendered, LUFS-normalized
+buffers**; the standard-phrase render doubles as a health check producing a
+`VetReport` of peak, RMS, DC ratio and pinned fraction. Failures — non-finite,
+silent (RMS < 1e-4), overlevel (peak > ceiling), DC-dominated (|mean|/RMS > 0.6)
+— are quarantined: never played, never shown. The peak ceiling scales with the
+phrase's polyphony (`2.0 + 1.5(V−1)`), because N gate-synced voices legitimately
+sum toward N× one voice and the dyad segment exists precisely to measure that.
+Pinned fraction is informational only; heavy limiting is a character, not a
+fault. Thresholds are deliberately lenient — the gate catches pathology, it does
+not encode taste, and a gate that quietly enforces a preference corrupts the
+data it protects.
 
 **Layer 2 — fitness shaping.** Quarantined patches don't just get hidden: they
-contribute `−∞`/large-negative factors in the SMC target (or are rejected at
-the struct-screening stage), so evolution learns to avoid the pathological
-region rather than repeatedly sampling it.
+score `QUARANTINE_FITNESS = −50.0` in the search target, so evolution learns to
+avoid the pathological region rather than repeatedly sampling it. Hiding alone
+would leave the search spending its budget somewhere it cannot observe is bad.
 
-**Layer 3 — the live path (free-play).** Only vetted patches are free-playable,
-and the compiled output chain is mandatory: `… → Limiter → StereoOutput`
-(limiter compiled in by `auracle-grammar`, not optional), on top of quiver's
-scatter sanitization. Parameter priors are bounded (V/Oct range, resonance,
-delay feedback), so the grammar can't even express the most degenerate
-settings.
+**Layer 3 — the live path (free-play).** Only vetted patches are
+free-playable, and the compiled output chain is mandatory:
+`… → DC blocker → VCA (amp ADSR) → Limiter → StereoOutput`, emitted by
+`auracle-grammar` rather than left optional, on top of quiver's scatter
+sanitization. Parameter priors are bounded (resonance max 0.85, delay feedback
+max 0.7, V/Oct into an audible band), so the grammar can't even express the most
+degenerate settings.
 
 **Layer 4 — Strict validation as an oracle.** Grammar output is compiled with
-`ValidationMode::Strict`. Because the grammar is typed, a `SignalMismatch` is
-by construction a *bug in our grammar*, so Strict doubles as a property-test
-oracle: sample N terms, compile all, any error fails the test with quiver's
-actionable message.
+`ValidationMode::Strict` in the test suite. Because the grammar is typed, a
+`SignalMismatch` is by construction a *bug in our grammar*, so Strict doubles as
+a property-test oracle: sample N terms, compile all, any error fails the test
+with quiver's actionable message. Patches are *wired* in `Warn` mode, because
+Strict rejects two warning-class pairings the compiler uses deliberately; an
+allowlist test pins those two classes so "we know about these" cannot drift into
+"we ignore all warnings".
+
+**Non-audio safety.** Two gates of the same kind, applied elsewhere: everything
+a user or a file can name is escaped at every interpolation (a patch name is
+attacker-controlled input, and the same sink is fed by imported patch JSON), and
+`FeaturizeError::OutOfDomain` refuses to *measure* a term with a knob outside
+its range before spending the render, because a row the model cannot interpret
+must not enter the log.
 
 ---
 
 ## 3. Architecture
 
-Core-library-first; every frontend is a thin shell.
+Core-library-first; every frontend is a thin shell. Dependencies run strictly
+downward — `grammar` knows nothing of features, `features` nothing of taste,
+`taste` nothing of the engine.
 
 ```
 auracle/
   crates/
     auracle-grammar    typed PCFG over quiver combinator terms; GenomePrior impl;
-                        term → quiver Patch compiler; v1 palette
-    auracle-features   standard-phrase headless rendering (quiver), LUFS norm,
-                        φ_audio + φ_struct extraction
-    auracle-taste      utility model (mixture-BLR), three likelihoods,
-                        (θ, z, τ) posterior via fugue; profile persistence
+                        canonical trace codec; term → quiver Patch compiler with
+                        live parameter handles; structural edit ops; term diff;
+                        rack description; the preset library
+                        (term, prior, genome, compile, mutate, edit, diff,
+                         describe, presets)
+    auracle-features   standard-phrase headless rendering (quiver), vet gate,
+                        BS.1770 LUFS normalization, φ_audio + φ_struct,
+                        render memoization
+                        (phrase, render, vet, loudness, audio, structural,
+                         pipeline, cache)
+    auracle-taste      max-of-experts utility, three likelihoods, MCMC
+                        posterior + importance reweighting, standardization
+                        with runaway-column detection, the synthetic user
+                        (model, observe, standardize, synthetic)
     auracle-session    two-loop engine, acquisition, candidate pool,
-                        observation log, taste profiles
-    auracle-wasm       wasm-bindgen surface for the web app
+                        observation log, refinement, lineage, prequential
+                        calibration, the taste map projection, generated
+                        names, indexed draw seeding, version migration
+                        (engine, surrogate, calib, map, naming, farm, migrate)
+    auracle-wasm       WasmEngine (worker-side brain) + LivePoly
+                        (worklet-side instrument)
   apps/
-    web                 first frontend: AudioWorklet playback, worker-based
-                        candidate rendering, duel/grid/radio modes
+    web                 the instrument: PLAY / EVOLVE / TASTE, patch bank,
+                        keyboard dock. Vanilla JS, no build step
+  www/                  the published site: landing page, two mdBooks, the
+                        shared theme, the live-figure runtime
 ```
 
-Dependency coordinates (path deps during development): `fugue-ppl` 0.2.1
-(`../fugue-ecosystem/fugue`), `fugue-evo` 0.3.1
-(`../fugue-ecosystem/fugue-evo`), `quiver-dsp` 0.1.0 (`../quiver`, lib name
-`quiver`).
+Dependencies come from **crates.io** (`quiver-dsp` 0.2.0, `fugue-evo` 0.3.1,
+`fugue-ppl` 0.2.1), so a single clone builds. To work on them alongside
+Auracle, put sibling checkouts at `../quiver` and
+`../fugue-ecosystem/{fugue,fugue-evo}` and uncomment the `[patch.crates-io]`
+block at the bottom of the workspace `Cargo.toml` (don't commit it uncommented).
 
 **Platform strategy:** web/WASM first (both deps ship first-class WASM; fastest
-iteration on the unsettled interaction design). Then desktop plugin via
-`nih-plug` (VST3/CLAP), then AUv3 via a Swift shell. Plugin caveat: inference
-and rendering stay off the audio thread; the audio thread only plays the
-current patch.
+iteration on the unsettled interaction design) — this is what exists. Then
+desktop plugin via `nih-plug` (VST3/CLAP), then AUv3 via a Swift shell; neither
+is started. Plugin caveat: inference and rendering stay off the audio thread;
+the audio thread only plays the current patch.
 
 ### Session UX
 
-All modes are emitters into the same observation stream:
+All modes are emitters into the same observation stream. The build order was
+duels → grid → radio, sequenced by signal quality.
 
-1. **Duel stream + bench.** The core loop is A/B duels; winners accumulate on a
-   bench where stars, keep/kill, free-play, and export happen naturally.
-2. **Population grid.** See a generation at once, rate/cull/breed; keeps v1's
-   "generations" mental model for users who want to steer.
-3. **Radio mode.** A lean-back continuous stream with keep/kill/skip; the
+1. **Duel stream + workbench — shipped.** The core loop is A/B duels in
+   **EVOLVE**; candidates land on the **PLAY** workbench where stars,
+   free-play, hand edits, locks and export happen. **TASTE** is the model
+   reporting on itself: the map, the style lenses, their coefficients with
+   credible intervals, and the calibration diagram.
+2. **Population grid — open.** See a generation at once, rate/cull/breed; keeps
+   v1's "generations" mental model for users who want to steer. This is where
+   keep/kill triage would get its surface (§1.3).
+3. **Radio mode — open.** Lean-back continuous stream with keep/kill/skip; the
    payoff once generation quality is high.
+
+The app grew a large amount beyond the original duel-mode scope on the way:
+four-voice AudioWorklet polyphony, MIDI, an arpeggiator, an interactive lockable
+rack with typed rewiring and a node bank, three separate banks, session
+persistence in IndexedDB, and a 61-patch preset library across seven families.
 
 ---
 
 ## 4. Milestones
 
-| # | Deliverable | Demo / gate |
-|---|---|---|
-| M0 | Workspace scaffold, CI | `cargo check` green |
-| M1 | `auracle-grammar`: PCFG, palette, term→Patch compiler | Play random grammar samples (already fun) |
-| M2 | `auracle-features`: phrase renderer, LUFS, feature vector | Feature vectors stable & reproducible for fixed seeds |
-| M3 | `auracle-taste`: mixture-BLR (K=1), 3 likelihoods, **synthetic user** | Posterior recovers ground-truth θ*; regret shrinks |
-| M4 | `auracle-session`: two-loop engine + acquisition | Headless closed loop vs synthetic user |
-| M5 | WASM + web app: duel mode + bench | A human can teach it their taste |
-| M6 | Grid & radio modes; K>1 style discovery; named profiles | Styles discovered & pinnable |
+| # | Deliverable | Demo / gate | Status |
+|---|---|---|---|
+| M0 | Workspace scaffold, CI | `cargo check` green | ✅ |
+| M1 | `auracle-grammar`: PCFG, palette, term→Patch compiler | Play random grammar samples (already fun) | ✅ |
+| M2 | `auracle-features`: phrase renderer, LUFS, feature vector | Feature vectors stable & reproducible for fixed seeds | ✅ |
+| M3 | `auracle-taste`: mixture-BLR (K=1), 3 likelihoods, **synthetic user** | Posterior recovers ground-truth θ*; regret shrinks | ✅ |
+| M4 | `auracle-session`: two-loop engine + acquisition | Headless closed loop vs synthetic user | ✅ |
+| M5 | WASM + web app: duel mode + bench | A human can teach it their taste | ✅ |
+| M6 | Grid & radio modes; K>1 style discovery; named profiles | Styles discovered & pinnable | ◑ |
 
-**Status (2026-07-30):** M0–M5 complete; of M6, K>1 style discovery and
-nameable styles have shipped (dynamic K, max-of-experts — see the decisions
-log), grid & radio modes remain open. Since M5 the app has grown past the
-original scope: a playable instrument (AudioWorklet polyphony, MIDI,
-arpeggiator), an interactive lockable rack with typed rewiring, session
-persistence, taste-tilted evolution proposals, and duel-forecast calibration.
-See [`CHANGELOG.md`](./CHANGELOG.md) for the pass-by-pass record.
+**Status (2026-08-05).** M0–M5 complete. Of M6, K>1 style discovery has shipped
+(dynamic K, max-of-experts, post-hoc label alignment), styles are nameable and
+persist, and profiles export and import as a portable observation log plus its
+standardizer. **Grid and radio modes remain open**, and with them keep/kill's
+only intended UI surface.
+
+Released at **0.2.0**. See [`CHANGELOG.md`](./CHANGELOG.md) for the
+pass-by-pass record.
 
 ### The synthetic user (the M3 gate)
 
-Before any UI exists, the taste crate is validated against a simulated user:
+Before any UI existed, the taste crate was validated against a simulated user:
 ground-truth θ* (and ground-truth styles for K>1), synthetic
 duels/stars/keep-kills with realistic noise, asserting (a) posterior
 concentration on θ*, (b) shrinking regret of the acquisition loop. It makes the
-core falsifiable headlessly, and later doubles as a demo mode ("watch it learn
-a fake user in fast-forward").
+core falsifiable headlessly, and later doubles as a demo mode ("watch it learn a
+fake user in fast-forward").
+
+It has since become the harness the engine's own tuning is settled on:
+`search_health --budget-ab` chose the 40 × 10 refinement split, and
+`learn_synthetic --compare` produced the acquisition measurement in §1.5. The
+closed-loop test runs the *real* grammar → render → vet → feature pipeline and
+is the only test in the workspace that can fail when the loop is broken while
+every component is individually correct.
 
 ---
 
@@ -309,34 +523,58 @@ a fake user in fast-forward").
 | Decision | Choice | Rationale |
 |---|---|---|
 | Genome representation | Typed combinator-term PCFG (not raw graph, not NEAT) | Types make every sample valid; reuses fugue-evo grammar machinery; all 3 evolution levels in one rep |
-| Feedback signals | Pairwise duels + stars (ordinal) + keep/kill; **no** implicit signals in v1 | One latent utility, three likelihoods; duels primary |
-| Taste features | φ_audio + φ_struct | Transfer across topologies + free structural screening |
-| Utility form | **Max of linear experts** `u = max_k θ_k·φ`, K = 3 | Multi-modal taste; handles cross-island duels (per-observation and per-session latent-z designs both fail there); no discrete sites; K=1 ≡ BLR |
-| Preference sets | Discovered style lenses, aligned post-hoc; nameable/pinnable later | A lens claiming ≈0% of the pool is idle — K is an upper bound |
-| Locks / partial evolution | Freeze any set of trace addresses; MH proposals touching them are rejected outside the kernel | Exactly Metropolis-within-Gibbs on the conditional posterior, so locking is exact rather than heuristic |
-| Hand edits | Knob turn = write at a trace address; commit inserts as new candidate; optional "edit beats original" duel | Panel and genome share one encoding, so edits, locks, and evolution cannot drift |
-| Profile portability | Export = observation log **+ standardizer** | θ is only meaningful relative to its standardizer; they persist together |
-| Palette v1 | ~10 curated modules | Validate pipeline; enough texture axes to learn on |
-| Feedback loops in grammar | Not in v1 (DAG terms only) | Stability; internal-feedback modules still allowed |
-| Audition | Standard mono phrase + free-play; per-style phrases later | Feature comparability requires fixed stimulus |
-| Loudness | LUFS-normalize all renders | Loudness bias would poison the preference data |
+| Feedback signals | Pairwise duels + stars (ordinal) + keep/kill; **no** implicit signals | One latent utility, three likelihoods; duels primary |
+| Taste features | φ_audio (15) + φ_struct (25) = φ ∈ ℝ⁴⁰ | Transfer across topologies + free structural screening |
+| Feature axes | Log-frequency, logged heavy tails, families not per-module columns | The model is linear in φ, so the axis decides what is *expressible*; sparse columns are coefficients fitted on a handful of rows |
+| Utility form | **Max of linear experts** `u = max_k θ_k·z`, K = 5 | Multi-modal taste; handles cross-island duels (per-observation and per-session latent-z designs both fail there); no discrete sites; K=1 ≡ BLR |
+| Preference sets | Discovered style lenses, aligned post-hoc; nameable and persisted | A lens claiming ≈0% of the pool is idle — K is an upper bound |
+| Locks / partial evolution | Freeze any set of trace addresses; MH proposals touching them are rejected outside the kernel, in **both** directions | Exactly Metropolis-within-Gibbs on the conditional posterior, so locking is exact rather than heuristic |
+| Hand edits | Knob turn = write at a trace address; commit inserts as new candidate; optional "edit beats original" duel, provenance-tagged | Panel and genome share one encoding, so edits, locks, and evolution cannot drift |
+| Profile portability | Export = observation log **+ standardizer**; log stores **raw** φ by name | θ is only meaningful relative to its standardizer; by-name raw storage is what lets the feature set change without re-interpreting history |
+| Palette | 41 productions: 6 sources, 20 processors, 15 modulators; categorical orders are append-only wire format | Enough texture axes to learn on; the codec writes indices into the trace |
+| Feedback loops in grammar | Not yet (DAG terms only) | Stability; internal-feedback modules still allowed |
+| Audition | Standard 5.05 s phrase + free-play; per-style phrases later | Feature comparability requires fixed stimulus |
+| Loudness | LUFS-normalize all renders to −18 | Loudness bias would poison the preference data |
+| Acquisition | **Uniform random pairing** by default; BALD selectable, Thompson kept for contrast | Measured tie with BALD over 20 paired seeds in two pool regimes; uniform has no tuning constants and makes every duel an unbiased calibration sample |
+| Calibration metric | Brier skill against the 0.5 baseline, plus random check duels | Accuracy is not proper and is pinned near chance by an information-seeking pairing rule |
+| Recency | Discounted likelihood, half-life 150 observations | Taste is allowed to change; stationarity is the wrong assumption about a person |
 | First frontend | Web / WASM | Both deps ship WASM; fastest UX iteration; shareable |
 | Session UX | All three modes, built duels → grid → radio | Same observation stream; sequenced by signal quality |
 | Safety | Vetting gate: audition = pre-rendered vetted buffers, never live unvetted patches | One render serves health-check, features, and playback; quarantine + fitness shaping teach evolution to avoid pathology (§2.1) |
 
 ## 6. Open questions
 
-- Exact standard-phrase spec (notes, tempo, length) and feature list for φ_audio.
-- Acquisition function specifics (expected information gain vs. dueling-bandit
-  heuristics; exploit/explore schedule).
-- Grammar production weights: hand-tuned at first — when and how does θ_struct
-  begin reshaping them?
-- Online inference budget in WASM (SMC particle counts, render throughput in
-  workers) — measure at M5.
-- Cross-session persistence format for the observation log + posterior (re-run
-  inference from the log vs. serialized posterior snapshots).
-- Remaining quiver hardening (non-blocking, tracked upstream): `voct_to_hz` is
-  unclamped (overflow now *recovered* by Q198 rather than prevented; a pitch
-  clamp would also tame aliasing garbage at absurd-but-finite pitches);
-  sanitize-coverage audit of the v1 palette's remaining modules; exact vet
-  thresholds (peak/RMS/DC) to be calibrated in M2.
+- **Tempered SMC for generation.** §1.4's target is written down but not sampled
+  from. Whether the crossover population kernel is worth the complexity over
+  local climbing is untested; the measured non-concentration of the pool (it
+  *widens* slightly over a session) weakens the diversity argument for it.
+- **Cross-island discovery.** Local refinement from island A will not find
+  island B. A tempering schedule would cross the valley; today the user reaches
+  the second island by hand or by the prior.
+- **A feedback production in the grammar**, with a mandatory attenuator and
+  limiter in the loop path.
+- **Per-style audition phrases** — a discovered bass style picks a bassline, a
+  pad style a chord swell. The `:p2` stimulus tag is the migration mechanism
+  that would let this land without invalidating history.
+- **Where acquisition would earn its keep.** BALD ties uniform pairing at
+  session horizon. A much larger pool or a much longer session is where the tie
+  should break; neither has been measured.
+- **Fit cost at the K cap.** Single-site MH re-executes the whole program per
+  step, so a mature fit is both slower and statistically thinner than an early
+  one (205 + S sites over a fixed 10 000 steps ≈ 48 sweeps per site). The
+  address table is hoisted out of the step loop, but the shape of the problem
+  remains.
+- **A `thin` parameter in fugue's chain driver.** `adaptive_mcmc_chain`
+  materializes every step and discards 97% one line later — hundreds of
+  megabytes of transient wasm32 heap for 500 surviving draws. It cannot be
+  fixed on the Auracle side; the pieces needed to reimplement the driver with
+  identical RNG consumption are private in fugue-ppl 0.2.1.
+- **Remaining quiver hardening** (non-blocking, tracked upstream):
+  `voct_to_hz` is unclamped — overflow is now *recovered* by Q198 rather than
+  prevented, and a pitch clamp would also tame aliasing garbage at
+  absurd-but-finite pitches.
+- **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
+  `centroid_mean` carry VIFs of 18.4 / 10.4 / 5.9 — three genuine measurements
+  of one perceptual thing. Dropping any discards real signal; the right fix is
+  a shared or fused prior over the cluster, which is a modelling change and is
+  not done.

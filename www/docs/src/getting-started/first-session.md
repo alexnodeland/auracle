@@ -32,8 +32,8 @@ region.
 you would say about it.</figcaption>
 </figure>
 
-On first run you are shown nine presets, sampled one per family from the
-built-in library, and asked to pick three.
+On first run you are shown nine presets, drawn one per family from the built-in
+library and then filled out to nine, and asked to pick three.
 
 Do it. It takes thirty seconds and it is worth **18 pairwise observations**:
 each of your three picks beats each of the six you passed over. That is the

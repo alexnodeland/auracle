@@ -104,10 +104,10 @@ check.
 
 `DESIGN.md`'s decision log states this as:
 
-> **Locks / partial evolution** — Freeze any set of trace addresses; MH proposals
-> touching them are rejected outside the kernel. *Exactly Metropolis-within-Gibbs
-> on the conditional posterior, so locking is exact rather than heuristic.*
+> **Locks / partial evolution** — Freeze any set of trace addresses; MH
+> proposals touching them are rejected outside the kernel, in **both**
+> directions. *Exactly Metropolis-within-Gibbs on the conditional posterior, so
+> locking is exact rather than heuristic.*
 
-This page is that claim spelled out, including the one qualification the log
-does not carry: the guarantee is over addresses, and a locked subtree can grow
-a new address.
+This page is that claim spelled out: why both directions are needed, and where
+the address-level guarantee stops.
