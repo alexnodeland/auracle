@@ -213,7 +213,11 @@
     </div>
 
     <figure class="learn-fig">
-      <img src="assets/screens/taste-directions.webp" alt="A coefficient plot: named perceptual coordinates down the left, horizontal amber bars extending left and right of a centre line, each with a thinner whisker showing the credible interval." width="1440" height="900" loading="lazy" decoding="async">
+      <!-- The DIRECTIONS panel, not the frame around it. This figure gets about
+           700px beside the copy, and a whole 1440px app frame at that width is
+           a 0.46× reduction — the plot becomes a smear and the bank and the
+           keyboard take up half of it for nothing. -->
+      <img src="assets/screens/directions-detail.webp" alt="A coefficient plot: named perceptual coordinates down the left, horizontal amber bars extending left and right of a centre line, each with a thinner whisker showing the credible interval." width="1160" height="621" loading="lazy" decoding="async">
       <figcaption>Every coefficient with its credible interval. A long bar whose
       whisker crosses the centre line is a guess, and the display says so.</figcaption>
     </figure>
@@ -318,7 +322,8 @@
       Built on <a href="https://github.com/alexnodeland/fugue-evo">fugue-evo</a>
       (evolution as Bayesian inference) and
       <a href="https://github.com/alexnodeland/quiver">quiver</a> (patch-graph DSP).
-      MIT licensed.
+      MIT licensed. © 2026
+      <a href="https://alexnodeland.com" rel="author">Alex Nodeland</a>.
     </p>
   </div>
 </footer>

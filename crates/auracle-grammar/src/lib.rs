@@ -19,7 +19,7 @@
 //! subtree mutation/crossover are generic trace moves and tempered SMC / typed
 //! MH come for free.
 //!
-//! ## v1 constraints (DESIGN.md §1.1, §2.1)
+//! ## v1 constraints (the reference: *The genome*, *The vetting gate*)
 //!
 //! - Acyclic terms only — no feedback combinator productions. Modules with
 //!   *internal* feedback (delay, chorus) are allowed.

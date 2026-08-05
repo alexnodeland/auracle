@@ -4,7 +4,7 @@
 //! stimulus and extracts the feature vector `φ(x) = [φ_audio ; φ_struct]`
 //! that the taste model scores.
 //!
-//! ## Pipeline invariants (DESIGN.md §2)
+//! ## Pipeline invariants (the reference: *Audition*, *Features*)
 //!
 //! - **Standard phrase** ([`phrase::PhraseSpec`]): a fixed short mono phrase;
 //!   features are only comparable across patches under an identical stimulus.

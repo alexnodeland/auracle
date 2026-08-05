@@ -226,7 +226,7 @@ to a pinned `role="alert"` strip that stays until resolved.
   still to be built.
 - **main.js** is UI + WebAudio: audition plays pre-rendered, LUFS-normalized
   buffers transferred from the worker (never a live unvetted patch —
-  DESIGN.md §2.1). Green phosphor = audio; amber = the model's mind.
+  the vetting gate). Green phosphor = audio; amber = the model's mind.
 - **Workbench**: open any candidate (⌖ on a duel side, ⌖ on a bench keeper,
   or click a taste-map dot) to see its full rack — modules, patch cables,
   knobs at their true positions. Drag knobs / click selectors to edit (each

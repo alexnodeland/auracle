@@ -1,9 +1,36 @@
-# Development Guide
+# Contributing to Auracle
 
-This document is for people working **on** Auracle (rather than playing it).
-For the design rationale and decisions log see [`DESIGN.md`](./DESIGN.md); for
-the web app's internals see [`apps/web/README.md`](./apps/web/README.md); for
-the documentation site see [`www/README.md`](./www/README.md).
+This document is for people working **on** Auracle rather than playing it: the
+layout, the workflow, the quality bar, the sharp edges, and how a release is
+cut. It follows the same conventions as
+[quiver](https://github.com/alexnodeland/quiver) and the
+[fugue ecosystem](https://github.com/alexnodeland/fugue).
+
+For the web app's internals see [`apps/web/README.md`](./apps/web/README.md);
+for the documentation site see [`www/README.md`](./www/README.md); for how the
+instrument works see the [technical
+reference](https://alexnodeland.github.io/auracle/reference/), which holds the
+model, the search, and the [design
+decisions](https://alexnodeland.github.io/auracle/reference/design/decisions.html).
+
+## Code of Conduct
+
+This project follows the
+[Rust Code of Conduct](https://www.rust-lang.org/policies/code-of-conduct).
+Be respectful and constructive.
+
+## Getting started
+
+1. **Fork and clone.** The in-house foundations (`quiver-dsp`, `fugue-ppl`,
+   `fugue-evo`) come from **crates.io**, so a single clone builds. To hack on
+   them alongside Auracle, put sibling checkouts at `../quiver` and
+   `../fugue-ecosystem/{fugue,fugue-evo}` and uncomment the `[patch.crates-io]`
+   block at the bottom of the workspace `Cargo.toml` — don't commit the
+   uncommented patch.
+2. **Install Rust** (stable) via [rustup](https://rustup.rs/), plus
+   [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) if you're touching the
+   web app.
+3. **Verify your setup** with `make check`.
 
 ## Layout
 
@@ -19,13 +46,10 @@ apps/web/              the instrument (vanilla JS, no build step)
 www/                   the site: landing page + two mdBooks + the shared theme
 ```
 
-The in-house foundations come from **crates.io** (`quiver-dsp`, `fugue-ppl`,
-`fugue-evo`), so a single clone builds. To hack on them alongside Auracle, put
-sibling checkouts at `../quiver` and `../fugue-ecosystem/{fugue,fugue-evo}` and
-uncomment the `[patch.crates-io]` block at the bottom of the workspace
-`Cargo.toml` (don't commit the uncommented patch).
-
 ## Workflow
+
+Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
+`fix/arp-gate-length`, `docs/…`), then:
 
 ```bash
 make check          # fmt-check + clippy -D warnings + release tests (CI gate)
@@ -82,6 +106,10 @@ requires the result to stay compilable; the live-audio tests assert numeric
 properties of rendered samples (fade boundaries, smoother convergence, chaos
 survival). Prefer extending a gate over asserting implementation details.
 
+Audio-thread code (`LivePoly`) must stay allocation-free per quantum and
+wall-clock-free; there are chaos tests that will catch panics, but review for
+these properties explicitly.
+
 ## Sharp edges
 
 - **AudioWorklets have no `fetch`/`TextDecoder`/`TextEncoder`.** The worklet is
@@ -101,9 +129,20 @@ survival). Prefer extending a gate over asserting implementation details.
 - **Worker replies are load-bearing**: every workbench edit message must get a
   reply (`bench` or `edit_rejected`) or the main thread's in-flight queue
   deadlocks.
+- **Keep wasm-boundary ids `u32`.** wasm-bindgen maps `u64` to `BigInt`, which
+  every arithmetic site on the JS side then has to know about.
+- **A knob drag must not re-render the rack SVG mid-drag** — replacing the
+  element kills pointer capture. The `knobDragging` flag suppresses
+  `renderRack()` until pointerup.
 - **quiver's `Strict` validation rejects warning-class pairs** the compiler
   deliberately uses (constant bipolar Offset → unipolar knob); patches are
   wired in `Warn` mode with an allowlist test pinning the warning classes.
+- **Evolving with everything locked usually finds no accepted move.**
+  Structural proposals shift locked addresses and are rejected. The UI says so
+  ("loosen some locks"). Expected, not a bug.
+- **The closed-loop test scores the *best* lens.** With K lenses and a unimodal
+  synthetic user, lens 0 is not the one that learned the user; asserting on it
+  fails for the wrong reason.
 
 ## Verification beyond `make check`
 
@@ -112,6 +151,31 @@ assertions** (an `AnalyserNode` RMS, boundary-sample checks around patch swaps)
 plus a zero-console-error requirement. Debug hooks for this live at
 `window.__aur` / `window.__aurLog` (`window.__ric` is kept as an alias for
 notes written before the rename).
+
+## Pull requests
+
+1. Keep PRs focused; separate refactors from behavior changes.
+2. Run `make check` locally before pushing; it is exactly what CI enforces. If
+   you changed Rust that the web app uses, rebuild with `make wasm` and
+   smoke-test the instrument (`make serve`, play a patch, watch the console).
+3. Update docs alongside code: `www/reference/` for design decisions and how it
+   works, `www/docs/` for what the instrument *does*, `CHANGELOG.md` under
+   `[Unreleased]` for anything user-visible. That section becomes the release
+   notes verbatim when a version is cut (see [Cutting a
+   release](#cutting-a-release)), so write it for someone who has never seen
+   the repo.
+   - The reference quotes constants by name so they can be grepped when one
+     moves. If you change a default, grep the books for it.
+   - `make site && make site-check` before pushing a docs change. CI runs both.
+4. Add or extend a **gate test** for new behavior. Property-style tests over
+   random trees / synthetic users are preferred over mocks.
+5. CI must be green.
+
+### Commit messages
+
+Conventional-commit style prefixes are used loosely (`feat:`, `fix:`, `docs:`,
+`refactor:`, `chore:`) with an imperative subject line and a body that explains
+*why*.
 
 ## Cutting a release
 
@@ -169,3 +233,7 @@ To rehearse the bundle locally without tagging anything:
 ```bash
 make bundle         # → dist/auracle-web.zip, the same assembly the workflow does
 ```
+
+---
+
+© 2026 [Alex Nodeland](https://alexnodeland.com). MIT licensed.

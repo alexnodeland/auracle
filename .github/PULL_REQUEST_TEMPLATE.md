@@ -15,6 +15,6 @@
 
 - [ ] `make check` passes (fmt, clippy `-D warnings`, release tests)
 - [ ] New behavior is covered by a test (gate/property style preferred)
-- [ ] Docs updated where relevant (`DESIGN.md` / `DEVELOPMENT.md` / `CHANGELOG.md`)
+- [ ] Docs updated where relevant (`www/reference/` / `www/docs/` / `CONTRIBUTING.md` / `CHANGELOG.md`)
 - [ ] If Rust used by the web app changed: rebuilt with `make wasm` and
       smoke-tested the instrument in a browser (no console errors)

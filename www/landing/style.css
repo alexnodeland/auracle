@@ -678,8 +678,11 @@ kbd {
 
 .shot-pane { max-width: var(--wide); margin: 0 auto; }
 
+/* `max-width`, never `width`: a shot fills the pane when it is bigger than the
+   pane and sits at its captured size when it is not. Nothing here is ever
+   published larger than it was captured. */
 .shot-pane img {
-  width: 100%;
+  max-width: 100%;
   height: auto;
   border: 1px solid var(--hairline);
   border-radius: 4px;
@@ -722,8 +725,9 @@ kbd {
 
 .learn-fig { margin: 0; min-width: 0; }
 .learn-fig img {
-  width: 100%;
+  max-width: 100%;
   height: auto;
+  margin-inline: auto;
   border: 1px solid var(--hairline);
   border-radius: 4px;
   background: var(--bezel);

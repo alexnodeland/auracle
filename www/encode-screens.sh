@@ -10,7 +10,7 @@
 # Raw inputs expected in that directory (see SCREENSHOTS.md for the state each
 # one is captured in):
 #   play.png  evolve.png  taste.png  styles.png  directions.png
-#   trust.png  nodebank.png
+#   trust.png  nodebank.png  warmstart.png
 set -euo pipefail
 
 RAW="${1:?usage: encode-screens.sh <dir-of-raw-pngs>}"
@@ -58,6 +58,13 @@ crop play.png      560x300+460+250  rack-detail.webp
 crop evolve.png    1172x60+266+58   teach-meter.webp
 # The bank rail: three banks, per-row prediction, stars, save.
 crop play.png      252x720+0+52     bank.webp
+# The three-pick warm start, cropped to the card. The rest of the frame is the
+# app behind a scrim and carries nothing.
+crop warmstart.png 760x464+340+218  warm-start.webp
+# The DIRECTIONS plot on its own. The landing page shows this beside a column
+# of prose, in about 700px — a full frame at that width is 0.46× and unreadable,
+# so the figure there is the panel rather than the app around it.
+crop directions.png 1160x621+266+140 directions-detail.webp
 
 echo
 printf '%-28s %8s\n' "asset" "bytes"

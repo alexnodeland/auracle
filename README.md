@@ -6,12 +6,18 @@
 Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
 (patch-graph DSP).*
 
-[![Release](https://img.shields.io/github/v/release/alexnodeland/auracle?sort=semver&color=8ef0b1&label=release)](https://github.com/alexnodeland/auracle/releases/latest)
+<!-- One rule, so the row reads as one object rather than six: green belongs to
+     GitHub, amber belongs to us. The two workflow badges are GitHub's own and
+     go red when a check fails, which is the whole point of them — nothing here
+     may override that. Everything else is a fact this README asserts, and is
+     amber on the rack's panel colour. No third colour. -->
+
+[![Release](https://img.shields.io/github/v/release/alexnodeland/auracle?sort=semver&label=release&labelColor=171a1f&color=ffb454)](https://github.com/alexnodeland/auracle/releases/latest)
 [![CI](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml)
 [![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/auracle/)
-[![Docs](https://img.shields.io/badge/docs-guide%20%2B%20reference-8ef0b1)](https://alexnodeland.github.io/auracle/docs/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
+[![Docs](https://img.shields.io/badge/docs-guide%20%2B%20reference-ffb454?labelColor=171a1f)](https://alexnodeland.github.io/auracle/docs/)
+[![License](https://img.shields.io/badge/license-MIT-ffb454?labelColor=171a1f)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-stable-ffb454?labelColor=171a1f)](https://www.rust-lang.org/)
 
 </div>
 
@@ -188,16 +194,17 @@ Two books, published as part of the site and built from `www/`:
   session](https://alexnodeland.github.io/auracle/docs/getting-started/first-session.html).
 - **[Reference](https://alexnodeland.github.io/auracle/reference/)** — how it
   works, with the math. The typed PCFG, the audition pipeline, φ, the
-  max-of-experts posterior, the search, the safety layers. Plus [rustdoc for
-  every
+  max-of-experts posterior, the search, the safety layers. It also holds the
+  [design](https://alexnodeland.github.io/auracle/reference/design/decisions.html)
+  — the decisions log, the milestones and the open questions — so that a
+  choice and the maths it justifies are never two documents that can disagree.
+  Plus [rustdoc for every
   crate](https://alexnodeland.github.io/auracle/reference/api/auracle_session/index.html).
 
 In the repo:
 
-- [`DESIGN.md`](./DESIGN.md) — the canonical design document: genome, taste
-  model, engine, safety layers, decisions log, roadmap.
-- [`DEVELOPMENT.md`](./DEVELOPMENT.md) — working *on* Auracle: layout,
-  workflow, quality bar, sharp edges.
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — working *on* Auracle: layout,
+  workflow, quality bar, sharp edges, cutting a release.
 - [`www/README.md`](./www/README.md) — how the site is assembled, and the
   things about it that fail quietly.
 - [`www/brand/`](./www/brand/) — the mark, the lockups and the icon set, with
@@ -225,15 +232,16 @@ make site-serve   # http://localhost:8643
 make site-check   # every link, asset and anchor must resolve
 ```
 
-See [`DEVELOPMENT.md`](./DEVELOPMENT.md) for the full guide and
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full guide and
 [`www/README.md`](./www/README.md) for the site.
 
 ## 🤝 Contributing
 
-Contributions are welcome — see
-[`.github/CONTRIBUTING.md`](./.github/CONTRIBUTING.md). Run `make check`
-before opening a PR.
+Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). Run
+`make check` before opening a PR.
 
 ## 📄 License
 
 MIT — see [LICENSE](./LICENSE).
+
+© 2026 [Alex Nodeland](https://alexnodeland.com).

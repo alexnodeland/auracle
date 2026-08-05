@@ -1,5 +1,6 @@
-//! Watch the synth learn a fake user's taste in fast-forward (DESIGN.md §4),
-//! and **measure the acquisition function** against its alternatives.
+//! Watch the synth learn a fake user's taste in fast-forward (the reference:
+//! *Milestones*), and **measure the acquisition function** against its
+//! alternatives.
 //!
 //! A synthetic user who likes bright, bassy, filtered, fast-attack patches
 //! answers duels; between rounds the posterior re-fits and the pool re-ranks.

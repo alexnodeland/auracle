@@ -1,4 +1,4 @@
-//! The synthetic user (DESIGN.md §4, the M3 gate).
+//! The synthetic user (the reference: *Milestones*, the M3 gate).
 //!
 //! A ground-truth taste (θ*, τ*, cuts*) that generates noisy feedback exactly
 //! per the observation model. The gate tests assert the posterior recovers

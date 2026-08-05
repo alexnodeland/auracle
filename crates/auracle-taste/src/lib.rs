@@ -7,8 +7,9 @@
 //! u(x) = θ_z · φ(x)        z ~ per-session style latent (mixture of experts)
 //! ```
 //!
-//! One utility, three observation likelihoods in a single fugue program
-//! (DESIGN.md §1.3): Bradley–Terry duels (primary), keep/kill against a
+//! One utility, three observation likelihoods in a single fugue program (the
+//! reference: *One utility, three likelihoods*): Bradley–Terry duels
+//! (primary), keep/kill against a
 //! per-session threshold latent τ, and ordinal star ratings with learned
 //! cutpoints. Inference is fugue's adaptive MH over the taste program;
 //! the [`observe::ObservationLog`] is the profile's source of truth and the

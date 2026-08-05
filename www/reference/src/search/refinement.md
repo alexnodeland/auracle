@@ -5,7 +5,7 @@ Metropolis–Hastings walk. This page is about the difference, because it is eas
 to overstate.</p>
 
 ```admonish warning title="Design versus implementation"
-`DESIGN.md` describes generation as sampling from
+The [design](../design/open-questions.md) describes generation as sampling from
 $\pi_\beta \propto p_{\text{grammar}} \cdot e^{\beta \E[u_\theta]}$ by tempered SMC with a
 crossover population kernel. **That is an intention, not a description of the code.**
 

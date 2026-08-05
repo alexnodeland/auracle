@@ -1,6 +1,6 @@
 //! The full featurization pipeline: compile → render → **vet** → normalize →
 //! extract. One render serves the vet report, the features, and (upstream in
-//! the session layer) the audition buffer — DESIGN.md §2.1's "no candidate is
+//! the session layer) the audition buffer — the vetting gate's "no candidate is
 //! ever played live unvetted" is enforced here by construction.
 
 use auracle_grammar::PatchTree;

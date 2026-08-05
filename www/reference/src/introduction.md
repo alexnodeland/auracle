@@ -63,9 +63,17 @@ without forking a dependency, it is written down.
 ## What lives elsewhere
 
 - The generated API documentation is the [rustdoc](./api.md).
-- Design decisions, rejected alternatives and the roadmap are in
-  [`DESIGN.md`](https://github.com/alexnodeland/auracle/blob/main/DESIGN.md).
 - Using the instrument is the [User Guide](../docs/).
+- Working *on* Auracle — layout, the quality bar, the sharp edges, cutting a
+  release — is
+  [`CONTRIBUTING.md`](https://github.com/alexnodeland/auracle/blob/main/CONTRIBUTING.md).
+- What changed when is
+  [`CHANGELOG.md`](https://github.com/alexnodeland/auracle/blob/main/CHANGELOG.md).
+
+Design decisions, rejected alternatives, the milestones and the open questions
+are **in this book**, under [Design](./design/decisions.md). They used to be a
+`DESIGN.md` at the repo root, which made the reasoning and the maths it
+justifies two documents that could disagree.
 
 ## The two libraries underneath
 
