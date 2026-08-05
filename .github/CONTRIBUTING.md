@@ -43,6 +43,11 @@ Be respectful and constructive.
    notes verbatim when a version is cut (see
    [Cutting a release](../DEVELOPMENT.md#cutting-a-release)), so write it for
    someone who has never seen the repo.
+   - Changing what the instrument *does* usually means changing
+     [`www/docs/`](../www/README.md) too; changing how it *works* usually means
+     `www/reference/`. The reference quotes constants by name so they can be
+     grepped when one moves — if you change a default, grep the books for it.
+   - `make site && make site-check` before pushing a docs change. CI runs both.
 3. Add or extend a **gate test** for new behavior (see
    [`DEVELOPMENT.md`](../DEVELOPMENT.md#quality-bar)) — property-style tests
    over random trees / synthetic users are preferred over mocks.
