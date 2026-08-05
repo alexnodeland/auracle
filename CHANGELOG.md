@@ -8,6 +8,203 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — the audition clipped, and preference data was collected on it
+
+Matching integrated loudness says nothing about the peak, and crest factor spans
+tens of dB across this grammar. `normalize_to` capped *boost* and nothing else,
+so normalizing a percussive patch to −18 LUFS sent it well over full scale.
+Measured over 150 vetted prior draws (`make norm-peak`): **15% of renders peaked
+above 1.0 and 8% above 1.25** — which is where the app's `master.gain = 0.8`
+clips — with a worst case of **4.06**, 12 dB over. After: **nothing over the
+ceiling**, p50 unmoved at 0.623, and the 22 patches that gave up gain are
+exactly the 22 that had been over full scale (mean 3.0 dB, worst 12.2 dB). The
+unmoved median is the check that this is a fault stop and not a re-levelling of
+the whole pool.
+
+The live voice was never exposed to this; `live.rs`'s master limiter has always
+held a 0.98 ceiling. The offline path took the volt divisor and not the limiter,
+and it is the offline path the duels are dealt from — so a clipped audition
+collected a vote about *clipping* rather than about the patch, which is exactly
+the confound loudness normalization exists to remove, one stage later and
+silent.
+
+The fix is **a smaller gain, not a limiter**. `normalize_to` now gives up
+whatever makeup it must for the peak to clear `PEAK_CEILING`, and reports how
+much as `Features::peak_reduction_db` so a surface can say a patch was pulled
+down 3 dB rather than presenting it as merely quiet. A scalar keeps
+`render_playback` bit-identical *by construction* — the property its
+bit-identity test exists to protect — and cannot change timbre at all, where a
+limiter would reshape the waveform and need a second copy of itself in the
+replay path forever. What it costs is stated rather than hidden: the ~15% that
+hit the ceiling audition below target, so loudness matching degrades exactly
+where crest is highest. Quieter is a smaller bias on a preference judgment than
+clipped.
+
+**This moves φ, so it carries the revalidation.** `rms_mean` and `rms_std` are
+the only audio coordinates that are not scale-invariant; everything else is a
+ratio or a spectral shape and cannot see a gain change. Paired 16-seed
+`make climb`, same seeds both sides:
+
+| | mean gain | climbed | gen-6 Δ | max u |
+|---|---|---|---|---|
+| before | +1.877 ± 0.362 | 15/16 | **−0.073** | 6.730 |
+| after | +2.457 ± 0.298 | **16/16** | +0.113 | 8.093 |
+
+Paired difference **+0.579 ± 0.350 (1 se), t = 1.65, 95% CI [−0.121, +1.280]**,
+improving on 11 of 16 seeds. **That crosses zero: the headline gain is not
+significant** and is not claimed as one. What the run does establish is the
+thing the standing rule exists to check — the change does not cost the search
+anything — and three secondary readings point the same way: every seed now
+climbs (the one that previously went backwards, `1209` at −1.036, now returns
++0.908), the frontier is higher, and the generation curve **stopped turning
+over** (mean utility used to peak at generation 5 and *fall* at 6; it is still
+rising at 6).
+
+The grading function itself did not move, which is what makes this comparison
+unusually clean: the synthetic user weights only scale-invariant coordinates,
+so generation 0 is bit-identical across the two runs (mean −0.000, max 5.454).
+Whatever moved, moved through the *model* — and the plausible mechanism, stated
+as a hypothesis rather than a finding, is that `rms_mean` was near-degenerate
+at a fixed loudness target (every patch normalized to the same level), so
+standardizing divided by a tiny σ and handed the model an amplified-noise
+coordinate. Peak-capping gives it real spread. That is the dead-coordinate
+failure from the `1e30` sentinel, in the opposite direction, and it is
+checkable with `make phi-stats` on both sides.
+
+### Added — the search-health harness is a command, not a memory
+
+`make check` gates correctness and says nothing about whether the search still
+searches. That has always been a standing rule enforced by discipline; it is now
+`make revalidate` (φ statistics, normalized peaks, pool climb, the full
+battery), plus `make climb`, `search-check`, `budget-ab`, `phi-stats`,
+`norm-peak`, `fit-bench` and `closed-loop` individually. A `Search health`
+workflow runs the same targets nightly and on `workflow_dispatch`, writing every
+table to the job summary and uploading the logs so two runs can be diffed
+directly. Deliberately **not** on `pull_request`: it is tens of minutes of real
+audio rendering, and most PRs here are documentation.
+
+### Fixed — the refinement gate did not gate refinement
+
+`refinement_improves_pool` made three assertions and none could fail for the
+right reason. `best_after >= best_before` is true **by construction** — eviction
+only removes the pool's worst member, so the top of the ranking cannot fall. It
+graded children with `ranked()`, the *surrogate refinement is optimizing*, so a
+search that had learned to fool its own fitness would have scored perfectly. And
+`n_refined` was printed, never asserted, so a build that injected nothing passed
+silently.
+
+It now grades on the synthetic user's **true** utility, before and after real
+generations — a small always-on version of `search_health --climb` — over
+sixteen concurrent seeds (~70 s).
+
+**The gate statistic is the median, and that was measured rather than assumed.**
+The mean was the obvious choice and the data rejected it: the per-seed gains are
+thirteen clear improvements plus two catastrophic seeds (−12.04, −5.55), which
+drag the mean to +0.215 while the median sits at +1.481. Over *any four* of
+those seeds the mean ranges −4.51 to +2.49 and is **negative 40% of the time**,
+so the four-seed mean gate this test was first written with would have been a
+coin flip failing for reasons unrelated to the change under review. Gates:
+median > 0.5, at least 10 of 16 seeds improving, and no seed's best member
+degrading.
+
+The two bad seeds are worth naming rather than smoothing away: they are the
+surrogate optimized against itself. `insert_candidate` admits and evicts by the
+*model*, so a posterior fitted on 40 duels at the suite's trimmed MCMC budget
+can swap out nine candidates the synthetic user liked for nine it does not. That
+is not a defect in the machinery — and it is why `RefineKeep::Best` ships
+switched off, since taking the argmax of that same surrogate is the move most
+likely to make it worse.
+
+Widening the horizon to three generations also exposed a **false assertion the
+old test had been carrying**: it required every lineage child to still be
+findable in the pool, which only holds while nothing has had a chance to be
+evicted. Across generations a child injected in generation 1 is an ordinary
+eviction candidate in generation 2, so that assertion fails on a *correct*
+engine. The invariant that survives is the other direction — the permanent
+lineage explains every refined member the fixed-size pool still holds — and that
+is what is asserted now.
+
+### Fixed — an identity test conflated "the property held" with "it was tested"
+
+`refinement_carries_node_identity` asserted `carried > 0` — that every accepted
+refinement shares at least one module with its seed — under the message *"a
+refinement step that changed everything is not a refinement"*. That is a claim
+about the **search**, not about identity, and it is not a true one: forty MH
+steps over a small term can replace the root's kind, after which no key/kind
+pair matches and there is nothing to carry. No uid is lost in that case, because
+none is comparable.
+
+The φ shift above moved one seed's trajectory into exactly that case and the
+test went red with nothing wrong. A round that preserves no structure now
+**skips** rather than fails, the strict identity assertion on matched modules is
+untouched, and the final check still requires that at least one round actually
+exercised the property. Same class of error as the lineage assertion above,
+found the same way — by widening what the tests look at.
+
+### Added — refinement can keep the walk's best state instead of its last
+
+A refinement walk renders ~40 candidates and injects **one**, and which one was
+never measured. `SessionConfig::refine_keep` makes it selectable:
+`RefineKeep::Last` (the shipped behaviour, still the default) or
+`RefineKeep::Best`, the highest-`log π_β` state the walk occupied — seed
+included, so a walk that found nothing better than where it started now injects
+nothing rather than whatever it was standing on at step 40.
+
+The archive is **free**: every trace the kernel returns already carries its own
+`log π_β`, so this is one `f64` compare per step and no extra render. Scored on
+the target rather than on fitness alone — taking the argmax of `E[u]` would
+discard the parsimony half of the distribution the walk is sampling, and would
+do it with a bias toward the largest tree the walk touched. The default does not
+move until the A/B says it should.
+
+### Added — a persistent render cache
+
+φ is a pure function of `(term, spec)`, and nothing was exploiting that across
+reloads: every boot re-rendered the whole bank from nothing. The farm workers
+now consult an IndexedDB store first and write back on a miss, so a returning
+player pays for renders once.
+
+`RENDER_EPOCH` is the coordinate the content key could not supply — the key
+hashes the *inputs*, and a change to the normalizer or a descriptor's formula is
+a change to the *function*. `cache_namespace` combines the two, and a namespace
+mismatch orphans every row at once, which is the only correct granularity: a
+cache whose invalidation is anything less than total will one day serve a number
+from a featurizer that no longer exists. (This release bumps it to 1, because
+the peak-capped normalization above moves `gain_db`.) The engine also re-derives
+each row's key from the tree it holds before folding it in, so a hit is checked
+rather than trusted.
+
+Cached rows carry φ without samples, so jobs that asked for audio still render —
+otherwise the saving would land on the first patches the player actually
+auditions, which is where `wantAudio` exists to avoid it.
+
+### Changed — the taste fit no longer holds the whole chain in memory
+
+`adaptive_mcmc_chain` materialized every step and `step_by(stride)` kept every
+20th one line later: ~10 000 `Trace` clones of 206 `BTreeMap` entries live at
+once to retain 500. Measured at the shipped budget, **303.1 MB peak RSS**,
+scaling with `mcmc_samples` — a plausible mobile-Safari OOM rather than mere
+waste.
+
+It could not be fixed here (the retention is inside fugue's chain driver, whose
+internals are private), so it was fixed upstream and adopted:
+`adaptive_mcmc_chain_thinned` takes the stride and pushes only every `thin`-th
+draw. **18.2 MB peak RSS for bit-identical draws** — 16.7×, with `fit_bench`'s
+per-fit checksum unchanged at `07d204764b58c88b`. `thin` gates the push and
+nothing else, so every transition still runs and the RNG is consumed identically.
+The peak no longer scales with the budget at all, which frees `mcmc_samples` to
+be chosen on the recovery tables rather than against a memory ceiling.
+
+Workspace dependency moves to fugue-ppl 0.2.2, which is where that API landed
+(alexnodeland/fugue#47).
+
+### Fixed — the site-count formula had not moved with φ
+
+`27·K + n_sessions + 5` (33 at K=1, 141 at K=5) appeared in three places. φ is
+40 coordinates now, not 27, so it is `d·K + n_sessions + 5` — **46 and 206**,
+which `fit_bench` prints. The figure it feeds moved with it: 10 000 steps at
+K = 5 is ~49 sweeps per site, not ~71.
+
 ### Changed — the brand page states the system, not how it was arrived at
 
 A specification that narrates its own drafting dates the moment the drafting is

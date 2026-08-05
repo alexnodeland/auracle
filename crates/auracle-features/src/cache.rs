@@ -28,9 +28,19 @@
 //! runs and platforms for these types: field order is the struct's, and floats
 //! round-trip exactly under the `float_roundtrip` feature the workspace pins.
 //!
-//! Only the *in-process* memo is built here. The persistent-cache namespace
-//! (`RENDER_EPOCH`, `cache_namespace`) and the admit path belong to the
-//! IndexedDB layer and are deliberately not present yet.
+//! ## Persisting a row: the key is not enough
+//!
+//! [`render_key`] addresses `(term, spec)`, which is everything φ depends on
+//! *given a fixed featurizer*. A stored row survives a reload only if the code
+//! that would recompute it agrees, and the key cannot see that code: change the
+//! normalizer, a descriptor's formula, or the vet gate, and the same key now
+//! names a different measurement.
+//!
+//! [`RENDER_EPOCH`] is that missing coordinate, and [`cache_namespace`]
+//! combines the two. Bumping the epoch orphans every stored row at once, which
+//! is the intended and only correct response to φ moving — a persistent cache
+//! whose invalidation is *anything less than* total is a cache that will one
+//! day serve a number from a featurizer that no longer exists.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -71,6 +81,39 @@ pub fn canonical_tree_json(tree: &PatchTree) -> String {
     let mut plain = tree.clone();
     plain.clear_uids();
     serde_json::to_string(&plain).expect("PatchTree always serializes")
+}
+
+/// Generation of the featurizer itself.
+///
+/// **Bump this whenever a stored [`CachedFeatures`] computed by the previous
+/// build would differ from what this build computes for the same `(term,
+/// spec)`.** [`render_key`] cannot detect that: it hashes the inputs, and this
+/// is a change in the function.
+///
+/// Concretely, bump on any change to: a φ coordinate's formula or its set,
+/// loudness normalization (including `loudness::PEAK_CEILING` and
+/// `pipeline::TARGET_LUFS`), the vetting thresholds, or the compiler's mapping
+/// from a term to quiver modules. When in doubt, bump — the cost is one cold
+/// boot, and the cost of not bumping is a posterior fitted on rows from two
+/// different featurizers with no way to tell which is which.
+///
+/// | epoch | what changed |
+/// |---|---|
+/// | 1 | first persistent cache; peak-capped loudness normalization |
+pub const RENDER_EPOCH: u32 = 1;
+
+/// The persistent cache's namespace for one stimulus: `"e<epoch>:<spec hash>"`.
+///
+/// Two coordinates, because two independent things invalidate a stored row —
+/// the featurizer changing ([`RENDER_EPOCH`]) and the stimulus changing (the
+/// spec). The spec is folded into [`render_key`] as well, so this is redundant
+/// for correctness and useful for operations: it makes a whole stimulus's rows
+/// a contiguous, droppable prefix instead of scattered keys that can only be
+/// evicted by trying them.
+pub fn cache_namespace(spec: &PhraseSpec) -> String {
+    let spec_json = serde_json::to_string(spec).expect("PhraseSpec always serializes");
+    let h = fnv1a128(FNV_OFFSET_128, spec_json.as_bytes());
+    format!("e{RENDER_EPOCH}:{h:032x}")
 }
 
 /// Content address of one `(term, spec)` featurization, 32 lowercase hex

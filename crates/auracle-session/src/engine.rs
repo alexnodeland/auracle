@@ -186,6 +186,38 @@ pub enum Acquisition {
     Bald,
 }
 
+/// Which state of a refinement walk becomes the injected child.
+///
+/// Selectable because the choice is an empirical claim, and the same rule
+/// applies here as to [`Acquisition`]: a rule chosen on evidence should stay
+/// re-checkable, and a rule rejected on evidence doubly so. `make climb` and
+/// `search_health --budget-ab` are where the comparison runs.
+///
+/// ## Why this is a question at all
+///
+/// A refinement walk renders and featurizes ~40 candidates and injects **one**.
+/// Which one is free to choose — the whole walk is already in the memo, and
+/// every trace the kernel returns already carries its own `log π_β` — so the
+/// choice costs nothing either way and has never been measured.
+///
+/// The tension is real in both directions. [`Self::Last`] is a draw from where
+/// the chain ended up, which respects the target's own weighting and is
+/// robust: it cannot be fooled by a single point where the surrogate happens
+/// to be over-optimistic. [`Self::Best`] takes the walk's argmax, which is what
+/// a *shortlist* wants — the pool is not a sample, it is a few dozen patches a
+/// person will listen to — but argmax over a surrogate is the classic way to
+/// find that surrogate's errors rather than the user's preferences.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RefineKeep {
+    /// Inject the state the walk ended on. The shipped behaviour, and the
+    /// default until the A/B says otherwise.
+    #[default]
+    Last,
+    /// Inject the highest-`log π_β` state the walk occupied, seed included —
+    /// so a walk that found nothing better than its seed injects nothing.
+    Best,
+}
+
 /// What the pool does with audition audio.
 ///
 /// Renders are the engine's only expensive artifact and its bulkiest one: at
@@ -265,13 +297,16 @@ pub struct SessionConfig {
     pub refine_seeds: usize,
     /// Boltzmann sharpness β of the refinement target.
     pub beta: f64,
+    /// Which state of a refinement walk becomes the injected child.
+    pub refine_keep: RefineKeep,
     /// Maximum style components in the taste mixture
     /// (max-of-linear-experts); the fitted K grows with evidence up to this
     /// cap.
     ///
     /// K is also the fit's dominant cost driver, because single-site MH
     /// rebuilds the whole program every step and the site count is
-    /// `27·K + n_sessions + 5` — 33 at K = 1, **141 at K = 5**. Two
+    /// `d·K + n_sessions + 5` — at today's d = 40, that is 46 at K = 1 and
+    /// **206 at K = 5** (printed by `fit_bench`, so it moves with φ). Two
     /// consequences, both measured by `auracle-taste/examples/fit_bench.rs`:
     /// the fit is ~4× slower at the cap than at the first fit, and the step
     /// budget is *fixed*, so a mature fit gets ~4× fewer sweeps per site than
@@ -279,7 +314,7 @@ pub struct SessionConfig {
     /// thinner.
     ///
     /// **Open option, deliberately not taken here: cap this at 3** (sites
-    /// 141 → 87, a ~1.6× mature-fit win at no engineering cost). It is left
+    /// 206 → 126, a ~1.6× mature-fit win at no engineering cost). It is left
     /// open because unlike the address hoist and the budget cut it is not a
     /// pure efficiency change — it removes model *capacity*, and capacity is
     /// the whole point of the mixture (a user with four islands of taste
@@ -303,8 +338,8 @@ pub struct SessionConfig {
     /// This is the one knob in this struct that buys wall time with
     /// *statistics*, so it is set from a measurement rather than a guess.
     /// Only 500 draws survive thinning at any budget, so the budget does not
-    /// buy draws — it buys **sweeps per site**, and at K = 5 (141 sites) even
-    /// 10 000 steps is only ~71 sweeps.
+    /// buy draws — it buys **sweeps per site**, and at K = 5 (206 sites) even
+    /// 10 000 steps is only ~49 sweeps.
     ///
     /// Recovery vs budget at the mature operating point (K = 5, n_obs = 100,
     /// 12 seeds, `cargo run --release -p auracle-taste --example fit_bench
@@ -455,6 +490,7 @@ impl Default for SessionConfig {
             refine_steps: 2 * N_OPS,
             refine_seeds: N_OPS.div_ceil(2),
             beta: 2.0,
+            refine_keep: RefineKeep::default(),
             k_styles: 5,
             phrase: PhraseSpec::default(),
             render_policy: RenderPolicy::None,
@@ -1793,13 +1829,46 @@ impl Engine {
         let steps = ((steps as f64) * factor).ceil() as usize;
 
         let mut current = seed.clone();
+        // The elite archive, and it is **free**.
+        //
+        // Every trace the kernel hands back is already scored under the target
+        // program, so `total_log_weight()` *is* `log π_β = log p_grammar +
+        // β·E[u]` for the state it accompanies — no extra model execution, no
+        // extra featurization, one f64 compare per step.
+        //
+        // Scored on the target rather than on fitness alone, which is the
+        // choice worth stating. Taking the argmax of `E[u]` would discard the
+        // parsimony half of the very distribution the walk is sampling, and it
+        // would do so with a bias: a bigger term has more modules to score
+        // well with, so fitness-argmax systematically returns the largest tree
+        // the walk touched. `log π_β` is what the walk is climbing, so it is
+        // what "the best point this walk found" has to mean.
+        //
+        // The seed is in the archive. A walk that never improves on where it
+        // started therefore returns the seed and is filtered to `None` below,
+        // instead of injecting whatever it happened to be standing on at step
+        // 40 — which is what `Last` does, and is the thing being A/B'd.
+        let mut best: Option<(f64, PatchTree)> = match self.cfg.refine_keep {
+            RefineKeep::Last => None,
+            RefineKeep::Best => Some((trace.total_log_weight(), seed.clone())),
+        };
         for _ in 0..steps {
             let (g, t) = chain.step(rng, &trace);
             if Self::violates_locks(&trace, &t, locked) {
                 continue; // reject outside the kernel; stay at `trace`
             }
+            if let Some((best_w, best_tree)) = &mut best {
+                let w = t.total_log_weight();
+                if w > *best_w {
+                    *best_w = w;
+                    *best_tree = g.clone();
+                }
+            }
             current = g;
             trace = t;
+        }
+        if let Some((_, best_tree)) = best {
+            current = best_tree;
         }
         // The mutation boundary, and the reason the clamp is *here* rather than
         // at the knob that draws the number: everything downstream of this line

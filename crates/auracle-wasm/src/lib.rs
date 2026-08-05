@@ -180,6 +180,42 @@ impl RenderJob {
 /// audio at admission), so the flag exists to let the caller pay for audio
 /// exactly where it will be heard — the first few patches, which are the ones
 /// the user auditions while the rest of the bank lands.
+/// The persistent render cache's namespace for `phrase_json`, or `""` if the
+/// phrase does not parse.
+///
+/// Two rows may only be compared, stored or served under the same namespace:
+/// it pins both the stimulus and [`auracle_features::RENDER_EPOCH`], the
+/// featurizer's own generation. A build whose φ differs from the one that wrote
+/// a row therefore cannot read it — the namespace simply does not match, so
+/// there is no stale-row path to get wrong.
+///
+/// The store this keys is `namespace → key → CachedFeatures`. Dropping a
+/// namespace is how a cache is invalidated, and it is the *only* correct
+/// granularity: φ moving invalidates everything measured under the old φ.
+#[wasm_bindgen]
+pub fn cache_namespace(phrase_json: &str) -> String {
+    serde_json::from_str::<PhraseSpec>(phrase_json)
+        .map(|spec| auracle_features::cache_namespace(&spec))
+        .unwrap_or_default()
+}
+
+/// The content address of `(tree_json, phrase_json)` **without rendering it** —
+/// what a caller asks the persistent cache about before paying for a render.
+///
+/// Returns `""` if either argument fails to parse, which the caller should
+/// treat as a miss rather than an error: the render path validates its own
+/// inputs and is the one place allowed to reject them.
+#[wasm_bindgen]
+pub fn farm_key(tree_json: &str, phrase_json: &str) -> String {
+    let (Ok(tree), Ok(spec)) = (
+        serde_json::from_str::<PatchTree>(tree_json),
+        serde_json::from_str::<PhraseSpec>(phrase_json),
+    ) else {
+        return String::new();
+    };
+    auracle_features::render_key(&tree, &spec)
+}
+
 #[wasm_bindgen]
 pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> RenderJob {
     let rejected = || RenderJob {

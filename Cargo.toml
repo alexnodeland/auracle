@@ -34,7 +34,9 @@ quiver-dsp = "0.2.0"
 # default-features off: `checkpoint`/`parallel` don't compile on wasm32 and
 # nothing here uses them; `ppl` is the layer we build on.
 fugue-evo = { version = "0.3.1", default-features = false, features = ["std", "ppl"] }
-fugue-ppl = "0.2.1"
+# 0.2.2 adds `adaptive_mcmc_chain_thinned`, which is what stops a fit holding
+# the whole chain in memory to keep 500 draws (see `auracle_taste::model`).
+fugue-ppl = "0.2.2"
 
 # Shared third-party
 rand = "0.8"

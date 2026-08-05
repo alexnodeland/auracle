@@ -39,9 +39,10 @@ pub mod vet;
 
 pub use audio::{audio_features, AudioFeatures};
 pub use cache::{
-    canonical_tree_json, featurize_memo, render_key, CachedFeatures, MemoStats, RenderMemo,
-    DEFAULT_AUDIO_CAP, DEFAULT_FEATURE_CAP,
+    cache_namespace, canonical_tree_json, featurize_memo, render_key, CachedFeatures, MemoStats,
+    RenderMemo, DEFAULT_AUDIO_CAP, DEFAULT_FEATURE_CAP, RENDER_EPOCH,
 };
+pub use loudness::{integrated_lufs, normalize_to, MAX_GAIN_DB, PEAK_CEILING};
 pub use phrase::PhraseSpec;
 pub use pipeline::{featurize, Features, FeaturizeError, VettedCandidate, TARGET_LUFS};
 pub use render::{render_phrase, render_playback, Audition, RenderedPhrase};
@@ -62,6 +63,67 @@ mod tests {
         for (name, tree) in auracle_grammar::presets() {
             featurize(&tree, &spec).unwrap_or_else(|e| panic!("preset {name} failed vetting: {e}"));
         }
+    }
+
+    /// **Nothing leaves the pipeline able to clip.**
+    ///
+    /// The gate belongs here rather than in `loudness`, because the claim that
+    /// matters is about the buffer `featurize` hands out — the one audition
+    /// plays and the one preference data is collected on — not about a
+    /// function in isolation. A clipped audition collects a vote about
+    /// clipping rather than about the patch.
+    ///
+    /// Measured over 150 prior draws before the ceiling existed: 15% of vetted
+    /// renders peaked over full scale, worst case 4.06. Run
+    /// `cargo run -p auracle-features --example norm_peak --release` for the
+    /// distribution; this is the always-on floor under it, over the presets
+    /// (hand-authored, and the loudest thing a new user meets) plus a sample of
+    /// the prior.
+    #[test]
+    fn no_vetted_render_leaves_above_the_peak_ceiling() {
+        let spec = PhraseSpec::default();
+        let mut checked = 0usize;
+        let mut pulled = 0usize;
+
+        let mut check = |what: &str, vc: &VettedCandidate| {
+            let peak = vc.render.samples.iter().fold(0.0f64, |p, s| p.max(s.abs()));
+            assert!(
+                peak <= PEAK_CEILING + 1e-9,
+                "{what}: normalized peak {peak:.3} is over the {PEAK_CEILING:.2} ceiling"
+            );
+            // The reduction has to be *reported* as well as applied, or a
+            // surface cannot tell a peak-limited patch from a quiet one.
+            assert!(vc.features.peak_reduction_db >= 0.0);
+            if vc.features.peak_reduction_db > 0.0 {
+                pulled += 1;
+            }
+            checked += 1;
+        };
+
+        for (name, tree) in auracle_grammar::presets() {
+            let vc = featurize(&tree, &spec).expect("preset vets");
+            check(&format!("preset {name}"), &vc);
+        }
+
+        let mut rng = StdRng::seed_from_u64(0xE05);
+        let prior = PatchGrammarPrior::default();
+        for i in 0..24 {
+            let (tree, _): (PatchTree, Trace) = run(
+                PriorHandler {
+                    rng: &mut rng,
+                    trace: Trace::default(),
+                },
+                prior.model(),
+            );
+            // Quarantined draws are never auditioned, so they have no peak to
+            // make a claim about.
+            if let Ok(vc) = featurize(&tree, &spec) {
+                check(&format!("prior draw {i}"), &vc);
+            }
+        }
+
+        assert!(checked > 0, "nothing was checked");
+        println!("{checked} renders under the ceiling, {pulled} of them pulled down to get there");
     }
     use fugue::runtime::handler::run;
     use fugue::runtime::interpreters::PriorHandler;

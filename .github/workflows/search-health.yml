@@ -1,0 +1,86 @@
+# Does the search still search, and does the model still learn?
+#
+# Deliberately NOT on pull_request. These are statistical properties of a loop
+# measured over seeds, and they cost minutes of real audio rendering — the
+# grammar renders sample-by-sample, and a climb run is 16 seeds x 6 generations
+# of genuine MH walks. Blocking every PR on that would spend most of its budget
+# on the brand and documentation changes that make up most of them.
+#
+# The always-on floors live in `make check` instead (`refinement_improves_pool`,
+# `closed_loop_learns_synthetic_taste`). They catch a loop that stopped working.
+# This catches one that quietly got worse.
+#
+# Two ways in:
+#
+#   workflow_dispatch — what you run by hand on both sides of a change that
+#     touches φ, the grammar prior, the audition stimulus, the surrogate or the
+#     MH kernel. That is the standing rule, and `make revalidate` is the local
+#     equivalent. Pick the ref, read the summary, diff it against main's.
+#
+#   schedule — so a regression that slipped through is found within a day
+#     rather than at the next time somebody happens to look.
+name: Search health
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Seeds for the climb measurement (paired, so more is tighter)"
+        required: false
+        default: "16"
+  schedule:
+    # 04:20 UTC daily — off the hour, because the top of the hour is when every
+    # other cron on the runner fleet fires.
+    - cron: "20 4 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  search-health:
+    name: Search health
+    runs-on: ubuntu-latest
+    # A climb run plus the full battery is tens of minutes of rendering, and
+    # the default 360 is enough rope to hang a stuck run for six hours.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Everything below writes to the job summary as well as the log, because
+      # the point of this workflow is a table somebody reads and compares — a
+      # number buried in 2000 lines of cargo output is not that.
+      - name: Feature composition, prevalence and VIF
+        run: |
+          set -euo pipefail
+          make phi-stats 2>&1 | tee /tmp/phi.log
+          { echo "## φ statistics"; echo '```'; cat /tmp/phi.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Normalized peak distribution
+        run: |
+          set -euo pipefail
+          make norm-peak 2>&1 | tee /tmp/peak.log
+          { echo "## Normalized peaks"; echo '```'; cat /tmp/peak.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Pool climb
+        run: |
+          set -euo pipefail
+          make climb SEEDS="${{ github.event.inputs.seeds || '16' }}" 2>&1 | tee /tmp/climb.log
+          { echo "## Pool climb"; echo '```'; cat /tmp/climb.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Full search-health battery
+        run: |
+          set -euo pipefail
+          make search-check 2>&1 | tee /tmp/search.log
+          { echo "## Search health"; echo '```'; cat /tmp/search.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Kept as an artifact so two runs can be diffed directly rather than by
+      # scrolling two summaries side by side.
+      - name: Upload the measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-health-${{ github.sha }}
+          path: /tmp/*.log
+          if-no-files-found: warn
