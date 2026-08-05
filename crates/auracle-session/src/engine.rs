@@ -1,4 +1,4 @@
-//! The two-loop session engine (DESIGN.md §1.5).
+//! The two-loop session engine (the reference: *The two loops*).
 //!
 //! - **Patch loop** (machine-paced, silent): fill a pool with vetted prior
 //!   draws; once a posterior exists, *refine* — warm-start fugue-evo's typed

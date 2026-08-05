@@ -1,6 +1,7 @@
 //! # auracle-session
 //!
-//! The **two-loop engine** (DESIGN.md §1.5) every frontend drives:
+//! The **two-loop engine** (the reference: *The two loops*) every frontend
+//! drives:
 //!
 //! - **Patch loop** (fast, silent): vetted prior draws fill a pool; once a
 //!   posterior exists, a short typed-MH walk on

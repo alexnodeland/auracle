@@ -27,7 +27,7 @@
 //! Genome parameters are normalized `[0, 1]`; this module owns their musical
 //! mapping. Ranges are deliberately **bounded away from pathology** (max
 //! resonance 0.85, max delay feedback 0.7) — the grammar cannot express the
-//! most degenerate settings, which is safety layer 3 of DESIGN.md §2.1.
+//! most degenerate settings, which is safety layer 3 of the vetting design.
 
 use std::collections::HashMap;
 use std::sync::Arc;

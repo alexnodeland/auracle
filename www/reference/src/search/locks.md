@@ -102,7 +102,7 @@ check.
 
 ## Relation to the design's exactness claim
 
-`DESIGN.md`'s decision log states this as:
+The [decisions log](../design/decisions.md) states this as:
 
 > **Locks / partial evolution** — Freeze any set of trace addresses; MH
 > proposals touching them are rejected outside the kernel, in **both**

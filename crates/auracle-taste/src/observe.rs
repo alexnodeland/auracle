@@ -1,7 +1,8 @@
 //! Feedback observations and the persistent observation log.
 //!
-//! All three feedback modalities condition the **same latent utility**
-//! (DESIGN.md §1.3). An observation stores the **raw** feature vector(s) it
+//! All three feedback modalities condition the **same latent utility** (the
+//! reference: *One utility, three likelihoods*). An observation stores the
+//! **raw** feature vector(s) it
 //! was made about, the **names** of those coordinates, a **schema version**,
 //! and which session produced it (sessions carry their own keep/kill threshold
 //! latent `τ` and, at K > 1, a style latent `z`).

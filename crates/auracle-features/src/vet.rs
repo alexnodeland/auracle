@@ -1,4 +1,4 @@
-//! The vetting gate (DESIGN.md §2.1, safety layer 1).
+//! The vetting gate: safety layer 1.
 //!
 //! *No candidate is ever played live unvetted.* The standard-phrase render is
 //! inspected **before** normalization; failures are quarantined — never

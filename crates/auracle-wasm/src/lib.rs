@@ -1187,7 +1187,7 @@ impl WasmEngine {
     }
 
     /// The workbench audition buffer (empty when the current edit failed
-    /// vetting — DESIGN.md §2.1: never play an unvetted patch).
+    /// vetting — the gate's rule is that no unvetted patch ever plays).
     pub fn edit_render(&self) -> Vec<f32> {
         self.bench_render.as_deref().map(pcm).unwrap_or_default()
     }

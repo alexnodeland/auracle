@@ -15,4 +15,4 @@ labels: enhancement
 ## Sketch (optional)
 
 <!-- How might it fit the architecture (grammar / features / taste /
-     session / web)? See DESIGN.md. -->
+     session / web)? See the reference book. -->

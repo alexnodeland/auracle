@@ -1,5 +1,6 @@
 //! The learned taste as a fugue-evo fitness: the surrogate that lets the
-//! machine evolve thousands of candidates silently (DESIGN.md §1.5).
+//! machine evolve thousands of candidates silently (the reference: *The two
+//! loops*).
 //!
 //! `SurrogateFitness` plugs the taste posterior's expected utility into
 //! fugue-evo's `Fitness`, so the Boltzmann target

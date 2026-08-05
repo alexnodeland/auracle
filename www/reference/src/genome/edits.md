@@ -95,7 +95,7 @@ This catches the class of bug that unit tests miss: an operation that is
 individually correct but produces an invalid term in combination with a
 particular tree shape. The codebase leans on gates like this generally; the
 preference is stated in
-[`DEVELOPMENT.md`](https://github.com/alexnodeland/auracle/blob/main/DEVELOPMENT.md):
+[`CONTRIBUTING.md`](https://github.com/alexnodeland/auracle/blob/main/CONTRIBUTING.md):
 *prefer extending a gate over asserting implementation details.*
 
 ## Naming stability

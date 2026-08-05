@@ -49,6 +49,13 @@
 - [Persistence and migration](./persistence.md)
 - [The web runtime](./runtime.md)
 
+# Design
+
+- [Lineage](./design/lineage.md)
+- [Decisions log](./design/decisions.md)
+- [Milestones](./design/milestones.md)
+- [Open questions](./design/open-questions.md)
+
 ---
 
 - [API documentation](./api.md)

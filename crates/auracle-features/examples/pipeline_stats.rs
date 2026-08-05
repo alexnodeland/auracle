@@ -1,7 +1,8 @@
 //! Calibration: run the featurize pipeline over many prior draws and report
 //! what the first generation is actually *made of*, what the vetting gate
 //! silences, and how collinear φ is. Informs the vet-threshold open question
-//! in DESIGN.md §6 and the production-weight one in the same section.
+//! in the reference's *Open questions*, and the production-weight one in the
+//! same section.
 //!
 //! ```bash
 //! # render sample (default 200), then a cheap composition sample (default 2000)

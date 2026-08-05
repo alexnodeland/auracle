@@ -24,7 +24,7 @@ name: Pages
 # rules" — one guaranteed red run per release.
 #
 # It was also answering a question that does not arise. A tag is cut from a green
-# `main` (DEVELOPMENT.md § Cutting a release), so by the time it exists that
+# `main` (CONTRIBUTING.md § Cutting a release), so by the time it exists that
 # commit has already deployed from the branch. And the two claims cannot both
 # hold anyway: a site that always tracks `main` is not a site pinned to the last
 # tag. The site tracks `main`; the zip is pinned to the tag; the documented

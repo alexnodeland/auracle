@@ -3,7 +3,7 @@ name: Release
 # A release is one gesture: push a `vX.Y.Z` tag on a green main. This workflow
 # packages the prebuilt web instrument and publishes the GitHub Release; the
 # Pages workflow watches the same tags and puts that same build on the live
-# site. See DEVELOPMENT.md § Cutting a release.
+# site. See CONTRIBUTING.md § Cutting a release.
 
 on:
   push:

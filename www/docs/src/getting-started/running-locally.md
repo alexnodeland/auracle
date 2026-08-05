@@ -49,7 +49,7 @@ You need a Rust toolchain with the `wasm32-unknown-unknown` target and
 the wasm standard library and fails confusingly.
 
 To work *on* Auracle rather than with it, see
-[`DEVELOPMENT.md`](https://github.com/alexnodeland/auracle/blob/main/DEVELOPMENT.md).
+[`CONTRIBUTING.md`](https://github.com/alexnodeland/auracle/blob/main/CONTRIBUTING.md).
 
 ```admonish warning title="Use the bundled dev server"
 `make serve` runs `apps/web/serve.py`, which sends `Cache-Control: no-store`.
