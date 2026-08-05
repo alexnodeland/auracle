@@ -108,6 +108,22 @@ persistence format, vet thresholds) are gone, and the genuinely open ones took
 their place — tempered SMC, cross-island discovery, a feedback production, fit
 cost at the K cap, and the fugue-side `thin` parameter.
 
+### Fixed — the Pages workflow no longer fails on every release
+
+Pushing a `v*` tag fired the Pages workflow, which built the site for nearly two
+minutes and was then rejected at the deploy step: *"Tag v0.2.0 is not allowed to
+deploy to github-pages due to environment protection rules."* The `github-pages`
+environment permits deployments from the `main` branch only, so that deploy could
+never have succeeded — one guaranteed red run per release, for a deploy that had
+already happened.
+
+The tag trigger is gone. It was settling a question that does not arise: a tag is
+cut from a green `main`, so by the time the tag exists that commit has already
+deployed from the branch. And the two claims in the docs could not both be true —
+a site that "always tracks `main`" is not a site pinned to the last tag. The site
+tracks `main`, the zip is pinned to the tag, and the documented release process is
+what makes them the same build. `DEVELOPMENT.md` says so now.
+
 ### Added — a release badge, and the release status said out loud
 
 The README carries a `github/v/release` badge linking to the latest release. It

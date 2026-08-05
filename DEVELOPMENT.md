@@ -115,17 +115,19 @@ notes written before the rename).
 
 ## Cutting a release
 
-A release is **one gesture: push a `vX.Y.Z` tag on a green `main`.** Two
-workflows watch that tag and nothing else has to be done by hand:
+A release is **one gesture: push a `vX.Y.Z` tag on a green `main`.** One
+workflow watches that tag and nothing else has to be done by hand:
 
 - [`release.yml`](.github/workflows/release.yml) builds the wasm through the
   Makefile, zips a runnable web bundle as `auracle-vX.Y.Z-web.zip`, and creates
   the GitHub Release with the changelog section as its notes.
-- [`pages.yml`](.github/workflows/pages.yml) deploys that same commit to
-  <https://alexnodeland.github.io/auracle/>: the landing page, the instrument
-  at `/play/`, and both books. It also deploys on every push to `main`; the tag
-  deploy exists so the live site and the zip are the same build. A `pages`
-  concurrency group serializes the two.
+
+[`pages.yml`](.github/workflows/pages.yml) deploys the live site — the landing
+page, the instrument at `/play/`, and both books — on every push to `main`. It
+deliberately does **not** fire on the tag. The `github-pages` environment permits
+deployments from `main` only, so a tag-triggered deploy is rejected by protection
+rules; and it is not needed, because the tag is cut from a green `main` and that
+commit has therefore already deployed from the branch.
 
 The steps, in order:
 
@@ -151,7 +153,8 @@ The steps, in order:
    git push origin v0.2.0
    ```
 
-6. **Watch both workflows**, then check the things a green run does not prove:
+6. **Watch the release workflow**, then check the things a green run does not
+   prove:
    download the attached zip, serve it, and confirm the app boots from the
    bundle; and load the live site (`/`, `/play/`, `/docs/`, `/reference/` and
    `/reference/api/`) to confirm the deploy landed and the routes resolve.
