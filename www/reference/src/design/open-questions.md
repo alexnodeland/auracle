@@ -27,12 +27,25 @@ a description of the system.</p>
   step, so a mature [fit](../taste/posterior.md) is both slower and
   statistically thinner than an early one (205 + S sites over a fixed 10 000
   steps ≈ 48 sweeps per site). The address table is hoisted out of the step
-  loop, but the shape of the problem remains.
-- **A `thin` parameter in fugue's chain driver.** `adaptive_mcmc_chain`
-  materializes every step and discards 97% one line later — hundreds of
-  megabytes of transient wasm32 heap for 500 surviving draws. It cannot be
-  fixed on the Auracle side; the pieces needed to reimplement the driver with
-  identical RNG consumption are private in fugue-ppl 0.2.1.
+  loop and the chain no longer holds itself in memory, so what is left is purely
+  the statistical shape of the problem — the budget can now be chosen on the
+  recovery tables rather than against a memory ceiling. The written-down option
+  (cap $K$ at 3) is gated on `style_share` evidence from real sessions, which
+  nothing collects or reports today.
+- **Which state of a refinement walk to inject.** A walk renders ~40 candidates
+  and keeps one. `RefineKeep::Best` is implemented and free, and ships switched
+  off: argmax over a surrogate finds that surrogate's errors, and the patch-loop
+  gate has already caught two seeds in sixteen ending **−12.0** and **−5.5**
+  worse in true utility. The A/B is `make climb`, and it has not been run.
+- **Interior signal taps in quiver.** A compiled patch exposes exactly one
+  output, so the rack's flow animation *estimates* wire levels from the term
+  rather than measuring them, and the port trace re-renders a truncated subtree
+  per probe. A quiver-side probe API would turn both into measurements. Not
+  filed — it needs scoping first.
+- **fugue-evo's `parallel` feature on wasm32.** It does not compile there, so
+  the workspace takes fugue-evo with default features off and refinement is
+  single-threaded *natively* too — in the one place the engine is embarrassingly
+  parallel. `RenderMemo` is already `Send + Sync`-shaped for it.
 - **Remaining quiver hardening** (non-blocking, tracked upstream):
   `voct_to_hz` is unclamped — overflow is now *recovered* by Q198 rather than
   prevented, and a pitch clamp would also tame aliasing garbage at

@@ -46,32 +46,44 @@ which move during a fit. And they are produced by the *same* `addr!`
 invocations as before, so traces, serialized posteriors and warm-start paths
 see byte-identical addresses.
 
-### A known waste, and why it is not fixed here
+### Thinning happens at the driver, not after it
 
-97% of the chain is discarded one line after it is built.
+97% of the chain is discarded, and it is discarded *as it is produced*.
 
-`adaptive_mcmc_chain` **materializes every step**: it pushes `(TasteSample,
-Trace)` per iteration into a `Vec` it returns by value, and only then does
-`step_by(stride)` keep every 20th. At $K = 5$ that is ~10 000 `Trace` clones of
-205 `BTreeMap` entries each, held live at once: hundreds of megabytes of
-transient wasm32 heap for 500 surviving draws. On mobile Safari that is a
-plausible OOM rather than mere waste.
+That used to happen one line after the whole chain was built. `adaptive_mcmc_chain`
+materialized every step — pushing `(TasteSample, Trace)` per iteration into a
+`Vec` it returned by value — and only then did `step_by(stride)` keep every 20th.
+At $K = 5$ that is ~10 000 `Trace` clones of 205 + S `BTreeMap` entries each,
+held live at once to retain 500: **303.1 MB peak RSS** at the shipped budget,
+scaling with `n_samples`, and a plausible mobile-Safari OOM on a 32-bit heap
+rather than mere waste.
 
-This **cannot be fixed on the Auracle side.** The retention is inside fugue's
-chain driver, and the pieces needed to reimplement that driver here with
-identical RNG consumption (`single_site_mh_step`, `propose_and_score`,
-`SingleSiteProposalHandler`) are private or `pub(crate)` in fugue-ppl 0.2.1.
-Forking fugue's inference core into this crate would trade a memory spike for a
-correctness hazard on every upgrade.
+It could not be fixed here. The retention was inside fugue's chain driver, and
+the pieces needed to reimplement that driver with identical RNG consumption
+(`single_site_mh_step`, `propose_and_score`, `SingleSiteProposalHandler`) are
+private or `pub(crate)`; forking fugue's inference core into this crate would
+have traded a memory spike for a correctness hazard on every upgrade.
 
-The fugue-side API that would close it is small and additive: a `thin: usize`
-parameter (or an `FnMut(&A, &Trace)` sink) on `adaptive_mcmc_chain`, pushing
-only when `i % thin == 0`. The chain's arithmetic and RNG draws are untouched
-by it, so the surviving draws stay bit-identical; it only stops retaining the
-ones that were always going to be dropped.
+So it was fixed **upstream** instead, as
+[fugue-ppl 0.2.2](https://github.com/alexnodeland/fugue/pull/47):
+`adaptive_mcmc_chain_thinned` takes a stride and pushes only when
+`i % thin == 0`.
 
-Until then the peak scales with `n_samples`, which is why bringing that default
-down from 30 000 to 10 000 was a 3× memory win as well as a 3× time win.
+| | peak RSS | mature-fit checksum |
+|---|---|---|
+| before | 303.1 MB | `07d204764b58c88b` |
+| after | **18.2 MB** | `07d204764b58c88b` |
+
+**16.7× less peak memory for bit-identical draws** — the unchanged checksum is
+the point of that table rather than a footnote to it. `thin` gates the push and
+nothing else: every transition still runs, so the RNG is consumed in the same
+order and quantity, and $0, \text{stride}, 2\cdot\text{stride}, \dots$ is exactly
+what `step_by` kept. `fit_bench`'s per-fit checksum is the Auracle-side witness;
+fugue's `thinning_retains_exactly_the_draws_step_by_would` is the upstream one.
+
+What stays resident is the 500 draws the posterior actually keeps, so **the peak
+no longer scales with `mcmc_samples` at all** — the budget is now free to be
+chosen on the recovery tables rather than against a memory ceiling.
 
 ## Between fits: sequential importance sampling
 

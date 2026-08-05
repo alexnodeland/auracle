@@ -88,18 +88,71 @@ boost.
 ## Applying the gain
 
 ```rust
-let gain_db = (target_lufs - lufs).min(MAX_GAIN_DB);   // MAX_GAIN_DB = 30.0
-let gain = 10f64.powf(gain_db / 20.0);
+let wanted_db   = (target_lufs - lufs).min(MAX_GAIN_DB);        // MAX_GAIN_DB = 30.0
+let headroom_db = 20.0 * (PEAK_CEILING / peak_before).log10();  // PEAK_CEILING = 1.0
+let gain_db     = wanted_db.min(headroom_db);
+let gain        = 10f64.powf(gain_db / 20.0);
 ```
 
 The boost is capped at **+30 dB**. A patch needing more than that is a
 *vetting* problem, not something to amplify, and vetting runs first, so in
 practice the cap is a backstop.
 
-The report carries `lufs_before` and `gain_db`, both of which survive into
-`Features`. They are diagnostics rather than model inputs: they are not
-coordinates of $\varphi$, because "how quiet was this before we fixed it" is
-exactly the information normalization exists to discard.
+### Loudness is a target; the peak is a limit
+
+Matching integrated loudness says nothing about the peak, and crest factor spans
+tens of dB across this grammar — a pad and a pluck at the same LUFS are nowhere
+near the same peak. A pure loudness match therefore sends percussive patches
+over full scale, and it did. Measured over 150 vetted prior draws:
+
+| | before | after |
+|---|---|---|
+| peak p50 | 0.623 | **0.623** |
+| peak p90 / p99 / max | 1.061 / 2.098 / 4.063 | 1.000 / 1.000 / 1.000 |
+| over full scale | 22 (15%) | **0** |
+| over 1.25 — where the app's `master.gain = 0.8` clips | 11 (8%) | **0** |
+| gave up gain | — | 22 (15%), mean 3.0 dB, worst 12.2 dB |
+
+The two 22s are the same twenty-two patches, and the **unmoved median** is the
+check that this is a fault stop rather than a re-levelling of the pool.
+
+This is not a matter of audio polish. Preference data is elicited on this exact
+buffer, so a clipped audition collects a vote about *clipping* rather than about
+the patch — precisely the confound loudness normalization exists to remove, one
+stage later and silent. The live voice was never exposed to it; its master
+limiter has always held a 0.98 ceiling. The offline path took the volt divisor
+and not the limiter.
+
+**A smaller gain, not a limiter.** A scalar keeps `render_playback`
+bit-identical *by construction* — the property its bit-identity test exists to
+protect — and cannot change timbre at all. A limiter would reshape the waveform,
+moving `crest`, `flatness_mean` and `flux_mean` as well as the RMS pair, and
+would need a second copy of itself inside the replay path forever.
+
+What it costs is on the record rather than hidden: the ~15% that reach the
+ceiling audition *below* target, so loudness matching degrades exactly where
+crest is highest. Quieter is a smaller bias on a preference judgment than
+clipped. `Features::peak_reduction_db` carries the amount, so a surface can say
+"pulled down 3 dB so it would not clip" instead of presenting a peak-limited
+patch as merely quiet.
+
+`make norm-peak` reproduces the table.
+
+```admonish note title="This moved φ"
+`rms_mean` and `rms_std` are the only audio coordinates that are not
+scale-invariant, so the change carries the standing
+[revalidation](../design/milestones.md). Paired 16-seed `make climb`:
+`+1.877 ± 0.362` → `+2.457 ± 0.298` mean gain, paired difference
+**+0.579 ± 0.350 (1 se), 95% CI [−0.121, +1.280]**. That crosses zero, so no
+improvement is claimed — what the run establishes is that the change costs the
+search nothing. Every seed now climbs (16/16 against 15/16) and the generation
+curve stopped turning over.
+```
+
+The report carries `lufs_before`, `gain_db` and `peak_reduction_db`, all of
+which survive into `Features`. They are diagnostics rather than model inputs:
+they are not coordinates of $\varphi$, because "how quiet was this before we
+fixed it" is exactly the information normalization exists to discard.
 
 ## Where it sits in the pipeline
 
