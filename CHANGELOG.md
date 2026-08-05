@@ -54,9 +54,9 @@ scaling a frame of this app is not an option.
 
 ### Changed — a plainer voice across the docs and the site
 
-An editing pass over every user-facing page: the landing page, both books, the
-README and the contributor docs. Nothing about the product changed, only how it
-is described.
+An editing pass over every prose document: the landing page, both books, the
+README, `DESIGN.md` and the contributor docs. Nothing about the product changed,
+only how it is described.
 
 - **Headings name the thing rather than its presentation.** "Catalogued in
   signal-flow order, not alphabetically" is now "Forty-one modules, from source
@@ -74,9 +74,15 @@ is described.
   trap it "has already fallen into once". The reference keeps the ones that are
   reference material: the sentinel incident, the two upstream quiver bugs, the
   acquisition retraction.
-- **Fewer em dashes, and fewer "not X, but Y" constructions.** 688 em dashes down
-  to 152, with the parenthetical ones turned into parentheses and the rhetorical
+- **Fewer em dashes, and fewer "not X, but Y" constructions.** 731 em dashes down
+  to 172, with the parenthetical ones turned into parentheses and the rhetorical
   ones into full stops.
+- **`DESIGN.md` kept its decisions and lost its swagger.** The rejected designs,
+  the layered-safety argument and the design-versus-implementation note all stay;
+  "this version does it properly", "a confident model mostly serves bangers" and
+  "non-negotiable" do not. The locks decision row was reworded, and the reference
+  page that quotes it verbatim was updated in the same commit so the quotation
+  stays true.
 
 ### Fixed
 
