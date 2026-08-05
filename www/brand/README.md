@@ -6,8 +6,10 @@ different Auracle icons in circulation — a ring-and-pip in the site favicon, a
 unrelated base64 PNG inlined in the app, and a `🎼` at the top of the README.
 
 `index.html` is the full specification — the lockups, the construction rules,
-the tracking ramp, the icon set, and why each decision went the way it did. It
-builds to `/brand/` on the site. Read it before changing anything here.
+the tracking ramp, the icon set, and the rule behind each. It builds to
+`/brand/` on the site, and is written to stay true without dating: it states
+what the system is, not how it came to be. Read it before changing anything
+here, and keep new text in that register.
 
 ## The mark
 
@@ -27,8 +29,8 @@ GitHub has no fonts.
 
 ## The icon set
 
-`icon-set/` holds the marks that lost the icon vote, kept for the jobs they were
-always better at than the mark was. They are a different kind of object:
+`icon-set/` holds the UI icons. They are a different kind of object from the
+mark:
 **single-colour, `currentColor`, no tile, 24px grid, 2px stroke** — because a UI
 icon has to take the colour of the control it sits in, and the two-phosphor
 split belongs to the brand mark alone.
@@ -45,9 +47,9 @@ The first four line up with the guide's own chapters (`views/play.md`,
 `views/evolve.md`, `views/taste.md`, `teaching.md`), which is the test of
 whether an icon set is real: it names things the product already names.
 
-They are drawn, named and staged to `/brand/icons/` — **not yet wired into
-anything**. Putting them on the app's view tabs and the guide's chapter heads
-is a separate change to a working instrument, and should be judged on its own.
+`make site-extras` stages them to `site/brand/icon-set/`. Wiring them into the
+app's view tabs or the guide's chapter heads is a change to a working
+instrument, and belongs in its own commit.
 
 ## Regenerating the rasters
 

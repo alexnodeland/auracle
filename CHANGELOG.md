@@ -8,6 +8,25 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — the brand page states the system, not how it was arrived at
+
+A specification that narrates its own drafting dates the moment the drafting is
+over. The page said the logotype was "already correct" and the lockup "the open
+question", introduced the icon set as "the marks that lost the vote", and
+recorded which candidate each icon had been before it was an icon. None of that
+tells anyone what to draw. Those passages are rules now — *the wordmark's final
+E must not be a second lamp*, *every icon is a shape and never a letterform*,
+*an icon with no chapter behind it does not belong in the set* — and the
+progress notes ("not yet wired into anything", "today that is only…") are gone
+with them.
+
+The **stacked lockup's descriptor is centred**, on every line. It was centred as
+a box but left-aligned inside it, so at any width where it wraps it went
+ragged-right under a centred wordmark. Both members of the stack also carry a
+one-letter-space start margin: `letter-spacing` applies after the final letter
+too, so tracked type centres half a letter-space to the left of true centre
+unless it is corrected.
+
 ### Changed — "Make me one" builds something you can see
 
 The hero's payoff button played a patch and left the screen showing the two
