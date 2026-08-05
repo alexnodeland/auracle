@@ -801,7 +801,21 @@ kbd {
   padding: var(--s8) 0 var(--s7);
 }
 
-.foot-in { max-width: var(--frame); margin: 0 auto; padding: 0 var(--gutter); }
+/* Identity and tagline on the left, destinations on the right, credits under
+   both. The earlier version stacked all three full width and fenced them with
+   two horizontal rules, which on a 1568px frame is three short lines of text
+   spread down 300px with most of the row empty — a lot of furniture for a
+   footer. One rule now, above the credits, where it separates two different
+   kinds of information rather than three helpings of the same one. */
+.foot-in {
+  max-width: var(--frame);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s6) var(--s8);
+}
 
 .foot-mark { display: grid; gap: var(--s3); max-width: 46ch; }
 .mark-static { font-size: 0.94rem; }
@@ -810,16 +824,22 @@ kbd {
 .foot-nav {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--s3) var(--s5);
-  margin: var(--s6) 0;
-  padding: var(--s5) 0;
-  border-top: 1px solid var(--hairline);
-  border-bottom: 1px solid var(--hairline);
 }
 .foot-nav a { font-size: 0.88rem; color: var(--silk-dim); text-decoration: none; }
 .foot-nav a:hover { color: var(--silk); text-decoration: underline; }
 
-.foot-fine { font-size: 0.82rem; color: var(--silk-mute); max-width: 64ch; }
+/* Full width, so the rule above it reads as a divider across the footer
+   rather than a line that stops halfway for no visible reason. The credits
+   are one short line; they do not need a measure. */
+.foot-fine {
+  grid-column: 1 / -1;
+  font-size: 0.82rem;
+  color: var(--silk-mute);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--hairline);
+}
 .foot-fine a { color: var(--silk-dim); }
 
 /* ─── responsive ────────────────────────────────────────────────────────── */
@@ -840,6 +860,12 @@ kbd {
   .cta-row { order: 5; margin-top: 0; }
   .fineprint { order: 6; margin-top: 0; }
   .voice, .h2 { max-width: 46ch; }
+
+  /* The footer's two columns become one, and the links go back to reading
+     left-to-right under the wordmark rather than staying right-aligned
+     against nothing. */
+  .foot-in { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
+  .foot-nav { justify-content: flex-start; max-width: none; }
 }
 
 @media (max-width: 560px) {

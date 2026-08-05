@@ -108,6 +108,28 @@ persistence format, vet thresholds) are gone, and the genuinely open ones took
 their place — tempered SMC, cross-island discovery, a feedback production, fit
 cost at the K cap, and the fugue-side `thin` parameter.
 
+### Changed — the docs menu bar, and the landing footer
+
+**The menu bar stopped becoming two rows.** mdBook ships it as `flex-wrap:
+wrap`, so once the cross-site nav, the book title and the three right-hand icons
+stopped fitting, the bar silently doubled in height instead of overflowing — at
+768px the print/repository/edit icons dropped onto a second row and the section
+links ran off the right edge. It is one row at every width now, and what does
+not fit is dropped deliberately: the desk affordances first, then the section
+labels.
+
+**The section labels moved into the drawer rather than shrinking.** The old
+fallback collapsed them to their initials under 700px, and "A G R" is not a
+navigation. Below 1000px they appear at the top of the sidebar instead, marked
+with the section you are in, and the instrument keeps its button in the bar as
+the one destination worth permanent space.
+
+**The landing footer lost two horizontal rules and a third of its height.** It
+was three full-width bands fenced by two rules, which on a 1568px frame is three
+short lines of text spread down 300px with the right half empty. Identity and
+tagline sit on the left now, destinations on the right, credits under both with
+a single rule above them. One column under 960px.
+
 ### Fixed — the Pages workflow no longer fails on every release
 
 Pushing a `v*` tag fired the Pages workflow, which built the site for nearly two
@@ -123,6 +145,7 @@ deployed from the branch. And the two claims in the docs could not both be true 
 a site that "always tracks `main`" is not a site pinned to the last tag. The site
 tracks `main`, the zip is pinned to the tag, and the documented release process is
 what makes them the same build. `DEVELOPMENT.md` says so now.
+||||||| parent of 76cbd52 (fix(site): one-row menu bar, and a footer that is not three bands)
 
 ### Added — a release badge, and the release status said out loud
 
