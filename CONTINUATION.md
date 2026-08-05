@@ -252,7 +252,7 @@ The learning loop was invisible where it mattered: the first six votes produced
 no pixel change anywhere, and the only "it learned" signal was an 8px LED that
 flashed too fast to catch in 8 of 8 samples. Replaced by a teaching meter that
 never goes blank, a takeover beat at the refit, surprise-first forecast copy, and
-the wordmark's final letter as the listening light (*auracle*: aural + oracle).
+the wordmark's final letter as the listening light.
 `⌖ promote to play` rendered at **0px width**, severing the duel→bench path.
 `cut` deleted silently and irreversibly; it now holds the observation for the
 length of the undo window rather than logging a kill and compensating with a
