@@ -8,6 +8,42 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — a cross-island measurement, which closed an open question by refuting it
+
+The reference listed as an open question: *"local refinement from island A will
+not find island B. A tempering schedule would cross the valley; today the user
+reaches the second island by hand or by the prior."* It had never been measured,
+which is why it was written down — the taste model is a max of K linear experts
+precisely so one user can hold several islands, and the search is a local walk,
+so the tension looked real.
+
+`make islands` teaches a genuinely bimodal synthetic user (two islands opposed
+on every coordinate they share), runs real generations, and asks how often a
+child lands on the island its parent was not on:
+
+| | |
+|---|---|
+| refinement events that cross islands | **99 / 473 (20.9%)** |
+| of those, *decisive* — both ends > 1.0 onto their island | 64 (**13.5%** of all events) |
+| seeds whose pool ended on one island only | **0 / 8** |
+
+The decisive column is the one that carries the claim. A patch on the decision
+boundary flips island under an arbitrarily small change, and counting that as
+crossing a valley measures nothing; filtering it out leaves the answer standing.
+Pool share is reported beside it as a control, since both islands being occupied
+would say only that the prior scattered candidates over both.
+
+**The reasoning was wrong about the geometry.** It treated refinement as a local
+walk in *feature* space. It is a reversible-jump walk over a **tree grammar**,
+where one accepted structural move swaps a subtree — a large jump in φ. The
+search never has to travel through the space between the islands, so there is no
+valley for a tempering schedule to cross. Tempered SMC may still earn its place
+on the distributional claim; it no longer earns it on this one.
+
+Also adds **`--keep-best`**, which re-runs the whole harness under
+`RefineKeep::Best` so the two arms can be paired seed-for-seed. That A/B is
+tracked in #42 rather than run here.
+
 ### Fixed — the small batch from the gap sweep
 
 Four items that cost nothing to verify, kept apart from two that do.

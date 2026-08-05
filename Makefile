@@ -21,7 +21,7 @@ WASM_STACK := 8388608
 WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
-        climb search-check budget-ab phi-stats norm-peak fit-bench \
+        climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop revalidate \
         wasm serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
@@ -84,6 +84,10 @@ climb:
 ## search-check: the full search-health battery (all five measurements)
 search-check:
 	$(CARGO) run -p auracle-session --example search_health --release
+
+## islands: can refinement leave the island it started on? (bimodal user)
+islands:
+	$(CARGO) run -p auracle-session --example search_health --release -- --islands 8
 
 ## budget-ab: re-derive the shipped (refine_steps, refine_seeds) split
 budget-ab:

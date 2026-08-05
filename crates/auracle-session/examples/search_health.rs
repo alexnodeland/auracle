@@ -118,12 +118,13 @@
 //! than a feeling.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use auracle_features::Features;
 use auracle_grammar::{PatchGrammarPrior, PatchTree};
-use auracle_session::{Engine, SessionConfig, SurrogateFitness};
-use auracle_taste::SyntheticUser;
+use auracle_session::{Engine, RefineKeep, SessionConfig, SurrogateFitness};
+use auracle_taste::{MixtureSyntheticUser, SyntheticUser};
 use fugue::Trace;
 use fugue_evo::genome::trace_genome::TraceGenome;
 use fugue_evo::inference::mh::EvolutionChain;
@@ -162,9 +163,26 @@ fn ground_truth() -> SyntheticUser {
     }
 }
 
+/// Which refinement-keep rule every measurement in this run uses.
+///
+/// A process-global rather than a parameter threaded through nine call sites,
+/// because it is a *run* setting: `--keep-best` re-runs the whole harness under
+/// the other arm so the two can be paired seed-for-seed. Set once in `main`
+/// before any thread is spawned, read-only thereafter.
+static KEEP_BEST: AtomicBool = AtomicBool::new(false);
+
+fn keep_mode() -> RefineKeep {
+    if KEEP_BEST.load(Ordering::Relaxed) {
+        RefineKeep::Best
+    } else {
+        RefineKeep::Last
+    }
+}
+
 fn cfg(pool: usize) -> SessionConfig {
     SessionConfig {
         pool_size: pool,
+        refine_keep: keep_mode(),
         // The fit is not what is under test here; trim it so a seed is
         // seconds rather than a minute. Measurement 1 is a *paired* before /
         // after on one posterior, so a thinner posterior costs precision, not
@@ -1036,6 +1054,11 @@ fn main() {
     let routing_only = args.iter().any(|a| a == "--routing");
     let climb_only = args.iter().any(|a| a == "--climb");
     let tail_only = args.iter().any(|a| a == "--tail");
+    let islands_only = args.iter().any(|a| a == "--islands");
+    KEEP_BEST.store(args.iter().any(|a| a == "--keep-best"), Ordering::Relaxed);
+    if KEEP_BEST.load(Ordering::Relaxed) {
+        println!("(RefineKeep::Best)\n");
+    }
     let n_seeds: usize = args
         .iter()
         .find_map(|a| a.parse::<usize>().ok())
@@ -1056,6 +1079,10 @@ fn main() {
     }
     if tail_only {
         tail_report(&seeds);
+        return;
+    }
+    if islands_only {
+        islands_report(&seeds);
         return;
     }
 
@@ -1132,4 +1159,204 @@ fn main() {
     println!();
 
     tail_report(&seeds);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Cross-island reach
+// ---------------------------------------------------------------------------
+
+/// A bimodal ground truth: two well-separated islands of taste.
+///
+/// Island A is bright, fast-attack, filtered. Island B is dark, slow, noisy and
+/// long-tailed — deliberately opposed on every coordinate they share, so a
+/// patch cannot be near both and "which island is this on" is unambiguous.
+fn two_islands() -> MixtureSyntheticUser {
+    let names = Features::phi_names();
+    let at = |name: &str| {
+        names
+            .iter()
+            .position(|n| n.split(':').next() == Some(name))
+            .expect("known coordinate")
+    };
+    let mut a = vec![0.0; names.len()];
+    let mut b = vec![0.0; names.len()];
+    // Island A — bright pluck.
+    a[at("centroid_mean")] = 2.0;
+    a[at("attack_s")] = -1.5;
+    a[at("flatness_mean")] = -1.5;
+    a[at("n_filter")] = 0.8;
+    // Island B — dark noisy drone. Opposed on all four.
+    b[at("centroid_mean")] = -2.0;
+    b[at("attack_s")] = 1.5;
+    b[at("flatness_mean")] = 1.5;
+    b[at("tail_ratio")] = 1.2;
+    MixtureSyntheticUser { thetas: vec![a, b] }
+}
+
+/// How far onto its island a patch must sit for a crossing to count as one.
+///
+/// In the synthetic user's utility units, and set well above the noise a single
+/// accepted MH step produces: a patch within this of the boundary is not really
+/// *on* either island, and watching it flip says nothing about whether the
+/// search can travel.
+const DECISIVE: f64 = 1.0;
+
+/// Which island a candidate sits on, and by how much it prefers it.
+fn island_of(user: &MixtureSyntheticUser, phi: &[f64]) -> (usize, f64) {
+    let scores: Vec<f64> = user
+        .thetas
+        .iter()
+        .map(|t| t.iter().zip(phi).map(|(x, y)| x * y).sum::<f64>())
+        .collect();
+    let best = (0..scores.len())
+        .max_by(|&i, &j| scores[i].total_cmp(&scores[j]))
+        .unwrap_or(0);
+    let other = scores
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != best)
+        .map(|(_, s)| *s)
+        .fold(f64::NEG_INFINITY, f64::max);
+    (best, scores[best] - other)
+}
+
+/// One seed's worth of island bookkeeping.
+struct Islands {
+    /// Refinement events where parent and child sit on different islands.
+    crossed: usize,
+    /// Of those, the ones where **both** ends are decisively on their island —
+    /// see [`DECISIVE`]. A patch sitting on the decision boundary can flip
+    /// island under an arbitrarily small change, and counting that as "the
+    /// search crossed a valley" would be measuring nothing.
+    decisive: usize,
+    /// Refinement events observed at all.
+    events: usize,
+    /// Pool share on each island, after all generations.
+    share: [usize; 2],
+    /// Best true utility reached on each island.
+    best: [f64; 2],
+}
+
+/// Measurement 6: **can refinement leave the island it started on?**
+///
+/// The taste model is a max of K linear experts precisely so one user can hold
+/// several islands of taste. The search is a local MH walk warm-started from
+/// the pool's best members. Those two facts look to be in tension, and the
+/// reference recorded the tension as an open question — *"local refinement from
+/// island A will not find island B"* — on reasoning rather than measurement.
+///
+/// This teaches a genuinely bimodal user, runs real generations, and asks how
+/// often a child lands on the island its parent was not on.
+///
+/// Read the pool share beside the crossing rate. Both islands being occupied is
+/// *not* evidence of crossing: the initial i.i.d. fill scatters candidates over
+/// both, and refinement can then polish each in place. The crossing rate is the
+/// claim; the share is the control.
+fn islands(seed: u64) -> Islands {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let user = two_islands();
+    let mut engine = Engine::new(PatchGrammarPrior::default(), cfg(48));
+    engine.begin_session();
+    engine.fill_pool(&mut rng);
+
+    for _ in 0..4 {
+        for _ in 0..(TEACH_DUELS / 4) {
+            let Some((a, b)) = engine.next_duel(&mut rng) else {
+                break;
+            };
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+    }
+
+    let (mut crossed, mut decisive, mut events) = (0usize, 0usize, 0usize);
+    for _ in 0..GENERATIONS {
+        let before = engine.lineage.len();
+        engine.refine(&mut rng);
+        for ev in engine.lineage.iter().skip(before) {
+            let (Some(pi), Some(ci)) = (engine.find(ev.parent_id), engine.find(ev.child_id)) else {
+                continue; // parent evicted by a later injection in the same wave
+            };
+            let (p_island, p_margin) = island_of(&user, &engine.pool[pi].phi_std);
+            let (c_island, c_margin) = island_of(&user, &engine.pool[ci].phi_std);
+            events += 1;
+            if p_island != c_island {
+                crossed += 1;
+                if p_margin > DECISIVE && c_margin > DECISIVE {
+                    decisive += 1;
+                }
+            }
+        }
+    }
+
+    let mut share = [0usize; 2];
+    let mut best = [f64::NEG_INFINITY; 2];
+    for c in &engine.pool {
+        let (i, _) = island_of(&user, &c.phi_std);
+        share[i] += 1;
+        best[i] = best[i].max(user.utility(&c.phi_std));
+    }
+    Islands {
+        crossed,
+        decisive,
+        events,
+        share,
+        best,
+    }
+}
+
+fn islands_report(seeds: &[u64]) {
+    let rows: Vec<Islands> = std::thread::scope(|s| {
+        let hs: Vec<_> = seeds.iter().map(|&x| s.spawn(move || islands(x))).collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    println!("== 6. cross-island reach ==");
+    println!("(pool 48, {TEACH_DUELS} duels, {GENERATIONS} generations, bimodal user)");
+    println!(
+        "{:<8} {:>9} {:>9} {:>9} {:>14} {:>11} {:>11}",
+        "seed", "crossed", "decisive", "events", "pool A / B", "best A", "best B"
+    );
+    let (mut tc, mut td, mut te) = (0usize, 0usize, 0usize);
+    for (seed, r) in seeds.iter().zip(&rows) {
+        tc += r.crossed;
+        td += r.decisive;
+        te += r.events;
+        let fin = |x: f64| if x.is_finite() { x } else { f64::NAN };
+        println!(
+            "{:<8x} {:>9} {:>9} {:>9} {:>7} / {:<4} {:>11.3} {:>11.3}",
+            seed,
+            r.crossed,
+            r.decisive,
+            r.events,
+            r.share[0],
+            r.share[1],
+            fin(r.best[0]),
+            fin(r.best[1]),
+        );
+    }
+    let pct = |a: usize, b: usize| {
+        if b == 0 {
+            0.0
+        } else {
+            100.0 * a as f64 / b as f64
+        }
+    };
+    println!(
+        "\n  crossings: {tc}/{te} refinement events ({:.1}%)",
+        pct(tc, te)
+    );
+    println!(
+        "  of those, decisive (both ends > {DECISIVE:.1} onto their island): \
+         {td}/{tc} ({:.1}% of all events)",
+        pct(td, te)
+    );
+    let empty = rows
+        .iter()
+        .filter(|r| r.share[0] == 0 || r.share[1] == 0)
+        .count();
+    println!(
+        "  seeds whose pool ended on ONE island only: {empty}/{}",
+        rows.len()
+    );
 }
