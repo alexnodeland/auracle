@@ -108,6 +108,23 @@ persistence format, vet thresholds) are gone, and the genuinely open ones took
 their place — tempered SMC, cross-island discovery, a feedback production, fit
 cost at the K cap, and the fugue-side `thin` parameter.
 
+### Changed — the README's architecture diagram is a mermaid figure
+
+The ASCII box drawing became a `flowchart TD`, which GitHub renders natively and
+which stays legible in both the light and dark themes. It carries the same two
+loops, with the pool → duel → log → posterior → refine cycle drawn rather than
+implied.
+
+Checked by rendering rather than by eye: the diagram was parsed and rendered
+against mermaid 11 under both of GitHub's themes at README column width. Two
+things that pass a syntax check and still look wrong were caught that way — the
+`<br/>` in node labels gets stripped rather than honoured, so multi-line labels
+ran their words together, and a left-to-right layout came out four times wider
+than tall and unreadably small in a README column.
+
+The lead paragraph also lost "keep/kill triage" from the list of what the app
+collects, for the reason above.
+
 ### Fixed — three counts and one screen that does not exist
 
 - **The preset library is 61 patches across seven families, not 29.** The guide
