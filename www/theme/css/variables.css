@@ -53,6 +53,9 @@
     --sidebar-resize-indicator-space: 2px;
     --page-padding: 18px;
     --content-max-width: 860px;
+    /* Figures sit inside the reading column rather than matching it, so their
+       edges read as an inset object instead of a second column of text. */
+    --figure-max-width: 780px;
     --menu-bar-height: 48px;
     --searchbar-margin-block-start: 5px;
 

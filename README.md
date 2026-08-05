@@ -31,7 +31,6 @@ show you what it learned.
 
 ## Table of Contents
 
-- [Project Status](#-project-status)
 - [Why Auracle?](#-why-auracle)
 - [Features](#-features)
 - [Architecture](#-architecture)
@@ -40,18 +39,6 @@ show you what it learned.
 - [Development](#-development)
 - [Contributing](#-contributing)
 - [License](#-license)
-
-## 🚧 Project Status
-
-Auracle is **pre-1.0 and under active development**. The live site at
-[alexnodeland.github.io/auracle](https://alexnodeland.github.io/auracle/)
-always tracks `main` — landing page, the playable instrument at
-[`/play/`](https://alexnodeland.github.io/auracle/play/), the
-[user guide](https://alexnodeland.github.io/auracle/docs/) and the
-[technical reference](https://alexnodeland.github.io/auracle/reference/). You can
-also build and run it locally. The instrument is fully playable and the taste
-loop is closed, but the public API and the save format may change between
-commits without notice.
 
 ## 🤔 Why Auracle?
 
@@ -183,6 +170,12 @@ make serve   # no-store static server on http://localhost:8642
 Open http://localhost:8642, wait for the pool to warm up, and play
 (`a w s e d f t g y h u j …`, or plug in a MIDI keyboard). Press `?` in the app
 for the full key map and gesture guide.
+
+While the version is 0.x, the public API and the save format may change between
+commits. Sessions written by older builds are migrated on load, but migrations
+are code — **⋯ → Save taste profile** before updating is the only backup that
+exists. See [Your
+data](https://alexnodeland.github.io/auracle/docs/your-data.html).
 
 ## 📚 Documentation
 

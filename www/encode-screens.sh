@@ -29,11 +29,12 @@ command -v cwebp  >/dev/null || { echo "need cwebp (brew install webp)" >&2; exi
 # the lossless size.
 enc() { cwebp -quiet -preset text -sharp_yuv -q 90 "$1" -o "$2"; }
 
-# Full frames. Captured at 1440×900 CSS pixels and published at that size —
-# they are never upscaled, and the showcase caps its container at 1440 so the
-# app's own 10px type floor stays at its true size. Scaling these down is what
-# turns legible UI into mush, which is why the detail figures below are *crops*
-# rather than shrunken frames.
+# Full frames. Captured at 1440×900 CSS pixels. The landing page's showcase
+# caps its container at 1440 and shows them near 1:1; the books cap every figure
+# inside the reading column and so show them at about 0.54×, where the app's
+# 10px type is texture rather than text. That is why the detail figures below
+# are *crops* rather than shrunken frames — a figure that has to be read gets
+# there by showing less, never by being published larger.
 for f in play evolve taste styles directions trust nodebank; do
   enc "$RAW/$f.png" "$OUT/$f.webp"
 done
@@ -43,8 +44,8 @@ mv "$OUT/directions.webp" "$OUT/taste-directions.webp"
 mv "$OUT/trust.webp"      "$OUT/taste-trust.webp"
 mv "$OUT/nodebank.webp"   "$OUT/node-bank.webp"
 
-# Detail figures, cropped 1:1 out of the same captures. A figure that has to
-# read at 600–900px wide in prose gets there by showing less, not by shrinking.
+# Detail figures, cropped 1:1 out of the same captures. These are the ones a
+# reader is meant to be able to read; each lands at its captured size.
 crop() { magick "$RAW/$1" -crop "$2" +repage "$OUT/tmp.png"; enc "$OUT/tmp.png" "$OUT/$3"; rm -f "$OUT/tmp.png"; }
 
 # The node bank's spec card: one sentence, the port map, the parameters it will
@@ -58,6 +59,8 @@ crop play.png      560x300+460+250  rack-detail.webp
 crop evolve.png    1172x60+266+58   teach-meter.webp
 # The bank rail: three banks, per-row prediction, stars, save.
 crop play.png      252x720+0+52     bank.webp
+# One row out of that rail, for the page that names its parts one at a time.
+crop play.png      252x70+0+447     bank-row.webp
 # The three-pick warm start, cropped to the card. The rest of the frame is the
 # app behind a scrim and carries nothing.
 crop warmstart.png 760x464+340+218  warm-start.webp

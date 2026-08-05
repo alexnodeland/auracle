@@ -8,19 +8,30 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
-### Fixed — figures are published at their captured size, not stretched to fill
+### Changed — one rule for every figure in the books
 
-`www/SCREENSHOTS.md`, `encode-screens.sh` and the theme's own comments all said
-the same thing — screenshots are published 1:1, because scaling a frame of an
-app with a 10px type floor turns legible UI into mush — and one declaration in
-the theme did the opposite. `.content figure img { width: 100% }` treated the
-reading column as a *target* rather than a ceiling, so every detail crop was
-stretched up to it: the 252px bank rail was published at 862px, a 3.4× upscale
-of the exact type the rule exists to protect. It is `max-width` now, in the
-books and on the landing page, so nothing is ever published larger than it was
-captured.
+Figures had grown three tiers and a bug in each. Detail crops were stretched to
+the reading column by `.content figure img { width: 100% }` — the 252px bank
+rail was published at 862px, a 3.4× upscale of 10px type. Full frames broke out
+of the column to a width derived from `100vw` minus whatever the rule believed
+was in the way, which was wrong with the sidebar collapsed: the frame ran 123px
+off the right edge at every window width from 1200 to 1512. And roughly half the
+figures had no caption at all.
 
-Three figures were also wrong or missing rather than merely mis-sized:
+One rule now, both books, no width classes: **every figure sits inside the
+reading column, a little narrower than the prose, with a caption and alt text.**
+Widths are capped, never set, so nothing is ever published larger than it was
+captured, and the breakout tier is gone rather than repaired — no rule that
+guesses at the available width can be right in a state nobody checked.
+
+The trade is deliberate and is now written down where it can be checked: a
+1440×900 frame lands at about 0.54×, where the app's own UI type is texture
+rather than text. A frame is there to show the *shape* of a view and its caption
+carries what the labels would have said; anything whose detail is the point is
+published as a **crop**, at the size it was cropped to. `SCREENSHOTS.md` and
+`encode-screens.sh` used to assert the opposite rule and now say this one.
+
+Figures that were wrong, missing, or hand-drawn rather than merely mis-sized:
 
 - **The warm start now shows the warm start.** "Pick 3 of 9" illustrated itself
   with a screenshot of the bank rail. There is a real capture of the three-pick
@@ -32,6 +43,9 @@ Three figures were also wrong or missing rather than merely mis-sized:
   been a whole 1440px app frame rendered at 665px beside a column of prose — a
   0.46× reduction in which the plot the caption describes was a smear and half
   the image was bank and keyboard.
+- **A bank row is a bank row.** *Reading a row* drew one in ASCII inside a
+  full-width code block, which read as a large empty box. It is a crop of the
+  real row.
 
 ### Changed — one contributor document, and the design lives in the reference
 
@@ -62,6 +76,14 @@ the rack's panel colour.
 
 A `© 2026 Alex Nodeland` credit, linked to alexnodeland.com, is on the landing
 page, both books, the brand page, the instrument's help card and the README.
+
+The README's **Project Status** section is gone: a release badge reading
+`v0.2.0` already says the project is pre-1.0, and a section restating it in
+prose was one more place to forget to update. The one thing the version number
+does not carry — that the save format may still move, and that an export is the
+only backup — moved to Quick Start, where someone is about to make patches they
+might want to keep. The landing footer lost the same phrase for the same
+reason.
 
 ### Documentation site
 

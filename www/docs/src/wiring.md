@@ -5,7 +5,7 @@ does not know about it.</p>
 
 ## The catalogue
 
-<figure class="wide">
+<figure>
 <img src="./img/node-bank.webp" alt="The PLAY view with the node bank open on the right: eight groups of modules down a rail, each entry carrying a transfer-function glyph, a name, a port signature and a θ bar, with the formant oscillator's spec card opened beside it." loading="eager" width="1440" height="900">
 <figcaption><strong>The node bank, with a card open.</strong> Every entry says
 what it does to a wave, what it takes and gives, and what the model makes of
@@ -39,8 +39,11 @@ seen this" are completely different statements and should not look alike.
 
 Hovering or focusing an entry opens its card:
 
-<figure class="wide">
+<figure>
 <img src="./img/spec-card.webp" alt="The formant oscillator's spec card: a glyph, the name FORMANT, the port map out — audio, mod → vowel, a sentence describing it, its default parameters, a heard-as line, and a note reading in 6 of 40 patches, the model has looked and has no lean either way, θ 0.05 ± 0.17, an interval that straddles zero." loading="eager" width="950" height="108">
+<figcaption><strong>A spec card.</strong> What the module does, what it takes
+and gives, what it arrives set to, and — only where the evidence supports it —
+what the model makes of it.</figcaption>
 </figure>
 
 Five things:

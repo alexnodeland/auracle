@@ -51,7 +51,7 @@ start*.
 
 Go to **EVOLVE**. You get two candidates, A and B.
 
-<figure class="wide">
+<figure>
 <img src="../img/evolve.webp" alt="The EVOLVE view: two duel cards side by side, each with a name, a rendered waveform and SAMPLE, BENCH and CHOOSE buttons, under a teaching meter reading 44 picks in." loading="lazy" width="1440" height="900">
 <figcaption><strong>EVOLVE.</strong> Two candidates and one question. The strip
 above counts down to the next refit.</figcaption>
@@ -80,7 +80,7 @@ is the listening lamp, and it means a fit is running.
 
 Go to **TASTE**.
 
-<figure class="wide">
+<figure>
 <img src="../img/taste-map.webp" alt="The TASTE map: a dark field scattered with amber dots of varying size and glow, three named style chips above it, and a legend reading less / would like and sure / unsure." loading="lazy" width="1440" height="900">
 <figcaption><strong>The map.</strong> Every patch you have heard, placed by
 sound and structure. Glow is how much it thinks you would like it; size is how
