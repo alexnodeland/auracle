@@ -639,12 +639,21 @@ impl TastePosterior {
             .map(|s| relabel(s, &reference))
             .collect();
         // Pass 2: align to the pass-1 mean.
+        //
+        // **Importance-weighted**, like every other summary on this type. The
+        // draws stop being equally probable as soon as `reweighted` has folded
+        // votes in between fits — that is what the weights are for — so an
+        // unweighted reference mean aligns the labels against a posterior
+        // nobody holds. It leans on draws the evidence has already discounted,
+        // and leans hardest exactly when the weights have concentrated, which
+        // is when the per-style summaries are most worth reading.
         let d = self.cfg.n_features;
         let mut mean = vec![vec![0.0; d]; k];
-        for s in &pass1 {
+        for (i, s) in pass1.iter().enumerate() {
+            let w = self.weight(i);
             for (mk, tk) in mean.iter_mut().zip(&s.theta) {
                 for (m, t) in mk.iter_mut().zip(tk) {
-                    *m += t / pass1.len() as f64;
+                    *m += w * t;
                 }
             }
         }

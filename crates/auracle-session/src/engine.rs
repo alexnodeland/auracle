@@ -54,6 +54,17 @@ use crate::farm::{draw_seed, Draw, PreFeaturized};
 use crate::naming::{claim_name, NameScale};
 use crate::surrogate::SurrogateFitness;
 
+/// Ceiling on the step-count compensation for locked sites — the most a locked
+/// refinement walk may cost relative to an unlocked one.
+///
+/// 4× fully compensates a walk with three quarters of its sites pinned, which is
+/// already a heavier lock than the hand-build → pin → breed loop produces. Past
+/// that the walk is deliberately under-compensated, because `⚡ evolve from
+/// this` is a button press with a person waiting behind it and a 90%-locked
+/// patch would otherwise ask for ten times the budget. See the note at the use
+/// site in `refine_one` for what that costs.
+const LOCK_SCALE_CAP: f64 = 4.0;
+
 /// The φ coordinate names, as owned strings (what the log records).
 pub fn phi_names() -> Vec<String> {
     Features::phi_names()
@@ -1817,7 +1828,19 @@ impl Engine {
         let mut chain = EvolutionChain::new(model);
         let mut trace = chain.init_from(seed)?;
 
-        // Scale steps for proposals wasted on locked sites.
+        // Scale steps for proposals wasted on locked sites. The kernel picks a
+        // target site uniformly over all of them, so with a fraction `f` free
+        // only `f` of the proposals can be accepted and the walk needs `1/f`
+        // times as many steps to travel as far.
+        //
+        // **The cap is a cost bound, not a correction**, and it is stated
+        // rather than left silent. Past 75% of sites locked, `LOCK_SCALE_CAP`
+        // stops the compensation short — a patch with 90% of its sites pinned
+        // would otherwise ask for ten times the budget, and a `⚡ evolve from
+        // this` on a heavily-pinned patch is a button press with a person
+        // waiting behind it. So a very heavily locked walk *does* explore less
+        // than the config nominally buys. That is the intended trade; the thing
+        // to avoid is believing otherwise.
         let total_sites = trace.choices.len().max(1);
         let locked_present = trace
             .choices
@@ -1825,7 +1848,7 @@ impl Engine {
             .filter(|a| locked.contains(&***a))
             .count();
         let free = total_sites.saturating_sub(locked_present).max(1);
-        let factor = (total_sites as f64 / free as f64).min(4.0);
+        let factor = (total_sites as f64 / free as f64).min(LOCK_SCALE_CAP);
         let steps = ((steps as f64) * factor).ceil() as usize;
 
         let mut current = seed.clone();
