@@ -8,6 +8,61 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — figures are published at their captured size, not stretched to fill
+
+`www/SCREENSHOTS.md`, `encode-screens.sh` and the theme's own comments all said
+the same thing — screenshots are published 1:1, because scaling a frame of an
+app with a 10px type floor turns legible UI into mush — and one declaration in
+the theme did the opposite. `.content figure img { width: 100% }` treated the
+reading column as a *target* rather than a ceiling, so every detail crop was
+stretched up to it: the 252px bank rail was published at 862px, a 3.4× upscale
+of the exact type the rule exists to protect. It is `max-width` now, in the
+books and on the landing page, so nothing is ever published larger than it was
+captured.
+
+Three figures were also wrong or missing rather than merely mis-sized:
+
+- **The warm start now shows the warm start.** "Pick 3 of 9" illustrated itself
+  with a screenshot of the bank rail. There is a real capture of the three-pick
+  card there now, and `SCREENSHOTS.md` records how to reach it.
+- **The node bank got its frame** on *Wiring and the node bank*, and the
+  **teaching meter** got its crop on *EVOLVE*. Both assets were being built and
+  shipped by `encode-screens.sh` and referenced by nothing.
+- **The landing page's coefficient figure is the coefficient plot.** It had
+  been a whole 1440px app frame rendered at 665px beside a column of prose — a
+  0.46× reduction in which the plot the caption describes was a smear and half
+  the image was bank and keyboard.
+
+### Changed — one contributor document, and the design lives in the reference
+
+`DEVELOPMENT.md` and `.github/CONTRIBUTING.md` were one document split across
+two files that each pointed at the other; they are now a single root
+[`CONTRIBUTING.md`](./CONTRIBUTING.md), which is also where GitHub looks first.
+`CONTINUATION.md` — a session-handoff log superseded by this changelog — is
+gone, with its still-true sharp edges carried into `CONTRIBUTING.md` rather
+than dropped.
+
+`DESIGN.md` is gone too, folded into the reference book under a new **Design**
+part: [Lineage](https://alexnodeland.github.io/auracle/reference/design/lineage.html),
+the [decisions log](https://alexnodeland.github.io/auracle/reference/design/decisions.html),
+[milestones](https://alexnodeland.github.io/auracle/reference/design/milestones.html)
+and [open questions](https://alexnodeland.github.io/auracle/reference/design/open-questions.html).
+Its §1–§3 were already in that book in more depth, which is the problem: a
+choice and the maths that justifies it were two documents that could disagree.
+Every decision row now links to the page that works it out, and the `DESIGN.md
+§N` citations scattered through the crates' doc comments name reference pages
+instead of section numbers in a file that no longer exists.
+
+### Changed — the README badge row, and a credit
+
+The badges had five colours between them for no reason. One rule now: green
+belongs to GitHub — the two workflow badges are GitHub's own and still go red
+when a check fails — and everything the README asserts about itself is amber on
+the rack's panel colour.
+
+A `© 2026 Alex Nodeland` credit, linked to alexnodeland.com, is on the landing
+page, both books, the brand page, the instrument's help card and the README.
+
 ### Documentation site
 
 The published site stops being "the instrument at a URL" and becomes a site with

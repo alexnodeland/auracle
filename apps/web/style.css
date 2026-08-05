@@ -2813,6 +2813,14 @@ input, textarea, .bi-rename {
   background: #1d222a; border: 1px solid #333a45; border-bottom-width: 2px;
   border-radius: 3px; padding: 0 4px; font-size: var(--t-micro);
 }
+/* The instrument's only About surface. Quiet enough that it never competes with
+   the thing a reader opened this card for. */
+.help-fine {
+  margin: 14px 0 0; font-size: var(--t-micro); letter-spacing: 0.06em;
+  color: var(--silk-dim); border-top: 1px solid var(--hairline); padding-top: 12px;
+}
+.help-fine a { color: var(--silk-dim); }
+.help-fine a:hover { color: var(--phos-a, #8ef0b1); }
 #help-close { margin-top: 14px; }
 @media (max-width: 640px) { .help-cols { grid-template-columns: 1fr; } }
 
