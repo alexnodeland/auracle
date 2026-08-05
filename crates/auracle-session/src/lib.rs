@@ -1207,6 +1207,40 @@ mod tests {
         let spread = xs.iter().cloned().fold(f64::MIN, f64::max)
             - xs.iter().cloned().fold(f64::MAX, f64::min);
         assert!(spread > 1e-6);
+        // Both axes are solved, not merely returned after a fixed iteration
+        // count. On real pool data this converges in far fewer than the cap.
+        assert_eq!(
+            map.converged,
+            [true, true],
+            "a taste-map axis hit its iteration cap without converging"
+        );
+    }
+
+    /// The map's axes carry the sign convention on real pool data.
+    ///
+    /// The property itself is unit-tested in [`crate::map`] against data built
+    /// to violate it; this is the end-to-end check that the projection the app
+    /// actually draws obeys it too.
+    #[test]
+    fn taste_map_axes_are_sign_pinned() {
+        let mut rng = StdRng::seed_from_u64(0x5E1);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 20,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        for _ in 0..10 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        let map = engine.taste_map();
+        assert_eq!(map.converged, [true, true]);
+        assert!(map.points.iter().any(|p| p.x.abs() > 1e-6));
     }
 
     /// Profiles round-trip the log **with** its standardizer, and importing
