@@ -9,9 +9,20 @@ a description of the system.</p>
   is worth the complexity over local climbing is untested; the measured
   non-concentration of the pool — it *widens* slightly over a session —
   weakens the diversity argument for it.
-- **Cross-island discovery.** [Local refinement](../search/refinement.md) from
-  island A will not find island B. A tempering schedule would cross the valley;
-  today the user reaches the second island by hand or by the prior.
+- ~~**Cross-island discovery.**~~ **Closed by measurement, and it was wrong.**
+  This entry read: *"local refinement from island A will not find island B; a
+  tempering schedule would cross the valley."* Measured against a bimodal
+  synthetic user (`make islands`), **20.9 % of refinement events cross islands**
+  — 13.5 % of all events decisively, with both ends more than 1.0 onto their
+  island rather than hovering at the boundary — and **0 of 8 seeds** ended with
+  a pool on one island only.
+
+  The reasoning was wrong about the geometry. The walk is not local in *feature*
+  space: it is a reversible-jump walk over a **tree grammar**, and a single
+  accepted structural move swaps a subtree, which is a large jump in φ. There is
+  no valley to cross, because the search does not have to travel through the
+  space between the islands. See
+  [Refinement](../search/refinement.md#the-islands-are-not-separated-by-a-valley).
 - **A feedback production in the grammar**, with a mandatory attenuator and
   limiter in the loop path. The [grammar](../genome/grammar.md) is DAG-only
   today.

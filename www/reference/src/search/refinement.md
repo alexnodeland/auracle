@@ -136,11 +136,42 @@ does not concentrate over a session anyway, so the thing SMC would primarily
 buy (maintained diversity via a population kernel) is being supplied by
 frontier-biased injection plus worst-eviction.
 
-What is lost: any claim about the *distribution* of the pool, and the tempering
-schedule's ability to cross low-utility valleys between islands. A
-single-island user will not notice; a user with two distant islands may find
-that refinement from island A never discovers island B, and has to reach it by
-hand or by the prior.
+What is lost: any claim about the *distribution* of the pool. That is the whole
+of it — the other thing this section used to claim was lost turns out not to be.
+
+## The islands are not separated by a valley
+
+This page previously said that a user with two distant islands "may find that
+refinement from island A never discovers island B, and has to reach it by hand
+or by the prior". That was an argument from the shape of a local walk, and it is
+**false**.
+
+`make islands` teaches a genuinely bimodal synthetic user — two islands opposed
+on every coordinate they share — runs real generations, and asks how often a
+child lands on the island its parent was not on:
+
+| | |
+|---|---|
+| refinement events that cross islands | **99 / 473 (20.9 %)** |
+| of those, *decisive* — both ends > 1.0 onto their island | 64 (**13.5 %** of all events) |
+| seeds whose pool ended on one island only | **0 / 8** |
+
+The decisive column is the one that matters. A patch sitting on the decision
+boundary can flip island under an arbitrarily small change, and counting that as
+crossing a valley would be measuring nothing; the filter removes it and the
+answer survives. The pool share is reported beside it as a control, because both
+islands being occupied would say only that the prior scattered candidates over
+both.
+
+**Why the argument was wrong.** It reasoned about a local walk in *feature*
+space. This is a reversible-jump walk over a **tree grammar**: one accepted
+structural move swaps a subtree, and that is a large jump in $\varphi$. The
+search does not have to travel through the low-utility space between the
+islands, so there is no valley for a tempering schedule to cross.
+
+Tempered SMC may still be worth having for the [distributional
+claim](./target.md#what-is-not-sampled-from-this). It is no longer worth having
+for this.
 
 ## The measured non-concentration
 
