@@ -17,13 +17,31 @@ repository = "https://github.com/alexnodeland/auracle"
 
 # Everything the user waits on is render-bound, so release builds trade
 # compile time for codegen quality. `panic = "abort"` also drops unwinding
-# tables from the wasm bundle; tests keep the default dev/test profile and
-# are unaffected. These flags cannot change float results — only --fast-math
-# style options could, and none is enabled anywhere.
+# tables from the wasm bundle. These flags cannot change float results — only
+# --fast-math style options could, and none is enabled anywhere.
 [profile.release]
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+# What the test suite builds under — `make test` and CI both.
+#
+# The tests need release-grade codegen: they render real audio sample-by-sample
+# and debug-mode DSP is ~20× slower. They do not need `release`'s *shipping*
+# flags. `lto = "fat"` and `codegen-units = 1` are there to shave the render loop
+# of the artifact users wait on; applied to five test binaries they instead
+# funnel every link through one core, which was most of CI's compile step. Tests
+# are also built and run on every `make check`, so this is the compile the
+# contributor loop pays too.
+#
+# `opt-level` and `debug-assertions` are inherited from release on purpose:
+# lowering the first makes the suite slower than fat LTO ever made it faster, and
+# enabling the second changes which paths the tests exercise. `panic` is not
+# inherited — cargo forces `unwind` for test harnesses regardless.
+[profile.test-fast]
+inherits = "release"
+lto = false
+codegen-units = 16
 
 [workspace.dependencies]
 # In-house foundations, from crates.io.

@@ -8,6 +8,54 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — CI answers the same questions in a third of the wall clock
+
+A PR took ~11m30s, and 11m12s of that was the one `Test` job. Measured rather
+than guessed, it was two costs stacked on each other:
+
+| | before | after |
+|---|---|---|
+| test compile (warm cache) | 2m21s | ~40% less CPU |
+| `refinement_improves_pool` | ~550s CPU, blocking 170 other tests | its own runner |
+| a docs-only PR | full 11m30s | Rust jobs skipped |
+
+**A test profile that is not the release profile.** `[profile.release]` sets
+`lto = "fat"` and `codegen-units = 1` to shave the render loop of the artifact
+users wait on. Applied to five test binaries it instead funnels every link
+through one core. Timing the three heaviest tests under both profiles, runtime
+differed by under a tenth of a second — the LTO was buying the suite *nothing*
+and costing it a serialized link. `[profile.test-fast]` keeps release's
+`opt-level` (the DSP genuinely needs it; debug is ~20× slower) and drops the
+shipping flags. `make test` uses it too, so the contributor loop gets it as well.
+
+**The slowest test gets a runner to itself.** `refinement_improves_pool` walks 16
+seeds on one thread each; on a 4-core runner those queue four deep. It is ~550s
+of CPU against ~270s for the other 170 tests *combined*, so in one job it did not
+merely take its own time — every other test waited behind it for the cores. Two
+nextest shards on exact complementary filters now split it off, so the job takes
+as long as the floor takes rather than the floor plus the suite. The filters
+being complements is what keeps it honest: no test can land in both shards or in
+neither, and `--no-tests=fail` makes a rename that empties a shard go red instead
+of silently dropping a gate.
+
+**Jobs gated on what the change reaches.** Most PRs here are documentation, brand
+and site copy — the same observation `search-health.yml` already makes about
+where a PR budget goes. The Rust jobs now require Rust to have changed, and the
+Makefile and workflows count as touching everything. Narrowing applies to
+`pull_request` only: `main` is what the site deploys from and what releases are
+cut from, so it is never partially verified.
+
+Also: `concurrency` with `cancel-in-progress`, so a new push stops the run its
+own commit obsoleted instead of paying for two answers; `fmt` folded into `lint`,
+having spent more on scheduling than on work; `rust-cache` saves restricted to
+`main`, so PR branches stop evicting the warm cache every other job restores
+from; `wasm-pack` from the tool cache rather than curl-piping an installer; and
+job timeouts, because the 6-hour default is a lot of rope for a hung run.
+
+One new check, `CI`, reports the aggregate. It is the one to require in a branch
+ruleset — the jobs above are conditional, and requiring a job that legitimately
+skips would wedge every documentation PR.
+
 ### Added — a cross-island measurement, which closed an open question by refuting it
 
 The reference listed as an open question: *"local refinement from island A will

@@ -6,59 +6,181 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A new push to a PR makes the in-flight run for that PR obsolete, so stop it
+# rather than paying for two answers to the same question. `main` is keyed by
+# ref too, but pushes there are already serialized by the merge queue of one.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+  # Release-profile builds ignore it, but leaving it on has cargo write
+  # incremental state into target/ that then bloats every cache upload.
+  CARGO_INCREMENTAL: 0
+  # A blipped crates.io fetch should not cost a whole rerun.
+  CARGO_NET_RETRY: 10
   # Keep in sync with the Makefile and pages.yml. See pages.yml for why 0.4.
   MDBOOK_VERSION: 0.4.52
   MDBOOK_KATEX_VERSION: 0.9.4
   MDBOOK_ADMONISH_VERSION: 1.20.0
 
 jobs:
-  fmt:
-    name: Format
+  # Which halves of the tree does this change actually reach?
+  #
+  # Most PRs in this repo are documentation, brand and site copy — the same
+  # observation search-health.yml makes about where a PR budget goes. Compiling
+  # the workspace and re-running a 16-seed MH walk to land a paragraph is pure
+  # waste, so the Rust jobs are gated on Rust actually having changed.
+  #
+  # Narrowing happens on `pull_request` ONLY. Pushes to `main` and manual runs
+  # always run everything: `main` is what the site deploys from and what
+  # releases are cut from, so it is never allowed to be partially verified.
+  changes:
+    name: What changed
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      site: ${{ steps.filter.outputs.site }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
-      - run: cargo fmt --all --check
+          # The merge base has to be reachable to diff against it.
+          fetch-depth: 0
 
-  clippy:
-    name: Clippy
+      - id: filter
+        name: Classify the changed paths
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "not a pull request — running everything"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "site=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+          files="$(git diff --name-only "$base" HEAD)"
+          echo "changed files:"
+          echo "$files" | sed 's/^/  /'
+
+          # Anything that can change what the compiler sees or how CI runs.
+          # The Makefile and the workflows are in here deliberately: they define
+          # every build, so a change to one is treated as touching everything.
+          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.github/workflows/)'; then
+            rust=true
+          else
+            rust=false
+          fi
+
+          # The site embeds the wasm engine and rustdoc for every crate, so a
+          # Rust change is also a site change.
+          if [ "$rust" = true ] || echo "$files" | grep -qE '^(www/|apps/web/)'; then
+            site=true
+          else
+            site=false
+          fi
+
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+          printf '\n  rust=%s site=%s\n' "$rust" "$site"
+
+  # Formatting and lints share a job: `cargo fmt --check` needs no dependency
+  # graph and finishes in seconds, so giving it its own runner spent more on
+  # scheduling overhead than on the work. It runs first, before clippy pays for
+  # a compile, so a stray tab still fails in seconds.
+  lint:
+    name: Lint
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # The test suite, split across two runners.
+  #
+  # `refinement_improves_pool` is not merely the slowest test, it is most of the
+  # job: it walks 16 seeds, one thread each, and on a 4-core runner those 16
+  # threads queue four deep. Measured, it is ~550s of CPU against ~270s for the
+  # other 170 tests combined. Left in one job it does not just take its own time
+  # — every other test waits behind it for the cores.
+  #
+  # So it gets a runner to itself and everything else gets another, and the job
+  # takes as long as the floor takes instead of the floor plus the suite. The two
+  # filters are exact complements, which is what keeps this honest: no test can
+  # land in both shards or in neither, and `--no-tests=fail` turns a rename that
+  # empties a shard into a red run rather than a silently skipped gate.
+  #
+  # nextest rather than `cargo test` for the filtering and because it pools every
+  # test binary into one scheduler; `cargo test` runs the five binaries strictly
+  # one after another.
   test:
-    name: Test
+    name: Test (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One shard failing should not hide the other shard's result.
+      fail-fast: false
+      matrix:
+        include:
+          - name: search floor
+            filter: test(=tests::refinement_improves_pool)
+          - name: rest of suite
+            filter: not test(=tests::refinement_improves_pool)
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # Release mode: the grammar/features/session tests render real audio
-      # sample-by-sample; debug-mode DSP is ~20× slower.
-      - run: cargo test --workspace --release
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@nextest
+
+      # test-fast, not release: the tests need release-grade codegen for the DSP
+      # but none of release's shipping flags. Measured on the three heaviest
+      # tests, dropping fat LTO and codegen-units=1 changed their runtime by
+      # under a tenth of a second while cutting compile CPU ~40% — the LTO was
+      # buying the test suite nothing and costing it a serialized link. See the
+      # profile's comment in Cargo.toml.
+      - run: cargo nextest run --workspace --cargo-profile test-fast --no-tests=fail -E '${{ matrix.filter }}'
+
+      # nextest does not run doctests. There are none today, and this is what
+      # keeps that a fact rather than an assumption.
+      - name: Doctests
+        if: matrix.name == 'rest of suite'
+        run: cargo test --doc --workspace --profile test-fast
 
   wasm:
     name: Wasm check
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo check -p auracle-wasm --target wasm32-unknown-unknown --release
 
-  # The site is built and link-checked on every PR, not only on deploy.
+  # The site is built and link-checked on every PR that can affect it, not only
+  # on deploy.
   #
   # Its failure modes are invisible to every other job here: a KaTeX macro that
   # renders as "Undefined control sequence" (a build *warning*), a cross-section
@@ -67,7 +189,10 @@ jobs:
   # would otherwise be found on the live site by a reader.
   site:
     name: Site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -76,9 +201,13 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      # A prebuilt binary from the tool cache. This used to curl-pipe upstream's
+      # installer on every run, which cost a download and a shell out of a
+      # third-party script for a tool that publishes releases.
+      - uses: taiki-e/install-action@wasm-pack
 
       - name: Cache the doc toolchain
         uses: actions/cache@v4
@@ -123,3 +252,29 @@ jobs:
 
       - name: Check every link and asset resolves
         run: make site-check
+
+  # One check that means "CI is green", whatever ran.
+  #
+  # The jobs above are conditional, and a skipped job reports neither success nor
+  # failure — so requiring them individually in a branch ruleset would wedge every
+  # documentation PR forever. This is the job to require instead: it distinguishes
+  # "skipped because the change could not affect it" from "did not pass".
+  ci:
+    name: CI
+    if: always()
+    needs: [changes, lint, test, wasm, site]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the results
+        run: |
+          set -euo pipefail
+          results='${{ join(needs.*.result, " ") }}'
+          echo "upstream results: $results"
+          for r in $results; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a required job did not pass ($r)"; exit 1 ;;
+            esac
+          done
+          echo "green"
