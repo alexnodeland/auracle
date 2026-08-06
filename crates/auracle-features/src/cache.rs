@@ -199,10 +199,23 @@ fn evict_to<V>(map: &mut HashMap<String, (u64, V)>, cap: usize) {
 
 /// A bounded, content-addressed featurization memo.
 ///
-/// Cheap to clone (shared interior) and guarded by a `Mutex`, so it satisfies
-/// the `Send + Sync` shape `fugue_evo::Fitness` would need if the `parallel`
-/// feature were ever enabled — today the workspace takes fugue-evo with
-/// default features off, and every access here is uncontended.
+/// Cheap to clone (shared interior) and guarded by a `Mutex`, and every access
+/// here is uncontended.
+///
+/// This used to say the `Send + Sync` shape was for `fugue_evo::Fitness`, "if
+/// the `parallel` feature were ever enabled". Enabling it would do nothing:
+/// every `rayon` use in fugue-evo is under `#[cfg(feature = "classic")]` — the
+/// classic EC layer's `algorithms/`, `population/` and `fitness/` — and the
+/// workspace takes fugue-evo with `["std", "ppl"]`, driving refinement itself
+/// through `inference::mh::EvolutionChain`. The flag would compile rayon in and
+/// change no code path this crate reaches.
+///
+/// Parallelising refinement is still possible, just Auracle-side and worth
+/// less than it looks: `search_health` and the `refinement_improves_pool`
+/// floor already spawn a thread per seed and saturate the cores, so a
+/// measurement would not get faster. What it would buy is latency on a *single*
+/// refinement — the app's ⚡ button — which is a UX win rather than a harness
+/// one, and this type is shaped for it either way.
 ///
 /// Two tiers, both LRU, because they cost three orders of magnitude apart:
 /// ~1 KB of φ against ~565 KB of audio. Keeping thousands of the former and a
