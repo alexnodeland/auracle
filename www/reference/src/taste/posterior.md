@@ -53,7 +53,7 @@ see byte-identical addresses.
 That used to happen one line after the whole chain was built. `adaptive_mcmc_chain`
 materialized every step — pushing `(TasteSample, Trace)` per iteration into a
 `Vec` it returned by value — and only then did `step_by(stride)` keep every 20th.
-At $K = 5$ that is ~10 000 `Trace` clones of 205 + S `BTreeMap` entries each,
+At $K = 5$ that is ~10 000 `Trace` clones of 210 + S `BTreeMap` entries each,
 held live at once to retain 500: **303.1 MB peak RSS** at the shipped budget,
 scaling with `n_samples`, and a plausible mobile-Safari OOM on a 32-bit heap
 rather than mere waste.

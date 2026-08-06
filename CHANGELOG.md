@@ -8,6 +8,53 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — a fused prior over the brightness cluster, at the strength the gate chose
+
+`rolloff_mean`, `zcr_mean` and `centroid_mean` are three genuine measurements of
+one perceptual thing, and `rolloff_mean` is the worst-conditioned coordinate in
+φ. Dropping any of them discards real signal — they disagree about *which*
+brightness, and a listener who prefers one shading over another is saying
+something the survivors cannot represent. So the prior is now hierarchical over
+the group: a latent mean per style, with each member drawn about it.
+
+**The premise had already moved before the fix landed.** The VIFs that motivated
+this were 18.4 / 10.4 / 5.9; after the ZCR DC removal earlier in this pass they
+measure **16.9 / 9.7 / 5.9**, and `zcr_mean` fell below the collinearity flag
+entirely. A third of the original argument was a coordinate bug rather than a
+modelling problem. The cluster is still real, so the fix still applies — but it
+was re-derived rather than quoted.
+
+**Parameterized as a correlation, which turned out to matter.** With
+`σ_μ = σ_θ√ρ` and `σ_within = σ_θ√(1−ρ)`, the *marginal* prior on each θ is
+unchanged and only the covariance moves; `ρ = 0` is the flat prior node for
+node, verified by reproducing the closed-loop baseline to three decimals. A
+first attempt used a fixed inner SD instead, which quietly inflated the marginal
+variance to `1.25 σ_θ²` — so it changed the prior's scale *and* its correlation,
+and measuring "does fusing help" was really measuring two changes at once. It
+failed the closed-loop gate, and it deserved to.
+
+**The strength was measured, not chosen.** Swept against the always-on
+closed-loop gate:
+
+| ρ | mean posterior/truth r |
+|---|---|
+| 0.00 | 0.657 — the flat prior, reproduced exactly |
+| **0.25** | **0.702** ← default |
+| 0.50 | 0.644 |
+| 0.75 | fails the per-seed floor (seed `0x2` at 0.437) |
+
+That the curve *turns over* is the finding worth keeping. Mild pooling
+regularizes an ill-conditioned ridge; strong pooling overrides the data. A VIF
+says the three coordinates move together **across patches**, which is a fact
+about φ — fusing their coefficients asserts that a listener's *preferences*
+about them move together, which is a fact about people and does not follow. The
+gate's synthetic listener weights `centroid_mean` and ignores the other two, and
+by ρ = 0.75 the prior is confident enough to lose to it.
+
+Costs `K` latent sites: the fit goes 206 → **211** at K = 5. `fit_bench` now
+asks `SiteAddrs` for that number instead of re-deriving it, since a hand-rolled
+formula in a benchmark is exactly what keeps reporting the old count.
+
 ### Added — `Silence`, so an empty socket is empty in the term too
 
 An "empty" socket made sound. The rack drew a dashed EMPTY plate and the

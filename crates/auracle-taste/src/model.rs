@@ -87,6 +87,48 @@ pub struct TasteConfig {
     /// fades as new evidence arrives. `None` → no forgetting.
     #[serde(default)]
     pub recency_half_life: Option<f64>,
+    /// Groups of φ coordinates that measure **one perceptual thing**, and so
+    /// share a latent per-style mean instead of being independent draws.
+    ///
+    /// Empty by default, which is the flat prior this model has always had.
+    /// The caller supplies indices because only it knows the feature *names*;
+    /// see `SessionConfig` for the brightness group it fills in.
+    ///
+    /// ## Why a fused prior rather than dropping a column
+    ///
+    /// `rolloff_mean`, `zcr_mean` and `centroid_mean` are three genuine
+    /// measurements of brightness, and over 1200 prior draws they carry VIFs
+    /// of ~16.9 / ~9.7 / ~5.9 — `rolloff_mean` is the worst-conditioned
+    /// coordinate in φ. Dropping any of them discards real signal: they
+    /// disagree about *which* brightness (spectral tilt, high-frequency
+    /// energy, and waveform sign changes are not the same statistic), and a
+    /// listener who prefers one shading over another is expressing something
+    /// the survivors cannot represent alone.
+    ///
+    /// A shared mean says what is actually true: these coordinates are
+    /// correlated *a priori*, so evidence about one is partial evidence about
+    /// the others. The model can still separate them when the data insist —
+    /// [`Self::sigma_within`] is what buys that freedom — but with few duels
+    /// it pools them instead of splitting an ill-conditioned ridge three ways
+    /// at random, which is the failure mode a high VIF names.
+    #[serde(default)]
+    pub fused: Vec<Vec<usize>>,
+    /// How strongly a fused group's coordinates are correlated *a priori*,
+    /// in `[0, 1)`. `None` → 0.25, which is where the closed-loop gate put it.
+    ///
+    /// Parameterized as a correlation rather than as an inner SD so that the
+    /// **marginal** prior on each coordinate is unchanged: with
+    /// `σ_μ = σ_θ√ρ` and `σ_within = σ_θ√(1−ρ)`, every θ still has prior
+    /// variance `σ_θ²` and only the *covariance* between group members moves.
+    /// At `ρ = 0` the program is exactly the flat one.
+    ///
+    /// That distinction is not cosmetic. An earlier version of this used
+    /// `σ_within = σ_θ/2` with `σ_μ = σ_θ`, which quietly inflated the
+    /// marginal variance to `1.25 σ_θ²` — so it changed the prior's *scale*
+    /// as well as its correlation, and any measurement of "does fusing help"
+    /// was really measuring two changes at once.
+    #[serde(default)]
+    pub fused_rho: Option<f64>,
 }
 
 impl TasteConfig {
@@ -98,6 +140,8 @@ impl TasteConfig {
             n_stars: 6,
             theta_prior_std: None,
             recency_half_life: None,
+            fused: Vec::new(),
+            fused_rho: None,
         }
     }
 
@@ -107,6 +151,73 @@ impl TasteConfig {
             k_styles: k_styles.max(1),
             ..Self::linear(n_features)
         }
+    }
+
+    /// Prior correlation within a fused group, clamped to `[0, 0.99]`.
+    ///
+    /// ## Why 0.25 and not more
+    ///
+    /// Swept against the always-on closed-loop gate, which fits a real
+    /// posterior against a synthetic listener over five seeds:
+    ///
+    /// ```text
+    /// rho    mean posterior/truth r
+    /// 0.00   0.657   (the flat prior, reproduced exactly)
+    /// 0.25   0.702   <- default
+    /// 0.50   0.644
+    /// 0.75   fails the per-seed floor (seed 0x2 at 0.437)
+    /// ```
+    ///
+    /// The shape is the point. Mild pooling *regularizes* an ill-conditioned
+    /// ridge; strong pooling *overrides the data*. That the curve turns over
+    /// is a warning about what a fused prior actually assumes: a VIF says the
+    /// three brightness coordinates move together **across patches**, which is
+    /// a fact about φ. Fusing their coefficients asserts that a listener's
+    /// *preferences* about them move together, which is a fact about people
+    /// and does not follow. The gate's synthetic listener weights
+    /// `centroid_mean` and ignores the other two — a taste that respects the
+    /// cluster's geometry not at all — and at rho = 0.75 the prior is confident
+    /// enough to lose to it.
+    pub fn fused_rho(&self) -> f64 {
+        self.fused_rho.unwrap_or(0.25).clamp(0.0, 0.99)
+    }
+
+    /// SD of a fused group's latent mean: `σ_θ√ρ`.
+    pub fn sigma_group(&self) -> f64 {
+        self.sigma_theta() * self.fused_rho().sqrt()
+    }
+
+    /// SD of a fused coordinate about its group mean: `σ_θ√(1−ρ)`. Together
+    /// with [`Self::sigma_group`] this keeps the marginal at `σ_θ`.
+    pub fn sigma_within(&self) -> f64 {
+        self.sigma_theta() * (1.0 - self.fused_rho()).sqrt()
+    }
+
+    /// The groups actually in force. Empty when `ρ = 0`, so **ρ = 0 is the
+    /// flat prior node for node** — no latent means, no extra sites, the same
+    /// program this model has always run. A guard rather than an accident: a
+    /// zero-SD `Normal` is not a distribution, and "turn the feature off"
+    /// should not depend on remembering to also clear `fused`.
+    pub fn effective_fused(&self) -> &[Vec<usize>] {
+        if self.fused_rho() <= 0.0 {
+            &[]
+        } else {
+            &self.fused
+        }
+    }
+
+    /// Which fused group each coordinate belongs to, or `None` for the
+    /// coordinates that keep the flat prior. Built once per fit.
+    fn group_of(&self) -> Vec<Option<usize>> {
+        let mut out = vec![None; self.n_features];
+        for (g, members) in self.effective_fused().iter().enumerate() {
+            for &i in members {
+                if i < self.n_features {
+                    out[i] = Some(g);
+                }
+            }
+        }
+        out
     }
 
     /// Prior SD of one θ coordinate, corrected for the max-of-K utility so
@@ -220,7 +331,8 @@ fn obs_loglik(o: &Feedback, session: usize, s: &TasteSample) -> f64 {
 /// The MCMC site addresses of one taste program, built once.
 ///
 /// Single-site MH re-executes the whole program on **every step**, so every
-/// `sample()` node — `d·K + S + 5` of them, 206 at K = 5 and d = 40 — is
+/// `sample()` node — `d·K + S + (n_stars − 1) + K·G` of them, **211** at
+/// K = 5, d = 40, one session and one fused group (206 with no group) — is
 /// reconstructed
 /// 26 000 times per fit. Building each address inline
 /// (`addr!(format!("theta{k}"), i)`) therefore cost a `format!` into a
@@ -246,9 +358,24 @@ pub struct SiteAddrs {
     tau: Vec<Address>,
     /// Cutpoint raw sites, `n_stars − 1` of them.
     cut: Vec<Address>,
+    /// Latent group means, flattened `k * n_groups + g` — one per fused
+    /// group per style. Empty when nothing is fused, which is what keeps the
+    /// site count and the addresses byte-identical for a flat config.
+    mu: Vec<Address>,
 }
 
 impl SiteAddrs {
+    /// Total `sample()` nodes in the program — what single-site MH divides its
+    /// step budget across, and the number the fit's cost is linear in.
+    ///
+    /// `d·K + S + (n_stars − 1) + K·G`, where `G` is the number of fused
+    /// groups. At K = 5, d = 40, S = 1 and one brightness group that is
+    /// 200 + 1 + 5 + 5 = **211**; without the group it is the 206 the module
+    /// doc quotes.
+    pub fn site_count(&self) -> usize {
+        self.theta.len() + self.tau.len() + self.cut.len() + self.mu.len()
+    }
+
     /// Build the address table for `cfg` over a log spanning `n_sessions`.
     pub fn new(cfg: &TasteConfig, n_sessions: usize) -> Self {
         Self {
@@ -258,6 +385,11 @@ impl SiteAddrs {
             tau: (0..n_sessions).map(|s| addr!("tau", s)).collect(),
             cut: (0..cfg.n_stars.saturating_sub(1))
                 .map(|j| addr!("cut", j))
+                .collect(),
+            mu: (0..cfg.k_styles)
+                .flat_map(|k| {
+                    (0..cfg.effective_fused().len()).map(move |g| addr!(format!("mu{k}"), g))
+                })
                 .collect(),
         }
     }
@@ -311,62 +443,92 @@ impl TasteModel {
             _ => vec![1.0; n_obs],
         });
         let sigma = cfg.sigma_theta();
+        let sigma_within = cfg.sigma_within();
+        let sigma_group = cfg.sigma_group();
+        let group_of = Arc::new(cfg.group_of());
+        let n_groups = cfg.effective_fused().len();
 
-        // θ: k_styles × n_features Normal sites.
-        let theta_models: Vec<Model<f64>> = addrs
-            .theta
+        // μ: one latent mean per fused group per style, sampled *before* θ so
+        // the members of a group can be drawn around it. With nothing fused
+        // this list is empty and the program below is the flat one, node for
+        // node.
+        let mu_models: Vec<Model<f64>> = addrs
+            .mu
             .iter()
             .map(|a| {
                 sample(
                     a.clone(),
-                    Normal::new(0.0, sigma).expect("valid theta prior"),
+                    Normal::new(0.0, sigma_group).expect("valid group mean prior"),
                 )
             })
             .collect();
 
         let (d, k_styles) = (cfg.n_features, cfg.k_styles);
-        let addrs = addrs.clone();
-        fugue::sequence_vec(theta_models).bind(move |theta_flat| {
-            // τ: one Normal site per session.
-            let tau_models: Vec<Model<f64>> = addrs
-                .tau
+        let addrs_outer = addrs.clone();
+        fugue::sequence_vec(mu_models).bind(move |mu| {
+            let addrs = addrs_outer.clone();
+            let group_of = group_of.clone();
+            // θ: k_styles × n_features Normal sites. A coordinate in a fused
+            // group is drawn about that group's latent mean rather than about
+            // zero — which is the whole of the change, and why the group mean had
+            // to be sampled first.
+            let theta_models: Vec<Model<f64>> = addrs
+                .theta
                 .iter()
-                .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid tau prior")))
+                .enumerate()
+                .map(|(idx, a)| {
+                    let (k, i) = (idx / d, idx % d);
+                    let (mean, sd) = match group_of[i] {
+                        Some(g) => (mu[k * n_groups + g], sigma_within),
+                        None => (0.0, sigma),
+                    };
+                    sample(a.clone(), Normal::new(mean, sd).expect("valid theta prior"))
+                })
                 .collect();
-            let obs = obs.clone();
-            let weights = weights.clone();
-            fugue::sequence_vec(tau_models).bind(move |tau| {
-                // Cutpoint raws: n_stars − 1 Normal sites (ordered by
-                // transform).
-                let cut_models: Vec<Model<f64>> = addrs
-                    .cut
+
+            let addrs = addrs.clone();
+            fugue::sequence_vec(theta_models).bind(move |theta_flat| {
+                // τ: one Normal site per session.
+                let tau_models: Vec<Model<f64>> = addrs
+                    .tau
                     .iter()
-                    .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid cut prior")))
+                    .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid tau prior")))
                     .collect();
                 let obs = obs.clone();
                 let weights = weights.clone();
-                fugue::sequence_vec(cut_models).bind(move |cut_raw| {
-                    let theta: Vec<Vec<f64>> = (0..k_styles)
-                        .map(|ki| theta_flat[ki * d..(ki + 1) * d].to_vec())
-                        .collect();
-                    // Ordered cutpoints from raw sites.
-                    let mut cuts = Vec::with_capacity(cut_raw.len());
-                    let mut c = f64::NAN;
-                    for (j, r) in cut_raw.iter().enumerate() {
-                        c = if j == 0 {
-                            -2.0 + 1.5 * r
-                        } else {
-                            c + (-0.5 + 0.7 * r).exp()
-                        };
-                        cuts.push(c);
-                    }
-                    let s = TasteSample { theta, tau, cuts };
-                    let ll: f64 = obs
+                fugue::sequence_vec(tau_models).bind(move |tau| {
+                    // Cutpoint raws: n_stars − 1 Normal sites (ordered by
+                    // transform).
+                    let cut_models: Vec<Model<f64>> = addrs
+                        .cut
                         .iter()
-                        .zip(weights.iter())
-                        .map(|((o, session), w)| w * obs_loglik(o, *session, &s))
-                        .sum();
-                    factor(ll).map(move |_| s)
+                        .map(|a| sample(a.clone(), Normal::new(0.0, 1.0).expect("valid cut prior")))
+                        .collect();
+                    let obs = obs.clone();
+                    let weights = weights.clone();
+                    fugue::sequence_vec(cut_models).bind(move |cut_raw| {
+                        let theta: Vec<Vec<f64>> = (0..k_styles)
+                            .map(|ki| theta_flat[ki * d..(ki + 1) * d].to_vec())
+                            .collect();
+                        // Ordered cutpoints from raw sites.
+                        let mut cuts = Vec::with_capacity(cut_raw.len());
+                        let mut c = f64::NAN;
+                        for (j, r) in cut_raw.iter().enumerate() {
+                            c = if j == 0 {
+                                -2.0 + 1.5 * r
+                            } else {
+                                c + (-0.5 + 0.7 * r).exp()
+                            };
+                            cuts.push(c);
+                        }
+                        let s = TasteSample { theta, tau, cuts };
+                        let ll: f64 = obs
+                            .iter()
+                            .zip(weights.iter())
+                            .map(|((o, session), w)| w * obs_loglik(o, *session, &s))
+                            .sum();
+                        factor(ll).map(move |_| s)
+                    })
                 })
             })
         })

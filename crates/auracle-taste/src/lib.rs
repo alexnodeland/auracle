@@ -107,6 +107,108 @@ mod tests {
         assert!(acc > 0.8, "held-out duel accuracy {acc} too low");
     }
 
+    /// A fused group adds exactly `K` sites and nothing else, and an unfused
+    /// config is untouched.
+    ///
+    /// The second half is the one that matters for a change like this: the
+    /// flat path is what every unit test, every synthetic user and every
+    /// existing saved posterior runs on, and it must be the same program node
+    /// for node. `mu` is empty without a group, so it is.
+    #[test]
+    fn fusing_costs_one_site_per_style_and_nothing_when_unused() {
+        let flat = TasteConfig::mixture(40, 5);
+        let flat_sites = model::SiteAddrs::new(&flat, 1).site_count();
+        assert_eq!(flat_sites, 40 * 5 + 1 + 5, "the documented 206");
+
+        let mut fused = flat.clone();
+        fused.fused = vec![vec![2, 5, 0]];
+        let fused_sites = model::SiteAddrs::new(&fused, 1).site_count();
+        assert_eq!(
+            fused_sites,
+            flat_sites + 5,
+            "one latent mean per style, and no other new site"
+        );
+    }
+
+    /// A fused prior over correlated coordinates recovers taste better than a
+    /// flat one when evidence is thin — which is the whole claim.
+    ///
+    /// The fixture is φ shaped like the real brightness cluster: coordinates
+    /// 0, 1 and 2 are one latent quantity plus small independent noise, and
+    /// the user weights all three. That is the situation a VIF of ~17 reports.
+    /// Both arms see the **same** duels from the same seed, so the comparison
+    /// is the prior and nothing else.
+    ///
+    /// Thin evidence is the point. With enough duels the likelihood swamps any
+    /// prior and both arms converge, so a test at 400 duels would pass whatever
+    /// the prior did; 40 is where a prior that says "these three move together"
+    /// can still be wrong or right.
+    #[test]
+    fn a_fused_prior_beats_a_flat_one_on_a_correlated_cluster() {
+        let mut rng = StdRng::seed_from_u64(0xB817);
+        let mut theta = vec![0.0; D];
+        theta[0] = 1.2;
+        theta[1] = 1.0;
+        theta[2] = 0.9;
+        theta[8] = -1.1;
+        let user = SyntheticUser {
+            theta,
+            tau: 0.4,
+            cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
+        };
+
+        // φ with a genuine brightness cluster: one shared factor, three noisy
+        // views of it.
+        let correlated = |rng: &mut StdRng| -> Vec<f64> {
+            let mut x = random_phi(rng);
+            let shared = x[0];
+            x[1] = 0.93 * shared + 0.37 * x[1];
+            x[2] = 0.90 * shared + 0.44 * x[2];
+            x
+        };
+
+        let mut log = ObservationLog::new();
+        for _ in 0..40 {
+            let (a, b) = (correlated(&mut rng), correlated(&mut rng));
+            log.push(user.observe_duel(&mut rng, a, b, 0));
+        }
+        let data = FitSet::as_is(&log);
+
+        let fit = |cfg: TasteConfig, seed: u64| {
+            let mut r = StdRng::seed_from_u64(seed);
+            let p = TasteModel::new(cfg).fit(&mut r, &data, 20_000, 6_000);
+            cosine(&p.theta_mean(0), &user.theta)
+        };
+
+        // Across several chain seeds, not one: a single pair proves nothing
+        // about a prior, and this codebase has already been bitten once by a
+        // statistic that was really about seed luck (see `RefineKeep`).
+        let mut wins = 0;
+        let (mut sum_flat, mut sum_fused) = (0.0, 0.0);
+        for seed in [7u64, 19, 23, 41, 57, 63, 71, 89, 97, 103, 111, 127] {
+            let flat = fit(TasteConfig::linear(D), seed);
+            let mut cfg = TasteConfig::linear(D);
+            cfg.fused = vec![vec![0, 1, 2]];
+            let fused = fit(cfg, seed);
+            println!(
+                "seed {seed}: flat {flat:.3}  fused {fused:.3}  ({:+.3})",
+                fused - flat
+            );
+            sum_flat += flat;
+            sum_fused += fused;
+            if fused > flat {
+                wins += 1;
+            }
+        }
+        let n = 12.0;
+        let (flat, fused) = (sum_flat / n, sum_fused / n);
+        println!("mean: flat {flat:.3}  fused {fused:.3}");
+        assert!(
+            fused > flat && wins >= 8,
+            "fusing the cluster did not help: flat {flat:.3}, fused {fused:.3}, {wins}/5 wins"
+        );
+    }
+
     /// M3 gate 2: all three modalities condition one posterior; recovery
     /// still holds and the keep/kill threshold τ is located.
     #[test]

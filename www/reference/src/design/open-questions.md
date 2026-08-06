@@ -74,7 +74,7 @@ a description of the system.</p>
   measured.
 - **Fit cost at the K cap.** Single-site MH re-executes the whole program per
   step, so a mature [fit](../taste/posterior.md) is both slower and
-  statistically thinner than an early one (205 + S sites over a fixed 10 000
+  statistically thinner than an early one (210 + S sites over a fixed 10 000
   steps ≈ 48 sweeps per site). The address table is hoisted out of the step
   loop and the chain no longer holds itself in memory, so what is left is purely
   the statistical shape of the problem — the budget can now be chosen on the
@@ -155,8 +155,25 @@ a description of the system.</p>
   `voct_to_hz` is unclamped — overflow is now *recovered* by Q198 rather than
   prevented, and a pitch clamp would also tame aliasing garbage at
   absurd-but-finite pitches.
-- **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
-  `centroid_mean` carry VIFs of 18.4 / 10.4 / 5.9 — three genuine measurements
-  of one perceptual thing. Dropping any discards real signal; the right fix is
-  a shared or fused prior over the cluster, which is a
-  [modelling](../features/audio.md) change and is not done.
+- ~~**The brightness cluster in φ_audio.**~~ **Closed by doing it.**
+  `rolloff_mean`, `zcr_mean` and `centroid_mean` are three genuine measurements
+  of one perceptual thing, and this entry called for a shared or fused prior
+  over the cluster rather than dropping a column.
+
+  The numbers moved before the fix landed, which is worth recording: the VIFs
+  quoted here were 18.4 / 10.4 / 5.9, and after the ZCR DC removal they measure
+  **16.9 / 9.7 / 5.9** — `zcr_mean` fell below the collinearity flag entirely.
+  The cluster is still real (`rolloff_mean` remains the worst-conditioned
+  coordinate in φ) but one third of the original argument was a coordinate bug
+  rather than a modelling problem.
+
+  The prior is now hierarchical over the group: `μ_bright,k ~ Normal(0, σ_θ)`
+  per style, with each member drawn `Normal(μ_bright,k, σ_within)` and
+  `σ_within = σ_θ/2`. That says what is true — evidence about one brightness
+  coordinate is partial evidence about the others — while leaving the model
+  free to separate them when the data insist. It costs `K` latent sites, taking
+  the fit from 206 to **211** at K = 5.
+
+  Measured on a synthetic cluster with thin evidence (40 duels, where a prior
+  can still be right or wrong), recovery cosine improves on **5 of 5 chain
+  seeds**, 0.852 → 0.864 on the mean.
