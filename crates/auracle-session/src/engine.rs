@@ -1582,6 +1582,19 @@ impl Engine {
         let k = (1 + self.log.len() / 20).min(self.cfg.k_styles).max(1);
         let mut taste_cfg = TasteConfig::mixture(d, k);
         taste_cfg.recency_half_life = self.cfg.recency_half_life;
+        // The brightness cluster shares a latent mean per style. Resolved by
+        // *name* here because this is the layer that knows them; the taste
+        // crate is handed indices and never learns what they mean. A name that
+        // is not in φ simply does not join the group, so a stimulus-tag bump
+        // or a dropped column degrades to the flat prior rather than panicking
+        // or silently fusing the wrong coordinate.
+        let bright: Vec<usize> = ["rolloff_mean", "zcr_mean", "centroid_mean"]
+            .iter()
+            .filter_map(|want| names.iter().position(|n| n.split(':').next() == Some(want)))
+            .collect();
+        if bright.len() > 1 {
+            taste_cfg.fused = vec![bright];
+        }
         let model = TasteModel::new(taste_cfg);
         let data = FitSet::build(&self.log, &names, &sz);
         let posterior = model.fit(rng, &data, self.cfg.mcmc_samples, self.cfg.mcmc_warmup);

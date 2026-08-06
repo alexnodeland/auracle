@@ -16,11 +16,15 @@
 //!
 //! # more seeds if you want tighter error bars     (scales linearly)
 //! cargo run -p auracle-session --example learn_synthetic --release -- --compare 20
+//!
+//! # the two regimes the open question named: a bigger pool, and a longer session
+//! cargo run -p auracle-session --example learn_synthetic --release -- --compare 20 --pool 192
+//! cargo run -p auracle-session --example learn_synthetic --release -- --compare 20 --rounds 24
 //! ```
 //!
 //! Runtimes are wall-clock on a 16-core machine and are dominated by MCMC:
-//! each run is `ROUNDS` full posterior fits, and `--compare N` does
-//! `3 · N · ROUNDS` of them. Every number in [`Acquisition`]'s doc table came
+//! each run is `--rounds` full posterior fits (default 6), and `--compare N`
+//! does `3 · N · rounds` of them. Every number in [`Acquisition`]'s doc table came
 //! from `--compare 10`; re-running it reproduces them exactly, since the only
 //! randomness is seeded.
 //!
@@ -123,6 +127,11 @@ fn main() {
                 POOL.store(p, std::sync::atomic::Ordering::Relaxed);
             }
         }
+        if let Some(j) = args.iter().position(|a| a == "--rounds") {
+            if let Some(r) = args.get(j + 1).and_then(|a| a.parse::<usize>().ok()) {
+                ROUNDS_N.store(r.max(1), std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         compare(n.max(2));
         return;
     }
@@ -194,10 +203,18 @@ fn main() {
 
 /// Rounds of duels between refits, and how many rounds — the A/B grid.
 const ROUND_SIZE: usize = 12;
-const ROUNDS: usize = 6;
 /// Pool size for the A/B. Overridable so the "a bigger pair space favours
 /// information-seeking" hypothesis can actually be tested rather than assumed.
 static POOL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(48);
+/// Rounds of duels, i.e. **session length**. Overridable for the same reason
+/// `POOL` is: the open question about acquisition names *two* regimes where the
+/// BALD/uniform tie might break — a much larger pool, or a much longer session
+/// — and only the first of them could be asked for.
+static ROUNDS_N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(6);
+
+fn rounds() -> usize {
+    ROUNDS_N.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 fn sigmoid(x: f64) -> f64 {
     1.0 / (1.0 + (-x).exp())
@@ -295,7 +312,7 @@ fn run_arm(acquisition: Acquisition, regime: Regime, seed: u64, user: &Synthetic
     let eval = Eval::new(engine.pool.iter().map(|c| c.features.phi()).collect());
 
     let mut t = 0u64;
-    for round in 0..ROUNDS {
+    for round in 0..rounds() {
         for _ in 0..ROUND_SIZE {
             let Some((a, b)) = engine.next_duel(&mut acq_rng) else {
                 break;
@@ -467,7 +484,7 @@ fn compare(n_seeds: usize) {
     println!(
         "acquisition A/B — {n_seeds} CRN-paired seeds, pool {}, {} duels, refit every {ROUND_SIZE}",
         POOL.load(std::sync::atomic::Ordering::Relaxed),
-        ROUNDS * ROUND_SIZE
+        rounds() * ROUND_SIZE
     );
     println!("(pool fill, user coin flips, MCMC and refinement seeds are common across arms)");
     println!("(graded on a fixed held-out exam: the initial pool, under one reference scale)\n");

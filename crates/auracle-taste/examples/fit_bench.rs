@@ -7,7 +7,7 @@
 //! rounding error. This harness is the instrument that claim is measured
 //! with — it runs the two operating points the session layer actually visits:
 //!
-//! | point | K | n_obs | sites (`27K + S + 5`) |
+//! | point | K | n_obs | sites (`dK + S + (n_stars−1) + KG`) |
 //! |---|---|---|---|
 //! | first fit  | 1 | 6   | 33  |
 //! | mature fit | 5 | 100 | 141 |
@@ -94,8 +94,13 @@ fn point(label: &str, k: usize, n_obs: usize, n_sessions: usize, samples: usize,
     let d = Features::phi_names().len();
     let log = synthetic_log(0xB0A7, n_obs, d, n_sessions);
     let data = FitSet::as_is(&log);
-    let model = TasteModel::new(TasteConfig::mixture(d, k));
-    let sites = d * k + data.n_sessions().max(1) + 5;
+    let cfg = TasteConfig::mixture(d, k);
+    // Asked for rather than re-derived here. The site count grew a term when
+    // the brightness cluster gained a fused prior (`K` latent group means),
+    // and a hand-rolled formula in a benchmark is exactly the kind of thing
+    // that keeps reporting the old number after the model has moved.
+    let sites = auracle_taste::model::SiteAddrs::new(&cfg, data.n_sessions().max(1)).site_count();
+    let model = TasteModel::new(cfg);
 
     let mut rng = StdRng::seed_from_u64(0xF17);
     let t0 = Instant::now();

@@ -8,6 +8,55 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — the brightness cluster's fused prior, implemented and switched off
+
+`rolloff_mean`, `zcr_mean` and `centroid_mean` are three genuine measurements of
+one perceptual thing, and `rolloff_mean` is the worst-conditioned coordinate in
+φ. The open question asked for a shared or fused prior over the cluster rather
+than dropping a column. It is now built — a latent mean per style, members drawn
+about it — and it ships at `ρ = 0`, which is off.
+
+**Two gates were run and they disagreed. That is the finding.**
+
+Against the always-on closed-loop gate, which scores θ *recovery*, fusing helps:
+
+| ρ | mean posterior/truth r |
+|---|---|
+| 0.00 | 0.657 — the flat prior, reproduced exactly |
+| **0.25** | **0.702** |
+| 0.50 | 0.644 |
+| 0.75 | fails the per-seed floor |
+
+Against the **climb** at ρ = 0.25 — 48 paired seeds, the gate that asks what the
+pool is actually worth to the listener — it hurts, and not marginally:
+
+| statistic | value |
+|---|---|
+| 10% trimmed | **−0.579 ± 0.188 (−3.09 se)** |
+| median | −0.726 |
+| sign test | 16 better / 32 worse, **p = 0.029** |
+| climbed | 41/48 → 38/48 |
+
+Both are true because they measure different things. Pooling an ill-conditioned
+ridge is a real regularizer for *estimating* θ. It is a *bias* for the search
+that consumes θ: the synthetic listener puts 2.0 on `centroid_mean` and exactly
+0 on the other two, so shrinking them together drags the one coefficient that
+matters toward two that do not, and the search aims worse.
+
+**The general warning is worth more than the feature.** A VIF says the three
+coordinates move together *across patches* — a fact about φ. Fusing their
+coefficients asserts that a listener's *preferences* about them move together —
+a fact about people, which does not follow from the first and had not been
+measured. The issue's framing invited that conflation, and the climb caught it.
+
+Kept re-checkable rather than deleted, as `RefineKeep::Best` and
+`Acquisition::Thompson` are. At `ρ = 0` it emits no latent sites at all, so the
+program is the flat one node for node and the fit stays at 206 sites.
+
+Also: the premise had already moved. The VIFs motivating this were 18.4/10.4/5.9;
+after the ZCR DC removal they measure **16.9/9.7/5.9** and `zcr_mean` is no
+longer flagged at all — a third of the original argument was a coordinate bug.
+
 ### Added — `Silence`, so an empty socket is empty in the term too
 
 An "empty" socket made sound. The rack drew a dashed EMPTY plate and the

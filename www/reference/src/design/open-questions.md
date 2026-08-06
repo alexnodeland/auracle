@@ -156,7 +156,26 @@ a description of the system.</p>
   prevented, and a pitch clamp would also tame aliasing garbage at
   absurd-but-finite pitches.
 - **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
-  `centroid_mean` carry VIFs of 18.4 / 10.4 / 5.9 — three genuine measurements
-  of one perceptual thing. Dropping any discards real signal; the right fix is
-  a shared or fused prior over the cluster, which is a
-  [modelling](../features/audio.md) change and is not done.
+  `centroid_mean` are three genuine measurements of one perceptual thing.
+  A fused prior over the cluster is now **implemented and switched off**, which
+  is a more useful state than either "not done" or "done".
+
+  The VIFs quoted when this was written were 18.4 / 10.4 / 5.9; after the ZCR DC
+  removal they measure **16.9 / 9.7 / 5.9** and `zcr_mean` no longer trips the
+  collinearity flag at all. A third of the original argument was a coordinate
+  bug rather than a modelling problem.
+
+  Two gates were run at ρ = 0.25 and they **disagreed**. The closed-loop gate,
+  which scores θ recovery, improved (0.657 → 0.702). The 48-seed paired climb,
+  which scores what the pool is worth to the listener, regressed —
+  **−0.579 ± 0.188 trimmed (−3.09 se)**, sign test 16 better / 32 worse
+  (p = 0.029). So it ships at ρ = 0.
+
+  Both results are real because they measure different things: pooling an
+  ill-conditioned ridge regularizes *estimating* θ, and biases the *search* that
+  consumes θ. The general point outlives the feature — a VIF says these
+  coordinates move together across **patches**, which is a fact about φ; fusing
+  their coefficients asserts a listener's **preferences** move together, which
+  is a fact about people and does not follow. Re-open if the listener model ever
+  gains a reason to believe it does; the sweep and both gates are there to
+  re-run.
