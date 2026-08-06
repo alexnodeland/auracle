@@ -8,6 +8,48 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — the acquisition question was measured, and the tie does not break
+
+BALD ties uniform random pairing at session horizon, and the open question named
+two regimes where that should stop being true: a much larger pool, or a much
+longer session. Neither had been asked, and only one of them *could* be — pool
+size was a flag, session length was a constant. `learn_synthetic` now takes
+`--rounds` beside `--pool`.
+
+Both regimes run, 20 CRN-paired seeds, `bald − random`:
+
+| regime | cos θ* | rank r | excess nats |
+|---|---|---|---|
+| baseline (pool 48, 6 rounds) | +0.059 ± 0.046 *(static)* | +0.045 ± 0.068 | −0.013 ± 0.012 *(static)* |
+| **pool 192** | −0.002 ± 0.044 | +0.015 ± 0.061 | −0.001 ± 0.012 |
+| **24 rounds** (288 duels) | +0.031 ± 0.042 | +0.013 ± 0.013 | −0.003 ± 0.006 |
+
+At the baseline BALD has two marginal wins in the static regime. **Widening the
+pool fourfold removes them** rather than growing them, and lengthening the
+session fourfold leaves everything inside noise with several signs flipped. The
+reasoning — that a bigger pair space gives an information-seeking rule more
+redundancy to prune — does not survive being tried.
+
+What is stable across all three regimes is BALD beating dueling Thompson
+(t = 2.9 to 6.9), which was already known. Uniform pairing stands as the default
+on the grounds it always had: it ties everywhere anyone has looked, has no
+tuning constants, and makes every duel an unbiased calibration sample.
+
+### Changed — what actually blocks per-style audition phrases
+
+The register implied the blocker was the migration mechanism. It is not: the
+`:p2` stimulus tag already solves the history problem, and the imputation it
+leans on is now honest rather than a silent measurement. Comparability is fine
+too — the phrase is a property of the *session*, not of a candidate, so a pool
+is auditioned under one stimulus and duels stay apples-to-apples.
+
+What blocks it is circular. A style is *discovered* — an inference from φ. φ is
+measured under a phrase. If the phrase is chosen by the style, the stimulus
+depends on an inference that depends on the stimulus. That loop can be broken,
+but every way of breaking it is a decision about how much the instrument may
+change what it is measuring while it measures it. Deferred until that has an
+answer worth defending, rather than until someone has time.
+
 ### Fixed — an imputed coordinate no longer arrives as a measurement
 
 `FitSet::build` imputes an absent coordinate at the standardizer's mean, which

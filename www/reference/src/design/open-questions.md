@@ -96,10 +96,34 @@ a description of the system.</p>
 
   Deferred until that loop has an answer worth defending, rather than until
   someone has time — the mechanism is ready and the question is not.
-- **Where acquisition would earn its keep.** [BALD ties uniform
-  pairing](../search/acquisition.md) at session horizon. A much larger pool or
-  a much longer session is where the tie should break; neither has been
-  measured.
+- ~~**Where acquisition would earn its keep.**~~ **Measured, and the tie does
+  not break.** [BALD ties uniform pairing](../search/acquisition.md) at session
+  horizon, and this entry named two regimes where that should stop being true:
+  a much larger pool, or a much longer session. Both were run at 20 CRN-paired
+  seeds, `bald − random`:
+
+  | regime | cos θ* | rank r | excess nats |
+  |---|---|---|---|
+  | baseline (pool 48, 6 rounds) | +0.059 ± 0.046 *(static)* | +0.045 ± 0.068 | −0.013 ± 0.012 *(static)* |
+  | **pool 192** | −0.002 ± 0.044 | +0.015 ± 0.061 | −0.001 ± 0.012 |
+  | **24 rounds** (288 duels) | +0.031 ± 0.042 | +0.013 ± 0.013 | −0.003 ± 0.006 |
+
+  At the baseline BALD has two marginal wins in the *static* regime (t = 2.6 and
+  −2.2). **Widening the pool fourfold removes them** rather than growing them,
+  and lengthening the session fourfold leaves everything inside noise with
+  several signs flipped. The reasoning behind the entry — that a bigger pair
+  space gives an information-seeking rule more redundancy to prune — does not
+  survive being tried.
+
+  What *is* stable across all three regimes is that BALD beats dueling Thompson
+  (t = 2.9 to 6.9), which was already known and is unchanged.
+
+  So uniform random pairing stands as the default on the same grounds it always
+  had: it ties the information-seeking rule everywhere anyone has looked, has no
+  tuning constants, and makes every duel an unbiased calibration sample. The
+  session-length knob this needed (`--rounds`) is now in `learn_synthetic`
+  beside `--pool`, so the next person can ask a third regime without patching
+  a constant.
 - **Fit cost at the K cap.** Single-site MH re-executes the whole program per
   step, so a mature [fit](../taste/posterior.md) is both slower and
   statistically thinner than an early one (205 + S sites over a fixed 10 000
