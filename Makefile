@@ -36,13 +36,19 @@ check: fmt-check lint test
 build:
 	$(CARGO) build --workspace
 
-## test: release mode — the grammar/features/session tests render real audio
+## test: optimized — the grammar/features/session tests render real audio
 ## sample-by-sample; debug-mode DSP is ~20× slower
+#
+# `test-fast` is release codegen without release's shipping flags (see the
+# profile in Cargo.toml). Same opt-level, so the suite runs at the same speed it
+# always did; no fat LTO, so it stops paying a serialized link for five test
+# binaries. CI builds the tests under this profile too — one definition of what
+# an optimized test build is.
 test:
-	$(CARGO) test --workspace --release
+	$(CARGO) test --workspace --profile test-fast
 
 test-verbose:
-	$(CARGO) test --workspace --release -- --nocapture
+	$(CARGO) test --workspace --profile test-fast -- --nocapture
 
 fmt:
 	$(CARGO) fmt --all
