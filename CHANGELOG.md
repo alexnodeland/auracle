@@ -17,7 +17,8 @@ than guessed, and then measured again in CI afterwards:
 |---|---|---|
 | test compile, warm cache | 2m21s | **1m12s** |
 | a Rust PR, end to end | 11m30s | **~8m** |
-| a docs-only PR | 11m30s | **~2m** — Rust jobs skipped |
+| a site or brand PR | 11m30s | **~2m** — only `Site` runs |
+| a README or changelog PR | 11m30s | **16s** — nothing to build |
 | three pushes to one PR | three full runs | the first two cancelled |
 
 The honest headline is the docs PR and the cancellation, not the Rust PR. After
