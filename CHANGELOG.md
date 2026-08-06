@@ -8,6 +8,38 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — the RefineKeep A/B was run, and it tied
+
+A refinement walk renders ~40 candidates and injects one. Which one was never
+measured — the shipped rule is "the state the walk ended on", and
+`RefineKeep::Best` (the highest-`log π_β` state the walk occupied, seed
+included) has been implemented, free and switched off, waiting for the
+instrument that would settle it.
+
+Sixteen paired seeds, same list both arms:
+
+| | `Last` | `Best` |
+|---|---|---|
+| mean gain | +1.927 ± 0.452 | +1.774 ± 0.302 |
+| median gain | +2.058 | +1.819 |
+| 10% trimmed | +1.840 ± 0.383 | **+1.925 ± 0.190** |
+| climbed on | 14/16 | 15/16 |
+
+Paired difference: mean **−0.153 ± 0.384**, median −0.185, trimmed
+−0.113 ± 0.318, sign test **8 better / 8 worse (p = 1.000)**. As exact a tie as
+sixteen seeds can produce. Nothing clears zero at 2 se, so **the default stays
+`Last`** and the result is written into the `RefineKeep` doc comment — a rule
+rejected on evidence stays re-checkable, the way `Acquisition::Thompson` is kept
+after losing.
+
+Neither the feared failure nor the hoped-for win appeared. The worry was that
+argmax over a surrogate would find the surrogate's errors and deepen the
+catastrophic tail; across the pair the tails are a wash. What did show is that
+**`Best` is the lower-variance rule rather than the better one** — half the
+trimmed standard error. Injecting the walk's argmax is more *consistent* than
+injecting where it stopped; it simply does not aim anywhere better on average.
+That is the argument to re-run this on if the surrogate ever gets sharper.
+
 ### Fixed — two φ coordinates that were measuring the wrong thing
 
 **ZCR counted crossings of zero, not of the signal's own centre.** A constant
