@@ -234,9 +234,22 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         (hops * hop as f64 / sr + 0.005).ln()
     };
 
+    // **DC-removed before counting.** A zero-crossing counter measures crossings
+    // of zero, not of the signal's own centre, so a constant offset suppresses
+    // them — a patch riding +0.3 with a ±0.2 oscillation crosses zero never and
+    // reads as maximally dark. The vet gate admits |mean|/rms up to 0.6, so that
+    // is a reachable render rather than a hypothetical one, and `zcr_mean` feeds
+    // a linear model as if it were a brightness measurement.
+    //
+    // Subtracting the mean is the whole fix: the crossing count of `x − x̄` is
+    // what the coordinate has always been trying to be. For a render with no
+    // offset — which is nearly all of them, `makes_dc` puts a blocker in front
+    // of every tube-mode patch — the mean is ~1e-4 of full scale and the count
+    // is unchanged.
+    let dc = x.iter().sum::<f64>() / n.max(1) as f64;
     let zcr_fraction = if n > 1 {
         x.windows(2)
-            .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
+            .filter(|w| ((w[0] - dc) >= 0.0) != ((w[1] - dc) >= 0.0))
             .count() as f64
             / (n - 1) as f64
     } else {
@@ -344,6 +357,18 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
                 fluxes.push(flux);
             }
             prev_mag = Some((mag, msum));
+        } else {
+            // **A silent frame breaks the chain rather than being skipped
+            // over.** Flux is the change between *adjacent* frames; carrying
+            // `prev_mag` across a gap would compare two frames that are not
+            // neighbours and report the difference as if it happened in one
+            // hop. A phrase with a rest in it — and this one has four — would
+            // then score a spurious burst of movement at every re-entry, which
+            // is the opposite of what a rest is.
+            //
+            // Dropping the sample is the honest reading: across a gap there is
+            // no adjacent pair to measure, so there is nothing to say.
+            prev_mag = None;
         }
         pos += HOP;
     }
@@ -448,5 +473,122 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         held_centroid_std,
         high_ratio,
         chord_flatness_delta,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::RenderedPhrase;
+    use std::f64::consts::TAU;
+
+    const SR: f64 = 48_000.0;
+
+    /// A bare phrase around `samples` — no spans, one onset at the start.
+    /// The segment-local coordinates all return 0.0 without spans, which is
+    /// what these tests want: they are about two coordinates each.
+    fn phrase(samples: Vec<f64>) -> RenderedPhrase {
+        RenderedPhrase {
+            samples,
+            sample_rate: SR,
+            note_onsets: vec![0],
+            spans: vec![],
+        }
+    }
+
+    /// A sine with a phase offset, so no sample lands exactly on the centre.
+    /// A sample of exactly 0.0 has its sign decided by the last bit of the
+    /// computed mean, which is not a property either test is about.
+    fn sine(hz: f64, n: usize, amp: f64) -> Vec<f64> {
+        (0..n)
+            .map(|i| amp * (TAU * hz * i as f64 / SR + 0.3).sin())
+            .collect()
+    }
+
+    /// ZCR counts crossings of the signal's own centre, not of zero.
+    ///
+    /// The fixture is the case the coordinate got wrong: a tone riding a DC
+    /// offset large enough that it never reaches zero. The first assertion
+    /// pins that down as a property of the fixture rather than a claim in a
+    /// comment — this signal crosses zero *never* — and the second says the
+    /// coordinate must nonetheless read it as exactly as bright as the
+    /// centred tone it is a copy of, because it is the same oscillation.
+    #[test]
+    fn zcr_counts_crossings_of_the_signals_own_centre() {
+        let centred = sine(440.0, SR as usize, 0.5);
+        // Same oscillation, scaled and lifted clear of zero: ±0.2 about +0.3.
+        let riding: Vec<f64> = centred.iter().map(|s| s * 0.4 + 0.3).collect();
+
+        let raw_crossings = riding
+            .windows(2)
+            .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
+            .count();
+        assert_eq!(
+            raw_crossings, 0,
+            "fixture must never cross zero, or it does not exercise the bug"
+        );
+
+        let a = audio_features(&phrase(centred));
+        let b = audio_features(&phrase(riding));
+
+        // Before the DC removal this read `log_axis(0, nyquist)` — the floor of
+        // the axis, i.e. maximally dark — against a genuinely bright tone.
+        assert!(
+            (a.zcr_mean - b.zcr_mean).abs() < 1e-9,
+            "offset tone read {} against {} for the same oscillation",
+            b.zcr_mean,
+            a.zcr_mean
+        );
+        assert!(b.zcr_mean > log_axis(0.0, SR / 2.0) + 0.1);
+    }
+
+    /// Flux is the change between *adjacent* frames, so a rest breaks the
+    /// chain rather than being stepped over.
+    ///
+    /// Both fixtures are a burst, a rest, and a burst of the same tone; they
+    /// differ only in how loud the **second** burst is. That is the one edit
+    /// that isolates the bug, because flux is normalized by the combined frame
+    /// magnitude: scaling a burst scales every frame overlapping it by the
+    /// same factor, and a ratio of two scaled quantities is the ratio it was.
+    /// So every flux sample with both feet in one burst is invariant, and with
+    /// a rest longer than a frame no single frame straddles both bursts —
+    /// leaving exactly one comparison in the phrase that can see the amplitude
+    /// change. It is the comparison across the rest, and it is the one a rest
+    /// must not produce.
+    ///
+    /// Every span is a whole number of hops, which is what makes the fixture
+    /// bite. Frames advance by `HOP` from zero, so unaligned spans leave the
+    /// last frame before the rest holding a sliver of tone under the near-zero
+    /// edge of the Hann window; that frame's magnitude is negligible against
+    /// the one after the rest, the ratio goes to 1 whatever the amplitude, and
+    /// the bug hides. Aligned, the frames either side of the rest are each
+    /// half tone at full window weight, and the step between them is real.
+    ///
+    /// With the chain broken the two fixtures agree to the last bit. Carrying
+    /// `prev_mag` across instead scores the re-entry as a step from full scale
+    /// to a tenth of it, which is movement that did not happen in one hop.
+    #[test]
+    fn flux_does_not_step_across_a_rest() {
+        let burst = 8 * HOP;
+        // Four hops of rest: at least one frame is entirely silent, so the
+        // chain has somewhere to break, and no frame holds both bursts.
+        let rest = vec![0.0; 4 * HOP];
+        let build = |second_amp: f64| {
+            let mut s = sine(200.0, burst, 0.5);
+            s.extend_from_slice(&rest);
+            s.extend(sine(200.0, burst, second_amp));
+            audio_features(&phrase(s)).flux_mean
+        };
+
+        let level = build(0.5);
+        let quiet = build(0.05);
+
+        assert!(
+            (level - quiet).abs() < 1e-12,
+            "re-entering ten times quieter moved flux_mean {level} -> {quiet}, \
+             so a rest is still being stepped across"
+        );
+        // The fixture is only meaningful if there is flux to compare at all.
+        assert!(level > 0.0);
     }
 }

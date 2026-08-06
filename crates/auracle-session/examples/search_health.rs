@@ -733,6 +733,41 @@ fn climb_report(seeds: &[u64]) {
         (var / gain.len() as f64).sqrt(),
         gain.len()
     );
+    // **And the same claim again, robustly, because the mean above cannot
+    // carry it.** Pool utility collapses catastrophically on a small fraction
+    // of seeds — `insert_candidate` admits and evicts by the model, so a
+    // surrogate that is wrong in the right way can walk a pool downhill — and
+    // a collapse is worth tens of utility against a typical gain of two. On
+    // the 48-seed pair that revalidated the ZCR/flux fix, **three seeds of 48
+    // carried 95% of the variance** in the paired difference: the raw mean
+    // read +0.749 ± 0.857 while the trimmed mean read −0.099 ± 0.191, a
+    // four-fold tighter interval pointing the other way.
+    //
+    // So the mean is not a statistic about the search, it is a statistic about
+    // whether this seed list happened to contain a collapse. The median and
+    // the trimmed mean are what a φ change should be read on; the mean stays
+    // because the collapses are real and hiding them would be worse.
+    let mut sorted = gain.clone();
+    sorted.sort_by(f64::total_cmp);
+    let median = if sorted.len().is_multiple_of(2) {
+        (sorted[sorted.len() / 2 - 1] + sorted[sorted.len() / 2]) / 2.0
+    } else {
+        sorted[sorted.len() / 2]
+    };
+    let cut = (sorted.len() / 10).max(1);
+    let trimmed = if sorted.len() > 2 * cut {
+        &sorted[cut..sorted.len() - cut]
+    } else {
+        &sorted[..]
+    };
+    let t_mean = mean(trimmed);
+    let t_var = trimmed.iter().map(|g| (g - t_mean).powi(2)).sum::<f64>()
+        / (trimmed.len().max(2) - 1) as f64;
+    println!(
+        "  median gain: {median:+.3}   10% trimmed: {t_mean:+.3} ± {:.3} (se, n={})",
+        (t_var / trimmed.len() as f64).sqrt(),
+        trimmed.len()
+    );
     println!(
         "{:<8} {:>10} {:>10} {:>10}",
         "seed", "final mean", "final max", "gain"
