@@ -88,11 +88,31 @@ a description of the system.</p>
   now open for want of *data* rather than for want of an instrument. Rows where
   `k == k_styles` are the ones that bear on it: `k` grows with the log, so an
   early row with two lenses is not evidence that lenses 3–5 are idle.
-- **Which state of a refinement walk to inject.** A walk renders ~40 candidates
-  and keeps one. `RefineKeep::Best` is implemented and free, and ships switched
-  off: argmax over a surrogate finds that surrogate's errors, and the patch-loop
-  gate has already caught two seeds in sixteen ending **−12.0** and **−5.5**
-  worse in true utility. The A/B is `make climb`, and it has not been run.
+- ~~**Which state of a refinement walk to inject.**~~ **Run, and it tied.** A
+  walk renders ~40 candidates and keeps one; `RefineKeep::Best` takes the
+  highest-`log π_β` state the walk occupied, seed included, and ships switched
+  off. Sixteen paired seeds:
+
+  | | `Last` | `Best` |
+  |---|---|---|
+  | mean gain | +1.927 ± 0.452 | +1.774 ± 0.302 |
+  | median gain | +2.058 | +1.819 |
+  | 10% trimmed | +1.840 ± 0.383 | **+1.925 ± 0.190** |
+  | climbed on | 14/16 | 15/16 |
+
+  Paired difference (`Best` − `Last`): mean **−0.153 ± 0.384**, median −0.185,
+  trimmed −0.113 ± 0.318, sign test **8 better / 8 worse (p = 1.000)**. As exact
+  a tie as sixteen seeds can produce, and it does not clear zero at 2 se on any
+  statistic — so the default stays `Last`, kept re-checkable rather than
+  deleted, as `Acquisition::Thompson` is.
+
+  Neither the feared failure nor the hoped-for win appeared. The worry was that
+  argmax over a surrogate would deepen the catastrophic tail; across the pair
+  the tails are a wash. What *did* show is that **`Best` is the lower-variance
+  rule rather than the better one** — half the trimmed standard error (0.190
+  against 0.383). Injecting the walk's argmax is more consistent than injecting
+  where it stopped; it just does not aim anywhere better on average. That is the
+  argument to re-run this on if the surrogate ever gets sharper.
 - ~~**Interior signal taps in quiver.**~~ **Closed, and it was wrong.** This
   entry read: *"a compiled patch exposes exactly one output … a quiver-side
   probe API would turn both into measurements. Not filed — it needs scoping

@@ -218,10 +218,48 @@ pub enum Acquisition {
 /// a *shortlist* wants — the pool is not a sample, it is a few dozen patches a
 /// person will listen to — but argmax over a surrogate is the classic way to
 /// find that surrogate's errors rather than the user's preferences.
+///
+/// ## The A/B, run, and its result — a tie
+///
+/// `make climb SEEDS=16` on both arms, same seed list, so the per-seed lines
+/// pair directly:
+///
+/// ```text
+///                        Last              Best
+/// mean gain        +1.927 ± 0.452    +1.774 ± 0.302
+/// median gain      +2.058            +1.819
+/// 10% trimmed      +1.840 ± 0.383    +1.925 ± 0.190
+/// climbed on       14/16             15/16
+///
+/// paired (Best − Last)   mean    −0.153 ± 0.384   (−0.40 se)
+///                        median  −0.185
+///                        trimmed −0.113 ± 0.318
+///                        sign     8 better / 8 worse, p = 1.000
+/// ```
+///
+/// Eight and eight is as exact a tie as sixteen seeds can produce. The
+/// difference does not clear zero at 2 se on any of the three statistics, so
+/// **the default stays [`Self::Last`]** — kept re-checkable rather than
+/// deleted, the same way [`Acquisition::Thompson`] is kept after losing.
+///
+/// Two things worth reading off it rather than leaving in the table:
+///
+/// - **The feared failure did not happen, and neither did the hoped-for win.**
+///   The worry was that argmax over a surrogate would find the surrogate's
+///   errors and deepen the catastrophic tail. Across the pair the tails are a
+///   wash — the worst `Last` seed goes −0.74 → −1.80 under `Best`, and the
+///   next two worst go −0.64 → +0.52 and +0.12 → +1.29. `Best` climbs on one
+///   more seed and means marginally less.
+/// - **`Best` is the lower-variance rule, not the better one.** Its trimmed
+///   standard error is half `Last`'s (0.190 against 0.383). Injecting the
+///   walk's argmax is more *consistent* than injecting where it stopped; it
+///   just does not aim anywhere better on average. That is a coherent thing
+///   for argmax-over-a-noisy-surrogate to be, and it is the argument to
+///   re-run this on if the surrogate ever gets sharper.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RefineKeep {
     /// Inject the state the walk ended on. The shipped behaviour, and the
-    /// default until the A/B says otherwise.
+    /// default — the A/B above ran and tied, so nothing moved it.
     #[default]
     Last,
     /// Inject the highest-`log π_β` state the walk occupied, seed included —
