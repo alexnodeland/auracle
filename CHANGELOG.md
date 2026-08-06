@@ -746,7 +746,6 @@ deployed from the branch. And the two claims in the docs could not both be true 
 a site that "always tracks `main`" is not a site pinned to the last tag. The site
 tracks `main`, the zip is pinned to the tag, and the documented release process is
 what makes them the same build. `DEVELOPMENT.md` says so now.
-||||||| parent of 76cbd52 (fix(site): one-row menu bar, and a footer that is not three bands)
 
 ### Added — a release badge, and the release status said out loud
 
