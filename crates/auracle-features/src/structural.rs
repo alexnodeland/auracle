@@ -58,9 +58,19 @@
 //!
 //! ```text
 //! n_vco + n_supersaw + n_noise + n_wavetable + n_pluck + n_formant
+//!     + n_silence
 //!     − n_mix − n_ringmod − n_comp − n_duck − n_gate − n_vocoder = 1
 //!                                            (exactly, for every tree)
 //! ```
+//!
+//! `n_silence` joins that sum as a source leaf, which is what it is: it has no
+//! children, so it ends a branch exactly as a `Vco` does. Joining keeps this
+//! **one** equation with **one** dropped column, and `n_mix` stays the column
+//! dropped. Leaving it out instead would make the identity exact for a tree
+//! with no holes and slack for one with them — near-exact almost always, which
+//! is a worse thing to hold than an exact dependency, because an exact one is
+//! visible in a VIF sweep and a near-exact one is a large number that looks
+//! like a judgment call.
 //!
 //! (Wave 2A added one source and five unary operators, so it only moved a
 //! source term. Wave 2B's `Shift` is unary too and does not appear here.)
@@ -331,6 +341,21 @@ pub struct StructFeatures {
     pub n_pluck: f64,
     /// Number of formant oscillators.
     pub n_formant: f64,
+    /// Number of `Silence` leaves — sockets the player left unplugged.
+    ///
+    /// A φ coordinate, and it joins the source/binary identity in the module
+    /// doc as its own column rather than sitting outside it. Outside, the
+    /// identity would hold *exactly* whenever a tree has no holes and be
+    /// slack when it does — near-exact almost always, which is the harder
+    /// case to reason about, not the easier one. Inside, it stays one
+    /// equation with one dropped column and `n_mix` remains the one dropped.
+    ///
+    /// Its prior rate is ~0.5%, which for any other kind would be the
+    /// near-indicator-variable objection that kept `n_ringmod` out. It does
+    /// not apply here, because a hole's prevalence is set by the player's
+    /// edits and not by the prior — the one kind in the grammar of which that
+    /// is true.
+    pub n_silence: f64,
     /// Number of Mix nodes. **Not a φ coordinate** — see the module doc's
     /// exact identity. Kept for display.
     pub n_mix: f64,
@@ -458,13 +483,14 @@ impl StructFeatures {
     /// logged without names is re-read *positionally* by `FitSet::build`.
     /// Appending leaves every one of those positions meaning what it meant;
     /// inserting in the middle would silently re-label every vote ever cast.
-    pub const NAMES: [&'static str; 25] = [
+    pub const NAMES: [&'static str; 26] = [
         "n_vco",
         "n_supersaw",
         "n_noise",
         "n_wavetable",
         "n_pluck",
         "n_formant",
+        "n_silence",
         "n_filter",
         "n_drive",
         "n_time",
@@ -606,6 +632,7 @@ impl StructFeatures {
             self.n_wavetable,
             self.n_pluck,
             self.n_formant,
+            self.n_silence,
             self.n_filter_family(),
             self.n_drive(),
             self.n_time(),
@@ -847,6 +874,10 @@ fn walk(n: &AudioNode, f: &mut StructFeatures, t: &mut Tally, d: usize) {
         }
         AudioNode::Noise { .. } => {
             f.n_noise += 1.0;
+            (None, None)
+        }
+        AudioNode::Silence { .. } => {
+            f.n_silence += 1.0;
             (None, None)
         }
         AudioNode::Wavetable { modulation, .. } => {

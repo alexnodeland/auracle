@@ -92,12 +92,21 @@ exactly one:
 
 $$
 n_{\text{vco}} + n_{\text{supersaw}} + n_{\text{noise}} + n_{\text{wavetable}}
-+ n_{\text{pluck}} + n_{\text{formant}}
++ n_{\text{pluck}} + n_{\text{formant}} + n_{\text{silence}}
 $$
 $$
 {} - n_{\text{mix}} - n_{\text{ringmod}} - n_{\text{comp}} - n_{\text{duck}} -
 n_{\text{gate}} - n_{\text{vocoder}} \;=\; 1
 $$
+
+`Silence` joins that sum as a source leaf, because that is what it is: it has
+no children, so it ends a branch exactly as a `Vco` does. Joining keeps this
+**one** equation with **one** dropped column, and $n_{\text{mix}}$ stays the
+column dropped. Leaving it outside instead would make the identity exact for a
+tree with no holes and slack for one with them — near-exact almost always,
+which is a worse thing to carry than an exact dependency: an exact one is
+unmistakable in a VIF sweep, and a near-exact one is a large number that looks
+like a judgment call.
 
 exactly, for every tree. This only became a *general* statement when the four
 dynamics productions arrived, each taking two audio subterms exactly as mix and

@@ -1712,6 +1712,20 @@ impl Compiler {
                     .add(format!("{key}:noise"), NoiseGenerator::new());
                 Ok(Sig::mono(noise.out(color.port_name())))
             }
+            // A `Vca` with nothing patched into its audio input, which is a
+            // constant zero: quiver reads an unpatched port as 0.0, and the
+            // gain that multiplies it cannot make it anything else.
+            //
+            // Chosen over the obvious `Offset::new(0.0)` because `Offset`'s
+            // ports are `CvBipolar`, so feeding one to an audio consumer would
+            // raise an Audio/CV signal-kind warning on every patch holding a
+            // hole. `Vca` is `Audio` in and `Audio` out, so this production
+            // adds no cable, no warning, and no new class to the allowlist in
+            // `every_prior_sample_compiles`.
+            AudioNode::Silence { .. } => {
+                let z = self.patch.add(format!("{key}:silence"), Vca::new());
+                Ok(Sig::mono(z.out("out")))
+            }
             AudioNode::Wavetable {
                 table,
                 octave,
@@ -2766,7 +2780,9 @@ fn makes_dc(node: &AudioNode) -> bool {
         | AudioNode::Noise { .. }
         | AudioNode::Wavetable { .. }
         | AudioNode::Pluck { .. }
-        | AudioNode::Formant { .. } => false,
+        | AudioNode::Formant { .. }
+        // A constant zero has no offset to block.
+        | AudioNode::Silence { .. } => false,
         AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => makes_dc(a) || makes_dc(b),
         AudioNode::Filter { kind, input, .. } => {
             matches!(kind, FilterKind::Ladder) || makes_dc(input)

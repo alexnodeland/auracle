@@ -933,6 +933,12 @@ fn encode_node(n: &AudioNode, key: &str, t: &mut Trace) {
             put_usize(t, key, "src", 2);
             put_usize(t, key, "color", color.index());
         }
+        // Index 6, appended after `Formant`: a source kind's index *is* what
+        // the trace stores, so a new one may only ever go on the end.
+        Silence { .. } => {
+            put_bool(t, key, "leaf", true);
+            put_usize(t, key, "src", 6);
+        }
         Wavetable {
             table,
             octave,
@@ -1479,6 +1485,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_mod(t, &mod_key(key))?,
             }),
+            6 => Ok(AudioNode::Silence { uid: Uid::NEW }),
             k => Err(GenomeError::InvalidStructure(format!(
                 "source kind {k} out of range at {key}"
             ))),
@@ -2037,5 +2044,49 @@ mod domain_tests {
             "finish() seated {:?}",
             out.domain_violations()
         );
+    }
+
+    /// `Silence` survives a codec round trip, and it is source index **6**.
+    ///
+    /// The index is asserted as a literal, not read back from the encoder,
+    /// because it is a wire format: a saved trace stores the number, so if
+    /// this ever changes every persisted genome silently re-points at a
+    /// different oscillator. A test that asked the encoder what it wrote would
+    /// agree with any renumbering and catch nothing.
+    #[test]
+    fn silence_round_trips_at_source_index_six() {
+        let tree = PatchTree {
+            amp: crate::term::AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 0.6,
+                release: 0.2,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.5,
+                a: Box::new(AudioNode::Silence { uid: Uid::NEW }),
+                b: Box::new(AudioNode::Noise {
+                    uid: Uid::NEW,
+                    color: crate::term::NoiseColor::White,
+                }),
+            },
+        };
+
+        let t = tree.to_trace();
+        assert_eq!(
+            get_usize(&t, "node/0", "src").expect("a source index"),
+            6,
+            "Silence must stay source index 6 — the index is the wire format"
+        );
+        // Two sites and no more: a hole has nothing to set.
+        assert_eq!(
+            t.choices.keys().filter(|k| k.starts_with("node/0")).count(),
+            2,
+            "Silence should write only #leaf and #src"
+        );
+
+        let back = PatchTree::from_trace(&t).expect("round trips");
+        assert_eq!(back.to_sexpr(), tree.to_sexpr());
     }
 }

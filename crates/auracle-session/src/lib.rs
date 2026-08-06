@@ -1710,9 +1710,17 @@ mod tests {
             // until an unrelated refactor shifted rng consumption, which is
             // precisely the brittleness. Two collisions is p < 2%; more than
             // that would mean the sampler is not uniform.
+            //
+            // The bound now matches that last sentence, which the code did not.
+            // `N - 1` admits **one** collision and therefore fires on 21% of
+            // seeds — the very rate the paragraph above calls seed luck — and
+            // it duly fired the first time an unrelated change (a seventh
+            // source kind) shifted rng consumption again. `N - 2` admits the
+            // two collisions the reasoning allows and fires at P(≥3) ≈ 0.19%,
+            // which is a claim about the sampler rather than about the seed.
             let min_pairs = match acquisition {
                 Acquisition::Bald => N,
-                _ => N - 1,
+                _ => N - 2,
             };
             assert!(
                 n_pairs >= min_pairs,

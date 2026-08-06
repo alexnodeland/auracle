@@ -559,6 +559,14 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
             )],
             leaf_src,
         )),
+        // No knobs, because there is nothing to set. The rack has drawn a
+        // dashed EMPTY plate at holes for some time; what is new is that the
+        // plate and the patch underneath it now agree, so it describes the
+        // term rather than annotating one.
+        AudioNode::Silence { .. } => {
+            out.modules
+                .push(module("silence", "empty", Vec::new(), leaf_src))
+        }
         AudioNode::Wavetable {
             table,
             octave,

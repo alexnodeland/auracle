@@ -52,7 +52,7 @@ use crate::term::{
 ///
 /// These three counts are the **persisted wire format** — [`crate::genome`]
 /// writes the chosen index into the trace — so the orders are append-only.
-pub const N_SOURCES: usize = 6;
+pub const N_SOURCES: usize = 7;
 /// Processor-kind categorical order: Mix, Filter, Fold, Delay, Chorus,
 /// Reverb, Distortion, Bitcrush, Phaser, RingMod, Flanger, Tremolo, Vibrato,
 /// Eq, Granular, Shift, Comp, Duck, Gate, Vocoder.
@@ -89,7 +89,7 @@ pub struct PatchGrammarPrior {
     /// wrap at most two processors before it bottoms out in a leaf.
     pub max_mod_depth: usize,
     /// Weights over source kinds
-    /// `[Vco, Supersaw, Noise, Wavetable, Pluck, Formant]`.
+    /// `[Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence]`.
     pub source_weights: [f64; N_SOURCES],
     /// Weights over processor kinds
     /// `[Mix, Filter, Fold, Delay, Chorus, Reverb, Distortion, Bitcrush,
@@ -118,7 +118,20 @@ impl Default for PatchGrammarPrior {
             // the last two especially, because a plucked string and a vowel
             // are each a whole character rather than a layer inside someone
             // else's patch.
-            source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08],
+            //
+            // `Silence` is last and is not a spice: it is the socket a player
+            // left unplugged, and the prior's job with it is only to make it
+            // *representable*. At weight zero the grammar gives `p = 0` to any
+            // tree containing one, `log p` is −∞, and MH rejects every proposal
+            // that touches a hand-made hole — a patch would become un-evolvable
+            // by the act of unplugging something. 0.5% keeps `log p` finite
+            // while making a prior draw that contains one rare; a tree that is
+            // *all* silence renders silent, the vet gate quarantines it, and
+            // evolution learns to avoid it. Its real prevalence is set by the
+            // player's edits, not by this number, which is unusual among kinds
+            // and is the reason a rate this small is not a reason to leave it
+            // out of φ.
+            source_weights: [0.34, 0.24, 0.13, 0.13, 0.08, 0.08, 0.005],
             // Filter carries subtractive identity and stays dominant — half
             // again the next-largest weight, and three to sixteen times any
             // of the colour and movement modules. Mix keeps branching alive;
@@ -335,7 +348,7 @@ impl PatchGrammarPrior {
                     })
                 })
             }
-            _ => {
+            5 => {
                 let k = key.clone();
                 sample(addr!(k.clone(), "oct"), uniform_cat(5)).bind(move |o| {
                     let k2 = k.clone();
@@ -353,6 +366,12 @@ impl PatchGrammarPrior {
                     })
                 })
             }
+            // Index 6. A catch-all rather than `6 =>` because the match is on
+            // a `usize` and needs one; `weighted_cat` cannot return anything
+            // above `N_SOURCES - 1`, so this arm is reached for 6 and nothing
+            // else. It samples no sites at all, which is what makes a hole the
+            // cheapest leaf in the grammar.
+            _ => fugue::pure(AudioNode::Silence { uid: Uid::NEW }),
         })
     }
 

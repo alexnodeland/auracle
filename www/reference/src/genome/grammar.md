@@ -57,7 +57,7 @@ probabilistic choices at path-keyed addresses:
 
 The amplitude envelope is fixed at `amp#attack` … `amp#release`.
 
-The three categorical orders (6 sources, 20 processors, 8 modulation kinds) are
+The three categorical orders (7 sources, 20 processors, 8 modulation kinds) are
 the **persisted wire format**, because the codec writes the chosen index into
 the trace. They are append-only.
 
@@ -102,10 +102,11 @@ dynamics productions take two subterms and carry a slot as well.
 
 ## The palette
 
-Forty-one modules: **6 sources**, **20 processors**, **15 modulators**.
+Forty-two modules: **7 sources**, **20 processors**, **15 modulators**.
 
 ```text
 sources     Vco  Supersaw  NoiseGenerator  Wavetable  KarplusStrong  FormantOsc
+            Silence
 processors  Mix  Filter  Fold  Delay  Chorus  Reverb  Distortion  Bitcrush
             Phaser  RingMod  Flanger  Tremolo  Vibrato  Eq  Granular  Shift
             Comp  Duck  Gate  Vocoder

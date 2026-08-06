@@ -1759,6 +1759,21 @@ impl Engine {
             g("n_wavetable"),
             g("n_pluck"),
             g("n_formant"),
+            // `Silence` is deliberately **not** tilted by taste, and this zero
+            // is the whole of that decision. The tilt exists to move proposals
+            // toward source kinds the listener is enjoying; a hole is not a
+            // timbre anyone can enjoy, it is the absence of one, and its
+            // prevalence is meant to come from a player unplugging a socket
+            // rather than from a fitted coefficient.
+            //
+            // It is also the column where a tilt would be least trustworthy.
+            // At a 0.5% prior rate `n_silence` is zero in nearly every row a
+            // fit sees — the near-indicator shape that kept `n_ringmod` out of
+            // φ as a column of its own. `shrink` would damp a spurious
+            // coefficient, but the multiplier it feeds is exponential, and
+            // amplifying holes into the pool is a failure a listener notices
+            // immediately.
+            0.0,
         ];
         let src = tilt_weights(&prior.source_weights, &sources, eta);
         prior.source_weights = src.try_into().expect("source weight arity");
