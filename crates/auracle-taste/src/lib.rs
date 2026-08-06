@@ -216,7 +216,76 @@ mod tests {
         println!("mean: flat {flat:.3}  fused {fused:.3}");
         assert!(
             fused > flat && wins >= 8,
-            "fusing the cluster did not help: flat {flat:.3}, fused {fused:.3}, {wins}/5 wins"
+            "fusing the cluster did not help: flat {flat:.3}, fused {fused:.3}, {wins}/12 wins"
+        );
+    }
+
+    /// An imputed coordinate makes a keep/kill verdict *less certain*, and
+    /// leaves a duel alone.
+    ///
+    /// The asymmetry is the whole point. A duel carries the same absence on
+    /// both candidates, so the imputed term cancels in `u_a − u_b` and the
+    /// observation is silent about that axis — correct, and untouched here. A
+    /// keep/kill has nothing to cancel against: `u(x)` meets a threshold, and
+    /// a coordinate imputed at the mean enters that sum as though it had been
+    /// measured and found average. It was not measured at all, and the
+    /// likelihood now says so by pulling the log-odds toward zero.
+    #[test]
+    fn imputation_costs_confidence_on_keep_kill_but_not_on_duels() {
+        let mut theta = vec![0.0; D];
+        theta[0] = 1.5;
+        theta[1] = 1.5;
+        theta[2] = 0.8;
+        let s = TasteSample {
+            theta: vec![theta],
+            tau: vec![0.0],
+            cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
+        };
+
+        let mut x = vec![0.0; D];
+        x[2] = 1.0;
+        let keep = Feedback::KeepKill {
+            x: x.clone(),
+            kept: true,
+        };
+
+        // Coordinates 0 and 1 carry real weight; imputing them should cost
+        // confidence in this verdict.
+        let measured = s.loglik_with(&keep, 0, &[]);
+        let imputed = s.loglik_with(&keep, 0, &[0, 1]);
+        assert!(
+            imputed < measured,
+            "imputing two weighted axes did not reduce confidence:              measured {measured:.4}, imputed {imputed:.4}"
+        );
+        // Less certain means *closer to a coin flip*, not merely different.
+        let coin = 0.5f64.ln();
+        assert!(
+            (imputed - coin).abs() < (measured - coin).abs(),
+            "the correction moved the verdict away from 0.5 instead of toward it"
+        );
+
+        // Imputing an axis this listener does not care about costs nothing:
+        // its θ is zero, so it contributes no variance.
+        let mut theta_z = vec![0.0; D];
+        theta_z[2] = 0.8;
+        let s0 = TasteSample {
+            theta: vec![theta_z],
+            ..s.clone()
+        };
+        assert!(
+            (s0.loglik_with(&keep, 0, &[0, 1]) - s0.loglik_with(&keep, 0, &[])).abs() < 1e-12,
+            "an imputed axis with zero weight must be free"
+        );
+
+        // A duel is untouched: the absence cancels.
+        let duel = Feedback::Duel {
+            a: x.clone(),
+            b: vec![0.0; D],
+            chose_a: true,
+        };
+        assert!(
+            (s.loglik_with(&duel, 0, &[0, 1]) - s.loglik_with(&duel, 0, &[])).abs() < 1e-12,
+            "a duel must not be attenuated — the imputed term cancels in u_a − u_b"
         );
     }
 

@@ -404,6 +404,31 @@ impl ObservationLog {
 pub struct FitSet {
     /// Standardized feedback, paired with its session index, in log order.
     pub rows: Vec<(Feedback, usize)>,
+    /// Coordinate indices **imputed** in each row, index-parallel to
+    /// [`Self::rows`]. Empty rows and an empty vector both mean "nothing was
+    /// imputed", which is the common case and the one that costs nothing.
+    ///
+    /// A parallel vector rather than a field on the tuple because `rows` is
+    /// read positionally in a dozen places (tests, the session layer, the
+    /// model); widening it would touch all of them to say something only the
+    /// likelihood needs.
+    ///
+    /// ## Why the likelihood needs it
+    ///
+    /// An absent coordinate is imputed at the standardizer's mean, which
+    /// standardizes to exactly 0 — the honest imputation for "this observation
+    /// says nothing about that axis". For a **duel** that is the end of it:
+    /// both candidates carry the same absence, so the term cancels in
+    /// `u_a − u_b` and the observation is silent about that axis, correctly.
+    ///
+    /// For **keep/kill** and **stars** it does not cancel, because there is no
+    /// second candidate to cancel against. `u(x)` is compared to a threshold,
+    /// and a coordinate imputed at zero contributes exactly zero to that sum —
+    /// so the model reads a patch that might be extreme on the missing axis as
+    /// though it were average on it, and takes the resulting comparison at
+    /// full confidence. The information is missing; the *certainty* should be
+    /// too, and without this it is not.
+    pub absent: Vec<Vec<usize>>,
 }
 
 impl FitSet {
@@ -418,7 +443,7 @@ impl FitSet {
     /// raw values first where it can.
     pub fn build(log: &ObservationLog, names: &[String], sz: &Standardizer) -> Self {
         let d = names.len();
-        let rows = log
+        let rows: (Vec<_>, Vec<_>) = log
             .observations
             .iter()
             .map(|o| {
@@ -442,16 +467,28 @@ impl FitSet {
                         })
                         .collect()
                 };
-                (o.feedback.map_phi(project), o.session)
+                let absent: Vec<usize> = (0..d)
+                    .filter(|&j| {
+                        index[j]
+                            .and_then(|i| o.feedback.phis().first()?.get(i))
+                            .is_none()
+                    })
+                    .collect();
+                ((o.feedback.map_phi(project), o.session), absent)
             })
-            .collect();
-        Self { rows }
+            .collect::<Vec<_>>()
+            .into_iter()
+            .unzip();
+        let (rows, absent) = rows;
+        Self { rows, absent }
     }
 
     /// Take the log's vectors as already being on the model's scale (unit
     /// tests and synthetic users work directly in standardized space).
     pub fn as_is(log: &ObservationLog) -> Self {
         Self {
+            // Nothing is projected, so nothing is imputed.
+            absent: vec![Vec::new(); log.observations.len()],
             rows: log
                 .observations
                 .iter()

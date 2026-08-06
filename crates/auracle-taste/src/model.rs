@@ -297,6 +297,12 @@ impl TasteSample {
     pub fn loglik(&self, feedback: &Feedback, session: usize) -> f64 {
         obs_loglik(feedback, session, self)
     }
+
+    /// [`Self::loglik`], told which coordinates of the observation were
+    /// **imputed** rather than measured — see [`FitSet::absent`].
+    pub fn loglik_with(&self, feedback: &Feedback, session: usize, absent: &[usize]) -> f64 {
+        obs_loglik_with(feedback, session, self, absent)
+    }
 }
 
 fn dot(a: &[f64], b: &[f64]) -> f64 {
@@ -316,8 +322,45 @@ fn sigmoid(x: f64) -> f64 {
 /// Log-likelihood of one standardized observation under the max-of-experts
 /// utility.
 fn obs_loglik(o: &Feedback, session: usize, s: &TasteSample) -> f64 {
+    obs_loglik_with(o, session, s, &[])
+}
+
+/// `1/√(1 + λ² σ²)` — the logistic analogue of marginalizing a Gaussian
+/// through a probit link, with `λ² = π/8`.
+///
+/// A comparison whose utility is uncertain by `σ` should not be scored as if
+/// it were known: `E[σ(u + ε)] ≈ σ(u / √(1 + πσ²/8))` for `ε ~ N(0, σ²)`. The
+/// effect is to pull the log-odds toward zero — the model still learns from
+/// the observation, it just stops claiming to be certain about a comparison
+/// that is partly guesswork.
+fn attenuate(var: f64) -> f64 {
+    1.0 / (1.0 + std::f64::consts::PI * var / 8.0).sqrt()
+}
+
+/// Variance the **imputed** coordinates contribute to `u(x)` under this draw.
+///
+/// A coordinate imputed at the standardized mean is not known to be zero; it
+/// is unknown, and its prior is the unit normal the standardizer defines. So
+/// its contribution `θ_i · x_i` has variance `θ_i²`, read off the expert that
+/// actually scores this candidate.
+fn imputed_var(s: &TasteSample, x: &[f64], absent: &[usize]) -> f64 {
+    if absent.is_empty() {
+        return 0.0;
+    }
+    let k = s.best_style(x);
+    absent
+        .iter()
+        .filter_map(|&i| s.theta[k].get(i))
+        .map(|t| t * t)
+        .sum()
+}
+
+fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usize]) -> f64 {
     match o {
         Feedback::Duel { a, b, chose_a } => {
+            // Nothing to correct: both candidates carry the same absence, so
+            // the imputed terms cancel in the difference and the observation
+            // is silent about those axes rather than wrong about them.
             let d = s.utility_mix(a) - s.utility_mix(b);
             log_sigmoid(if *chose_a { d } else { -d })
         }
@@ -327,11 +370,17 @@ fn obs_loglik(o: &Feedback, session: usize, s: &TasteSample) -> f64 {
             let Some(tau) = s.tau.get(session) else {
                 return 0.0;
             };
-            let d = s.utility_mix(x) - tau;
+            // Here there is no second candidate to cancel against, so the
+            // imputed coordinates enter the comparison as if they were
+            // measured at the mean. They were not measured at all.
+            let d = (s.utility_mix(x) - tau) * attenuate(imputed_var(s, x, absent));
             log_sigmoid(if *kept { d } else { -d })
         }
         Feedback::Stars { x, rating } => {
-            let u = s.utility_mix(x);
+            // Same correction as keep/kill, and for the same reason: an
+            // ordinal rating is a comparison of `u` against fixed cutpoints
+            // with nothing to cancel the imputation against.
+            let u = s.utility_mix(x) * attenuate(imputed_var(s, x, absent));
             let k = *rating as usize;
             let n_cats = s.cuts.len() + 1;
             let k = k.min(n_cats - 1);
@@ -457,6 +506,7 @@ impl TasteModel {
     pub fn model_at(&self, data: &FitSet, addrs: &Arc<SiteAddrs>) -> Model<TasteSample> {
         let cfg = self.cfg.clone();
         let obs = Arc::new(data.rows.clone());
+        let absent = Arc::new(data.absent.clone());
         // Per-observation likelihood weights: newest = 1, halving every
         // `recency_half_life` observations back.
         let n_obs = data.rows.len();
@@ -549,7 +599,11 @@ impl TasteModel {
                         let ll: f64 = obs
                             .iter()
                             .zip(weights.iter())
-                            .map(|((o, session), w)| w * obs_loglik(o, *session, &s))
+                            .enumerate()
+                            .map(|(i, ((o, session), w))| {
+                                let absent = absent.get(i).map(Vec::as_slice).unwrap_or(&[]);
+                                w * obs_loglik_with(o, *session, &s, absent)
+                            })
                             .sum();
                         factor(ll).map(move |_| s)
                     })

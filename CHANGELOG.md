@@ -8,6 +8,40 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — an imputed coordinate no longer arrives as a measurement
+
+`FitSet::build` imputes an absent coordinate at the standardizer's mean, which
+standardizes to exactly 0 — the honest imputation for "this observation says
+nothing about that axis". For a **duel** that is the end of it: both candidates
+carry the same absence, the term cancels in `u_a − u_b`, and the observation is
+correctly silent about that axis.
+
+For **keep/kill** and **stars** there is no second candidate to cancel against.
+`u(x)` is compared to a threshold, and a coordinate imputed at zero contributes
+exactly zero to that sum — so the model read a patch that might be extreme on
+the missing axis as though it were average on it, and then took the resulting
+verdict at full confidence. The information was missing; the certainty was not.
+
+The likelihood now marginalizes the missing contribution instead of assuming it
+away: an imputed coordinate's `θ_i · x_i` has variance `θ_i²` under the
+standardizer's own unit-normal prior, and the comparison is attenuated by
+`1/√(1 + πσ²/8)` — the logistic analogue of integrating a probit link. The model
+still learns from the observation; it stops claiming certainty about the part
+that was guesswork. An imputed axis the listener does not care about is free,
+because its `θ` is zero.
+
+Low severity while duels dominate, and it spikes exactly when it matters most:
+immediately after a stimulus-tag bump, when every audio coordinate of the old
+log is imputed at once — which is when the migration machinery is supposed to be
+protecting the profile.
+
+**No revalidation is owed and the reason is worth stating.** `FitSet::as_is`
+imputes nothing, and `FitSet::build` marks a coordinate absent only when a log's
+recorded feature names do not cover it — which cannot happen for a log written
+under the current names. Every synthetic measurement in the harness therefore
+runs with an empty absent set, and the change is provably inert for them. It
+activates on migrated real logs, which is what it is for.
+
 ### Added — the brightness cluster's fused prior, implemented and switched off
 
 `rolloff_mean`, `zcr_mean` and `centroid_mean` are three genuine measurements of
