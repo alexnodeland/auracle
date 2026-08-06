@@ -15,6 +15,9 @@ auracle-session = { path = "../auracle-session", version = "0.2.0" }
 auracle-features = { path = "../auracle-features", version = "0.2.0" }
 auracle-taste = { path = "../auracle-taste", version = "0.2.0" }
 auracle-grammar = { path = "../auracle-grammar", version = "0.2.0" }
+# The LIBRARY name is `quiver` — imports are `use quiver::...`. Needed here for
+# `StateObserver`, which meters the live voice's interior ports.
+quiver-dsp.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

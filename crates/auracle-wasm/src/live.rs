@@ -32,6 +32,7 @@
 //!   effectively silent, so idle polyphony costs nothing.
 
 use auracle_grammar::{compile, PatchTree};
+use quiver::observer::{ObservableValue, StateObserver, SubscriptionTarget};
 use wasm_bindgen::prelude::*;
 
 const GATE_ON: f64 = 5.0;
@@ -209,6 +210,100 @@ pub struct LivePoly {
     arp_base: Option<u8>,
     /// xorshift state for random mode (deterministic; no wall clock).
     rng_state: u64,
+    /// Interior signal metering, off until a surface asks for it. See
+    /// [`LivePoly::set_meter`].
+    meter: Meter,
+}
+
+/// Per-module level metering, read off the voice the player is hearing.
+///
+/// Off by default and allocation-free while off, which is the state every
+/// player is in: `set_meter(false)` clears the subscriptions and the render
+/// loop's metering branch is one `bool` test per voice. While it is *on* it
+/// allocates once per quantum in `drain_updates`, on the same terms the
+/// recorder already sets in `live-audio.js` — "allocation only while a take is
+/// rolling, never in the steady state". A teaching surface the player switched
+/// on is that kind of state.
+struct Meter {
+    observer: StateObserver,
+    /// Term keys in [`Self::levels`] order, fixed when the subscriptions are
+    /// taken so the main thread can label the values it reads once.
+    keys: Vec<String>,
+    /// Quiver node name and port for each key, index-parallel to `keys` —
+    /// what an update's `node_id`/`port_id` is matched back against.
+    ports: Vec<(String, u32)>,
+    /// Latest RMS dB per tap, preallocated and overwritten in place so the
+    /// worklet can read it as a view into wasm memory.
+    levels: Vec<f32>,
+    on: bool,
+}
+
+impl Meter {
+    fn new() -> Self {
+        Meter {
+            observer: StateObserver::new(),
+            keys: Vec::new(),
+            ports: Vec::new(),
+            levels: Vec::new(),
+            on: false,
+        }
+    }
+
+    /// Subscribe to every tap of `voice`, or clear if `on` is false.
+    ///
+    /// Re-taken from scratch on every patch swap, not just when the surface
+    /// asks. A subscription caches the `NodeId` it resolved its name to, and a
+    /// rebuilt patch is a fresh slotmap whose keys mean nothing to the old
+    /// one — a stale id is not merely dead, it can silently land on a
+    /// different node. Re-subscribing resets those caches.
+    fn resubscribe(&mut self, voice: &auracle_grammar::CompiledVoice) {
+        self.observer.clear_subscriptions();
+        self.keys.clear();
+        self.ports.clear();
+        self.levels.clear();
+        if !self.on {
+            return;
+        }
+        // Sorted so the order the main thread labels once stays put across
+        // swaps; a `HashMap` iteration order would reshuffle the readout.
+        let mut taps: Vec<(&String, &(String, u32))> = voice.taps.iter().collect();
+        taps.sort_by(|a, b| a.0.cmp(b.0));
+        let targets: Vec<SubscriptionTarget> = taps
+            .iter()
+            .map(|(key, (node, port))| {
+                self.keys.push((*key).clone());
+                self.ports.push((node.clone(), *port));
+                self.levels.push(f32::NEG_INFINITY);
+                SubscriptionTarget::Level {
+                    node_id: node.clone(),
+                    port_id: *port,
+                }
+            })
+            .collect();
+        self.observer.add_subscriptions(targets);
+    }
+
+    /// Move whatever the observer has finished into [`Self::levels`].
+    fn drain(&mut self) {
+        for update in self.observer.drain_updates() {
+            let ObservableValue::Level {
+                node_id,
+                port_id,
+                rms_db,
+                ..
+            } = update
+            else {
+                continue;
+            };
+            if let Some(i) = self
+                .ports
+                .iter()
+                .position(|(n, p)| *p == port_id && *n == node_id)
+            {
+                self.levels[i] = rms_db as f32;
+            }
+        }
+    }
 }
 
 fn build_voice(tree: &PatchTree, sample_rate: f64) -> Result<Voice, String> {
@@ -278,7 +373,57 @@ impl LivePoly {
             arp_note: None,
             arp_base: None,
             rng_state: 0x9E37_79B9_7F4A_7C15,
+            meter: Meter::new(),
         })
+    }
+
+    /// Turn interior metering on or off.
+    ///
+    /// On, every module in the patch gets a `Level` subscription and
+    /// [`Self::meter_ptr`] carries its RMS in dB; off, nothing is subscribed
+    /// and the render loop does no metering work at all. Returns the number of
+    /// taps, which is the length of both [`Self::meter_keys`] and the level
+    /// buffer.
+    ///
+    /// Nothing here needs `sync_output_keepalive`. That call pins ports with
+    /// no consumer so a module implementing `tick_masked` still produces them,
+    /// and it dirties the patch — a recompile that would have to be staged
+    /// around the audio thread the way patch swaps are. It is not needed
+    /// because the genome is a typed *tree*: every module's output feeds
+    /// exactly one parent, so quiver is already computing every value metered
+    /// here. Metering costs no recompile and cannot glitch the audio.
+    pub fn set_meter(&mut self, on: bool) -> usize {
+        self.meter.on = on;
+        // Voice 0 is as good as any: every voice is the same tree compiled
+        // again, so they share node names, and a subscription is by name.
+        if let Some(v) = self.voices.first() {
+            let voice = &v.voice;
+            self.meter.resubscribe(voice);
+        }
+        self.meter.keys.len()
+    }
+
+    /// The term keys the level buffer is indexed by, as a JSON array.
+    ///
+    /// Read once after [`Self::set_meter`] rather than per quantum — this
+    /// allocates, and the order is fixed until the next patch swap.
+    pub fn meter_keys(&self) -> String {
+        serde_json::to_string(&self.meter.keys).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// Pointer to the RMS dB per tap, in [`Self::meter_keys`] order.
+    ///
+    /// The same zero-allocation contract as [`Self::process_ptr`]: a view into
+    /// wasm memory, overwritten in place, valid until the next patch swap
+    /// resizes it. A tap that has not filled a buffer yet reads
+    /// `f32::NEG_INFINITY` — silence, not zero dB.
+    pub fn meter_ptr(&self) -> *const f32 {
+        self.meter.levels.as_ptr()
+    }
+
+    /// How many taps [`Self::meter_ptr`] holds.
+    pub fn meter_len(&self) -> usize {
+        self.meter.levels.len()
     }
 
     /// Queue a patch swap. Parses eagerly (false = bad JSON, nothing
@@ -798,17 +943,47 @@ impl LivePoly {
         self.smoothers.retain(|s| s.current != s.target);
     }
 
+    /// Which voice the meter reads, or `None` when metering is off or nothing
+    /// is sounding.
+    ///
+    /// The **most recently pressed** sounding voice, by allocation stamp —
+    /// deliberately not a sum across the bank. A sum averages different notes
+    /// at different envelope phases, which is not the level on any wire; the
+    /// newest voice is the one the player just played and the one whose
+    /// envelope is opening. It is re-chosen every quantum, so the readout
+    /// follows the hand.
+    fn meter_voice(&self) -> Option<usize> {
+        if !self.meter.on {
+            return None;
+        }
+        self.voices
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.running)
+            .max_by_key(|(_, v)| v.stamp)
+            .map(|(i, _)| i)
+    }
+
     fn render_into(&mut self, frames: usize, fade_dir: i8) {
         self.out_buf.clear();
         self.out_buf.resize(frames * 2, 0.0);
-        for v in &mut self.voices {
+        let metered = self.meter_voice();
+        for (vi, v) in self.voices.iter_mut().enumerate() {
             if !v.running {
                 continue;
             }
+            let meter_this = metered == Some(vi);
             let held = v.note.is_some();
             let mut tail_silent = 0u32;
             for f in 0..frames {
                 let (l, r) = v.voice.patch.tick();
+                // Per sample, not per quantum: the capture is allocation-free
+                // and quiver's own guidance is that a per-block sample aliases
+                // everything above `sample_rate / (2 * block_size)`. A level
+                // read 128 samples apart is not a level.
+                if meter_this {
+                    self.meter.observer.collect_sample(&v.voice.patch);
+                }
                 // Re-raise *after* the tick: the patch has to actually observe
                 // the low gate for one sample, or the ADSR's edge detector
                 // never sees a falling edge and the retrigger is a no-op.
@@ -839,6 +1014,9 @@ impl LivePoly {
                     v.running = false;
                 }
             }
+        }
+        if metered.is_some() {
+            self.meter.drain();
         }
         // Per-frame swap fade, loudness makeup, then the master brickwall.
         // Each voice carries its own limiter, but N voices sum to N× one
@@ -891,6 +1069,14 @@ impl LivePoly {
                             self.voices = built;
                             self.pending = None;
                             self.smoothers.clear();
+                            // New patch, new node ids, and a new set of module
+                            // keys. Re-taking the subscriptions here is what
+                            // keeps a stale `NodeId` from resolving against a
+                            // slotmap that never issued it.
+                            if let Some(v) = self.voices.first() {
+                                let voice = &v.voice;
+                                self.meter.resubscribe(voice);
+                            }
                             if let Some(g) = self.pending_makeup.take() {
                                 self.makeup = g;
                             }
@@ -1718,5 +1904,80 @@ mod tests {
             "glide is off; this must start on pitch: {}",
             v.pitch_cur
         );
+    }
+
+    /// The meter reads a real level off a real interior port, and reads the
+    /// mixer's two branches *apart* when the balance is hard over.
+    ///
+    /// The second half is what makes this a measurement rather than a smoke
+    /// test. A crossfader at balance 0 passes branch `a` and mutes branch `b`
+    /// downstream — but both sources are still oscillating, so a meter reading
+    /// each module's own output must show both alive. What must differ is the
+    /// *mix* against its quiet branch. Estimating levels from the term (what
+    /// the rack did before this) gets that right by construction; the point
+    /// here is that measuring gets it right too, from the audio.
+    #[test]
+    fn meter_reads_levels_off_interior_ports() {
+        use auracle_grammar::term::{AmpEnv, Waveform};
+        use auracle_grammar::{AudioNode, ModNode, PatchTree};
+
+        let json = serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 1.0,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.0, // hard over to `a`
+                a: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Saw,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                b: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Saw,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+            },
+        })
+        .unwrap();
+
+        let mut poly = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
+        assert_eq!(poly.meter_len(), 0, "metering must be off until asked for");
+
+        let n = poly.set_meter(true);
+        assert_eq!(n, 3, "one tap per term node: the mix and its two sources");
+        let keys: Vec<String> = serde_json::from_str(&poly.meter_keys()).unwrap();
+        assert_eq!(keys, vec!["node", "node/0", "node/1"]);
+
+        poly.note_on(60, 1.0);
+        // Long enough for the 128-sample level buffers to fill several times.
+        for _ in 0..16 {
+            let _ = poly.process(512);
+        }
+
+        let db = poly.meter.levels.clone();
+        assert!(db.iter().all(|d| d.is_finite()), "levels went non-finite");
+        for (k, d) in keys.iter().zip(&db) {
+            assert!(*d > -120.0, "tap `{k}` never read a level ({d} dB)");
+        }
+
+        // Both oscillators are running, whatever the crossfader does with them.
+        let a = db[keys.iter().position(|k| k == "node/0").unwrap()];
+        let b = db[keys.iter().position(|k| k == "node/1").unwrap()];
+        assert!(a > -60.0 && b > -60.0, "a source read silent: {a}, {b} dB");
+
+        // Off again clears the subscriptions and the buffer with them.
+        assert_eq!(poly.set_meter(false), 0);
+        assert_eq!(poly.meter_len(), 0);
     }
 }

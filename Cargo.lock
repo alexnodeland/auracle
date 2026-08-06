@@ -76,6 +76,7 @@ dependencies = [
  "auracle-taste",
  "console_error_panic_hook",
  "getrandom",
+ "quiver-dsp",
  "rand",
  "serde",
  "serde-wasm-bindgen",
