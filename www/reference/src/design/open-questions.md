@@ -41,8 +41,15 @@ a description of the system.</p>
   loop and the chain no longer holds itself in memory, so what is left is purely
   the statistical shape of the problem — the budget can now be chosen on the
   recovery tables rather than against a memory ceiling. The written-down option
-  (cap $K$ at 3) is gated on `style_share` evidence from real sessions, which
-  nothing collects or reports today.
+  (cap $K$ at 3) is gated on `style_share` evidence from real sessions.
+
+  **That evidence is now collected.** Every posterior fit records what fraction
+  of the pool each lens claimed, and the register persists across reloads
+  (`Engine::style_shares`). The question is still open — it wants sessions,
+  which take time to accumulate, and synthetic runs cannot answer it — but it is
+  now open for want of *data* rather than for want of an instrument. Rows where
+  `k == k_styles` are the ones that bear on it: `k` grows with the log, so an
+  early row with two lenses is not evidence that lenses 3–5 are idle.
 - **Which state of a refinement walk to inject.** A walk renders ~40 candidates
   and keeps one. `RefineKeep::Best` is implemented and free, and ships switched
   off: argmax over a surrogate finds that surrogate's errors, and the patch-loop
@@ -66,10 +73,26 @@ a description of the system.</p>
   bank averages notes at different envelope phases and is not the level on any
   wire. The port trace stays an offline render, now by choice: it wants the
   same phrase every time so that two looks at it are comparable.
-- **fugue-evo's `parallel` feature on wasm32.** It does not compile there, so
-  the workspace takes fugue-evo with default features off and refinement is
-  single-threaded *natively* too — in the one place the engine is embarrassingly
-  parallel. `RenderMemo` is already `Send + Sync`-shaped for it.
+- ~~**fugue-evo's `parallel` feature on wasm32.**~~ **Closed, and it was wrong
+  three times over.** The entry read: *"it does not compile there, so the
+  workspace takes fugue-evo with default features off and refinement is
+  single-threaded natively too — in the one place the engine is embarrassingly
+  parallel."*
+
+  Wrong about the blocker: [fugue-evo#22](https://github.com/alexnodeland/fugue-evo/pull/22)
+  established that `checkpoint`, not `parallel`, was the only thing that did not
+  build on wasm32. Wrong about the remedy: enabling `parallel` would change
+  nothing here, because every `rayon` use in fugue-evo sits under
+  `#[cfg(feature = "classic")]`, and Auracle takes `["std", "ppl"]` and drives
+  refinement itself through `inference::mh::EvolutionChain`. And wrong about the
+  prize: the harness is not waiting on single-threaded refinement. `search_health`
+  and the `refinement_improves_pool` floor already spawn one thread per seed and
+  saturate the machine, so parallelising *inside* a refinement cannot make a
+  16-seed measurement faster — the cores are already busy.
+
+  What is left is real but smaller than the entry implies, and it is a UX
+  number rather than a harness one: latency on a **single** refinement, which is
+  the app's ⚡ button. Filed as that, not as a build-configuration change.
 - **Remaining quiver hardening** (non-blocking, tracked upstream):
   `voct_to_hz` is unclamped — overflow is now *recovered* by Q198 rather than
   prevented, and a pitch clamp would also tame aliasing garbage at

@@ -252,6 +252,58 @@ mod tests {
     /// silently no-ops at the cap would reproduce, in the fix, the exact class
     /// of bug the fix exists to remove.
     #[test]
+    fn every_fit_records_what_each_lens_claimed() {
+        let mut rng = StdRng::seed_from_u64(0x5747);
+        let mut engine = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 12,
+                ..fast()
+            },
+        );
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        assert!(
+            engine.style_shares().is_empty(),
+            "nothing fitted yet, so nothing to report"
+        );
+
+        for _ in 0..6 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            engine.record_duel(a, b, true);
+        }
+        engine.fit_posterior(&mut rng);
+
+        let rows = engine.style_shares();
+        assert_eq!(rows.len(), 1, "one row per fit");
+        let r = &rows[0];
+        assert_eq!(r.observations, 6);
+        assert_eq!(r.shares.len(), r.k, "a share per lens the fit was allowed");
+        let total: f64 = r.shares.iter().sum();
+        assert!(
+            (total - 1.0).abs() < 1e-6,
+            "shares are a distribution over lenses, summing to 1, not {total}"
+        );
+
+        // A second fit appends rather than replacing: the open question in
+        // `SessionConfig::k_styles` is about shares *across* a session, so a
+        // register that only kept the latest would not answer it.
+        engine.fit_posterior(&mut rng);
+        assert_eq!(engine.style_shares().len(), 2);
+
+        // And it survives a save/restore, because the evidence wanted is
+        // "across real sessions" and a session ends.
+        let state = engine.export_state();
+        let mut restored = Engine::new(PatchGrammarPrior::default(), fast());
+        restored.import_state(state);
+        assert_eq!(
+            restored.style_shares().len(),
+            2,
+            "the register did not survive a reload, so it cannot accumulate"
+        );
+    }
+
+    #[test]
     fn the_pin_budget_is_capped_and_refusal_is_reported() {
         let mut rng = StdRng::seed_from_u64(0x9112);
         let mut engine = Engine::new(

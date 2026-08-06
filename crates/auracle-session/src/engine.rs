@@ -725,6 +725,31 @@ pub struct ImplicitEvent {
     pub phi_after: Vec<f64>,
 }
 
+/// What one posterior fit claimed for each style lens.
+///
+/// Recorded per fit and persisted, because the question it answers is about
+/// **real sessions over time** and cannot be answered from one of them.
+/// [`SessionConfig::k_styles`] documents an option that is deliberately not
+/// taken — cap K at 3, taking the fit from 206 sites to 126 for a ~1.6×
+/// mature-fit win — and gates it explicitly on whether lenses 4 and 5 sit near
+/// zero share across real sessions. Nothing collected that, so the decision
+/// could not be made either way; this is the collection.
+///
+/// It is deliberately not a judgment. A row says what the shares *were* at a
+/// given evidence count, and how many lenses the fit was even allowed (`k`
+/// grows with the log and is capped by config, so an early row with two lenses
+/// is not evidence that lenses 3–5 are idle — it is evidence they did not
+/// exist yet). Reading rows where `k == k_styles` is what the option needs.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StyleShareRecord {
+    /// Observations in the log at the time of the fit.
+    pub observations: usize,
+    /// Lenses this fit was allowed — `min(1 + log/20, k_styles)`.
+    pub k: usize,
+    /// Share of the pool claimed by each lens, aligned, summing to ~1.
+    pub shares: Vec<f64>,
+}
+
 /// A full saved session: everything needed to restore the app across a
 /// reload — the portable profile plus the bank and its history.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -746,6 +771,10 @@ pub struct SessionState {
     /// Out-of-sample duel forecasts (calibration survives a reload).
     #[serde(default)]
     pub forecasts: Vec<Forecast>,
+    /// Per-fit style shares — the evidence [`SessionConfig::k_styles`]' open
+    /// option is gated on.
+    #[serde(default)]
+    pub style_shares: Vec<StyleShareRecord>,
 }
 
 /// A chosen duel, with the reasoning that produced it.
@@ -941,6 +970,8 @@ pub struct Engine {
     pub events: Vec<ImplicitEvent>,
     /// Out-of-sample duel forecasts, scored before each answer was known.
     pub forecasts: Vec<Forecast>,
+    /// Style shares recorded at each posterior fit. See [`StyleShareRecord`].
+    style_shares: Vec<StyleShareRecord>,
     /// How many times each (unordered) candidate pair has been shown, keyed
     /// by stable id. Drives the repeat penalty in [`Engine::next_duel`].
     shown_pairs: HashMap<(u64, u64), u32>,
@@ -1000,6 +1031,7 @@ impl Engine {
             style_names: Vec::new(),
             events: Vec::new(),
             forecasts: Vec::new(),
+            style_shares: Vec::new(),
             shown_pairs: HashMap::new(),
             shown_candidates: HashMap::new(),
             duels_shown: 0,
@@ -1515,8 +1547,31 @@ impl Engine {
         let model = TasteModel::new(taste_cfg);
         let data = FitSet::build(&self.log, &names, &sz);
         let posterior = model.fit(rng, &data, self.cfg.mcmc_samples, self.cfg.mcmc_warmup);
-        self.posterior = Some(Arc::new(posterior.aligned()));
+        let posterior = Arc::new(posterior.aligned());
+        // Measured against the pool the fit is about to be used on, which is
+        // the population the shares are a statement about — not against the
+        // log, whose φ are the things already judged.
+        let pool_phis: Vec<Vec<f64>> = self
+            .pool
+            .iter()
+            .filter(|c| !c.phi_std.is_empty())
+            .map(|c| c.phi_std.clone())
+            .collect();
+        if !pool_phis.is_empty() {
+            self.style_shares.push(StyleShareRecord {
+                observations: self.log.len(),
+                k,
+                shares: posterior.style_share(&pool_phis),
+            });
+        }
+        self.posterior = Some(posterior);
         self.resamples_since_fit = 0;
+    }
+
+    /// Style shares recorded at each fit, oldest first. See
+    /// [`StyleShareRecord`].
+    pub fn style_shares(&self) -> &[StyleShareRecord] {
+        &self.style_shares
     }
 
     /// Effective sample size of the current posterior's importance weights —
@@ -2713,6 +2768,7 @@ impl Engine {
             style_names: self.style_names.clone(),
             events: self.events.clone(),
             forecasts: self.forecasts.clone(),
+            style_shares: self.style_shares.clone(),
         }
     }
 
@@ -2760,6 +2816,7 @@ impl Engine {
         self.style_names = state.style_names;
         self.events = state.events;
         self.forecasts = state.forecasts;
+        self.style_shares = state.style_shares;
         // The implicit stream stores raw φ on both sides of a hand edit, so it
         // is the fourth carrier of the corruption after the pool, the log and
         // the HELD tray — and the only one nothing reads yet, which is exactly
