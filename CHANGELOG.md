@@ -8,6 +8,46 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — `Silence`, so an empty socket is empty in the term too
+
+An "empty" socket made sound. The rack drew a dashed EMPTY plate and the
+substitute node underneath it was a `Vco`, so the plate was honest and the patch
+was not: the model was taught on a tree containing a source the player believed
+was silent, and every φ coordinate measured a render with it in.
+
+**Its prior weight is small but not zero, and that is the whole design.** At zero
+the grammar gives `p = 0` to any tree containing a hole, `log p` is −∞, and MH
+rejects every proposal that touches one — so unplugging a socket would quietly
+make a patch un-evolvable. At 0.5% a `Silence`-only tree renders silent, the vet
+gate quarantines it, and evolution learns to avoid holes rather than being
+forbidden from representing one. Both halves are tests.
+
+It is appended at source index 6 rather than inserted, because a source kind's
+*index* is the persisted wire format; the round-trip test asserts the literal 6,
+since a test that asked the encoder what it wrote would agree with any
+renumbering. It compiles to a `Vca` with an unpatched audio input — `Offset`'s
+ports are `CvBipolar`, and feeding one to an audio consumer would raise a
+signal-kind warning on every patch holding a hole.
+
+**`n_silence` joins the source/binary identity as its own φ column, and the VIF
+sweep confirms it.** The worry was that a 0.5% column is a near-indicator
+variable — the objection that kept `n_ringmod` out. Measured over 1200 draws it
+comes back at **VIF 1.1**, the best-conditioned coordinate in φ, with no exact
+dependency introduced and the worst VIF in the whole vector *falling* 16.9 →
+16.1. A hole's prevalence is set by the player's edits rather than by the prior,
+which is what makes it unlike the other rare kinds.
+
+For the same reason it is deliberately **not tilted by taste** in `biased_prior`:
+the tilt moves proposals toward source kinds a listener is enjoying, and a hole
+is not a timbre anyone can enjoy.
+
+Paired 48-seed climb against `main`: mean **+0.041 ± 0.377**, median −0.108, 10%
+trimmed **−0.083 ± 0.207**, sign test 22 better / 26 worse (p = 0.665). No
+detectable effect on search health, which is what an expressiveness change that
+the synthetic listener has no opinion about should show. Seeds that climbed went
+41/48 → 45/48 and the worst seed went −10.30 → −2.48, but McNemar puts that at
+p = 0.344 — suggestive, not established.
+
 ### Changed — the RefineKeep A/B was run, and it tied
 
 A refinement walk renders ~40 candidates and injects one. Which one was never

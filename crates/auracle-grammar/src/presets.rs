@@ -2261,7 +2261,8 @@ mod tests {
                     walk(a, name, out);
                     walk(b, name, out);
                 }
-                AudioNode::Noise { .. } => {}
+                // Neither has a modulation slot or a child to walk.
+                AudioNode::Noise { .. } | AudioNode::Silence { .. } => {}
             }
         }
         let mut out = Vec::new();
@@ -2402,6 +2403,9 @@ mod tests {
                 AudioNode::Noise { color, .. } => {
                     self.nodes.insert("noise");
                     self.colors.insert(format!("{color:?}"));
+                }
+                AudioNode::Silence { .. } => {
+                    self.nodes.insert("silence");
                 }
                 AudioNode::Wavetable {
                     table,

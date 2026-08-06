@@ -669,7 +669,8 @@ fn primary_input(n: AudioNode) -> Option<AudioNode> {
         | AudioNode::Noise { .. }
         | AudioNode::Wavetable { .. }
         | AudioNode::Pluck { .. }
-        | AudioNode::Formant { .. } => None,
+        | AudioNode::Formant { .. }
+        | AudioNode::Silence { .. } => None,
         // For a ring modulator the carrier is the primary input, exactly as
         // `a` is for a mix — the modulator is the branch that gets dropped.
         AudioNode::Mix { a, .. } | AudioNode::RingMod { a, .. } => Some(*a),
@@ -1341,7 +1342,8 @@ fn graft(frag: AudioNode, old: AudioNode) -> Result<AudioNode, StructError> {
         | AudioNode::Noise { .. }
         | AudioNode::Wavetable { .. }
         | AudioNode::Pluck { .. }
-        | AudioNode::Formant { .. } => Err(StructError::Invalid(
+        | AudioNode::Formant { .. }
+        | AudioNode::Silence { .. } => Err(StructError::Invalid(
             "a source has no input to splice into".into(),
         )),
     }

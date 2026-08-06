@@ -127,15 +127,15 @@ impl Hash for Uid {
 macro_rules! audio_variants {
     ($mac:ident) => {
         $mac!(
-            Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Mix, Filter, Fold, Delay, Chorus,
-            Reverb, Distortion, Bitcrush, Phaser, Flanger, Tremolo, Vibrato, Eq, Granular, RingMod,
-            Shift, Comp, Duck, Gate, Vocoder
+            Vco, Supersaw, Noise, Wavetable, Pluck, Formant, Silence, Mix, Filter, Fold, Delay,
+            Chorus, Reverb, Distortion, Bitcrush, Phaser, Flanger, Tremolo, Vibrato, Eq, Granular,
+            RingMod, Shift, Comp, Duck, Gate, Vocoder
         )
     };
 }
 
 /// Every [`AudioNode`] variant that carries a modulation slot — all of them
-/// but `Noise`, `Mix` and `RingMod`.
+/// but `Noise`, `Silence`, `Mix` and `RingMod`.
 macro_rules! modulated_variants {
     ($mac:ident) => {
         $mac!(
@@ -799,6 +799,35 @@ pub enum AudioNode {
         #[serde(default, skip_serializing_if = "Uid::is_new")]
         uid: Uid,
     },
+    /// A source that makes no sound.
+    ///
+    /// The seventh source leaf, and the only one a player can mean literally:
+    /// an unplugged socket. Before this existed the rack drew a dashed EMPTY
+    /// plate over a substitute `Vco`, so the plate was honest and the patch
+    /// underneath was not — the model was taught on a tree containing a source
+    /// the player believed was silent, and every φ coordinate measured a
+    /// render that had it in.
+    ///
+    /// It carries no parameters, which makes it the only source whose whole
+    /// genome is `#leaf` and `#src`. Its prior weight is deliberately tiny
+    /// (see [`PatchGrammarPrior::source_weights`](crate::PatchGrammarPrior))
+    /// but **not zero**: at zero the grammar gives `p = 0` to any tree
+    /// containing one, the Boltzmann target is −∞, and MH rejects every
+    /// proposal touching a hand-made hole — so unplugging a socket would
+    /// quietly make a patch un-evolvable. Small and nonzero instead means a
+    /// `Silence`-only tree renders silent, the vet gate quarantines it, and
+    /// evolution learns to avoid it. That is a path rather than a wall, and it
+    /// is the designed one.
+    ///
+    /// Appended **after** `Formant` on purpose: `#src` is a categorical whose
+    /// *index* is what a saved trace stores, so a new kind may only ever be
+    /// added at the end. Inserting one here would silently re-point every
+    /// persisted genome at a different oscillator.
+    Silence {
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
+    },
     /// Equal-power crossfade of two audio terms.
     Mix {
         /// Normalized balance (0 = all `a`, 1 = all `b`).
@@ -1446,7 +1475,8 @@ impl AudioNode {
             | AudioNode::Noise { .. }
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
-            | AudioNode::Formant { .. } => Vec::new(),
+            | AudioNode::Formant { .. }
+            | AudioNode::Silence { .. } => Vec::new(),
         }
     }
 
@@ -1494,7 +1524,8 @@ impl AudioNode {
             | AudioNode::Noise { .. }
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
-            | AudioNode::Formant { .. } => Vec::new(),
+            | AudioNode::Formant { .. }
+            | AudioNode::Silence { .. } => Vec::new(),
         }
     }
 
@@ -1505,11 +1536,13 @@ impl AudioNode {
             ($($v:ident),*) => {
                 match self {
                     $(AudioNode::$v { modulation, .. } => Some(modulation),)*
-                    // The three productions with nothing worth modulating:
-                    // `Noise` has only a colour, and `Mix`/`RingMod` have two
-                    // audio inputs and a blend. Named rather than wildcarded so
-                    // a new module with a slot cannot silently land here.
+                    // The four productions with nothing worth modulating:
+                    // `Noise` has only a colour, `Silence` has nothing at all,
+                    // and `Mix`/`RingMod` have two audio inputs and a blend.
+                    // Named rather than wildcarded so a new module with a slot
+                    // cannot silently land here.
                     AudioNode::Noise { .. }
+                    | AudioNode::Silence { .. }
                     | AudioNode::Mix { .. }
                     | AudioNode::RingMod { .. } => None,
                 }
@@ -1524,11 +1557,13 @@ impl AudioNode {
             ($($v:ident),*) => {
                 match self {
                     $(AudioNode::$v { modulation, .. } => Some(modulation),)*
-                    // The three productions with nothing worth modulating:
-                    // `Noise` has only a colour, and `Mix`/`RingMod` have two
-                    // audio inputs and a blend. Named rather than wildcarded so
-                    // a new module with a slot cannot silently land here.
+                    // The four productions with nothing worth modulating:
+                    // `Noise` has only a colour, `Silence` has nothing at all,
+                    // and `Mix`/`RingMod` have two audio inputs and a blend.
+                    // Named rather than wildcarded so a new module with a slot
+                    // cannot silently land here.
                     AudioNode::Noise { .. }
+                    | AudioNode::Silence { .. }
                     | AudioNode::Mix { .. }
                     | AudioNode::RingMod { .. } => None,
                 }
@@ -1545,7 +1580,8 @@ impl AudioNode {
             | AudioNode::Noise { .. }
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
-            | AudioNode::Formant { .. } => 1,
+            | AudioNode::Formant { .. }
+            | AudioNode::Silence { .. } => 1,
             AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => {
                 1 + a.depth().max(b.depth())
             }
@@ -1595,7 +1631,8 @@ impl AudioNode {
             | AudioNode::Noise { .. }
             | AudioNode::Wavetable { .. }
             | AudioNode::Pluck { .. }
-            | AudioNode::Formant { .. } => 1,
+            | AudioNode::Formant { .. }
+            | AudioNode::Silence { .. } => 1,
             AudioNode::Mix { a, b, .. } | AudioNode::RingMod { a, b, .. } => {
                 1 + a.size() + b.size()
             }
@@ -1648,6 +1685,9 @@ impl AudioNode {
             AudioNode::Formant { modulation, .. } => 2 + 4 + modulation.site_count(),
             AudioNode::Wavetable { modulation, .. } => 2 + 4 + modulation.site_count(), // #table #oct #morph #mdepth
             AudioNode::Pluck { modulation, .. } => 2 + 4 + modulation.site_count(), // #oct #damp #bright #mdepth
+            // The only production that is nothing but its two structural
+            // sites: no parameters, no modulation slot, nothing to draw.
+            AudioNode::Silence { .. } => 2,
             AudioNode::Mix { a, b, .. } => 2 + 1 + a.site_count() + b.site_count(),
             AudioNode::RingMod { a, b, .. } => 2 + 1 + a.site_count() + b.site_count(),
             AudioNode::Filter {
@@ -1747,6 +1787,7 @@ impl AudioNode {
                 mod_sexpr(modulation)
             ),
             AudioNode::Noise { color, .. } => format!("(noise {})", color.port_name()),
+            AudioNode::Silence { .. } => "(silence)".into(),
             AudioNode::Formant {
                 vowel,
                 shift,
@@ -2054,6 +2095,7 @@ fn spine_tags(n: &AudioNode, out: &mut Vec<&'static str>) {
         }),
         AudioNode::Pluck { .. } => out.push("plk"),
         AudioNode::Formant { .. } => out.push("vox"),
+        AudioNode::Silence { .. } => out.push("mute"),
         AudioNode::Mix { a, .. } => {
             spine_tags(a, out);
             out.push("mix");

@@ -55,6 +55,59 @@ mod tests {
     use auracle_grammar::term::{AmpEnv, AudioNode, ModNode, NoiseColor, Uid, Waveform};
     use auracle_grammar::{PatchGrammarPrior, PatchTree};
 
+    /// A tree that is all holes renders silent and the gate quarantines it.
+    ///
+    /// This is the designed path for `Silence`, and it is what makes a small
+    /// nonzero prior weight safe rather than reckless. The prior can propose a
+    /// hole; if a whole patch collapses to one, the render is exactly zero,
+    /// `vet` returns `Silent`, and the candidate never reaches the pool — so
+    /// evolution is free to discover that holes are bad instead of being
+    /// forbidden from representing one.
+    #[test]
+    fn an_all_silence_tree_is_quarantined_as_silent() {
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 1.0,
+                release: 0.3,
+            },
+            root: AudioNode::Silence { uid: Uid::NEW },
+        };
+        match featurize(&tree, &PhraseSpec::default()) {
+            Err(e) => assert!(
+                e.to_string().contains("silent"),
+                "an empty patch must fail as silent, not as {e}"
+            ),
+            Ok(_) => panic!("a patch of nothing but holes passed the vet gate"),
+        }
+    }
+
+    /// A hole inside a live patch is *not* quarantined — it is one muted
+    /// branch of a mixer, which is an ordinary patch and must stay auditionable.
+    #[test]
+    fn a_hole_beside_a_source_still_renders() {
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 1.0,
+                release: 0.3,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.5,
+                a: Box::new(AudioNode::Silence { uid: Uid::NEW }),
+                b: Box::new(AudioNode::Noise {
+                    uid: Uid::NEW,
+                    color: NoiseColor::White,
+                }),
+            },
+        };
+        featurize(&tree, &PhraseSpec::default())
+            .expect("half a mixer is still a patch you can hear");
+    }
+
     /// Every built-in preset renders and passes the vetting gate — a preset
     /// that can't be auditioned must never ship.
     #[test]
