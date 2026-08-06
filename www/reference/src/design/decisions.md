@@ -20,7 +20,7 @@ the one that replaced it.
 | [Hand edits](../genome/edits.md) | Knob turn = write at a trace address; commit inserts as new candidate; optional "edit beats original" duel, provenance-tagged | Panel and genome share one encoding, so edits, locks, and evolution cannot drift |
 | [Profile portability](../persistence.md) | Export = observation log **+ standardizer**; log stores **raw** φ by name | θ is only meaningful relative to its standardizer; by-name raw storage is what lets the feature set change without re-interpreting history |
 | [Palette](../genome/grammar.md) | 41 productions: 6 sources, 20 processors, 15 modulators; categorical orders are append-only wire format | Enough texture axes to learn on; the codec writes indices into the trace |
-| [Feedback loops in grammar](../genome/compilation.md) | Not yet (DAG terms only) | Stability; internal-feedback modules still allowed |
+| [Feedback loops in grammar](../genome/compilation.md) | Not yet (**tree** terms only — see [open questions](./open-questions.md)) | Stability; internal-feedback modules still allowed. Note the ceiling is tighter than "acyclic": a tree also forbids *sharing*, so one output cannot feed two places |
 | [Audition](../audition/phrase.md) | Standard 5.05 s phrase + free-play; per-style phrases later | Feature comparability requires fixed stimulus |
 | [Loudness](../audition/loudness.md) | LUFS-normalize all renders to −18 | Loudness bias would poison the preference data |
 | [Acquisition](../search/acquisition.md) | **Uniform random pairing** by default; BALD selectable, Thompson kept for contrast | Measured tie with BALD over 20 paired seeds in two pool regimes; uniform has no tuning constants and makes every duel an unbiased calibration sample |
