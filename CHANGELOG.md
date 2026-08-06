@@ -8,16 +8,23 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
-### Changed — CI answers the same questions in a third of the wall clock
+### Changed — CI stops making every PR pay for the parts it cannot affect
 
 A PR took ~11m30s, and 11m12s of that was the one `Test` job. Measured rather
-than guessed, it was two costs stacked on each other:
+than guessed, and then measured again in CI afterwards:
 
 | | before | after |
 |---|---|---|
-| test compile (warm cache) | 2m21s | ~40% less CPU |
-| `refinement_improves_pool` | ~550s CPU, blocking 170 other tests | its own runner |
-| a docs-only PR | full 11m30s | Rust jobs skipped |
+| test compile, warm cache | 2m21s | **1m12s** |
+| a Rust PR, end to end | 11m30s | **~8m** |
+| a site or brand PR | 11m30s | **~2m** — only `Site` runs |
+| a README or changelog PR | 11m30s | **16s** — nothing to build |
+| three pushes to one PR | three full runs | the first two cancelled |
+
+The honest headline is the docs PR and the cancellation, not the Rust PR. After
+the compile is halved and the suite is unblocked, **~365s of the remaining ~8m is
+one test**, `refinement_improves_pool`, and that floor is not movable from here —
+see the note at the end.
 
 **A test profile that is not the release profile.** `[profile.release]` sets
 `lto = "fat"` and `codegen-units = 1` to shave the render loop of the artifact
@@ -55,6 +62,24 @@ job timeouts, because the 6-hour default is a lot of rope for a hung run.
 One new check, `CI`, reports the aggregate. It is the one to require in a branch
 ruleset — the jobs above are conditional, and requiring a job that legitimately
 skips would wedge every documentation PR.
+
+**What is left, and why it stays.** `refinement_improves_pool` is now ~81% of a
+Rust PR's wall clock: 365s of the ~8m. Its 16 seeds are independent and it is the
+obvious thing to split across runners — and it must not be. The gate is the
+**median** of the 16 per-seed gains, chosen over the mean because two seeds in
+that spread are catastrophic outliers; the test's own doc comment records that a
+four-seed gate "would have been a coin flip that failed for reasons having
+nothing to do with the change under review." A median cannot be assembled from
+independent shards, and a per-shard gate is exactly the coin flip that reasoning
+rejected. The seeds stay together.
+
+That leaves core count as the only remaining lever, and it is a billing decision
+rather than a code one. The test's doc comment records ~70s wall for the 16 seeds
+— that is a 16-core machine, where they run one-per-core; a 4-core runner queues
+them four deep and takes 365s. A larger runner would put a Rust PR near ~2m30s at
+roughly neutral cost, since four times the rate over a quarter of the minutes is
+a wash. It is not enabled here: larger runners are billed even for public repos,
+so it is the repo owner's call rather than a default.
 
 ### Added — a cross-island measurement, which closed an open question by refuting it
 
