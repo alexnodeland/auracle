@@ -65,13 +65,65 @@ a description of the system.</p>
   something the tree cannot say, rather than when someone notices it cannot say
   it.
 - **Per-style audition phrases** — a discovered bass style picks a bassline, a
-  pad style a chord swell. The `:p2` [stimulus tag](../audition/phrase.md) is
-  the migration mechanism that would let this land without invalidating
-  history.
-- **Where acquisition would earn its keep.** [BALD ties uniform
-  pairing](../search/acquisition.md) at session horizon. A much larger pool or
-  a much longer session is where the tie should break; neither has been
-  measured.
+  pad style a chord swell. Still open, and worth stating precisely what stands
+  in the way, because the migration mechanism is *not* it.
+
+  The `:p2` [stimulus tag](../audition/phrase.md) does solve the history
+  problem: a phrase change renames the audio coordinates, old votes keep their
+  stimulus-independent structural coordinates, and their old-stimulus audio
+  coordinates are imputed as "no evidence" — which the likelihood now handles
+  honestly rather than as a measurement. Two prerequisites are therefore
+  already met, and one is not:
+
+  - **Comparability is fine**, contrary to the obvious worry. The phrase is a
+    property of the *session* (`SessionConfig::phrase`), not of a candidate, so
+    everything in a pool is auditioned under one stimulus and duels stay
+    apples-to-apples. Per-*style* phrases only make sense as per-*context*
+    phrases for the same reason.
+  - **The tag would have to be derived rather than declared.** `:p2` is a
+    hard-coded literal in `AudioFeatures::NAMES`, and `Features::phi_names` is
+    global. A phrase that varies needs the tag to be a function of the
+    `PhraseSpec` actually rendered, or the names silently stop describing the
+    numbers.
+  - **The real obstacle is circular, and it is a design problem rather than an
+    engineering one.** A style is *discovered* — it is an inference from φ.
+    φ is measured under a phrase. If the phrase is chosen by the style, then
+    the stimulus depends on an inference that depends on the stimulus. That
+    loop can be broken (bootstrap from the standard phrase, switch only once a
+    style's share is confidently high, never re-audition history), but every
+    way of breaking it is a decision about how much the instrument is allowed
+    to change what it is measuring while it measures it.
+
+  Deferred until that loop has an answer worth defending, rather than until
+  someone has time — the mechanism is ready and the question is not.
+- ~~**Where acquisition would earn its keep.**~~ **Measured, and the tie does
+  not break.** [BALD ties uniform pairing](../search/acquisition.md) at session
+  horizon, and this entry named two regimes where that should stop being true:
+  a much larger pool, or a much longer session. Both were run at 20 CRN-paired
+  seeds, `bald − random`:
+
+  | regime | cos θ* | rank r | excess nats |
+  |---|---|---|---|
+  | baseline (pool 48, 6 rounds) | +0.059 ± 0.046 *(static)* | +0.045 ± 0.068 | −0.013 ± 0.012 *(static)* |
+  | **pool 192** | −0.002 ± 0.044 | +0.015 ± 0.061 | −0.001 ± 0.012 |
+  | **24 rounds** (288 duels) | +0.031 ± 0.042 | +0.013 ± 0.013 | −0.003 ± 0.006 |
+
+  At the baseline BALD has two marginal wins in the *static* regime (t = 2.6 and
+  −2.2). **Widening the pool fourfold removes them** rather than growing them,
+  and lengthening the session fourfold leaves everything inside noise with
+  several signs flipped. The reasoning behind the entry — that a bigger pair
+  space gives an information-seeking rule more redundancy to prune — does not
+  survive being tried.
+
+  What *is* stable across all three regimes is that BALD beats dueling Thompson
+  (t = 2.9 to 6.9), which was already known and is unchanged.
+
+  So uniform random pairing stands as the default on the same grounds it always
+  had: it ties the information-seeking rule everywhere anyone has looked, has no
+  tuning constants, and makes every duel an unbiased calibration sample. The
+  session-length knob this needed (`--rounds`) is now in `learn_synthetic`
+  beside `--pool`, so the next person can ask a third regime without patching
+  a constant.
 - **Fit cost at the K cap.** Single-site MH re-executes the whole program per
   step, so a mature [fit](../taste/posterior.md) is both slower and
   statistically thinner than an early one (205 + S sites over a fixed 10 000
