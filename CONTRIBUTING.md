@@ -124,6 +124,11 @@ these properties explicitly.
   scheme (`node/0#cut`, `amp#attack`, `node/0/m#rate`). The canonical
   `TraceGenome` codec **is** the grammar's addressing, and a round-trip
   property test keeps them from drifting.
+- **No backticks anywhere inside `PROCESSOR`** in `apps/web/live-audio.js` —
+  the whole worklet class is a template literal, so one in a *comment* ends the
+  string and the file stops parsing. `node --check apps/web/live-audio.js`
+  catches it and nothing else does: the failure mode is a blob that never
+  registers, not an error at the edit site.
 - **Persisted UI state must be JS-owned**, never scraped from the DOM at save
   time (a phantom DOM slider reset once poisoned an autosave).
 - **Worker replies are load-bearing**: every workbench edit message must get a
