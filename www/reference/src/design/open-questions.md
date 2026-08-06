@@ -23,9 +23,47 @@ a description of the system.</p>
   no valley to cross, because the search does not have to travel through the
   space between the islands. See
   [Refinement](../search/refinement.md#the-islands-are-not-separated-by-a-valley).
-- **A feedback production in the grammar**, with a mandatory attenuator and
-  limiter in the loop path. The [grammar](../genome/grammar.md) is DAG-only
-  today.
+- **Fan-out and feedback in the grammar.** Two separate ceilings, deferred
+  together because they are the two things the term algebra cannot say.
+
+  This entry used to read *"the grammar is DAG-only today"*, which understated
+  it in the direction that matters. The genome is a **tree** — `term.rs` says so
+  in its first line — and a tree forbids more than cycles. It forbids *sharing*:
+  one output cannot feed two places, so there is no shared sub-patch. A DAG
+  would already allow that. The distinction is the whole of the first half of
+  this entry, and the docs were describing the looser of the two ceilings.
+
+  **Fan-out** is the more valuable of the two and the more invasive. One
+  oscillator into both a filter and a delay line, summed — an idiom so ordinary
+  that the app already has to explain its absence. The connect offer does that
+  well, volunteering the constraint as a fact (*"A copy: one output cannot feed
+  two places"*), and the panel called it the best copy in the product. But it is
+  still a ceiling being narrated rather than lifted.
+
+  The cost is not the grammar rule; it is everything keyed to the tree. Child
+  indices (`node/0`, `node/1`) are the trace addressing, so a shared node has no
+  single path and the address scheme stops being a naming of the term. That
+  scheme is load-bearing for panel knobs, locks, live parameter handles, MH
+  proposals and the persisted genome — `CONTRIBUTING.md` lists it as a sharp
+  edge for exactly this reason. `children()`, `size()`, `depth()` and
+  `site_count()` all assume each node is visited once, and `size` is φ's
+  parsimony term. Every structural op in `mutate` assumes a unique parent. It is
+  a genome-format change with a migration, not a production.
+
+  **Feedback** needs a mandatory attenuator and limiter in the loop path, and a
+  delay of at least one sample to be computable at all. quiver's graph is
+  evaluated per sample in dependency order, so a cycle needs an explicit
+  unit-delay node to break it — which is a real design, not a relaxation of the
+  acyclicity check.
+
+  **Deferred, deliberately, and this is the record of it.** Neither is blocked
+  on evidence — no measurement would change the answer — so neither belongs in
+  the "measure it" pile with the rest of this page. They are blocked on being
+  worth a genome migration, and nothing in the loop currently says they are: the
+  search is not starved for expressiveness (refinement crosses islands, and the
+  pool widens rather than concentrates). Re-open this when a listener wants
+  something the tree cannot say, rather than when someone notices it cannot say
+  it.
 - **Per-style audition phrases** — a discovered bass style picks a bassline, a
   pad style a chord swell. The `:p2` [stimulus tag](../audition/phrase.md) is
   the migration mechanism that would let this land without invalidating
