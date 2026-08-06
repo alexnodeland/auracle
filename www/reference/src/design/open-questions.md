@@ -74,7 +74,7 @@ a description of the system.</p>
   measured.
 - **Fit cost at the K cap.** Single-site MH re-executes the whole program per
   step, so a mature [fit](../taste/posterior.md) is both slower and
-  statistically thinner than an early one (210 + S sites over a fixed 10 000
+  statistically thinner than an early one (205 + S sites over a fixed 10 000
   steps ≈ 48 sweeps per site). The address table is hoisted out of the step
   loop and the chain no longer holds itself in memory, so what is left is purely
   the statistical shape of the problem — the budget can now be chosen on the
@@ -155,25 +155,27 @@ a description of the system.</p>
   `voct_to_hz` is unclamped — overflow is now *recovered* by Q198 rather than
   prevented, and a pitch clamp would also tame aliasing garbage at
   absurd-but-finite pitches.
-- ~~**The brightness cluster in φ_audio.**~~ **Closed by doing it.**
-  `rolloff_mean`, `zcr_mean` and `centroid_mean` are three genuine measurements
-  of one perceptual thing, and this entry called for a shared or fused prior
-  over the cluster rather than dropping a column.
+- **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
+  `centroid_mean` are three genuine measurements of one perceptual thing.
+  A fused prior over the cluster is now **implemented and switched off**, which
+  is a more useful state than either "not done" or "done".
 
-  The numbers moved before the fix landed, which is worth recording: the VIFs
-  quoted here were 18.4 / 10.4 / 5.9, and after the ZCR DC removal they measure
-  **16.9 / 9.7 / 5.9** — `zcr_mean` fell below the collinearity flag entirely.
-  The cluster is still real (`rolloff_mean` remains the worst-conditioned
-  coordinate in φ) but one third of the original argument was a coordinate bug
-  rather than a modelling problem.
+  The VIFs quoted when this was written were 18.4 / 10.4 / 5.9; after the ZCR DC
+  removal they measure **16.9 / 9.7 / 5.9** and `zcr_mean` no longer trips the
+  collinearity flag at all. A third of the original argument was a coordinate
+  bug rather than a modelling problem.
 
-  The prior is now hierarchical over the group: `μ_bright,k ~ Normal(0, σ_θ)`
-  per style, with each member drawn `Normal(μ_bright,k, σ_within)` and
-  `σ_within = σ_θ/2`. That says what is true — evidence about one brightness
-  coordinate is partial evidence about the others — while leaving the model
-  free to separate them when the data insist. It costs `K` latent sites, taking
-  the fit from 206 to **211** at K = 5.
+  Two gates were run at ρ = 0.25 and they **disagreed**. The closed-loop gate,
+  which scores θ recovery, improved (0.657 → 0.702). The 48-seed paired climb,
+  which scores what the pool is worth to the listener, regressed —
+  **−0.579 ± 0.188 trimmed (−3.09 se)**, sign test 16 better / 32 worse
+  (p = 0.029). So it ships at ρ = 0.
 
-  Measured on a synthetic cluster with thin evidence (40 duels, where a prior
-  can still be right or wrong), recovery cosine improves on **5 of 5 chain
-  seeds**, 0.852 → 0.864 on the mean.
+  Both results are real because they measure different things: pooling an
+  ill-conditioned ridge regularizes *estimating* θ, and biases the *search* that
+  consumes θ. The general point outlives the feature — a VIF says these
+  coordinates move together across **patches**, which is a fact about φ; fusing
+  their coefficients asserts a listener's **preferences** move together, which
+  is a fact about people and does not follow. Re-open if the listener model ever
+  gains a reason to believe it does; the sweep and both gates are there to
+  re-run.

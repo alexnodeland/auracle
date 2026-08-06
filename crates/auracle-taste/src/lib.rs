@@ -120,8 +120,18 @@ mod tests {
         let flat_sites = model::SiteAddrs::new(&flat, 1).site_count();
         assert_eq!(flat_sites, 40 * 5 + 1 + 5, "the documented 206");
 
-        let mut fused = flat.clone();
-        fused.fused = vec![vec![2, 5, 0]];
+        // Both knobs are needed, which is itself the guard: naming a group
+        // with rho at its default 0 must stay the flat program.
+        let mut named_only = flat.clone();
+        named_only.fused = vec![vec![2, 5, 0]];
+        assert_eq!(
+            model::SiteAddrs::new(&named_only, 1).site_count(),
+            flat_sites,
+            "a named group at rho = 0 must add no sites — off means off"
+        );
+
+        let mut fused = named_only.clone();
+        fused.fused_rho = Some(0.25);
         let fused_sites = model::SiteAddrs::new(&fused, 1).site_count();
         assert_eq!(
             fused_sites,
@@ -189,6 +199,7 @@ mod tests {
             let flat = fit(TasteConfig::linear(D), seed);
             let mut cfg = TasteConfig::linear(D);
             cfg.fused = vec![vec![0, 1, 2]];
+            cfg.fused_rho = Some(0.25);
             let fused = fit(cfg, seed);
             println!(
                 "seed {seed}: flat {flat:.3}  fused {fused:.3}  ({:+.3})",

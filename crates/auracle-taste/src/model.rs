@@ -114,7 +114,8 @@ pub struct TasteConfig {
     #[serde(default)]
     pub fused: Vec<Vec<usize>>,
     /// How strongly a fused group's coordinates are correlated *a priori*,
-    /// in `[0, 1)`. `None` → 0.25, which is where the closed-loop gate put it.
+    /// in `[0, 1)`. **`None` → 0.0, i.e. off** — see [`Self::fused_rho`] for
+    /// the measurement that switched it off.
     ///
     /// Parameterized as a correlation rather than as an inner SD so that the
     /// **marginal** prior on each coordinate is unchanged: with
@@ -155,31 +156,54 @@ impl TasteConfig {
 
     /// Prior correlation within a fused group, clamped to `[0, 0.99]`.
     ///
-    /// ## Why 0.25 and not more
+    /// ## Why this ships at zero
     ///
-    /// Swept against the always-on closed-loop gate, which fits a real
-    /// posterior against a synthetic listener over five seeds:
+    /// The machinery is implemented, correct and **switched off**, the way
+    /// [`RefineKeep::Best`](../../auracle_session/enum.RefineKeep.html) and
+    /// `Acquisition::Thompson` are kept after losing. Two gates were run and
+    /// they **disagreed**, which is the finding.
+    ///
+    /// Swept against the always-on closed-loop gate — five seeds, a real
+    /// posterior fit against a synthetic listener — fusing *helps*:
     ///
     /// ```text
     /// rho    mean posterior/truth r
     /// 0.00   0.657   (the flat prior, reproduced exactly)
-    /// 0.25   0.702   <- default
+    /// 0.25   0.702   <- best
     /// 0.50   0.644
     /// 0.75   fails the per-seed floor (seed 0x2 at 0.437)
     /// ```
     ///
-    /// The shape is the point. Mild pooling *regularizes* an ill-conditioned
-    /// ridge; strong pooling *overrides the data*. That the curve turns over
-    /// is a warning about what a fused prior actually assumes: a VIF says the
-    /// three brightness coordinates move together **across patches**, which is
-    /// a fact about φ. Fusing their coefficients asserts that a listener's
-    /// *preferences* about them move together, which is a fact about people
-    /// and does not follow. The gate's synthetic listener weights
-    /// `centroid_mean` and ignores the other two — a taste that respects the
-    /// cluster's geometry not at all — and at rho = 0.75 the prior is confident
-    /// enough to lose to it.
+    /// Measured on the **climb** at rho = 0.25 — 48 paired seeds, the gate that
+    /// asks what the pool is actually worth to the listener — it *hurts*, and
+    /// not marginally:
+    ///
+    /// ```text
+    /// paired (fused − flat)   10% trimmed  −0.579 ± 0.188   (−3.09 se)
+    ///                         median       −0.726
+    ///                         sign         16 better / 32 worse, p = 0.029
+    ///                         climbed      41/48 → 38/48
+    /// ```
+    ///
+    /// **Both are true, and the reason is that they measure different things.**
+    /// The closed-loop gate scores θ *recovery*, where pooling an
+    /// ill-conditioned ridge is a real regularizer. The climb scores the true
+    /// utility of the pool the search delivers, and there the pooling is a
+    /// bias: this listener's taste puts 2.0 on `centroid_mean` and exactly 0
+    /// on the other two, so shrinking them together drags the one coefficient
+    /// that matters toward two that do not, and the search aims worse.
+    ///
+    /// That is the general warning, and it is worth more than the feature. A
+    /// VIF says the three brightness coordinates move together **across
+    /// patches** — a fact about φ. Fusing their coefficients asserts that a
+    /// listener's **preferences** about them move together — a fact about
+    /// people, which does not follow from the first and was not measured.
+    ///
+    /// Re-open this if the listener model ever gains a reason to believe
+    /// preferences follow φ's correlation structure; the sweep and both gates
+    /// are here to re-run.
     pub fn fused_rho(&self) -> f64 {
-        self.fused_rho.unwrap_or(0.25).clamp(0.0, 0.99)
+        self.fused_rho.unwrap_or(0.0).clamp(0.0, 0.99)
     }
 
     /// SD of a fused group's latent mean: `σ_θ√ρ`.
@@ -331,9 +355,9 @@ fn obs_loglik(o: &Feedback, session: usize, s: &TasteSample) -> f64 {
 /// The MCMC site addresses of one taste program, built once.
 ///
 /// Single-site MH re-executes the whole program on **every step**, so every
-/// `sample()` node — `d·K + S + (n_stars − 1) + K·G` of them, **211** at
-/// K = 5, d = 40, one session and one fused group (206 with no group) — is
-/// reconstructed
+/// `sample()` node — `d·K + S + (n_stars − 1) + K·G` of them, **206** as
+/// shipped (K = 5, d = 40, one session, and no fused group, since the fused
+/// prior defaults to off; a group would add K) — is reconstructed
 /// 26 000 times per fit. Building each address inline
 /// (`addr!(format!("theta{k}"), i)`) therefore cost a `format!` into a
 /// `String`, a re-allocation into `Arc<str>` and a SipHash of that string,

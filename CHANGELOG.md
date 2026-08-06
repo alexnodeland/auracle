@@ -8,52 +8,54 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
-### Changed — a fused prior over the brightness cluster, at the strength the gate chose
+### Added — the brightness cluster's fused prior, implemented and switched off
 
 `rolloff_mean`, `zcr_mean` and `centroid_mean` are three genuine measurements of
 one perceptual thing, and `rolloff_mean` is the worst-conditioned coordinate in
-φ. Dropping any of them discards real signal — they disagree about *which*
-brightness, and a listener who prefers one shading over another is saying
-something the survivors cannot represent. So the prior is now hierarchical over
-the group: a latent mean per style, with each member drawn about it.
+φ. The open question asked for a shared or fused prior over the cluster rather
+than dropping a column. It is now built — a latent mean per style, members drawn
+about it — and it ships at `ρ = 0`, which is off.
 
-**The premise had already moved before the fix landed.** The VIFs that motivated
-this were 18.4 / 10.4 / 5.9; after the ZCR DC removal earlier in this pass they
-measure **16.9 / 9.7 / 5.9**, and `zcr_mean` fell below the collinearity flag
-entirely. A third of the original argument was a coordinate bug rather than a
-modelling problem. The cluster is still real, so the fix still applies — but it
-was re-derived rather than quoted.
+**Two gates were run and they disagreed. That is the finding.**
 
-**Parameterized as a correlation, which turned out to matter.** With
-`σ_μ = σ_θ√ρ` and `σ_within = σ_θ√(1−ρ)`, the *marginal* prior on each θ is
-unchanged and only the covariance moves; `ρ = 0` is the flat prior node for
-node, verified by reproducing the closed-loop baseline to three decimals. A
-first attempt used a fixed inner SD instead, which quietly inflated the marginal
-variance to `1.25 σ_θ²` — so it changed the prior's scale *and* its correlation,
-and measuring "does fusing help" was really measuring two changes at once. It
-failed the closed-loop gate, and it deserved to.
-
-**The strength was measured, not chosen.** Swept against the always-on
-closed-loop gate:
+Against the always-on closed-loop gate, which scores θ *recovery*, fusing helps:
 
 | ρ | mean posterior/truth r |
 |---|---|
 | 0.00 | 0.657 — the flat prior, reproduced exactly |
-| **0.25** | **0.702** ← default |
+| **0.25** | **0.702** |
 | 0.50 | 0.644 |
-| 0.75 | fails the per-seed floor (seed `0x2` at 0.437) |
+| 0.75 | fails the per-seed floor |
 
-That the curve *turns over* is the finding worth keeping. Mild pooling
-regularizes an ill-conditioned ridge; strong pooling overrides the data. A VIF
-says the three coordinates move together **across patches**, which is a fact
-about φ — fusing their coefficients asserts that a listener's *preferences*
-about them move together, which is a fact about people and does not follow. The
-gate's synthetic listener weights `centroid_mean` and ignores the other two, and
-by ρ = 0.75 the prior is confident enough to lose to it.
+Against the **climb** at ρ = 0.25 — 48 paired seeds, the gate that asks what the
+pool is actually worth to the listener — it hurts, and not marginally:
 
-Costs `K` latent sites: the fit goes 206 → **211** at K = 5. `fit_bench` now
-asks `SiteAddrs` for that number instead of re-deriving it, since a hand-rolled
-formula in a benchmark is exactly what keeps reporting the old count.
+| statistic | value |
+|---|---|
+| 10% trimmed | **−0.579 ± 0.188 (−3.09 se)** |
+| median | −0.726 |
+| sign test | 16 better / 32 worse, **p = 0.029** |
+| climbed | 41/48 → 38/48 |
+
+Both are true because they measure different things. Pooling an ill-conditioned
+ridge is a real regularizer for *estimating* θ. It is a *bias* for the search
+that consumes θ: the synthetic listener puts 2.0 on `centroid_mean` and exactly
+0 on the other two, so shrinking them together drags the one coefficient that
+matters toward two that do not, and the search aims worse.
+
+**The general warning is worth more than the feature.** A VIF says the three
+coordinates move together *across patches* — a fact about φ. Fusing their
+coefficients asserts that a listener's *preferences* about them move together —
+a fact about people, which does not follow from the first and had not been
+measured. The issue's framing invited that conflation, and the climb caught it.
+
+Kept re-checkable rather than deleted, as `RefineKeep::Best` and
+`Acquisition::Thompson` are. At `ρ = 0` it emits no latent sites at all, so the
+program is the flat one node for node and the fit stays at 206 sites.
+
+Also: the premise had already moved. The VIFs motivating this were 18.4/10.4/5.9;
+after the ZCR DC removal they measure **16.9/9.7/5.9** and `zcr_mean` is no
+longer flagged at all — a third of the original argument was a coordinate bug.
 
 ### Added — `Silence`, so an empty socket is empty in the term too
 
