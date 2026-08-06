@@ -48,11 +48,24 @@ a description of the system.</p>
   off: argmax over a surrogate finds that surrogate's errors, and the patch-loop
   gate has already caught two seeds in sixteen ending **−12.0** and **−5.5**
   worse in true utility. The A/B is `make climb`, and it has not been run.
-- **Interior signal taps in quiver.** A compiled patch exposes exactly one
-  output, so the rack's flow animation *estimates* wire levels from the term
-  rather than measuring them, and the port trace re-renders a truncated subtree
-  per probe. A quiver-side probe API would turn both into measurements. Not
-  filed — it needs scoping first.
+- ~~**Interior signal taps in quiver.**~~ **Closed, and it was wrong.** This
+  entry read: *"a compiled patch exposes exactly one output … a quiver-side
+  probe API would turn both into measurements. Not filed — it needs scoping
+  first."* There was nothing to scope and nothing to file. quiver's
+  `StateObserver` has taken `Level`, `Scope` and `Spectrum` subscriptions on
+  any node port for some time, in the release the lockfile already pinned. The
+  gap was here, not upstream.
+
+  The compiler now records where each term node's audio leaves it, and the
+  rack's flow animation multiplies a measured RMS into its reach factor while
+  notes sound. Two expectations about the work turned out not to hold either:
+  `sync_output_keepalive` is unnecessary, because the genome is a tree and
+  every module's output already feeds a parent, so quiver is already computing
+  every metered value; and the open design question — which of N voices to
+  meter — has an answer, the most recently pressed one, since a sum across the
+  bank averages notes at different envelope phases and is not the level on any
+  wire. The port trace stays an offline render, now by choice: it wants the
+  same phrase every time so that two looks at it are comparable.
 - **fugue-evo's `parallel` feature on wasm32.** It does not compile there, so
   the workspace takes fugue-evo with default features off and refinement is
   single-threaded *natively* too — in the one place the engine is embarrassingly

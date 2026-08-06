@@ -62,6 +62,13 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.poly = null;
     this.ready = false;
     this.pendingPatch = null;
+    // Interior metering, off until a surface asks. meterTick divides the
+    // quantum rate down to the rate the animation can use. (No backticks in
+    // here — this whole class is a template literal.)
+    this.meterOn = false;
+    this.meterTick = 0;
+    this.meterView = null;
+    this.meterPtr = 0;
     this.port.onmessage = (e) => {
       try {
         this.handle(e.data);
@@ -141,6 +148,20 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         if (!ok) this.port.postMessage({ type: "param_miss", addr: m.addr });
         break;
       }
+      // Interior metering. Off is the default and the cheap path: with no
+      // subscriptions the render loop does no metering work at all, so this
+      // costs nothing until a surface that draws levels is actually open.
+      case "meter": {
+        if (!this.poly) break;
+        this.meterOn = !!m.on;
+        this.poly.set_meter(this.meterOn);
+        this.meterView = null;
+        this.port.postMessage({
+          type: "meter_keys",
+          keys: this.meterOn ? JSON.parse(this.poly.meter_keys()) : [],
+        });
+        break;
+      }
     }
   }
   loadPatch(m) {
@@ -194,6 +215,28 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       if (ev === 1) this.port.postMessage({ type: "patched" });
       else if (ev === 2)
         this.port.postMessage({ type: "patch_error", error: this.poly.last_error() });
+      // Levels out, at ~23 Hz rather than every quantum. The animation is
+      // redrawn on a frame timer anyway, so posting 344 times a second would
+      // buy nothing and cost a structured clone each time. Same cached-view
+      // discipline as the render buffer above: rebuilt only when wasm memory
+      // grows or the pointer moves.
+      if (this.meterOn && ++this.meterTick >= 8) {
+        this.meterTick = 0;
+        const len = this.poly.meter_len();
+        if (len > 0) {
+          const mptr = this.poly.meter_ptr();
+          if (
+            !this.meterView ||
+            this.meterPtr !== mptr ||
+            this.meterView.length !== len ||
+            this.meterView.buffer !== wasm.memory.buffer
+          ) {
+            this.meterView = new Float32Array(wasm.memory.buffer, mptr, len);
+            this.meterPtr = mptr;
+          }
+          this.port.postMessage({ type: "meter", db: Array.from(this.meterView) });
+        }
+      }
     }
     return true;
   }
@@ -279,6 +322,12 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     rec(on) {
       node.port.postMessage({ type: "rec", on });
+    },
+    // Interior level metering for the rack's flow animation. Replies with
+    // `meter_keys` (the module keys the values are indexed by) and then
+    // `meter` messages carrying RMS dB per tap.
+    meter(on) {
+      node.port.postMessage({ type: "meter", on });
     },
     setVolume(v) {
       // A step assignment zippers audibly while notes sound; a 10ms time

@@ -8,6 +8,43 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — the rack's flow animation measures the level it draws
+
+The cables' motion was scaled by an estimate: *reach*, meaning how much of what
+is on this cable arrives at the amp, computed from the patch with every source
+assumed to be at unity. Two comments explained why it could not be a
+measurement — "the analyser hangs off the master and there is no per-node port
+to attach to" — and both were out of date. quiver's `StateObserver` takes
+`Level`, `Scope` and `Spectrum` subscriptions on any node port, and has for
+some time; it is in the `quiver-dsp` release the lockfile already pins.
+
+The reach half was right and stays. It is what makes a whole limb go still
+together when a mixer branch is crossfaded away, instead of leaving four cables
+running at full speed into a stopped one. What it could not see was the other
+half — a filter choking its input, an envelope closed, an oscillator that is
+simply quiet — because it had no way to ask. Now it asks: the compiler records
+where each term node's audio leaves it (`CompiledVoice::taps`), `LivePoly`
+holds a `Level` subscription on each, and while notes sound the measured RMS is
+multiplied into the reach factor.
+
+Two questions the register said were open have answers:
+
+- **Which voice to meter.** The most recently pressed sounding one, re-chosen
+  every quantum. A sum across the bank averages different notes at different
+  envelope phases, which is not the level on any wire.
+- **Whether `sync_output_keepalive` is needed.** It is not. That call pins
+  ports nothing consumes, and it dirties the patch — a recompile that would
+  have had to be staged around the audio thread the way patch swaps are. The
+  genome is a typed tree, so every module's output already feeds exactly one
+  parent and quiver is already computing every value metered here.
+
+Metering is off until a surface asks and allocation-free while off, which is
+the state every player is in. The port trace stays an offline render, now by
+choice rather than by constraint: a `Scope` subscription reads whatever is
+being held, which while someone is reading a teaching surface is usually
+nothing, and "what does a wavefolder do to a saw" wants the same phrase every
+time so that two looks at it are comparable.
+
 ### Changed — CI stops making every PR pay for the parts it cannot affect
 
 A PR took ~11m30s, and 11m12s of that was the one `Test` job. Measured rather

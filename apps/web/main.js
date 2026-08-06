@@ -2352,6 +2352,13 @@ async function bootLiveAudio() {
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
       downloadWav(m.samples, m.sampleRate);
     }
+    // The worklet names the taps once per subscription and then sends bare
+    // arrays, so the key order is established before any values arrive.
+    if (m.type === "meter_keys") meterKeys = m.keys || [];
+    if (m.type === "meter" && m.db) {
+      meterDb = new Map(meterKeys.map((k, i) => [k, m.db[i]]));
+      repaintMeasuredFlow();
+    }
   });
   // Master owns the volume now (so ▶ auditions obey the fader too); the
   // worklet's internal gain stays at unity.
@@ -5152,12 +5159,22 @@ function audioInkStops(rack) {
 // branch visibly stops, which is a fact about the patch you can otherwise
 // only get by ear.
 //
-// The level is estimated from the patch rather than measured, because the
-// analyser hangs off the master and there is no per-node tap: sources are
-// unity, and every cable inherits its source's level times whatever its
-// consumer does to it. That is cheap (one pass over ≤24 modules per render,
-// and the render is the only thing that can change the answer) and it is
-// exactly right for the case that matters — a mixer's balance knob.
+// What this function computes is the *reach* factor, and it is an estimate
+// read off the patch: sources are unity, and every cable inherits its source's
+// level times whatever its consumer does to it. That is cheap — one pass over
+// ≤24 modules per render, and the render is the only thing that can change the
+// answer — and it is exactly right for the case that matters, a mixer's
+// balance knob.
+//
+// It used to be the whole story, on the grounds that the analyser hangs off
+// the master and there is no per-node tap to attach to. There is: quiver's
+// `StateObserver` takes `Level` subscriptions on any node port, and
+// `LivePoly::set_meter` now holds them on the most recently pressed voice. So
+// while notes sound, `repaintMeasuredFlow` multiplies the measured RMS at each
+// module's own output into the reach factor below, and the assumption this
+// estimate could not check — that every source is at unity — stops being one.
+// At rest, with nothing pressed and nothing to measure, this is still the
+// picture, which is why it stayed.
 function wireLevels(rack) {
   const byKey = new Map(rack.modules.map((m) => [m.key, m]));
   // Each module has exactly one consumer — the term is a tree — so one wire
@@ -5202,6 +5219,62 @@ function wireLevels(rack) {
     lvl.set(w.from, reach.get(w.from) ?? 1);
   }
   return lvl;
+}
+
+// Paint one cable at level `lv` (0..1). One function because the level now
+// arrives from two places — the reach estimate at build time, and the meter
+// while notes sound — and two copies of this mapping would drift.
+function paintWireLevel(wireEl, level) {
+  const lv = Math.max(0, Math.min(1, level));
+  // Floor at 0.2: a silent cable is still a cable, and drawing it away to
+  // nothing would say "unplugged", which is a different and much worse
+  // claim. It stops moving instead — that is the part you read as level.
+  wireEl.style.strokeOpacity = (0.2 + 0.62 * lv).toFixed(3);
+  if (lv < 0.06) wireEl.classList.add("still");
+  else {
+    wireEl.classList.remove("still");
+    wireEl.style.animationDuration = `${Math.round(560 / Math.max(0.1, lv))}ms`;
+  }
+}
+
+// ---------- the measured half of the flow animation ----------
+// RMS dB per module key, straight off the live voice's interior ports —
+// quiver `Level` subscriptions, taken on the most recently pressed voice.
+// Empty whenever nothing is sounding, which is when the estimate stands alone.
+let meterDb = new Map();
+/// The module keys `meterDb` is indexed by, named once per subscription.
+let meterKeys = [];
+
+// How loud a tap has to be before its cable runs at full speed. A meter, not
+// a normalization: −54 dB is the quietest thing worth animating and 0 dBFS is
+// as fast as it goes, so a quiet patch animates slowly *because it is quiet*,
+// which is the fact the estimate could never report.
+const METER_FLOOR_DB = -54;
+function meterGain(key) {
+  const db = meterDb.get(key);
+  if (db == null || !isFinite(db)) return null;
+  return Math.max(0, Math.min(1, (db - METER_FLOOR_DB) / -METER_FLOOR_DB));
+}
+
+// Re-paint every audio cable from the meter, keeping the *reach* factor the
+// estimate contributes.
+//
+// The two halves answer different questions and the animation needs both.
+// `wireLevels` computes reach — how much of what is on this cable arrives at
+// the amp — deliberately, so that muting a mixer branch stills the whole limb
+// behind it instead of leaving four cables running into a stopped one. The
+// meter answers the other half, "how much is actually here", which reach
+// assumed: sources were unity, so a choked filter, a closed envelope and a
+// genuinely quiet oscillator all drew at full speed. Multiplying them keeps
+// the limb behaviour and puts a real number in front of it.
+function repaintMeasuredFlow() {
+  if (!rackFrame || !rackFrame.flow) return;
+  for (const it of rackFrame.wires) {
+    if (it.w.kind === "mod") continue;
+    const g = meterGain(it.w.from);
+    const reach = rackFrame.flow.get(it.w.from) ?? 1;
+    paintWireLevel(it.inkEl, g == null ? reach : g * reach);
+  }
 }
 
 // ---------- the mod-slot housing ----------
@@ -5662,13 +5735,7 @@ function buildRack(svg, rack, opts) {
       // about this patch — a class per stop would be five rules that say the
       // same thing, and a level is a number, not a state.
       wireEl.style.stroke = AUDIO_INK[inkStop.get(w.from) ?? 2];
-      const lv = Math.max(0, Math.min(1, flow.get(w.from) ?? 1));
-      // Floor at 0.2: a silent cable is still a cable, and drawing it away to
-      // nothing would say "unplugged", which is a different and much worse
-      // claim. It stops moving instead — that is the part you read as level.
-      wireEl.style.strokeOpacity = (0.2 + 0.62 * lv).toFixed(3);
-      if (lv < 0.06) wireEl.classList.add("still");
-      else wireEl.style.animationDuration = `${Math.round(560 / Math.max(0.1, lv))}ms`;
+      paintWireLevel(wireEl, flow.get(w.from) ?? 1);
     }
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
@@ -6286,6 +6353,9 @@ function buildRack(svg, rack, opts) {
       mods: modByKey,
       groups: mGroups,
       wires: mWires,
+      // The reach factors, kept so the meter can multiply into them without
+      // recomputing a per-build property on every frame of the animation.
+      flow,
       mids: new Set(mGroups.map((it) => it.mid)),
       wids: new Set(mWires.map((it) => it.wid)),
     };
@@ -13175,27 +13245,34 @@ function onWireUp(ev) {
 // says it, and it is the only place in the app where "what does a wavefolder
 // actually do to a saw" is a thing you can look at rather than infer.
 //
-// **Where the signal comes from, and why it is not a tap.** The obvious
-// implementation is a second `AnalyserNode` hung off the node in question, and
-// it is not reachable: the worklet compiles the whole term into one voice
-// graph inside quiver and exposes exactly one output to the WebAudio graph —
-// `wireLevels` says the same thing in its own comment, which is why the
-// differential flow animation *estimates* levels from the patch instead of
-// measuring them. There is no per-node port to attach to, and manufacturing
-// one means either splitting the compile (a second voice bank per probed
-// module — the crossfade cost from WS-5 §6, for a picture) or teaching quiver
-// to expose interior taps (grammar and DSP work, not editor work).
+// **Where the signal comes from.** A second `AnalyserNode` hung off the node
+// in question is not reachable, and that part has not changed: the worklet
+// compiles the whole term into one voice graph inside quiver and exposes
+// exactly one output to the WebAudio graph.
 //
-// So the nearest honest thing, and it is honest rather than approximate: ask
-// the engine to render **the patch with everything after this module removed**
-// — `replace_tree` at the root with this node's own subtree, through
-// `preview_op`, which already exists for pre-placement audition and already
-// clones the bench rather than touching it. That is the signal at this out ○,
-// exactly, played through the same amp envelope and the same phrase. What it
-// is *not* is live: it is an offline render, asked for on demand, and every
-// piece of copy on it says so. The alternative — a live-looking trace that is
-// really the master analyser — would be a lie about which stage you are
-// looking at, which is the one thing a teaching surface may not be.
+// What *has* changed is the claim this comment used to make next — that there
+// is no per-node port to attach to, and that reaching one would mean either
+// splitting the compile or teaching quiver to expose interior taps. quiver has
+// exposed them for some time: `StateObserver` takes `Level`, `Scope` and
+// `Spectrum` subscriptions on any node port, and `CompiledVoice::taps` now
+// says which port belongs to which module. The flow animation above is a
+// measurement because of it.
+//
+// The trace stays an offline render anyway, and now by choice rather than by
+// constraint. A `Scope` subscription reads the live voice, and the live voice
+// is whatever the player is holding down at that moment — or nothing at all,
+// which is the usual case while someone is reading a teaching surface. What
+// this window is for is "what does a wavefolder do to a saw", which wants the
+// same phrase and the same envelope every time so that two looks at it are
+// comparable. So: ask the engine to render **the patch with everything after
+// this module removed** — `replace_tree` at the root with this node's own
+// subtree, through `preview_op`, which already exists for pre-placement
+// audition and already clones the bench rather than touching it. That is the
+// signal at this out ○, exactly, played through the same amp envelope and the
+// same phrase. What it is *not* is live, and every piece of copy on it says
+// so. The alternative — a live-looking trace that is really the master
+// analyser — would be a lie about which stage you are looking at, which is the
+// one thing a teaching surface may not be.
 //
 // Off by default (it costs a render), one module at a time, toggled from that
 // module's ⋯ menu, and it follows the selection thereafter.
@@ -13690,9 +13767,21 @@ function scopePanelInit() {
 // Audio cables only look alive while audio is actually flowing — before this,
 // amber modulation wires pulsed and green signal wires sat dead, which is
 // backwards from what you hear.
+//
+// This is also where interior metering is switched, because it is exactly the
+// window in which a measured level exists: the taps read the most recently
+// pressed voice, and with nothing pressed there is nothing to read. Off, the
+// subscriptions are dropped and the cables fall back to the reach estimate —
+// which is the right picture of a patch at rest, and costs the audio thread
+// nothing.
 function setSignalFlow(on) {
   const svg = $("rack-svg");
   if (svg) svg.classList.toggle("flowing", on);
+  if (live) live.meter(on);
+  if (!on) {
+    meterDb = new Map();
+    repaintMeasuredFlow();
+  }
 }
 
 // ---------- scopes ----------

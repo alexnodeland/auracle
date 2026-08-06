@@ -427,6 +427,22 @@ pub struct CompiledVoice {
     pub params: HashMap<String, ParamHandle>,
     /// Signal-kind warnings accumulated while wiring (Warn mode).
     pub warnings: Vec<String>,
+    /// Where each term node's audio leaves it: trace key → the **name** of the
+    /// quiver node carrying its output, and the port id on that node.
+    ///
+    /// Named rather than `NodeId`-keyed because that is what
+    /// `StateObserver::add_subscriptions` takes, and because a name survives
+    /// the patch being rebuilt while a `NodeId` does not — the rack asks for a
+    /// tap by the key of the module the player is looking at, and the answer
+    /// has to still mean something after the next swap.
+    ///
+    /// **Every tap here already has a consumer**, which is why nothing needs
+    /// `StateObserver::sync_output_keepalive`: the genome is a typed tree, so
+    /// each module's output feeds exactly one parent and quiver is already
+    /// producing it. That call exists for ports nothing reads, and it dirties
+    /// the patch — a recompile the audio thread would have to be staged around.
+    /// Metering here costs no recompile at all.
+    pub taps: HashMap<String, (String, PortId)>,
 }
 
 impl CompiledVoice {
@@ -986,6 +1002,13 @@ struct Compiler {
     pitch_out: PortRef,
     gate_out: PortRef,
     params: HashMap<String, ParamHandle>,
+    /// Where each term node's audio leaves it — see [`CompiledVoice::taps`].
+    /// Recorded by [`Self::build`] as the tree is walked, because that is the
+    /// only point at which the association between a trace key and the quiver
+    /// node that *ends* its chain exists: a term node compiles to anywhere
+    /// between one and half a dozen quiver nodes, and which of them carries
+    /// the audio out is a fact about the arm that built it.
+    taps: Vec<(String, PortRef)>,
 }
 
 impl Compiler {
@@ -1610,7 +1633,21 @@ impl Compiler {
     }
 
     /// Build the audio subtree rooted at `node`; returns its output signal.
+    /// Build `node` and record where its audio came out.
+    ///
+    /// A wrapper rather than a line in each of the thirty-odd arms of
+    /// [`Self::build_node`]: the tap is the same fact for every kind — the
+    /// `Sig` the arm returned — and writing it once means a new production
+    /// cannot forget to. The left channel is the tap for a stereo `Sig`;
+    /// metering both would report a width, not a level, and the flow
+    /// animation asks how much signal is on the wire.
     fn build(&mut self, node: &AudioNode, key: &str) -> Result<Sig, PatchError> {
+        let sig = self.build_node(node, key)?;
+        self.taps.push((key.to_string(), sig.left));
+        Ok(sig)
+    }
+
+    fn build_node(&mut self, node: &AudioNode, key: &str) -> Result<Sig, PatchError> {
         match node {
             AudioNode::Vco {
                 wave,
@@ -2769,6 +2806,7 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
         pitch_out: pitch_in.out("out"),
         gate_out: gate_in.out("out"),
         params: HashMap::new(),
+        taps: Vec::new(),
     };
 
     // The evolved tree.
@@ -2835,10 +2873,25 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     }
 
     let params = std::mem::take(&mut c.params);
+    let recorded = std::mem::take(&mut c.taps);
     let mut patch = c.patch;
     patch.set_output(out.id());
     patch.compile()?;
     let warnings = patch.warnings().to_vec();
+
+    // Resolve each tap's `NodeId` back to the name it was added under. Done in
+    // one pass here rather than by threading names through the builder: every
+    // `Patch::add` call site would otherwise have to remember to record one,
+    // and `Patch::nodes` already knows the answer for all of them.
+    let names: HashMap<NodeId, &str> = patch.nodes().map(|(id, name, _)| (id, name)).collect();
+    let taps = recorded
+        .into_iter()
+        .filter_map(|(key, port)| {
+            names
+                .get(&port.node)
+                .map(|name| (key, (name.to_string(), port.port)))
+        })
+        .collect();
 
     Ok(CompiledVoice {
         patch,
@@ -2846,6 +2899,7 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
         gate,
         params,
         warnings,
+        taps,
     })
 }
 
@@ -2906,6 +2960,69 @@ mod tests {
 
     fn rms(buf: &[(f64, f64)]) -> f64 {
         (buf.iter().map(|(l, _)| l * l).sum::<f64>() / buf.len() as f64).sqrt()
+    }
+
+    /// Every term node gets a tap, each tap names a port that resolves, and
+    /// the taps read *different* signals from each other.
+    ///
+    /// The last clause is the one with teeth. A map that pointed every key at
+    /// the root's output would satisfy "resolves and is nonzero" while being
+    /// useless — the flow animation would show one number on every wire. So
+    /// the fixture crossfades a saw against silence-adjacent noise and asserts
+    /// the two branches read apart from each other, which only holds if each
+    /// key resolved to the node that actually ends *its* chain.
+    #[test]
+    fn taps_name_a_live_port_on_every_term_node() {
+        let tree = sustained(AudioNode::Mix {
+            uid: Uid::NEW,
+            balance: 0.5,
+            a: Box::new(saw()),
+            b: Box::new(AudioNode::Noise {
+                uid: Uid::NEW,
+                color: NoiseColor::White,
+            }),
+        });
+        let mut v = compile(&tree, SR).expect("compiles");
+
+        for key in ["node", "node/0", "node/1"] {
+            assert!(v.taps.contains_key(key), "no tap recorded for `{key}`");
+        }
+        assert_eq!(v.taps.len(), 3, "one tap per term node, no more");
+
+        // Read each tap while the voice sounds. Reading through the same
+        // `get_output_value` path the observer uses keeps the test honest
+        // about what a subscription would actually see.
+        let read = |v: &CompiledVoice, key: &str| -> f64 {
+            let (name, port) = v.taps.get(key).expect("tap");
+            let id = v
+                .patch
+                .get_node_id_by_name(name)
+                .unwrap_or_else(|| panic!("tap `{key}` names `{name}`, which is not in the patch"));
+            v.patch.get_output_value(id, *port).expect("port resolves")
+        };
+
+        let mut saw_trace = Vec::new();
+        let mut noise_trace = Vec::new();
+        v.pitch.set(0.0);
+        v.gate.set(5.0);
+        for _ in 0..2048 {
+            v.patch.tick();
+            saw_trace.push(read(&v, "node/0"));
+            noise_trace.push(read(&v, "node/1"));
+        }
+
+        let energy = |t: &[f64]| (t.iter().map(|s| s * s).sum::<f64>() / t.len() as f64).sqrt();
+        assert!(energy(&saw_trace) > 0.0, "the saw branch reads silent");
+        assert!(energy(&noise_trace) > 0.0, "the noise branch reads silent");
+        // A saw is periodic and noise is not, so per-sample equality across a
+        // 2048-sample window would take a coincidence that cannot happen.
+        assert!(
+            saw_trace
+                .iter()
+                .zip(&noise_trace)
+                .any(|(a, b)| (a - b).abs() > 1e-9),
+            "both branches read the same signal — the taps are not per-node"
+        );
     }
 
     /// Filter keytracking is wired and follows the keyboard. White noise is a
