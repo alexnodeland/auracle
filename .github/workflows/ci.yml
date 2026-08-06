@@ -65,7 +65,7 @@ jobs:
           base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
           files="$(git diff --name-only "$base" HEAD)"
           echo "changed files:"
-          echo "$files" | sed 's/^/  /'
+          echo "$files" | awk '{ print "  " $0 }'
 
           # Anything that can change what the compiler sees or how CI runs.
           # The Makefile and the workflows are in here deliberately: they define
@@ -269,7 +269,7 @@ jobs:
       - name: Check the results
         run: |
           set -euo pipefail
-          results='${{ join(needs.*.result, " ") }}'
+          results='${{ join(needs.*.result, ' ') }}'
           echo "upstream results: $results"
           for r in $results; do
             case "$r" in
