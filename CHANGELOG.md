@@ -8,6 +8,60 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — two φ coordinates that were measuring the wrong thing
+
+**ZCR counted crossings of zero, not of the signal's own centre.** A constant
+offset suppresses them, so a patch riding +0.3 with a ±0.2 oscillation crosses
+zero *never* and read as maximally dark — the floor of the axis, for a tone that
+is plainly not dark. The vet gate admits `|mean|/rms` up to 0.6, so that is a
+reachable render rather than a hypothetical, and `zcr_mean` feeds a linear model
+as if it were a brightness measurement. Subtracting the mean is the whole fix;
+for a render with no offset the count is unchanged.
+
+**Spectral flux stepped across a silent gap** as though the frames either side
+were adjacent, because `prev_mag` only tracked frames that passed the power
+floor. Flux is the change between *adjacent* frames, so carrying it across a
+rest reports a difference that did not happen in one hop. The standard phrase
+has four rests, so every re-entry scored a spurious burst of movement — the
+opposite of what a rest is.
+
+Both are pinned by fixtures that fail without them: an offset tone that must
+read as bright as the centred tone it is a copy of, and a burst-rest-burst
+phrase whose flux must not notice that the second burst is ten times quieter.
+
+**What the revalidation said, and what it said about itself.** Renders are
+untouched (`norm-peak` is identical), and collinearity *improved*: over 1200
+draws `rolloff_mean` fell 17.7 → 16.9 and `zcr_mean` 10.3 → **9.7**, dropping
+off the collinear list it had been on. That matters beyond this change — the
+open question about the brightness cluster is a VIF argument, and one of its
+three numbers just moved for a reason unrelated to modelling.
+
+The climb is where this got interesting. At 16 seeds the paired difference read
+−0.530 ± 0.391; at 48 seeds it read **+0.749 ± 0.857** — the opposite sign, both
+inside the noise. Neither is a fact about the search. Three seeds of 48 carry
+**95% of the variance**: pool utility collapses catastrophically on a small
+fraction of seeds, worth tens of utility against a typical gain of two, so the
+mean is not a statistic about search health but about whether a seed list
+happened to contain a collapse.
+
+Read robustly, the answer is clean and tight:
+
+| | 16 seeds | 48 seeds |
+|---|---|---|
+| paired mean | −0.530 ± 0.391 | +0.749 ± 0.857 |
+| median | | **−0.095** |
+| 10% trimmed mean | | **−0.099 ± 0.191** |
+| sign test | | 20 better / 28 worse, p = 0.31 |
+
+A correctness fix to two coordinates the synthetic user has **zero weight on**
+should not move the search, and measured properly it does not: −0.10 ± 0.19,
+four times tighter than the raw mean and indistinguishable from zero.
+
+`make climb` now prints the median and the 10% trimmed mean beside the mean, so
+the next φ change is read on a statistic that can resolve it. The mean stays —
+the collapses are real, and hiding them would be worse than reporting a number
+that a collapse can swing.
+
 ### Changed — the rack's flow animation measures the level it draws
 
 The cables' motion was scaled by an estimate: *reach*, meaning how much of what
