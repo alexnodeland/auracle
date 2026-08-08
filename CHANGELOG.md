@@ -49,6 +49,44 @@ for φ being two-part. Nothing in `auracle-session` prunes anything;
 `SurrogateFitness::evaluate` renders every candidate it is handed. The entry
 says so, and says which of the two fixes it wants.
 
+### Added — what the audition cannot hear
+
+A fifth design register, and the uncomfortable one. The other four are about
+decisions; this is about the **premise** underneath them — that preference
+measured under a fixed gesture is the same thing as musical taste — and the
+eight places that premise costs something.
+
+The argument is not new to the book. It is the one the v2 phrase was built on:
+*the grammar could express patches the audition could never reveal … no amount
+of model improvement fixes that; it is a measurement problem.* That reasoning
+closed four holes and stopped. The page is the rest of it.
+
+The sharpest three. **`NoteSpan` has no velocity field** — every audition note
+is struck identically, while the live instrument responds to MIDI velocity — so
+a patch is a function from performance to sound and φ samples it at one point,
+which makes every model downstream a faithful model of preference over *point
+samples of instruments*. **Modulation rate is nowhere in φ**: `mod_density` and
+`mod_depth_mean` say how much and how deep, `centroid_std` says how much it
+moved, and a 0.3 Hz sweep and a 7 Hz tremolo at equal depth are the same patch
+to all of them — so the tilt can learn *more* modulation and can never learn
+*slower*, on the instrument whose distinguishing claim is that modulation is a
+whole chain. And **the raw level is already measured**: `VetReport` takes `peak`
+and `rms` on the pre-normalization render and discards both, so an axis of
+entirely ordinary preference — *hits hard*, *sits back* — is thrown away for
+free by a normalization that only needed to protect *playback*.
+
+Also on it: everything is judged in a silent room, with no notion of how a patch
+sits against other material; there is no tempo, and the preset source is working
+around it in comments (`rate: 0.55, // ≈83 bpm`); the loop is selection where
+sound design is pursuit; comparability constrains the measurement and not the
+listener, so duelling in the player's own hands costs φ nothing; and the rack
+exposes every trace address with no macros over them, when a fitted style lens
+is already a personal macro axis.
+
+Cross-linked both ways with **Unraised directions**, which now records that two
+of its entries have their strongest arguments on this page rather than on its
+own, and from the standard-phrase page, which is where the argument started.
+
 ### Fixed — φ is ℝ⁴¹, and the books said ℝ⁴⁰
 
 `n_silence` joined `StructFeatures::NAMES` as its own column when Silence

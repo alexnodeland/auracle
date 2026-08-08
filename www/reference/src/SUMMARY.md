@@ -56,6 +56,7 @@
 - [Milestones](./design/milestones.md)
 - [Open questions](./design/open-questions.md)
 - [Unraised directions](./design/directions.md)
+- [What the audition cannot hear](./design/audition-limits.md)
 
 ---
 

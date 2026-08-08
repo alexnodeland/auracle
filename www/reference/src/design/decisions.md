@@ -32,12 +32,14 @@ the one that replaced it.
 
 ## What is not in this table
 
-Two kinds of thing deliberately stay out of it, and two live on their own
+Two kinds of thing deliberately stay out of it, and three live on their own
 pages: [open questions](./open-questions.md), which are decisions that have not
-been made rather than decisions that have, and [unraised
+been made rather than decisions that have; [unraised
 directions](./directions.md), which are possibilities nobody has yet argued
 about either way — the distinction matters, because a reader cannot otherwise
-tell *rejected* from *never considered*.
+tell *rejected* from *never considered*; and [what the audition cannot
+hear](./audition-limits.md), which is the one **premise** underneath several
+rows of this table rather than a row of it.
 
 **Reversible details.** Buffer sizes, the exact number of MCMC steps, which
 easing curve a knob uses. These live in the code and in the pages that quote

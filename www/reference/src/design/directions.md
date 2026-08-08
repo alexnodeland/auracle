@@ -18,6 +18,14 @@ name the reason they might be wrong.
 | [Milestones](./milestones.md) | A deliverable and the gate that closed it | Done, or not |
 | [Open questions](./open-questions.md) | Questions this design raised | Unsettled, and named |
 | **This page** | Possibilities this design never raised | Unexamined |
+| [What the audition cannot hear](./audition-limits.md) | One premise, and where it costs | Assumed |
+
+The last row is the odd one and the sharpest. An entry here is an
+*opportunity*; an entry there is a *limit* on what any amount of modelling can
+buy, because it names something the measurement does not contain. Two entries
+on this page — [§2](#2-target-directed-search-make-it-sound-like-this) and
+[§3](#3-declared-context-and-the-circularity-it-dissolves) — have their
+strongest arguments over there rather than here.
 
 The rule for leaving this page is what keeps it from becoming a wishlist. An
 entry **graduates into [open questions](./open-questions.md)** as soon as
@@ -173,6 +181,12 @@ The honest form is therefore a **partial** match with the matched subset named
 on screen, rather than a match that quietly scores twelve coordinates and calls
 it a likeness.
 
+There is also a reason to want this beyond convenience, and it is
+[the workflow argument](./audition-limits.md#6-the-loop-is-selection-sound-design-is-pursuit):
+duels ask which of two a listener prefers, and sound design is more often the
+pursuit of something already imagined. Target-directed search is the missing
+half of that loop rather than an extra mode of it.
+
 **What would settle it.** No human is needed for the first pass: hold out a
 patch from the prior, treat its $\varphi$ as the reference, and measure how far
 refinement closes the distance against a random-restart baseline over paired
@@ -219,6 +233,11 @@ dilution of a user's history the first time it ships.
 stay exactly as open as they are. What changes is that the per-*context* half
 of the value — a bassline for basses, a chord swell for pads — becomes
 reachable without answering the circularity at all.
+
+The **musical** argument for declaring context is stronger than this modelling
+one, and it is [on the other page](./audition-limits.md#6-the-loop-is-selection-sound-design-is-pursuit):
+a preference fitted over a whole history converges on the average of a taste,
+and a player needs the corner they are working in tonight.
 
 ## 4. Radio is a throughput fix, not the third mode
 
