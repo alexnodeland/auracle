@@ -13,7 +13,7 @@ changelog that edits its own past is not a record.
 The reference could say what was chosen (decisions), what closed (milestones)
 and what is unsettled (open questions). It could not say what was never
 considered, so *rejected* and *never considered* looked identical from the
-outside. **Unraised directions** is that register: ten possibilities the
+outside. **Unraised directions** is that register: sixteen possibilities the
 architecture already supports and nobody has argued about either way, each
 naming the machinery that already exists, what stands in the way, and what
 would settle it. Entries graduate onto the open-questions page as soon as
@@ -31,6 +31,48 @@ dissolves the circularity that blocks per-style audition phrases, because a
 declared context is a statement rather than an inference from the stimulus it
 would change; and recency denominated in log positions quietly changes meaning
 if a lean-back mode ever changes the observation rate.
+
+Six of the sixteen turned out to be one observation wearing six hats, and the
+page names it: **Auracle is a better instrument than it is a consumer of its
+own instruments.** `style_shares`, the provenance calibration split, the
+quarantine reasons, the persistent render cache and the lineage events are all
+labelled data the project pays to generate and then reads exactly once,
+literally. The sharpest instance: `search/proposals.md` says a production →
+brightness map is "a model nobody has fitted", and every `(term, spec) → φ` the
+system has ever computed — which is precisely what the render cache stores —
+is a row of that model's training set.
+
+One of the sixteen is half a correction. `structural.rs` claims in the present
+tense that a struct-only surrogate "prunes candidates before the expensive
+render path", and two reference pages repeat it as part of the justification
+for φ being two-part. Nothing in `auracle-session` prunes anything;
+`SurrogateFitness::evaluate` renders every candidate it is handed. The entry
+says so, and says which of the two fixes it wants.
+
+### Fixed — φ is ℝ⁴¹, and the books said ℝ⁴⁰
+
+`n_silence` joined `StructFeatures::NAMES` as its own column when Silence
+shipped, which made φ_struct twenty-six coordinates and φ forty-one. The
+reference had not followed: the pipeline in the introduction, the notation
+table, the decisions log, the φ_struct page and the guide's two plain-English
+descriptions all still said forty. The site-count arithmetic was wrong with it
+— at $d = 41$ the model has $41K + S + 5$ sites, so **46 + S** at K=1 and
+**210 + S** at K=5, not 45 and 205, and a fixed 10 000-step budget is ~47
+sweeps per site at the cap rather than ~48. Corrected everywhere, including the
+two `205 + S` figures on the posterior page and the open question that quotes
+them.
+
+Two stale counts went with it. `StructFeatures` collapses **forty-two
+productions into nineteen family counts** plus seven term-level numbers;
+`structural.rs` and the page it is quoted on both said forty-one kinds into
+fourteen, which has not been true for some time and does not sum to the
+twenty-six names either of them lists.
+
+This is the failure mode `CONTRIBUTING.md` names — *"if you changed a doc
+comment that the reference quotes a number from, the number in the reference is
+now wrong"* — and it is worth recording rather than fixing silently, because a
+book whose first commitment is that every number is sourced is one where a
+stale number costs more than it would anywhere else.
 
 ### Changed — the acquisition question was measured, and the tie does not break
 

@@ -42,6 +42,29 @@ page rather than an issue.
 | [8](#8-the-maps-axes-could-be-learned-rather-than-principal) | A map whose axes are style lenses rather than principal components | `TasteMap`, and its own `converged` flag |
 | [9](#9-auracle-taste-is-domain-independent-and-welded-to-a-synth) | The taste crate as a general preference-learning library | φ enters by name, and nothing else is audio |
 | [10](#10-the-measurements-are-a-result-and-results-travel) | The measurements as published results | The changelog already holds them |
+| [11](#11-the-model-nobody-has-fitted-is-in-the-render-cache) | The production→brightness map, so **audio** taste can tilt proposals too | Every `(term, spec) → φ` ever computed |
+| [12](#12-the-screening-cascade-is-cited-and-unbuilt) | Building the cascade the φ split is justified by | φ_struct is render-free |
+| [13](#13-ten-independent-walks-run-one-at-a-time) | Refinement seeds across the farm, for ⚡ latency | The seeds are independent; the farm is idle |
+| [14](#14-stars-have-a-global-scale-keepkill-has-a-per-session-one) | A per-session cutpoint offset, by the argument already made for $\tau_s$ | The $\tau_s$ design, one likelihood over |
+| [15](#15-the-fit-budget-is-denominated-in-steps-not-sweeps) | A sweep-denominated fit budget, as the alternative to capping K | `fit_bench` already measures the axis |
+| [16](#16-provenance-is-scored-and-then-ignored) | A per-provenance likelihood temperature | `ProvenanceScore`, already computed |
+
+### The pattern entries 11–16 came out of
+
+Six of these are one observation wearing six hats: **Auracle is a better
+instrument than it is a consumer of its own instruments.** It pays to generate
+labelled data about itself and then reads that data once, literally.
+
+| Recorded | Consumed as |
+|---|---|
+| `Engine::style_shares`, per fit | nothing yet ([§1](#1-the-register-is-gated-on-evidence-that-cannot-arrive)) |
+| Calibration split by `Provenance` | a display ([§16](#16-provenance-is-scored-and-then-ignored)) |
+| Quarantine reasons | one scalar, `QUARANTINE_FITNESS` ([§12](#12-the-screening-cascade-is-cited-and-unbuilt)) |
+| The persistent render cache | an exact-match lookup ([§11](#11-the-model-nobody-has-fitted-is-in-the-render-cache)) |
+| `LineageEvent`, with utilities at event time | a caption ([§7](#7-explanation-stops-at-the-coefficients)) |
+
+A cache is a lookup table; a model is a lookup table that generalizes. Every
+row above is the first of those and could be the second.
 
 ---
 
@@ -79,7 +102,7 @@ sufficient; no server is required) keeps every word of
 
 **What it would close, and what it opens.** Directly: the K-cap question, whose
 evidence is the rows where `k == k_styles`. Indirectly, and worth more, a
-**population prior on $\theta$**. Cold start today is 40 coordinates starting
+**population prior on $\theta$**. Cold start today is 41 coordinates starting
 from a prior mean of zero, against which the [three-pick warm
 start](../../docs/teaching.html#the-warm-start) buys 18 observations in thirty
 seconds. A hierarchical prior fitted across donated profiles is the only
@@ -125,7 +148,7 @@ the instrument cannot express today.
 
 **The distance can only be over the audio half, and that is a feature.** A
 recording a user brings has no term, so it has no
-[φ_struct](../features/structural.md) at all — 25 of the 40 coordinates are
+[φ_struct](../features/structural.md) at all — 26 of the 41 coordinates are
 simply not defined for it, and $W$ has to zero them. That is the right
 behaviour rather than a limitation: *sound like this, by whatever means*, with
 the grammar prior left to supply the parsimony that keeps the means sane. A
@@ -379,6 +402,179 @@ Neither needs any work. They are written, sourced, and reproducible from a
 checkout. What is missing is a destination, and the gap between "recorded in a
 changelog" and "somewhere a person searching for the answer will find it" is
 the entire distance.
+
+## 11. The model nobody has fitted is in the render cache
+
+[Proposals](../search/proposals.md#structural-taste-specifically) closes by
+explaining why only the *structural* half of $\theta$ tilts the grammar:
+
+> Turning `centroid_mean` into a proposal tilt would require a model of which
+> productions raise brightness, which is a model nobody has fitted.
+
+That model's training set already exists, in quantity, and the project is
+already paying to store it. Every $(\text{term}, \text{spec}) \to \varphi$ the
+system has ever computed is a labelled row, and the
+[persistent render cache](../persistence.md#the-persistent-render-cache) is
+exactly a table of them that survives reloads. `pipeline_stats` already draws
+1200 prior samples to compute the VIFs; the same draws are a design matrix. A
+ridge fit of the fifteen audio coordinates on the twenty-six structural ones is
+$\partial\text{brightness}/\partial\text{production}$, which is the missing map.
+
+**Why it is worth more than it sounds.** The coefficients a listener can
+actually recognise in themselves — bright, slow attack, long tail — are exactly
+the ones that today only *score*. The structural half does double duty (scores
+and proposes); the audio half is half-employed. The asymmetry is documented and
+argued for honestly, but it has never been *costed*, and it is costed in the
+currency the tilt exists to buy: a search that looks where the model expects to
+find things.
+
+**The objection, and why the existing design already answers it.** Brightness
+is a property of the composition, not of a module — a filter's effect depends
+on what precedes it — so a linear map is crude. But a tilt needs only a sign
+and a rough magnitude, and it is already clamped to $[\tfrac14, 4]$. The clamp
+exists to stop a confident coefficient starving a kind; it doubles as the rail
+that makes a crude map safe to consult.
+
+**What would settle it.** The `search_health --budget-ab` shape: does
+audio-tilted proposal weighting beat structural-only tilting on a synthetic
+user's *true* utility, over paired seeds? The harness that answered the 40 × 10
+split answers this unchanged.
+
+## 12. The screening cascade is cited, and unbuilt
+
+`auracle-features/src/structural.rs` says, in the present tense:
+
+> These cost nothing (no compile, no render), which is what makes the screening
+> cascade work: a struct-only surrogate **prunes** candidates before the
+> expensive render path.
+
+[φ_struct](../features/structural.md) and
+[Refinement](../search/refinement.md#the-screening-cascade) both repeat it, and
+it is part of the stated justification for $\varphi$ being two-part at all.
+
+**Nothing in `auracle-session` prunes anything.** `SurrogateFitness::evaluate`
+calls `featurize_memo` for every candidate it is handed — a full
+compile → render → vet → featurize — and there is no screen, cascade or
+pre-filter in the crate. This entry is therefore half a direction and half a
+correction: either the cascade gets built, or three places should say *makes
+possible* rather than *works*.
+
+**The risk profile is unusually good, and it is worth naming.** A screen can
+only ever waste *opportunity*; it can never corrupt *evidence*. Anything
+actually injected is still really rendered, really vetted and really
+featurized, so the observation log is untouched no matter how wrong the screen
+is. Very little else in this system has that property.
+
+**Where not to build it.** [Refinement](../search/refinement.md#the-screening-cascade)
+already says its affordability comes from the render memo rather than from
+screening, because the walk re-scores its own current state every step. So the
+payoff is in **pool fill**, which is the path nobody has looked at.
+
+**And the cheapest version needs no model at all.** Every quarantined candidate
+is a labelled $(\text{term} \to \text{pathology})$ row, and today the label is
+consumed as a single scalar, `QUARANTINE_FITNESS`. A screen fitted on those
+labels prunes exactly the candidates whose render was guaranteed to be thrown
+away.
+
+## 13. Ten independent walks, run one at a time
+
+```rust
+pub fn refine<R: Rng>(&mut self, rng: &mut R) {
+    for parent_id in self.refine_begin() {
+        self.refine_seed(rng, parent_id);
+    }
+}
+```
+
+An MH walk is inherently sequential. The ten **seeds** are not — they are
+independent by construction, which is why `search_health` already spawns one
+thread per seed natively. In the browser they run one after another, while the
+[render farm](../runtime.md#the-render-farm) — a pool of wasm workers — sits
+idle for the duration.
+
+This is **not** the closed `parallel`-feature entry in
+[open questions](./open-questions.md). That one was about `rayon` inside
+fugue-evo and it was correctly closed. This is about distributing whole
+seed-walks across workers that already exist.
+
+The blocker is real and worth stating: farm workers are deliberately stateless
+`(term, phrase) → φ`, and a walk needs the kernel and the posterior, so they
+would have to become *walk* workers with a much heavier contract and a
+versioning problem the render protocol does not have. The prize is the number
+that same entry already identified as the one that matters — ⚡ latency — and it
+is a factor of the seed count rather than a few percent.
+
+## 14. Stars have a global scale; keep/kill has a per-session one
+
+[Likelihoods](../taste/likelihoods.md#keep--kill--a-thresholded-bernoulli)
+argues for the per-session threshold exactly right:
+
+> Without the per-session threshold, a strict day and a generous day would
+> average into a meaningless global bar, and both days' data would be degraded
+> by the other's.
+
+That argument is fully general over absolute-scale signals, and the
+[star cutpoints](../taste/likelihoods.md#star-ratings--a-cumulative-logit) are
+fitted **globally**. Worse, the asymmetry runs the wrong way round from ship
+state: keep/kill has no surface and appears in zero logs, while stars are a
+signal users actually emit — so the mechanism exists on the modelled-but-unused
+signal and is missing from the used one.
+
+The cutpoints do already absorb *drift*, which the page says and which is true:
+a user who becomes harsher over months moves them rather than $\theta$. What
+they cannot absorb is *swing* — Tuesday strict, Thursday generous — because a
+single global set of cutpoints has to average the two. Drift and swing are
+different phenomena and the model currently sees them as one.
+
+**The change is the smallest on this page**: a per-session offset added to the
+cutpoints, the same shape as $\tau_s$, one extra latent per session. It also
+interacts with [§15](#15-the-fit-budget-is-denominated-in-steps-not-sweeps) —
+under a fixed step budget, adding sites silently thins every other coefficient,
+which is precisely the problem that entry is about.
+
+## 15. The fit budget is denominated in steps, not sweeps
+
+10 000 fixed steps over $210 + S$ sites at $K=5$ is ~47 sweeps per site,
+against ~200 at $K=1$. The [posterior](../taste/posterior.md) page states the
+consequence plainly: growing $K$ makes the fit both slower **and**
+statistically thinner. So the model that has learned the most about a user is
+fitted *worse* than a fresh one, and nothing on screen says so.
+
+[Open questions](./open-questions.md) offers one remedy — cap $K$ at 3, gated
+on `style_share` evidence. There is a second that has never been written down:
+make the budget proportional to the site count, so that **sweeps per site** is
+the constant and the step count is derived. Then the cost of a rich model shows
+up honestly as *wall time* rather than dishonestly as *degraded inference*.
+
+The two are different trades. Capping $K$ spends capability to buy cost;
+rescaling spends time to buy cost. Which is right depends on whether a mature
+fit's wall time is actually a problem for a person, and that is a UX question
+nobody has asked, not a statistics question.
+
+`auracle-taste/examples/fit_bench.rs` already measures the exact axis, so the
+comparison is a harness run rather than a project.
+
+## 16. Provenance is scored, and then ignored
+
+[Calibration](../taste/calibration.md#by-provenance) splits Brier skill by
+`duel` / `heard_edit` / `self_report`, for a reason it states outright:
+
+> ...there is no reason to believe they are equally reliable. Scoring them
+> against forecasts the model made *before* either answer arrived is the only
+> way to find out.
+
+The [likelihood](../taste/likelihoods.md#edit-beats-original) then sums all
+three with identical weight. The measurement was built, the answer is knowable,
+and nothing consumes it — the same shape as
+[§1](#1-the-register-is-gated-on-evidence-that-cannot-arrive), one loop
+shorter.
+
+A per-provenance likelihood temperature closes it. The design detail that
+decides whether it is honest: the temperature should be a **fitted parameter**,
+not the measured skill plugged in, because tempering a likelihood by a point
+estimate derived from the same data is circular. Fitted, it costs three sites
+and buys a sentence worth having — *the model learns how much to trust each way
+you talk to it*.
 
 ---
 
