@@ -70,8 +70,9 @@ without forking a dependency, it is written down.
 - What changed when is
   [`CHANGELOG.md`](https://github.com/alexnodeland/auracle/blob/main/CHANGELOG.md).
 
-Design decisions, rejected alternatives, the milestones and the open questions
-are **in this book**, under [Design](./design/decisions.md). They used to be a
+Design decisions, rejected alternatives, the milestones, the open questions and
+the [directions nobody has raised yet](./design/directions.md) are **in this
+book**, under [Design](./design/decisions.md). They used to be a
 `DESIGN.md` at the repo root, which made the reasoning and the maths it
 justifies two documents that could disagree.
 

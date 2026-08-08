@@ -4,6 +4,11 @@
 rather than left out, because a reference that only describes what works is not
 a description of the system.</p>
 
+Every entry below is a question **this design raised**. Possibilities it never
+raised are a separate register — [unraised directions](./directions.md) — and
+an entry there graduates onto this page as soon as someone can state the
+measurement that would settle it.
+
 - **Tempered SMC for generation.** The [Boltzmann target](../search/target.md)
   is written down but not sampled from. Whether the crossover population kernel
   is worth the complexity over local climbing is untested; the measured

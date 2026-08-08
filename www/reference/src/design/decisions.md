@@ -32,9 +32,12 @@ the one that replaced it.
 
 ## What is not in this table
 
-Two kinds of thing deliberately stay out of it, and one lives on its own page:
-[open questions](./open-questions.md), which are decisions that have not been
-made rather than decisions that have.
+Two kinds of thing deliberately stay out of it, and two live on their own
+pages: [open questions](./open-questions.md), which are decisions that have not
+been made rather than decisions that have, and [unraised
+directions](./directions.md), which are possibilities nobody has yet argued
+about either way — the distinction matters, because a reader cannot otherwise
+tell *rejected* from *never considered*.
 
 **Reversible details.** Buffer sizes, the exact number of MCMC steps, which
 easing curve a knob uses. These live in the code and in the pages that quote

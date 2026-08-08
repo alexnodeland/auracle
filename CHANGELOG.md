@@ -8,6 +8,30 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — a fourth design register, for the questions nobody has raised
+
+The reference could say what was chosen (decisions), what closed (milestones)
+and what is unsettled (open questions). It could not say what was never
+considered, so *rejected* and *never considered* looked identical from the
+outside. **Unraised directions** is that register: ten possibilities the
+architecture already supports and nobody has argued about either way, each
+naming the machinery that already exists, what stands in the way, and what
+would settle it. Entries graduate onto the open-questions page as soon as
+someone can state that measurement, and an entry that can be stated as neither
+is speculation and gets deleted.
+
+The one worth reading first is the register's own foundation problem: two open
+questions are now gated on evidence from real sessions, and the architecture —
+IndexedDB, no account, nothing transmitted — has no path for that evidence to
+arrive. The `Profile` export is already the portable, self-contained unit; what
+is missing is a destination, not a format. Also on the page: the Boltzmann
+target consumes utility as a black box, so a reference-sound distance
+substitutes straight in and turns the search into a matcher; *declared* context
+dissolves the circularity that blocks per-style audition phrases, because a
+declared context is a statement rather than an inference from the stimulus it
+would change; and recency denominated in log positions quietly changes meaning
+if a lean-back mode ever changes the observation rate.
+
 ### Changed — the acquisition question was measured, and the tie does not break
 
 BALD ties uniform random pairing at session horizon, and the open question named
