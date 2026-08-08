@@ -18,7 +18,7 @@ previously lived at this path.*
   - [§3. The grammar has no clock](#3-the-grammar-has-no-clock)
 - [Part III — The dimensions of musicality: an atlas](#part-iii--the-dimensions-of-musicality-an-atlas)
 - [Part IV — The UX: where the design meets the loop](#part-iv--the-ux-where-the-design-meets-the-loop)
-- [Part V — Applications: who else this serves](#part-v--applications-who-else-this-serves)
+- [Part V — Applications and their journeys](#part-v--applications-and-their-journeys)
 - [Part VI — The performance-surface audit](#part-vi--the-performance-surface-audit)
 - [Part VII — Defects and documentation drift](#part-vii--defects-and-documentation-drift)
 - [Part VIII — A phased roadmap](#part-viii--a-phased-roadmap)
@@ -613,94 +613,348 @@ grid." The K-schedule, the check-duel horizon and `cut`'s behaviour live
 
 ---
 
-## Part V — Applications: who else this serves
+## Part V — Applications and their journeys
 
 The positioning is deliberately narrow — a single-user, browser-native,
 desktop instrument whose distinguishing claim is persistent, inspectable,
-calibrated preference inference. From that base, seven audiences are
-reachable, ordered here by distance. The first three have written homes in
-this repo already; the last four are confirmed open ground (zero mentions
-anywhere in the tree).
+calibrated preference inference. From that base, nine journeys are reachable.
+Three have written homes in this repo already (the plugin, sound matching,
+profiles as social objects); four are confirmed open ground — education,
+assistive use, research, installations have zero mentions anywhere in the
+tree.
 
-**1. Producers in a DAW** *(intended; unstarted).* The `nih-plug` VST3/CLAP
-shell is one paragraph in lineage.md. Two sequencing notes from this review:
-the stimulus battery (§2.2) should land before or with the shell — DAW users
-judge patches in a mix, and a model that has only heard solo C-major phrases
-will embarrass itself there — and `numberOfInputs: 0` must not survive the
-shell: comp/duck/gate/vocoder with the host's sidechain is an evolving mix
-processor, a second product hiding in six existing productions.
+Each journey below is written the same way: who arrives and with what, the
+path they take through the app's *actual* surfaces (the warm-start card, the
+deck, the bank rail, the ⋯ menu, the TASTE tabs, the keybar), and — because a
+journey that needs everything built is a mood board, not a plan — a **first
+inch**: the smallest build after which the journey can begin, even
+incompletely. The journeys reuse each other's parts deliberately; the shared
+skeleton is the point, and the roadmap (Part VIII) sequences the inches.
 
-**2. Sound designers for media and games** *(adjacent to the sound-matching
-corollary).* Three workflows fall out of machinery this review already
-specifies: **brief matching** (a reference WAV → ideal-point target → the
-search runs toward it, §1); **corpus taste** (a *folder* of references — "the
-palette of this film," "our studio's sound" — fitted as a mixture of targets
-or a synthetic observation log; the profile format, raw φ by name plus
-standardizer, is already the right container); **batch export** (the bank has
-no bulk export and patches have no rendered-audio export — the audition
-buffer exists in memory and is never downloadable; for a designer filling a
-sample library, "render the bank to a folder of WAVs" is table stakes and an
-afternoon of work).
+### V.0 The player — the first hour, and the hundredth
 
-**3. Collaborators and communities** *(written home: the profiles-as-social-
-objects sketch).* Blending (concatenate logs; τ_s absorbs per-rater
-thresholds), taste-swap ("evolve my bank against your profile" — a duet mode
-one profile-load away), and at the horizon a population prior: partial
-pooling of θ across consenting users, which is also the principled cold-start
-answer beyond the warm start. The privacy story stays clean because the unit
-of sharing is a file the user holds. One nearer social feature is already
-shipped and undersold: **an exported PNG contains the patch**. A rack
-screenshot posted in a chat *is* the patch. That is a viral loop no one has
-pointed at: make the share-image beautiful by default and put the import
-affordance on the empty bank.
+*Arrives with:* curiosity and a link. *Wants:* a sound that is theirs.
 
-**4. Learners of synthesis** *(open ground).* Half a synthesis course is
-already built and nobody enrolled it: spec cards explain what every module
-does to a signal and where it can legally go; the "heard as" line teaches the
+The first hour, as shipped, is close to right: veil (`listening to forty
+patches — you start as soon as the first eight land`), the 3-of-9 warm start,
+the coach line (`Press A–L or tap a key — you're already holding a synth.`),
+six pips to the first refit. The redesigned hour changes four beats:
+
+1. **A role chip row above the deck** — `any · bass · lead · keys · pad ·
+   texture · perc · weird` — defaulting to `any`, remembered per session
+   (§2.3). The player who arrived hunting a bass says so once, and every
+   duel, refit and generation after that is *about* basses. Today the app
+   cannot ask what you came for.
+2. **Instant A/B on the deck.** Hold `tab` (or `space`): the playing phrase
+   flips between A and B at the playhead, crossfaded. The duel stops costing
+   ten serial seconds; most answers arrive in three. The vote keys stay
+   `1/2/←/→`; `skip` gains `↓`.
+3. **Milestones announced when they happen.** Two duels after the warm start
+   the second lens unlocks — today, silently. Instead: the meter takes the
+   column the way it already does for a refit — `it can hold two styles now
+   — see them ▸` — and the same for first positive skill and each lens after.
+   The app has a story arc and never tells it.
+4. **A session close.** On the way out (tab blur after inactivity, or an
+   explicit `enough for today` on the meter once marginal information per
+   duel flattens): one card — `today: 23 picks · forecasts 9% sharper · a
+   second style emerged — name it?` — and on return, its mirror: `since last
+   time it re-thought bass weight; three new patches to hear ▸`. The trust
+   horizon is ~200 duels (Part IV §4.2); the product that admits it is a
+   relationship should greet like one.
+
+The hundredth session is **radio mode**, and the calibration meter is what
+licenses it: the model auto-resolves duels it forecasts confidently (expected
+regret bounded by measured check-skill), streams the survivors as a
+continuous mix over the keybar — you play along, keep/kill/skip with one hand
+— and *surfaces only the questions it genuinely cannot answer*. The teaching
+meter inverts: instead of "6 picks to a refit," it reads "answered 14 for
+you today — 2 it needs you for." That is the Takagi fatigue bottleneck,
+closed by the calibration machinery the app already runs on every vote.
+
+*First inch:* the instant-A/B toggle and the `skip` keybinding — two
+afternoon changes that halve the cost of the primary signal for every
+journey below.
+
+### V.1 The performer — gig prep, and the stage
+
+*Arrives with:* a MIDI controller and a set list. *Wants:* to trust the
+instrument under stage lights.
+
+**Prep, at home:** they evolve and save a set. Today the app forgets how each
+patch is meant to be *played* — arp, glide, unison and octave are one global
+`perf` object. The journey needs **per-patch performance state** (saved with
+the bank entry, restored on load; the HELD tray, which already survives
+sessions, becomes the set list — reorder it, and `[`/`]` walks the set).
+Then **MIDI learn**: right-click any rack knob → `learn` → move a controller
+knob → bound, saved with the patch. Then the model's contribution — **taste
+macros** (Part III, dim. 10): the surrogate's sensitivity analysis distills
+each patch's forty knobs into its three most utility-relevant directions,
+auto-named from the coordinate vocabulary (`darker–brighter`,
+`tighter–washier`), pre-bound to CC 1/71/74. The performer gets a synth that
+arrives *already reduced to the controls that matter for this sound*.
+
+**On stage:** PLAY, fullscreen, rack dimmed, macros and the set list large;
+panic on a fat corner target; nothing modal (the edit-duel dialog must never
+appear here — commit prompts are a bench behaviour, and stage mode simply
+does not commit). The one genuinely new performance gesture is **lineage
+scrub** (Part III): bind a CC to the edit path between a patch and its
+parent — parameter edits interpolate through the live handles with no
+recompile, structural edits cross fade through the click-free swap machinery
+— and the performer *plays the evolution* of their own sound. No other
+instrument can offer this control, because no other instrument has a
+lineage.
+
+*First inch:* per-patch performance state plus MIDI learn on rack knobs. The
+macros and the scrub ride later; the trust rides on these two.
+
+### V.2 The producer — in the DAW
+
+*Arrives with:* a half-arranged track and a hole where the bass should be.
+*Wants:* the hole filled without leaving the arrangement.
+
+The journey (post-`nih-plug` shell, but it dictates the shell's shape):
+
+1. Insert Auracle on the bass track. The host transport is the ambient
+   clock — every lattice-synced patch (§3) locks to the session tempo on
+   arrival, which is the single biggest reason the lattice should land
+   before the shell.
+2. Set the loop playing and open the deck *in the plugin window*. Candidates
+   audition **in place**: through the track's insert chain, against the
+   drums, at song tempo — the duel is "which bass sits better *in this
+   song*," which is the only version of the question a producer ever asks.
+   Two keys vote, exactly as in the browser. (The engine renders the
+   audition phrase today; in the shell, the candidate simply *becomes* the
+   playing instrument for a loop pass — A for a bar, B for a bar, the
+   instant-A/B of V.0 at arrangement scale.)
+3. The kick track feeds the plugin's sidechain input — comp/duck/gate/
+   vocoder stop sidechaining against internal signals only, and "duck my
+   pad under the kick" becomes an evolvable patch property.
+4. The taste profile is a file (it already is); it rides the project, or
+   lives in the user folder and follows the producer across projects. The
+   bass they teach it on Tuesday's track informs Friday's.
+5. Exit: `render selection to audio` and a preset saved to the host's
+   browser.
+
+**Before the shell exists**, one inch makes the browser app production-real
+today: **audio export** — `render this patch to WAV` (the audition buffer
+already exists in memory and is never downloadable) and `render the bank to
+a folder`. A producer can then treat Auracle as a sound-design session that
+ends in a sample pack, which is how half of production actually works.
+
+*First inch:* bank/patch WAV export. The shell inherits §2.2 and §3 as
+prerequisites, per Part VIII.
+
+### V.3 The sound designer — the brief, the corpus, the batch
+
+*Arrives with:* a reference — "the client wants *this*, but ours." *Wants:*
+candidates by Friday.
+
+**Journey A — brief matching.** Drag a WAV onto EVOLVE. It featurizes
+through the existing pipeline (φ is indifferent to where samples came from),
+lands as a **target card** docked beside the deck — its own ▶, its dot drawn
+on the TASTE map (`your reference lives here`). The Boltzmann target gains
+the ideal-point match term (§1's corollary); a single **match ↔ taste**
+slider sets the blend, because the honest brief is never "clone it" — it is
+"toward that, but ours," and the blend of a known-μ lens with the fitted
+lenses *is* that sentence as mathematics. The belief row grows one clause:
+`distance to reference −0.8 ▼`. Duels continue as normal; the designer's
+votes teach the *ours* half while the target holds the *that* half.
+
+**Journey B — the corpus.** Drop a folder — "the palette of this film,"
+"our studio's sound." Each file becomes a target; together they fit a
+mixture of ideal-point lenses (or equivalently a synthetic observation log,
+which the profile format — raw φ by name plus standardizer — already knows
+how to carry). The result appears in TASTE as a named guest lens set
+(`Film palette`), togglable like styles, exportable as a profile *the whole
+studio shares*. A house sound becomes a file in the repo next to the brand
+book.
+
+**Journey C — the batch.** "Twelve near-variations of this impact" is
+constrained refinement the engine already does: lock what defines the sound,
+walk at low β, keep every vetted child — then batch-render. For game-audio
+variation sets this is the entire workflow, and the only missing part is the
+export.
+
+*First inch:* featurize an uploaded WAV and draw its dot on the MAP,
+read-only. No model changes, no search changes — just the φ pipeline pointed
+at foreign audio — and it delivers the moment the whole journey hangs on:
+*the instrument shows you where your reference lives in its space.*
+
+### V.4 The collaborator — taste as a thing you can hand someone
+
+*Arrives with:* a friend who also plays. *Wants:* to hear through each
+other's ears.
+
+The share loop is already shipped and undersold: **an exported PNG contains
+the patch.** A rack screenshot posted in a chat *is* the patch; the import
+affordance belongs on the empty bank (`drop a patch, a picture of a patch,
+or a profile here`). From there, three rungs:
+
+1. **Guest lens.** ⋯ → `load a profile as a guest`. Their fitted lenses
+   appear in TASTE greyed to their own hue; on every duel the deck shows two
+   forecasts — `you'll pick A (72%) · Sam would pick B (81%)` — and the
+   calibration machinery scores both, so the app can eventually say `Sam's
+   profile predicts your picks better than your own did this session`, which
+   is the funniest true sentence a preference model can produce. Read-only:
+   no merge, no consent complexity.
+2. **Blend.** ⋯ → `merge a profile` → a preview card (`your styles + their
+   styles — 2 overlap, 3 new`) → concatenated logs, refit; the per-session
+   τ_s absorbs each rater's threshold, which is what makes naive
+   concatenation legitimate. The duet bank evolves toward the *pair*: under
+   §1's concave utilities, the sum of two fitted utilities is concave and
+   its optimum sits between the two sweet spots — "our sound" is a
+   well-posed object, not a metaphor.
+3. **Taste-swap.** Run *my* pool against *your* posterior: `what of mine
+   would you love?` — one ranked list, one profile-load away, and the
+   social gesture (making something *for* someone's taste) that no
+   instrument has ever supported.
+
+At the horizon, the population prior (partial pooling across consenting
+users) — the principled cold start, fed by V.7's donation flow. The privacy
+story stays clean at every rung because the unit of sharing is a file the
+user holds.
+
+*First inch:* the guest lens. It is profile *import* (shipped) plus a second
+forecast line on the deck, and it makes taste social without touching the
+fit.
+
+### V.5 The learner — a synthesis course that listens back
+
+*Arrives with:* nothing but ears. *Wants:* to understand why sounds sound
+the way they do.
+
+Half the course is already built: spec cards explain what every module does
+to a signal and where it can legally go; the "heard as" line teaches the
 difference between what changes sound and what changes measurement; the
-belief row decomposes a judgement into named causes; the rack is a typed
-patching tutor that makes illegal cables unpluggable and *narrates why* ("the
-patch is a tree"). What is missing is only the frame: a guided mode that
-poses targets ("make this brighter without touching the filter"), and the
-duel deck as ear training (matched pairs *are* "hear the difference between
-resonance and drive" exercises). The taste model adds the twist no course
-has: it shows students what they *actually* prefer versus what they think
-they prefer, with calibration receipts.
+rack is a typed patching tutor that makes illegal cables unpluggable and
+narrates why (`the patch is a tree`). What is missing is the frame — a
+`learn` toggle in ⋯ that strings the existing surfaces into a path:
 
-**5. Musicians with motor impairments** *(open ground, and the strongest
-philosophical fit).* The accessibility chapter is serious about UI access
-(one tab stop per region, a fully keyboard-reachable wiring path) but never
-notices what the *architecture* offers: taste-directed search replaces
-precisely the dense fine-motor interaction — forty knobs, drag-cables — that
-excludes people from sound design. Every teaching signal is already a binary
-or small-ordinal choice: **duels are switch-accessible by construction.** A
-deliberate switch-access mode (scan-and-select over PICK A / PICK B / SKIP,
-plus auto-audition) would make Auracle the first synthesizer where a
-one-switch user can *design their own sound* rather than choose a preset —
-not by adding an accessibility layer, but by noticing the instrument already
-is one. The radio mode on the roadmap (lean-back keep/kill) is the same
-surface; build them as one thing.
+1. **Ear training is a duel variant.** Matched pairs (Part IV §4.3) *are*
+   listening exercises; learn mode adds the reveal after the vote: `that
+   was +6 dB of resonance — you've heard it 7 of 9 times.` A per-coordinate
+   hearing scorecard falls out of data the calibration layer already keeps.
+   (The reveal is worth shipping to *every* player; learn mode just makes
+   it a curriculum.)
+2. **Target-chase exercises.** `Make this brighter without touching the
+   filter.` The app can *check the work* — φ moved on `centroid_mean`, the
+   filter's addresses untouched — because the judge (the feature pipeline)
+   and the workbench share one compiler. Exercises are data (a start patch,
+   a φ predicate, a lock set), so a course is a JSON file, and anyone can
+   write one.
+3. **The mirror.** After enough picks, the belief row becomes the lesson no
+   course has: `you said you avoid distortion; your picks lean +0.31 toward
+   drive & fold.` Taught taste versus revealed taste, with calibration
+   receipts.
+4. **The classroom.** The teacher exports a target profile; students'
+   progress is their calibration curve and coverage map; two students'
+   TASTE maps side-by-side is a discussion, not a grade. All of it is
+   profile files — no server, no accounts, exactly the infrastructure that
+   exists.
 
-**6. Researchers** *(open ground).* Two publishable artifacts are lying in
-the tree: the **synthetic-user harness** (closed-loop, CRN-paired seeds,
-proper scoring, the BALD/Thompson/uniform measurement) is a reusable
-benchmark for preference-learning-with-expensive-oracles, a literature that
-is starved for realistic testbeds; and the instrument itself is a
-**psychoacoustics platform** — calibrated, forecast-before-vote preference
-data over a controlled, parameterized timbre space is exactly what
-timbre-perception studies pay participant fees to gather. An opt-in
-anonymized observation-log donation (raw φ by name — no audio, no identity)
-would build the population prior of application 3 *and* a dataset worth a
-paper. The bibliography's own frame (Takagi's fatigue bottleneck) names the
-research conversation this belongs to.
+*First inch:* the matched-pair reveal toast. One string, built on duels that
+Phase C deals anyway.
 
-**7. Installations and public spaces** *(open ground).* A browser build with
-no account, no server, autosave, and a lean-back mode is one kiosk shell away
-from a public instrument: a gallery piece whose sound is the *aggregate
-taste of everyone who walked past* — duels on a big touchscreen, the taste
-map projected, the room listening to its own posterior. The observation log
-is the guest book. (This is also the highest-variance marketing artifact the
-project could ship for the cost of a fullscreen flag and a reset timer.)
+### V.6 The switch user — the instrument that already is one
+
+*Arrives with:* a single switch, or two, and the same ears as everyone
+else. *Wants:* to design their own sound, not choose a preset.
+
+This is the strongest philosophical fit in the whole list, and the repo has
+not noticed it: taste-directed search replaces precisely the dense
+fine-motor interaction — forty knobs, drag-cables — that excludes people
+from sound design, and every teaching signal is already a binary or
+small-ordinal choice. **Duels are switch-accessible by construction.** The
+journey:
+
+1. **Setup:** accessibility panel → `switch mode`; choose one-switch (scan
+   advances on a timer, switch selects) or two-switch (advance / select).
+2. **The deck auto-auditions.** A plays, then B, the highlighted card
+   following the audio — the visual scan and the auditory scan are the same
+   scan. The scan ring is `PICK A → PICK B → HEAR AGAIN → SKIP`.
+3. **The warm start works as-is** — nine cards, auto-previewed in sequence,
+   pick three by scan. Thirty seconds in, the model is pointed at them,
+   same as everyone.
+4. **Radio mode is the main street** (V.0's hundredth session): a
+   continuous stream where one switch means keep — the lean-back surface
+   and the assistive surface are *the same build*, which is why Part VIII
+   makes them one item.
+5. **Editing without pointing:** the wiring path is already fully
+   keyboard-reachable (the accessibility chapter's best work); scan-mode
+   inherits it. Naming uses the auto-namer's suggestions as a pick list
+   instead of a text field.
+
+The end state: a one-switch user grows a bank that sounds like *them* —
+the first synthesizer for which that sentence is true — and the build cost
+is a scan loop over controls that all already have keyboard routes.
+
+*First inch:* auto-audition plus scan-select on the EVOLVE deck.
+
+### V.7 The researcher — the platform behind the instrument
+
+*Arrives with:* a question about human preference. *Wants:* data they can
+defend.
+
+Two artifacts are already lying in the tree. The **synthetic-user harness**
+(closed-loop, CRN-paired seeds, proper scoring, the BALD/Thompson/uniform
+measurement) is a reusable benchmark for preference learning with expensive
+oracles — a literature starved for realistic testbeds; its journey is
+`git clone`, `make islands`, `learn_synthetic --compare`, and the missing
+step is only packaging: pinned seeds, a versioned methods page, a citation
+file. The **instrument as psychoacoustics platform** is the deeper one:
+calibrated, forecast-before-vote preference data over a controlled,
+parameterized timbre space is what timbre-perception studies pay
+participant fees to gather. That journey needs a **study mode**: a config
+(fixed pool or custom battery, refits frozen if the design demands it), a
+participant session that starts clean and ends with a completion code, and
+an export of the anonymized log — raw φ by name and votes, no audio, no
+identity, which is very nearly the existing profile export minus the style
+names. The same export, offered to ordinary players as an opt-in **donation
+flow** (⋯ → `donate your log`, with a plain diff of exactly what leaves),
+is what builds V.4's population prior — and a dataset worth a paper. The
+bibliography's own framing (Takagi's fatigue bottleneck) names the
+conversation this belongs to.
+
+*First inch:* the anonymized log export.
+
+### V.8 The installation — the room's taste
+
+*Arrives with:* a gallery wall and foot traffic. *Wants:* a piece people
+change by touching it.
+
+A browser build with no account, no server, autosave, and (after V.0) a
+lean-back mode is one kiosk shell away from a public instrument:
+
+1. **Attract loop:** radio mode fullscreen — the current pool best playing,
+   the TASTE map projected large, one line: `this is the room's taste.
+   vote to change it.`
+2. **Interaction:** two giant cards on a touchscreen; every passerby vote
+   is an observation in one continuous day-long session. The sound of the
+   room drifts as the posterior does; the map is the guest book, styles
+   emerging as the audience does.
+3. **Take-home:** a QR on the wall renders the currently playing patch's
+   export-PNG — which *contains the patch* — so visitors leave holding the
+   sound the room made while they were in it, importable into their own
+   Auracle. The shipped share format was built for this without knowing
+   it.
+4. **Curation:** a reset schedule (nightly, or never — a season-long
+   accumulation is a different piece), and the recency half-life becomes
+   an artistic parameter: a room that forgets by lunchtime versus one that
+   remembers opening night.
+
+*First inch:* a kiosk flag — fullscreen, ⋯ hidden, idle auto-audition, a
+reset timer — over the app as it stands. It is also the cheapest
+highest-variance marketing artifact the project could ship.
+
+### What the journeys share
+
+Read as a set, the nine journeys keep asking for the same six parts, which
+is the strongest argument that they are one product and not nine: the
+**instant A/B** (V.0, V.2, V.6), **radio mode gated by calibration** (V.0,
+V.6, V.8), **per-patch performance state and MIDI learn** (V.1, V.2),
+**audio export** (V.2, V.3), **foreign audio through the φ pipeline** (V.3,
+V.7), and **profile import in a second role** — guest, corpus, teacher,
+donation (V.4, V.5, V.7). Part VIII's phases sequence exactly these.
 
 ---
 
@@ -828,12 +1082,19 @@ unified; role chips (§2.3). *Gates:* observations per session-minute (the
 economy's own metric) measured before and after; check-duel skill trajectory
 on real sessions.
 
-**Phase D — the applications.**
-Sound matching (constructor call after Phase A); audio export of bank and
-patches; the plugin shell with host clock and sidechain (after Phase B so it
-arrives able to hear a mix); switch-access mode built as one thing with
-radio mode; profile blending; then the open ground of Part V as demand
-reveals itself.
+**Phase D — the applications, by their first inches.**
+The cheap inches first, because each unlocks a journey the day it ships:
+audio export of bank and patches (V.2, V.3); foreign audio featurized onto
+the MAP (V.3); the guest lens (V.4); the anonymized log export (V.7); the
+matched-pair reveal (V.5); the kiosk flag (V.8); scan-select on the deck
+(V.6). Then the compound builds they graduate into: sound matching
+(constructor call after Phase A); radio mode gated by calibration, built as
+one thing with switch access; per-patch performance state and MIDI learn,
+then taste macros and lineage scrub (V.1); the plugin shell with host clock
+and sidechain (after Phase B, so it arrives able to hear a mix); profile
+blending and, at the horizon, the population prior. *Gates:* each inch has
+a using journey named above — an inch nobody's journey crosses gets
+deleted, in the same spirit as `Acquisition::Thompson`.
 
 The thing this project has that nothing adjacent has is the discipline to
 measure its way out of its own opinions — the same harness that killed BALD
