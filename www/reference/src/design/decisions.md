@@ -12,7 +12,7 @@ the one that replaced it.
 |---|---|---|
 | [Genome representation](../genome/grammar.md) | Typed combinator-term PCFG (not raw graph, not NEAT) | Types make every sample valid; reuses fugue-evo grammar machinery; all 3 evolution levels in one rep |
 | [Feedback signals](../taste/likelihoods.md) | Pairwise duels + stars (ordinal) + keep/kill; **no** implicit signals | One latent utility, three likelihoods; duels primary |
-| [Taste features](../features/audio.md) | φ_audio (15) + φ_struct (25) = φ ∈ ℝ⁴⁰ | Transfer across topologies + free structural screening |
+| [Taste features](../features/audio.md) | φ_audio (15) + φ_struct (26) = φ ∈ ℝ⁴¹ | Transfer across topologies + free structural screening |
 | [Feature axes](../features/standardization.md) | Log-frequency, logged heavy tails, families not per-module columns | The model is linear in φ, so the axis decides what is *expressible*; sparse columns are coefficients fitted on a handful of rows |
 | [Utility form](../taste/utility.md) | **Max of linear experts** `u = max_k θ_k·z`, K = 5 | Multi-modal taste; handles cross-island duels (per-observation and per-session latent-z designs both fail there); no discrete sites; K=1 ≡ BLR |
 | [Preference sets](../taste/utility.md) | Discovered style lenses, aligned post-hoc; nameable and persisted | A lens claiming ≈0% of the pool is idle — K is an upper bound |

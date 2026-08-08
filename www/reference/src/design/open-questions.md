@@ -131,8 +131,8 @@ measurement that would settle it.
   a constant.
 - **Fit cost at the K cap.** Single-site MH re-executes the whole program per
   step, so a mature [fit](../taste/posterior.md) is both slower and
-  statistically thinner than an early one (205 + S sites over a fixed 10 000
-  steps ≈ 48 sweeps per site). The address table is hoisted out of the step
+  statistically thinner than an early one (210 + S sites over a fixed 10 000
+  steps ≈ 47 sweeps per site). The address table is hoisted out of the step
   loop and the chain no longer holds itself in memory, so what is left is purely
   the statistical shape of the problem — the budget can now be chosen on the
   recovery tables rather than against a memory ceiling. The written-down option

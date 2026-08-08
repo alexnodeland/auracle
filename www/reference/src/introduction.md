@@ -11,7 +11,7 @@ It is organised as a pipeline, because that is what it is:
 $$
 \text{term} \;\xrightarrow{\text{compile}}\; \text{patch}
 \;\xrightarrow{\text{render}}\; \text{audio} \;\xrightarrow{\text{vet}}\;
-\text{audio} \;\xrightarrow{\varphi}\; \R^{40} \;\xrightarrow{\;u_\theta\;}\;
+\text{audio} \;\xrightarrow{\varphi}\; \R^{41} \;\xrightarrow{\;u_\theta\;}\;
 \R
 $$
 

@@ -150,8 +150,8 @@ The model has
 
 $$K \cdot d + S + (n_{\text{stars}} - 1)$$
 
-sample sites. With $d = 40$ and 6 star categories, that is $40K + S + 5$: **45
-+ $S$** at $K=1$ and **205 + $S$** at $K=5$.
+sample sites. With $d = 41$ and 6 star categories, that is $41K + S + 5$: **46
++ $S$** at $K=1$ and **210 + $S$** at $K=5$.
 
 Single-site MH re-executes the whole program on **every step**, so every site
 is reconstructed once per step. Two consequences, both measured by
