@@ -8,6 +8,110 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — a fourth design register, for the questions nobody has raised
+
+The reference could say what was chosen (decisions), what closed (milestones)
+and what is unsettled (open questions). It could not say what was never
+considered, so *rejected* and *never considered* looked identical from the
+outside. **Unraised directions** is that register: sixteen possibilities the
+architecture already supports and nobody has argued about either way, each
+naming the machinery that already exists, what stands in the way, and what
+would settle it. Entries graduate onto the open-questions page as soon as
+someone can state that measurement, and an entry that can be stated as neither
+is speculation and gets deleted.
+
+The one worth reading first is the register's own foundation problem: two open
+questions are now gated on evidence from real sessions, and the architecture —
+IndexedDB, no account, nothing transmitted — has no path for that evidence to
+arrive. The `Profile` export is already the portable, self-contained unit; what
+is missing is a destination, not a format. Also on the page: the Boltzmann
+target consumes utility as a black box, so a reference-sound distance
+substitutes straight in and turns the search into a matcher; *declared* context
+dissolves the circularity that blocks per-style audition phrases, because a
+declared context is a statement rather than an inference from the stimulus it
+would change; and recency denominated in log positions quietly changes meaning
+if a lean-back mode ever changes the observation rate.
+
+Six of the sixteen turned out to be one observation wearing six hats, and the
+page names it: **Auracle is a better instrument than it is a consumer of its
+own instruments.** `style_shares`, the provenance calibration split, the
+quarantine reasons, the persistent render cache and the lineage events are all
+labelled data the project pays to generate and then reads exactly once,
+literally. The sharpest instance: `search/proposals.md` says a production →
+brightness map is "a model nobody has fitted", and every `(term, spec) → φ` the
+system has ever computed — which is precisely what the render cache stores —
+is a row of that model's training set.
+
+One of the sixteen is half a correction. `structural.rs` claims in the present
+tense that a struct-only surrogate "prunes candidates before the expensive
+render path", and two reference pages repeat it as part of the justification
+for φ being two-part. Nothing in `auracle-session` prunes anything;
+`SurrogateFitness::evaluate` renders every candidate it is handed. The entry
+says so, and says which of the two fixes it wants.
+
+### Added — what the audition cannot hear
+
+A fifth design register, and the uncomfortable one. The other four are about
+decisions; this is about the **premise** underneath them — that preference
+measured under a fixed gesture is the same thing as musical taste — and the
+eight places that premise costs something.
+
+The argument is not new to the book. It is the one the v2 phrase was built on:
+*the grammar could express patches the audition could never reveal … no amount
+of model improvement fixes that; it is a measurement problem.* That reasoning
+closed four holes and stopped. The page is the rest of it.
+
+The sharpest three. **`NoteSpan` has no velocity field** — every audition note
+is struck identically, while the live instrument responds to MIDI velocity — so
+a patch is a function from performance to sound and φ samples it at one point,
+which makes every model downstream a faithful model of preference over *point
+samples of instruments*. **Modulation rate is nowhere in φ**: `mod_density` and
+`mod_depth_mean` say how much and how deep, `centroid_std` says how much it
+moved, and a 0.3 Hz sweep and a 7 Hz tremolo at equal depth are the same patch
+to all of them — so the tilt can learn *more* modulation and can never learn
+*slower*, on the instrument whose distinguishing claim is that modulation is a
+whole chain. And **the raw level is already measured**: `VetReport` takes `peak`
+and `rms` on the pre-normalization render and discards both, so an axis of
+entirely ordinary preference — *hits hard*, *sits back* — is thrown away for
+free by a normalization that only needed to protect *playback*.
+
+Also on it: everything is judged in a silent room, with no notion of how a patch
+sits against other material; there is no tempo, and the preset source is working
+around it in comments (`rate: 0.55, // ≈83 bpm`); the loop is selection where
+sound design is pursuit; comparability constrains the measurement and not the
+listener, so duelling in the player's own hands costs φ nothing; and the rack
+exposes every trace address with no macros over them, when a fitted style lens
+is already a personal macro axis.
+
+Cross-linked both ways with **Unraised directions**, which now records that two
+of its entries have their strongest arguments on this page rather than on its
+own, and from the standard-phrase page, which is where the argument started.
+
+### Fixed — φ is ℝ⁴¹, and the books said ℝ⁴⁰
+
+`n_silence` joined `StructFeatures::NAMES` as its own column when Silence
+shipped, which made φ_struct twenty-six coordinates and φ forty-one. The
+reference had not followed: the pipeline in the introduction, the notation
+table, the decisions log, the φ_struct page and the guide's two plain-English
+descriptions all still said forty. The site-count arithmetic was wrong with it
+— at $d = 41$ the model has $41K + S + 5$ sites, so **46 + S** at K=1 and
+**210 + S** at K=5, not 45 and 205, and a fixed 10 000-step budget is ~47
+sweeps per site at the cap rather than ~48. Corrected everywhere, including the
+two `205 + S` figures on the posterior page and the open question that quotes
+them.
+
+Two stale counts went with it. `StructFeatures` collapses **forty-two
+productions into nineteen family counts** plus seven term-level numbers;
+`structural.rs` and the page it is quoted on both said forty-one kinds into
+fourteen, which has not been true for some time and does not sum to the
+twenty-six names either of them lists.
+
+This is the failure mode `CONTRIBUTING.md` names — *"if you changed a doc
+comment that the reference quotes a number from, the number in the reference is
+now wrong"* — and it is worth recording rather than fixing silently, because a
+book whose first commitment is that every number is sourced is one where a
+stale number costs more than it would anywhere else.
+
 ### Changed — the acquisition question was measured, and the tie does not break
 
 BALD ties uniform random pairing at session horizon, and the open question named

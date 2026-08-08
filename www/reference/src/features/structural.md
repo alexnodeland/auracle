@@ -1,6 +1,6 @@
 # φ_struct — structural descriptors
 
-<p class="lede">Twenty-five dimensions, free to compute.</p>
+<p class="lede">Twenty-six dimensions, free to compute.</p>
 
 These cost nothing: no compile, no render, just a walk of the term. That is
 what makes the [screening
@@ -11,10 +11,10 @@ supersaws", "likes deep modulated chains").
 
 ## The coordinates
 
-**Fourteen family counts:**
+**Nineteen family counts:**
 
 ```text
-n_vco  n_supersaw  n_noise  n_wavetable  n_pluck  n_formant
+n_vco  n_supersaw  n_noise  n_wavetable  n_pluck  n_formant  n_silence
 n_filter  n_drive  n_time  n_mod_fx  n_reverb  n_dynamics
 n_lfo  n_env  n_rand  n_follow  n_mod_shape  n_mod_logic
 ```
@@ -26,14 +26,14 @@ mod_density  mod_depth_mean  amp_attack  amp_sustain  amp_release
 chain_balance  frac_sidechained
 ```
 
-Twenty-five in total, appended after the [fifteen audio
-coordinates](./audio.md) to give $\varphi \in \R^{40}$.
+Twenty-six in total, appended after the [fifteen audio
+coordinates](./audio.md) to give $\varphi \in \R^{41}$.
 
 ## Families, not one column per module
 
 `StructFeatures` keeps a raw counter per module kind internally (the Styles tab
 and the auto-namer both want "two filters", not "two subtractive stages"), but
-`NAMES` and `to_vec` collapse **forty-one module kinds into fourteen family
+`NAMES` and `to_vec` collapse **forty-two productions into nineteen family
 counts**.
 
 Two reasons.
@@ -164,7 +164,7 @@ cargo run -p auracle-features --example pipeline_stats --release -- 1200
 
 ## The unit coordinates
 
-Seven of the twenty-five are `UNIT_NAMES`, a **subset** of `NAMES` rather than
+Seven of the twenty-six are `UNIT_NAMES`, a **subset** of `NAMES` rather than
 a reordering. Each is either a normalized genome site read straight through
 (`amp_attack`, `amp_sustain`, `amp_release`, `mod_depth_mean`) or a ratio that
 is already in $[0,1]$ (`mod_density`, `chain_balance`, `frac_sidechained`).
