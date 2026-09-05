@@ -122,6 +122,21 @@ to a pinned `role="alert"` strip that stays until resolved.
   limiter included — with oldest-note stealing and silent-tail voice
   parking. Every workbench edit re-patches the live instrument.
 
+  **A patch swap compiles on the render thread.** `set_patch` parses the tree
+  JSON in the worklet's `onmessage`, and the rebuild runs one full `compile()`
+  per voice per quantum, for `n_voices` quanta, while this node's own gain is
+  zero. "A dropped quantum of silence is inaudible" is true of this node only:
+  the duel auditions, the master gain, the analysers and the recorder share
+  the render thread, and a compile that overruns the ~2.9 ms quantum is a
+  glitch in *their* output. On the machines measured one voice compiles well
+  inside a quantum; a large patch on a slow laptop does not always. The fix —
+  compile in the engine worker and transfer a ready voice, or at least parse
+  off-thread — is recorded in `live.rs`'s header and not yet done. Everything
+  *else* the worklet does per quantum is allocation-free: the arpeggiator
+  reuses two buffers sized for a full keyboard, and knob writes scan a table
+  of live handles interned once per swap rather than allocating a `String`
+  and hashing per voice.
+
 - **worker.js** owns the wasm engine: pool filling (each candidate is
   compiled, rendered, vetted, featurized), posterior fits, refinement, and
   the workbench (address-based knob edits re-render off-thread). Candidates

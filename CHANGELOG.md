@@ -269,6 +269,28 @@ ever opened the app in CI.
   `taiki-e/install-action`, as `ci.yml` already did; `release.yml`'s header
   says what actually deploys the site.
 
+### Changed — the live voice allocates nothing per quantum outside a swap, and says what a swap costs
+
+CONTRIBUTING asks that `LivePoly` stay allocation-free per quantum, and three
+paths were not: the arpeggiator cloned the held chord and built the pattern
+into a fresh `Vec` at every step boundary; a knob write allocated a `String`
+for its address on first touch, from the worklet's `onmessage` on the render
+thread; and every smoother did a `HashMap<String>` lookup per voice per
+quantum. The arp now reuses two buffers sized for a full keyboard, and the live
+parameter handles are interned into one table at each (re)build — a knob write
+is a scan of that table and an atomic store, a smoother tick is one store per
+voice. The three `held.clone()`s around swaps and arp toggles are index loops.
+
+Not changed, and now written down where it lives: **a patch swap compiles on
+the render thread.** `set_patch` parses the tree in `onmessage` and the rebuild
+runs a full `compile()` per voice per quantum with this node's gain at zero.
+That silence is inaudible from *this* node; the duel auditions, master gain,
+analysers and recorder share the thread, and a compile that overruns the
+quantum glitches them. Compiling in the engine worker and transferring a ready
+voice is the fix, and it is out of scope for this pass; `live.rs`'s header and
+`apps/web/README.md` say so, so the next click heard on a structural edit has
+a known cause.
+
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 
 `mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1
