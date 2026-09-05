@@ -11,6 +11,10 @@ members = [
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
+# fugue-ppl requires 1.87, so this is the floor the workspace already had;
+# declaring it is what makes a new stable lint a deliberate bump rather than a
+# surprise on every `-D warnings` job at once. Every crate inherits it.
+rust-version = "1.87"
 authors = ["Alex Nodeland"]
 license = "MIT"
 repository = "https://github.com/alexnodeland/auracle"
@@ -46,9 +50,12 @@ codegen-units = 16
 [workspace.dependencies]
 # In-house foundations, from crates.io.
 # quiver-dsp: the LIBRARY name is `quiver` — imports are `use quiver::...`.
-# 0.2.0 is the perf release (coefficient memoization + interpreter R-series);
-# renders are bit-identical to 0.1.1 by that release's golden-vector gate.
-quiver-dsp = "0.2.0"
+# 0.3.x adds the ±32-octave `voct_to_hz` clamp, `DelayLine::tape` and friends,
+# and `set_param_by_name` on the wasm engine; every module/port name the
+# compiler uses is unchanged from 0.2.0 and renders inside ±32 octaves are
+# bit-identical. `auracle_features::QUIVER_DSP_VERSION` must move with this
+# line — a test reads Cargo.lock and fails when it does not.
+quiver-dsp = "0.3.3"
 # default-features off: `checkpoint`/`parallel` don't compile on wasm32 and
 # nothing here uses them; `ppl` is the layer we build on.
 fugue-evo = { version = "0.3.1", default-features = false, features = ["std", "ppl"] }

@@ -3,6 +3,7 @@ name = "auracle-taste"
 description = "The user model: mixture-of-linear-experts utility, three feedback likelihoods, posterior inference and persistence"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true

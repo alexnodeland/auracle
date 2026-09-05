@@ -341,6 +341,27 @@ keeps its name; the app and the harness both set it.
   patch with a tail and owes a measurement that has not been made. Documented
   at the line and in the open questions, not changed blind.
 
+### Changed — quiver-dsp 0.3.3, and a declared MSRV
+
+The workspace pinned `quiver-dsp 0.2.0` while the repo was at 0.3.3, and two
+reference pages still said the `voct_to_hz` clamp was "open upstream"; it
+shipped in 0.3.0. The pin is 0.3.3. Every module and port name the compiler
+uses exists unchanged in both versions, and renders inside ±32 octaves are
+bit-identical, so **no `RENDER_EPOCH` bump** accompanies this. Stored render
+rows still move, once, because the cache namespace now carries the quiver
+version as its own coordinate (above) — and that is the right outcome rather
+than a cost, because for pathological CV the two versions render *differently*
+(0.2.0 recovered an infinite phase increment by reset; 0.3.x aliases at a
+finite ~THz pitch), and an MH search can reach such values through chained
+`Offset`s. Both are garbage the vet gate quarantines; they are not the same
+garbage, and a cache that could not tell them apart would be wrong about
+exactly those rows.
+
+`rust-version = "1.87"` is declared in `[workspace.package]` and inherited by
+every crate. fugue-ppl requires 1.87, so this states a floor that already
+existed; CI runs on `stable` with clippy as errors, and a declared MSRV is what
+makes a new stable lint a deliberate bump rather than a surprise.
+
 ### Changed — the acquisition question was measured, and the tie does not break
 
 BALD ties uniform random pairing at session horizon, and the open question named
