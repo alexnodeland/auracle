@@ -1420,12 +1420,21 @@ worker.onmessage = (e) => {
       // voices, so the mute has to be real. Any vet that passes lifts it.
       if (wb.vetOk) setLiveMuted(false);
       else if (spokeEarly) setLiveMuted(true);
-      alarm(
-        wb.vetOk
-          ? null
-          : "Muted — this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
-        wb.vetOk ? null : { label: "undo", run: doUndo }
-      );
+      // The strip is one slot (see `alarm`), and this owns it only while the
+      // condition it reports — a runaway the vet muted — is its own. It used
+      // to call `alarm(null)` on every clean vet, which wiped whatever else
+      // was pinned there: the first patch landing on the bench at boot
+      // cleared the quarantine alert `restore_failed` had raised a moment
+      // before, and any later bench reply cleared a crash or a refused save.
+      if (!wb.vetOk) {
+        alarm(
+          "Muted — this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
+          { label: "undo", run: doUndo }
+        );
+        $("alarm").dataset.tag = "vet";
+      } else if ($("alarm").dataset.tag === "vet") {
+        alarm(null);
+      }
       if (!knobDragging) renderRack();
       renderBank();
       // Both readouts are derived from this reply and nothing else, so they

@@ -243,6 +243,23 @@ rather than replace-or-merge.
   of a cut whose undo window was still open, since there is nothing left to
   record against.
 
+### Fixed — a pinned alert did not survive the first patch on the bench
+
+The alert strip is one slot, and its rule — written over `alarm()` — is that
+a handler clears only the condition it tagged. The `bench` reply handler did
+not follow it: on every clean vet it called `alarm(null)`, which was there to
+lift its own "Muted — this setting can run away" notice and which lifted
+whatever else was in the strip. At boot the first patch lands on the bench a
+moment after `restore_failed`, so the quarantine alert above was shown and
+then wiped before anyone could have read it — autosave stayed off, as it
+should, but the page no longer said why, and **start fresh** was gone with the
+text. Any later bench reply did the same to a crash alert or a refused save.
+The handler now tags its notice `vet` and clears only that.
+
+Found by the first browser test to provoke an unparseable save (below); the
+Rust gates could not see it, because the whole fault is in which DOM node one
+reply writes to.
+
 ### Changed — the quality bar and the gates that enforce it say the same thing
 
 CONTRIBUTING promised `cargo test --workspace --release`; the Makefile and CI
