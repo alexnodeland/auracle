@@ -43,11 +43,11 @@ pub mod presets;
 pub mod prior;
 pub mod term;
 
-pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap};
+pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap, COMPILE_MAX_NESTING};
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
-pub use genome::{in_domain, PARAM_DOMAIN};
+pub use genome::{clamp_param, in_domain, PARAM_DOMAIN, PARAM_MAX};
 pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
@@ -442,6 +442,222 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The log-prior of `tree` under `prior`, scored the way the engine scores
+    /// a seed: replay the generative program against the term's own trace.
+    fn log_prior(prior: &PatchGrammarPrior, tree: &PatchTree) -> f64 {
+        let (_, scored) = run(
+            ScoreGivenTrace {
+                base: tree.to_trace(),
+                trace: Trace::default(),
+            },
+            prior.model(),
+        );
+        scored.log_prior
+    }
+
+    /// **The finite-prior gate.** Every term a hand can reach — every shipped
+    /// preset, every `default_node` the palette places, every result of every
+    /// structural op over a sweep of prior draws, and every knob at either end
+    /// of its range — must have a finite log-prior under the default grammar.
+    ///
+    /// The engine's refinement path is `EvolutionChain::init_from(seed)`, and
+    /// fugue returns `None` for a seed whose total log-weight is not finite.
+    /// So `log p = −∞` is not a low score: it is ⚡ evolve doing nothing. Two
+    /// ways to get there were shipping when this test was written — a knob at
+    /// exactly `1.0` (the closed domain against fugue's half-open `Uniform`),
+    /// and a hand edit past the prior's `max_depth` (a ceiling of 9 against
+    /// support that ends at 6) — and neither had a test because nothing scored
+    /// what the panel produced. This does.
+    #[test]
+    fn everything_a_hand_can_reach_has_finite_prior() {
+        use mutate::{ModKind, NodeKind, StructOp};
+        let prior = PatchGrammarPrior::default();
+        let finite = |what: &str, t: &PatchTree| {
+            let lp = log_prior(&prior, t);
+            assert!(lp.is_finite(), "{what}: log-prior is {lp}");
+        };
+
+        for (name, tree) in presets::presets() {
+            finite(&format!("preset {name}"), &tree);
+        }
+
+        // Every default node, as a source and as an insert over a source.
+        let base = presets::presets()[0].1.clone();
+        for kind in NodeKind::ALL {
+            let op = StructOp::Replace {
+                key: "node".into(),
+                kind,
+            };
+            let t = mutate::apply_struct_op(&base, &op).expect("replace root is always legal");
+            finite(&format!("default_node({kind:?}) as root"), &t);
+            if !kind.is_source() {
+                let op = StructOp::Insert {
+                    key: "node".into(),
+                    kind,
+                };
+                let t = mutate::apply_struct_op(&base, &op).expect("insert over a preset root");
+                finite(&format!("default_node({kind:?}) inserted"), &t);
+            }
+        }
+        // Every modulation choice, set on the root and then wrapped again, so
+        // the shapers meet an occupied slot as well as an empty one.
+        for mk in ModKind::ALL {
+            let op = StructOp::SetMod {
+                key: "node".into(),
+                kind: mk,
+            };
+            if let Ok(t) = mutate::apply_struct_op(&base, &op) {
+                finite(&format!("SetMod({mk:?}) on a preset root"), &t);
+                if let Ok(t2) = mutate::apply_struct_op(&t, &op) {
+                    finite(&format!("SetMod({mk:?}) twice"), &t2);
+                }
+            }
+        }
+
+        // A knob at both ends of its range — the stop is where the panel puts
+        // a dragged knob, and the stop used to be `1.0`.
+        for (addr, v) in [
+            ("amp#attack", 1.0),
+            ("amp#sustain", 1e30),
+            ("node#cut", 0.0),
+        ] {
+            let t = set_param(&base, addr, ParamValue::Continuous(v))
+                .or_else(|_| set_param(&base, "amp#release", ParamValue::Continuous(v)))
+                .expect("a knob edit");
+            finite(&format!("knob {addr} = {v}"), &t);
+        }
+
+        // The whole op vocabulary over prior draws. Whatever `apply_struct_op`
+        // accepts, the prior must be able to score — that is what the ceilings
+        // are *for* now.
+        let mut rng = StdRng::seed_from_u64(20_260_905);
+        let mut applied = 0usize;
+        for i in 0..24 {
+            let (tree, _) = draw(&prior, &mut rng);
+            let keys: Vec<String> = describe::describe(&tree)
+                .modules
+                .iter()
+                .filter(|m| m.key != "amp" && !m.is_mod)
+                .map(|m| m.key.clone())
+                .collect();
+            for key in &keys {
+                let mut ops: Vec<StructOp> = vec![
+                    StructOp::Delete { key: key.clone() },
+                    StructOp::SwapMix { key: key.clone() },
+                ];
+                for kind in NodeKind::ALL {
+                    ops.push(StructOp::Replace {
+                        key: key.clone(),
+                        kind,
+                    });
+                    if !kind.is_source() {
+                        ops.push(StructOp::Insert {
+                            key: key.clone(),
+                            kind,
+                        });
+                    }
+                }
+                for mk in ModKind::ALL {
+                    ops.push(StructOp::SetMod {
+                        key: key.clone(),
+                        kind: mk,
+                    });
+                }
+                for op in ops {
+                    if let Ok(next) = mutate::apply_struct_op(&tree, &op) {
+                        applied += 1;
+                        finite(&format!("draw {i}: {op:?}"), &next);
+                    }
+                }
+            }
+        }
+        assert!(applied > 1000, "the sweep applied only {applied} ops");
+    }
+
+    /// A term far past every ceiling is an *error* from `compile`, not a stack
+    /// overflow. `import_patch` and the session file are parsed straight into
+    /// a `PatchTree`, and the compiler recurses by value with frames large
+    /// enough that ~60 nested nodes overflow the wasm stack — a trap that
+    /// poisons the engine rather than an error anyone sees. The guard has to
+    /// live in `compile` itself so no caller can route around it.
+    #[test]
+    fn compile_refuses_a_term_nested_past_the_stack_guard() {
+        let mut tree = presets::presets()[0].1.clone();
+        while tree.root.depth() <= compile::COMPILE_MAX_NESTING {
+            tree.root = default_filter_over(tree.root);
+        }
+        let err = match compile(&tree, SR) {
+            Err(e) => e,
+            Ok(_) => panic!("a 33-deep term must be refused"),
+        };
+        assert!(err.to_string().contains("nests"), "{err}");
+        // And the guard counts modulation nesting on top of audio depth: a
+        // legal audio tree with a legal mod chain is still fine.
+        let ok = presets::presets()[0].1.clone();
+        assert!(compile(&ok, SR).is_ok());
+    }
+
+    /// The depth boundary, from both sides: the deepest tree the ceilings admit
+    /// scores finite, and the first one they refuse is the first one the prior
+    /// cannot score. If either half fails, `MAX_DEPTH`/`MAX_MOD_DEPTH` and the
+    /// prior's support have drifted apart again.
+    #[test]
+    fn ceilings_end_exactly_where_the_prior_support_does() {
+        let prior = PatchGrammarPrior::default();
+        let mut tree = presets::presets()[0].1.clone();
+        tree.root = term::AudioNode::Vco {
+            uid: Uid::NEW,
+            wave: term::Waveform::Saw,
+            octave: 0,
+            detune: 0.5,
+            mod_depth: 0.3,
+            modulation: term::ModNode::None,
+        };
+        while tree.root.depth() < mutate::MAX_DEPTH {
+            tree.root = default_filter_over(tree.root);
+        }
+        assert_eq!(tree.root.depth(), mutate::MAX_DEPTH);
+        assert!(validate_tree(&tree).is_ok());
+        assert!(
+            log_prior(&prior, &tree).is_finite(),
+            "the deepest legal tree must score"
+        );
+        tree.root = default_filter_over(tree.root);
+        assert!(validate_tree(&tree).is_err());
+        assert_eq!(log_prior(&prior, &tree), f64::NEG_INFINITY);
+
+        // The same for a modulation chain: `Op` wrapping `Op` wrapping a leaf.
+        let mut m = term::ModNode::Lfo {
+            uid: Uid::NEW,
+            wave: term::Waveform::Sine,
+            rate: 0.5,
+        };
+        let wrap = |inner: term::ModNode| term::ModNode::Op {
+            uid: Uid::NEW,
+            kind: term::ModOp::Slew,
+            p0: 0.5,
+            p1: 0.0,
+            input: Box::new(inner),
+        };
+        while m.depth() < mutate::MAX_MOD_DEPTH {
+            m = wrap(m);
+        }
+        let mut shaped = presets::presets()[0].1.clone();
+        let op = mutate::StructOp::SetModTree {
+            key: "node".into(),
+            m: m.clone(),
+        };
+        let shaped_ok = mutate::apply_struct_op(&shaped, &op).expect("at the ceiling");
+        assert!(log_prior(&prior, &shaped_ok).is_finite());
+        let over = mutate::StructOp::SetModTree {
+            key: "node".into(),
+            m: wrap(m),
+        };
+        assert!(mutate::apply_struct_op(&shaped, &over).is_err());
+        shaped.root = shaped_ok.root;
+        assert!(validate_tree(&shaped).is_ok());
     }
 
     /// Every structural path that treats a binary node specially, exercised on

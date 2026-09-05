@@ -69,19 +69,33 @@ the
 Hard ceilings on hand-built patches:
 
 ```rust
-pub const MAX_SIZE: usize = 24;       // modules
-pub const MAX_DEPTH: usize = 9;       // audio tree depth
-pub const MAX_MOD_DEPTH: usize = 4;   // modulation term nesting
+pub const MAX_SIZE: usize = 24;                            // modules
+pub const MAX_DEPTH: usize = PRIOR_MAX_DEPTH + 1;          // audio tree depth: 6
+pub const MAX_MOD_DEPTH: usize = PRIOR_MAX_MOD_DEPTH + 1;  // modulation nesting: 3
 ```
 
-These protect the realtime voice and the feature pipeline rather than shaping
-the search. The prior's own ceilings are lower (`max_mod_depth` of 2), on the
-reasoning that a person stacking shapers by hand knows what they are building.
+`MAX_SIZE` protects the realtime voice and the feature pipeline. The two depth
+ceilings are **derived from the prior's support**, and that is a correction: they
+used to be 9 and 4 against a prior whose `max_depth` is 5 and `max_mod_depth` is
+2, on the reasoning that a person stacking modules by hand knows what they are
+building and the ceiling only protects the voice. What that reasoning missed is
+that the prior forces `#leaf` at `max_depth` and zeroes `Op`/`Pair` at
+`max_mod_depth`, so the deepest term it can *score* has depth `max_depth + 1`.
+A hand edit past that had $\log p = -\infty$, `EvolutionChain::init_from`
+returned `None`, and ⚡ evolve on the patch did nothing and said nothing — the
+very failure the grammar gives `Silence` non-zero weight to prevent. Now the
+ceiling *is* the support, stated once in `prior.rs` and read from there.
+
+A session saved under the old ceilings may hold a deeper tree. It still loads
+and plays — no load path re-checks the ceilings, because corruption must not be
+load-bearing — but refinement reports it as `outside_support` rather than
+pretending to walk, and a structural edit that leaves it over the ceiling is
+refused until one brings it under.
 
 `MAX_MOD_DEPTH` stops well short of the audio ceiling for a concrete reason: a
-`Pair` branches, so depth 4 is up to **sixteen leaves on one cable**, and each
-is another level of the compiler's by-value recursion stacked on top of the
-audio tree's. That is a stack-depth argument rather than an aesthetic one; see
+`Pair` branches, so depth 3 is up to **eight leaves on one cable**, and each is
+another level of the compiler's by-value recursion stacked on top of the audio
+tree's. That is a stack-depth argument rather than an aesthetic one; see
 [the wasm stack note](../runtime.md#the-stack-size).
 
 ## The gate test

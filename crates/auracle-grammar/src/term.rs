@@ -1572,6 +1572,17 @@ impl AudioNode {
         modulated_variants!(arms)
     }
 
+    /// The deepest modulation term anywhere in this subtree — this node's own
+    /// slot and every descendant's, by [`ModNode::depth`]. 0 when nothing is
+    /// modulated.
+    pub fn max_mod_depth(&self) -> usize {
+        let own = self.modulation().map(ModNode::depth).unwrap_or(0);
+        self.children()
+            .into_iter()
+            .map(AudioNode::max_mod_depth)
+            .fold(own, usize::max)
+    }
+
     /// Tree depth (a source leaf is depth 1).
     pub fn depth(&self) -> usize {
         match self {

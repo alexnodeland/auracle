@@ -71,6 +71,19 @@ pub const N_PAIR_OPS: usize = 6;
 /// and are what [`PatchGrammarPrior::max_mod_depth`] switches off.
 const MOD_FIRST_BRANCH: usize = 6;
 
+/// The default prior's [`PatchGrammarPrior::max_depth`]: the audio-tree depth
+/// at which `#leaf` is forced true. The deepest term with positive prior mass
+/// therefore has `AudioNode::depth() == PRIOR_MAX_DEPTH + 1`, and that is
+/// where [`crate::mutate::MAX_DEPTH`] sits — derived from this constant so a
+/// hand edit can never build what the prior cannot score.
+pub const PRIOR_MAX_DEPTH: usize = 5;
+
+/// The default prior's [`PatchGrammarPrior::max_mod_depth`]: the modulation
+/// nesting at which `Op`/`Pair` are zeroed. The deepest mod term with positive
+/// mass has `ModNode::depth() == PRIOR_MAX_MOD_DEPTH + 1`, which is
+/// [`crate::mutate::MAX_MOD_DEPTH`].
+pub const PRIOR_MAX_MOD_DEPTH: usize = 2;
+
 /// The typed PCFG over patch terms.
 #[derive(Clone, Debug)]
 pub struct PatchGrammarPrior {
@@ -105,14 +118,14 @@ impl Default for PatchGrammarPrior {
     fn default() -> Self {
         Self {
             source_prob: 0.4,
-            max_depth: 5,
+            max_depth: PRIOR_MAX_DEPTH,
             // Two processors above a leaf is already `s&h → quantize → slew`,
             // which is the deepest idiom anyone reaches for; a third adds a
             // stage nobody can hear separately. It is also a *stack* budget:
             // the compiler recurses by value, the wasm build only just fits
             // its 8 MB stack with the audio recursion alone, and every level
             // here is a second recursion sitting on top of that one.
-            max_mod_depth: 2,
+            max_mod_depth: PRIOR_MAX_MOD_DEPTH,
             // Vco stays the staple and supersaw second; wavetable is a real
             // alternative but a new one; noise, pluck and formant are spices —
             // the last two especially, because a plucked string and a vowel

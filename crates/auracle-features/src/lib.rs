@@ -69,7 +69,7 @@ mod tests {
             amp: AmpEnv {
                 attack: 0.1,
                 decay: 0.3,
-                sustain: 1.0,
+                sustain: 0.9,
                 release: 0.3,
             },
             root: AudioNode::Silence { uid: Uid::NEW },
@@ -91,7 +91,7 @@ mod tests {
             amp: AmpEnv {
                 attack: 0.1,
                 decay: 0.3,
-                sustain: 1.0,
+                sustain: 0.9,
                 release: 0.3,
             },
             root: AudioNode::Mix {

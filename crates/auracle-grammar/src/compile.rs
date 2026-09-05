@@ -24,7 +24,7 @@
 //!
 //! ## Parameter mapping
 //!
-//! Genome parameters are normalized `[0, 1]`; this module owns their musical
+//! Genome parameters are normalized `[0, 1)`; this module owns their musical
 //! mapping. Ranges are deliberately **bounded away from pathology** (max
 //! resonance 0.85, max delay feedback 0.7) — the grammar cannot express the
 //! most degenerate settings, which is safety layer 3 of the vetting design.
@@ -279,15 +279,17 @@ pub enum ParamMap {
 impl ParamMap {
     /// Clamp a value arriving from the panel to this map's input domain.
     ///
-    /// Continuous knobs are 0..1 and always were. The two categorical sites
-    /// that became live send a *category index*, so the blanket
-    /// `value.clamp(0.0, 1.0)` the live path used to apply would have folded
-    /// all eight wavetables onto the first two.
+    /// Continuous knobs are `[0, 1)` ([`crate::PARAM_DOMAIN`]) and go through
+    /// the same [`crate::clamp_param`] as a tree edit, so the value the live
+    /// voice hears is the value the term will hold once the gesture commits.
+    /// The two categorical sites that became live send a *category index*, so
+    /// the blanket `value.clamp(0.0, 1.0)` the live path used to apply would
+    /// have folded all eight wavetables onto the first two.
     pub fn clamp_input(self, x: f64) -> f64 {
         match self {
             ParamMap::TableIndex => x.round().clamp(0.0, 7.0),
             ParamMap::OctaveTrim(_) => x.round().clamp(0.0, 4.0),
-            _ => x.clamp(0.0, 1.0),
+            _ => crate::genome::clamp_param(x),
         }
     }
 
@@ -2807,8 +2809,35 @@ fn makes_dc(node: &AudioNode) -> bool {
     }
 }
 
+/// The deepest nesting `compile` will attempt: audio depth plus the deepest
+/// modulation chain hanging off it, which is how deep the compiler's by-value
+/// recursion actually goes.
+///
+/// **A stack guard, not a grammar ceiling.** The ceilings on what a hand may
+/// build are [`crate::mutate::MAX_DEPTH`] and [`crate::mutate::MAX_MOD_DEPTH`],
+/// enforced by `validate_tree` on every edit route. This is the line behind
+/// them: a shared patch file or a saved session is parsed straight into a
+/// `PatchTree`, and until this constant existed nothing between that parse and
+/// the recursive compiler asked how deep the term was. At ~60 nested nodes the
+/// compiler's frames (38 KB and up) overflow the wasm build's 8 MB stack, and a
+/// wasm trap is not an error the caller sees — it poisons the engine for the
+/// rest of the session. 32 is well above any tree a session written under any
+/// ceiling this crate has ever shipped can hold (`MAX_SIZE` is 24, so a valid
+/// tree is never deeper than 24 audio nodes), and well below the overflow.
+pub const COMPILE_MAX_NESTING: usize = 32;
+
 /// Compile a patch term into a playable voice at the given sample rate.
+///
+/// Refuses, with [`PatchError::CompilationFailed`], a term nested deeper than
+/// [`COMPILE_MAX_NESTING`] — an error every caller already handles, in place
+/// of a stack overflow none of them can.
 pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, PatchError> {
+    let nesting = tree.root.depth() + tree.root.max_mod_depth();
+    if nesting > COMPILE_MAX_NESTING {
+        return Err(PatchError::CompilationFailed(format!(
+            "patch nests {nesting} levels deep; the compiler stops at {COMPILE_MAX_NESTING}"
+        )));
+    }
     let mut patch = Patch::new(sample_rate);
     patch.set_validation_mode(ValidationMode::Warn);
 

@@ -8,6 +8,119 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+The September 2026 audit ([`AUDIT-2026-09.md`](./AUDIT-2026-09.md)) read the
+whole stack against the pinned sources. The entries below are its auracle
+findings being closed, in the audit's priority order.
+
+### Fixed — a knob dragged to its stop made the patch un-evolvable
+
+Every continuous site is a draw from `Uniform(0, 1)`, and fugue's `Uniform` is
+half-open: `log_prob` is `−∞` at `x >= 1.0`. Auracle's own domain contract was
+closed — `PARAM_DOMAIN = 0.0..=1.0`, `in_domain` accepted `1.0`, `set_param`
+and `clamp_domains` clamped *to* `1.0`, and the panel's knob stops at `1`. So a
+knob dragged to the end of its travel produced a legal term with zero prior
+mass. `EvolutionChain::init_from` returns `None` for such a seed, `refine_one`
+returned `None` in turn, and ⚡ evolve did nothing and said nothing. Two of the
+61 shipped presets ("Sea Change" `mix`, "Ask The Dice" `mod_depth`) and the
+default Vibrato insert shipped in that state; any tree repaired by
+`clamp_domains` from a value above one landed there too.
+
+The domain is now half-open where it is enforced: `PARAM_DOMAIN` is `0.0..1.0`,
+the top of a knob is `PARAM_MAX = 1.0 − f64::EPSILON`, and one `clamp_param`
+serves `set_param`, `clamp_domains`, the live handles' `clamp_input` and the
+import routes, so "legal" cannot mean two things on two paths. `PARAM_MAX` is
+one epsilon below rather than the next float down so a JSON round trip cannot
+put it back on the boundary; no mapping in the compiler can hear the
+difference. The three literal `1.0`s are `PARAM_MAX`. A saved session whose
+knobs rest on `1.0` is mended on load by the same `clamp_domains` pass that
+already runs on every import path.
+
+**The gate that was missing:** `everything_a_hand_can_reach_has_finite_prior`
+scores every preset, every `default_node`, every knob at either end of its
+range, and every result of every structural op over a sweep of prior draws
+under `PatchGrammarPrior::default().model()`, and requires a finite log-prior.
+Nothing had scored what the panel produces; now something does.
+
+### Fixed — the hand-edit ceilings were above the prior's support
+
+`MAX_DEPTH` was 9 and `MAX_MOD_DEPTH` 4, against a prior whose `max_depth` is 5
+and `max_mod_depth` 2. The prior forces `#leaf` at `max_depth` and zeroes
+`Op`/`Pair` at `max_mod_depth`, so the deepest terms it can score have depth 6
+and 3; a hand edit past that had `log p = −∞` and hit exactly the silent
+`init_from → None` path above. The ceilings' comment said they were there to
+protect the realtime voice rather than to shape the search, without noting that
+the prior gave such trees zero mass.
+
+Both ceilings are now **derived**: `MAX_DEPTH = PRIOR_MAX_DEPTH + 1` and
+`MAX_MOD_DEPTH = PRIOR_MAX_MOD_DEPTH + 1`, read from `prior.rs`, so they cannot
+drift again. This was chosen over raising the prior's bounds because the latter
+changes every prior draw, widens the trees the wasm stack has to compile, and
+would owe a revalidation for a bug that is entirely in the ceiling. The budget
+readout is `n/24 modules · n/6 depth · n/3 mod depth`.
+
+A session saved under the old ceilings may hold a deeper tree. It **still loads
+and plays** — no load path re-checks the ceilings, because corruption must not
+be load-bearing — evolution now reports it as outside the prior's support (below)
+instead of pretending to walk, and a structural edit that leaves it over the
+ceiling is refused until one brings it under.
+`ceilings_end_exactly_where_the_prior_support_does` pins the boundary from both
+sides.
+
+### Fixed — evolve says why it did nothing
+
+`refine_seed`/`refine_from` returned `None` for four different reasons — no
+taste yet, the walk did not move, it landed on a duplicate, the child was not
+admitted — and, after the two findings above, for a fifth that is not like the
+others: the seed has zero prior mass and the walk **never started**. The engine
+now records a `RefineOutcome` after every refinement (`Engine::last_refine`),
+and the wasm layer exposes it as `last_refine_reason()`; `outside_support` is
+the one the UI should say out loud, because no budget or lock-loosening will
+change it.
+
+Two small things in the same code: `refine_from` no longer advances the
+generation counter when nothing landed (a run of "no move" presses read as
+empty generations in the lineage), and `absorb_bank_entry` no longer wraps the
+id allocator on a hostile `u64::MAX` in a shared file.
+
+### Fixed — `import_patch` skipped the ceilings, and the compiler had no guard of its own
+
+Every write route into the pool ran `validate_tree` except the one that takes
+untrusted input: `import_patch` repaired knob domains and then called
+`commit_edit`, which always lands a hand edit. A shared file with a depth-40
+tree entered the pool, evicted a member, and put its out-of-range φ into the
+log on the next vote. `import_patch` now refuses what every other route refuses
+(returns `0`).
+
+Behind it, `compile` refuses a term nested deeper than `COMPILE_MAX_NESTING`
+(32 levels, audio depth plus the deepest modulation chain) with an ordinary
+`PatchError`. This is a stack guard, not a grammar ceiling: the compiler
+recurses by value with frames large enough that ~60 nested nodes overflow the
+wasm build's 8 MB stack, and a wasm trap is not an error the caller sees — it
+poisons the engine for the rest of the session. Every caller of `compile`
+already handles its error; none could handle the overflow.
+
+### Added — the wasm boundary tells the app what it could not do
+
+Three places where the engine's answer folded a failure into a no-op, now with
+the distinction on the wire. Nothing existing changed shape; the web app is
+expected to move to these.
+
+- `import_session_checked(json)` and `import_session_deferred_v2(json)` return
+  `{"status":"ok"|"empty"|"unparseable", …}` beside the old `usize` / `"[]"`.
+  A save the current build cannot parse used to be indistinguishable from a
+  save with nothing in it, and the app treated both as "nothing to restore" —
+  then autosaved a fresh session over the record it could not read.
+  `unparseable` is the answer that must stop that write.
+- `record_duel`/`record_keep`/`record_stars` return `bool`, `false` when an id
+  is no longer in the pool (a duel side evicted inside the undo window). The
+  vote was always dropped in that case; the app counted it and toasted "rated".
+- `edit_param` refuses a non-finite value, as do `LivePoly::set_param`,
+  `set_bend` and `set_makeup`: `f64::clamp` passes NaN, and a NaN knob rode the
+  smoother into the atomic the voice reads every sample.
+- `budget_ceilings()` reports `{"size","depth","mod"}` from the grammar, so the
+  app stops restating numbers that just moved.
+
+
 ### Changed — the acquisition question was measured, and the tie does not break
 
 BALD ties uniform random pairing at session horizon, and the open question named

@@ -34,7 +34,7 @@ pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, Reliability
 pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
     EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RefineKeep,
-    RenderPolicy, SessionConfig, SessionState,
+    RefineOutcome, RenderPolicy, SessionConfig, SessionState,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use map::{MapPoint, TasteMap};
@@ -995,6 +995,104 @@ mod tests {
             }
         }
         assert!(children > 0, "no locked refinement ever accepted a move");
+    }
+
+    /// A seed the grammar prior cannot score is reported as such, not as a
+    /// walk that happened not to move.
+    ///
+    /// The tree here is deeper than `MAX_DEPTH` — the shape a session saved by
+    /// a build with the old ceilings (depth 9 against support that ends at 6)
+    /// can still hold. It has to **load and play** (`commit_edit` admits it,
+    /// `render_of` renders it; no load path re-checks the ceilings, by design),
+    /// and ⚡ evolve on it has to say *why* it did nothing: `init_from` returns
+    /// `None` before the first step, and until this the caller saw the same
+    /// `None` as for a walk that found no improvement. The generation counter
+    /// must not advance for a press that produced nothing, either.
+    #[test]
+    fn refine_names_a_seed_outside_the_prior_support() {
+        use auracle_grammar::mutate::MAX_DEPTH;
+        use auracle_grammar::term::{AudioNode, FilterKind, ModNode};
+        use auracle_grammar::{validate_tree, Uid};
+        let mut rng = StdRng::seed_from_u64(0x0D5);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            refine_steps: 20,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        assert_eq!(engine.last_refine(), RefineOutcome::Idle);
+        for _ in 0..20 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        // Before the fit there is no taste to refine toward.
+        let any = engine.pool[0].id;
+        assert_eq!(engine.refine_from(&mut rng, any, &[]), None);
+        assert_eq!(engine.last_refine(), RefineOutcome::NoTaste);
+        engine.fit_posterior(&mut rng);
+
+        // A filter stack two levels past the ceiling, over a shipped preset.
+        let mut deep = auracle_grammar::presets()[0].1.clone();
+        while deep.root.depth() < MAX_DEPTH + 2 {
+            deep.root = AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.6,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(deep.root),
+                modulation: ModNode::None,
+            };
+        }
+        assert!(
+            validate_tree(&deep).is_err(),
+            "the fixture must be over the ceiling"
+        );
+        // Admitted — featurized, vetted, in the pool — despite being over the
+        // ceiling: loading is not where the ceilings live.
+        let deep_id = engine
+            .commit_edit(None, deep, EditOutcome::Untold)
+            .expect("a hand edit always lands");
+        assert!(engine.find(deep_id).is_some());
+
+        let gen_before = engine.generation;
+        assert_eq!(engine.refine_from(&mut rng, deep_id, &[]), None);
+        assert_eq!(engine.last_refine(), RefineOutcome::OutsideSupport);
+        assert_eq!(
+            engine.generation, gen_before,
+            "nothing landed, no generation"
+        );
+
+        assert_eq!(engine.refine_from(&mut rng, 0xDEAD_BEEF, &[]), None);
+        assert_eq!(engine.last_refine(), RefineOutcome::UnknownSeed);
+
+        // Every in-support seed gets a real verdict, and at least one walk
+        // lands within a few tries — the reason surface must not be all noise.
+        let mut injected = false;
+        for i in 0..engine.pool.len().min(8) {
+            let id = engine.pool[i].id;
+            if id == deep_id {
+                continue;
+            }
+            let child = engine.refine_from(&mut rng, id, &[]);
+            let outcome = engine.last_refine();
+            assert_ne!(
+                outcome,
+                RefineOutcome::OutsideSupport,
+                "seed {id} is in support"
+            );
+            assert_ne!(outcome, RefineOutcome::Idle);
+            assert_eq!(child.is_some(), outcome == RefineOutcome::Injected);
+            injected |= child.is_some();
+            if injected {
+                break;
+            }
+        }
+        assert!(injected, "no in-support seed ever produced a child");
     }
 
     /// **R6.** A refined child keeps its seed's node identities wherever the

@@ -635,6 +635,9 @@ impl LivePoly {
 
     /// Pitch bend in semitones (smoothed on the audio thread).
     pub fn set_bend(&mut self, semitones: f64) {
+        if !semitones.is_finite() {
+            return;
+        }
         self.bend_tgt = semitones.clamp(-24.0, 24.0) / 12.0;
     }
 
@@ -871,6 +874,11 @@ impl LivePoly {
     /// `clamp(0.0, 1.0)` this used to apply would have folded all eight
     /// wavetables onto the first two and every octave onto −2 and −1.
     pub fn set_param(&mut self, addr: &str, value: f64) -> bool {
+        // `clamp` passes NaN, and a NaN target would ride the smoother into
+        // the atomic the voice reads every sample. Refuse it as a bad gesture.
+        if !value.is_finite() {
+            return false;
+        }
         let Some(handle) = self.voices.first().and_then(|v| v.voice.params.get(addr)) else {
             return false;
         };
@@ -892,6 +900,9 @@ impl LivePoly {
     /// deferred to swap completion when a patch swap is pending (so the
     /// outgoing patch fades at its own level).
     pub fn set_makeup(&mut self, gain: f64) {
+        if !gain.is_finite() {
+            return;
+        }
         let g = gain.clamp(0.1, 8.0) as f32;
         if self.pending.is_some() {
             self.pending_makeup = Some(g);

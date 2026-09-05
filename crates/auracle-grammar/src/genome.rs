@@ -1713,14 +1713,53 @@ impl TraceGenome for PatchTree {
 /// a corruption rather than an unusual patch. Stated once, here, so the check
 /// and the repair below cannot drift from the generative model — and so that
 /// the day a site wants a different range, this is the line that has to change.
-pub const PARAM_DOMAIN: std::ops::RangeInclusive<f64> = 0.0..=1.0;
+///
+/// **Half-open, and the right end is the point.** `u01()` is fugue's
+/// `Uniform(0, 1)`, whose `log_prob` is `−∞` at `x >= 1.0`. This constant used
+/// to be `0.0..=1.0`, which made exactly `1.0` legal here and impossible there:
+/// a knob dragged to its stop, two shipped presets and the default vibrato
+/// insert all scored `log p = −∞` under the grammar, `EvolutionChain::init_from`
+/// returned `None`, and ⚡ evolve on such a patch did nothing and said nothing.
+/// The largest legal value is [`PARAM_MAX`]; every clamp in the crate lands
+/// there, never on `1.0`.
+pub const PARAM_DOMAIN: std::ops::Range<f64> = 0.0..1.0;
+
+/// The largest value a continuous site may hold — the top of
+/// [`PARAM_DOMAIN`], which is half-open.
+///
+/// One `f64::EPSILON` below `1.0` rather than the very next float down, so it
+/// survives a round trip through JSON (`float_roundtrip` is on) and through
+/// the panel's `Math.min(1, …)`-then-`toFixed` habits without being rounded
+/// back onto the boundary. Audibly it *is* fully wet / fully open / fully
+/// deep: no mapping in [`crate::compile`] can tell it from `1.0`.
+pub const PARAM_MAX: f64 = 1.0 - f64::EPSILON;
 
 /// Is `v` a legal value for a continuous site?
 ///
 /// Non-finite fails: `NaN` compares false against every bound, and an infinity
-/// is exactly the runaway this gate exists to stop.
+/// is exactly the runaway this gate exists to stop. Exactly `1.0` fails too —
+/// see [`PARAM_DOMAIN`] for why that is not pedantry.
 pub fn in_domain(v: f64) -> bool {
     v.is_finite() && PARAM_DOMAIN.contains(&v)
+}
+
+/// Pull one continuous value into [`PARAM_DOMAIN`]: `NaN` to the middle of
+/// the range (it carries no information about which way it went, and pinning
+/// it to a boundary would state one), everything else to the nearest legal
+/// value, with `1.0` and above landing on [`PARAM_MAX`].
+///
+/// The one clamp every write path shares — [`crate::set_param`],
+/// [`PatchTree::clamp_domains`], the live handles' `ParamMap::clamp_input` —
+/// so that "legal" cannot mean two different things on two routes.
+pub fn clamp_param(v: f64) -> f64 {
+    if v.is_nan() {
+        // Exactly the middle, stated as a literal: the arithmetic midpoint of
+        // `[0, PARAM_MAX]` is one ulp shy of it, and a repair should land on a
+        // number a person would recognise.
+        0.5
+    } else {
+        v.clamp(PARAM_DOMAIN.start, PARAM_MAX)
+    }
 }
 
 impl PatchTree {
@@ -1761,7 +1800,9 @@ impl PatchTree {
     ///
     /// `NaN` clamps to the middle of the range rather than to an end: it
     /// carries no information about which way it went, and pinning it to a
-    /// boundary would state one.
+    /// boundary would state one. Exactly `1.0` is repaired too, to
+    /// [`PARAM_MAX`] — this is the pass that mends a session saved by a build
+    /// that still let a knob rest on the stop, and it runs on every load.
     ///
     /// Identities survive. The rebuild goes through the trace, which does not
     /// carry `uid`s, so the repaired term inherits them back from the term it
@@ -1772,12 +1813,7 @@ impl PatchTree {
         for c in trace.choices.values_mut() {
             if let ChoiceValue::F64(v) = c.value {
                 if !in_domain(v) {
-                    let repaired = if v.is_nan() {
-                        (PARAM_DOMAIN.start() + PARAM_DOMAIN.end()) / 2.0
-                    } else {
-                        v.clamp(*PARAM_DOMAIN.start(), *PARAM_DOMAIN.end())
-                    };
-                    c.value = ChoiceValue::F64(repaired);
+                    c.value = ChoiceValue::F64(clamp_param(v));
                     fixed += 1;
                 }
             }
@@ -1965,7 +2001,7 @@ mod domain_tests {
 
         assert_eq!(t.clamp_domains(), 2);
         assert!(t.domain_violations().is_empty());
-        assert_eq!(t.amp.sustain, 1.0);
+        assert_eq!(t.amp.sustain, PARAM_MAX, "the top of the domain is open");
         assert_eq!(t.amp.attack, 0.1, "a clean site must not move");
         let AudioNode::Filter {
             uid,
@@ -1977,7 +2013,7 @@ mod domain_tests {
         else {
             panic!("the repair changed the term's shape");
         };
-        assert_eq!(*cutoff, 1.0);
+        assert_eq!(*cutoff, PARAM_MAX);
         assert_eq!(*resonance, 0.4);
         assert_eq!(*uid, Uid(7), "the repair reissued an identity");
         let AudioNode::Vco { uid, .. } = &**input else {

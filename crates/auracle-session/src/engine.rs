@@ -983,6 +983,58 @@ fn pair_key(a: u64, b: u64) -> (u64, u64) {
 }
 
 /// The session engine.
+/// What the last refinement did — a child, or the reason there was none.
+///
+/// `refine_seed`/`refine_from` return `Option<u64>` because every caller
+/// wants the child id and nothing else *on success*; on `None` they used to
+/// be silent about why, and four different reasons hid behind one answer.
+/// The one that mattered most was [`RefineOutcome::OutsideSupport`]: a seed
+/// with `log p = −∞` under the grammar prior makes `EvolutionChain::init_from`
+/// return `None` before a single step is taken, and that is not "the walk
+/// found nothing" — it is "the walk never started", and the only fix is to
+/// the patch, not to the budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefineOutcome {
+    /// Nothing has been refined yet in this engine.
+    Idle,
+    /// A child was injected into the pool.
+    Injected,
+    /// No posterior or standardizer yet: there is no taste to refine toward.
+    NoTaste,
+    /// The seed id is not in the pool (evicted, or never there).
+    UnknownSeed,
+    /// The seed has zero mass under the grammar prior, so the chain cannot be
+    /// started from it. Today that means a knob outside its domain, a tree
+    /// deeper than the prior's support (a session saved by a build with the
+    /// old ceilings), or a modulation fragment the grammar cannot score.
+    OutsideSupport,
+    /// The walk ran and ended where it started: no accepted move improved on
+    /// the seed (or, under `RefineKeep::Last`, none was accepted at all).
+    NoMove,
+    /// The walk landed on a patch the pool already holds.
+    Duplicate,
+    /// The child was novel but ranked below the pool's worst member and was
+    /// not admitted.
+    NotAdmitted,
+}
+
+impl RefineOutcome {
+    /// The wire spelling (`snake_case`), for surfaces that speak strings.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RefineOutcome::Idle => "idle",
+            RefineOutcome::Injected => "injected",
+            RefineOutcome::NoTaste => "no_taste",
+            RefineOutcome::UnknownSeed => "unknown_seed",
+            RefineOutcome::OutsideSupport => "outside_support",
+            RefineOutcome::NoMove => "no_move",
+            RefineOutcome::Duplicate => "duplicate",
+            RefineOutcome::NotAdmitted => "not_admitted",
+        }
+    }
+}
+
 pub struct Engine {
     /// Configuration.
     pub cfg: SessionConfig,
@@ -1051,6 +1103,9 @@ pub struct Engine {
     repaired_terms: usize,
     repaired_cells: usize,
     dropped_observations: usize,
+    /// What the most recent `refine_seed`/`refine_from` did — see
+    /// [`RefineOutcome`]. Not persisted: it describes a call, not a session.
+    last_refine: RefineOutcome,
 }
 
 impl Engine {
@@ -1084,6 +1139,7 @@ impl Engine {
             repaired_terms: 0,
             repaired_cells: 0,
             dropped_observations: 0,
+            last_refine: RefineOutcome::Idle,
         }
     }
 
@@ -1927,17 +1983,17 @@ impl Engine {
     }
 
     /// Run locked MH refinement from one seed. Returns the end state if it
-    /// differs from the seed.
+    /// differs from the seed, otherwise the reason it does not.
     fn refine_one<R: Rng>(
         &self,
         rng: &mut R,
         seed: &PatchTree,
         locked: &HashSet<String>,
         steps: usize,
-    ) -> Option<PatchTree> {
+    ) -> Result<PatchTree, RefineOutcome> {
         let (posterior, standardizer) = match (&self.posterior, &self.standardizer) {
             (Some(p), Some(s)) => (Arc::clone(p), Arc::clone(s)),
-            _ => return None,
+            _ => return Err(RefineOutcome::NoTaste),
         };
         let fitness = SurrogateFitness {
             posterior,
@@ -1947,7 +2003,15 @@ impl Engine {
         };
         let model = EvolutionModel::new(self.biased_prior(), fitness).with_beta(self.cfg.beta);
         let mut chain = EvolutionChain::new(model);
-        let mut trace = chain.init_from(seed)?;
+        // `init_from` is `None` exactly when the seed's total log-weight is not
+        // finite. The surrogate fitness is finite by construction (a
+        // quarantined render scores `QUARANTINE_FITNESS`, not `−∞`), so the
+        // only way to get here is a seed the grammar prior gives zero mass —
+        // which is a fact about the patch, and the caller needs to hear it as
+        // one rather than as a walk that happened not to move.
+        let Some(mut trace) = chain.init_from(seed) else {
+            return Err(RefineOutcome::OutsideSupport);
+        };
 
         // Scale steps for proposals wasted on locked sites. The kernel picks a
         // target site uniformly over all of them, so with a fraction `f` free
@@ -2036,7 +2100,17 @@ impl Engine {
             current.domain_violations()
         );
         current.clamp_domains();
-        (current != *seed).then_some(current)
+        if current == *seed {
+            Err(RefineOutcome::NoMove)
+        } else {
+            Ok(current)
+        }
+    }
+
+    /// What the most recent [`Engine::refine_seed`] / [`Engine::refine_from`]
+    /// did. [`RefineOutcome::Idle`] until one has run.
+    pub fn last_refine(&self) -> RefineOutcome {
+        self.last_refine
     }
 
     /// Insert a candidate (evicting the worst if full, never `protect`).
@@ -2135,34 +2209,67 @@ impl Engine {
     }
 
     /// Refine from one seed of the open generation. Returns the injected child
-    /// id, or `None` if the walk was rejected or landed on a patch the pool
-    /// already holds.
+    /// id, or `None` — and then [`Engine::last_refine`] says why: the walk did
+    /// not move, it landed on a patch the pool already holds, the child was
+    /// not admitted, or the seed was outside the prior's support to begin with.
     pub fn refine_seed<R: Rng>(&mut self, rng: &mut R, parent_id: u64) -> Option<u64> {
-        let seed = self.pool[self.find(parent_id)?].tree.clone();
         let no_locks = HashSet::new();
-        let end = self.refine_one(rng, &seed, &no_locks, self.cfg.refine_steps)?;
-        if self.pool.iter().any(|c| c.tree == end) {
-            return None;
-        }
-        self.record_child(parent_id, &seed, end, "refine", None)
+        let (child, outcome) = self.refine_inner(rng, parent_id, &no_locks, None);
+        self.last_refine = outcome;
+        child
     }
 
     /// Locked refinement from one explicit seed candidate: evolve everything
-    /// *except* the locked addresses. Returns the injected child id.
+    /// *except* the locked addresses. Returns the injected child id, or `None`
+    /// with the reason in [`Engine::last_refine`].
+    ///
+    /// The generation counter advances only when a child actually lands. It
+    /// used to advance on every call, so a run of "no move" presses read as
+    /// generations in the lineage that contained nothing.
     pub fn refine_from<R: Rng>(
         &mut self,
         rng: &mut R,
         seed_id: u64,
         locked: &[String],
     ) -> Option<u64> {
-        let seed = self.pool[self.find(seed_id)?].tree.clone();
         let locked: HashSet<String> = locked.iter().cloned().collect();
+        // Open the generation the child will be recorded under, and close it
+        // again if nothing lands — `record_child` stamps `self.generation`, so
+        // the bump has to precede it.
         self.generation += 1;
-        let end = self.refine_one(rng, &seed, &locked, self.cfg.refine_steps)?;
-        if self.pool.iter().any(|c| c.tree == end) {
-            return None;
+        let (child, outcome) = self.refine_inner(rng, seed_id, &locked, Some(seed_id));
+        if child.is_none() {
+            self.generation -= 1;
         }
-        self.record_child(seed_id, &seed, end, "refine", Some(seed_id))
+        self.last_refine = outcome;
+        child
+    }
+
+    /// The shared body of `refine_seed`/`refine_from`: seed lookup, the walk,
+    /// the novelty check, the admission. Returns the child (if any) *and* the
+    /// outcome, so the two public entry points can report both.
+    fn refine_inner<R: Rng>(
+        &mut self,
+        rng: &mut R,
+        seed_id: u64,
+        locked: &HashSet<String>,
+        protect: Option<u64>,
+    ) -> (Option<u64>, RefineOutcome) {
+        let Some(i) = self.find(seed_id) else {
+            return (None, RefineOutcome::UnknownSeed);
+        };
+        let seed = self.pool[i].tree.clone();
+        let end = match self.refine_one(rng, &seed, locked, self.cfg.refine_steps) {
+            Ok(end) => end,
+            Err(reason) => return (None, reason),
+        };
+        if self.pool.iter().any(|c| c.tree == end) {
+            return (None, RefineOutcome::Duplicate);
+        }
+        match self.record_child(seed_id, &seed, end, "refine", protect) {
+            Some(id) => (Some(id), RefineOutcome::Injected),
+            None => (None, RefineOutcome::NotAdmitted),
+        }
     }
 
     /// Commit a hand-edited tree as a new candidate. If `original_id` is
@@ -2946,7 +3053,9 @@ impl Engine {
             .map(|sz| sz.transform(&cached.features.phi()))
             .unwrap_or_default();
         let render = self.admitted_render(&entry.tree, &cached.features, audition);
-        self.next_id = self.next_id.max(entry.id + 1);
+        // `saturating_add`: a hostile `u64::MAX` in a shared file must not wrap
+        // the allocator back to 0 and start reissuing live ids.
+        self.next_id = self.next_id.max(entry.id.saturating_add(1));
         self.pool.push(Candidate {
             id: entry.id,
             tree: settled(entry.tree),
