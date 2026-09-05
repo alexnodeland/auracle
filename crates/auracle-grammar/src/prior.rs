@@ -71,6 +71,50 @@ pub const N_PAIR_OPS: usize = 6;
 /// and are what [`PatchGrammarPrior::max_mod_depth`] switches off.
 const MOD_FIRST_BRANCH: usize = 6;
 
+/// Display labels for the `#src` categorical, in index order — the one table
+/// the diff view reads, sized by [`N_SOURCES`] so a new production cannot be
+/// added to the grammar without being added here.
+pub const SOURCE_LABELS: [&str; N_SOURCES] = [
+    "vco",
+    "supersaw",
+    "noise",
+    "wavetable",
+    "pluck",
+    "formant",
+    "silence",
+];
+
+/// Display labels for the `#op` categorical, in index order; sized by
+/// [`N_OPS`].
+pub const OP_LABELS: [&str; N_OPS] = [
+    "mix",
+    "filter",
+    "wavefolder",
+    "delay",
+    "chorus",
+    "reverb",
+    "distortion",
+    "bitcrush",
+    "phaser",
+    "ring mod",
+    "flanger",
+    "tremolo",
+    "vibrato",
+    "eq",
+    "granular",
+    "shift",
+    "comp",
+    "duck",
+    "gate",
+    "vocoder",
+];
+
+/// Display labels for the `#mod` categorical, in index order; sized by
+/// [`N_MODS`].
+pub const MOD_LABELS: [&str; N_MODS] = [
+    "no mod", "lfo", "mod env", "s&h rand", "follower", "euclid", "op", "pair",
+];
+
 /// The default prior's [`PatchGrammarPrior::max_depth`]: the audio-tree depth
 /// at which `#leaf` is forced true. The deepest term with positive prior mass
 /// therefore has `AudioNode::depth() == PRIOR_MAX_DEPTH + 1`, and that is
@@ -1034,7 +1078,7 @@ impl PatchGrammarPrior {
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
-                _ => AudioNode::Formant {
+                5 => AudioNode::Formant {
                     uid: Uid::NEW,
                     vowel: rng.gen(),
                     shift: rng.gen(),
@@ -1042,6 +1086,15 @@ impl PatchGrammarPrior {
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
+                // Index 6, and only 6 — `weighted_choice` cannot return more.
+                // This arm used to read `_ => Formant`, written before
+                // `Silence` joined the palette, so the RNG sampler handed the
+                // hole's mass to the formant oscillator and could never draw a
+                // hole at all while `model()` drew one in 0.5% of leaves. The
+                // two samplers are documented as agreeing, and
+                // `the_two_samplers_agree_on_kind_frequencies` now holds them
+                // to it.
+                _ => AudioNode::Silence { uid: Uid::NEW },
             }
         } else {
             match weighted_choice(rng, &self.op_weights) {

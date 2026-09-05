@@ -437,6 +437,13 @@ pub struct StructFeatures {
     /// Mean nesting depth of the *filled* modulation slots (1 for a bare
     /// modulator, 2 for one wrapped in a processor, …); 0 when nothing is
     /// modulated.
+    ///
+    /// **Count-like, not unit-bounded**: it lives in `[0, MAX_MOD_DEPTH]`, not
+    /// `[0, 1]`, and it is deliberately *not* in [`Self::UNIT_NAMES`]. It was,
+    /// once — which made the load-time repair clamp every stored vote on a
+    /// patch with a shaped modulator to 1.0 ("unshaped") while fresh pool rows
+    /// kept their 2.0, so the standardizer was fit on a mixture, and a debug
+    /// build panicked on ~4 % of prior draws.
     pub mod_depth_mean: f64,
     /// Tree depth. **Not a φ coordinate** — VIF ≈ 21.7 against the module
     /// counts; see the module doc. Kept for display.
@@ -513,17 +520,22 @@ impl StructFeatures {
     ];
 
     /// The φ_struct coordinates that are bounded to `[0, 1]` — three
-    /// normalized genome sites read straight off the term, and four ratios of
-    /// two counts.
+    /// normalized genome sites read straight off the term, and three ratios
+    /// of two counts.
     ///
     /// A subset of [`Self::NAMES`] and *not* a reordering of it: the counts
     /// have no upper bound, so a range check over the whole vector could only
     /// be a finiteness check. Named here so the debug assertion below, the
     /// featurizer's quarantine and the saved-log repair all read one list
     /// instead of three that drift.
-    pub const UNIT_NAMES: [&'static str; 7] = [
+    ///
+    /// `mod_depth_mean` is **not** here. It is a mean of depths — 1 for a bare
+    /// modulator, 2 for `Op(leaf)`, 3 for `Op(Op(leaf))` — so it is 2 or more
+    /// for exactly the shaped chains it exists to measure, and listing it as
+    /// unit-bounded made the saved-log repair rewrite every such vote to 1.0
+    /// on every load. See the field.
+    pub const UNIT_NAMES: [&'static str; 6] = [
         "mod_density",
-        "mod_depth_mean",
         "amp_attack",
         "amp_sustain",
         "amp_release",
@@ -532,10 +544,9 @@ impl StructFeatures {
     ];
 
     /// This term's values for [`Self::UNIT_NAMES`], in that order.
-    pub fn unit_coordinates(&self) -> [f64; 7] {
+    pub fn unit_coordinates(&self) -> [f64; 6] {
         [
             self.mod_density,
-            self.mod_depth_mean,
             self.amp_attack,
             self.amp_sustain,
             self.amp_release,
@@ -711,7 +722,7 @@ pub fn struct_features(tree: &PatchTree) -> StructFeatures {
     };
     // The invariant, shouted where it is cheapest to hear it. Every coordinate
     // in `UNIT_NAMES` is either a normalized genome site read straight through
-    // or a ratio of two counts, so all seven live in [0,1] for any term the
+    // or a ratio of two counts, so all six live in [0,1] for any term the
     // grammar can produce — and `amp_sustain` sat at 1e30 for four patches and
     // six cells of the persisted log precisely because nothing ever said so.
     //

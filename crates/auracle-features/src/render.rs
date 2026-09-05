@@ -72,13 +72,19 @@ const PARK_RUN: usize = 1024;
 /// fixed (main voice, then chord voices in pitch order), which keeps the
 /// thread-local RNG draw sequence — and therefore the render — deterministic.
 pub fn render_phrase(tree: &PatchTree, spec: &PhraseSpec) -> Result<RenderedPhrase, PatchError> {
+    // Determinism: fix the stochastic-module RNG for this render — **before**
+    // anything is compiled. quiver's RNG is one thread-local stream, and some
+    // of its module constructors draw from it (`AnalogVco` takes four). No
+    // module the grammar compiles does so today, which is why seeding *after*
+    // the main voice used to work; that was luck, not construction, and the
+    // contract this crate makes — `(term, spec)` → bit-identical samples —
+    // should not depend on which constructors quiver adds a draw to next.
+    quiver::rng::seed(spec.seed);
+
     let mut voice = compile(tree, spec.sample_rate)?;
     // Chord voices for the note being (or last) played. Compiled lazily at
     // the first chord note; a mono spec pays nothing.
     let mut chord_voices: Vec<ChordVoice> = Vec::new();
-
-    // Determinism: fix the stochastic-module RNG for this render.
-    quiver::rng::seed(spec.seed);
 
     let mut samples = Vec::with_capacity(spec.total_samples());
     let mut note_onsets = Vec::with_capacity(spec.notes.len());

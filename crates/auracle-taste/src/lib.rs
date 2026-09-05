@@ -116,9 +116,18 @@ mod tests {
     /// for node. `mu` is empty without a group, so it is.
     #[test]
     fn fusing_costs_one_site_per_style_and_nothing_when_unused() {
-        let flat = TasteConfig::mixture(40, 5);
+        // The live φ, not a literal: this used to hard-code `d = 40` and call
+        // the result "the documented 206", and φ had been 41 coordinates for
+        // some time — the number was stale in three doc comments and one
+        // test, which is exactly how a stale number survives.
+        let d = auracle_features::Features::phi_names().len();
+        let flat = TasteConfig::mixture(d, 5);
         let flat_sites = model::SiteAddrs::new(&flat, 1).site_count();
-        assert_eq!(flat_sites, 40 * 5 + 1 + 5, "the documented 206");
+        assert_eq!(flat_sites, d * 5 + 1 + 5, "d·K + S + (n_stars − 1)");
+        assert_eq!(
+            d, 41,
+            "φ moved — update the site counts quoted in `model.rs`"
+        );
 
         // Both knobs are needed, which is itself the guard: naming a group
         // with rho at its default 0 must stay the flat program.
@@ -287,6 +296,125 @@ mod tests {
             (s.loglik_with(&duel, 0, &[0, 1]) - s.loglik_with(&duel, 0, &[])).abs() < 1e-12,
             "a duel must not be attenuated — the imputed term cancels in u_a − u_b"
         );
+
+        // Stars: the attenuation acts on `(c_k − u)`, so it pulls the rating's
+        // probability toward the *prior over categories*, exactly as keep/kill
+        // is pulled toward a coin. Checked against the marginal it approximates:
+        // average `P(rating | u + ε)` over ε ~ N(0, Σ θ_i²) for the imputed
+        // axes, by quadrature. The old code scaled `u` instead of the
+        // difference and was off from that truth by more than the tolerance
+        // here (0.205 against 0.133 at u = 1.5, for one cutpoint).
+        let ratings = |x: &[f64], absent: &[usize]| -> Vec<f64> {
+            (0..=s.cuts.len() as u8)
+                .map(|r| {
+                    s.loglik_with(
+                        &Feedback::Stars {
+                            x: x.to_vec(),
+                            rating: r,
+                        },
+                        0,
+                        absent,
+                    )
+                    .exp()
+                })
+                .collect()
+        };
+        let measured = ratings(&x, &[]);
+        let imputed = ratings(&x, &[0, 1]);
+        assert!(
+            (measured.iter().sum::<f64>() - 1.0).abs() < 1e-9
+                && (imputed.iter().sum::<f64>() - 1.0).abs() < 1e-9,
+            "the ordinal probabilities must sum to one: {measured:?} {imputed:?}"
+        );
+        // Marginal truth by Gauss–Hermite-free brute force: fine grid over ε.
+        let var: f64 = [0, 1].iter().map(|&i| s.theta[0][i] * s.theta[0][i]).sum();
+        let sd = var.sqrt();
+        let u0 = s.utility_mix(&x);
+        let sigmoid = |v: f64| 1.0 / (1.0 + (-v).exp());
+        let mut truth = vec![0.0; s.cuts.len() + 1];
+        let steps = 4001;
+        let mut wsum = 0.0;
+        for j in 0..steps {
+            let z = -6.0 + 12.0 * j as f64 / (steps - 1) as f64;
+            let w = (-0.5 * z * z).exp();
+            let u = u0 + sd * z;
+            for (k, t) in truth.iter_mut().enumerate() {
+                let hi = if k == s.cuts.len() {
+                    1.0
+                } else {
+                    sigmoid(s.cuts[k] - u)
+                };
+                let lo = if k == 0 {
+                    0.0
+                } else {
+                    sigmoid(s.cuts[k - 1] - u)
+                };
+                *t += w * (hi - lo);
+            }
+            wsum += w;
+        }
+        for t in &mut truth {
+            *t /= wsum;
+        }
+        for k in 0..truth.len() {
+            assert!(
+                (imputed[k] - truth[k]).abs() < 0.03,
+                "rating {k}: attenuated {:.3} vs marginal {:.3} (measured {:.3})",
+                imputed[k],
+                truth[k],
+                measured[k]
+            );
+        }
+    }
+
+    /// Alignment to an external reference puts each lens at the index of the
+    /// reference lens it most resembles — so a refit keeps a style's identity —
+    /// and a reference with fewer lenses than K leaves the extra lens on the
+    /// index the reference does not claim.
+    #[test]
+    fn aligned_to_keeps_lens_identities_across_fits() {
+        let mut rng = StdRng::seed_from_u64(0xA11);
+        let a: Vec<f64> = (0..D).map(|i| if i < 4 { 2.0 } else { 0.0 }).collect();
+        let b: Vec<f64> = (0..D)
+            .map(|i| if i >= D - 4 { -2.0 } else { 0.0 })
+            .collect();
+        let jitter = |v: &[f64], rng: &mut StdRng| -> Vec<f64> {
+            v.iter().map(|x| x + 0.1 * rng.gen::<f64>()).collect()
+        };
+        // Label-switched draws: half the samples list (a, b), half (b, a).
+        let samples: Vec<TasteSample> = (0..200)
+            .map(|i| {
+                let (x, y) = (jitter(&a, &mut rng), jitter(&b, &mut rng));
+                TasteSample {
+                    theta: if i % 2 == 0 { vec![x, y] } else { vec![y, x] },
+                    tau: vec![0.0],
+                    cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
+                }
+            })
+            .collect();
+        let post = TastePosterior {
+            cfg: TasteConfig::mixture(D, 2),
+            samples,
+            weights: Vec::new(),
+        };
+        let to_ab = post.aligned_to(&[a.clone(), b.clone()]);
+        let to_ba = post.aligned_to(&[b.clone(), a.clone()]);
+        assert!(cosine(&to_ab.theta_mean(0), &a) > 0.99);
+        assert!(cosine(&to_ab.theta_mean(1), &b) > 0.99);
+        assert!(
+            cosine(&to_ba.theta_mean(0), &b) > 0.99,
+            "the reference decides the order"
+        );
+        assert!(cosine(&to_ba.theta_mean(1), &a) > 0.99);
+        // K grew: a one-lens reference pins lens 0 and leaves lens 1 free.
+        let grown = post.aligned_to(std::slice::from_ref(&b));
+        assert!(cosine(&grown.theta_mean(0), &b) > 0.99);
+        assert!(cosine(&grown.theta_mean(1), &a) > 0.99);
+        // Self-alignment is still coherent (each lens is one thing), whatever
+        // order it lands in.
+        let selfed = post.aligned();
+        let m0 = selfed.theta_mean(0);
+        assert!(cosine(&m0, &a) > 0.99 || cosine(&m0, &b) > 0.99);
     }
 
     /// M3 gate 2: all three modalities condition one posterior; recovery

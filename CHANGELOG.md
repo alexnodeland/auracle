@@ -121,6 +121,226 @@ expected to move to these.
   app stops restating numbers that just moved.
 
 
+### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
+
+`mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1
+for a bare modulator, 2 for one wrapped in a processor, 3 for two. It was
+listed in `StructFeatures::UNIT_NAMES` — the coordinates the saved-log repair
+clamps into `[0, 1]` on every load — so every stored vote on a patch with a
+shaped modulator was rewritten to 1.0, "unshaped", the next time the session
+opened, while freshly featurised pool rows kept their 2.0. The standardizer was
+fit on a mixture of the two, for exactly the coordinate that exists to say
+"this person likes modulation that has been shaped". A debug build panicked on
+about 4 % of prior draws at the assertion that UNIT_NAMES hold.
+
+It is out of `UNIT_NAMES`. Its definition is unchanged — it is a count-like
+mean and is treated as one, like the module counts beside it — so no
+`RENDER_EPOCH` bump is owed and no stored render is orphaned. What cannot be
+undone is the evidence already rewritten: a vote clamped by an earlier load
+says 1.0 where the patch had 2.0, and stays that way. Tested with an
+`Op`-wrapped modulator on both sides of the seam: the featurizer reads 2.0 and
+`repair_log` leaves it alone.
+
+### Fixed — the RNG sampler could never draw a hole
+
+`PatchGrammarPrior::sample_with_rng` mirrors the fugue program for callers
+without a trace (`EvolutionaryGenome::generate`, several tests). Its source
+match ended in `_ => Formant`, written before `Silence` joined the palette, so
+index 6 — the hole — became a formant oscillator: over 20 000 draws the RNG
+path produced 0 `silence` terms where the program produced 141. The two
+samplers are documented as agreeing, and now
+`the_two_samplers_agree_on_kind_frequencies` holds every module kind's
+frequency to it.
+
+### Fixed — the stars likelihood attenuated the wrong quantity
+
+An imputed coordinate attenuates the comparison it enters (#55). For keep/kill
+the code attenuated `u − τ`, correctly; for stars it attenuated `u` alone and
+then compared it to the cutpoints, which applies no correction at all at
+`u = 0` and moves the probability *away* from the marginalised truth elsewhere
+(0.205 against 0.133 at `u = 1.5`, one cutpoint, by Monte Carlo). Both bounds
+now use `σ(a·(c_k − u))`, and the imputation test gained a stars case that
+checks the attenuated probabilities against the marginal computed by
+quadrature. In the same expression the category probability is now computed in
+log space, so a rating far from `u` scores its real log-probability rather than
+the `ln(1e-12) = −27.6` floor two near-equal sigmoids used to cancel down to.
+Only reachable for `Stars` rows with imputed coordinates, i.e. after a
+stimulus-tag bump — which is when it matters.
+
+### Fixed — the render seeded quiver's RNG after compiling the main voice
+
+quiver's randomness is one thread-local stream and some of its module
+constructors draw from it. `render_phrase` compiled the main voice, *then*
+seeded. Deterministic today only because no module the grammar compiles draws
+in its constructor; the seed now precedes `compile`, so the `(term, spec) →
+bit-identical samples` contract is by construction rather than by luck.
+
+### Fixed — the render cache's namespace did not know which DSP it was rendering with
+
+`RENDER_EPOCH` names every function this workspace owns that can change a
+stored φ — formula, vet gate, compiler mapping — and not the DSP library all of
+them call into. A `quiver-dsp` bump can change a sample with no line here
+changing, and the cache would have served the old φ as the new. The namespace
+is now `e<epoch>:q<quiver version>:<spec hash>`; `QUIVER_DSP_VERSION` is
+hand-maintained and a test reads `Cargo.lock` to fail the suite the moment it
+is stale. Every stored row moves namespace once, on this build — the same cost
+as an epoch bump, paid deliberately.
+
+The `AUR_DCB_ALWAYS` environment override, which inserted a DC blocker into
+every voice tail and so made a process with it set write different φ into the
+same namespace, is removed from the render path. The blocker is decided by the
+term alone (`makes_dc`), as it was for every process without the variable.
+
+### Fixed — grafted subtrees are normalised like set modulation terms
+
+`SetModTree` always folded its fragment through `ModNode::normalized`;
+`ReplaceTree` and `InsertTree` grafted whole audio subtrees with their
+modulation slots verbatim. An `Op` over nothing in one of them encodes
+`#mod = 0` where the prior's weight is zero (`log p = −∞` — the un-evolvable
+state again), and a one-parameter `Op` carrying a stray `p1` would not survive
+its own trace round trip, which is the equality refinement uses to decide
+whether it moved. `finish()` now normalises every slot of every result,
+keeping identities wherever nothing changed.
+
+### Fixed — a follower on a source now has the knobs the rack advertises
+
+`Follow` reads the owning module's input, and a source has none, so under an
+oscillator it compiled to nothing: no attenuverter, no `mdepth` handle, no
+`sens`/`rel` handles, while the faceplate showed all three. A drag on any of
+them fell back to a full patch swap. The follower is now built with its input
+unpatched — it reads 0 V and emits 0 V — so the term above it compiles like any
+other and every knob gets its handle. The cable it drives carries `+0.0`, and
+`a_follower_on_a_source_changes_no_sample` pins the render bit-identical to the
+empty slot, which is why no `RENDER_EPOCH` bump accompanies this. The
+live-handle gate now covers every `mdepth` and every modulation-module knob,
+not just `table` and `oct`. The alternative — zeroing `Follow` in a source's
+slot weights — was rejected because saved sessions containing one would have
+become un-evolvable.
+
+### Fixed — three small grammar edges
+
+- The diff view's `src`/`op`/`mod` label tables had gone stale for exactly the
+  newest productions (`silence`; `shift`, `comp`, `duck`, `gate`, `vocoder`;
+  `euclid`, `op`, `pair`), for the second time. They are now read from one set
+  of tables in `prior.rs` whose lengths are the arity constants, so a
+  production cannot be added without a label.
+- A v1 trace decoded a module's missing `mod_depth` as 0.3 while v1 JSON
+  decoded it as 0.0; the same save was two different terms depending on route.
+  Both say 0.0 — the v1 behaviour, and the value that matters is only that
+  they agree.
+- `from_trace` refuses a categorical index outside its arity instead of
+  wrapping it (`oct = 9` used to become an octave; `fkind = 4` used to become
+  `svf lp`). Unreachable from MH or a knob; a hand-made trace is told.
+
+### Fixed — a refit no longer shuffles which lens is which
+
+`TastePosterior::aligned()` resolved label switching *within* one posterior —
+against its own last draw — and `fit_posterior` replaced the previous posterior
+with no reference to it. MCMC has no reason to return the lenses in the same
+order twice, so with probability about `1 − 1/K!` two consecutive fits ordered
+them differently, and everything keyed by lens index — the names the player
+gave their styles, the recorded style shares, the panel's lens colours —
+silently attached to a different taste after every refit.
+
+`aligned_to(reference)` aligns a fresh posterior to the previous fit's lens
+means; `fit_posterior` uses it whenever a previous posterior of the same
+dimension exists. A lens added because the log grew takes an index the old fit
+did not claim, so no name has to move. Tested at both layers: the taste crate
+pins that a label-switched draw set aligns to whichever reference order it is
+given (and that a one-lens reference pins lens 0 and leaves lens 1 free), and
+the session crate refits the same log from a different RNG state and finds the
+dominant lens at the index it had.
+
+### Fixed — the engine's history is bounded
+
+Three things grew for the life of a session and rode along in every autosave.
+The implicit-event stream stored two raw-φ vectors per edit, revert and play
+flush, forever; it now keeps at most `EVENTS_CAP` (4096) rows and the raw φ on
+only the newest `EVENT_PHI_KEEP` (256) rows that carry it — the stream exists to
+be fitted on later, and its shape (kind, id, value, detail) outlives any one
+row's vectors. The duel-exposure tallies (`shown_pairs`, `shown_candidates`)
+kept rows for ids that had been evicted and could never be dealt again; they
+are pruned at eviction and cleared at import. Forecasts and the lineage are
+left as they are: one small `Copy` record per vote and one per accepted child,
+growing at the rate of the observation log, which is the source of truth and
+grows the same way.
+
+### Fixed — every reload opened a new τ session
+
+All three import paths call `begin_session`, and it opened a new session
+unconditionally. The taste program has one τ (keep/kill threshold) site per
+session, so `sites = d·K + n_sessions + 5` grew by one on every visit — a
+once-per-visit voter accumulated a nuisance site per visit forever, each
+stealing single-site MH budget from θ.
+
+Two changes. `begin_session` opens a new session only when the latest one holds
+at least `MIN_SESSION_OBS` (5) observations, and resumes it otherwise. And at
+import, `merge_short_sessions` folds sessions that never reached the floor into
+their predecessor: the walk runs from the newest session down and stops folding
+once a group has earned a τ, so a legacy log of one-vote reload sessions
+regroups into sessions of at least five rather than collapsing into one or
+staying as dozens. A migration like the others — applied on load, and the log
+written back is the merged one.
+
+### Changed — the refinement gate prints its worst case instead of asserting it
+
+`refinement_improves_pool` asserted that no seed's *best* pool member got worse
+across a generation. That is not guaranteed by construction: `insert_candidate`
+evicts the *model*-worst member, the model is a surrogate, and a misranking can
+evict the true best while the search works exactly as designed. It held on the
+sixteen fixed seeds, which is the class of flake the test's own header warns
+about. The number is printed; the gates that remain (median gain, seeds
+improved, anything injected) are the claims.
+
+### Fixed — small robustness edges in the taste crate
+
+- `reweighted_with(feedback, session, absent)` takes the same imputation mask a
+  full fit does, so the between-fits update and the fit weigh an imputed row
+  alike; `reweighted` passes none, which is exact for any row written under the
+  current names.
+- `FitSet::build` checks the standardizer's dimension against φ and names the
+  mismatch, instead of indexing past a shorter standardizer three lines later.
+  `dot` carries a debug assertion for the same disagreement.
+- `Standardizer::fit` falls back to `(0, 1)` for a column whose moments
+  overflow, instead of writing `inf` — which `serde_json` serializes as `null`
+  and the profile then cannot load.
+- The site counts quoted in `model.rs` said `d = 40` and "the documented 206";
+  φ has been 41 coordinates for some time. They say 211 (216 with the
+  brightness group), and the test that hard-coded 40 now reads the live
+  feature set and will fail the day φ moves again.
+
+### Changed — the reference says what the taste tilt actually does
+
+`biased_prior` reweights the grammar's kind weights by the fitted structural θ
+and installs the result as the **prior** of the `EvolutionModel`. fugue-evo's
+target is `prior.model() + factor(β·f)`, and fugue's categorical proposal is a
+resample from that same prior, so the Hastings terms cancel and the chain is a
+correct MH sampler for `π' ∝ p_tilted(x)·exp(β·u(x))` — a different target from
+`π_β`. The proposals page said the opposite ("tilting the proposal changes the
+kernel, not the target … the stationary distribution is unchanged"). It, the
+two-loops page, the notation table and the doc comments now say it is a prior
+tilt, why a true proposal tilt is not available (fugue 0.2.2 offers only
+`PriorResample` for `usize` sites), and why it does not matter much in practice
+(refinement hill-climbs rather than samples). `SessionConfig::proposal_tilt`
+keeps its name; the app and the harness both set it.
+
+### Changed — three feature-extraction confounds are written down where they live
+
+- `rms_mean`/`rms_std` are measured after the peak cap, so the ~15 % of patches
+  the ceiling pulls down read as "quiet" for a reason that is peakiness, which
+  `crest` already carries. Documented on the fields rather than moved: moving
+  the measurement point is a `RENDER_EPOCH` bump for a confound the
+  standardized model largely absorbs.
+- `tail_ratio` measures the amp envelope's release first and mostly — the amp
+  ADSR → VCA is the last stage after every effect, so a reverb tail is
+  multiplied by the release rather than heard past it. The field doc no longer
+  claims it captures effect tails.
+- Frame silence is recognised only at (near-)exactly zero power, which works
+  because quiver's `Adsr` snaps exactly to 0; a tail that outlasts a rest never
+  gets a chain break. The relative threshold that would fix it moves φ for every
+  patch with a tail and owes a measurement that has not been made. Documented
+  at the line and in the open questions, not changed blind.
+
 ### Changed — the acquisition question was measured, and the tie does not break
 
 BALD ties uniform random pairing at session horizon, and the open question named

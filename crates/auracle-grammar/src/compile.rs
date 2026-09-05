@@ -1111,10 +1111,10 @@ impl Compiler {
     /// tapped before it enters. Only [`ModNode::Follow`] reads it, and it is
     /// `None` exactly where there is nothing to tap — a source's own mod slot
     /// (a wavetable or a pluck generates its input rather than receiving
-    /// one). That case wires no modulation at all rather than failing: the
-    /// grammar and the panel can both express "follower on an oscillator",
-    /// and the honest compilation of it is silence on that cable, not a
-    /// refusal to compile a term the prior can draw.
+    /// one). That case builds a follower with nothing on its input, which
+    /// emits 0 V: the grammar and the panel can both express "follower on an
+    /// oscillator", the honest compilation of it is a cable carrying nothing,
+    /// and every knob the rack advertises for it still gets its live handle.
     ///
     /// `scale` says what kind of port `target` is. The source's polarity is
     /// decided here, but "how many volts is full depth" is a property of the
@@ -1215,13 +1215,25 @@ impl Compiler {
                 // enters — so the follower measures what the module is about
                 // to process rather than what it produced, which would be a
                 // feedback loop through the parameter it drives.
-                let Some(input) = owner_input else {
-                    return Ok(None);
-                };
+                //
+                // A source has no input to tap. This used to return `Ok(None)`
+                // — wire nothing — which was honest about the sound and wrong
+                // about the panel: the rack still advertised the owner's
+                // `mdepth` and the follower's own knobs, none of which had a
+                // live handle, so a drag on any of them fell back to a full
+                // patch swap. The follower is now built regardless: its input
+                // port is left unpatched and reads its default of 0 V, so it
+                // emits exactly 0 V, the term above it compiles as any other,
+                // every advertised knob gets its handle, and the cable that
+                // finally reaches the destination carries `+0.0` — which adds
+                // nothing to any sample (`a_follower_on_a_source_changes_no_sample`
+                // pins that bit-for-bit).
                 let f = self
                     .patch
                     .add(format!("{key}:follow"), EnvelopeFollower::new(self.sr()));
-                self.feed(input, f.in_("in"))?;
+                if let Some(input) = owner_input {
+                    self.feed(input, f.in_("in"))?;
+                }
                 self.knob(key, "sens", *sens, ParamMap::Unit, false, f.in_("gain"))?;
                 self.knob(
                     key,
@@ -1339,10 +1351,11 @@ impl Compiler {
                 );
                 // A branch that produced nothing collapses to the other one
                 // rather than to a constant, matching
-                // [`ModNode::normalized`]. In practice only a `Follow` on a
-                // source can get here — every other empty branch was already
-                // folded away — and the honest compilation of "follow an
-                // oscillator" is the rest of the term, not silence.
+                // [`ModNode::normalized`]. Nothing reaches this today — a
+                // `Follow` on a source now builds (above) and every other
+                // empty branch is folded away before compile — but the fold
+                // stays, so a future term that compiles to nothing degrades
+                // the same way rather than to a stuck constant.
                 match (a, b) {
                     (None, None) => return Ok(None),
                     (Some(x), None) | (None, Some(x)) => x,
@@ -2902,7 +2915,14 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     // and `Svf::tick` evaluates three transcendentals per sample — measured at
     // 0.057 s of render per patch, ~18% of a typical voice — so putting one on
     // every patch taxes the 91% that have no rectifying nonlinearity at all.
-    let block_dc = makes_dc(&tree.root) || std::env::var("AUR_DCB_ALWAYS").is_ok();
+    //
+    // Decided by the term alone. There used to be an `AUR_DCB_ALWAYS`
+    // environment override here (a measurement hook from when the blocker was
+    // made conditional), which meant a process with it set rendered a different
+    // voice — and wrote different φ into the same persistent cache namespace —
+    // for the same `(term, spec)`. The render is a function of its inputs, and
+    // the environment is not one of them.
+    let block_dc = makes_dc(&tree.root);
     let left = c.voice_tail("", audio_out.left, env, block_dc)?;
     let right = match audio_out.right {
         Some(r) => Some(c.voice_tail("R", r, env, block_dc)?),

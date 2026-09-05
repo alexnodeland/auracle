@@ -441,8 +441,20 @@ impl FitSet {
     /// legacy standardized log are re-used as-is (they are already z-scores);
     /// they are on a different geometry, so the session layer migrates them to
     /// raw values first where it can.
+    ///
+    /// # Panics
+    /// If the standardizer's dimension is not `names.len()`: the two are the
+    /// same coordinate system or nothing below is a measurement, and indexing
+    /// past a shorter standardizer would otherwise panic three lines further
+    /// down without saying why.
     pub fn build(log: &ObservationLog, names: &[String], sz: &Standardizer) -> Self {
         let d = names.len();
+        assert_eq!(
+            sz.dimension(),
+            d,
+            "standardizer is {}-dimensional but φ has {d} coordinates",
+            sz.dimension()
+        );
         let rows: (Vec<_>, Vec<_>) = log
             .observations
             .iter()

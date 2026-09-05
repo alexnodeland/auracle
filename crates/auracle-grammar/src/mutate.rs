@@ -1018,11 +1018,12 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let slot = node_at_mut(&mut out.root, &path)
                 .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
-            // Normalized, because this is the one edit that installs a whole
-            // modulation term the panel built: a `Pair` with an empty branch
-            // or an `Op` over nothing is a rack module that cannot make a
-            // sound, and the prior can only rule those out for terms it drew
-            // itself. See [`ModNode::normalized`].
+            // Normalized, because this installs a whole modulation term the
+            // panel built: a `Pair` with an empty branch or an `Op` over
+            // nothing is a rack module that cannot make a sound, and the prior
+            // can only rule those out for terms it drew itself. See
+            // [`ModNode::normalized`]. (`finish()` now does the same for every
+            // slot of a grafted subtree, so this is the early, explicit copy.)
             *mod_slot_mut(slot)? = m.clone().normalized();
         }
     }
@@ -1487,6 +1488,11 @@ fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
     // `auracle_features::struct_features`: nothing this crate generates should
     // ever need repairing, and a silent clamp there would hide a real bug.
     tree.clamp_domains();
+    // Modulation fragments next, for the same two ops: `SetModTree` always
+    // normalized the term it installs, but a subtree grafted by `ReplaceTree`
+    // or `InsertTree` brings its mod slots along verbatim, and an `Op` over
+    // nothing in one of them is a term the prior gives zero mass.
+    tree.root.normalize_mods();
     check_ceilings(&mut tree)?;
     // Identity survives a structural edit for free, and the reason is worth
     // stating: [`apply_struct_op`] works on a *clone* of the incoming tree and

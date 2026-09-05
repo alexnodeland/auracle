@@ -203,10 +203,26 @@ a description of the system.</p>
   What is left is real but smaller than the entry implies, and it is a UX
   number rather than a harness one: latency on a **single** refinement, which is
   the app's ⚡ button. Filed as that, not as a build-configuration change.
-- **Remaining quiver hardening** (non-blocking, tracked upstream):
-  `voct_to_hz` is unclamped — overflow is now *recovered* by Q198 rather than
-  prevented, and a pitch clamp would also tame aliasing garbage at
-  absurd-but-finite pitches.
+- **Remaining quiver hardening** — closed. `voct_to_hz` gained a ±32-octave
+  clamp in quiver-dsp 0.3.0, and auracle pins 0.3.3 as of the September 2026
+  audit. Renders inside ±32 octaves are unchanged, so no `RENDER_EPOCH` was
+  bumped for it; the render-cache namespace now carries the quiver version as
+  its own coordinate, which orphans the stored rows from 0.2.0 anyway — the
+  right outcome, because for pathological CV (chained `Offset`s past ±32
+  octaves) the two versions render *differently*: 0.2.0 recovered an infinite
+  increment by phase reset, 0.3.x aliases at a finite ~THz pitch. Both are
+  garbage the vet gate quarantines; they are not the same garbage.
+- **Frame silence is recognised only at exactly zero power** (AU-F2, open).
+  `audio.rs` splits the phrase into chains at frames whose unnormalised FFT
+  power is below `1e-12`, which is an amplitude of ≈2e-9 (−173 dBFS). Rests
+  read as silent only because quiver's `Adsr` snaps exactly to 0 at the end of
+  its release and the VCA is multiplicative; a release or chord tail that
+  outlasts a 0.15–0.2 s rest never gets a chain break, and the flux fix (#51)
+  and the segment features depend on one. The likely fix is a threshold
+  relative to the phrase (−60 dB of global RMS, say). It moves φ for every
+  patch with a tail, so it is a `RENDER_EPOCH` bump *and* owes the measurement
+  — φ over prior draws before and after, and `make revalidate` — that has not
+  been made. Documented at the line rather than changed blind.
 - **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
   `centroid_mean` are three genuine measurements of one perceptual thing.
   A fused prior over the cluster is now **implemented and switched off**, which

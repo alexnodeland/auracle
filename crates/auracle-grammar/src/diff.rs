@@ -32,29 +32,18 @@ fn display_value(site: &str, v: &ChoiceValue) -> String {
                 "color" => name(&["white", "pink"]),
                 "fkind" => name(&["svf lp", "svf bp", "svf hp", "ladder"]),
                 // These three are the grammar's categoricals, in the index
-                // order `crate::genome` persists. They fell out of date once
-                // already, which shows up as an evolution diff reporting the
-                // raw index — "op: 3 → 11" instead of "delay → tremolo" —
-                // exactly where the point of the view is legibility.
-                "src" => name(&["vco", "supersaw", "noise", "wavetable", "pluck", "formant"]),
-                "op" => name(&[
-                    "mix",
-                    "filter",
-                    "wavefolder",
-                    "delay",
-                    "chorus",
-                    "reverb",
-                    "distortion",
-                    "bitcrush",
-                    "phaser",
-                    "ring mod",
-                    "flanger",
-                    "tremolo",
-                    "vibrato",
-                    "eq",
-                    "granular",
-                ]),
-                "mod" => name(&["no mod", "lfo", "mod env", "s&h rand", "follower"]),
+                // order `crate::genome` persists. They used to be spelled out
+                // here and fell out of date *twice* — the second time for
+                // exactly the newest productions (`silence`, the four
+                // dynamics ops and the vocoder, `euclid`/`op`/`pair`), which
+                // showed up as an evolution diff reporting a raw index —
+                // "op: 3 → 11" instead of "delay → tremolo" — precisely where
+                // the point of the view is legibility. Now they are read from
+                // `crate::prior`'s tables, whose lengths are the arity
+                // constants, so a production cannot be added without a label.
+                "src" => name(&crate::prior::SOURCE_LABELS),
+                "op" => name(&crate::prior::OP_LABELS),
+                "mod" => name(&crate::prior::MOD_LABELS),
                 "table" => name(&[
                     "sine",
                     "tri",
@@ -111,4 +100,25 @@ pub fn tree_diff(before: &PatchTree, after: &PatchTree) -> Vec<DiffEntry> {
     }
     out.sort_by(|x, y| x.addr.cmp(&y.addr));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prior::{N_MODS, N_OPS, N_SOURCES};
+
+    /// The newest production of every categorical has a name in the diff
+    /// view, and the last index of each table is the last kind. This is the
+    /// test that was missing both times the tables went stale.
+    #[test]
+    fn every_categorical_index_has_a_label() {
+        let u = |i: usize| ChoiceValue::Usize(i);
+        assert_eq!(display_value("src", &u(N_SOURCES - 1)), "silence");
+        assert_eq!(display_value("op", &u(N_OPS - 1)), "vocoder");
+        assert_eq!(display_value("op", &u(15)), "shift");
+        assert_eq!(display_value("mod", &u(N_MODS - 1)), "pair");
+        assert_eq!(display_value("mod", &u(5)), "euclid");
+        // One past the end still degrades to the index rather than panicking.
+        assert_eq!(display_value("src", &u(N_SOURCES)), N_SOURCES.to_string());
+    }
 }
