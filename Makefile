@@ -23,7 +23,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 .PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop revalidate \
-        wasm serve doc bundle clean \
+        wasm wasm-stamp serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve
@@ -119,9 +119,22 @@ closed-loop:
 revalidate: phi-stats norm-peak climb search-check
 	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n\n'
 
-## wasm: build the web app's engine into apps/web/pkg
+## wasm: build the web app's engine into apps/web/pkg, and stamp the build
 wasm:
 	$(WASM_PATH) $(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
+	@$(MAKE) --no-print-directory wasm-stamp
+
+# The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content
+# hash over the engine and the app scripts, so the same bytes get the same URL
+# and the ~2 MB binary is served from the browser's cache across reloads — and
+# re-fetched exactly when it changed. Without the file the app falls back to
+# `Date.now()`, which is correct and never cached. python3 because it is already
+# required (serve.py, checklinks.py) and `sha256sum`/`shasum` differ by OS.
+WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js \
+               apps/web/main.js apps/web/worker.js apps/web/farm.js apps/web/live-audio.js
+wasm-stamp:
+	@python3 -c 'import hashlib, json, sys; h = hashlib.sha256(); [h.update(open(f, "rb").read()) for f in sys.argv[1:]]; json.dump({"build": h.hexdigest()[:16]}, open("apps/web/pkg/build.json", "w"))' $(WEB_STAMPED)
+	@printf '  apps/web/pkg/build.json: %s\n' "$$(cat apps/web/pkg/build.json)"
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:

@@ -223,6 +223,26 @@ profile as it stood before the import ran. Merging two logs would be the better
 answer; the engine has no merge today, so the question is replace-or-keep
 rather than replace-or-merge.
 
+### Fixed — three small things the web app was leaking or forgetting
+
+- **The last 2.5 s were lost with the tab.** Autosave is debounced, and the
+  only unload handler committed a pending vote. Hiding or leaving the page now
+  commits the vote *and* saves at once, in that order, so the save the worker
+  writes contains it. Not before the boot veil has lifted: a session exported
+  mid-restore is a bank with half its patches missing.
+- **Every reload re-downloaded the engine.** The worker and wasm URLs were
+  stamped with `Date.now()`, which is a cache-buster for the ~2 MB binary on
+  every visit. `make wasm` now writes `pkg/build.json`, a content hash over the
+  engine and the app scripts; the same bytes get the same URL and a new build
+  gets a new one. Served from the repo with no build, the clock is the
+  fallback.
+- **Nothing was ever freed.** `renders` held one ~0.6 MB `AudioBuffer` per id
+  ever auditioned, and the stars and cuts of patches long since evicted rode
+  into every autosave. `applyViews` already computed what left the pool; it
+  now drops those ids' buffers, failure notes, stars and cuts — and the timer
+  of a cut whose undo window was still open, since there is nothing left to
+  record against.
+
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 
 `mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1

@@ -321,11 +321,15 @@ on most machines.
 
 ```bash
 # build the wasm package into apps/web/pkg (needs rustup's toolchain, not Homebrew's)
-PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
+make wasm      # wasm-pack with the 8 MB stack flag, then writes pkg/build.json
 
 # serve (any static server; module workers require http, not file://)
 cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds
 # open http://localhost:8642
 ```
 
-`pkg/` is a build artifact and is not committed.
+`pkg/` is a build artifact and is not committed. `pkg/build.json` is the
+version stamp `main.js` puts on its worker and wasm URLs: a content hash over
+the engine and the app scripts, so the ~2 MB binary is cached across reloads
+and re-fetched exactly when it changed. Without it (the repo served with no
+build) the app falls back to `Date.now()` — correct, never cached.

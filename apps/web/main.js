@@ -23,7 +23,27 @@ const INK = {
 
 // Version-stamp the worker and all wasm fetches so a stale browser cache can
 // never pair an old engine with a newer UI.
-const BUILD = Date.now();
+//
+// The stamp is a **content hash**, not the clock. `make wasm` writes
+// `pkg/build.json` with a hash over the wasm binary, its glue and the four
+// app scripts, so the same bytes get the same URL and the ~2 MB engine is
+// served from the HTTP cache across reloads — and re-fetched exactly when it
+// changed. `Date.now()` defeated that cache on every single reload. Served
+// straight from the repo with no build there is no stamp, and the clock keeps
+// today's behaviour: correct, and never cached. The stamp file itself is
+// fetched with `no-cache` (revalidate, not bypass) so a new build is noticed.
+// A module script may await at top level; nothing above this line needs the
+// worker.
+const BUILD = await (async () => {
+  try {
+    const r = await fetch("./pkg/build.json", { cache: "no-cache" });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && typeof j.build === "string" && /^[0-9a-f]{8,64}$/.test(j.build)) return j.build;
+    }
+  } catch (_) { /* no build, or no server: fall through to the clock */ }
+  return String(Date.now());
+})();
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -2350,6 +2370,25 @@ function applyViews(next) {
   views = next;
   const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
+  // Whatever left the pool takes its main-thread residue with it. `renders`
+  // held one ~0.6 MB AudioBuffer per id ever auditioned and never let go, so
+  // a long session grew by the size of every patch it had heard; the stars
+  // and cuts of a patch that no longer exists went into every autosave for
+  // the rest of time. A cut whose undo window is still open is simply gone —
+  // there is nothing left to record a keep/kill against, so its timer goes too.
+  for (const id of prevIds) {
+    if (nowIds.has(id)) continue;
+    renders.delete(id);
+    renderFailures.delete(id);
+    renderAnnounced.delete(id);
+    starsById.delete(id);
+    cutIds.delete(id);
+    const t = pendingCuts.get(id);
+    if (t !== undefined) {
+      clearTimeout(t);
+      pendingCuts.delete(id);
+    }
+  }
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
   // many pins a restored session came back with.
@@ -3042,8 +3081,20 @@ window.addEventListener("blur", () => {
   $("rack-scroll")?.classList.remove("grabbing");
   panic();
 });
-// A buffered vote must not die with the tab.
-window.addEventListener("pagehide", () => commitPendingVote());
+// A buffered vote must not die with the tab — and neither must the edits,
+// stars and names of the last 2.5 s, which the debounced autosave had not yet
+// written. `visibilitychange` → hidden is the reliable one (it fires before a
+// tab is frozen or discarded, while the worker can still answer); `pagehide`
+// is the belt to that brace. The vote is committed first so the save that
+// follows it through the worker's serial queue contains it.
+function saveOnLeave() {
+  commitPendingVote();
+  saveNow();
+}
+window.addEventListener("pagehide", saveOnLeave);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveOnLeave();
+});
 
 // A real mouse click must not leave focus parked on a button — parked focus
 // changes what the next keystroke means, and on an instrument that surprise
