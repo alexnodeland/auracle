@@ -37,3 +37,7 @@ www/theme/favicon.png
 
 # The guide's figures are copies of the landing page's screenshots.
 www/docs/src/img/
+
+# The browser smoke test's run output (tests/web).
+test-results/
+playwright-report/

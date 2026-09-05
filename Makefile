@@ -21,6 +21,7 @@ WASM_STACK := 8388608
 WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+        js-check wasm-check smoke smoke-tools \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop revalidate \
         wasm wasm-stamp serve doc bundle clean \
@@ -30,11 +31,47 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
 all: check
 
-## check: everything CI runs — format, lints as errors, full test suite
-check: fmt-check lint test
+## check: everything CI runs — format, lints as errors, the app's syntax, the
+## wasm target, full test suite
+check: fmt-check lint js-check wasm-check test
 
 build:
 	$(CARGO) build --workspace
+
+# ─── the web app ─────────────────────────────────────────────────────────────
+
+WEB_JS := apps/web/main.js apps/web/worker.js apps/web/farm.js apps/web/live-audio.js
+
+## js-check: every app script parses. This is the only gate that catches a
+## backtick inside live-audio.js's PROCESSOR template literal — the failure
+## mode there is a worklet blob that silently never registers, not an error at
+## the edit site (CONTRIBUTING § Sharp edges).
+js-check:
+	@command -v node >/dev/null || { \
+		printf '  node not found — the web app is checked with `node --check`; install Node 18+\n'; exit 1; }
+	@for f in $(WEB_JS); do node --check $$f || exit 1; done
+	@printf '  %s: parse OK\n' $(WEB_JS)
+
+## wasm-check: the engine compiles for wasm32, which the native build does not
+## prove (cfg(target_arch) paths, wasm-bindgen signatures, `u64` at the
+## boundary). CI ran this and `make check` did not, so "green locally" and
+## "green in CI" were two different claims.
+wasm-check:
+	@rustup target list --installed 2>/dev/null | grep -q '^wasm32-unknown-unknown$$' || { \
+		printf '  the wasm32 target is missing — run: rustup target add wasm32-unknown-unknown\n'; exit 1; }
+	$(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
+
+## smoke: boot the instrument in a real browser against the built wasm and
+## require a clean console and a registered worklet. Needs `make wasm` first,
+## Node, and Playwright's Chromium (`make smoke-tools` once).
+smoke:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	cd tests/web && npm ci --no-audit --no-fund && npx playwright test
+
+## smoke-tools: Playwright's Chromium, once. CI passes --with-deps for the
+## runner's system libraries; a workstation usually has them.
+smoke-tools:
+	cd tests/web && npm ci --no-audit --no-fund && npx playwright install chromium
 
 ## test: optimized — the grammar/features/session tests render real audio
 ## sample-by-sample; debug-mode DSP is ~20× slower

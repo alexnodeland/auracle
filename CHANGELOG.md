@@ -243,6 +243,32 @@ rather than replace-or-merge.
   of a cut whose undo window was still open, since there is nothing left to
   record against.
 
+### Changed — the quality bar and the gates that enforce it say the same thing
+
+CONTRIBUTING promised `cargo test --workspace --release`; the Makefile and CI
+ran `--profile test-fast`. CONTRIBUTING said `node --check apps/web/live-audio.js`
+"catches [the backtick failure] and nothing else does"; nothing ran it. `make
+check` skipped the wasm32 check CI ran, so green locally and green in CI were
+two claims. Two of three workflows installed wasm-pack with an unpinned
+`curl | sh`; the third used a pinned action. `release.yml`'s header still said
+the Pages workflow fired on tags, a year after that was turned off. No browser
+ever opened the app in CI.
+
+- `make check` is now `fmt-check lint js-check wasm-check test`: `node --check`
+  on all four app scripts and `cargo check` for `wasm32-unknown-unknown` join
+  the gate, and CONTRIBUTING's list matches it, `test-fast` included.
+- CI gained a `web` job (`node --check`, seconds, gated on the app or the site
+  changing — not on Rust, because a JS-only PR is the one this check exists
+  for) and, inside the `site` job where the wasm is already built, **one
+  browser test**: `tests/web/smoke.spec.js` boots the instrument in
+  Playwright's Chromium and requires no console errors, a registered worklet
+  and an engine that reaches `playable`. That is the whole of its claim; the
+  numeric audio assertions are still run by hand. Locally it is `make smoke`
+  (`make smoke-tools` once).
+- `pages.yml` and `release.yml` install wasm-pack through
+  `taiki-e/install-action`, as `ci.yml` already did; `release.yml`'s header
+  says what actually deploys the site.
+
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 
 `mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1
