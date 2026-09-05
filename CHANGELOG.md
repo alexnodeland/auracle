@@ -180,6 +180,26 @@ released, autosave stopped — the record on disk is the last good session — a
 the `role="alert"` strip says to reload. Unhandled rejections in the worker are
 reported the same way.
 
+### Fixed — a vote on a patch that had just been evicted was counted as taken
+
+Every vote waits out a 7 s undo window before it reaches the engine, and a
+generation, a preset load or an import can evict one of its patches inside that
+window. The engine dropped such a vote silently; the worker posted `status`
+regardless; the app incremented its Brier tally, lit the star, toasted "rated
+★" and saved. The engine's `record_*` calls now answer `false` for that case
+(see the wasm entry above), the worker forwards it as `recorded` with the vote
+it describes, and the app rolls back — the star returns to what it was, the
+refit counter and the forecast score are left untouched — and says that the
+patch is gone and the vote was not recorded.
+
+The same round trip now carries **why** evolution did nothing. ⚡ evolve used
+to say "no accepted move — try again, or loosen some locks" for five different
+reasons, one of which — the seed has zero mass under the prior, a knob on its
+stop or a tree deeper than the model scores — no amount of trying or
+loosening can change. `last_refine_reason` rides back with `evolved_from` and
+(per seed) with `refined`, and `outside_support` gets its own sentence: nudge
+a knob off its stop, or take a module out.
+
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 
 `mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1

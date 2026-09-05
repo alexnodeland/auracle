@@ -605,6 +605,20 @@ function bankTwinOf(json) {
   return 0;
 }
 
+// Why the last `refine_seed` / `refine_from` returned nothing: one of `idle`,
+// `injected`, `no_taste`, `unknown_seed`, `outside_support`, `no_move`,
+// `duplicate`, `not_admitted`. `outside_support` is the one worth a sentence
+// in the UI — the seed has zero mass under the prior (a knob on its stop, a
+// tree deeper than the prior scores), so the walk never started and no budget
+// or lock-loosening will change that. Null on a binary too old to say.
+function refineReason() {
+  try {
+    return engine.last_refine_reason();
+  } catch (_) {
+    return null;
+  }
+}
+
 // Everything the taste instruments need, in one bundle.
 function tasteViews() {
   return {
@@ -1047,12 +1061,27 @@ async function dispatch(m) {
       );
       break;
     }
+    // The three vote routes answer with `recorded`: `false` when the engine
+    // took nothing because the id is no longer in the pool — a duel side
+    // evicted by a generation, a preset load or an import inside the 7 s undo
+    // window. The engine always dropped that vote; the app used to count it,
+    // score it and toast "rated". `vote` rides back so main can undo what it
+    // did optimistically. `!== false` so a stale binary (no boolean) still
+    // reads as recorded.
     case "record_duel": {
       // Prediction is computed BEFORE the vote enters the log — this is the
       // model's honest forecast, scored against the user's actual choice.
       const pred = engine.duel_pred(m.a, m.b);
-      engine.record_duel(m.a, m.b, m.choseA);
-      post({ type: "status", status: status(), pred, choseA: m.choseA });
+      const recorded = engine.record_duel(m.a, m.b, m.choseA) !== false;
+      post({
+        type: "status",
+        status: status(),
+        // A forecast for a vote that was not taken must not be scored.
+        pred: recorded ? pred : null,
+        choseA: m.choseA,
+        recorded,
+        vote: { kind: "duel", a: m.a, b: m.b },
+      });
       break;
     }
     // The forecast alone, for immediate display: the vote itself is buffered
@@ -1063,13 +1092,25 @@ async function dispatch(m) {
       break;
     }
     case "record_keep": {
-      engine.record_keep(m.id, m.kept);
-      post({ type: "status", status: status() });
+      const recorded = engine.record_keep(m.id, m.kept) !== false;
+      post({
+        type: "status",
+        status: status(),
+        recorded,
+        vote: { kind: "keep", id: m.id, kept: m.kept },
+      });
       break;
     }
     case "record_stars": {
-      engine.record_stars(m.id, m.rating);
-      post({ type: "status", status: status() });
+      const recorded = engine.record_stars(m.id, m.rating) !== false;
+      post({
+        type: "status",
+        status: status(),
+        recorded,
+        // `prev` is what the bank showed before the optimistic update — echoed,
+        // not remembered here, because this worker holds no UI state.
+        vote: { kind: "stars", id: m.id, rating: m.rating, prev: m.prev || 0 },
+      });
       break;
     }
     case "fit": {
@@ -1103,12 +1144,17 @@ async function dispatch(m) {
           break;
         }
         const born = [];
+        // Why each seed that produced nothing produced nothing — see
+        // `refineReason`. All of them, so main can say "every seed" when it is
+        // true rather than the first one's story.
+        const reasons = [];
         for (let i = 0; i < seeds.length; i++) {
           post({ type: "refine_progress", done: i, total: seeds.length });
           const childId = Number(engine.refine_seed(seeds[i]));
           if (childId > 0) born.push(childId);
+          else reasons.push(refineReason());
         }
-        post({ type: "refined", views: tasteViews(), status: status(), born });
+        post({ type: "refined", views: tasteViews(), status: status(), born, reasons });
       } finally {
         endLongOp();
       }
@@ -1222,6 +1268,7 @@ async function dispatch(m) {
           type: "evolved_from",
           seedId: m.id,
           childId,
+          reason: childId > 0 ? null : refineReason(),
           views: tasteViews(),
           status: status(),
         });

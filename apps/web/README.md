@@ -183,6 +183,18 @@ to a pinned `role="alert"` strip that stays until resolved.
   record on disk is the last good session), and the pinned `role="alert"`
   says to reload. Non-fatal errors release their request and toast.
 
+- **A vote the engine did not take is reported, not counted.** `record_duel`,
+  `record_keep` and `record_stars` answer `false` when an id has left the pool
+  (a duel side evicted by a generation, a preset load or an import inside the
+  7 s undo window); the worker's `status` reply carries `recorded` and the
+  `vote` it describes, and main rolls back what it did optimistically — the
+  star it lit (`prev` travels with the request), the refit count, the Brier
+  tally (`pred` is `null` for an untaken vote) — and toasts that the patch is
+  gone. `evolved_from` and `refined` carry the engine's `last_refine_reason`
+  (`reason` / per-seed `reasons`); `outside_support` is the one that changes
+  the advice, because no budget or lock-loosening reaches a seed the prior
+  gives zero mass.
+
 - **Persistence** is one IndexedDB record, `state`, shaped `{v: 2, session,
   ui}` (a v1 record has no `v` and reads the same). Two more keys guard it.
   `state-prev` is the record the page **booted from**, written once per

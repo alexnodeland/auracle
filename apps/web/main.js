@@ -1130,6 +1130,10 @@ worker.onmessage = (e) => {
     case "status": {
       applyStatus(m.status);
       send({ type: "calibration" });
+      // The engine took nothing: the patch left the pool between the gesture
+      // and the end of its undo window. The UI has already acted as if the
+      // vote were taken — put that back, and say so.
+      if (m.recorded === false && m.vote) voteDropped(m.vote);
       if (m.pred != null && m.pred >= 0) {
         const pChosen = m.choseA ? m.pred : 1 - m.pred;
         calib.n += 1;
@@ -1184,7 +1188,17 @@ worker.onmessage = (e) => {
       if (m.untaught) {
         note("Nothing to breed toward yet — make a few picks first, then evolve.");
       } else if (m.born && m.born.length === 0) {
-        note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
+        // When every seed the model picked has zero mass under the prior, the
+        // advice is different: more teaching will not move a walk that never
+        // started. Any other mix keeps the old sentence.
+        const reasons = Array.isArray(m.reasons) ? m.reasons : [];
+        if (reasons.length > 0 && reasons.every((r) => r === "outside_support")) {
+          note(
+            `Gen ${m.status.generation}: nothing could be bred — every seed the model picked is outside what evolution can reach (a knob on its stop, or a tree deeper than the model scores). Nudge those knobs off their stops.`,
+          );
+        } else {
+          note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
+        }
       } else if (m.born) {
         offerBankTourAfterFirstGeneration();
         const made = evicted.length
@@ -1639,7 +1653,12 @@ worker.onmessage = (e) => {
         send({ type: "edit_begin", id: m.childId });
         scheduleSave();
       } else {
-        note("⚡ evolution found no accepted move — try again, or loosen some locks");
+        note(
+          refineReasonText(
+            m.reason,
+            "⚡ evolution found no accepted move — try again, or loosen some locks",
+          ),
+        );
       }
       break;
     }
@@ -4301,10 +4320,60 @@ function rateRow(rating, explicitId) {
     return;
   }
   kbdRowId = id; // rating something makes it the cursor, so 1-5 can correct it
+  // `prev` travels with the request so a refused vote can be rolled back to
+  // what the bank showed before this optimistic update.
+  const prev = starsById.get(id) || 0;
   starsById.set(id, rating);
-  send({ type: "record_stars", id, rating });
+  send({ type: "record_stars", id, rating, prev });
   renderBank();
   note(`${nameOf(id)} rated ${rating}★`);
+}
+
+// A vote the engine did not take (`status.recorded === false`): the id left
+// the pool inside the undo window — a generation landed, a preset loaded, a
+// patch was imported — and the log never saw it. Undo what the UI did on the
+// assumption it would, then say so; "rated ★" over a vote that went nowhere is
+// the app stating something untrue about the model.
+function voteDropped(v) {
+  let what = "vote";
+  if (v.kind === "stars") {
+    what = "rating";
+    if (v.prev > 0) starsById.set(v.id, v.prev);
+    else starsById.delete(v.id);
+    renderBank();
+  } else if (v.kind === "duel") {
+    what = "pick";
+    // `choose()` counted it toward the next refit; it is not in the log.
+    duelsSinceFit = Math.max(0, duelsSinceFit - 1);
+    fitDue = duelsSinceFit >= FIT_EVERY;
+    renderTeach();
+  } else if (v.kind === "keep") {
+    what = "cut";
+  }
+  note(`that patch is gone — a generation replaced it, so the ${what} was not recorded.`, {
+    urgent: true,
+  });
+}
+
+// What to say when evolution produced nothing, from the engine's own reason
+// (`last_refine_reason`). Only `outside_support` changes the advice: no budget
+// or lock-loosening reaches a seed the prior gives zero mass, so "try again"
+// would be a lie there.
+function refineReasonText(reason, fallback) {
+  switch (reason) {
+    case "outside_support":
+      return "⚡ this patch is outside what evolution can reach — a knob is on its stop, or the tree is deeper than the model scores. Nudge a knob off its stop, or take a module out, and try again.";
+    case "no_taste":
+      return "Nothing to breed toward yet — make a few picks first, then evolve.";
+    case "unknown_seed":
+      return "that patch isn't in the bank any more — a bred generation replaced it.";
+    case "duplicate":
+      return "⚡ evolution landed on a patch the bank already holds — try again.";
+    case "not_admitted":
+      return "⚡ evolution's proposal did not survive the vet or beat its parent — try again.";
+    default:
+      return fallback;
+  }
 }
 
 $("bank-list").addEventListener("keydown", (e) => {
