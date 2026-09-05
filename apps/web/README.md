@@ -168,6 +168,21 @@ to a pinned `role="alert"` strip that stays until resolved.
   the save exists and this build cannot read it — is posted to main as
   `restore_failed`, and is the one answer that must stop the next autosave.
 
+- **Worker replies are load-bearing, so a request that throws must still
+  reply.** `worker.js` runs every request through one `dispatch` under a
+  `try/catch` that answers `{type: "engine_error", request, id, message,
+  fatal}`; `main.js` releases exactly the state that request was holding
+  (`releaseRequest`: `editInFlight`, `fitting`, `dealing`, the evolve buttons,
+  a preview slot, …). `fatal` means the engine is gone — the wasm build has
+  `panic = "abort"`, so a Rust panic traps out of a `&mut self` call and every
+  later call fails with wasm-bindgen's "recursive use of an object" — and the
+  worker latches `poisoned`, answering everything after with the same fatal
+  error rather than calling into the binary again. On the main thread
+  `worker.onerror`, `worker.onmessageerror` and a fatal `engine_error` all
+  reach `engineCrashed`: every in-flight flag is released, autosave stops (the
+  record on disk is the last good session), and the pinned `role="alert"`
+  says to reload. Non-fatal errors release their request and toast.
+
 - **Persistence** is one IndexedDB record, `state`, shaped `{v: 2, session,
   ui}` (a v1 record has no `v` and reads the same). Two more keys guard it.
   `state-prev` is the record the page **booted from**, written once per

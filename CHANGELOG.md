@@ -154,6 +154,32 @@ Around that, the persistence layer gained the shape it should have had:
   telling itself it had saved; it is an alert now, with a retry. One IndexedDB
   connection is kept for the life of the page instead of one per save.
 
+### Fixed — an engine that crashed left an instrument that never found out
+
+`main.js` set `worker.onmessage` and nothing else, and `worker.js` caught
+errors around `init` and `render` only. Every other request that threw —
+including a wasm trap, which under `panic = "abort"` unwinds out of a `&mut
+self` call and leaves every later call failing with "recursive use of an
+object" — became an unhandled rejection inside the worker, which never reaches
+`worker.onerror`. The flag that request was holding stayed set for the rest of
+the session: the wordmark on "thinking" (`fitting` is cleared only by
+`fitted`), the evolve button on "breeding 2/3…" (only by `refined`), every knob
+edit queued behind one that would never return (`editInFlight`, only by `bench`
+or `edit_rejected`). The README promised a pinned alert for a crashed engine;
+it existed only for the worklet and for a failed boot.
+
+The worker now runs every request through one `dispatch` under a `try/catch`
+that answers `engine_error` with the request's type and id, and main releases
+exactly what that request was holding — `fitting`, `editInFlight`, `dealing`,
+`pendingEvolve`, `engineBusy`, the evolve buttons, a preview slot. A fatal
+error (a `WebAssembly.RuntimeError`, or the borrow-flag message that follows
+one) latches the worker as poisoned, so later requests are answered with the
+same error instead of a cascade of misleading ones; on the main thread it,
+`worker.onerror` and `messageerror` all reach one `engineCrashed`: everything
+released, autosave stopped — the record on disk is the last good session — and
+the `role="alert"` strip says to reload. Unhandled rejections in the worker are
+reported the same way.
+
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 
 `mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1

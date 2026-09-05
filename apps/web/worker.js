@@ -673,6 +673,59 @@ function postBench(extra) {
   );
 }
 
+// ---------- the engine failing ----------
+//
+// Every reply this worker sends is load-bearing: main holds a flag per
+// in-flight request (`fitting`, `editInFlight`, the evolve button, …) that only
+// the reply clears. So a request that *throws* instead of replying used to
+// leave that flag set for the rest of the session — and because `onmessage` is
+// async, the throw was an unhandled rejection inside the worker, which does not
+// reach `worker.onerror` on the main thread. The UI sat in "thinking" with
+// edits deadlocked and no message anywhere saying why.
+//
+// `dispatch` runs every request under one catch that answers with
+// `engine_error` carrying the request's type (and id, when it has one), so
+// main can release exactly the state that request was holding.
+//
+// The message also says whether the engine is *gone*. The wasm build has
+// `panic = "abort"`, so a Rust panic is a trap (`WebAssembly.RuntimeError`) that
+// unwinds out of a `&mut self` call without clearing wasm-bindgen's borrow
+// flag — and every later call fails with "recursive use of an object" instead
+// of the real fault. Once that has happened nothing here can be trusted, so
+// the worker latches `poisoned` and answers every further request with the
+// same fatal `engine_error` rather than calling into the binary again.
+let poisoned = null;
+
+function isFatal(err, message) {
+  return (
+    (typeof WebAssembly !== "undefined" && err instanceof WebAssembly.RuntimeError) ||
+    /recursive use of an object|unreachable|memory access out of bounds/i.test(message)
+  );
+}
+
+function engineError(request, id, err) {
+  const message = poisoned ? `the engine is down (${poisoned})` : String((err && err.message) || err);
+  const fatal = !!poisoned || isFatal(err, message);
+  if (fatal && !poisoned) poisoned = message;
+  console.error(`[auracle] engine error handling ${request}:`, err);
+  post({ type: "engine_error", request, id: id == null ? null : id, message, fatal });
+}
+
+// A rejection nothing awaited. Not a request's own failure — `dispatch`
+// catches those — but it is still an error the main thread would otherwise
+// never hear about.
+self.addEventListener("unhandledrejection", (ev) => {
+  const err = ev.reason;
+  console.error("[auracle] unhandled rejection in the engine worker:", err);
+  post({
+    type: "engine_error",
+    request: null,
+    id: null,
+    message: String((err && err.message) || err),
+    fatal: isFatal(err, String((err && err.message) || err)),
+  });
+});
+
 self.onmessage = async (e) => {
   const m = e.data;
   // Everything but `init` needs the engine, and `init` is async: it imports the
@@ -690,6 +743,18 @@ self.onmessage = async (e) => {
     post({ type: "not_ready", request: m.type });
     return;
   }
+  if (poisoned) {
+    engineError(m.type, m.id, null);
+    return;
+  }
+  try {
+    await dispatch(m);
+  } catch (err) {
+    engineError(m.type, m.id, err);
+  }
+};
+
+async function dispatch(m) {
   switch (m.type) {
     case "init": {
       // Boot owns the farm: N x ~15 MB of linear memory and N live ports
@@ -1297,4 +1362,4 @@ self.onmessage = async (e) => {
       break;
     }
   }
-};
+}

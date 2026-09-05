@@ -1432,6 +1432,21 @@ worker.onmessage = (e) => {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
       break;
     }
+    // A request threw inside the worker instead of replying. Every reply is
+    // load-bearing (see `releaseRequest`), so the state that request was
+    // holding is released here — and if the engine is *gone* (a wasm trap
+    // poisons it for the rest of the session), the whole instrument is told
+    // so once, in the strip that stays.
+    case "engine_error": {
+      console.error(`[auracle] engine error in ${m.request || "?"}:`, m.message);
+      releaseRequest(m.request, m.id);
+      if (m.fatal) {
+        engineCrashed(m.message);
+      } else if (m.request) {
+        note(`the engine could not finish "${m.request}": ${m.message}`, { urgent: true });
+      }
+      break;
+    }
     // The engine worker's degradation log (a re-issued draw, a retired one, a
     // bank entry rendered serially). Not a console warning, because none of
     // these is a fault — see the note over `logNote` in worker.js — and not a
@@ -1741,6 +1756,111 @@ worker.onmessage = (e) => {
       break;
     }
   }
+};
+
+// ---------- the engine failing ----------
+//
+// Every workbench edit, fit, deal and generation sets a flag here that only
+// the worker's reply clears (`editInFlight`, `fitting`, `dealing`, the evolve
+// buttons, …). A request that dies without replying therefore used to leave
+// that flag set for the rest of the session: the wordmark stuck on
+// "thinking", edits queued behind one that would never return, the evolve
+// button reading "breeding 2/3…" forever. The worker answers those with
+// `engine_error` now; this releases what each request was holding.
+function releaseRequest(request, id) {
+  engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
+  switch (request) {
+    case "edit_param":
+      editInFlight = false;
+      editQueue = null; // the knob is already where the player left it
+      drainStruct();
+      break;
+    case "edit_structure":
+    case "edit_set_tree":
+      structInFlight = false;
+      restoreInFlight = false;
+      placeholderPending = null; // the tree it described never happened
+      restoreBacklog = 0;
+      forgetLanded();
+      drainStruct();
+      break;
+    case "fit":
+      fitting = false;
+      $("wm-lamp").classList.remove("thinking");
+      break;
+    case "refine":
+      $("wm-lamp").classList.remove("thinking");
+      $("evolve-btn").disabled = false;
+      $("evolve-btn").textContent = "evolve pool";
+      break;
+    case "refine_from":
+      $("wm-lamp").classList.remove("thinking");
+      $("rack-evolve").disabled = false;
+      pendingEvolve = false;
+      break;
+    case "edit_commit":
+    case "edit_duel":
+      pendingEvolve = false;
+      break;
+    case "duel":
+      dealing = false;
+      ignoreNextDeal = false;
+      setDuelControlsEnabled(true);
+      break;
+    case "render":
+      if (id != null) {
+        renderFailures.set(id, "engine error");
+        if (currentDuel && currentDuel.includes(id)) renderFailed(id, "engine error");
+      }
+      break;
+    case "preview_render":
+      preview.inflight = false;
+      preview.pending = null;
+      portTrace.inflight = false;
+      break;
+    case "import_patch":
+      pendingLayout = null;
+      break;
+    default:
+      break;
+  }
+}
+
+// Everything at once: the engine is not coming back.
+function releaseEverything() {
+  for (const r of [
+    "edit_param", "edit_structure", "fit", "refine", "refine_from",
+    "edit_commit", "duel", "preview_render", "import_patch",
+  ]) {
+    try { releaseRequest(r, null); } catch (_) {}
+  }
+}
+
+// The engine worker is dead or poisoned — it threw outside any handler
+// (`worker.onerror`), sent something that could not be deserialised
+// (`messageerror`), or trapped inside a request (`engine_error` with
+// `fatal`). Nothing it would export now is a session anyone should reload
+// into, so autosave stops here; the record on disk is the last good one.
+let engineDown = false;
+function engineCrashed(message) {
+  releaseEverything();
+  saveBlocked = "crashed";
+  clearTimeout(saveTimer);
+  if (engineDown) return; // said once; the strip is already up
+  engineDown = true;
+  dropBootVeil(); // a crash behind the veil must not leave a blank screen up
+  alarm(
+    `The engine crashed — reload to continue. Your session is as it was last saved; ` +
+      `nothing since then is being written. (${message})`,
+    { label: "reload", run: () => location.reload() },
+  );
+  $("alarm").dataset.tag = "crash";
+}
+worker.onerror = (e) => {
+  engineCrashed(String((e && e.message) || e || "unknown error"));
+};
+worker.onmessageerror = () => {
+  engineCrashed("a message from the engine could not be read");
 };
 
 let status = { observations: 0, generation: 0 };
