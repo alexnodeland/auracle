@@ -211,6 +211,18 @@ on trees the engine would no longer take. The worker now reads
 literals remain only as the fallback for a binary too old to say, and match
 the grammar as of this writing.
 
+### Fixed — importing a profile replaced yours without asking or keeping a copy
+
+Picking a file in TASTE sent `import` on the spot; `import_profile` replaces
+the whole observation log and adopts the file's standardizer, and the autosave
+2.5 s later made it permanent. Now, when there is anything to lose, the app
+asks — "replace it" or "keep mine" — and on "replace it" the current profile
+is downloaded first as `auracle-profile-before-import.json`, through the same
+export path the ⤓ button uses. The worker is serial, so that file is the
+profile as it stood before the import ran. Merging two logs would be the better
+answer; the engine has no merge today, so the question is replace-or-keep
+rather than replace-or-merge.
+
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 
 `mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1

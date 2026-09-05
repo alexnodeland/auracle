@@ -1409,7 +1409,8 @@ async function dispatch(m) {
     }
     // ---- persistence ----
     case "export": {
-      post({ type: "exported", json: engine.export_profile() });
+      // `reason` is echoed so main can name a safety copy for what it is.
+      post({ type: "exported", json: engine.export_profile(), reason: m.reason || null });
       break;
     }
     case "import": {

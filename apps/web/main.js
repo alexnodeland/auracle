@@ -1768,7 +1768,11 @@ worker.onmessage = (e) => {
       const blob = new Blob([m.json], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "auracle-profile.json";
+      // The safety copy taken before a profile import is named for what it
+      // is, so it cannot be mistaken for the one the player asked for.
+      a.download = m.reason === "before-import"
+        ? "auracle-profile-before-import.json"
+        : "auracle-profile.json";
       a.click();
       URL.revokeObjectURL(a.href);
       break;
@@ -14940,9 +14944,41 @@ function humanizeDiff(diff) {
 
 // ---------- profile ----------
 $("export-btn").onclick = () => send({ type: "export" });
+// Importing a profile *replaces* the taste log — every pick, star and cut —
+// and the autosave 2.5 s later made that permanent. It used to happen on the
+// file pick, with no question asked and no copy kept. Now it asks, and the
+// current profile is downloaded first through the same export path the ⤓
+// button uses; the worker is serial, so the export it writes is the profile as
+// it stood before the import ran. (The engine has no merge; when it does, the
+// question becomes "replace or merge" rather than "replace or keep".)
 $("import-input").onchange = async (e) => {
   const file = e.target.files[0];
-  if (file) send({ type: "import", json: await file.text() });
+  // Reset so that picking the same file again after "keep mine" fires again.
+  e.target.value = "";
+  if (!file) return;
+  const json = await file.text();
+  const n = status.observations || 0;
+  if (n === 0) {
+    send({ type: "import", json });
+    return;
+  }
+  alarm(
+    `Replace your taste profile with ${file.name}? Your ${n} pick${n === 1 ? "" : "s"}, stars and cuts ` +
+      `are replaced by the file's. Your current profile is downloaded first, so nothing is lost.`,
+    {
+      label: "replace it",
+      run: () => {
+        alarm(null);
+        send({ type: "export", reason: "before-import" });
+        send({ type: "import", json });
+      },
+    },
+  );
+  const keep = document.createElement("button");
+  keep.className = "toast-undo";
+  keep.textContent = "keep mine";
+  keep.onclick = () => alarm(null);
+  $("alarm").appendChild(keep);
 };
 
 // The warm start stays reachable after a skip, and the profile can start
