@@ -274,13 +274,15 @@ jobs:
       - name: Check every link and asset resolves
         run: make site-check
 
-      # One browser test: boot the instrument against the wasm `make site`
+      # The browser tests: boot the instrument against the wasm `make site`
       # just built and require a clean console, a registered worklet and an
-      # engine that reaches `playable`. It is here rather than in its own job
-      # because the engine is already built here; a job of its own would build
-      # it twice. See tests/web/smoke.spec.js for what it does and does not
-      # claim — the numeric audio assertions CONTRIBUTING describes are still
-      # run by hand.
+      # engine that reaches `playable` (tests/web/smoke.spec.js); then provoke
+      # the audit's four failure flows — an unparseable save, an engine error,
+      # a refused vote, a profile import — and require each to be reported and
+      # contained (tests/web/failure_flows.spec.js). Here rather than in a job
+      # of its own because the engine is already built here; a job of its own
+      # would build it twice. The numeric audio assertions CONTRIBUTING
+      # describes are still run by hand.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -290,7 +292,7 @@ jobs:
       - name: Install Playwright's Chromium
         run: cd tests/web && npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
 
-      - name: Boot the instrument in a browser
+      - name: Boot the instrument in a browser and exercise its failure flows
         run: make smoke
 
       - name: Keep the trace of a failed boot

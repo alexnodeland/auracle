@@ -276,12 +276,22 @@ ever opened the app in CI.
   the gate, and CONTRIBUTING's list matches it, `test-fast` included.
 - CI gained a `web` job (`node --check`, seconds, gated on the app or the site
   changing — not on Rust, because a JS-only PR is the one this check exists
-  for) and, inside the `site` job where the wasm is already built, **one
-  browser test**: `tests/web/smoke.spec.js` boots the instrument in
-  Playwright's Chromium and requires no console errors, a registered worklet
-  and an engine that reaches `playable`. That is the whole of its claim; the
-  numeric audio assertions are still run by hand. Locally it is `make smoke`
-  (`make smoke-tools` once).
+  for) and, inside the `site` job where the wasm is already built, **browser
+  tests**: `tests/web/smoke.spec.js` boots the instrument in Playwright's
+  Chromium and requires no console errors, a registered worklet and an engine
+  that reaches `playable`; `tests/web/failure_flows.spec.js` then provokes the
+  four failure flows this pass fixed and had not watched — an unparseable save
+  seeded into IndexedDB before the page runs (quarantined, `state` untouched
+  past the debounce, **start fresh** writes a fresh v2 record and keeps the
+  boot record as `state-prev`), an engine error (a real one from a malformed
+  request, released and toasted; a fatal one, injected as the worker would
+  post it after a trap, pinning the strip, freeing the evolve button and
+  blocking `saved`), a vote the engine refused (a real refusal for an id not
+  in the pool, rolled back; a star rollback from an injected reply) and the
+  profile-import prompt (keep leaves the log; replace downloads
+  `auracle-profile-before-import.json` first). Where a step is injected rather
+  than provoked the test's name says so. The numeric audio assertions are
+  still run by hand. Locally it is `make smoke` (`make smoke-tools` once).
 - `pages.yml` and `release.yml` install wasm-pack through
   `taiki-e/install-action`, as `ci.yml` already did; `release.yml`'s header
   says what actually deploys the site.

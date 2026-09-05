@@ -1,6 +1,7 @@
 // Does the instrument come up?
 //
-// One test, and deliberately a shallow one. It boots apps/web against the wasm
+// One test, and deliberately a shallow one (the failure flows are next door
+// in failure_flows.spec.js). It boots apps/web against the wasm
 // `make wasm` produced and asserts three things: the page raised no console
 // errors and no uncaught exceptions, the AudioWorklet registered (the live
 // instrument exists), and the engine reached `playable` (the boot veil lifted).

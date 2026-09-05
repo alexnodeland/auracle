@@ -1,6 +1,7 @@
-// The one browser test: boot the instrument with the built wasm and require a
-// clean console and a registered worklet. See smoke.spec.js for what it does
-// and does not claim.
+// The browser tests: boot the instrument with the built wasm and require a
+// clean console and a registered worklet (smoke.spec.js), then provoke the
+// four failure flows the September 2026 audit fixed (failure_flows.spec.js).
+// Each file's header says what it does and does not claim.
 //
 // It serves apps/web with the app's own dev server (no-store, so a rebuilt
 // pkg/ is never shadowed by the browser cache). `make wasm` must have run —
@@ -12,8 +13,9 @@ module.exports = defineConfig({
   testDir: __dirname,
   testMatch: /.*\.spec\.js/,
   timeout: 180_000,
-  // One test, one worker, no retries: a boot that only sometimes comes up
-  // clean is a finding, not a flake to paper over.
+  // One worker, no retries: a boot that only sometimes comes up clean, or a
+  // flow that only sometimes rolls back, is a finding, not a flake to paper
+  // over. Serial because every test boots the engine and the render farm.
   workers: 1,
   retries: 0,
   reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],

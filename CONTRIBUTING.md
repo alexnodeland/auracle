@@ -162,13 +162,20 @@ these properties explicitly.
 
 ## Verification beyond `make check`
 
-One browser test is automated: `make smoke` (CI runs it in the `site` job,
-against the wasm that job just built) boots the instrument in Playwright's
-Chromium and requires **no console errors, a registered worklet, and an engine
-that reaches `playable`**. That is the whole of its claim — see
-`tests/web/smoke.spec.js` — and it is the only gate that notices a backtick in
-the worklet literal, a wasm method the JS calls that the binary no longer
-exports, or a protocol field renamed on one side.
+Two browser specs are automated under `make smoke` (CI runs them in the `site`
+job, against the wasm that job just built), in Playwright's Chromium.
+`tests/web/smoke.spec.js` boots the instrument and requires **no console
+errors, a registered worklet, and an engine that reaches `playable`** — the
+whole of its claim, and the only gate that notices a backtick in the worklet
+literal, a wasm method the JS calls that the binary no longer exports, or a
+protocol field renamed on one side. `tests/web/failure_flows.spec.js` provokes
+the four failure flows the September 2026 audit fixed — an unparseable save
+seeded into IndexedDB, an engine error, a vote the engine refused, a profile
+import over an existing log — and requires each to be reported and contained.
+Where it cannot provoke a step for real (the shipped binary has no reachable
+trap) it dispatches the worker's message on the real `Worker` object and its
+test name says so. It reaches the engine worker by wrapping `Worker` before
+`main.js` runs; nothing in `apps/web` exists for the tests' sake.
 
 Everything else about UI changes is still verified live in a browser by hand,
 with **numeric audio assertions** (an `AnalyserNode` RMS, boundary-sample

@@ -62,8 +62,10 @@ wasm-check:
 	$(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
 
 ## smoke: boot the instrument in a real browser against the built wasm and
-## require a clean console and a registered worklet. Needs `make wasm` first,
-## Node, and Playwright's Chromium (`make smoke-tools` once).
+## require a clean console and a registered worklet, then provoke the failure
+## flows (unparseable save, engine error, refused vote, profile import) and
+## require each to be contained. Needs `make wasm` first, Node, and
+## Playwright's Chromium (`make smoke-tools` once).
 smoke:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
 	cd tests/web && npm ci --no-audit --no-fund && npx playwright test
