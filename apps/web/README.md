@@ -154,7 +154,7 @@ to a pinned `role="alert"` strip that stays until resolved.
   natively by `farm_width_does_not_change_the_pool` and
   `farm_absorption_reproduces_the_serial_pool`, on `(id, tree, raw φ)`.
 
-  Restore is farmed too (`import_session_deferred` → `bank_absorb` →
+  Restore is farmed too (`import_session_deferred_v2` → `bank_absorb` →
   `restore_finish`), which is the bigger win: it used to be a full bank of
   serial renders behind a bar pinned at zero. Every degradation path — a
   worker that never initializes, one killed mid-boot, a build-stamp mismatch,
@@ -162,6 +162,27 @@ to a pinned `role="alert"` strip that stays until resolved.
   to the serial fill of the *same* draw stream, so it costs time and never
   content. The one exception is loud: a job retired after two attempts logs a
   console warning.
+
+  Both restore paths ask the engine for a **verdict**, not a count
+  (`import_session_deferred_v2`, `import_session_checked`). `unparseable` —
+  the save exists and this build cannot read it — is posted to main as
+  `restore_failed`, and is the one answer that must stop the next autosave.
+
+- **Persistence** is one IndexedDB record, `state`, shaped `{v: 2, session,
+  ui}` (a v1 record has no `v` and reads the same). Two more keys guard it.
+  `state-prev` is the record the page **booted from**, written once per
+  session before the first overwrite: every restore migrates and repairs
+  (schema conversions, clamped cells, dropped votes), and until this existed
+  the first autosave made the repaired copy the only copy. It is written once
+  per session rather than rotated on every save because a slot rotated every
+  2.5 s would hold the already-migrated record within one vote of booting.
+  `state-quarantine-<timestamp>` is where a save this build cannot parse is
+  copied on `restore_failed`, *before* any write; a pinned `role="alert"`
+  says where it is, and autosave stays off until the player chooses **start
+  fresh** or reloads under a build that can read it. `idbPut` resolves on
+  transaction completion and reports a refused write — a full quota used to
+  fail in silence — through the same alert strip. One connection is kept for
+  the life of the page.
 
 - **Hit targets are measured, not eyeballed.** Two controls turned out to be
   much smaller than they looked, both because an SVG shape only hit-tests

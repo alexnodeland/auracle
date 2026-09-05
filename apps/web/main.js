@@ -159,37 +159,160 @@ function setLiveMuted(on) {
 }
 
 // ---------- persistence (IndexedDB autosave) ----------
-// One record: {session: <engine SessionState JSON>, ui: {stars, cut, vol, oct, perf}}.
+// One record under `state`: `{v: 2, session: <engine SessionState JSON>, ui:
+// {stars, cut, vol, oct, perf, …}}`. A v1 record is the same two fields with
+// no `v`, and is read exactly as before. The version is the UI's, not the
+// engine's — `SessionState` carries its own `schema` — and exists so a later
+// change to the `ui` blob has something to branch on rather than sniffing.
+//
+// Two more keys keep this honest:
+//
+// - `state-prev` — the record this page *booted from*, written once per
+//   session on its first save, before `state` is overwritten. Every restore
+//   migrates and repairs (schema-1 rows converted, out-of-range cells clamped,
+//   unreadable votes dropped) and then the first autosave made that the only
+//   copy. If a conversion is later found wrong, this is where the bytes it
+//   started from still are. Once per session rather than on every save on
+//   purpose: rotated every 2.5 s it would hold the already-migrated record
+//   within one vote of booting, which protects nothing.
+// - `state-quarantine-<timestamp>` — a save this build could not parse,
+//   copied there by `restore_failed` before anything else is written. See
+//   that handler.
+const STATE_VERSION = 2;
+
+// One connection for the life of the page. Opening one per save was cheap
+// but meant no `onerror` was ever attached to a write: a full disk
+// (`QuotaExceededError`) failed in silence, with the app still reading
+// "saved" to itself. Dropped and reopened if the browser closes it under us.
+let idbConn = null;
 function idbOpen() {
-  return new Promise((resolve) => {
-    const req = indexedDB.open("auracle", 1);
+  if (idbConn) return idbConn;
+  idbConn = new Promise((resolve) => {
+    let req;
+    try {
+      req = indexedDB.open("auracle", 1);
+    } catch (_) {
+      idbConn = null;
+      return resolve(null); // no IndexedDB at all: run without saves
+    }
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null); // private mode etc: run without saves
+    req.onsuccess = () => {
+      const db = req.result;
+      // Another tab upgrading the schema, or the browser reclaiming the
+      // connection: let go, and the next call opens a fresh one.
+      db.onversionchange = () => { db.close(); idbConn = null; };
+      db.onclose = () => { idbConn = null; };
+      resolve(db);
+    };
+    req.onerror = () => { idbConn = null; resolve(null); }; // private mode etc.
   });
+  return idbConn;
 }
 async function idbGet(key) {
   const db = await idbOpen();
   if (!db) return null;
   return new Promise((resolve) => {
-    const tx = db.transaction("kv", "readonly").objectStore("kv").get(key);
+    let tx;
+    try {
+      tx = db.transaction("kv", "readonly").objectStore("kv").get(key);
+    } catch (_) {
+      return resolve(null);
+    }
     tx.onsuccess = () => resolve(tx.result || null);
     tx.onerror = () => resolve(null);
   });
 }
+/** Write one key. Resolves `true` when the transaction *completed* — not when
+ *  the request was queued — and reports a refused write instead of dropping
+ *  it: a quota the browser has run out of is a condition the player has to be
+ *  told about, because every autosave from then on is a save that did not
+ *  happen. */
 async function idbPut(key, value) {
   const db = await idbOpen();
-  if (!db) return;
-  db.transaction("kv", "readwrite").objectStore("kv").put(value, key);
+  if (!db) return false;
+  return new Promise((resolve) => {
+    let tx;
+    try {
+      tx = db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put(value, key);
+    } catch (err) {
+      saveFailed(err, key);
+      return resolve(false);
+    }
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => { saveFailed(tx.error, key); resolve(false); };
+    tx.onabort = () => { saveFailed(tx.error, key); resolve(false); };
+  });
 }
 async function idbDel(key) {
   const db = await idbOpen();
   if (!db) return;
   return new Promise((resolve) => {
-    const tx = db.transaction("kv", "readwrite").objectStore("kv").delete(key);
+    let tx;
+    try {
+      tx = db.transaction("kv", "readwrite").objectStore("kv").delete(key);
+    } catch (_) {
+      return resolve();
+    }
     tx.onsuccess = () => resolve();
     tx.onerror = () => resolve();
   });
+}
+
+// Why a write was refused, said once and cleared by the next write that
+// lands. The alarm strip is one slot, so this owns it only while the tag is
+// its own — a crash or a quarantine alert must not be wiped by a later save.
+let saveAlarmUp = false;
+function saveFailed(err, key) {
+  const name = (err && err.name) || "unknown error";
+  console.error(`[auracle] IndexedDB write of "${key}" failed:`, err);
+  if (saveAlarmUp) return;
+  saveAlarmUp = true;
+  const why =
+    name === "QuotaExceededError"
+      ? "this browser's storage is full, so the session cannot be saved. It keeps running, but nothing since the last save will survive a reload — clear some site data, then"
+      : `the session could not be saved (${name}). It keeps running, but nothing since the last save will survive a reload —`;
+  alarm(`${why} try again.`, {
+    label: "try again",
+    run: () => { alarm(null); saveAlarmUp = false; saveNow(); },
+  });
+  $("alarm").dataset.tag = "save";
+}
+function saveLanded() {
+  if (!saveAlarmUp) return;
+  saveAlarmUp = false;
+  if ($("alarm").dataset.tag === "save") alarm(null);
+}
+
+// The record this page booted from, verbatim — what `state-prev` and a
+// quarantine are copies of. Null for a first run.
+let bootRecord = null;
+let bootRecordKept = false;
+// Why autosave is off, or null. `"unparseable"`: the save on disk is one this
+// build cannot read, and writing would destroy it (see `restore_failed`).
+// `"crashed"`: the engine is gone, and whatever it would export now is not a
+// session anyone should reload into.
+let saveBlocked = null;
+let quarantineKey = null;
+
+/** The one place the `state` key is written. */
+async function persistState(record) {
+  if (saveBlocked) return;
+  if (bootRecord && !bootRecordKept) {
+    // Before, not after: this must exist by the time `state` is overwritten.
+    bootRecordKept = await idbPut("state-prev", bootRecord);
+  }
+  if (await idbPut("state", record)) saveLanded();
+}
+
+/** Autosave is off, and stays off until the player says otherwise. */
+function startFresh() {
+  saveBlocked = null;
+  alarm(null);
+  note(
+    `Starting fresh. The unreadable session is still in this browser under "${quarantineKey}" — a newer build may be able to read it.`,
+  );
+  saveNow();
 }
 
 // ---------- the names this app used to have ----------
@@ -296,10 +419,18 @@ function announceRepair() {
 let saveTimer = null;
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    flushPlayCounts(); // implicit play signal rides along with every save
-    send({ type: "save" });
-  }, 2500);
+  if (saveBlocked) return;
+  saveTimer = setTimeout(saveNow, 2500);
+}
+/** Save without the debounce — for the moments the tab may not get another
+ *  2.5 s (hidden, unloading) and for an explicit retry. Not before the veil
+ *  has lifted: the worker answers `save` between restore batches, and a
+ *  session exported mid-restore is a bank with half its patches missing. */
+function saveNow() {
+  clearTimeout(saveTimer);
+  if (saveBlocked || !booted) return;
+  flushPlayCounts(); // implicit play signal rides along with every save
+  send({ type: "save" });
 }
 function uiState() {
   return {
@@ -828,7 +959,31 @@ worker.onmessage = (e) => {
       break;
     }
     case "saved": {
-      idbPut("state", { session: m.json, ui: uiState() });
+      persistState({ v: STATE_VERSION, session: m.json, ui: uiState() });
+      break;
+    }
+    // The save on disk exists and this build cannot read it. Until now that
+    // was indistinguishable from "nothing to restore": the engine booted from
+    // the prior, the first vote scheduled an autosave, and ~2.5 s later the
+    // unreadable record — every patch and every pick in it — was gone under a
+    // fresh session. An older build served from cache opening a newer save
+    // was enough to trigger it.
+    //
+    // Order matters here: the copy lands *before* anything else can write,
+    // and autosave stays off until the player says "start fresh" or reloads
+    // (with a newer build, the next boot reads the record where it is).
+    case "restore_failed": {
+      saveBlocked = "unparseable";
+      clearTimeout(saveTimer);
+      quarantineKey = `state-quarantine-${Date.now()}`;
+      if (bootRecord) idbPut(quarantineKey, bootRecord);
+      alarm(
+        `This build could not read your saved session (${m.status}), so nothing is being saved over it. ` +
+          `It is kept untouched in this browser's storage as "${quarantineKey}" (IndexedDB › auracle › kv). ` +
+          `Reload once a newer build is available to try again, or start fresh and keep the copy.`,
+        { label: "start fresh", run: startFresh },
+      );
+      $("alarm").dataset.tag = "quarantine";
       break;
     }
     // `edit_begin` said no: that id is not in the pool any more. It is
@@ -1989,6 +2144,9 @@ function renderSkill() {
 
 function alarm(text, action) {
   const el = $("alarm");
+  // One slot. Whoever wants to clear only their own condition tags it *after*
+  // this call (`dataset.tag`) and checks the tag before calling `alarm(null)`.
+  delete el.dataset.tag;
   if (!text) {
     el.classList.add("hidden");
     el.innerHTML = "";
@@ -15984,6 +16142,9 @@ bootMidi();
       if (saved) { idbPut("state", saved); break; }
     }
   }
+  // What this page is booting from, byte for byte. `persistState` keeps it as
+  // `state-prev` before the first overwrite; `restore_failed` quarantines it.
+  bootRecord = saved;
   if (saved && saved.ui) {
     // Restore UI prefs before the engine finishes booting.
     for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);

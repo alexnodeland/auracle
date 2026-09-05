@@ -120,6 +120,39 @@ expected to move to these.
 - `budget_ceilings()` reports `{"size","depth","mod"}` from the grammar, so the
   app stops restating numbers that just moved.
 
+### Fixed — a save this build could not read was overwritten by a fresh one
+
+The web app kept one IndexedDB record with no version on it and no backup, and
+the engine's restore answered `0` both for "nothing in this save" and for "I
+cannot parse this save". The app treated both as a first run: it booted from
+the prior, the first vote scheduled an autosave, and ~2.5 s later the record it
+had never understood — every patch and every pick in it — was gone under a
+fresh session. An older build served from the browser cache opening a newer
+save was enough to trigger it; so was one corrupt bank tree, because
+`SessionState` deserialises all-or-nothing outside the observation rows.
+
+The worker now restores through the verdicted forms
+(`import_session_deferred_v2`, `import_session_checked`) and posts
+`restore_failed` when the answer is `unparseable`. Main then, before anything
+else can write, copies the record to `state-quarantine-<timestamp>`, pins a
+`role="alert"` that says what happened and where the copy is, and turns
+autosave off until the player chooses **start fresh** — or reloads under a
+build that can read it, in which case the record is still exactly where it was.
+
+Around that, the persistence layer gained the shape it should have had:
+
+- The record is versioned, `{v: 2, session, ui}`; a v1 record reads as before.
+- `state-prev` holds the record the page **booted from**, written once per
+  session before the first overwrite. Every restore migrates and repairs the
+  session (schema-1 rows converted, out-of-range cells clamped, unreadable
+  votes dropped) and the first autosave used to make that the only copy — so a
+  conversion later found wrong had nothing to be undone from. Once per session
+  rather than rotated on every save, because a slot rotated every 2.5 s would
+  hold the already-migrated record within one vote of booting.
+- `idbPut` resolves on transaction completion and has `onerror`/`onabort`. A
+  full quota (`QuotaExceededError`) used to fail in silence with the app still
+  telling itself it had saved; it is an alert now, with a retry. One IndexedDB
+  connection is kept for the life of the page instead of one per save.
 
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 

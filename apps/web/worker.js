@@ -460,16 +460,49 @@ const EMPTY_F32 = new Float32Array(0);
 // The deferred form does the same work in the same order — the native gate
 // `deferred_restore_equals_import_state` pins that — but one entry at a time,
 // off-engine, with the bar tracking it.
+//
+// Both paths ask the engine for a *verdict*, not a count. `import_session`
+// answered 0 for a save with nothing in it and for a save this build cannot
+// parse, and the app treated both as "nothing to restore" — then autosaved a
+// fresh session over a record it had never understood (an older cached build
+// opening a newer save, a new enum variant, one corrupt bank tree). The
+// `_checked` / `_v2` forms say `unparseable` for the second case, and that
+// verdict goes to main as `restore_failed`, which is what stops the write.
+function restoreFailed(status) {
+  post({ type: "restore_failed", status });
+  return 0;
+}
+function restoreSerial(saved) {
+  let verdict = null;
+  try {
+    verdict = JSON.parse(engine.import_session_checked(saved));
+  } catch (err) {
+    // A binary without the checked surface (stale cache): the old count, which
+    // cannot tell the two cases apart. Better than refusing to boot.
+    console.warn("[auracle] checked restore unavailable:", err);
+    return engine.import_session(saved);
+  }
+  if (verdict.status === "unparseable") return restoreFailed(verdict.status);
+  return verdict.restored | 0;
+}
 async function restoreSession(saved, farmed, stages) {
-  if (!farmed) return engine.import_session(saved);
+  if (!farmed) return restoreSerial(saved);
 
   let jobs = null;
   try {
-    jobs = JSON.parse(engine.import_session_deferred(saved));
+    const verdict = JSON.parse(engine.import_session_deferred_v2(saved));
+    if (verdict.status === "unparseable") return restoreFailed(verdict.status);
+    jobs = verdict.jobs;
   } catch (err) {
-    // A binary without the deferred surface (stale cache): today's path.
-    console.warn("[auracle] deferred restore unavailable:", err);
-    return engine.import_session(saved);
+    // A binary without the v2 surface (stale cache): the un-verdicted form, and
+    // failing that the serial path.
+    console.warn("[auracle] verdicted restore unavailable:", err);
+    try {
+      jobs = JSON.parse(engine.import_session_deferred(saved));
+    } catch (err2) {
+      console.warn("[auracle] deferred restore unavailable:", err2);
+      return restoreSerial(saved);
+    }
   }
   if (!Array.isArray(jobs) || jobs.length === 0) {
     try { return engine.restore_finish(); } catch (_) { return 0; }
