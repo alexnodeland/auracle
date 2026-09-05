@@ -789,7 +789,16 @@ async function dispatch(m) {
         });
         WasmEngine = mod.WasmEngine;
         engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);
-        post({ type: "ready" });
+        // The structural ceilings a hand-built patch must respect, from the
+        // grammar itself. The app used to restate them as literals, and the
+        // two depth ceilings moved when they were derived from the prior's
+        // support; a number the engine owns is read from the engine. Null on
+        // a binary too old to say, and main keeps its fallback.
+        let ceilings = null;
+        try {
+          ceilings = JSON.parse(mod.budget_ceilings());
+        } catch (_) { /* older engine */ }
+        post({ type: "ready", ceilings });
 
         // Farm ports arrive already connected to workers main spawned before it
         // even read the save, so their wasm init has been overlapping with ours.

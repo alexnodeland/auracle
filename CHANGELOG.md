@@ -200,6 +200,17 @@ loosening can change. `last_refine_reason` rides back with `evolved_from` and
 (per seed) with `refined`, and `outside_support` gets its own sentence: nudge
 a knob off its stop, or take a module out.
 
+### Fixed — the budget readout restated ceilings the grammar had moved
+
+`main.js` carried `BUDGET = {size: 24, depth: 9, mod: 4}` as literals, so
+when the two depth ceilings were derived from the prior's support (6 and 3,
+above) the rack went on reading `n/9 depth · n/4 mod depth` — three and one
+steps past where the engine actually refuses, with the "tight" warning firing
+on trees the engine would no longer take. The worker now reads
+`budget_ceilings()` from the grammar at boot and posts it with `ready`; the
+literals remain only as the fallback for a binary too old to say, and match
+the grammar as of this writing.
+
 ### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
 
 `mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1

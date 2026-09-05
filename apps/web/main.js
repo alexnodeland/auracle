@@ -1446,6 +1446,16 @@ worker.onmessage = (e) => {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
       break;
     }
+    // The engine is up. It says what the structural ceilings are so the
+    // budget readout cannot restate a number the grammar has since moved.
+    case "ready": {
+      const c = m.ceilings;
+      if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
+        BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
+        renderBudget();
+      }
+      break;
+    }
     // A request threw inside the worker instead of replying. Every reply is
     // load-bearing (see `releaseRequest`), so the state that request was
     // holding is released here — and if the engine is *gone* (a wasm trap
@@ -3538,7 +3548,13 @@ function renderBelief() {
 // inside the ceilings, so the structure disappears on the one action the whole
 // instrument is built around. The number has to be visible while there is
 // still room to spend.
-const BUDGET = { size: 24, depth: 9, mod: 4 };
+//
+// The values are the engine's: the worker reads `budget_ceilings()` from the
+// grammar and posts them with `ready`. These literals are only the fallback
+// for a binary too old to say, and match the grammar as of this writing —
+// the two depth ceilings were 9 and 4 here for months after `MAX_DEPTH` and
+// `MAX_MOD_DEPTH` had become 6 and 3, which is exactly the drift this closes.
+let BUDGET = { size: 24, depth: 6, mod: 3 };
 
 /** ModNode depth, mirroring `ModNode::depth` exactly — an `Op` wraps its
  *  input, a `Pair` takes the deeper of two, everything else is a leaf. */
