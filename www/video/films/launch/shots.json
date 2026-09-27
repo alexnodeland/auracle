@@ -1,0 +1,63 @@
+{
+  "viewport": [1920, 1080],
+  "dpr": 1,
+  "query": "?film",
+  "setup": [
+    { "op": "click", "sel": "#warm-skip" }
+  ],
+  "shots": [
+    {
+      "id": "l-play",
+      "beat": "play",
+      "pre": 1.0,
+      "dur": 15.0,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "actions": [
+        { "at": "play1:Then", "op": "hold", "keys": ["a", "d", "g"], "ms": 4200 },
+        { "at": "play2:Turn", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -110, "ms": 2200 },
+        { "at": "play2:brighter", "op": "hold", "keys": ["h", "k", "d"], "ms": 3800 },
+        { "at": "play3:wander", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -70, "ms": 1200 },
+        { "at": "play3:turn", "op": "hold", "keys": ["f", "h", "k"], "ms": 5000 }
+      ]
+    },
+    {
+      "id": "l-offer",
+      "beat": "offer",
+      "pre": 1.0,
+      "dur": 13.0,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" },
+        { "op": "wait", "ms": 9000 }
+      ],
+      "actions": [
+        { "at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": 12000 },
+        { "at": "offer1:Press", "op": "click", "sel": ".pf-pad.primary" },
+        { "at": "offer2:Blend", "op": "drag", "sel": ".pf-knob[data-i='6']", "dy": -120, "ms": 1800 },
+        { "at": "offer2:Take", "op": "click", "sel": ".pf-pad:has-text('Take')" }
+      ]
+    },
+    {
+      "id": "l-circuit",
+      "beat": "depth",
+      "pre": 1.0,
+      "dur": 9.0,
+      "setup": [
+        { "op": "preset", "name": "First Bass" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "First Bass" },
+        { "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -90, "ms": 900 },
+        { "op": "view", "v": "patch" },
+        { "op": "wait", "ms": 1200 }
+      ],
+      "actions": [
+        { "at": 0.2, "op": "hold", "keys": ["a", "g"], "ms": 8000 }
+      ]
+    }
+  ]
+}

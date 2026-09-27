@@ -967,7 +967,11 @@ export function createPerform(host) {
     state.spare = null;
     state.changedAt = performance.now();
     state.revalidating = false;
+    // An offer still growing for the old patch is consumed when it lands (its
+    // generation is stale), so B must say so now: it used to keep "growing an
+    // offer…" for ever when the patch changed under a growing offer.
     if (state.offer) clearOffer();
+    else renderOffer();
     if (state.visible) wire();
     knobs.forEach(paintKnob);
     renderHood();
