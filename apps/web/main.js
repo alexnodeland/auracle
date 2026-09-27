@@ -15628,6 +15628,8 @@ const NICE_NAMES = {
   // member, or the WHY line credits a wavefolder for a bitcrusher's evidence.
   n_vco: "VCOs", n_supersaw: "supersaws", n_noise: "noise srcs", n_mix: "mixers",
   n_wavetable: "wavetables", n_pluck: "plucked strings", n_formant: "formant voices",
+  // A hole a player's edit left (a Silence leaf): a socket with nothing in it.
+  n_silence: "empty sockets",
   n_filter: "filtering", n_drive: "drive & fold", n_time: "delay & grains",
   n_mod_fx: "chorus & sweeps", n_reverb: "reverbs", n_dynamics: "level control",
   // `n_rand` is the stepped-CV family now — s&h rand and the step sequencer.
@@ -15700,6 +15702,7 @@ const STYLE_WORDS = {
   n_wavetable: { adj: "wavetable", noun: "wavetables" },
   n_pluck: { adj: "plucked", noun: "plucked strings", coord: true },
   n_formant: { adj: "vocal", noun: "formants" },
+  n_silence: { adj: "sparse", noun: "empty sockets" },
   n_filter: { adj: "filtered", noun: "filters" },
   n_drive: { adj: "driven", noun: "drive" },
   n_time: { adj: "echoing", noun: "delays" },
