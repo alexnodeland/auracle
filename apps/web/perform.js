@@ -116,6 +116,7 @@ export function createPerform(host) {
     // A measurement not started because another patch is on its way to the
     // bench (see `heldForOpen`): "measure" or "revalidate", or null.
     heldWire: null,
+    playableAt: 0, // when the current wiring landed (see growSpare)
     lastTouch: 0,
     lastMove: performance.now(),
     glide: null, // {from: Map, to: Map, t0, dur, json}
@@ -752,6 +753,13 @@ export function createPerform(host) {
   // changes), and so do hands that have carried the knobs outside the trust
   // region it was grown in, since it would no longer be a variant of *this*.
   const SPARE_STEADY_MS = 6000;
+  // …and playable for a while too. A patch is not steady while it is being
+  // measured, whatever the clock says since it changed: counting from the
+  // change alone, every measurement longer than six seconds ended in a spare
+  // grown the moment the controls came alive — ten-odd seconds on the one
+  // worker, in front of whatever the player did next. A preset clicked right
+  // after opening a patch waited 15 s behind a spare for the patch it left.
+  const SPARE_PLAYABLE_MS = 3000;
   function spareFresh(sp) {
     for (const [a, v] of state.cur.knobs) {
       const at = sp.at.get(a);
@@ -763,7 +771,10 @@ export function createPerform(host) {
     const now = performance.now();
     if (!state.visible || !state.cur || !state.wire || state.spare || state.offer) return;
     if (state.pending.size > 0 || state.glide) return;
-    if (now - (state.changedAt || 0) < SPARE_STEADY_MS || now - state.lastTouch < 2000) return;
+    // No spare for a patch on its way out, either (see `heldForOpen`).
+    if (host.opening?.()) return;
+    if (now - (state.changedAt || 0) < SPARE_STEADY_MS || now - state.playableAt < SPARE_PLAYABLE_MS) return;
+    if (now - state.lastTouch < 2000) return;
     const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20 });
     state.pending.get(req).spare = { at: new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)])) };
   }
@@ -864,6 +875,7 @@ export function createPerform(host) {
     const here = new Map(data.addrs.map((a, i) => [a, had.has(a) ? liveValue(a) : data.values[i]]));
     state.cur.knobs = here;
     state.wiredAt = new Map(here);
+    state.playableAt = performance.now();
     state.c = state.c.map(() => 0);
     knobs.forEach((k) => {
       if (k.spec.kind === "named") {
