@@ -3,6 +3,8 @@
 <p class="lede">A candidate is as good as its best lens thinks it is. Two more obvious
 designs cannot represent a cross-island comparison at all.</p>
 
+<!-- film:math --><!-- /film:math -->
+
 ## The form
 
 $$u(x) = \max_{k \in 1..K} \; \theta_k^\top z(x), \qquad z(x) = \frac{\varphi(x) - \mu}{s}$$

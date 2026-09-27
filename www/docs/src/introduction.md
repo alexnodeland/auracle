@@ -3,6 +3,8 @@
 <p class="lede">A playable modular synthesizer that learns what you like, and can
 show you what it learned.</p>
 
+<!-- film:launch --><!-- /film:launch -->
+
 Auracle generates patches by evolutionary search, plays them to you, and asks
 which one you prefer. From your answers it fits a model of your taste, with
 uncertainty you can inspect, and uses it to steer the search. Over a session it

@@ -2,6 +2,8 @@
 
 <p class="lede">Four voices, three ways in, and an arpeggiator.</p>
 
+<!-- film:playing --><!-- /film:playing -->
+
 The current patch is always live: four-voice polyphony, with oldest-note
 stealing and silent-tail voice parking. Every edit you make on the rack
 re-patches the running instrument, so held chords survive a patch change

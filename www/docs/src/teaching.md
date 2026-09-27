@@ -4,6 +4,8 @@
 teaching but are not. A duel can be dealt in EVOLVE or answered while you play
 in PERFORM.</p>
 
+<!-- film:taste --><!-- /film:taste -->
+
 ## The four signals
 
 Everything you tell Auracle enters **one observation log** and conditions **one

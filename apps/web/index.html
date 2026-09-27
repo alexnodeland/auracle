@@ -102,6 +102,7 @@
           <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor's taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
           <div class="ovf-sep"></div>
           <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
+          <a id="films-link" class="ovf-item" role="menuitem" href="https://alexnodeland.github.io/auracle/docs/films.html" target="_blank" rel="noopener">Watch the films <span aria-hidden="true">↗</span></a>
         </div>
         <!-- The scope's own panel. It hangs off the same ⋯ the rest of the
              app's settings do rather than growing a second gear icon on the
@@ -802,7 +803,12 @@
     </div>
     <p class="help-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle">source</a></p>
     </div>
-    <div class="help-foot"><button class="hw-btn small" id="help-close">got it</button></div>
+    <div class="help-foot">
+      <!-- The films show what this card tells; the href is set in main.js
+           (the site's films page beside /play/, or the published one). -->
+      <a class="help-film" id="help-film" href="https://alexnodeland.github.io/auracle/docs/films.html#film-perform" target="_blank" rel="noopener"><span aria-hidden="true">▶</span> watch it played</a>
+      <button class="hw-btn small" id="help-close">got it</button>
+    </div>
   </div>
 </section>
 

@@ -3,6 +3,8 @@
 <p class="lede">Audio features are only comparable under an identical stimulus.
 This module owns that stimulus.</p>
 
+<!-- film:dsp --><!-- /film:dsp -->
+
 ## The spec
 
 `PhraseSpec::default()` is four notes, ~5.05 seconds, 44 100 Hz, RNG seed

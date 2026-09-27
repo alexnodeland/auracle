@@ -3,6 +3,8 @@
 <p class="lede">Every knob is an address in the genome, which is why turning one
 teaches the machine something.</p>
 
+<!-- film:sounddesign --><!-- /film:sounddesign -->
+
 <figure>
 <img src="./img/rack-detail.webp" alt="Rack detail: wavefolder, mix, chorus and wavetable modules with labelled knobs reading FOLD 49%, RATE 8.23 Hz, BAL +4.0 dB, MORPH 85%, joined by green audio cables and amber modulation cables ending in named destinations PITCH, THRESHOLD, DEPTH and MORPH." loading="eager" width="560" height="300">
 <figcaption><strong>Two cable colours, two meanings.</strong> Green carries

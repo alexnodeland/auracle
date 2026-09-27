@@ -2992,9 +2992,19 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 }
 .help-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-right: 6px; }
 .help-foot {
-  flex: none; display: flex; justify-content: flex-end;
+  flex: none; display: flex; justify-content: flex-end; align-items: center; gap: var(--s4);
   margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--hairline);
 }
+/* Green: a film is something you hear. Quiet until pointed at. */
+.help-film {
+  margin-right: auto;
+  font-family: var(--font-mono);
+  font-size: var(--t-label);
+  color: var(--phos-a-dim);
+  text-decoration: none;
+}
+.help-film:hover { color: var(--phos-a); }
+a.ovf-item { text-decoration: none; }
 /* Prose in the panel face at reading size; keys and values stay in mono. */
 .help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; font-size: var(--t-body); line-height: 1.55; }
 .help-cols p { margin: 4px 0 10px; color: var(--silk); }

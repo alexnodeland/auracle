@@ -17631,6 +17631,17 @@ function showHelp(on) {
     helpReturnFocus = null;
   }
 }
+// The films live in the guide beside the instrument (/play/ → /docs/): the
+// help card's is PERFORM's own walkthrough, on PERFORM's page; ⋯ opens the
+// index of all of them. A local build has no site around it, so it links to
+// the published one.
+{
+  const docs = location.pathname.includes("/play/")
+    ? new URL("../docs/", location.href).href
+    : "https://alexnodeland.github.io/auracle/docs/";
+  $("films-link").href = `${docs}films.html`;
+  $("help-film").href = `${docs}views/perform.html#film-perform`;
+}
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {

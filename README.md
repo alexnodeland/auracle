@@ -29,6 +29,8 @@ you*: the fitted taste posterior reshapes the grammar's own proposal
 distribution. Over a session it stops guessing and starts proposing, and it can
 show you what it learned.
 
+<!-- films:readme --><!-- /films:readme -->
+
 ## Table of Contents
 
 - [Why Auracle?](#-why-auracle)

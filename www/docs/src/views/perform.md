@@ -3,6 +3,8 @@
 <p class="lede">Eight controls with names that mean the same thing on every
 patch, six pads, and nothing that stops to ask you a question.</p>
 
+<!-- film:perform --><!-- /film:perform -->
+
 [PATCH](./play.md) shows what a sound is made of: every module, every knob, by
 address. PERFORM is for playing it. You reach for *brighter*, not for
 `node/0#cut`, and the instrument works out which of this patch's knobs make it

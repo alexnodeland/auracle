@@ -44,101 +44,119 @@
     <p class="eyebrow">Modular synthesizer · Evolutionary search · Runs in your browser</p>
     <h1 class="display">Pick the sound<br>you like better.</h1>
     <p class="voice">Auracle plays you two patches, learns which one you preferred, and
-    starts making more of it. The panel here is real. Press play and choose.</p>
+    starts making more of it.</p>
     <div class="cta-row">
       <a class="btn btn-go" href="play/">Play the instrument&nbsp;▸</a>
-      <a class="btn" href="docs/getting-started/first-session.html">Read the guide</a>
+      <!-- films:cta --><a class="btn" href="#try">Try it here</a><!-- /films:cta -->
     </div>
     <p class="fineprint">Free, no account, nothing to install. Your patches and your
     taste model stay in your browser.</p>
   </div>
 
-  <!-- The signature element: a working duel. -->
-  <div class="panel" id="hero-duel">
-    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <!-- The launch film, playing silently in the instrument's own bezel, with
+       its sound one press away. Written by www/video/tools/publish.py; empty
+       (and the hero one column) until the film is published. -->
+  <!-- films:hero --><!-- /films:hero -->
+</section>
 
-    <div class="crt">
-      <div class="scanlines" aria-hidden="true"></div>
+<!-- ─── try it ─────────────────────────────────────────────────────────── -->
+<section class="band band-try" id="try">
+  <div class="try">
+    <div class="try-copy">
+      <p class="eyebrow">Try it here</p>
+      <h2 class="h2">The panel is real.</h2>
+      <p class="voice">Two patches, rendered by the engine in your browser. Press
+      play, pick the one you like better, and watch what it thinks you like
+      change.</p>
+    </div>
 
-      <div class="duel" role="group" aria-label="Which patch do you prefer?">
-        <article class="card" data-side="a">
-          <header class="card-head">
-            <span class="card-id">A</span>
-            <span class="card-name mono" data-name>—</span>
+    <!-- The signature element: a working duel. -->
+    <div class="panel" id="hero-duel">
+      <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+      <div class="crt">
+        <div class="scanlines" aria-hidden="true"></div>
+
+        <div class="duel" role="group" aria-label="Which patch do you prefer?">
+          <article class="card" data-side="a">
+            <header class="card-head">
+              <span class="card-id">A</span>
+              <span class="card-name mono" data-name>—</span>
+            </header>
+            <canvas class="trace" data-trace width="520" height="86" role="img"
+                    aria-label="Waveform of patch A"></canvas>
+            <button class="card-play" data-play type="button">
+              <span aria-hidden="true">▶</span> hear&nbsp;A <kbd>1</kbd>
+            </button>
+          </article>
+
+          <article class="card" data-side="b">
+            <header class="card-head">
+              <span class="card-id">B</span>
+              <span class="card-name mono" data-name>—</span>
+            </header>
+            <canvas class="trace" data-trace width="520" height="86" role="img"
+                    aria-label="Waveform of patch B"></canvas>
+            <button class="card-play" data-play type="button">
+              <span aria-hidden="true">▶</span> hear&nbsp;B <kbd>2</kbd>
+            </button>
+          </article>
+        </div>
+
+        <!-- What the model built from the picks. It takes the whole screen when it
+             arrives, because a new patch appearing beside the duel is a thing you
+             can miss, and the one claim this button makes is that it made you
+             something. Amber throughout: this came out of the model, not out of
+             the random draw the green cards are showing. -->
+        <article class="made" data-made hidden>
+          <header class="made-head">
+            <span class="made-tag">New · built for you</span>
+            <span class="made-name mono" data-made-name>—</span>
           </header>
-          <canvas class="trace" data-trace width="520" height="86" role="img"
-                  aria-label="Waveform of patch A"></canvas>
-          <button class="card-play" data-play type="button">
-            <span aria-hidden="true">▶</span> hear&nbsp;A <kbd>1</kbd>
-          </button>
-        </article>
-
-        <article class="card" data-side="b">
-          <header class="card-head">
-            <span class="card-id">B</span>
-            <span class="card-name mono" data-name>—</span>
-          </header>
-          <canvas class="trace" data-trace width="520" height="86" role="img"
-                  aria-label="Waveform of patch B"></canvas>
-          <button class="card-play" data-play type="button">
-            <span aria-hidden="true">▶</span> hear&nbsp;B <kbd>2</kbd>
-          </button>
+          <canvas class="trace made-trace" data-made-trace width="520" height="86" role="img"
+                  aria-label="Waveform of the patch built from your picks"></canvas>
+          <p class="made-from mono" data-made-from></p>
+          <div class="made-row">
+            <button class="card-play made-play" data-made-play type="button">
+              <span aria-hidden="true">▶</span> hear it again
+            </button>
+            <button class="card-play made-back" data-made-back type="button">
+              <span aria-hidden="true">◂</span> back to training <kbd>esc</kbd>
+            </button>
+          </div>
         </article>
       </div>
 
-      <!-- What the model built from the picks. It takes the whole screen when it
-           arrives, because a new patch appearing beside the duel is a thing you
-           can miss, and the one claim this button makes is that it made you
-           something. Amber throughout: this came out of the model, not out of
-           the random draw the green cards are showing. -->
-      <article class="made" data-made hidden>
-        <header class="made-head">
-          <span class="made-tag">New · built for you</span>
-          <span class="made-name mono" data-made-name>—</span>
+      <div class="pickrow" data-pickrow>
+        <button class="pick" data-pick="a" type="button">Pick A <kbd>←</kbd></button>
+        <button class="pick" data-pick="b" type="button">Pick B <kbd>→</kbd></button>
+      </div>
+
+      <!-- The model's mind. Amber, per the phosphor law. -->
+      <section class="mind" aria-labelledby="mind-h">
+        <header class="mind-head">
+          <h2 class="mind-title" id="mind-h">What it thinks you like</h2>
+          <span class="pips mono" data-pips aria-hidden="true"></span>
         </header>
-        <canvas class="trace made-trace" data-made-trace width="520" height="86" role="img"
-                aria-label="Waveform of the patch built from your picks"></canvas>
-        <p class="made-from mono" data-made-from></p>
-        <div class="made-row">
-          <button class="card-play made-play" data-made-play type="button">
-            <span aria-hidden="true">▶</span> hear it again
-          </button>
-          <button class="card-play made-back" data-made-back type="button">
-            <span aria-hidden="true">◂</span> back to training <kbd>esc</kbd>
-          </button>
-        </div>
-      </article>
+
+        <ul class="bars" data-bars>
+          <!-- filled by hero.js so the labels and the model cannot disagree -->
+        </ul>
+
+        <p class="verdict" data-verdict role="status">Press <kbd>1</kbd> and <kbd>2</kbd>,
+        then pick the one you prefer.</p>
+
+        <button class="btn btn-make" data-make type="button" hidden>
+          Make me one&nbsp;▸
+        </button>
+      </section>
+
+      <p class="honesty">
+        A four-knob miniature. The real instrument measures
+        <a href="reference/features/audio.html">forty-four coordinates</a> and fits a
+        posterior over up to five taste lenses.
+      </p>
     </div>
-
-    <div class="pickrow" data-pickrow>
-      <button class="pick" data-pick="a" type="button">Pick A <kbd>←</kbd></button>
-      <button class="pick" data-pick="b" type="button">Pick B <kbd>→</kbd></button>
-    </div>
-
-    <!-- The model's mind. Amber, per the phosphor law. -->
-    <section class="mind" aria-labelledby="mind-h">
-      <header class="mind-head">
-        <h2 class="mind-title" id="mind-h">What it thinks you like</h2>
-        <span class="pips mono" data-pips aria-hidden="true"></span>
-      </header>
-
-      <ul class="bars" data-bars>
-        <!-- filled by hero.js so the labels and the model cannot disagree -->
-      </ul>
-
-      <p class="verdict" data-verdict role="status">Press <kbd>1</kbd> and <kbd>2</kbd>,
-      then pick the one you prefer.</p>
-
-      <button class="btn btn-make" data-make type="button" hidden>
-        Make me one&nbsp;▸
-      </button>
-    </section>
-
-    <p class="honesty">
-      A four-knob miniature. The real instrument measures
-      <a href="reference/features/audio.html">forty-four coordinates</a> and fits a
-      posterior over up to five taste lenses.
-    </p>
   </div>
 </section>
 
@@ -213,6 +231,8 @@
       sure it is.</p>
     </div>
   </div>
+
+  <!-- films:instrument --><!-- /films:instrument -->
 </section>
 
 <!-- ─── how it learns ──────────────────────────────────────────────────── -->
@@ -255,6 +275,8 @@
       whisker crosses the centre line is a guess, and the display says so.</figcaption>
     </figure>
   </div>
+
+  <!-- films:learning --><!-- /films:learning -->
 </section>
 
 <!-- ─── architecture ───────────────────────────────────────────────────── -->
@@ -272,6 +294,8 @@
   you answer questions, and carries your taste back into how the search
   <em>proposes</em>, not only how it scores.</figcaption>
   </figure>
+
+  <!-- films:engine --><!-- /films:engine -->
 </section>
 
 <!-- ─── the palette, by signal path ────────────────────────────────────── -->
@@ -304,6 +328,8 @@
 
   <p class="path-note">Every knob is an address in the genome, so turning one edits the
   patch the search is working on. Lock a knob and refinement leaves it alone.</p>
+
+  <!-- films:making --><!-- /films:making -->
 </section>
 
 <!-- ─── start ──────────────────────────────────────────────────────────── -->

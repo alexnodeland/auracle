@@ -2,6 +2,8 @@
 
 <p class="lede">Three separate collections, each with its own rules.</p>
 
+<!-- film:composing --><!-- /film:composing -->
+
 <figure>
 <img src="./img/bank.webp" alt="The bank rail: three bank tabs — evolution 40, my patches 1, presets 61 — above a list of rows, each with a name, prediction percentage, play button, five stars and a save icon." loading="eager" width="252" height="720">
 <figcaption><strong>The bank rail.</strong> Three collections, and a row for
