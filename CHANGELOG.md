@@ -8,6 +8,36 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — the first minute at a booth
+
+A walkthrough of the first-run flow, played the way a visitor would, found:
+
+* **The warm start lost most of what it was told.** A visitor who listened to
+  the nine presets before choosing (≈25 s) had 9 of 18 preferences recorded
+  and a column of "that patch is gone" toasts: the nine inserts went into a
+  full pool one message at a time and the unpicked six evicted each other
+  before their duels were logged. It is now one worker turn (`warm_start`):
+  picks go in first and pinned, and each unpicked preset's three duels are
+  recorded the moment it lands. `tests/web/first_run.spec.js` walks the slow
+  path and requires 18; the old code gives 9.
+* **The warm-start ▶ could not be clicked.** A global rule lifts anything
+  with `aria-pressed` above the toast lane, and a warm card holds its pick in
+  `aria-pressed`, so the card painted over its own ▶ and "hear this" cast a
+  pick. The same rule put PERFORM's pad over the MIDI popover.
+* **PERFORM named the previous patch.** The tree reaches PERFORM before its
+  name does, and PERFORM read the name on the tree's arrival — so a sweep of
+  twelve presets was off by one every time.
+* **Measuring a patch took seconds, every time.** PERFORM now keeps the last
+  24 measurements, keyed by the tree and by how many votes the model had seen,
+  so flicking back to a patch is instant.
+* **The help dialog** was taller than a 900 px window with no scroll; its
+  title and GOT IT were unreachable.
+* **Toasts** covered B's title in EVOLVE, rack plates in PATCH and the TASTE
+  header. They now stack upward from just above the keybar.
+* **PERFORM's pads.** The Hold pad is **Freeze** (the dock's **hold** latches
+  notes — two buttons named the same doing different jobs); Take and Peek are
+  disabled until there is an offer; Offer reads as the primary.
+
 ### Fixed — the preset bank, measured instead of written by feel
 
 `examples/preset_audit.rs` (auracle-features) measures what audition actually

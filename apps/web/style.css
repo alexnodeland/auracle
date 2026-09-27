@@ -2818,7 +2818,12 @@ input, textarea, .bi-rename {
   background: rgba(10, 12, 15, 0.82); backdrop-filter: blur(3px);
   display: flex; align-items: center; justify-content: center;
 }
-.help-card { max-width: 720px; width: min(92vw, 720px); padding: 22px 26px; position: relative; }
+.help-card {
+  max-width: 720px; width: min(92vw, 720px); padding: 22px 26px; position: relative;
+  /* Taller than a 900 px window: it scrolls rather than losing its title
+     above the viewport and GOT IT below it. */
+  max-height: calc(100vh - 48px); overflow: auto;
+}
 .help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; font-size: var(--t-label); line-height: 1.55; }
 .help-cols p { margin: 4px 0 10px; color: var(--silk); }
 .help-cols b { color: var(--phos-a, #8ef0b1); font-weight: 600; }
@@ -3372,6 +3377,11 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 /* The primary teaching affordances, and every control that holds a state,
    sit above transient chrome — always. */
 .play-duel, .duel-mid, [aria-pressed] { position: relative; z-index: 50; }
+/* …which lifts a warm-start card (it holds its pick in aria-pressed) over its
+   own ▶, so the button painted under the card and a click on it cast a pick
+   instead of playing. The ▶ sits one above. Likewise a popover has to clear
+   the pressed-state controls it opens over (PERFORM's HOLD pad). */
+.warm-cell .wi-play { z-index: 51; }
 .toast {
   pointer-events: auto;
   display: flex;
@@ -4224,6 +4234,8 @@ html.handheld .handheld-gate {
 .pf-pad:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .pf-pad.lit { color: var(--phos-b); box-shadow: var(--lift), 0 0 12px rgba(255,180,84,0.3), 0 3px 0 #0a0b0d; }
 .pf-pad.flash { animation: pf-flash 500ms ease-out; }
+.pf-pad.primary { color: var(--phos-a); border-color: var(--phos-a-deep); }
+.pf-pad:disabled { opacity: 0.38; cursor: default; box-shadow: none; transform: none; }
 @keyframes pf-flash { from { color: var(--phos-a); box-shadow: 0 0 18px rgba(142,240,177,0.5); } }
 .pf-offer {
   width: min(1040px, 100%);
@@ -4293,7 +4305,7 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
   position: absolute;
   right: 12px;
   bottom: calc(100% + 8px);
-  z-index: 40;
+  z-index: 55;
   width: min(420px, 92vw);
   padding: var(--s3);
   background: var(--surface-pop);

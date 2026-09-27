@@ -1748,9 +1748,9 @@ worker.onmessage = (e) => {
         } else {
           note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
         }
-      } else if (m.pinned && !warmLoaded) {
+      } else if (m.pinned) {
         note(`Saved ${nameOf(m.id)} — it won't be replaced. ${pinBudget[0]}/${pinBudget[1]} slots used.`);
-      } else if (!warmLoaded) {
+      } else {
         // Releasing is destructive in slow motion: the patch goes back into
         // the pool and the next generation may breed it away. Silence made it
         // the one half of the toggle that reported nothing.
@@ -1758,6 +1758,14 @@ worker.onmessage = (e) => {
       }
       renderPinBudget();
       renderBank();
+      scheduleSave();
+      break;
+    }
+    case "warm_done": {
+      applyViews(m.views);
+      applyStatus(m.status);
+      refreshInstruments();
+      warmStartDone(m);
       scheduleSave();
       break;
     }
@@ -1773,11 +1781,6 @@ worker.onmessage = (e) => {
         // used to drop the eviction on the floor, so pressing ▶ destroyed a
         // patch and reported nothing at all.
         warmPreviewLoaded(m.id, evicted);
-        scheduleSave();
-        break;
-      }
-      if (m.warm !== undefined) {
-        warmPresetLoaded(m.warm, m.id);
         scheduleSave();
         break;
       }
@@ -2243,12 +2246,18 @@ function dismissToast(t, immediate) {
 function positionToastLane() {
   const holder = $("toasts");
   if (!holder || !holder.firstChild) return;
-  const frame = $("rack-frame");
-  const fr = currentView === "play" && frame ? frame.getBoundingClientRect() : null;
-  let top = fr && fr.height > 0 ? fr.top + 10 : 64;
-  let right = fr && fr.width > 0 ? Math.max(12, window.innerWidth - fr.right + 10) : 16;
-  holder.style.top = `${Math.round(top)}px`;
-  holder.style.right = `${Math.round(right)}px`;
+  // Bottom-right, just above the keybar: the one edge of every view that
+  // holds nothing being worked on. The lane used to sit at the top of the rack
+  // frame, where it covered B's title and "circuit" in EVOLVE, rack plates in
+  // PATCH and the header copy in TASTE.
+  const bar = document.querySelector(".keybar");
+  const br = bar ? bar.getBoundingClientRect() : null;
+  // Anchored by its bottom, so it grows upward as toasts stack and does not
+  // jump when one leaves.
+  const floor = br && br.height > 0 ? br.top - 10 : window.innerHeight - 16;
+  holder.style.top = "auto";
+  holder.style.bottom = `${Math.round(window.innerHeight - floor)}px`;
+  holder.style.right = "16px";
 
   // The reserved rects. A teaching strip is the one thing in the app that a
   // transient may never cover, so its box is measured and stepped around —
@@ -2265,9 +2274,8 @@ function positionToastLane() {
       const hits = lane.bottom > r.top && lane.top < r.bottom &&
                    lane.right > r.left && lane.left < r.right;
       if (!hits) continue;
-      const above = r.top - lane.height - 8;
-      top = above >= 56 ? above : r.bottom + 8;
-      holder.style.top = `${Math.round(top)}px`;
+      // Step above the strip it would cover.
+      holder.style.bottom = `${Math.round(window.innerHeight - r.top + 8)}px`;
       moved = true;
       break;
     }
@@ -2467,6 +2475,10 @@ function refreshNames() {
 function setLiveLabel(text) {
   liveLabelText = text;
   $("live-label").textContent = text;
+  // The tree reaches PERFORM first (`setLivePatchJson`) and its name second,
+  // so PERFORM read the label while it still named the previous patch: a
+  // sweep of twelve presets was off by one every time.
+  if (perform) perform.relabel();
   renderBank();
 }
 
@@ -2751,6 +2763,9 @@ async function bootPerform() {
     heldCount: () => heldNotes.size,
     noteOn: (n, v) => liveNoteOn(n, v),
     noteOff: (n) => liveNoteOff(n),
+    // Wirings are measured against the taste model; a new observation can
+    // move the standardizer they were measured in, so it keys their cache.
+    tasteRev: () => status.observations,
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
@@ -16461,7 +16476,6 @@ function bootField(pool, target) {
 // model is already pointed somewhere before the user casts a single vote.
 let warmRows = null;
 const warmPicked = new Set();
-let warmLoaded = null;
 
 function openWarmStart() {
   send({ type: "presets" });
@@ -16603,49 +16617,26 @@ $("warm-skip").onclick = () => {
 
 $("warm-go").onclick = () => {
   if (warmPicked.size !== 3 || !warmRows) return;
-  // Load every preset into the bank, then log each chosen ≻ each unchosen as a
-  // duel. Same likelihood, same log format — no new inference path.
-  warmLoaded = { want: warmRows.length, ids: new Map(), picked: new Set(warmPicked) };
-  for (const r of warmRows) {
-    send({
-      type: "load_preset",
-      index: r.index,
-      warm: r.index,
-      // The three the user picked are saved as they are inserted, so the six
-      // they did not pick cannot evict them on the way in.
-      pin: warmPicked.has(r.index),
-    });
-  }
+  // Every chosen ≻ every unchosen, logged as a duel: same likelihood, same
+  // log format, no new inference path. One worker turn does the inserts and
+  // the votes together (see its `warm_start`), so nothing can be evicted
+  // between a preset landing and its preferences being recorded.
+  send({
+    type: "warm_start",
+    picked: [...warmPicked],
+    rest: warmRows.map((r) => r.index).filter((i) => !warmPicked.has(i)),
+  });
   closeWarmStart();
   note("Loading those in and teaching the model what you picked…");
 };
 
-function warmPresetLoaded(index, id) {
-  if (!warmLoaded || id <= 0) return;
-  warmLoaded.ids.set(index, id);
-  // The picks are saved by the worker as it inserts them (`load_preset`'s
-  // `pin`), because `warm-go` pushes nine presets into a pool that is already
-  // full and they evict each other on the way in. Doing it from here, one
-  // message later, measured 1 of 3 surviving: the whole burst has already run
-  // by the time the first reply comes back.
-  if (warmLoaded.ids.size < warmLoaded.want) return;
-  let n = 0;
-  for (const chosen of warmLoaded.picked) {
-    for (const [idx, id2] of warmLoaded.ids) {
-      if (warmLoaded.picked.has(idx)) continue;
-      const a = warmLoaded.ids.get(chosen);
-      if (a == null) continue;
-      send({ type: "record_duel", a, b: id2, choseA: true });
-      n += 1;
-    }
-  }
-  const first = warmLoaded.ids.get([...warmLoaded.picked][0]);
-  warmLoaded = null;
+function warmStartDone(m) {
+  for (const [idx, id] of Object.entries(m.ids || {})) presetIds.set(Number(idx), id);
   send({ type: "fit" });
   fitting = true;
   $("wm-lamp").classList.add("thinking");
-  note(`${n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
-  if (first != null) openOnBench(first);
+  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
+  if (m.first != null) openOnBench(m.first);
 }
 
 // ---------- overflow menu ----------

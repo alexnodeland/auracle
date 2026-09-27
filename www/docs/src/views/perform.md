@@ -29,7 +29,7 @@ shows where the sound *measures* on that axis, relative to the patches in your
 session, so a patch that is already very bright has its dot near the right
 stop.
 
-**Six pads.** **Keep · Back · Offer · Take · Peek · Hold**, below.
+**Six pads.** **Keep · Back · Offer · Take · Peek · Freeze**, below.
 
 **The B strip.** One line, labelled **B**, that says whether an offer is
 waiting and where it came from.
@@ -180,7 +180,7 @@ pauses Wander for three and a half seconds. A touch in the middle of a glide
 stops the glide where it is, and the sound stays there. It never snaps back
 and never finishes the move behind you.
 
-**Tap to hold.** A short tap on Wander (or the **Hold** pad) freezes it where
+**Tap to hold.** A short tap on Wander (or the **Freeze** pad) freezes it where
 it is. The dial reads *held*. Tap again to release.
 
 ## The pads
@@ -192,7 +192,7 @@ it is. The dial reads *held*. Tap again to release.
 | **Offer** | Grow a variant from here into B |
 | **Take** | Make the offer in B your sound. It becomes home |
 | **Peek** | Hold to hear the offer alone |
-| **Hold** | Freeze Wander. Same as tapping the Wander dial |
+| **Freeze** | Freeze Wander. Same as tapping the Wander dial (not the dock's **hold**, which latches notes) |
 
 Keep puts the sound on the workbench. It does not save it to your bank; do
 that from PATCH as usual.

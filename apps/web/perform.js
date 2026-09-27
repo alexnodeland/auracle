@@ -495,12 +495,33 @@ export function createPerform(host) {
     return false;
   }
 
+  // Measured wirings, by patch and by how much the taste model had seen when
+  // it measured them. A measurement is ~one render per knob plus the
+  // verification renders — seconds, on the same worker that fills the pool —
+  // and a player flicking between presets asks for the same few again and
+  // again. Only a first measurement (no knob overrides yet) is cached: that is
+  // the one a patch change asks for, and it is a pure function of the tree
+  // and the model.
+  const wireCache = new Map();
+  const WIRE_CACHE_MAX = 24;
+  const wireKey = (json) => `${host.tasteRev ? host.tasteRev() : 0}|${json}`;
+
   function wire() {
     if (!state.cur) return;
+    if (state.cur.knobs.size === 0) {
+      const hit = wireCache.get(wireKey(state.cur.json));
+      if (hit) {
+        applyWired(structuredClone(hit));
+        knobs.forEach(paintKnob);
+        renderHood();
+        return;
+      }
+    }
     state.measuring = true;
     renderStatus();
     knobs.forEach(paintKnob);
-    request("perform_wire", { tree: state.cur.json, overrides: overrides() });
+    const req = request("perform_wire", { tree: state.cur.json, overrides: overrides() });
+    if (state.cur.knobs.size === 0) state.pending.get(req).cacheAs = wireKey(state.cur.json);
   }
 
   function requestDrift() {
@@ -529,54 +550,66 @@ export function createPerform(host) {
     renderOffer("growing an offer…");
   }
 
+  // A measurement arrived (or came out of the cache): wire the controls.
+  function applyWired(data) {
+    state.measuring = false;
+    // Where the sound is *now* becomes the new centre and the controls
+    // return to zero there, so nothing audibly moves. Now, not when the
+    // measurement was asked for: the player may have kept turning while
+    // it rendered, and the old wiring's deltas are folded in before it is
+    // replaced. A knob this patch had not been measured on yet takes the
+    // value the measurement read.
+    const had = state.cur.knobs;
+    const here = new Map(data.addrs.map((a, i) => [a, had.has(a) ? liveValue(a) : data.values[i]]));
+    state.cur.knobs = here;
+    state.wiredAt = new Map(here);
+    state.c = state.c.map(() => 0);
+    knobs.forEach((k) => {
+      if (k.spec.kind === "named") {
+        k.value = 0;
+        host.controlMoved?.(k.i);
+      }
+    });
+    state.wire = data.wiring;
+    if (state.home && !state.home.knobs) state.home.knobs = new Map(state.cur.knobs);
+    // Touch follows the player's choice if this patch can play it, and
+    // otherwise falls back to the first control it can (Bright, Snap,
+    // Motion…) rather than silently doing nothing.
+    const playable = (i) => {
+      const w = state.wire[i];
+      const [lo, hi] = rangeOf(w);
+      return w && !w.search && lo < 0 && hi > 0;
+    };
+    if (state.touch.i >= 0 && !playable(state.touch.i)) {
+      const first = state.wire.findIndex((_, i) => playable(i));
+      if (first >= 0) state.touch.i = first;
+    }
+    sendTouch();
+    renderStatus();
+  }
+
   function onWorker(m) {
     const p = state.pending.get(m.req);
     if (!p) return false;
     state.pending.delete(m.req);
     const then = state.applyThen.get(m.req);
     state.applyThen.delete(m.req);
+    // A measurement is kept even when the player has already moved on: it
+    // is still true of that patch, and flicking back is the common case.
+    if (p.cacheAs && m.type === "perform_wired" && m.data) {
+      if (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
+      wireCache.set(p.cacheAs, structuredClone(m.data));
+    }
     // An answer about a patch that is no longer sounding is consumed, not used.
     if (p.gen !== state.gen) return true;
     if (m.error) console.warn(`[perform] ${p.kind}:`, m.error);
     if (m.type === "perform_wired") {
-      state.measuring = false;
       if (!m.data) {
+        state.measuring = false;
         state.wire = null;
         renderStatus(m.error ? "could not measure this patch" : "the taste model has not seen enough patches to measure against yet");
       } else {
-        // Where the sound is *now* becomes the new centre and the controls
-        // return to zero there, so nothing audibly moves. Now, not when the
-        // measurement was asked for: the player may have kept turning while
-        // it rendered, and the old wiring's deltas are folded in before it is
-        // replaced. A knob this patch had not been measured on yet takes the
-        // value the measurement read.
-        const had = state.cur.knobs;
-        const here = new Map(m.data.addrs.map((a, i) => [a, had.has(a) ? liveValue(a) : m.data.values[i]]));
-        state.cur.knobs = here;
-        state.wiredAt = new Map(here);
-        state.c = state.c.map(() => 0);
-        knobs.forEach((k) => {
-          if (k.spec.kind === "named") {
-            k.value = 0;
-            host.controlMoved?.(k.i);
-          }
-        });
-        state.wire = m.data.wiring;
-        if (state.home && !state.home.knobs) state.home.knobs = new Map(state.cur.knobs);
-        // Touch follows the player's choice if this patch can play it, and
-        // otherwise falls back to the first control it can (Bright, Snap,
-        // Motion…) rather than silently doing nothing.
-        const playable = (i) => {
-          const w = state.wire[i];
-          const [lo, hi] = rangeOf(w);
-          return w && !w.search && lo < 0 && hi > 0;
-        };
-        if (state.touch.i >= 0 && !playable(state.touch.i)) {
-          const first = state.wire.findIndex((_, i) => playable(i));
-          if (first >= 0) state.touch.i = first;
-        }
-        sendTouch();
-        renderStatus();
+        applyWired(m.data);
       }
       knobs.forEach(paintKnob);
       renderHood();
@@ -958,6 +991,8 @@ export function createPerform(host) {
     else body.textContent = "no offer — press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);
     offerCard.append(lab, body);
+    // Take and Peek act on an offer; until there is one they look it.
+    for (const k of ["take", "peek"]) if (padEls[k]) padEls[k].disabled = !state.offer;
   }
 
   why.innerHTML = "";
@@ -984,6 +1019,8 @@ export function createPerform(host) {
   pad("keep", "Keep", "Make this sound home (a strong signal about your taste)", keep);
   pad("back", "Back", "Glide back to the last sound you kept", back);
   pad("offer", "Offer", "Grow a variant from here into B", () => requestOffer());
+  // The one gesture no other instrument has; it reads as the primary.
+  padEls.offer.classList.add("primary");
   pad("take", "Take", "Make the offer in B your sound", take);
   pad(
     "peek",
@@ -999,7 +1036,9 @@ export function createPerform(host) {
       if (live && state.offer) live.bMix(state.blend);
     },
   );
-  pad("hold", "Hold", "Freeze wander (tap Wander does the same)", toggleHold);
+  // "Freeze", not "Hold": the dock's HOLD latches notes, and two buttons
+  // named the same thing on one screen doing different jobs is a trap.
+  pad("hold", "Freeze", "Freeze wander (tap Wander does the same)", toggleHold);
   padEls.hold.setAttribute("aria-pressed", "false");
   knobs.forEach(paintKnob);
   renderOffer();

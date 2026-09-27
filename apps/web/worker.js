@@ -1431,6 +1431,35 @@ async function dispatch(m) {
       post({ type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview, views: tasteViews(), status: status() });
       break;
     }
+    // The first-run elicitation, in one turn. It used to be nine
+    // `load_preset`s and then eighteen `record_duel`s from main, and the pool
+    // is full by the time anyone has listened to nine sounds: each insert
+    // evicts something, the six unpicked presets evicted each other on the
+    // way in, and a user who took 25 s to choose lost 15 of 18 preferences
+    // ("that patch is gone"). Here every unpicked preset's three duels are
+    // recorded the moment it lands, before the next insert can evict it, and
+    // the picks go in first and pinned so they are alive for every pairing.
+    case "warm_start": {
+      const ids = {};
+      for (const i of m.picked) {
+        const id = Number(engine.load_preset(i));
+        if (id > 0) {
+          engine.set_pinned(id, true);
+          ids[i] = id;
+        }
+      }
+      let n = 0;
+      for (const i of m.rest) {
+        const id = Number(engine.load_preset(i));
+        if (id <= 0) continue;
+        ids[i] = id;
+        for (const p of m.picked) {
+          if (ids[p] != null && engine.record_duel(ids[p], id, true) !== false) n += 1;
+        }
+      }
+      post({ type: "warm_done", ids, n, first: ids[m.picked[0]] ?? null, views: tasteViews(), status: status() });
+      break;
+    }
     case "edit_structure": {
       const err = engine.edit_structure_apply(JSON.stringify(m.op));
       if (err !== "") {
