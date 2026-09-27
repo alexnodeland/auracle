@@ -164,8 +164,12 @@ export function createBooth(host) {
     r.chordTimer = setInterval(play, CHORD_MS);
 
     // Wait for the controls to be measured (instant for a patch seen before).
+    // Up to a minute: on a cold start the first measurement queues behind the
+    // pool still filling, and a slow machine takes tens of seconds. At 20 s
+    // every cycle could time out and skip its hand, so attract never showed
+    // the one thing it is for.
     const perf = host.perform();
-    for (let i = 0; i < 40 && !r.stop && perf && !HAND_ORDER.some((k) => perf.reaches(k)); i++) {
+    for (let i = 0; i < 120 && !r.stop && perf && !HAND_ORDER.some((k) => perf.reaches(k)); i++) {
       await sleep(500, r);
     }
     if (r.stop) return;

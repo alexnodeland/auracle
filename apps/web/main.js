@@ -1716,9 +1716,12 @@ worker.onmessage = (e) => {
     case "taste_views": {
       applyViews(m.views);
       refreshInstruments();
-      // First arrival: put a patch under the player's fingers immediately.
-      if (wb.subjectId == null && views.ranked && views.ranked.length > 0) {
-        openOnBench(views.ranked[0].id);
+      // First arrival: put a patch under the player's fingers immediately —
+      // unless a preset they (or booth attract) asked for is already on its
+      // way: benching a pool patch first would start PERFORM measuring the
+      // wrong patch, and the worker would measure it before the right one.
+      if (wb.subjectId == null && presetClicks.size === 0 && views.ranked && views.ranked.length > 0) {
+        openOnBench(views.ranked[0].id, { auto: true });
       }
       break;
     }
@@ -1874,6 +1877,15 @@ function releaseRequest(request, id) {
     case "fit":
       fitting = false;
       $("wm-lamp").classList.remove("thinking");
+      break;
+    case "load_preset":
+      // A load that failed is not still on its way: its row stops saying
+      // "opening…", and the first-arrival open is no longer held for it.
+      presetClicks.clear();
+      document.querySelectorAll(".preset-item.loading").forEach((r) => {
+        r.classList.remove("loading");
+        r.removeAttribute("aria-busy");
+      });
       break;
     case "refine":
       $("wm-lamp").classList.remove("thinking");
@@ -2988,12 +3000,18 @@ async function bootBooth() {
       boothQuiet = !!on;
     },
     controlName: (k) => (PERFORM_CONTROLS[k] ? PERFORM_CONTROLS[k].name : ""),
+    // Attract's opens are the app's, not the visitor's (see openOnBench): a
+    // load in flight is registered like a click, so a visitor who opens
+    // something else meanwhile keeps it.
     loadPreset: (name) => {
       const p = (presetRows || []).find((r) => r.name === name);
       if (!p) return;
       const id = presetIds.get(p.index);
-      if (id != null && rowOf(id)) openOnBench(id);
-      else send({ type: "load_preset", index: p.index });
+      if (id != null && rowOf(id)) openOnBench(id, { auto: true });
+      else {
+        presetClicks.set(p.index, benchSeq);
+        send({ type: "load_preset", index: p.index });
+      }
     },
     resetVisitor: () => boothResetVisitor(),
   });
@@ -5082,8 +5100,13 @@ document.addEventListener("click", (e) => {
 // bumps this, and a click remembers the value it saw.
 let benchSeq = 0;
 const presetClicks = new Map(); // library index -> benchSeq at the click
-function openOnBench(id) {
-  benchSeq += 1;
+/** Put a patch on the bench. `auto` marks an open the app made on its own
+ *  (the first patch landing after boot or a reload, booth attract): it is not
+ *  the player moving on, so it must not void a preset click still loading —
+ *  counting it did exactly that, and a preset clicked during boot never
+ *  opened. */
+function openOnBench(id, { auto = false } = {}) {
+  if (!auto) benchSeq += 1;
   // No separate `explain` request any more: the bench reply carries the
   // decomposition of the tree it is describing, so the readout can never name
   // a patch other than the one on screen. See `renderBelief`.
