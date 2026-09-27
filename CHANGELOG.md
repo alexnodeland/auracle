@@ -94,6 +94,16 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Added — under the hood, in PERFORM
+
+The named controls are a view onto a patch's own knobs, and PERFORM now shows
+which ones: every knob a reachable control moves, and any knob Wander has
+carried away from home, as a bar with its value in its own units and a tick
+where it sat when the sound became home. Turn Motion and the envelope's decay
+and the filter's mod depth visibly move; click one to open its module in
+PATCH, pulsing. The hierarchy runs PERFORM → the knobs → the rack, each a click
+deeper. The landing page gains a PERFORM screenshot, first among the views.
+
 ### Changed — Wander drifts, instead of jumping and gliding
 
 Measured over 12 presets, an 8-step "drift" moved some knob by 0.3–0.85 of

@@ -14,6 +14,8 @@ shares.
 
 ## What is on screen
 
+<img src="../img/perform.webp" alt="PERFORM on the Ceiling preset: eight round controls in a row (Bright, Snap and Motion in white, Body, Grit and Space in amber, then Blend and Wander), a touch row, six large pads, a B strip saying an offer is waiting, and an under-the-hood list of six knobs with bars and values." loading="eager" width="1440" height="900">
+
 From the top:
 
 **The header.** The patch's name, a status line, and a small scope. The status
@@ -31,6 +33,13 @@ stop.
 
 **The B strip.** One line, labelled **B**, that says whether an offer is
 waiting and where it came from.
+
+**Under the hood.** The patch's own knobs that the controls (and Wander) are
+turning right now, each as a bar with its value in its own units and a tick
+where it sat when this sound became home. Turn Motion and you watch the
+envelope's decay and the filter's mod depth move; let Wander drift and the knobs
+it carries away from home join the list. Click one to open its module in
+[PATCH](./play.md), pulsing where it is.
 
 **how this works.** A disclosure with a short version of this page. It is
 closed at rest.

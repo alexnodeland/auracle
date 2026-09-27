@@ -138,7 +138,11 @@ export function createPerform(host) {
   const touchRow = el("div", "pf-touch mono");
   const offerCard = el("div", "pf-offer");
   const why = el("div", "pf-why");
-  root.append(head, deck, touchRow, pads, offerCard, why);
+  // Under the hood: the real knobs the controls and Wander are moving, live.
+  // The named controls are a *view* onto these; this is where that becomes
+  // visible, and each one opens its module in PATCH.
+  const hood = el("div", "pf-hood");
+  root.append(head, deck, touchRow, pads, offerCard, hood, why);
 
   // ---------- knobs ----------
   const knobs = [];
@@ -335,6 +339,7 @@ export function createPerform(host) {
   function push() {
     const live = host.live();
     if (!live || !state.cur) return;
+    paintHoodSoon();
     for (const a of state.cur.knobs.keys()) {
       const v = liveValue(a);
       if (v == null) continue;
@@ -574,6 +579,7 @@ export function createPerform(host) {
         renderStatus();
       }
       knobs.forEach(paintKnob);
+      renderHood();
       return true;
     }
     if (m.type === "perform_drifted") {
@@ -649,6 +655,7 @@ export function createPerform(host) {
     if (state.offer) clearOffer();
     if (state.visible) wire();
     knobs.forEach(paintKnob);
+    renderHood();
   }
 
   // Measure now even if PERFORM has never been looked at: a MIDI control can
@@ -720,6 +727,81 @@ export function createPerform(host) {
       return;
     }
     requestAnimationFrame(stepGlide);
+  }
+
+  // ---------- under the hood ----------
+  // Which knobs to show: every knob a reachable control moves, then any knob
+  // Wander has carried away from home — at most HOOD_MAX, in that order.
+  const HOOD_MAX = 10;
+  let hoodRows = new Map(); // addr -> {fill, home, val}
+  let hoodKey = "";
+  function hoodAddrs() {
+    const out = [];
+    const add = (a) => {
+      if (!out.includes(a) && state.cur && state.cur.knobs.has(a) && out.length < HOOD_MAX) out.push(a);
+    };
+    (state.wire || []).forEach((w) => {
+      if (!w.search) w.knobs.forEach(([a]) => add(a));
+    });
+    if (state.home && state.home.knobs && state.cur) {
+      for (const [a, v] of state.cur.knobs) {
+        const h = state.home.knobs.get(a);
+        if (h != null && Math.abs(v - h) > 0.02) add(a);
+      }
+    }
+    return out;
+  }
+  function renderHood() {
+    const addrs = hoodAddrs();
+    const key = addrs.join("|");
+    if (key === hoodKey) return paintHood();
+    hoodKey = key;
+    hood.innerHTML = "";
+    hoodRows = new Map();
+    if (!addrs.length) return;
+    const h = el("div", "pf-hood-h", "under the hood");
+    h.title = "The patch's own knobs these controls are turning right now. Click one to open it in PATCH.";
+    hood.append(h);
+    const grid = el("div", "pf-hood-grid");
+    for (const a of addrs) {
+      const info = host.knobInfo ? host.knobInfo(a, 0) : { module: "", label: a };
+      const row = el("button", "pf-hood-row");
+      row.type = "button";
+      row.title = `${info.module} ${info.label} — open in PATCH`;
+      const name = el("span", "pf-hood-name");
+      name.append(el("span", "pf-hood-mod", info.module), document.createTextNode(` ${info.label}`));
+      const track = el("span", "pf-hood-track");
+      const fill = el("span", "pf-hood-fill");
+      const home = el("span", "pf-hood-home");
+      track.append(fill, home);
+      const val = el("span", "pf-hood-val mono", "");
+      row.append(name, track, val);
+      row.onclick = () => host.showKnob && host.showKnob(a);
+      grid.append(row);
+      hoodRows.set(a, { fill, home, val });
+    }
+    hood.append(grid);
+    paintHood();
+  }
+  function paintHood() {
+    if (!state.cur) return;
+    for (const [a, r] of hoodRows) {
+      const v = liveValue(a);
+      if (v == null) continue;
+      r.fill.style.width = `${(v * 100).toFixed(1)}%`;
+      const h = state.home && state.home.knobs ? state.home.knobs.get(a) : null;
+      r.home.style.left = h == null ? "-10px" : `${(h * 100).toFixed(1)}%`;
+      r.val.textContent = host.knobInfo ? host.knobInfo(a, v).text : `${Math.round(v * 100)}%`;
+    }
+  }
+  let hoodQueued = false;
+  function paintHoodSoon() {
+    if (hoodQueued || !state.visible) return;
+    hoodQueued = true;
+    requestAnimationFrame(() => {
+      hoodQueued = false;
+      renderHood();
+    });
   }
 
   // Has any knob left the neighbourhood the wiring was measured in?
@@ -973,6 +1055,7 @@ export function createPerform(host) {
       if (live && state.offer) live.bMix(state.blend);
       renderStatus();
       knobs.forEach(paintKnob);
+      renderHood();
     },
     // B is PERFORM's: out of sight it is silent, so editing in PATCH never
     // hears a blend it cannot see. The offer itself stays for coming back.

@@ -174,16 +174,26 @@
 
   <div class="shots">
     <div class="shot-tabs" role="tablist" aria-label="Views">
+      <button class="shot-tab" role="tab" id="tab-perform" aria-controls="pane-perform"
+              aria-selected="true" data-tab="perform">perform</button>
       <button class="shot-tab" role="tab" id="tab-play" aria-controls="pane-play"
-              aria-selected="true" data-tab="play">play</button>
+              aria-selected="false" tabindex="-1" data-tab="play">patch</button>
       <button class="shot-tab" role="tab" id="tab-evolve" aria-controls="pane-evolve"
               aria-selected="false" tabindex="-1" data-tab="evolve">evolve</button>
       <button class="shot-tab" role="tab" id="tab-taste" aria-controls="pane-taste"
               aria-selected="false" tabindex="-1" data-tab="taste">taste</button>
     </div>
 
-    <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0">
-      <img src="assets/screens/play.webp" alt="The PATCH view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." width="1440" height="900" loading="eager" decoding="async">
+    <div class="shot-pane" role="tabpanel" id="pane-perform" aria-labelledby="tab-perform" tabindex="0">
+      <img src="assets/screens/perform.webp" alt="The PERFORM view: eight round controls named Bright, Snap, Motion, Body, Grit, Space, Blend and Wander, six large pads (Keep, Back, Offer, Take, Peek, Hold), a strip announcing an offer waiting in B, and an under-the-hood list of the patch's own knobs moving." width="1440" height="900" loading="eager" decoding="async">
+      <p class="shot-cap"><strong>PERFORM.</strong> Controls named for what you hear,
+      wired to this patch's own knobs by its measured response, with the knobs they
+      turn shown underneath. Wander lets the taste walk move it; Offer grows a
+      variant into B to blend or take.</p>
+    </div>
+
+    <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0" hidden>
+      <img src="assets/screens/play.webp" alt="The PATCH view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
       <p class="shot-cap"><strong>PATCH.</strong> The whole rack, with knobs at true
       positions in musical units. Edit it and lock parts of it while it runs live
       under your hands.</p>

@@ -4246,6 +4246,34 @@ html.handheld .handheld-gate {
   border-radius: 3px;
   padding: 0 6px;
 }
+.pf-hood { width: min(1040px, 100%); }
+.pf-hood-h { font-family: var(--font-silk); text-transform: uppercase; letter-spacing: 0.1em; font-size: var(--t-label); color: var(--silk-dim); margin-bottom: var(--s2); }
+.pf-hood-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px var(--s4); }
+.pf-hood-row {
+  display: grid;
+  grid-template-columns: minmax(0, 11em) minmax(0, 1fr) 6.5em;
+  align-items: center;
+  gap: var(--s2);
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: var(--silk-dim);
+  font: inherit;
+  font-size: var(--t-label);
+  text-align: left;
+  cursor: pointer;
+}
+.pf-hood-row:hover .pf-hood-name, .pf-hood-row:focus-visible .pf-hood-name { color: var(--silk); }
+.pf-hood-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-hood-mod { font-family: var(--font-silk); text-transform: uppercase; letter-spacing: 0.08em; color: var(--silk); }
+.pf-hood-track { position: relative; height: 6px; border-radius: 3px; background: var(--bezel); border: 1px solid var(--hairline); overflow: hidden; }
+.pf-hood-fill { position: absolute; inset: 0 auto 0 0; background: var(--phos-a-deep); }
+.pf-hood-home { position: absolute; top: -1px; bottom: -1px; width: 2px; margin-left: -1px; background: var(--silk-dim); }
+.pf-hood-val { color: var(--phos-a-dim); text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#rack-svg .hood-pulse { animation: hood-pulse 1.4s ease-out; }
+@keyframes hood-pulse { 0%, 40% { filter: drop-shadow(0 0 6px var(--phos-a)); } 100% { filter: none; } }
+@media (prefers-reduced-motion: reduce) { #rack-svg .hood-pulse { animation: none; outline: 2px solid var(--phos-a); } }
+@media (max-width: 900px) { .pf-hood-grid { grid-template-columns: minmax(0, 1fr); } }
 .pf-why { width: min(1040px, 100%); }
 .pf-why-body { max-width: 72ch; font-family: var(--font-voice); font-size: var(--t-lead); color: var(--silk-dim); line-height: 1.5; }
 .pf-why-body b { color: var(--silk); font-weight: 600; }

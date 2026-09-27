@@ -2735,6 +2735,30 @@ async function bootPerform() {
     noteOn: (n, v) => liveNoteOn(n, v),
     noteOff: (n) => liveNoteOff(n),
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
+    // The under-the-hood strip: a knob's module, label and value in its own
+    // units, read off the bench's rack (PERFORM's structure is the bench's).
+    knobInfo: (addr, v) => {
+      for (const m of wb.rack?.modules || []) {
+        const k = (m.knobs || []).find((x) => x.addr === addr);
+        if (!k) continue;
+        const fk = m.knobs.find((x) => x.addr.endsWith("#fkind"));
+        const variant = fk && fk.kind.t === "enum"
+          ? (fk.kind.options[Math.round(fk.value)] || "").replace(/^svf /, "svf-")
+          : null;
+        return { module: m.title, label: k.label, text: knobUnit(addr, v, m.kind, variant) };
+      }
+      return { module: "", label: addr.split("#").pop(), text: knobUnit(addr, v) };
+    },
+    showKnob: (addr) => {
+      showView("play");
+      requestAnimationFrame(() => {
+        const node = document.querySelector(`#rack-svg [data-addr="${CSS.escape(addr)}"]`);
+        if (!node) return;
+        ensureRackVisible(node);
+        node.classList.add("hood-pulse");
+        setTimeout(() => node.classList.remove("hood-pulse"), 1400);
+      });
+    },
     // A performed sound becomes the bench's tree by the same whole-tree route
     // a restore takes, so PATCH shows what PERFORM kept. queueStruct stages
     // the one undo step itself.
