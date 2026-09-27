@@ -246,6 +246,12 @@ fn limiter_gain(x: &[f64], sample_rate: f64) -> Option<Vec<f64>> {
     let mut prev = 1.0f64;
     for h in &mut held {
         prev = h.min(1.0 - (1.0 - prev) * decay);
+        // The release is an exponential approach, which never arrives; a
+        // millionth (−0.00001 dB) is arrived, and from there on the limiter
+        // is not there at all.
+        if 1.0 - prev < 1e-6 {
+            prev = 1.0;
+        }
         *h = prev;
     }
 
@@ -388,9 +394,10 @@ mod tests {
             "{short:.1} dB short; played at {heard:.1} LUFS from {:.1}",
             lufs + gain_db
         );
-        // A second in, the release has long finished: the shortfall, exactly.
+        // 1.25 s in, the release (80 ms, from ~10 dB down) has let go: the
+        // shortfall, exactly.
         let restore = 10f64.powf(short / 20.0);
-        for (p, s) in played.iter().zip(&stored.samples).skip(SR as usize) {
+        for (p, s) in played.iter().zip(&stored.samples).skip((1.25 * SR) as usize) {
             assert_eq!(*p, (f64::from(*s) * restore) as f32);
         }
     }
