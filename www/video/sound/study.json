@@ -7,7 +7,7 @@
   "beats_per_bar": 4,
   "seed": 20260927,
   "render": { "full": false, "sections": true, "tail_s": 8, "silence_dbfs": -80 },
-  "master": { "gain_db": 0.0, "peak_dbfs": -1.0 },
+  "master": { "gain_db": -9.8, "peak_dbfs": -1.0 },
   "sections": [
     { "name": "loop_a", "bars": 16, "loop": true },
     { "name": "loop_b", "bars": 16, "loop": true }
@@ -40,7 +40,7 @@
       "preset": "Tine",
       "_why": "A sine with a high-passed triangle two octaves up, through a slow chorus: electric-piano-shaped, soft attack, and it rings out quickly (-20 dB in 0.23 s), so a sparse line of 8ths stays out of the narrator's way.",
       "voices": 6,
-      "gain_db": -3.0,
+      "gain_db": 0.0,
       "trim_db": -2.0,
       "patterns": [
         { "type": "phrase", "section": "loop_a", "start_bar": 1, "repeat": 2, "every_bars": 8, "notes": [
@@ -69,7 +69,7 @@
       "_why": "The plain bass preset with its cutoff and envelope depth turned down (0.45 to 0.36, mod depth 0.6 to 0.3) so it is round rather than plucked; a dotted half and a soft quarter per bar. Transpose +12 because its oscillator sits an octave below the key.",
       "voices": 4,
       "transpose": 12,
-      "gain_db": -3.0,
+      "gain_db": -1.0,
       "params": { "node#cut": 0.36, "node#mdepth": 0.3 },
       "patterns": [
         { "type": "pulse", "section": "loop_b", "roots": ["F2", "F2", "E2", "A1"], "hits": [1, 4], "gate": 0.92, "vel": 0.55 }

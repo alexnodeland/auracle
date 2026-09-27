@@ -20,10 +20,10 @@ OUT_DIR written by tts.py (manifest.json plus one WAV per line) this
 
 It also writes each line's word start times into manifest.json as `words`
 (one per whitespace-separated word of the script text, seconds from the start
-of the line's WAV): faster-whisper's word timestamps, DP-aligned to the script,
-with unmatched words interpolated from their neighbours. The films pin kinetic
-type and on-screen actions to them. It reports how far they sit from Kokoro's
-own duration-predictor timings as a sanity check.
+of the line's WAV): faster-whisper's word timestamps, DP-aligned to the script.
+A word Whisper missed, or placed more than 150 ms from Kokoro's own alignment,
+takes Kokoro's time instead (see word_starts() for the measurement behind that).
+The films pin kinetic type and on-screen actions to them.
 
 It writes asr_report.json into each OUT_DIR and, given several, ends with one
 summary row per render (a voice comparison). Exit code 1 if any line fails:
@@ -161,16 +161,27 @@ def diff_rows(ops, ref: list[str], hyp: list[str], width: int = 96) -> list[str]
     return out
 
 
-def word_starts(text: str, asr_words, aliases: dict[str, str], onset: float, offset: float):
+def word_starts(text: str, asr_words, aliases: dict[str, str], onset: float, offset: float,
+                tts: list[float] | None = None, tolerance: float = 0.15):
     """Start time of every whitespace-separated word of `text`.
 
     Script words and Whisper's words are normalized to the same tokens
     ("44-dimensional" -> forty four dimensional) and aligned with the same DP as
     the WER. A script word takes the time of its first token that lines up with
-    a recognized one (a substitution still marks the right place). Words with
-    no match are interpolated between their neighbours, weighted by length,
-    with the audio's own speech onset and end as the outer anchors. Returns the
-    times and how many were interpolated.
+    a recognized one (a substitution still marks the right place).
+
+    `tts` is Kokoro's own alignment (manifest `tts_word_times`), which is what
+    actually drove the synthesis. Whisper's cross-attention timings are unbiased
+    but have outliers: measured against the energy onset of 64 words that follow
+    a pause, across six voices, Whisper alone was off by 58 ms median, 244 ms at
+    p90 and 388 ms at worst, while Kokoro's were never more than 97 ms out, though
+    consistently early. So a Whisper time more than `tolerance` from Kokoro's
+    (shifted by the line's median Whisper-minus-Kokoro offset) is an outlier, and
+    it and any unmatched word take that shifted Kokoro time instead (the same
+    benchmark: 48 ms median, 81 ms p90, 116 ms worst). Without `tts`, unmatched
+    words are interpolated between their neighbours by length, with the audio's
+    speech onset and end as the outer anchors. Returns the times and the number
+    of words that did not come from Whisper.
     """
     script = text.split()
     ref, owner = [], []
@@ -188,21 +199,34 @@ def word_starts(text: str, asr_words, aliases: dict[str, str], onset: float, off
     for op, i, j in align(ref, hyp):
         if op in "=S" and starts[owner[i]] is None:
             starts[owner[i]] = times[j]
-    interpolated = sum(1 for t in starts if t is None)
-    weight = [len(w) + 1 for w in script]
-    anchors = [(-1, onset)] + [(k, t) for k, t in enumerate(starts) if t is not None] + [(len(script), offset)]
-    for (k0, t0), (k1, t1) in zip(anchors, anchors[1:]):
-        # Words k0 .. k1-1 fill the time from t0 (k0's start, or the onset) to
-        # t1 (k1's start, or the end of speech); each unknown one starts after
-        # the words before it in proportion to their length.
-        lo = max(k0, 0)
-        span = sum(weight[lo:k1])
-        for k in range(k0 + 1, k1):
-            starts[k] = t0 + (t1 - t0) * sum(weight[lo:k]) / max(span, 1)
+    if tts is not None and len(tts) == len(script):
+        pairs = [s - k for s, k in zip(starts, tts) if s is not None]
+        shift = float(np.median(pairs)) if pairs else 0.0
+        for k, s in enumerate(starts):
+            if s is None or abs(s - (tts[k] + shift)) > tolerance:
+                starts[k] = None
+        fallback = [k + shift for k in tts]
+    else:
+        fallback = None
+    replaced = sum(1 for t in starts if t is None)
+    if fallback is not None:
+        starts = [f if s is None else s for s, f in zip(starts, fallback)]
+    else:
+        weight = [len(w) + 1 for w in script]
+        anchors = [(-1, onset)] + [(k, t) for k, t in enumerate(starts) if t is not None]
+        anchors.append((len(script), offset))
+        for (k0, t0), (k1, t1) in zip(anchors, anchors[1:]):
+            # Words k0 .. k1-1 fill the time from t0 (k0's start, or the onset)
+            # to t1 (k1's start, or the end of speech); each unknown one starts
+            # after the words before it in proportion to their length.
+            lo = max(k0, 0)
+            span = sum(weight[lo:k1])
+            for k in range(k0 + 1, k1):
+                starts[k] = t0 + (t1 - t0) * sum(weight[lo:k]) / max(span, 1)
     out = [min(max(float(t), onset), offset) for t in starts]
     for k in range(1, len(out)):  # never earlier than the word before
         out[k] = max(out[k], out[k - 1])
-    return out, interpolated
+    return out, replaced
 
 
 # ─── audio ───────────────────────────────────────────────────────────────────
@@ -276,11 +300,13 @@ def check_dir(out: Path, model, args) -> dict:
         wer = (errs["S"] + errs["D"] + errs["I"]) / max(1, len(ref))
         lead, tail = silence_ms(x, sr)
         dur = len(x) / sr
-        starts, n_interp = word_starts(line["text"], asr_words, aliases, lead / 1000, dur - tail / 1000)
+        tts_times = [t[1] for t in line.get("tts_word_times") or []] or None
+        starts, n_interp = word_starts(
+            line["text"], asr_words, aliases, lead / 1000, dur - tail / 1000, tts=tts_times
+        )
         line["words"] = [round(t, 3) for t in starts]
-        tts_times = line.get("tts_word_times") or []
-        if len(tts_times) == len(starts):
-            deltas.extend(abs(a - b[1]) for a, b in zip(starts, tts_times))
+        if tts_times and len(tts_times) == len(starts):
+            deltas.extend(abs(a - b) for a, b in zip(starts, tts_times))
         n_words = len(_WORD.findall(line["text"]))
         wpm = 60 * n_words / max(dur - (lead + tail) / 1000, 1e-3)
         peak = 20 * math.log10(max(float(np.abs(x).max()), 1e-12))
@@ -344,7 +370,10 @@ def check_dir(out: Path, model, args) -> dict:
             "max": round(1000 * float(np.max(deltas)), 1),
         }
     # The films pin kinetic type to these; see word_starts() for how they are made.
-    manifest["words_source"] = f"faster-whisper {args.model} word timestamps, aligned to the script"
+    manifest["words_source"] = (
+        f"faster-whisper {args.model} word timestamps, DP-aligned to the script; words it missed or "
+        f"placed >150 ms from Kokoro's own alignment take that alignment, shifted to agree"
+    )
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
                                        encoding="utf-8")
     report = {"summary": summary, "asr_model": args.model, "max_wer": args.max_wer, "lines": rows}
@@ -354,7 +383,7 @@ def check_dir(out: Path, model, args) -> dict:
           f"{worst['wer'] if worst else ''}, {summary['wpm']} wpm, {summary['failed']} failed")
     if deltas:
         d = summary["word_start_vs_tts_ms"]
-        print(f"  -> word starts written to manifest.json ({summary['words_interpolated']} interpolated); "
+        print(f"  -> word starts written to manifest.json ({summary['words_interpolated']} not from Whisper); "
               f"|whisper - kokoro| median {d['median']} ms, p90 {d['p90']} ms, max {d['max']} ms")
     return summary
 
