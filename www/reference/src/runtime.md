@@ -3,7 +3,15 @@
 <p class="lede">Three thread kinds, one wasm binary, and a set of constraints that shaped
 the architecture more than any design preference did.</p>
 
-<!-- film:dsp --><!-- /film:dsp -->
+<!-- film:dsp -->
+<figure class="film" id="film-dsp">
+<video controls preload="none" playsinline poster="../assets/film/dsp.jpg">
+<source src="../assets/film/dsp.mp4" type="video/mp4">
+<track kind="captions" src="../assets/film/dsp.vtt" srclang="en" label="English" default>
+</video>
+<figcaption>For audio engineers: the patch graph, the modules and their types, compilation, the audition phrase, loudness, vetting, the features, and the live voices. <span class="film-len">2:49</span> · <a href="../docs/films.html#film-dsp">chapters and transcript</a></figcaption>
+</figure>
+<!-- /film:dsp -->
 
 ## The threads
 

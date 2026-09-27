@@ -8,6 +8,26 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — the films
+
+Five films, each on the page it explains, with the launch film as the landing
+page's hero:
+
+- **Auracle** (1:38), the launch film. On the landing page its opening loops
+  silently in the instrument's bezel and the whole screen plays it with sound;
+  it opens the guide's introduction too.
+- **How Auracle learns what you like** (1:49), in *What the model learns from*.
+- **Under the hood** (2:17), in the reference's introduction.
+- **The math** (2:46), in *Reading what it learned* and *Utility as a max of
+  experts*.
+- **The sound engine** (2:49), in *The standard phrase* and *The web runtime*.
+
+Captions are on by default, and the guide's Films page lists every film with
+its chapters and full transcript. The README carries the launch film's poster,
+each crate's API docs link the films about it, and the app's ⋯ menu gains
+**Watch the films**. Everything you hear is Auracle: the scores are played by
+its own engine. The narration is synthetic (Kokoro-82M, offline).
+
 ### Fixed — every patch at one level, and none that blasts
 
 A fresh bank auditioned at levels 10 LU apart and played at the keys at levels

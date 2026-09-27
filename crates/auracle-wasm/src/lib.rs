@@ -5,6 +5,9 @@
 //! seconds (rendering, MCMC); the main thread only plays transferred audio
 //! buffers and draws instrumentation.
 //!
+//! Animated: [*The sound engine*](https://auracle.alexnodeland.com/docs/films.html#film-dsp) shows the live voices, the patch
+//! swap and the render farm; [*Under the hood*](https://auracle.alexnodeland.com/docs/films.html#film-engine) the runtime around them.
+//!
 //! Everything crossing the boundary is either JSON (structures) or a
 //! `Float32Array` (audio). Candidates are addressed by **stable id** — pool
 //! positions shift on eviction, ids never do. The engine is deterministic

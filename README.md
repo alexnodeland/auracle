@@ -29,7 +29,11 @@ you*: the fitted taste posterior reshapes the grammar's own proposal
 distribution. Over a session it stops guessing and starts proposing, and it can
 show you what it learned.
 
-<!-- films:readme --><!-- /films:readme -->
+<!-- films:readme -->
+<a href="https://auracle.alexnodeland.com/"><img src="www/landing/assets/film/launch-play.jpg" alt="Watch the launch film (1:38)" width="720"></a>
+
+**[▶ Watch the launch film](https://auracle.alexnodeland.com/)** (1:38) · [How Auracle learns what you like](https://auracle.alexnodeland.com/docs/films.html#film-taste) (1:49) · [Under the hood](https://auracle.alexnodeland.com/docs/films.html#film-engine) (2:17) · [The math](https://auracle.alexnodeland.com/docs/films.html#film-math) (2:46) · [The sound engine](https://auracle.alexnodeland.com/docs/films.html#film-dsp) (2:49)
+<!-- /films:readme -->
 
 ## Table of Contents
 

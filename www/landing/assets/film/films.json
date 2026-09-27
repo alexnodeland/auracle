@@ -1,0 +1,376 @@
+{
+ "launch": {
+  "title": "Auracle",
+  "description": "The launch film: what Auracle is, what it feels like to play, and what is underneath.",
+  "duration": 98.4,
+  "chapters": [
+   {
+    "t": 0.0,
+    "name": "The problem"
+   },
+   {
+    "t": 12.0,
+    "name": "Auracle"
+   },
+   {
+    "t": 18.6,
+    "name": "Two patches, one pick"
+   },
+   {
+    "t": 25.49,
+    "name": "Real circuits"
+   },
+   {
+    "t": 33.6,
+    "name": "Playing it"
+   },
+   {
+    "t": 45.6,
+    "name": "Offers"
+   },
+   {
+    "t": 57.6,
+    "name": "Underneath"
+   },
+   {
+    "t": 74.4,
+    "name": "Every note"
+   },
+   {
+    "t": 93.6,
+    "name": "Play it"
+   }
+  ],
+  "transcript": [
+   "Every synthesizer has a sound in it that's yours.",
+   "Finding it means turning hundreds of knobs, one at a time.",
+   "Auracle is a synthesizer that searches for your sound.",
+   "It plays you two patches. You pick the one you like better.",
+   "Every pick teaches it your taste,",
+   "and it grows new patches toward it.",
+   "Not samples. Real modular circuits, built and wired from scratch.",
+   "Then you play it.",
+   "Turn Bright, and it finds the knobs that make this patch brighter.",
+   "Let it wander, and the knobs turn themselves toward your taste.",
+   "Press Offer, and a new version grows from the sound in your hands.",
+   "Blend into it. Take it, or pass. Either way, it learns.",
+   "Open the circuit any time. Every knob is real, and you can watch the performance turn them.",
+   "Underneath, a model of your taste bets on every choice before you make it, and keeps score in public.",
+   "Every note in this film is Auracle.",
+   "Free, open source, and running in your browser.",
+   "Play it today."
+  ],
+  "mp4_bytes": 28663144
+ },
+ "taste": {
+  "title": "How Auracle learns what you like",
+  "description": "The taste model, animated: what it hears, what a pick tells it, how it keeps score, and how it searches.",
+  "duration": 108.57,
+  "chapters": [
+   {
+    "t": 0.0,
+    "name": "Choosing, not describing"
+   },
+   {
+    "t": 10.71,
+    "name": "What it listens for"
+   },
+   {
+    "t": 27.86,
+    "name": "A pick is evidence"
+   },
+   {
+    "t": 37.86,
+    "name": "Every taste that still fits"
+   },
+   {
+    "t": 47.14,
+    "name": "More than one taste"
+   },
+   {
+    "t": 57.86,
+    "name": "Forecasts, scored"
+   },
+   {
+    "t": 70.71,
+    "name": "The search"
+   },
+   {
+    "t": 84.29,
+    "name": "Reading what it learned"
+   },
+   {
+    "t": 92.86,
+    "name": "Learning while you play"
+   },
+   {
+    "t": 100.0,
+    "name": "In the open"
+   }
+  ],
+  "transcript": [
+   "You know which of two sounds you like, long before you can say why.",
+   "So Auracle never asks you to describe a sound. It asks you to choose.",
+   "Behind every choice, it listens for the things you hear: how bright a sound is, how noisy, how it starts, and how fast it moves.",
+   "That's eighteen measurements of every patch's sound, all from the same short phrase, and twenty-six more of how the patch is built.",
+   "Each pick is evidence: you liked this set of measurements more than that one.",
+   "Many tastes could explain one pick. A few picks rule most of them out.",
+   "Auracle keeps every taste that still fits, weighted by how well it fits.",
+   "With every answer, that cloud of possible tastes draws tighter.",
+   "And taste isn't one direction. You can love dark drones and bright plucks.",
+   "So the model keeps several lenses, and a sound only has to please one of them.",
+   "Before every duel, it writes down a forecast. Afterwards, it checks.",
+   "The TRUST view shows how honest those forecasts have been, even when the answer is: no better than a coin flip, yet.",
+   "Then it searches. Evolution proposes new patches from a grammar of modules, and your taste tilts every proposal toward what you'll like.",
+   "Thousands are heard silently. Only the best few ever reach you.",
+   "You can read what it learned: a map of every patch you've heard, the styles it found, and each direction with its uncertainty.",
+   "And when you play, it keeps listening. An offer you hear, then take or pass, counts just like a duel.",
+   "Your taste, learned in the open. And it never leaves your browser."
+  ],
+  "mp4_bytes": 30717080
+ },
+ "engine": {
+  "title": "Under the hood",
+  "description": "For engineers: the genome, audition, features, the taste model, search, PERFORM's wiring, and the web runtime.",
+  "duration": 137.13,
+  "chapters": [
+   {
+    "t": 0.0,
+    "name": "Five crates"
+   },
+   {
+    "t": 10.71,
+    "name": "The genome"
+   },
+   {
+    "t": 22.86,
+    "name": "Compiling to DSP"
+   },
+   {
+    "t": 30.71,
+    "name": "The audition"
+   },
+   {
+    "t": 40.0,
+    "name": "Features"
+   },
+   {
+    "t": 55.0,
+    "name": "Utility"
+   },
+   {
+    "t": 75.0,
+    "name": "Calibration"
+   },
+   {
+    "t": 84.29,
+    "name": "Search"
+   },
+   {
+    "t": 98.57,
+    "name": "PERFORM's wiring"
+   },
+   {
+    "t": 115.71,
+    "name": "The runtime"
+   },
+   {
+    "t": 125.71,
+    "name": "Read it, run it"
+   }
+  ],
+  "transcript": [
+   "Auracle is a Rust workspace of five crates, compiled to WebAssembly.",
+   "Here's how a patch becomes a sound, and a choice becomes a model.",
+   "A patch is a term in a typed grammar: a probabilistic program over modules.",
+   "Every knob and every structural choice has a trace address, so a whole patch is one draw from a prior.",
+   "It compiles to a quiver signal graph, which runs one sample at a time with no allocation on the audio path.",
+   "Every candidate plays the same standard phrase, normalized for loudness, through a vetting gate that rejects silence, clipping and DC.",
+   "From that phrase come eighteen perceptual features, from brightness and noisiness to envelope shape and three bands of modulation rate. Twenty-six structural ones come from the patch itself. Every one is standardized.",
+   "Taste is a utility: the maximum over a few linear experts on those features.",
+   "A duel, a keep or a cut, a star rating: each has its own likelihood. The posterior is sampled by Markov chain Monte Carlo, and each new answer reweights those samples until a refit is due.",
+   "Every duel is forecast before it's answered. Each forecast is scored with a proper scoring rule, separately for each kind of evidence.",
+   "Search targets a Boltzmann distribution: the grammar's prior, tilted by expected utility.",
+   "Refinement is Metropolis-Hastings on the trace, through fugue-evo. A lock is exact conditioning.",
+   "PERFORM's named controls are fixed directions in that standardized space of sound.",
+   "For each patch, a finite-difference Jacobian and a ridge solve wire each control to its knobs. Every half of every control is then checked on real renders.",
+   "In the browser, the engine runs in a worker, and the voices in an AudioWorklet. A render farm measures candidates in parallel.",
+   "Every claim here has a measurement behind it, in the reference. Read it, run it, and change it."
+  ],
+  "mp4_bytes": 25777188
+ },
+ "math": {
+  "title": "The math",
+  "description": "For a technical audience: the taste model and the search as the code computes them, and why each piece has the form it does.",
+  "duration": 165.7,
+  "chapters": [
+   {
+    "t": 0.0,
+    "name": "Intro"
+   },
+   {
+    "t": 6.43,
+    "name": "Utility"
+   },
+   {
+    "t": 22.86,
+    "name": "Likelihoods"
+   },
+   {
+    "t": 43.57,
+    "name": "Posterior"
+   },
+   {
+    "t": 61.43,
+    "name": "Calibration"
+   },
+   {
+    "t": 77.14,
+    "name": "Acquisition"
+   },
+   {
+    "t": 90.71,
+    "name": "Target"
+   },
+   {
+    "t": 108.57,
+    "name": "Refine"
+   },
+   {
+    "t": 122.86,
+    "name": "Locks"
+   },
+   {
+    "t": 134.29,
+    "name": "Perform"
+   },
+   {
+    "t": 157.14,
+    "name": "Outro"
+   }
+  ],
+  "transcript": [
+   "The math inside Auracle, and why each piece has its shape.",
+   "Each patch becomes forty-four features, standardized to one scale.",
+   "Utility is the maximum over a few linear experts, never their average.",
+   "So you can love dark drones and bright plucks, and each is scored by its own best lens.",
+   "Three kinds of answer feed that one utility.",
+   "A duel is Bradley-Terry, logistic in the utility difference.",
+   "Cutting a patch is a kill, judged against a bar fitted per session.",
+   "A picky day moves the bar. Not the taste.",
+   "Stars fall between fitted cutpoints, so a harsh rater moves the cutpoints.",
+   "With no hidden lens labels, every parameter is a real number.",
+   "So plain Metropolis-Hastings fits it, and keeps five hundred draws.",
+   "Between fits, each answer reweights the draws, exactly and nearly free.",
+   "When the weights collapse, it pays for a refit.",
+   "Each duel is forecast before you answer, then scored by Brier.",
+   "Brier is a proper rule, so only an honest probability scores best.",
+   "Accuracy cannot see overconfidence.",
+   "Each kind of evidence gets its own score.",
+   "Which pair should it ask about?",
+   "Picking the most informative pair only tied random pairs. Thompson sampling lost.",
+   "So pairs are random, and every duel is also an unbiased check.",
+   "Search aims at a Boltzmann target, the grammar's prior times the exponential of beta times expected utility.",
+   "The prior supplies parsimony as a probability, not a penalty to tune.",
+   "Beta, at two, is the one dial between browsing and optimizing.",
+   "Refinement is Metropolis-Hastings on the trace, through fugue-evo.",
+   "It walks forty steps from each of the ten best patches.",
+   "Keeping where each walk ends climbs the target instead of sampling it, which suits a shortlist.",
+   "A lock is exact conditioning.",
+   "Moves that change, delete or create a locked address are rejected.",
+   "Checking births as well as deaths keeps detailed balance.",
+   "PERFORM's controls are fixed directions in standardized sound. Bright is centroid plus rolloff.",
+   "Each patch gets its own Jacobian from one nudged render per knob, since knobs act differently in each.",
+   "A ridge solve picks at most four knobs for each control.",
+   "Each half is then rendered for real, and closes if it stops moving the right way.",
+   "Every constant here is in the reference, with its measurement where there is one."
+  ],
+  "mp4_bytes": 38093743
+ },
+ "dsp": {
+  "title": "The sound engine",
+  "description": "For audio engineers: the patch graph, the modules and their types, compilation, the audition phrase, loudness, vetting, the features, and the live voices.",
+  "duration": 168.57,
+  "chapters": [
+   {
+    "t": 0.0,
+    "name": "Intro"
+   },
+   {
+    "t": 7.14,
+    "name": "Graph"
+   },
+   {
+    "t": 22.86,
+    "name": "Modules"
+   },
+   {
+    "t": 41.43,
+    "name": "Compile"
+   },
+   {
+    "t": 54.29,
+    "name": "Phrase"
+   },
+   {
+    "t": 72.14,
+    "name": "Vetting"
+   },
+   {
+    "t": 82.86,
+    "name": "Loudness"
+   },
+   {
+    "t": 99.29,
+    "name": "Features"
+   },
+   {
+    "t": 130.0,
+    "name": "Live"
+   },
+   {
+    "t": 149.29,
+    "name": "Farm"
+   },
+   {
+    "t": 159.29,
+    "name": "Outro"
+   }
+  ],
+  "transcript": [
+   "This is how Auracle makes sound, from the patch graph to the live voices.",
+   "Underneath is quiver, a modular synthesis library in Rust.",
+   "On each tick, one sample moves through the whole graph.",
+   "Continuous knobs are atomic values the audio thread reads, so turning one needs no recompile.",
+   "The palette has forty-two modules, from a plucked string to sidechained dynamics.",
+   "The filter is a state variable design, or a diode ladder that saturates harder one way.",
+   "Audio and modulation are separate Rust types, so a mistyped patch cannot even be built.",
+   "Every voice ends with a DC blocker where needed, an exponential envelope, and a limiter.",
+   "Resonance and feedback are capped, so filters cannot oscillate and delays cannot run away.",
+   "For comparison, every patch plays the same five second phrase.",
+   "It holds a C, stabs an octave higher, and plays a two note chord.",
+   "It ends on a low C, with a long release.",
+   "The random seed is reset every render, so the samples repeat bit for bit.",
+   "First, each raw render goes through a gate.",
+   "It fails silence, runaway peaks, and signals dominated by DC.",
+   "What fails is never played.",
+   "Loudness is measured the broadcast way, with K weighting and gated blocks.",
+   "Each patch is matched to minus eighteen loudness units, since louder wins comparisons.",
+   "The gain stops short of clipping instead of limiting, so timbre is untouched.",
+   "From that render come eighteen audio features.",
+   "Four measure the spectrum's brightness and its movement, on a logarithmic frequency axis.",
+   "Texture, level and envelope take seven more, and one measures the bass.",
+   "Three are read from single notes. Three more are bands of motion on the held note.",
+   "The bands run from half a hertz to two, and from two to eight. The fastest runs from eight to thirty.",
+   "Twenty-six structural features come from the patch, with no render.",
+   "Live, the same compiler builds four voices inside an AudioWorklet.",
+   "Four more play PERFORM's offers, crossfaded at equal power.",
+   "In steady state, the audio thread allocates nothing.",
+   "A patch change fades out, rebuilds the voices in silence, and carries your held notes across.",
+   "Auditions render in parallel, on up to six workers.",
+   "Draws are indexed and absorbed in order, so the pool is identical at any width.",
+   "One compiler serves search and stage, so what you play is what the model measured."
+  ],
+  "mp4_bytes": 38952400
+ }
+}
