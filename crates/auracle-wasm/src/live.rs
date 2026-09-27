@@ -186,6 +186,12 @@ struct SyncLane {
     /// Normalized free rate: what the voices play with sync off, and what
     /// the snap starts from with it on.
     free: f64,
+    /// Steps per beat the lane is playing (0 before the first block synced).
+    div: f64,
+    /// Added to `beats × div`. Zero from a restart; set when `div` changes
+    /// mid-play so the sequencer keeps the step it is on and re-grids only
+    /// its phase, instead of leaping to wherever `beats × new div` points.
+    offset: f64,
 }
 
 /// Steps per beat a synced sequencer may run at: straight, triplet and
@@ -355,9 +361,13 @@ pub struct LivePoly {
     /// Tempo sync for `steps` modules: on, their rate knobs are snapped to a
     /// musical division of `bpm` and their clocks follow `transport`.
     sync_on: bool,
-    /// Samples since the transport last started (a key-sync or a MIDI
-    /// start). Only meaningful while `sync_on`.
-    transport: f64,
+    /// Beats since the transport last started (a key sync or a MIDI start),
+    /// integrated block by block at the tempo *of that block*. A tempo change
+    /// therefore changes speed, never position: the first version computed
+    /// the position as elapsed samples × the current rate, and a 1 BPM nudge
+    /// two minutes in threw every sequencer four 16ths forward. Only
+    /// meaningful while `sync_on`.
+    beats: f64,
     /// One per `steps` module in the patch.
     sync_lanes: Vec<SyncLane>,
 }
@@ -533,7 +543,7 @@ impl LivePoly {
             touch: Vec::new(),
             touch_depth: 0.0,
             sync_on: false,
-            transport: 0.0,
+            beats: 0.0,
             sync_lanes: Vec::new(),
         })
         .map(|mut p| {
@@ -563,6 +573,8 @@ impl LivePoly {
                     sync_slot,
                     rate_slot,
                     free,
+                    div: 0.0,
+                    offset: 0.0,
                 })
             })
             .collect();
@@ -572,6 +584,10 @@ impl LivePoly {
     /// Write every lane's rate (snapped with sync on, free with it off) and,
     /// with it off, park the transport handles at free-running.
     fn apply_sync(&mut self) {
+        // A rate smoother started before sync would otherwise go on writing
+        // its unsnapped target over the snapped value every block.
+        let rate_slots: Vec<usize> = self.sync_lanes.iter().map(|l| l.rate_slot).collect();
+        self.smoothers.retain(|s| !rate_slots.contains(&s.slot));
         for lane in &self.sync_lanes {
             let x = if self.sync_on {
                 snap_rate(lane.free, self.bpm)
@@ -599,14 +615,44 @@ impl LivePoly {
     pub fn set_sync(&mut self, on: bool) {
         if on != self.sync_on {
             self.sync_on = on;
-            self.transport = 0.0;
+            self.zero_transport();
             self.apply_sync();
         }
     }
 
-    /// Restart the sync transport now (a MIDI start message).
+    /// Restart the transport now (a MIDI start): the sequencers go back to
+    /// step 0 and, if a chord is held, the arp restarts on the same block.
     pub fn restart_transport(&mut self) {
-        self.transport = 0.0;
+        self.zero_transport();
+        if self.arp_on && !self.held.is_empty() {
+            self.arp_phase = f64::MAX;
+            self.arp_idx = 0;
+            self.arp_step = 0;
+            self.arp_up = true;
+        }
+    }
+
+    /// Where the transport is, in beats — for handing to a second instrument
+    /// that has to play on the same grid (the B slot).
+    pub fn transport_beats(&self) -> f64 {
+        self.beats
+    }
+
+    /// Put the transport at `beats` without restarting anything: the B slot
+    /// joining A's grid, or a MIDI clock pulling a free-running estimate back
+    /// onto the room's beat once per beat.
+    pub fn set_transport_beats(&mut self, beats: f64) {
+        if beats.is_finite() && beats >= 0.0 {
+            self.beats = beats;
+        }
+    }
+
+    fn zero_transport(&mut self) {
+        self.beats = 0.0;
+        for lane in &mut self.sync_lanes {
+            lane.div = 0.0;
+            lane.offset = 0.0;
+        }
     }
 
     /// Before a block: tell every sequencer where the transport is.
@@ -614,9 +660,20 @@ impl LivePoly {
         if !self.sync_on {
             return;
         }
-        for lane in &self.sync_lanes {
-            let hz = auracle_grammar::steps::rate_hz(snap_rate(lane.free, self.bpm));
-            let pos = self.transport * hz / self.sample_rate;
+        let beat_hz = self.bpm / 60.0;
+        let beats = self.beats;
+        for lane in &mut self.sync_lanes {
+            let div = auracle_grammar::steps::rate_hz(snap_rate(lane.free, self.bpm)) / beat_hz;
+            if (div - lane.div).abs() > 1e-9 {
+                if lane.div > 0.0 {
+                    // Keep the step it is on; take the new division's phase.
+                    let here = beats * lane.div + lane.offset;
+                    let grid = beats * div;
+                    lane.offset = here.floor() + (grid - grid.floor()) - grid;
+                }
+                lane.div = div;
+            }
+            let pos = (beats * div + lane.offset).max(0.0);
             let s = &self.param_slots[lane.sync_slot];
             s.values.iter().for_each(|a| a.set(pos));
         }
@@ -759,7 +816,7 @@ impl LivePoly {
         // Key sync: the first key down restarts the transport, in the same
         // block the arp fires its first step, so both start on one grid.
         if self.sync_on && self.held.is_empty() {
-            self.transport = 0.0;
+            self.zero_transport();
         }
         self.held.retain(|(n, _)| *n != note);
         self.held.push((note, vel));
@@ -1120,7 +1177,16 @@ impl LivePoly {
         if self.arp_phase < step_len {
             return;
         }
-        self.arp_phase = 0.0;
+        // Carry the overshoot. Steps fire on block boundaries, and resetting
+        // to zero dropped up to a block per step: at 44.1 kHz, 16ths at 120
+        // BPM ran 2.2% slow and fell a whole step behind the synced sequencers
+        // in under six seconds. The first step after a (re)start fires from
+        // `f64::MAX` and starts the count clean.
+        self.arp_phase = if self.arp_phase >= 2.0 * step_len {
+            0.0
+        } else {
+            self.arp_phase - step_len
+        };
         self.arp_step = self.arp_step.wrapping_add(1);
         // Into the kept buffers — a step boundary is render-thread code and
         // used to allocate two `Vec`s here. Disjoint fields, so the chord can
@@ -1210,6 +1276,7 @@ impl LivePoly {
         if let Some(lane) = self.sync_lanes.iter_mut().find(|l| l.rate_slot == slot) {
             lane.free = self.param_slots[slot].map.clamp_input(value);
             if self.sync_on {
+                self.smoothers.retain(|s| s.slot != slot);
                 let x = snap_rate(lane.free, self.bpm);
                 let p = &self.param_slots[slot];
                 let v = p.map.apply(x);
@@ -1389,7 +1456,7 @@ impl LivePoly {
         self.advance_pitch(frames);
         self.drive_sync();
         if self.sync_on {
-            self.transport += frames as f64;
+            self.beats += frames as f64 * self.bpm / (60.0 * self.sample_rate);
         }
         let rebuilding = matches!(self.stage, Stage::Rebuild { .. });
         if rebuilding {
@@ -1725,6 +1792,60 @@ mod tests {
             },
         })
         .unwrap()
+    }
+
+    /// A tempo change changes speed, not position. Two minutes in at 120
+    /// BPM, a nudge to 121 used to throw every synced sequencer four 16ths
+    /// forward (position was elapsed samples × the current rate); integrated
+    /// beats move on by exactly one block's worth.
+    #[test]
+    fn a_tempo_change_does_not_jump_the_sequencers() {
+        let (_, tree) = auracle_grammar::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "Loom")
+            .expect("Loom exists");
+        let json = serde_json::to_string(&tree).unwrap();
+        let mut p = LivePoly::new(&json, 48_000.0, 2).expect("compiles");
+        p.set_arp(false, 0, 4.0, 120.0, 0.5, 1, 0.0);
+        p.set_sync(true);
+        p.note_on(60, 0.8);
+        let slot = p.sync_lanes[0].sync_slot;
+        let pos = |p: &LivePoly| p.param_slots[slot].values[0].get();
+        for _ in 0..(120 * 48_000 / 128) {
+            p.process(128);
+        }
+        // Each nudge is one block of travel at most, and never backwards —
+        // including 140, where the snapped division itself changes.
+        for bpm in [121.0, 126.0, 140.0] {
+            let before = pos(&p);
+            p.set_arp(false, 0, 4.0, bpm, 0.5, 1, 0.0);
+            p.process(128);
+            let after = pos(&p);
+            assert!(
+                (0.0..0.2).contains(&(after - before)),
+                "{bpm} BPM moved the sequencer {before:.2} -> {after:.2}"
+            );
+        }
+    }
+
+    /// The arp keeps time: over a minute at 120 BPM in 16ths it fires 480
+    /// steps, not the ~470 it did when each step dropped its overshoot past
+    /// the block boundary.
+    #[test]
+    fn the_arp_does_not_drift() {
+        let json = serde_json::to_string(&auracle_grammar::presets()[0].1).unwrap();
+        let mut p = LivePoly::new(&json, 44_100.0, 2).expect("compiles");
+        p.set_arp(true, 0, 4.0, 120.0, 0.5, 1, 0.0);
+        p.note_on(60, 0.8);
+        let blocks = 60 * 44_100 / 128;
+        for _ in 0..blocks {
+            p.process(128);
+        }
+        let steps = p.arp_step as i64;
+        assert!(
+            (steps - 480).abs() <= 1,
+            "arp fired {steps} steps in 60 s, want 480"
+        );
     }
 
     /// Tempo sync snaps a sequencer to the musical division nearest its own

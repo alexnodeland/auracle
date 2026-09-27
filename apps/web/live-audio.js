@@ -160,6 +160,11 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         if (this.poly) this.poly.restart_transport();
         if (this.polyB) this.polyB.restart_transport();
         break;
+      // MIDI clock, once a beat: where the room says the transport is.
+      case "transport_beats":
+        if (this.poly) this.poly.set_transport_beats(m.beats);
+        if (this.polyB) this.polyB.set_transport_beats(m.beats);
+        break;
       // ---- the B slot ----
       case "b_patch": {
         if (!this.ready) break;
@@ -176,6 +181,10 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
             if (this.arpMsg) this.applyArp(this.polyB, this.arpMsg);
             if (this.syncOn) this.polyB.set_sync(true);
             for (const [n, v] of this.held) this.polyB.note_on(n, v);
+            // Replaying the held chord key-synced B to zero; A has been
+            // playing for a while. B joins A's grid, or a Blend would cross
+            // two step patterns at unrelated positions.
+            if (this.syncOn && this.poly) this.polyB.set_transport_beats(this.poly.transport_beats());
           }
           this.bRetire = null;
           if (m.makeup != null) this.polyB.set_makeup(m.makeup);
@@ -467,6 +476,9 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     transportStart() {
       node.port.postMessage({ type: "transport" });
+    },
+    transportBeats(beats) {
+      node.port.postMessage({ type: "transport_beats", beats });
     },
     arp(on, mode, div, bpm, gate, octaves, swing) {
       node.port.postMessage({ type: "arp", on, mode, div, bpm, gate, octaves, swing });

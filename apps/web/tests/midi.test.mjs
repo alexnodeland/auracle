@@ -48,3 +48,21 @@ test("clock tempo is read by least squares and resists a late tick", () => {
   for (let i = 0; i < 10; i++) s.tick(i * ms);
   assert.equal(s.bpm, null, "not before a full beat");
 });
+
+test("after Start, every 24th clock tick puts the transport on the room's beat", async () => {
+  const { createMidi } = await import("../midi.js");
+  const calls = [];
+  const host = new Proxy(
+    { transportBeats: (b) => calls.push(b), transportStart: () => calls.push("start"), controlNames: () => [] },
+    { get: (t, k) => (k in t ? t[k] : () => {}) },
+  );
+  const midi = createMidi(host);
+  for (let i = 0; i < 10; i++) midi.feed([0xf8], i); // no Start: no transport
+  assert.deepEqual(calls, []);
+  midi.feed([0xfa], 100);
+  for (let i = 0; i < 49; i++) midi.feed([0xf8], 101 + i);
+  assert.deepEqual(calls, ["start", 0, 1, 2]);
+  midi.feed([0xfc], 200);
+  for (let i = 0; i < 30; i++) midi.feed([0xf8], 201 + i);
+  assert.deepEqual(calls, ["start", 0, 1, 2], "a stopped clock drives nothing");
+});

@@ -161,7 +161,12 @@ inflation factors, the diagnostic that found
 and Bießmann, F. (2014).** *On the Interpretation of Weight Vectors of Linear
 Models in Multivariate Neuroimaging.* NeuroImage 87, 96–110. → A direction's
 *pattern* $\Sigma a$ versus its *filter* $a$, and why
-[the named controls aim at the pattern](./search/perform.md#aiming-at-the-pattern-not-the-axis).
+[a wiring tried and not shipped](./search/perform.md#purity-measures-cross-talk-not-correlates).
+
+**Schäfer, J. and Strimmer, K. (2005).** *A Shrinkage Approach to Large-Scale
+Covariance Matrix Estimation and Implications for Functional Genomics.*
+Statistical Applications in Genetics and Molecular Biology 4(1), Article 32. →
+The shrinkage that made that measurement fair.
 
 **Huber, P. J. (1981).** *Robust Statistics.* Wiley. → Winsorizing, and the
 reasoning behind

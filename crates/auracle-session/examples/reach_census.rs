@@ -5,12 +5,14 @@
 //! does (`Engine::wire_controls`: Jacobian, ridge, verification at ±½ and ±1).
 //! Prints, per control, how often it is reachable at all, how often each
 //! half is open, and the median purity and reach — and, for contrast, the
-//! same patches under the preset bank's standardizer.
+//! same patches under the preset bank's standardizer, and (predicted, without
+//! verification) how the gate would read with purity measured against the
+//! bare axis instead of against the other named axes.
 //!
 //! cargo run -p auracle-session --example reach_census --release -- [n] [seed]
 use auracle_features::featurize;
 use auracle_grammar::{preset_bank, PatchGrammarPrior};
-use auracle_session::perform::{jacobian, verify, wire, Wiring, CONTROLS};
+use auracle_session::perform::{direction, jacobian, verify, wire, Wiring, CONTROLS};
 use auracle_session::{Engine, SessionConfig};
 use auracle_taste::Standardizer;
 use rand::SeedableRng;
@@ -55,15 +57,70 @@ fn main() {
             Some(w)
         })
         .collect();
-    // What ships: the pattern against this pool's audio correlation.
-    let patterned: Vec<Vec<Wiring>> = trees
-        .iter()
-        .filter_map(|t| engine.wire_controls(t).map(|(_, w)| w))
-        .collect();
+    // Variant: purity measured only against the *other named axes* — "does
+    // turning Bright move Snap, Motion, Body, Grit or Space?" — predicted
+    // only (no verification), for comparison with the predicted gate of the
+    // bare-axis arm below.
+    {
+        let (mut reach_axis, mut reach_sub) = ([0usize; 6], [0usize; 6]);
+        let mut pur_sub: Vec<Vec<f64>> = vec![Vec::new(); 6];
+        let mut per_axis = [0usize; 7];
+        let mut per_sub = [0usize; 7];
+        for t in &trees {
+            let Some(jac) = jacobian(t, &spec, engine.memo(), &std) else {
+                continue;
+            };
+            let w = wire(&jac);
+            let axes: Vec<Vec<f64>> = CONTROLS.iter().map(|c| direction(c, &jac.names)).collect();
+            let (mut na, mut ns) = (0, 0);
+            for (k, wk) in w.iter().enumerate() {
+                if wk.moved.is_empty() {
+                    pur_sub[k].push(0.0);
+                    continue;
+                }
+                let dot = |a: &[f64]| a.iter().zip(&wk.moved).map(|(x, y)| x * y).sum::<f64>();
+                let along = dot(&axes[k]);
+                let off: f64 = (0..6)
+                    .filter(|&j| j != k)
+                    .map(|j| dot(&axes[j]).powi(2))
+                    .sum();
+                let sub = along / (along * along + off).sqrt().max(1e-12);
+                pur_sub[k].push(sub);
+                let reach_ok = wk.reach >= 0.15;
+                if along >= 0.35 && reach_ok {
+                    reach_axis[k] += 1;
+                    na += 1;
+                }
+                if sub >= 0.35 && reach_ok {
+                    reach_sub[k] += 1;
+                    ns += 1;
+                }
+            }
+            per_axis[na] += 1;
+            per_sub[ns] += 1;
+        }
+        let n = trees.len() as f64;
+        println!("\npredicted gate (no verification): axis purity vs named-subspace purity");
+        println!(
+            "{:<7} {:>10} {:>10} {:>12}",
+            "control", "axis", "subspace", "med sub-pur"
+        );
+        for (k, c) in CONTROLS.iter().enumerate() {
+            let mut v = pur_sub[k].clone();
+            v.sort_by(f64::total_cmp);
+            println!(
+                "{:<7} {:>10.2} {:>10.2} {:>12.2}",
+                c.name,
+                reach_axis[k] as f64 / n,
+                reach_sub[k] as f64 / n,
+                v[v.len() / 2]
+            );
+        }
+        println!("per patch, axis: {per_axis:?}  subspace: {per_sub:?}");
+    }
     for (label, set) in [
-        ("pool standardizer, bare axes", &pool),
-        ("preset standardizer, bare axes", &presets),
-        ("pool standardizer, patterned (shipped)", &patterned),
+        ("pool standardizer (what ships)", &pool),
+        ("preset standardizer", &presets),
     ] {
         println!("\n{label}: {} wired", set.len());
         println!(

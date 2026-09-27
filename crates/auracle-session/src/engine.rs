@@ -2130,34 +2130,48 @@ impl Engine {
         if free.is_empty() {
             return Err(RefineOutcome::NoMove);
         }
-        let score = |t: &PatchTree| -> f64 {
-            match (&self.posterior, &self.standardizer) {
-                (Some(p), Some(s)) => {
-                    let fitness = SurrogateFitness {
-                        posterior: Arc::clone(p),
-                        standardizer: Arc::clone(s),
-                        phrase: self.cfg.phrase.clone(),
-                        memo: self.memo.clone(),
-                    };
-                    EvolutionModel::new(self.biased_prior(), fitness)
-                        .with_beta(self.cfg.beta)
-                        .score(t)
-                        .1
-                        .total_log_weight()
-                }
-                _ => {
-                    let fitness = crate::perform::VetOnlyFitness {
-                        phrase: self.cfg.phrase.clone(),
-                        memo: self.memo.clone(),
-                    };
-                    EvolutionModel::new(self.biased_prior(), fitness)
-                        .with_beta(self.cfg.beta)
-                        .score(t)
-                        .1
-                        .total_log_weight()
-                }
+        match (&self.posterior, &self.standardizer) {
+            (Some(p), Some(s)) => {
+                let fitness = SurrogateFitness {
+                    posterior: Arc::clone(p),
+                    standardizer: Arc::clone(s),
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo.clone(),
+                };
+                self.local_walk_on(rng, seed, free, steps, sigma, fitness)
             }
-        };
+            _ => {
+                let fitness = crate::perform::VetOnlyFitness {
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo.clone(),
+                };
+                self.local_walk_on(rng, seed, free, steps, sigma, fitness)
+            }
+        }
+    }
+
+    /// [`Self::local_walk`] over one fitness, with the target model built
+    /// once: `biased_prior` clones the prior and scans the pool, and doing
+    /// that per step made every drift step pay it again.
+    fn local_walk_on<R, F>(
+        &self,
+        rng: &mut R,
+        seed: &PatchTree,
+        free: &[String],
+        steps: usize,
+        sigma: f64,
+        fitness: F,
+    ) -> Result<PatchTree, RefineOutcome>
+    where
+        R: Rng,
+        F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+    {
+        let model = EvolutionModel::new(self.biased_prior(), fitness).with_beta(self.cfg.beta);
+        let score = |t: &PatchTree| -> f64 { model.score(t).1.total_log_weight() };
         let mut cur = seed.clone();
         let mut w = score(&cur);
         if !w.is_finite() {

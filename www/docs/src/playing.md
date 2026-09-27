@@ -97,7 +97,8 @@ busy.
 one plays the musical division nearest the speed it was evolved at, so a
 pattern that ran at 3.7 steps a second becomes 16ths at 120 BPM, and all of
 them restart together with the first key you press, on the same beat the arp
-starts. MIDI start restarts them too. A five-step pattern still cycles against
+starts. MIDI start restarts them too, and with a MIDI clock running they are
+pulled back onto its beat once a beat. A five-step pattern still cycles against
 the bar; that is the point of it. Turning a sequencer's rate knob with sync on
 moves it between divisions rather than off the grid. Sync changes only what you
 hear live: the model still auditions every patch free-running.

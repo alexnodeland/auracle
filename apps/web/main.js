@@ -2762,7 +2762,11 @@ async function bootPerform() {
         const variant = fk && fk.kind.t === "enum"
           ? (fk.kind.options[Math.round(fk.value)] || "").replace(/^svf /, "svf-")
           : null;
-        return { module: m.title, label: k.label, text: knobUnit(addr, v, m.kind, variant) };
+        let text = knobUnit(addr, v, m.kind, variant);
+        // With sync on, a sequencer plays the division its rate snaps to, not
+        // the rate on the knob: say what is heard.
+        if (perf.sync && addr.endsWith("#srate")) text = `${fmtHz(syncedStepHz(v, perf.bpm))} · sync`;
+        return { module: m.title, label: k.label, text };
       }
       return { module: "", label: addr.split("#").pop(), text: knobUnit(addr, v) };
     },
@@ -2772,10 +2776,14 @@ async function bootPerform() {
       showView("play");
       const sel = `#rack-svg [data-addr="${CSS.escape(addr)}"]`;
       let tries = 0;
+      let shown = false;
       const mark = () => {
         const node = document.querySelector(sel);
         if (node && !node.classList.contains("hood-pulse")) {
-          if (tries === 0) ensureRackVisible(node);
+          if (!shown) {
+            ensureRackVisible(node);
+            shown = true;
+          }
           node.classList.add("hood-pulse");
           setTimeout(() => node.classList.remove("hood-pulse"), 1400);
         }
@@ -3460,6 +3468,7 @@ async function bootMidi() {
     sustain: midiSustain,
     panic: () => panic(),
     transportStart: () => live && live.transportStart && live.transportStart(),
+    transportBeats: (b) => live && live.transportBeats && live.transportBeats(b),
     perform: () => perform,
     controlNames: () => [...PERFORM_CONTROLS.map((c) => c.name), "Blend", "Wander"],
     setBpm: (bpm) => {
@@ -9857,6 +9866,23 @@ const KNOB_UNITS = {
   "steps#s0": stepValue, "steps#s1": stepValue, "steps#s2": stepValue, "steps#s3": stepValue,
   "steps#s4": stepValue, "steps#s5": stepValue, "steps#s6": stepValue, "steps#s7": stepValue,
 };
+
+/** What a synced sequencer plays for a free `srate` at `bpm`: the division of
+ *  the beat nearest it in octaves, as `live.rs`'s `snap_rate` picks it. */
+function syncedStepHz(x, bpm) {
+  const hz = stepRateHz(x);
+  const beat = bpm / 60;
+  const divs = [0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
+  let best = hz;
+  let bestD = Infinity;
+  for (const d of divs) {
+    const h = beat * d;
+    if (h < stepRateHz(0) * 0.999 || h > stepRateHz(1) * 1.001) continue;
+    const dist = Math.abs(Math.log2(hz / h));
+    if (dist < bestD) { bestD = dist; best = h; }
+  }
+  return best;
+}
 
 /** Steps per second for a normalized `srate` — `steps::rate_hz`. */
 function stepRateHz(x) {

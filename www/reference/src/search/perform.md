@@ -177,51 +177,49 @@ Several controls turned at once add: each contributes $c_i \alpha_i \delta_{S_i}
 to the knobs it wires, and the sum is clipped. The composition is linear by
 assumption and is not verified.
 
-### Aiming at the pattern, not the axis
+### Purity measures cross-talk, not correlates
 
-The axis $\hat e$ says what a control *measures*: Bright is centroid and
-rolloff. It does not say how a sound that gets brighter moves everywhere else,
-and it always moves elsewhere too — its zero-crossing rate and high band rise
-with it. Solved against the bare axis, those correlates count as off-axis
-motion, and an honest cutoff turn is scored as an impure control.
-
-The distinction is the one between a linear model's *filter* and its
-*pattern* (Haufe et al. 2014): the pattern of a direction $a$ over a population
-with correlation $\Sigma$ is $\Sigma a$, the movement that typically
-accompanies movement along $a$. The shipped wiring aims the solve and the
-purity at the pattern,
+Purity asks whether a move is *this* control. Measured against the whole of
+φ, it cannot tell a brightening that also raises the zero-crossing rate and the
+high band — which every real brightening does — from one that also slows the
+attack. Over a fresh session pool, Bright's median cosine with its own axis
+was 0.26 for that reason. What a player hears as "this control does something
+else" is movement along *another control's* axis, so purity is the cosine with
+$\hat e$ inside the subspace the six named axes span:
 
 $$
-\hat p \;=\; \frac{\Sigma\,\hat e}{\lVert \Sigma\,\hat e \rVert},
-\qquad
-\delta^\star = \big(J^\top J + \lambda I\big)^{-1} J^\top \hat p,
-\qquad
-\rho = \frac{\hat p^\top J_S \delta_S}{\lVert J_S \delta_S \rVert},
+\rho \;=\; \frac{\hat e^\top m}{\sqrt{(\hat e^\top m)^2 + \sum_{k \ne \text{self}} (\hat a_k^\top m)^2}},
+\qquad m = J_S \delta_S ,
 $$
 
-with $\Sigma$ the correlation of standardized audio φ over the session's own
-pool (`Engine::audio_correlation`; below 8 members, `PATTERN_MIN_POOL`, the bare
-axis is used). Reach, position and [verification](#verification-on-real-renders)
-stay on the axis $\hat e$: the question the renders answer is still "did it
-get brighter".
+with $\hat a_k$ the other controls' axes. Reach and position stay on $\hat e$.
+And two controls whose predicted movements are within $\lvert\cos\rvert > 0.8$
+of each other are one gesture with two names: the later one in the fixed order
+(Bright, Snap, Motion, Body, Grit, Space) becomes a search control
+(`separate`, `COLLINEAR`).
 
 Measured over the first 24 patches of a fresh session pool (`reach_census`,
-seed 7), with verification:
+seed 7), with verification on real renders:
 
-| | Bright | Snap | Motion | Body | Grit | Space |
+| Reachable | Bright | Snap | Motion | Body | Grit | Space |
 |---|---|---|---|---|---|---|
-| Reachable, bare axis | 25% | 58% | 58% | 17% | 4% | 38% |
-| Reachable, pattern | 38% | 58% | 54% | 33% | 8% | 33% |
-| Median purity, bare axis | 0.26 | 0.61 | 0.63 | 0.08 | 0.03 | 0.00 |
-| Median purity, pattern | 0.53 | 0.66 | 0.59 | 0.52 | 0.38 | 0.25 |
+| Purity against the whole of φ | 25% | 58% | 58% | 17% | 4% | 38% |
+| Purity against the named axes | 29% | 71% | 62% | 21% | 4% | 38% |
 
-Patches on which no control reaches fell from 4 of 24 to 1, and the typical
-patch reaches two or three of the six. Grit and Space stay rare for the reason
-they always were: most patches have no drive or reverb to turn, and those
-controls ask for an offer instead. The same census under the preset library's
-standardizer matches the pool's bare-axis rows closely, so the pool's wider
-spread is not what held Bright back. The gate test holds both wirings to the
-same promise on real renders.
+Patches on which no control reaches fell from 4 of 24 to 2. The gain is
+modest because purity was not Bright's real limit: its median predicted reach
+is about 0.1σ, since many pool patches have no filter for a named control to
+turn. That is the honest reading, and a search control's offer is the answer
+to it.
+
+**Tried and not shipped.** Aiming the solve at each control's population
+*pattern* $\Sigma \hat e$ (the correlation-weighted direction, Haufe et al.
+2014) first looked like a large improvement, but only because purity was then
+measured against the pattern instead of the axis. Measured against the axis,
+with the pool correlation shrunk toward the identity (Schäfer & Strimmer 2005)
+and collinear controls separated, it reached fewer patches than the bare axis
+(Bright 21%, Motion 42%), and on 2 of 12 patches it put Bright and Body onto
+the same knobs with opposite signs. It was removed.
 
 ## Verification on real renders
 
@@ -320,7 +318,7 @@ attached.
 | `cargo run -p auracle-features --example jacobian_probe --release > jac.csv` | $\partial\varphi_{\text{audio}}/\partial\text{knob}$ for every preset: the raw material for both purity rows |
 | `cargo run -p auracle-features --example leverage_probe --release > leverage.csv` | Per-knob leverage for every preset |
 | `cargo run -p auracle-session --example perform_wiring --release -- "First Bass"` | The shipped wiring on named presets: knobs, purity, reach, position, search |
-| `cargo run -p auracle-session --example reach_census --release -- 24 7` | How many controls reach the patches of a fresh session pool: bare axes vs the shipped pattern, with verification |
+| `cargo run -p auracle-session --example reach_census --release -- 24 7` | How many controls reach the patches of a fresh session pool, with verification, and how the gate would read with purity against the whole of φ |
 
 The two probes print CSV and the medians are computed from it. `jacobian_probe`
 uses central differences on raw φ at the same $h = 0.08$, so it measures the
@@ -336,8 +334,8 @@ runs the shipped path (`Engine::wire_controls`) with verification.
 $$\pi_\beta(x) \;\propto\; p_{\text{grammar}}(x)\,\exp\!\big(\beta\,\E[u_\theta(\varphi(x))]\big),$$
 
 restricted to this patch's shape: every structural and categorical address,
-every continuous site without a live handle (`frozen_addrs`), and the player's
-own locks are held fixed. Holding sites fixed in a Metropolis–Hastings walk is
+every continuous site without a live handle, and the player's own locks are
+held fixed — the walk moves only `live_knobs`. Holding sites fixed in a Metropolis–Hastings walk is
 exact conditioning ([Locks as conditional refinement](./locks.md)), so the walk
 targets $\pi_\beta(v \mid x_{\mathcal{L}})$ over the knobs the voices can take
 live. Structure cannot change under the player's hands, and nothing the walk

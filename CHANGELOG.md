@@ -118,6 +118,20 @@ divisions. Auditions are untouched: the genome's clock stays free-running.
 Tests: two sequencers with different histories agree sample-for-sample once
 synced; every voice reads one transport; snapping picks the nearest division.
 
+A review of the first version found the grid was not yet shared, and fixed:
+- the transport is an integrated beat count, so a tempo change alters speed,
+  never position (positions had been elapsed samples × the current rate, and
+  a 1 BPM nudge two minutes in threw every sequencer four 16ths forward);
+  a division change keeps the current step and re-grids its phase;
+- the arpeggiator carries each step's overshoot past the block boundary — it
+  had run 2.2% slow at 16ths and fallen a step behind the sequencers in under
+  six seconds — and MIDI Start restarts it with the transport;
+- a freshly loaded B joins A's transport instead of starting its own at zero;
+- MIDI clock pulls the transport onto the room's beat every 24 ticks after a
+  Start, rather than free-running on an estimated tempo;
+- a rate smoother left over from before sync no longer overwrites the snap,
+  and the under-the-hood strip shows the rate a synced sequencer plays.
+
 ### Added — under the hood, in PERFORM
 
 The named controls are a view onto a patch's own knobs, and PERFORM now shows
@@ -139,20 +153,25 @@ drift moves the farthest knob about 0.06–0.14, roam 0.25–0.6. And the named
 controls are no longer re-measured after every glide (~46 renders), only once
 a knob has left the 0.12 neighbourhood their linear model was measured in.
 
-### Changed — named controls aim at how a sound usually moves, not at one axis
+### Changed — named-control purity measures cross-talk, not correlates
 
 A census of the patches a new player actually meets (the first 24 of a fresh
 session pool, `reach_census`) found **Bright** reaching only a quarter of them,
-at a median purity of 0.26 — the most universal control, on the most
-universal knob. The wiring was solving toward the bare axis (centroid and
-rolloff), so the zero-crossing rate and high band that rise with any real
-brightening were counted as impurity. The fix is the filter/pattern
-distinction of Haufe et al. (2014): the solve and purity now aim at the
-control's **pattern** $\Sigma a$ under the pool's own audio correlation, while
-reach, position and verification still ask the renders "did it get brighter".
-Bright's median purity is 0.53, Bright reaches 38% of patches and Body 33%
-(from 25% and 17%), and patches with no reachable control fall from 4 to 1.
-The gate test now holds both wirings to the same promise on real renders.
+at a median purity of 0.26. Purity was the cosine with Bright's axis across the
+whole of φ, so the zero-crossing rate and high band that rise with any real
+brightening counted as impurity. It is now measured where cross-talk is heard:
+against the other named controls' axes. Two controls whose predicted moves are
+nearly collinear are now one gesture, and the later becomes a search control.
+Verified on real renders: Bright reaches 29% of patches (from 25%), Snap 71%
+(58%), Motion 62% (58%), Body 21% (17%); patches reaching nothing, 2 of 24
+(from 4). Bright's real limit is reach — many pool patches have no filter —
+which is what search controls are for.
+
+An earlier version of this entry claimed a jump to "purity 0.53" by aiming the
+wiring at each control's population *pattern*. That number measured purity
+against the pattern itself, and a review caught it: against the axis, the
+pattern wiring reached fewer patches than the bare axis. It was removed, and
+the reference records it as tried and not shipped.
 
 ### Fixed — PERFORM reloaded the patch under the player's hands
 
@@ -163,8 +182,8 @@ first push after a wiring wrote all of them, the misses came back, and the app
 answers a miss by reloading the patch — so turning a named control could
 restart the sound mid-phrase, re-measure the controls and drop the offer in B.
 Found on camera, in the Loom playthrough. PERFORM now uses only the knobs the
-compiler gave a handle (`perform::live_knobs`); the drift walk freezes
-everything else (`frozen_addrs`). On Loom that is 22 of 27 continuous sites.
+compiler gave a handle (`perform::live_knobs`); the drift walk moves
+only those. On Loom that is 22 of 27 continuous sites.
 A test checks every preset.
 
 ### Fixed — 256 KiB of stack per level of the patch tree

@@ -173,6 +173,7 @@ export function createMidi(host) {
     bendRange: 2,
     clock: new ClockTempo(),
     lastBpm: null,
+    ticks: null, // clock ticks since the last Start; null when stopped
     pressureSlot: 0, // Bright
     modSlot: 2, // Motion
   };
@@ -296,6 +297,16 @@ export function createMidi(host) {
         break;
       case "clock": {
         state.clock.tick(ev.timeStamp || performance.now());
+        // Phase lock: after a Start, every 24th tick is a beat of the room's
+        // transport, and the synced sequencers are pulled onto it. Between
+        // beats they run on the estimated tempo; without this, a 0.3% tempo
+        // estimate error walks them a 16th off the room every ~20 s.
+        if (state.ticks != null) {
+          // The first tick after Start *is* position 0, so beat n is tick
+          // 24n + 1.
+          state.ticks += 1;
+          if ((state.ticks - 1) % 24 === 0) host.transportBeats?.((state.ticks - 1) / 24);
+        }
         const bpm = state.clock.bpm;
         if (bpm && bpm >= 30 && bpm <= 300 && (state.lastBpm == null || Math.abs(bpm - state.lastBpm) > 0.4)) {
           state.lastBpm = bpm;
@@ -310,7 +321,11 @@ export function createMidi(host) {
       // Start restarts the tempo-sync transport, so step sequencers land on
       // the room's downbeat rather than on the first key.
       case "start":
+        state.ticks = 0;
         host.transportStart?.();
+        break;
+      case "stop":
+        state.ticks = null;
         break;
       default:
         break;
