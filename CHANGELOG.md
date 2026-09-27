@@ -94,6 +94,16 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Fixed — turning on the arp stripped the rack's knobs
+
+Found recording a demo: on Loom, the tallest stock preset, opening the
+ARP/SYNC drawer shortens the rack band by 46 px, which moved its zoom from
+0.488 to 0.4265 against an automatic-detail threshold that moved to 0.4268 —
+so every knob and step bar vanished from the patch you were about to play
+with. Both numbers ride the frame height, so a patch near the line flipped on
+any small layout change. The automatic detail level now has hysteresis: once
+knobs are drawn they stay until the zoom is 8% below the line.
+
 ### Fixed — one patch, two names
 
 Auto-names are relative to the pool, so a patch can be renamed as the pool

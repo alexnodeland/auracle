@@ -7742,9 +7742,19 @@ function lodThreshold() {
   return LOD_AUTO * clamp(h / LOD_REF_H, LOD_MIN_SCALE, 1);
 }
 
+// Hysteresis: once knobs are drawn, they stay until the zoom is clearly below
+// the line, not a hair under it. Measured on Loom, the tallest stock preset:
+// opening the ARP/SYNC drawer shortens the rack band by 46 px, which moved its
+// zoom from 0.488 to 0.4265 against a threshold that moved to 0.4268 — so
+// turning the arp on stripped every knob and step bar from the patch you were
+// about to play with. Both numbers ride the frame height, so a patch near the
+// line flips on any small layout change; an 8% band ends that.
+const LOD_HYSTERESIS = 0.92;
 function effectiveLod() {
   if (lodMode === "full" || lodMode === "compact") return lodMode;
-  return view.zoom < lodThreshold() ? "compact" : "full";
+  const th = lodThreshold();
+  if (lodApplied === "full") return view.zoom < th * LOD_HYSTERESIS ? "compact" : "full";
+  return view.zoom < th ? "compact" : "full";
 }
 // Deferred by a frame on purpose: this is reached from applyView, which is
 // reached from renderRack, and a synchronous rebuild there would re-enter the
