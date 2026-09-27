@@ -3240,7 +3240,7 @@ $("vol").oninput = (e) => {
 // right for a mouse, which can hit a 27px key, and wrong for a finger, which
 // cannot. Saved sessions override it, so this only decides the first visit.
 const perf = {
-  arp: false, arpMode: 0, arpDiv: 2, bpm: 120, uni: false, glide: 0,
+  arp: false, arpMode: 0, arpDiv: 2, bpm: 120, uni: false, glide: 0, sync: false,
   arpGate: 0.5, arpOct: 1, arpSwing: 0,
   // The tall dock stays an explicit choice — it costs the rack real height,
   // and taking that without being asked is not a default's business. The
@@ -3256,12 +3256,20 @@ function sendArp() {
   // runs — for the keyboard as well as the mouse.
   const drawer = $("arp-ctl");
   if (drawer) {
-    drawer.classList.toggle("idle", !perf.arp);
-    drawer.setAttribute("aria-disabled", String(!perf.arp));
+    // Tempo lives in this drawer, and sync needs it as much as the arp does.
+    const open = perf.arp || perf.sync;
+    drawer.classList.toggle("idle", !open);
+    drawer.setAttribute("aria-disabled", String(!open));
     drawer.querySelectorAll("select, input").forEach((c) => {
-      c.tabIndex = perf.arp ? 0 : -1;
+      c.tabIndex = open ? 0 : -1;
     });
   }
+}
+function sendSync() {
+  if (live && live.sync) live.sync(perf.sync);
+  $("sync-btn").classList.toggle("lit", perf.sync);
+  $("sync-btn").setAttribute("aria-pressed", String(perf.sync));
+  sendArp();
 }
 function sendUni() {
   if (live) live.unison(perf.uni, 0.4, 0.8);
@@ -3290,6 +3298,7 @@ function applyPerfUi() {
   $("arp-swing").value = String(perf.arpSwing);
   renderArpVals();
   sendArp();
+  sendSync();
   sendUni();
   applyKeybed();
   renderGlideVal();
@@ -3322,6 +3331,7 @@ function applyKeybed() {
   window.dispatchEvent(new Event("resize"));
 }
 $("arp-btn").onclick = () => { perf.arp = !perf.arp; sendArp(); scheduleSave(); };
+$("sync-btn").onclick = () => { perf.sync = !perf.sync; sendSync(); scheduleSave(); };
 $("arp-mode").onchange = (e) => { perf.arpMode = Number(e.target.value); sendArp(); scheduleSave(); };
 $("arp-div").onchange = (e) => { perf.arpDiv = Number(e.target.value); sendArp(); scheduleSave(); };
 $("bpm").onchange = (e) => {
@@ -3432,6 +3442,7 @@ async function bootMidi() {
     bend: (semis) => live && live.bend(semis),
     sustain: midiSustain,
     panic: () => panic(),
+    transportStart: () => live && live.transportStart && live.transportStart(),
     perform: () => perform,
     controlNames: () => [...PERFORM_CONTROLS.map((c) => c.name), "Blend", "Wander"],
     setBpm: (bpm) => {

@@ -178,6 +178,50 @@ struct ParamSlot {
     values: Vec<Arc<AtomicF64>>,
 }
 
+/// A `steps` module's tempo-sync wiring: its transport handle, its rate
+/// handle, and the rate the patch (or a gesture) asked for before snapping.
+struct SyncLane {
+    sync_slot: usize,
+    rate_slot: usize,
+    /// Normalized free rate: what the voices play with sync off, and what
+    /// the snap starts from with it on.
+    free: f64,
+}
+
+/// Steps per beat a synced sequencer may run at: straight, triplet and
+/// dotted divisions from a whole bar's quarter down to 32nds' worth.
+const SYNC_DIVISIONS: [f64; 12] = [
+    0.25,
+    1.0 / 3.0,
+    0.5,
+    2.0 / 3.0,
+    0.75,
+    1.0,
+    1.5,
+    2.0,
+    3.0,
+    4.0,
+    6.0,
+    8.0,
+];
+
+/// The synced rate site for a free rate site at `bpm`: the musical division
+/// of the beat nearest the free rate in octaves (so a sequencer evolved at
+/// 3.7 steps/s at 120 BPM plays 16ths, 4 steps/s), among the divisions the
+/// knob can reach.
+pub(crate) fn snap_rate(free: f64, bpm: f64) -> f64 {
+    use auracle_grammar::steps::{rate_hz, rate_site};
+    let hz = rate_hz(free);
+    let beat = bpm.clamp(30.0, 300.0) / 60.0;
+    let (lo, hi) = (rate_hz(0.0), rate_hz(1.0));
+    let best = SYNC_DIVISIONS
+        .iter()
+        .map(|d| beat * d)
+        .filter(|h| *h >= lo * 0.999 && *h <= hi * 1.001)
+        .min_by(|a, b| (hz / a).log2().abs().total_cmp(&(hz / b).log2().abs()));
+    best.map_or(free, rate_site)
+}
+
 struct Smoother {
     /// Index into `param_slots`.
     slot: usize,
@@ -308,6 +352,14 @@ pub struct LivePoly {
     /// voice. Empty (the default) is velocity-as-gain only, as before.
     touch: Vec<TouchSite>,
     touch_depth: f64,
+    /// Tempo sync for `steps` modules: on, their rate knobs are snapped to a
+    /// musical division of `bpm` and their clocks follow `transport`.
+    sync_on: bool,
+    /// Samples since the transport last started (a key-sync or a MIDI
+    /// start). Only meaningful while `sync_on`.
+    transport: f64,
+    /// One per `steps` module in the patch.
+    sync_lanes: Vec<SyncLane>,
 }
 
 /// Every MIDI note held at once is the most a chord can be.
@@ -480,7 +532,94 @@ impl LivePoly {
             meter: Meter::new(),
             touch: Vec::new(),
             touch_depth: 0.0,
+            sync_on: false,
+            transport: 0.0,
+            sync_lanes: Vec::new(),
         })
+        .map(|mut p| {
+            p.rebuild_sync_lanes();
+            p
+        })
+    }
+
+    /// Find every `steps` module's transport and rate handles in the current
+    /// param table. Called when the table is (re)made — construction and a
+    /// patch swap — which is where parameter allocation already happens.
+    fn rebuild_sync_lanes(&mut self) {
+        let suffix = format!("#{}", auracle_grammar::compile::STEPS_SYNC_SITE);
+        self.sync_lanes = self
+            .param_slots
+            .iter()
+            .enumerate()
+            .filter_map(|(sync_slot, p)| {
+                let key = p.addr.strip_suffix(&suffix)?;
+                let rate_addr = format!("{key}#srate");
+                let rate_slot = self.param_slots.iter().position(|q| q.addr == rate_addr)?;
+                let free = self.param_slots[rate_slot]
+                    .values
+                    .first()
+                    .map_or(0.5, |v| v.get());
+                Some(SyncLane {
+                    sync_slot,
+                    rate_slot,
+                    free,
+                })
+            })
+            .collect();
+        self.apply_sync();
+    }
+
+    /// Write every lane's rate (snapped with sync on, free with it off) and,
+    /// with it off, park the transport handles at free-running.
+    fn apply_sync(&mut self) {
+        for lane in &self.sync_lanes {
+            let x = if self.sync_on {
+                snap_rate(lane.free, self.bpm)
+            } else {
+                lane.free
+            };
+            let p = &self.param_slots[lane.rate_slot];
+            let v = p.map.apply(x);
+            p.values.iter().for_each(|a| a.set(v));
+            if !self.sync_on {
+                let s = &self.param_slots[lane.sync_slot];
+                s.values
+                    .iter()
+                    .for_each(|a| a.set(auracle_grammar::steps::SYNC_FREE));
+            }
+        }
+    }
+
+    /// Tempo sync on or off. On, every `steps` module plays the musical
+    /// division of the arpeggiator's tempo nearest its own rate, on one
+    /// transport that restarts when the first key goes down (key sync) or on
+    /// [`Self::restart_transport`] — so the step sequence and the arp share a
+    /// grid, and a five-step pattern still cycles against a four-beat bar.
+    /// Off, each sequencer free-runs at its own rate, as evolved.
+    pub fn set_sync(&mut self, on: bool) {
+        if on != self.sync_on {
+            self.sync_on = on;
+            self.transport = 0.0;
+            self.apply_sync();
+        }
+    }
+
+    /// Restart the sync transport now (a MIDI start message).
+    pub fn restart_transport(&mut self) {
+        self.transport = 0.0;
+    }
+
+    /// Before a block: tell every sequencer where the transport is.
+    fn drive_sync(&mut self) {
+        if !self.sync_on {
+            return;
+        }
+        for lane in &self.sync_lanes {
+            let hz = auracle_grammar::steps::rate_hz(snap_rate(lane.free, self.bpm));
+            let pos = self.transport * hz / self.sample_rate;
+            let s = &self.param_slots[lane.sync_slot];
+            s.values.iter().for_each(|a| a.set(pos));
+        }
     }
 
     /// Turn interior metering on or off.
@@ -617,6 +756,11 @@ impl LivePoly {
     /// the arp on, the note joins the held set and the arp presses it.
     pub fn note_on(&mut self, note: u8, vel: f64) {
         let vel = (vel.clamp(0.0, 1.0) as f32).max(0.05);
+        // Key sync: the first key down restarts the transport, in the same
+        // block the arp fires its first step, so both start on one grid.
+        if self.sync_on && self.held.is_empty() {
+            self.transport = 0.0;
+        }
         self.held.retain(|(n, _)| *n != note);
         self.held.push((note, vel));
         if self.arp_on {
@@ -854,7 +998,12 @@ impl LivePoly {
     ) {
         self.arp_mode = mode.min(3);
         self.arp_div = div.clamp(0.5, 8.0);
-        self.bpm = bpm.clamp(30.0, 300.0);
+        let bpm = bpm.clamp(30.0, 300.0);
+        let retempo = (bpm - self.bpm).abs() > 1e-9;
+        self.bpm = bpm;
+        if retempo && self.sync_on {
+            self.apply_sync();
+        }
         self.arp_gate = if gate.is_finite() {
             gate.clamp(0.05, 1.0)
         } else {
@@ -1055,6 +1204,19 @@ impl LivePoly {
         let Some(slot) = self.param_slots.iter().position(|p| p.addr == addr) else {
             return false;
         };
+        // A `steps` rate knob is the free rate its lane snaps from: with sync
+        // on, a gesture (or a drift) moves which division plays, not the
+        // clock off the grid.
+        if let Some(lane) = self.sync_lanes.iter_mut().find(|l| l.rate_slot == slot) {
+            lane.free = self.param_slots[slot].map.clamp_input(value);
+            if self.sync_on {
+                let x = snap_rate(lane.free, self.bpm);
+                let p = &self.param_slots[slot];
+                let v = p.map.apply(x);
+                p.values.iter().for_each(|a| a.set(v));
+                return true;
+            }
+        }
         let p = &self.param_slots[slot];
         let target = p.map.apply(p.map.clamp_input(value));
         let current = p.values.first().map_or(target, |v| v.get());
@@ -1225,6 +1387,10 @@ impl LivePoly {
         self.advance_smoothers();
         self.tick_arp(frames);
         self.advance_pitch(frames);
+        self.drive_sync();
+        if self.sync_on {
+            self.transport += frames as f64;
+        }
         let rebuilding = matches!(self.stage, Stage::Rebuild { .. });
         if rebuilding {
             // Silent: compile exactly one voice per quantum. Overruns here
@@ -1260,6 +1426,7 @@ impl LivePoly {
                             // and it is inside the swap that already compiles.
                             self.smoothers.clear();
                             self.param_slots = intern_params(&self.voices);
+                            self.rebuild_sync_lanes();
                             // New patch, new node ids, and a new set of module
                             // keys. Re-taking the subscriptions here is what
                             // keeps a stale `NodeId` from resolving against a
@@ -1558,6 +1725,85 @@ mod tests {
             },
         })
         .unwrap()
+    }
+
+    /// Tempo sync snaps a sequencer to the musical division nearest its own
+    /// rate: 3.7 steps/s at 120 BPM (2 beats/s) is 16ths, 4 steps/s.
+    #[test]
+    fn sync_snaps_to_the_nearest_division() {
+        use auracle_grammar::steps::{rate_hz, rate_site};
+        let x = snap_rate(rate_site(3.7), 120.0);
+        assert!((rate_hz(x) - 4.0).abs() < 1e-9, "{}", rate_hz(x));
+        // A slow patch goes to a slow division, not the nearest fast one.
+        let x = snap_rate(rate_site(0.9), 120.0);
+        assert!((rate_hz(x) - 1.0).abs() < 1e-9, "{}", rate_hz(x));
+        // Tempo changes move the division with it: at 90 BPM, 3.7 steps/s
+        // is nearer triplet 8ths (4.5) than straight 8ths (3), in octaves.
+        let x = snap_rate(rate_site(3.7), 90.0);
+        assert!((rate_hz(x) - 4.5).abs() < 1e-9, "{}", rate_hz(x));
+    }
+
+    /// With sync on, every voice's sequencer reads one transport, the first
+    /// key down restarts it, a gesture on the rate knob stays on the grid,
+    /// and sync off returns every sequencer to free-running at its own rate.
+    #[test]
+    fn sync_drives_every_voice_from_one_transport() {
+        use auracle_grammar::steps::{rate_hz, SYNC_FREE};
+        let (_, tree) = auracle_grammar::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "Loom")
+            .expect("Loom exists");
+        let json = serde_json::to_string(&tree).unwrap();
+        let mut p = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
+        assert_eq!(p.sync_lanes.len(), 1, "Loom has one sequencer");
+        let lane = (p.sync_lanes[0].sync_slot, p.sync_lanes[0].rate_slot);
+        let free = p.sync_lanes[0].free;
+        p.set_arp(false, 0, 2.0, 120.0, 0.5, 1, 0.0);
+        p.set_sync(true);
+        p.process(128);
+        p.note_on(60, 0.8);
+        p.process(128);
+        let at = |p: &LivePoly| -> Vec<f64> {
+            p.param_slots[lane.0]
+                .values
+                .iter()
+                .map(|v| v.get())
+                .collect()
+        };
+        let first = at(&p);
+        assert!(
+            first.iter().all(|v| *v == first[0]),
+            "voices disagree: {first:?}"
+        );
+        assert_eq!(first[0], 0.0, "the first key down restarts the transport");
+        for _ in 0..100 {
+            p.process(128);
+        }
+        let later = at(&p);
+        let hz = rate_hz(snap_rate(free, 120.0));
+        let want = 100.0 * 128.0 * hz / 44_100.0;
+        assert!(
+            later.iter().all(|v| (v - want).abs() < 1e-9),
+            "{later:?} vs {want}"
+        );
+        // A drag of the rate knob moves the division, not off the grid.
+        let rate_addr = p.param_slots[lane.1].addr.clone();
+        assert!(p.set_param(&rate_addr, 0.93));
+        let r = rate_hz(p.param_slots[lane.1].values[0].get());
+        let beat = 2.0;
+        assert!(
+            SYNC_DIVISIONS.iter().any(|d| (r - beat * d).abs() < 1e-9),
+            "{r} is off the grid"
+        );
+        p.set_sync(false);
+        assert!(
+            at(&p).iter().all(|v| *v == SYNC_FREE),
+            "sync off must free-run"
+        );
+        assert!(
+            (p.param_slots[lane.1].values[0].get() - 0.93).abs() < 1e-12,
+            "free rate restored"
+        );
     }
 
     /// **Touch.** Velocity reaches timbre, per voice: two notes of one chord

@@ -94,6 +94,22 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Added — tempo sync for the step sequencers
+
+Steps free-ran at its evolved rate while the arpeggiator and MIDI clock kept a
+tempo, so the two drifted apart. **SYNC** in the dock snaps each sequencer's
+rate to the nearest musical division of the tempo in octaves (straight,
+triplet or dotted) and drives every voice's clock from one transport through a
+new `sync` port on `StepsCv`: whenever the position changes, the module
+re-seats on step ⌊pos⌋ mod length at phase frac(pos), and between changes it
+integrates as before, so blocks stay sample-accurate and a voice that wakes
+later lands on the grid. The transport restarts on the first key down — the
+same block the arp fires its first step — or on MIDI start, and counts steps,
+not bars, so polymeter survives. A rate knob turned with sync on moves between
+divisions. Auditions are untouched: the genome's clock stays free-running.
+Tests: two sequencers with different histories agree sample-for-sample once
+synced; every voice reads one transport; snapping picks the nearest division.
+
 ### Added — under the hood, in PERFORM
 
 The named controls are a view onto a patch's own knobs, and PERFORM now shows

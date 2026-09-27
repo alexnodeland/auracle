@@ -307,6 +307,11 @@ export function createMidi(host) {
       case "program":
         host.program?.(m.program);
         break;
+      // Start restarts the tempo-sync transport, so step sequencers land on
+      // the room's downbeat rather than on the first key.
+      case "start":
+        host.transportStart?.();
+        break;
       default:
         break;
     }

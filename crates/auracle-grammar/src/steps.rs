@@ -26,13 +26,14 @@
 //! lengthening it again gives back the steps it hid rather than inventing new
 //! ones.
 //!
-//! # What it does not do yet
+//! # Free-running in the genome, tempo-synced in the hand
 //!
-//! The clock is free-running, like the euclid's: `rate` is steps per second on
-//! the module's own phase accumulator. Locking it to the arpeggiator's or a
-//! host's tempo is a live-instrument concern — the evolved patch is auditioned
-//! against a fixed phrase with no tempo in it — and is left for the day the
-//! instrument has a transport to lock to.
+//! In the term, and so in every audition, the clock is free-running: `rate`
+//! is steps per second on the module's own phase accumulator, because the
+//! audition phrase has no tempo in it. Locking to a tempo is a
+//! live-instrument concern, and the live engine does it through the `sync`
+//! port (see [`StepsCv`]): the rate knob is snapped to the nearest musical
+//! division of the tempo, and every voice's clock follows one transport.
 
 use quiver::port::{GraphModule, PortDef, PortId, PortSpec, PortValues, SignalKind};
 
@@ -63,8 +64,13 @@ const PORT_LENGTH: PortId = 1;
 const PORT_SLEW: PortId = 2;
 /// `s0` is port 3, `s7` port 10.
 const PORT_S0: PortId = 3;
+/// Transport position, in steps since the transport started, or negative for
+/// "free-running". See [`StepsCv`]'s *Tempo sync*.
+const PORT_SYNC: PortId = 11;
 /// The one output.
 const PORT_OUT: PortId = 20;
+/// What `sync` reads when nothing drives it: free-running.
+pub const SYNC_FREE: f64 = -1.0;
 
 /// What an unpatched or non-finite value port reads as: the middle of the
 /// knob, which is 0 V — a silent step rather than one pinned to a rail.
@@ -73,6 +79,15 @@ const VALUE_DEFAULT: f64 = 0.5;
 /// Steps per second for a normalized `rate` site: `0.5·2^(5x)`, 0.5–16 Hz.
 pub fn rate_hz(x: f64) -> f64 {
     RATE_MIN_HZ * (RATE_OCTAVES * unit(x, 0.0)).exp2()
+}
+
+/// The normalized `rate` site that plays `hz` steps per second: the inverse
+/// of [`rate_hz`], clamped to the knob's range.
+pub fn rate_site(hz: f64) -> f64 {
+    if !(hz.is_finite() && hz > 0.0) {
+        return 0.0;
+    }
+    ((hz / RATE_MIN_HZ).log2() / RATE_OCTAVES).clamp(0.0, 1.0)
 }
 
 /// Number of steps that play for a normalized `length` site: seven equal
@@ -115,6 +130,17 @@ fn unit(x: f64, default: f64) -> f64 {
 /// 96 kHz is the same curve sampled more or less finely — and a glide that
 /// is "half the step" stays half the step when `rate` moves.
 ///
+/// # Tempo sync
+///
+/// `sync` carries a transport **position in steps** (the live engine writes
+/// it at each block start when tempo sync is on). Whenever the value changes
+/// the module re-seats itself on that position — step `⌊pos⌋ mod length`,
+/// phase `pos − ⌊pos⌋` — and between changes it integrates `rate` as always,
+/// so a block's worth of samples stays sample-accurate and every voice, woken
+/// or not, lands on the same grid. A pattern whose length does not divide the
+/// bar keeps its polymeter: the position counts steps, not bars. Negative
+/// (the default) is free-running, exactly the module it was before sync.
+///
 /// # Real-time properties
 ///
 /// `tick` allocates nothing, reads no clock and draws no randomness: the
@@ -133,6 +159,9 @@ pub struct StepsCv {
     /// False until the first tick: the first step starts *on* its value
     /// rather than gliding up to it from 0 V.
     primed: bool,
+    /// The last transport position `sync` carried, so a re-seat happens once
+    /// per change and not every sample.
+    sync_seen: f64,
     sample_rate: f64,
     spec: PortSpec,
 }
@@ -155,12 +184,14 @@ impl StepsCv {
                 .with_default(VALUE_DEFAULT),
             );
         }
+        inputs.push(PortDef::new(PORT_SYNC, "sync", SignalKind::CvBipolar).with_default(SYNC_FREE));
         Self {
             phase: 0.0,
             index: 0,
             from: 0.0,
             last_out: 0.0,
             primed: false,
+            sync_seen: f64::NAN,
             sample_rate: sane_rate(sample_rate),
             spec: PortSpec {
                 inputs,
@@ -207,6 +238,18 @@ impl GraphModule for StepsCv {
             self.index = 0;
             self.from = self.last_out;
         }
+        // Tempo sync: re-seat on the transport when it moves. A position that
+        // agrees with where the clock already is changes nothing audible.
+        let sync = inputs.get_or(PORT_SYNC, SYNC_FREE);
+        if sync.is_finite() && sync >= 0.0 && sync != self.sync_seen {
+            self.sync_seen = sync;
+            let idx = (sync.floor() as u64 % len as u64) as usize;
+            if idx != self.index && self.primed {
+                self.from = self.last_out;
+            }
+            self.index = idx;
+            self.phase = sync - sync.floor();
+        }
         let target = self.value(inputs, self.index);
         if !self.primed {
             self.from = target;
@@ -242,6 +285,7 @@ impl GraphModule for StepsCv {
         self.from = 0.0;
         self.last_out = 0.0;
         self.primed = false;
+        self.sync_seen = f64::NAN;
     }
 
     fn set_sample_rate(&mut self, sample_rate: f64) {
@@ -386,5 +430,44 @@ mod tests {
         let first = take(&mut m);
         m.reset();
         assert_eq!(take(&mut m), first);
+    }
+
+    /// Two sequencers with different histories — one started a third of a
+    /// second earlier, like two voices struck at different times — play the
+    /// same samples from the moment they are handed the same transport
+    /// position, and keep agreeing while it advances. Unsynced they would
+    /// not, and the free-running default is untouched.
+    #[test]
+    fn sync_puts_voices_on_one_grid() {
+        let sr = 48_000.0;
+        let mut inp = PortValues::new();
+        inp.set(PORT_RATE, 0.5);
+        inp.set(PORT_LENGTH, 0.7);
+        inp.set(PORT_SLEW, 0.0);
+        for i in 0..8 {
+            inp.set(PORT_S0 + i, i as f64 / 7.0);
+        }
+        let (mut a, mut b) = (StepsCv::new(sr), StepsCv::new(sr));
+        let mut out = PortValues::new();
+        for _ in 0..16_000 {
+            a.tick(&inp, &mut out);
+        }
+        let hz = rate_hz(0.5);
+        let block = 128;
+        let mut transport = 0usize;
+        for _ in 0..200 {
+            inp.set(PORT_SYNC, transport as f64 * hz / sr);
+            for _ in 0..block {
+                a.tick(&inp, &mut out);
+                let va = out.get(PORT_OUT).unwrap();
+                b.tick(&inp, &mut out);
+                let vb = out.get(PORT_OUT).unwrap();
+                assert!(
+                    (va - vb).abs() < 1e-12,
+                    "voices left the grid at {transport}"
+                );
+            }
+            transport += block;
+        }
     }
 }

@@ -43,6 +43,9 @@ use quiver::{AtomicF64, ExternalInput};
 
 use crate::prior::STEPS_SITES;
 use crate::steps::StepsCv;
+/// The live-only handle a `steps` module's transport position rides on
+/// (`<key>#~sync`). Never a trace site; the live engine finds it by suffix.
+pub const STEPS_SYNC_SITE: &str = "~sync";
 use crate::term::{
     rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, PairOp, PatchTree,
 };
@@ -1359,6 +1362,23 @@ impl Compiler {
                 for ((raw, port), site) in knobs.zip(STEPS_SITES) {
                     self.knob(key, site, raw, ParamMap::Unit, false, seq.in_(port))?;
                 }
+                // The transport position for tempo sync: a live handle that is
+                // not a genome site (the `~` keeps it out of any address a
+                // term can produce), free-running until the live engine
+                // drives it.
+                let sync = Arc::new(AtomicF64::new(crate::steps::SYNC_FREE));
+                let n = self.patch.add(
+                    format!("{key}:sync!"),
+                    ExternalInput::cv_bipolar(Arc::clone(&sync)),
+                );
+                self.patch.connect(n.out("out"), seq.in_("sync"))?;
+                self.params.insert(
+                    format!("{key}#{STEPS_SYNC_SITE}"),
+                    ParamHandle {
+                        value: sync,
+                        map: ParamMap::Unit,
+                    },
+                );
                 // ±5 V, like an LFO — so it takes the bipolar depth taper.
                 (seq.out("out"), false)
             }

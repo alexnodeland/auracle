@@ -93,6 +93,15 @@ It is **sample-accurate**: it runs inside the audio engine rather than on a
 page timer, so it does not drift and it does not stutter when the interface is
 busy.
 
+**SYNC** (next to ARP) puts a patch's step sequencers on the same tempo. Each
+one plays the musical division nearest the speed it was evolved at, so a
+pattern that ran at 3.7 steps a second becomes 16ths at 120 BPM, and all of
+them restart together with the first key you press, on the same beat the arp
+starts. MIDI start restarts them too. A five-step pattern still cycles against
+the bar; that is the point of it. Turning a sequencer's rate knob with sync on
+moves it between divisions rather than off the grid. Sync changes only what you
+hear live: the model still auditions every patch free-running.
+
 ## Recording
 
 **● REC** captures your playing to a WAV: the real output, post-limiter, at the

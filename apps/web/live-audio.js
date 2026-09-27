@@ -149,6 +149,17 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         if (this.poly) this.poly.set_unison(m.on, m.detune, m.spread);
         if (this.polyB) this.polyB.set_unison(m.on, m.detune, m.spread);
         break;
+      // Tempo sync for step sequencers: A and B share it, and both restart
+      // their transport on the same first key.
+      case "sync":
+        this.syncOn = !!m.on;
+        if (this.poly) this.poly.set_sync(this.syncOn);
+        if (this.polyB) this.polyB.set_sync(this.syncOn);
+        break;
+      case "transport":
+        if (this.poly) this.poly.restart_transport();
+        if (this.polyB) this.polyB.restart_transport();
+        break;
       // ---- the B slot ----
       case "b_patch": {
         if (!this.ready) break;
@@ -163,6 +174,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
             if (this.glideAmt != null) this.polyB.set_glide(this.glideAmt);
             if (this.uni) this.polyB.set_unison(this.uni.on, this.uni.detune, this.uni.spread);
             if (this.arpMsg) this.applyArp(this.polyB, this.arpMsg);
+            if (this.syncOn) this.polyB.set_sync(true);
             for (const [n, v] of this.held) this.polyB.note_on(n, v);
           }
           this.bRetire = null;
@@ -264,6 +276,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       } else {
         this.poly = new LivePoly(m.tree, sampleRate, 4);
         if (m.makeup != null) this.poly.set_makeup(m.makeup);
+        if (this.syncOn) this.poly.set_sync(true);
         this.port.postMessage({ type: "patched" });
       }
     } catch (err) {
@@ -448,6 +461,12 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     unison(on, detune, spread) {
       node.port.postMessage({ type: "unison", on, detune, spread });
+    },
+    sync(on) {
+      node.port.postMessage({ type: "sync", on });
+    },
+    transportStart() {
+      node.port.postMessage({ type: "transport" });
     },
     arp(on, mode, div, bpm, gate, octaves, swing) {
       node.port.postMessage({ type: "arp", on, mode, div, bpm, gate, octaves, swing });

@@ -109,8 +109,14 @@ The module behind it is Auracle's own (`auracle_grammar::steps::StepsCv`)
 rather than quiver's `StepSequencer`, whose values are internal state with no
 ports: every one of the eleven sites is a port driven by a live knob, so a bar
 drag in the rack is an atomic write, not a recompile. Its clock is free-running
-(`#srate` is $0.5\cdot 2^{5x}$ steps per second); tempo sync is a
-live-instrument concern and is not in the genome.
+(`#srate` is $0.5\cdot 2^{5x}$ steps per second), and every audition hears it
+that way; tempo sync is a live-instrument concern and is not in the genome.
+With the dock's **sync** on, the live engine snaps each sequencer's rate to the
+nearest division of the tempo in octaves (straight, triplet or dotted, a
+quarter-step per beat up to eight) and drives every voice's clock from one
+transport through a `sync` port the term never sees (`<key>#~sync`). The
+transport restarts on the first key down or on MIDI start, and it counts steps,
+not bars, so a five-step pattern keeps its polymeter against a four-beat arp.
 
 So `s&h rand → quantize → slew` is a legal modulation term, and the rack draws
 the whole chain. Subterms live at `<p>/m/0` and `<p>/m/1`, the same child
