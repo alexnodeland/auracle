@@ -4,6 +4,8 @@
 styles are, what each one listens for, and whether any of it should be
 believed.</p>
 
+<!-- film:view-taste --><!-- /film:view-taste -->
+
 TASTE is full-screen and read-only. Nothing here changes the model; it is the
 model reporting on itself.
 

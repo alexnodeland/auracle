@@ -3,6 +3,8 @@
 <p class="lede">Two candidates, one question, and the machinery that turns your
 answer into a better next question.</p>
 
+<!-- film:view-evolve --><!-- /film:view-evolve -->
+
 <figure>
 <img src="../img/evolve.webp" alt="Two duel cards side by side with rendered waveforms, SAMPLE / BENCH / CHOOSE controls, a teaching meter above and a generation lineage log below." loading="eager" width="1440" height="900">
 <figcaption><strong>EVOLVE.</strong> Two candidates and one question. The meter

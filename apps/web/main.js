@@ -17690,6 +17690,7 @@ function showHelp(on) {
   const el = $("help");
   const wasOpen = !el.classList.contains("hidden");
   el.classList.toggle("hidden", !on);
+  if (on) pointHelpFilm();
   if (on && !wasOpen) {
     // A modal that doesn't move focus is a modal a keyboard user cannot reach
     // or leave.
@@ -17705,20 +17706,30 @@ function showHelp(on) {
     helpReturnFocus = null;
   }
 }
-// The films live in the guide beside the instrument (/play/ → /docs/): the
-// help card's is PERFORM's own walkthrough, on PERFORM's page; ⋯ opens the
-// index of all of them. A local build has no site around it, so it links to
-// the published one.
-{
-  const docs = location.pathname.includes("/play/")
-    ? new URL("../docs/", location.href).href
-    : "https://auracle.alexnodeland.com/docs/";
-  $("films-link").href = `${docs}films.html`;
-  $("help-film").href = `${docs}views/perform.html#film-perform`;
-  // Both stay hidden (index.html) until the films are published: publish.py
-  // un-hides them when it puts the films beside the site. A request asking
-  // the site whether they exist would log a 404 in every console until then.
+// The films live in the guide beside the instrument (/play/ → /docs/). The
+// help card's link is the in-depth film of the view it was opened from, on
+// that view's page; ⋯ opens the index of all of them. A local build has no
+// site around it, so it links to the published one. Both links stay hidden
+// (index.html) until the films are published: publish.py un-hides them when
+// it puts the films beside the site. A request asking the site whether they
+// exist would log a 404 in every console until then.
+const FILMS_DOCS = location.pathname.includes("/play/")
+  ? new URL("../docs/", location.href).href
+  : "https://auracle.alexnodeland.com/docs/";
+const VIEW_FILMS = {
+  perform: { page: "perform", film: "view-perform", name: "PERFORM" },
+  play: { page: "play", film: "view-patch", name: "PATCH" },
+  evolve: { page: "evolve", film: "view-evolve", name: "EVOLVE" },
+  taste: { page: "taste", film: "view-taste", name: "TASTE" },
+};
+function pointHelpFilm() {
+  const v = VIEW_FILMS[currentView] || VIEW_FILMS.perform;
+  const a = $("help-film");
+  a.href = `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
+  a.lastChild.textContent = ` watch ${v.name} in depth`;
 }
+$("films-link").href = `${FILMS_DOCS}films.html`;
+pointHelpFilm();
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {

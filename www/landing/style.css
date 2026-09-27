@@ -859,6 +859,11 @@ kbd {
 .hero-film-screen:hover .hero-film-play,
 .hero-film-screen:focus-visible .hero-film-play { border-color: var(--phos-a); box-shadow: 0 0 18px rgba(142, 240, 177, 0.3); }
 .hero-film-screen:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 3px; }
+/* A view's film, in its tab: the same screen as the hero's, its silent loop
+   in place of the screenshot, which stays in the page for anyone who has no
+   film yet (publish.py fills the pane only when the film is published). */
+.shot-pane .pane-film { margin-bottom: var(--s3); }
+.shot-pane .pane-film + img { display: none; }
 /* No film published yet: the hero is its copy alone. */
 .hero:not(:has(.hero-film)) { grid-template-columns: minmax(0, 1fr); }
 

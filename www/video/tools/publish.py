@@ -48,7 +48,8 @@ DOCS = os.path.join(WWW, "docs", "src")
 # film, then the films about playing it, then the ones about how it works.
 GROUPS = [
     ("Start here", ["launch"]),
-    ("Playing it", ["perform", "circuit", "playing", "composing", "sounddesign"]),
+    ("The four views", ["view-perform", "view-patch", "view-evolve", "view-taste"]),
+    ("Playing it", ["playing", "composing", "sounddesign"]),
     ("How it works", ["taste", "engine", "math", "dsp"]),
 ]
 ORDER = [f for _, fs in GROUPS for f in fs]
@@ -202,7 +203,7 @@ def fill_books(reg):
     """A film's player wherever a page of the guide or the reference asks for
     it. The path climbs out of the book to the site's copy: a page at
     docs/views/perform.html reaches assets/ as ../../assets/."""
-    pat = re.compile(r"<!-- film:(\w+) -->")
+    pat = re.compile(r"<!-- film:([\w-]+) -->")
     for book in BOOKS:
         for dirpath, _, names in os.walk(book):
             for n in names:
@@ -247,7 +248,8 @@ def film_link(f, r, cls, inner, extra=""):
 # The landing page's rows of films, by the section they sit in: each film
 # beside the claim it shows, not all of them in one band.
 LANDING_ROWS = {
-    "instrument": ["perform", "circuit", "playing"],
+    # The four views' films sit in their own tabs (PANES), not in this row.
+    "instrument": ["playing"],
     "learning": ["taste", "math"],
     "engine": ["engine", "dsp"],
     "making": ["sounddesign", "composing"],
@@ -255,6 +257,14 @@ LANDING_ROWS = {
 # The hero's silent loop: the launch film's opening, which carries its own
 # words on screen, so it reads with the sound off.
 LOOPS = {"launch": (0.0, 17.2)}
+# The four views' films, each in its tab of *Four views, one loop* on the
+# landing page (the pane marker `films:pane-<tab>`), playing its own silent
+# loop in place of the screenshot. Their loop windows are the films' own
+# choices (set in VIEW_LOOPS when each film is published).
+PANES = {"view-perform": "perform", "view-patch": "play", "view-evolve": "evolve", "view-taste": "taste"}
+VIEW_NAMES = {"view-perform": "PERFORM", "view-patch": "PATCH", "view-evolve": "EVOLVE", "view-taste": "TASTE"}
+VIEW_LOOPS = {}
+LOOPS.update(VIEW_LOOPS)
 
 
 def make_loop(f, src):
@@ -325,6 +335,23 @@ def fill_landing(reg):
         )
         return film_link(f, r, "film-chip", inner)
 
+    for f, pane in PANES.items():
+        if f not in reg:
+            fill(LANDING, f"films:pane-{pane}", "")
+            continue
+        r = reg[f]
+        loop = f"assets/film/{f}-loop"
+        name = VIEW_NAMES[f]
+        block = film_link(
+            f, r, "hero-film-screen pane-film",
+            f'<video poster="assets/film/{f}.jpg" autoplay muted loop playsinline preload="metadata" '
+            f'aria-hidden="true" data-hero-loop>'
+            f'<source src="{loop}.webm" type="video/webm"><source src="{loop}.mp4" type="video/mp4"></video>'
+            f'<span class="hero-film-play"><span class="btn-film-play" aria-hidden="true">▶</span>'
+            f'Watch {name} in depth <span class="btn-film-len mono">{fmt(r["duration"])}</span></span>',
+            extra=f' aria-label="Watch {name} in depth, {fmt(r["duration"])}, with sound"')
+        fill(LANDING, f"films:pane-{pane}", block)
+
     for row, films in LANDING_ROWS.items():
         present = [f for f in films if f in reg]
         body = "" if not present else "\n".join(
@@ -359,8 +386,9 @@ def fill_readme(reg):
 
 # The app's two ways to the films, and the film each needs before it leads
 # anywhere: the menu's "Watch the films" opens the guide's page of them (any
-# film writes it), the help's "watch it played" the PERFORM walkthrough.
-APP_LINKS = {"films-link": None, "help-film": "perform"}
+# film writes it); the help card's link opens the film of the view it was
+# opened from (main.js), so it waits for the four views' films.
+APP_LINKS = {"films-link": None, "help-film": "view-perform"}
 
 
 def unhide_app_links(reg):
