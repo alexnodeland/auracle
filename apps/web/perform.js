@@ -726,7 +726,17 @@ export function createPerform(host) {
   function requestOffer(why) {
     if (!state.cur) return;
     const growing = [...state.pending.values()].find((q) => q.kind === "perform_offer" && q.gen === state.gen);
-    if (growing && !growing.spare) return;
+    if (growing && !growing.spare) {
+      // One is already on its way: this press is a claim on it, and if it
+      // comes back empty it is asked for once more. It used to be dropped
+      // silently, so a press while an offer grew — Wander's, or attract's
+      // just before a visitor took over — could end in nothing at all.
+      growing.again = true;
+      state.offerWhy = why || state.offerWhy;
+      if (why !== "wander" && why !== "attract") stepDone("offer");
+      renderOffer("growing an offer…");
+      return;
+    }
     // Asking again after hearing B is passing on it.
     if (state.offer) answerOffer(false);
     state.lastMove = performance.now();
@@ -873,6 +883,10 @@ export function createPerform(host) {
         return true;
       }
       if (!m.offer || !m.offer.tree) {
+        if (p.again) {
+          requestOffer(state.offerWhy);
+          return true;
+        }
         renderOffer(whyNot(m, m.offer, "no offer beat this patch — try again, or loosen a lock"));
         return true;
       }

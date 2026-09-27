@@ -57,6 +57,11 @@ still growing claims it. A spare belongs to the sound it grew from: a new
 patch discards it, and so does moving the knobs outside the region it grew
 in. Measured: 0.15 s from press to B, against ~10 s grown on demand.
 
+A press while any offer is growing (Wander's, or attract's just before a
+visitor took over) claims that offer, and asks once more if it comes back
+empty. It used to be dropped silently, which could leave a press with nothing
+at all. Found recording the booth demo.
+
 ### Changed — PERFORM is playable at once on a patch it has measured before
 
 Measuring a patch takes seconds (about one render per knob, plus
