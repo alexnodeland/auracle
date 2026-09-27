@@ -133,7 +133,7 @@ Worth knowing, so you do not spend a session teaching something that cannot be
 received.
 
 The model sees each patch through a fixed set of measurements: fifteen
-perceptual descriptors of a standard render plus twenty-five structural counts.
+perceptual descriptors of a standard render plus twenty-six structural counts.
 **If a preference is not visible in those coordinates, no amount of voting will
 convey it.** The clearest case is stereo width: the feature vector has no
 coordinate for it, so the model will never learn that you like chorus for its
