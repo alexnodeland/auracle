@@ -1,0 +1,469 @@
+{
+ "film": "view-patch",
+ "fps": 30,
+ "duration": 340.0,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "cold",
+   "t0": 0.0,
+   "t1": 11.2,
+   "music": null
+  },
+  {
+   "id": "title",
+   "t0": 11.429,
+   "t1": 20.934,
+   "music": "loop_a"
+  },
+  {
+   "id": "t-read",
+   "t0": 22.857,
+   "t1": 25.607,
+   "music": null
+  },
+  {
+   "id": "read",
+   "t0": 25.714,
+   "t1": 57.449,
+   "music": null
+  },
+  {
+   "id": "t-hear",
+   "t0": 60.0,
+   "t1": 62.75,
+   "music": null
+  },
+  {
+   "id": "hear",
+   "t0": 62.857,
+   "t1": 102.052,
+   "music": null
+  },
+  {
+   "id": "t-change",
+   "t0": 102.857,
+   "t1": 105.607,
+   "music": null
+  },
+  {
+   "id": "change",
+   "t0": 105.714,
+   "t1": 131.2,
+   "music": null
+  },
+  {
+   "id": "t-add",
+   "t0": 131.429,
+   "t1": 134.179,
+   "music": null
+  },
+  {
+   "id": "add",
+   "t0": 134.286,
+   "t1": 167.238,
+   "music": null
+  },
+  {
+   "id": "t-move",
+   "t0": 168.571,
+   "t1": 171.321,
+   "music": null
+  },
+  {
+   "id": "move",
+   "t0": 171.429,
+   "t1": 196.03,
+   "music": null
+  },
+  {
+   "id": "t-steps",
+   "t0": 197.143,
+   "t1": 199.893,
+   "music": null
+  },
+  {
+   "id": "steps",
+   "t0": 200.0,
+   "t1": 218.78,
+   "music": null
+  },
+  {
+   "id": "t-lock",
+   "t0": 220.0,
+   "t1": 222.75,
+   "music": "loop_b"
+  },
+  {
+   "id": "lock",
+   "t0": 222.857,
+   "t1": 243.099,
+   "music": null
+  },
+  {
+   "id": "t-keep",
+   "t0": 245.714,
+   "t1": 248.464,
+   "music": null
+  },
+  {
+   "id": "keep",
+   "t0": 248.571,
+   "t1": 271.293,
+   "music": null
+  },
+  {
+   "id": "t-take",
+   "t0": 271.429,
+   "t1": 274.179,
+   "music": null
+  },
+  {
+   "id": "take",
+   "t0": 274.286,
+   "t1": 295.858,
+   "music": null
+  },
+  {
+   "id": "t-together",
+   "t0": 297.143,
+   "t1": 299.893,
+   "music": null
+  },
+  {
+   "id": "together",
+   "t0": 300.0,
+   "t1": 324.315,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 325.714,
+   "t1": 340.0,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "title1",
+   "text": "PATCH is the inside of the sound.",
+   "beat": "title",
+   "t0": 12.629,
+   "t1": 15.174
+  },
+  {
+   "id": "title2",
+   "text": "One patch, in full, and playable while you take it apart.",
+   "beat": "title",
+   "t0": 15.674,
+   "t1": 20.034
+  },
+  {
+   "id": "read1",
+   "text": "This is a whole patch: real modules, joined by cables.",
+   "beat": "read",
+   "t0": 26.714,
+   "t1": 30.831
+  },
+  {
+   "id": "read2",
+   "text": "Sound flows left to right along the green ones.",
+   "beat": "read",
+   "t0": 31.331,
+   "t1": 34.603
+  },
+  {
+   "id": "read3",
+   "text": "A stack of saws makes the tone, a filter softens it, and a chorus widens it.",
+   "beat": "read",
+   "t0": 35.003,
+   "t1": 41.182
+  },
+  {
+   "id": "read4",
+   "text": "The last plate is always the envelope and the output.",
+   "beat": "read",
+   "t0": 41.582,
+   "t1": 45.218
+  },
+  {
+   "id": "read5",
+   "text": "Amber cables carry movement. This one is a slow LFO, sweeping the filter.",
+   "beat": "read",
+   "t0": 45.818,
+   "t1": 51.025
+  },
+  {
+   "id": "read6",
+   "text": "Every knob sits where it really is, in hertz, milliseconds and decibels.",
+   "beat": "read",
+   "t0": 51.625,
+   "t1": 56.349
+  },
+  {
+   "id": "hear1",
+   "text": "The play button plays the standard sample: five seconds, the same for every patch.",
+   "beat": "hear",
+   "t0": 63.457,
+   "t1": 69.028
+  },
+  {
+   "id": "hear2",
+   "text": "That makes patches fair to compare. To judge a sound, play it.",
+   "beat": "hear",
+   "t0": 74.028,
+   "t1": 78.872
+  },
+  {
+   "id": "hear3",
+   "text": "Above the rack, the model guesses how likely you are to prefer this patch, and says why.",
+   "beat": "hear",
+   "t0": 82.872,
+   "t1": 89.414
+  },
+  {
+   "id": "hear4",
+   "text": "Point at a module, and the strip below says what it does, and what the model can't hear.",
+   "beat": "hear",
+   "t0": 90.014,
+   "t1": 96.919
+  },
+  {
+   "id": "hear5",
+   "text": "A chorus's width, for one, is invisible to it.",
+   "beat": "hear",
+   "t0": 97.319,
+   "t1": 100.952
+  },
+  {
+   "id": "change1",
+   "text": "Turn any knob while you play, and the sound follows your hand.",
+   "beat": "change",
+   "t0": 106.514,
+   "t1": 111.058
+  },
+  {
+   "id": "change2",
+   "text": "Bypass a module, and it steps out of the sound.",
+   "beat": "change",
+   "t0": 113.558,
+   "t1": 117.374
+  },
+  {
+   "id": "change3",
+   "text": "Pull a cable, and the socket goes quiet. What it carried waits in HELD.",
+   "beat": "change",
+   "t0": 119.874,
+   "t1": 125.445
+  },
+  {
+   "id": "change4",
+   "text": "Command-Z puts it back.",
+   "beat": "change",
+   "t0": 126.945,
+   "t1": 128.4
+  },
+  {
+   "id": "add1",
+   "text": "The node bank holds forty-two modules, in the order sound flows through them.",
+   "beat": "add",
+   "t0": 134.886,
+   "t1": 139.793
+  },
+  {
+   "id": "add2",
+   "text": "Click one, and it's in your hand. Every socket it fits lights up, and says what it would do.",
+   "beat": "add",
+   "t0": 140.293,
+   "t1": 147.862
+  },
+  {
+   "id": "add3",
+   "text": "Rest on a socket and press play, to hear it before anything changes.",
+   "beat": "add",
+   "t0": 148.462,
+   "t1": 153.369
+  },
+  {
+   "id": "add4",
+   "text": "Click the socket, and it's in.",
+   "beat": "add",
+   "t0": 155.869,
+   "t1": 158.231
+  },
+  {
+   "id": "add5",
+   "text": "A new sound source lights amber instead, because it would replace what's there.",
+   "beat": "add",
+   "t0": 161.231,
+   "t1": 166.138
+  },
+  {
+   "id": "move1",
+   "text": "Movement can come from a chain.",
+   "beat": "move",
+   "t0": 172.029,
+   "t1": 174.21
+  },
+  {
+   "id": "move2",
+   "text": "A sample and hold picks random values, a quantizer snaps them to A minor, and a slew glides between them.",
+   "beat": "move",
+   "t0": 174.61,
+   "t1": 182.243
+  },
+  {
+   "id": "move3",
+   "text": "Hold one key, and you get a melody.",
+   "beat": "move",
+   "t0": 182.643,
+   "t1": 185.732
+  },
+  {
+   "id": "move4",
+   "text": "Drop a shaper on a busy slot, and it wraps what's there instead of replacing it.",
+   "beat": "move",
+   "t0": 188.732,
+   "t1": 194.73
+  },
+  {
+   "id": "steps1",
+   "text": "Steps is a sequencer for timbre.",
+   "beat": "steps",
+   "t0": 200.6,
+   "t1": 202.782
+  },
+  {
+   "id": "steps2",
+   "text": "Put it on a filter and draw up to eight bars. The tone plays them as a pattern.",
+   "beat": "steps",
+   "t0": 203.182,
+   "t1": 210.027
+  },
+  {
+   "id": "steps3",
+   "text": "Sync locks the pattern to the tempo, here 84.",
+   "beat": "steps",
+   "t0": 212.027,
+   "t1": 215.48
+  },
+  {
+   "id": "lock1",
+   "text": "Love part of a sound? Lock it: a knob by its dot, or a whole module by its square.",
+   "beat": "lock",
+   "t0": 223.457,
+   "t1": 231.146
+  },
+  {
+   "id": "lock2",
+   "text": "Then press Evolve from this.",
+   "beat": "lock",
+   "t0": 231.746,
+   "t1": 233.564
+  },
+  {
+   "id": "lock3",
+   "text": "Only what you left unlocked can change, and the new patch lands on the bench.",
+   "beat": "lock",
+   "t0": 234.164,
+   "t1": 239.799
+  },
+  {
+   "id": "keep1",
+   "text": "Your edits wait until you commit.",
+   "beat": "keep",
+   "t0": 249.171,
+   "t1": 251.353
+  },
+  {
+   "id": "keep2",
+   "text": "Commit plays the original and your edit, in random order, and asks which is better.",
+   "beat": "keep",
+   "t0": 251.753,
+   "t1": 257.568
+  },
+  {
+   "id": "keep3",
+   "text": "Either answer teaches the model.",
+   "beat": "keep",
+   "t0": 262.568,
+   "t1": 264.386
+  },
+  {
+   "id": "keep4",
+   "text": "Already sure? Tick my edit is better, and it's filed as a claim.",
+   "beat": "keep",
+   "t0": 264.986,
+   "t1": 270.193
+  },
+  {
+   "id": "take1",
+   "text": "Export a patch as a file, or as a picture of the rack.",
+   "beat": "take",
+   "t0": 274.886,
+   "t1": 279.793
+  },
+  {
+   "id": "take2",
+   "text": "The picture carries the patch inside. Drop either onto Auracle, and it opens, ready to play.",
+   "beat": "take",
+   "t0": 280.393,
+   "t1": 286.871
+  },
+  {
+   "id": "take3",
+   "text": "And EVOLVE's lineage keeps the history: each edit, each evolution, and what changed.",
+   "beat": "take",
+   "t0": 289.371,
+   "t1": 294.758
+  },
+  {
+   "id": "together1",
+   "text": "All of it at once, at 84.",
+   "beat": "together",
+   "t0": 301.5,
+   "t1": 304.225
+  },
+  {
+   "id": "together2",
+   "text": "Shape the filter as it plays.",
+   "beat": "together",
+   "t0": 306.725,
+   "t1": 308.907
+  },
+  {
+   "id": "together3",
+   "text": "Add some grit after it.",
+   "beat": "together",
+   "t0": 311.907,
+   "t1": 313.725
+  },
+  {
+   "id": "together4",
+   "text": "Lock the filter, and commit it as yours.",
+   "beat": "together",
+   "t0": 317.725,
+   "t1": 320.815
+  },
+  {
+   "id": "outro1",
+   "text": "Read it, change it, grow it, protect it, and keep what's yours.",
+   "beat": "outro",
+   "t0": 326.514,
+   "t1": 331.598
+  },
+  {
+   "id": "outro2",
+   "text": "Next, EVOLVE: breeding sounds you like.",
+   "beat": "outro",
+   "t0": 332.298,
+   "t1": 334.96
+  }
+ ],
+ "cues": {}
+}
