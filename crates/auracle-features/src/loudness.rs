@@ -40,12 +40,17 @@
 //! cannot change timbre at all.
 //!
 //! What it costs, stated plainly: the ~15 % of patches that hit the ceiling
-//! sit *below* the loudness target, so they audition quieter than the rest.
-//! Loudness matching degrades exactly where crest is highest. That is the
-//! right trade — quieter is a smaller bias on a preference judgment than
-//! clipped — but it is a trade, and `peak_reduction_db` is on the record so a
-//! surface can say "pulled down 3.2 dB so it would not clip" instead of
-//! pretending the patch was simply quiet.
+//! sit *below* the loudness target in the stored buffer. Loudness matching
+//! degrades exactly where crest is highest. That is the right trade — quieter
+//! is a smaller bias on a preference judgment than clipped — but it is a
+//! trade, and `peak_reduction_db` is on the record so a surface can say
+//! "pulled down 3.2 dB so it would not clip" instead of pretending the patch
+//! was simply quiet.
+//!
+//! The trade is φ's, not the ear's. What the app *plays* is a copy that
+//! `auracle_wasm`'s `level` module raises back to the target and holds under
+//! full scale with a true-peak limiter — the limiter this module must not
+//! have, applied where nothing measures the result.
 
 /// A biquad in direct form 1.
 #[derive(Clone, Copy, Debug)]

@@ -93,11 +93,12 @@ const MASTER_RELEASE: f32 = 2.8e-4;
 pub(crate) const MAKEUP_MIN_DB: f64 = -24.0;
 pub(crate) const MAKEUP_MAX_DB: f64 = 60.0;
 /// Where the [`Leveler`] holds a sustained sound, in LU over the audition
-/// target (`auracle_features::TARGET_LUFS`, so −10 LUFS). Eight is above
-/// anything ordinary playing reaches — a four-note chord of a matched patch is
-/// four voices, about +6 — and level with the loudest moments of the matched
-/// auditions (their 400 ms maxima reach 7–8 LU over), so the keys are never
-/// held louder than a ▶ can be.
+/// target (`auracle_features::TARGET_LUFS`, so −10 LUFS). Eight is where the
+/// loudest moments of the matched auditions already are (their 400 ms maxima
+/// reach 7–8 LU over), so the keys are never held louder than a ▶ can be. A
+/// single note of a matched patch sits near the target and never meets it; a
+/// four-note chord, about 6 LU over one note, reaches it on the loudest
+/// quarter of a fresh pool, and is held there rather than at the brickwall.
 const LEVELER_OVER_TARGET_LU: f64 = 8.0;
 /// The leveler's loudness detector: a one-pole on K-weighted energy with a
 /// 200 ms time constant, whose equivalent window is BS.1770's 400 ms momentary
@@ -239,7 +240,9 @@ impl KStage {
 /// clip, but 15 LU louder than the patch auditions. The brickwall bounds peaks,
 /// not loudness. This bounds loudness: above [`LEVELER_OVER_TARGET_LU`] it turns
 /// the gain down until the sound sits there, and gives it back when the sound
-/// falls away. Below it, it is not there at all: the gain is exactly 1.
+/// falls away. With it, and the makeup unclamped, no held note on the same pool
+/// settles above −9.5 LUFS. Below its ceiling it is not there at all: the gain
+/// is exactly 1.
 struct Leveler {
     on: bool,
     /// K-weighting per channel.
@@ -275,9 +278,8 @@ impl Leveler {
         if !self.on {
             return 1.0;
         }
-        let weigh = |[shelf, highpass]: &mut [KStage; 2], x: f32| {
-            highpass.tick(shelf.tick(f64::from(x)))
-        };
+        let weigh =
+            |[shelf, highpass]: &mut [KStage; 2], x: f32| highpass.tick(shelf.tick(f64::from(x)));
         let [kl, kr] = &mut self.k;
         let (wl, wr) = (weigh(kl, l), weigh(kr, r));
         self.energy += (0.5 * (wl * wl + wr * wr) - self.energy) * self.detect;

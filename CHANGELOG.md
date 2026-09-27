@@ -8,6 +8,36 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — every patch at one level, and none that blasts
+
+A fresh bank auditioned at levels 10 LU apart and played at the keys at levels
+35 LU apart: loudness normalization is fitted for φ, and two of its bounds were
+reaching the speakers. Measured over 200 patches from five fresh loads
+(`crates/auracle-wasm/examples/pool_loudness.rs`):
+
+- **▶ plays at the target.** The stored audition — the buffer φ is measured on,
+  unchanged — is played through a copy raised back to −18 LUFS and held under
+  0 dBTP by a look-ahead true-peak limiter. Auditions 10 LU or more under the
+  target: 11 → 0; the spread of the bank (5th to 95th percentile) 10.2 → 1.5 LU;
+  true peaks over 0 dBTP 28 → 0. Peaky plucks come back as far as their
+  transients allow; a patch at the target plays bit-for-bit as before.
+- **The keys play at the target too.** The live makeup is the gain loudness
+  asked for, no longer the audition's gain clamped to ±12 dB (which 43 % of the
+  bank was outside). Notes 10 LU or more under: 53 → 12; the spread 35.4 →
+  13.5 LU.
+- **A held note cannot run away.** A slow swell keeps rising after the
+  phrase's 1.8 s note, so a makeup fitted on the phrase carried held pads to
+  −2.6 LUFS before any of this. A leveler in front of the brickwall now holds
+  sustained loudness at 8 LU over the target, where the loudest audition
+  moments already are: the loudest held note settles at −9.5 LUFS. The score
+  renderer keeps its hand-set mix (`set_leveler(false)`).
+
+Still quiet, on purpose: slow swells on a short tap, and plucks whose C4 is far
+under their own phrase. Still inaudible on a laptop at any level: the 16 % of
+the bank with under a fifth of its energy between 200 Hz and 5 kHz. That is
+the prior's register (it draws octaves −2…+2 uniformly, and a third of the bank
+sits mostly below 200 Hz at C4), not loudness.
+
 ### Fixed — held notes, MIDI, and the TRUST count
 
 - **Held notes stay held.** A trill played over a held chord took the chord's

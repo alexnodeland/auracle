@@ -56,6 +56,43 @@
 //! than its neighbours"). Each is counted on level alone, and inaudible again
 //! with `spk` < 20 % added — a patch a laptop cannot reproduce is inaudible on
 //! one at any level. The live classes read `note`, and `hold` reads its `S`.
+//!
+//! ## What it measured
+//!
+//! The playback level change (`src/level.rs`, the leveler in `src/live.rs`),
+//! 200 patches, the same five loads on both sides:
+//!
+//! ```text
+//!                                            before          after
+//! audition I, p5 / min (LUFS)           -28.2 / -38.8   -19.5 / -26.7
+//! audition I, p5–p95 spread                  10.2 LU          1.5 LU
+//! auditions ≥ 10 LU under / 4–10 under     11 / 19          0 / 4
+//! audition true peak, max / over 0 dBTP   +1.8 / 28       -0.0 / 0
+//! live note I, p5 / p50 / p95 (LUFS)  -51.0/-20.4/-15.6  -28.6/-18.9/-15.1
+//! live note spread, p5–p95 / IQR          35.4 / 11.1      13.5 / 3.9 LU
+//! live notes ≥ 10 LU under / 4–10 under    53 / 31         12 / 28
+//! held 8 s, loudest settles at (LUFS)          -2.6            -9.5
+//! held 8 s, settles ≥ 4 LU over target      39 (19.5 %)     55 (27.5 %)
+//! chord I, p50 / max (LUFS)               -14.4 / -6.2    -13.0 / -9.9
+//! live sample peak, max                  0.98 (brickwall)  0.98
+//! live true peak, max (dBTP)                   +2.7            +3.4
+//! live makeup range (dB), clamped      ±12, 85 clamped   -18 … +49, none
+//! ```
+//!
+//! What did not move, and why. The auditions still short are four peak-cut
+//! patches whose crest is in a sustained waveform, which a true-peak ceiling
+//! cannot make louder without clipping it. The live notes still short are
+//! slow swells (a 2 s tap of a 10 s attack is quiet; held, it arrives) and
+//! plucks and bells whose C4 sits 10–20 dB under their own phrase (their
+//! keytracked C5 carries the phrase), which no per-patch gain can fix without
+//! breaking the other notes. More held notes now settle 4–8 LU over the target
+//! because swells now start at the right level and rise into the leveler's cap
+//! instead of starting 12 dB short and rising past everything. Live true peaks
+//! are the brickwall's: it has no look-ahead, so its instant attack overshoots
+//! between samples, as it did before, a little more often now that peaky
+//! patches get their full makeup (72 patches over 0 dBTP, 64 before); its
+//! sample ceiling holds. And 16.5 % of the bank (`spk` < 20 %) is still
+//! inaudible on a laptop at any level: that is register, not loudness.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -376,10 +413,7 @@ impl Level {
                 .iter()
                 .flat_map(|c| c.iter())
                 .fold(0.0f64, |m, v| m.max(v.abs())),
-            true_peak: channels
-                .iter()
-                .map(|c| tp.peak(c))
-                .fold(0.0f64, f64::max),
+            true_peak: channels.iter().map(|c| tp.peak(c)).fold(0.0f64, f64::max),
         }
     }
 }
@@ -534,7 +568,15 @@ fn quantiles(v: &[f64]) -> [f64; 7] {
         return [f64::NAN; 7];
     }
     let q = |f: f64| s[((s.len() - 1) as f64 * f).round() as usize];
-    [s[0], q(0.05), q(0.25), q(0.5), q(0.75), q(0.95), s[s.len() - 1]]
+    [
+        s[0],
+        q(0.05),
+        q(0.25),
+        q(0.5),
+        q(0.75),
+        q(0.95),
+        s[s.len() - 1],
+    ]
 }
 
 fn print_dist(label: &str, v: &[f64]) {
@@ -686,7 +728,10 @@ fn main() {
     print_dist("audition I (LUFS)", &col(&|r| r.aud.loud.i));
     print_dist("audition M max (LUFS)", &col(&|r| r.aud.loud.m));
     print_dist("audition true peak (dBTP)", &col(&|r| db(r.aud.true_peak)));
-    print_dist("audition sample pk (dBFS)", &col(&|r| db(r.aud.sample_peak)));
+    print_dist(
+        "audition sample pk (dBFS)",
+        &col(&|r| db(r.aud.sample_peak)),
+    );
     print_dist("audition crest lost (dB)", &col(&|r| r.squash));
     print_dist("audition, small spk (LUFS)", &col(&|r| r.small));
     print_dist("stored audition I (LUFS)", &col(&|r| r.stored.i));
@@ -694,12 +739,24 @@ fn main() {
     print_dist("live note M max (LUFS)", &col(&|r| r.note.loud.m));
     print_dist("live 8 s hold, last 2 s", &col(&|r| r.sustain));
     print_dist("live 8 s hold M max (LUFS)", &col(&|r| r.hold.loud.m));
-    print_dist("live C4 true peak (dBTP)", &col(&|r| db(r.note.true_peak.max(r.hold.true_peak))));
+    print_dist(
+        "live C4 true peak (dBTP)",
+        &col(&|r| db(r.note.true_peak.max(r.hold.true_peak))),
+    );
     print_dist("live chord I (LUFS)", &col(&|r| r.chord.loud.i));
     print_dist("live chord M max (LUFS)", &col(&|r| r.chord.loud.m));
-    print_dist("live chord true pk (dBTP)", &col(&|r| db(r.chord.true_peak)));
-    print_dist("live chord sample pk (dBFS)", &col(&|r| db(r.chord.sample_peak)));
-    print_dist("live note − audition (LU)", &col(&|r| r.note.loud.i - r.aud.loud.i));
+    print_dist(
+        "live chord true pk (dBTP)",
+        &col(&|r| db(r.chord.true_peak)),
+    );
+    print_dist(
+        "live chord sample pk (dBFS)",
+        &col(&|r| db(r.chord.sample_peak)),
+    );
+    print_dist(
+        "live note − audition (LU)",
+        &col(&|r| r.note.loud.i - r.aud.loud.i),
+    );
     print_dist("gain_db (dB)", &col(&|r| r.gain_db));
     print_dist("cut (dB)", &col(&|r| r.cut_db));
     print_dist("want (dB)", &col(&|r| r.want_db));
@@ -739,7 +796,13 @@ fn main() {
     let cut4 = count(&|r| r.cut_db > 4.0);
     let cut0 = count(&|r| r.cut_db > 0.0);
     let aud_over = count(&|r| r.aud.true_peak > 1.0);
-    let live_over = count(&|r| r.note.true_peak.max(r.hold.true_peak).max(r.chord.true_peak) > 1.0);
+    let live_over = count(&|r| {
+        r.note
+            .true_peak
+            .max(r.hold.true_peak)
+            .max(r.chord.true_peak)
+            > 1.0
+    });
     let slow = count(&|r| r.attack_s > NOTE_ON_S);
     println!(
         "spk < 20 %: {small} ({:.1}%)   mostly < 200 Hz at C4: {sub} ({:.1}%)",
