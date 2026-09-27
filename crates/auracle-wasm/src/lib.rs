@@ -5,6 +5,9 @@
 //! seconds (rendering, MCMC); the main thread only plays transferred audio
 //! buffers and draws instrumentation.
 //!
+//! Animated: [*The sound engine*](https://auracle.alexnodeland.com/docs/films.html#film-dsp) shows the live voices, the patch
+//! swap and the render farm; [*Under the hood*](https://auracle.alexnodeland.com/docs/films.html#film-engine) the runtime around them.
+//!
 //! Everything crossing the boundary is either JSON (structures) or a
 //! `Float32Array` (audio). Candidates are addressed by **stable id** — pool
 //! positions shift on eviction, ids never do. The engine is deterministic
@@ -35,6 +38,7 @@
 //! | `import_patch(tree_json, name) -> u32` | unchanged shape | now also `0` for a tree over the `validate_tree` ceilings, which every other write route already refused. |
 //! | `budget_ceilings() -> String` (free function) | `{"size":24,"depth":6,"mod":3}` | The hand-edit ceilings, read from the grammar rather than restated in the app. |
 
+mod level;
 mod live;
 pub use live::LivePoly;
 
@@ -49,6 +53,7 @@ use auracle_session::{
     BankEntry, EditOutcome, Engine, Origin, PreFeaturized, Profile, RenderPolicy, SessionConfig,
     SessionState,
 };
+use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::Serialize;
@@ -122,13 +127,6 @@ fn origin_str(o: Origin) -> &'static str {
         Origin::Edited => "edited",
         Origin::Preset => "preset",
     }
-}
-
-/// The buffer form WebAudio wants. Cloned rather than moved because the
-/// engine and the workbench both keep the authoritative copy — every consumer
-/// of an audition on this boundary hands it straight to a `Float32Array`.
-fn pcm(a: &Audition) -> Vec<f32> {
-    a.samples.clone()
 }
 
 /// The structural ceilings a hand-built patch must respect, as JSON
@@ -284,7 +282,8 @@ pub struct WasmEngine {
     bench_render: Option<Arc<Audition>>,
     bench_original: Option<u64>,
     bench_vet_ok: bool,
-    bench_gain_db: f64,
+    /// The live makeup of the bench's last featurization.
+    bench_makeup: f64,
     /// Raw φ of the tree on the bench, and of the tree that was on it before
     /// the last featurize.
     ///
@@ -346,12 +345,6 @@ fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
     Some(tree)
 }
 
-/// LUFS makeup as a linear gain, clamped to ±12 dB so near-silent patches
-/// don't get cranked into the noise floor.
-fn makeup_linear(gain_db: f64) -> f64 {
-    10f64.powf(gain_db.clamp(-12.0, 12.0) / 20.0)
-}
-
 #[wasm_bindgen]
 impl WasmEngine {
     /// Create an engine with the default grammar and session config.
@@ -385,7 +378,7 @@ impl WasmEngine {
             bench_render: None,
             bench_original: None,
             bench_vet_ok: false,
-            bench_gain_db: 0.0,
+            bench_makeup: 1.0,
             bench_phi: None,
             bench_phi_prev: None,
             pending_bank: Vec::new(),
@@ -393,17 +386,18 @@ impl WasmEngine {
     }
 
     /// Loudness-makeup linear gain for live playback of candidate `id`
-    /// (evens patches out to the audition target). 1.0 for unknown ids.
+    /// (evens patches out to the audition target; see `level`). 1.0 for
+    /// unknown ids.
     pub fn makeup_of(&self, id: u32) -> f64 {
         self.engine
             .find(id as u64)
-            .map(|i| makeup_linear(self.engine.pool[i].features.gain_db))
+            .map(|i| live_makeup(&self.engine.pool[i].features))
             .unwrap_or(1.0)
     }
 
     /// Loudness-makeup linear gain for the current workbench tree.
     pub fn edit_makeup(&self) -> f64 {
-        makeup_linear(self.bench_gain_db)
+        self.bench_makeup
     }
 
     /// Add up to `max_new` vetted candidates. Returns how many were added,
@@ -660,7 +654,9 @@ impl WasmEngine {
         }
     }
 
-    /// The audition buffer of candidate `id` (mono, ±1.0), for WebAudio.
+    /// The audition buffer of candidate `id` (mono, ±1.0), for WebAudio: the
+    /// stored audition at the level it is played at (`level::audition_pcm`),
+    /// never the stored buffer itself.
     ///
     /// **`&mut self`, and it can take a render.** Under the lazy policy this
     /// engine boots with, the buffer is materialized here on first request
@@ -670,7 +666,7 @@ impl WasmEngine {
     pub fn render_of(&mut self, id: u32) -> Vec<f32> {
         self.engine
             .render_of(id as u64)
-            .map(|a| pcm(&a))
+            .map(|a| audition_pcm(&a))
             .unwrap_or_default()
     }
 
@@ -958,7 +954,7 @@ impl WasmEngine {
             Err(why) => return serde_json::json!({ "reason": why.as_str() }).to_string(),
         };
         let makeup = featurize_memo(&t, &self.engine.cfg.phrase, self.engine.memo(), false)
-            .map(|(cf, _)| makeup_linear(cf.features.gain_db))
+            .map(|(cf, _)| live_makeup(&cf.features))
             .unwrap_or(1.0);
         // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
         // kHz") instead of only "an offer is waiting".
@@ -1300,7 +1296,7 @@ impl WasmEngine {
         match self.engine.find(id) {
             Some(i) => {
                 self.bench_tree = Some(self.engine.pool[i].tree.clone());
-                self.bench_gain_db = self.engine.pool[i].features.gain_db;
+                self.bench_makeup = live_makeup(&self.engine.pool[i].features);
                 // Materializes the buffer if the lazy pool had let it go: the
                 // panel shows a scope the moment it opens, so the bench must
                 // never start empty for a candidate that renders fine.
@@ -1346,7 +1342,7 @@ impl WasmEngine {
             Ok(edited) => {
                 match featurize_memo(&edited, &phrase, &memo, true) {
                     Ok((cf, audio)) => {
-                        self.bench_gain_db = cf.features.gain_db;
+                        self.bench_makeup = live_makeup(&cf.features);
                         self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
                         self.bench_vet_ok = true;
                         self.set_bench_phi(Some(cf.features.phi()));
@@ -1450,7 +1446,7 @@ impl WasmEngine {
         let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         match featurize_memo(&tree, &phrase, &memo, true) {
             Ok((cf, audio)) => {
-                self.bench_gain_db = cf.features.gain_db;
+                self.bench_makeup = live_makeup(&cf.features);
                 self.bench_render = bench_audio(&tree, &phrase, &cf.features, audio);
                 self.bench_vet_ok = true;
                 self.set_bench_phi(Some(cf.features.phi()));
@@ -1495,10 +1491,14 @@ impl WasmEngine {
         err
     }
 
-    /// The workbench audition buffer (empty when the current edit failed
-    /// vetting — the gate's rule is that no unvetted patch ever plays).
+    /// The workbench audition buffer, at the level it is played at (empty
+    /// when the current edit failed vetting — the gate's rule is that no
+    /// unvetted patch ever plays).
     pub fn edit_render(&self) -> Vec<f32> {
-        self.bench_render.as_deref().map(pcm).unwrap_or_default()
+        self.bench_render
+            .as_deref()
+            .map(audition_pcm)
+            .unwrap_or_default()
     }
 
     /// Whether the current workbench state passed vetting.
@@ -1554,8 +1554,11 @@ impl WasmEngine {
         let Some(a) = bench_audio(&edited, &phrase, &cf.features, audio) else {
             return Vec::new();
         };
-        let n = ((seconds.max(0.1) * a.sample_rate) as usize).min(a.samples.len());
-        let mut out = a.samples[..n].to_vec();
+        // Levelled over the whole phrase and cut afterwards, so the preview is
+        // exactly the head of what ▶ would play once the module is placed.
+        let played = audition_pcm(&a);
+        let n = ((seconds.max(0.1) * a.sample_rate) as usize).min(played.len());
+        let mut out = played[..n].to_vec();
         // A phrase cut at an arbitrary sample is a step discontinuity, which is
         // a click — and a click at the end of every audition is the loudest
         // thing in the preview. 12 ms of cosine is below the threshold where a
@@ -2037,6 +2040,64 @@ mod tests {
             session_content(&farmed),
             "the farm boundary built a different session than the serial fill"
         );
+    }
+
+    /// `render_of` hands WebAudio the audition at the level it is played at,
+    /// and the pool keeps the one φ was measured on. Seed 1's first eight hold
+    /// a slow swell the 30 dB cap stopped 17 dB short — its peaks are far
+    /// under the ceiling, so all of that comes back — and a sub-bass drone the
+    /// peak ceiling pulled 6 dB down, whose crest is in a sustained waveform,
+    /// so the limiter can return only part of it without clipping the wave
+    /// (`examples/pool_loudness.rs`, load 1).
+    #[test]
+    fn render_of_plays_the_audition_at_its_level_and_stores_it_untouched() {
+        use auracle_features::{integrated_lufs, TARGET_LUFS};
+        let mut engine = WasmEngine::new(1, 8);
+        farm_fill(&mut engine, true);
+        let lufs = |x: &[f32]| {
+            let x: Vec<f64> = x.iter().map(|s| f64::from(*s)).collect();
+            integrated_lufs(&x, 44_100.0).expect("vetted, so not silent")
+        };
+        let ids: Vec<u64> = engine.engine.pool.iter().map(|c| c.id).collect();
+        let (mut short, mut whole) = (0, 0);
+        for id in ids {
+            let i = engine.engine.find(id).expect("pool member");
+            let f = engine.engine.pool[i].features.clone();
+            let stored = engine.engine.render_of(id).expect("renders");
+            let played = engine.render_of(id as u32);
+            assert_eq!(played.len(), stored.samples.len());
+            assert!(
+                played.iter().all(|s| s.abs() <= 1.0),
+                "id {id} over full scale"
+            );
+            let shortfall = TARGET_LUFS - f.lufs_before - f.gain_db;
+            if shortfall > 3.0 {
+                short += 1;
+                let (was, now) = (lufs(&stored.samples), lufs(&played));
+                assert!(
+                    now > was + 1.0,
+                    "id {id}: {shortfall:.1} dB short, played {was:.1} → {now:.1} LUFS"
+                );
+                whole += usize::from((now - TARGET_LUFS).abs() < 0.5);
+            } else if stored.samples.iter().all(|s| s.abs() < 0.45) {
+                // At target, and too quiet for any point between the samples
+                // to reach full scale: nothing to do, so nothing done.
+                assert_eq!(played, stored.samples, "id {id} was touched");
+            }
+            // The stored buffer is still exactly what the featurizer made.
+            let replay = auracle_features::render_playback(
+                &engine.engine.pool[i].tree,
+                &engine.engine.cfg.phrase,
+                f.gain_db,
+            )
+            .expect("renders");
+            assert_eq!(
+                replay.samples, stored.samples,
+                "id {id}: the stored audition moved"
+            );
+        }
+        assert!(short >= 2, "the fixture lost its short patches ({short})");
+        assert!(whole >= 1, "no shortfall came back to the target");
     }
 
     /// Audio may ride along, and when it does it must be the render φ was

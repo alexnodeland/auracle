@@ -3,7 +3,15 @@
 <p class="lede">A playable modular synthesizer that learns what you like, and can
 show you what it learned.</p>
 
-<!-- film:launch --><!-- /film:launch -->
+<!-- film:launch -->
+<figure class="film" id="film-launch">
+<video controls preload="none" playsinline poster="../assets/film/launch.jpg">
+<source src="../assets/film/launch.mp4" type="video/mp4">
+<track kind="captions" src="../assets/film/launch.vtt" srclang="en" label="English" default>
+</video>
+<figcaption>The launch film: what Auracle is, what it feels like to play, and what is underneath. <span class="film-len">1:38</span> · <a href="films.html#film-launch">chapters and transcript</a></figcaption>
+</figure>
+<!-- /film:launch -->
 
 Auracle generates patches by evolutionary search, plays them to you, and asks
 which one you prefer. From your answers it fits a model of your taste, with

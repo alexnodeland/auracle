@@ -75,11 +75,14 @@ pub struct Features {
     pub gain_db: f64,
     /// Makeup gain given up so the render would not clip, in dB (≥ 0).
     ///
-    /// Zero for most patches. Positive means this one auditions *below*
-    /// [`TARGET_LUFS`] because its crest factor would not let it reach the
-    /// target without going over full scale — so a surface comparing two
-    /// candidates' levels can say which of them was pulled down and by how
-    /// much, rather than presenting a peak-limited patch as a quiet one.
+    /// Zero for most patches. Positive means this one's stored audition —
+    /// the buffer φ is measured on — sits *below* [`TARGET_LUFS`] because its
+    /// crest factor would not let it reach the target without going over full
+    /// scale — so a surface comparing two candidates' levels can say which of
+    /// them was pulled down and by how much, rather than presenting a
+    /// peak-limited patch as a quiet one. Playback raises a copy back toward
+    /// the target (`auracle_wasm`'s `level` module), so this is no longer how
+    /// much quieter the patch *sounds*.
     ///
     /// `#[serde(default)]` is forward-looking rather than a migration.
     /// Features cross the farm as [`crate::CachedFeatures`] within a single

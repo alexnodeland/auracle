@@ -82,6 +82,37 @@ const VOLT_SCALE: f32 = 1.0 / 5.0;
 const MASTER_CEILING: f32 = 0.98;
 /// Master limiter release coefficient per sample (≈80 ms at 44.1 kHz).
 const MASTER_RELEASE: f32 = 2.8e-4;
+/// The range [`LivePoly::set_makeup`] accepts, dB. The makeup is the gain that
+/// brings a patch's phrase to the audition target (`crate::level`), and on a
+/// fresh pool that spans −18 to +49 dB. The top is the vet's silence floor
+/// (`VetConfig::rms_floor`, −80 dBFS RMS), about 60 dB under the target, so any
+/// patch the pool can admit fits; the bottom leaves a few dB under the loudest
+/// phrase there can be (the per-voice limiter holds each voice at full scale,
+/// and the phrase sounds two at once). What a makeup fitted on the phrase gets
+/// wrong about a note held past it is the [`Leveler`]'s to catch, not this
+/// clamp's.
+pub(crate) const MAKEUP_MIN_DB: f64 = -24.0;
+pub(crate) const MAKEUP_MAX_DB: f64 = 60.0;
+/// Where the [`Leveler`] holds a sustained sound, in LU over the audition
+/// target (`auracle_features::TARGET_LUFS`, so −10 LUFS). Eight is where the
+/// loudest moments of the matched auditions already are (their 400 ms maxima
+/// reach 7–8 LU over), so the keys are never held louder than a ▶ can be. A
+/// single note of a matched patch sits near the target and never meets it; a
+/// four-note chord, about 6 LU over one note, reaches it on the loudest
+/// quarter of a fresh pool, and is held there rather than at the brickwall.
+const LEVELER_OVER_TARGET_LU: f64 = 8.0;
+/// The leveler's loudness detector: a one-pole on K-weighted energy with a
+/// 200 ms time constant, whose equivalent window is BS.1770's 400 ms momentary
+/// block. Long enough that a pluck's attack is averaged into the note rather
+/// than read as a level, short enough to follow a swell.
+const LEVELER_DETECT_S: f64 = 0.2;
+/// Gain-down time constant: 100 ms. A leveler, not a limiter — peaks are the
+/// brickwall's — so it turns down about as fast as the detector can say the
+/// level rose, and no faster.
+const LEVELER_ATTACK_S: f64 = 0.1;
+/// Gain-up time constant: 1.5 s, so a held swell or a run of loud chords does
+/// not pump back up between notes.
+const LEVELER_RELEASE_S: f64 = 1.5;
 /// Full-scale unison detune in V/Oct: ±0.05 V = ±60 cents. At the old ±30 c a
 /// four-voice stack was a chorus; a JP-8000-style supersaw wants ±50–70 c.
 const UNI_DETUNE_VOLT: f64 = 0.05;
@@ -139,6 +170,137 @@ impl MasterLimiter {
         }
         *l = (*l * self.gain).clamp(-1.0, 1.0);
         *r = (*r * self.gain).clamp(-1.0, 1.0);
+    }
+}
+
+/// One BS.1770 K-weighting pre-filter stage: a biquad in direct form 1.
+#[derive(Clone, Copy)]
+struct KStage {
+    b: [f64; 3],
+    a: [f64; 2],
+    x: [f64; 2],
+    y: [f64; 2],
+}
+
+impl KStage {
+    fn tick(&mut self, x0: f64) -> f64 {
+        let y0 = self.b[0] * x0 + self.b[1] * self.x[0] + self.b[2] * self.x[1]
+            - self.a[0] * self.y[0]
+            - self.a[1] * self.y[1];
+        self.x = [x0, self.x[0]];
+        self.y = [y0, self.y[0]];
+        y0
+    }
+
+    /// The pre-filter pair — the high shelf, then the ~38 Hz highpass —
+    /// derived as `auracle_features::loudness` derives it, so the leveler reads
+    /// the loudness the audition was normalized in.
+    fn pair(fs: f64) -> [KStage; 2] {
+        let stage = |b: [f64; 3], a: [f64; 2]| KStage {
+            b,
+            a,
+            x: [0.0; 2],
+            y: [0.0; 2],
+        };
+        let (g_db, q, fc) = (
+            3.999_843_853_973_347,
+            0.707_175_236_955_419_6,
+            1_681.974_450_955_533,
+        );
+        let k = (std::f64::consts::PI * fc / fs).tan();
+        let vh = 10f64.powf(g_db / 20.0);
+        let vb = vh.powf(0.499_666_774_155);
+        let a0 = 1.0 + k / q + k * k;
+        let shelf = stage(
+            [
+                (vh + vb * k / q + k * k) / a0,
+                2.0 * (k * k - vh) / a0,
+                (vh - vb * k / q + k * k) / a0,
+            ],
+            [2.0 * (k * k - 1.0) / a0, (1.0 - k / q + k * k) / a0],
+        );
+        let (q, fc) = (0.500_327_037_323_877_3, 38.135_470_876_024_44);
+        let k = (std::f64::consts::PI * fc / fs).tan();
+        let a0 = 1.0 + k / q + k * k;
+        let highpass = stage(
+            [1.0 / a0, -2.0 / a0, 1.0 / a0],
+            [2.0 * (k * k - 1.0) / a0, (1.0 - k / q + k * k) / a0],
+        );
+        [shelf, highpass]
+    }
+}
+
+/// Loudness safety on the summed polyphony, in front of the brickwall.
+///
+/// The makeup is fitted on the audition phrase, whose longest note is 1.8 s,
+/// and a patch can do things the phrase never heard: the amp attack runs to
+/// 10 s, a filter can open over seconds, a sequencer can step up. Measured on
+/// a fresh pool (`examples/pool_loudness.rs`), a C4 held for 8 s settled 4 LU
+/// or more over the audition target on one patch in five *before* the makeup
+/// clamp was lifted, and at −2.6 LUFS on the worst — limited, so it did not
+/// clip, but 15 LU louder than the patch auditions. The brickwall bounds peaks,
+/// not loudness. This bounds loudness: above [`LEVELER_OVER_TARGET_LU`] it turns
+/// the gain down until the sound sits there, and gives it back when the sound
+/// falls away. With it, and the makeup unclamped, no held note on the same pool
+/// settles above −9.5 LUFS. Below its ceiling it is not there at all: the gain
+/// is exactly 1.
+struct Leveler {
+    on: bool,
+    /// K-weighting per channel.
+    k: [[KStage; 2]; 2],
+    /// Smoothed mono-equivalent K-weighted energy.
+    energy: f64,
+    /// The mean square the target level corresponds to.
+    ceiling: f64,
+    gain: f64,
+    detect: f64,
+    attack: f64,
+    release: f64,
+}
+
+impl Leveler {
+    fn new(sample_rate: f64) -> Self {
+        let per_sample = |s: f64| 1.0 - (-1.0 / (s * sample_rate)).exp();
+        let lufs = auracle_features::TARGET_LUFS + LEVELER_OVER_TARGET_LU;
+        Leveler {
+            on: true,
+            k: [KStage::pair(sample_rate), KStage::pair(sample_rate)],
+            energy: 0.0,
+            ceiling: 10f64.powf((lufs + 0.691) / 10.0),
+            gain: 1.0,
+            detect: per_sample(LEVELER_DETECT_S),
+            attack: per_sample(LEVELER_ATTACK_S),
+            release: per_sample(LEVELER_RELEASE_S),
+        }
+    }
+
+    /// The gain for one stereo frame.
+    fn tick(&mut self, l: f32, r: f32) -> f32 {
+        if !self.on {
+            return 1.0;
+        }
+        let weigh =
+            |[shelf, highpass]: &mut [KStage; 2], x: f32| highpass.tick(shelf.tick(f64::from(x)));
+        let [kl, kr] = &mut self.k;
+        let (wl, wr) = (weigh(kl, l), weigh(kr, r));
+        self.energy += (0.5 * (wl * wl + wr * wr) - self.energy) * self.detect;
+        let want = if self.energy > self.ceiling {
+            (self.ceiling / self.energy).sqrt()
+        } else {
+            1.0
+        };
+        let rate = if want < self.gain {
+            self.attack
+        } else {
+            self.release
+        };
+        self.gain += (want - self.gain) * rate;
+        // The release is an exponential approach, which never arrives; below
+        // the ceiling the leveler must not be there at all.
+        if want == 1.0 && self.gain > 1.0 - 1e-6 {
+            self.gain = 1.0;
+        }
+        self.gain as f32
     }
 }
 
@@ -318,6 +480,8 @@ pub struct LivePoly {
     /// Loudness makeup gain (linear); swaps in with the patch it belongs to.
     makeup: f32,
     pending_makeup: Option<f32>,
+    /// Loudness safety after the makeup, in front of the brickwall.
+    leveler: Leveler,
     /// Master brickwall across the summed polyphony.
     master: MasterLimiter,
     // Arpeggiator (sample-accurate, runs on the audio thread).
@@ -526,6 +690,7 @@ impl LivePoly {
             uni_spread: 0.7,
             makeup: 1.0,
             pending_makeup: None,
+            leveler: Leveler::new(sample_rate),
             master: MasterLimiter::new(),
             arp_on: false,
             arp_mode: 0,
@@ -1332,14 +1497,29 @@ impl LivePoly {
         true
     }
 
-    /// Loudness makeup gain (linear). Applied immediately when idle, or
-    /// deferred to swap completion when a patch swap is pending (so the
-    /// outgoing patch fades at its own level).
+    /// Whether the leveler holds sustained loudness down (on by default,
+    /// which is what the app plays). Off is for an offline renderer that sets
+    /// every level by hand — `examples/score.rs` — and must not have a mix
+    /// moved under it; the brickwall stays either way.
+    pub fn set_leveler(&mut self, on: bool) {
+        self.leveler.on = on;
+        if !on {
+            self.leveler.gain = 1.0;
+            self.leveler.energy = 0.0;
+        }
+    }
+
+    /// Loudness makeup gain (linear), within −24..+60 dB. Applied immediately
+    /// when idle, or deferred to swap completion when a patch swap is pending
+    /// (so the outgoing patch fades at its own level).
     pub fn set_makeup(&mut self, gain: f64) {
         if !gain.is_finite() {
             return;
         }
-        let g = gain.clamp(0.1, 8.0) as f32;
+        let g = gain.clamp(
+            10f64.powf(MAKEUP_MIN_DB / 20.0),
+            10f64.powf(MAKEUP_MAX_DB / 20.0),
+        ) as f32;
         if self.pending.is_some() {
             self.pending_makeup = Some(g);
         } else {
@@ -1465,9 +1645,9 @@ impl LivePoly {
         if metered.is_some() {
             self.meter.drain();
         }
-        // Per-frame swap fade, loudness makeup, then the master brickwall.
-        // Each voice carries its own limiter, but N voices sum to N× one
-        // voice — the master stage is what keeps a held chord off the rail.
+        // Per-frame swap fade, loudness makeup, the leveler, then the master
+        // brickwall. Each voice carries its own limiter, but N voices sum to N×
+        // one voice — the master stage is what keeps a held chord off the rail.
         for f in 0..frames {
             if fade_dir < 0 {
                 self.gain = (self.gain - FADE_STEP).max(0.0);
@@ -1477,6 +1657,9 @@ impl LivePoly {
             let g = self.gain * self.makeup;
             let mut l = self.out_buf[f * 2] * g;
             let mut r = self.out_buf[f * 2 + 1] * g;
+            let held_down = self.leveler.tick(l, r);
+            l *= held_down;
+            r *= held_down;
             self.master.tick(&mut l, &mut r);
             self.out_buf[f * 2] = l;
             self.out_buf[f * 2 + 1] = r;
@@ -2705,5 +2888,88 @@ mod tests {
         // Off again clears the subscriptions and the buffer with them.
         assert_eq!(poly.set_meter(false), 0);
         assert_eq!(poly.meter_len(), 0);
+    }
+
+    /// `plucked_json`'s saw → lowpass at full sustain: a held note settles at
+    /// one level and stays there.
+    fn sustained_json() -> String {
+        let mut tree: PatchTree = serde_json::from_str(&plucked_json()).unwrap();
+        tree.amp.sustain = 0.999;
+        serde_json::to_string(&tree).unwrap()
+    }
+
+    /// Hold C4 on a fresh four-voice instrument for `secs`; the mono mix.
+    fn held(json: &str, makeup: f64, leveler: bool, secs: f64) -> Vec<f64> {
+        quiver::rng::seed(7);
+        let mut poly = LivePoly::new(json, 44_100.0, 4).expect("compiles");
+        poly.set_leveler(leveler);
+        poly.set_makeup(makeup);
+        poly.note_on(60, 1.0);
+        let quanta = (secs * 44_100.0 / 128.0) as usize;
+        (0..quanta)
+            .flat_map(|_| poly.process(128))
+            .collect::<Vec<f32>>()
+            .chunks_exact(2)
+            .map(|f| (f64::from(f[0]) + f64::from(f[1])) * 0.5)
+            .collect()
+    }
+
+    /// **The swell, held down.** A note whose makeup carries it far past the
+    /// target — what a makeup fitted on the phrase does to a patch that keeps
+    /// rising after the phrase's 1.8 s note ends — settles at the leveler's
+    /// ceiling instead of at the brickwall.
+    #[test]
+    fn a_held_note_past_the_ceiling_settles_at_it() {
+        use auracle_features::{integrated_lufs, TARGET_LUFS};
+        let json = sustained_json();
+        let settled = |leveler: bool| {
+            let mono = held(&json, 10f64.powf(30.0 / 20.0), leveler, 6.0);
+            integrated_lufs(&mono[mono.len() - 88_200..], 44_100.0).expect("not silent")
+        };
+        let ceiling = TARGET_LUFS + LEVELER_OVER_TARGET_LU;
+        let (on, off) = (settled(true), settled(false));
+        assert!(
+            off > ceiling + 4.0,
+            "the fixture never gets past the ceiling ({off:.1} LUFS), so it tests nothing"
+        );
+        assert!(
+            (on - ceiling).abs() < 1.0,
+            "held at {on:.1} LUFS, ceiling {ceiling} (unlevelled: {off:.1})"
+        );
+    }
+
+    /// Below its ceiling the leveler is not there at all: the same note with it
+    /// on and off is the same samples.
+    #[test]
+    fn a_note_under_the_leveler_ceiling_is_untouched() {
+        let json = sustained_json();
+        let (on, off) = (held(&json, 0.1, true, 2.0), held(&json, 0.1, false, 2.0));
+        assert!(on.iter().any(|s| s.abs() > 1e-3), "the note is silent");
+        assert_eq!(on, off);
+    }
+
+    /// The leveler's K-weighting is a copy of `auracle_features::loudness`'s,
+    /// and has to stay one: its ceiling is a loudness the audition target is
+    /// stated in. A steady three-tone signal reads the same through both.
+    #[test]
+    fn the_leveler_reads_the_loudness_the_audition_was_normalized_in() {
+        use auracle_features::integrated_lufs;
+        let sr = 48_000.0;
+        let x: Vec<f64> = (0..(3.0 * sr) as usize)
+            .map(|i| {
+                let t = std::f64::consts::TAU * i as f64 / sr;
+                0.3 * (60.0 * t).sin() + 0.2 * (1_000.0 * t).sin() + 0.1 * (6_000.0 * t).sin()
+            })
+            .collect();
+        let mut lv = Leveler::new(sr);
+        for s in &x {
+            lv.tick(*s as f32, *s as f32);
+        }
+        let ours = -0.691 + 10.0 * lv.energy.log10();
+        let theirs = integrated_lufs(&x, sr).expect("not silent");
+        assert!(
+            (ours - theirs).abs() < 0.05,
+            "leveler reads {ours:.3} LUFS, the featurizer {theirs:.3}"
+        );
     }
 }

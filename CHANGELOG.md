@@ -8,6 +8,56 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — the films
+
+Five films, each on the page it explains, with the launch film as the landing
+page's hero:
+
+- **Auracle** (1:38), the launch film. On the landing page its opening loops
+  silently in the instrument's bezel and the whole screen plays it with sound;
+  it opens the guide's introduction too.
+- **How Auracle learns what you like** (1:49), in *What the model learns from*.
+- **Under the hood** (2:17), in the reference's introduction.
+- **The math** (2:46), in *Reading what it learned* and *Utility as a max of
+  experts*.
+- **The sound engine** (2:49), in *The standard phrase* and *The web runtime*.
+
+Captions are on by default, and the guide's Films page lists every film with
+its chapters and full transcript. The README carries the launch film's poster,
+each crate's API docs link the films about it, and the app's ⋯ menu gains
+**Watch the films**. Everything you hear is Auracle: the scores are played by
+its own engine. The narration is synthetic (Kokoro-82M, offline).
+
+### Fixed — every patch at one level, and none that blasts
+
+A fresh bank auditioned at levels 10 LU apart and played at the keys at levels
+35 LU apart: loudness normalization is fitted for φ, and two of its bounds were
+reaching the speakers. Measured over 200 patches from five fresh loads
+(`crates/auracle-wasm/examples/pool_loudness.rs`):
+
+- **▶ plays at the target.** The stored audition — the buffer φ is measured on,
+  unchanged — is played through a copy raised back to −18 LUFS and held under
+  0 dBTP by a look-ahead true-peak limiter. Auditions 10 LU or more under the
+  target: 11 → 0; the spread of the bank (5th to 95th percentile) 10.2 → 1.5 LU;
+  true peaks over 0 dBTP 28 → 0. Peaky plucks come back as far as their
+  transients allow; a patch at the target plays bit-for-bit as before.
+- **The keys play at the target too.** The live makeup is the gain loudness
+  asked for, no longer the audition's gain clamped to ±12 dB (which 43 % of the
+  bank was outside). Notes 10 LU or more under: 53 → 12; the spread 35.4 →
+  13.5 LU.
+- **A held note cannot run away.** A slow swell keeps rising after the
+  phrase's 1.8 s note, so a makeup fitted on the phrase carried held pads to
+  −2.6 LUFS before any of this. A leveler in front of the brickwall now holds
+  sustained loudness at 8 LU over the target, where the loudest audition
+  moments already are: the loudest held note settles at −9.5 LUFS. The score
+  renderer keeps its hand-set mix (`set_leveler(false)`).
+
+Still quiet, on purpose: slow swells on a short tap, and plucks whose C4 is far
+under their own phrase. Still inaudible on a laptop at any level: the 16 % of
+the bank with under a fifth of its energy between 200 Hz and 5 kHz. That is
+the prior's register (it draws octaves −2…+2 uniformly, and a third of the bank
+sits mostly below 200 Hz at C4), not loudness.
+
 ### Fixed — held notes, MIDI, and the TRUST count
 
 - **Held notes stay held.** A trill played over a held chord took the chord's
@@ -23,6 +73,13 @@ changelog that edits its own past is not a record.
   the panel says which, with a **connect midi** button that asks again from a
   click. The guide no longer says Web MIDI is Chromium-only: Firefox has it
   too, and Troubleshooting has a section for a controller that does not play.
+- **MIDI plays one tab.** The browser sends a controller to every tab that
+  asks for it, while the computer keyboard reaches only the tab in front. With
+  Auracle open twice, an older tab played every MIDI note too, with its own
+  patch: changing preset, or turning a PERFORM control or the XY pad, in the
+  tab you were using seemed not to apply to MIDI notes at all. Now the tab you
+  used last plays MIDI and any other stands aside (`midi ○` in its dock; a
+  click takes MIDI back), releasing whatever it held.
 - **TRUST counts every check.** A calibration check answered after the next
   duel had been dealt was recorded as an ordinary duel, so the check count
   could sit at 0 of 20 after thirty random duels. The engine now remembers the

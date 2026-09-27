@@ -18,6 +18,9 @@
 //!   Thompson rule it replaced and ties uniformly-random pairing
 //!   ([`engine::Acquisition`] carries the numbers).
 //!
+//! Animated: [*Under the hood*](https://auracle.alexnodeland.com/docs/films.html#film-engine) follows both loops end to end;
+//! [*The math*](https://auracle.alexnodeland.com/docs/films.html#film-math) covers acquisition, the search target and refinement.
+//!
 //! The M4 gate is this crate's closed-loop test: engine + synthetic user,
 //! end-to-end through the *real* grammar → render → vet → features pipeline,
 //! asserting the learned taste ranks genuinely-preferred patches on top.

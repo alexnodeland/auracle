@@ -79,6 +79,7 @@ dependencies = [
  "getrandom",
  "quiver-dsp",
  "rand",
+ "rustfft",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

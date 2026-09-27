@@ -70,7 +70,13 @@
 //   "@benched+0.3"      after a stamp (an `until` with `stamp` records when it came)
 // `"snap": "beat"` (or "bar") moves an action's time on to the next beat of
 // the score (timeline.json's grid), so a chord the arpeggiator plays lands in
-// time with the music.
+// time with the music; `"until_snap"` does the same for `until`, so a chord
+// struck at the shot's start can last to the first bar line, where the next
+// one (snapped) comes in.
+//
+// A `sel` is a Playwright selector, and an op acts on its first match: CSS
+// with :has(), :has-text() and :text-is(), a list `a, b` (the first in page
+// order: "the first bass card on the grid") and `>> nth=1` (the second).
 //
 // Ops, for set-up steps and actions alike:
 //   wait {ms} | {until}                 pause; in a `seq`, until a narration time (if not past)
@@ -696,7 +702,7 @@ async function shoot(browser, port, shot, ff) {
     let t2 = null;
     try {
       t = await clock.at(a.at, a.snap);
-      if (a.until != null) t2 = await clock.at(a.until);
+      if (a.until != null) t2 = await clock.at(a.until, a.until_snap);
     } catch (e) {
       return errors.push(`${describe(a)} @ ${a.at}: ${e.message}`);
     }

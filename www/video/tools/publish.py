@@ -131,6 +131,9 @@ def main():
 
 
 def write_docs_page(reg):
+    # Say what the films on the page are, not what the set will be: the
+    # walkthroughs' clause only once one is published.
+    walks = any(f in reg for f in dict(GROUPS)["Playing it"])
     out = [
         "# Films",
         "",
@@ -139,8 +142,9 @@ def write_docs_page(reg):
         "transcript is printed under it.</p>",
         "",
         "Everything you hear in them is Auracle: the music is scored for its own voices",
-        "and played by its engine, and the walkthroughs record the instrument's own",
-        "output. The narration is synthetic (Kokoro-82M, offline).",
+        "and played by its engine"
+        + (", and the walkthroughs record the instrument's own output." if walks else "."),
+        "The narration is synthetic (Kokoro-82M, offline).",
         "",
     ]
     for group, films in GROUPS:
@@ -332,7 +336,7 @@ def fill_landing(reg):
 def fill_readme(reg):
     """GitHub will not play a video from the repo, so the README carries the
     launch film's poster with its play badge baked in (tools/poster.mjs),
-    linked to the film on the site."""
+    linked to the site, whose hero is the film."""
     if "launch" not in reg or not os.path.exists(README):
         return
     r = reg["launch"]
@@ -345,9 +349,9 @@ def fill_readme(reg):
     )
     body = "\n".join([
         "",
-        f'<a href="{SITE_URL}#films"><img src="{img}" alt="Watch the launch film ({fmt(r["duration"])})" width="720"></a>',
+        f'<a href="{SITE_URL}"><img src="{img}" alt="Watch the launch film ({fmt(r["duration"])})" width="720"></a>',
         "",
-        f'**[▶ Watch the launch film]({SITE_URL}#films)** ({fmt(r["duration"])})' + (f" · {others}" if others else ""),
+        f'**[▶ Watch the launch film]({SITE_URL})** ({fmt(r["duration"])})' + (f" · {others}" if others else ""),
         "",
     ])
     fill(README, "films:readme", body)

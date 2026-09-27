@@ -2,7 +2,15 @@
 
 <p class="lede">What Auracle computes, in enough detail to disagree with.</p>
 
-<!-- film:engine --><!-- /film:engine -->
+<!-- film:engine -->
+<figure class="film" id="film-engine">
+<video controls preload="none" playsinline poster="../assets/film/engine.jpg">
+<source src="../assets/film/engine.mp4" type="video/mp4">
+<track kind="captions" src="../assets/film/engine.vtt" srclang="en" label="English" default>
+</video>
+<figcaption>For engineers: the genome, audition, features, the taste model, search, PERFORM's wiring, and the web runtime. <span class="film-len">2:17</span> · <a href="../docs/films.html#film-engine">chapters and transcript</a></figcaption>
+</figure>
+<!-- /film:engine -->
 
 This book is the technical companion to the [User Guide](../docs/). The guide
 tells you what the instrument does; this tells you how, with the math written

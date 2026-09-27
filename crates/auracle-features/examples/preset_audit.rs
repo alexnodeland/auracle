@@ -1,6 +1,8 @@
 //! How does the preset bank actually sound, in numbers? Level and tonal
-//! balance of every built-in preset, measured on the exact buffer audition
-//! plays (vetted, loudness-normalized, peak-capped).
+//! balance of every built-in preset, measured on the stored audition — the
+//! buffer φ is measured on (vetted, loudness-normalized, peak-capped). The app
+//! plays a copy raised back toward the target (`auracle-wasm`'s
+//! `pool_loudness` measures that one).
 //!
 //! ```bash
 //! cargo run -p auracle-features --example preset_audit --release
@@ -26,7 +28,8 @@
 //! the loudest frame), so a long release tail does not dilute them.
 //!
 //! * `cut` — makeup gain given up to the peak ceiling, dB. Above ~4 dB the
-//!   patch auditions audibly quieter than its neighbours.
+//!   stored audition is audibly quieter than its neighbours; playback gives
+//!   back as much of it as a true-peak limiter allows.
 //! * `sub` < 40 Hz · `low` 40–200 · `mid` 200–2k · `pres` 2–6k · `air` > 6k.
 //! * `spk` — share in 200 Hz–5 kHz, roughly what a laptop or booth monitor
 //!   reproduces. A bass with almost none of it vanishes on small speakers.

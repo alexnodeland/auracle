@@ -4,6 +4,9 @@
 //! quiver-backed synthesizer patch terms, plus the compiler from sampled terms
 //! to playable quiver [`Patch`](quiver) graphs.
 //!
+//! Animated: [*The sound engine*](https://auracle.alexnodeland.com/docs/films.html#film-dsp) walks the patch graph, its modules
+//! and their compilation; [*The math*](https://auracle.alexnodeland.com/docs/films.html#film-math) the prior as the search's target.
+//!
 //! The genome is a *term* ([`term::PatchTree`]), not a raw patch graph. The
 //! Audio/Mod sort distinction is enforced by the Rust type system — ill-sorted
 //! terms are unrepresentable — and the grammar ([`prior::PatchGrammarPrior`])

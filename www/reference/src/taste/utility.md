@@ -3,7 +3,15 @@
 <p class="lede">A candidate is as good as its best lens thinks it is. Two more obvious
 designs cannot represent a cross-island comparison at all.</p>
 
-<!-- film:math --><!-- /film:math -->
+<!-- film:math -->
+<figure class="film" id="film-math">
+<video controls preload="none" playsinline poster="../../assets/film/math.jpg">
+<source src="../../assets/film/math.mp4" type="video/mp4">
+<track kind="captions" src="../../assets/film/math.vtt" srclang="en" label="English" default>
+</video>
+<figcaption>For a technical audience: the taste model and the search as the code computes them, and why each piece has the form it does. <span class="film-len">2:46</span> · <a href="../../docs/films.html#film-math">chapters and transcript</a></figcaption>
+</figure>
+<!-- /film:math -->
 
 ## The form
 

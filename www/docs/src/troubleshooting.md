@@ -71,6 +71,11 @@ means the page cannot reach MIDI at all; click it, and the panel says why:
 - **Access was refused** earlier. Allow MIDI for the site in the browser's
   site settings (the icon left of the address), then press **connect midi**.
 
+`midi ○` means another Auracle tab is playing MIDI. Close it, or click
+anywhere in this one to play MIDI here. (The browser sends your controller to
+every tab that asks, so before this a second, older tab played every note too:
+a preset or a control changed in one tab seemed not to apply.)
+
 `midi —` means MIDI works and the browser sees no device: replug it, and it
 appears without a reload. On Windows, a device another program has open cannot
 be opened by the browser too; close that program and replug.

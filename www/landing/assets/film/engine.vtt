@@ -1,0 +1,117 @@
+WEBVTT
+
+00:00:01.500 --> 00:00:06.027
+Auracle is a Rust workspace of five
+crates, compiled to WebAssembly.
+
+00:00:06.377 --> 00:00:10.168
+Here's how a patch becomes a sound,
+and a choice becomes a model.
+
+00:00:10.914 --> 00:00:15.779
+A patch is a term in a typed grammar:
+a probabilistic program over modules.
+
+00:00:16.129 --> 00:00:21.249
+Every knob and every structural choice has
+a trace address, so a whole patch is one
+
+00:00:21.249 --> 00:00:22.359
+draw from a prior.
+
+00:00:23.057 --> 00:00:28.271
+It compiles to a quiver signal graph,
+which runs one sample at a time with no
+
+00:00:28.271 --> 00:00:30.235
+allocation on the audio path.
+
+00:00:30.914 --> 00:00:36.167
+Every candidate plays the same standard
+phrase, normalized for loudness, through a
+
+00:00:36.167 --> 00:00:39.434
+vetting gate that rejects
+silence, clipping and DC.
+
+00:00:40.200 --> 00:00:45.680
+From that phrase come eighteen perceptual
+features, from brightness and noisiness to
+
+00:00:45.680 --> 00:00:48.941
+envelope shape and three
+bands of modulation rate.
+
+00:00:48.941 --> 00:00:52.464
+Twenty-six structural ones
+come from the patch itself.
+
+00:00:52.464 --> 00:00:54.160
+Every one is standardized.
+
+00:00:55.200 --> 00:01:00.315
+Taste is a utility: the maximum over a
+few linear experts on those features.
+
+00:01:00.665 --> 00:01:05.578
+A duel, a keep or a cut, a star
+rating: each has its own likelihood.
+
+00:01:05.578 --> 00:01:11.574
+The posterior is sampled by Markov chain
+Monte Carlo, and each new answer reweights
+
+00:01:11.574 --> 00:01:14.103
+those samples until a refit is due.
+
+00:01:15.200 --> 00:01:17.982
+Every duel is forecast
+before it's answered.
+
+00:01:17.982 --> 00:01:22.978
+Each forecast is scored with a proper
+scoring rule, separately for each kind of
+
+00:01:22.978 --> 00:01:23.978
+evidence.
+
+00:01:24.486 --> 00:01:29.977
+Search targets a Boltzmann distribution:
+the grammar's prior, tilted by expected
+
+00:01:29.977 --> 00:01:30.977
+utility.
+
+00:01:30.876 --> 00:01:35.444
+Refinement is Metropolis-Hastings
+on the trace, through fugue-evo.
+
+00:01:35.444 --> 00:01:37.451
+A lock is exact conditioning.
+
+00:01:38.771 --> 00:01:44.061
+PERFORM's named controls are fixed directions
+in that standardized space of sound.
+
+00:01:44.411 --> 00:01:49.900
+For each patch, a finite-difference Jacobian
+and a ridge solve wire each control to
+
+00:01:49.900 --> 00:01:54.596
+its knobs. Every half of every control
+is then checked on real renders.
+
+00:01:55.914 --> 00:02:01.392
+In the browser, the engine runs in a
+worker, and the voices in an AudioWorklet.
+
+00:02:01.392 --> 00:02:04.582
+A render farm measures
+candidates in parallel.
+
+00:02:05.914 --> 00:02:09.659
+Every claim here has a measurement
+behind it, in the reference.
+
+00:02:09.659 --> 00:02:11.502
+Read it, run it, and change it.

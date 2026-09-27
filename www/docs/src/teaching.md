@@ -4,7 +4,15 @@
 teaching but are not. A duel can be dealt in EVOLVE or answered while you play
 in PERFORM.</p>
 
-<!-- film:taste --><!-- /film:taste -->
+<!-- film:taste -->
+<figure class="film" id="film-taste">
+<video controls preload="none" playsinline poster="../assets/film/taste.jpg">
+<source src="../assets/film/taste.mp4" type="video/mp4">
+<track kind="captions" src="../assets/film/taste.vtt" srclang="en" label="English" default>
+</video>
+<figcaption>The taste model, animated: what it hears, what a pick tells it, how it keeps score, and how it searches. <span class="film-len">1:49</span> · <a href="films.html#film-taste">chapters and transcript</a></figcaption>
+</figure>
+<!-- /film:taste -->
 
 ## The four signals
 

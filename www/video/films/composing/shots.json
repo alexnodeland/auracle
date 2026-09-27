@@ -45,8 +45,8 @@
       ],
       "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go"},
       "actions": [
-        {"at": "direction1:shows", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line')) + .wi-play"},
-        {"at": "direction2:Pick", "op": "seq", "steps": [{"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"}]},
+        {"at": "direction1:shows", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('First Bass')) + .wi-play, .warm-item:has(.wi-name:text-is('Sub & Sparkle')) + .wi-play, .warm-item:has(.wi-name:text-is('Acid Line')) + .wi-play, .warm-item:has(.wi-name:text-is('Reese')) + .wi-play, .warm-item:has(.wi-name:text-is('Anvil')) + .wi-play, .warm-item:has(.wi-name:text-is('Iron Bass')) + .wi-play, .warm-item:has(.wi-name:text-is('Held Under')) + .wi-play"},
+        {"at": "direction2:Pick", "op": "seq", "steps": [{"op": "click", "sel": ".warm-item:has(.wi-name:text-is('First Bass')), .warm-item:has(.wi-name:text-is('Sub & Sparkle')), .warm-item:has(.wi-name:text-is('Acid Line')), .warm-item:has(.wi-name:text-is('Reese')), .warm-item:has(.wi-name:text-is('Anvil')), .warm-item:has(.wi-name:text-is('Iron Bass')), .warm-item:has(.wi-name:text-is('Held Under'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Noise Wash')), .warm-item:has(.wi-name:text-is('Dub Echo')), .warm-item:has(.wi-name:text-is('Static Ocean')), .warm-item:has(.wi-name:text-is('Rotor')), .warm-item:has(.wi-name:text-is('Long Room')), .warm-item:has(.wi-name:text-is('Handheld')), .warm-item:has(.wi-name:text-is('Jet Wash')), .warm-item:has(.wi-name:text-is('Cloud Chamber')), .warm-item:has(.wi-name:text-is('Vox Machina')), .warm-item:has(.wi-name:text-is('Glass Rain')), .warm-item:has(.wi-name:text-is('One Way')), .warm-item:has(.wi-name:text-is('Loom')), .warm-item:has(.wi-name:text-is('Long Way Down'))"}]},
         {"at": "direction2:eighteen", "op": "click", "sel": "#warm-go"},
         {"at": "direction2:eighteen+0.2", "op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
         {"at": "@taught+0.2", "op": "view", "v": "evolve"},
@@ -63,9 +63,9 @@
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('First Bass')), .warm-item:has(.wi-name:text-is('Sub & Sparkle')), .warm-item:has(.wi-name:text-is('Acid Line')), .warm-item:has(.wi-name:text-is('Reese')), .warm-item:has(.wi-name:text-is('Anvil')), .warm-item:has(.wi-name:text-is('Iron Bass')), .warm-item:has(.wi-name:text-is('Held Under'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Noise Wash')), .warm-item:has(.wi-name:text-is('Dub Echo')), .warm-item:has(.wi-name:text-is('Static Ocean')), .warm-item:has(.wi-name:text-is('Rotor')), .warm-item:has(.wi-name:text-is('Long Room')), .warm-item:has(.wi-name:text-is('Handheld')), .warm-item:has(.wi-name:text-is('Jet Wash')), .warm-item:has(.wi-name:text-is('Cloud Chamber')), .warm-item:has(.wi-name:text-is('Vox Machina')), .warm-item:has(.wi-name:text-is('Glass Rain')), .warm-item:has(.wi-name:text-is('One Way')), .warm-item:has(.wi-name:text-is('Loom')), .warm-item:has(.wi-name:text-is('Long Way Down'))"},
         {"op": "click", "sel": "#warm-go"},
         {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
         {"op": "view", "v": "evolve"},
@@ -103,9 +103,9 @@
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('First Bass')), .warm-item:has(.wi-name:text-is('Sub & Sparkle')), .warm-item:has(.wi-name:text-is('Acid Line')), .warm-item:has(.wi-name:text-is('Reese')), .warm-item:has(.wi-name:text-is('Anvil')), .warm-item:has(.wi-name:text-is('Iron Bass')), .warm-item:has(.wi-name:text-is('Held Under'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Noise Wash')), .warm-item:has(.wi-name:text-is('Dub Echo')), .warm-item:has(.wi-name:text-is('Static Ocean')), .warm-item:has(.wi-name:text-is('Rotor')), .warm-item:has(.wi-name:text-is('Long Room')), .warm-item:has(.wi-name:text-is('Handheld')), .warm-item:has(.wi-name:text-is('Jet Wash')), .warm-item:has(.wi-name:text-is('Cloud Chamber')), .warm-item:has(.wi-name:text-is('Vox Machina')), .warm-item:has(.wi-name:text-is('Glass Rain')), .warm-item:has(.wi-name:text-is('One Way')), .warm-item:has(.wi-name:text-is('Loom')), .warm-item:has(.wi-name:text-is('Long Way Down'))"},
         {"op": "click", "sel": "#warm-go"},
         {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
         {"op": "view", "v": "evolve"},
@@ -157,7 +157,7 @@
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a"], "until": "steps4:restarts-0.3"},
         {"at": "steps1:Steps", "op": "seq", "steps": [{"op": "click", "sel": ".nb-item[data-kind='steps']"}, {"op": "mark", "name": "steps", "sel": ".nb-item[data-kind='steps']"}]},
-        {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/1']"},
+        {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/1'] circle:last-of-type"},
         {"at": "steps2:draw", "op": "seq", "steps": [{"op": "until", "sel": "#rack-svg [data-addr='node/1/m#s0']", "ms": 20000}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s0']", "dy": -30, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s1']", "dy": 25, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s2']", "dy": -40, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s3']", "dy": 10, "ms": 300}]},
         {"at": "steps2:eight", "op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-key='node/1/m']"},
         {"at": "steps3:Sync", "op": "click", "sel": "#sync-btn"},
@@ -245,9 +245,8 @@
         {"at": "scenes1:glides", "op": "click", "sel": ".pf-pad:has-text('Back')"},
         {"at": "scenes2:step-0.3", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
         {"at": "scenes2:step", "op": "key", "key": "[", "ms": 120},
-        {"at": "scenes2:step+1.5", "op": "log", "name": "after first [", "js": "document.querySelector('.pf-name').textContent"},
-        {"at": "scenes3:carry", "op": "key", "key": "[", "ms": 120},
-        {"at": "scenes3:click", "op": "log", "name": "after second [", "js": "document.querySelector('.pf-name').textContent"}
+        {"at": "scenes2:step+0.2", "op": "seq", "steps": [{"op": "until", "js": "/^Loom/.test(document.querySelector('.pf-name').textContent)", "ms": 30000, "stamp": "loom"}, {"op": "wait", "until": "scenes3:carry"}, {"op": "key", "key": "[", "ms": 120}]},
+        {"at": "scenes3:click+0.8", "op": "log", "name": "after the steps", "js": "document.querySelector('.pf-name').textContent + ' | live ' + document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent"}
       ]
     },
     {
@@ -300,9 +299,9 @@
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"},
-        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('First Bass')), .warm-item:has(.wi-name:text-is('Sub & Sparkle')), .warm-item:has(.wi-name:text-is('Acid Line')), .warm-item:has(.wi-name:text-is('Reese')), .warm-item:has(.wi-name:text-is('Anvil')), .warm-item:has(.wi-name:text-is('Iron Bass')), .warm-item:has(.wi-name:text-is('Held Under'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Noise Wash')), .warm-item:has(.wi-name:text-is('Dub Echo')), .warm-item:has(.wi-name:text-is('Static Ocean')), .warm-item:has(.wi-name:text-is('Rotor')), .warm-item:has(.wi-name:text-is('Long Room')), .warm-item:has(.wi-name:text-is('Handheld')), .warm-item:has(.wi-name:text-is('Jet Wash')), .warm-item:has(.wi-name:text-is('Cloud Chamber')), .warm-item:has(.wi-name:text-is('Vox Machina')), .warm-item:has(.wi-name:text-is('Glass Rain')), .warm-item:has(.wi-name:text-is('One Way')), .warm-item:has(.wi-name:text-is('Loom')), .warm-item:has(.wi-name:text-is('Long Way Down'))"},
         {"op": "click", "sel": "#warm-go"},
         {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
         {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},

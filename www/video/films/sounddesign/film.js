@@ -12,11 +12,19 @@
 // - evolve: the ⚡ press is on camera; the beat cuts to the benched child.
 // - The spec card fills the strip under the rack (#spec-dock), not #nb-spec.
 // - chains: Ask The Dice's filter slot is `.jack[data-modkey='node']` (a mod
-//   socket is keyed by its owner).
+//   socket is keyed by its owner); the slew is dropped on it, where the mod
+//   env already is, and the callout points at the slew that now holds it.
 // - open3 turns the resonance on "updates", so the guess moves on camera.
 // - commit: ▶ plays "the original" and "your edit" by name (the sides are
 //   shuffled); auditions are not in the recorded sound (see footage.mjs).
-// - undo: the held chorus is dragged back onto a socket at the end.
+// - undo: ⌘Z is pressed once the drag's edits have landed (pressed while
+//   the last one is still queued, the undo is overtaken by it), and it lands
+//   once the engine has re-rendered, which on a busy machine takes seconds,
+//   so the beat can cut from "undo" to the knob snapping back (the shot's
+//   `clips`; no cut when it is quick). The bypassed chorus stays in HELD.
+// - bank: the preview's ▶ is pressed with the pointer still resting on the
+//   socket; a render still on its way when the pointer leaves the socket
+//   falls back to another socket's audition.
 import { walkthrough, aim } from "../../stage/walk.js";
 
 export async function build(stage) {
@@ -97,7 +105,7 @@ export async function build(stage) {
           { at: "chains2:sample", until: "chains3", mark: "rand", side: "bottom", dx: -40, dy: 110, text: "sample and hold" },
           { at: "chains2:quantizer", until: "chains3", mark: "quantize", side: "bottom", dx: 40, dy: 110, text: "quantize: root A · minor" },
           { at: "chains2:slew", until: "chains3", mark: "slew", side: "top", dx: 40, dy: -90, text: "slew" },
-          { at: "chains4:wraps", mark: "wrapped", side: "top", dx: 60, dy: -90, text: "wrapped, not replaced" },
+          { at: "chains4:wraps+0.2", mark: "wrapped", side: "top", dx: 60, dy: -90, text: "wrapped, not replaced" },
         ],
       },
       {
@@ -130,7 +138,7 @@ export async function build(stage) {
         cam: [[0, 1.0, 0.5, 0.5], ["lineage1-0.2", ...aim(1.5, 1000, 900)]],
         callouts: [
           { at: "lineage1:edits", until: "lineage2", mark: "lineage", side: "top", ox: -300, dx: 40, dy: -80, text: "✎ your edits · ⚡ evolution's steps" },
-          { at: "lineage2:estimate", mark: "lineage", side: "top", ox: 200, dx: 40, dy: -80, text: "Δtaste: how far the estimate moved", color: "b" },
+          { at: "lineage2:estimate", mark: "lineage", side: "top", ox: 200, dx: -40, dy: -80, text: "Δtaste: how far the estimate moved", color: "b" },
         ],
       },
       {

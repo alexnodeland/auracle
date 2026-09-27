@@ -4,6 +4,9 @@
 //! stimulus and extracts the feature vector `φ(x) = [φ_audio ; φ_struct]`
 //! that the taste model scores.
 //!
+//! Animated: [*The sound engine*](https://auracle.alexnodeland.com/docs/films.html#film-dsp) walks the audition phrase, the vetting
+//! gate, loudness normalization and the features, on the engine's own renders.
+//!
 //! ## Pipeline invariants (the reference: *Audition*, *Features*)
 //!
 //! - **Standard phrase** ([`phrase::PhraseSpec`]): a fixed short mono phrase;

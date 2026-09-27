@@ -3,6 +3,10 @@
 //! The **user model**: a latent utility over patches, fit from human feedback,
 //! persisted across sessions.
 //!
+//! Animated: [*How Auracle learns what you like*](https://auracle.alexnodeland.com/docs/films.html#film-taste) for anyone, and
+//! [*The math*](https://auracle.alexnodeland.com/docs/films.html#film-math) for the utility, the likelihoods, the posterior and
+//! calibration as this crate computes them.
+//!
 //! ```text
 //! u(x) = θ_z · φ(x)        z ~ per-session style latent (mixture of experts)
 //! ```

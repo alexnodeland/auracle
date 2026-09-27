@@ -256,14 +256,22 @@ site-docs: site-fonts site-brand
 	mdbook build www/docs
 	mkdir -p site/docs
 	cp -r www/docs/book/. site/docs/
+	$(PRINT_ASSETS) site/docs/print.html
 	# The theme's own notes are for contributors, not readers.
 	rm -f site/docs/fonts/*.md
+
+# mdBook's one-page print view inlines every chapter at the book's root and
+# re-roots their links (href), but not raw HTML's src and poster: a film
+# embedded in a nested chapter (../../assets/film/…) would point above the site
+# there. From a book's print.html the site's assets are always ../assets/.
+PRINT_ASSETS := python3 -c 'import re, sys; [(lambda t, p=p: open(p, "w").write(t))(re.sub(r"(src|poster)=(\x22)(?:\.\./)+assets/", r"\1=\2../assets/", open(p).read())) for p in sys.argv[1:]]'
 
 ## site-reference: the technical reference
 site-reference: site-fonts site-brand
 	mdbook build www/reference
 	mkdir -p site/reference
 	cp -r www/reference/book/. site/reference/
+	$(PRINT_ASSETS) site/reference/print.html
 	rm -f site/reference/fonts/*.md
 
 # mdBook copies theme/fonts/ verbatim, and that is the only directory it will

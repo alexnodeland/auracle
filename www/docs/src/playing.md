@@ -66,6 +66,11 @@ Safari has none; there the other two ways in still play. Whenever MIDI is not
 available the dock reads `midi ?`, and the MIDI panel says why, with a
 **connect midi** button that asks again.
 
+**MIDI plays one tab.** The browser hands your controller to every tab that
+asks for it, so with Auracle open twice, the tab you used last plays MIDI and
+the other stands aside: its dock reads `midi ○`, and a click anywhere in it
+takes MIDI back. The computer keyboard already worked that way.
+
 ## The dock
 
 | Control | |

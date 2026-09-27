@@ -146,6 +146,9 @@ to add a site permission for it. Safari has none; there the computer keyboard
 and the on-screen keys still play. When MIDI is not available the dock reads
 `midi ?`, and the panel says why and offers **connect midi** to ask again.
 
+With Auracle open in more than one tab, MIDI plays the tab you used last. The
+others read `midi ○` and play nothing from MIDI until you click in one.
+
 ### The MIDI panel
 
 Click **midi** in the dock (it reads `midi ●` when a device is connected). The
