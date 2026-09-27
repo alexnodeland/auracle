@@ -1569,6 +1569,17 @@ export function createPerform(host) {
   function drawScope() {
     requestAnimationFrame(drawScope);
     if (!state.visible) return;
+    // The bitmap follows the box it is shown in, at the screen's pixel
+    // density, as every canvas in main.js does. The fixed 360×72 was
+    // stretched 2× on a retina screen: the trace smeared across four device
+    // pixels and peaked at three-quarters of the phosphor.
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.round(scope.clientWidth * dpr);
+    const bh = Math.round(scope.clientHeight * dpr);
+    if (bw > 0 && bh > 0 && (scope.width !== bw || scope.height !== bh)) {
+      scope.width = bw;
+      scope.height = bh;
+    }
     const live = host.live();
     const an = live && live.analyser;
     const g = scope.getContext("2d");
@@ -1577,7 +1588,7 @@ export function createPerform(host) {
     const buf = new Float32Array(an.fftSize);
     an.getFloatTimeDomainData(buf);
     g.strokeStyle = host.ink.green;
-    g.lineWidth = 1.4;
+    g.lineWidth = 1.4 * dpr;
     g.beginPath();
     const n = buf.length;
     for (let i = 0; i < n; i += 4) {
