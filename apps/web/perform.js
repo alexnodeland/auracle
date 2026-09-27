@@ -29,6 +29,14 @@ const WANDER_ROAM = 0.75;
 const HANDS_OFF_MS = 3500;
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+// Mirrors auracle_session::perform::Wiring::range: a half that the patch's
+// renders did not confirm is closed. REACH_FLOOR / 2 in σ.
+const HALF_OPEN = 0.075;
+function rangeOf(w) {
+  if (!w || w.search) return [0, 0];
+  const ok = (m) => m == null || m >= HALF_OPEN;
+  return [ok(w.down) ? -1 : 0, ok(w.up) ? 1 : 0];
+}
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -172,12 +180,19 @@ export function createPerform(host) {
         where.setAttribute("cx", x.toFixed(2));
         where.setAttribute("cy", y.toFixed(2));
         where.style.display = "";
+        const [lo, hi] = rangeOf(w);
+        k.wrap.classList.toggle("half-lo", !search && lo === 0);
+        k.wrap.classList.toggle("half-hi", !search && hi === 0);
         k.sub.textContent = search
           ? "not in this patch — turn to ask"
-          : w.knobs.map(([a]) => a.split("#")[1]).join(" · ");
+          : lo === 0
+            ? `already as ${w.low} as it gets`
+            : hi === 0
+              ? `already as ${w.high} as it gets`
+              : w.knobs.map(([a]) => a.split("#")[1]).join(" · ");
         k.wrap.title = search
           ? `${w.name}: this patch's knobs cannot honestly make it ${w.high} (purity ${w.purity.toFixed(2)}). Turning it asks evolution for a variant that can.`
-          : `${w.name}: moves ${w.knobs.map(([a, g]) => `${a} ${g >= 0 ? "+" : "−"}${Math.abs(g).toFixed(2)}`).join(", ")} · purity ${w.purity.toFixed(2)} · reach ${w.reach.toFixed(1)}σ · long-press to hear it`;
+          : `${w.name}: moves ${w.knobs.map(([a, g]) => `${a} ${g >= 0 ? "+" : "−"}${Math.abs(g).toFixed(2)}`).join(", ")} · purity ${w.purity.toFixed(2)} · measured ${w.down != null ? `−${w.down.toFixed(2)}σ / +${w.up.toFixed(2)}σ` : `${w.reach.toFixed(1)}σ predicted`} · long-press to hear it`;
       } else {
         where.style.display = "none";
         k.sub.textContent = state.measuring ? "measuring…" : "";
@@ -273,7 +288,9 @@ export function createPerform(host) {
     if (state.wire) {
       state.wire.forEach((w, i) => {
         if (w.search || !state.c[i]) return;
-        for (const [a, g] of w.knobs) if (a === addr) v += state.c[i] * g;
+        const [lo, hi] = rangeOf(w);
+        const c = clamp(state.c[i], lo, hi);
+        for (const [a, g] of w.knobs) if (a === addr) v += c * g;
       });
     }
     return clamp(v, 0, KNOB_MAX);

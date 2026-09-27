@@ -760,10 +760,9 @@ impl WasmEngine {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return "null".into();
         };
-        let Some(jac) = self.engine.jacobian(&tree) else {
+        let Some((jac, wiring)) = self.engine.wire_controls(&tree) else {
             return "null".into();
         };
-        let wiring = auracle_session::perform::wire(&jac);
         serde_json::json!({
             "addrs": jac.addrs,
             "values": jac.values,

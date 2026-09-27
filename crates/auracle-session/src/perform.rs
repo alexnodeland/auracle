@@ -101,6 +101,10 @@ pub const MAX_TRAVEL: f64 = 0.5;
 pub const KNOB_MAX: f64 = 1.0 - 1.0e-6;
 /// Below this purity a control is a *search* control on this patch.
 pub const PURITY_FLOOR: f64 = 0.35;
+/// Largest reversal, in σ of the session's spread, the performance gate
+/// tolerates between verified points — two orders of magnitude under any
+/// audible difference, and above the numerical noise of a 5 s render.
+pub const MONO_TOL: f64 = 0.05;
 /// Below this reach (σ of the named direction at a full turn) likewise. The
 /// σ is the session pool's spread, which is wider than a curated library's,
 /// so a floor set against the presets (0.25σ) hid controls that are plainly
@@ -203,6 +207,30 @@ pub struct Wiring {
     /// True when the knobs cannot honestly produce this control, and turning
     /// it should ask for a structural offer instead.
     pub search: bool,
+    /// Measured movement along the axis at `c = +1`, in σ, from a real render
+    /// (see [`verify`]). `None` until verified.
+    #[serde(default)]
+    pub up: Option<f64>,
+    /// Measured movement along the axis at `c = −1`, in σ (positive means the
+    /// sound moved toward the low word, as asked).
+    #[serde(default)]
+    pub down: Option<f64>,
+}
+
+impl Wiring {
+    /// The range of control values this wiring honestly supports: a half the
+    /// verification did not confirm is closed. An unverified wiring is taken
+    /// at the Jacobian's word.
+    pub fn range(&self) -> (f64, f64) {
+        if self.search {
+            return (0.0, 0.0);
+        }
+        let ok = |m: Option<f64>| m.is_none_or(|v| v >= REACH_FLOOR * 0.5);
+        (
+            if ok(self.down) { -1.0 } else { 0.0 },
+            if ok(self.up) { 1.0 } else { 0.0 },
+        )
+    }
 }
 
 /// The unit direction for `control` over `names` (tagged φ names).
@@ -375,6 +403,8 @@ fn wire_one(control: &NamedControl, jac: &Jacobian) -> Wiring {
         reach: 0.0,
         position,
         search: true,
+        up: None,
+        down: None,
     };
     if n == 0 {
         return out;
@@ -425,7 +455,8 @@ pub fn apply(jac: &Jacobian, wiring: &[Wiring], c: &[f64]) -> Vec<(String, f64)>
         if w.search || ci == 0.0 {
             continue;
         }
-        let ci = ci.clamp(-1.0, 1.0);
+        let (lo, hi) = w.range();
+        let ci = ci.clamp(lo, hi);
         for (addr, gain) in &w.knobs {
             if let Some(k) = jac.addrs.iter().position(|a| a == addr) {
                 vals[k] += ci * gain;
@@ -442,7 +473,82 @@ pub fn apply(jac: &Jacobian, wiring: &[Wiring], c: &[f64]) -> Vec<(String, f64)>
         .collect()
 }
 
+/// Check every reachable wiring against real renders: the patch at `c = ±1`
+/// on that one control, projected onto the control's own axis.
+///
+/// The Jacobian is a local, linear claim, and it is wrong exactly where a
+/// performer would notice: at a boundary. A patch already as still as it gets
+/// cannot be made stiller, and on First Bass turning Motion *down* measurably
+/// made it very slightly more restless — the linear prediction said otherwise.
+/// So each half is confirmed or closed ([`Wiring::range`]), and a control with
+/// neither half confirmed becomes a search control. Four renders per
+/// reachable control (±½ and ±1), through the memo.
+pub fn verify(
+    tree: &PatchTree,
+    jac: &Jacobian,
+    wiring: &mut [Wiring],
+    spec: &PhraseSpec,
+    memo: &RenderMemo,
+    std: &Standardizer,
+) {
+    for i in 0..wiring.len() {
+        if wiring[i].search {
+            continue;
+        }
+        let d = direction(&CONTROLS[i], &jac.names);
+        let along = |z: &[f64]| z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>();
+        let base = along(&jac.z);
+        let at = |c: f64| -> Option<f64> {
+            let mut cs = vec![0.0; wiring.len()];
+            cs[i] = c;
+            let unverified: Vec<Wiring> = wiring
+                .iter()
+                .map(|w| Wiring {
+                    up: None,
+                    down: None,
+                    ..w.clone()
+                })
+                .collect();
+            let mut t = tree.clone();
+            for (a, v) in apply(jac, &unverified, &cs) {
+                t = set_param(&t, &a, ParamValue::Continuous(v)).ok()?;
+            }
+            audio_z(&t, spec, memo, std).map(|z| along(&z))
+        };
+        // A half is confirmed only if the sound moved the asked-for way at
+        // both half and full travel; its reach is the full-travel movement.
+        // A half that moves at the end but reverses on the way is closed.
+        let half = |c: f64| -> f64 {
+            let near = at(c * 0.5).map(|v| (v - base) * c).unwrap_or(0.0);
+            let far = at(c).map(|v| (v - base) * c).unwrap_or(0.0);
+            if near > 0.0 && far > near {
+                far
+            } else {
+                0.0
+            }
+        };
+        let (up, down) = (half(1.0), half(-1.0));
+        wiring[i].up = Some(up);
+        wiring[i].down = Some(down);
+        let (lo, hi) = wiring[i].range();
+        if lo == 0.0 && hi == 0.0 {
+            wiring[i].search = true;
+        }
+    }
+}
+
 impl Engine {
+    /// Measure, wire and verify the named controls on `tree`: [`jacobian`],
+    /// [`wire`], then [`verify`]. `None` before a standardizer exists or when
+    /// the tree does not vet.
+    pub fn wire_controls(&self, tree: &PatchTree) -> Option<(Jacobian, Vec<Wiring>)> {
+        let std = self.standardizer.as_deref()?;
+        let jac = jacobian(tree, &self.cfg.phrase, self.memo(), std)?;
+        let mut wiring = wire(&jac);
+        verify(tree, &jac, &mut wiring, &self.cfg.phrase, self.memo(), std);
+        Some((jac, wiring))
+    }
+
     /// True once the walks are taste-directed; false while they explore the
     /// vetted grammar prior.
     pub fn has_taste(&self) -> bool {
@@ -526,11 +632,13 @@ mod tests {
     /// The gate: where a control claims it can reach, turning it moves the
     /// **measured** sound along its axis, in order, on real renders.
     ///
-    /// For every preset among a fixed handful, every non-search wiring is
-    /// applied at −1, 0 and +1 and the patch re-featurized; the projection
-    /// onto the control's own direction must be ordered. A wiring whose
-    /// predicted move does not survive the nonlinearity of a real render is
-    /// exactly the dishonest control this module exists to refuse.
+    /// Verification ([`verify`]) opens a half only if the renders at ±½ and ±1
+    /// both moved the right way; this checks the claim somewhere verification
+    /// did not look — ±¾ — with a stated tolerance of [`MONO_TOL`]σ. No finite
+    /// set of samples proves a nonlinear response monotone; this is the
+    /// measurable version of the promise. A wiring whose predicted move does not survive the
+    /// nonlinearity of a real render is exactly the dishonest control this
+    /// module exists to refuse.
     #[test]
     fn named_controls_move_the_sound_they_name() {
         let spec = PhraseSpec::default();
@@ -541,8 +649,10 @@ mod tests {
         for name in ["First Bass", "Ceiling", "Detune Dream", "Long Way Down"] {
             let p = bank.iter().find(|p| p.name == name).expect("preset exists");
             let jac = jacobian(&p.tree, &spec, &memo, &std).expect("preset vets");
-            let wiring = wire(&jac);
+            let mut wiring = wire(&jac);
+            verify(&p.tree, &jac, &mut wiring, &spec, &memo, &std);
             for (i, w) in wiring.iter().enumerate() {
+                let (lo, hi) = w.range();
                 if w.search {
                     continue;
                 }
@@ -557,19 +667,27 @@ mod tests {
                     let z = audio_z(&t, &spec, &memo, &std).expect("still vets");
                     z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>()
                 };
-                let (lo, mid, hi) = (at(-1.0), at(0.0), at(1.0));
-                assert!(
-                    lo < mid && mid < hi,
-                    "{name}/{}: {lo:.3} {mid:.3} {hi:.3} (purity {:.2})",
-                    w.name,
-                    w.purity
-                );
-                checked += 1;
+                let mid = at(0.0);
+                if hi > 0.0 {
+                    let h = at(0.75);
+                    assert!(
+                        h > mid - MONO_TOL,
+                        "{name}/{} up half: {mid:.3} -> {h:.3}",
+                        w.name
+                    );
+                    checked += 1;
+                }
+                if lo < 0.0 {
+                    let l = at(-0.75);
+                    assert!(
+                        l < mid + MONO_TOL,
+                        "{name}/{} down half: {mid:.3} -> {l:.3}",
+                        w.name
+                    );
+                    checked += 1;
+                }
             }
         }
-        assert!(
-            checked >= 6,
-            "too few reachable controls to be a gate: {checked}"
-        );
+        assert!(checked >= 8, "too few open halves to be a gate: {checked}");
     }
 }

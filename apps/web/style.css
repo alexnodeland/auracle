@@ -4166,6 +4166,9 @@ html.handheld .handheld-gate {
 .pf-knob.unwired .pf-k-ptr { stroke: var(--silk-mute); }
 .pf-knob.unwired .pf-k-arc { stroke: var(--silk-mute); }
 .pf-knob.held .pf-k-sub { color: var(--phos-b); }
+/* A half the patch's own renders did not confirm is closed, and looks it. */
+.pf-knob.half-lo .pf-k-ring { stroke-dasharray: 0 70 139 70; }
+.pf-knob.half-hi .pf-k-ring { stroke-dasharray: 139 139; }
 .pf-pads {
   width: min(1040px, 100%);
   display: grid;
