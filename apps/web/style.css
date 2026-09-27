@@ -1507,6 +1507,12 @@ input, textarea, .bi-rename {
 .bank-item .bi-name.custom { color: var(--phos-b); }
 .bank-item .bi-top .bi-name { flex: 0 1 auto; }
 .bank-item .bi-id { font-size: var(--t-micro); color: var(--silk-dim); }
+/* A patch id ("#43") and a topology signature ("saw-ladr", "2+-lp-cho-cho-mix")
+   are the engine's bookkeeping, not anything a player chose or can hear: they
+   wait behind ⋯ › Show measurements (`html.engineer`, set in main.js). The
+   name, the blurb and the prediction are what the rows are read by. */
+html:not(.engineer) .bank-item .bi-id,
+html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item input.bi-rename {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
@@ -2920,6 +2926,9 @@ input, textarea, .bi-rename {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pd-side:hover { border-color: var(--phos-a, #8ef0b1); }
+/* A name still on its way: dimmed text, not a green "…" that reads as the
+   patch's name. */
+.pd-side .pd-wait { color: var(--silk-dim); }
 
 /* ---------- help overlay ---------- */
 .help-overlay {
@@ -3459,6 +3468,9 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 }
 .dn-id { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim); }
 .dn-sig { font-size: var(--t-micro); color: var(--phos-a-dim); }
+/* The same bookkeeping on the duel cards: on request only. */
+html:not(.engineer) .dn-id,
+html:not(.engineer) .dn-sig { display: none; }
 .duel-controls .hw-btn.promote { flex: 0 0 auto; color: var(--phos-a-dim); font-size: var(--t-micro); }
 .duel-controls .hw-btn.promote:hover { color: var(--phos-a); }
 
@@ -3937,7 +3949,14 @@ input[type="range"]::-moz-range-thumb {
   max-width: 300px;
 }
 .subject-name.hearing { color: var(--phos-b); }
-.subject-meta { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim); }
+/* The caption line holds its height when it has nothing to say (it often
+   does not, now that ids and signatures wait behind Show measurements), so
+   the name never shifts on its row between one patch and the next. */
+.subject-meta {
+  font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim);
+  line-height: 1.5; min-height: 1.5em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 /* No rack dimming while auditioning: the candidate is FULLY benched, so the
    rack legitimately shows the sound you are hearing. The amber header line
    carries the "this is a candidate" state. */

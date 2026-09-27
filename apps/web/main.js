@@ -1141,10 +1141,10 @@ worker.onmessage = (e) => {
         // in the voices now; the vet lands later and mutes if it fails.
         liveOptimisticJson = m.json;
         livePatchId = null;
-        setLiveLabel(`${nameOf(wb.subjectId)} (edited)`);
+        setLiveLabel(`${benchName(wb.subjectId)} (edited)`);
       } else {
         livePatchId = m.id;
-        setLiveLabel(nameOf(m.id));
+        setLiveLabel(benchName(m.id));
       }
       break;
     }
@@ -1428,7 +1428,7 @@ worker.onmessage = (e) => {
         live.setPatch(m.treeJson, m.makeup);
         setLivePatchJson(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
-        setLiveLabel(wb.dirty ? `${nameOf(wb.subjectId)} (edited)` : nameOf(wb.subjectId));
+        setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)} (edited)` : benchName(wb.subjectId));
       }
       // Optimism's other half: the sound arrived before the verdict. A patch
       // that fails vetting can self-oscillate, and it is already in the
@@ -1653,7 +1653,7 @@ worker.onmessage = (e) => {
         locksRemember();
         holesRemember();
         livePatchId = m.id;
-        setLiveLabel(nameOf(m.id));
+        setLiveLabel(benchName(m.id));
         // Say what was taught, from what actually happened rather than from
         // the state of a checkbox: three of these four sentences were
         // unsayable before the outcome had a direction.
@@ -2456,6 +2456,17 @@ function applyViews(next) {
       pendingCuts.delete(id);
     }
   }
+  // A pair that just lost a side to the pool is a question about a patch that
+  // no longer exists: TEACH could only print "…" for its name, and a vote on
+  // it is refused ("that patch is gone"). Deal a fresh one, as ↻ does — but
+  // the way a vote does, with the pair left standing and its controls inert
+  // until the new one lands, so the strip does not blink out and take the
+  // rack's height with it.
+  if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
+    dealing = true;
+    setDuelControlsEnabled(false);
+    send({ type: "duel" });
+  }
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
   // many pins a restored session came back with.
@@ -2490,6 +2501,16 @@ function rowOf(id) {
 function nameOf(id) {
   const r = rowOf(id);
   return r ? r.name : `#${id}`;
+}
+
+/** What the header and the keybar call a patch that is in your hands. One the
+ *  bank has no row for has left the pool (a generation or a preset made room)
+ *  and lives only on the bench, which "unsaved patch" says — where "#41" in
+ *  the name's place, and again under it, said nothing at all. Before the first
+ *  rows land it is simply not named yet. */
+function benchName(id) {
+  if (rowOf(id)) return nameOf(id);
+  return views && views.ranked && views.ranked.length ? "unsaved patch" : "loading…";
 }
 
 // The topology signature (`ssaw·lp·ladr`) is secondary metadata, not a name —
@@ -2894,6 +2915,11 @@ try {
 function paintEngineer() {
   $("engineer-btn").setAttribute("aria-checked", String(engineerMode));
   $("engineer-btn").textContent = engineerMode ? "Show measurements: on" : "Show measurements";
+  // The same switch holds back the engine's own vocabulary everywhere else:
+  // patch ids and topology signatures in the bank, the PATCH header and the
+  // duel cards (CSS, keyed on this class), and the structural budget until it
+  // is close to a ceiling (`renderBudget`).
+  document.documentElement.classList.toggle("engineer", engineerMode);
 }
 $("engineer-btn").onclick = () => {
   engineerMode = !engineerMode;
@@ -2904,6 +2930,10 @@ $("engineer-btn").onclick = () => {
   }
   paintEngineer();
   perform?.repaint?.();
+  // …and the text that is written rather than styled.
+  renderSubject();
+  renderBudget();
+  renderBank();
 };
 paintEngineer();
 
@@ -3777,11 +3807,24 @@ function renderPlayDuel() {
     return;
   }
   strip.classList.remove("hidden");
-  // "…" while the bank row hasn't landed — a bare #20 collides with the
-  // bank's own numbering and names nothing.
-  const nm = (id) => (rowOf(id) ? nameOf(id) : "…");
-  $("pd-a").textContent = `▶ A · ${nm(currentDuel[0])}`;
-  $("pd-b").textContent = `▶ B · ${nm(currentDuel[1])}`;
+  // Said to be on its way, quietly, while the bank row hasn't landed. A bare
+  // #20 collides with the bank's own numbering and names nothing, and "▶ A · …"
+  // read as a patch called "…". It is only ever a wait: a pair that loses a
+  // side to the pool is re-dealt (`applyViews`), so no name here is gone for
+  // good.
+  const side = (el, letter, id) => {
+    el.replaceChildren(`▶ ${letter} · `);
+    if (rowOf(id)) {
+      el.append(nameOf(id));
+      return;
+    }
+    const wait = document.createElement("span");
+    wait.className = "pd-wait";
+    wait.textContent = "loading…";
+    el.append(wait);
+  };
+  side($("pd-a"), "A", currentDuel[0]);
+  side($("pd-b"), "B", currentDuel[1]);
 }
 $("pd-a").onclick = () => selectDuelSide("a");
 $("pd-b").onclick = () => selectDuelSide("b");
@@ -4084,18 +4127,23 @@ function renderBudget() {
   if (!el) return;
   if (!wb.tree) { el.innerHTML = ""; return; }
   const b = treeBudget(wb.tree);
-  const cell = (n, max, label) => {
-    // "Tight" one short of the ceiling, not at it: told at the ceiling the
-    // player has already spent the room the warning was about.
-    const cls = n >= max ? "full" : n >= max - 1 ? "tight" : "";
-    return `<span class="bg-cell ${cls}"><b>${n}</b>/${max} ${label}</span>`;
-  };
-  el.innerHTML =
-    cell(b.size, BUDGET.size, "modules") +
-    `<span class="bg-sep">·</span>` +
-    cell(b.depth, BUDGET.depth, "depth") +
-    `<span class="bg-sep">·</span>` +
-    cell(b.mod, BUDGET.mod, "mod depth");
+  // "Tight" one short of the ceiling, not at it: told at the ceiling the
+  // player has already spent the room the warning was about.
+  const state = (n, max) => (n >= max ? "full" : n >= max - 1 ? "tight" : "");
+  const cells = [
+    [b.size, BUDGET.size, "modules"],
+    [b.depth, BUDGET.depth, "depth"],
+    [b.mod, BUDGET.mod, "mod depth"],
+  ]
+    // A readout of three ratios with room to spare ("2/24 modules · 2/6 depth
+    // · 1/3 mod depth") is engine arithmetic, not news, and it sat beside the
+    // model's guess on every patch. It exists to warn while there is still
+    // room to spend — so unless the numbers were asked for (Show
+    // measurements) it says only what is tight or full, and nothing
+    // otherwise. The warning itself is never held back.
+    .filter(([n, max]) => engineerMode || state(n, max))
+    .map(([n, max, label]) => `<span class="bg-cell ${state(n, max)}"><b>${n}</b>/${max} ${label}</span>`);
+  el.innerHTML = cells.join(`<span class="bg-sep">·</span>`);
 }
 
 // Which candidate is sounding, everywhere it can be asked: the EVOLVE cards,
@@ -4522,7 +4570,7 @@ function bankRow(r, fitted) {
   el.innerHTML = `
     <div class="bi-top">
       <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
-      <span class="bi-name ${r.named ? "custom" : ""}" title="${sig ? `${esc(sig)} — ` : ""}double-click to rename">${esc(r.name)}</span>
+      <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} — ` : ""}double-click to rename">${esc(r.name)}</span>
       <span class="bi-pct mono" title="${fitted ? "How much the model thinks you'd like this" : "No prediction yet — teach it with a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "—"}</span>
       <span class="bi-id">#${r.id}</span>
     </div>
@@ -6576,7 +6624,8 @@ function renderSubject() {
   if (hearingSide && currentDuel) {
     const id = hearingSide === "a" ? currentDuel[0] : currentDuel[1];
     nameEl.classList.add("hearing");
-    nameEl.textContent = `${rowOf(id) ? nameOf(id) : "…"} · candidate ${hearingSide.toUpperCase()}`;
+    nameEl.textContent = `${rowOf(id) ? nameOf(id) : "loading…"} · candidate ${hearingSide.toUpperCase()}`;
+    nameEl.title = nameEl.textContent;
     metaEl.textContent =
       benchBeforeAudition != null ? `← bench returns to ${nameOf(benchBeforeAudition)}` : "";
     return;
@@ -6585,13 +6634,22 @@ function renderSubject() {
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
   if (!hasRack || wb.subjectId == null) {
     nameEl.textContent = "no patch loaded";
+    nameEl.title = "";
     metaEl.textContent = "";
     return;
   }
-  nameEl.textContent = `${nameOf(wb.subjectId)}${wb.dirty ? " · edited" : ""}`;
+  // "(edited)", the same words the keybar and PERFORM use for the same fact —
+  // the header said "· edited" while the dock under it said "(edited)".
+  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? " (edited)" : ""}`;
+  // The name's column is fixed and ellipsizes (`.patch-head`); the whole of
+  // it is one hover away.
+  nameEl.title = nameEl.textContent;
+  // The id and the topology signature ("#30 · ssaw-lp-cho") are the engine's
+  // bookkeeping, not the patch's name: on request only (⋯ › Show
+  // measurements). What the caption keeps is what the player did to it.
   metaEl.textContent = [
-    `#${wb.subjectId}`,
-    sigOf(wb.subjectId),
+    engineerMode ? `#${wb.subjectId}` : "",
+    engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
     wb.vetOk ? "" : "⚠ muted",
   ]
@@ -15734,7 +15792,8 @@ $("taste-crt").addEventListener("pointermove", (ev) => {
   mapTipEl.innerHTML =
     `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to open on the bench</div>`;
   mapTipEl.children[0].textContent = r ? r.name : `#${best.id}`;
-  mapTipEl.children[1].textContent = r ? r.sig || r.signature || "" : "";
+  // The signature is engine bookkeeping: on request (⋯ › Show measurements).
+  mapTipEl.children[1].textContent = r && engineerMode ? r.sig || r.signature || "" : "";
   mapTipEl.children[2].textContent =
     best.u01 != null ? `would like: ${Math.round(best.u01 * 100)}%` : "no prediction yet";
   // Clamp to the viewport — unclamped, the tooltip clips at the right edge.
