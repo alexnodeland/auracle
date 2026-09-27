@@ -1,3 +1,4 @@
 make phi-stats: exit=0 wall=566s
 make norm-peak: exit=0 wall=79s
 make climb SEEDS=16: exit=0 wall=7347s
+make search-check: exit=0 wall=11994s
