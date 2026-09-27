@@ -4293,10 +4293,6 @@ html.handheld .handheld-gate {
 .app.bigkeys .bkey .hint { font-size: var(--t-label); }
 .app.bigkeys .bkey { width: 58%; }
 
-/* The arp strip is a settings panel, and in big mode it is the widest thing
-   standing between the keybed and the edge of the screen. The arp BUTTON
-   stays — only its six selects fold away, and they come back with the dock. */
-.app.bigkeys #arp-ctl { display: none; }
 /* No lit-state rule here on purpose: `.util-btn.lit` already says "engaged"
    for hold / uni / arp, and a fourth toggle in the same row that lit up a
    different colour would read as a different kind of thing. */
@@ -4568,10 +4564,32 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 
 /* Level three at rest takes no room (notes/ui-hierarchy.md). */
 .tray.empty { display: none; }
-/* The arp's settings follow its switch: shown while it runs, gone while it
-   does not. They were recessed-but-present, which read as six controls that
-   did nothing. */
-#arp-ctl.idle { display: none; }
+/* The arp's settings follow its switch: gone while it does not run. They were
+   recessed-but-present, which read as six controls that did nothing — and then
+   pinned open for as long as it ran, which covered the bank's last row and the
+   XY pad for a whole performance. Now a drawer: open when ARP or SYNC is
+   switched on and from the chip below, folded on the next click elsewhere or
+   note played (main.js `setArpDrawer`). */
+#arp-ctl:not(.open) { display: none; }
+/* What stays while it runs: the drawer folded to one machined chip under the
+   ARP and SYNC buttons, in the three grid cells the width selector leaves
+   empty — so it takes no row and no width, and the keybed never moves. Its
+   chevron points the way the drawer opens: up, and down to fold it. */
+.arp-chip {
+  grid-column: span 3;
+  justify-self: stretch;
+  text-align: left;
+  white-space: nowrap;
+  background-image: linear-gradient(135deg, transparent 50%, var(--silk-dim) 50%),
+                    linear-gradient(45deg, var(--silk-dim) 50%, transparent 50%),
+                    linear-gradient(180deg, #232830, #181b21);
+}
+.arp-chip[aria-expanded="true"] {
+  color: var(--phos-a);
+  background-image: linear-gradient(45deg, transparent 50%, var(--silk-dim) 50%),
+                    linear-gradient(135deg, var(--silk-dim) 50%, transparent 50%),
+                    linear-gradient(180deg, #232830, #181b21);
+}
 /* …and it floats above the dock rather than growing it. As a third row it
    widened this column by ~120 px and made the dock taller, so switching the
    arp on moved every key out from under the hand that was about to play it

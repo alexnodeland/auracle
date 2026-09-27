@@ -645,8 +645,11 @@
             <option value="48">4 oct</option>
           </select>
         </label>
+        <!-- The arp's drawer, folded: while ARP or SYNC runs, what it is set
+             to, in the grid cells the width selector leaves free. -->
+        <button type="button" class="perf-sel arp-chip hidden" id="arp-chip" aria-controls="arp-ctl" aria-expanded="false" title="Arp and tempo settings"></button>
       </div>
-      <div class="perf-ctl idle" id="arp-ctl">
+      <div class="perf-ctl idle" id="arp-ctl" role="group" aria-label="Arp and tempo settings">
         <span class="pc"><span class="pc-cap">pattern</span><select id="arp-mode" class="perf-sel" title="Arp pattern" aria-label="Arp pattern">
           <option value="0">up</option><option value="1">down</option>
           <option value="2">up·dn</option><option value="3">rnd</option>

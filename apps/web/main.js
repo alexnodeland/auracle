@@ -3204,6 +3204,7 @@ async function bootLiveAudio() {
 
 function liveNoteOn(note_, vel = 1.0) {
   if (!live) return;
+  foldArpDrawerOnPlay();
   sustainedNotes.delete(note_);
   ensureAudio();
   live.noteOn(note_, vel);
@@ -3460,6 +3461,11 @@ document.addEventListener("keydown", (e) => {
       endBankTour();
       $("bank-tour-btn").focus();
     }
+    if (arpDrawerOpen()) {
+      const inside = $("arp-ctl").contains(document.activeElement);
+      setArpDrawer(false);
+      if (inside) $("arp-chip").focus();
+    }
     closeMenu();
     return;
   }
@@ -3650,8 +3656,46 @@ function sendArp() {
     drawer.querySelectorAll("select, input").forEach((c) => {
       c.tabIndex = open ? 0 : -1;
     });
+    if (!open) setArpDrawer(false);
   }
+  renderArpChip();
 }
+
+// The drawer is a popover now, and the chip is what stays. Pinned open for as
+// long as ARP or SYNC ran, it covered the bank's last row and the corner of
+// the XY pad for a whole performance. It opens when either is switched on —
+// the moment its settings are wanted — and from the chip; it folds on a click
+// elsewhere, on Escape, and on the next note played with the pointer
+// elsewhere, leaving "arp 1/8 · 120" under the ARP button: what the arp is
+// doing, one click from changing it, and the keybed never moves.
+function renderArpChip() {
+  const chip = $("arp-chip");
+  if (!chip) return;
+  const on = perf.arp || perf.sync;
+  chip.classList.toggle("hidden", !on);
+  const rate = $("arp-div").selectedOptions[0]?.textContent || "";
+  chip.textContent = perf.arp ? `arp ${rate} · ${perf.bpm}` : `sync · ${perf.bpm}`;
+}
+function setArpDrawer(open) {
+  const drawer = $("arp-ctl");
+  const chip = $("arp-chip");
+  if (!drawer || !chip) return;
+  const show = !!open && (perf.arp || perf.sync);
+  drawer.classList.toggle("open", show);
+  chip.setAttribute("aria-expanded", String(show));
+}
+const arpDrawerOpen = () => $("arp-ctl").classList.contains("open");
+// A note is the performance starting: the drawer gets out of its way, unless
+// the pointer or the focus is in it (someone setting the rate against a
+// held chord).
+function foldArpDrawerOnPlay() {
+  const d = $("arp-ctl");
+  if (d.classList.contains("open") && !d.matches(":hover") && !d.contains(document.activeElement)) setArpDrawer(false);
+}
+$("arp-chip").onclick = () => setArpDrawer(!arpDrawerOpen());
+document.addEventListener("pointerdown", (e) => {
+  if (arpDrawerOpen() && !e.target.closest("#arp-ctl, #arp-chip, #arp-btn, #sync-btn")) setArpDrawer(false);
+}, true);
 function sendSync() {
   if (live && live.sync) live.sync(perf.sync);
   $("sync-btn").classList.toggle("lit", perf.sync);
@@ -3717,8 +3761,9 @@ function applyKeybed() {
   // re-measured. The app already knows how to answer that question.
   window.dispatchEvent(new Event("resize"));
 }
-$("arp-btn").onclick = () => { perf.arp = !perf.arp; sendArp(); scheduleSave(); };
-$("sync-btn").onclick = () => { perf.sync = !perf.sync; sendSync(); scheduleSave(); };
+// Switching either on opens the drawer: that is when its settings are wanted.
+$("arp-btn").onclick = () => { perf.arp = !perf.arp; sendArp(); if (perf.arp) setArpDrawer(true); scheduleSave(); };
+$("sync-btn").onclick = () => { perf.sync = !perf.sync; sendSync(); if (perf.sync) setArpDrawer(true); scheduleSave(); };
 $("arp-mode").onchange = (e) => { perf.arpMode = Number(e.target.value); sendArp(); scheduleSave(); };
 $("arp-div").onchange = (e) => { perf.arpDiv = Number(e.target.value); sendArp(); scheduleSave(); };
 $("bpm").onchange = (e) => {
