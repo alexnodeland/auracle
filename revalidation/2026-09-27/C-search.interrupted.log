@@ -1,0 +1,25 @@
+cargo run -p auracle-session --example search_health --release
+    Finished `release` profile [optimized] target(s) in 0.07s
+     Running `target/release/examples/search_health`
+== 1. pool true utility per refinement generation ==
+(pool 48, 60 duels, 6 generations, refine_steps/seeds from config)
+gen        mean u      max u     Δ mean
+0          -0.000      5.801          —
+1           0.747      6.850     +0.747
+2           1.223      7.366     +0.476
+3           1.740      7.591     +0.517
+4           1.953      7.591     +0.214
+5           2.020      7.591     +0.067
+6           2.180      7.863     +0.160
+  mean gain over 6 generations: +2.180   climbed on 5/6 seeds
+
+== 2. MH proposals (fugue-evo exposes no acceptance or target-site counter) ==
+mean trace sites per refinement seed: 37.5
+overall acceptance (exact):        5819/12000 = 48.5%   (kernel target 44%)
+structural share of accepted (exact): 1808/5819 = 31.1%
+structural sites are 33.2% of all sites, so ~3981 of 12000 proposals were structural
+  estimated structural acceptance: 45%     estimated parameter acceptance: 50%
+
+== 4. does eviction keep what is good? ==
+(fit↔truth: does the model know? · stability: does its ranking hold still?)
+make: *** [Makefile:92: search-check] Terminated
