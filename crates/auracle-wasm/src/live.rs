@@ -146,8 +146,11 @@ struct Voice {
     voice: auracle_grammar::CompiledVoice,
     /// Currently-held MIDI note, if any (gate high).
     note: Option<u8>,
-    /// Allocation stamp for oldest-first stealing.
+    /// Allocation stamp: when this voice's note was pressed.
     stamp: u64,
+    /// When this voice's note was let go, on the same counter as `stamp`, so
+    /// a steal can take the release tail that has rung longest.
+    released: u64,
     /// Still worth ticking (held, or release tail not yet silent).
     running: bool,
     silent_run: u32,
@@ -475,6 +478,7 @@ fn build_voice(tree: &PatchTree, sample_rate: f64) -> Result<Voice, String> {
         voice,
         note: None,
         stamp: 0,
+        released: 0,
         running: false,
         silent_run: 0,
         vel: 1.0,
@@ -887,11 +891,29 @@ impl LivePoly {
         }
         self.counter += 1;
         let stamp = self.counter;
+        // Which voice takes the note, in this order: the voice already on this
+        // note (a retrigger); a voice that has gone silent; a voice ringing out
+        // a note that was let go, the one let go longest ago; and only when
+        // every voice is under a finger, the oldest held note.
+        //
+        // Stealing by press age alone took the notes being *held*. Hold two
+        // notes and trill two others: the trill's release tails keep every
+        // voice running, so each new press found no silent voice and stole the
+        // oldest there was — a held note — and the notes under the player's
+        // hands dropped out while the trill played on.
         let idx = self
             .voices
             .iter()
             .position(|v| v.note == Some(note))
             .or_else(|| self.voices.iter().position(|v| !v.running))
+            .or_else(|| {
+                self.voices
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| v.note.is_none())
+                    .min_by_key(|(_, v)| v.released)
+                    .map(|(i, _)| i)
+            })
             .or_else(|| {
                 self.voices
                     .iter()
@@ -957,10 +979,13 @@ impl LivePoly {
     }
 
     fn release_voices(&mut self, note: u8) {
+        self.counter += 1;
+        let at = self.counter;
         for v in &mut self.voices {
             if v.note == Some(note) {
                 v.voice.gate.set(0.0);
                 v.note = None;
+                v.released = at;
                 v.regate_in = 0; // a pending retrigger must not resurrect it
             }
         }
@@ -989,7 +1014,12 @@ impl LivePoly {
         self.held.clear();
         self.arp_note = None;
         self.arp_base = None;
+        self.counter += 1;
+        let at = self.counter;
         for v in &mut self.voices {
+            if v.note.is_some() {
+                v.released = at;
+            }
             v.voice.gate.set(0.0);
             v.note = None;
             v.regate_in = 0;
@@ -1017,10 +1047,13 @@ impl LivePoly {
         if !on {
             // Collapse: keep the newest voice, release the clones.
             let newest = self.voices.iter().map(|v| v.stamp).max().unwrap_or(0);
+            self.counter += 1;
+            let at = self.counter;
             for v in &mut self.voices {
                 if v.note.is_some() && v.stamp != newest {
                     v.voice.gate.set(0.0);
                     v.note = None;
+                    v.released = at;
                 }
                 v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
                 v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
@@ -1767,6 +1800,66 @@ mod tests {
         assert!(
             poly.voices.iter().any(|v| v.note == Some(57)),
             "held note lost across patch swap"
+        );
+    }
+
+    /// A pad with a long release, so a trill's let-go notes are still ringing
+    /// when the next note is pressed.
+    fn long_tail_json() -> String {
+        let mut tree: auracle_grammar::PatchTree = serde_json::from_str(&pad_json()).unwrap();
+        tree.amp.release = 0.85;
+        serde_json::to_string(&tree).unwrap()
+    }
+
+    /// Notes held under a trill stay held. Two keys down, and a fast trill on
+    /// two others: each trill note is let go with its release still ringing
+    /// when the next is pressed, so every voice is busy and each press has to
+    /// steal. It must steal a ringing tail, never a held note. By press age
+    /// alone it took the held notes first, and they dropped out under the
+    /// player's hands while the trill played on.
+    #[test]
+    fn held_notes_survive_a_trill_over_them() {
+        let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 4).unwrap();
+        poly.note_on(48, 1.0);
+        poly.note_on(52, 1.0);
+        poly.process(512);
+        let mut steals = 0;
+        for i in 0..48 {
+            let n = if i % 2 == 0 { 67 } else { 71 };
+            if poly.voices.iter().all(|v| v.running) {
+                steals += 1;
+            }
+            poly.note_on(n, 0.8);
+            poly.process(256);
+            poly.note_off(n);
+            poly.process(256);
+            let held: Vec<u8> = poly.voices.iter().filter_map(|v| v.note).collect();
+            assert!(
+                held.contains(&48) && held.contains(&52),
+                "press {i}: the trill stole a held note (held now {held:?})"
+            );
+        }
+        assert!(
+            steals > 0,
+            "the trill never filled the voices, so nothing was tested"
+        );
+    }
+
+    /// When every voice is under a finger, a new note still sounds: the oldest
+    /// held note gives way to it.
+    #[test]
+    fn a_note_past_the_polyphony_takes_the_oldest_held() {
+        let mut poly = LivePoly::new(&long_tail_json(), 44_100.0, 4).unwrap();
+        for n in [48, 52, 55, 59] {
+            poly.note_on(n, 1.0);
+            poly.process(64);
+        }
+        poly.note_on(62, 1.0);
+        let held: Vec<u8> = poly.voices.iter().filter_map(|v| v.note).collect();
+        assert!(held.contains(&62), "the new note did not sound: {held:?}");
+        assert!(
+            !held.contains(&48),
+            "a newer held note was stolen instead of the oldest: {held:?}"
         );
     }
 
