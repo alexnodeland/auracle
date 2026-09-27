@@ -208,6 +208,18 @@ measurement that would settle it.
   What is left is real but smaller than the entry implies, and it is a UX
   number rather than a harness one: latency on a **single** refinement, which is
   the app's ⚡ button. Filed as that, not as a build-configuration change.
+- **Bright and Body are entangled on a filtered bass** (open). On Acid Line the
+  cutoff is the obvious brightness knob, +3.2σ of centroid per unit, and the
+  [named-control](../search/perform.md) wiring does not use it: the same move
+  drops `bass_fraction` by 4.6σ, which is Body's axis, so the cross-talk gate is
+  right to call it impure, and Bright reads *search* on the patch where a
+  player most expects it. Solving in the six-dimensional named subspace instead
+  of across φ was tried and reverted: with more knobs than named axes it can
+  always cancel the cross-talk, and it did so musically — Ceiling's "Bright"
+  became a shorter release. Candidates: let Bright own a little of Body's axis
+  (a brightening is expected to thin a bass), or report a coupled control
+  honestly ("brighter, and thinner") instead of hiding it. Neither is decided.
+
 - **Remaining quiver hardening** — closed. `voct_to_hz` gained a ±32-octave
   clamp in quiver-dsp 0.3.0, and auracle pins 0.3.3 as of the September 2026
   audit. Renders inside ±32 octaves are unchanged, so no `RENDER_EPOCH` was
