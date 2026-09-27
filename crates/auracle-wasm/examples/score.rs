@@ -11,16 +11,21 @@
 //!
 //! Every track is a [`LivePoly`], the struct the AudioWorklet runs, built the
 //! way `apps/web/live-audio.js` builds it: `new LivePoly(treeJson, sampleRate,
-//! voices)`, then `set_makeup(makeup)`. The makeup is what the engine hands the
-//! worklet for a loaded preset: the preset featurized on the default audition
-//! phrase and `10^(clamp(gain_db, ±12)/20)` (`makeup_linear` in `lib.rs`).
+//! voices)`, then `set_makeup(makeup)`. The makeup is the one the scores were
+//! mixed under: the preset featurized on the default audition phrase and
+//! `10^(clamp(gain_db, ±12)/20)`, which is what the engine handed the worklet
+//! until the app's makeup became the unclamped loudness makeup
+//! (`auracle-wasm/src/level.rs`). It is pinned here so a playback change in the
+//! app cannot re-balance a finished mix.
 //! Notes go in through `note_on`/`note_off`, knob moves through `set_param`
 //! (the PERFORM view's live path: smoothed, no recompile), tempo-synced step
 //! sequencers through `set_sync` and `set_transport_beats` (what the MIDI clock
 //! does), and audio comes out of `process_ptr` in 128-frame quanta. Quanta
 //! are split at event times, so notes land sample-accurately rather than on
-//! the next quantum boundary. The per-track makeup, the per-voice
-//! ADSR/VCA/limiter tail and the 0.98 master brickwall are all the app's code.
+//! the next quantum boundary. The per-voice ADSR/VCA/limiter tail and the 0.98
+//! master brickwall are the app's code; the app's leveler, which holds a held
+//! note down to a loudness ceiling, is switched off (`set_leveler(false)`),
+//! because here the faders are the level policy.
 //!
 //! What the renderer adds is a mixing desk *after* each instrument: a fader
 //! (gain in dB, optionally automated), an equal-power pan, and one master gain
@@ -803,6 +808,7 @@ fn render_track(tp: &TrackPlan, win: &Window, clock: &Clock) -> Result<Rendered,
     let mut poly = LivePoly::new(&tp.tree_json, sr, tp.voices)
         .unwrap_or_else(|_| panic!("{}: LivePoly::new failed", tp.name));
     poly.set_makeup(tp.makeup * 10f64.powf(tp.trim_db / 20.0));
+    poly.set_leveler(false);
     if tp.sync {
         // The arp stays off; this is how the app hands the instrument a tempo.
         poly.set_arp(false, 0, 2.0, clock.bpm, 0.5, 1, 0.0);
@@ -1031,9 +1037,8 @@ fn slug(s: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-/// The makeup the engine hands the worklet for this tree (`makeup_linear` in
-/// `auracle-wasm/src/lib.rs`, of the `gain_db` the featurizer measured on the
-/// default audition phrase).
+/// The makeup the scores were mixed under (see the module docs): the `gain_db`
+/// the featurizer measured on the default audition phrase, clamped to ±12 dB.
 fn app_makeup(tree: &PatchTree) -> Result<(f64, f64), String> {
     let v = featurize(tree, &PhraseSpec::default()).map_err(|e| e.to_string())?;
     let g = v.features.gain_db;
