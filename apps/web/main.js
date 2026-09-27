@@ -2778,6 +2778,7 @@ async function bootPerform() {
     tasteRev: () => status.observations,
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
+    engineer: () => engineerMode,
     // A PERFORM offer answer joined the log: it paces refits like any pick.
     voteLanded: () => {
       duelsSinceFit += 1;
@@ -2842,6 +2843,31 @@ async function bootPerform() {
   else if (currentView === "perform") perform.show();
 }
 
+// ---------- measurements, for those who want them ----------
+// PERFORM's tooltips speak in knobs and sounds; the numbers behind them
+// (purity, reach, the verified halves, the gains) are one menu item away.
+let engineerMode = false;
+try {
+  engineerMode = localStorage.getItem("auracle-engineer") === "1";
+} catch {
+  engineerMode = false;
+}
+function paintEngineer() {
+  $("engineer-btn").setAttribute("aria-checked", String(engineerMode));
+  $("engineer-btn").textContent = engineerMode ? "Show measurements: on" : "Show measurements";
+}
+$("engineer-btn").onclick = () => {
+  engineerMode = !engineerMode;
+  try {
+    localStorage.setItem("auracle-engineer", engineerMode ? "1" : "0");
+  } catch {
+    /* a per-viewer convenience */
+  }
+  paintEngineer();
+  perform?.repaint?.();
+};
+paintEngineer();
+
 // ---------- the performed circuit ----------
 // PATCH draws the kept patch; PERFORM plays it with its controls, glides and
 // Wander on top, and until Keep those moves live only in the voices. So the
@@ -2905,7 +2931,7 @@ let boothQuiet = false;
 async function boothResetVisitor() {
   clearTimeout(saveTimer);
   await idbDel("state");
-  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view"])
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view", "auracle-perform-steps"])
     localStorage.removeItem(k);
   location.reload();
 }
@@ -3017,6 +3043,7 @@ function liveNoteOn(note_, vel = 1.0) {
   setSignalFlow(true);
   flashAmp();
   firstNotePlayed();
+  if (!boothQuiet) perform?.notePlayed?.();
   if (livePatchId != null) {
     playCounts.set(livePatchId, (playCounts.get(livePatchId) || 0) + 1);
   }
@@ -15669,7 +15696,7 @@ $("taste-reset-btn").onclick = () => {
     run: async () => {
       clearTimeout(saveTimer); // a pending autosave would rewrite the record
       await idbDel("state");
-      for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour"])
+      for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-perform-steps"])
         localStorage.removeItem(k);
       location.reload();
     },

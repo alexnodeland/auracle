@@ -26,6 +26,17 @@ answered, so it cannot teach the model. An offer it leaves in B starts unheard
 for the visitor. `tests/web/booth.spec.js` walks it: attract starts, a control
 moves, one key hands over, no pick recorded.
 
+### Added — first steps for a visitor, measurements for an engineer
+
+- **First steps.** A strip under PERFORM's header lays out the whole loop in
+  three moves: play a key, turn a lit control, press Offer. Each ticks off
+  when it happens, not when it is read, and the strip retires with *"That is
+  the loop. Every offer you take or pass teaches it what you like."* It is per
+  visitor: the booth's New visitor brings it back, and attract never ticks it.
+- **Show measurements** (⋯ menu). The controls' tooltips speak in knobs and
+  sounds. For whoever wants the evidence, this puts purity, reach in σ, the
+  verified halves, the position and the knob gains back underneath.
+
 ### Added — the circuit shows what PERFORM is playing
 
 PATCH drew the kept patch, while PERFORM plays it with controls, glides and

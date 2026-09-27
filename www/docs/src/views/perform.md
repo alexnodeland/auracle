@@ -45,6 +45,13 @@ what PERFORM plays is live until you press **Keep**, and then PATCH has it too.
 **how this works.** A disclosure with a short version of this page. It is
 closed at rest.
 
+**First steps.** Until you have done each once, a strip under the header lays
+out the loop: play a key, turn a lit control, press Offer. Each step ticks off
+as you do it, and the strip goes away when all three have.
+
+**Show measurements** in the ⋯ menu adds the numbers behind each control to
+its tooltip: purity, reach in σ, the verified halves, and the knob gains.
+
 ## The named controls
 
 | Control | Low · high | What moves in the sound |

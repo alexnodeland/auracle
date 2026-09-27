@@ -53,3 +53,34 @@ test("warm start: a slow chooser keeps all 18 preferences", async ({ page }) => 
 
   expect(errors).toEqual([]);
 });
+
+// Someone who walks up cold gets the whole loop in three moves, each ticked off
+// when it happens; an engineer gets the numbers behind the controls on request.
+test("PERFORM's first steps tick off as they happen; measurements are one menu item away", async ({ page }) => {
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  await page.goto("/");
+  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await page.locator("#warm-skip").click();
+  await page.locator('.bf[data-f="preset"]').click();
+  await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
+  await page.waitForTimeout(800);
+  await page.locator('.viewtab[data-view="perform"]').click();
+  await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 90000 });
+  await expect(page.locator(".pf-step.now")).toContainText("Play a key");
+  await page.keyboard.down("a"); await page.waitForTimeout(300); await page.keyboard.up("a");
+  await expect(page.locator(".pf-step.now")).toContainText("Turn a lit control");
+  const box = await page.locator(".pf-knob").nth(0).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - i * 8);
+  await page.mouse.up();
+  await expect(page.locator(".pf-step.now")).toContainText("Press OFFER");
+  await page.locator(".pf-pad", { hasText: "Offer" }).click();
+  await expect(page.locator(".pf-step.all")).toContainText("That is the loop");
+  // engineer mode
+  await page.locator("#ovf-btn").click();
+  await page.locator("#engineer-btn").click();
+  const t = await page.locator(".pf-knob[data-i='0']").getAttribute("title");
+  expect(t).toContain("purity");
+  expect(errs).toEqual([]);
+});

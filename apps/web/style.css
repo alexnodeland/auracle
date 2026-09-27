@@ -4460,3 +4460,18 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 }
 g.performed .knob-body { stroke: var(--phos-b-dim); }
 g.performed .knob-value { fill: var(--phos-b); }
+
+/* ---------- PERFORM first steps ---------- */
+.pf-steps {
+  width: min(1040px, 100%);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  font-size: var(--t-label);
+  color: var(--silk-dim);
+}
+.pf-steps.hidden { display: none; }
+.pf-step { white-space: nowrap; }
+.pf-step.now { color: var(--phos-a); text-shadow: 0 0 8px rgba(142,240,177,0.45); }
+.pf-step.done { color: var(--silk-mute); }
+.pf-step.done.all { color: var(--phos-a); }

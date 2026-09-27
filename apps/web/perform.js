@@ -156,7 +156,10 @@ export function createPerform(host) {
   const xy = el("div", "pf-xy");
   const stage = el("div", "pf-stage");
   stage.append(xy, hood);
-  root.append(head, deck, touchRow, pads, offerCard, stage, why);
+  // First steps: the whole loop in three moves, ticked off as they happen.
+  const stepsEl = el("div", "pf-steps mono");
+  stepsEl.setAttribute("role", "status");
+  root.append(head, stepsEl, deck, touchRow, pads, offerCard, stage, why);
 
   // ---------- knobs ----------
   const knobs = [];
@@ -239,6 +242,12 @@ export function createPerform(host) {
         k.wrap.title = search
           ? `${w.name}: nothing in this patch makes it ${w.high} without changing something else. Turn it and it grows a variant that can.`
           : `${w.name}: ${w.knobs.map(([a, g]) => `${g >= 0 ? "raises" : "lowers"} ${knobWord(a, true)}`).join(", ")} as you turn it toward ${w.high}. Long-press to hear it.`;
+        // The engineer's view, on request (⋯ → Show measurements): what the
+        // measurement actually said, in its own units.
+        if (host.engineer?.()) {
+          const halves = w.down != null ? `measured −${w.down.toFixed(2)}σ / +${w.up.toFixed(2)}σ` : `${w.reach.toFixed(2)}σ predicted`;
+          k.wrap.title += `\n\npurity ${w.purity.toFixed(2)} · reach ${w.reach.toFixed(2)}σ · ${halves} · at ${w.position.toFixed(2)}σ\n${w.knobs.map(([a, g]) => `${a} ${g >= 0 ? "+" : "−"}${Math.abs(g).toFixed(2)}`).join("  ")}`;
+        }
       } else {
         where.style.display = "none";
         k.sub.textContent = state.measuring ? "measuring…" : "";
@@ -455,7 +464,10 @@ export function createPerform(host) {
     if (k.spec.kind === "named") {
       state.c[k.i] = k.value;
       const w = state.wire && state.wire[k.i];
-      if (w && !w.search) push();
+      if (w && !w.search) {
+        push();
+        if (Math.abs(k.value) > 0.2) stepDone("turn");
+      }
     } else if (k.spec.kind === "blend") {
       state.blend = k.value;
       const live = host.live();
@@ -719,6 +731,7 @@ export function createPerform(host) {
     if (state.offer) answerOffer(false);
     state.lastMove = performance.now();
     state.offerWhy = why || "";
+    if (why !== "wander" && why !== "attract") stepDone("offer");
     // A spare grown ahead from this sound is handed over at once; one still
     // growing is claimed, and lands in B the moment it is done.
     if (state.spare && spareFresh(state.spare)) {
@@ -1260,6 +1273,50 @@ export function createPerform(host) {
   whyBtn.setAttribute("aria-expanded", "false");
   why.append(whyBtn, whyBody);
 
+  // ---------- first steps ----------
+  // For someone who walks up to it cold — no staff, no manual. Three moves
+  // are the whole loop: play, turn a control, ask for an offer. Each ticks off
+  // when it happens (not when it is read), and the strip retires once all
+  // three have. Per visitor: the booth's "new visitor" brings it back.
+  const STEPS_KEY = "auracle-perform-steps";
+  const STEPS = [
+    { id: "play", text: "Play a key: A to L, or tap the keybed" },
+    { id: "turn", text: "Turn a lit control: BRIGHT is a good start" },
+    { id: "offer", text: "Press OFFER, then hold PEEK or TAKE it" },
+  ];
+  const stepsDone = new Set();
+  try {
+    for (const id of JSON.parse(localStorage.getItem(STEPS_KEY) || "[]")) stepsDone.add(id);
+  } catch {
+    /* a per-viewer convenience; an empty set is fine */
+  }
+  function renderSteps() {
+    stepsEl.innerHTML = "";
+    if (stepsDone.size >= STEPS.length) {
+      stepsEl.classList.add("hidden");
+      return;
+    }
+    const now = STEPS.find((st) => !stepsDone.has(st.id));
+    STEPS.forEach((st, i) => {
+      const done = stepsDone.has(st.id);
+      stepsEl.append(el("span", `pf-step${done ? " done" : ""}${st === now ? " now" : ""}`, `${done ? "✓" : i + 1}  ${st.text}`));
+    });
+  }
+  function stepDone(id) {
+    if (state.quiet || stepsDone.has(id) || stepsDone.size >= STEPS.length) return;
+    stepsDone.add(id);
+    try {
+      localStorage.setItem(STEPS_KEY, JSON.stringify([...stepsDone]));
+    } catch {
+      /* in memory is enough for this visit */
+    }
+    if (stepsDone.size < STEPS.length) return renderSteps();
+    stepsEl.innerHTML = "";
+    stepsEl.append(el("span", "pf-step done all", "✓  That is the loop. Every offer you take or pass teaches it what you like."));
+    setTimeout(() => stepsEl.classList.add("hidden"), 7000);
+  }
+  renderSteps();
+
   // ---------- XY pad ----------
   const XY = { x: 0, y: 2 }; // named-control indices on each axis
   const xyHead = el("div", "pf-xy-head mono");
@@ -1448,6 +1505,14 @@ export function createPerform(host) {
       return !!(w && !w.search);
     },
     hasOffer: () => !!state.offer,
+    // Re-draw every control (after "Show measurements" changes).
+    repaint() {
+      knobs.forEach(paintKnob);
+    },
+    // A key went down (main's note path): the first of the first steps.
+    notePlayed() {
+      stepDone("play");
+    },
     // What PERFORM is playing right now, knob by knob — the kept values plus
     // every control, glide and Wander move on top — for PATCH to draw beside
     // the kept ones. Null before a patch is under PERFORM's hands.
