@@ -2159,10 +2159,11 @@ const UNDO_WINDOW_MS = 7000;
 // collect. Three rules, and the first two are geometric so the collision
 // cannot silently come back with the next feature:
 //
-//   1. ONE LANE, anchored to the rack frame's top-right — under the header,
-//      over dead canvas, nowhere near the teaching strip.
-//   2. A RESERVED RECT: whatever teaching strip is on screen is measured and
-//      the lane is pushed clear of it, whatever the window size.
+//   1. ONE LANE, anchored bottom-right just above the keybar (see
+//      `positionToastLane` for why there and not the rack's top-right).
+//   2. RESERVED RECTS: whatever teaching strip is on screen — and every other
+//      surface in LANE_STRIPS / LANE_COLUMNS — is measured and the lane is
+//      pushed clear of it, whatever the window size.
 //   3. ONE VISIBLE TOAST, with a stacking counter. Three toasts saying
 //      different things at once is not three times the information.
 //
@@ -2307,8 +2308,21 @@ function dismissToast(t, immediate) {
   else setTimeout(gone, 300);
 }
 
-/** Anchor the lane, then push it clear of whatever teaching strip is up.
- *  Rule 2 above: the reserved rect is measured, not assumed. */
+// What the lane may never cover, in two kinds. STRIPS are stepped over — the
+// lane moves above them: the teaching strips (rule 2), and the bands it used
+// to park on while someone was reading or reaching for them — the taste map's
+// legend, EVOLVE's record of what each generation did, the module strip under
+// the rack, and HELD. COLUMNS are stepped beside — the lane moves left of
+// them: panels far taller than a toast that stand on the same bottom edge —
+// the node bank's rail, the tours on the rails, the MIDI and arp panels —
+// where stepping *over* a 460px rail would carry a toast to the top of the
+// rack. Every `.duel-controls`, not the first: B's buttons are the ones at
+// the lane's edge.
+const LANE_STRIPS = ["#play-duel", "#duel-mid", ".duel-controls", "#map-legend", ".lineage-strip", "#spec-dock", "#tray"];
+const LANE_COLUMNS = ["#nodebank", "#nb-tour", "#bank-tour", "#midi-panel", "#arp-ctl"];
+
+/** Anchor the lane, then push it clear of whatever it must not cover.
+ *  Rule 2 above: the reserved rects are measured, not assumed. */
 function positionToastLane() {
   const holder = $("toasts");
   if (!holder || !holder.firstChild) return;
@@ -2325,23 +2339,26 @@ function positionToastLane() {
   holder.style.bottom = `${Math.round(window.innerHeight - floor)}px`;
   holder.style.right = "16px";
 
-  // The reserved rects. A teaching strip is the one thing in the app that a
-  // transient may never cover, so its box is measured and stepped around —
-  // above it if there is room under the menubar, below it if there is not.
-  // Two passes, because clearing one strip can walk into another.
-  const reserved = [$("play-duel"), $("duel-mid"), document.querySelector(".duel-controls")]
-    .filter((el) => el && !el.classList.contains("hidden") && el.offsetParent !== null);
-  for (let pass = 0; pass < 2; pass++) {
+  // The reserved rects (see LANE_STRIPS / LANE_COLUMNS), measured each time.
+  // Several passes, because clearing one can walk into another — left of the
+  // node bank is the strip under the rack — and every step only ever moves
+  // the lane up or left, so the passes cannot undo each other.
+  const shown = (el) => !el.classList.contains("hidden") && el.offsetParent !== null;
+  const reserved = [
+    ...LANE_STRIPS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: false })),
+    ...LANE_COLUMNS.flatMap((s) => [...document.querySelectorAll(s)]).filter(shown).map((el) => ({ el, column: true })),
+  ];
+  for (let pass = 0; pass < 6; pass++) {
     const lane = holder.getBoundingClientRect();
     let moved = false;
-    for (const el of reserved) {
+    for (const { el, column } of reserved) {
       const r = el.getBoundingClientRect();
-      if (r.height === 0) continue;
+      if (r.height === 0 || r.width === 0) continue;
       const hits = lane.bottom > r.top && lane.top < r.bottom &&
                    lane.right > r.left && lane.left < r.right;
       if (!hits) continue;
-      // Step above the strip it would cover.
-      holder.style.bottom = `${Math.round(window.innerHeight - r.top + 8)}px`;
+      if (column) holder.style.right = `${Math.round(window.innerWidth - r.left + 8)}px`;
+      else holder.style.bottom = `${Math.round(window.innerHeight - r.top + 8)}px`;
       moved = true;
       break;
     }
@@ -2349,6 +2366,16 @@ function positionToastLane() {
   }
 }
 window.addEventListener("resize", positionToastLane);
+// A reserved rect can open under a toast already on screen — a tour, the MIDI
+// panel, the legend after a fit, a rail collapsed or expanded — so the lane is
+// re-measured whenever one of them changes state, not only when the next
+// toast arrives.
+{
+  const watch = new MutationObserver(() => positionToastLane());
+  for (const s of [...LANE_STRIPS, ...LANE_COLUMNS]) {
+    for (const el of document.querySelectorAll(s)) watch.observe(el, { attributes: true, attributeFilter: ["class"] });
+  }
+}
 
 // A toast whose undo can no longer fire must say so — see commitPendingVote,
 // which retires a vote's undo early when a refit claims it.
