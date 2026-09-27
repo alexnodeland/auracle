@@ -138,6 +138,16 @@ async function booted(page) {
   await page.waitForTimeout(2000);
 }
 
+/** The engine between long jobs, and quiet for `quiet` ms. The worker is one
+ *  thread: a bank click queues behind whatever it is doing, and on a busy
+ *  machine a PERFORM measurement or a grown offer takes minutes. */
+async function engineQuiet(page, quiet = 3000) {
+  await until(page, (q) => {
+    const s = window.__captureSeen || {};
+    return s.long !== "busy" && performance.now() - (s.longAt || 0) >= q;
+  }, quiet, "the engine to finish its long jobs", 900_000);
+}
+
 /** Nothing transient on screen: toasts gone, pointer parked, model idle, no
  *  first-run coach, the alarm strip down. Toasts are waited out, never
  *  removed — each one is a real message and the lane empties on its own. */
@@ -336,7 +346,7 @@ async function openRow(page, rowId, name) {
   const id = Number(rowId.replace("bank-row-", ""));
   await page.click(`#${rowId} .bi-name`);
   await until(page, (id) => window.__aur?.wb?.subjectId === id && !!document.querySelector("#bank-list .bank-item.live"),
-    id, `${name} on the bench`, 120_000);
+    id, `${name} on the bench`, 600_000);
   await closeBenchTour(page);
   // Plates drawn, and the count no longer changing.
   let last = -1;
@@ -357,10 +367,10 @@ async function openRow(page, rowId, name) {
 
 /** PATCH needs a patch that shows the rack: 6–10 modules, so plates, knobs,
  *  values and both cable colours are legible at two zoom steps, with a
- *  modulation chain so the amber cables are there at all. Taken from the
- *  evolution bank's second row down, so the patch on show is one the taught
- *  model believes in, and so there is a ranked row to sit above it (see
- *  `groom`). */
+ *  modulation chain so the amber cables are there at all. The highest-ranked
+ *  such patch in the evolution bank that the listener likes — one the taught
+ *  model believes in — from the second row down, so there is a ranked row to
+ *  sit above it in the rail (see `groom`). */
 async function pickPatch(page) {
   await view(page, "play");
   await page.click('.bf[data-f="pool"]');
@@ -369,15 +379,17 @@ async function pickPatch(page) {
     id: e.id,
     name: e.querySelector(".bi-name")?.textContent.trim(),
     pct: parseInt(e.querySelector(".bi-pct")?.textContent, 10) || 0,
+    stars: e.querySelectorAll(".star.lit").length,
   })));
-  // The patch already on the bench first, when it is in the running: a second
-  // run on a --profile then shows the same patch rather than rating another.
-  const bench = await page.evaluate(() => window.__aur?.wb?.subjectId);
-  const benchAt = rows.findIndex((r) => r.id === `bank-row-${bench}`);
-  const order = PATCH ? rows : benchAt >= 1 ? [rows[benchAt], ...rows.slice(1).filter((_, i) => i + 1 !== benchAt)] : rows.slice(1);
+  // One the listener likes by its own taste, since it is about to be rated
+  // five stars in the listener's name. A patch a previous run rated (a second
+  // run on a --profile) goes first, so re-runs keep showing the same patch.
+  const liked = (r) => taste(r.name) > 0;
+  const order = PATCH ? rows : [...rows.slice(1).filter((r) => r.stars === 5), ...rows.slice(1).filter((r) => r.stars !== 5)];
   let best = null;
   for (const r of order) {
     if (PATCH && r.name !== PATCH) continue;
+    if (!PATCH && !liked(r)) continue;
     const shape = await openRow(page, r.id, r.name);
     log(`    ${r.name} (${r.pct}%): ${shape.modules} modules, ${shape.mod} mod cables`);
     const fit = shape.modules >= 6 && shape.modules <= 10 && shape.mod >= 1;
@@ -385,7 +397,7 @@ async function pickPatch(page) {
     const miss = Math.abs(shape.modules - 8) + (shape.mod ? 0 : 3);
     if (!best || miss < best.miss) best = { ...r, miss };
   }
-  if (!best) throw new Error(PATCH ? `no bank row named ${PATCH}` : "the bank is empty");
+  if (!best) throw new Error(PATCH ? `no bank row named ${PATCH}` : "no patch in the bank the listener likes");
   log(`    nothing ideal; taking ${best.name}`);
   await openRow(page, best.id, best.name);
   return best;
@@ -393,7 +405,11 @@ async function pickPatch(page) {
 
 async function groom(page) {
   await poolFull(page);
+  // A restored session comes back in the view it was left in, and PERFORM
+  // measures the patch on the bench and grows offers while it is shown. Out
+  // of it, and past what it had started.
   await view(page, "play");
+  await engineQuiet(page);
   await emptyTray(page);
   // The rows carry the model's predictions once a fitted posterior is up. A
   // restored session refits on load, and until then the rail is unranked.
@@ -403,7 +419,7 @@ async function groom(page) {
   await modelIdle(page);
   const row = await pickPatch(page);
   log(`  PATCH shows ${row.name}`);
-  // Rated the way the listener who liked it most would: five stars. A rating
+  // Rated by the listener, who likes it (see pickPatch): five stars. A rating
   // is an observation, so it is a pick like any other.
   if (!(await page.locator(".bank-item.live .star.lit[data-s='5']").count())) await page.click(".bank-item.live .star[data-s='5']");
   await modelIdle(page);
@@ -436,25 +452,29 @@ async function groom(page) {
     await page.waitForTimeout(700);
   }
   log(`    zoomed in; still under the silkscreen floor: ${(await page.$eval("#rack-svg", (s) => s.dataset.illegible)) || "nothing"}`);
-  // ⌘= zooms about the frame's centre, which is not the patch's: a patch that
-  // fits the frame's height can still come out with its top row's titles
-  // under the frame's top edge. Centred with the wheel, which pans the rack.
-  const fit = await page.evaluate(() => {
+  // ⌘= zooms about the frame's centre, so the frame's top and bottom edges
+  // land wherever they land — often through a row of plates, slicing off
+  // their titles. The smallest vertical pan (the wheel pans the rack) that
+  // puts both edges between rows instead, if one is within reach.
+  const pan = await page.evaluate(() => {
     const f = document.getElementById("rack-frame").getBoundingClientRect();
-    const boxes = [...document.querySelectorAll("#rack-svg .rack-plates > g[data-kind], #rack-svg .rack-controls > g.mod-group")]
+    const plates = [...document.querySelectorAll("#rack-svg .rack-plates > g[data-kind]")]
       .map((g) => g.getBoundingClientRect()).filter((r) => r.height > 0);
-    if (!boxes.length) return null;
-    const top = Math.min(...boxes.map((r) => r.top));
-    const bottom = Math.max(...boxes.map((r) => r.bottom));
-    return { fits: bottom - top <= f.height - 24, dy: Math.round((top + bottom) / 2 - (f.top + f.bottom) / 2), cx: f.left + f.width / 2, cy: f.top + f.height / 2 };
+    const m = 4; // clear of the edge, not flush with it
+    const cut = (dy) => plates.some((r) =>
+      (r.top + dy < f.top + m && r.bottom + dy > f.top) || (r.top + dy < f.bottom && r.bottom + dy > f.bottom - m));
+    for (let k = 0; k <= 60; k++) for (const dy of k ? [k, -k] : [0]) if (!cut(dy)) return { dy, x: f.left + f.width / 2, y: f.top + f.height / 2 };
+    return null;
   });
-  if (fit && fit.fits && Math.abs(fit.dy) > 2) {
-    await page.mouse.move(fit.cx, fit.cy);
-    await page.mouse.wheel(0, fit.dy);
+  if (pan && pan.dy) {
+    await page.mouse.move(pan.x, pan.y);
+    await page.mouse.wheel(0, -pan.dy); // wheel down moves the patch up
     await page.waitForTimeout(500);
     await page.mouse.move(PARK.x, PARK.y);
-    log(`    centred the patch in the frame (${fit.dy > 0 ? "up" : "down"} ${Math.abs(fit.dy)}px)`);
   }
+  log(!pan ? "    framed: no pan within 60px clears the frame's edges; left as zoomed"
+    : pan.dy ? `    framed: patch moved ${pan.dy > 0 ? "down" : "up"} ${Math.abs(pan.dy)}px so no plate is cut by the frame's edges`
+    : "    framed: no plate is cut by the frame's edges");
   return row;
 }
 
@@ -559,8 +579,9 @@ async function shotWarmstart(page) {
   for (let deal = 1; ; deal++) {
     await page.click("#ovf-btn");
     await page.click("#warm-rerun-btn");
+    // Answered by the engine, which may be busy measuring the bench for PERFORM.
     await until(page, () => !document.getElementById("warmstart").classList.contains("hidden") &&
-      document.querySelectorAll(".warm-cell").length === 9, null, "the warm start card", 60_000);
+      document.querySelectorAll(".warm-cell").length === 9, null, "the warm start card", 300_000);
     await page.waitForTimeout(300);
     const lines = await page.$$eval(".warm-cell .wi-sig", (els) => els.map((e) => {
       const r = document.createRange();
@@ -653,7 +674,14 @@ await ctx.addInitScript(() => {
       super(...args);
       this.addEventListener("message", (e) => {
         const t = e.data && e.data.type;
-        if (typeof t === "string") seen[t] = (seen[t] || 0) + 1;
+        if (typeof t !== "string") return;
+        seen[t] = (seen[t] || 0) + 1;
+        // The engine worker brackets every long job (a fit, a measurement,
+        // an offer being grown) with busy/idle.
+        if (t === "busy" || t === "idle") {
+          seen.long = t;
+          seen.longAt = performance.now();
+        }
       });
     }
   };

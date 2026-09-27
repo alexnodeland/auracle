@@ -76,7 +76,7 @@ crop nodebank.png  927x133+266+598  spec-card.webp
 # amber modulation cables with named destinations. Positioned clear of the
 # minimap, which sits bottom-left of the frame. The one rectangle that depends
 # on the patch as well as the layout: re-aim it when the PATCH shot changes.
-crop play.png      560x300+460+250  rack-detail.webp
+crop play.png      560x300+448+188  rack-detail.webp
 # The teaching meter (#duel-mid, 1160x56) with 6px either side and 2px above
 # and below, and the unbiased-probe note inside it.
 crop evolve.png    1172x60+260+59   teach-meter.webp
