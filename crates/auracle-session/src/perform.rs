@@ -739,8 +739,9 @@ impl Engine {
         jacobian(tree, &self.cfg.phrase, self.memo(), std)
     }
 
-    /// One knob-only drift: the locked MH walk on the taste target with every
-    /// structural and categorical site locked, plus the player's own locks.
+    /// One knob-only drift: a local Metropolis walk ([`Engine::local_walk`],
+    /// step `sigma` on the knob's 0–1 range) over the patch's live knobs
+    /// minus the player's locks, on the taste target.
     /// Nothing enters the pool. Before any taste has been fitted the target is
     /// the vetted grammar prior ([`VetOnlyFitness`]). The error says why
     /// nothing came back: [`RefineOutcome::NoMove`] for a walk that stayed,
@@ -752,12 +753,15 @@ impl Engine {
         tree: &PatchTree,
         player_locks: &[String],
         steps: usize,
+        sigma: f64,
     ) -> Result<PatchTree, RefineOutcome> {
-        let mut locked: HashSet<String> = frozen_addrs(tree, self.cfg.phrase.sample_rate)
+        let locked: HashSet<&str> = player_locks.iter().map(String::as_str).collect();
+        let free: Vec<String> = live_knobs(tree, self.cfg.phrase.sample_rate)
             .into_iter()
+            .map(|(a, _)| a)
+            .filter(|a| !locked.contains(a.as_str()))
             .collect();
-        locked.extend(player_locks.iter().cloned());
-        self.refine_walk(rng, tree, &locked, steps)
+        self.local_walk(rng, tree, &free, steps, sigma)
     }
 
     /// A structural offer: the same walk with only the player's locks. Like
@@ -832,6 +836,60 @@ mod tests {
         assert!(
             excluded > 0,
             "the presets have handle-less sites; this test must see one"
+        );
+    }
+
+    /// A drift is local and knob-only: it changes no structural or
+    /// categorical choice and no knob without a live handle, and the farthest
+    /// knob it moves grows with `sigma` — the Wander dial's reach. (The old
+    /// walk, fugue's adaptive kernel from a fresh chain, moved some knob by
+    /// 0.3–0.85 of its range in eight steps.)
+    #[test]
+    fn drift_is_local_and_follows_sigma() {
+        use crate::engine::{Engine, SessionConfig};
+        let engine = Engine::new(
+            auracle_grammar::PatchGrammarPrior::default(),
+            SessionConfig::default(),
+        );
+        let sr = engine.cfg.phrase.sample_rate;
+        let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(11);
+        let (mut small, mut large) = (0.0f64, 0.0f64);
+        for p in preset_bank().iter().take(6) {
+            let before: std::collections::HashMap<String, f64> =
+                continuous_knobs(&p.tree).into_iter().collect();
+            let live: HashSet<String> = live_knobs(&p.tree, sr)
+                .into_iter()
+                .map(|(a, _)| a)
+                .collect();
+            for (sigma, acc) in [(0.03, &mut small), (0.2, &mut large)] {
+                let t = engine
+                    .drift(&mut rng, &p.tree, &[], 12, sigma)
+                    .expect("a vetted preset drifts");
+                assert_eq!(
+                    structural_addrs(&t),
+                    structural_addrs(&p.tree),
+                    "{}: structure moved",
+                    p.name
+                );
+                let mut far = 0.0f64;
+                for (a, v) in continuous_knobs(&t) {
+                    let d = (v - before[&a]).abs();
+                    if !live.contains(&a) {
+                        assert!(d < 1e-12, "{}: non-live {a} moved", p.name);
+                    }
+                    far = far.max(d);
+                }
+                *acc += far;
+            }
+        }
+        assert!(
+            small < 0.5 * large,
+            "sigma should set the reach: {small:.2} vs {large:.2}"
+        );
+        assert!(
+            small / 6.0 < 0.15,
+            "a gentle drift should stay local: mean max {:.2}",
+            small / 6.0
         );
     }
 

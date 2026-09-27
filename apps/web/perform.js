@@ -27,6 +27,11 @@ const WANDER_DRIFT = 0.4;
 const WANDER_ROAM = 0.75;
 // Hands on, it waits: no autonomous move within this long of a touch.
 const HANDS_OFF_MS = 3500;
+// The wiring is a linear model measured with 0.08 knob steps
+// (perform::JACOBIAN_STEP). It is re-measured only once some knob has moved
+// farther than this from where it was measured — a gentle drift stays inside
+// and keeps its wiring, instead of spending ~46 renders after every glide.
+const TRUST = 0.12;
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 // Mirrors auracle_session::perform::Wiring::range: a half that the patch's
@@ -61,15 +66,18 @@ function wanderZone(w) {
 // aims at one audible change per phrase; Roam at one per bar or two.
 function wanderPace(w) {
   const z = wanderZone(w);
+  // sigma is the walk's step on a knob's 0..1 range (Engine::local_walk).
+  // Measured over 12 presets: sigma 0.05 × 8 steps moves the farthest knob
+  // ~0.06–0.14, 0.08 × 18 ~0.15–0.33, 0.15 × 40 ~0.25–0.6.
   if (z === "drift") {
     const t = (w - WANDER_DRIFT) / (WANDER_ROAM - WANDER_DRIFT);
-    return { period: 36 - 22 * t, steps: Math.round(8 + 10 * t), glide: 6 - 2 * t };
+    return { period: 36 - 22 * t, steps: Math.round(8 + 10 * t), glide: 6 - 2 * t, sigma: 0.05 + 0.03 * t };
   }
   if (z === "roam") {
     const t = (w - WANDER_ROAM) / (1 - WANDER_ROAM);
-    return { period: 12 - 5 * t, steps: Math.round(24 + 16 * t), glide: 3 - t };
+    return { period: 12 - 5 * t, steps: Math.round(24 + 16 * t), glide: 3 - t, sigma: 0.1 + 0.05 * t };
   }
-  return { period: 24, steps: 40, glide: 0 };
+  return { period: 24, steps: 40, glide: 0, sigma: 0.05 };
 }
 
 export function createPerform(host) {
@@ -499,6 +507,7 @@ export function createPerform(host) {
       overrides: overrides(),
       locks: host.locks(),
       steps: pace.steps,
+      sigma: pace.sigma,
     });
     renderStatus("walking…");
   }
@@ -539,6 +548,7 @@ export function createPerform(host) {
         const had = state.cur.knobs;
         const here = new Map(m.data.addrs.map((a, i) => [a, had.has(a) ? liveValue(a) : m.data.values[i]]));
         state.cur.knobs = here;
+        state.wiredAt = new Map(here);
         state.c = state.c.map(() => 0);
         knobs.forEach((k) => {
           if (k.spec.kind === "named") {
@@ -691,7 +701,7 @@ export function createPerform(host) {
     if (performance.now() - state.lastTouch < 60 && performance.now() - g.t0 > 60) {
       state.glide = null;
       renderStatus("paused — your hands are on it");
-      wire();
+      if (outsideTrust()) wire();
       return;
     }
     const u = clamp((performance.now() - g.t0) / g.dur, 0, 1);
@@ -705,10 +715,21 @@ export function createPerform(host) {
       if (g.json) state.cur.json = g.json;
       state.glide = null;
       state.lastMove = performance.now();
-      wire();
+      if (outsideTrust()) wire();
+      else renderStatus();
       return;
     }
     requestAnimationFrame(stepGlide);
+  }
+
+  // Has any knob left the neighbourhood the wiring was measured in?
+  function outsideTrust() {
+    if (!state.wiredAt || !state.wire) return true;
+    for (const [a, v] of state.cur.knobs) {
+      const at = state.wiredAt.get(a);
+      if (at == null || Math.abs(v - at) > TRUST) return true;
+    }
+    return false;
   }
 
   // ---------- pads ----------

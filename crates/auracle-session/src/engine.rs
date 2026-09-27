@@ -2106,6 +2106,107 @@ impl Engine {
         self.walk_with(rng, seed, locked, steps, fitness)
     }
 
+    /// A **local** Metropolis walk over the knobs in `free` for the
+    /// performance drift: each step picks one free knob uniformly, proposes
+    /// `v + σ·N(0, 1)` reflected into the knob domain, and accepts on the
+    /// same target the refinement walks use — `π_β ∝ p_grammar · exp(β·E[u])`
+    /// scored by the same [`EvolutionModel`] (or the vetted prior before any
+    /// taste, as [`Self::refine_walk`]). The reflected Gaussian is symmetric,
+    /// so the ratio is the target ratio alone and the walk is exact MH.
+    ///
+    /// Why not [`Self::walk_with`]: fugue's adaptive single-site kernel
+    /// starts each fresh chain with a wide proposal on a unit-interval knob,
+    /// and measured over 12 presets an 8-step "drift" moved some knob by 0.3–
+    /// 0.85 of its range — a jump, glided. A drift should wander, and how
+    /// far is the Wander dial's to say: `sigma`.
+    pub(crate) fn local_walk<R: Rng>(
+        &self,
+        rng: &mut R,
+        seed: &PatchTree,
+        free: &[String],
+        steps: usize,
+        sigma: f64,
+    ) -> Result<PatchTree, RefineOutcome> {
+        if free.is_empty() {
+            return Err(RefineOutcome::NoMove);
+        }
+        let score = |t: &PatchTree| -> f64 {
+            match (&self.posterior, &self.standardizer) {
+                (Some(p), Some(s)) => {
+                    let fitness = SurrogateFitness {
+                        posterior: Arc::clone(p),
+                        standardizer: Arc::clone(s),
+                        phrase: self.cfg.phrase.clone(),
+                        memo: self.memo.clone(),
+                    };
+                    EvolutionModel::new(self.biased_prior(), fitness)
+                        .with_beta(self.cfg.beta)
+                        .score(t)
+                        .1
+                        .total_log_weight()
+                }
+                _ => {
+                    let fitness = crate::perform::VetOnlyFitness {
+                        phrase: self.cfg.phrase.clone(),
+                        memo: self.memo.clone(),
+                    };
+                    EvolutionModel::new(self.biased_prior(), fitness)
+                        .with_beta(self.cfg.beta)
+                        .score(t)
+                        .1
+                        .total_log_weight()
+                }
+            }
+        };
+        let mut cur = seed.clone();
+        let mut w = score(&cur);
+        if !w.is_finite() {
+            return Err(RefineOutcome::OutsideSupport);
+        }
+        let sigma = sigma.clamp(1e-3, 0.5);
+        for _ in 0..steps {
+            let addr = &free[rng.gen_range(0..free.len())];
+            let Some(v) = crate::perform::continuous_knobs(&cur)
+                .into_iter()
+                .find_map(|(a, v)| (a == *addr).then_some(v))
+            else {
+                continue;
+            };
+            // Box–Muller: one standard normal from two uniforms.
+            let (u1, u2): (f64, f64) = (rng.gen::<f64>().max(1e-300), rng.gen());
+            let z = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
+            let mut nv = v + sigma * z;
+            // Reflect into [0, PARAM_MAX]: symmetric, so no Hastings term.
+            let top = auracle_grammar::PARAM_MAX;
+            for _ in 0..4 {
+                if nv < 0.0 {
+                    nv = -nv;
+                } else if nv > top {
+                    nv = 2.0 * top - nv;
+                } else {
+                    break;
+                }
+            }
+            let nv = auracle_grammar::clamp_param(nv);
+            let Ok(cand) =
+                auracle_grammar::set_param(&cur, addr, auracle_grammar::ParamValue::Continuous(nv))
+            else {
+                continue;
+            };
+            let nw = score(&cand);
+            if nw.is_finite() && (nw >= w || rng.gen::<f64>().ln() < nw - w) {
+                cur = cand;
+                w = nw;
+            }
+        }
+        cur.clamp_domains();
+        if cur == *seed {
+            Err(RefineOutcome::NoMove)
+        } else {
+            Ok(cur)
+        }
+    }
+
     /// Run locked MH refinement from one seed. Returns the end state if it
     /// differs from the seed, otherwise the reason it does not.
     fn refine_one<R: Rng>(

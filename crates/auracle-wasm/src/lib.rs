@@ -858,9 +858,10 @@ impl WasmEngine {
         }
     }
 
-    /// One knob-only drift step from the performed state (`tree` plus
-    /// `overrides`) on the taste target, structure and the player's
-    /// `locks_json` held fixed. Returns `{tree, knobs: [[addr, value], …],
+    /// One knob-only drift from the performed state (`tree` plus
+    /// `overrides`) on the taste target: a local walk of `steps` moves of
+    /// size `sigma` (on a knob's 0–1 range) over the live knobs, structure and
+    /// the player's `locks_json` held fixed. Returns `{tree, knobs: [[addr, value], …],
     /// taste}`, or `{reason}` ([`Self::last_refine_reason`]'s spellings:
     /// `no_move`, `outside_support`) when there is nothing to glide to, or
     /// `null` if the tree does not parse. With no
@@ -873,6 +874,7 @@ impl WasmEngine {
         overrides_json: &str,
         locks_json: &str,
         steps: u32,
+        sigma: f64,
     ) -> String {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return "null".into();
@@ -880,7 +882,7 @@ impl WasmEngine {
         let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
         match self
             .engine
-            .drift(&mut self.rng, &tree, &locks, steps.max(1) as usize)
+            .drift(&mut self.rng, &tree, &locks, steps.max(1) as usize, sigma)
         {
             Ok(t) => {
                 let knobs =

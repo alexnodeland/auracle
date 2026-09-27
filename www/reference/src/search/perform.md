@@ -329,37 +329,53 @@ same response as the shipped code without being bit-identical to it.
 preset-library standardizer, and does not run verification; `reach_census`
 runs the shipped path (`Engine::wire_controls`) with verification.
 
-## Drift: the locked walk, knob-only
+## Drift: a local walk on the live knobs
 
-`Engine::drift` runs the same locked Metropolis–Hastings walk as
-[refinement](./refinement.md), on the same [target](./target.md)
+`Engine::drift` samples the same [target](./target.md)
 
 $$\pi_\beta(x) \;\propto\; p_{\text{grammar}}(x)\,\exp\!\big(\beta\,\E[u_\theta(\varphi(x))]\big),$$
 
-with a lock set of **every non-continuous address** of the current term plus the
-player's own locks:
+restricted to this patch's shape: every structural and categorical address,
+every continuous site without a live handle (`frozen_addrs`), and the player's
+own locks are held fixed. Holding sites fixed in a Metropolis–Hastings walk is
+exact conditioning ([Locks as conditional refinement](./locks.md)), so the walk
+targets $\pi_\beta(v \mid x_{\mathcal{L}})$ over the knobs the voices can take
+live. Structure cannot change under the player's hands, and nothing the walk
+moves needs a recompile to be heard.
+
+The kernel is **not** refinement's. Each step picks one free knob uniformly and
+proposes
 
 $$
-\mathcal{L} \;=\; \{\text{structural and categorical addresses of } x\} \;\cup\; \mathcal{L}_{\text{player}} .
+v' \;=\; \operatorname{reflect}_{[0,1)}\!\big(v + \sigma\,\xi\big), \qquad \xi \sim \mathcal N(0, 1),
 $$
 
-Because locking is exact conditioning ([Locks as conditional
-refinement](./locks.md)), the walk targets $\pi_\beta(v \mid x_{\mathcal{L}})$:
-the same distribution restricted to this patch's shape, over its knob values
-only. Structure cannot change under the player's hands, and neither can a
-waveform or a filter mode. What moves is continuous.
+accepted with probability $\min\!\big(1,\ \pi_\beta(x')/\pi_\beta(x)\big)$. The
+reflected Gaussian is symmetric, so there is no Hastings correction
+(`Engine::local_walk`). Refinement's kernel, fugue's adaptive single-site MH,
+starts every fresh chain with a wide proposal on a unit-interval knob: measured
+over 12 presets, an 8-step "drift" moved some knob by 0.3–0.85 of its range. A
+drift should wander, and how far is the Wander dial's to say.
 
-- **Steps.** Wander asks for 8 to 18 steps in *drift* and 24 to 40 in *roam*.
-  The walk scales steps up by the fraction of sites locked, since a proposal
-  aimed at a locked site is wasted, and caps that factor at `LOCK_SCALE_CAP`
-  $= 4$. With every structural site locked, the cap can bind.
-- **What is returned.** The same state refinement would inject
-  ([`RefineKeep`](./refinement.md#which-state-of-the-walk-gets-injected),
-  `Last` by default), or nothing if the walk ends where it started. Like
-  refinement, a short walk's end state is local climbing *on* $\pi_\beta$, not
-  a draw *from* it ([What is not sampled](./target.md#what-is-not-sampled-from-this)).
-- **Non-inserting.** Nothing enters the pool. A performance gesture is not a
-  candidate until the player keeps it.
+| Wander | Steps | $\sigma$ | Farthest knob moved (12 presets) |
+|---|---|---|---|
+| gentle drift | 8 | 0.05 | 0.06–0.14 |
+| mid drift | 18 | 0.08 | 0.15–0.33 |
+| roam | 40 | 0.15 | 0.25–0.61 |
+
+(`cargo run -p auracle-session --example drift_distance --release`.) The walk
+returns its end state, or nothing if it ends where it started. Like
+refinement, a short walk's end state is local movement *on* $\pi_\beta$, not a
+draw *from* it ([What is not sampled](./target.md#what-is-not-sampled-from-this)).
+Nothing enters the pool: a performance gesture is not a candidate until the
+player keeps it.
+
+**The wiring survives a small drift.** The named controls are a linear model
+measured with 0.08 knob steps, so the instrument re-measures them only when
+some knob has left a 0.12 neighbourhood of where they were measured. A gentle
+drift usually stays inside and costs nothing; before, every glide was followed
+by a full re-measure of about 46 renders, which in *drift* kept the worker busy
+much of the time and queued offers behind it.
 
 The instrument then glides the knobs from where they are to the returned values
 along a smoothstep, $v(t) = v_0 + (v_1 - v_0)(3u^2 - 2u^3)$, over 2 to 6

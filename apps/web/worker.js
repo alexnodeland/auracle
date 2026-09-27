@@ -1320,7 +1320,7 @@ async function dispatch(m) {
       break;
     case "perform_drift":
       performReply(m, "perform_drifted", "drift", true, () =>
-        JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12)));
+        JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12, m.sigma || 0.05)));
       break;
     case "perform_offer":
       performReply(m, "perform_offered", "offer", true, () =>

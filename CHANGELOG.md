@@ -94,6 +94,17 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Changed — Wander drifts, instead of jumping and gliding
+
+Measured over 12 presets, an 8-step "drift" moved some knob by 0.3–0.85 of
+its range: the walk was refinement's, fugue's adaptive single-site kernel,
+which starts every fresh chain with a wide proposal. Drift is now its own
+local Metropolis walk on the live knobs — a reflected Gaussian step, symmetric,
+accepted on the same target — with the step set by the Wander dial: gentle
+drift moves the farthest knob about 0.06–0.14, roam 0.25–0.6. And the named
+controls are no longer re-measured after every glide (~46 renders), only once
+a knob has left the 0.12 neighbourhood their linear model was measured in.
+
 ### Changed — named controls aim at how a sound usually moves, not at one axis
 
 A census of the patches a new player actually meets (the first 24 of a fresh
