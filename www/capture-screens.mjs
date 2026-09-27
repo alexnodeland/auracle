@@ -370,8 +370,13 @@ async function pickPatch(page) {
     name: e.querySelector(".bi-name")?.textContent.trim(),
     pct: parseInt(e.querySelector(".bi-pct")?.textContent, 10) || 0,
   })));
+  // The patch already on the bench first, when it is in the running: a second
+  // run on a --profile then shows the same patch rather than rating another.
+  const bench = await page.evaluate(() => window.__aur?.wb?.subjectId);
+  const benchAt = rows.findIndex((r) => r.id === `bank-row-${bench}`);
+  const order = PATCH ? rows : benchAt >= 1 ? [rows[benchAt], ...rows.slice(1).filter((_, i) => i + 1 !== benchAt)] : rows.slice(1);
   let best = null;
-  for (const r of PATCH ? rows : rows.slice(1)) {
+  for (const r of order) {
     if (PATCH && r.name !== PATCH) continue;
     const shape = await openRow(page, r.id, r.name);
     log(`    ${r.name} (${r.pct}%): ${shape.modules} modules, ${shape.mod} mod cables`);
@@ -431,6 +436,25 @@ async function groom(page) {
     await page.waitForTimeout(700);
   }
   log(`    zoomed in; still under the silkscreen floor: ${(await page.$eval("#rack-svg", (s) => s.dataset.illegible)) || "nothing"}`);
+  // ⌘= zooms about the frame's centre, which is not the patch's: a patch that
+  // fits the frame's height can still come out with its top row's titles
+  // under the frame's top edge. Centred with the wheel, which pans the rack.
+  const fit = await page.evaluate(() => {
+    const f = document.getElementById("rack-frame").getBoundingClientRect();
+    const boxes = [...document.querySelectorAll("#rack-svg .rack-plates > g[data-kind], #rack-svg .rack-controls > g.mod-group")]
+      .map((g) => g.getBoundingClientRect()).filter((r) => r.height > 0);
+    if (!boxes.length) return null;
+    const top = Math.min(...boxes.map((r) => r.top));
+    const bottom = Math.max(...boxes.map((r) => r.bottom));
+    return { fits: bottom - top <= f.height - 24, dy: Math.round((top + bottom) / 2 - (f.top + f.bottom) / 2), cx: f.left + f.width / 2, cy: f.top + f.height / 2 };
+  });
+  if (fit && fit.fits && Math.abs(fit.dy) > 2) {
+    await page.mouse.move(fit.cx, fit.cy);
+    await page.mouse.wheel(0, fit.dy);
+    await page.waitForTimeout(500);
+    await page.mouse.move(PARK.x, PARK.y);
+    log(`    centred the patch in the frame (${fit.dy > 0 ? "up" : "down"} ${Math.abs(fit.dy)}px)`);
+  }
   return row;
 }
 

@@ -1,0 +1,305 @@
+{
+ "film": "playing",
+ "fps": 30,
+ "duration": 165.714,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "intro",
+   "t0": 0.0,
+   "t1": 7.851,
+   "music": "loop_a"
+  },
+  {
+   "id": "keys",
+   "t0": 7.857,
+   "t1": 25.606,
+   "music": null
+  },
+  {
+   "id": "touch",
+   "t0": 25.714,
+   "t1": 36.665,
+   "music": null
+  },
+  {
+   "id": "controls",
+   "t0": 37.143,
+   "t1": 56.714,
+   "music": null
+  },
+  {
+   "id": "xy",
+   "t0": 57.143,
+   "t1": 63.877,
+   "music": null
+  },
+  {
+   "id": "wander",
+   "t0": 64.286,
+   "t1": 80.453,
+   "music": "loop_b"
+  },
+  {
+   "id": "offer",
+   "t0": 80.714,
+   "t1": 100.034,
+   "music": null
+  },
+  {
+   "id": "keep",
+   "t0": 100.714,
+   "t1": 110.031,
+   "music": null
+  },
+  {
+   "id": "dock",
+   "t0": 110.714,
+   "t1": 133.371,
+   "music": null
+  },
+  {
+   "id": "midi",
+   "t0": 133.571,
+   "t1": 146.157,
+   "music": null
+  },
+  {
+   "id": "booth",
+   "t0": 146.429,
+   "t1": 154.838,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 155.0,
+   "t1": 165.714,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "intro1",
+   "text": "This is Auracle as an instrument, with chords, lines and swells under your hands.",
+   "beat": "intro",
+   "t0": 1.5,
+   "t1": 6.951
+  },
+  {
+   "id": "keys1",
+   "text": "Two rows of the computer keyboard play notes, with Z and X for octaves.",
+   "beat": "keys",
+   "t0": 8.057,
+   "t1": 13.328
+  },
+  {
+   "id": "keys2",
+   "text": "Hold Shift for an accent.",
+   "beat": "keys",
+   "t0": 13.728,
+   "t1": 15.546
+  },
+  {
+   "id": "keys3",
+   "text": "On the screen keys, strike lower down for a harder note.",
+   "beat": "keys",
+   "t0": 15.946,
+   "t1": 20.126
+  },
+  {
+   "id": "keys4",
+   "text": "A MIDI keyboard brings velocity, pitch bend and the sustain pedal.",
+   "beat": "keys",
+   "t0": 20.526,
+   "t1": 24.706
+  },
+  {
+   "id": "touch1",
+   "text": "In PERFORM, the touch row lets velocity play timbre as well as level.",
+   "beat": "touch",
+   "t0": 25.914,
+   "t1": 30.822
+  },
+  {
+   "id": "touch2",
+   "text": "With Bright on touch, soft notes play darker and hard notes brighter.",
+   "beat": "touch",
+   "t0": 31.222,
+   "t1": 35.765
+  },
+  {
+   "id": "controls1",
+   "text": "The six named controls are your expression, and they mean the same thing on every patch.",
+   "beat": "controls",
+   "t0": 37.343,
+   "t1": 43.341
+  },
+  {
+   "id": "controls2",
+   "text": "Turning them never interrupts a note.",
+   "beat": "controls",
+   "t0": 43.741,
+   "t1": 45.923
+  },
+  {
+   "id": "controls3",
+   "text": "Hold a pad chord and ride Bright up slowly for a swell.",
+   "beat": "controls",
+   "t0": 46.323,
+   "t1": 50.686
+  },
+  {
+   "id": "controls4",
+   "text": "A long press on a control plays what it does on this patch.",
+   "beat": "controls",
+   "t0": 51.086,
+   "t1": 55.814
+  },
+  {
+   "id": "xy1",
+   "text": "The XY pad puts two of them under one finger, Bright across and Motion up.",
+   "beat": "xy",
+   "t0": 57.343,
+   "t1": 62.977
+  },
+  {
+   "id": "wander1",
+   "text": "Wander plays along with you.",
+   "beat": "wander",
+   "t0": 64.486,
+   "t1": 66.304
+  },
+  {
+   "id": "wander2",
+   "text": "A little, and ideas appear in B. More, and the knobs drift toward your taste.",
+   "beat": "wander",
+   "t0": 66.704,
+   "t1": 72.818
+  },
+  {
+   "id": "wander3",
+   "text": "All the way up, it roams.",
+   "beat": "wander",
+   "t0": 73.218,
+   "t1": 75.58
+  },
+  {
+   "id": "wander4",
+   "text": "Touch anything and it waits. Freeze holds it still.",
+   "beat": "wander",
+   "t0": 75.98,
+   "t1": 79.553
+  },
+  {
+   "id": "offer1",
+   "text": "In the middle of a phrase, press Offer.",
+   "beat": "offer",
+   "t0": 80.914,
+   "t1": 84.003
+  },
+  {
+   "id": "offer2",
+   "text": "A variant grows into B and joins the chord you are holding.",
+   "beat": "offer",
+   "t0": 84.403,
+   "t1": 88.767
+  },
+  {
+   "id": "offer3",
+   "text": "Hold Peek to hear it, or ride Blend across at matched loudness.",
+   "beat": "offer",
+   "t0": 89.167,
+   "t1": 93.711
+  },
+  {
+   "id": "offer4",
+   "text": "Take it, or ask for another. Once heard, either answer teaches it.",
+   "beat": "offer",
+   "t0": 94.111,
+   "t1": 99.134
+  },
+  {
+   "id": "keep1",
+   "text": "Keep marks the sound as home.",
+   "beat": "keep",
+   "t0": 100.914,
+   "t1": 103.096
+  },
+  {
+   "id": "keep2",
+   "text": "Back glides you there, so you can wander out for a solo and come back.",
+   "beat": "keep",
+   "t0": 103.496,
+   "t1": 109.131
+  },
+  {
+   "id": "dock1",
+   "text": "In the dock, Hold latches a chord and Unison stacks all four voices on one note.",
+   "beat": "dock",
+   "t0": 110.914,
+   "t1": 116.912
+  },
+  {
+   "id": "dock2",
+   "text": "Glide slides a line from note to note, and chords stay clean.",
+   "beat": "dock",
+   "t0": 117.312,
+   "t1": 121.856
+  },
+  {
+   "id": "dock3",
+   "text": "The arpeggiator plays the held chord up, down or both ways, in time with the tempo.",
+   "beat": "dock",
+   "t0": 122.256,
+   "t1": 128.434
+  },
+  {
+   "id": "dock4",
+   "text": "Sync puts the patch's step sequencers on that tempo too.",
+   "beat": "dock",
+   "t0": 128.834,
+   "t1": 132.471
+  },
+  {
+   "id": "midi1",
+   "text": "A controller's first eight knobs claim the eight controls, and Learn remaps any of them.",
+   "beat": "midi",
+   "t0": 133.771,
+   "t1": 139.406
+  },
+  {
+   "id": "midi2",
+   "text": "Pressure pushes Bright, the mod wheel pushes Motion, and MIDI clock sets the tempo.",
+   "beat": "midi",
+   "t0": 139.806,
+   "t1": 145.257
+  },
+  {
+   "id": "booth1",
+   "text": "Booth mode plays by itself when no one is at the keys.",
+   "beat": "booth",
+   "t0": 146.629,
+   "t1": 150.992
+  },
+  {
+   "id": "booth2",
+   "text": "The first touch hands the instrument back.",
+   "beat": "booth",
+   "t0": 151.392,
+   "t1": 153.938
+  },
+  {
+   "id": "outro1",
+   "text": "Nothing in PERFORM opens a dialog, because a player in the middle of a phrase cannot answer one.",
+   "beat": "outro",
+   "t0": 155.2,
+   "t1": 161.925
+  }
+ ],
+ "cues": {}
+}
