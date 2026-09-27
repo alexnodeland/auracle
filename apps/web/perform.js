@@ -684,7 +684,12 @@ export function createPerform(host) {
         renderOffer(whyNot(m, m.offer, "no offer beat this patch — try again, or loosen a lock"));
         return true;
       }
-      state.offer = { json: JSON.stringify(m.offer.tree), makeup: m.offer.makeup, taste: !!m.offer.taste };
+      state.offer = {
+        json: JSON.stringify(m.offer.tree),
+        makeup: m.offer.makeup,
+        taste: !!m.offer.taste,
+        changes: host.describeDiff && m.offer.diff ? host.describeDiff(m.offer.diff) : "",
+      };
       const live = host.live();
       if (live) {
         live.bPatch(state.offer.json, state.offer.makeup);
@@ -1055,7 +1060,11 @@ export function createPerform(host) {
     if (msg) body.textContent = msg;
     else if (state.offer) {
       const src = state.offer.taste ? "grown toward your taste" : "drawn from the grammar — it has not learned your taste yet";
-      body.textContent = `an offer is waiting, ${src}${state.offerWhy ? ` (${state.offerWhy})` : ""} — hold Peek to hear it, slide Blend, or Take it`;
+      // What changed first — it is the thing a player decides on — then
+      // where it came from, then what to do with it.
+      body.innerHTML = "";
+      if (state.offer.changes) body.append(el("b", "pf-offer-what", state.offer.changes), document.createTextNode(" · "));
+      body.append(document.createTextNode(`${src}${state.offerWhy ? ` (${state.offerWhy})` : ""} — hold Peek to hear it, slide Blend, or Take it`));
     }
     else body.textContent = "no offer — press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);

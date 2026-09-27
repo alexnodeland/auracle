@@ -2771,7 +2771,7 @@ input, textarea, .bi-rename {
 .style-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .style-chip .sc-name {
   background: transparent; border: none; outline: none;
-  color: var(--silk); font: var(--t-body)/1.4 var(--font-mono); width: 168px;
+  color: var(--silk); font: var(--t-body)/1.4 var(--font-mono); width: auto; max-width: 30ch;
 }
 .style-chip .sc-share { font-size: var(--t-micro); color: var(--silk-dim); }
 .style-chip .sc-play {
@@ -4355,3 +4355,4 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 
 /* A bred child that landed below its parent: the sampler exploring, said so. */
 .lin-explore { color: var(--silk-dim); font-style: italic; border-bottom: 1px dotted var(--silk-mute); cursor: help; }
+.pf-offer-what { color: var(--phos-b); font-style: normal; font-weight: 600; }

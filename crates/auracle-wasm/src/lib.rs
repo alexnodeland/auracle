@@ -910,7 +910,7 @@ impl WasmEngine {
     }
 
     /// A structural offer from the performed state: the locked walk with only
-    /// the player's locks. Returns `{tree, makeup, taste}` — makeup so the
+    /// the player's locks. Returns `{tree, makeup, taste, diff}` — makeup so the
     /// offer is heard at matched loudness, taste as for [`Self::perform_drift`]
     /// — or `{reason}` / `null` as there. Inserts nothing into the pool.
     pub fn perform_offer(
@@ -934,8 +934,16 @@ impl WasmEngine {
         let makeup = featurize_memo(&t, &self.engine.cfg.phrase, self.engine.memo(), false)
             .map(|(cf, _)| makeup_linear(cf.features.gain_db))
             .unwrap_or(1.0);
-        serde_json::json!({ "tree": t, "makeup": makeup, "taste": self.engine.has_taste() })
-            .to_string()
+        // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
+        // kHz") instead of only "an offer is waiting".
+        let diff = auracle_grammar::tree_diff(&tree, &t);
+        serde_json::json!({
+            "tree": t,
+            "makeup": makeup,
+            "taste": self.engine.has_taste(),
+            "diff": diff,
+        })
+        .to_string()
     }
 
     /// Why the most recent `refine_seed`/`refine_from` returned what it did,

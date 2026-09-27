@@ -1150,6 +1150,9 @@ worker.onmessage = (e) => {
     }
     case "calibration": {
       engineCalib = m.calib;
+      // The menubar's count was drawn on the vote's status, before this reply
+      // — one forecast behind TRUST ("7 of 20" beside "8 OF 20").
+      renderSkill();
       if (currentView === "taste") drawTaste();
       break;
     }
@@ -2769,6 +2772,8 @@ async function bootPerform() {
     // Wirings are measured against the taste model; a new observation can
     // move the standardizer they were measured in, so it keys their cache.
     tasteRev: () => status.observations,
+    // The offer strip names what B changed, in the lineage's words.
+    describeDiff: (diff) => humanizeDiff(diff),
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
@@ -7983,7 +7988,7 @@ function scopeCapBezel(shell, fr) {
  *  A fit that lands the patch beside the scope instead of under it is the
  *  cheap ninety percent: the overlap can still be created by hand, with a
  *  pan or a zoom, and that is a place the player put it. */
-function scopeReserve() {
+function scopeReserve(box) {
   const z = { l: 0, r: 0, t: 0, b: 0 };
   const shell = $("scope-shell");
   const frame = $("rack-frame");
@@ -8001,7 +8006,23 @@ function scopeReserve() {
   // shrunken bezel eats it — where skipping the reserve is still the right
   // answer, because there is no fit left to protect.
   if (Math.min(overW / fr.width, overH / fr.height) > SCOPE_CAP + 0.005) return z;
-  if (overW <= overH) {
+  // Which axis costs less is a question about the patch, not about pixels:
+  // clearing 100 px of height is cheap for a one-row chain and costs a two-row
+  // patch a third of its size (First Bass drew at 0.63×, its labels ~6 px).
+  // With the box in hand, take the side that leaves the larger fit — and if
+  // even that shrinks the patch by more than a fifth, reserve nothing: the
+  // scope ducks out of the way of any plate it would cover (below), and a
+  // legible rack is worth more than an unobstructed corner.
+  let sideW = overW <= overH;
+  if (box && box.w > 0 && box.h > 0) {
+    const zAt = (dw, dh) => Math.min((fr.width - 40 - dw) / box.w, (fr.height - 40 - dh) / box.h);
+    const free = zAt(0, 0);
+    const byW = zAt(overW, 0);
+    const byH = zAt(0, overH);
+    sideW = byW >= byH;
+    if (Math.max(byW, byH) < free * 0.8) return z;
+  }
+  if (sideW) {
     if (sr.left - fr.left < fr.right - sr.right) z.l = overW; else z.r = overW;
   } else {
     if (sr.top - fr.top < fr.bottom - sr.bottom) z.t = overH; else z.b = overH;
@@ -8071,7 +8092,7 @@ function scheduleScopeDuck() {
 function fitBox(box, animate, coMotion) {
   const { w, h } = frameSize();
   const pad = 20;
-  const ins = scopeReserve();
+  const ins = scopeReserve(box);
   const availW = Math.max(80, w - pad * 2 - ins.l - ins.r);
   const availH = Math.max(80, h - pad * 2 - ins.t - ins.b);
   // No floor on the way down. Whatever it takes to hold the box is what the
@@ -14804,6 +14825,11 @@ function renderStyleChips() {
       `<span class="sc-share">${Math.round(s.share * 100)}%</span>` +
       `<button class="sc-play" title="Audition this style's exemplar">▶</button>`;
     const input = chip.querySelector(".sc-name");
+    // Sized to its text (or placeholder): a fixed 168 px clipped an
+    // auto-name like "env mods + sidechained" mid-word.
+    const fit = () => { input.size = Math.max(6, (input.value || input.placeholder).length + 1); };
+    fit();
+    input.addEventListener("input", fit);
     input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
     input.addEventListener("keyup", (e) => e.stopPropagation());
     input.onblur = () => send({ type: "set_style_name", k, name: input.value });
@@ -15440,7 +15466,10 @@ function humanizeDiff(diff) {
   if (changed.length > 3) parts.push(`+${changed.length - 3} more`);
   const struct = (list, sign) => {
     const ops = list.filter((d) => d.addr.endsWith("#op") || d.addr.endsWith("#src") || d.addr.endsWith("#mod"));
-    for (const d of ops.slice(0, 2)) parts.push(`${sign}${sign === "+" ? d.after : d.before}`);
+    // "no mod" / "none" are the empty slot, not a module: filling a slot
+    // read as "+follower, −no mod".
+    const named = ops.filter((d) => !/^(no\b|none$)/.test(sign === "+" ? d.after : d.before));
+    for (const d of named.slice(0, 2)) parts.push(`${sign}${sign === "+" ? d.after : d.before}`);
   };
   struct(added, "+");
   struct(removed, "−");
@@ -16579,6 +16608,9 @@ function renderWarmStart(all) {
   $("warm-go").disabled = true;
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
+  // A modal that leaves focus on <body> cannot be reached from the keyboard.
+  // Land on the first ▶: hearing comes before choosing.
+  grid.querySelector(".wi-play")?.focus();
 }
 
 // Hearing a preset means having it: the only way the engine can render one is
