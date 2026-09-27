@@ -8,6 +8,41 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — φ hears how fast a sound moves, not only how much
+
+A texture is mostly its motion, and φ could not tell a slow sweep from a fast
+flutter. Measured on one saw-into-ladder patch under a ladder of cutoff
+modulations (`motion_probe` example), `held_centroid_std` scored a 0.55 Hz
+sweep and a 13 Hz flutter at 0.098 and 0.094, and stepped random motion like a
+6 Hz LFO. A linear taste model on those coordinates cannot represent "slow
+breathing, not fast wobble" — the first thing anyone says about a pad.
+
+Three coordinates split the held note's motion by **modulation rate**:
+`motion_slow` (0.5–2 Hz), `motion_mid` (2–8 Hz) and `motion_fast` (8–30 Hz),
+each the log standard deviation of the detrended brightness and level
+trajectories in that band. Hearing groups fluctuation this way (Dau et al.
+1997), and band-wise modulation power is much of what makes a texture
+recognisable (McDermott & Simoncelli 2011). On the probe ladder the band that
+reads highest follows the rate — 0.55 Hz lands in slow, 2.7 Hz in mid, 13 Hz in
+fast — and a static tone reads the floor in all three, exactly.
+
+No new render: the tracks come from the held note the phrase already plays,
+at a finer hop than the spectral features use (their 43 frames/s would fold the
+fast band). Old votes read the new columns as "no evidence" through the
+existing projection by name, so no tag bump and no migration.
+
+**Regularity was tried and is not shipped.** Telling a periodic sweep from a
+random walk needs several cycles in the window; in the held span's 1.55 s the
+two candidate measures separate them cleanly at 2.7 Hz and above and not at
+all below 1.5 Hz, which is exactly where evolving textures live. It waits for a
+longer stimulus rather than teaching the model a guess.
+
+Three measurement examples come with it, all rerunnable: `motion_probe` (the
+ladder), `leverage_probe` (how concentrated a patch's audible leverage is
+across its knobs — median 68% in the top four, 94% in the top eight, over the
+61 presets) and `jacobian_probe` (∂φ/∂knob per preset, the raw material for
+named performance controls).
+
 ### Changed — the acquisition question was measured, and the tie does not break
 
 BALD ties uniform random pairing at session horizon, and the open question named

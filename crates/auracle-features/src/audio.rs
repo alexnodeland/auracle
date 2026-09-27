@@ -119,6 +119,15 @@ pub struct AudioFeatures {
     /// the held note's — intermodulation and mud when voices stack. 0.0 when
     /// the phrase has no chord note.
     pub chord_flatness_delta: f64,
+    /// Held-note motion energy in the **slow** modulation band, 0.5–2 Hz:
+    /// sweeps and breathing. See [`motion_bands`] for the whole family.
+    pub motion_slow: f64,
+    /// Held-note motion energy in the **mid** band, 2–8 Hz: pulsing and
+    /// tremolo, where fluctuation strength peaks.
+    pub motion_mid: f64,
+    /// Held-note motion energy in the **fast** band, 8–30 Hz: flutter and
+    /// the onset of roughness.
+    pub motion_fast: f64,
 }
 
 impl AudioFeatures {
@@ -140,7 +149,7 @@ impl AudioFeatures {
     /// instead of being silently mixed into a standardizer they were never
     /// commensurable with. Bump the tag whenever
     /// [`PhraseSpec::default`](crate::phrase::PhraseSpec) changes audibly.
-    pub const NAMES: [&'static str; 15] = [
+    pub const NAMES: [&'static str; 18] = [
         "centroid_mean:p2",
         "centroid_std:p2",
         "rolloff_mean:p2",
@@ -156,6 +165,9 @@ impl AudioFeatures {
         "held_centroid_std:p2",
         "high_ratio:p2",
         "chord_flatness_delta:p2",
+        "motion_slow:p2",
+        "motion_mid:p2",
+        "motion_fast:p2",
     ];
 
     /// Flatten to a vector in [`Self::NAMES`] order.
@@ -176,6 +188,9 @@ impl AudioFeatures {
             self.held_centroid_std,
             self.high_ratio,
             self.chord_flatness_delta,
+            self.motion_slow,
+            self.motion_mid,
+            self.motion_fast,
         ]
     }
 }
@@ -453,6 +468,10 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         })
         .unwrap_or(0.0);
 
+    let [motion_slow, motion_mid, motion_fast] = held.map_or([MOTION_FLOOR; 3], |h| {
+        motion_bands(x, sr, h.on_start, h.on_end)
+    });
+
     AudioFeatures {
         centroid_mean: mean(&centroids),
         centroid_std: std(&centroids),
@@ -473,7 +492,187 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         held_centroid_std,
         high_ratio,
         chord_flatness_delta,
+        motion_slow,
+        motion_mid,
+        motion_fast,
     }
+}
+
+/// Analysis frame of the motion tracks. The same size as the spectral frame,
+/// so a track sample means the same spectrum the other coordinates see.
+const MOTION_FRAME: usize = 2048;
+/// Hop of the motion tracks: ~172 frames/s at 44.1 kHz, so the fast band's
+/// 30 Hz ceiling sits well under the track's Nyquist. The spectral features'
+/// own hop ([`HOP`]) gives 43 frames/s, whose Nyquist (21.5 Hz) would fold
+/// the fast band onto itself.
+const MOTION_HOP: usize = 256;
+/// Seconds skipped at the held note's onset: the attack is an *event*, and
+/// its one-off sweep would otherwise read as motion in every band.
+const MOTION_SKIP_S: f64 = 0.25;
+/// Shortest analysable span. Below this the slow band cannot hold a single
+/// cycle and every band is reported at the floor.
+const MOTION_MIN_S: f64 = 0.75;
+/// The three modulation bands, Hz. Octave-ish and contiguous: breathing,
+/// pulsing, flutter.
+const MOTION_BANDS: [(f64, f64); 3] = [(0.5, 2.0), (2.0, 8.0), (8.0, 30.0)];
+/// Variance floor, octaves²: a std of 0.01 octave, far under any audible
+/// wobble. It keeps the log finite and makes "still" one value rather than a
+/// spray of numerical noise.
+const MOTION_VAR_FLOOR: f64 = 1.0e-4;
+/// The value a band reads when there is nothing to measure: the floor.
+pub const MOTION_FLOOR: f64 = -6.643_856_189_774_724; // 0.5·log2(1e-4)
+
+/// Motion energy of the held note in three modulation bands.
+///
+/// ## Why
+///
+/// [`AudioFeatures::held_centroid_std`] says *how much* a held note moves.
+/// It cannot say how **fast**: measured on one saw-into-ladder patch, a
+/// 0.55 Hz sweep and a 13 Hz flutter score 0.098 and 0.094, and stepped
+/// random motion scores like a 6 Hz LFO (`motion_probe` example). A linear
+/// taste model therefore cannot represent "slow breathing, not fast wobble",
+/// which is the first thing anyone says about a texture. Hearing groups
+/// amplitude and spectral fluctuation by *modulation rate* (Dau et al. 1997's
+/// modulation filterbank; McDermott & Simoncelli 2011 found band-wise
+/// modulation power is what makes a texture recognisable), so φ does too.
+///
+/// ## What
+///
+/// Two trajectories over the held span, starting [`MOTION_SKIP_S`] after
+/// onset: brightness as `log2` spectral centroid (octaves above 20 Hz) and
+/// level as `log2` frame RMS (one unit = 6 dB, one doubling — the same
+/// currency as an octave of brightness). Each is linearly detrended — a slow
+/// ramp across the span is drift, and [`AudioFeatures::held_centroid_std`]
+/// already carries it — Hann-windowed and transformed. A band's variance is
+/// the detrended variance apportioned by that band's share of the modulation
+/// spectrum, summed over the two trajectories, and reported as
+/// `0.5·log2(var + floor)`: a log standard deviation in octaves.
+///
+/// Logged because audible motion depth is ratio-scaled, and because a linear
+/// model then reads each coordinate as "how much of this *kind* of motion".
+/// A static tone reads [`MOTION_FLOOR`] in all three.
+///
+/// ## What it cannot do
+///
+/// It does not say whether motion is *regular*. That needs several cycles in
+/// the window, and in the standard phrase's 1.55 s the slow band holds under
+/// three — measured, no formula separates a slow LFO from a slow random walk
+/// there. It waits for a longer stimulus rather than shipping a coordinate
+/// that guesses.
+pub fn motion_bands(x: &[f64], sr: f64, on_start: usize, on_end: usize) -> [f64; 3] {
+    let lo = on_start + (MOTION_SKIP_S * sr) as usize;
+    let hi = on_end.min(x.len());
+    if hi <= lo || ((hi - lo) as f64) < MOTION_MIN_S * sr {
+        return [MOTION_FLOOR; 3];
+    }
+    let fft = FFT_PLAN.with(Arc::clone);
+    let hann: Vec<f64> = (0..MOTION_FRAME)
+        .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / MOTION_FRAME as f64).cos())
+        .collect();
+    let bin_hz = sr / MOTION_FRAME as f64;
+    let mut bright = Vec::new();
+    let mut level = Vec::new();
+    let mut last_c = 0.0;
+    let mut pos = lo;
+    while pos + MOTION_FRAME <= hi {
+        let frame = &x[pos..pos + MOTION_FRAME];
+        let mut buf: Vec<Complex<f64>> = frame
+            .iter()
+            .zip(&hann)
+            .map(|(s, w)| Complex::new(s * w, 0.0))
+            .collect();
+        fft.process(&mut buf);
+        let mag: Vec<f64> = buf[..MOTION_FRAME / 2].iter().map(|c| c.norm()).collect();
+        let msum: f64 = mag.iter().sum();
+        // A silent frame has no centroid; hold the last one so a gap reads as
+        // "no change in brightness" rather than as a leap to the axis floor.
+        if msum > 1e-9 {
+            let hz = mag
+                .iter()
+                .enumerate()
+                .map(|(i, m)| i as f64 * bin_hz * m)
+                .sum::<f64>()
+                / msum;
+            last_c = (hz.max(F_ANCHOR) / F_ANCHOR).log2();
+        }
+        bright.push(last_c);
+        let rms = (frame.iter().map(|s| s * s).sum::<f64>() / MOTION_FRAME as f64).sqrt();
+        level.push((rms + 1e-5).log2());
+        pos += MOTION_HOP;
+    }
+    if bright.len() < 16 {
+        return [MOTION_FLOOR; 3];
+    }
+    let fps = sr / MOTION_HOP as f64;
+    let a = band_variances(&bright, fps);
+    let b = band_variances(&level, fps);
+    let mut out = [MOTION_FLOOR; 3];
+    for (k, o) in out.iter_mut().enumerate() {
+        *o = 0.5 * (a[k] + b[k] + MOTION_VAR_FLOOR).log2();
+    }
+    out
+}
+
+/// Detrended variance of `track`, apportioned over [`MOTION_BANDS`] by each
+/// band's share of the (Hann-windowed) modulation power spectrum.
+fn band_variances(track: &[f64], fps: f64) -> [f64; 3] {
+    let n = track.len();
+    // Least-squares line through (i, y_i); the residual is what moves.
+    let nf = n as f64;
+    let mx = (nf - 1.0) / 2.0;
+    let my = track.iter().sum::<f64>() / nf;
+    let (mut sxy, mut sxx) = (0.0, 0.0);
+    for (i, y) in track.iter().enumerate() {
+        let dx = i as f64 - mx;
+        sxy += dx * (y - my);
+        sxx += dx * dx;
+    }
+    let slope = if sxx > 0.0 { sxy / sxx } else { 0.0 };
+    let resid: Vec<f64> = track
+        .iter()
+        .enumerate()
+        .map(|(i, y)| y - my - slope * (i as f64 - mx))
+        .collect();
+    let var = resid.iter().map(|r| r * r).sum::<f64>() / nf;
+    if var <= 0.0 {
+        return [0.0; 3];
+    }
+    // Zero-pad to a power of two at least 4× the span, so a 1.55 s track
+    // lands bins every ~0.1 Hz and the 0.5 Hz band edge is resolved.
+    let len = (4 * n).next_power_of_two();
+    let mut buf: Vec<Complex<f64>> = (0..len)
+        .map(|i| {
+            if i < n {
+                let w = 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / (n - 1) as f64).cos();
+                Complex::new(resid[i] * w, 0.0)
+            } else {
+                Complex::new(0.0, 0.0)
+            }
+        })
+        .collect();
+    FftPlanner::<f64>::new()
+        .plan_fft_forward(len)
+        .process(&mut buf);
+    let df = fps / len as f64;
+    let power: Vec<f64> = buf[1..len / 2].iter().map(|c| c.norm_sqr()).collect();
+    let total: f64 = power.iter().sum();
+    if total <= 0.0 {
+        return [0.0; 3];
+    }
+    let mut out = [0.0; 3];
+    for (k, (flo, fhi)) in MOTION_BANDS.iter().enumerate() {
+        let band: f64 = power
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| {
+                let f = (i + 1) as f64 * df;
+                f >= *flo && f < *fhi
+            })
+            .map(|(_, p)| p)
+            .sum();
+        out[k] = var * band / total;
+    }
+    out
 }
 
 #[cfg(test)]
@@ -590,5 +789,51 @@ mod tests {
         );
         // The fixture is only meaningful if there is flux to compare at all.
         assert!(level > 0.0);
+    }
+
+    /// Each modulation band answers to its own rate and only its own rate.
+    ///
+    /// A 440 Hz tone amplitude-modulated at 1, 4 and 15 Hz — one rate inside
+    /// each band — held for 1.8 s like the standard phrase's first note. The
+    /// band containing the rate must read highest, and a static tone must
+    /// read the floor in all three, exactly: "still" is one value.
+    #[test]
+    fn motion_bands_separate_rate() {
+        let n = (1.8 * SR) as usize;
+        let am = |rate: f64, depth: f64| -> Vec<f64> {
+            (0..n)
+                .map(|i| {
+                    let t = i as f64 / SR;
+                    let g = 1.0 + depth * (TAU * rate * t).sin();
+                    0.3 * g * (TAU * 440.0 * t + 0.3).sin()
+                })
+                .collect()
+        };
+        let bands = |x: &[f64]| motion_bands(x, SR, 0, n);
+        let still = bands(&am(1.0, 0.0));
+        for b in still {
+            assert!(
+                (b - MOTION_FLOOR).abs() < 1e-6,
+                "static tone moved: {still:?}"
+            );
+        }
+        for (rate, want) in [(1.0, 0), (4.0, 1), (15.0, 2)] {
+            let m = bands(&am(rate, 0.5));
+            let top = (0..3).max_by(|a, b| m[*a].total_cmp(&m[*b])).unwrap();
+            assert_eq!(top, want, "{rate} Hz AM landed in band {top}: {m:?}");
+            assert!(
+                m[want] > MOTION_FLOOR + 3.0,
+                "{rate} Hz AM barely registered: {m:?}"
+            );
+        }
+    }
+
+    /// A span too short to hold a slow cycle reports the floor rather than a
+    /// number computed from a handful of frames.
+    #[test]
+    fn motion_bands_floor_on_short_spans() {
+        let x = sine(440.0, SR as usize, 0.5);
+        let m = motion_bands(&x, SR, 0, (0.5 * SR) as usize);
+        assert_eq!(m, [MOTION_FLOOR; 3]);
     }
 }

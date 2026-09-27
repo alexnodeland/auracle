@@ -13868,6 +13868,7 @@ const NICE_NAMES = {
   tail_ratio: "long tail", bass_fraction: "bass weight",
   held_centroid_std: "held-note motion", high_ratio: "speaks up high",
   chord_flatness_delta: "stack mud",
+  motion_slow: "slow motion", motion_mid: "pulsing", motion_fast: "flutter",
   // Structural coordinates. Several are FAMILIES — one column standing for
   // several modules — so the label has to name the family rather than any one
   // member, or the WHY line credits a wavefolder for a bitcrusher's evidence.

@@ -139,6 +139,17 @@ and flux, in the definitions
 for why octave-based frequency axes and segment-local measurements are the
 right coordinates for a *perceptual* feature vector.
 
+**Dau, T., Kollmeier, B. & Kohlrausch, A. (1997).** *Modeling auditory
+processing of amplitude modulation. I. Detection and masking with narrow-band
+carriers.* JASA 102(5), 2892–2905. → The modulation filterbank: hearing sorts
+envelope fluctuation by rate. Why [motion is measured in
+bands](./features/audio.md#motion-bands) and not as one variance.
+
+**McDermott, J. H. & Simoncelli, E. P. (2011).** *Sound texture perception via
+statistics of the auditory periphery.* Neuron 71(5), 926–940. → Band-wise
+modulation power is much of what makes a texture recognisable; the grounding
+for treating motion rate as a first-class axis of taste.
+
 ## Statistics of the feature space
 
 **Belsley, D. A., Kuh, E. and Welsch, R. E. (1980).** *Regression Diagnostics:

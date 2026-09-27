@@ -1,6 +1,6 @@
 # φ_audio — perceptual descriptors
 
-<p class="lede">Fifteen dimensions, kept compact and put on axes a
+<p class="lede">Eighteen dimensions, kept compact and put on axes a
 <em>linear</em> model can express a preference along.</p>
 
 Computed on Hann-windowed frames of the normalized mono render (**2048 samples,
@@ -26,6 +26,9 @@ is finite by construction, because [vetting](../audition/vetting.md) ran first.
 | 12 | `held_centroid_std:p2` | Centroid SD over **the held note's** gate-on span only |
 | 13 | `high_ratio:p2` | $\log$ RMS of the **highest note's** span, relative to the held note's |
 | 14 | `chord_flatness_delta:p2` | Flatness over the **chord note's** span, minus the held note's |
+| 15 | `motion_slow:p2` | Held-note motion energy, 0.5–2 Hz — **sweeps and breathing** |
+| 16 | `motion_mid:p2` | Held-note motion energy, 2–8 Hz — **pulsing and tremolo** |
+| 17 | `motion_fast:p2` | Held-note motion energy, 8–30 Hz — **flutter** |
 
 The `:p2` suffix is the [stimulus generation
 tag](../audition/phrase.md#the-p2-stimulus-tag), and it is the migration
@@ -168,9 +171,61 @@ Does the patch speak in the upper register, or does its filter choke it?
 **`chord_flatness_delta`** = mean flatness over the chord span minus the held
 span. Intermodulation and mud when voices stack.
 
+## Motion bands
+
+`held_centroid_std` says **how much** a held note moves. It cannot say how
+**fast**. Measured on one saw-into-ladder patch under a ladder of cutoff
+modulations (`cargo run -p auracle-features --example motion_probe --release`),
+a 0.55 Hz sweep and a 13 Hz flutter score 0.098 and 0.094, and stepped random
+motion scores like a 6 Hz LFO. A linear model on those coordinates cannot hold
+"slow breathing, not fast wobble" — which is the first thing anyone says about
+a texture.
+
+Hearing sorts fluctuation by **modulation rate**: a filterbank over the
+envelope, not just its variance (Dau, Kollmeier & Kohlrausch 1997), and the
+band-wise modulation power of a sound is much of what makes it recognisable as
+a texture at all (McDermott & Simoncelli 2011). The three coordinates are that
+filterbank, cut to three bands.
+
+Over the held span, starting 250 ms after onset so the attack is not read as
+motion, two trajectories are taken at a 256-sample hop (≈ 172 frames/s — the
+spectral features' own 43 frames/s would fold the fast band): brightness
+$c_t = \log_2(\text{centroid}_t / 20\,\text{Hz})$ in octaves, and level
+$\ell_t = \log_2 \text{RMS}_t$, where one unit is 6 dB — one doubling, the same
+currency as an octave of brightness. Each is linearly detrended (a ramp across
+the span is drift, which `held_centroid_std` already carries), Hann-windowed
+and transformed. With $r$ the detrended residual, $\sigma^2_r$ its variance and
+$P(f)$ its modulation power spectrum, band $B$ gets the variance share
+
+$$
+v_B(r) = \sigma^2_r \cdot \frac{\sum_{f \in B} P(f)}{\sum_{f > 0} P(f)},
+\qquad
+\texttt{motion}_B = \tfrac12 \log_2\!\big(v_B(c) + v_B(\ell) + 10^{-4}\big).
+$$
+
+The result is a log standard deviation in octaves. The floor, $\tfrac12\log_2
+10^{-4} \approx -6.64$, is a hundredth of an octave: a static tone reads it
+exactly in all three bands, so "still" is one value and not numerical noise. A
+phrase whose held span is shorter than 0.75 s reads the floor too.
+
+Measured on the probe ladder, the band that reads highest follows the rate:
+0.55 Hz lands in slow, 2.7 Hz in mid, 13 Hz in fast, and stepped random motion
+spreads across slow and mid as its spectrum says it should.
+
+### What it cannot say
+
+It does not say whether motion is **regular**. Separating a periodic sweep from
+a random walk needs several cycles in the window, and the held span holds fewer
+than three cycles of anything in the slow band. Both candidate measures tried —
+the normalized autocorrelation peak and the harmonic share of the modulation
+spectrum — separate periodic from random cleanly at 2.7 Hz and above, and not
+at all below 1.5 Hz, which is exactly where evolving textures live. A
+coordinate that guesses there would be taught to the model as a measurement,
+so regularity waits for a stimulus with a longer held span.
+
 ## Deliberately compact
 
-Fifteen dimensions is a choice. The model is a mixture of *linear* experts, and
+Eighteen dimensions is a choice. The model is a mixture of *linear* experts, and
 **interpretable axes are the point**: "bright", "noisy", "slow attack", "long
 tail" are things the [DIRECTIONS tab](../../docs/views/taste.html#directions)
 can name and a person can recognise in their own preferences.
