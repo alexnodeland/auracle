@@ -28,6 +28,7 @@ pub mod farm;
 pub mod map;
 pub mod migrate;
 pub mod naming;
+pub mod perform;
 pub mod surrogate;
 
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};

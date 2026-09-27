@@ -85,6 +85,7 @@ const playCounts = new Map();
 // Live instrument state.
 let volume = 0.8;            // JS-owned master volume (DOM slider is a view)
 let live = null;             // from initLiveAudio
+let perform = null;          // from perform.js, once the voices exist
 let livePatchId = null;      // id whose tree the worklet is playing (null = edited)
 let liveLabelText = "no patch";
 let octShift = 0;
@@ -145,6 +146,7 @@ function setLivePatchJson(json, makeup) {
   liveTreeJson = json;
   liveMakeup = makeup;
   liveRev += 1;
+  if (perform) perform.patchChanged(json, makeup);
 }
 
 // The one place the instrument is silenced without touching the player's
@@ -703,6 +705,10 @@ const send = (msg, transfer) => worker.postMessage(msg, transfer || []);
 
 worker.onmessage = (e) => {
   const m = e.data;
+  if (m.type && m.type.startsWith("perform_")) {
+    if (perform) perform.onWorker(m);
+    return;
+  }
   switch (m.type) {
     case "fill_progress": {
       // Monotonic: the restore stage posts {pool:0,target:1}, which used to
@@ -2102,8 +2108,12 @@ function showView(name) {
   // go on swallowing EVOLVE's arrow-key votes.
   if (name !== "play") { disarm(); cancelPending(); }
   currentView = name;
-  for (const v of ["play", "evolve", "taste"]) {
+  for (const v of ["perform", "play", "evolve", "taste"]) {
     $(`view-${v}`).classList.toggle("hidden", v !== name);
+  }
+  if (perform) {
+    if (name === "perform") perform.show();
+    else perform.hide();
   }
   document.querySelectorAll(".viewtab").forEach((t) => {
     const on = t.dataset.view === name;
@@ -2338,10 +2348,50 @@ function healParamMiss(addr) {
   healedRev = liveRev;
 }
 
+// ---------- PERFORM ----------
+// The named controls, in the engine's order (auracle_session::perform::CONTROLS).
+const PERFORM_CONTROLS = [
+  { name: "Bright", low: "dark", high: "bright" },
+  { name: "Snap", low: "bloom", high: "snap" },
+  { name: "Motion", low: "still", high: "restless" },
+  { name: "Body", low: "thin", high: "full" },
+  { name: "Grit", low: "smooth", high: "rough" },
+  { name: "Space", low: "close", high: "far" },
+];
+
+async function bootPerform() {
+  const { createPerform } = await import(`./perform.js?v=${BUILD}`);
+  perform = createPerform({
+    root: $("view-perform"),
+    controls: PERFORM_CONTROLS,
+    ink: INK,
+    send,
+    live: () => live,
+    liveTree: () => ({ json: liveTreeJson, makeup: liveMakeup }),
+    label: () => liveLabelText,
+    locks: () => [...lockedAddrs()],
+    note,
+    logImplicit: (kind, detail) => logImplicit(kind, detail, livePatchId != null ? { id: livePatchId } : {}),
+    heldCount: () => heldNotes.size,
+    noteOn: (n, v) => liveNoteOn(n, v),
+    noteOff: (n) => liveNoteOff(n),
+    // A performed sound becomes the bench's tree: one undo step, the same
+    // whole-tree route a restore takes, so PATCH shows what PERFORM kept.
+    commitTree: (json) => {
+      if (!wb.tree) return note("open a patch first — nothing is on the bench");
+      pushUndo();
+      queueStruct({ type: "edit_set_tree", json }, null, { op: "perform" });
+    },
+  });
+  if (liveTreeJson) perform.patchChanged(liveTreeJson, liveMakeup);
+  if (currentView === "perform") perform.show();
+}
+
 // ---------- live instrument ----------
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD, master);
+  bootPerform();
   // The analysers exist for the first time here, so this is the first moment
   // the persisted fft size, window and tap can actually be applied to one.
   scopeApply();

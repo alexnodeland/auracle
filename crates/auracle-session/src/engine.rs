@@ -1926,6 +1926,18 @@ impl Engine {
         self.style_names[k] = name.trim().chars().take(24).collect();
     }
 
+    /// [`Self::refine_one`] for the performance surfaces, which walk without
+    /// inserting anything into the pool (see [`crate::perform`]).
+    pub(crate) fn refine_walk<R: Rng>(
+        &self,
+        rng: &mut R,
+        seed: &PatchTree,
+        locked: &HashSet<String>,
+        steps: usize,
+    ) -> Option<PatchTree> {
+        self.refine_one(rng, seed, locked, steps)
+    }
+
     /// Run locked MH refinement from one seed. Returns the end state if it
     /// differs from the seed.
     fn refine_one<R: Rng>(

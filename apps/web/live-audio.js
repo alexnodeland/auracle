@@ -69,6 +69,16 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.meterTick = 0;
     this.meterView = null;
     this.meterPtr = 0;
+    // The B slot: a second instrument that follows the same hands, so an
+    // offer can be heard against home by crossfade rather than by a jump.
+    // Rendered whenever it is loaded (so its envelopes and tails are in step
+    // with A when the fader moves), mixed at equal power. held mirrors the
+    // notes under the player's fingers so a freshly loaded B joins the chord.
+    this.polyB = null;
+    this.mixB = 0;
+    this.mixCur = 0;
+    this.mixBuf = null;
+    this.held = new Map();
     this.port.onmessage = (e) => {
       try {
         this.handle(e.data);
@@ -102,15 +112,70 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         else this.loadPatch(m);
         break;
       }
-      case "on": if (this.poly) this.poly.note_on(m.note, m.vel == null ? 1.0 : m.vel); break;
-      case "off": if (this.poly) this.poly.note_off(m.note); break;
-      case "alloff": if (this.poly) this.poly.all_off(); break;
-      case "bend": if (this.poly) this.poly.set_bend(m.semis); break;
-      case "glide": if (this.poly) this.poly.set_glide(m.amount); break;
-      case "unison": if (this.poly) this.poly.set_unison(m.on, m.detune, m.spread); break;
+      case "on": {
+        const vel = m.vel == null ? 1.0 : m.vel;
+        this.held.set(m.note, vel);
+        if (this.poly) this.poly.note_on(m.note, vel);
+        if (this.polyB) this.polyB.note_on(m.note, vel);
+        break;
+      }
+      case "off":
+        this.held.delete(m.note);
+        if (this.poly) this.poly.note_off(m.note);
+        if (this.polyB) this.polyB.note_off(m.note);
+        break;
+      case "alloff":
+        this.held.clear();
+        if (this.poly) this.poly.all_off();
+        if (this.polyB) this.polyB.all_off();
+        break;
+      case "bend":
+        if (this.poly) this.poly.set_bend(m.semis);
+        if (this.polyB) this.polyB.set_bend(m.semis);
+        break;
+      case "glide":
+        this.glideAmt = m.amount;
+        if (this.poly) this.poly.set_glide(m.amount);
+        if (this.polyB) this.polyB.set_glide(m.amount);
+        break;
+      case "unison":
+        this.uni = m;
+        if (this.poly) this.poly.set_unison(m.on, m.detune, m.spread);
+        if (this.polyB) this.polyB.set_unison(m.on, m.detune, m.spread);
+        break;
+      // ---- the B slot ----
+      case "b_patch": {
+        if (!this.ready) break;
+        try {
+          if (this.polyB) {
+            if (!this.polyB.set_patch(m.tree)) {
+              this.port.postMessage({ type: "b_error", error: "unreadable patch" });
+              break;
+            }
+          } else {
+            this.polyB = new LivePoly(m.tree, sampleRate, 4);
+            if (this.glideAmt != null) this.polyB.set_glide(this.glideAmt);
+            if (this.uni) this.polyB.set_unison(this.uni.on, this.uni.detune, this.uni.spread);
+            for (const [n, v] of this.held) this.polyB.note_on(n, v);
+          }
+          if (m.makeup != null) this.polyB.set_makeup(m.makeup);
+          this.port.postMessage({ type: "b_ready" });
+        } catch (err) {
+          this.port.postMessage({ type: "b_error", error: String(err) });
+        }
+        break;
+      }
+      case "b_mix": this.mixB = Math.min(1, Math.max(0, +m.mix || 0)); break;
+      case "b_param": if (this.polyB) this.polyB.set_param(m.addr, m.value); break;
+      case "b_clear":
+        if (this.polyB) { this.polyB.free(); this.polyB = null; }
+        this.mixB = 0;
+        this.mixCur = 0;
+        break;
       case "arp":
-        if (this.poly) {
-          this.poly.set_arp(
+        for (const p of [this.poly, this.polyB]) {
+          if (!p) continue;
+          p.set_arp(
             m.on, m.mode, m.div, m.bpm,
             m.gate == null ? 0.5 : m.gate,
             m.octaves == null ? 1 : m.octaves,
@@ -194,6 +259,9 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       // we view its memory directly. The cached view is rebuilt only when
       // wasm memory grows (buffer identity changes) or the pointer moves.
       const ptr = this.poly.process_ptr(n);
+      // B renders after A. A wasm memory grow during B's call invalidates
+      // every view but not A's data, so both views are taken after both calls.
+      const ptrB = this.polyB ? this.polyB.process_ptr(n) : 0;
       if (
         !this.view ||
         this.viewPtr !== ptr ||
@@ -203,7 +271,23 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         this.view = new Float32Array(wasm.memory.buffer, ptr, n * 2);
         this.viewPtr = ptr;
       }
-      const buf = this.view;
+      let buf = this.view;
+      if (this.polyB) {
+        const vb = new Float32Array(wasm.memory.buffer, ptrB, n * 2);
+        if (!this.mixBuf || this.mixBuf.length !== n * 2) this.mixBuf = new Float32Array(n * 2);
+        const mb = this.mixBuf;
+        // Equal-power, smoothed per sample (~10 ms), so a Peek is a gesture
+        // and not a click.
+        for (let i = 0; i < n; i++) {
+          this.mixCur += (this.mixB - this.mixCur) * 0.002;
+          const th = this.mixCur * 1.5707963267948966;
+          const ga = Math.cos(th);
+          const gb = Math.sin(th);
+          mb[2 * i] = buf[2 * i] * ga + vb[2 * i] * gb;
+          mb[2 * i + 1] = buf[2 * i + 1] * ga + vb[2 * i + 1] * gb;
+        }
+        buf = mb;
+      }
       for (let i = 0; i < n; i++) {
         L[i] = buf[2 * i];
         R[i] = buf[2 * i + 1];
@@ -211,6 +295,10 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       // Recording copies the interleaved block (allocation only while a
       // take is rolling — never in the steady state).
       if (this.rec) this.rec.push(buf.slice(0, n * 2));
+      if (this.polyB) {
+        const evB = this.polyB.poll_event();
+        if (evB === 2) this.port.postMessage({ type: "b_error", error: this.polyB.last_error() });
+      }
       const ev = this.poly.poll_event();
       if (ev === 1) this.port.postMessage({ type: "patched" });
       else if (ev === 2)
@@ -322,6 +410,19 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     rec(on) {
       node.port.postMessage({ type: "rec", on });
+    },
+    // The B slot (PERFORM's offers): load, crossfade, tweak, clear.
+    bPatch(tree, makeup) {
+      node.port.postMessage({ type: "b_patch", tree, makeup });
+    },
+    bMix(mix) {
+      node.port.postMessage({ type: "b_mix", mix });
+    },
+    bParam(addr, value) {
+      node.port.postMessage({ type: "b_param", addr, value });
+    },
+    bClear() {
+      node.port.postMessage({ type: "b_clear" });
     },
     // Interior level metering for the rack's flow animation. Replies with
     // `meter_keys` (the module keys the values are indexed by) and then

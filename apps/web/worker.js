@@ -1132,6 +1132,43 @@ self.onmessage = async (e) => {
       }
       break;
     }
+    // ---- performance surface (PERFORM) ----
+    // Each of these replies exactly once, with the caller's `req` echoed, so
+    // main can drop a reply for a patch it has since moved away from.
+    case "perform_wire": {
+      beginLongOp();
+      try {
+        const data = JSON.parse(engine.perform_wire(m.tree, JSON.stringify(m.overrides || [])));
+        post({ type: "perform_wired", req: m.req, data });
+      } finally {
+        endLongOp();
+      }
+      break;
+    }
+    case "perform_apply": {
+      post({ type: "perform_applied", req: m.req, json: engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])) });
+      break;
+    }
+    case "perform_drift": {
+      beginLongOp();
+      try {
+        const drift = JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12));
+        post({ type: "perform_drifted", req: m.req, drift });
+      } finally {
+        endLongOp();
+      }
+      break;
+    }
+    case "perform_offer": {
+      beginLongOp();
+      try {
+        const offer = JSON.parse(engine.perform_offer(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 40));
+        post({ type: "perform_offered", req: m.req, offer });
+      } finally {
+        endLongOp();
+      }
+      break;
+    }
     case "tree_json": {
       post({
         type: "tree_json",

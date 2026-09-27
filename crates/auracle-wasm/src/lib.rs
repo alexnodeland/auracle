@@ -295,6 +295,28 @@ fn bench_audio(
     })
 }
 
+/// Parse `tree_json` and write the knob `overrides_json` (`[[addr, value]]`)
+/// into it. Non-finite values and addresses that are not continuous knobs on
+/// this tree are skipped. `None` only if the tree itself does not parse.
+fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
+    let mut tree = serde_json::from_str::<PatchTree>(tree_json).ok()?;
+    let overrides: Vec<(String, f64)> = serde_json::from_str(overrides_json).unwrap_or_default();
+    for (addr, v) in overrides {
+        if !v.is_finite() {
+            continue;
+        }
+        let v = v.clamp(0.0, auracle_session::perform::KNOB_MAX);
+        if let Ok(t) = auracle_grammar::edit::set_param(
+            &tree,
+            &addr,
+            auracle_grammar::edit::ParamValue::Continuous(v),
+        ) {
+            tree = t;
+        }
+    }
+    Some(tree)
+}
+
 /// LUFS makeup as a linear gain, clamped to ±12 dB so near-silent patches
 /// don't get cranked into the noise floor.
 fn makeup_linear(gain_db: f64) -> f64 {
@@ -725,6 +747,96 @@ impl WasmEngine {
         self.engine
             .refine_from(&mut self.rng, id, &locked)
             .unwrap_or(0) as u32
+    }
+
+    // ---- performance (see `auracle_session::perform`) ----
+
+    /// Measure the audio Jacobian of the performed state (`tree` plus knob
+    /// `overrides`) and wire the named controls onto it.
+    /// Returns `{addrs, values, z, wiring: [Wiring]}` as JSON, or `null` when
+    /// the session has no standardizer yet or the tree does not vet. Costs one
+    /// render per continuous knob, through the memo.
+    pub fn perform_wire(&self, tree_json: &str, overrides_json: &str) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "null".into();
+        };
+        let Some(jac) = self.engine.jacobian(&tree) else {
+            return "null".into();
+        };
+        let wiring = auracle_session::perform::wire(&jac);
+        serde_json::json!({
+            "addrs": jac.addrs,
+            "values": jac.values,
+            "z": jac.z,
+            "wiring": wiring,
+        })
+        .to_string()
+    }
+
+    /// `tree` with knob `overrides` (`[[addr, value], …]`) written into its
+    /// genome, as JSON; `null` if the tree does not parse. Unknown or
+    /// structural addresses are skipped rather than failing the whole write:
+    /// the performance surface writes the knobs it wired, and a patch that
+    /// changed underneath it should lose those writes, not the others.
+    pub fn perform_apply(&self, tree_json: &str, overrides_json: &str) -> String {
+        match performed_tree(tree_json, overrides_json) {
+            Some(t) => serde_json::to_string(&t).unwrap_or_else(|_| "null".into()),
+            None => "null".into(),
+        }
+    }
+
+    /// One knob-only drift step from the performed state (`tree` plus
+    /// `overrides`) on the taste target, structure and the player's
+    /// `locks_json` held fixed. Returns `{tree, knobs: [[addr, value], …]}`,
+    /// or `null` if the walk found nothing (no posterior yet, or no accepted
+    /// move beat the start). Inserts nothing into the pool.
+    pub fn perform_drift(
+        &mut self,
+        tree_json: &str,
+        overrides_json: &str,
+        locks_json: &str,
+        steps: u32,
+    ) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "null".into();
+        };
+        let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
+        match self
+            .engine
+            .drift(&mut self.rng, &tree, &locks, steps.max(1) as usize)
+        {
+            Some(t) => {
+                let knobs = auracle_session::perform::continuous_knobs(&t);
+                serde_json::json!({ "tree": t, "knobs": knobs }).to_string()
+            }
+            None => "null".into(),
+        }
+    }
+
+    /// A structural offer from the performed state: the locked walk with only
+    /// the player's locks. Returns `{tree, makeup}` so the offer can be heard
+    /// at matched loudness, or `null`. Inserts nothing into the pool.
+    pub fn perform_offer(
+        &mut self,
+        tree_json: &str,
+        overrides_json: &str,
+        locks_json: &str,
+        steps: u32,
+    ) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "null".into();
+        };
+        let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
+        let Some(t) = self
+            .engine
+            .offer(&mut self.rng, &tree, &locks, steps.max(1) as usize)
+        else {
+            return "null".into();
+        };
+        let makeup = featurize_memo(&t, &self.engine.cfg.phrase, self.engine.memo(), false)
+            .map(|(cf, _)| makeup_linear(cf.features.gain_db))
+            .unwrap_or(1.0);
+        serde_json::json!({ "tree": t, "makeup": makeup }).to_string()
     }
 
     /// Ranked pool as JSON

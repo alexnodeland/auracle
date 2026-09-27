@@ -58,7 +58,8 @@
          light — see `.wordmark b` in style.css and `wm-lamp` in main.js. -->
     <div class="wordmark">AURACL<b id="wm-lamp">E</b></div>
     <nav class="viewtabs" role="tablist" aria-label="Views">
-      <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play">play</button>
+      <button class="viewtab" data-view="perform" role="tab" aria-selected="false" aria-controls="view-perform" title="Play the sound: named controls, wander and pads">perform</button>
+      <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play" title="Shape the sound: the patch, its modules and knobs">patch</button>
       <button class="viewtab" data-view="evolve" role="tab" aria-selected="false" aria-controls="view-evolve">evolve</button>
       <button class="viewtab" data-view="taste" role="tab" aria-selected="false" aria-controls="view-taste">taste</button>
     </nav>
@@ -250,6 +251,11 @@
     </aside>
 
     <main class="stage">
+
+      <!-- ------------- PERFORM: the sound under your hands ------------- -->
+      <!-- Built by perform.js. Nothing in it opens a modal: a player in the
+           middle of a phrase cannot answer a dialog. -->
+      <section id="view-perform" class="view perform hidden" role="tabpanel" aria-label="Perform"></section>
 
       <!-- ------------- PLAY: the patch is the instrument ------------- -->
       <section id="view-play" class="view" role="tabpanel" aria-label="Play">

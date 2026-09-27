@@ -4075,3 +4075,153 @@ html.handheld .handheld-gate {
 .keys-span { display: flex; align-items: center; gap: 4px; grid-column: span 2; }
 .keys-span .pc-cap { font-size: var(--t-rack-micro); color: var(--silk-mute); text-transform: uppercase; letter-spacing: 0.1em; }
 .keys-span .perf-sel { flex: 1; min-width: 0; }
+
+/* ===================== PERFORM ===================== */
+/* The sound under your hands: eight fixed-name controls, a wander dial and six
+   pads, on one faceplate. Built by perform.js; nothing here opens a modal. */
+.view.perform {
+  align-items: center;
+  justify-content: flex-start;
+  overflow-y: auto;
+  gap: var(--s4);
+  padding: var(--s5) var(--s5) var(--s4);
+}
+.pf-head {
+  width: min(1040px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+.pf-name {
+  font-family: var(--font-silk);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--silk);
+}
+.pf-status { font-size: var(--t-body); color: var(--silk-dim); margin-top: 2px; }
+.pf-scope {
+  width: 360px;
+  max-width: 40vw;
+  height: 72px;
+  background: var(--bezel);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+.pf-deck {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: var(--s3);
+  padding: var(--s4) var(--s4) var(--s3);
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  box-shadow: var(--lift), var(--cast);
+}
+.pf-knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s2) 2px;
+  border-radius: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.pf-knob:focus-visible { box-shadow: 0 0 0 2px var(--phos-a-deep); }
+.pf-knob svg { width: 100%; max-width: 96px; height: auto; overflow: visible; }
+.pf-k-ring { fill: none; stroke: var(--hairline); stroke-width: 3; }
+.pf-k-arc { fill: none; stroke: var(--phos-a); stroke-width: 3.5; stroke-linecap: round; }
+.pf-k-body { fill: #22262d; stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
+.pf-k-ptr { stroke: var(--silk); stroke-width: 3; stroke-linecap: round; }
+.pf-k-where { fill: var(--phos-b); }
+.pf-k-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-title);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--silk);
+}
+.pf-k-ends { font-size: var(--t-micro); color: var(--silk-dim); }
+.pf-k-sub {
+  font-size: var(--t-micro);
+  color: var(--phos-a-dim);
+  min-height: 1.3em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+/* Unreachable by this patch's knobs: amber, and the gesture asks for an offer. */
+.pf-knob.search .pf-k-arc { stroke: var(--phos-b); }
+.pf-knob.search .pf-k-ring { stroke: var(--phos-b-deep); stroke-dasharray: 3 5; }
+.pf-knob.search .pf-k-name { color: var(--phos-b-dim); }
+.pf-knob.search .pf-k-sub { color: var(--phos-b-dim); }
+.pf-knob.unwired .pf-k-ptr { stroke: var(--silk-mute); }
+.pf-knob.unwired .pf-k-arc { stroke: var(--silk-mute); }
+.pf-knob.held .pf-k-sub { color: var(--phos-b); }
+.pf-pads {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s3);
+}
+.pf-pad {
+  font-family: var(--font-silk);
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--silk);
+  min-height: 64px;
+  border-radius: 8px;
+  border: 1px solid #000;
+  background: linear-gradient(180deg, #2a2f37, #1a1d23);
+  box-shadow: var(--lift), 0 3px 0 #0a0b0d, 0 5px 8px rgba(0,0,0,0.5);
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 60ms ease, box-shadow 60ms ease;
+}
+.pf-pad:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 #0a0b0d; }
+.pf-pad:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+.pf-pad.lit { color: var(--phos-b); box-shadow: var(--lift), 0 0 12px rgba(255,180,84,0.3), 0 3px 0 #0a0b0d; }
+.pf-pad.flash { animation: pf-flash 500ms ease-out; }
+@keyframes pf-flash { from { color: var(--phos-a); box-shadow: 0 0 18px rgba(142,240,177,0.5); } }
+.pf-offer {
+  width: min(1040px, 100%);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px dashed var(--hairline);
+  border-radius: 6px;
+  color: var(--silk-dim);
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-lead);
+}
+.pf-offer.ready { border-style: solid; border-color: var(--phos-b-deep); color: var(--silk); }
+.pf-offer-label {
+  font-style: normal;
+  color: var(--phos-b);
+  border: 1px solid var(--phos-b-deep);
+  border-radius: 3px;
+  padding: 0 6px;
+}
+.pf-why { width: min(1040px, 100%); }
+.pf-why-body { max-width: 72ch; font-family: var(--font-voice); font-size: var(--t-lead); color: var(--silk-dim); line-height: 1.5; }
+.pf-why-body b { color: var(--silk); font-weight: 600; }
+@media (max-width: 900px) {
+  .pf-deck { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pf-pads { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pf-scope { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-pad.flash { animation: none; }
+}
