@@ -5,7 +5,7 @@
   "fps": 30,
   "voice": {
     "voice": "af_heart",
-    "speed": 0.82
+    "speed": 0.9
   },
   "music": {
     "bed": "study",
@@ -18,158 +18,158 @@
       "id": "intro",
       "music": "loop_a",
       "lead": 1.5,
-      "tail": 0.4,
+      "tail": 0.2,
       "lines": [
         {
           "id": "intro1",
           "text": "Auracle is a Rust workspace of five crates, compiled to WebAssembly.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "intro2",
           "text": "Here's how a patch becomes a sound, and a choice becomes a model.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "genome",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "genome1",
           "text": "A patch is a term in a typed grammar: a probabilistic program over modules.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "genome2",
           "text": "Every knob and every structural choice has a trace address, so a whole patch is one draw from a prior.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "compile",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "compile1",
           "text": "It compiles to a quiver signal graph, which runs one sample at a time with no allocation on the audio path.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "audition",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "audition1",
-          "text": "Every candidate plays the same standard phrase, loudness-normalized, through a vetting gate that rejects silence, clipping and DC.",
-          "post": 0.3
+          "text": "Every candidate plays the same standard phrase, normalized for loudness, through a vetting gate that rejects silence, clipping and DC.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "features",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "features1",
-          "text": "From that phrase come eighteen perceptual features, from brightness and noisiness to envelope shape and three bands of modulation rate. Twenty-six structural ones come from the patch itself, and every one is standardized.",
-          "post": 0.3
+          "text": "From that phrase come eighteen perceptual features, from brightness and noisiness to envelope shape and three bands of modulation rate. Twenty-six structural ones come from the patch itself. Every one is standardized.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "utility",
       "music": "loop_b",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "utility1",
           "text": "Taste is a utility: the maximum over a few linear experts on those features.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "utility2",
-          "text": "Duels, heard edits and self-reports each have their own likelihood, and the posterior is a Laplace approximation, refitted as answers arrive.",
-          "post": 0.3
+          "text": "A duel, a keep or a cut, a star rating: each has its own likelihood. The posterior is sampled by Markov chain Monte Carlo, and each new answer reweights those samples until a refit is due.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "calibration",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "calibration1",
-          "text": "Every duel is forecast before it's answered, and scored with a proper scoring rule, separately for each kind of evidence.",
-          "post": 0.3
+          "text": "Every duel is forecast before it's answered. Each forecast is scored with a proper scoring rule, separately for each kind of evidence.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "search",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "search1",
           "text": "Search targets a Boltzmann distribution: the grammar's prior, tilted by expected utility.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "search2",
-          "text": "Refinement is Metropolis-Hastings on the trace, through fugue-evo, and a lock is exact conditioning.",
-          "post": 0.3
+          "text": "Refinement is Metropolis-Hastings on the trace, through fugue-evo. A lock is exact conditioning.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "perform",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "perform1",
           "text": "PERFORM's named controls are fixed directions in that standardized space of sound.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "perform2",
-          "text": "For each patch, a finite-difference Jacobian and a ridge solve wire each one to the knobs, and every half of every control is checked on real renders.",
-          "post": 0.3
+          "text": "For each patch, a finite-difference Jacobian and a ridge solve wire each control to its knobs. Every half of every control is then checked on real renders.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "runtime",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "runtime1",
-          "text": "In the browser, the engine runs in a worker, the voices in an AudioWorklet, and a render farm featurizes candidates in parallel.",
-          "post": 0.3
+          "text": "In the browser, the engine runs in a worker, and the voices in an AudioWorklet. A render farm measures candidates in parallel.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "outro",
-      "lead": 0.4,
+      "lead": 0.2,
       "tail": 2.8,
       "lines": [
         {
           "id": "outro1",
           "text": "Every claim here has a measurement behind it, in the reference. Read it, run it, and change it.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     }

@@ -1,9 +1,69 @@
 {
   "lexicon": {
-    "Auracle": { "us": "ˈɔɹəkᵊl", "gb": "ˈɒɹəkᵊl" },
-    "Auracle's": { "us": "ˈɔɹəkᵊlz", "gb": "ˈɒɹəkᵊlz" },
+    "Auracle": {
+      "us": "ˈɔɹəkᵊl",
+      "gb": "ˈɒɹəkᵊl"
+    },
+    "Auracle's": {
+      "us": "ˈɔɹəkᵊlz",
+      "gb": "ˈɒɹəkᵊlz"
+    },
     "φ": "fˈI",
-    "WASM": "ˈwæzəm"
+    "WASM": "ˈwæzəm",
+    "Laplace": {
+      "us": "ləplˈɑs",
+      "gb": "ləplˈɑːs"
+    },
+    "fugue-evo": {
+      "us": "fjˈuɡ ˈivO",
+      "gb": "fjˈuːɡ ˈiːvəʊ"
+    },
+    "Metropolis-Hastings": {
+      "us": "mətɹˈɑpələs hˈAstɪŋz",
+      "gb": "mətɹˈɒpələs hˈeɪstɪŋz"
+    },
+    "finite-difference": {
+      "us": "fˈInˌIt dˈɪfəɹəns",
+      "gb": "fˈaɪnaɪt dˈɪfəɹəns"
+    },
+    "Bradley-Terry": {
+      "us": "bɹˈædli tˈɛɹi",
+      "gb": "bɹˈædli tˈɛɹi"
+    },
+    "Boltzmann": {
+      "us": "bˈOltsmən",
+      "gb": "bˈɒltsmən"
+    },
+    "Brier": {
+      "us": "bɹˈIəɹ",
+      "gb": "bɹˈaɪə"
+    },
+    "timbre": {
+      "us": "tˈæmbəɹ",
+      "gb": "tˈæmbə"
+    },
+    "cutpoints": {
+      "us": "kˈʌtpˌYnts",
+      "gb": "kˈʌtpˌɔɪnts"
+    },
+    "reweights": {
+      "us": "ɹiwˈAts",
+      "gb": "ɹiːwˈeɪts"
+    },
+    "WAV": {
+      "us": "wˈAv",
+      "gb": "wˈeɪv"
+    }
   },
-  "asr_aliases": { "Auracle": "oracle", "Auracle's": "oracle's" }
+  "asr_aliases": {
+    "Auracle": "oracle",
+    "Auracle's": "oracle's",
+    "fugivo": "fugue evo",
+    "Boltzmann": "boltzman",
+    "Brier": "briar",
+    "timbre": "timber",
+    "WAV": "wave",
+    "cutpoints": "cut points",
+    "reweights": "re weights"
+  }
 }

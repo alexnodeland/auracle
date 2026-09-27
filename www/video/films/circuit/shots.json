@@ -1,0 +1,362 @@
+{
+  "viewport": [
+    1920,
+    1080
+  ],
+  "dpr": 1,
+  "query": "?film",
+  "setup": [
+    {
+      "op": "click",
+      "sel": "#warm-skip"
+    }
+  ],
+  "shots": [
+    {
+      "id": "c-intro",
+      "beat": "intro",
+      "pre": 1.5,
+      "setup": [
+        {
+          "op": "preset",
+          "name": "Glass Pad"
+        },
+        {
+          "op": "view",
+          "v": "play"
+        },
+        {
+          "op": "wait",
+          "ms": 2500
+        }
+      ],
+      "marks": {
+        "rack": "#rack-scroll"
+      },
+      "actions": [
+        {
+          "at": 0.3,
+          "op": "hold",
+          "keys": [
+            "a",
+            "d",
+            "g"
+          ],
+          "ms": "end"
+        }
+      ]
+    },
+    {
+      "id": "c-rack",
+      "beat": "rack",
+      "pre": 0.5,
+      "setup": [
+        {
+          "op": "preset",
+          "name": "Glass Pad"
+        },
+        {
+          "op": "view",
+          "v": "play"
+        },
+        {
+          "op": "wait",
+          "ms": 2500
+        }
+      ],
+      "marks": {
+        "hertz": "#rack-svg [data-addr='node/0#cut']",
+        "seconds": "#rack-svg [data-addr='amp#release']",
+        "decibels": "#rack-svg [data-addr='amp#sustain']",
+        "cable": "#rack-svg path.wire.audio",
+        "modulated": "#rack-svg [data-addr='node/0#cut']"
+      },
+      "actions": [
+        {
+          "at": 0.2,
+          "op": "hold",
+          "keys": [
+            "a",
+            "d",
+            "g"
+          ],
+          "ms": "end"
+        }
+      ]
+    },
+    {
+      "id": "c-edit",
+      "beat": "edit",
+      "pre": 0.5,
+      "setup": [
+        {
+          "op": "preset",
+          "name": "Glass Pad"
+        },
+        {
+          "op": "view",
+          "v": "play"
+        },
+        {
+          "op": "wait",
+          "ms": 2500
+        }
+      ],
+      "marks": {
+        "knob": "#rack-svg [data-addr='node/0#cut']"
+      },
+      "actions": [
+        {
+          "at": 0.2,
+          "op": "hold",
+          "keys": [
+            "a",
+            "d",
+            "g"
+          ],
+          "ms": "end"
+        },
+        {
+          "at": "edit1:Turn",
+          "op": "drag",
+          "sel": "#rack-svg [data-addr='node/0#cut']",
+          "dy": -70,
+          "ms": 1800
+        },
+        {
+          "at": "edit2:Lock-0.6",
+          "op": "move",
+          "sel": "#rack-svg [data-addr='node/0#cut']",
+          "steps": 10
+        },
+        {
+          "at": "edit2:Lock",
+          "op": "click",
+          "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"
+        }
+      ]
+    },
+    {
+      "id": "c-bank",
+      "beat": "bank",
+      "pre": 0.5,
+      "setup": [
+        {
+          "op": "preset",
+          "name": "Glass Pad"
+        },
+        {
+          "op": "view",
+          "v": "play"
+        },
+        {
+          "op": "wait",
+          "ms": 2500
+        }
+      ],
+      "marks": {
+        "bank": "#nodebank",
+        "formant": ".nb-item[data-kind='formant']",
+        "dock": "#spec-dock"
+      },
+      "actions": [
+        {
+          "at": 0.2,
+          "op": "hold",
+          "keys": [
+            "a",
+            "d",
+            "g"
+          ],
+          "ms": "end"
+        },
+        {
+          "at": "bank1:Hover",
+          "op": "move",
+          "sel": ".nb-item[data-kind='formant']",
+          "steps": 18
+        },
+        {
+          "at": "bank1:Click",
+          "op": "click",
+          "sel": ".nb-item[data-kind='formant']"
+        },
+        {
+          "at": "bank1:lights+1.6",
+          "op": "key",
+          "key": "Escape",
+          "ms": 120
+        }
+      ]
+    },
+    {
+      "id": "c-steps",
+      "beat": "steps",
+      "pre": 0.5,
+      "setup": [
+        {
+          "op": "preset",
+          "name": "Loom"
+        },
+        {
+          "op": "view",
+          "v": "play"
+        },
+        {
+          "op": "wait",
+          "ms": 2500
+        }
+      ],
+      "marks": {
+        "steps": "g.mod-group[data-kind='steps']"
+      },
+      "actions": [
+        {
+          "at": 0.2,
+          "op": "hold",
+          "keys": [
+            "a",
+            "g"
+          ],
+          "ms": "end"
+        }
+      ]
+    },
+    {
+      "id": "c-performed",
+      "beat": "performed",
+      "pre": 0.5,
+      "setup": [
+        {
+          "op": "preset",
+          "name": "First Bass"
+        },
+        {
+          "op": "view",
+          "v": "perform"
+        },
+        {
+          "op": "measured",
+          "name": "First Bass"
+        },
+        {
+          "op": "drag",
+          "sel": ".pf-knob[data-i='0']",
+          "dy": -110,
+          "ms": 900
+        },
+        {
+          "op": "view",
+          "v": "play"
+        },
+        {
+          "op": "wait",
+          "ms": 1500
+        }
+      ],
+      "marks": {
+        "ghost": "#rack-svg g.performed"
+      },
+      "actions": [
+        {
+          "at": 0.2,
+          "op": "hold",
+          "keys": [
+            "a",
+            "g"
+          ],
+          "ms": "end"
+        },
+        {
+          "at": "performed1:hovering-0.4",
+          "op": "move",
+          "sel": "#rack-svg g.performed",
+          "steps": 12
+        }
+      ]
+    },
+    {
+      "id": "c-evolve",
+      "beat": "evolve",
+      "pre": 0.5,
+      "own_setup": true,
+      "setup": [
+        {
+          "op": "click",
+          "sel": ".warm-item >> nth=0"
+        },
+        {
+          "op": "click",
+          "sel": ".warm-item >> nth=4"
+        },
+        {
+          "op": "click",
+          "sel": ".warm-item >> nth=7"
+        },
+        {
+          "op": "click",
+          "sel": "#warm-go"
+        },
+        {
+          "op": "wait",
+          "ms": 1500
+        },
+        {
+          "op": "view",
+          "v": "evolve"
+        },
+        {
+          "op": "click",
+          "sel": "#evolve-btn"
+        },
+        {
+          "op": "until",
+          "sel": "#evolve-btn:not([disabled])",
+          "ms": 600000
+        },
+        {
+          "op": "wait",
+          "ms": 1500
+        }
+      ],
+      "marks": {
+        "lineage": "#lineage-log"
+      },
+      "actions": []
+    },
+    {
+      "id": "c-outro",
+      "beat": "outro",
+      "pre": 0.5,
+      "setup": [
+        {
+          "op": "preset",
+          "name": "Glass Pad"
+        },
+        {
+          "op": "view",
+          "v": "play"
+        },
+        {
+          "op": "wait",
+          "ms": 2500
+        }
+      ],
+      "marks": {
+        "rack": "#rack-scroll"
+      },
+      "actions": [
+        {
+          "at": 0.2,
+          "op": "hold",
+          "keys": [
+            "a",
+            "d",
+            "g"
+          ],
+          "ms": "end"
+        }
+      ]
+    }
+  ]
+}

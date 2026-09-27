@@ -291,7 +291,7 @@ function sceneAudition({ stage, beat, line }) {
       });
       const pass = place(el("div", { class: "pill a" }, over, "✓ vetted → featurize"), { x: 1300, y: 690 });
       Object.assign(pass.style, { fontSize: "22px" });
-      const v1 = voiceLine(over, "Every candidate plays the same *standard phrase*, loudness-normalized, through a *vetting gate* that rejects silence, clipping and DC.");
+      const v1 = voiceLine(over, "Every candidate plays the same *standard phrase*, normalized for loudness, through a *vetting gate* that rejects silence, clipping and DC.");
       return (tl, t) => {
         lbl.style.opacity = ramp(t, b.t0, b.t0 + 0.4);
         nEls.forEach((n, i) => n.setAttribute("opacity", ramp(t, b.t0 + 0.2 + i * 0.2, b.t0 + 0.5 + i * 0.2)));
@@ -331,7 +331,7 @@ function sceneFeatures({ stage, beat, line }) {
       const s26 = place(el("div", { class: "pill" }, over, "φ_struct · 26"), { x: 1470, y: 720, ax: 0.5 });
       const z = place(el("div", { class: "mono" }, over, "z = (φ − μ) / σ   — standardized"), { x: 960, y: 820, ax: 0.5 });
       Object.assign(z.style, { fontSize: "30px", color: "#d9d4c8" });
-      const v1 = voiceLine(over, "From that phrase come *eighteen perceptual features*, from brightness and noisiness to envelope shape and *three bands of modulation rate*. Twenty-six structural ones come from the patch itself, and every one is standardized.", { size: 38 });
+      const v1 = voiceLine(over, "From that phrase come *eighteen perceptual features*, from brightness and noisiness to envelope shape and *three bands of modulation rate*. Twenty-six structural ones come from the patch itself. Every one is standardized.", { size: 38 });
       return (tl, t) => {
         const u = ramp(t, b.t0 + 0.1, b.t0 + 1.8, E.io2);
         const tb = wordTime(l1, "three bands");
@@ -365,35 +365,77 @@ function sceneUtility({ stage, beat, line }) {
       const f = place(el("div", { class: "mono" }, over, ""), { x: 960, y: 200, ax: 0.5, ay: 0.5 });
       f.innerHTML = `u(x) = max<sub>k</sub> θ<sub>k</sub> · φ(x)`;
       Object.assign(f.style, { fontSize: "64px", color: "#ffb454", textShadow: "0 0 26px rgba(255,180,84,.45)" });
-      const streams = ["duels", "heard edits", "self-reports"].map((s, i) => {
+      // The three likelihoods (auracle-taste's `Feedback`): heard edits,
+      // self-reports and PERFORM's offers are duels with a provenance tag.
+      const streams = ["duels", "keep or cut", "stars"].map((s, i) => {
         const d = place(el("div", { class: "pill b" }, over, s), { x: 300, y: 420 + i * 120, ax: 0.5, ay: 0.5 });
         return d;
       });
-      const arr = streams.map((_, i) => arrow(svg, [420, 420 + i * 120], [760, 540], "b", { curve: 0 }));
-      // The posterior: a Gaussian (Laplace) ellipse that refits as answers arrive.
+      const arr = streams.map((_, i) => arrow(svg, [420, 420 + i * 120], [880, 540], "b", { curve: 0 }));
+      // The posterior: MCMC draws (adaptive single-site MH, kept as 500).
+      // An answer reweights them in place — sequential importance weights —
+      // and a refit resamples the cloud around where the evidence now points.
+      // Each draw is a step from the last one — a chain, not a scatter — and
+      // it wanders the whole posterior only over many steps.
+      const walk = (n, cx, cy, sx, sy, seed) => {
+        const r = rng(seed);
+        const g = () => Math.sqrt(-2 * Math.log(r() + 1e-9)) * Math.cos(2 * Math.PI * r());
+        const rho = 0.82;
+        const k = Math.sqrt(1 - rho * rho);
+        let u = g();
+        let v = g();
+        return Array.from({ length: n }, () => {
+          u = rho * u + k * g();
+          v = rho * v + k * g();
+          return [cx + sx * u + 0.25 * sx * v, cy + sy * v, u];
+        });
+      };
+      const A = walk(90, 1150, 540, 130, 75, 7);
+      const B = walk(90, 1215, 528, 62, 36, 11);
+      const pts = A.map((a, i) => ({ a: [a[0], a[1]], b: [B[i][0], B[i][1]], w: Math.exp(-0.5 * (a[2] - 0.9) ** 2) }));
       const pg = el("g", {}, svg);
       pg.style.filter = GLOW.b;
-      const ells = [0, 1, 2].map((i) => el("ellipse", { cx: 1100, cy: 540, rx: 100, ry: 60, fill: "none", stroke: "#ffb454", "stroke-width": 2.4 - i * 0.6, opacity: 0.9 - i * 0.25 }, pg));
-      const mode = el("circle", { cx: 1100, cy: 540, r: 7, fill: "#ffb454" }, pg);
-      const lap = place(el("div", { class: "mono" }, over, "Laplace: N(θ̂, H⁻¹)"), { x: 1100, y: 760, ax: 0.5 });
-      Object.assign(lap.style, { fontSize: "28px", color: "#b8823c" });
+      const chain = pts.slice(0, 48);
+      const trail = el("path", { d: `M${chain.map((p) => `${p.a[0].toFixed(1)} ${p.a[1].toFixed(1)}`).join(" L")}`, fill: "none", stroke: "#b8823c", "stroke-width": 1.2, opacity: 0.55 }, pg);
+      const tlen = trail.getTotalLength();
+      trail.setAttribute("stroke-dasharray", `${tlen} ${tlen}`);
+      const dots = pts.map((p) => el("circle", { cx: p.a[0], cy: p.a[1], r: 4.5, fill: "#ffb454", opacity: 0 }, pg));
+      const pulse = el("circle", { r: 7, fill: "#ffb454", opacity: 0 }, svg);
+      pulse.style.filter = GLOW.b;
+      const cap = place(el("div", { class: "mono" }, over, "MCMC · 500 draws · reweighted between refits"), { x: 1215, y: 760, ax: 0.5 });
+      Object.assign(cap.style, { fontSize: "26px", color: "#b8823c", whiteSpace: "nowrap" });
       const v1 = voiceLine(over, "Taste is a utility: _the maximum over a few linear experts_ on those features.");
-      const v2 = voiceLine(over, "Duels, heard edits and self-reports each have their own likelihood, and the posterior is a _Laplace approximation_, refitted as answers arrive.", { size: 40 });
+      const v2 = voiceLine(over, "A duel, a keep or a cut, a star rating: each has its own likelihood. The posterior is sampled by _Markov chain Monte Carlo_, and each new answer reweights those samples until a refit is due.", { size: 38 });
       return (tl, t) => {
         f.style.opacity = ramp(t, b.t0 + 0.2, b.t0 + 0.8);
         const s0 = l2.t0;
         streams.forEach((s, i) => (s.style.opacity = ramp(t, s0 + i * 0.4, s0 + 0.3 + i * 0.4)));
         arr.forEach((a, i) => a.update(ramp(t, s0 + 0.3 + i * 0.4, s0 + 0.8 + i * 0.4)));
-        const refit = ramp(t, wordTime(l2, "refitted"), l2.t1 + 0.6, E.io3);
-        const sc = lerp(1.8, 0.8, refit);
-        const wob = 0.06 * Math.sin(t * 3) * (1 - refit);
-        ells.forEach((e, i) => {
-          e.setAttribute("rx", (100 * sc * (1 + i * 0.5) * (1 + wob)).toFixed(1));
-          e.setAttribute("ry", (60 * sc * (1 + i * 0.5)).toFixed(1));
+        // Drawn one by one as the chain walks, from "posterior" to "Carlo".
+        const tp = wordTime(l2, "posterior");
+        const tc = wordTime(l2, "Carlo") + 0.6;
+        const n = ramp(t, tp, tc, E.lin) * pts.length;
+        trail.setAttribute("stroke-dashoffset", tlen * (1 - clamp(n / chain.length)));
+        // One answer arrives down the duel stream, and the draws take its weight.
+        const tw = wordTime(l2, "reweights");
+        const pu = ramp(t, tw - 0.9, tw - 0.1, E.io2);
+        pulse.setAttribute("cx", lerp(420, 880, pu));
+        pulse.setAttribute("cy", 420 + (540 - 420) * pu);
+        pulse.setAttribute("opacity", fade(t, tw - 0.9, tw - 0.8, tw - 0.2, tw));
+        const wu = ramp(t, tw, tw + 0.8, E.io3);
+        const refit = ramp(t, wordTime(l2, "refit"), wordTime(l2, "refit") + 1.4, E.io3);
+        pts.forEach((p, i) => {
+          const d = dots[i];
+          const on = clamp(n - i);
+          const rw = lerp(1, 0.35 + 1.5 * p.w, wu * (1 - refit));
+          const op = lerp(1, 0.2 + 0.8 * p.w, wu * (1 - refit));
+          d.setAttribute("cx", lerp(p.a[0], p.b[0], refit).toFixed(1));
+          d.setAttribute("cy", lerp(p.a[1], p.b[1], refit).toFixed(1));
+          d.setAttribute("r", (4.5 * rw).toFixed(2));
+          d.setAttribute("opacity", (on * op).toFixed(3));
         });
-        mode.setAttribute("cx", lerp(1060, 1100, refit));
-        pg.style.opacity = ramp(t, wordTime(l2, "posterior"), wordTime(l2, "posterior") + 0.5);
-        lap.style.opacity = ramp(t, wordTime(l2, "Laplace"), wordTime(l2, "Laplace") + 0.4);
+        trail.setAttribute("opacity", (0.55 * (1 - refit)).toFixed(3));
+        cap.style.opacity = ramp(t, wordTime(l2, "Monte"), wordTime(l2, "Monte") + 0.5);
         speak(v1, t, l1, l2.t0);
         speak(v2, t, l2, b.t1 + 0.4);
         void tl;
@@ -427,7 +469,7 @@ function sceneCalibration({ stage, beat, line }) {
       });
       const cap = place(el("div", { class: "mono" }, over, "each stream scored on its own"), { x: 1300, y: 625, ay: 0.5 });
       Object.assign(cap.style, { fontSize: "22px", color: "#6f6c63" });
-      const v1 = voiceLine(over, "Every duel is _forecast before it's answered_, and scored with a *proper scoring rule*, separately for each kind of evidence.");
+      const v1 = voiceLine(over, "Every duel is _forecast before it's answered_. Each forecast is scored with a *proper scoring rule*, separately for each kind of evidence.");
       return (tl, t) => {
         steps.forEach((s, i) => (s.style.opacity = ramp(t, b.t0 + 0.3 + i * 0.9, b.t0 + 0.6 + i * 0.9)));
         ar.forEach((a, i) => a.update(ramp(t, b.t0 + 0.7 + i * 0.9, b.t0 + 1.1 + i * 0.9)));
@@ -500,7 +542,7 @@ function sceneSearch({ stage, beat, line }) {
       const trail = Array.from({ length: 12 }, () => el("circle", { r: 5, fill: "#ffb454", opacity: 0 }, cg));
       const lock = place(el("div", { class: "pill" }, over, "🔒 locked knobs: exact conditioning"), { x: 1500, y: 300, ax: 0.5 });
       const v1 = voiceLine(over, "Search targets a *Boltzmann distribution*: the grammar's prior, _tilted by expected utility_.");
-      const v2 = voiceLine(over, "Refinement is *Metropolis-Hastings* on the trace, through fugue-evo, and a lock is exact conditioning.");
+      const v2 = voiceLine(over, "Refinement is *Metropolis-Hastings* on the trace, through fugue-evo. A lock is exact conditioning.");
       const lenP = pP.getTotalLength();
       pP.setAttribute("stroke-dasharray", `${lenP} ${lenP}`);
       return (tl, t) => {
@@ -573,7 +615,7 @@ function scenePerform({ stage, beat, line }) {
       const rendered = place(el("div", { class: "mono" }, over, "checked on real renders"), { x: gx + 20, y: 770 });
       Object.assign(rendered.style, { fontSize: "20px", color: "#6f6c63" });
       const v1 = voiceLine(over, "PERFORM's named controls are *fixed directions* in that standardized space of sound.");
-      const v2 = voiceLine(over, "For each patch, a *finite-difference Jacobian* and a *ridge solve* wire each one to the knobs, and every half of every control is _checked on real renders_.", { size: 40 });
+      const v2 = voiceLine(over, "For each patch, a *finite-difference Jacobian* and a *ridge solve* wire each control to its knobs. Every half of every control is then _checked on real renders_.", { size: 40 });
       return (tl, t) => {
         dirs.forEach((d, i) => {
           d.ar.update(ramp(t, b.t0 + 0.3 + i * 0.15, b.t0 + 0.8 + i * 0.15));
@@ -619,7 +661,7 @@ function sceneRuntime({ stage, beat, line }) {
         arrow(svg, [1140, 345], [1340, 345]),
         arrow(svg, [960, 430], [960, 580], "a", { dash: "8 8" }),
       ];
-      const v1 = voiceLine(over, "In the browser, the engine runs in a *worker*, the voices in an *AudioWorklet*, and a *render farm* featurizes candidates in parallel.");
+      const v1 = voiceLine(over, "In the browser, the engine runs in a *worker*, and the voices in an *AudioWorklet*. A *render farm* measures candidates in parallel.");
       return (tl, t) => {
         tab.style.opacity = tl0.style.opacity = ramp(t, b.t0, b.t0 + 0.5);
         const ks = [0, wordTime(l1, "worker"), wordTime(l1, "AudioWorklet"), wordTime(l1, "render farm")];

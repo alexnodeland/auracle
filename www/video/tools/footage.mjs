@@ -67,9 +67,12 @@ function serve() {
   return new Promise((r) => srv.listen(0, "127.0.0.1", () => r(srv)));
 }
 
-/** Resolve an action time: seconds, or "lineId:word" against the timeline. */
+/** Resolve an action time: seconds, or "lineId:word" against the timeline,
+ *  with an optional offset in seconds ("offer1:Press+0.4"). */
 function when(at, shot) {
   if (typeof at === "number") return at;
+  const off = /([+-]\d+(?:\.\d+)?)$/.exec(at);
+  if (off) return when(at.slice(0, off.index), shot) + Number(off[1]);
   const [id, word] = at.split(":");
   const line = timeline.lines.find((l) => l.id === id);
   if (!line) throw new Error(`no line ${id}`);
@@ -84,10 +87,19 @@ function when(at, shot) {
   return t - origin;
 }
 
-async function step(page, s) {
+async function step(page, s, ctx = {}) {
   switch (s.op) {
     case "wait":
       return page.waitForTimeout(s.ms);
+    case "until":
+      // Wait for the app to reach a state (an offer ready, a view shown).
+      return page.waitForSelector(s.sel, { state: s.state || "visible", timeout: s.ms || 60_000 });
+    case "mark": {
+      // Measure an element that only exists mid-shot (a popover, a toast).
+      const box = await page.locator(s.sel).first().boundingBox().catch(() => null);
+      if (box && ctx.rects) ctx.rects[s.name] = { x: box.x, y: box.y, w: box.width, h: box.height };
+      return;
+    }
     case "click":
       return page.locator(s.sel).first().click();
     case "view":
@@ -127,6 +139,35 @@ async function step(page, s) {
       }
       return page.mouse.up();
     }
+    case "press": {
+      // A pad held down (Peek is heard only while held).
+      const box = await page.locator(s.sel).first().boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 });
+      await page.mouse.down();
+      await page.waitForTimeout(s.ms || 1500);
+      return page.mouse.up();
+    }
+    case "path": {
+      // A gesture across an element, through points given in [0,1] of its
+      // box (the XY pad), eased between them.
+      const box = await page.locator(s.sel).first().boundingBox();
+      const pts = s.points.map(([fx, fy]) => [box.x + fx * box.width, box.y + fy * box.height]);
+      await page.mouse.move(pts[0][0], pts[0][1], { steps: 8 });
+      await page.mouse.down();
+      const per = (s.ms || 2000) / Math.max(1, pts.length - 1);
+      for (let i = 1; i < pts.length; i++) {
+        const n = Math.max(2, Math.round(per / 33));
+        const [x0, y0] = pts[i - 1];
+        const [x1, y1] = pts[i];
+        for (let j = 1; j <= n; j++) {
+          const u = j / n;
+          const e = u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u);
+          await page.mouse.move(x0 + (x1 - x0) * e, y0 + (y1 - y0) * e);
+          await page.waitForTimeout(per / n);
+        }
+      }
+      return page.mouse.up();
+    }
     case "move": {
       const box = await page.locator(s.sel).first().boundingBox();
       return page.mouse.move(box.x + box.width / 2 + (s.ox || 0), box.y + box.height / 2 + (s.oy || 0), { steps: s.steps || 20 });
@@ -138,7 +179,11 @@ async function step(page, s) {
   }
 }
 
-async function shoot(browser, port, shot, ff) {
+async function shoot(browser, port, shot0, ff) {
+  // A shot with no `dur` runs for its beat (as timed now) plus its lead-in
+  // and a little tail, so re-timing the narration re-times the footage too.
+  const beat = timeline.beats.find((b) => b.id === shot0.beat);
+  const shot = { ...shot0, dur: shot0.dur ?? (beat ? beat.t1 - beat.t0 + (shot0.pre || 0) + 0.8 : 8) };
   const [W, H] = spec.viewport || [1920, 1080];
   const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: spec.dpr || 1, acceptDownloads: true });
   const page = await ctx.newPage();
@@ -147,10 +192,22 @@ async function shoot(browser, port, shot, ff) {
   if (spec.init) await page.addInitScript(spec.init);
   await page.goto(`http://127.0.0.1:${port}/${spec.query || "?film"}`);
   await page.waitForFunction(() => document.querySelector("#boot")?.classList.contains("done"), null, { timeout: 180_000 });
-  for (const s of spec.setup || []) await step(page, s);
+  // `own_setup` replaces the film's common setup (a shot that takes the
+  // warm start instead of skipping it).
+  if (!shot.own_setup) for (const s of spec.setup || []) await step(page, s);
   for (const s of shot.setup || []) await step(page, s);
   // Park the pointer off the panel unless the shot moves it.
   await page.mouse.move(W - 4, H - 4);
+  // Where the things the narration names are on screen, measured now rather
+  // than typed into the film: a callout pinned to `mark: "bright"` follows
+  // the Bright knob wherever the layout puts it, and a layout change moves
+  // the arrow with it instead of leaving it pointing at the wrong control.
+  const rects = {};
+  for (const [name, sel] of Object.entries(shot.marks || {})) {
+    const box = await page.locator(sel).first().boundingBox().catch(() => null);
+    if (box) rects[name] = { x: box.x, y: box.y, w: box.width, h: box.height };
+    else errors.push(`mark ${name}: nothing matches ${sel}`);
+  }
   const cdp = await ctx.newCDPSession(page);
   const frames = [];
   cdp.on("Page.screencastFrame", async (f) => {
@@ -166,12 +223,18 @@ async function shoot(browser, port, shot, ff) {
   });
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: W * (spec.dpr || 1), maxHeight: H * (spec.dpr || 1), everyNthFrame: 1 });
   const t0 = Date.now() / 1000;
-  const plan = (shot.actions || []).map((a) => ({ ...a, t: when(a.at ?? 0, shot) })).sort((a, b) => a.t - b.t);
+  const plan = (shot.actions || [])
+    .map((a) => {
+      const t = when(a.at ?? 0, shot);
+      // `"ms": "end"` holds to the end of the shot (a chord under a whole beat).
+      return { ...a, t, ms: a.ms === "end" ? Math.max(200, (shot.dur - t - 0.3) * 1000) : a.ms };
+    })
+    .sort((a, b) => a.t - b.t);
   const running = [];
   for (const a of plan) {
     const wait = t0 + a.t - Date.now() / 1000;
     if (wait > 0) await page.waitForTimeout(wait * 1000);
-    running.push(step(page, a).catch((e) => errors.push(`${a.op}: ${e.message}`)));
+    running.push(step(page, a, { rects }).catch((e) => errors.push(`${a.op}: ${e.message}`)));
   }
   const left = t0 + shot.dur - Date.now() / 1000;
   if (left > 0) await page.waitForTimeout(left * 1000);
@@ -205,7 +268,7 @@ async function shoot(browser, port, shot, ff) {
   enc.stdin.end();
   await new Promise((r) => enc.on("close", r));
   const paints = frames.filter((f) => f.t >= start && f.t <= start + shot.dur).length;
-  const meta = { id: shot.id, dur: shot.dur, fps: FPS, audio_offset: recAt - start, paints_per_s: paints / shot.dur, errors };
+  const meta = { id: shot.id, dur: shot.dur, fps: FPS, audio_offset: recAt - start, paints_per_s: paints / shot.dur, rects, errors };
   fs.writeFileSync(path.join(odir, `${shot.id}.json`), JSON.stringify(meta, null, 1));
   console.log(`  ${shot.id}: ${shot.dur}s, ${meta.paints_per_s.toFixed(1)} paints/s, audio offset ${meta.audio_offset.toFixed(3)} s`);
 }

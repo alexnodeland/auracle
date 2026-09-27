@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Auracle — film poster</title>
+<!-- The README's poster: a film's frame with its play badge and running time
+     baked in, because GitHub will not play a video from the repo and a still
+     with nothing on it does not read as a film. tools/poster.mjs opens this
+     at 1440×810 (2× the README's 720) with ?src=…&len=… and screenshots it. -->
+<link rel="stylesheet" href="stage.css">
+<style>
+  html, body { margin: 0; background: var(--rack); }
+  #poster {
+    position: relative;
+    width: 1440px;
+    height: 810px;
+    overflow: hidden;
+    background: var(--bezel) center / cover no-repeat;
+  }
+  /* A floor of shadow under the caption, so it reads over any frame. */
+  #poster::after {
+    content: "";
+    position: absolute;
+    inset: 55% 0 0 0;
+    background: linear-gradient(180deg, transparent, rgba(7, 8, 10, 0.82));
+  }
+  /* Bottom-left, with the caption beside it: the frame's centre is its
+     subject (the launch film's is the logotype). */
+  .badge {
+    position: absolute;
+    left: 56px;
+    bottom: 44px;
+    width: 112px;
+    height: 112px;
+    border-radius: 50%;
+    border: 3px solid var(--phos-a);
+    background: rgba(7, 8, 10, 0.66);
+    box-shadow: 0 0 44px rgba(142, 240, 177, 0.35), inset 0 0 24px rgba(142, 240, 177, 0.12);
+    display: grid;
+    place-items: center;
+    z-index: 1;
+  }
+  .badge svg { width: 40px; height: 40px; margin-left: 8px; }
+  .cap {
+    position: absolute;
+    left: 196px;
+    bottom: 80px;
+    z-index: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 22px;
+  }
+  .cap .what {
+    font-family: "Jost", sans-serif;
+    font-weight: 500;
+    font-size: 30px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--silk);
+  }
+  .cap .len {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 26px;
+    color: var(--phos-a);
+  }
+</style>
+</head>
+<body>
+<div id="poster">
+  <div class="badge"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0 L10 6 L0 12 Z" fill="#8ef0b1"/></svg></div>
+  <div class="cap"><span class="what" id="what">Watch the film</span><span class="len" id="len"></span></div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const img = new Image();
+  img.onload = () => { document.getElementById("poster").style.backgroundImage = `url("${img.src}")`; document.body.dataset.ready = "1"; };
+  img.onerror = () => { document.body.dataset.ready = "1"; };
+  img.src = q.get("src");
+  document.getElementById("len").textContent = q.get("len") || "";
+  if (q.get("what")) document.getElementById("what").textContent = q.get("what");
+</script>
+</body>
+</html>

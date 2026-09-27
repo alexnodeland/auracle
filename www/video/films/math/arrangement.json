@@ -1,18 +1,18 @@
 {
- "film": "circuit",
+ "film": "math",
  "bpm": 84,
  "meter": 4,
  "bed": "study",
  "sections": [
   {
    "section": "loop_a",
-   "bars": 14,
+   "bars": 33,
    "t0": 0.0
   },
   {
    "section": "loop_b",
-   "bars": 16,
-   "t0": 40.714
+   "bars": 28,
+   "t0": 94.286
   }
  ]
 }

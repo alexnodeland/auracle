@@ -27,6 +27,18 @@ import math
 import os
 import re
 
+
+# Arrays of numbers (word times, the picture's envelopes) on one line each: a
+# timeline pretty-printed one number per line ran to 17 000 lines of diff.
+_NUMS = re.compile(r"\[\s*(-?[\d.eE+-]+(?:,\s*-?[\d.eE+-]+)*)\s*\]")
+
+
+def dump_json(obj, path):
+    s = json.dumps(obj, indent=1, ensure_ascii=False)
+    s = _NUMS.sub(lambda m: "[" + ", ".join(x.strip() for x in m.group(1).split(",")) + "]", s)
+    with open(path, "w") as f:
+        f.write(s + "\n")
+
 WPS = 2.75
 # The unit a section may grow by, in bars: half a four-bar phrase still lands
 # a cut on a strong beat, and a whole one wastes up to ten seconds of film.
@@ -162,7 +174,7 @@ def main():
         prev = json.load(open(old))
         if "env" in prev:
             timeline["env"] = prev["env"]
-    json.dump(timeline, open(old, "w"), indent=1, ensure_ascii=False)
+    dump_json(timeline, old)
     json.dump(
         {"film": script["film"], "bpm": bpm, "meter": meter, "bed": script["music"]["bed"], "sections": arrangement},
         open(os.path.join(args.film_dir, "arrangement.json"), "w"),

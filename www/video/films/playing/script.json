@@ -1,0 +1,271 @@
+{
+  "film": "playing",
+  "title": "Playing it",
+  "description": "For performers: keys, touch and MIDI, the named controls as expression, Wander as a co-player, offers mid-phrase, and the dock.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
+    {
+      "id": "intro",
+      "music": "loop_a",
+      "lead": 1.5,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "intro1",
+          "text": "This is Auracle as an instrument, with chords, lines and swells under your hands.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "keys",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "keys1",
+          "text": "Two rows of the computer keyboard play notes, with Z and X for octaves.",
+          "post": 0.4
+        },
+        {
+          "id": "keys2",
+          "text": "Hold Shift for an accent.",
+          "post": 0.4
+        },
+        {
+          "id": "keys3",
+          "text": "On the screen keys, strike lower down for a harder note.",
+          "post": 0.4
+        },
+        {
+          "id": "keys4",
+          "text": "A MIDI keyboard brings velocity, pitch bend and the sustain pedal.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "touch",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "touch1",
+          "text": "In PERFORM, the touch row lets velocity play timbre as well as level.",
+          "post": 0.4
+        },
+        {
+          "id": "touch2",
+          "text": "With Bright on touch, soft notes play darker and hard notes brighter.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "controls",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "controls1",
+          "text": "The six named controls are your expression, and they mean the same thing on every patch.",
+          "post": 0.4
+        },
+        {
+          "id": "controls2",
+          "text": "Turning them never interrupts a note.",
+          "post": 0.4
+        },
+        {
+          "id": "controls3",
+          "text": "Hold a pad chord and ride Bright up slowly for a swell.",
+          "post": 0.4
+        },
+        {
+          "id": "controls4",
+          "text": "A long press on a control plays what it does on this patch.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "xy",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "xy1",
+          "text": "The XY pad puts two of them under one finger, Bright across and Motion up.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "wander",
+      "music": "loop_b",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "wander1",
+          "text": "Wander plays along with you.",
+          "post": 0.4
+        },
+        {
+          "id": "wander2",
+          "text": "A little, and ideas appear in B. More, and the knobs drift toward your taste.",
+          "post": 0.4
+        },
+        {
+          "id": "wander3",
+          "text": "All the way up, it roams.",
+          "post": 0.4
+        },
+        {
+          "id": "wander4",
+          "text": "Touch anything and it waits. Freeze holds it still.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "offer",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "offer1",
+          "text": "In the middle of a phrase, press Offer.",
+          "post": 0.4
+        },
+        {
+          "id": "offer2",
+          "text": "A variant grows into B and joins the chord you are holding.",
+          "post": 0.4
+        },
+        {
+          "id": "offer3",
+          "text": "Hold Peek to hear it, or ride Blend across at matched loudness.",
+          "post": 0.4
+        },
+        {
+          "id": "offer4",
+          "text": "Take it, or ask for another. Once heard, either answer teaches it.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "keep",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "keep1",
+          "text": "Keep marks the sound as home.",
+          "post": 0.4
+        },
+        {
+          "id": "keep2",
+          "text": "Back glides you there, so you can wander out for a solo and come back.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "dock",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "dock1",
+          "text": "In the dock, Hold latches a chord and Unison stacks all four voices on one note.",
+          "post": 0.4
+        },
+        {
+          "id": "dock2",
+          "text": "Glide slides a line from note to note, and chords stay clean.",
+          "post": 0.4
+        },
+        {
+          "id": "dock3",
+          "text": "The arpeggiator plays the held chord up, down or both ways, in time with the tempo.",
+          "post": 0.4
+        },
+        {
+          "id": "dock4",
+          "text": "Sync puts the patch's step sequencers on that tempo too.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "midi",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "midi1",
+          "text": "A controller's first eight knobs claim the eight controls, and Learn remaps any of them.",
+          "post": 0.4
+        },
+        {
+          "id": "midi2",
+          "text": "Pressure pushes Bright, the mod wheel pushes Motion, and MIDI clock sets the tempo.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "booth",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "booth1",
+          "text": "Booth mode plays by itself when no one is at the keys.",
+          "post": 0.4
+        },
+        {
+          "id": "booth2",
+          "text": "The first touch hands the instrument back.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "lead": 0.2,
+      "tail": 2.5,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "outro1",
+          "text": "Nothing in PERFORM opens a dialog, because a player in the middle of a phrase cannot answer one.",
+          "post": 0.7
+        }
+      ]
+    }
+  ]
+}

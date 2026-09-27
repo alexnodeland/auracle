@@ -14,11 +14,24 @@ FILM.webp), this:
     films.json, so the chapters and the transcript printed under each film are
     the ones it actually speaks, at the times it speaks them.
 
+  - fills every `<!-- film:NAME -->…<!-- /film:NAME -->` marker in the guide
+    and the reference with that film's player, and the landing page's
+    `films:cta` / `films:band` markers and the README's `films:readme` marker
+    with its buttons and posters — so a page shows a film exactly when the
+    film exists, at its real running time, and a film re-rendered to a new
+    length is re-timed everywhere by one command.
+
+The books and the landing page reach the films at the site's one copy,
+site/assets/film/, by relative path; nothing is duplicated into site/docs.
+(`mdbook serve` on its own has no assets/, so a film there shows its frame
+and no picture — build with `make site` to see them play.)
+
 It refuses a film whose picture and mix disagree about its length by more
 than a frame, or whose captions are missing.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -29,10 +42,23 @@ WWW = os.path.dirname(VIDEO)
 DEST = os.path.join(WWW, "landing", "assets", "film")
 DOCS = os.path.join(WWW, "docs", "src")
 
-# Where each film belongs, and the order the guide lists them in.
-ORDER = ["launch", "perform", "taste", "circuit", "engine"]
+# Where each film belongs, and the order the guide lists them in: the launch
+# film, then the films about playing it, then the ones about how it works.
+GROUPS = [
+    ("Start here", ["launch"]),
+    ("Playing it", ["perform", "circuit", "playing", "composing", "sounddesign"]),
+    ("How it works", ["taste", "engine", "math", "dsp"]),
+]
+ORDER = [f for _, fs in GROUPS for f in fs]
+ROOT = os.path.dirname(WWW)
+BOOKS = [os.path.join(WWW, "docs", "src"), os.path.join(WWW, "reference", "src")]
+LANDING = os.path.join(WWW, "landing", "index.html")
+README = os.path.join(ROOT, "README.md")
+SITE_URL = "https://alexnodeland.github.io/auracle/"
 CHAPTER_NAMES = {
     "launch": {"open": "The problem", "title": "Auracle", "duel": "Two patches, one pick", "grow": "Real circuits", "play": "Playing it", "offer": "Offers", "depth": "Underneath", "close": "Every note", "end": "Play it"},
+    "taste": {"hook": "Choosing, not describing", "hears": "What it listens for", "evidence": "A pick is evidence", "posterior": "Every taste that still fits", "lenses": "More than one taste", "forecast": "Forecasts, scored", "search": "The search", "reading": "Reading what it learned", "playing": "Learning while you play", "outro": "In the open"},
+    "engine": {"intro": "Five crates", "genome": "The genome", "compile": "Compiling to DSP", "audition": "The audition", "features": "Features", "utility": "Utility", "calibration": "Calibration", "search": "Search", "perform": "PERFORM's wiring", "runtime": "The runtime", "outro": "Read it, run it"},
 }
 
 
@@ -75,6 +101,7 @@ def main():
             sys.exit(f"{f}: the film is {dur:.2f} s but its timeline says {tl['duration']:.2f} s")
         for ext, p in files.items():
             shutil.copy2(p, os.path.join(DEST, f"{f}.{ext}"))
+        make_loop(f, files["mp4"])
         names = CHAPTER_NAMES.get(f, {})
         chapters = []
         for b in tl["beats"]:
@@ -94,47 +121,232 @@ def main():
         print(f"{f}: {fmt(dur)}, {os.path.getsize(files['mp4']) / 1e6:.1f} MB")
     json.dump(reg, open(reg_path, "w"), indent=1, ensure_ascii=False)
     write_docs_page(reg)
+    fill_books(reg)
+    fill_landing(reg)
+    fill_readme(reg)
 
 
 def write_docs_page(reg):
     out = [
         "# Films",
         "",
-        '<p class="lede">Five short films: what Auracle is, how to play it, how it',
-        "learns, the circuit underneath, and the engine. Captions are on by default,",
-        "and every film's full transcript is printed under it.</p>",
+        '<p class="lede">Short films about Auracle: what it is, how to play it, and how',
+        "it works underneath. Captions are on by default, and every film's full",
+        "transcript is printed under it.</p>",
         "",
         "Everything you hear in them is Auracle: the music is scored for its own voices",
         "and played by its engine, and the walkthroughs record the instrument's own",
         "output. The narration is synthetic (Kokoro-82M, offline).",
         "",
     ]
-    for f in ORDER:
-        if f not in reg:
+    for group, films in GROUPS:
+        present = [f for f in films if f in reg]
+        if not present:
             continue
-        r = reg[f]
-        out += [
-            f'## {r["title"]} <span class="film-len">{fmt(r["duration"])}</span>',
-            "",
-            f'<figure class="film" id="film-{f}">',
-            f'<video controls preload="none" playsinline poster="film/{f}.jpg">',
-            f'<source src="film/{f}.mp4" type="video/mp4">',
-            f'<track kind="captions" src="film/{f}.vtt" srclang="en" label="English" default>',
-            "</video>",
-            f"<figcaption>{r['description']}</figcaption>",
-            "</figure>",
-            "",
-        ]
-        if len(r["chapters"]) > 1:
-            out.append('<ol class="film-chapters">')
-            for c in r["chapters"]:
-                out.append(f'<li><a href="film/{f}.mp4#t={c["t"]:.1f}" data-film="{f}" data-t="{c["t"]:.2f}">{fmt(c["t"])}</a> {c["name"]}</li>')
-            out += ["</ol>", ""]
-        out += ["<details class=\"film-transcript\"><summary>Transcript</summary>", ""]
-        out += [" ".join(r["transcript"]), "", "</details>", ""]
+        if len(GROUPS) > 1:
+            out += [f"## {group}", ""]
+        for f in present:
+            out += film_section(f, reg[f])
     os.makedirs(DOCS, exist_ok=True)
     open(os.path.join(DOCS, "films.md"), "w").write("\n".join(out))
     print(f"wrote {os.path.join(DOCS, 'films.md')}")
+
+
+def film_section(f, r):
+    """One film on the guide's page: heading, player, chapters, transcript."""
+    out = [
+        f'### {r["title"]} <span class="film-len">{fmt(r["duration"])}</span>',
+        "",
+        f'<figure class="film" id="film-{f}">',
+        f'<video controls preload="none" playsinline poster="../assets/film/{f}.jpg">',
+        f'<source src="../assets/film/{f}.mp4" type="video/mp4">',
+        f'<track kind="captions" src="../assets/film/{f}.vtt" srclang="en" label="English" default>',
+        "</video>",
+        f"<figcaption>{r['description']}</figcaption>",
+        "</figure>",
+        "",
+    ]
+    if len(r["chapters"]) > 1:
+        out.append('<ol class="film-chapters">')
+        for c in r["chapters"]:
+            out.append(f'<li><a href="../assets/film/{f}.mp4#t={c["t"]:.1f}" data-film="{f}" data-t="{c["t"]:.2f}">{fmt(c["t"])}</a> {c["name"]}</li>')
+        out += ["</ol>", ""]
+    out += ['<details class="film-transcript"><summary>Transcript</summary>', ""]
+    out += [" ".join(r["transcript"]), "", "</details>", ""]
+    return out
+
+
+def fill(path, name, body):
+    """Replace what sits between `<!-- NAME -->` and `<!-- /NAME -->` in a
+    file. Missing markers are not an error: a page opts in by carrying them."""
+    text = open(path).read()
+    pat = re.compile(r"(<!-- " + re.escape(name) + r" -->)(.*?)(<!-- /" + re.escape(name) + r" -->)", re.S)
+    if not pat.search(text):
+        return False
+    new = pat.sub(lambda m: m.group(1) + body + m.group(3), text)
+    if new != text:
+        open(path, "w").write(new)
+        print(f"  {os.path.relpath(path, ROOT)}: {name}")
+    return True
+
+
+def fill_books(reg):
+    """A film's player wherever a page of the guide or the reference asks for
+    it. The path climbs out of the book to the site's copy: a page at
+    docs/views/perform.html reaches assets/ as ../../assets/."""
+    pat = re.compile(r"<!-- film:(\w+) -->")
+    for book in BOOKS:
+        for dirpath, _, names in os.walk(book):
+            for n in names:
+                if not n.endswith(".md") or n == "films.md":
+                    continue
+                path = os.path.join(dirpath, n)
+                wanted = set(pat.findall(open(path).read()))
+                depth = os.path.relpath(path, book).count(os.sep)
+                up = "../" * (depth + 1)
+                for f in wanted:
+                    fill(path, f"film:{f}", "\n" + embed(f, reg.get(f), up + "assets/film/", up_docs(book, depth)) if f in reg else "")
+
+
+def up_docs(book, depth):
+    """The guide's films page, from a page `depth` folders into `book`."""
+    up = "../" * depth
+    return up + "films.html" if book.endswith(os.path.join("docs", "src")) else "../" * (depth + 1) + "docs/films.html"
+
+
+def embed(f, r, base, films_page):
+    return "\n".join([
+        f'<figure class="film" id="film-{f}">',
+        f'<video controls preload="none" playsinline poster="{base}{f}.jpg">',
+        f'<source src="{base}{f}.mp4" type="video/mp4">',
+        f'<track kind="captions" src="{base}{f}.vtt" srclang="en" label="English" default>',
+        "</video>",
+        f'<figcaption>{r["description"]} <span class="film-len">{fmt(r["duration"])}</span> · '
+        f'<a href="{films_page}#film-{f}">chapters and transcript</a></figcaption>',
+        "</figure>",
+        "",
+    ])
+
+
+def film_link(f, r, cls, inner, extra=""):
+    base = "assets/film/"
+    return (
+        f'<a class="{cls}" href="{base}{f}.mp4" data-film-open="{f}" data-src="{base}{f}.mp4" '
+        f'data-vtt="{base}{f}.vtt" data-poster="{base}{f}.jpg" data-title="{r["title"]}"{extra}>{inner}</a>'
+    )
+
+
+# The landing page's rows of films, by the section they sit in: each film
+# beside the claim it shows, not all of them in one band.
+LANDING_ROWS = {
+    "instrument": ["perform", "circuit", "playing"],
+    "learning": ["taste", "math"],
+    "engine": ["engine", "dsp"],
+    "making": ["sounddesign", "composing"],
+}
+# The hero's silent loop: the launch film's opening, which carries its own
+# words on screen, so it reads with the sound off.
+LOOPS = {"launch": (0.0, 17.2)}
+
+
+def make_loop(f, src):
+    """A short, silent, small loop for the hero, cut from the published film."""
+    import imageio_ffmpeg
+
+    if f not in LOOPS:
+        return
+    t0, t1 = LOOPS[f]
+    out = os.path.join(DEST, f"{f}-loop.mp4")
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    d = t1 - t0
+    vf = f"scale=1280:-2,fade=t=in:st=0:d=0.4,fade=t=out:st={d - 0.7:.2f}:d=0.7"
+    subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(t0), "-t", str(d), "-i", src, "-an",
+                    "-vf", vf, "-c:v", "libx264", "-preset", "slow", "-crf", "27", "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart", out], check=True)
+    # VP9 too, first in the list: a Chromium without the H.264 decoder (some
+    # Linux builds) would otherwise show the poster where the hero should move.
+    webm = os.path.join(DEST, f"{f}-loop.webm")
+    subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(t0), "-t", str(d), "-i", src, "-an",
+                    "-vf", vf, "-c:v", "libvpx-vp9", "-crf", "38", "-b:v", "0", "-row-mt", "1",
+                    "-deadline", "good", "-cpu-used", "2", "-pix_fmt", "yuv420p", webm], check=True)
+    print(f"  {os.path.relpath(out, ROOT)}: {os.path.getsize(out) / 1e6:.1f} MB loop "
+          f"(+ {os.path.getsize(webm) / 1e6:.1f} MB webm)")
+
+
+def fill_landing(reg):
+    """The launch film is the hero — its opening looping silently in the
+    instrument's bezel, the whole screen a button that plays it with sound —
+    and every other film sits in the section it explains."""
+    if not os.path.exists(LANDING):
+        return
+    if "launch" in reg:
+        r = reg["launch"]
+        cta = film_link("launch", r, "btn btn-film",
+                        f'<span class="btn-film-play" aria-hidden="true">▶</span>Watch the film'
+                        f'<span class="btn-film-len mono">{fmt(r["duration"])}</span>')
+        loop = "assets/film/launch-loop.mp4"
+        hero = "\n".join([
+            "",
+            '  <div class="panel hero-film">',
+            '    <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>',
+            "    " + film_link(
+                "launch", r, "hero-film-screen",
+                f'<video poster="assets/film/launch.jpg" autoplay muted loop playsinline '
+                f'preload="metadata" aria-hidden="true" data-hero-loop>'
+                f'<source src="assets/film/launch-loop.webm" type="video/webm">'
+                f'<source src="{loop}" type="video/mp4"></video>'
+                f'<span class="hero-film-play"><span class="btn-film-play" aria-hidden="true">▶</span>'
+                f'Watch the film<span class="hfp-more">&nbsp;with sound</span> <span class="btn-film-len mono">{fmt(r["duration"])}</span></span>',
+                extra=f' aria-label="Watch the film, {fmt(r["duration"])}, with sound"'),
+            "  </div>",
+            "  ",
+        ])
+    else:
+        cta = '<a class="btn" href="#try">Try it here</a>'
+        hero = ""
+    fill(LANDING, "films:cta", cta)
+    fill(LANDING, "films:hero", hero)
+
+    def chip(f):
+        r = reg[f]
+        inner = (
+            f'<span class="film-chip-shot"><img src="assets/film/{f}.webp" alt="" width="1920" height="1080" '
+            f'loading="lazy" decoding="async"><span class="film-chip-badge" aria-hidden="true">▶</span></span>'
+            f'<span class="film-chip-meta"><span class="film-chip-title">{r["title"]}</span>'
+            f'<span class="film-chip-len mono">{fmt(r["duration"])}</span></span>'
+        )
+        return film_link(f, r, "film-chip", inner)
+
+    for row, films in LANDING_ROWS.items():
+        present = [f for f in films if f in reg]
+        body = "" if not present else "\n".join(
+            ["", '  <div class="film-chips">'] + ["    " + chip(f) for f in present] + ["  </div>", "  "]
+        )
+        fill(LANDING, f"films:{row}", body)
+
+
+def fill_readme(reg):
+    """GitHub will not play a video from the repo, so the README carries the
+    launch film's poster with its play badge baked in (tools/poster.mjs),
+    linked to the film on the site."""
+    if "launch" not in reg or not os.path.exists(README):
+        return
+    r = reg["launch"]
+    img = "www/landing/assets/film/launch-play.jpg"
+    if not os.path.exists(os.path.join(ROOT, img)):
+        img = "www/landing/assets/film/launch.jpg"
+    others = " · ".join(
+        f'[{reg[f]["title"]}]({SITE_URL}docs/films.html#film-{f}) ({fmt(reg[f]["duration"])})'
+        for f in ORDER if f in reg and f != "launch"
+    )
+    body = "\n".join([
+        "",
+        f'<a href="{SITE_URL}#films"><img src="{img}" alt="Watch the launch film ({fmt(r["duration"])})" width="720"></a>',
+        "",
+        f'**[▶ Watch the launch film]({SITE_URL}#films)** ({fmt(r["duration"])})' + (f" · {others}" if others else ""),
+        "",
+    ])
+    fill(README, "films:readme", body)
 
 
 if __name__ == "__main__":

@@ -7,18 +7,194 @@
   ],
   "shots": [
     {
-      "id": "test-bright",
-      "beat": "hood",
-      "pre": 1.0,
-      "dur": 7.0,
+      "id": "p-intro",
+      "beat": "intro",
+      "pre": 1.5,
       "setup": [
         { "op": "preset", "name": "Glass Pad" },
         { "op": "view", "v": "perform" },
         { "op": "measured", "name": "Glass Pad" }
       ],
+      "marks": { "tab": ".viewtab[data-view='perform']", "deck": ".pf-deck" },
       "actions": [
-        { "at": 0.4, "op": "hold", "keys": ["a", "d", "g"], "ms": 5500 },
-        { "at": 1.6, "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -90, "ms": 1800 }
+        { "at": 0.3, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "intro2:hands", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 1800 }
+      ]
+    },
+    {
+      "id": "p-keys",
+      "beat": "keys",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "marks": { "keybed": "#piano", "midi": "#midi-ind" },
+      "actions": [
+        { "at": "keys1:Play", "op": "hold", "keys": ["a"], "ms": 380 },
+        { "at": "keys1:Play+0.45", "op": "hold", "keys": ["d"], "ms": 380 },
+        { "at": "keys1:Play+0.9", "op": "hold", "keys": ["g"], "ms": 380 },
+        { "at": "keys1:Play+1.35", "op": "hold", "keys": ["h", "k"], "ms": 900 },
+        { "at": "keys1:MIDI-0.3", "op": "click", "sel": "#midi-ind" },
+        { "at": "keys1:MIDI+0.4", "op": "mark", "name": "panel", "sel": "#midi-panel" },
+        { "at": "keys2:claim", "op": "hold", "keys": ["a", "d", "g"], "ms": 2600 }
+      ]
+    },
+    {
+      "id": "p-named",
+      "beat": "named",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "marks": { "deck": ".pf-deck", "status": ".pf-status", "hood": ".pf-hood" },
+      "actions": [
+        { "at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "named1:Bright", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -45, "ms": 700 },
+        { "at": "named1:Snap", "op": "drag", "sel": ".pf-knob[data-i='1']", "dy": -45, "ms": 700 },
+        { "at": "named1:Motion", "op": "drag", "sel": ".pf-knob[data-i='2']", "dy": -45, "ms": 700 },
+        { "at": "named1:Body", "op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -45, "ms": 700 },
+        { "at": "named1:Grit", "op": "drag", "sel": ".pf-knob[data-i='4']", "dy": -45, "ms": 700 },
+        { "at": "named1:Space", "op": "drag", "sel": ".pf-knob[data-i='5']", "dy": -45, "ms": 700 }
+      ]
+    },
+    {
+      "id": "p-hood",
+      "beat": "hood",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "marks": { "bright": ".pf-knob[data-i='0']", "hood": ".pf-hood" },
+      "actions": [
+        { "at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "hood1:Turn", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -130, "ms": 2600 }
+      ]
+    },
+    {
+      "id": "p-amber",
+      "beat": "amber",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Ceiling" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Ceiling" }
+      ],
+      "marks": { "deck": ".pf-deck", "grit": ".pf-knob[data-i='4']", "offer": ".pf-offer" },
+      "actions": [
+        { "at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "hood2:anyway", "op": "drag", "sel": ".pf-knob[data-i='4']", "dy": -110, "ms": 2200 }
+      ]
+    },
+    {
+      "id": "p-xy",
+      "beat": "xy",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "marks": { "xy": ".pf-xy-field", "hood": ".pf-hood" },
+      "actions": [
+        { "at": 0.1, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "xy1:XY", "op": "path", "sel": ".pf-xy-field", "points": [[0.5, 0.5], [0.82, 0.25], [0.8, 0.78], [0.22, 0.8], [0.25, 0.24], [0.62, 0.4]], "ms": 3600 }
+      ]
+    },
+    {
+      "id": "p-wander",
+      "beat": "wander",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "marks": { "wander": ".pf-knob[data-i='7']", "hood": ".pf-hood" },
+      "actions": [
+        { "at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "wander2:little", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -28, "ms": 700 },
+        { "at": "wander2:More", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -40, "ms": 800 },
+        { "at": "wander2:way", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -70, "ms": 900 }
+      ]
+    },
+    {
+      "id": "p-offer",
+      "beat": "offer",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" },
+        { "op": "wait", "ms": 9000 }
+      ],
+      "marks": { "offer-pad": ".pf-pad.primary", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']" },
+      "actions": [
+        { "at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "offer1:Press", "op": "click", "sel": ".pf-pad.primary" },
+        { "at": "offer2:Peek", "op": "press", "sel": ".pf-pad:has-text('Peek')", "ms": 1600 },
+        { "at": "offer2:Blend", "op": "drag", "sel": ".pf-knob[data-i='6']", "dy": -120, "ms": 2000 }
+      ]
+    },
+    {
+      "id": "p-take",
+      "beat": "take",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" },
+        { "op": "wait", "ms": 9000 },
+        { "op": "click", "sel": ".pf-pad.primary" },
+        { "op": "until", "sel": ".pf-offer.ready", "ms": 90000 }
+      ],
+      "marks": { "take": ".pf-pad:has-text('Take')", "offer-pad": ".pf-pad.primary" },
+      "actions": [
+        { "at": 0.1, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": 0.3, "op": "press", "sel": ".pf-pad:has-text('Peek')", "ms": 1500 },
+        { "at": "take1:Take", "op": "click", "sel": ".pf-pad:has-text('Take')" },
+        { "at": "take1:Take+1.0", "op": "mark", "name": "toast", "sel": "#toasts .toast" },
+        { "at": "take1:another", "op": "click", "sel": ".pf-pad.primary" }
+      ]
+    },
+    {
+      "id": "p-keep",
+      "beat": "keep",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "marks": { "keep": ".pf-pad:has-text('Keep')", "back": ".pf-pad:has-text('Back')", "deck": ".pf-deck" },
+      "actions": [
+        { "at": 0.1, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "keep1:Keep", "op": "click", "sel": ".pf-pad:has-text('Keep')" },
+        { "at": "keep1:marks", "op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -90, "ms": 900 },
+        { "at": "keep1:Back", "op": "click", "sel": ".pf-pad:has-text('Back')" }
+      ]
+    },
+    {
+      "id": "p-outro",
+      "beat": "outro",
+      "pre": 0.5,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "marks": { "patch-tab": ".viewtab[data-view='play']" },
+      "actions": [
+        { "at": 0.1, "op": "hold", "keys": ["a", "d", "g"], "ms": "end" },
+        { "at": "outro1:play", "op": "hold", "keys": ["h"], "ms": 500 },
+        { "at": "outro1:turn", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 900 },
+        { "at": "outro1:offer", "op": "click", "sel": ".pf-pad.primary" },
+        { "at": "outro2:PATCH", "op": "click", "sel": ".viewtab[data-view='play']" }
       ]
     }
   ]

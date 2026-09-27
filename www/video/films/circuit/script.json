@@ -5,7 +5,7 @@
   "fps": 30,
   "voice": {
     "voice": "af_heart",
-    "speed": 0.82
+    "speed": 0.9
   },
   "music": {
     "bed": "study",
@@ -18,107 +18,107 @@
       "id": "intro",
       "music": "loop_a",
       "lead": 1.5,
-      "tail": 0.4,
+      "tail": 0.2,
       "lines": [
         {
           "id": "intro1",
           "text": "Every sound in Auracle is a real modular patch: oscillators, filters, envelopes and effects, wired together.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "rack",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "rack1",
           "text": "PATCH shows the whole circuit. Every knob sits at its true position, in musical units: hertz, seconds, decibels.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "rack2",
           "text": "Green cables carry the sound. A knob that something is modulating pulses with it.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "edit",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "edit1",
           "text": "Turn any knob and you hear it at once.",
-          "post": 0.3
+          "post": 0.35
         },
         {
           "id": "edit2",
           "text": "Every knob is an address in the patch's genome, so an edit becomes part of what the search works from. Lock a knob, and evolution leaves it alone.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "bank",
       "music": "loop_b",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "bank1",
-          "text": "The node bank holds all forty-two modules. Hover one to read what it does, then drag it into the patch.",
-          "post": 0.3
+          "text": "The node bank holds all forty-two modules. Hover one to read what it does. Click it, and every socket it can go into lights up.",
+          "post": 0.25
         }
       ]
     },
     {
       "id": "steps",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "steps1",
           "text": "Steps is a sequencer for timbre: eight values that walk any knob through a pattern, in time with the tempo.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "performed",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "performed1",
           "text": "When PERFORM is turning knobs, PATCH shows it. An amber pointer marks the value you're hearing, and hovering names the control that's turning it.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "evolve",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "evolve1",
           "text": "And EVOLVE keeps the lineage: what every generation changed, in plain words.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "outro",
-      "lead": 0.4,
+      "lead": 0.2,
       "tail": 2.5,
       "lines": [
         {
           "id": "outro1",
           "text": "The whole instrument, all the way down. Nothing is hidden.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     }

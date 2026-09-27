@@ -1,0 +1,268 @@
+{
+  "film": "dsp",
+  "title": "The sound engine",
+  "description": "For audio engineers: the patch graph, the modules and their types, compilation, the audition phrase, loudness, vetting, the features, and the live voices.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
+    {
+      "id": "intro",
+      "music": "loop_a",
+      "lead": 1.5,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "intro1",
+          "text": "Auracle's sound engine, from the patch graph to the live voices.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "graph",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "graph1",
+          "text": "Underneath is quiver, a modular synthesis library in Rust.",
+          "post": 0.4
+        },
+        {
+          "id": "graph2",
+          "text": "Each tick carries one sample through the whole graph.",
+          "post": 0.4
+        },
+        {
+          "id": "graph3",
+          "text": "Continuous knobs are atomic values the audio thread reads, so turning one needs no recompile.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "modules",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "modules1",
+          "text": "The palette has forty-two modules, from a plucked string to sidechained dynamics.",
+          "post": 0.4
+        },
+        {
+          "id": "modules2",
+          "text": "The filter is a state variable design, or a diode ladder that saturates harder one way.",
+          "post": 0.4
+        },
+        {
+          "id": "modules3",
+          "text": "Audio and modulation are separate Rust types, so a mistyped patch cannot even be built.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "compile",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "compile1",
+          "text": "Every voice ends with a DC blocker where needed, an exponential envelope, and a limiter.",
+          "post": 0.4
+        },
+        {
+          "id": "compile2",
+          "text": "Resonance and feedback are capped, so filters cannot oscillate and delays cannot run away.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "phrase",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "phrase1",
+          "text": "For comparison, every patch plays the same five second phrase.",
+          "post": 0.4
+        },
+        {
+          "id": "phrase2",
+          "text": "It holds a C, stabs an octave higher, and plays a two note chord.",
+          "post": 0.4
+        },
+        {
+          "id": "phrase3",
+          "text": "It ends on a low C with a long release.",
+          "post": 0.4
+        },
+        {
+          "id": "phrase4",
+          "text": "The random seed is reset every render, so the samples repeat bit for bit.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "vetting",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "vetting1",
+          "text": "Each raw render passes a gate first.",
+          "post": 0.4
+        },
+        {
+          "id": "vetting2",
+          "text": "It fails silence, runaway peaks, and signals dominated by DC.",
+          "post": 0.4
+        },
+        {
+          "id": "vetting3",
+          "text": "What fails is never played.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "loudness",
+      "music": "loop_b",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "loudness1",
+          "text": "Loudness is measured the broadcast way, with K weighting and gated blocks.",
+          "post": 0.4
+        },
+        {
+          "id": "loudness2",
+          "text": "Each patch is matched to minus eighteen loudness units, since louder wins comparisons.",
+          "post": 0.4
+        },
+        {
+          "id": "loudness3",
+          "text": "The gain stops short of clipping instead of limiting, so timbre is untouched.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "features",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "features1",
+          "text": "From that render come eighteen audio features.",
+          "post": 0.4
+        },
+        {
+          "id": "features2",
+          "text": "Four read the spectrum's brightness and its movement, on a logarithmic frequency axis.",
+          "post": 0.4
+        },
+        {
+          "id": "features3",
+          "text": "Texture, level and envelope take seven more, and one measures the bass.",
+          "post": 0.4
+        },
+        {
+          "id": "features4",
+          "text": "Three are read from single notes, and three are bands of motion on the held note.",
+          "post": 0.4
+        },
+        {
+          "id": "features5",
+          "text": "The bands run from half a hertz to two, two to eight, and eight to thirty.",
+          "post": 0.4
+        },
+        {
+          "id": "features6",
+          "text": "Twenty-six structural features come from the patch, with no render.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "live",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "live1",
+          "text": "Live, the same compiler builds four voices inside an AudioWorklet.",
+          "post": 0.4
+        },
+        {
+          "id": "live2",
+          "text": "Four more play PERFORM's offers, crossfaded at equal power.",
+          "post": 0.4
+        },
+        {
+          "id": "live3",
+          "text": "In steady state, the audio thread allocates nothing.",
+          "post": 0.4
+        },
+        {
+          "id": "live4",
+          "text": "A patch change fades out, rebuilds the voices in silence, and carries your held notes across.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "farm",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "farm1",
+          "text": "Auditions render in parallel, on up to six workers.",
+          "post": 0.4
+        },
+        {
+          "id": "farm2",
+          "text": "Draws are indexed and absorbed in order, so the pool is identical at any width.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "lead": 0.2,
+      "tail": 2.5,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "outro1",
+          "text": "One compiler serves search and stage, so what you play is what the model measured.",
+          "post": 0.7
+        }
+      ]
+    }
+  ]
+}

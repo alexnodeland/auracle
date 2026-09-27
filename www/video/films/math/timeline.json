@@ -1,0 +1,320 @@
+{
+ "film": "math",
+ "fps": 30,
+ "duration": 174.286,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "intro",
+   "t0": 0.0,
+   "t1": 6.58,
+   "music": "loop_a"
+  },
+  {
+   "id": "utility",
+   "t0": 7.143,
+   "t1": 23.765,
+   "music": null
+  },
+  {
+   "id": "likelihoods",
+   "t0": 24.286,
+   "t1": 46.251,
+   "music": null
+  },
+  {
+   "id": "posterior",
+   "t0": 46.429,
+   "t1": 64.538,
+   "music": null
+  },
+  {
+   "id": "calibration",
+   "t0": 65.0,
+   "t1": 80.387,
+   "music": null
+  },
+  {
+   "id": "acquisition",
+   "t0": 80.714,
+   "t1": 94.053,
+   "music": null
+  },
+  {
+   "id": "target",
+   "t0": 94.286,
+   "t1": 111.451,
+   "music": "loop_b"
+  },
+  {
+   "id": "refine",
+   "t0": 112.143,
+   "t1": 127.13,
+   "music": null
+  },
+  {
+   "id": "locks",
+   "t0": 127.143,
+   "t1": 138.314,
+   "music": null
+  },
+  {
+   "id": "perform",
+   "t0": 138.571,
+   "t1": 162.622,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 162.857,
+   "t1": 174.286,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "intro1",
+   "text": "The math inside Auracle, and why each piece has its shape.",
+   "beat": "intro",
+   "t0": 1.5,
+   "t1": 5.68
+  },
+  {
+   "id": "utility1",
+   "text": "Each patch becomes forty-four features, standardized to one scale.",
+   "beat": "utility",
+   "t0": 7.343,
+   "t1": 10.796
+  },
+  {
+   "id": "utility2",
+   "text": "Utility is the maximum over a few linear experts, never their average.",
+   "beat": "utility",
+   "t0": 11.196,
+   "t1": 15.739
+  },
+  {
+   "id": "utility3",
+   "text": "So you can love dark drones and bright plucks, and each is scored by its own best lens.",
+   "beat": "utility",
+   "t0": 16.139,
+   "t1": 22.865
+  },
+  {
+   "id": "likelihoods1",
+   "text": "Three kinds of answer feed that one utility.",
+   "beat": "likelihoods",
+   "t0": 24.486,
+   "t1": 27.395
+  },
+  {
+   "id": "likelihoods2",
+   "text": "A duel is Bradley-Terry, logistic in the utility difference.",
+   "beat": "likelihoods",
+   "t0": 27.795,
+   "t1": 31.248
+  },
+  {
+   "id": "likelihoods3",
+   "text": "Cutting a patch is a kill, judged against a bar fitted per session.",
+   "beat": "likelihoods",
+   "t0": 31.648,
+   "t1": 36.555
+  },
+  {
+   "id": "likelihoods4",
+   "text": "A picky day moves the bar, not the taste.",
+   "beat": "likelihoods",
+   "t0": 36.955,
+   "t1": 40.408
+  },
+  {
+   "id": "likelihoods5",
+   "text": "Stars fall between fitted cutpoints, so a harsh rater moves the cutpoints.",
+   "beat": "likelihoods",
+   "t0": 40.808,
+   "t1": 45.351
+  },
+  {
+   "id": "posterior1",
+   "text": "With no hidden lens labels, every parameter is a real number.",
+   "beat": "posterior",
+   "t0": 46.629,
+   "t1": 50.809
+  },
+  {
+   "id": "posterior2",
+   "text": "So plain Metropolis-Hastings fits it, and keeps five hundred draws.",
+   "beat": "posterior",
+   "t0": 51.209,
+   "t1": 55.025
+  },
+  {
+   "id": "posterior3",
+   "text": "Between fits, each answer reweights the draws, exactly and nearly free.",
+   "beat": "posterior",
+   "t0": 55.425,
+   "t1": 59.785
+  },
+  {
+   "id": "posterior4",
+   "text": "When the weights collapse, it pays for a refit.",
+   "beat": "posterior",
+   "t0": 60.185,
+   "t1": 63.638
+  },
+  {
+   "id": "calibration1",
+   "text": "Each duel is forecast before you answer, then scored by Brier.",
+   "beat": "calibration",
+   "t0": 65.2,
+   "t1": 69.38
+  },
+  {
+   "id": "calibration2",
+   "text": "Brier is a proper rule, so only an honest probability scores best.",
+   "beat": "calibration",
+   "t0": 69.78,
+   "t1": 74.324
+  },
+  {
+   "id": "calibration3",
+   "text": "Accuracy cannot see overconfidence.",
+   "beat": "calibration",
+   "t0": 74.724,
+   "t1": 76.178
+  },
+  {
+   "id": "calibration4",
+   "text": "Each kind of evidence gets its own score.",
+   "beat": "calibration",
+   "t0": 76.578,
+   "t1": 79.487
+  },
+  {
+   "id": "acquisition1",
+   "text": "Which pair should it ask about?",
+   "beat": "acquisition",
+   "t0": 80.914,
+   "t1": 83.096
+  },
+  {
+   "id": "acquisition2",
+   "text": "Picking the most informative pair only tied random pairs. Thompson sampling lost.",
+   "beat": "acquisition",
+   "t0": 83.546,
+   "t1": 88.21
+  },
+  {
+   "id": "acquisition3",
+   "text": "So pairs are random, and every duel is also an unbiased check.",
+   "beat": "acquisition",
+   "t0": 88.61,
+   "t1": 93.153
+  },
+  {
+   "id": "target1",
+   "text": "Search aims at a Boltzmann target, the grammar's prior times the exponential of beta times expected utility.",
+   "beat": "target",
+   "t0": 94.486,
+   "t1": 100.848
+  },
+  {
+   "id": "target2",
+   "text": "The prior supplies parsimony as a probability, not a penalty to tune.",
+   "beat": "target",
+   "t0": 101.248,
+   "t1": 105.791
+  },
+  {
+   "id": "target3",
+   "text": "Beta, at two, is the one dial between browsing and optimizing.",
+   "beat": "target",
+   "t0": 106.191,
+   "t1": 110.551
+  },
+  {
+   "id": "refine1",
+   "text": "Refinement is Metropolis-Hastings on the trace, through fugue-evo.",
+   "beat": "refine",
+   "t0": 112.343,
+   "t1": 115.432
+  },
+  {
+   "id": "refine2",
+   "text": "It walks forty steps from each of the ten best patches.",
+   "beat": "refine",
+   "t0": 115.832,
+   "t1": 119.832
+  },
+  {
+   "id": "refine3",
+   "text": "Keeping where each walk ends climbs the target instead of sampling it, which suits a shortlist.",
+   "beat": "refine",
+   "t0": 120.232,
+   "t1": 126.23
+  },
+  {
+   "id": "locks1",
+   "text": "A lock is exact conditioning.",
+   "beat": "locks",
+   "t0": 127.343,
+   "t1": 129.161
+  },
+  {
+   "id": "locks2",
+   "text": "Moves that change, delete or create a locked address are rejected.",
+   "beat": "locks",
+   "t0": 129.561,
+   "t1": 133.741
+  },
+  {
+   "id": "locks3",
+   "text": "Checking births as well as deaths keeps detailed balance.",
+   "beat": "locks",
+   "t0": 134.141,
+   "t1": 137.414
+  },
+  {
+   "id": "perform1",
+   "text": "PERFORM's controls are fixed directions in standardized sound. Bright is centroid plus rolloff.",
+   "beat": "perform",
+   "t0": 138.771,
+   "t1": 143.799
+  },
+  {
+   "id": "perform2",
+   "text": "Each patch gets its own Jacobian from one nudged render per knob, since knobs act differently in each.",
+   "beat": "perform",
+   "t0": 144.199,
+   "t1": 150.924
+  },
+  {
+   "id": "perform3",
+   "text": "A ridge solve picks at most four knobs for each control.",
+   "beat": "perform",
+   "t0": 151.324,
+   "t1": 155.324
+  },
+  {
+   "id": "perform4",
+   "text": "Each half is then rendered for real, and closes if it stops moving the right way.",
+   "beat": "perform",
+   "t0": 155.724,
+   "t1": 161.722
+  },
+  {
+   "id": "outro1",
+   "text": "Every constant here is in the reference, with its measurement where there is one.",
+   "beat": "outro",
+   "t0": 163.057,
+   "t1": 168.328
+  }
+ ],
+ "cues": {}
+}
