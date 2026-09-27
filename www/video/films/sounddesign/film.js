@@ -17,7 +17,14 @@
 // - open3 turns the resonance on "updates", so the guess moves on camera.
 // - commit: ▶ plays "the original" and "your edit" by name (the sides are
 //   shuffled); auditions are not in the recorded sound (see footage.mjs).
-// - undo: the held chorus is dragged back onto a socket at the end.
+// - undo: ⌘Z is pressed once the drag's edits have landed (pressed while
+//   the last one is still queued, the undo is overtaken by it), and it lands
+//   once the engine has re-rendered, which on a busy machine takes seconds,
+//   so the beat can cut from "undo" to the knob snapping back (the shot's
+//   `clips`; no cut when it is quick). The bypassed chorus stays in HELD.
+// - bank: the preview's ▶ is pressed with the pointer still resting on the
+//   socket; a render still on its way when the pointer leaves the socket
+//   falls back to another socket's audition.
 import { walkthrough, aim } from "../../stage/walk.js";
 
 export async function build(stage) {
@@ -131,7 +138,7 @@ export async function build(stage) {
         cam: [[0, 1.0, 0.5, 0.5], ["lineage1-0.2", ...aim(1.5, 1000, 900)]],
         callouts: [
           { at: "lineage1:edits", until: "lineage2", mark: "lineage", side: "top", ox: -300, dx: 40, dy: -80, text: "✎ your edits · ⚡ evolution's steps" },
-          { at: "lineage2:estimate", mark: "lineage", side: "top", ox: 200, dx: 40, dy: -80, text: "Δtaste: how far the estimate moved", color: "b" },
+          { at: "lineage2:estimate", mark: "lineage", side: "top", ox: 200, dx: -40, dy: -80, text: "Δtaste: how far the estimate moved", color: "b" },
         ],
       },
       {

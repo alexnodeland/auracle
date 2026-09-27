@@ -23,8 +23,12 @@
 // - dock: HOLD latches before ARP opens its drawer (a click on HOLD folds the
 //   drawer), the pointer rests on the drawer so the chord does not fold it,
 //   and the chord lands on the score's beat (`snap`).
-// - wander: Wander enters the offer zone on "Wander", so its 3.5 s of hands
-//   off have passed when "ideas appear in B"; no glide is faked.
+// - wander: Wander enters the offer zone on "Wander"; after 3.5 s of hands
+//   off it asks for an idea, which takes seconds to grow, so the beat cuts
+//   from "ideas" to just before it lands in B (the shot's `clips`; no cut
+//   when it is quick). "More" then turns Wander on past the offer zone.
+// - outro: the first chord sounds from the start to the first bar line, then
+//   one chord a bar, on the score's bar lines.
 import { walkthrough, aim } from "../../stage/walk.js";
 
 export async function build(stage) {

@@ -125,11 +125,11 @@
         {"at": "bank1:click+0.3", "op": "mark", "name": "delay", "sel": ".nb-item[data-kind='delay']"},
         {"at": "bank2:lights+0.3", "op": "mark", "name": "lit", "sel": "#rack-svg .jack.legal"},
         {"at": "bank2:lights+0.3", "op": "mark", "name": "status", "sel": "#nb-status"},
-        {"at": "bank3:Green-0.2", "op": "move", "sel": "#rack-svg .jack[data-childkey='node/0'] circle:last-of-type", "ms": 400},
-        {"at": "bank3:Green+0.8", "op": "log", "name": "green", "js": "document.getElementById('nb-status').textContent"},
+        {"at": "bank3:Green-0.2", "op": "seq", "steps": [{"op": "move", "sel": "#rack-svg .jack[data-childkey='node/0'] circle:last-of-type", "ms": 400}, {"op": "log", "name": "green", "js": "document.getElementById('nb-status').textContent"}]},
         {"at": "bank3:Amber-0.35", "op": "seq", "steps": [{"op": "key", "key": "Escape", "ms": 80}, {"op": "click", "sel": ".nb-item[data-kind='formant']"}, {"op": "mark", "name": "formant", "sel": ".nb-item[data-kind='formant']"}, {"op": "move", "sel": "#rack-svg .jack[data-childkey='node/0/0'] circle:last-of-type", "ms": 400}, {"op": "log", "name": "amber", "js": "document.getElementById('nb-status').textContent + ' | ' + document.querySelector(\"#rack-svg .jack[data-childkey='node/0/0']\").getAttribute('class')"}]},
-        {"at": "bank4:Rest", "op": "until", "js": "document.querySelector('#spec-dock .pv-label')?.textContent === 'hear it here'", "ms": 30000, "stamp": "rendered"},
-        {"at": "bank4:play-0.4", "op": "seq", "steps": [{"op": "until", "js": "document.querySelector('#spec-dock .pv-label')?.textContent === 'hear it here'", "ms": 30000}, {"op": "mark", "name": "play", "sel": "#pv-play"}, {"op": "move", "sel": "#pv-play", "ms": 300}, {"op": "click", "sel": "#pv-play"}, {"op": "log", "name": "preview", "js": "document.querySelector('#spec-dock .sd-line')?.textContent"}, {"op": "wait", "ms": 1600}, {"op": "key", "key": "Escape", "ms": 80}]}
+        {"at": "bank3:Amber+0.8", "op": "eval", "js": "window.__pv = []; const t0 = performance.now(); window.__pvI = setInterval(() => window.__pv.push(((performance.now() - t0) / 1000).toFixed(1) + ' ' + (document.querySelector('#spec-dock .pv-label')?.textContent || '-') + (/re-measuring/.test(document.getElementById('belief').textContent) ? ' (re-measuring)' : '')), 500)"},
+        {"at": "bank4:play", "op": "seq", "steps": [{"op": "mark", "name": "play", "sel": "#pv-play"}, {"op": "eval", "js": "document.getElementById('pv-play').click()"}]},
+        {"at": "bank4:play+2.5", "op": "log", "name": "strip", "js": "clearInterval(window.__pvI); window.__pv.join(' | ')"}
       ]
     },
     {
@@ -204,16 +204,16 @@
         {"at": "commit2:Either", "op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-pick"},
         {"at": "commit2:Either+0.5", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "commit3", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
-        {"at": "commit3+0.1", "op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -40, "ms": 900},
-        {"at": "commit3:tick", "op": "click", "sel": "#improve-check"},
+        {"at": "commit3+0.1", "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -40, "ms": 700}, {"op": "wait", "until": "commit3:tick"}, {"op": "click", "sel": "#improve-check"}]},
         {"at": "commit4:claim", "op": "click", "sel": "#rack-commit"},
-        {"at": "commit4:claim+0.6", "op": "mark", "name": "toast2", "sel": "#toasts .toast"}
+        {"at": "commit4:claim+2.0", "op": "log", "name": "claim", "js": "(document.getElementById('improve-check').checked ? 'ticked' : 'not ticked') + ' | duel ' + (document.getElementById('cduel').classList.contains('hidden') ? 'closed' : 'OPEN') + ' | ' + document.getElementById('toasts').textContent"}
       ]
     },
     {
       "id": "sd-undo",
       "beat": "undo",
       "pre": 0.5,
+      "clips": [["undo1:undo+0.8", "@undone-0.2"]],
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -226,13 +226,11 @@
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
         {"at": "undo1:change-0.3", "op": "eval", "js": "window.__res0 = document.querySelector(\"#rack-svg [data-addr='node/0#res']\").textContent"},
-        {"at": "undo1:change", "op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -60, "ms": 600},
-        {"at": "undo1:undo", "op": "hold", "keys": ["Control", "z"], "ms": 150},
-        {"at": "undo2:bypass-0.5", "op": "seq", "steps": [{"op": "until", "js": "document.querySelector(\"#rack-svg [data-addr='node/0#res']\").textContent === window.__res0", "ms": 30000, "stamp": "undone"}, {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"}, {"op": "until", "sel": "#ctx-menu .cm-item", "ms": 5000}, {"op": "wait", "ms": 300}, {"op": "click", "sel": "#ctx-menu .cm-item:has-text('bypass')"}]},
-        {"at": "undo2:held", "op": "mark", "name": "tray", "sel": "#tray"},
-        {"at": "undo2:held", "op": "mark", "name": "item", "sel": "#tray-items .tray-item"},
-        {"at": "undo2:reload+0.5", "op": "seq", "steps": [{"op": "until", "sel": "#tray-items .tray-item:not(.pending)", "ms": 30000}, {"op": "drag", "sel": "#tray-items .tray-item .t-jack", "to": "#rack-svg .jack[data-childkey='node'] circle:last-of-type", "ms": 900}]},
-        {"at": "undo2:reload+2.0", "op": "log", "name": "after", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map((g) => g.dataset.key + ':' + g.dataset.kind).join(' ') + ' | held ' + document.querySelectorAll('#tray-items .tray-item').length"}
+        {"at": "undo1:change", "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -60, "ms": 600}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent)", "ms": 60000, "stamp": "settled"}, {"op": "wait", "until": "undo1:undo"}, {"op": "hold", "keys": ["Control", "z"], "ms": 150}]},
+        {"at": "undo1:undo+0.2", "op": "until", "js": "document.querySelector(\"#rack-svg [data-addr='node/0#res']\").textContent === window.__res0", "ms": 60000, "stamp": "undone"},
+        {"at": "undo2:bypass-0.5", "op": "seq", "steps": [{"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"}, {"op": "until", "sel": "#ctx-menu .cm-item", "ms": 5000}, {"op": "wait", "ms": 300}, {"op": "click", "sel": "#ctx-menu .cm-item:has-text('bypass')"}]},
+        {"at": "undo2:held-0.3", "op": "seq", "steps": [{"op": "until", "sel": "#tray-items .tray-item", "ms": 20000, "stamp": "held"}, {"op": "mark", "name": "tray", "sel": "#tray"}, {"op": "mark", "name": "item", "sel": "#tray-items .tray-item"}]},
+        {"at": "undo2:reload+1.0", "op": "log", "name": "after", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map((g) => g.dataset.key + ':' + g.dataset.kind).join(' ') + ' | held ' + document.querySelectorAll('#tray-items .tray-item').length"}
       ]
     },
     {

@@ -245,9 +245,8 @@
         {"at": "scenes1:glides", "op": "click", "sel": ".pf-pad:has-text('Back')"},
         {"at": "scenes2:step-0.3", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
         {"at": "scenes2:step", "op": "key", "key": "[", "ms": 120},
-        {"at": "scenes2:step+1.5", "op": "log", "name": "after first [", "js": "document.querySelector('.pf-name').textContent"},
-        {"at": "scenes3:carry", "op": "key", "key": "[", "ms": 120},
-        {"at": "scenes3:click", "op": "log", "name": "after second [", "js": "document.querySelector('.pf-name').textContent"}
+        {"at": "scenes2:step+0.2", "op": "seq", "steps": [{"op": "until", "js": "/^Loom/.test(document.querySelector('.pf-name').textContent)", "ms": 30000, "stamp": "loom"}, {"op": "wait", "until": "scenes3:carry"}, {"op": "key", "key": "[", "ms": 120}]},
+        {"at": "scenes3:click+0.8", "op": "log", "name": "after the steps", "js": "document.querySelector('.pf-name').textContent + ' | live ' + document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent"}
       ]
     },
     {

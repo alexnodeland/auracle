@@ -20,7 +20,11 @@
 //   on Sub & Sparkle's high-pass), not by the slot's path.
 // - clock: the clock runs at the bed's 84 BPM (not 96), with Start on the bar
 //   line nearest "start", so the arpeggio and the steps land on the music.
-// - parts (scenes): not taught, so My Patches holds just the three saved.
+// - parts (scenes): not taught, so My Patches holds just the three saved
+//   (First Bass, Loom, Glass Pad), and Glass Pad, the last, is played: `[`
+//   steps back to Loom, then to First Bass. A step lands once the engine has
+//   opened the patch (seconds on a busy machine), so the second `[` waits
+//   for the first to land.
 // - record: ● rec is not pressed on camera (the shot's capture is the same
 //   recorder). The part is played, then the capture itself is stopped
 //   (`rec`), so the take's real "saved … take" toast is the result shown.

@@ -132,6 +132,7 @@
       "beat": "wander",
       "pre": 0.5,
       "own_setup": true,
+      "clips": [["wander2:ideas+0.5", "@offered-0.3"]],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
