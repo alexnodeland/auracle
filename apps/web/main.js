@@ -7978,6 +7978,9 @@ function applyView() {
   // short-circuits before anything is laid out. See `syncFitHint`.
   syncFitHint();
   if (effectiveLod() !== lodApplied) scheduleRelod();
+  // Which tiers of silkscreen are big enough to print at this zoom. A class
+  // flip, and only when a tier crosses 8px — see `syncSilkFloor`.
+  syncSilkFloor();
 }
 
 /** 48px of fade on whichever horizontal edge actually has patch beyond it.
@@ -8059,6 +8062,44 @@ function scheduleRelod() {
     if (effectiveLod() !== lodApplied && wb.rack) renderRack();
   });
 }
+
+// ---------- the silkscreen floor ----------
+// The knob LOD above answers "can a hand still grab this?", and keeps knobs
+// down to ~0.34×. Type is a different question with a different answer: the
+// fitted zoom put Glass Pad's knob labels at 5.8px at 1280×800 and First
+// Bass's at 5.7px at 1440×900 — ink on the panel that nobody could read, at a
+// size where a knob is still a perfectly good control. So each tier of rack
+// type steps aside once it would print under 8px, and returns when the camera
+// comes closer. A plate still reads by its knobs, jacks and cables, and a
+// knob still names itself on hover. Automatic detail only: "detail full" is
+// the player asking for everything, at any size, and gets it.
+const SILK_FLOOR_PX = 8;
+// Tier → the token its size is set by (style.css). Every rack text class
+// belongs to exactly one of these; see `#rack-svg.silk-floor` there.
+const SILK_TIERS = {
+  micro: "--t-rack-micro", // jack in/out, plate hints, the port probe
+  label: "--t-rack-label", // knob labels, step numbers, mod tabs
+  value: "--t-rack-value", // readouts, enum chips, and a narrow plate's title
+  title: "--t-rack-title", // plate titles
+};
+let silkPx = null; // tier → px, read off the tokens once
+let silkUnder = null;
+function syncSilkFloor() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  if (!silkPx) {
+    const cs = getComputedStyle(document.documentElement);
+    silkPx = Object.entries(SILK_TIERS).map(([tier, tok]) => [tier, parseFloat(cs.getPropertyValue(tok)) || 0]);
+  }
+  // Written only when a tier crosses the line, not per camera frame.
+  const under = silkPx.filter(([, px]) => px * view.zoom < SILK_FLOOR_PX).map(([tier]) => tier).join(" ");
+  if (under !== silkUnder) {
+    silkUnder = under;
+    svg.dataset.illegible = under;
+  }
+  svg.classList.toggle("silk-floor", lodMode === "auto");
+}
+
 function syncLodBtn() {
   const b = $("rack-lod");
   if (!b) return;
@@ -8069,7 +8110,7 @@ function syncLodBtn() {
       // The number is read out rather than written in, because it is a
       // function of the frame now (`lodThreshold`) and a tooltip that says
       // 0.55 in a frame that switches at 0.34 is a tooltip that lies.
-      ? `Detail: automatic. Plates lose their knobs when you zoom out past ${lodThreshold().toFixed(2)}×.`
+      ? `Detail: automatic. Labels too small to read (under ${SILK_FLOOR_PX}px) are left off, and plates lose their knobs when you zoom out past ${lodThreshold().toFixed(2)}×.`
       : lodMode === "full"
         ? "Detail: full, at every zoom. Click for plates without knobs."
         : "Detail: plates, titles and jacks only. Click to go back to automatic.";
@@ -8079,6 +8120,7 @@ $("rack-lod").onclick = () => {
   try { localStorage.setItem("auracle-lod", lodMode); } catch (_) {}
   syncLodBtn();
   renderRack();
+  syncSilkFloor();
 };
 syncLodBtn();
 

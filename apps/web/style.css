@@ -875,8 +875,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 /* A one-knob plate is 96 units wide and gives up ~44 of them to the control
    well. 13px there means condensing the glyphs, and a squeezed name reads as
-   a rendering fault; one step down reads as a smaller panel, which it is. */
-.mod-title.narrow { font-size: 11px; letter-spacing: 0.12em; }
+   a rendering fault; one step down reads as a smaller panel, which it is.
+   One step down on the rack's own scale — the readout size — so the
+   silkscreen floor below treats it as the size it is. */
+.mod-title.narrow { font-size: var(--t-rack-value); letter-spacing: 0.12em; }
 .mod-title.modside { fill: var(--phos-b); }
 /* The masthead rule. One hairline is the difference between a name floating
    on a plate and a name that the knob grid hangs from. */
@@ -911,6 +913,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: fill 380ms ease-out;
 }
 .knob-value.flashing { fill: var(--phos-a); transition: none; }
+/* The silkscreen floor (`syncSilkFloor` in main.js): the camera draws the
+   rack at 0.3–2.5×, and a tier of type that would print under 8px at the
+   current zoom steps aside rather than being drawn illegible — 5–7px labels
+   were the rule at 1280×800, not the exception. The tier names are set from
+   the size tokens, so a token change moves its threshold with it. Hidden,
+   not removed: `fitLabels` still measures them, and they come back the moment
+   the camera does. Under "detail full" nothing is hidden. */
+#rack-svg.silk-floor[data-illegible~="micro"] .jack text,
+#rack-svg.silk-floor[data-illegible~="micro"] .plate-hint,
+#rack-svg.silk-floor[data-illegible~="micro"] .pt-msg,
+#rack-svg.silk-floor[data-illegible~="label"] .knob-label,
+#rack-svg.silk-floor[data-illegible~="label"] .step-num,
+#rack-svg.silk-floor[data-illegible~="label"] .mod-tab-name,
+#rack-svg.silk-floor[data-illegible~="value"] .knob-value,
+#rack-svg.silk-floor[data-illegible~="value"] .enum-text,
+#rack-svg.silk-floor[data-illegible~="value"] .mod-title.narrow,
+#rack-svg.silk-floor[data-illegible~="title"] .mod-title { visibility: hidden; }
 .knob-body { fill: url(#knobGrad); stroke: #000; stroke-width: 1; cursor: ns-resize; }
 /* A knob's face is bigger than its body: the ticks, the travel track and the
    value arc all ride outside r, and all of them read as part of the control.
@@ -941,8 +960,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .step-bar.latent .step-num { opacity: 0.45; }
 .step-bar.dragging .step-track, .step-bar:hover .step-track { stroke: #4a505b; }
 [data-addr].step-bar:focus-visible .step-track { stroke: var(--phos-a); stroke-width: 2; }
+/* An enum chip's text is its readout — the option it is set to, and the part
+   of the chip that changes — so it is set at the readout size and leaves with
+   the readouts under the silkscreen floor, rather than a step below them,
+   where the floor emptied the chip while the knobs beside it still read. */
 .enum-text {
-  font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--phos-a);
+  font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-a);
   text-anchor: middle; pointer-events: none;
 }
 .lock-dot { cursor: pointer; }
@@ -4653,6 +4676,12 @@ html.booth .pf-marquee { display: grid; min-height: 46px; }
 }
 g.performed .knob-body { stroke: var(--phos-b-dim); }
 g.performed .knob-value { fill: var(--phos-b); }
+/* Under 0.8× — where the knob label tier drops below 8px (`syncSilkFloor`) —
+   the amber readout is too small to carry "performed", or is not drawn at
+   all, and the ghost pointer is a 2px stub on a knob 20px across. So the
+   body's ring lights amber too, at a weight that survives the zoom: the knob
+   PERFORM is playing can be found across the whole rack at a glance. */
+#rack-svg[data-illegible~="label"] g.performed .knob-body { stroke: var(--phos-b); stroke-width: 2.5; }
 
 /* ---------- PERFORM first steps ---------- */
 .pf-steps {
