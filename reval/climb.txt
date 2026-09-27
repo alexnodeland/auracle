@@ -1,0 +1,35 @@
+cargo run -p auracle-session --example search_health --release -- --climb 16
+   Compiling auracle-taste v0.2.0 (/home/user/auracle/crates/auracle-taste)
+   Compiling auracle-session v0.2.0 (/home/user/auracle/crates/auracle-session)
+    Finished `release` profile [optimized] target(s) in 27.55s
+     Running `target/release/examples/search_health --climb 16`
+== 1. pool true utility per refinement generation ==
+(pool 48, 60 duels, 6 generations, 16 seeds)
+gen        mean u      max u     Δ mean
+0          -0.000      5.235          —
+1           0.778      5.905     +0.778
+2           1.361      6.670     +0.583
+3           1.717      7.116     +0.355
+4           1.912      7.253     +0.195
+5           1.982      7.635     +0.070
+6           2.080      7.822     +0.098
+  mean gain: +2.080 ± 0.450 (se)   climbed on 15/16
+  median gain: +2.200   10% trimmed: +2.230 ± 0.303 (se, n=14)
+seed     final mean  final max       gain
+e05           3.929      8.940     +3.929
+f06           1.805      6.551     +1.805
+1007          2.371      7.570     +2.371
+1108          2.029      7.338     +2.029
+1209          1.720      8.723     +1.720
+130a          0.206      7.889     +0.206
+140b          2.777      8.612     +2.777
+150c          1.709      8.371     +1.709
+160d         -2.806      7.064     -2.806
+170e          4.867      9.652     +4.867
+180f          1.887      7.338     +1.887
+1910          2.481      6.665     +2.481
+1a11          4.207      7.332     +4.207
+1b12          0.378      6.843     +0.378
+1c13          2.434      6.376     +2.434
+1d14          3.289      9.888     +3.289
+
