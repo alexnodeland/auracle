@@ -501,11 +501,18 @@ export function createMidi(host) {
     navigator
       .requestMIDIAccess({ sysex: false })
       .then((access) => {
+        // A click can ask again while an earlier request is still waiting,
+        // and both can be granted. The first grant wins: wiring a second
+        // MIDIAccess would hang a second handler on every device, and each
+        // message would arrive twice (an encoder would turn at double speed).
+        if (state.access) return;
         state.access = access;
         wire();
         access.onstatechange = wire;
       })
       .catch((e) => {
+        // The other request was granted; this one's refusal says nothing.
+        if (state.access) return;
         // A refusal (the player, or a site setting) is not a failure of the
         // browser's MIDI system, and the fix is different.
         const refused = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
