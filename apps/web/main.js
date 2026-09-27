@@ -8347,10 +8347,11 @@ function scopeReserve(box) {
 // Moving the scope out of the way in reply would be worse: its corner is a
 // setting, and a corner that reassigns itself under a pan is an instrument
 // that will not stay where it was bolted. So the glass gets out of the way
-// instead — the scope fades to the same parked presence it takes when the
-// patch goes quiet, which is the state the player has already been shown for
-// "this is still here and not asking for your attention". It comes back the
-// moment the plates pan out from under it.
+// instead. It used to fade to the parked presence and stay, which still drew
+// a bezel through the plate it was over — after a re-fit that could not
+// afford the reserve, through ENV / OUT's sustain and release knobs. It fades
+// out entirely now (`.scope-shell.ducked`), and comes back the moment the
+// plates pan, or re-fit, out from under it.
 //
 // Geometry, not hit-testing: every plate's screen rect comes from the camera
 // (`rackBoxes` is in rack units and the transform is three multiplies), so a
