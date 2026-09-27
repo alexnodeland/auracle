@@ -586,6 +586,104 @@ mod tests {
     /// seed learned *something*" — set below the worst of 13 seeds at the
     /// shipped budget (min r 0.551, min cos 0.315). They catch a loop that
     /// stopped working; they are not the gate.
+    /// A listener who wants **slow** movement and dislikes **fast** flutter
+    /// is learnable from duels on the real pool.
+    ///
+    /// Before the motion bands this preference was not hard to learn but
+    /// inexpressible: a 0.55 Hz sweep and a 13 Hz flutter scored the same on
+    /// every coordinate φ had (`motion_probe`). The gate is the ordinary
+    /// closed loop — real prior draws, real renders, 60 duels, the shipped
+    /// fit — with a ground truth that lives *only* on the two band
+    /// coordinates, so every bit of recovered correlation had to come through
+    /// them.
+    #[test]
+    fn closed_loop_learns_motion_rate() {
+        const SEEDS: [u64; 3] = [0xE05, 0x1, 0x2];
+        fn user() -> SyntheticUser {
+            let names = Features::phi_names();
+            let mut theta = vec![0.0; names.len()];
+            for (name, w) in [("motion_slow", 1.5), ("motion_fast", -1.5)] {
+                let i = names
+                    .iter()
+                    .position(|n| n.split(':').next() == Some(name))
+                    .expect("motion band in φ");
+                theta[i] = w;
+            }
+            SyntheticUser {
+                theta,
+                tau: 0.0,
+                cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
+            }
+        }
+        fn one(seed: u64) -> (f64, f64, f64) {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let user = user();
+            let cfg = SessionConfig {
+                pool_size: 48,
+                refine_steps: 0,
+                mcmc_samples: SessionConfig::default().mcmc_samples,
+                mcmc_warmup: SessionConfig::default().mcmc_warmup,
+                ..fast()
+            };
+            let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+            engine.begin_session();
+            engine.fill_pool(&mut rng);
+            for _ in 0..4 {
+                for _ in 0..15 {
+                    let (a, b) = engine.next_duel(&mut rng).unwrap();
+                    let chose_a =
+                        user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+                    engine.record_duel(a, b, chose_a);
+                }
+                engine.fit_posterior(&mut rng);
+            }
+            let posterior = engine.posterior.as_ref().unwrap();
+            let (mut xs, mut ys) = (Vec::new(), Vec::new());
+            for c in &engine.pool {
+                xs.push(posterior.utility_mix(&c.phi_std).0);
+                ys.push(user.utility(&c.phi_std));
+            }
+            // How much the pool actually varies along the preference: a gate
+            // on a pool where every patch is static would pass or fail on
+            // nothing.
+            let my = ys.iter().sum::<f64>() / ys.len() as f64;
+            let spread =
+                (ys.iter().map(|y| (y - my) * (y - my)).sum::<f64>() / ys.len() as f64).sqrt();
+            let top5: f64 = engine
+                .ranked()
+                .iter()
+                .take(5)
+                .map(|&(i, _, _)| user.utility(&engine.pool[i].phi_std))
+                .sum::<f64>()
+                / 5.0;
+            (pearson(&xs, &ys), (top5 - my) / spread.max(1e-9), spread)
+        }
+        let rows: Vec<(u64, (f64, f64, f64))> = std::thread::scope(|s| {
+            let hs: Vec<_> = SEEDS
+                .iter()
+                .map(|&seed| s.spawn(move || (seed, one(seed))))
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        for (seed, (r, lift, spread)) in &rows {
+            println!("motion seed {seed:#x}: r = {r:.3}  top-5 lift = {lift:+.2}σ  truth spread = {spread:.3}");
+        }
+        for (seed, (r, lift, _)) in &rows {
+            assert!(*r > MOTION_R_FLOOR, "seed {seed:#x}: r = {r:.3}");
+            assert!(
+                *lift > MOTION_LIFT_FLOOR,
+                "seed {seed:#x}: top-5 lift {lift:+.2}σ"
+            );
+        }
+    }
+    /// Per-seed floors for [`closed_loop_learns_motion_rate`], set under the
+    /// measured values with margin. Measured when the bands shipped (3 seeds,
+    /// 60 duels, shipped MCMC budget): r = 0.631 / 0.594 / 0.434 and top-5
+    /// lift = +1.02 / +0.60 / +0.97σ over a truth spread of ~1.6. Chance is
+    /// r ≈ 0 and lift ≈ 0.
+    const MOTION_R_FLOOR: f64 = 0.25;
+    const MOTION_LIFT_FLOOR: f64 = 0.2;
+
     #[test]
     fn closed_loop_learns_synthetic_taste() {
         // Fixed, not drawn: a regression gate has to fail for the same

@@ -26,6 +26,14 @@ recognisable (McDermott & Simoncelli 2011). On the probe ladder the band that
 reads highest follows the rate — 0.55 Hz lands in slow, 2.7 Hz in mid, 13 Hz in
 fast — and a static tone reads the floor in all three, exactly.
 
+**It is learnable, not just representable.** A synthetic listener whose whole
+taste is *slow yes, fast no* (+1.5 on `motion_slow`, −1.5 on `motion_fast`,
+zero elsewhere) is recovered by the ordinary closed loop — real prior draws,
+real renders, 60 duels, the shipped fit — at r = 0.63 / 0.59 / 0.43 between
+posterior and true utility over three seeds, with the model's top five
++0.6 to +1.0σ above the pool mean. Every bit of that had to come through the
+two band coordinates. Gated as `closed_loop_learns_motion_rate` (13 s).
+
 No new render: the tracks come from the held note the phrase already plays,
 at a finer hop than the spectral features use (their 43 frames/s would fold the
 fast band). Old votes read the new columns as "no evidence" through the
