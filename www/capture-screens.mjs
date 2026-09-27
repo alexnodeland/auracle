@@ -126,6 +126,18 @@ const modelIdle = (page, ms = 600_000) =>
 const poolFull = (page) =>
   until(page, () => !/arriving/.test(document.getElementById("bank-count")?.textContent || ""), null, "the pool to fill", 600_000);
 
+/** Boot, and on a restored session the engine's refit of it. That fit lands
+ *  seconds after the veil lifts, without the model's lamp, and re-ranks and
+ *  renames the bank — so nothing is picked out of the bank before it. */
+async function booted(page) {
+  await until(page, () => document.getElementById("boot")?.classList.contains("done"), null, "the engine to boot", 300_000);
+  if ((await num(page, "duel-count")) > 0) {
+    await until(page, () => (window.__captureSeen?.fitted || 0) > 0, null, "the restored session's refit", 600_000);
+  }
+  // A fresh profile gets the warm start a moment after the veil lifts.
+  await page.waitForTimeout(2000);
+}
+
 /** Nothing transient on screen: toasts gone, pointer parked, model idle, no
  *  first-run coach, the alarm strip down. Toasts are waited out, never
  *  removed — each one is a real message and the lane empties on its own. */
@@ -318,9 +330,13 @@ async function emptyTray(page) {
   if (left) throw new Error(`${left} held modules would not discard`);
 }
 
-async function openRow(page, id, name) {
-  await page.click(`#${id} .bi-name`);
-  await until(page, (n) => document.getElementById("rack-subject").textContent.trim() === n, name, `${name} on the bench`, 120_000);
+async function openRow(page, rowId, name) {
+  // Waited for by id: a pool patch's name is relative to the pool and can
+  // change under the click.
+  const id = Number(rowId.replace("bank-row-", ""));
+  await page.click(`#${rowId} .bi-name`);
+  await until(page, (id) => window.__aur?.wb?.subjectId === id && !!document.querySelector("#bank-list .bank-item.live"),
+    id, `${name} on the bench`, 120_000);
   await closeBenchTour(page);
   // Plates drawn, and the count no longer changing.
   let last = -1;
@@ -511,10 +527,31 @@ async function shotEvolve(page) {
 }
 
 async function shotWarmstart(page) {
-  await page.click("#ovf-btn");
-  await page.click("#warm-rerun-btn");
-  await until(page, () => !document.getElementById("warmstart").classList.contains("hidden") &&
-    document.querySelectorAll(".warm-cell").length === 9, null, "the warm start card", 60_000);
+  // The nine are drawn at random each time the card opens, and a blurb that
+  // wraps to a third line (or a row of one-liners) changes the card's height.
+  // The figure is the card at its usual size, every row two lines, so a card
+  // dealt otherwise is dismissed with SKIP (which records nothing) and dealt
+  // again.
+  for (let deal = 1; ; deal++) {
+    await page.click("#ovf-btn");
+    await page.click("#warm-rerun-btn");
+    await until(page, () => !document.getElementById("warmstart").classList.contains("hidden") &&
+      document.querySelectorAll(".warm-cell").length === 9, null, "the warm start card", 60_000);
+    await page.waitForTimeout(300);
+    const lines = await page.$$eval(".warm-cell .wi-sig", (els) => els.map((e) => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      return new Set([...r.getClientRects()].map((q) => Math.round(q.top))).size;
+    }));
+    const rows = [0, 3, 6].map((k) => Math.max(...lines.slice(k, k + 3)));
+    if (rows.every((n) => n === 2)) break;
+    if (deal >= 12) {
+      log(`    !! twelve deals and none with every row two lines (last: ${rows.join("/")}); check warm-start's crop`);
+      break;
+    }
+    log(`    (the card dealt rows of ${rows.join("/")} lines; dealt again)`);
+    await page.click("#warm-skip");
+  }
   await settle(page);
   await measure(page, "warmstart", { card: ".warm-card" });
   await shoot(page, "warmstart");
@@ -580,6 +617,23 @@ if (PROFILE) {
   browser = await chromium.launch(launch);
   ctx = await browser.newContext(context);
 }
+// Passive instrumentation: count the workers' replies by type, so a wait can
+// be for the reply itself (see `booted`) rather than a guess at how long it
+// takes. An extra listener on each worker; the app's own handlers see the
+// same messages as ever.
+await ctx.addInitScript(() => {
+  const Native = window.Worker;
+  const seen = (window.__captureSeen = {});
+  window.Worker = class extends Native {
+    constructor(...args) {
+      super(...args);
+      this.addEventListener("message", (e) => {
+        const t = e.data && e.data.type;
+        if (typeof t === "string") seen[t] = (seen[t] || 0) + 1;
+      });
+    }
+  };
+});
 const page = ctx.pages()[0] || (await ctx.newPage());
 page.on("pageerror", (e) => {
   problems.push(`pageerror: ${e.message}`);
@@ -596,9 +650,7 @@ let failed = null;
 try {
   await timed("boot", async () => {
     await page.goto(APP);
-    await until(page, () => document.getElementById("boot")?.classList.contains("done"), null, "the engine to boot", 300_000);
-    // A fresh profile gets the warm start a moment after the veil lifts.
-    await page.waitForTimeout(2000);
+    await booted(page);
   });
   assertClean("teaching");
   const taught = await timed("teach", () => teach(page));
@@ -610,8 +662,7 @@ try {
   if (taught) await timed("reload", async () => {
     await page.waitForTimeout(5000); // the app's 2.5 s save debounce, and the worker's reply
     await page.reload();
-    await until(page, () => document.getElementById("boot")?.classList.contains("done"), null, "the engine to boot", 300_000);
-    await page.waitForTimeout(2000);
+    await booted(page);
   });
   assertClean("grooming");
   await timed("groom", () => groom(page));
