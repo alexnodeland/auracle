@@ -24,8 +24,8 @@
 
 # Features
 
-- [φ_audio — perceptual descriptors](./features/audio.md)
-- [φ_struct — structural descriptors](./features/structural.md)
+- [Perceptual descriptors (φ_audio)](./features/audio.md)
+- [Structural descriptors (φ_struct)](./features/structural.md)
 - [Standardization](./features/standardization.md)
 
 # The taste model
@@ -40,8 +40,8 @@
 - [The Boltzmann target](./search/target.md)
 - [Proposals, and the taste tilt](./search/proposals.md)
 - [Locks as conditional refinement](./search/locks.md)
-- [Refinement — what ships](./search/refinement.md)
-- [Performance: named controls and the drift walk](./search/perform.md)
+- [Refinement](./search/refinement.md)
+- [Performance controls](./search/perform.md)
 - [Acquisition](./search/acquisition.md)
 
 # Systems

@@ -206,7 +206,7 @@ jobs:
   # Its failure modes are invisible to every other job here: a KaTeX macro that
   # renders as "Undefined control sequence" (a build *warning*), a cross-section
   # link that only exists once four sections are assembled, a root-absolute path
-  # that works locally and 404s under the /auracle/ project subpath. All of those
+  # that works at a domain root and 404s under a project subpath. All of those
   # would otherwise be found on the live site by a reader.
   site:
     name: Site

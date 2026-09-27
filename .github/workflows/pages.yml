@@ -8,10 +8,11 @@ name: Pages
 #   /reference/       the technical reference (mdBook + KaTeX)
 #   /reference/api/   rustdoc for every crate
 #
-# Every asset path is relative, so the site runs unchanged from the project
-# subpath (…github.io/auracle/) with no base-href rewriting. `make site-check`
-# enforces that: a root-absolute reference is an error, because it works locally
-# and 404s here.
+# Every asset path is relative, so the site runs unchanged at the root of its
+# custom domain (auracle.alexnodeland.com, set in Settings → Pages) or under a
+# project subpath (…github.io/auracle/), with no base-href rewriting. `make
+# site-check` enforces that: a root-absolute reference is an error, because it
+# breaks under any subpath.
 
 # One trigger: `main`. The live site tracks the tip of the repo, which is what
 # the README promises.

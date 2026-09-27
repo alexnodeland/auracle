@@ -2,11 +2,14 @@
 <html lang="{{ language }}" class="{{ default_theme }} sidebar-visible" dir="{{ text_direction }}">
     <head>
         <!-- Book generated using mdBook, from the shared theme in www/theme.
-             Diverges from mdBook's default index.hbs in five places, all
+             Diverges from mdBook's default index.hbs in six places, all
              marked AURACLE below. Everything else is upstream and should stay
              that way, so a future mdBook bump is a diff a human can read. -->
         <meta charset="UTF-8">
-        <title>{{ title }}</title>
+        <!-- AURACLE: the tab reads "Auracle | Guide | Page", the one pattern
+             every page of the site uses ("Auracle", "Auracle | Play", …),
+             not mdBook's "Page - Book". -->
+        <title>{{#if chapter_title}}{{ book_title }} | {{ chapter_title }}{{else}}{{ book_title }}{{/if}}</title>
         {{#if is_print }}
         <meta name="robots" content="noindex">
         {{/if}}

@@ -7,7 +7,7 @@
 # math. `make site-tools` installs exactly these versions.
 
 [book]
-title = "Auracle User Guide"
+title = "Auracle | Guide"
 description = "Play Auracle: the three views, teaching it your taste, and reading what it learned."
 authors = ["Alex Nodeland"]
 language = "en"
@@ -15,7 +15,7 @@ src = "src"
 
 [output.html]
 # One theme, two books — see www/theme/fonts/README.md for the constraints that
-# shape it and www/theme/index.hbs for the five places it diverges from
+# shape it and www/theme/index.hbs for the six places it diverges from
 # mdBook's default template.
 theme = "../theme"
 default-theme = "coal"
@@ -28,9 +28,10 @@ git-repository-url = "https://github.com/alexnodeland/auracle"
 git-repository-icon = "fa-github"
 edit-url-template = "https://github.com/alexnodeland/auracle/edit/main/www/docs/{path}"
 
-# Relative, because the site is served from a project subpath
-# (alexnodeland.github.io/auracle/) and must also work from a `file://` copy and
-# from `make site-serve` at the root. Nothing on this site may hardcode /auracle.
+# Relative, so the book works wherever the site is served: the root of
+# auracle.alexnodeland.com, a project subpath (alexnodeland.github.io/auracle/),
+# a `file://` copy, or `make site-serve`. Nothing on this site may hardcode a
+# path prefix.
 site-url = "./"
 
 no-section-label = false

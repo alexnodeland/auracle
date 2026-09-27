@@ -14,8 +14,8 @@ Bayesian inference) and [quiver](https://github.com/alexnodeland/quiver)
 
 [![Release](https://img.shields.io/github/v/release/alexnodeland/auracle?sort=semver&label=release&labelColor=171a1f&color=ffb454)](https://github.com/alexnodeland/auracle/releases/latest)
 [![CI](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml/badge.svg)](https://github.com/alexnodeland/auracle/actions/workflows/ci.yml)
-[![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://alexnodeland.github.io/auracle/)
-[![Docs](https://img.shields.io/badge/docs-guide%20%2B%20reference-ffb454?labelColor=171a1f)](https://alexnodeland.github.io/auracle/docs/)
+[![Pages](https://github.com/alexnodeland/auracle/actions/workflows/pages.yml/badge.svg)](https://auracle.alexnodeland.com/)
+[![Docs](https://img.shields.io/badge/docs-guide%20%2B%20reference-ffb454?labelColor=171a1f)](https://auracle.alexnodeland.com/docs/)
 [![License](https://img.shields.io/badge/license-MIT-ffb454?labelColor=171a1f)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-ffb454?labelColor=171a1f)](https://www.rust-lang.org/)
 
@@ -129,7 +129,7 @@ flowchart TD
     post -->|"θ tilts the proposals"| refine
 ```
 
-The [reference](https://alexnodeland.github.io/auracle/reference/architecture/two-loops.html)
+The [reference](https://auracle.alexnodeland.com/reference/architecture/two-loops.html)
 takes both apart.
 
 | Crate | Role |
@@ -143,7 +143,7 @@ takes both apart.
 
 ## 🚀 Quick Start
 
-**Play it in the browser: https://alexnodeland.github.io/auracle/play/** — every
+**Play it in the browser: https://auracle.alexnodeland.com/play/** — every
 push to `main` builds the wasm engine and deploys the instrument to GitHub
 Pages, and so does every tagged release. Nothing to install; your bank and
 taste model live in your browser.
@@ -177,24 +177,24 @@ While the version is 0.x, the public API and the save format may change between
 commits. Sessions written by older builds are migrated on load, but migrations
 are code — **⋯ → Save taste profile** before updating is the only backup that
 exists. See [Your
-data](https://alexnodeland.github.io/auracle/docs/your-data.html).
+data](https://auracle.alexnodeland.com/docs/your-data.html).
 
 ## 📚 Documentation
 
 Two books, published as part of the site and built from `www/`:
 
-- **[User Guide](https://alexnodeland.github.io/auracle/docs/)** — playing it.
+- **[User Guide](https://auracle.alexnodeland.com/docs/)** — playing it.
   The three views, teaching it your taste, reading what it learned, the full
   key map, accessibility, troubleshooting. Start at [Your first
-  session](https://alexnodeland.github.io/auracle/docs/getting-started/first-session.html).
-- **[Reference](https://alexnodeland.github.io/auracle/reference/)** — how it
+  session](https://auracle.alexnodeland.com/docs/getting-started/first-session.html).
+- **[Reference](https://auracle.alexnodeland.com/reference/)** — how it
   works, with the math. The typed PCFG, the audition pipeline, φ, the
   max-of-experts posterior, the search, the safety layers. It also holds the
-  [design](https://alexnodeland.github.io/auracle/reference/design/decisions.html)
+  [design](https://auracle.alexnodeland.com/reference/design/decisions.html)
   — the decisions log, the milestones and the open questions — so that a
   choice and the maths it justifies are never two documents that can disagree.
   Plus [rustdoc for every
-  crate](https://alexnodeland.github.io/auracle/reference/api/auracle_session/index.html).
+  crate](https://auracle.alexnodeland.com/reference/api/auracle_session/index.html).
 
 In the repo:
 
@@ -203,7 +203,7 @@ In the repo:
 - [`www/README.md`](./www/README.md) — how the site is assembled, and the
   things about it that fail quietly.
 - [`www/brand/`](./www/brand/) — the mark, the lockups and the icon set, with
-  the [full spec](https://alexnodeland.github.io/auracle/brand/) at `/brand/`.
+  the [full spec](https://auracle.alexnodeland.com/brand/) at `/brand/`.
   Read it before drawing anything.
 - [`apps/web/README.md`](./apps/web/README.md) — the web app's architecture
   (worklet assembly, worker protocol, workbench).

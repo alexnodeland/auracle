@@ -19,9 +19,11 @@ make site-check     # every link and asset must resolve
 
 ## Four rules this site keeps
 
-**Everything is relative.** The site is served from
-`alexnodeland.github.io/auracle/`, so a root-absolute `/docs/` works locally
-and 404s in production. `make site-check` treats one as an error rather than a
+**Everything is relative.** The site is served from the root of
+`auracle.alexnodeland.com`, and it has also been served from a project subpath
+(`alexnodeland.github.io/auracle/`), from a `file://` copy and from
+`make site-serve`. Relative paths work in all of them; a root-absolute `/docs/`
+breaks under any subpath. `make site-check` treats one as an error rather than a
 warning. The only exception is `404.html`, which is served at arbitrary depth
 and therefore computes the site root in a few lines of JavaScript; see the
 comment in it.

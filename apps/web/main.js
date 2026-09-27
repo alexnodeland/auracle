@@ -17661,7 +17661,7 @@ function showHelp(on) {
 {
   const docs = location.pathname.includes("/play/")
     ? new URL("../docs/", location.href).href
-    : "https://alexnodeland.github.io/auracle/docs/";
+    : "https://auracle.alexnodeland.com/docs/";
   $("films-link").href = `${docs}films.html`;
   $("help-film").href = `${docs}views/perform.html#film-perform`;
 }

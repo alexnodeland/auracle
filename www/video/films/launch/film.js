@@ -837,7 +837,7 @@ function sceneEnd({ stage, beat, line }) {
       // downbeat.
       const say = textBlock(over, { x: 960, y: 610, w: 1400, cls: "voice", size: 64, align: "center", ax: 0.5, ay: 0.5 });
       const sp = words(say, "Play it *today*.");
-      const url = el("div", { class: "pill a" }, over, "alexnodeland.github.io/auracle  ▸");
+      const url = el("div", { class: "pill a" }, over, "auracle.alexnodeland.com  ▸");
       place(url, { x: 960, y: 740, ax: 0.5, ay: 0.5 });
       Object.assign(url.style, { fontSize: "30px", padding: "16px 34px" });
       void under;

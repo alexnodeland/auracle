@@ -4,7 +4,7 @@
 
 ## In the browser, hosted
 
-[**alexnodeland.github.io/auracle/play/**](../../play/) is the live build. Every
+[**auracle.alexnodeland.com/play/**](../../play/) is the live build. Every
 push to `main` deploys it, and so does every tagged release.
 
 Nothing to install, and nothing leaves your machine: the engine is WebAssembly

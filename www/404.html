@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Not here — Auracle</title>
+<title>Auracle | Not found</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="dark">
@@ -10,7 +10,7 @@
 <link rel="icon" href="favicon.svg">
 
 <!-- Self-contained rather than sharing style.css, because a 404 is served at an
-     arbitrary depth — /auracle/docs/typo/ — and a relative stylesheet link would
+     arbitrary depth — /docs/typo/ — and a relative stylesheet link would
      itself 404. The one page on the site that cannot rely on relative paths gets
      its own styles inline, and the links below are absolute *within the origin's
      project path*, which the script fills in from where this page was served. -->
@@ -85,11 +85,12 @@
 
 <script>
   /* Point the links at the site root rather than at the current directory.
-     GitHub Pages serves this file for any missing path under the project, so
-     `./docs/` from /auracle/reference/genome/typo would resolve to
-     /auracle/reference/genome/docs/ — a second 404. The site root is the first
-     path segment on Pages (/auracle/) and "/" everywhere else, which is exactly
-     what a `<base>` cannot express without knowing which it is. */
+     GitHub Pages serves this file for any missing path on the site, so
+     `./docs/` from /reference/genome/typo would resolve to
+     /reference/genome/docs/ — a second 404. The site root is "/" on the custom
+     domain and locally, and the first path segment on a github.io project URL
+     (/auracle/), which is exactly what a `<base>` cannot express without
+     knowing which it is. */
   (function () {
     var seg = location.pathname.split('/').filter(Boolean);
     // On a project Pages site the first segment is the repo; locally there is none.

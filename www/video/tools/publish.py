@@ -54,7 +54,7 @@ ROOT = os.path.dirname(WWW)
 BOOKS = [os.path.join(WWW, "docs", "src"), os.path.join(WWW, "reference", "src")]
 LANDING = os.path.join(WWW, "landing", "index.html")
 README = os.path.join(ROOT, "README.md")
-SITE_URL = "https://alexnodeland.github.io/auracle/"
+SITE_URL = "https://auracle.alexnodeland.com/"
 CHAPTER_NAMES = {
     "launch": {"open": "The problem", "title": "Auracle", "duel": "Two patches, one pick", "grow": "Real circuits", "play": "Playing it", "offer": "Offers", "depth": "Underneath", "close": "Every note", "end": "Play it"},
     "taste": {"hook": "Choosing, not describing", "hears": "What it listens for", "evidence": "A pick is evidence", "posterior": "Every taste that still fits", "lenses": "More than one taste", "forecast": "Forecasts, scored", "search": "The search", "reading": "Reading what it learned", "playing": "Learning while you play", "outro": "In the open"},

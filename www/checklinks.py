@@ -10,9 +10,10 @@ the site is assembled, which is exactly when nobody is looking. So this runs ove
 the assembled tree.
 
 It also catches the failure mode that motivated it: a link written as if the site
-were served from the domain root (`/docs/`) works locally and 404s on Pages,
-which serves from `/auracle/`. Absolute-path references are therefore an error
-here, not a warning.
+were always served from a domain root (`/docs/`) 404s under a project subpath
+(Pages served it from `/auracle/` before auracle.alexnodeland.com), from a
+`file://` copy, and anywhere else the site is not at the root. Absolute-path
+references are therefore an error here, not a warning.
 
 Checks, in the order they tend to fail:
   1. Relative href/src/srcset targets exist (HTML).
@@ -73,9 +74,11 @@ REQUIRED = [
 # chooses to follow; a `<script src>` or `<link rel=stylesheet>` is a request the
 # page makes on its own. Conflating the two flagged every outbound link in the
 # books — 28k false positives — and a check that cries wolf gets switched off.
+# For the same reason a `<link rel=canonical>` is not a subresource: it names
+# the page's own address for crawlers, and the browser never fetches it.
 EXTERNAL_SUBRESOURCE = re.compile(
     r"""<(?:script|img|iframe|audio|video|source|embed|track)\b[^>]*\bsrc\s*=\s*["'](?:https?:)?//"""
-    r"""|<link\b[^>]*\bhref\s*=\s*["'](?:https?:)?//"""
+    r"""|<link\b(?![^>]*\brel\s*=\s*["']?canonical\b)[^>]*\bhref\s*=\s*["'](?:https?:)?//"""
     r"""|<[^>]*\bsrcset\s*=\s*["'][^"']*(?:https?:)?//""",
     re.I,
 )
@@ -118,8 +121,8 @@ def main(root_arg: str) -> int:
                 continue
             if raw.startswith("/"):
                 problems.append(
-                    f"{rel}: root-absolute {attr}=\"{raw}\" — breaks under the "
-                    f"/auracle/ project subpath; use a relative path"
+                    f"{rel}: root-absolute {attr}=\"{raw}\" — breaks under a "
+                    f"project subpath or file://; use a relative path"
                 )
                 continue
             path = unquote(urlsplit(raw).path)
