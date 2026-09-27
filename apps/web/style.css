@@ -4252,3 +4252,10 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 .midi-src { color: var(--phos-a-dim); font-size: var(--t-micro); }
 .midi-foot { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); color: var(--silk-dim); font-size: var(--t-micro); align-items: center; }
 .key-side.right .perf-ctl { position: relative; }
+
+/* Level three at rest takes no room (notes/ui-hierarchy.md). */
+.tray.empty { display: none; }
+/* The arp's settings follow its switch: shown while it runs, gone while it
+   does not. They were recessed-but-present, which read as six controls that
+   did nothing. */
+#arp-ctl.idle { display: none; }

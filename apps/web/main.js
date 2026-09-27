@@ -10655,6 +10655,10 @@ function renderTray() {
   const holder = $("tray-items");
   holder.innerHTML = "";
   nbRenderRail();
+  // HELD is level three: it appears once something is held. At rest it was a
+  // 64 px row of instructions taken out of the rack's height, and height is
+  // what decides whether a patch is drawn with its knobs or as a diagram.
+  $("tray").classList.toggle("empty", tray.length === 0);
   if (tray.length === 0) {
     holder.innerHTML =
       '<span class="tray-hint mono">Anything you unplug, delete or bypass is held here — and stays here across a reload. Drag it back onto a ○ to put it in.</span>';
@@ -13586,7 +13590,10 @@ const scopeState = {
   floor: 0.55,       // how present the trace and its grid stay once it parks
   park: 1.5,         // seconds of silence before it parks
   corner: "br",
-  size: "M",
+  // Small by default: the fit reserves the bezel's band out of the rack, and
+  // the scope first appears on the first note — so at M a patch shrank by a
+  // third the moment you started playing it. A saved choice still wins.
+  size: "S",
   freeze: false,
 };
 const SCOPE_INK = {
