@@ -19,7 +19,7 @@ chain applies with no custom kernel. Adaptation tunes per-site proposal scales
 during warmup.
 
 Each MH step moves **one** site, so a useful way to budget is $\text{steps}
-\approx \text{sites} \times \text{desired effective sweeps}$. At $K=5$, $205 +
+\approx \text{sites} \times \text{desired effective sweeps}$. At $K=5$, $210 +
 S$ sites over 10 000 steps is roughly 48 sweeps per site — which is thin, and
 is the tension noted in
 [site count](./likelihoods.md#site-count-and-what-it-costs).
@@ -53,7 +53,7 @@ see byte-identical addresses.
 That used to happen one line after the whole chain was built. `adaptive_mcmc_chain`
 materialized every step — pushing `(TasteSample, Trace)` per iteration into a
 `Vec` it returned by value — and only then did `step_by(stride)` keep every 20th.
-At $K = 5$ that is ~10 000 `Trace` clones of 205 + S `BTreeMap` entries each,
+At $K = 5$ that is ~10 000 `Trace` clones of 210 + S `BTreeMap` entries each,
 held live at once to retain 500: **303.1 MB peak RSS** at the shipped budget,
 scaling with `n_samples`, and a plausible mobile-Safari OOM on a 32-bit heap
 rather than mere waste.

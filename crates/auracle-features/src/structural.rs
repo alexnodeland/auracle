@@ -10,7 +10,7 @@
 //! [`StructFeatures`] keeps a raw counter per kind — the Styles tab and the
 //! auto-namer both want "two filters", not "two subtractive stages" — but
 //! [`StructFeatures::NAMES`] and [`StructFeatures::to_vec`] collapse the
-//! forty-one module kinds into fourteen family counts plus seven term-level
+//! forty-two productions into nineteen family counts plus seven term-level
 //! numbers — five about modulation and the amp envelope, two about how the
 //! term is arranged. Two reasons, and the second is the load-bearing one:
 //!

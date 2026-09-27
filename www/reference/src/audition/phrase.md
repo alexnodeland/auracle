@@ -43,6 +43,14 @@ taste model was being asked to learn preferences over evidence that was not in
 $\varphi$. No amount of model improvement fixes that; it is a measurement
 problem.
 
+```admonish note title="The same argument, not yet finished"
+That reasoning closed four holes and then stopped. It is still true of everything
+the v2 phrase did not reach — velocity above all, since `NoteSpan` has no such
+field and the live instrument responds to it. [What the audition cannot
+hear](../design/audition-limits.md) is the register of what is still outside
+the stimulus, and this paragraph is the argument it is built on.
+```
+
 The v2 default covers each hole with the cheapest segment that reveals it:
 
 1. **C4 held 1.8 s.** The attack measurement window (onset → next onset) is now

@@ -135,7 +135,7 @@ meaningless.
 amplitude-sensitive coordinate.
 
 **There is a second finiteness check, on the vector.** It costs one pass over
-forty doubles against a render that took most of a second, and it is the only
+forty-one doubles against a render that took most of a second, and it is the only
 thing standing between a NaN out of a spectral descriptor and a posterior fit
 that returns all-NaN $\theta$. It is a *different* error from `OutOfDomain` and
 names the coordinate rather than a genome site, because at that point the term

@@ -10,7 +10,7 @@ the code's name is given.
 | $x$ | A patch **term** — a tree in the typed grammar | `PatchTree` |
 | $p$ | A tree **path**, e.g. `node/0/1` | path keys |
 | $t$ | A **trace** — the execution record of the grammar program | `fugue::Trace` |
-| $\varphi(x) \in \R^{40}$ | The feature vector of $x$ | `Features::phi()` |
+| $\varphi(x) \in \R^{41}$ | The feature vector of $x$ | `Features::phi()` |
 | $\varphi_{\text{audio}} \in \R^{15}$ | Perceptual descriptors of the render | `AudioFeatures` |
 | $\varphi_{\text{struct}} \in \R^{25}$ | Structural descriptors of the term | `StructFeatures` |
 | $z$ | A **standardized** feature vector, $z = (\varphi - \mu)/s$ | `phi_std` |
