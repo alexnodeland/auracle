@@ -110,7 +110,7 @@ sufficient; no server is required) keeps every word of
 
 **What it would close, and what it opens.** Directly: the K-cap question, whose
 evidence is the rows where `k == k_styles`. Indirectly, and worth more, a
-**population prior on $\theta$**. Cold start today is 41 coordinates starting
+**population prior on $\theta$**. Cold start today is 44 coordinates starting
 from a prior mean of zero, against which the [three-pick warm
 start](../../docs/teaching.html#the-warm-start) buys 18 observations in thirty
 seconds. A hierarchical prior fitted across donated profiles is the only
@@ -156,7 +156,7 @@ the instrument cannot express today.
 
 **The distance can only be over the audio half, and that is a feature.** A
 recording a user brings has no term, so it has no
-[φ_struct](../features/structural.md) at all — 26 of the 41 coordinates are
+[φ_struct](../features/structural.md) at all — 26 of the 44 coordinates are
 simply not defined for it, and $W$ has to zero them. That is the right
 behaviour rather than a limitation: *sound like this, by whatever means*, with
 the grammar prior left to supply the parsimony that keeps the means sane. A

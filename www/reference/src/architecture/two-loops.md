@@ -75,12 +75,13 @@ far enough that resampling was needed. See
 
 ## Where they meet
 
-**Acquisition** picks what to show you. **The proposal tilt** carries $\theta$
+**Acquisition** picks what to show you. **The taste tilt** carries $\theta$
 back into the grammar.
 
 The tilt is the part that makes this more than a scored search. The fitted
-structural coefficients reshape the *categorical proposal weights* the search
-draws new modules from:
+structural coefficients reshape the *categorical weights* of the grammar the
+search draws new modules from — and, because the tilted grammar is installed as
+the prior, of the target it climbs (see [Proposals](../search/proposals.md)):
 
 $$w'_i \;\propto\; w_i \exp(\eta\, t_i)$$
 
@@ -88,8 +89,8 @@ with each multiplier clamped to $[\tfrac14, 4]$ so no module kind is ever
 starved or monopolized. Details and the shrinkage applied to $t_i$ are in
 [Proposals](../search/proposals.md).
 
-So the loop is genuinely closed: your answers change what gets *proposed*, not
-only what scores well once proposed.
+So the loop is genuinely closed: your answers change what gets *proposed* and
+what the search counts as parsimonious, not only what scores well once proposed.
 
 ## Why this is preferential Bayesian optimization
 

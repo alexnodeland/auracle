@@ -31,7 +31,7 @@ the menu bar and on [TRUST](./views/taste.md#trust--is-its-confidence-honest).
 ### Budget
 
 The ceilings evolution searches inside: modules, tree depth, modulation depth.
-Shown in PATCH as `8/24 modules · 6/9 depth · 1/4 mod depth`. A patch at its
+Shown in PATCH as `8/24 modules · 4/6 depth · 1/3 mod depth`. A patch at its
 ceilings has no room to grow.
 
 ### Candidate

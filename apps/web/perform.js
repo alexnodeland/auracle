@@ -570,8 +570,8 @@ export function createPerform(host) {
       // Hands came on while the walk ran: the player's sound wins, and the
       // proposal (made from where the knobs were) is dropped.
       if (state.lastTouch > p.at) return true;
-      if (!m.drift) {
-        renderStatus(m.error ? "the walk failed on this patch — staying" : "nothing nearby it likes better — staying");
+      if (!m.drift || !m.drift.tree) {
+        renderStatus(whyNot(m, m.drift, "nothing nearby it likes better — staying"));
         return true;
       }
       const pace = wanderPace(state.wander);
@@ -580,8 +580,8 @@ export function createPerform(host) {
       return true;
     }
     if (m.type === "perform_offered") {
-      if (!m.offer) {
-        renderOffer(m.error ? "the walk failed on this patch — try again" : "no offer beat this patch — try again, or loosen a lock");
+      if (!m.offer || !m.offer.tree) {
+        renderOffer(whyNot(m, m.offer, "no offer beat this patch — try again, or loosen a lock"));
         return true;
       }
       state.offer = { json: JSON.stringify(m.offer.tree), makeup: m.offer.makeup, taste: !!m.offer.taste };
@@ -649,6 +649,16 @@ export function createPerform(host) {
       if (t && t.json) patchChanged(t.json, t.makeup);
     }
     if (state.cur && !state.wire && !state.measuring) wire();
+  }
+
+  // Why a walk came back empty, in the player's words. `outside_support` is
+  // the one that no retry fixes: the patch has a value the grammar gives no
+  // mass, so evolution cannot start from it at all.
+  function whyNot(m, r, otherwise) {
+    if (m.error) return "the walk failed on this patch — try again";
+    if (r && r.reason === "outside_support")
+      return "this patch is outside what evolution can start from — nudge any knob off its stop and try again";
+    return otherwise;
   }
 
   // ---------- glides (drift and back) ----------

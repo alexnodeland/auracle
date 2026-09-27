@@ -98,6 +98,63 @@ pub fn mod_kind_is_leaf(kind: usize) -> bool {
     !matches!(kind, MOD_OP | MOD_PAIR)
 }
 
+/// Display labels for the `#src` categorical, in index order — the one table
+/// the diff view reads, sized by [`N_SOURCES`] so a new production cannot be
+/// added to the grammar without being added here.
+pub const SOURCE_LABELS: [&str; N_SOURCES] = [
+    "vco",
+    "supersaw",
+    "noise",
+    "wavetable",
+    "pluck",
+    "formant",
+    "silence",
+];
+
+/// Display labels for the `#op` categorical, in index order; sized by
+/// [`N_OPS`].
+pub const OP_LABELS: [&str; N_OPS] = [
+    "mix",
+    "filter",
+    "wavefolder",
+    "delay",
+    "chorus",
+    "reverb",
+    "distortion",
+    "bitcrush",
+    "phaser",
+    "ring mod",
+    "flanger",
+    "tremolo",
+    "vibrato",
+    "eq",
+    "granular",
+    "shift",
+    "comp",
+    "duck",
+    "gate",
+    "vocoder",
+];
+
+/// Display labels for the `#mod` categorical, in index order; sized by
+/// [`N_MODS`].
+pub const MOD_LABELS: [&str; N_MODS] = [
+    "no mod", "lfo", "mod env", "s&h rand", "follower", "euclid", "op", "pair", "steps",
+];
+
+/// The default prior's [`PatchGrammarPrior::max_depth`]: the audio-tree depth
+/// at which `#leaf` is forced true. The deepest term with positive prior mass
+/// therefore has `AudioNode::depth() == PRIOR_MAX_DEPTH + 1`, and that is
+/// where [`crate::mutate::MAX_DEPTH`] sits — derived from this constant so a
+/// hand edit can never build what the prior cannot score.
+pub const PRIOR_MAX_DEPTH: usize = 5;
+
+/// The default prior's [`PatchGrammarPrior::max_mod_depth`]: the modulation
+/// nesting at which `Op`/`Pair` are zeroed. The deepest mod term with positive
+/// mass has `ModNode::depth() == PRIOR_MAX_MOD_DEPTH + 1`, which is
+/// [`crate::mutate::MAX_MOD_DEPTH`].
+pub const PRIOR_MAX_MOD_DEPTH: usize = 2;
+
 /// The typed PCFG over patch terms.
 #[derive(Clone, Debug)]
 pub struct PatchGrammarPrior {
@@ -132,14 +189,14 @@ impl Default for PatchGrammarPrior {
     fn default() -> Self {
         Self {
             source_prob: 0.4,
-            max_depth: 5,
+            max_depth: PRIOR_MAX_DEPTH,
             // Two processors above a leaf is already `s&h → quantize → slew`,
             // which is the deepest idiom anyone reaches for; a third adds a
             // stage nobody can hear separately. It is also a *stack* budget:
             // the compiler recurses by value, the wasm build only just fits
             // its 8 MB stack with the audio recursion alone, and every level
             // here is a second recursion sitting on top of that one.
-            max_mod_depth: 2,
+            max_mod_depth: PRIOR_MAX_MOD_DEPTH,
             // Vco stays the staple and supersaw second; wavetable is a real
             // alternative but a new one; noise, pluck and formant are spices —
             // the last two especially, because a plucked string and a vowel
@@ -1073,7 +1130,7 @@ impl PatchGrammarPrior {
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
-                _ => AudioNode::Formant {
+                5 => AudioNode::Formant {
                     uid: Uid::NEW,
                     vowel: rng.gen(),
                     shift: rng.gen(),
@@ -1081,6 +1138,15 @@ impl PatchGrammarPrior {
                     mod_depth: rng.gen(),
                     modulation: self.sample_mod(rng, 0, true),
                 },
+                // Index 6, and only 6 — `weighted_choice` cannot return more.
+                // This arm used to read `_ => Formant`, written before
+                // `Silence` joined the palette, so the RNG sampler handed the
+                // hole's mass to the formant oscillator and could never draw a
+                // hole at all while `model()` drew one in 0.5% of leaves. The
+                // two samplers are documented as agreeing, and
+                // `the_two_samplers_agree_on_kind_frequencies` now holds them
+                // to it.
+                _ => AudioNode::Silence { uid: Uid::NEW },
             }
         } else {
             match weighted_choice(rng, &self.op_weights) {

@@ -1,0 +1,11 @@
+{
+  "name": "auracle-web-smoke",
+  "private": true,
+  "description": "Browser smoke test for the instrument: boots apps/web with the built wasm and requires a clean console and a registered worklet.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

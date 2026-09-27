@@ -1384,6 +1384,23 @@ fn get_usize(t: &Trace, key: &str, site: &str) -> Result<usize, GenomeError> {
         .ok_or_else(|| GenomeError::MissingAddress(a.to_string()))
 }
 
+/// A categorical site that must fall inside its declared arity.
+///
+/// The enum decoders used to wrap with `% len` and the octave decoder did not
+/// check at all (`as i8 - 2` on an index of 250 is an octave of −8). Neither
+/// is reachable from MH — every categorical is sampled from a distribution of
+/// that arity — or from `set_param`, which clamps; a hand-made trace is the
+/// only way in, and it should be told rather than wrapped.
+fn get_index(t: &Trace, key: &str, site: &str, arity: usize) -> Result<usize, GenomeError> {
+    let i = get_usize(t, key, site)?;
+    if i >= arity {
+        return Err(GenomeError::InvalidStructure(format!(
+            "{key}#{site} = {i} is outside its {arity}-way categorical"
+        )));
+    }
+    Ok(i)
+}
+
 fn get_bool(t: &Trace, key: &str, site: &str) -> Result<bool, GenomeError> {
     let a = addr!(key, site);
     t.get_bool(&a)
@@ -1405,7 +1422,7 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
         0 => Ok(ModNode::None),
         1 => Ok(ModNode::Lfo {
             uid: Uid::NEW,
-            wave: Waveform::from_index(get_usize(t, key, "wave")?),
+            wave: Waveform::from_index(get_index(t, key, "wave", Waveform::ALL.len())?),
             rate: get_f64(t, key, "rate")?,
         }),
         2 => Ok(ModNode::Env {
@@ -1431,7 +1448,7 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
             pulses: get_f64(t, key, "epulses")?,
         }),
         6 => {
-            let kind = ModOp::from_index(get_usize(t, key, "modop")?);
+            let kind = ModOp::from_index(get_index(t, key, "modop", ModOp::ALL.len())?);
             let sites = kind.param_sites();
             Ok(ModNode::Op {
                 uid: Uid::NEW,
@@ -1448,7 +1465,7 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
         }
         7 => Ok(ModNode::Pair {
             uid: Uid::NEW,
-            kind: PairOp::from_index(get_usize(t, key, "pairop")?),
+            kind: PairOp::from_index(get_index(t, key, "pairop", PairOp::ALL.len())?),
             a: Box::new(decode_mod(t, &child_key(key, 0))?),
             b: Box::new(decode_mod(t, &child_key(key, 1))?),
         }),
@@ -1482,10 +1499,17 @@ fn decode_new_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
     decode_mod(t, key)
 }
 
-/// The mod-depth a v2 module gets when its trace predates the slot. Matches
-/// `mutate::default_node`, so a migrated patch and a hand-placed one start
-/// from the same knob.
-const DEFAULT_MOD_DEPTH: f64 = 0.3;
+/// The mod-depth a v2 module gets when its trace predates the slot.
+///
+/// `0.0`, matching the `#[serde(default)]` on the same fields in
+/// [`crate::term`]: a v1 save has no modulation source either, so the depth
+/// knob's value is inaudible, and the one thing that matters is that the
+/// **two decode routes agree**. This used to be `0.3` (to match
+/// `mutate::default_node`), so the same v1 save decoded to two different
+/// terms depending on whether it arrived as JSON or as a trace — and the
+/// pool's dedup, `distance()` and refinement's "did it move" test are all
+/// `PatchTree` equality.
+const DEFAULT_MOD_DEPTH: f64 = 0.0;
 
 fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
     if get_bool(t, key, "leaf")? {
@@ -1495,15 +1519,15 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
             // through the defaulting accessors, exactly as `Delay` does.
             0 => Ok(AudioNode::Vco {
                 uid: Uid::NEW,
-                wave: Waveform::from_index(get_usize(t, key, "wave")?),
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                wave: Waveform::from_index(get_index(t, key, "wave", Waveform::ALL.len())?),
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
                 mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             1 => Ok(AudioNode::Supersaw {
                 uid: Uid::NEW,
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
                 mix: get_f64(t, key, "smix")?,
                 mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
@@ -1511,19 +1535,19 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
             }),
             2 => Ok(AudioNode::Noise {
                 uid: Uid::NEW,
-                color: NoiseColor::from_index(get_usize(t, key, "color")?),
+                color: NoiseColor::from_index(get_index(t, key, "color", NoiseColor::ALL.len())?),
             }),
             3 => Ok(AudioNode::Wavetable {
                 uid: Uid::NEW,
-                table: TableShape::from_index(get_usize(t, key, "table")?),
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                table: TableShape::from_index(get_index(t, key, "table", TableShape::ALL.len())?),
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 morph: get_f64(t, key, "morph")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             4 => Ok(AudioNode::Pluck {
                 uid: Uid::NEW,
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 damping: get_f64(t, key, "damp")?,
                 brightness: get_f64(t, key, "bright")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
@@ -1533,7 +1557,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 uid: Uid::NEW,
                 vowel: get_f64(t, key, "vowel")?,
                 shift: get_f64(t, key, "fshift")?,
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_mod(t, &mod_key(key))?,
             }),
@@ -1552,7 +1576,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
             }),
             1 => Ok(AudioNode::Filter {
                 uid: Uid::NEW,
-                kind: FilterKind::from_index(get_usize(t, key, "fkind")?),
+                kind: FilterKind::from_index(get_index(t, key, "fkind", FilterKind::ALL.len())?),
                 cutoff: get_f64(t, key, "cut")?,
                 resonance: get_f64(t, key, "res")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
@@ -1597,7 +1621,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 uid: Uid::NEW,
                 drive: get_f64(t, key, "drive")?,
                 tone: get_f64(t, key, "tone")?,
-                mode: DriveMode::from_index(get_usize(t, key, "dmode")?),
+                mode: DriveMode::from_index(get_index(t, key, "dmode", DriveMode::ALL.len())?),
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_mod(t, &mod_key(key))?,
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
@@ -1765,14 +1789,53 @@ impl TraceGenome for PatchTree {
 /// a corruption rather than an unusual patch. Stated once, here, so the check
 /// and the repair below cannot drift from the generative model — and so that
 /// the day a site wants a different range, this is the line that has to change.
-pub const PARAM_DOMAIN: std::ops::RangeInclusive<f64> = 0.0..=1.0;
+///
+/// **Half-open, and the right end is the point.** `u01()` is fugue's
+/// `Uniform(0, 1)`, whose `log_prob` is `−∞` at `x >= 1.0`. This constant used
+/// to be `0.0..=1.0`, which made exactly `1.0` legal here and impossible there:
+/// a knob dragged to its stop, two shipped presets and the default vibrato
+/// insert all scored `log p = −∞` under the grammar, `EvolutionChain::init_from`
+/// returned `None`, and ⚡ evolve on such a patch did nothing and said nothing.
+/// The largest legal value is [`PARAM_MAX`]; every clamp in the crate lands
+/// there, never on `1.0`.
+pub const PARAM_DOMAIN: std::ops::Range<f64> = 0.0..1.0;
+
+/// The largest value a continuous site may hold — the top of
+/// [`PARAM_DOMAIN`], which is half-open.
+///
+/// One `f64::EPSILON` below `1.0` rather than the very next float down, so it
+/// survives a round trip through JSON (`float_roundtrip` is on) and through
+/// the panel's `Math.min(1, …)`-then-`toFixed` habits without being rounded
+/// back onto the boundary. Audibly it *is* fully wet / fully open / fully
+/// deep: no mapping in [`crate::compile`] can tell it from `1.0`.
+pub const PARAM_MAX: f64 = 1.0 - f64::EPSILON;
 
 /// Is `v` a legal value for a continuous site?
 ///
 /// Non-finite fails: `NaN` compares false against every bound, and an infinity
-/// is exactly the runaway this gate exists to stop.
+/// is exactly the runaway this gate exists to stop. Exactly `1.0` fails too —
+/// see [`PARAM_DOMAIN`] for why that is not pedantry.
 pub fn in_domain(v: f64) -> bool {
     v.is_finite() && PARAM_DOMAIN.contains(&v)
+}
+
+/// Pull one continuous value into [`PARAM_DOMAIN`]: `NaN` to the middle of
+/// the range (it carries no information about which way it went, and pinning
+/// it to a boundary would state one), everything else to the nearest legal
+/// value, with `1.0` and above landing on [`PARAM_MAX`].
+///
+/// The one clamp every write path shares — [`crate::set_param`],
+/// [`PatchTree::clamp_domains`], the live handles' `ParamMap::clamp_input` —
+/// so that "legal" cannot mean two different things on two routes.
+pub fn clamp_param(v: f64) -> f64 {
+    if v.is_nan() {
+        // Exactly the middle, stated as a literal: the arithmetic midpoint of
+        // `[0, PARAM_MAX]` is one ulp shy of it, and a repair should land on a
+        // number a person would recognise.
+        0.5
+    } else {
+        v.clamp(PARAM_DOMAIN.start, PARAM_MAX)
+    }
 }
 
 impl PatchTree {
@@ -1813,7 +1876,9 @@ impl PatchTree {
     ///
     /// `NaN` clamps to the middle of the range rather than to an end: it
     /// carries no information about which way it went, and pinning it to a
-    /// boundary would state one.
+    /// boundary would state one. Exactly `1.0` is repaired too, to
+    /// [`PARAM_MAX`] — this is the pass that mends a session saved by a build
+    /// that still let a knob rest on the stop, and it runs on every load.
     ///
     /// Identities survive. The rebuild goes through the trace, which does not
     /// carry `uid`s, so the repaired term inherits them back from the term it
@@ -1824,12 +1889,7 @@ impl PatchTree {
         for c in trace.choices.values_mut() {
             if let ChoiceValue::F64(v) = c.value {
                 if !in_domain(v) {
-                    let repaired = if v.is_nan() {
-                        (PARAM_DOMAIN.start() + PARAM_DOMAIN.end()) / 2.0
-                    } else {
-                        v.clamp(*PARAM_DOMAIN.start(), *PARAM_DOMAIN.end())
-                    };
-                    c.value = ChoiceValue::F64(repaired);
+                    c.value = ChoiceValue::F64(clamp_param(v));
                     fixed += 1;
                 }
             }
@@ -1906,7 +1966,10 @@ mod tests {
         else {
             panic!("decoded the wrong node: {}", tree.root.to_sexpr());
         };
-        assert_eq!(*mod_depth, 0.3, "new mod depth did not default");
+        assert_eq!(
+            *mod_depth, 0.0,
+            "a v1 trace must decode to the same term as v1 JSON: depth 0"
+        );
         assert_eq!(*modulation, ModNode::None, "absent slot must decode empty");
         let AudioNode::Filter {
             kind, modulation, ..
@@ -2308,7 +2371,7 @@ mod domain_tests {
 
         assert_eq!(t.clamp_domains(), 2);
         assert!(t.domain_violations().is_empty());
-        assert_eq!(t.amp.sustain, 1.0);
+        assert_eq!(t.amp.sustain, PARAM_MAX, "the top of the domain is open");
         assert_eq!(t.amp.attack, 0.1, "a clean site must not move");
         let AudioNode::Filter {
             uid,
@@ -2320,7 +2383,7 @@ mod domain_tests {
         else {
             panic!("the repair changed the term's shape");
         };
-        assert_eq!(*cutoff, 1.0);
+        assert_eq!(*cutoff, PARAM_MAX);
         assert_eq!(*resonance, 0.4);
         assert_eq!(*uid, Uid(7), "the repair reissued an identity");
         let AudioNode::Vco { uid, .. } = &**input else {
@@ -2330,6 +2393,36 @@ mod domain_tests {
 
         // Idempotent, and free on a clean term.
         assert_eq!(t.clamp_domains(), 0);
+    }
+
+    /// A categorical index past its arity is refused, not wrapped. Unreachable
+    /// from MH or a knob edit; a hand-made trace is the way in, and wrapping
+    /// `oct = 9` to some octave would be inventing a value.
+    #[test]
+    fn an_out_of_range_categorical_is_refused() {
+        let good = filter_over_vco(0.5);
+        let mut t = good.to_trace();
+        let addr = t
+            .choices
+            .keys()
+            .find(|k| k.ends_with("#oct"))
+            .cloned()
+            .expect("the vco has an octave site");
+        t.choices.get_mut(&addr).unwrap().value = ChoiceValue::Usize(9);
+        let err = PatchTree::from_trace(&t).expect_err("oct = 9 must not decode");
+        assert!(err.to_string().contains("categorical"), "{err}");
+        let addr = t
+            .choices
+            .keys()
+            .find(|k| k.ends_with("#fkind"))
+            .cloned()
+            .expect("the filter has a kind site");
+        let mut t2 = good.to_trace();
+        t2.choices.get_mut(&addr).unwrap().value = ChoiceValue::Usize(4);
+        assert!(
+            PatchTree::from_trace(&t2).is_err(),
+            "fkind = 4 must not wrap to svf lp"
+        );
     }
 
     /// NaN carries no direction, so it lands in the middle rather than being

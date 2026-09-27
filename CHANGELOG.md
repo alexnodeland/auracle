@@ -94,6 +94,24 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Fixed — 256 KiB of stack per level of the patch tree
+
+The compiler recurses once per level of the audio tree, and quiver's
+`Wavetable` (128 KiB inline) and `PitchShifter` (38 KiB) were constructed by
+value inside that recursive function, so every level reserved their space
+whether or not it built one: over 256 KiB a level, measured from the binary's
+stack probe. Eight levels overflowed a 2 MiB thread — found when the audit's
+over-the-ceiling test met the merged tree. Both are now built in a
+non-inlined helper outside the recursion, and a level costs about 2.5 KiB. A
+test compiles a wavetable under sixteen filters on a 512 KiB thread, and
+overflows without the fix.
+
+Two merge interactions fixed alongside: PERFORM's walks now return the audit's
+`RefineOutcome`, so an offer on a patch outside the prior's support says so
+instead of "no offer beat this patch", and the build stamp hashes every app
+script (`perform.js` and `midi.js` were missing, and would have been served
+stale from cache after a change).
+
 ### Fixed — a red-team pass over PERFORM, MIDI and the motion bands
 
 A review of the new surfaces before merge, every finding fixed:
@@ -345,6 +363,557 @@ For the model and the search:
   its `n_rand` already is its stepped count; the panel now labels it
   "stepped mods". Cached feature rows from before this change still load.
 - The catalogue is now **forty-two modules** (sixteen modulators).
+
+The September 2026 audit ([`AUDIT-2026-09.md`](./AUDIT-2026-09.md)) read the
+whole stack against the pinned sources. The entries below are its auracle
+findings being closed, in the audit's priority order.
+
+### Fixed — a knob dragged to its stop made the patch un-evolvable
+
+Every continuous site is a draw from `Uniform(0, 1)`, and fugue's `Uniform` is
+half-open: `log_prob` is `−∞` at `x >= 1.0`. Auracle's own domain contract was
+closed — `PARAM_DOMAIN = 0.0..=1.0`, `in_domain` accepted `1.0`, `set_param`
+and `clamp_domains` clamped *to* `1.0`, and the panel's knob stops at `1`. So a
+knob dragged to the end of its travel produced a legal term with zero prior
+mass. `EvolutionChain::init_from` returns `None` for such a seed, `refine_one`
+returned `None` in turn, and ⚡ evolve did nothing and said nothing. Two of the
+61 shipped presets ("Sea Change" `mix`, "Ask The Dice" `mod_depth`) and the
+default Vibrato insert shipped in that state; any tree repaired by
+`clamp_domains` from a value above one landed there too.
+
+The domain is now half-open where it is enforced: `PARAM_DOMAIN` is `0.0..1.0`,
+the top of a knob is `PARAM_MAX = 1.0 − f64::EPSILON`, and one `clamp_param`
+serves `set_param`, `clamp_domains`, the live handles' `clamp_input` and the
+import routes, so "legal" cannot mean two things on two paths. `PARAM_MAX` is
+one epsilon below rather than the next float down so a JSON round trip cannot
+put it back on the boundary; no mapping in the compiler can hear the
+difference. The three literal `1.0`s are `PARAM_MAX`. A saved session whose
+knobs rest on `1.0` is mended on load by the same `clamp_domains` pass that
+already runs on every import path.
+
+**The gate that was missing:** `everything_a_hand_can_reach_has_finite_prior`
+scores every preset, every `default_node`, every knob at either end of its
+range, and every result of every structural op over a sweep of prior draws
+under `PatchGrammarPrior::default().model()`, and requires a finite log-prior.
+Nothing had scored what the panel produces; now something does.
+
+### Fixed — the hand-edit ceilings were above the prior's support
+
+`MAX_DEPTH` was 9 and `MAX_MOD_DEPTH` 4, against a prior whose `max_depth` is 5
+and `max_mod_depth` 2. The prior forces `#leaf` at `max_depth` and zeroes
+`Op`/`Pair` at `max_mod_depth`, so the deepest terms it can score have depth 6
+and 3; a hand edit past that had `log p = −∞` and hit exactly the silent
+`init_from → None` path above. The ceilings' comment said they were there to
+protect the realtime voice rather than to shape the search, without noting that
+the prior gave such trees zero mass.
+
+Both ceilings are now **derived**: `MAX_DEPTH = PRIOR_MAX_DEPTH + 1` and
+`MAX_MOD_DEPTH = PRIOR_MAX_MOD_DEPTH + 1`, read from `prior.rs`, so they cannot
+drift again. This was chosen over raising the prior's bounds because the latter
+changes every prior draw, widens the trees the wasm stack has to compile, and
+would owe a revalidation for a bug that is entirely in the ceiling. The budget
+readout is `n/24 modules · n/6 depth · n/3 mod depth`.
+
+A session saved under the old ceilings may hold a deeper tree. It **still loads
+and plays** — no load path re-checks the ceilings, because corruption must not
+be load-bearing — evolution now reports it as outside the prior's support (below)
+instead of pretending to walk, and a structural edit that leaves it over the
+ceiling is refused until one brings it under.
+`ceilings_end_exactly_where_the_prior_support_does` pins the boundary from both
+sides.
+
+### Fixed — evolve says why it did nothing
+
+`refine_seed`/`refine_from` returned `None` for four different reasons — no
+taste yet, the walk did not move, it landed on a duplicate, the child was not
+admitted — and, after the two findings above, for a fifth that is not like the
+others: the seed has zero prior mass and the walk **never started**. The engine
+now records a `RefineOutcome` after every refinement (`Engine::last_refine`),
+and the wasm layer exposes it as `last_refine_reason()`; `outside_support` is
+the one the UI should say out loud, because no budget or lock-loosening will
+change it.
+
+Two small things in the same code: `refine_from` no longer advances the
+generation counter when nothing landed (a run of "no move" presses read as
+empty generations in the lineage), and `absorb_bank_entry` no longer wraps the
+id allocator on a hostile `u64::MAX` in a shared file.
+
+### Fixed — `import_patch` skipped the ceilings, and the compiler had no guard of its own
+
+Every write route into the pool ran `validate_tree` except the one that takes
+untrusted input: `import_patch` repaired knob domains and then called
+`commit_edit`, which always lands a hand edit. A shared file with a depth-40
+tree entered the pool, evicted a member, and put its out-of-range φ into the
+log on the next vote. `import_patch` now refuses what every other route refuses
+(returns `0`).
+
+Behind it, `compile` refuses a term nested deeper than `COMPILE_MAX_NESTING`
+(32 levels, audio depth plus the deepest modulation chain) with an ordinary
+`PatchError`. This is a stack guard, not a grammar ceiling: the compiler
+recurses by value with frames large enough that ~60 nested nodes overflow the
+wasm build's 8 MB stack, and a wasm trap is not an error the caller sees — it
+poisons the engine for the rest of the session. Every caller of `compile`
+already handles its error; none could handle the overflow.
+
+### Added — the wasm boundary tells the app what it could not do
+
+Three places where the engine's answer folded a failure into a no-op, now with
+the distinction on the wire. Nothing existing changed shape; the web app is
+expected to move to these.
+
+- `import_session_checked(json)` and `import_session_deferred_v2(json)` return
+  `{"status":"ok"|"empty"|"unparseable", …}` beside the old `usize` / `"[]"`.
+  A save the current build cannot parse used to be indistinguishable from a
+  save with nothing in it, and the app treated both as "nothing to restore" —
+  then autosaved a fresh session over the record it could not read.
+  `unparseable` is the answer that must stop that write.
+- `record_duel`/`record_keep`/`record_stars` return `bool`, `false` when an id
+  is no longer in the pool (a duel side evicted inside the undo window). The
+  vote was always dropped in that case; the app counted it and toasted "rated".
+- `edit_param` refuses a non-finite value, as do `LivePoly::set_param`,
+  `set_bend` and `set_makeup`: `f64::clamp` passes NaN, and a NaN knob rode the
+  smoother into the atomic the voice reads every sample.
+- `budget_ceilings()` reports `{"size","depth","mod"}` from the grammar, so the
+  app stops restating numbers that just moved.
+
+### Fixed — a save this build could not read was overwritten by a fresh one
+
+The web app kept one IndexedDB record with no version on it and no backup, and
+the engine's restore answered `0` both for "nothing in this save" and for "I
+cannot parse this save". The app treated both as a first run: it booted from
+the prior, the first vote scheduled an autosave, and ~2.5 s later the record it
+had never understood — every patch and every pick in it — was gone under a
+fresh session. An older build served from the browser cache opening a newer
+save was enough to trigger it; so was one corrupt bank tree, because
+`SessionState` deserialises all-or-nothing outside the observation rows.
+
+The worker now restores through the verdicted forms
+(`import_session_deferred_v2`, `import_session_checked`) and posts
+`restore_failed` when the answer is `unparseable`. Main then, before anything
+else can write, copies the record to `state-quarantine-<timestamp>`, pins a
+`role="alert"` that says what happened and where the copy is, and turns
+autosave off until the player chooses **start fresh** — or reloads under a
+build that can read it, in which case the record is still exactly where it was.
+
+Around that, the persistence layer gained the shape it should have had:
+
+- The record is versioned, `{v: 2, session, ui}`; a v1 record reads as before.
+- `state-prev` holds the record the page **booted from**, written once per
+  session before the first overwrite. Every restore migrates and repairs the
+  session (schema-1 rows converted, out-of-range cells clamped, unreadable
+  votes dropped) and the first autosave used to make that the only copy — so a
+  conversion later found wrong had nothing to be undone from. Once per session
+  rather than rotated on every save, because a slot rotated every 2.5 s would
+  hold the already-migrated record within one vote of booting.
+- `idbPut` resolves on transaction completion and has `onerror`/`onabort`. A
+  full quota (`QuotaExceededError`) used to fail in silence with the app still
+  telling itself it had saved; it is an alert now, with a retry. One IndexedDB
+  connection is kept for the life of the page instead of one per save.
+
+### Fixed — an engine that crashed left an instrument that never found out
+
+`main.js` set `worker.onmessage` and nothing else, and `worker.js` caught
+errors around `init` and `render` only. Every other request that threw —
+including a wasm trap, which under `panic = "abort"` unwinds out of a `&mut
+self` call and leaves every later call failing with "recursive use of an
+object" — became an unhandled rejection inside the worker, which never reaches
+`worker.onerror`. The flag that request was holding stayed set for the rest of
+the session: the wordmark on "thinking" (`fitting` is cleared only by
+`fitted`), the evolve button on "breeding 2/3…" (only by `refined`), every knob
+edit queued behind one that would never return (`editInFlight`, only by `bench`
+or `edit_rejected`). The README promised a pinned alert for a crashed engine;
+it existed only for the worklet and for a failed boot.
+
+The worker now runs every request through one `dispatch` under a `try/catch`
+that answers `engine_error` with the request's type and id, and main releases
+exactly what that request was holding — `fitting`, `editInFlight`, `dealing`,
+`pendingEvolve`, `engineBusy`, the evolve buttons, a preview slot. A fatal
+error (a `WebAssembly.RuntimeError`, or the borrow-flag message that follows
+one) latches the worker as poisoned, so later requests are answered with the
+same error instead of a cascade of misleading ones; on the main thread it,
+`worker.onerror` and `messageerror` all reach one `engineCrashed`: everything
+released, autosave stopped — the record on disk is the last good session — and
+the `role="alert"` strip says to reload. Unhandled rejections in the worker are
+reported the same way.
+
+### Fixed — a vote on a patch that had just been evicted was counted as taken
+
+Every vote waits out a 7 s undo window before it reaches the engine, and a
+generation, a preset load or an import can evict one of its patches inside that
+window. The engine dropped such a vote silently; the worker posted `status`
+regardless; the app incremented its Brier tally, lit the star, toasted "rated
+★" and saved. The engine's `record_*` calls now answer `false` for that case
+(see the wasm entry above), the worker forwards it as `recorded` with the vote
+it describes, and the app rolls back — the star returns to what it was, the
+refit counter and the forecast score are left untouched — and says that the
+patch is gone and the vote was not recorded.
+
+The same round trip now carries **why** evolution did nothing. ⚡ evolve used
+to say "no accepted move — try again, or loosen some locks" for five different
+reasons, one of which — the seed has zero mass under the prior, a knob on its
+stop or a tree deeper than the model scores — no amount of trying or
+loosening can change. `last_refine_reason` rides back with `evolved_from` and
+(per seed) with `refined`, and `outside_support` gets its own sentence: nudge
+a knob off its stop, or take a module out.
+
+### Fixed — the budget readout restated ceilings the grammar had moved
+
+`main.js` carried `BUDGET = {size: 24, depth: 9, mod: 4}` as literals, so
+when the two depth ceilings were derived from the prior's support (6 and 3,
+above) the rack went on reading `n/9 depth · n/4 mod depth` — three and one
+steps past where the engine actually refuses, with the "tight" warning firing
+on trees the engine would no longer take. The worker now reads
+`budget_ceilings()` from the grammar at boot and posts it with `ready`; the
+literals remain only as the fallback for a binary too old to say, and match
+the grammar as of this writing.
+
+### Fixed — importing a profile replaced yours without asking or keeping a copy
+
+Picking a file in TASTE sent `import` on the spot; `import_profile` replaces
+the whole observation log and adopts the file's standardizer, and the autosave
+2.5 s later made it permanent. Now, when there is anything to lose, the app
+asks — "replace it" or "keep mine" — and on "replace it" the current profile
+is downloaded first as `auracle-profile-before-import.json`, through the same
+export path the ⤓ button uses. The worker is serial, so that file is the
+profile as it stood before the import ran. Merging two logs would be the better
+answer; the engine has no merge today, so the question is replace-or-keep
+rather than replace-or-merge.
+
+### Fixed — three small things the web app was leaking or forgetting
+
+- **The last 2.5 s were lost with the tab.** Autosave is debounced, and the
+  only unload handler committed a pending vote. Hiding or leaving the page now
+  commits the vote *and* saves at once, in that order, so the save the worker
+  writes contains it. Not before the boot veil has lifted: a session exported
+  mid-restore is a bank with half its patches missing.
+- **Every reload re-downloaded the engine.** The worker and wasm URLs were
+  stamped with `Date.now()`, which is a cache-buster for the ~2 MB binary on
+  every visit. `make wasm` now writes `pkg/build.json`, a content hash over the
+  engine and the app scripts; the same bytes get the same URL and a new build
+  gets a new one. Served from the repo with no build, the clock is the
+  fallback.
+- **Nothing was ever freed.** `renders` held one ~0.6 MB `AudioBuffer` per id
+  ever auditioned, and the stars and cuts of patches long since evicted rode
+  into every autosave. `applyViews` already computed what left the pool; it
+  now drops those ids' buffers, failure notes, stars and cuts — and the timer
+  of a cut whose undo window was still open, since there is nothing left to
+  record against.
+
+### Fixed — a pinned alert did not survive the first patch on the bench
+
+The alert strip is one slot, and its rule — written over `alarm()` — is that
+a handler clears only the condition it tagged. The `bench` reply handler did
+not follow it: on every clean vet it called `alarm(null)`, which was there to
+lift its own "Muted — this setting can run away" notice and which lifted
+whatever else was in the strip. At boot the first patch lands on the bench a
+moment after `restore_failed`, so the quarantine alert above was shown and
+then wiped before anyone could have read it — autosave stayed off, as it
+should, but the page no longer said why, and **start fresh** was gone with the
+text. Any later bench reply did the same to a crash alert or a refused save.
+The handler now tags its notice `vet` and clears only that.
+
+Found by the first browser test to provoke an unparseable save (below); the
+Rust gates could not see it, because the whole fault is in which DOM node one
+reply writes to.
+
+### Changed — the quality bar and the gates that enforce it say the same thing
+
+CONTRIBUTING promised `cargo test --workspace --release`; the Makefile and CI
+ran `--profile test-fast`. CONTRIBUTING said `node --check apps/web/live-audio.js`
+"catches [the backtick failure] and nothing else does"; nothing ran it. `make
+check` skipped the wasm32 check CI ran, so green locally and green in CI were
+two claims. Two of three workflows installed wasm-pack with an unpinned
+`curl | sh`; the third used a pinned action. `release.yml`'s header still said
+the Pages workflow fired on tags, a year after that was turned off. No browser
+ever opened the app in CI.
+
+- `make check` is now `fmt-check lint js-check wasm-check test`: `node --check`
+  on all four app scripts and `cargo check` for `wasm32-unknown-unknown` join
+  the gate, and CONTRIBUTING's list matches it, `test-fast` included.
+- CI gained a `web` job (`node --check`, seconds, gated on the app or the site
+  changing — not on Rust, because a JS-only PR is the one this check exists
+  for) and, inside the `site` job where the wasm is already built, **browser
+  tests**: `tests/web/smoke.spec.js` boots the instrument in Playwright's
+  Chromium and requires no console errors, a registered worklet and an engine
+  that reaches `playable`; `tests/web/failure_flows.spec.js` then provokes the
+  four failure flows this pass fixed and had not watched — an unparseable save
+  seeded into IndexedDB before the page runs (quarantined, `state` untouched
+  past the debounce, **start fresh** writes a fresh v2 record and keeps the
+  boot record as `state-prev`), an engine error (a real one from a malformed
+  request, released and toasted; a fatal one, injected as the worker would
+  post it after a trap, pinning the strip, freeing the evolve button and
+  blocking `saved`), a vote the engine refused (a real refusal for an id not
+  in the pool, rolled back; a star rollback from an injected reply) and the
+  profile-import prompt (keep leaves the log; replace downloads
+  `auracle-profile-before-import.json` first). Where a step is injected rather
+  than provoked the test's name says so. The numeric audio assertions are
+  still run by hand. Locally it is `make smoke` (`make smoke-tools` once).
+- `pages.yml` and `release.yml` install wasm-pack through
+  `taiki-e/install-action`, as `ci.yml` already did; `release.yml`'s header
+  says what actually deploys the site.
+
+### Changed — the live voice allocates nothing per quantum outside a swap, and says what a swap costs
+
+CONTRIBUTING asks that `LivePoly` stay allocation-free per quantum, and three
+paths were not: the arpeggiator cloned the held chord and built the pattern
+into a fresh `Vec` at every step boundary; a knob write allocated a `String`
+for its address on first touch, from the worklet's `onmessage` on the render
+thread; and every smoother did a `HashMap<String>` lookup per voice per
+quantum. The arp now reuses two buffers sized for a full keyboard, and the live
+parameter handles are interned into one table at each (re)build — a knob write
+is a scan of that table and an atomic store, a smoother tick is one store per
+voice. The three `held.clone()`s around swaps and arp toggles are index loops.
+
+Not changed, and now written down where it lives: **a patch swap compiles on
+the render thread.** `set_patch` parses the tree in `onmessage` and the rebuild
+runs a full `compile()` per voice per quantum with this node's gain at zero.
+That silence is inaudible from *this* node; the duel auditions, master gain,
+analysers and recorder share the thread, and a compile that overruns the
+quantum glitches them. Compiling in the engine worker and transferring a ready
+voice is the fix, and it is out of scope for this pass; `live.rs`'s header and
+`apps/web/README.md` say so, so the next click heard on a structural edit has
+a known cause.
+
+### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
+
+`mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1
+for a bare modulator, 2 for one wrapped in a processor, 3 for two. It was
+listed in `StructFeatures::UNIT_NAMES` — the coordinates the saved-log repair
+clamps into `[0, 1]` on every load — so every stored vote on a patch with a
+shaped modulator was rewritten to 1.0, "unshaped", the next time the session
+opened, while freshly featurised pool rows kept their 2.0. The standardizer was
+fit on a mixture of the two, for exactly the coordinate that exists to say
+"this person likes modulation that has been shaped". A debug build panicked on
+about 4 % of prior draws at the assertion that UNIT_NAMES hold.
+
+It is out of `UNIT_NAMES`. Its definition is unchanged — it is a count-like
+mean and is treated as one, like the module counts beside it — so no
+`RENDER_EPOCH` bump is owed and no stored render is orphaned. What cannot be
+undone is the evidence already rewritten: a vote clamped by an earlier load
+says 1.0 where the patch had 2.0, and stays that way. Tested with an
+`Op`-wrapped modulator on both sides of the seam: the featurizer reads 2.0 and
+`repair_log` leaves it alone.
+
+### Fixed — the RNG sampler could never draw a hole
+
+`PatchGrammarPrior::sample_with_rng` mirrors the fugue program for callers
+without a trace (`EvolutionaryGenome::generate`, several tests). Its source
+match ended in `_ => Formant`, written before `Silence` joined the palette, so
+index 6 — the hole — became a formant oscillator: over 20 000 draws the RNG
+path produced 0 `silence` terms where the program produced 141. The two
+samplers are documented as agreeing, and now
+`the_two_samplers_agree_on_kind_frequencies` holds every module kind's
+frequency to it.
+
+### Fixed — the stars likelihood attenuated the wrong quantity
+
+An imputed coordinate attenuates the comparison it enters (#55). For keep/kill
+the code attenuated `u − τ`, correctly; for stars it attenuated `u` alone and
+then compared it to the cutpoints, which applies no correction at all at
+`u = 0` and moves the probability *away* from the marginalised truth elsewhere
+(0.205 against 0.133 at `u = 1.5`, one cutpoint, by Monte Carlo). Both bounds
+now use `σ(a·(c_k − u))`, and the imputation test gained a stars case that
+checks the attenuated probabilities against the marginal computed by
+quadrature. In the same expression the category probability is now computed in
+log space, so a rating far from `u` scores its real log-probability rather than
+the `ln(1e-12) = −27.6` floor two near-equal sigmoids used to cancel down to.
+Only reachable for `Stars` rows with imputed coordinates, i.e. after a
+stimulus-tag bump — which is when it matters.
+
+### Fixed — the render seeded quiver's RNG after compiling the main voice
+
+quiver's randomness is one thread-local stream and some of its module
+constructors draw from it. `render_phrase` compiled the main voice, *then*
+seeded. Deterministic today only because no module the grammar compiles draws
+in its constructor; the seed now precedes `compile`, so the `(term, spec) →
+bit-identical samples` contract is by construction rather than by luck.
+
+### Fixed — the render cache's namespace did not know which DSP it was rendering with
+
+`RENDER_EPOCH` names every function this workspace owns that can change a
+stored φ — formula, vet gate, compiler mapping — and not the DSP library all of
+them call into. A `quiver-dsp` bump can change a sample with no line here
+changing, and the cache would have served the old φ as the new. The namespace
+is now `e<epoch>:q<quiver version>:<spec hash>`; `QUIVER_DSP_VERSION` is
+hand-maintained and a test reads `Cargo.lock` to fail the suite the moment it
+is stale. Every stored row moves namespace once, on this build — the same cost
+as an epoch bump, paid deliberately.
+
+The `AUR_DCB_ALWAYS` environment override, which inserted a DC blocker into
+every voice tail and so made a process with it set write different φ into the
+same namespace, is removed from the render path. The blocker is decided by the
+term alone (`makes_dc`), as it was for every process without the variable.
+
+### Fixed — grafted subtrees are normalised like set modulation terms
+
+`SetModTree` always folded its fragment through `ModNode::normalized`;
+`ReplaceTree` and `InsertTree` grafted whole audio subtrees with their
+modulation slots verbatim. An `Op` over nothing in one of them encodes
+`#mod = 0` where the prior's weight is zero (`log p = −∞` — the un-evolvable
+state again), and a one-parameter `Op` carrying a stray `p1` would not survive
+its own trace round trip, which is the equality refinement uses to decide
+whether it moved. `finish()` now normalises every slot of every result,
+keeping identities wherever nothing changed.
+
+### Fixed — a follower on a source now has the knobs the rack advertises
+
+`Follow` reads the owning module's input, and a source has none, so under an
+oscillator it compiled to nothing: no attenuverter, no `mdepth` handle, no
+`sens`/`rel` handles, while the faceplate showed all three. A drag on any of
+them fell back to a full patch swap. The follower is now built with its input
+unpatched — it reads 0 V and emits 0 V — so the term above it compiles like any
+other and every knob gets its handle. The cable it drives carries `+0.0`, and
+`a_follower_on_a_source_changes_no_sample` pins the render bit-identical to the
+empty slot, which is why no `RENDER_EPOCH` bump accompanies this. The
+live-handle gate now covers every `mdepth` and every modulation-module knob,
+not just `table` and `oct`. The alternative — zeroing `Follow` in a source's
+slot weights — was rejected because saved sessions containing one would have
+become un-evolvable.
+
+### Fixed — three small grammar edges
+
+- The diff view's `src`/`op`/`mod` label tables had gone stale for exactly the
+  newest productions (`silence`; `shift`, `comp`, `duck`, `gate`, `vocoder`;
+  `euclid`, `op`, `pair`), for the second time. They are now read from one set
+  of tables in `prior.rs` whose lengths are the arity constants, so a
+  production cannot be added without a label.
+- A v1 trace decoded a module's missing `mod_depth` as 0.3 while v1 JSON
+  decoded it as 0.0; the same save was two different terms depending on route.
+  Both say 0.0 — the v1 behaviour, and the value that matters is only that
+  they agree.
+- `from_trace` refuses a categorical index outside its arity instead of
+  wrapping it (`oct = 9` used to become an octave; `fkind = 4` used to become
+  `svf lp`). Unreachable from MH or a knob; a hand-made trace is told.
+
+### Fixed — a refit no longer shuffles which lens is which
+
+`TastePosterior::aligned()` resolved label switching *within* one posterior —
+against its own last draw — and `fit_posterior` replaced the previous posterior
+with no reference to it. MCMC has no reason to return the lenses in the same
+order twice, so with probability about `1 − 1/K!` two consecutive fits ordered
+them differently, and everything keyed by lens index — the names the player
+gave their styles, the recorded style shares, the panel's lens colours —
+silently attached to a different taste after every refit.
+
+`aligned_to(reference)` aligns a fresh posterior to the previous fit's lens
+means; `fit_posterior` uses it whenever a previous posterior of the same
+dimension exists. A lens added because the log grew takes an index the old fit
+did not claim, so no name has to move. Tested at both layers: the taste crate
+pins that a label-switched draw set aligns to whichever reference order it is
+given (and that a one-lens reference pins lens 0 and leaves lens 1 free), and
+the session crate refits the same log from a different RNG state and finds the
+dominant lens at the index it had.
+
+### Fixed — the engine's history is bounded
+
+Three things grew for the life of a session and rode along in every autosave.
+The implicit-event stream stored two raw-φ vectors per edit, revert and play
+flush, forever; it now keeps at most `EVENTS_CAP` (4096) rows and the raw φ on
+only the newest `EVENT_PHI_KEEP` (256) rows that carry it — the stream exists to
+be fitted on later, and its shape (kind, id, value, detail) outlives any one
+row's vectors. The duel-exposure tallies (`shown_pairs`, `shown_candidates`)
+kept rows for ids that had been evicted and could never be dealt again; they
+are pruned at eviction and cleared at import. Forecasts and the lineage are
+left as they are: one small `Copy` record per vote and one per accepted child,
+growing at the rate of the observation log, which is the source of truth and
+grows the same way.
+
+### Fixed — every reload opened a new τ session
+
+All three import paths call `begin_session`, and it opened a new session
+unconditionally. The taste program has one τ (keep/kill threshold) site per
+session, so `sites = d·K + n_sessions + 5` grew by one on every visit — a
+once-per-visit voter accumulated a nuisance site per visit forever, each
+stealing single-site MH budget from θ.
+
+Two changes. `begin_session` opens a new session only when the latest one holds
+at least `MIN_SESSION_OBS` (5) observations, and resumes it otherwise. And at
+import, `merge_short_sessions` folds sessions that never reached the floor into
+their predecessor: the walk runs from the newest session down and stops folding
+once a group has earned a τ, so a legacy log of one-vote reload sessions
+regroups into sessions of at least five rather than collapsing into one or
+staying as dozens. A migration like the others — applied on load, and the log
+written back is the merged one.
+
+### Changed — the refinement gate prints its worst case instead of asserting it
+
+`refinement_improves_pool` asserted that no seed's *best* pool member got worse
+across a generation. That is not guaranteed by construction: `insert_candidate`
+evicts the *model*-worst member, the model is a surrogate, and a misranking can
+evict the true best while the search works exactly as designed. It held on the
+sixteen fixed seeds, which is the class of flake the test's own header warns
+about. The number is printed; the gates that remain (median gain, seeds
+improved, anything injected) are the claims.
+
+### Fixed — small robustness edges in the taste crate
+
+- `reweighted_with(feedback, session, absent)` takes the same imputation mask a
+  full fit does, so the between-fits update and the fit weigh an imputed row
+  alike; `reweighted` passes none, which is exact for any row written under the
+  current names.
+- `FitSet::build` checks the standardizer's dimension against φ and names the
+  mismatch, instead of indexing past a shorter standardizer three lines later.
+  `dot` carries a debug assertion for the same disagreement.
+- `Standardizer::fit` falls back to `(0, 1)` for a column whose moments
+  overflow, instead of writing `inf` — which `serde_json` serializes as `null`
+  and the profile then cannot load.
+- The site counts quoted in `model.rs` said `d = 40` and "the documented 206";
+  φ has been 41 coordinates for some time. They say 211 (216 with the
+  brightness group), and the test that hard-coded 40 now reads the live
+  feature set and will fail the day φ moves again.
+
+### Changed — the reference says what the taste tilt actually does
+
+`biased_prior` reweights the grammar's kind weights by the fitted structural θ
+and installs the result as the **prior** of the `EvolutionModel`. fugue-evo's
+target is `prior.model() + factor(β·f)`, and fugue's categorical proposal is a
+resample from that same prior, so the Hastings terms cancel and the chain is a
+correct MH sampler for `π' ∝ p_tilted(x)·exp(β·u(x))` — a different target from
+`π_β`. The proposals page said the opposite ("tilting the proposal changes the
+kernel, not the target … the stationary distribution is unchanged"). It, the
+two-loops page, the notation table and the doc comments now say it is a prior
+tilt, why a true proposal tilt is not available (fugue 0.2.2 offers only
+`PriorResample` for `usize` sites), and why it does not matter much in practice
+(refinement hill-climbs rather than samples). `SessionConfig::proposal_tilt`
+keeps its name; the app and the harness both set it.
+
+### Changed — three feature-extraction confounds are written down where they live
+
+- `rms_mean`/`rms_std` are measured after the peak cap, so the ~15 % of patches
+  the ceiling pulls down read as "quiet" for a reason that is peakiness, which
+  `crest` already carries. Documented on the fields rather than moved: moving
+  the measurement point is a `RENDER_EPOCH` bump for a confound the
+  standardized model largely absorbs.
+- `tail_ratio` measures the amp envelope's release first and mostly — the amp
+  ADSR → VCA is the last stage after every effect, so a reverb tail is
+  multiplied by the release rather than heard past it. The field doc no longer
+  claims it captures effect tails.
+- Frame silence is recognised only at (near-)exactly zero power, which works
+  because quiver's `Adsr` snaps exactly to 0; a tail that outlasts a rest never
+  gets a chain break. The relative threshold that would fix it moves φ for every
+  patch with a tail and owes a measurement that has not been made. Documented
+  at the line and in the open questions, not changed blind.
+
+### Changed — quiver-dsp 0.3.3, and a declared MSRV
+
+The workspace pinned `quiver-dsp 0.2.0` while the repo was at 0.3.3, and two
+reference pages still said the `voct_to_hz` clamp was "open upstream"; it
+shipped in 0.3.0. The pin is 0.3.3. Every module and port name the compiler
+uses exists unchanged in both versions, and renders inside ±32 octaves are
+bit-identical, so **no `RENDER_EPOCH` bump** accompanies this. Stored render
+rows still move, once, because the cache namespace now carries the quiver
+version as its own coordinate (above) — and that is the right outcome rather
+than a cost, because for pathological CV the two versions render *differently*
+(0.2.0 recovered an infinite phase increment by reset; 0.3.x aliases at a
+finite ~THz pitch), and an MH search can reach such values through chained
+`Offset`s. Both are garbage the vet gate quarantines; they are not the same
+garbage, and a cache that could not tell them apart would be wrong about
+exactly those rows.
+
+`rust-version = "1.87"` is declared in `[workspace.package]` and inherited by
+every crate. fugue-ppl requires 1.87, so this states a floor that already
+existed; CI runs on `stable` with clippy as errors, and a declared MSRV is what
+makes a new stable lint a deliberate bump rather than a surprise.
 
 ### Changed — the acquisition question was measured, and the tie does not break
 

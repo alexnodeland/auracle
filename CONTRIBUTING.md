@@ -52,9 +52,10 @@ Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 `fix/arp-gate-length`, `docs/…`), then:
 
 ```bash
-make check          # fmt-check + clippy -D warnings + release tests (CI gate)
+make check          # fmt + clippy -D warnings + node --check + wasm32 check + tests (CI gate)
 make wasm           # rebuild apps/web/pkg after any Rust change
 make serve          # http://localhost:8642 — just the instrument
+make smoke          # boot the instrument in a browser against pkg/ (make smoke-tools once)
 ```
 
 The site is a second, independent gate:
@@ -92,7 +93,17 @@ Every change must pass `make check`:
 
 1. `cargo fmt --all --check`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
-3. `cargo test --workspace --release`
+3. `node --check` on each of the four `apps/web` scripts (`make js-check`)
+4. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
+   (`make wasm-check`; needs `rustup target add wasm32-unknown-unknown`)
+5. `cargo test --workspace --profile test-fast` — release-grade codegen
+   without release's shipping flags; see the profile's comment in `Cargo.toml`
+
+That list is what CI's `lint`, `web`, `wasm` and `test` jobs run, so "green
+locally" and "green in CI" are one claim. The one thing CI runs that `make
+check` does not is the site build (`make site && make site-check`) and the
+browser smoke test inside it (`make smoke`), because both need the wasm built
+and the first needs the pinned doc toolchain.
 
 Changes that touch `www/`, `apps/web/` or any public API must also pass `make
 site && make site-check`. If you changed a doc comment that the reference
@@ -151,11 +162,26 @@ these properties explicitly.
 
 ## Verification beyond `make check`
 
-UI changes are verified live in a browser (Playwright) with **numeric audio
-assertions** (an `AnalyserNode` RMS, boundary-sample checks around patch swaps)
-plus a zero-console-error requirement. Debug hooks for this live at
-`window.__aur` / `window.__aurLog` (`window.__ric` is kept as an alias for
-notes written before the rename).
+Two browser specs are automated under `make smoke` (CI runs them in the `site`
+job, against the wasm that job just built), in Playwright's Chromium.
+`tests/web/smoke.spec.js` boots the instrument and requires **no console
+errors, a registered worklet, and an engine that reaches `playable`** — the
+whole of its claim, and the only gate that notices a backtick in the worklet
+literal, a wasm method the JS calls that the binary no longer exports, or a
+protocol field renamed on one side. `tests/web/failure_flows.spec.js` provokes
+the four failure flows the September 2026 audit fixed — an unparseable save
+seeded into IndexedDB, an engine error, a vote the engine refused, a profile
+import over an existing log — and requires each to be reported and contained.
+Where it cannot provoke a step for real (the shipped binary has no reachable
+trap) it dispatches the worker's message on the real `Worker` object and its
+test name says so. It reaches the engine worker by wrapping `Worker` before
+`main.js` runs; nothing in `apps/web` exists for the tests' sake.
+
+Everything else about UI changes is still verified live in a browser by hand,
+with **numeric audio assertions** (an `AnalyserNode` RMS, boundary-sample
+checks around patch swaps) plus a zero-console-error requirement. Debug hooks
+for this live at `window.__aur` / `window.__aurLog` (`window.__ric` is kept as
+an alias for notes written before the rename).
 
 ## Pull requests
 

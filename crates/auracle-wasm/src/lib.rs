@@ -16,6 +16,24 @@
 //! (optionally logging an "edited beats original" duel);
 //! `refine_from(id, locks)` evolves everything *except* the locked
 //! addresses.
+//!
+//! ## Surface added by the September 2026 audit
+//!
+//! Every method below exists so the app can tell a failure from a no-op. The
+//! older methods they sit beside keep their shapes; nothing here removes or
+//! changes an existing signature.
+//!
+//! | method | returns | meaning |
+//! |---|---|---|
+//! | `import_session_checked(json) -> String` | `{"status":"ok"\|"empty"\|"unparseable","restored":n}` | The serial restore, with a verdict. `unparseable` means **the save must not be overwritten**: the current build could not read it. `empty` is a save that parsed but holds no bank. |
+//! | `import_session_deferred_v2(json) -> String` | `{"status":"ok"\|"empty"\|"unparseable","jobs":[{"i":0,"tree":{…}}]}` | The deferred restore, same verdict, `jobs` exactly as `import_session_deferred` returns them (empty unless `ok`). |
+//! | `record_duel(a, b, chose_a) -> bool` | `true` iff the vote was recorded | `false` when either id is no longer in the pool (evicted in the undo window); the vote was **dropped** and the UI must say so. |
+//! | `record_keep(id, kept) -> bool` | same | same |
+//! | `record_stars(id, rating) -> bool` | same | same |
+//! | `last_refine_reason() -> String` | `"idle"\|"injected"\|"no_taste"\|"unknown_seed"\|"outside_support"\|"no_move"\|"duplicate"\|"not_admitted"` | Why the last `refine_seed`/`refine_from` returned 0. `outside_support` is the one to surface: the seed has zero prior mass (a knob past its domain, a tree deeper than the prior can score) and no budget will move it. |
+//! | `edit_param(addr, value, is_index) -> bool` | unchanged shape | now also `false` for a non-finite `value`. |
+//! | `import_patch(tree_json, name) -> u32` | unchanged shape | now also `0` for a tree over the `validate_tree` ceilings, which every other write route already refused. |
+//! | `budget_ceilings() -> String` (free function) | `{"size":24,"depth":6,"mod":3}` | The hand-edit ceilings, read from the grammar rather than restated in the app. |
 
 mod live;
 pub use live::LivePoly;
@@ -111,6 +129,17 @@ fn origin_str(o: Origin) -> &'static str {
 /// of an audition on this boundary hands it straight to a `Float32Array`.
 fn pcm(a: &Audition) -> Vec<f32> {
     a.samples.clone()
+}
+
+/// The structural ceilings a hand-built patch must respect, as JSON
+/// `{"size":24,"depth":6,"mod":3}` — `MAX_SIZE`, `MAX_DEPTH`, `MAX_MOD_DEPTH`
+/// from the grammar. The app used to restate these as literals, and the two
+/// depth ceilings moved when they were derived from the prior's support; a
+/// number the engine owns should be read from the engine.
+#[wasm_bindgen]
+pub fn budget_ceilings() -> String {
+    use auracle_grammar::mutate::{MAX_DEPTH, MAX_MOD_DEPTH, MAX_SIZE};
+    format!(r#"{{"size":{MAX_SIZE},"depth":{MAX_DEPTH},"mod":{MAX_MOD_DEPTH}}}"#)
 }
 
 // ----------------------------------------------------------------------
@@ -452,19 +481,46 @@ impl WasmEngine {
     /// `[{"i":0,"tree":{…}}]` in bank order. Every entry must come back
     /// through [`WasmEngine::bank_absorb`], after which
     /// [`WasmEngine::restore_finish`] closes the restore.
+    ///
+    /// `"[]"` for a save this build cannot parse **and** for one with an empty
+    /// bank; [`WasmEngine::import_session_deferred_v2`] tells the two apart.
     pub fn import_session_deferred(&mut self, json: &str) -> String {
         let Ok(state) = serde_json::from_str::<SessionState>(json) else {
             return "[]".into();
         };
+        let jobs = self.begin_deferred_import(state);
+        serde_json::to_string(&jobs).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// [`WasmEngine::import_session_deferred`] with a verdict the caller can
+    /// act on: JSON `{"status":"ok"|"empty"|"unparseable","jobs":[…]}`.
+    ///
+    /// The old method returns `"[]"` both for a save this build cannot parse
+    /// and for a save with nothing in it, and the app treated both as "nothing
+    /// to restore" — then autosaved a fresh session over the one it could not
+    /// read. `unparseable` is the answer that must stop that write. `jobs` is
+    /// exactly what the old method returns, and is empty unless `ok`.
+    pub fn import_session_deferred_v2(&mut self, json: &str) -> String {
+        let (status, jobs) = match serde_json::from_str::<SessionState>(json) {
+            Err(_) => ("unparseable", Vec::new()),
+            Ok(state) => {
+                let jobs = self.begin_deferred_import(state);
+                (if jobs.is_empty() { "empty" } else { "ok" }, jobs)
+            }
+        };
+        serde_json::json!({ "status": status, "jobs": jobs }).to_string()
+    }
+
+    /// The shared body of both deferred imports: adopt the state, open a
+    /// session, return the bank as farm jobs in bank order.
+    fn begin_deferred_import(&mut self, state: SessionState) -> Vec<serde_json::Value> {
         self.pending_bank = self.engine.import_state_deferred(state);
         self.engine.begin_session();
-        let jobs: Vec<serde_json::Value> = self
-            .pending_bank
+        self.pending_bank
             .iter()
             .enumerate()
             .map(|(i, e)| serde_json::json!({ "i": i, "tree": e.tree }))
-            .collect();
-        serde_json::to_string(&jobs).unwrap_or_else(|_| "[]".into())
+            .collect()
     }
 
     /// The term of pending bank entry `index`, as JSON (`""` if unknown) —
@@ -685,27 +741,45 @@ impl WasmEngine {
         }
     }
 
-    /// Record a duel outcome between candidate ids.
-    pub fn record_duel(&mut self, a: u32, b: u32, chose_a: bool) {
+    /// Record a duel outcome between candidate ids. Returns `false` — and
+    /// records **nothing** — when either id is no longer in the pool.
+    ///
+    /// That happens: a duel side can be evicted by an evolve, a preset load or
+    /// an import inside the undo window, and the vote then arrives for a patch
+    /// that is gone. It used to vanish silently while the app counted it as
+    /// taken and toasted "rated"; a dropped vote is the app's to report.
+    pub fn record_duel(&mut self, a: u32, b: u32, chose_a: bool) -> bool {
         let (a, b) = (a as u64, b as u64);
-        if let (Some(i), Some(j)) = (self.engine.find(a), self.engine.find(b)) {
-            self.engine.record_duel(i, j, chose_a);
+        match (self.engine.find(a), self.engine.find(b)) {
+            (Some(i), Some(j)) if i != j => {
+                self.engine.record_duel(i, j, chose_a);
+                true
+            }
+            _ => false,
         }
     }
 
-    /// Record a keep/kill decision on a candidate id.
-    pub fn record_keep(&mut self, id: u32, kept: bool) {
-        let id = id as u64;
-        if let Some(i) = self.engine.find(id) {
-            self.engine.record_keep(i, kept);
+    /// Record a keep/kill decision on a candidate id. `false` (nothing
+    /// recorded) for an id no longer in the pool.
+    pub fn record_keep(&mut self, id: u32, kept: bool) -> bool {
+        match self.engine.find(id as u64) {
+            Some(i) => {
+                self.engine.record_keep(i, kept);
+                true
+            }
+            None => false,
         }
     }
 
-    /// Record a star rating on a candidate id.
-    pub fn record_stars(&mut self, id: u32, rating: u8) {
-        let id = id as u64;
-        if let Some(i) = self.engine.find(id) {
-            self.engine.record_stars(i, rating);
+    /// Record a star rating on a candidate id. `false` (nothing recorded) for
+    /// an id no longer in the pool.
+    pub fn record_stars(&mut self, id: u32, rating: u8) -> bool {
+        match self.engine.find(id as u64) {
+            Some(i) => {
+                self.engine.record_stars(i, rating);
+                true
+            }
+            None => false,
         }
     }
 
@@ -787,7 +861,9 @@ impl WasmEngine {
     /// One knob-only drift step from the performed state (`tree` plus
     /// `overrides`) on the taste target, structure and the player's
     /// `locks_json` held fixed. Returns `{tree, knobs: [[addr, value], …],
-    /// taste}`, or `null` if no accepted move beat the start. With no
+    /// taste}`, or `{reason}` ([`Self::last_refine_reason`]'s spellings:
+    /// `no_move`, `outside_support`) when there is nothing to glide to, or
+    /// `null` if the tree does not parse. With no
     /// posterior yet the walk still runs, on the prior alone (`taste: false`):
     /// the grammar's own idea of a nearby sound. Inserts nothing into the
     /// pool.
@@ -806,19 +882,19 @@ impl WasmEngine {
             .engine
             .drift(&mut self.rng, &tree, &locks, steps.max(1) as usize)
         {
-            Some(t) => {
+            Ok(t) => {
                 let knobs = auracle_session::perform::continuous_knobs(&t);
                 serde_json::json!({ "tree": t, "knobs": knobs, "taste": self.engine.has_taste() })
                     .to_string()
             }
-            None => "null".into(),
+            Err(why) => serde_json::json!({ "reason": why.as_str() }).to_string(),
         }
     }
 
     /// A structural offer from the performed state: the locked walk with only
     /// the player's locks. Returns `{tree, makeup, taste}` — makeup so the
     /// offer is heard at matched loudness, taste as for [`Self::perform_drift`]
-    /// — or `null`. Inserts nothing into the pool.
+    /// — or `{reason}` / `null` as there. Inserts nothing into the pool.
     pub fn perform_offer(
         &mut self,
         tree_json: &str,
@@ -830,17 +906,31 @@ impl WasmEngine {
             return "null".into();
         };
         let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
-        let Some(t) = self
+        let t = match self
             .engine
             .offer(&mut self.rng, &tree, &locks, steps.max(1) as usize)
-        else {
-            return "null".into();
+        {
+            Ok(t) => t,
+            Err(why) => return serde_json::json!({ "reason": why.as_str() }).to_string(),
         };
         let makeup = featurize_memo(&t, &self.engine.cfg.phrase, self.engine.memo(), false)
             .map(|(cf, _)| makeup_linear(cf.features.gain_db))
             .unwrap_or(1.0);
         serde_json::json!({ "tree": t, "makeup": makeup, "taste": self.engine.has_taste() })
             .to_string()
+    }
+
+    /// Why the most recent `refine_seed`/`refine_from` returned what it did,
+    /// as one of `idle`, `injected`, `no_taste`, `unknown_seed`,
+    /// `outside_support`, `no_move`, `duplicate`, `not_admitted`.
+    ///
+    /// The one worth a sentence in the UI is `outside_support`: the seed has
+    /// zero mass under the grammar prior — a knob past its domain, a tree
+    /// deeper than the prior can score — so the walk never started, and no
+    /// amount of budget or lock-loosening will change that. Until this
+    /// existed it was indistinguishable from `no_move`.
+    pub fn last_refine_reason(&self) -> String {
+        self.engine.last_refine().as_str().into()
     }
 
     /// Ranked pool as JSON
@@ -1124,7 +1214,8 @@ impl WasmEngine {
     // ------------------------------------------------------------------
 
     /// Import a shared patch (tree JSON + optional name) into the bank.
-    /// Returns the new id, or 0 (bad JSON / duplicate / vet failure).
+    /// Returns the new id, or 0 (bad JSON / over the ceilings / duplicate /
+    /// vet failure).
     pub fn import_patch(&mut self, tree_json: &str, name: &str) -> u32 {
         let Ok(mut tree) = serde_json::from_str::<PatchTree>(tree_json) else {
             return 0;
@@ -1134,6 +1225,14 @@ impl WasmEngine {
         // on the bench — including `1e30`. Repair on the way in, so an imported
         // patch cannot reintroduce a fault the session has just been mended of.
         tree.clamp_domains();
+        // Same split as `finish()` and `edit_set_tree_apply`: domains repaired,
+        // ceilings refused. This was the one write route without the check,
+        // and `commit_edit` always lands a hand edit — so a depth-40 tree from
+        // a shared file went straight into the pool, evicted a member, and
+        // put its out-of-range φ into the log on the next vote.
+        if validate_tree(&tree).is_err() {
+            return 0;
+        }
         match self.engine.commit_edit(None, tree, EditOutcome::Untold) {
             Some(id) => {
                 self.engine.set_name(id, name);
@@ -1176,6 +1275,12 @@ impl WasmEngine {
     /// re-vet. Returns false if the edit was rejected (structural site,
     /// unknown address, no workbench).
     pub fn edit_param(&mut self, addr: &str, value: f64, is_index: bool) -> bool {
+        // `f64::clamp` passes NaN through, and a NaN knob would then be
+        // written into the tree, featurized, and logged. Refuse it here, where
+        // it is still a rejected gesture and not evidence.
+        if !value.is_finite() {
+            return false;
+        }
         let Some(tree) = &self.bench_tree else {
             return false;
         };
@@ -1640,6 +1745,24 @@ impl WasmEngine {
         }
     }
 
+    /// [`WasmEngine::import_session`] with a verdict: JSON
+    /// `{"status":"ok"|"empty"|"unparseable","restored":n}`.
+    ///
+    /// The old method's `0` covers both a save this build cannot parse and a
+    /// save with an empty bank. Only the first must stop the next autosave
+    /// from overwriting the record; this is how the caller learns which it is.
+    pub fn import_session_checked(&mut self, json: &str) -> String {
+        let (status, restored) = match serde_json::from_str::<SessionState>(json) {
+            Err(_) => ("unparseable", 0),
+            Ok(state) => {
+                let n = self.engine.import_state(state);
+                self.engine.begin_session();
+                (if n == 0 { "empty" } else { "ok" }, n)
+            }
+        };
+        serde_json::json!({ "status": status, "restored": restored }).to_string()
+    }
+
     /// What the last restore had to mend, as JSON
     /// `{"terms":n,"cells":n,"dropped":n}` — saved patches whose knobs were
     /// outside their range, observation-log cells clamped back inside it, and
@@ -1985,6 +2108,135 @@ mod tests {
             deferred.export_session(),
             "the deferred restore rebuilt a different session"
         );
+    }
+
+    /// The tri-state the persistence layer was missing: a save the build
+    /// cannot parse, a save with nothing in it, and a real one are three
+    /// different answers. The first is the one that matters — it is the signal
+    /// "do not overwrite this record" — and both old methods folded it into
+    /// the second.
+    #[test]
+    fn a_restore_says_whether_it_could_read_the_save() {
+        let mut origin = WasmEngine::new(0x5A5B, 4);
+        while origin.fill_step(2) > 0 {}
+        let saved = origin.export_session();
+        let empty = WasmEngine::new(7, 4).export_session();
+
+        let verdict = |s: &str| -> serde_json::Value { serde_json::from_str(s).unwrap() };
+
+        let mut e = WasmEngine::new(1, 4);
+        let v = verdict(&e.import_session_checked("{not json"));
+        assert_eq!(v["status"], "unparseable");
+        assert_eq!(v["restored"], 0);
+        let v = verdict(&e.import_session_checked(&empty));
+        assert_eq!(v["status"], "empty");
+        let v = verdict(&e.import_session_checked(&saved));
+        assert_eq!(v["status"], "ok");
+        assert!(v["restored"].as_u64().unwrap() >= 3);
+
+        let mut d = WasmEngine::new(1, 4);
+        let v = verdict(&d.import_session_deferred_v2("[1,2,3]"));
+        assert_eq!(v["status"], "unparseable");
+        assert_eq!(v["jobs"].as_array().unwrap().len(), 0);
+        let v = verdict(&d.import_session_deferred_v2(&empty));
+        assert_eq!(v["status"], "empty");
+        let v = verdict(&d.import_session_deferred_v2(&saved));
+        assert_eq!(v["status"], "ok");
+        // Same jobs as the old method hands out, so the farm loop is unchanged.
+        let mut d2 = WasmEngine::new(1, 4);
+        let old: serde_json::Value =
+            serde_json::from_str(&d2.import_session_deferred(&saved)).unwrap();
+        assert_eq!(v["jobs"], old);
+    }
+
+    /// A vote on an id the pool no longer holds is refused out loud. The app
+    /// used to count it, save, and toast "rated" while the engine had dropped
+    /// it on the floor.
+    #[test]
+    fn a_vote_on_a_gone_id_is_refused_not_swallowed() {
+        let mut engine = WasmEngine::new(0x7E5, 4);
+        while engine.fill_step(2) > 0 {}
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        let a = ranked[0]["id"].as_u64().unwrap() as u32;
+        let b = ranked[1]["id"].as_u64().unwrap() as u32;
+        let before = engine.engine.log.len();
+        assert!(engine.record_duel(a, b, true));
+        assert!(engine.record_keep(a, true));
+        assert!(engine.record_stars(b, 4));
+        assert_eq!(engine.engine.log.len(), before + 3);
+        assert!(!engine.record_duel(a, 0xFFFF, true));
+        assert!(
+            !engine.record_duel(a, a, true),
+            "a duel needs two candidates"
+        );
+        assert!(!engine.record_keep(0xFFFF, false));
+        assert!(!engine.record_stars(0xFFFF, 1));
+        assert_eq!(
+            engine.engine.log.len(),
+            before + 3,
+            "a refused vote was logged"
+        );
+    }
+
+    /// The import route enforces the same ceilings as every other write route,
+    /// and the knob boundary refuses what `clamp` would let through.
+    #[test]
+    fn import_and_knob_boundaries_refuse_what_they_used_to_pass() {
+        use auracle_grammar::term::{AudioNode, FilterKind, ModNode};
+        use auracle_grammar::Uid;
+        let mut engine = WasmEngine::new(0x1A7, 4);
+        while engine.fill_step(2) > 0 {}
+        assert_eq!(engine.last_refine_reason(), "idle");
+
+        let mut deep = auracle_grammar::presets()[0].1.clone();
+        while deep.root.depth() <= auracle_grammar::mutate::MAX_DEPTH {
+            deep.root = AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.5,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(deep.root),
+                modulation: ModNode::None,
+            };
+        }
+        let pool_before = engine.engine.pool.len();
+        assert_eq!(
+            engine.import_patch(&serde_json::to_string(&deep).unwrap(), "too deep"),
+            0
+        );
+        assert_eq!(
+            engine.engine.pool.len(),
+            pool_before,
+            "the over-ceiling tree landed"
+        );
+        // A legal preset still imports (a novel one — the pool holds prior draws).
+        let ok = auracle_grammar::presets()[3].1.clone();
+        assert_ne!(
+            engine.import_patch(&serde_json::to_string(&ok).unwrap(), "fine"),
+            0
+        );
+
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        let id = ranked[0]["id"].as_u64().unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let before = engine.edit_tree_json();
+        assert!(!engine.edit_param("amp#attack", f64::NAN, false));
+        assert!(!engine.edit_param("amp#attack", f64::INFINITY, false));
+        assert_eq!(
+            engine.edit_tree_json(),
+            before,
+            "a refused knob moved the bench"
+        );
+        // A knob dragged to the stop lands inside the half-open domain.
+        assert!(engine.edit_param("amp#attack", 1.0, false));
+        let t: auracle_grammar::PatchTree = serde_json::from_str(&engine.edit_tree_json()).unwrap();
+        assert_eq!(t.amp.attack, auracle_grammar::PARAM_MAX);
+
+        let b: serde_json::Value = serde_json::from_str(&budget_ceilings()).unwrap();
+        assert_eq!(b["size"], auracle_grammar::mutate::MAX_SIZE);
+        assert_eq!(b["depth"], auracle_grammar::mutate::MAX_DEPTH);
+        assert_eq!(b["mod"], auracle_grammar::mutate::MAX_MOD_DEPTH);
     }
 
     /// Re-issue is stateless: the term at a draw index is recoverable from the

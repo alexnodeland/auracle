@@ -42,7 +42,7 @@ $\phi$ throughout; the code's `phi` is this vector.
 | $p_{\text{grammar}}(x)$ | Prior probability of term $x$ | `PatchGrammarPrior` |
 | $\beta$ | Boltzmann sharpness | `SessionConfig::beta` |
 | $\pi_\beta$ | The target, $\propto p_{\text{grammar}}(x)\,e^{\beta\,\E[u_\theta(x)]}$ | — |
-| $\eta$ | Proposal-tilt strength | `SessionConfig::proposal_tilt` |
+| $\eta$ | Taste-tilt strength (a tilt of the prior; see [Proposals](search/proposals.md)) | `SessionConfig::proposal_tilt` |
 | $\mathcal{L}$ | The set of locked addresses | `locked: HashSet<String>` |
 
 ## Conventions

@@ -23,7 +23,27 @@ const INK = {
 
 // Version-stamp the worker and all wasm fetches so a stale browser cache can
 // never pair an old engine with a newer UI.
-const BUILD = Date.now();
+//
+// The stamp is a **content hash**, not the clock. `make wasm` writes
+// `pkg/build.json` with a hash over the wasm binary, its glue and the four
+// app scripts, so the same bytes get the same URL and the ~2 MB engine is
+// served from the HTTP cache across reloads — and re-fetched exactly when it
+// changed. `Date.now()` defeated that cache on every single reload. Served
+// straight from the repo with no build there is no stamp, and the clock keeps
+// today's behaviour: correct, and never cached. The stamp file itself is
+// fetched with `no-cache` (revalidate, not bypass) so a new build is noticed.
+// A module script may await at top level; nothing above this line needs the
+// worker.
+const BUILD = await (async () => {
+  try {
+    const r = await fetch("./pkg/build.json", { cache: "no-cache" });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && typeof j.build === "string" && /^[0-9a-f]{8,64}$/.test(j.build)) return j.build;
+    }
+  } catch (_) { /* no build, or no server: fall through to the clock */ }
+  return String(Date.now());
+})();
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -161,37 +181,160 @@ function setLiveMuted(on) {
 }
 
 // ---------- persistence (IndexedDB autosave) ----------
-// One record: {session: <engine SessionState JSON>, ui: {stars, cut, vol, oct, perf}}.
+// One record under `state`: `{v: 2, session: <engine SessionState JSON>, ui:
+// {stars, cut, vol, oct, perf, …}}`. A v1 record is the same two fields with
+// no `v`, and is read exactly as before. The version is the UI's, not the
+// engine's — `SessionState` carries its own `schema` — and exists so a later
+// change to the `ui` blob has something to branch on rather than sniffing.
+//
+// Two more keys keep this honest:
+//
+// - `state-prev` — the record this page *booted from*, written once per
+//   session on its first save, before `state` is overwritten. Every restore
+//   migrates and repairs (schema-1 rows converted, out-of-range cells clamped,
+//   unreadable votes dropped) and then the first autosave made that the only
+//   copy. If a conversion is later found wrong, this is where the bytes it
+//   started from still are. Once per session rather than on every save on
+//   purpose: rotated every 2.5 s it would hold the already-migrated record
+//   within one vote of booting, which protects nothing.
+// - `state-quarantine-<timestamp>` — a save this build could not parse,
+//   copied there by `restore_failed` before anything else is written. See
+//   that handler.
+const STATE_VERSION = 2;
+
+// One connection for the life of the page. Opening one per save was cheap
+// but meant no `onerror` was ever attached to a write: a full disk
+// (`QuotaExceededError`) failed in silence, with the app still reading
+// "saved" to itself. Dropped and reopened if the browser closes it under us.
+let idbConn = null;
 function idbOpen() {
-  return new Promise((resolve) => {
-    const req = indexedDB.open("auracle", 1);
+  if (idbConn) return idbConn;
+  idbConn = new Promise((resolve) => {
+    let req;
+    try {
+      req = indexedDB.open("auracle", 1);
+    } catch (_) {
+      idbConn = null;
+      return resolve(null); // no IndexedDB at all: run without saves
+    }
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null); // private mode etc: run without saves
+    req.onsuccess = () => {
+      const db = req.result;
+      // Another tab upgrading the schema, or the browser reclaiming the
+      // connection: let go, and the next call opens a fresh one.
+      db.onversionchange = () => { db.close(); idbConn = null; };
+      db.onclose = () => { idbConn = null; };
+      resolve(db);
+    };
+    req.onerror = () => { idbConn = null; resolve(null); }; // private mode etc.
   });
+  return idbConn;
 }
 async function idbGet(key) {
   const db = await idbOpen();
   if (!db) return null;
   return new Promise((resolve) => {
-    const tx = db.transaction("kv", "readonly").objectStore("kv").get(key);
+    let tx;
+    try {
+      tx = db.transaction("kv", "readonly").objectStore("kv").get(key);
+    } catch (_) {
+      return resolve(null);
+    }
     tx.onsuccess = () => resolve(tx.result || null);
     tx.onerror = () => resolve(null);
   });
 }
+/** Write one key. Resolves `true` when the transaction *completed* — not when
+ *  the request was queued — and reports a refused write instead of dropping
+ *  it: a quota the browser has run out of is a condition the player has to be
+ *  told about, because every autosave from then on is a save that did not
+ *  happen. */
 async function idbPut(key, value) {
   const db = await idbOpen();
-  if (!db) return;
-  db.transaction("kv", "readwrite").objectStore("kv").put(value, key);
+  if (!db) return false;
+  return new Promise((resolve) => {
+    let tx;
+    try {
+      tx = db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put(value, key);
+    } catch (err) {
+      saveFailed(err, key);
+      return resolve(false);
+    }
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => { saveFailed(tx.error, key); resolve(false); };
+    tx.onabort = () => { saveFailed(tx.error, key); resolve(false); };
+  });
 }
 async function idbDel(key) {
   const db = await idbOpen();
   if (!db) return;
   return new Promise((resolve) => {
-    const tx = db.transaction("kv", "readwrite").objectStore("kv").delete(key);
+    let tx;
+    try {
+      tx = db.transaction("kv", "readwrite").objectStore("kv").delete(key);
+    } catch (_) {
+      return resolve();
+    }
     tx.onsuccess = () => resolve();
     tx.onerror = () => resolve();
   });
+}
+
+// Why a write was refused, said once and cleared by the next write that
+// lands. The alarm strip is one slot, so this owns it only while the tag is
+// its own — a crash or a quarantine alert must not be wiped by a later save.
+let saveAlarmUp = false;
+function saveFailed(err, key) {
+  const name = (err && err.name) || "unknown error";
+  console.error(`[auracle] IndexedDB write of "${key}" failed:`, err);
+  if (saveAlarmUp) return;
+  saveAlarmUp = true;
+  const why =
+    name === "QuotaExceededError"
+      ? "this browser's storage is full, so the session cannot be saved. It keeps running, but nothing since the last save will survive a reload — clear some site data, then"
+      : `the session could not be saved (${name}). It keeps running, but nothing since the last save will survive a reload —`;
+  alarm(`${why} try again.`, {
+    label: "try again",
+    run: () => { alarm(null); saveAlarmUp = false; saveNow(); },
+  });
+  $("alarm").dataset.tag = "save";
+}
+function saveLanded() {
+  if (!saveAlarmUp) return;
+  saveAlarmUp = false;
+  if ($("alarm").dataset.tag === "save") alarm(null);
+}
+
+// The record this page booted from, verbatim — what `state-prev` and a
+// quarantine are copies of. Null for a first run.
+let bootRecord = null;
+let bootRecordKept = false;
+// Why autosave is off, or null. `"unparseable"`: the save on disk is one this
+// build cannot read, and writing would destroy it (see `restore_failed`).
+// `"crashed"`: the engine is gone, and whatever it would export now is not a
+// session anyone should reload into.
+let saveBlocked = null;
+let quarantineKey = null;
+
+/** The one place the `state` key is written. */
+async function persistState(record) {
+  if (saveBlocked) return;
+  if (bootRecord && !bootRecordKept) {
+    // Before, not after: this must exist by the time `state` is overwritten.
+    bootRecordKept = await idbPut("state-prev", bootRecord);
+  }
+  if (await idbPut("state", record)) saveLanded();
+}
+
+/** Autosave is off, and stays off until the player says otherwise. */
+function startFresh() {
+  saveBlocked = null;
+  alarm(null);
+  note(
+    `Starting fresh. The unreadable session is still in this browser under "${quarantineKey}" — a newer build may be able to read it.`,
+  );
+  saveNow();
 }
 
 // ---------- the names this app used to have ----------
@@ -298,10 +441,18 @@ function announceRepair() {
 let saveTimer = null;
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    flushPlayCounts(); // implicit play signal rides along with every save
-    send({ type: "save" });
-  }, 2500);
+  if (saveBlocked) return;
+  saveTimer = setTimeout(saveNow, 2500);
+}
+/** Save without the debounce — for the moments the tab may not get another
+ *  2.5 s (hidden, unloading) and for an explicit retry. Not before the veil
+ *  has lifted: the worker answers `save` between restore batches, and a
+ *  session exported mid-restore is a bank with half its patches missing. */
+function saveNow() {
+  clearTimeout(saveTimer);
+  if (saveBlocked || !booted) return;
+  flushPlayCounts(); // implicit play signal rides along with every save
+  send({ type: "save" });
 }
 function uiState() {
   return {
@@ -834,7 +985,31 @@ worker.onmessage = (e) => {
       break;
     }
     case "saved": {
-      idbPut("state", { session: m.json, ui: uiState() });
+      persistState({ v: STATE_VERSION, session: m.json, ui: uiState() });
+      break;
+    }
+    // The save on disk exists and this build cannot read it. Until now that
+    // was indistinguishable from "nothing to restore": the engine booted from
+    // the prior, the first vote scheduled an autosave, and ~2.5 s later the
+    // unreadable record — every patch and every pick in it — was gone under a
+    // fresh session. An older build served from cache opening a newer save
+    // was enough to trigger it.
+    //
+    // Order matters here: the copy lands *before* anything else can write,
+    // and autosave stays off until the player says "start fresh" or reloads
+    // (with a newer build, the next boot reads the record where it is).
+    case "restore_failed": {
+      saveBlocked = "unparseable";
+      clearTimeout(saveTimer);
+      quarantineKey = `state-quarantine-${Date.now()}`;
+      if (bootRecord) idbPut(quarantineKey, bootRecord);
+      alarm(
+        `This build could not read your saved session (${m.status}), so nothing is being saved over it. ` +
+          `It is kept untouched in this browser's storage as "${quarantineKey}" (IndexedDB › auracle › kv). ` +
+          `Reload once a newer build is available to try again, or start fresh and keep the copy.`,
+        { label: "start fresh", run: startFresh },
+      );
+      $("alarm").dataset.tag = "quarantine";
       break;
     }
     // `edit_begin` said no: that id is not in the pool any more. It is
@@ -981,6 +1156,10 @@ worker.onmessage = (e) => {
     case "status": {
       applyStatus(m.status);
       send({ type: "calibration" });
+      // The engine took nothing: the patch left the pool between the gesture
+      // and the end of its undo window. The UI has already acted as if the
+      // vote were taken — put that back, and say so.
+      if (m.recorded === false && m.vote) voteDropped(m.vote);
       if (m.pred != null && m.pred >= 0) {
         const pChosen = m.choseA ? m.pred : 1 - m.pred;
         calib.n += 1;
@@ -1035,7 +1214,17 @@ worker.onmessage = (e) => {
       if (m.untaught) {
         note("Nothing to breed toward yet — make a few picks first, then evolve.");
       } else if (m.born && m.born.length === 0) {
-        note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
+        // When every seed the model picked has zero mass under the prior, the
+        // advice is different: more teaching will not move a walk that never
+        // started. Any other mix keeps the old sentence.
+        const reasons = Array.isArray(m.reasons) ? m.reasons : [];
+        if (reasons.length > 0 && reasons.every((r) => r === "outside_support")) {
+          note(
+            `Gen ${m.status.generation}: nothing could be bred — every seed the model picked is outside what evolution can reach (a knob on its stop, or a tree deeper than the model scores). Nudge those knobs off their stops.`,
+          );
+        } else {
+          note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
+        }
       } else if (m.born) {
         offerBankTourAfterFirstGeneration();
         const made = evicted.length
@@ -1237,12 +1426,21 @@ worker.onmessage = (e) => {
       // voices, so the mute has to be real. Any vet that passes lifts it.
       if (wb.vetOk) setLiveMuted(false);
       else if (spokeEarly) setLiveMuted(true);
-      alarm(
-        wb.vetOk
-          ? null
-          : "Muted — this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
-        wb.vetOk ? null : { label: "undo", run: doUndo }
-      );
+      // The strip is one slot (see `alarm`), and this owns it only while the
+      // condition it reports — a runaway the vet muted — is its own. It used
+      // to call `alarm(null)` on every clean vet, which wiped whatever else
+      // was pinned there: the first patch landing on the bench at boot
+      // cleared the quarantine alert `restore_failed` had raised a moment
+      // before, and any later bench reply cleared a crash or a refused save.
+      if (!wb.vetOk) {
+        alarm(
+          "Muted — this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
+          { label: "undo", run: doUndo }
+        );
+        $("alarm").dataset.tag = "vet";
+      } else if ($("alarm").dataset.tag === "vet") {
+        alarm(null);
+      }
       if (!knobDragging) renderRack();
       renderBank();
       // Both readouts are derived from this reply and nothing else, so they
@@ -1281,6 +1479,31 @@ worker.onmessage = (e) => {
     // until it lands and nothing else would ever ask again.
     case "not_ready": {
       if (m.request === "presets") setTimeout(() => send({ type: "presets" }), 250);
+      break;
+    }
+    // The engine is up. It says what the structural ceilings are so the
+    // budget readout cannot restate a number the grammar has since moved.
+    case "ready": {
+      const c = m.ceilings;
+      if (c && c.size > 0 && c.depth > 0 && c.mod > 0) {
+        BUDGET = { size: c.size, depth: c.depth, mod: c.mod };
+        renderBudget();
+      }
+      break;
+    }
+    // A request threw inside the worker instead of replying. Every reply is
+    // load-bearing (see `releaseRequest`), so the state that request was
+    // holding is released here — and if the engine is *gone* (a wasm trap
+    // poisons it for the rest of the session), the whole instrument is told
+    // so once, in the strip that stays.
+    case "engine_error": {
+      console.error(`[auracle] engine error in ${m.request || "?"}:`, m.message);
+      releaseRequest(m.request, m.id);
+      if (m.fatal) {
+        engineCrashed(m.message);
+      } else if (m.request) {
+        note(`the engine could not finish "${m.request}": ${m.message}`, { urgent: true });
+      }
       break;
     }
     // The engine worker's degradation log (a re-issued draw, a retired one, a
@@ -1475,7 +1698,12 @@ worker.onmessage = (e) => {
         send({ type: "edit_begin", id: m.childId });
         scheduleSave();
       } else {
-        note("⚡ evolution found no accepted move — try again, or loosen some locks");
+        note(
+          refineReasonText(
+            m.reason,
+            "⚡ evolution found no accepted move — try again, or loosen some locks",
+          ),
+        );
       }
       break;
     }
@@ -1575,7 +1803,11 @@ worker.onmessage = (e) => {
       const blob = new Blob([m.json], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "auracle-profile.json";
+      // The safety copy taken before a profile import is named for what it
+      // is, so it cannot be mistaken for the one the player asked for.
+      a.download = m.reason === "before-import"
+        ? "auracle-profile-before-import.json"
+        : "auracle-profile.json";
       a.click();
       URL.revokeObjectURL(a.href);
       break;
@@ -1592,6 +1824,111 @@ worker.onmessage = (e) => {
       break;
     }
   }
+};
+
+// ---------- the engine failing ----------
+//
+// Every workbench edit, fit, deal and generation sets a flag here that only
+// the worker's reply clears (`editInFlight`, `fitting`, `dealing`, the evolve
+// buttons, …). A request that dies without replying therefore used to leave
+// that flag set for the rest of the session: the wordmark stuck on
+// "thinking", edits queued behind one that would never return, the evolve
+// button reading "breeding 2/3…" forever. The worker answers those with
+// `engine_error` now; this releases what each request was holding.
+function releaseRequest(request, id) {
+  engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
+  switch (request) {
+    case "edit_param":
+      editInFlight = false;
+      editQueue = null; // the knob is already where the player left it
+      drainStruct();
+      break;
+    case "edit_structure":
+    case "edit_set_tree":
+      structInFlight = false;
+      restoreInFlight = false;
+      placeholderPending = null; // the tree it described never happened
+      restoreBacklog = 0;
+      forgetLanded();
+      drainStruct();
+      break;
+    case "fit":
+      fitting = false;
+      $("wm-lamp").classList.remove("thinking");
+      break;
+    case "refine":
+      $("wm-lamp").classList.remove("thinking");
+      $("evolve-btn").disabled = false;
+      $("evolve-btn").textContent = "evolve pool";
+      break;
+    case "refine_from":
+      $("wm-lamp").classList.remove("thinking");
+      $("rack-evolve").disabled = false;
+      pendingEvolve = false;
+      break;
+    case "edit_commit":
+    case "edit_duel":
+      pendingEvolve = false;
+      break;
+    case "duel":
+      dealing = false;
+      ignoreNextDeal = false;
+      setDuelControlsEnabled(true);
+      break;
+    case "render":
+      if (id != null) {
+        renderFailures.set(id, "engine error");
+        if (currentDuel && currentDuel.includes(id)) renderFailed(id, "engine error");
+      }
+      break;
+    case "preview_render":
+      preview.inflight = false;
+      preview.pending = null;
+      portTrace.inflight = false;
+      break;
+    case "import_patch":
+      pendingLayout = null;
+      break;
+    default:
+      break;
+  }
+}
+
+// Everything at once: the engine is not coming back.
+function releaseEverything() {
+  for (const r of [
+    "edit_param", "edit_structure", "fit", "refine", "refine_from",
+    "edit_commit", "duel", "preview_render", "import_patch",
+  ]) {
+    try { releaseRequest(r, null); } catch (_) {}
+  }
+}
+
+// The engine worker is dead or poisoned — it threw outside any handler
+// (`worker.onerror`), sent something that could not be deserialised
+// (`messageerror`), or trapped inside a request (`engine_error` with
+// `fatal`). Nothing it would export now is a session anyone should reload
+// into, so autosave stops here; the record on disk is the last good one.
+let engineDown = false;
+function engineCrashed(message) {
+  releaseEverything();
+  saveBlocked = "crashed";
+  clearTimeout(saveTimer);
+  if (engineDown) return; // said once; the strip is already up
+  engineDown = true;
+  dropBootVeil(); // a crash behind the veil must not leave a blank screen up
+  alarm(
+    `The engine crashed — reload to continue. Your session is as it was last saved; ` +
+      `nothing since then is being written. (${message})`,
+    { label: "reload", run: () => location.reload() },
+  );
+  $("alarm").dataset.tag = "crash";
+}
+worker.onerror = (e) => {
+  engineCrashed(String((e && e.message) || e || "unknown error"));
+};
+worker.onmessageerror = () => {
+  engineCrashed("a message from the engine could not be read");
 };
 
 let status = { observations: 0, generation: 0 };
@@ -1995,6 +2332,9 @@ function renderSkill() {
 
 function alarm(text, action) {
   const el = $("alarm");
+  // One slot. Whoever wants to clear only their own condition tags it *after*
+  // this call (`dataset.tag`) and checks the tag before calling `alarm(null)`.
+  delete el.dataset.tag;
   if (!text) {
     el.classList.add("hidden");
     el.innerHTML = "";
@@ -2045,6 +2385,25 @@ function applyViews(next) {
   views = next;
   const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
+  // Whatever left the pool takes its main-thread residue with it. `renders`
+  // held one ~0.6 MB AudioBuffer per id ever auditioned and never let go, so
+  // a long session grew by the size of every patch it had heard; the stars
+  // and cuts of a patch that no longer exists went into every autosave for
+  // the rest of time. A cut whose undo window is still open is simply gone —
+  // there is nothing left to record a keep/kill against, so its timer goes too.
+  for (const id of prevIds) {
+    if (nowIds.has(id)) continue;
+    renders.delete(id);
+    renderFailures.delete(id);
+    renderAnnounced.delete(id);
+    starsById.delete(id);
+    cutIds.delete(id);
+    const t = pendingCuts.get(id);
+    if (t !== undefined) {
+      clearTimeout(t);
+      pendingCuts.delete(id);
+    }
+  }
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
   // many pins a restored session came back with.
@@ -2790,8 +3149,20 @@ window.addEventListener("blur", () => {
   $("rack-scroll")?.classList.remove("grabbing");
   panic();
 });
-// A buffered vote must not die with the tab.
-window.addEventListener("pagehide", () => commitPendingVote());
+// A buffered vote must not die with the tab — and neither must the edits,
+// stars and names of the last 2.5 s, which the debounced autosave had not yet
+// written. `visibilitychange` → hidden is the reliable one (it fires before a
+// tab is frozen or discarded, while the worker can still answer); `pagehide`
+// is the belt to that brace. The vote is committed first so the save that
+// follows it through the worker's serial queue contains it.
+function saveOnLeave() {
+  commitPendingVote();
+  saveNow();
+}
+window.addEventListener("pagehide", saveOnLeave);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveOnLeave();
+});
 
 // A real mouse click must not leave focus parked on a button — parked focus
 // changes what the next keystroke means, and on an instrument that surprise
@@ -3332,7 +3703,13 @@ function renderBelief() {
 // inside the ceilings, so the structure disappears on the one action the whole
 // instrument is built around. The number has to be visible while there is
 // still room to spend.
-const BUDGET = { size: 24, depth: 9, mod: 4 };
+//
+// The values are the engine's: the worker reads `budget_ceilings()` from the
+// grammar and posts them with `ready`. These literals are only the fallback
+// for a binary too old to say, and match the grammar as of this writing —
+// the two depth ceilings were 9 and 4 here for months after `MAX_DEPTH` and
+// `MAX_MOD_DEPTH` had become 6 and 3, which is exactly the drift this closes.
+let BUDGET = { size: 24, depth: 6, mod: 3 };
 
 /** ModNode depth, mirroring `ModNode::depth` exactly — an `Op` wraps its
  *  input, a `Pair` takes the deeper of two, everything else is a leaf. */
@@ -4114,10 +4491,60 @@ function rateRow(rating, explicitId) {
     return;
   }
   kbdRowId = id; // rating something makes it the cursor, so 1-5 can correct it
+  // `prev` travels with the request so a refused vote can be rolled back to
+  // what the bank showed before this optimistic update.
+  const prev = starsById.get(id) || 0;
   starsById.set(id, rating);
-  send({ type: "record_stars", id, rating });
+  send({ type: "record_stars", id, rating, prev });
   renderBank();
   note(`${nameOf(id)} rated ${rating}★`);
+}
+
+// A vote the engine did not take (`status.recorded === false`): the id left
+// the pool inside the undo window — a generation landed, a preset loaded, a
+// patch was imported — and the log never saw it. Undo what the UI did on the
+// assumption it would, then say so; "rated ★" over a vote that went nowhere is
+// the app stating something untrue about the model.
+function voteDropped(v) {
+  let what = "vote";
+  if (v.kind === "stars") {
+    what = "rating";
+    if (v.prev > 0) starsById.set(v.id, v.prev);
+    else starsById.delete(v.id);
+    renderBank();
+  } else if (v.kind === "duel") {
+    what = "pick";
+    // `choose()` counted it toward the next refit; it is not in the log.
+    duelsSinceFit = Math.max(0, duelsSinceFit - 1);
+    fitDue = duelsSinceFit >= FIT_EVERY;
+    renderTeach();
+  } else if (v.kind === "keep") {
+    what = "cut";
+  }
+  note(`that patch is gone — a generation replaced it, so the ${what} was not recorded.`, {
+    urgent: true,
+  });
+}
+
+// What to say when evolution produced nothing, from the engine's own reason
+// (`last_refine_reason`). Only `outside_support` changes the advice: no budget
+// or lock-loosening reaches a seed the prior gives zero mass, so "try again"
+// would be a lie there.
+function refineReasonText(reason, fallback) {
+  switch (reason) {
+    case "outside_support":
+      return "⚡ this patch is outside what evolution can reach — a knob is on its stop, or the tree is deeper than the model scores. Nudge a knob off its stop, or take a module out, and try again.";
+    case "no_taste":
+      return "Nothing to breed toward yet — make a few picks first, then evolve.";
+    case "unknown_seed":
+      return "that patch isn't in the bank any more — a bred generation replaced it.";
+    case "duplicate":
+      return "⚡ evolution landed on a patch the bank already holds — try again.";
+    case "not_admitted":
+      return "⚡ evolution's proposal did not survive the vet or beat its parent — try again.";
+    default:
+      return fallback;
+  }
 }
 
 $("bank-list").addEventListener("keydown", (e) => {
@@ -14895,9 +15322,41 @@ function humanizeDiff(diff) {
 
 // ---------- profile ----------
 $("export-btn").onclick = () => send({ type: "export" });
+// Importing a profile *replaces* the taste log — every pick, star and cut —
+// and the autosave 2.5 s later made that permanent. It used to happen on the
+// file pick, with no question asked and no copy kept. Now it asks, and the
+// current profile is downloaded first through the same export path the ⤓
+// button uses; the worker is serial, so the export it writes is the profile as
+// it stood before the import ran. (The engine has no merge; when it does, the
+// question becomes "replace or merge" rather than "replace or keep".)
 $("import-input").onchange = async (e) => {
   const file = e.target.files[0];
-  if (file) send({ type: "import", json: await file.text() });
+  // Reset so that picking the same file again after "keep mine" fires again.
+  e.target.value = "";
+  if (!file) return;
+  const json = await file.text();
+  const n = status.observations || 0;
+  if (n === 0) {
+    send({ type: "import", json });
+    return;
+  }
+  alarm(
+    `Replace your taste profile with ${file.name}? Your ${n} pick${n === 1 ? "" : "s"}, stars and cuts ` +
+      `are replaced by the file's. Your current profile is downloaded first, so nothing is lost.`,
+    {
+      label: "replace it",
+      run: () => {
+        alarm(null);
+        send({ type: "export", reason: "before-import" });
+        send({ type: "import", json });
+      },
+    },
+  );
+  const keep = document.createElement("button");
+  keep.className = "toast-undo";
+  keep.textContent = "keep mine";
+  keep.onclick = () => alarm(null);
+  $("alarm").appendChild(keep);
 };
 
 // The warm start stays reachable after a skip, and the profile can start
@@ -16302,6 +16761,9 @@ bootMidi();
       if (saved) { idbPut("state", saved); break; }
     }
   }
+  // What this page is booting from, byte for byte. `persistState` keeps it as
+  // `state-prev` before the first overwrite; `restore_failed` quarantines it.
+  bootRecord = saved;
   if (saved && saved.ui) {
     // Restore UI prefs before the engine finishes booting.
     for (const [id, s] of saved.ui.stars || []) starsById.set(id, s);

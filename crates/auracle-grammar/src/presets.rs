@@ -6,7 +6,7 @@
 //!
 //! # Every parameter here is normalized; none of them are in units
 //!
-//! A `PatchTree` field is `0.0..=1.0` and the musical meaning lives in the
+//! A `PatchTree` field is `0.0..1.0` (half-open; see `PARAM_DOMAIN`) and the musical meaning lives in the
 //! compiler and in quiver. Writing these by feel rather than by the maps is
 //! how the first nine went wrong in a way nobody could see: **every modulated
 //! preset in the library ran between 0.033 Hz and 0.165 Hz** — six to thirty
@@ -99,6 +99,7 @@
 //! produces a bank that honestly reports itself as `Soft Lead`, `Soft Lead 2`,
 //! `Soft Lead 3`. Coverage here is what gives the whole app its adjectives.
 
+use crate::genome::PARAM_MAX;
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
     TableShape, Uid, Waveform,
@@ -1052,7 +1053,10 @@ pub fn preset_bank() -> Vec<Preset> {
                     uid: Uid::NEW,
                     rate: 0.55, // 1.6 Hz on quiver's own 0.1·150^x map
                     depth: 0.3,
-                    mix: 1.0,
+                    // The top of the domain, not `1.0`: the knob range is
+                    // half-open (`PARAM_DOMAIN`), and a literal `1.0` here
+                    // gave this preset zero prior mass — un-evolvable.
+                    mix: PARAM_MAX,
                     mod_depth: 0.4,
                     modulation: ModNode::Lfo {
                         uid: Uid::NEW,
@@ -2039,7 +2043,9 @@ pub fn preset_bank() -> Vec<Preset> {
                         wave: Waveform::Saw,
                         octave: 0,
                         detune: 0.5,
-                        mod_depth: 1.0,
+                        // Full depth is `PARAM_MAX`, not `1.0` — see `Sea
+                        // Change` above for why the literal was a defect.
+                        mod_depth: PARAM_MAX,
                         // The wave's headline term, two processors deep:
                         // noise sampled and held, snapped to a scale, then
                         // glided between. The slew is last so it glides

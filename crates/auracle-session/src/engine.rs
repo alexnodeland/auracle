@@ -467,9 +467,16 @@ pub struct SessionConfig {
     /// Recency half-life for the taste likelihood, in observations
     /// (`None` = no forgetting). Tastes drift; old votes should fade.
     pub recency_half_life: Option<f64>,
-    /// Strength of the taste→grammar proposal tilt (0 disables): structural
-    /// θ components multiply the grammar's kind weights by
-    /// `exp(η·θ)` during refinement.
+    /// Strength of the taste→grammar tilt (0 disables): structural θ
+    /// components multiply the grammar's kind weights by `exp(η·θ)` during
+    /// refinement.
+    ///
+    /// Named for what it was meant to do; what it *does* is tilt the **prior**
+    /// — see [`Engine::biased_prior`] and `www/reference/src/search/proposals.md`.
+    /// The tilted grammar is installed as the `EvolutionModel`'s prior, so it
+    /// is part of the target the walk climbs, not merely of the kernel that
+    /// explores it. Kept under this name because it is a config field the app
+    /// and the harness both set; renaming it buys nothing the doc cannot.
     pub proposal_tilt: f64,
     /// λ in the duel objective: how much the *pleasantness* of a duel counts
     /// against its informativeness, applied to **pool-standardized** utility.
@@ -983,6 +990,68 @@ fn pair_key(a: u64, b: u64) -> (u64, u64) {
 }
 
 /// The session engine.
+/// Most rows the implicit-event stream keeps; older rows are dropped oldest
+/// first. See `Engine::bound_events`.
+pub const EVENTS_CAP: usize = 4096;
+/// How many of the newest events keep their raw φ vectors. See
+/// `Engine::bound_events`.
+pub const EVENT_PHI_KEEP: usize = 256;
+/// The fewest observations a τ session must hold before the next reload opens
+/// another. See [`Engine::begin_session`].
+pub const MIN_SESSION_OBS: usize = 5;
+
+/// What the last refinement did — a child, or the reason there was none.
+///
+/// `refine_seed`/`refine_from` return `Option<u64>` because every caller
+/// wants the child id and nothing else *on success*; on `None` they used to
+/// be silent about why, and four different reasons hid behind one answer.
+/// The one that mattered most was [`RefineOutcome::OutsideSupport`]: a seed
+/// with `log p = −∞` under the grammar prior makes `EvolutionChain::init_from`
+/// return `None` before a single step is taken, and that is not "the walk
+/// found nothing" — it is "the walk never started", and the only fix is to
+/// the patch, not to the budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefineOutcome {
+    /// Nothing has been refined yet in this engine.
+    Idle,
+    /// A child was injected into the pool.
+    Injected,
+    /// No posterior or standardizer yet: there is no taste to refine toward.
+    NoTaste,
+    /// The seed id is not in the pool (evicted, or never there).
+    UnknownSeed,
+    /// The seed has zero mass under the grammar prior, so the chain cannot be
+    /// started from it. Today that means a knob outside its domain, a tree
+    /// deeper than the prior's support (a session saved by a build with the
+    /// old ceilings), or a modulation fragment the grammar cannot score.
+    OutsideSupport,
+    /// The walk ran and ended where it started: no accepted move improved on
+    /// the seed (or, under `RefineKeep::Last`, none was accepted at all).
+    NoMove,
+    /// The walk landed on a patch the pool already holds.
+    Duplicate,
+    /// The child was novel but ranked below the pool's worst member and was
+    /// not admitted.
+    NotAdmitted,
+}
+
+impl RefineOutcome {
+    /// The wire spelling (`snake_case`), for surfaces that speak strings.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RefineOutcome::Idle => "idle",
+            RefineOutcome::Injected => "injected",
+            RefineOutcome::NoTaste => "no_taste",
+            RefineOutcome::UnknownSeed => "unknown_seed",
+            RefineOutcome::OutsideSupport => "outside_support",
+            RefineOutcome::NoMove => "no_move",
+            RefineOutcome::Duplicate => "duplicate",
+            RefineOutcome::NotAdmitted => "not_admitted",
+        }
+    }
+}
+
 pub struct Engine {
     /// Configuration.
     pub cfg: SessionConfig,
@@ -1051,6 +1120,9 @@ pub struct Engine {
     repaired_terms: usize,
     repaired_cells: usize,
     dropped_observations: usize,
+    /// What the most recent `refine_seed`/`refine_from` did — see
+    /// [`RefineOutcome`]. Not persisted: it describes a call, not a session.
+    last_refine: RefineOutcome,
 }
 
 impl Engine {
@@ -1084,6 +1156,7 @@ impl Engine {
             repaired_terms: 0,
             repaired_cells: 0,
             dropped_observations: 0,
+            last_refine: RefineOutcome::Idle,
         }
     }
 
@@ -1215,9 +1288,30 @@ impl Engine {
     }
 
     /// Start a new session (its own τ latent). Returns its index.
+    ///
+    /// A new session opens only when the latest one holds at least
+    /// [`MIN_SESSION_OBS`] observations; otherwise the latest is resumed. Every
+    /// import path calls this, so before the rule each reload opened a τ site
+    /// — `sites = d·K + n_sessions + 5` — and a once-per-visit voter
+    /// accumulated one nuisance site per visit forever, each stealing
+    /// single-site MH budget from θ. A threshold that a session cannot
+    /// reasonably have earned is not a threshold worth its own latent; it is
+    /// merged into the last one that was.
     pub fn begin_session(&mut self) -> usize {
         if !self.log.is_empty() {
-            self.session = self.log.n_sessions();
+            let n = self.log.n_sessions();
+            let latest = n.saturating_sub(1);
+            let in_latest = self
+                .log
+                .observations
+                .iter()
+                .filter(|o| o.session() == latest)
+                .count();
+            self.session = if in_latest >= MIN_SESSION_OBS {
+                n
+            } else {
+                latest
+            };
         }
         self.session
     }
@@ -1598,7 +1692,21 @@ impl Engine {
         let model = TasteModel::new(taste_cfg);
         let data = FitSet::build(&self.log, &names, &sz);
         let posterior = model.fit(rng, &data, self.cfg.mcmc_samples, self.cfg.mcmc_warmup);
-        let posterior = Arc::new(posterior.aligned());
+        // Aligned to the **previous** fit's lenses, not merely to itself. MCMC
+        // has no reason to return the lenses in the same order twice — with
+        // probability ≈ 1 − 1/K! two consecutive fits disagree — and everything
+        // keyed by lens index (`style_names`, the style shares, the panel's
+        // lens colours) would silently attach to a different taste after every
+        // refit. Lens `i` now stays the lens that most resembles the old lens
+        // `i`; a lens added because the log grew takes an index the old fit
+        // did not claim, so no name has to move.
+        let reference: Vec<Vec<f64>> = self
+            .posterior
+            .as_ref()
+            .filter(|p| p.cfg.n_features == d)
+            .map(|p| (0..p.k_styles()).map(|k| p.theta_mean(k)).collect())
+            .unwrap_or_default();
+        let posterior = Arc::new(posterior.aligned_to(&reference));
         // Measured against the pool the fit is about to be used on, which is
         // the population the shares are a statement about — not against the
         // log, whose φ are the things already judged.
@@ -1698,9 +1806,25 @@ impl Engine {
 
     /// Grammar prior with kind-weights tilted toward the fitted taste: each
     /// structural θ component (share-weighted across styles) multiplies its
-    /// kind's proposal weight by `exp(η·θ)`. This is θ_struct → grammar
-    /// feedback — refinement *proposes* toward the user instead of merely
-    /// filtering, which is where visible directionality comes from.
+    /// kind's weight by `exp(η·θ)`. This is θ_struct → grammar feedback —
+    /// refinement *proposes* toward the user instead of merely filtering,
+    /// which is where visible directionality comes from.
+    ///
+    /// **It tilts the target, not only the proposal**, and that has to be said
+    /// plainly because the reference once said the opposite. The result is
+    /// installed as the prior of the `EvolutionModel`, whose target is
+    /// `prior.model() + factor(β·f)`; fugue's categorical proposal is a
+    /// resample from that same prior, so the Hastings terms cancel and the
+    /// chain is a correct MH sampler for `π' ∝ p_tilted(x) · exp(β·u(x))` — a
+    /// *different* stationary distribution from the untilted `π_β`. The seed
+    /// is scored under the same tilted prior, `RefineKeep::Best` ranks under
+    /// it, and the parsimony mass the walk climbs is the tilted one. A tilt
+    /// that left the target alone would need a custom site proposal with its
+    /// own Hastings correction, which fugue 0.2.2 does not offer for `usize`
+    /// sites (only `PriorResample`). Since refinement hill-climbs rather than
+    /// samples, the practical effect is the one intended — the climb finds the
+    /// kinds the listener likes sooner — but what "best" means is under the
+    /// tilted prior.
     ///
     /// Two things make the mapping from φ names to grammar weights less than
     /// a lookup, and both are consequences of φ carrying **families**
@@ -1920,6 +2044,34 @@ impl Engine {
             phi_before,
             phi_after,
         });
+        self.bound_events();
+    }
+
+    /// Keep the implicit-event stream bounded: at most [`EVENTS_CAP`] rows,
+    /// and raw φ on only the newest [`EVENT_PHI_KEEP`] rows that carry it.
+    ///
+    /// The stream is serialized into every autosave and grew forever, two
+    /// 41-coordinate vectors at a time for every edit, revert and play flush.
+    /// Nothing reads it yet — it exists to be fitted on later — so the shape
+    /// of the corpus matters more than any one row's φ: the event rows stay
+    /// (kind, id, value, detail) far longer than their vectors do, and the
+    /// vectors are the part that costs.
+    fn bound_events(&mut self) {
+        if self.events.len() > EVENTS_CAP {
+            let excess = self.events.len() - EVENTS_CAP;
+            self.events.drain(..excess);
+        }
+        let mut with_phi = 0usize;
+        for e in self.events.iter_mut().rev() {
+            if e.phi_before.is_empty() && e.phi_after.is_empty() {
+                continue;
+            }
+            with_phi += 1;
+            if with_phi > EVENT_PHI_KEEP {
+                e.phi_before = Vec::new();
+                e.phi_after = Vec::new();
+            }
+        }
     }
 
     /// Name (or rename; empty clears) an aligned style index.
@@ -1934,14 +2086,16 @@ impl Engine {
     }
 
     /// [`Self::refine_one`] for the performance surfaces, which walk without
-    /// inserting anything into the pool (see [`crate::perform`]).
+    /// inserting anything into the pool (see [`crate::perform`]). Never
+    /// [`RefineOutcome::NoTaste`]: without a posterior it walks the vetted
+    /// prior instead.
     pub(crate) fn refine_walk<R: Rng>(
         &self,
         rng: &mut R,
         seed: &PatchTree,
         locked: &HashSet<String>,
         steps: usize,
-    ) -> Option<PatchTree> {
+    ) -> Result<PatchTree, RefineOutcome> {
         if self.posterior.is_some() && self.standardizer.is_some() {
             return self.refine_one(rng, seed, locked, steps);
         }
@@ -1953,17 +2107,17 @@ impl Engine {
     }
 
     /// Run locked MH refinement from one seed. Returns the end state if it
-    /// differs from the seed.
+    /// differs from the seed, otherwise the reason it does not.
     fn refine_one<R: Rng>(
         &self,
         rng: &mut R,
         seed: &PatchTree,
         locked: &HashSet<String>,
         steps: usize,
-    ) -> Option<PatchTree> {
+    ) -> Result<PatchTree, RefineOutcome> {
         let (posterior, standardizer) = match (&self.posterior, &self.standardizer) {
             (Some(p), Some(s)) => (Arc::clone(p), Arc::clone(s)),
-            _ => return None,
+            _ => return Err(RefineOutcome::NoTaste),
         };
         let fitness = SurrogateFitness {
             posterior,
@@ -1986,7 +2140,7 @@ impl Engine {
         locked: &HashSet<String>,
         steps: usize,
         fitness: F,
-    ) -> Option<PatchTree>
+    ) -> Result<PatchTree, RefineOutcome>
     where
         R: Rng,
         F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
@@ -1997,7 +2151,15 @@ impl Engine {
     {
         let model = EvolutionModel::new(self.biased_prior(), fitness).with_beta(self.cfg.beta);
         let mut chain = EvolutionChain::new(model);
-        let mut trace = chain.init_from(seed)?;
+        // `init_from` is `None` exactly when the seed's total log-weight is not
+        // finite. The surrogate fitness is finite by construction (a
+        // quarantined render scores `QUARANTINE_FITNESS`, not `−∞`), so the
+        // only way to get here is a seed the grammar prior gives zero mass —
+        // which is a fact about the patch, and the caller needs to hear it as
+        // one rather than as a walk that happened not to move.
+        let Some(mut trace) = chain.init_from(seed) else {
+            return Err(RefineOutcome::OutsideSupport);
+        };
 
         // Scale steps for proposals wasted on locked sites. The kernel picks a
         // target site uniformly over all of them, so with a fraction `f` free
@@ -2086,7 +2248,30 @@ impl Engine {
             current.domain_violations()
         );
         current.clamp_domains();
-        (current != *seed).then_some(current)
+        if current == *seed {
+            Err(RefineOutcome::NoMove)
+        } else {
+            Ok(current)
+        }
+    }
+
+    /// How many distinct candidate pairs the exposure tally currently tracks.
+    /// A diagnostic: the tally is pruned on eviction, and this is how a test
+    /// sees that it was.
+    pub fn shown_pairs_len(&self) -> usize {
+        self.shown_pairs.len()
+    }
+
+    /// The candidate ids the exposure tally currently tracks. A diagnostic,
+    /// as [`Engine::shown_pairs_len`].
+    pub fn shown_candidate_ids(&self) -> Vec<u64> {
+        self.shown_candidates.keys().copied().collect()
+    }
+
+    /// What the most recent [`Engine::refine_seed`] / [`Engine::refine_from`]
+    /// did. [`RefineOutcome::Idle`] until one has run.
+    pub fn last_refine(&self) -> RefineOutcome {
+        self.last_refine
     }
 
     /// Insert a candidate (evicting the worst if full, never `protect`).
@@ -2133,7 +2318,15 @@ impl Engine {
                     if origin == Origin::Refined && mean_new <= worst_mean {
                         return None;
                     }
+                    let gone = self.pool[worst_idx].id;
                     self.pool.swap_remove(worst_idx);
+                    // The exposure tallies are about candidates that can still
+                    // be dealt; an evicted id can never be, and keeping its
+                    // rows made both maps grow with every eviction for the life
+                    // of the session.
+                    self.shown_pairs
+                        .retain(|(a, b), _| *a != gone && *b != gone);
+                    self.shown_candidates.remove(&gone);
                 }
                 None => return None,
             }
@@ -2185,34 +2378,67 @@ impl Engine {
     }
 
     /// Refine from one seed of the open generation. Returns the injected child
-    /// id, or `None` if the walk was rejected or landed on a patch the pool
-    /// already holds.
+    /// id, or `None` — and then [`Engine::last_refine`] says why: the walk did
+    /// not move, it landed on a patch the pool already holds, the child was
+    /// not admitted, or the seed was outside the prior's support to begin with.
     pub fn refine_seed<R: Rng>(&mut self, rng: &mut R, parent_id: u64) -> Option<u64> {
-        let seed = self.pool[self.find(parent_id)?].tree.clone();
         let no_locks = HashSet::new();
-        let end = self.refine_one(rng, &seed, &no_locks, self.cfg.refine_steps)?;
-        if self.pool.iter().any(|c| c.tree == end) {
-            return None;
-        }
-        self.record_child(parent_id, &seed, end, "refine", None)
+        let (child, outcome) = self.refine_inner(rng, parent_id, &no_locks, None);
+        self.last_refine = outcome;
+        child
     }
 
     /// Locked refinement from one explicit seed candidate: evolve everything
-    /// *except* the locked addresses. Returns the injected child id.
+    /// *except* the locked addresses. Returns the injected child id, or `None`
+    /// with the reason in [`Engine::last_refine`].
+    ///
+    /// The generation counter advances only when a child actually lands. It
+    /// used to advance on every call, so a run of "no move" presses read as
+    /// generations in the lineage that contained nothing.
     pub fn refine_from<R: Rng>(
         &mut self,
         rng: &mut R,
         seed_id: u64,
         locked: &[String],
     ) -> Option<u64> {
-        let seed = self.pool[self.find(seed_id)?].tree.clone();
         let locked: HashSet<String> = locked.iter().cloned().collect();
+        // Open the generation the child will be recorded under, and close it
+        // again if nothing lands — `record_child` stamps `self.generation`, so
+        // the bump has to precede it.
         self.generation += 1;
-        let end = self.refine_one(rng, &seed, &locked, self.cfg.refine_steps)?;
-        if self.pool.iter().any(|c| c.tree == end) {
-            return None;
+        let (child, outcome) = self.refine_inner(rng, seed_id, &locked, Some(seed_id));
+        if child.is_none() {
+            self.generation -= 1;
         }
-        self.record_child(seed_id, &seed, end, "refine", Some(seed_id))
+        self.last_refine = outcome;
+        child
+    }
+
+    /// The shared body of `refine_seed`/`refine_from`: seed lookup, the walk,
+    /// the novelty check, the admission. Returns the child (if any) *and* the
+    /// outcome, so the two public entry points can report both.
+    fn refine_inner<R: Rng>(
+        &mut self,
+        rng: &mut R,
+        seed_id: u64,
+        locked: &HashSet<String>,
+        protect: Option<u64>,
+    ) -> (Option<u64>, RefineOutcome) {
+        let Some(i) = self.find(seed_id) else {
+            return (None, RefineOutcome::UnknownSeed);
+        };
+        let seed = self.pool[i].tree.clone();
+        let end = match self.refine_one(rng, &seed, locked, self.cfg.refine_steps) {
+            Ok(end) => end,
+            Err(reason) => return (None, reason),
+        };
+        if self.pool.iter().any(|c| c.tree == end) {
+            return (None, RefineOutcome::Duplicate);
+        }
+        match self.record_child(seed_id, &seed, end, "refine", protect) {
+            Some(id) => (Some(id), RefineOutcome::Injected),
+            None => (None, RefineOutcome::NotAdmitted),
+        }
     }
 
     /// Commit a hand-edited tree as a new candidate. If `original_id` is
@@ -2945,6 +3171,9 @@ impl Engine {
         }
         self.pool.clear();
         self.audio_lru.clear();
+        self.shown_pairs.clear();
+        self.shown_candidates.clear();
+        self.bound_events();
         // Every saved term, repaired on the way in. This is the *only* place a
         // tree written by an older build enters the engine, and a bank entry
         // carrying a knob outside its range would otherwise be quarantined by
@@ -2996,7 +3225,9 @@ impl Engine {
             .map(|sz| sz.transform(&cached.features.phi()))
             .unwrap_or_default();
         let render = self.admitted_render(&entry.tree, &cached.features, audition);
-        self.next_id = self.next_id.max(entry.id + 1);
+        // `saturating_add`: a hostile `u64::MAX` in a shared file must not wrap
+        // the allocator back to 0 and start reissuing live ids.
+        self.next_id = self.next_id.max(entry.id.saturating_add(1));
         self.pool.push(Candidate {
             id: entry.id,
             tree: settled(entry.tree),
@@ -3079,6 +3310,12 @@ impl Engine {
         let (clamped, dropped) = crate::migrate::repair_log(&mut self.log);
         self.repaired_cells = clamped;
         self.dropped_observations = dropped;
+        // Sessions too short to have earned a τ of their own — the residue of
+        // every reload opening one before `begin_session` learned to wait —
+        // are folded into the session before them. A migration like the
+        // others here: applied on load, and the log written back is the
+        // merged one.
+        crate::migrate::merge_short_sessions(&mut self.log, MIN_SESSION_OBS);
         let poisoned = clamped > 0 || dropped > 0;
         match profile.standardizer {
             Some(sz) if sz.dimension() == names.len() && !poisoned => {

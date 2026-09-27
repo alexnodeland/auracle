@@ -370,6 +370,61 @@ pub fn repair_log(log: &mut ObservationLog) -> (usize, usize) {
     (clamped, dropped)
 }
 
+/// Fold every τ session holding fewer than `min_obs` observations into the
+/// session before it, then renumber so the indices stay contiguous. Returns
+/// how many observations changed session.
+///
+/// Each session is a nuisance site in the taste program, and every reload used
+/// to open one whether or not a single vote followed. A session that never
+/// reached `min_obs` has not identified a threshold of its own; its votes are
+/// better evidence about the previous session's τ than about a τ the sampler
+/// has to invent for them. The walk runs from the newest session down, and a
+/// group that reaches `min_obs` by absorbing the sessions above it stops
+/// there — so a run of one-vote reload sessions regroups into sessions of at
+/// least `min_obs`, rather than all collapsing into the first. Session 0 is
+/// never merged away: a log has to live somewhere.
+///
+/// Idempotent, and a no-op on a log every session of which is long enough.
+pub fn merge_short_sessions(log: &mut ObservationLog, min_obs: usize) -> usize {
+    let n = log.n_sessions();
+    if n <= 1 {
+        return 0;
+    }
+    let mut counts = vec![0usize; n];
+    for o in &log.observations {
+        counts[o.session] += 1;
+    }
+    // `target[s]` is where session `s` ends up, walking from the newest down
+    // so a cascade resolves in one pass.
+    let mut target: Vec<usize> = (0..n).collect();
+    for s in (1..n).rev() {
+        if counts[s] < min_obs {
+            target[s] = s - 1;
+            counts[s - 1] += counts[s];
+            counts[s] = 0;
+        }
+    }
+    // Resolve chains (s → s−1 → s−2 …) and compact the surviving indices.
+    let resolve = |mut s: usize| {
+        while target[s] != s {
+            s = target[s];
+        }
+        s
+    };
+    let mut survivors: Vec<usize> = (0..n).filter(|&s| resolve(s) == s).collect();
+    survivors.sort_unstable();
+    let mut moved = 0;
+    for o in &mut log.observations {
+        let dest = resolve(o.session);
+        let compact = survivors.binary_search(&dest).expect("a survivor");
+        if compact != o.session {
+            o.session = compact;
+            moved += 1;
+        }
+    }
+    moved
+}
+
 /// Rewrite [`RENAMES`]'d coordinate names in a log's stored name lists.
 ///
 /// Cheap, idempotent, and the difference between a renamed coordinate keeping
@@ -497,6 +552,82 @@ mod repair_tests {
         let mut empty: Vec<f64> = Vec::new();
         assert_eq!(repair_phi_pair(&mut stale, &mut empty, &n), 0);
         assert_eq!(stale, vec![1e30; 3]);
+    }
+
+    /// Sessions that never earned a τ of their own fold into the one before,
+    /// cascading, with session 0 as the floor; long sessions are untouched.
+    #[test]
+    fn short_sessions_merge_into_their_predecessor() {
+        let n = names();
+        let mut log = ObservationLog::new();
+        let mut push = |session: usize, count: usize| {
+            for _ in 0..count {
+                log.push(Observation::new(
+                    Feedback::KeepKill {
+                        x: vec![0.5; n.len()],
+                        kept: true,
+                    },
+                    session,
+                    &n,
+                ));
+            }
+        };
+        // 0: six votes; 1: two (short); 2: one (short); 3: seven; 4: one (short).
+        push(0, 6);
+        push(1, 2);
+        push(2, 1);
+        push(3, 7);
+        push(4, 1);
+        assert_eq!(log.n_sessions(), 5);
+        let moved = merge_short_sessions(&mut log, 5);
+        // 1 and 2 cascade into 0; 4 into 3; 3 is renumbered to 1.
+        assert_eq!(log.n_sessions(), 2);
+        let count = |s: usize| log.observations.iter().filter(|o| o.session == s).count();
+        assert_eq!((count(0), count(1)), (9, 8));
+        assert_eq!(moved, 2 + 1 + 7 + 1);
+        // Idempotent.
+        assert_eq!(merge_short_sessions(&mut log, 5), 0);
+        // A leading short session is the floor and stays where it is.
+        let mut small = ObservationLog::new();
+        for s in [0, 0, 1, 1, 1, 1, 1, 1] {
+            small.push(Observation::new(
+                Feedback::KeepKill {
+                    x: vec![0.5; n.len()],
+                    kept: true,
+                },
+                s,
+                &n,
+            ));
+        }
+        assert_eq!(merge_short_sessions(&mut small, 5), 0);
+        assert_eq!(small.n_sessions(), 2);
+    }
+
+    /// A shaped modulation chain reads `mod_depth_mean = 2`, and the repair
+    /// leaves it exactly there. It used to clamp it to 1 — "unshaped" — on
+    /// every load, rewriting the evidence for precisely the patches the
+    /// coordinate exists to describe.
+    #[test]
+    fn a_shaped_chains_depth_survives_the_repair() {
+        let n = names();
+        let i = n
+            .iter()
+            .position(|m| m == "mod_depth_mean")
+            .expect("mod_depth_mean is a φ coordinate");
+        let mut x = vec![0.5; n.len()];
+        x[i] = 2.0;
+        let mut log = ObservationLog::new();
+        log.push(Observation::new(
+            Feedback::KeepKill {
+                x: x.clone(),
+                kept: true,
+            },
+            0,
+            &n,
+        ));
+        assert_eq!(repair_log(&mut log), (0, 0), "a legal depth was 'repaired'");
+        let after = log.observations[0].feedback.phis()[0];
+        assert_eq!(after[i], 2.0);
     }
 
     /// Every name the repair enforces a bound on has to still be a φ

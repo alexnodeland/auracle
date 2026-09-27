@@ -6,15 +6,25 @@ $\mathrm{Uniform}(0,1)$. The musical meaning is the compiler's job.</p>
 ## One domain, everywhere
 
 ```rust
-pub const PARAM_DOMAIN: std::ops::RangeInclusive<f64> = 0.0..=1.0;
+pub const PARAM_DOMAIN: std::ops::Range<f64> = 0.0..1.0;
+pub const PARAM_MAX: f64 = 1.0 - f64::EPSILON;
 
 pub fn in_domain(v: f64) -> bool {
     v.is_finite() && PARAM_DOMAIN.contains(&v)
 }
 ```
 
-Every continuous site is normalized to $[0,1]$ and the mapping to Hz, seconds,
-dB or cents happens in the compiler. Three things fall out of that:
+Every continuous site is normalized to $[0,1)$ and the mapping to Hz, seconds,
+dB or cents happens in the compiler. **Half-open**, because that is what
+$\mathrm{Uniform}(0,1)$ is: fugue's `log_prob` is $-\infty$ at $x \ge 1$. The
+domain used to be `0.0..=1.0`, which made exactly `1.0` legal here and
+impossible under the prior — a knob dragged to its stop, two shipped presets
+and the default vibrato insert all had $\log p = -\infty$, so `init_from`
+refused them and ⚡ evolve silently did nothing. Every clamp in the crate now
+lands on `PARAM_MAX`, never on `1.0`, and it is one `f64::EPSILON` below rather
+than the next float down so that a JSON round trip cannot put it back on the
+boundary. No mapping in the compiler can hear the difference. Three things fall
+out of the shared domain:
 
 - **The prior is trivially correct.** $\mathrm{Uniform}(0,1)$ at every site,
   with no per-parameter range table to get wrong.
@@ -97,13 +107,15 @@ uses.
 ## Repair, not refusal
 
 `clamp_domains()` pulls every out-of-domain site back in and returns how many
-it fixed. `NaN` goes to the domain's midpoint; anything else is clamped.
+it fixed. `NaN` goes to the domain's midpoint; anything else is clamped, with
+`1.0` and above landing on `PARAM_MAX`. It runs on every session load, which is
+what mends a save written by a build that still let a knob rest on the stop.
 
 The asymmetry with the size ceilings is deliberate:
 
 | Violation | Response | Because |
 |---|---|---|
-| A knob outside $[0,1]$ | **Repaired**, exactly and locally | There is one right answer |
+| A knob outside $[0,1)$ | **Repaired**, exactly and locally | There is one right answer |
 | A term over the module/depth ceilings | **Refused** | Fixing it means deciding which modules to delete |
 
 Repair wins for parameters on product grounds: a saved session that already
@@ -146,12 +158,14 @@ value got through everything that was supposed to stop it.
 
 Separately from domains, the search is bounded in size:
 
-| Ceiling | Default |
-|---|---|
-| Modules | 24 |
-| Term depth | 9 |
-| Modulation depth | 4 |
+| Ceiling | Default | Because |
+|---|---|---|
+| Modules | 24 | the realtime voice |
+| Term depth | 6 | the prior's `max_depth` (5) + 1 — the deepest term it can score |
+| Modulation depth | 3 | the prior's `max_mod_depth` (2) + 1 |
 
-Shown in the app as `8/24 modules · 6/9 depth · 1/4 mod depth`. A hand-built
+Shown in the app as `8/24 modules · 4/6 depth · 1/3 mod depth`. A hand-built
 patch past a ceiling is refused, and one *at* a ceiling has no room to grow,
 which is a common reason a generation reports "no proposal beat its parent".
+See [the validity gate](edits.md#the-validity-gate) for why the two depth
+ceilings are derived from the prior rather than set above it.

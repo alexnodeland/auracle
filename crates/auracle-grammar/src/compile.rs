@@ -24,7 +24,7 @@
 //!
 //! ## Parameter mapping
 //!
-//! Genome parameters are normalized `[0, 1]`; this module owns their musical
+//! Genome parameters are normalized `[0, 1)`; this module owns their musical
 //! mapping. Ranges are deliberately **bounded away from pathology** (max
 //! resonance 0.85, max delay feedback 0.7) — the grammar cannot express the
 //! most degenerate settings, which is safety layer 3 of the vetting design.
@@ -281,15 +281,17 @@ pub enum ParamMap {
 impl ParamMap {
     /// Clamp a value arriving from the panel to this map's input domain.
     ///
-    /// Continuous knobs are 0..1 and always were. The two categorical sites
-    /// that became live send a *category index*, so the blanket
-    /// `value.clamp(0.0, 1.0)` the live path used to apply would have folded
-    /// all eight wavetables onto the first two.
+    /// Continuous knobs are `[0, 1)` ([`crate::PARAM_DOMAIN`]) and go through
+    /// the same [`crate::clamp_param`] as a tree edit, so the value the live
+    /// voice hears is the value the term will hold once the gesture commits.
+    /// The two categorical sites that became live send a *category index*, so
+    /// the blanket `value.clamp(0.0, 1.0)` the live path used to apply would
+    /// have folded all eight wavetables onto the first two.
     pub fn clamp_input(self, x: f64) -> f64 {
         match self {
             ParamMap::TableIndex => x.round().clamp(0.0, 7.0),
             ParamMap::OctaveTrim(_) => x.round().clamp(0.0, 4.0),
-            _ => x.clamp(0.0, 1.0),
+            _ => crate::genome::clamp_param(x),
         }
     }
 
@@ -1111,10 +1113,10 @@ impl Compiler {
     /// tapped before it enters. Only [`ModNode::Follow`] reads it, and it is
     /// `None` exactly where there is nothing to tap — a source's own mod slot
     /// (a wavetable or a pluck generates its input rather than receiving
-    /// one). That case wires no modulation at all rather than failing: the
-    /// grammar and the panel can both express "follower on an oscillator",
-    /// and the honest compilation of it is silence on that cable, not a
-    /// refusal to compile a term the prior can draw.
+    /// one). That case builds a follower with nothing on its input, which
+    /// emits 0 V: the grammar and the panel can both express "follower on an
+    /// oscillator", the honest compilation of it is a cable carrying nothing,
+    /// and every knob the rack advertises for it still gets its live handle.
     ///
     /// `scale` says what kind of port `target` is. The source's polarity is
     /// decided here, but "how many volts is full depth" is a property of the
@@ -1215,13 +1217,25 @@ impl Compiler {
                 // enters — so the follower measures what the module is about
                 // to process rather than what it produced, which would be a
                 // feedback loop through the parameter it drives.
-                let Some(input) = owner_input else {
-                    return Ok(None);
-                };
+                //
+                // A source has no input to tap. This used to return `Ok(None)`
+                // — wire nothing — which was honest about the sound and wrong
+                // about the panel: the rack still advertised the owner's
+                // `mdepth` and the follower's own knobs, none of which had a
+                // live handle, so a drag on any of them fell back to a full
+                // patch swap. The follower is now built regardless: its input
+                // port is left unpatched and reads its default of 0 V, so it
+                // emits exactly 0 V, the term above it compiles as any other,
+                // every advertised knob gets its handle, and the cable that
+                // finally reaches the destination carries `+0.0` — which adds
+                // nothing to any sample (`a_follower_on_a_source_changes_no_sample`
+                // pins that bit-for-bit).
                 let f = self
                     .patch
                     .add(format!("{key}:follow"), EnvelopeFollower::new(self.sr()));
-                self.feed(input, f.in_("in"))?;
+                if let Some(input) = owner_input {
+                    self.feed(input, f.in_("in"))?;
+                }
                 self.knob(key, "sens", *sens, ParamMap::Unit, false, f.in_("gain"))?;
                 self.knob(
                     key,
@@ -1369,10 +1383,11 @@ impl Compiler {
                 );
                 // A branch that produced nothing collapses to the other one
                 // rather than to a constant, matching
-                // [`ModNode::normalized`]. In practice only a `Follow` on a
-                // source can get here — every other empty branch was already
-                // folded away — and the honest compilation of "follow an
-                // oscillator" is the rest of the term, not silence.
+                // [`ModNode::normalized`]. Nothing reaches this today — a
+                // `Follow` on a source now builds (above) and every other
+                // empty branch is folded away before compile — but the fold
+                // stays, so a future term that compiles to nothing degrades
+                // the same way rather than to a stuck constant.
                 match (a, b) {
                     (None, None) => return Ok(None),
                     (Some(x), None) | (None, Some(x)) => x,
@@ -1766,9 +1781,10 @@ impl Compiler {
                 modulation,
                 ..
             } => {
+                let sr = self.sr();
                 let wt = self
                     .patch
-                    .add(format!("{key}:wavetable"), Wavetable::new(self.sr()));
+                    .add_boxed(format!("{key}:wavetable"), off_frame(|| Wavetable::new(sr)));
                 // Detune 0.5 is the no-offset centre of `map::detune_voct`:
                 // this module has no detune site, but pitch still goes
                 // through the same Offset every other source uses.
@@ -2498,9 +2514,10 @@ impl Compiler {
                 ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
+                let sr = self.sr();
                 let ps = self
                     .patch
-                    .add(format!("{key}:shift"), PitchShifter::new(self.sr()));
+                    .add_boxed(format!("{key}:shift"), off_frame(|| PitchShifter::new(sr)));
                 self.feed(in_out, ps.in_("in"))?;
                 // `#semis` and the mod cable sum on one port, as on the
                 // wavefolder threshold — which is why each is given half of
@@ -2839,8 +2856,50 @@ fn makes_dc(node: &AudioNode) -> bool {
     }
 }
 
+/// The deepest nesting `compile` will attempt: audio depth plus the deepest
+/// modulation chain hanging off it, which is how deep the compiler's by-value
+/// recursion actually goes.
+///
+/// **A stack guard, not a grammar ceiling.** The ceilings on what a hand may
+/// build are [`crate::mutate::MAX_DEPTH`] and [`crate::mutate::MAX_MOD_DEPTH`],
+/// enforced by `validate_tree` on every edit route. This is the line behind
+/// them: a shared patch file or a saved session is parsed straight into a
+/// `PatchTree`, and until this constant existed nothing between that parse and
+/// the recursive compiler asked how deep the term was. At ~60 nested nodes the
+/// compiler's frames (38 KB and up) overflow the wasm build's 8 MB stack, and a
+/// wasm trap is not an error the caller sees — it poisons the engine for the
+/// rest of the session. 32 is well above any tree a session written under any
+/// ceiling this crate has ever shipped can hold (`MAX_SIZE` is 24, so a valid
+/// tree is never deeper than 24 audio nodes), and well below the overflow.
+pub const COMPILE_MAX_NESTING: usize = 32;
+
+/// Build a module on the heap from outside the recursive compile frame.
+///
+/// `build_node` recurses once per level of the audio tree, and every module a
+/// match arm constructs by value is laid out in *that* frame, whether or not
+/// the arm runs. quiver's `Wavetable` is 128 KiB inline (its tables) and
+/// `PitchShifter` 38 KiB, so while they were built in place each level of the
+/// tree reserved over 256 KiB of stack: a patch eight levels deep overflowed
+/// a 2 MiB thread (measured, a test thread compiling a filter stack past the
+/// depth ceiling). Built here, in a frame of their own that is gone before
+/// the recursion continues, they cost the recursion nothing.
+#[inline(never)]
+fn off_frame<M: GraphModule + 'static>(make: impl FnOnce() -> M) -> Box<dyn GraphModule> {
+    Box::new(make())
+}
+
 /// Compile a patch term into a playable voice at the given sample rate.
+///
+/// Refuses, with [`PatchError::CompilationFailed`], a term nested deeper than
+/// [`COMPILE_MAX_NESTING`] — an error every caller already handles, in place
+/// of a stack overflow none of them can.
 pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, PatchError> {
+    let nesting = tree.root.depth() + tree.root.max_mod_depth();
+    if nesting > COMPILE_MAX_NESTING {
+        return Err(PatchError::CompilationFailed(format!(
+            "patch nests {nesting} levels deep; the compiler stops at {COMPILE_MAX_NESTING}"
+        )));
+    }
     let mut patch = Patch::new(sample_rate);
     patch.set_validation_mode(ValidationMode::Warn);
 
@@ -2905,7 +2964,14 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     // and `Svf::tick` evaluates three transcendentals per sample — measured at
     // 0.057 s of render per patch, ~18% of a typical voice — so putting one on
     // every patch taxes the 91% that have no rectifying nonlinearity at all.
-    let block_dc = makes_dc(&tree.root) || std::env::var("AUR_DCB_ALWAYS").is_ok();
+    //
+    // Decided by the term alone. There used to be an `AUR_DCB_ALWAYS`
+    // environment override here (a measurement hook from when the blocker was
+    // made conditional), which meant a process with it set rendered a different
+    // voice — and wrote different φ into the same persistent cache namespace —
+    // for the same `(term, spec)`. The render is a function of its inputs, and
+    // the environment is not one of them.
+    let block_dc = makes_dc(&tree.root);
     let left = c.voice_tail("", audio_out.left, env, block_dc)?;
     let right = match audio_out.right {
         Some(r) => Some(c.voice_tail("R", r, env, block_dc)?),
@@ -2959,6 +3025,42 @@ mod tests {
     };
 
     const SR: f64 = 44_100.0;
+
+    /// The compiler's recursion stays cheap per level. A wavetable under a
+    /// sixteen-deep filter stack (over twice the depth ceiling) compiles on a
+    /// 512 KiB thread. While `Wavetable` and `PitchShifter` were built inside
+    /// `build_node`, every level of the recursion reserved over 256 KiB and
+    /// eight levels overflowed a 2 MiB test thread; now a level is ~2.5 KiB.
+    #[test]
+    fn deep_trees_compile_on_a_small_stack() {
+        let mut root = AudioNode::Wavetable {
+            table: TableShape::Sine,
+            octave: 0,
+            morph: 0.3,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+            uid: Uid::NEW,
+        };
+        for _ in 0..16 {
+            root = AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.6,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(root),
+                modulation: ModNode::None,
+            };
+        }
+        let tree = sustained(root);
+        let ok = std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || compile(&tree, SR).is_ok())
+            .unwrap()
+            .join()
+            .expect("compile overflowed a 512 KiB stack");
+        assert!(ok, "the deep tree should compile");
+    }
 
     fn sustained(root: AudioNode) -> PatchTree {
         PatchTree {

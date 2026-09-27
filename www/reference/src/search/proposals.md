@@ -1,7 +1,8 @@
 # Proposals, and the taste tilt
 
-<p class="lede">The loop closes here: what the model learns reshapes what the search
-<em>proposes</em>, not only what it scores.</p>
+<p class="lede">The loop closes here: what the model learns reshapes the grammar the
+search walks — what it <em>proposes</em>, and, because the tilted grammar is
+installed as the prior, what it <em>scores against</em> too.</p>
 
 ## Moves
 
@@ -19,8 +20,8 @@ vocabulary, two callers.
 
 ## The tilt
 
-Once a posterior exists, the grammar's **categorical proposal weights** are
-reshaped by what it has learned:
+Once a posterior exists, the grammar's **categorical weights** are reshaped by
+what it has learned:
 
 $$w'_i \;\propto\; w_i \cdot \mathrm{clamp}\!\big(e^{\eta t_i},\ \tfrac14,\ 4\big)$$
 
@@ -106,26 +107,40 @@ by the other counts, so information about it is present in what remains. The
 dependency that made the column unusable as a *regressor* is what makes it
 recoverable as a *tilt*.
 
-## Why tilt proposals rather than only score
+## Why tilt rather than only score
 
 A scored-only search is limited by what it happens to generate. If the prior
 draws bitcrush into 2.5% of terms, then no matter how much the model likes
 bitcrush, only 2.5% of proposals will contain one and the search has to wait
 for luck.
 
-Tilting the *proposal* distribution means the search **looks where the model
-expects to find things**. Combined with the clamp, it is a change of emphasis
-rather than a change of support: every kind stays reachable, and the ones the
-model believes in get proposed more often.
+Tilting the grammar means the search **looks where the model expects to find
+things**. Combined with the clamp, it is a change of emphasis rather than a
+change of support: every kind stays reachable, and the ones the model believes
+in get proposed more often.
 
-```admonish note title="On detailed balance"
-Tilting the proposal changes the *kernel*, not the target. The MH accept/reject step still
-scores against $\pi_\beta$, so the stationary distribution is unchanged: a tilted
-proposal is a better-informed way of exploring the same target, not a different one.
+```admonish warning title="It is a prior tilt, not a proposal tilt"
+This page used to say that tilting changes the *kernel*, not the target, and that the
+stationary distribution is unchanged. **That was false**, and the September 2026 audit
+(AU-G3) caught it. `biased_prior` builds the tilted grammar and installs it as the
+**prior** of the `EvolutionModel`; fugue-evo's target is `prior.model() + factor(β·f)`,
+and fugue's categorical proposal is a resample from that same prior, so the Hastings terms
+cancel and the chain is a correct MH sampler for
 
-That would matter more if refinement were sampling from $\pi_\beta$. It is not; it is
-[hill-climbing on it](./refinement.md), so in practice the tilt's effect is to make the
-climb find good regions sooner rather than to change what "correct" means.
+$$\pi'(x) \;\propto\; p_{\text{tilted}}(x)\, e^{\beta\, \E[u_\theta(x)]},$$
+
+which is a *different* target from $\pi_\beta$. The seed is scored under the same tilted
+prior, `RefineKeep::Best` ranks under it, and the parsimony mass the walk climbs is the
+tilted one. Nothing about that is unsound — MH is exact for $\pi'$ — but "what the search
+is climbing" includes the tilt.
+
+A true proposal tilt, one that leaves $\pi_\beta$ alone, would need a custom site proposal
+carrying its own Hastings correction; fugue 0.2.2 offers only `PriorResample` for `usize`
+sites, so it is not available without an upstream hook. Because refinement
+[hill-climbs](./refinement.md) rather than samples, the practical effect is the one
+intended — the climb finds the kinds the listener likes sooner — and the field keeps its
+name (`SessionConfig::proposal_tilt`) since the app and the harness both set it. What
+changed is the claim, not the code.
 ```
 
 ## Structural taste, specifically
@@ -136,7 +151,8 @@ more or less directly (`n_filter` ↔ the filter production), whereas an audio
 coefficient like `centroid_mean` has no single production to point at.
 Brightness is a property of the composition, not of a module.
 
-So the audio half of $\theta$ influences the search only through *scoring*, and
-the structural half influences both scoring and proposing. Turning
+So the audio half of $\theta$ influences the search only through the fitness
+factor, and the structural half through both the fitness factor and the tilted
+prior. Turning
 `centroid_mean` into a proposal tilt would require a model of which productions
 raise brightness, which is a model nobody has fitted.

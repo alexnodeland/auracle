@@ -3,6 +3,7 @@ name = "auracle-features"
 description = "Standard-phrase headless rendering, loudness normalization, vetting gate, and audio + structural feature extraction"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true

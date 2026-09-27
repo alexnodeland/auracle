@@ -23,10 +23,8 @@ fn main() {
     for path in std::env::args().skip(1) {
         let bytes = std::fs::read(&path).expect("readable file");
         let mut samples: Vec<f64> = bytes
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|c| f32::from_le_bytes(*c) as f64)
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64)
             .collect();
         let mut onsets = Vec::new();
         let mut spans = Vec::new();

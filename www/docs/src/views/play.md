@@ -41,7 +41,7 @@ coordinates contributing most, and which style lens is currently judging it.
 When the model has no basis for a claim, this row says so instead of printing a
 number. See [Reading what it learned](../reading-the-model.md).
 
-Beside it, the **budget**: `8/24 modules · 6/9 depth · 1/4 mod depth`. These
+Beside it, the **budget**: `8/24 modules · 4/6 depth · 1/3 mod depth`. These
 are the ceilings evolution searches within. A hand-built patch past them is
 refused, and one *at* them has no room left to grow.
 

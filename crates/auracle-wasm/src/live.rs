@@ -30,9 +30,36 @@
 //!   tails cannot transfer across a rewire and still die; that is accepted.
 //! - Released voices keep ticking through their tails and are parked once
 //!   effectively silent, so idle polyphony costs nothing.
+//!
+//! ## What a patch swap costs, and whom
+//!
+//! A swap **compiles on the render thread.** [`LivePoly::set_patch`] parses the
+//! tree JSON in the worklet's `onmessage` (render thread), and the rebuild
+//! stage runs one full `auracle_grammar::compile` per voice per quantum — the
+//! same compiler evolution uses, constructing every quiver module by value —
+//! for `n_voices` quanta. "A dropped quantum of silence is inaudible" is true
+//! of *this node*: its own gain is zero for the whole rebuild. It is not true
+//! of the rest of the graph. The duel auditions, the master gain, the
+//! analysers and the recorder share the render thread, and a compile that
+//! overruns the 2.9 ms quantum is a glitch in **their** output, not this one's.
+//! On the machines measured a single voice compiles well inside a quantum; a
+//! large patch on a slow laptop does not always. The design that removes this
+//! — compile in the engine worker and transfer a ready voice, or at least
+//! parse off-thread — is out of scope for now and recorded here so that the
+//! next person to see a click on a structural edit knows where it comes from.
+//!
+//! Per-quantum work outside a swap allocates nothing: the arpeggiator reuses
+//! two buffers sized for a full keyboard, and knob smoothers index a table of
+//! live parameter handles that is rebuilt once per swap (`param_slots`), so a
+//! knob write is a linear scan and an atomic store rather than a `String`
+//! allocation and a `HashMap` lookup per voice. Metering allocates while it is
+//! on (see [`Meter`]); the recorder while a take is rolling.
 
-use auracle_grammar::{compile, PatchTree};
+use std::sync::Arc;
+
+use auracle_grammar::{compile, ParamMap, PatchTree};
 use quiver::observer::{ObservableValue, StateObserver, SubscriptionTarget};
+use quiver::AtomicF64;
 use wasm_bindgen::prelude::*;
 
 const GATE_ON: f64 = 5.0;
@@ -139,8 +166,21 @@ struct Voice {
     regate_in: u32,
 }
 
-struct Smoother {
+/// One live parameter across every voice: its trace address, its unit
+/// mapping, and the atomic each voice reads it from. Interned once per
+/// (re)build — see [`intern_params`] — so a knob write on the render thread
+/// is a scan of this table and an atomic store, with no allocation and no
+/// hashing per voice per quantum.
+struct ParamSlot {
     addr: String,
+    map: ParamMap,
+    /// Index-parallel to `voices`.
+    values: Vec<Arc<AtomicF64>>,
+}
+
+struct Smoother {
+    /// Index into `param_slots`.
+    slot: usize,
     current: f64,
     target: f64,
 }
@@ -153,6 +193,29 @@ struct TouchSite {
     gain: f64,
     /// The knob's current normalized value, which the offset is added to.
     base: f64,
+}
+
+/// The live parameter table for a set of voices, sorted by address so the
+/// order is a property of the patch and not of `HashMap` iteration. Every
+/// voice is the same tree compiled, so voice 0's keys are everyone's keys;
+/// a voice missing one (which cannot happen) simply has no entry to write.
+fn intern_params(voices: &[Voice]) -> Vec<ParamSlot> {
+    let Some(first) = voices.first() else {
+        return Vec::new();
+    };
+    let mut addrs: Vec<&String> = first.voice.params.keys().collect();
+    addrs.sort();
+    addrs
+        .into_iter()
+        .map(|addr| ParamSlot {
+            addr: addr.clone(),
+            map: first.voice.params[addr].map,
+            values: voices
+                .iter()
+                .filter_map(|v| v.voice.params.get(addr).map(|h| Arc::clone(&h.value)))
+                .collect(),
+        })
+        .collect()
 }
 
 enum Stage {
@@ -177,6 +240,9 @@ pub struct LivePoly {
     /// Notes physically held right now, with velocity (survive patch swaps).
     held: Vec<(u8, f32)>,
     smoothers: Vec<Smoother>,
+    /// The live parameter handles of the current voices, rebuilt on every
+    /// swap. What `set_param` scans and `advance_smoothers` writes.
+    param_slots: Vec<ParamSlot>,
     stage: Stage,
     gain: f32,
     pending: Option<PatchTree>,
@@ -228,6 +294,13 @@ pub struct LivePoly {
     arp_base: Option<u8>,
     /// xorshift state for random mode (deterministic; no wall clock).
     rng_state: u64,
+    /// Scratch for [`LivePoly::tick_arp`]: the held chord sorted by pitch,
+    /// and the pattern it expands to across the octave range. Kept, not
+    /// rebuilt, so a step boundary allocates nothing; sized in `new` for a
+    /// full keyboard.
+    arp_chord: Vec<(u8, f32)>,
+    /// (pitch to play, the key it came from, velocity).
+    arp_notes: Vec<(u8, u8, f32)>,
     /// Interior signal metering, off until a surface asks for it. See
     /// [`LivePoly::set_meter`].
     meter: Meter,
@@ -236,6 +309,11 @@ pub struct LivePoly {
     touch: Vec<TouchSite>,
     touch_depth: f64,
 }
+
+/// Every MIDI note held at once is the most a chord can be.
+const ARP_CHORD_CAP: usize = 128;
+/// …across the widest octave range the arp offers (`set_arp` clamps to 4).
+const ARP_NOTES_CAP: usize = ARP_CHORD_CAP * 4;
 
 /// Per-module level metering, read off the voice the player is hearing.
 ///
@@ -358,13 +436,15 @@ impl LivePoly {
             .map(|_| build_voice(&tree, sample_rate))
             .collect::<Result<_, _>>()
             .map_err(|e| JsValue::from_str(&e))?;
+        let param_slots = intern_params(&voices);
         Ok(LivePoly {
             voices,
             n_voices: n,
             sample_rate,
             counter: 0,
-            held: Vec::new(),
+            held: Vec::with_capacity(ARP_CHORD_CAP),
             smoothers: Vec::new(),
+            param_slots,
             stage: Stage::Run,
             gain: 1.0,
             pending: None,
@@ -395,6 +475,8 @@ impl LivePoly {
             arp_note: None,
             arp_base: None,
             rng_state: 0x9E37_79B9_7F4A_7C15,
+            arp_chord: Vec::with_capacity(ARP_CHORD_CAP),
+            arp_notes: Vec::with_capacity(ARP_NOTES_CAP),
             meter: Meter::new(),
             touch: Vec::new(),
             touch_depth: 0.0,
@@ -715,6 +797,9 @@ impl LivePoly {
 
     /// Pitch bend in semitones (smoothed on the audio thread).
     pub fn set_bend(&mut self, semitones: f64) {
+        if !semitones.is_finite() {
+            return;
+        }
         self.bend_tgt = semitones.clamp(-24.0, 24.0) / 12.0;
     }
 
@@ -785,9 +870,12 @@ impl LivePoly {
             return;
         }
         self.arp_on = on;
+        // By index rather than over a clone: `press` and `release_voices`
+        // touch voices, never `held`, and this runs on the render thread.
         if on {
             // The scheduler owns the gates now.
-            for &(n, _) in self.held.clone().iter() {
+            for i in 0..self.held.len() {
+                let n = self.held[i].0;
                 self.release_voices(n);
             }
             self.arp_note = None;
@@ -801,7 +889,8 @@ impl LivePoly {
                 self.release_voices(n);
             }
             self.arp_base = None;
-            for &(n, v) in self.held.clone().iter() {
+            for i in 0..self.held.len() {
+                let (n, v) = self.held[i];
                 self.press(n, v);
             }
         }
@@ -884,16 +973,20 @@ impl LivePoly {
         }
         self.arp_phase = 0.0;
         self.arp_step = self.arp_step.wrapping_add(1);
-        let mut chord: Vec<(u8, f32)> = self.held.clone();
-        chord.sort_by_key(|(n, _)| *n);
-        // (pitch to play, the key it came from, velocity)
-        let mut notes: Vec<(u8, u8, f32)> = Vec::with_capacity(chord.len() * 4);
+        // Into the kept buffers — a step boundary is render-thread code and
+        // used to allocate two `Vec`s here. Disjoint fields, so the chord can
+        // be read while the pattern is written.
+        self.arp_chord.clear();
+        self.arp_chord.extend_from_slice(&self.held);
+        self.arp_chord.sort_by_key(|(n, _)| *n);
+        self.arp_notes.clear();
         for o in 0..self.arp_octaves {
-            for &(n, vel) in &chord {
-                notes.push((n.saturating_add(12 * o as u8).min(127), n, vel));
+            for &(n, vel) in &self.arp_chord {
+                self.arp_notes
+                    .push((n.saturating_add(12 * o as u8).min(127), n, vel));
             }
         }
-        let len = notes.len();
+        let len = self.arp_notes.len();
         let pick = match self.arp_mode {
             1 => {
                 // Down.
@@ -930,7 +1023,7 @@ impl LivePoly {
                 self.arp_idx
             }
         };
-        let (note, base, vel) = notes[pick.min(len - 1)];
+        let (note, base, vel) = self.arp_notes[pick.min(len - 1)];
         match self.arp_note.filter(|_| tied) {
             // Tied: reuse the sounding voice so the gate never falls. If it was
             // stolen in the meantime, fall back to a normal press.
@@ -951,16 +1044,25 @@ impl LivePoly {
     /// `clamp(0.0, 1.0)` this used to apply would have folded all eight
     /// wavetables onto the first two and every octave onto −2 and −1.
     pub fn set_param(&mut self, addr: &str, value: f64) -> bool {
-        let Some(handle) = self.voices.first().and_then(|v| v.voice.params.get(addr)) else {
+        // `clamp` passes NaN, and a NaN target would ride the smoother into
+        // the atomic the voice reads every sample. Refuse it as a bad gesture.
+        if !value.is_finite() {
+            return false;
+        }
+        // A scan of the interned table, not a `HashMap` lookup plus an owned
+        // copy of the address: this runs in the worklet's `onmessage`, on the
+        // render thread, once per knob message of a drag.
+        let Some(slot) = self.param_slots.iter().position(|p| p.addr == addr) else {
             return false;
         };
-        let target = handle.map.apply(handle.map.clamp_input(value));
-        let current = handle.value.get();
-        if let Some(s) = self.smoothers.iter_mut().find(|s| s.addr == addr) {
+        let p = &self.param_slots[slot];
+        let target = p.map.apply(p.map.clamp_input(value));
+        let current = p.values.first().map_or(target, |v| v.get());
+        if let Some(s) = self.smoothers.iter_mut().find(|s| s.slot == slot) {
             s.target = target;
         } else {
             self.smoothers.push(Smoother {
-                addr: addr.to_string(),
+                slot,
                 current,
                 target,
             });
@@ -972,6 +1074,9 @@ impl LivePoly {
     /// deferred to swap completion when a patch swap is pending (so the
     /// outgoing patch fades at its own level).
     pub fn set_makeup(&mut self, gain: f64) {
+        if !gain.is_finite() {
+            return;
+        }
         let g = gain.clamp(0.1, 8.0) as f32;
         if self.pending.is_some() {
             self.pending_makeup = Some(g);
@@ -1014,10 +1119,10 @@ impl LivePoly {
             if (s.current - s.target).abs() < SMOOTH_EPS {
                 s.current = s.target;
             }
-            for v in &self.voices {
-                if let Some(h) = v.voice.params.get(&s.addr) {
-                    h.value.set(s.current);
-                }
+            // One atomic store per voice; the handles were resolved at the
+            // swap, so nothing is hashed here.
+            for value in &self.param_slots[s.slot].values {
+                value.set(s.current);
             }
         }
         self.smoothers.retain(|s| s.current != s.target);
@@ -1148,7 +1253,13 @@ impl LivePoly {
                                 .collect();
                             self.voices = built;
                             self.pending = None;
+                            // New voices, new handles: the smoothers indexed
+                            // the old table, and the table is remade from the
+                            // voices that exist now. This is the one place
+                            // outside `new` that allocates for parameters,
+                            // and it is inside the swap that already compiles.
                             self.smoothers.clear();
+                            self.param_slots = intern_params(&self.voices);
                             // New patch, new node ids, and a new set of module
                             // keys. Re-taking the subscriptions here is what
                             // keeps a stale `NodeId` from resolving against a
@@ -1164,7 +1275,8 @@ impl LivePoly {
                                 // The scheduler re-presses on its next step.
                                 self.arp_note = None;
                             } else {
-                                for (n, v) in self.held.clone() {
+                                for i in 0..self.held.len() {
+                                    let (n, v) = self.held[i];
                                     self.press(n, v);
                                 }
                                 // Gates are up and no falling edge was ever

@@ -54,7 +54,7 @@ use fugue_evo::genome::trace_genome::{ChoiceValue, TraceGenome};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::engine::Engine;
+use crate::engine::{Engine, RefineOutcome};
 use crate::surrogate::QUARANTINE_FITNESS;
 
 /// The fitness of a taste model that has seen nothing: zero for every patch
@@ -608,15 +608,17 @@ impl Engine {
     /// One knob-only drift: the locked MH walk on the taste target with every
     /// structural and categorical site locked, plus the player's own locks.
     /// Nothing enters the pool. Before any taste has been fitted the target is
-    /// the vetted grammar prior ([`VetOnlyFitness`]); `None` when the walk
-    /// accepted no move.
+    /// the vetted grammar prior ([`VetOnlyFitness`]). The error says why
+    /// nothing came back: [`RefineOutcome::NoMove`] for a walk that stayed,
+    /// [`RefineOutcome::OutsideSupport`] for a patch the prior gives no mass
+    /// (a walk cannot start there at all).
     pub fn drift<R: Rng>(
         &self,
         rng: &mut R,
         tree: &PatchTree,
         player_locks: &[String],
         steps: usize,
-    ) -> Option<PatchTree> {
+    ) -> Result<PatchTree, RefineOutcome> {
         let mut locked: HashSet<String> = structural_addrs(tree).into_iter().collect();
         locked.extend(player_locks.iter().cloned());
         self.refine_walk(rng, tree, &locked, steps)
@@ -631,7 +633,7 @@ impl Engine {
         tree: &PatchTree,
         player_locks: &[String],
         steps: usize,
-    ) -> Option<PatchTree> {
+    ) -> Result<PatchTree, RefineOutcome> {
         let locked: HashSet<String> = player_locks.iter().cloned().collect();
         self.refine_walk(rng, tree, &locked, steps)
     }

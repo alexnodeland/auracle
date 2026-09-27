@@ -93,8 +93,18 @@ pub struct AudioFeatures {
     /// Zero-crossing rate as an equivalent frequency, on the [`log_axis`].
     pub zcr_mean: f64,
     /// Mean frame RMS of the normalized render.
+    ///
+    /// Measured **after** loudness normalization *and* the peak cap
+    /// (`loudness::PEAK_CEILING`), so the ~15 % of patches the ceiling pulls
+    /// below the LUFS target read as "quieter" here for a reason that is
+    /// peakiness, not level. `crest` already carries peakiness; this coordinate
+    /// therefore carries a little of it twice. Documented rather than moved,
+    /// because measuring at the target would change every stored value (a
+    /// `RENDER_EPOCH` bump) for a confound the standardized model can largely
+    /// absorb through `crest`.
     pub rms_mean: f64,
-    /// Std of frame RMS — dynamics/movement.
+    /// Std of frame RMS — dynamics/movement. Same measurement point, same
+    /// confound, as [`Self::rms_mean`].
     pub rms_std: f64,
     /// `ln` crest factor: `ln(peak / whole-phrase RMS)`. Logged because the
     /// raw factor is heavy-tailed (1 … 40+).
@@ -102,9 +112,16 @@ pub struct AudioFeatures {
     /// `ln(attack + 5 ms)` of the first note (onset → 90% of that note's peak
     /// RMS, interpolated between envelope hops).
     pub attack_s: f64,
-    /// `ln` tail level: RMS of the final 300 ms relative to whole-phrase RMS —
-    /// captures release length and delay/reverb tails. Logged: the raw ratio
-    /// spans three orders of magnitude.
+    /// `ln` tail level: RMS of the final 300 ms relative to whole-phrase RMS.
+    /// Logged: the raw ratio spans three orders of magnitude.
+    ///
+    /// What it measures is the **amp envelope's release**, first and mostly.
+    /// The amp ADSR → VCA is the last stage of every voice, after every effect,
+    /// so a reverb or delay tail is *multiplied by* the release rather than
+    /// heard past it: a long-release patch with no reverb and a short-release
+    /// patch with a huge one can read the same here, and a short release
+    /// truncates any effect tail before this window sees it. It still separates
+    /// plucks from pads, which is most of what a listener means by "tail".
     pub tail_ratio: f64,
     /// Low-band energy fraction (below ~250 Hz) — weight/sub character.
     pub bass_fraction: f64,
@@ -329,6 +346,18 @@ pub fn audio_features(r: &RenderedPhrase) -> AudioFeatures {
         frame_rms
             .push((x[pos..pos + FRAME].iter().map(|s| s * s).sum::<f64>() / FRAME as f64).sqrt());
 
+        // Silence is recognised at (near-)exactly zero power. The threshold
+        // is on unnormalised windowed FFT power, so it trips at an amplitude
+        // around 2e-9 (−173 dBFS): rests read as silent only because quiver's
+        // `Adsr` snaps exactly to 0 at the end of its release and the VCA is
+        // multiplicative. A release or chord tail that outlasts a 0.15–0.2 s
+        // rest never gets a chain break, and the flux fix (#51) and the
+        // segment features depend on one. A threshold relative to the phrase
+        // (−60 dB of global RMS, say) is the likely fix, but it moves φ for
+        // every patch with a tail and needs the measurement — φ over prior
+        // draws before and after, and the search-health battery — that has
+        // not been made. Left open, and written down in the reference's open
+        // questions rather than changed blind.
         if power > 1e-12 {
             spec_frame_pos.push(pos);
             let msum: f64 = mag.iter().sum();

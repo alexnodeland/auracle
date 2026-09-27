@@ -1604,6 +1604,42 @@ impl AudioNode {
         modulated_variants!(arms)
     }
 
+    /// Fold every modulation slot in this subtree through
+    /// [`ModNode::normalized`], keeping the existing node (and its identity)
+    /// wherever normalization would change nothing.
+    ///
+    /// `SetModTree` always normalized the one fragment it installs;
+    /// `ReplaceTree`/`InsertTree` graft whole audio subtrees whose slots
+    /// arrive verbatim from the panel, and a `Pair` with an empty branch or an
+    /// `Op` over nothing in one of them encodes `#mod = 0` where the prior's
+    /// weight is zero — `log p = −∞`, the same silent un-evolvable state as a
+    /// knob past its domain. A one-parameter `Op` carrying a non-zero `p1` is
+    /// subtler: `p1` is not a trace site for it, so the term would not survive
+    /// its own round trip and refinement's "did it move" test would be fooled.
+    pub fn normalize_mods(&mut self) {
+        if let Some(slot) = self.modulation_mut() {
+            let current = std::mem::replace(slot, ModNode::None);
+            let folded = current.clone().normalized();
+            // Content equality ignores identity, so this keeps the uids of a
+            // slot that was already in normal form.
+            *slot = if folded == current { current } else { folded };
+        }
+        for child in self.children_mut() {
+            child.normalize_mods();
+        }
+    }
+
+    /// The deepest modulation term anywhere in this subtree — this node's own
+    /// slot and every descendant's, by [`ModNode::depth`]. 0 when nothing is
+    /// modulated.
+    pub fn max_mod_depth(&self) -> usize {
+        let own = self.modulation().map(ModNode::depth).unwrap_or(0);
+        self.children()
+            .into_iter()
+            .map(AudioNode::max_mod_depth)
+            .fold(own, usize::max)
+    }
+
     /// Tree depth (a source leaf is depth 1).
     pub fn depth(&self) -> usize {
         match self {
