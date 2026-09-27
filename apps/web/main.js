@@ -17729,6 +17729,7 @@ function pointHelpFilm() {
   a.lastChild.textContent = ` watch ${v.name} in depth`;
 }
 $("films-link").href = `${FILMS_DOCS}films.html`;
+$("warm-tour").href = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
 pointHelpFilm();
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);

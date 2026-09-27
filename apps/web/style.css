@@ -3723,6 +3723,8 @@ html:not(.engineer) .dn-sig { display: none; }
 .wi-play.loading { color: var(--phos-b-dim); border-color: var(--phos-b-deep); }
 @media (pointer: coarse) { .wi-play { width: 34px; height: 34px; } }
 .warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
+.warm-tour { margin-right: auto; color: var(--phos-a); font-size: var(--t-body); text-decoration: none; }
+.warm-tour:hover, .warm-tour:focus-visible { text-decoration: underline; }
 
 /* ---------- the commit duel ---------- */
 /* Deliberately the warm-start's card, not a new one: it is the same act — the

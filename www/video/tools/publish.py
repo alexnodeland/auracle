@@ -48,7 +48,7 @@ DOCS = os.path.join(WWW, "docs", "src")
 # film, then the films about playing it, then the ones about how it works.
 GROUPS = [
     ("Start here", ["launch"]),
-    ("The four views", ["view-perform", "view-patch", "view-evolve", "view-taste"]),
+    ("The instrument", ["tour", "view-perform", "view-patch", "view-evolve", "view-taste"]),
     ("Playing it", ["playing", "composing", "sounddesign"]),
     ("How it works", ["taste", "engine", "math", "dsp"]),
 ]
@@ -335,6 +335,17 @@ def fill_landing(reg):
         )
         return film_link(f, r, "film-chip", inner)
 
+    # The tour, above the four views' tabs: the map before the deep dives.
+    if "tour" in reg:
+        r = reg["tour"]
+        tour = "\n".join(["", '  <div class="tour-cta">', "    " + film_link(
+            "tour", r, "btn btn-film",
+            f'<span class="btn-film-play" aria-hidden="true">▶</span>Take the tour'
+            f'<span class="btn-film-len mono">{fmt(r["duration"])}</span>'), "  </div>", "  "])
+    else:
+        tour = ""
+    fill(LANDING, "films:tour", tour)
+
     for f, pane in PANES.items():
         if f not in reg:
             fill(LANDING, f"films:pane-{pane}", "")
@@ -388,7 +399,7 @@ def fill_readme(reg):
 # anywhere: the menu's "Watch the films" opens the guide's page of them (any
 # film writes it); the help card's link opens the film of the view it was
 # opened from (main.js), so it waits for the four views' films.
-APP_LINKS = {"films-link": None, "help-film": "view-perform"}
+APP_LINKS = {"films-link": None, "help-film": "view-perform", "warm-tour": "tour"}
 
 
 def unhide_app_links(reg):

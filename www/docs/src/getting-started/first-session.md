@@ -2,6 +2,8 @@
 
 <p class="lede">Fifteen minutes, start to a model that proposes.</p>
 
+<!-- film:tour --><!-- /film:tour -->
+
 [Open the instrument](../../play/). Nothing to install. Everything below happens
 in one browser tab, and it all persists when you close it.
 

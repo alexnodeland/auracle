@@ -1,6 +1,9 @@
-# The four views, in depth
+# The tour, and the four views in depth
 
-Four films, one per view of the instrument. For most musicians these are the
+Five films. **The tour** is the map: a short, high-level pass over the whole
+instrument, where everything is and roughly what it does. It is for someone
+opening Auracle for the first time. Then four deep dives, one per view of the
+instrument. For most musicians these are the
 films that matter: how to play it (PERFORM), how to change it (PATCH), how to
 grow new sounds (EVOLVE) and how to read what it has learned (TASTE). They sit
 on the home page, in *Four views, one loop*, each beside the view it shows, and
@@ -13,6 +16,7 @@ them wherever they show the view.
 
 | Film | Working title | View | Length | Guide page |
 |---|---|---|---|---|
+| `tour` | A tour of Auracle | the whole layout | 2–3 min | `docs/src/getting-started/first-session.md` |
 | `view-perform` | PERFORM: playing the sound | PERFORM | 4–6 min | `docs/src/views/perform.md` |
 | `view-patch` | PATCH: inside the sound | PATCH | 4–6 min | `docs/src/views/play.md` |
 | `view-evolve` | EVOLVE: breeding sounds you like | EVOLVE | 4–5 min | `docs/src/views/evolve.md` |
@@ -80,7 +84,34 @@ by what you hear before what they are called. Leave the maths to *The math*.
 ## Outlines
 
 These are starting points, not scripts. Cut, merge or reorder freely if the
-film gets better for it.
+film gets better for it. The tour covers orientation, so the deep dives skip
+general orientation (where the bank, the dock and the tabs are) beyond what
+their own view needs, and each deep dive's outro points on to the next.
+
+### `tour`: A tour of Auracle
+
+The map, not the territory: 2–3 minutes, brisk, and still musical. Cold open:
+the instrument playing (a chord, a control turned, an offer taken), wide.
+Then a guided pass, each region framed and named as it is used, never just
+pointed at:
+
+- **The four views,** the tabs across the top, in one sentence each:
+  - PERFORM is where you play;
+  - PATCH is what the sound is made of;
+  - EVOLVE is where you pick and it breeds;
+  - TASTE is what it has learned about you.
+  Visit each for a few seconds.
+- **The bank,** on the left: presets, evolution, your patches, and how a row
+  plays and opens.
+- **The dock,** along the bottom: the keybed and computer keys, hold, the
+  arpeggiator and the rest; volume and REC; the MIDI indicator.
+- **The header:** PICKS and GEN, the help card (?), and the ⋯ menu (files, the
+  taste profile, the films).
+- **First visit:** the warm start (pick three), and what happens next.
+- **Where to go next:** one line per deep dive.
+
+Start from a fresh session (the warm start, skipped or answered), so the
+viewer sees what they will see.
 
 ### `view-perform`: PERFORM
 
