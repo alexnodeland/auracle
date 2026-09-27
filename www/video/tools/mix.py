@@ -239,6 +239,24 @@ def main():
         ml = lufs(music)
         music *= 10 ** ((-18 + args.music_db - ml) / 20)
         print(f"music: {ml:.1f} LUFS → {-18 + args.music_db:.1f}")
+        # The bed's levels (arrangement.json `levels`, from each beat's
+        # bed_db): after the loudness match, so 0 dB is the bed as mixed, and
+        # before the ducking. Each change ramps over 0.4 s; -60 dB is out.
+        arr_f = os.path.join(fdir, "arrangement.json")
+        levels = json.load(open(arr_f)).get("levels") if os.path.exists(arr_f) else None
+        if levels:
+            gain = np.ones(n, np.float32)
+            ramp = int(0.4 * SR)
+            cur = 1.0
+            for t0, db in sorted(levels):
+                g = 0.0 if db <= -60 else 10 ** (db / 20)
+                i = max(0, min(n, int(round(t0 * SR))))
+                j = min(n, i + ramp)
+                gain[i:j] = np.linspace(cur, g, j - i, endpoint=False, dtype=np.float32) if j > i else gain[i:j]
+                gain[j:] = g
+                cur = g
+            music *= gain[:, None]
+            print(f"music: {len(levels)} bed levels")
 
     # Effects, at the times the picture shows them.
     cues_f = os.path.join(odir, "cues.json")

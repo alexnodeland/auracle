@@ -11,7 +11,13 @@ Reads FILM_DIR/script.json and writes:
   FILM_DIR/arrangement.json  the soundtrack's sections in order with their bar
                              counts, for the score renderer: each beat that
                              names a `music` section starts that section, and
-                             it runs until the next one starts.
+                             it runs until the next one starts. And the bed's
+                             `levels`, [[t, dB], …]: a beat's optional
+                             `bed_db` sets the bed's level from its start until
+                             a later beat changes it (0 is the bed as mixed;
+                             -60 or less is out). mix.py applies them, so a
+                             walkthrough can keep the bed under its titles and
+                             chapter turns and out from under its demos.
 
 Without --voice, line durations are estimated at 2.75 words a second, so the
 visuals can be built before the voice exists; with it, the measured durations
@@ -116,6 +122,7 @@ def main():
     t = 0.0
     lines, beats = [], []
     sections = []  # (name, start_time)
+    levels = []  # (start_time, dB): the bed's level, from each beat's bed_db
     default_snap = script.get("snap", "bar")
     group_of = {b["id"]: g[0]["id"] for g in groups for b in g}
     for b in script["beats"]:
@@ -131,6 +138,8 @@ def main():
         b0 = t
         if b.get("music"):
             sections.append((b["music"], b0))
+        if "bed_db" in b:
+            levels.append([round(b0, 3), float(b["bed_db"])])
         t += b.get("lead", 0.0)
         for l in b["lines"]:
             d = durs.get(l["id"]) or est_duration(l["text"])
@@ -176,7 +185,8 @@ def main():
             timeline["env"] = prev["env"]
     dump_json(timeline, old)
     json.dump(
-        {"film": script["film"], "bpm": bpm, "meter": meter, "bed": script["music"]["bed"], "sections": arrangement},
+        {"film": script["film"], "bpm": bpm, "meter": meter, "bed": script["music"]["bed"], "sections": arrangement,
+         **({"levels": levels} if levels else {})},
         open(os.path.join(args.film_dir, "arrangement.json"), "w"),
         indent=1,
     )
@@ -186,6 +196,8 @@ def main():
         print(f"  {b['id']:<8} {b['t0']:7.2f} → {b['t1']:7.2f}  {b['music'] or ''}")
     for a in arrangement:
         print(f"  music {a['section']:<10} {a['bars']:3d} bars from {a['t0']:.2f}")
+    for t0, db in levels:
+        print(f"  bed   {'out' if db <= -60 else f'{db:+.0f} dB':<10} from {t0:.2f}")
 
 
 if __name__ == "__main__":
