@@ -72,11 +72,11 @@ function sceneHook({ stage, beat, line }) {
       box.textContent = "describe the sound you want…";
       const strike = place(el("div", {}, over), { x: 960 - 440, y: 208, h: 3, w: 0 });
       strike.style.background = "#9a958a";
-      const v1 = voiceLine(over, "You know which of two sounds you prefer long before you can say *why*.");
+      const v1 = voiceLine(over, "You know which of two sounds you like, long before you can say *why*.");
       const v2 = voiceLine(over, "So Auracle never asks you to describe a sound. *It asks you to choose.*");
       const tDescribe = wordTime(l2, "describe");
       const tChoose = wordTime(l2, "choose");
-      const tWhy = wordTime(l1, "prefer");
+      const tWhy = wordTime(l1, "like,");
       stage.sfx("blip", tWhy, -4);
       return (tl, t) => {
         const inU = ramp(t, b.t0 - 0.2, b.t0 + 0.9, E.out4);
