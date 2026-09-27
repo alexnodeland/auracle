@@ -1,0 +1,20 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "lexicon": {
+    "Auracle": { "us": "ˈɔɹəkᵊl", "gb": "ˈɒɹəkᵊl" },
+    "φ": "fˈI",
+    "WASM": "ˈwæzəm"
+  },
+  "asr_aliases": { "Auracle": "oracle" },
+  "lines": [
+    { "id": "p01", "text": "Every patch is measured as φ, a vector of what you hear.", "pause_after": 0.5 },
+    { "id": "p02", "text": "Switch to PERFORM, and the controls are named for what you hear.", "pause_after": 0.5 },
+    { "id": "p03", "text": "Each control reaches the knobs through its measured Jacobian.", "pause_after": 0.5 },
+    { "id": "p04", "text": "The model keeps a posterior over your taste, and it sharpens with every vote.", "pause_after": 0.5 },
+    { "id": "p05", "text": "Auracle is built on quiver, a patch-graph engine, and fugue, a library for inference.", "pause_after": 0.5 },
+    { "id": "p06", "text": "It runs in your browser as WASM, and it plays from any MIDI keyboard.", "pause_after": 0.5 },
+    { "id": "p07", "text": "Every sound is a point in a 44-dimensional space of what you hear.", "pause_after": 0.5 },
+    { "id": "p08", "text": "Auracle's taste model is a Bayesian posterior over φ.", "pause_after": 0.5 }
+  ]
+}

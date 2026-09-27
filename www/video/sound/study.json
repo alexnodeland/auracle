@@ -1,0 +1,79 @@
+{
+  "_about": "Explainer bed 'Study'. F Lydian, 84 BPM, 4/4, two seamless 16-bar loops: loop_a (pad + pluck) and loop_b (the same plus a light bass). Each loop is rendered cold, played through its release tails, and the tails are added back onto its downbeat, so the file loops end to end. Render: cargo run --release -p auracle-wasm --example score -- www/video/sound/study.json <out_dir>.",
+  "_harmony": "| Fmaj7 | G6/F | Em7 | Am7 |, four times per loop. Pad (5 voices, roots included because loop_a has no bass): F3 A3 C4 E4 G4 (Fmaj9) | F3 B3 D4 E4 G4 | E3 B3 D4 E4 G4 | A2 A3 C4 E4 G4. E4 and G4 hold for the whole cycle; A3-C4 rise to B3-D4 and fall back in parallel thirds, F3 steps to E3 and drops to A2. The B natural over F in bar 2 is the Lydian #4. Every note is re-struck at the top of each 4-bar cycle, so the loop point is the same kind of join as the three inside the loop.",
+  "title": "Study",
+  "tempo": 84,
+  "sample_rate": 48000,
+  "beats_per_bar": 4,
+  "seed": 20260927,
+  "render": { "full": false, "sections": true, "tail_s": 8, "silence_dbfs": -80 },
+  "master": { "gain_db": 0.0, "peak_dbfs": -1.0 },
+  "sections": [
+    { "name": "loop_a", "bars": 16, "loop": true },
+    { "name": "loop_b", "bars": 16, "loop": true }
+  ],
+  "tracks": [
+    {
+      "name": "pad",
+      "preset": "Cathedral",
+      "_why": "Triangle through a gently wandering lowpass into a large reverb, with a one-second attack: the darkest and calmest pad in the bank (audit: 97% of its energy 200 Hz-2 kHz, centroid 282 Hz), so it leaves the 1-4 kHz speech band to the narrator.",
+      "voices": 10,
+      "gain_db": 0.0,
+      "trim_db": -6.0,
+      "patterns": [
+        { "type": "phrase", "section": "loop_a", "start_bar": 1, "repeat": 4, "every_bars": 4, "notes": [
+          [1, 1, 16, "E4", 0.55], [1, 1, 16, "G4", 0.52],
+          [1, 1, 8, "F3", 0.58], [1, 1, 4, "A3", 0.55], [1, 1, 4, "C4", 0.55],
+          [2, 1, 8, "B3", 0.55], [2, 1, 8, "D4", 0.55],
+          [3, 1, 4, "E3", 0.58],
+          [4, 1, 4, "A2", 0.6], [4, 1, 4, "A3", 0.55], [4, 1, 4, "C4", 0.55] ] },
+        { "type": "phrase", "section": "loop_b", "start_bar": 1, "repeat": 4, "every_bars": 4, "notes": [
+          [1, 1, 16, "E4", 0.55], [1, 1, 16, "G4", 0.52],
+          [1, 1, 8, "F3", 0.58], [1, 1, 4, "A3", 0.55], [1, 1, 4, "C4", 0.55],
+          [2, 1, 8, "B3", 0.55], [2, 1, 8, "D4", 0.55],
+          [3, 1, 4, "E3", 0.58],
+          [4, 1, 4, "A2", 0.6], [4, 1, 4, "A3", 0.55], [4, 1, 4, "C4", 0.55] ] }
+      ]
+    },
+    {
+      "name": "pluck",
+      "preset": "Tine",
+      "_why": "A sine with a high-passed triangle two octaves up, through a slow chorus: electric-piano-shaped, soft attack, and it rings out quickly (-20 dB in 0.23 s), so a sparse line of 8ths stays out of the narrator's way.",
+      "voices": 6,
+      "gain_db": -3.0,
+      "trim_db": -2.0,
+      "patterns": [
+        { "type": "phrase", "section": "loop_a", "start_bar": 1, "repeat": 2, "every_bars": 8, "notes": [
+          [1, 1, 1, "C5", 0.55], [1, 2, 1, "G5", 0.5], [1, 2.5, 1, "A5", 0.46], [1, 3.5, 1, "E5", 0.44],
+          [2, 1, 1, "B4", 0.55], [2, 2, 1, "E5", 0.5], [2, 2.5, 1, "G5", 0.46], [2, 3.5, 1, "D5", 0.44],
+          [3, 1, 1, "G5", 0.52], [3, 2, 1, "E5", 0.48], [3, 2.5, 1, "D5", 0.46], [3, 3.5, 1, "B4", 0.44],
+          [4, 1, 1, "C5", 0.55], [4, 2, 1, "E5", 0.5], [4, 2.5, 1, "A5", 0.46], [4, 3.5, 1, "G5", 0.44], [4, 4.5, 1, "E5", 0.4],
+          [5, 1, 1, "E5", 0.54], [5, 1.5, 1, "C5", 0.44], [5, 2.5, 1, "G5", 0.48], [5, 3, 1, "A5", 0.46], [5, 4, 1, "E5", 0.42],
+          [6, 1, 1, "D5", 0.54], [6, 1.5, 1, "B4", 0.44], [6, 2.5, 1, "E5", 0.48], [6, 3, 1, "G5", 0.46], [6, 4, 1, "D5", 0.42],
+          [7, 1, 1, "D5", 0.52], [7, 1.5, 1, "B4", 0.44], [7, 2.5, 1, "E5", 0.48], [7, 3, 1, "G5", 0.46], [7, 4, 1, "B4", 0.42],
+          [8, 1, 1, "E5", 0.54], [8, 1.5, 1, "C5", 0.44], [8, 2.5, 1, "A5", 0.48], [8, 3, 1, "G5", 0.46], [8, 4, 1, "E5", 0.42] ] },
+        { "type": "phrase", "section": "loop_b", "start_bar": 1, "repeat": 2, "every_bars": 8, "notes": [
+          [1, 1, 1, "C5", 0.55], [1, 2, 1, "G5", 0.5], [1, 2.5, 1, "A5", 0.46], [1, 3.5, 1, "E5", 0.44],
+          [2, 1, 1, "B4", 0.55], [2, 2, 1, "E5", 0.5], [2, 2.5, 1, "G5", 0.46], [2, 3.5, 1, "D5", 0.44],
+          [3, 1, 1, "G5", 0.52], [3, 2, 1, "E5", 0.48], [3, 2.5, 1, "D5", 0.46], [3, 3.5, 1, "B4", 0.44],
+          [4, 1, 1, "C5", 0.55], [4, 2, 1, "E5", 0.5], [4, 2.5, 1, "A5", 0.46], [4, 3.5, 1, "G5", 0.44], [4, 4.5, 1, "E5", 0.4],
+          [5, 1, 1, "E5", 0.54], [5, 1.5, 1, "C5", 0.44], [5, 2.5, 1, "G5", 0.48], [5, 3, 1, "A5", 0.46], [5, 4, 1, "E5", 0.42],
+          [6, 1, 1, "D5", 0.54], [6, 1.5, 1, "B4", 0.44], [6, 2.5, 1, "E5", 0.48], [6, 3, 1, "G5", 0.46], [6, 4, 1, "D5", 0.42],
+          [7, 1, 1, "D5", 0.52], [7, 1.5, 1, "B4", 0.44], [7, 2.5, 1, "E5", 0.48], [7, 3, 1, "G5", 0.46], [7, 4, 1, "B4", 0.42],
+          [8, 1, 1, "E5", 0.54], [8, 1.5, 1, "C5", 0.44], [8, 2.5, 1, "A5", 0.48], [8, 3, 1, "G5", 0.46], [8, 4, 1, "E5", 0.42] ] }
+      ]
+    },
+    {
+      "name": "bass",
+      "preset": "First Bass",
+      "_why": "The plain bass preset with its cutoff and envelope depth turned down (0.45 to 0.36, mod depth 0.6 to 0.3) so it is round rather than plucked; a dotted half and a soft quarter per bar. Transpose +12 because its oscillator sits an octave below the key.",
+      "voices": 4,
+      "transpose": 12,
+      "gain_db": -3.0,
+      "params": { "node#cut": 0.36, "node#mdepth": 0.3 },
+      "patterns": [
+        { "type": "pulse", "section": "loop_b", "roots": ["F2", "F2", "E2", "A1"], "hits": [1, 4], "gate": 0.92, "vel": 0.55 }
+      ]
+    }
+  ]
+}

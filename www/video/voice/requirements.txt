@@ -1,0 +1,49 @@
+# Narration pipeline for Auracle's films: tts.py (Kokoro-82M) and asr_check.py
+# (faster-whisper). Python 3.10-3.12; kokoro 0.9.4 does not install on 3.13.
+# Nothing in the site or the app needs any of this.
+#
+#   python3 -m venv .venv-voice
+#   .venv-voice/bin/pip install -r www/video/voice/requirements.txt
+#
+# Linux takes torch from PyTorch's CPU-only index. PyPI's Linux torch wheel
+# pulls ~3 GB of CUDA libraries that CPU inference never loads; the macOS and
+# Windows wheels on PyPI are CPU-only already. Installed, this whole set is
+# ~2.3 GB, of which torch is ~0.9 GB. Models are not pip packages: tts.py and
+# asr_check.py download them from Hugging Face on first use into
+# $AURACLE_VOICE_MODELS (Kokoro-82M + voices ~0.35 GB, whisper small.en ~0.5 GB).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.0+cpu ; sys_platform == "linux"
+torch==2.14.0 ; sys_platform != "linux"
+
+# TTS: Kokoro-82M and misaki, the G2P it was trained on (see tts.py for why
+# not kokoro-onnx + espeak-ng). espeak-ng ships inside espeakng-loader, as
+# misaki's fallback for words its dictionary lacks; no system package needed.
+kokoro==0.9.4
+misaki[en]==0.9.4
+transformers==5.17.0
+huggingface-hub==1.33.0
+spacy==3.8.16
+phonemizer-fork==3.3.2
+espeakng-loader==0.2.4
+num2words==0.5.14
+loguru==0.7.3
+# misaki's POS tagger, from spaCy's own release: the Hugging Face mirror
+# (spacy/en_core_web_sm) is still 3.7.1, which requires spacy<3.8. Without it
+# misaki tries to fetch the model itself at first run.
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+
+# Audio I/O, resampling (soxr VHQ) and BS.1770 loudness.
+numpy==2.4.6
+scipy==1.17.1
+soundfile==0.14.0
+soxr==1.1.0
+pyloudnorm==0.2.0
+
+# asr_check.py: Whisper on CTranslate2 (int8 on CPU) and pYIN for F0.
+faster-whisper==1.2.1
+ctranslate2==4.8.2
+onnxruntime==1.30.0
+tokenizers==0.23.2
+av==18.1.0
+librosa==0.11.0
+numba==0.67.0
