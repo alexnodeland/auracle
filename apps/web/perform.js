@@ -113,6 +113,9 @@ export function createPerform(host) {
     // echo is not mistaken for a new patch.
     keeping: null,
     measuring: false,
+    // A measurement not started because another patch is on its way to the
+    // bench (see `heldForOpen`): "measure" or "revalidate", or null.
+    heldWire: null,
     lastTouch: 0,
     lastMove: performance.now(),
     glide: null, // {from: Map, to: Map, t0, dur, json}
@@ -649,10 +652,12 @@ export function createPerform(host) {
       renderHood();
       if (hit.rev === tasteRev()) return;
       // Playable now; the fresh measurement lands when it lands.
-      state.revalidating = true;
+      if (!heldForOpen("revalidate")) revalidate();
+      return;
+    }
+    if (heldForOpen("measure")) {
       renderStatus();
-      const req = request("perform_wire", { tree: state.cur.json, overrides: [] });
-      state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
+      knobs.forEach(paintKnob);
       return;
     }
     state.measuring = true;
@@ -660,6 +665,35 @@ export function createPerform(host) {
     knobs.forEach(paintKnob);
     const req = request("perform_wire", { tree: state.cur.json, overrides: overrides() });
     if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev() };
+  }
+
+  function revalidate() {
+    state.revalidating = true;
+    renderStatus();
+    const req = request("perform_wire", { tree: state.cur.json, overrides: [] });
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
+  }
+
+  // A patch on its way out is not measured. A measurement is one engine call
+  // of 10-30 s on the one worker, and it cannot be interrupted once started:
+  // PERFORM opened in the second between a preset click and its bench reply
+  // used to start measuring the patch being left, and the patch the player
+  // had picked queued behind it — half a minute of "measuring…" for a sound
+  // nobody would play. While an open is on its way (`host.opening`), the
+  // measurement is held, and the interval below lets it go when the open
+  // lands or fails. The new patch arrives through `patchChanged`, which
+  // drops the hold and measures that one instead.
+  function heldForOpen(what) {
+    if (!host.opening || !host.opening()) return false;
+    state.heldWire = what;
+    return true;
+  }
+  function releaseHeld() {
+    const what = state.heldWire;
+    state.heldWire = null;
+    if (!state.cur || !state.visible) return;
+    if (what === "measure" && !state.wire && !state.measuring) wire();
+    else if (what === "revalidate" && state.wire && !state.revalidating) revalidate();
   }
 
   // ---------- offers are duels ----------
@@ -673,6 +707,7 @@ export function createPerform(host) {
   const HEARD_MS = 1000;
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
+    if (state.heldWire && !host.opening?.()) releaseHeld();
     if (state.deferredWire && performance.now() - state.lastTouch >= 1500) {
       const d = state.deferredWire;
       state.deferredWire = null;
@@ -1000,6 +1035,7 @@ export function createPerform(host) {
     state.gen++;
     state.applyThen.clear();
     state.measuring = false;
+    state.heldWire = null;
     state.cur = { json, makeup, knobs: new Map() };
     state.home = { json, makeup, knobs: null };
     // Addresses mean nothing across a patch change until re-measured: a
@@ -1304,6 +1340,7 @@ export function createPerform(host) {
     const z = wanderZone(state.wander);
     const parts = [];
     if (msg) parts.push(msg);
+    else if (state.heldWire === "measure") parts.push("opening the patch you picked…");
     else if (state.measuring) parts.push("measuring how this patch moves…");
     else if (state.wire) {
       const n = state.wire.filter((w) => !w.search).length;

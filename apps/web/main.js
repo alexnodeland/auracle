@@ -1064,6 +1064,8 @@ worker.onmessage = (e) => {
     // app stating something untrue about its own state. Say what happened,
     // and pull fresh views so the row that can't be opened stops being listed.
     case "bench_missing": {
+      // Not on its way any more, either (PERFORM holds a measurement for it).
+      if (benchPending === m.id) benchPending = null;
       note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
       send({ type: "taste_views" });
       break;
@@ -2931,6 +2933,9 @@ async function bootPerform() {
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
     engineer: () => engineerMode,
+    // Another patch is on its way to the bench: PERFORM holds a measurement
+    // of the one in hand, which is about to be replaced.
+    opening: () => openingNow(),
     // A PERFORM offer answer joined the log: it paces refits like any pick.
     voteLanded: () => {
       duelsSinceFit += 1;
@@ -3167,6 +3172,7 @@ async function bootBooth() {
       if (id != null && rowOf(id)) openOnBench(id, { auto: true });
       else {
         presetClicks.set(p.index, benchSeq);
+        openAskedAt = performance.now();
         send({ type: "load_preset", index: p.index });
       }
     },
@@ -5022,6 +5028,7 @@ function renderPresetBank(list) {
         // Said at once: the engine may be busy for seconds, and a click
         // that shows nothing gets clicked again, or given up on.
         presetClicks.set(p.index, benchSeq);
+        openAskedAt = performance.now();
         el.classList.add("loading");
         el.setAttribute("aria-busy", "true");
         send({ type: "load_preset", index: p.index });
@@ -5431,6 +5438,15 @@ document.addEventListener("click", (e) => {
 // bumps this, and a click remembers the value it saw.
 let benchSeq = 0;
 const presetClicks = new Map(); // library index -> benchSeq at the click
+// An open on its way: a patch asked for whose bench reply has not landed, or
+// a preset clicked whose load has not. Bounded, so a reply that never comes
+// costs PERFORM's hold (see `heldForOpen` in perform.js), never its
+// measurement.
+let openAskedAt = 0;
+function openingNow() {
+  if (benchPending == null && presetClicks.size === 0) return false;
+  return performance.now() - openAskedAt < 60_000;
+}
 /** Put a patch on the bench. `auto` marks an open the app made on its own
  *  (the first patch landing after boot or a reload, booth attract): it is not
  *  the player moving on, so it must not void a preset click still loading —
@@ -5439,6 +5455,7 @@ const presetClicks = new Map(); // library index -> benchSeq at the click
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
+  openAskedAt = performance.now();
   // A COMMIT still waiting on the last patch's edit is about that patch; it
   // must not land on this one when the edit settles.
   commitOnSettle = null;
