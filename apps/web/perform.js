@@ -564,6 +564,45 @@ export function createPerform(host) {
     if (state.cur.knobs.size === 0) state.pending.get(req).cacheAs = wireKey(state.cur.json);
   }
 
+  // ---------- offers are duels ----------
+  // An offer is the model's proposal played against the sound in your hands:
+  // the same question an EVOLVE duel asks, asked without stopping the music.
+  // Once B has been *heard* — Peek held, or Blend past half, for a second
+  // while notes sound — the player's answer is recorded as a duel tagged
+  // `perform_offer`: Take is "B over what I had", asking for another offer is
+  // "what I had over B". Both directions, or the model would only ever hear
+  // itself agreed with. An offer taken or passed unheard teaches nothing.
+  const HEARD_MS = 1000;
+  const TAKE_SETTLE_MS = 8000;
+  setInterval(() => {
+    const o = state.offer;
+    if (!o || !state.visible) return;
+    if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) o.heardMs = (o.heardMs || 0) + 250;
+  }, 250);
+
+  function answerOffer(took) {
+    const o = state.offer;
+    if (!o || !state.cur || (o.heardMs || 0) < HEARD_MS) return;
+    const pick = { tree: state.cur.json, overrides: overrides(), offer: o.json, took };
+    if (!took) {
+      sendAnswer(pick);
+      host.note("Passed on B — that counts as a pick for what you had.");
+      return;
+    }
+    // A take waits out a short window: taking something to hear it in place
+    // is not always a verdict, and the toast says how to say so.
+    let dropped = false;
+    const t = setTimeout(() => { if (!dropped) sendAnswer(pick); }, TAKE_SETTLE_MS);
+    host.note("Took B — that counts as a pick over what you had.", {
+      undo: () => { dropped = true; clearTimeout(t); },
+      undoLabel: "don't count it",
+    });
+  }
+
+  function sendAnswer(pick) {
+    request("perform_record", pick);
+  }
+
   function requestDrift() {
     if (!state.cur || state.glide || inFlight("perform_drift")) return;
     const pace = wanderPace(state.wander);
@@ -580,6 +619,8 @@ export function createPerform(host) {
 
   function requestOffer(why) {
     if (!state.cur || inFlight("perform_offer")) return;
+    // Asking again after hearing B is passing on it.
+    if (state.offer) answerOffer(false);
     state.lastMove = performance.now();
     state.offerWhy = why || "";
     // Twenty steps is ~10 s of renders: long enough to find a real variant,
@@ -657,6 +698,11 @@ export function createPerform(host) {
     if (p.cacheAs && m.type === "perform_wired" && m.data) {
       if (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
       wireCache.set(p.cacheAs, structuredClone(m.data));
+    }
+    // A recorded pick is in the log whatever has happened to the sound since.
+    if (m.type === "perform_recorded") {
+      if (m.recorded) host.voteLanded?.();
+      return true;
     }
     // An answer about a patch that is no longer sounding is consumed, not used.
     if (p.gen !== state.gen) return true;
@@ -982,6 +1028,7 @@ export function createPerform(host) {
   function take() {
     if (!state.offer) return host.note("nothing offered yet — press Offer, or turn Wander up");
     host.logImplicit("perform_take", { why: state.offerWhy || "" });
+    answerOffer(true);
     const json = state.offer.json;
     // B keeps sounding until A has rebuilt as the offer, then fades out: at
     // any Blend position the handover has no gap and no jump.
@@ -1199,7 +1246,7 @@ export function createPerform(host) {
   makeKnob(6, { kind: "blend", name: "Blend", low: "home", high: "offer", initial: 0 });
   makeKnob(7, { kind: "wander", name: "Wander", low: "still", high: "roam", initial: 0 });
 
-  pad("keep", "Keep", "Make this sound home (a strong signal about your taste)", keep);
+  pad("keep", "Keep", "Make this sound home: Back returns here", keep);
   pad("back", "Back", "Glide back to the last sound you kept", back);
   pad("offer", "Offer", "Grow a variant from here into B", () => requestOffer());
   // The one gesture no other instrument has; it reads as the primary.
@@ -1211,10 +1258,12 @@ export function createPerform(host) {
     "Hold to hear the offer; let go to come back",
     () => {
       const live = host.live();
+      state.peeking = true;
       if (live && state.offer) live.bMix(1);
       else host.note("nothing offered yet");
     },
     () => {
+      state.peeking = false;
       const live = host.live();
       if (live && state.offer) live.bMix(state.blend);
     },

@@ -3004,6 +3004,65 @@ impl Engine {
         self.observe_as(raw, std, provenance);
     }
 
+    /// Record a heard comparison between two patches that need not be in the
+    /// pool — PERFORM's sound and an offer grown from it — as a duel tagged
+    /// `provenance`. Returns whether it was recorded.
+    ///
+    /// The same forecast-then-observe path as a dealt duel: both are
+    /// featurized through the render memo (an offer already was, when it was
+    /// grown), the model's forecast is scored *before* the answer joins the
+    /// log, and the observation enters the likelihood exactly as a duel does.
+    /// Nothing is inserted into the pool — a performance's passing sounds are
+    /// evidence, not candidates. Not recorded (`false`) before a standardizer
+    /// exists, when either patch fails vetting, or when the two are the same
+    /// patch: an answer to "which of these identical sounds is better" is a
+    /// row of noise.
+    pub fn record_tree_duel(
+        &mut self,
+        a: &PatchTree,
+        b: &PatchTree,
+        chose_a: bool,
+        provenance: Provenance,
+    ) -> bool {
+        if a == b {
+            return false;
+        }
+        let Some(sz) = self.standardizer.clone() else {
+            return false;
+        };
+        let phi = |t: &PatchTree| {
+            featurize_memo(t, &self.cfg.phrase, &self.memo, false)
+                .ok()
+                .map(|(cf, _)| cf.features.phi())
+        };
+        let (Some(ra), Some(rb)) = (phi(a), phi(b)) else {
+            return false;
+        };
+        let (sa, sb) = (sz.transform(&ra), sz.transform(&rb));
+        if let Some(p) = &self.posterior {
+            self.forecasts.push(Forecast {
+                p_a: p.prob_prefers(&sa, &sb),
+                chose_a,
+                random_check: false,
+                provenance,
+            });
+        }
+        self.observe_as(
+            Feedback::Duel {
+                a: ra,
+                b: rb,
+                chose_a,
+            },
+            Feedback::Duel {
+                a: sa,
+                b: sb,
+                chose_a,
+            },
+            provenance,
+        );
+        true
+    }
+
     /// Record a keep/kill decision on a pool member (by pool index).
     pub fn record_keep(&mut self, idx: usize, kept: bool) {
         let raw = Feedback::KeepKill {

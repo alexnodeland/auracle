@@ -1955,7 +1955,7 @@ function applyStatus(st) {
     !localStorage.getItem("auracle-warm-reoffered")
   ) {
     localStorage.setItem("auracle-warm-reoffered", "1");
-    note("Want the fast lane? Picking 3 favourites teaches it ~20 picks’ worth.", {
+    note("Want the fast lane? Picking 3 favourites teaches it 18 picks at once.", {
       undo: openWarmStart,
       undoLabel: "pick 3 favourites",
     });
@@ -2774,6 +2774,15 @@ async function bootPerform() {
     tasteRev: () => status.observations,
     // The offer strip names what B changed, in the lineage's words.
     describeDiff: (diff) => humanizeDiff(diff),
+    // A PERFORM offer answer joined the log: it paces refits like any pick.
+    voteLanded: () => {
+      duelsSinceFit += 1;
+      renderTeach();
+      if (duelsSinceFit >= FIT_EVERY) {
+        fitDue = true;
+        settleFit();
+      }
+    },
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
@@ -15060,6 +15069,7 @@ const PROVENANCE_NAME = {
   duel: "dealt duels",
   heard_edit: "edits you heard",
   self_report: "edits you asserted",
+  perform_offer: "offers you took or passed",
 };
 
 // Reliability is computed by the engine, which is the only place that has

@@ -861,6 +861,32 @@ impl WasmEngine {
         }
     }
 
+    /// A PERFORM offer answered: the performed state (`tree` plus
+    /// `overrides`) against the `offer` tree, heard both ways, with
+    /// `took_offer` saying which the player kept. Recorded as a duel tagged
+    /// `perform_offer` ([`auracle_session::Engine::record_tree_duel`]; A is
+    /// the performed sound). Returns whether it was recorded.
+    pub fn perform_record(
+        &mut self,
+        tree_json: &str,
+        overrides_json: &str,
+        offer_json: &str,
+        took_offer: bool,
+    ) -> bool {
+        let (Some(home), Ok(offer)) = (
+            performed_tree(tree_json, overrides_json),
+            serde_json::from_str::<PatchTree>(offer_json),
+        ) else {
+            return false;
+        };
+        self.engine.record_tree_duel(
+            &home,
+            &offer,
+            !took_offer,
+            auracle_taste::Provenance::PerformOffer,
+        )
+    }
+
     /// `tree` with knob `overrides` (`[[addr, value], …]`) written into its
     /// genome, as JSON; `null` if the tree does not parse. Unknown or
     /// structural addresses are skipped rather than failing the whole write:

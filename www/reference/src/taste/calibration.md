@@ -125,7 +125,7 @@ The same scores, split by how the answer was collected:
 
 ```rust
 pub struct ProvenanceScore {
-    pub provenance: String,  // "duel" | "heard_edit" | "self_report"
+    pub provenance: String,  // "duel" | "heard_edit" | "self_report" | "perform_offer"
     pub n: usize,
     pub brier: f64,
     pub log_loss: f64,

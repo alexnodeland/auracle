@@ -1499,6 +1499,65 @@ mod tests {
         assert!(engine.find(original_id).is_some());
     }
 
+    /// PERFORM's offers are duels: the player hears the offer against the
+    /// sound they are playing and takes it or passes. Both answers have to
+    /// arrive — a stream that only ever recorded takes would be the model
+    /// agreeing with its own proposals — as ordinary duels tagged
+    /// `PerformOffer`, forecast before they are observed, without touching
+    /// the pool. Two identical patches record nothing.
+    #[test]
+    fn perform_offers_are_duels_both_ways_and_leave_the_pool_alone() {
+        let mut rng = StdRng::seed_from_u64(0x0FFE);
+        let cfg = SessionConfig {
+            pool_size: 12,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let home = engine.pool[0].tree.clone();
+        let offer = auracle_grammar::set_param(
+            &home,
+            "amp#attack",
+            auracle_grammar::ParamValue::Continuous(0.4),
+        )
+        .unwrap();
+        let pool_ids: Vec<u64> = engine.pool.iter().map(|c| c.id).collect();
+
+        assert!(engine.record_tree_duel(&home, &offer, false, Provenance::PerformOffer));
+        assert!(engine.record_tree_duel(&home, &offer, true, Provenance::PerformOffer));
+        assert!(
+            !engine.record_tree_duel(&home, &home, true, Provenance::PerformOffer),
+            "the same patch twice is not a question"
+        );
+        assert_eq!(engine.log.n_with(Provenance::PerformOffer), 2);
+        let taken = &engine.log.observations[0];
+        let auracle_taste::Feedback::Duel { chose_a, .. } = &taken.feedback else {
+            panic!("an offer answer is a duel");
+        };
+        assert!(!chose_a, "A is home, and the offer was taken");
+        assert_eq!(
+            engine.pool.iter().map(|c| c.id).collect::<Vec<_>>(),
+            pool_ids,
+            "a performance's passing sounds are evidence, not candidates"
+        );
+
+        // With a posterior, the forecast is scored in its own stream.
+        engine.fit_posterior(&mut rng);
+        let n_before = engine.forecasts.len();
+        assert!(engine.record_tree_duel(&home, &offer, true, Provenance::PerformOffer));
+        assert_eq!(engine.forecasts.len(), n_before + 1);
+        assert_eq!(
+            engine.forecasts.last().unwrap().provenance,
+            Provenance::PerformOffer
+        );
+        let cal = engine.calibration();
+        assert!(cal
+            .by_provenance
+            .iter()
+            .any(|r| r.provenance == "perform_offer" && r.n >= 1));
+    }
+
     /// The losing direction is the half that used to be unrepresentable: a
     /// `false` in the old boolean API meant "said nothing", so an edit the
     /// player heard and rejected left no trace and the log only ever saw

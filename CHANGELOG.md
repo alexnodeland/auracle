@@ -8,6 +8,28 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — playing teaches: an offer heard and answered is a pick
+
+PERFORM used the taste model but never fed it: Keep, Take and every turn were
+logged and ignored (and Keep's tooltip claimed otherwise). An offer is the
+model's proposal played against the sound in your hands, which is the question
+an EVOLVE duel asks, asked without stopping the music. Now, once B has been
+**heard** (Peek held, or Blend past half, for a second while notes sound):
+
+* **Take** records *offer over what you had*, after an 8 s window whose toast
+  says **don't count it**;
+* asking for **another offer** records *what you had over the offer*.
+
+Both directions count. A log of takes alone would be the model hearing its own
+proposals agreed with. An offer answered unheard counts for nothing. The
+answers are ordinary duels (`Engine::record_tree_duel`; nothing enters the
+pool), forecast before they are observed and tagged with a new provenance,
+`perform_offer`. TRUST scores them as their own stream, *offers you took or
+passed*, which is how anyone will find out whether answers given
+mid-performance are as reliable as dealt ones. `tests/web/perform_teaches.spec.js`
+walks it on the real engine: a heard pass +1, a heard take +1, an unheard take
++0.
+
 ### Added — an XY pad in PERFORM
 
 Two named controls under one finger, beside the under-the-hood strip, in the

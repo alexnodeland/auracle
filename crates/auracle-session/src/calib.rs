@@ -190,6 +190,7 @@ pub fn calibration(forecasts: &[Forecast]) -> Calibration {
         Provenance::Duel,
         Provenance::HeardEdit,
         Provenance::SelfReport,
+        Provenance::PerformOffer,
     ]
     .into_iter()
     .filter_map(|p| {

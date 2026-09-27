@@ -114,6 +114,7 @@ The tag is what makes the claim auditable. `Provenance` distinguishes:
 | `Duel` | A dealt duel you listened to |
 | `HeardEdit` | An edit committed through a heard comparison |
 | `SelfReport` | An edit committed by ticking the box |
+| `PerformOffer` | A PERFORM offer heard against the sound being played, then taken (offer wins) or passed by asking for another (the played sound wins) |
 
 These make the same claim in the log, and there is no reason to believe they
 are equally reliable. [Calibration](./calibration.md#by-provenance) scores them

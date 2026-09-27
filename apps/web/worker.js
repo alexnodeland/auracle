@@ -1326,6 +1326,14 @@ async function dispatch(m) {
       performReply(m, "perform_grafted", "graft", false, () =>
         JSON.parse(engine.perform_graft(m.tree, JSON.stringify(m.overrides || []), m.k)));
       break;
+    // An offer answered in PERFORM: a heard comparison, recorded as a duel
+    // tagged `perform_offer`. The status follows so the picks counter and the
+    // refit pacing see it like any other vote.
+    case "perform_record":
+      performReply(m, "perform_recorded", "recorded", true, () =>
+        engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took));
+      post({ type: "status", status: status() });
+      break;
     case "perform_offer":
       performReply(m, "perform_offered", "offer", true, () =>
         JSON.parse(engine.perform_offer(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 40)));

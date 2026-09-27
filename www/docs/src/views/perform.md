@@ -254,19 +254,33 @@ an offer is waiting, drawn from the grammar — it has not learned your taste ye
 Once a model has been fitted, the same lines read *drifting toward your taste*
 and *grown toward your taste*.
 
-## What PERFORM does not teach the model
+## What PERFORM teaches the model
 
-Keep, Back, Take, every offer and every control turn are **logged** with your
-session. None of them changes the taste model yet.
+**An offer you heard and answered is a pick.** An offer is the model's proposal
+played against the sound in your hands, which is the question an EVOLVE duel
+asks, asked without stopping the music. Once you have heard B, the answer
+counts:
 
-They are implicit evidence. A Keep might mean *I love this* or *I want to stop
-the drift for a moment*, and a Take might be curiosity. The model learns from
-[duels, stars and edits](../teaching.md), whose meaning is fixed, and implicit
-evidence has to earn its place before it joins them: a fit that can be checked
-against those, rather than a silent term in the numbers you are shown. The log
-exists so that the evidence is there when that fit is built.
+| You | It records |
+|---|---|
+| **Take** it | B over what you had |
+| Press **Offer** again | What you had over B |
 
-To teach it, duel in [EVOLVE](./evolve.md).
+"Heard" means Peek held, or Blend past half, for at least a second while notes
+were sounding. An offer you take or pass on without hearing it teaches
+nothing. A Take waits eight seconds before it counts, and its toast has a
+**don't count it** button: taking a sound to hear it in place is not always a
+verdict.
+
+Both directions count, deliberately. A log that only recorded takes would be
+the model hearing its own proposals agreed with. The answers enter the model
+exactly as duels do, and they are tagged `perform_offer`, so TRUST scores them
+as their own stream (*offers you took or passed*) beside dealt duels. If
+answers given mid-performance turn out less reliable than dealt ones, that is
+where it will show.
+
+Keep, Back, control turns and Wander are still only **logged**. A Keep might
+mean *I love this* or *hold on a moment*; a turn is a gesture, not a verdict.
 
 ## MIDI
 
