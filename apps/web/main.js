@@ -15560,8 +15560,70 @@ const STYLE_COLORS = [
   INK.silk,
 ];
 
-// A style's display name: the user's, or an auto-label from its strongest
-// positive pulls ("bright + punchy").
+// The words a style's auto-name is made of: each φ coordinate as an
+// adjective and as a noun. The name used to join two of NICE_NAMES with a
+// plus, and those are chart labels, clipped to fit an axis — so the one
+// screen about the person read like debug output: "noise srcs + VCOs",
+// "stack mud + mod chaining". A noun marked `coord` already leads with an
+// adjective, and the adjective before it takes a comma ("thick, chained
+// modulation"). Every entry describes *more* of the coordinate: a style is
+// named from its positive pulls only.
+const STYLE_WORDS = {
+  centroid_mean: { adj: "bright", noun: "brightness" },
+  centroid_std: { adj: "shimmering", noun: "shimmer" },
+  rolloff_mean: { adj: "airy", noun: "treble" },
+  flatness_mean: { adj: "gritty", noun: "grit" },
+  flux_mean: { adj: "moving", noun: "movement" },
+  zcr_mean: { adj: "edgy", noun: "edge" },
+  rms_mean: { adj: "dense", noun: "density" },
+  rms_std: { adj: "dynamic", noun: "dynamics" },
+  crest: { adj: "snappy", noun: "snap" },
+  attack_s: { adj: "slow-blooming", noun: "slow swells", coord: true },
+  tail_ratio: { adj: "spacious", noun: "space" },
+  bass_fraction: { adj: "full-bodied", noun: "body" },
+  held_centroid_std: { adj: "evolving", noun: "evolving notes", coord: true },
+  high_ratio: { adj: "soaring", noun: "high notes", coord: true },
+  chord_flatness_delta: { adj: "thick", noun: "thick chords", coord: true },
+  motion_slow: { adj: "slow-moving", noun: "slow motion", coord: true },
+  motion_mid: { adj: "pulsing", noun: "pulse" },
+  motion_fast: { adj: "fluttering", noun: "flutter" },
+  n_vco: { adj: "analog", noun: "oscillators" },
+  n_supersaw: { adj: "supersaw", noun: "supersaws" },
+  n_noise: { adj: "noisy", noun: "noise" },
+  n_mix: { adj: "layered", noun: "layers" },
+  n_wavetable: { adj: "wavetable", noun: "wavetables" },
+  n_pluck: { adj: "plucked", noun: "plucked strings", coord: true },
+  n_formant: { adj: "vocal", noun: "formants" },
+  n_filter: { adj: "filtered", noun: "filters" },
+  n_drive: { adj: "driven", noun: "drive" },
+  n_time: { adj: "echoing", noun: "delays" },
+  n_mod_fx: { adj: "swirling", noun: "sweeps" },
+  n_reverb: { adj: "reverberant", noun: "reverb" },
+  n_dynamics: { adj: "compressed", noun: "compression" },
+  n_rand: { adj: "stepped", noun: "stepped modulation", coord: true },
+  n_lfo: { adj: "wobbling", noun: "wobble" },
+  n_env: { adj: "contoured", noun: "envelopes" },
+  n_follow: { adj: "responsive", noun: "followers" },
+  n_mod_shape: { adj: "shaped", noun: "shaped modulation", coord: true },
+  n_mod_logic: { adj: "gated", noun: "gated modulation", coord: true },
+  mod_depth_mean: { adj: "chained", noun: "chained modulation", coord: true },
+  depth: { adj: "deep", noun: "deep patches", coord: true },
+  size: { adj: "big", noun: "big patches", coord: true },
+  branch_width_max: { adj: "parallel", noun: "parallel branches", coord: true },
+  chain_balance: { adj: "balanced", noun: "even branches", coord: true },
+  frac_sidechained: { adj: "pumping", noun: "sidechains" },
+  mod_at_source: { adj: "source-modulated", noun: "modulated sources", coord: true },
+  mod_density: { adj: "busy", noun: "busy modulation", coord: true },
+  amp_attack: { adj: "soft-edged", noun: "soft onsets", coord: true },
+  amp_sustain: { adj: "sustained", noun: "sustain" },
+  amp_release: { adj: "long-tailed", noun: "long tails", coord: true },
+};
+const styleWords = (name) => STYLE_WORDS[name] || STYLE_WORDS[String(name).split(":")[0]] || null;
+
+// A style's display name: the user's, or an auto-name from its two strongest
+// positive pulls, the first as an adjective on the second — "noisy
+// oscillators", "thick, chained modulation". One pull is named by its noun.
+// A coordinate without words (a newer engine's) falls back to its label.
 function styleName(s, k) {
   if (s && s.name) return s.name;
   if (!s || !s.theta) return `style ${k + 1}`;
@@ -15569,8 +15631,12 @@ function styleName(s, k) {
     .filter((r) => r.mean > 0)
     .sort((a, b) => b.mean - a.mean)
     .slice(0, 2)
-    .map((r) => niceName(r.name));
-  return tops.length ? tops.join(" + ") : `style ${k + 1}`;
+    .map((r) => r.name);
+  if (!tops.length) return `style ${k + 1}`;
+  const [a, b] = tops.map(styleWords);
+  if (tops.length === 1) return a ? a.noun : niceName(tops[0]);
+  if (!a || !b) return tops.map(niceName).join(" + ");
+  return `${a.adj}${b.coord ? "," : ""} ${b.noun}`;
 }
 
 function styleBadge(el, k) {
