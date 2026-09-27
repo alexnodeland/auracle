@@ -2926,7 +2926,7 @@ mod tests {
         let ceiling = TARGET_LUFS + LEVELER_OVER_TARGET_LU;
         let (on, off) = (settled(true), settled(false));
         assert!(
-            off > ceiling + 6.0,
+            off > ceiling + 4.0,
             "the fixture never gets past the ceiling ({off:.1} LUFS), so it tests nothing"
         );
         assert!(

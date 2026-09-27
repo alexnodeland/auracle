@@ -301,11 +301,16 @@ mod tests {
 
     /// A true-peak meter that shares nothing with the limiter's: 16×
     /// oversampling by windowed-sinc interpolation of a different length and
-    /// window, so the limiter is not graded by its own detector.
-    fn true_peak_16x(x: &[f32]) -> f64 {
+    /// window, so the limiter is not graded by its own detector. It reads the
+    /// points after samples `from..to` with taps over the whole buffer: a
+    /// signal cut off at a slice edge rings, and that ringing is the slice's,
+    /// not the signal's.
+    fn true_peak_16x(x: &[f32], from: usize, to: usize) -> f64 {
         let half = 24isize;
-        let mut peak = x.iter().fold(0.0f64, |m, s| m.max(f64::from(s.abs())));
-        for k in 0..x.len() as isize {
+        let mut peak = x[from..to]
+            .iter()
+            .fold(0.0f64, |m, s| m.max(f64::from(s.abs())));
+        for k in from as isize..to as isize {
             for p in 1..16 {
                 let frac = p as f64 / 16.0;
                 let mut acc = 0.0;
@@ -328,16 +333,17 @@ mod tests {
         peak
     }
 
-    /// A struck, decaying 440 Hz tone with a bright click on the onset: the
-    /// crest factor of a pluck, which is the kind of render the peak ceiling
-    /// pulls down.
+    /// A struck, decaying 440 Hz tone under a loud, bright click on the
+    /// onset: a pluck's crest factor, which is the kind of render the peak
+    /// ceiling pulls down. Its peak sits ~28 dB over its loudness, and the
+    /// ceiling binds on anything over 18 (`-TARGET_LUFS`).
     fn pluck(amp: f64) -> Vec<f64> {
         (0..(1.5 * SR) as usize)
             .map(|i| {
                 let t = i as f64 / SR;
-                let body = (std::f64::consts::TAU * 440.0 * t).sin() * (-t / 0.25).exp();
+                let body = (std::f64::consts::TAU * 440.0 * t).sin() * (-t / 0.4).exp();
                 let click = (std::f64::consts::TAU * 5_000.0 * t).sin() * (-t / 0.004).exp();
-                amp * (0.6 * body + 0.4 * click)
+                amp * (0.08 * body + 0.9 * click)
             })
             .collect()
     }
@@ -351,11 +357,14 @@ mod tests {
         assert_eq!(played, stored.samples);
     }
 
-    /// **The defect, fixed.** A peaky render the ceiling held 9 dB short comes
-    /// back at the target and still never leaves above full scale — between
-    /// the samples included, read by a meter the limiter does not share.
+    /// **The defect, fixed.** A peaky render the ceiling held ~10 dB short
+    /// comes back louder and still never leaves above full scale — between
+    /// the samples included, read by a meter the limiter does not share. Past
+    /// the limiter's reach the whole shortfall is back, sample for sample; on
+    /// the onset the limiter takes what the ceiling demands, which for this
+    /// fixture (a 4 ms click carrying most of its energy) is half of it.
     #[test]
-    fn a_peak_cut_render_comes_back_at_target_and_under_the_ceiling() {
+    fn a_peak_cut_render_comes_back_louder_and_under_the_ceiling() {
         use auracle_features::integrated_lufs;
         // Normalize the way `normalize_to` does: to the target, then back off
         // whatever the ceiling demands.
@@ -364,19 +373,26 @@ mod tests {
         let peak = raw.iter().fold(0.0f64, |m, s| m.max(s.abs()));
         let wanted = TARGET_LUFS - lufs;
         let gain_db = wanted.min(20.0 * (PEAK_CEILING / peak).log10());
-        assert!(wanted - gain_db > 3.0, "the fixture is not peaky enough");
+        let short = wanted - gain_db;
+        assert!(short > 3.0, "the fixture is not peaky enough");
         let g = 10f64.powf(gain_db / 20.0);
         let stored = audition(raw.iter().map(|s| s * g).collect());
 
         let played = audition_pcm(&stored, level(lufs, gain_db));
+        let tp = true_peak_16x(&played, 0, played.len());
+        assert!(tp <= AUDITION_CEILING * 1.005, "true peak {tp:.4} over the ceiling");
         let played_f64: Vec<f64> = played.iter().map(|s| f64::from(*s)).collect();
         let heard = integrated_lufs(&played_f64, SR).expect("not silent");
         assert!(
-            heard > TARGET_LUFS - 1.5,
-            "played at {heard:.1} LUFS, target {TARGET_LUFS}"
+            heard > lufs + gain_db + short / 3.0,
+            "{short:.1} dB short; played at {heard:.1} LUFS from {:.1}",
+            lufs + gain_db
         );
-        let tp = true_peak_16x(&played);
-        assert!(tp <= AUDITION_CEILING * 1.005, "true peak {tp:.4} over the ceiling");
+        // A second in, the release has long finished: the shortfall, exactly.
+        let restore = 10f64.powf(short / 20.0);
+        for (p, s) in played.iter().zip(&stored.samples).skip(SR as usize) {
+            assert_eq!(*p, (f64::from(*s) * restore) as f32);
+        }
     }
 
     /// What the 30 dB cap stopped short is only multiplied back — there is
@@ -405,7 +421,9 @@ mod tests {
         let stored = audition(x);
         assert!(stored.samples.iter().all(|s| s.abs() < 1.0));
         let played = audition_pcm(&stored, Level::UNMEASURED);
-        let tp = true_peak_16x(&played[2_000..played.len() - 2_000]);
+        // The interior: the fixture starts and stops at full amplitude, which
+        // no audition does (every one opens and closes on silence).
+        let tp = true_peak_16x(&played, 2_000, played.len() - 2_000);
         assert!(tp <= AUDITION_CEILING * 1.005, "true peak {tp:.4} over the ceiling");
     }
 

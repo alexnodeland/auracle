@@ -2045,8 +2045,11 @@ mod tests {
 
     /// `render_of` hands WebAudio the audition at the level it is played at,
     /// and the pool keeps the one φ was measured on. Seed 1's first eight hold
-    /// a slow swell the 30 dB cap stopped 17 dB short and a drone the peak
-    /// ceiling pulled 6 dB down (`examples/pool_loudness.rs`, load 1).
+    /// a slow swell the 30 dB cap stopped 17 dB short — its peaks are far
+    /// under the ceiling, so all of that comes back — and a sub-bass drone the
+    /// peak ceiling pulled 6 dB down, whose crest is in a sustained waveform,
+    /// so the limiter can return only part of it without clipping the wave
+    /// (`examples/pool_loudness.rs`, load 1).
     #[test]
     fn render_of_plays_the_audition_at_its_level_and_stores_it_untouched() {
         use auracle_features::{integrated_lufs, TARGET_LUFS};
@@ -2057,7 +2060,7 @@ mod tests {
             integrated_lufs(&x, 44_100.0).expect("vetted, so not silent")
         };
         let ids: Vec<u64> = engine.engine.pool.iter().map(|c| c.id).collect();
-        let mut short = 0;
+        let (mut short, mut whole) = (0, 0);
         for id in ids {
             let i = engine.engine.find(id).expect("pool member");
             let f = engine.engine.pool[i].features.clone();
@@ -2070,9 +2073,10 @@ mod tests {
                 short += 1;
                 let (was, now) = (lufs(&stored.samples), lufs(&played));
                 assert!(
-                    now > was + shortfall / 2.0,
+                    now > was + 1.0,
                     "id {id}: {shortfall:.1} dB short, played {was:.1} → {now:.1} LUFS"
                 );
+                whole += usize::from((now - (was + shortfall)).abs() < 0.1);
             } else if stored.samples.iter().all(|s| s.abs() < 0.45) {
                 // At target, and too quiet for any point between the samples
                 // to reach full scale: nothing to do, so nothing done.
@@ -2088,6 +2092,7 @@ mod tests {
             assert_eq!(replay.samples, stored.samples, "id {id}: the stored audition moved");
         }
         assert!(short >= 2, "the fixture lost its short patches ({short})");
+        assert!(whole >= 1, "no shortfall came back whole");
     }
 
     /// Audio may ride along, and when it does it must be the render φ was
