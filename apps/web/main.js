@@ -2447,6 +2447,23 @@ function sigOf(id) {
   return (r && (r.sig || r.signature)) || "";
 }
 
+// Auto-names are relative to the pool, so a patch's name can change when the
+// pool does. Every label naming a live or bench patch reads the same rows the
+// bank does, refreshed whenever the bank is: the bank once said "Gritty Wash"
+// while the PATCH header and the dock still said "Bright Wash" for the same #1,
+// because only one of the messages that replace the rows re-rendered them.
+function refreshNames() {
+  renderSubject();
+  const edited = liveLabelText.endsWith("(edited)");
+  const id = livePatchId != null ? livePatchId : edited ? wb.subjectId : null;
+  if (id == null || !rowOf(id)) return;
+  const text = `${nameOf(id)}${edited ? " (edited)" : ""}`;
+  if (text === liveLabelText) return;
+  liveLabelText = text;
+  $("live-label").textContent = text;
+  if (perform) perform.relabel();
+}
+
 function setLiveLabel(text) {
   liveLabelText = text;
   $("live-label").textContent = text;
@@ -4135,6 +4152,7 @@ function renderBank() {
     return;
   }
   bankRenderPending = false;
+  refreshNames();
   const list = $("bank-list");
   renderFillHint(); // owns the header count; it also carries "N arriving"
   renderBankCounts();

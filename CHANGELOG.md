@@ -94,6 +94,14 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Fixed — one patch, two names
+
+Auto-names are relative to the pool, so a patch can be renamed as the pool
+fills. Several worker messages replaced the bank's rows and re-rendered only
+the bank, so a fresh session showed #1 as "Gritty Wash" in the bank and
+"Bright Wash" in the PATCH header, the dock and PERFORM. Every label naming a
+live or bench patch now refreshes from the same rows whenever the bank does.
+
 ### Added — tempo sync for the step sequencers
 
 Steps free-ran at its evolved rate while the arpeggiator and MIDI clock kept a

@@ -1067,6 +1067,10 @@ export function createPerform(host) {
     },
     ensureWired,
     patchChanged,
+    // The live patch was renamed (auto-names follow the pool).
+    relabel() {
+      nameEl.textContent = host.label();
+    },
     onWorker,
     // For MIDI and the keyboard: set a named control (0..5), Blend (6) or
     // Wander (7) from a normalized 0..1 value.
