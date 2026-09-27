@@ -17680,15 +17680,9 @@ function showHelp(on) {
     : "https://auracle.alexnodeland.com/docs/";
   $("films-link").href = `${docs}films.html`;
   $("help-film").href = `${docs}views/perform.html#film-perform`;
-  // Shown only once the films are published beside the site (publish.py
-  // writes assets/film/films.json): before that they would open a page that
-  // does not exist yet.
-  const index = new URL("../assets/film/films.json", docs).href;
-  fetch(index, { method: "HEAD", cache: "no-store" })
-    .then((r) => {
-      if (r.ok) for (const id of ["films-link", "help-film"]) $(id).classList.remove("hidden");
-    })
-    .catch(() => {});
+  // Both stay hidden (index.html) until the films are published: publish.py
+  // un-hides them when it puts the films beside the site. A request asking
+  // the site whether they exist would log a 404 in every console until then.
 }
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);

@@ -19,7 +19,9 @@ FILM.webp), this:
     `films:cta` / `films:band` markers and the README's `films:readme` marker
     with its buttons and posters — so a page shows a film exactly when the
     film exists, at its real running time, and a film re-rendered to a new
-    length is re-timed everywhere by one command.
+    length is re-timed everywhere by one command;
+  - un-hides the app's two film links (apps/web/index.html), each once the
+    film it opens is published.
 
 The books and the landing page reach the films at the site's one copy,
 site/assets/film/, by relative path; nothing is duplicated into site/docs.
@@ -54,6 +56,7 @@ ROOT = os.path.dirname(WWW)
 BOOKS = [os.path.join(WWW, "docs", "src"), os.path.join(WWW, "reference", "src")]
 LANDING = os.path.join(WWW, "landing", "index.html")
 README = os.path.join(ROOT, "README.md")
+APP = os.path.join(ROOT, "apps", "web", "index.html")
 SITE_URL = "https://auracle.alexnodeland.com/"
 CHAPTER_NAMES = {
     "launch": {"open": "The problem", "title": "Auracle", "duel": "Two patches, one pick", "grow": "Real circuits", "play": "Playing it", "offer": "Offers", "depth": "Underneath", "close": "Every note", "end": "Play it"},
@@ -124,6 +127,7 @@ def main():
     fill_books(reg)
     fill_landing(reg)
     fill_readme(reg)
+    unhide_app_links(reg)
 
 
 def write_docs_page(reg):
@@ -347,6 +351,35 @@ def fill_readme(reg):
         "",
     ])
     fill(README, "films:readme", body)
+
+
+# The app's two ways to the films, and the film each needs before it leads
+# anywhere: the menu's "Watch the films" opens the guide's page of them (any
+# film writes it), the help's "watch it played" the PERFORM walkthrough.
+APP_LINKS = {"films-link": None, "help-film": "perform"}
+
+
+def unhide_app_links(reg):
+    """The app ships its film links hidden, because the page each opens
+    exists only once a film is published, and asking the site at runtime
+    would log a 404 in every console until then. Un-hide each here instead,
+    once its film is in films.json."""
+    if not reg or not os.path.exists(APP):
+        return
+    text = open(APP).read()
+
+    def unhide(tag):
+        return re.sub(r'\bclass="([^"]*)"',
+                      lambda c: 'class="' + " ".join(w for w in c.group(1).split() if w != "hidden") + '"',
+                      tag.group(0))
+
+    new = text
+    for link, need in APP_LINKS.items():
+        if need is None or need in reg:
+            new = re.sub(r'<a\b[^>]*\bid="' + re.escape(link) + r'"[^>]*>', unhide, new)
+    if new != text:
+        open(APP, "w").write(new)
+        print(f"  {os.path.relpath(APP, ROOT)}: film links shown")
 
 
 if __name__ == "__main__":
