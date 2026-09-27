@@ -70,7 +70,7 @@ a patch the pool already holds. This is reported as "no proposal beat its
 parent". It is normal occasionally, and persistent when:
 
 - The patch is at its **budget ceilings** (`24/24 modules`), leaving no room to
-  grow. Check the budget line in PLAY.
+  grow. Check the budget line in PATCH.
 - **Everything is locked.** Locks are exact, and locking every address leaves
   the search nothing to do.
 - **The pool is pinned solid.** Pins are capped at a quarter of the pool, but

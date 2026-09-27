@@ -109,18 +109,110 @@ The search matches by **sound as well as by name**: *grit*, *vowel*,
 | Click a knob's lock dot | Lock just that knob |
 | Drag a plate by its faceplate | Move it (freeform mode); <kbd>shift</kbd> to ignore the grid |
 
-## MIDI
+## In PERFORM
 
-Plug in a keyboard and it works, with no configuration:
+A focused control (reach it with <kbd>Tab</kbd>):
 
 | | |
 |---|---|
-| Note on/off | With **velocity** |
-| Pitch bend | Yes |
-| Sustain pedal (CC 64) | Yes |
+| <kbd>↑</kbd> / <kbd>→</kbd> | Turn up |
+| <kbd>↓</kbd> / <kbd>←</kbd> | Turn down |
+| <kbd>shift</kbd> + arrow | Fine |
+| <kbd>Home</kbd> | Back to the centre (Blend: to *home*; Wander: to *still*) |
+| <kbd>Enter</kbd> | Hear it: a sweep through both ends and back |
+
+With the mouse: drag up or down, <kbd>shift</kbd> for fine, double-click to
+centre, long-press to hear it, a short tap on Wander to hold it. See
+[PERFORM](./views/perform.md).
+
+## MIDI
+
+Plug in a keyboard and it works, with no configuration. Plug in a controller
+with knobs and they work too.
+
+| Message | Does |
+|---|---|
+| Note on/off | Plays, with **velocity** |
+| Pitch bend | Bends every voice. Range **±2** semitones by default; ±7, ±12, ±24 or ±48 in the MIDI panel |
+| Sustain pedal (CC 64) | Sustains. Notes you release while it is down ring until it lifts |
+| Mod wheel (CC 1) | Drives **Motion**, unless you learn CC 1 onto another control |
+| Channel pressure | Drives **Bright**: pressing harder turns it from the centre toward *bright* |
+| Any other CC | The first eight you move claim PERFORM's controls, in order |
+| MIDI clock | Sets the tempo |
+| CC 120, CC 123 | All sound off / all notes off: the same as **◼** |
 
 Web MIDI is Chromium-only today. In Firefox and Safari the computer keyboard
 and the on-screen keys are unaffected.
+
+### The MIDI panel
+
+Click **midi** in the dock (it reads `midi ●` when a device is connected). The
+panel lists PERFORM's eight controls, what drives each, and two buttons per
+row:
+
+- **learn**: the next CC you move is bound to this control. Any CC it
+  replaces is unbound.
+- **clear**: unbind this control.
+
+Below the rows: a switch for auto-mapping (*first knobs you turn claim free
+controls*), the bend range, and the incoming clock tempo.
+
+### Knobs you just turn
+
+With auto-mapping on, the first eight distinct CCs you move claim PERFORM's
+controls in the order you move them: **Bright, Snap, Motion, Body, Grit, Space,
+Blend, Wander**. Each claim is announced (*mapped: CC 74 → Bright*). The mod
+wheel and the sustain pedal are left out, because they already mean something.
+
+The controls are measured when PERFORM first shows a patch, so a mapped knob
+moves nothing on a patch PERFORM has not measured yet. Open PERFORM once and
+the knobs work from any view.
+
+### Endless encoders
+
+A relative encoder is recognised from what it sends, with nothing to set. An
+ordinary pot only sends when its value changes, so it rarely sends the same
+number twice in a row. An encoder sends the same small tick over and over. Once
+a CC has sent a few values that repeat like that and sit where encoder ticks
+sit, it is followed relatively and the note lane says so (*CC 21 is an endless
+encoder*). Both common encodings are recognised: two's complement and
+offset-around-64. One tick moves a control 1% of its travel.
+
+When in doubt it treats a CC as an ordinary pot. A pot mistaken for an encoder
+would be unusable; an encoder mistaken for a pot is only jumpy.
+
+### Soft takeover
+
+An ordinary pot does nothing until it passes through the control's current
+position. Then it takes over. This is often called *pickup*.
+
+It matters more here than on most instruments, because the controls move
+without the pot. Wander drifts the sound and re-centres the controls, and you
+can turn a control with the mouse or the keys. Without pickup, the first nudge
+of a pot left at three o'clock would snap a control that is now at nine.
+Whenever a control moves by the mouse, the keys or Wander, the pots bound to it
+have to pick it up again.
+
+The mod wheel works the same way. With Motion at its centre, the wheel takes
+over as it passes its halfway point; below that it makes the sound stiller,
+above it more restless. Channel pressure is not picked up: it only ever
+brightens from the centre, and letting go (pressure back to zero) returns
+Bright to the centre.
+
+### Clock
+
+MIDI clock sets the tempo, which is what the arpeggiator follows. The tempo is
+a least-squares fit over the last two beats of clock ticks, so a single late
+tick moves it by a fraction of its lateness rather than all of it. It needs one
+full beat of ticks before it reads anything, updates when it moves by more than
+0.4 BPM, and stays within 30–300 BPM. A gap of more than a second is read as a
+stop rather than a very slow tempo. Start, stop and continue are not acted on.
+
+### Per device
+
+The mapping, the auto-mapping switch and the bend range are remembered for each
+device, or combination of devices, in this browser. Plug the same controller in
+tomorrow and its knobs mean what they meant today.
 
 ## Performance controls
 

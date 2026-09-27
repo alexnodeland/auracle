@@ -12,7 +12,7 @@ utility.
 
 | Signal | Where | What it says |
 |---|---|---|
-| **A/B duel** | EVOLVE, or the quick-pick strip in PLAY | $A$ scores higher than $B$ |
+| **A/B duel** | EVOLVE, or the quick-pick strip in PATCH | $A$ scores higher than $B$ |
 | **★ stars** | Any bank row | This patch's utility falls in the band that rating covers |
 | **keep / kill** | *no surface yet* | This patch is above / below where I'm drawing the line today |
 | **edit beats original** | *my edit is better*, on commit | My edited version scores higher than what I started from |
@@ -54,6 +54,10 @@ mean fascination or confusion.
 
 **Saving a patch is also not a signal.** See
 [stars are not saves](./bank.md#stars-are-not-saves).
+
+**Nor, yet, is anything you do in PERFORM.** Keep, Back and Take are logged
+with your session and not fitted. See [what PERFORM does not teach the
+model](./views/perform.md#what-perform-does-not-teach-the-model).
 
 ## The warm start
 

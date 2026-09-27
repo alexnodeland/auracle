@@ -6,13 +6,13 @@ does not know about it.</p>
 ## The catalogue
 
 <figure>
-<img src="./img/node-bank.webp" alt="The PLAY view with the node bank open on the right: eight groups of modules down a rail, each entry carrying a transfer-function glyph, a name, a port signature and a θ bar, with the formant oscillator's spec card opened beside it." loading="eager" width="1440" height="900">
+<img src="./img/node-bank.webp" alt="The PATCH view with the node bank open on the right: eight groups of modules down a rail, each entry carrying a transfer-function glyph, a name, a port signature and a θ bar, with the formant oscillator's spec card opened beside it." loading="eager" width="1440" height="900">
 <figcaption><strong>The node bank, with a card open.</strong> Every entry says
 what it does to a wave, what it takes and gives, and what the model makes of
 it.</figcaption>
 </figure>
 
-The rail on the right of PLAY is the instrument's inventory: **forty-one
+The rail on the right of PATCH is the instrument's inventory: **forty-one
 modules in eight groups**, ordered along the signal path: sources → shape →
 filter → space → motion → dynamics → combine → modulation. That way "what goes
 after a filter" is a question the ordering answers.

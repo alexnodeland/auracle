@@ -13,8 +13,8 @@ arpeggiator, a patchable rack with typed cables and forty-one modules. You can
 ignore the model entirely and play it like an instrument.
 
 <figure>
-<img src="./img/play.webp" alt="The PLAY view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." loading="eager" width="1440" height="900">
-<figcaption><strong>PLAY.</strong> The current patch as a rack you can turn,
+<img src="./img/play.webp" alt="The PATCH view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." loading="eager" width="1440" height="900">
+<figcaption><strong>PATCH.</strong> The current patch as a rack you can turn,
 rewire and lock, running live while you edit it.</figcaption>
 </figure>
 
@@ -48,15 +48,16 @@ For the machinery rather than the workflow, see the
 
 ## The shape of a session
 
-Three views, one loop between them.
+Four views, one loop between them.
 
 | View | Shows | What you do there |
 |---|---|---|
-| **PLAY** | the patch | Hear it, play it, turn its knobs, rewire it, lock what you like |
+| **PERFORM** | the sound | Play it with controls named for what they do; let it wander; hear offers |
+| **PATCH** | the patch | Hear it, play it, turn its knobs, rewire it, lock what you like |
 | **EVOLVE** | the question | Two candidates; pick one. This is what teaches it |
 | **TASTE** | the answer | What it thinks your taste is, how sure it is, whether it has been right |
 
-You will spend most of your time in PLAY and EVOLVE. TASTE is where you go to
+You will spend most of your time in PATCH and EVOLVE. TASTE is where you go to
 find out whether it is working.
 
 ```admonish tip title="The shortest version"
