@@ -1,0 +1,315 @@
+cargo run -p auracle-features --example pipeline_stats --release -- 1200
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded paste v1.0.15
+  Downloaded num-rational v0.4.2
+  Downloaded simba v0.9.1
+  Downloaded approx v0.5.1
+  Downloaded transpose v0.2.3
+  Downloaded itoa v1.0.18
+  Downloaded rawpointer v0.2.1
+  Downloaded version_check v0.9.5
+  Downloaded primal-check v0.3.4
+  Downloaded strength_reduce v0.2.4
+  Downloaded rand_chacha v0.3.1
+  Downloaded cfg-if v1.0.4
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded zmij v1.0.23
+  Downloaded tracing-attributes v0.1.31
+  Downloaded num-integer v0.1.46
+  Downloaded thiserror-impl v2.0.19
+  Downloaded quote v1.0.47
+  Downloaded num-complex v0.4.6
+  Downloaded autocfg v1.5.1
+  Downloaded thiserror v2.0.19
+  Downloaded rand_core v0.6.4
+  Downloaded nalgebra-macros v0.2.2
+  Downloaded pin-project-lite v0.2.17
+  Downloaded getrandom v0.2.17
+  Downloaded bincode v1.3.3
+  Downloaded unicode-ident v1.0.24
+  Downloaded tracing-core v0.1.36
+  Downloaded safe_arch v0.7.4
+  Downloaded serde v1.0.229
+  Downloaded typenum v1.20.1
+  Downloaded rand v0.8.7
+  Downloaded serde_json v1.0.151
+  Downloaded libm v0.2.16
+  Downloaded portable-atomic v1.14.0
+  Downloaded num-bigint v0.4.8
+  Downloaded memchr v2.8.3
+  Downloaded wide v0.7.33
+  Downloaded zerocopy v0.8.55
+  Downloaded serde_derive v1.0.229
+  Downloaded syn v3.0.3
+  Downloaded rustfft v6.4.1
+  Downloaded syn v2.0.119
+  Downloaded nalgebra v0.33.3
+  Downloaded serde_core v1.0.229
+  Downloaded rand_distr v0.4.3
+  Downloaded proc-macro2 v1.0.107
+  Downloaded once_cell v1.21.4
+  Downloaded num-traits v0.2.19
+  Downloaded tracing v0.1.44
+  Downloaded matrixmultiply v0.3.11
+  Downloaded bytemuck v1.25.2
+  Downloaded slotmap v1.1.1
+  Downloaded fugue-ppl v0.2.2
+  Downloaded fugue-evo v0.3.1
+  Downloaded libc v0.2.189
+  Downloaded quiver-dsp v0.3.3
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling autocfg v1.5.1
+   Compiling libm v0.2.16
+   Compiling serde_core v1.0.229
+   Compiling num-traits v0.2.19
+   Compiling libc v0.2.189
+   Compiling serde v1.0.229
+   Compiling zerocopy v0.8.55
+   Compiling syn v3.0.3
+   Compiling cfg-if v1.0.4
+   Compiling num-integer v0.1.46
+   Compiling getrandom v0.2.17
+   Compiling syn v2.0.119
+   Compiling rand_core v0.6.4
+   Compiling serde_derive v1.0.229
+   Compiling paste v1.0.15
+   Compiling zmij v1.0.23
+   Compiling bytemuck v1.25.2
+   Compiling safe_arch v0.7.4
+   Compiling num-complex v0.4.6
+   Compiling matrixmultiply v0.3.11
+   Compiling version_check v0.9.5
+   Compiling serde_json v1.0.151
+   Compiling slotmap v1.1.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling wide v0.7.33
+   Compiling approx v0.5.1
+   Compiling portable-atomic v1.14.0
+   Compiling rand_chacha v0.3.1
+   Compiling itoa v1.0.18
+   Compiling thiserror v2.0.19
+   Compiling rand v0.8.7
+   Compiling once_cell v1.21.4
+   Compiling rawpointer v0.2.1
+   Compiling memchr v2.8.3
+   Compiling nalgebra-macros v0.2.2
+   Compiling rand_distr v0.4.3
+   Compiling tracing-attributes v0.1.31
+   Compiling simba v0.9.1
+   Compiling tracing-core v0.1.36
+   Compiling thiserror-impl v2.0.19
+   Compiling num-rational v0.4.2
+   Compiling pin-project-lite v0.2.17
+   Compiling typenum v1.20.1
+   Compiling tracing v0.1.44
+   Compiling fugue-ppl v0.2.2
+   Compiling bincode v1.3.3
+   Compiling nalgebra v0.33.3
+   Compiling strength_reduce v0.2.4
+   Compiling quiver-dsp v0.3.3
+   Compiling transpose v0.2.3
+   Compiling primal-check v0.3.4
+   Compiling rustfft v6.4.1
+   Compiling fugue-evo v0.3.1
+   Compiling auracle-grammar v0.2.0 (/home/user/auracle/crates/auracle-grammar)
+   Compiling auracle-features v0.2.0 (/home/user/auracle/crates/auracle-features)
+    Finished `release` profile [optimized] target(s) in 1m 04s
+     Running `target/release/examples/pipeline_stats 1200`
+== composition over 2000 prior draws (no render) ==
+mean size 3.07   mean depth 2.54   mean trace sites 27.2   mean mod slots filled 56.0%
+mean mod-tree depth 1.117 (over filled slots)   patches with a shaped mod term 19.4%
+
+source kind per patch     share in ≥1 patch
+  vco           0.461     34.3%       41.2%
+  supersaw      0.331     24.7%       30.1%
+  noise         0.183     13.6%       17.1%
+  wavetable     0.172     12.8%       16.1%
+  pluck         0.100      7.4%        9.8%
+  formant       0.097      7.2%        9.4%
+  (total)       1.343
+
+op kind     per patch     share in ≥1 patch
+  mix           0.238     13.9%       17.2%
+  filter        0.419     24.4%       29.5%
+  fold          0.138      8.0%       12.2%
+  delay         0.135      7.8%       12.2%
+  chorus        0.120      7.0%       10.7%
+  reverb        0.081      4.7%        7.6%
+  distortion     0.135      7.8%       12.3%
+  bitcrush      0.035      2.1%        3.5%
+  phaser        0.029      1.7%        2.8%
+  ringmod       0.032      1.8%        3.0%
+  flanger       0.043      2.5%        4.2%
+  tremolo       0.052      3.0%        5.0%
+  vibrato       0.039      2.3%        3.8%
+  eq            0.082      4.8%        7.6%
+  granular      0.028      1.6%        2.7%
+  shift         0.034      1.9%        3.4%
+  comp          0.025      1.5%        2.5%
+  duck          0.022      1.3%        2.1%
+  gate          0.016      0.9%        1.6%
+  vocoder       0.019      1.1%        1.8%
+  (total)       1.722
+
+mod kind    per patch     share in ≥1 patch
+  lfo           0.522     29.7%       37.7%
+  env           0.612     34.8%       42.2%
+  rand          0.150      8.6%       13.9%
+  follow        0.223     12.6%       19.4%
+  euclid        0.083      4.7%        7.7%
+  op            0.123      7.0%       10.8%
+  pair          0.046      2.6%        4.3%
+  (total)       1.759
+
+modop kind  per patch     share in ≥1 patch
+  quantize      0.035     28.9%        3.2%
+  slew          0.034     27.6%        3.4%
+  rectify       0.029     23.2%        2.8%
+  hold          0.025     20.3%        2.4%
+  (total)       0.123
+
+pairop kind per patch     share in ≥1 patch
+  min           0.011     25.0%        1.1%
+  max           0.006     13.0%        0.6%
+  and           0.007     15.2%        0.7%
+  or            0.006     14.1%        0.7%
+  xor           0.009     20.7%        0.9%
+  switch        0.005     12.0%        0.5%
+  (total)       0.046
+
+== pipeline over 1200 prior draws ==
+featurized:    1168 (97%)
+quarantined:   silent=30 overlevel=0 dc=2 nonfinite=0
+base quarantine rate: 2.7%
+
+kind         in N draws   quarantined    vs base
+vco                485          1.0%      -1.6
+supersaw           334          1.5%      -1.2
+noise              195          1.0%      -1.6
+wavetable          227          3.1%      +0.4
+pluck              118          1.7%      -1.0
+formant            127          5.5%      +2.8
+mix                196          0.5%      -2.2
+filter             371          5.4%      +2.7
+fold               126          5.6%      +2.9
+delay              169          4.1%      +1.5
+chorus             131          3.1%      +0.4
+reverb              99          3.0%      +0.4
+distortion         153          1.3%      -1.4
+bitcrush            35          5.7%      +3.0
+phaser              58          1.7%      -0.9
+ringmod             35          0.0%      -2.7
+flanger             34          0.0%      -2.7
+tremolo             53          9.4%      +6.8
+vibrato             47          4.3%      +1.6
+eq                  85          4.7%      +2.0
+granular            27          0.0%      -2.7
+shift               49          4.1%      +1.4
+comp                40          2.5%      -0.2
+duck                26         15.4%     +12.7  <-- silenced
+gate                26          7.7%      +5.0
+vocoder             23          8.7%      +6.0
+lfo                474          2.7%      +0.1
+env                522          4.0%      +1.4
+rand               176          3.4%      +0.7
+follow             253          4.0%      +1.3
+euclid             108          2.8%      +0.1
+quantize            41          4.9%      +2.2
+slew                34          2.9%      +0.3
+rectify             20          0.0%      -2.7
+hold                43          0.0%      -2.7
+min                  8         12.5%      +9.8
+max                  8         12.5%      +9.8
+and                 10          0.0%      -2.7
+or                   8         12.5%      +9.8
+xor                 10          0.0%      -2.7
+switch               9          0.0%      -2.7
+
+feature                min      mean       max
+centroid_mean:p2     0.103     0.639     0.958
+centroid_std:p2      0.002     0.038     0.356
+rolloff_mean:p2      0.072     0.519     0.993
+flatness_mean:p2     0.000     0.035     0.566
+flux_mean:p2         0.004     0.034     0.199
+zcr_mean:p2          0.020     0.449     0.981
+rms_mean:p2          0.002     0.077     0.226
+rms_std:p2           0.004     0.063     0.168
+crest:p2             0.511     1.831     4.168
+attack_s:p2         -5.298    -1.298     0.692
+tail_ratio:p2       -6.908    -4.919     0.760
+bass_fraction:p2     0.000     0.343     1.000
+held_centroid_std:p2     0.000     0.017     0.409
+high_ratio:p2       -4.620    -0.318     5.503
+chord_flatness_delta:p2    -0.086     0.001     0.118
+n_vco                0.000     0.457     4.000
+n_supersaw           0.000     0.318     4.000
+n_noise              0.000     0.172     2.000
+n_wavetable          0.000     0.198     3.000
+n_pluck              0.000     0.104     2.000
+n_formant            0.000     0.108     2.000
+n_silence            0.000     0.003     1.000
+n_filter             0.000     0.497     7.000
+n_drive              0.000     0.312     4.000
+n_time               0.000     0.224     3.000
+n_mod_fx             0.000     0.281     4.000
+n_reverb             0.000     0.086     2.000
+n_dynamics           0.000     0.074     2.000
+n_lfo                0.000     0.545     6.000
+n_env                0.000     0.590     6.000
+n_rand               0.000     0.164     2.000
+n_follow             0.000     0.244     4.000
+n_mod_shape          0.000     0.118     2.000
+n_mod_logic          0.000     0.139     4.000
+mod_density          0.000     0.582     1.000
+mod_depth_mean       0.000     0.855     3.000
+amp_attack           0.000     0.502     1.000
+amp_sustain          0.001     0.485     0.998
+amp_release          0.001     0.508     1.000
+chain_balance        0.611     0.969     1.000
+frac_sidechained     0.000     0.116     1.000
+
+feature                VIF
+rolloff_mean:p2       16.1  <-- collinear
+zcr_mean:p2            9.5
+centroid_std:p2        7.8
+centroid_mean:p2       5.9
+held_centroid_std:p2       5.4
+amp_attack             5.3
+attack_s:p2            5.1
+tail_ratio:p2          5.0
+rms_mean:p2            4.5
+amp_release            4.2
+mod_density            4.1
+mod_depth_mean         3.8
+bass_fraction:p2       3.3
+flatness_mean:p2       3.2
+crest:p2               3.0
+n_noise                2.8
+n_lfo                  2.8
+n_vco                  2.7
+n_env                  2.7
+n_filter               2.5
+n_supersaw             2.3
+rms_std:p2             2.2
+chain_balance          2.2
+frac_sidechained       2.2
+flux_mean:p2           2.1
+high_ratio:p2          2.0
+n_wavetable            1.9
+n_pluck                1.8
+n_formant              1.8
+n_follow               1.7
+n_drive                1.6
+n_mod_fx               1.6
+n_mod_shape            1.6
+n_dynamics             1.6
+n_time                 1.6
+n_rand                 1.5
+chord_flatness_delta:p2       1.3
+n_mod_logic            1.3
+amp_sustain            1.3
+n_reverb               1.2
+n_silence              1.1

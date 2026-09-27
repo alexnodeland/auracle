@@ -1,0 +1,5 @@
+phi-stats exit=0 wall_s=353
+norm-peak exit=0 wall_s=51
+climb exit=0 wall_s=4336
+search-check exit=0 wall_s=6238
+DONE
