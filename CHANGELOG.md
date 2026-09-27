@@ -81,6 +81,16 @@ A walkthrough of the first-run flow, played the way a visitor would, found:
   PATCH; the landing says four views, and its miniature uses the app's control
   names; "model's guess: needs a few picks" after eighteen picks now says it is
   fitting.
+* **B says what it changed**: the offer strip leads with the diff ("attack
+  0.03→0.09, +follower") instead of only "an offer is waiting".
+* **The rack draws legibly.** The scope's reserved corner was chosen by pixels,
+  not by what it cost the patch, and a two-row patch lost a third of its
+  height to it (First Bass at 0.63×, labels ≈6 px). It now takes the side that
+  leaves the larger fit, or none when that would shrink the patch by more than
+  a fifth (the scope already ducks out of any plate's way).
+* The warm start is a real dialog (role, `aria-modal`, focus on the first ▶);
+  the menubar's forecast count no longer runs one behind TRUST; style names
+  are no longer clipped.
 * **PERFORM's pads.** The Hold pad is **Freeze** (the dock's **hold** latches
   notes — two buttons named the same doing different jobs); Take and Peek are
   disabled until there is an offer; Offer reads as the primary.
