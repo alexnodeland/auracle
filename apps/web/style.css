@@ -591,6 +591,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
    equal pills. The gutter is what does the ranking work — inside a group the
    buttons touch, so they read as one control with several positions. */
 .rack-tools { margin-left: auto; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+/* PATCH's header is two rows at every width, and neither depends on the name.
+   As one wrapping run it did: a long name pushed the tools onto a second row
+   and a short one ("#43") let them back up, so the rack and everything under
+   it jumped 47px on a patch change — and at 1280 the tools broke onto a third
+   row of their own, with the callout on a fourth. Now the name has a fixed
+   column and ellipsizes, the callout starts where that column ends (the same
+   x for every patch), ⚡ ends the first row, and the three tool groups have the
+   second row to themselves, right-aligned so the locks sit under ⚡. Merging
+   the callout into the name's row is also 40px given back to the rack. */
+.patch-head {
+  display: grid;
+  grid-template-columns: clamp(180px, 26%, 320px) minmax(0, 1fr) auto;
+  grid-template-areas: "subject callout evolve" "tools tools tools";
+  align-items: center;
+  column-gap: var(--s4);
+  row-gap: var(--s2);
+}
+.patch-head .subject-block { grid-area: subject; }
+.patch-head .callout-row { grid-area: callout; }
+.patch-head .evolve-slot { grid-area: evolve; margin-left: 0; }
+.patch-head .rack-tools { grid-area: tools; margin-left: 0; justify-content: flex-end; }
 .seg { display: flex; align-items: center; }
 .seg > * { display: flex; }
 /* A segmented control: shared border, square inner corners, no gaps. */
@@ -2183,10 +2204,27 @@ input, textarea, .bi-rename {
 
    Resting and armed share the one-line height on purpose: arming is a gesture
    that happens over the canvas, and a canvas that resizes under a placement in
-   progress would be a worse defect than the one this fixes. */
+   progress would be a worse defect than the one this fixes.
+
+   And a description no longer takes its height out of the rack at all. It
+   did, and the frame shrank by the difference the moment the pointer touched
+   a catalogue chip — the rack refitted, every plate re-zoomed (0.91× → 0.70×
+   on Glass Pad at 1440×900), and it grew back on the way out: the patch
+   breathing in and out exactly while you were trying to see where a module
+   would go. The layout box is now always the one line; the description's
+   extra height is drawn upward, over the frame's bottom edge (the negative
+   margin cancels it out of the column), so the frame never resizes on hover.
+   It is on screen only while the pointer is in the catalogue (see
+   `nbSpecHide`), which is when the bottom of the rack is not what you are
+   reading. */
 .play-canvas { --spec-h: clamp(96px, 13vh, 150px); --spec-line: 46px; }
 .spec-dock {
   flex: 0 0 var(--spec-h);
+  margin-top: calc(min(var(--spec-h), var(--spec-line)) - var(--spec-h));
+  /* Over the frame's own overlays (scope 4, minimap and pick chip 6, fit
+     hint 7) and under everything that opens over the view (toasts 30+). */
+  position: relative;
+  z-index: 8;
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr) 300px;
   gap: var(--s4);
@@ -2195,7 +2233,9 @@ input, textarea, .bi-rename {
   border: 1px solid var(--hairline);
   border-radius: 6px;
   background: linear-gradient(180deg, #14171b, #101317);
-  box-shadow: var(--lift);
+  /* It is lying on the rack now, so it casts onto it — same lamp, same
+     shadow family as the plates under it. */
+  box-shadow: var(--lift), 0 -6px 16px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 /* Resting and armed are one line, so they span the whole strip rather than
@@ -2207,7 +2247,19 @@ input, textarea, .bi-rename {
      the line height — a control with no visible effect in the state you happen
      to be in is a control you stop trusting. */
   flex-basis: min(var(--spec-h), var(--spec-line));
+  margin-top: 0;
+  box-shadow: var(--lift);
   padding-top: 6px; padding-bottom: 6px;
+}
+/* The divider sets the height a description opens to, and no description is
+   up while the hand is on the divider (the pointer has left the catalogue) —
+   so for the length of a drag the strip opens to that height, over the rack,
+   and the drag has something to show. */
+.spec-dock.rest.sizing, .spec-dock.armed.sizing {
+  flex-basis: var(--spec-h);
+  margin-top: calc(min(var(--spec-h), var(--spec-line)) - var(--spec-h));
+  box-shadow: var(--lift), 0 -6px 16px rgba(0, 0, 0, 0.5);
+  align-items: start;
 }
 .sd-rest {
   font-size: var(--t-micro);
@@ -2353,20 +2405,25 @@ input, textarea, .bi-rename {
   border: 0;
 }
 
-/* ---- tray (staged, unwired modules) ---- */
+/* ---- tray (staged, unwired modules) ----
+   One line. It was a 64px shelf of two-line cards, and the moment anything was
+   unplugged the rack gave up those 64px and refitted smaller — at 1280×800
+   the frame fell to 118px. Everything a held module needs is on one line: its
+   jack (the drag source), its name, what it will bring with it (clipped, the
+   whole strip in its tooltip) and ✕. */
 .tray {
-  flex: 0 0 64px;
+  flex: 0 0 36px;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 10px;
   border: 1px dashed #3a4048;
   border-radius: 6px;
   background: rgba(10, 11, 13, 0.6);
-  padding: 6px 10px;
+  padding: 3px 10px;
 }
+/* Set across, like every other panel label: a one-line strip has no height
+   for the word to run down. */
 .tray-label {
-  writing-mode: vertical-lr;
-  transform: rotate(180deg);
   font-family: var(--font-silk);
   font-size: var(--t-micro);
   font-weight: 700;
@@ -2385,26 +2442,29 @@ input, textarea, .bi-rename {
   border-color: #1c2027;
   align-items: center;
 }
-.tray:not(:has(.tray-item)) .tray-label { writing-mode: horizontal-tb; transform: none; }
 .tray:not(:has(.tray-item)) .tray-hint { opacity: 0.55; }
-/* A staged module is a small faceplate, not a name tag: its head, its jack,
-   and the parameters it will bring with it. */
+/* A staged module is a small faceplate, not a name tag: its jack, its name,
+   and the parameters it will bring with it — in a row, so the strip stays one
+   line. The head's three parts join the row (`display: contents`) with the
+   parameters slotted in before the ✕. */
 .tray-item {
   position: relative;
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 7px;
   border: 1px dashed #4a505b;
   border-radius: 5px;
   background: linear-gradient(180deg, #1a1e24, #13161a);
-  padding: 6px 10px;
+  padding: 3px 8px;
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--silk);
-  max-width: 240px;
+  max-width: 320px;
 }
-.tray-item .ti-head { display: flex; align-items: center; gap: 7px; }
+.tray-item .ti-head { display: contents; }
+.tray-item .ti-params { order: 1; min-width: 0; }
+.tray-item .t-x { order: 2; }
 .tray-item .ti-name {
   font-family: var(--font-silk);
   font-size: var(--t-micro);
@@ -2712,14 +2772,17 @@ input, textarea, .bi-rename {
    interaction. The previous rule dropped B onto a third grid row inside an
    `overflow: hidden` view, so the cards overprinted the controls. */
 @media (max-width: 1280px) {
-  /* The chip gets its own row so it stops fighting the 8-control toolbar
-     for wrap space, and the toolbar tightens. */
+  /* The toolbar tightens, so PATCH's three tool groups still share one row
+     (`.patch-head`) at 1280. */
   .stage-toolbar { row-gap: 6px; }
   .rack-tools { gap: 6px; }
   .util-btn { padding: 6px 8px; }
 }
 @media (max-width: 1080px) {
   .bank { width: 200px; flex-basis: 200px; }
+  /* A 200px rail has room for "+15", not for "+15 arriving"; the tooltip
+     keeps the sentence. */
+  .bank-head .bc-word { display: none; }
   .rack-tools { gap: var(--s1); }
   .duel-mid { gap: var(--s3); }
 }
@@ -2730,7 +2793,6 @@ input, textarea, .bi-rename {
    was always meant to. */
 @media (max-height: 940px) {
   :root { --keybar-h: 108px; }
-  .tray { flex: 0 0 52px; }
   /* The canvas is the elastic part everywhere else in this block, and the spec
      strip is the newest claim on it — so it gives ground first. Its height is
      still reserved, just smaller: the blurb wraps rather than the strip
@@ -3036,23 +3098,28 @@ select:focus-visible,
 /* ---------- next step ----------
    Nothing in the app ever answered "what now?". This always does.
 
-   It gets a RESERVED ROW of its own, left-aligned under the title, and that
-   row keeps its height whether or not there is a callout in it. It used to
-   sit inline between the patch name and the tool row, so its x was decided by
-   the character count of whatever patch was on the bench — "Gritty Swell" and
-   "Noisy Pad 2" put the app's one piece of guidance in two different places —
-   and at some widths it wrapped to a second row and pushed the canvas down.
-   A chip that moves when the content behind it changes is a chip nobody
-   learns the position of. */
+   It gets a RESERVED CELL of its own, and that cell keeps its place whether or
+   not there is a callout in it. It used to sit inline after the patch name,
+   so its x was decided by the character count of whatever patch was on the
+   bench — "Gritty Swell" and "Noisy Pad 2" put the app's one piece of guidance
+   in two different places — and at some widths it wrapped to a second row and
+   pushed the canvas down. It then had a whole row to itself, which fixed its x
+   and cost the rack 40px. Now it is the cell after the name's fixed column in
+   `.patch-head`: a fixed x again, and no row of its own. A chip that moves
+   when the content behind it changes is a chip nobody learns the position of. */
 .callout-row {
-  flex-basis: 100%;
-  order: 10;
+  min-width: 0;
   min-height: 30px;
   display: flex;
   align-items: center;
-  margin-top: -2px;
 }
 .nextstep {
+  /* One line in a cell that can be narrower than the longest callout; an
+     ellipsis, never a two-line pill that grows the header. */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-voice);
   font-style: italic;
   font-size: var(--t-lead);
@@ -3927,13 +3994,20 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--phos-b-deep);
   border-radius: 6px;
   background: rgba(255, 180, 84, 0.06);
-  padding: var(--s2) var(--s3);
+  /* A chip's padding: the button sets the height of a one-line strip. */
+  padding: var(--s1) var(--s1) var(--s1) var(--s3);
 }
 .bench-tour .bt-copy {
   flex: 1;
+  min-width: 0;
   font-size: var(--t-body);
   line-height: 1.5;
   color: var(--silk-dim);
+  /* One line at every width it has to live at; a narrower window loses the
+     tail of the sentence, not a row of the rack. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .bench-tour .bt-copy b { color: var(--phos-b); font-weight: 500; }
 

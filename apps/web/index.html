@@ -273,7 +273,12 @@
 
       <!-- ------------- PLAY: the patch is the instrument ------------- -->
       <section id="view-play" class="view" role="tabpanel" aria-label="Play">
-        <div class="stage-toolbar">
+        <!-- Two rows, always, whatever the patch is called: the name, the
+             callout and ⚡ on the first; teaching, the camera and the locks on
+             the second. This row used to wrap or unwrap with the length of the
+             name, which moved the rack and everything under it by 47px on a
+             patch change. -->
+        <div class="stage-toolbar patch-head">
           <!-- Transport belongs to the patch, not to the verb row: it plays
                *this* thing, so it sits against this thing's name as a round
                button the eye finds without reading. Out of the row, seven
@@ -285,17 +290,22 @@
               <div class="subject-meta" id="rack-meta"></div>
             </div>
           </div>
-          <!-- A reserved row, not an inline chip: the callout's position must
+          <!-- A reserved cell, not an inline chip: the callout's position must
                not be a function of how long the patch's name happens to be.
-               The row keeps its height when the button is empty. -->
+               The name's column is fixed, so the callout starts at the same x
+               for every patch, and the cell keeps its place when empty. -->
           <div class="callout-row">
             <button class="nextstep" id="nextstep" title="What to do next"></button>
           </div>
+          <!-- The act the whole app is for, on the name's row: beside the
+               thing it breeds from, and above the locks that prepare it. -->
+          <span class="tt evolve-slot" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
           <!-- Four groups, ranked, with real gutters between them. Seven
                equal pills in one run is zero hierarchy: teaching the model,
                aiming the camera, pinning what you like and breeding the next
                generation are four different kinds of act, and the last of
-               them is the one the whole app is for. -->
+               them is the one the whole app is for — which is why it has the
+               row above to itself. -->
           <div class="rack-tools">
             <div class="seg seg-teach" role="group" aria-label="Teach the model">
               <!-- The express path. Commit normally plays both versions and asks;
@@ -352,15 +362,16 @@
               <span class="tt" title="Pick a patch from the bank first"><button class="util-btn seg-item" id="lock-structure" disabled>lock wiring</button></span>
               <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn seg-item" id="lock-clear" disabled>clear locks</button></span>
             </div>
-            <span class="tt evolve-slot" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
           </div>
         </div>
+        <!-- One line, not three: at 77px this card was the second-largest
+             thing between the rack and the menubar on a first visit, and it
+             explained COMMIT and the node bank, which explain themselves (the
+             commit button's tooltip; the rail's own ?). What is left is the
+             three gestures nothing else on screen teaches. -->
         <div class="bench-tour hidden" id="bench-tour">
-          <span class="bt-copy">This patch is live under your fingers. <b>Drag a knob</b> — the
-            sound changes instantly. Click a <b>lock dot</b> (hover a knob) or a module's <b>▢</b>
-            to pin what you love, then <b>⚡ evolve from this</b> breeds variations that keep your
-            locks. Changed it by hand? <b>commit</b> plays your version against the original and
-            asks which you prefer — either answer teaches the model, and “the original” teaches it most. The rail on the right is the module catalogue — its <b>?</b> walks you through it.</span>
+          <span class="bt-copy">Live under your fingers: <b>drag a knob</b> and hear it change.
+            <b>Lock</b> what you love — a knob's dot, or a module's <b>▢</b> — then <b>⚡ evolve from this</b>.</span>
           <button class="util-btn" id="bt-close">got it</button>
         </div>
         <!-- What the model currently believes about the patch under your
@@ -430,23 +441,23 @@
             </div>
             <!-- The final say on the split below, and the in-house pattern for
                  it: the node bank's rail is dragged the same way, on the other
-                 axis. The automatic budget (a one-line strip whenever there is
-                 nothing to describe) reclaims ~70px for the patcher; this is
-                 how a player takes more, or gives it back. -->
+                 axis. The strip takes one line out of the patcher, always; a
+                 description opens over the rack's bottom edge rather than
+                 shrinking it, and this is how tall it opens. -->
             <div class="dock-resize" id="dock-resize" role="separator"
                  aria-orientation="horizontal" tabindex="0"
                  aria-label="Resize the spec strip — drag, or up and down arrows"
-                 title="Drag to give the canvas more room. The strip is one line whenever it has nothing to describe."></div>
+                 title="Drag to set how tall the spec strip opens when it describes a module. It opens over the rack, so the rack never resizes under the pointer."></div>
             <!-- The spec card, docked. It used to float over the graph it was
                  describing — you could read what a module does or look at
                  where it would go, never both — while the bench's lower band
                  sat empty. Reading left to right: what it is, what it does,
-                 what the model thinks of it. It reserves its height, so nothing
-                 under the pointer moves as its content changes — but there are
-                 two heights now (M4): a description gets the full strip, and
-                 "point at a module" gets one line, because 120px of that
-                 sentence was the difference between a patch with knobs on it
-                 and a block diagram at 1280×900. -->
+                 what the model thinks of it. Its box is one line, so nothing
+                 under the pointer moves as its content changes (M4: 120px of
+                 "point at a module" was the difference between a patch with
+                 knobs on it and a block diagram at 1280×900), and a
+                 description opens upward over the rack instead of taking the
+                 rack's height — see `.spec-dock` in style.css. -->
             <div class="spec-dock" id="spec-dock"></div>
             <!-- Held, not "tray". Placement goes direct from the node bank
                  now, so the only thing that lands here is what you unplugged —

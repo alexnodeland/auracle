@@ -1262,6 +1262,9 @@ worker.onmessage = (e) => {
         }
         wb.subjectId = m.subject;
         wb.dirty = false;
+        // A new subject: whatever the spec strip was describing belonged to
+        // the pointer's last trip along the catalogue, not to this patch.
+        specRest();
         // Pruned, not cleared. A different patch entirely shares no node
         // identities with the one that was here, so pruning empties the set
         // and reads exactly as clearing did. But the two subject changes that
@@ -11742,13 +11745,17 @@ function renderTray() {
     const jackTitle = t.pending
       ? "going into the patch — waiting for the engine"
       : `Drag onto a ${t.isMod ? "mod ○" : "in ○"} jack`;
+    const params = fragParamStrip(t.frag) || "—";
     el.innerHTML = `
       <div class="ti-head">
         <span class="t-jack" title="${esc(jackTitle)}"></span>
         <span class="ti-name">${esc(t.label)}${t.note ? ` <span class="ti-why">${esc(t.note)}</span>` : ""}</span>
         <button class="t-x" title="Discard" aria-label="Discard">✕</button>
       </div>
-      <div class="ti-params mono">${esc(fragParamStrip(t.frag)) || "—"}</div>`;
+      <div class="ti-params mono">${esc(params)}</div>`;
+    // HELD is one line now, so the parameter strip is clipped; the whole of
+    // it is one hover away.
+    el.title = `${t.label} — ${params}`;
     // Discarding something the engine is in the middle of accepting would race
     // its own reply, so the ✕ waits with it.
     el.querySelector(".t-x").onclick = () => {
@@ -11989,6 +11996,17 @@ function buildNodeBank() {
   });
   groups.addEventListener("focusout", nbSpecHide);
   groups.addEventListener("keydown", nbGridKeys);
+  // The strip describes what the hand is on in the catalogue, and only while
+  // it is there. It used to keep its last subject for good, so minutes later —
+  // pointer long gone, patch changed — it was still describing a PLUCK that
+  // was in nobody's patch. Leaving the whole rail (not just a chip: moving
+  // between chips must not flicker it) folds it back to its resting line.
+  const rail = $("nodebank");
+  rail.addEventListener("pointerleave", specRestSoon);
+  rail.addEventListener("pointerenter", () => clearTimeout(specRestTimer));
+  rail.addEventListener("focusout", (ev) => {
+    if (!ev.relatedTarget || !rail.contains(ev.relatedTarget)) specRestSoon();
+  });
 
   const q = $("nb-q");
   q.addEventListener("input", renderNodeBank);
@@ -12115,18 +12133,30 @@ function specDockHeight(px) {
   const stored = Number(localStorage.getItem("auracle-spec-h"));
   if (Number.isFinite(stored) && stored > 0) specDockHeight(stored);
   const save = (v) => { try { localStorage.setItem("auracle-spec-h", String(v)); } catch (_) {} };
+  // What the divider sets is the height a description opens to, over the rack
+  // (the strip's own box is always one line — see `.spec-dock` in style.css).
+  // Nothing is being described while the hand is here, so the strip opens to
+  // that height for as long as it is being set: the edge has to follow the
+  // hand, or the drag moves nothing on screen.
+  const dock = $("spec-dock");
+  let sizingTimer = null;
+  const sizing = (on) => {
+    clearTimeout(sizingTimer);
+    dock?.classList.toggle("sizing", on);
+  };
   h.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
     const startY = ev.clientY;
     const startH = specDockHeight(null);
     let last = startH;
+    sizing(true);
     // Dragging *up* makes the strip taller, because the handle is on its top
-    // edge and the edge follows the hand. The rack's ResizeObserver refits
-    // behind it, so the patch stays framed for the whole drag.
+    // edge and the edge follows the hand.
     const move = (mv) => { last = specDockHeight(startH + (startY - mv.clientY)); };
     const up = () => {
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
+      sizing(false);
       save(last);
     };
     document.addEventListener("pointermove", move);
@@ -12138,7 +12168,11 @@ function specDockHeight(px) {
     if (!step) return;
     ev.preventDefault();
     save(specDockHeight(specDockHeight(null) + step));
+    // Each press shows the new height for a moment, then the strip folds back.
+    sizing(true);
+    sizingTimer = setTimeout(() => sizing(false), 900);
   });
+  h.addEventListener("blur", () => sizing(false));
 })();
 
 /** While something is in your hand the group headers stop being controls
@@ -12412,9 +12446,29 @@ function nbSpecShow(chip, opts) {
 function nbSpecHide() {
   clearTimeout(specTimer);
   $("nb-spec").classList.add("hidden");
-  // The dock deliberately keeps its subject. It is a place you read *from*,
-  // not a tooltip: leaving the chip to look at where the module would go must
-  // not take the description away at the moment it becomes useful.
+  // The dock keeps its subject while the pointer is still in the catalogue —
+  // between chips, on a group header — so reading along the rail does not
+  // flicker it. Leaving the rail is what returns it to rest (`specRestSoon`):
+  // the description now opens over the rack's bottom edge, and once the hand
+  // is back on the canvas that edge is what it is looking at. Where a module
+  // would go is answered by holding it (the armed line), not by this card.
+}
+
+// A beat of grace, so a pointer that grazes the rail's edge on its way along
+// it does not fold the strip and open it again.
+let specRestTimer = null;
+function specRestSoon() {
+  clearTimeout(specRestTimer);
+  specRestTimer = setTimeout(specRest, 300);
+}
+/** Back to the resting line: the pointer left the catalogue, or the bench
+ *  changed patch under a description of something it no longer holds. */
+function specRest() {
+  clearTimeout(specRestTimer);
+  clearTimeout(specTimer); // a paint still pending from the last chip
+  if (specSubject == null) return;
+  specSubject = null;
+  renderSpecDock();
 }
 
 /** The kind the dock is currently describing, or null for the resting line. */
