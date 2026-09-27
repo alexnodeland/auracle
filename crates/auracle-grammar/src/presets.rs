@@ -1529,7 +1529,7 @@ pub fn preset_bank() -> Vec<Preset> {
                             slew: 0.35,
                             // dark, bright, middling, brightest, dark-ish —
                             // then three latent steps that continue it.
-                            values: [0.15, 0.85, 0.45, 1.0, 0.3, 0.7, 0.1, 0.6],
+                            values: [0.15, 0.85, 0.45, 0.98, 0.3, 0.7, 0.1, 0.6],
                         },
                         input: Box::new(Mix {
                             uid: Uid::NEW,
