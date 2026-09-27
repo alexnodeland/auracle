@@ -14,3 +14,7 @@ fugue-ppl.workspace = true
 rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# The old-save fixtures in `genome` are JSON, the shape sessions persist in.
+serde_json.workspace = true

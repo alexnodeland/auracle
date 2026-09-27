@@ -895,6 +895,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .knob-ind.modside { stroke: var(--phos-b); }
 .knob-locked-halo { fill: none; stroke: var(--phos-b); stroke-width: 1.2; stroke-dasharray: 2 2.5; pointer-events: none; }
 .enum-body { fill: #0a0c0e; stroke: #2c313a; stroke-width: 1; cursor: pointer; }
+/* The step lane (a `steps` module's eight values). The bar is bipolar: the
+   fill grows from the 0 V line, up for a positive step and down for a
+   negative one. Steps past `length` stay drawn — they are still in the
+   genome and still editable — but recede, because they are not playing. */
+.step-track { fill: #0a0c0e; stroke: #2c313a; stroke-width: 1; pointer-events: none; }
+.step-fill { fill: var(--phos-a); opacity: 0.85; pointer-events: none; }
+.step-fill.modside { fill: var(--phos-b); }
+.step-zero { stroke: var(--hairline); stroke-width: 1; pointer-events: none; }
+.step-num {
+  font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim);
+  text-anchor: middle; pointer-events: none;
+}
+.step-hit { fill: transparent; cursor: ns-resize; }
+.step-bar.latent .step-fill { opacity: 0.25; }
+.step-bar.latent .step-num { opacity: 0.45; }
+.step-bar.dragging .step-track, .step-bar:hover .step-track { stroke: #4a505b; }
+[data-addr].step-bar:focus-visible .step-track { stroke: var(--phos-a); stroke-width: 2; }
 .enum-text {
   font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--phos-a);
   text-anchor: middle; pointer-events: none;

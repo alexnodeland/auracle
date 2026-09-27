@@ -142,6 +142,9 @@
 //!   signal. The one family whose members all sit inside the binary-node
 //!   identity above, which is why that paragraph checks it rather than
 //!   assuming it.
+//! - `n_rand` = s&h rand + step sequence. Stepped CV: a value held on a clock
+//!   and glided or jumped to the next. The column kept the name it had before
+//!   it was a family — see [`StructFeatures::n_stepped`].
 //! - `n_mod_shape` = quantizer + slew + rectifier + clocked hold. CV that has
 //!   been worked on before it lands.
 //! - `n_mod_logic` = euclid + min + max + and + or + xor + switch. Gate and
@@ -157,7 +160,7 @@
 //! exactly `f + p` leaves:
 //!
 //! ```text
-//! n_lfo + n_env + n_rand + n_follow + n_euclid
+//! n_lfo + n_env + (n_rand + n_steps) + n_follow + n_euclid
 //!     = filled_slots + (n_min + n_max + n_and + n_or + n_xor + n_switch)
 //! ```
 //!
@@ -406,13 +409,24 @@ pub struct StructFeatures {
     pub n_lfo: f64,
     /// Number of envelope modulators.
     pub n_env: f64,
-    /// Number of S&H random modulators.
+    /// Number of S&H random modulators. The `n_rand` **column** of φ also
+    /// counts [`Self::n_steps`] — see [`Self::n_stepped`].
     pub n_rand: f64,
     /// Number of envelope followers.
     pub n_follow: f64,
     /// Number of euclidean gate patterns. Folded into the `n_mod_logic`
     /// family in φ.
     pub n_euclid: f64,
+    /// Number of step sequences. Folded into the `n_rand` column in φ — see
+    /// [`Self::n_stepped`].
+    ///
+    /// `#[serde(default)]` because a [`crate::CachedFeatures`] row persisted
+    /// before this field existed must still load: no term that could have
+    /// produced such a row contains a step sequence, so zero is not an
+    /// imputation but the value, and the row stays valid without an epoch
+    /// bump.
+    #[serde(default)]
+    pub n_steps: f64,
     /// Number of scale quantizers in modulation chains. `n_mod_shape` family.
     pub n_quantize: f64,
     /// Number of slew limiters in modulation chains. `n_mod_shape` family.
@@ -603,6 +617,48 @@ impl StructFeatures {
         self.n_quantize + self.n_slew + self.n_rectify + self.n_hold
     }
 
+    /// Stepped CV: s&h rand + step sequence. This is what φ's `n_rand`
+    /// column carries.
+    ///
+    /// # Why a step sequencer is counted with the sample-and-hold
+    ///
+    /// Grouped by what it is **to a listener**, which is the rule every family
+    /// here follows. A step sequence and an S&H are the same gesture — a
+    /// destination that holds a value, jumps to another on a clock, and (with
+    /// their glide knobs open) slides there instead — and the difference is
+    /// whether the values were drawn once, into the genome, or are drawn anew
+    /// at every tick. That is a real difference, but not one a person states
+    /// as a preference before "I like it when the timbre steps"; the ear hears
+    /// the family first. It is *not* the euclid's family: a euclid emits a
+    /// gate, which is what `n_mod_logic` counts, and a step sequence emits a
+    /// continuous value that lands on a knob exactly as an S&H's does.
+    ///
+    /// # Why not a column of its own
+    ///
+    /// The prior draws it into about 3% of slots, so a standalone `n_steps`
+    /// would be zero in nearly every pool member — the near-indicator column
+    /// the family scheme exists to avoid — and every Styles-tab weight on it
+    /// would be fitted from a handful of rows.
+    ///
+    /// # The identity stays out of φ
+    ///
+    /// The modulation forest's leaf identity gains a term — `n_steps` is a
+    /// leaf — but it joins the *leaf* side of the equation, summed with
+    /// `n_rand` rather than against anything, so the combiners are still
+    /// visible only inside `n_mod_logic` together with the euclid and the
+    /// argument in the module doc goes through unchanged.
+    ///
+    /// # The column keeps its name
+    ///
+    /// Stored observations carry φ **names** (see `auracle-session`'s
+    /// `migrate::RENAMES`), so renaming the column would need a rename entry
+    /// for no gain in what is measured: every row already on disk predates the
+    /// step sequencer, so its `n_rand` *is* its stepped-CV count. The panel's
+    /// display label says "stepped mods"; the wire name stays `n_rand`.
+    pub fn n_stepped(&self) -> f64 {
+        self.n_rand + self.n_steps
+    }
+
     /// Gate and decision CV: euclid + min + max + and + or + xor + switch.
     ///
     /// The euclidean generator belongs with the combiners rather than with the
@@ -641,7 +697,7 @@ impl StructFeatures {
             self.n_dynamics(),
             self.n_lfo,
             self.n_env,
-            self.n_rand,
+            self.n_stepped(),
             self.n_follow,
             self.n_mod_shape(),
             self.n_mod_logic(),
@@ -807,6 +863,7 @@ fn count_mod_nodes(m: &ModNode, f: &mut StructFeatures) {
         ModNode::Rand { .. } => f.n_rand += 1.0,
         ModNode::Follow { .. } => f.n_follow += 1.0,
         ModNode::Euclid { .. } => f.n_euclid += 1.0,
+        ModNode::Steps { .. } => f.n_steps += 1.0,
         ModNode::Op { kind, input, .. } => {
             match kind {
                 ModOp::Quantize => f.n_quantize += 1.0,

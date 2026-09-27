@@ -41,6 +41,22 @@ It is not a substitute for [vetting](../audition/vetting.md), which catches
 pathology that arises from *composition*: a bounded resonant filter fed by a
 bounded distortion fed by a bounded fold can still scream.
 
+## Latent sites
+
+Not every continuous site is heard. A step sequencer (`ModNode::Steps`, see
+[the grammar](./grammar.md#the-step-sequencers-values-are-latent)) always
+carries eight step values `#s0` … `#s7`, and `#slen` decides how many of them
+play. The rest are **latent**: in the trace, in the domain, drawn from the
+prior and moved by MH like any other site, but inert until a longer `#slen`
+reveals them.
+
+That is deliberate, and it costs nothing the search has to pay for. A proposal
+on a latent step changes neither the sound nor $\varphi$, so the tempered
+target accepts it as a neutral move (drift, not selection: nothing about taste
+has acted on it yet), and the value it leaves behind is what a later `#slen`
+proposal reveals. Shrinking a pattern never throws a step away, and growing it
+again brings back the step that was there.
+
 ## Discrete sites
 
 Uniform categoricals, each with a named domain:

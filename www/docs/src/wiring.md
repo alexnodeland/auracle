@@ -1,6 +1,6 @@
 # Wiring and the node bank
 
-<p class="lede">Forty-one modules, each one honest about what the model does and
+<p class="lede">Forty-two modules, each one honest about what the model does and
 does not know about it.</p>
 
 ## The catalogue
@@ -12,7 +12,7 @@ what it does to a wave, what it takes and gives, and what the model makes of
 it.</figcaption>
 </figure>
 
-The rail on the right of PLAY is the instrument's inventory: **forty-one
+The rail on the right of PLAY is the instrument's inventory: **forty-two
 modules in eight groups**, ordered along the signal path: sources → shape →
 filter → space → motion → dynamics → combine → modulation. That way "what goes
 after a filter" is a question the ordering answers.
@@ -121,6 +121,25 @@ Consequences in the interface:
 - The socket tells you which of **fill** / **replace** / **wrap** you are about
   to do.
 - Depth is bounded, so a modulation cannot be wired to swamp its destination.
+
+### The step sequencer
+
+**steps** is the one modulator you draw rather than dial. Under its three
+knobs (rate, length, glide) sits a row of eight bars, one per step: press a
+bar and drag up or down to set that step, or focus it with the arrow keys and
+use Up/Down like any other knob. The line through the middle is "no push";
+a bar above it pushes the destination up, a bar below pushes it down.
+
+Cable it to a cutoff, a wavefolder or a wavetable's morph and the timbre plays
+a rhythm of its own. Glide at zero gives hard steps; turned up, each step
+slides into the next.
+
+**length** decides how many of the eight bars play. The ones past it are
+greyed but not gone: they stay in the patch, you can still set them, and
+lengthening the pattern brings them back. Evolution treats every bar as its own
+knob, so it can change one step of a pattern without touching the others, and a
+lock on a bar (press <kbd>L</kbd> with it focused) holds that step while the rest
+evolve.
 
 Nearly every module carries a modulation slot with a named destination; on the
 oscillators the slot bends pitch. The exceptions are the ones with nowhere

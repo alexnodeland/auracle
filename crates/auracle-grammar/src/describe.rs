@@ -10,6 +10,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::prior::STEPS_SITES;
+use crate::steps::step_count;
+
 use crate::term::{
     quant_root_index, quant_scale_index, rect_mode_index, AudioNode, DriveMode, FilterKind,
     ModNode, ModOp, NoiseColor, PatchTree, TableShape, Waveform, QUANT_ROOTS, QUANT_SCALES,
@@ -73,7 +76,7 @@ pub struct RackModule {
     /// `<key>/m` slot rather than in the audio path.
     ///
     /// As of wave 2C that is a whole sort rather than four leaves: the
-    /// generators (lfo, mod env, s&h rand, follower, euclid), the CV
+    /// generators (lfo, mod env, s&h rand, follower, euclid, steps), the CV
     /// processors that wrap them (quantize, slew, rectify, hold) and the
     /// combiners that join two (min, max, and, or, xor, switch). A chain is
     /// drawn as a run of modules with `mod` wires between them, each one
@@ -86,6 +89,32 @@ pub struct RackModule {
     /// means locking these plus all knob addresses — evolution can then not
     /// replace or restructure it.
     pub structural_addrs: Vec<String>,
+    /// A step lane to draw instead of a row of knobs — `Some` only on a
+    /// `steps` module.
+    ///
+    /// The faceplate budget is four knobs, and a step sequencer has eleven
+    /// sites. Its eight step values are still ordinary continuous
+    /// [`Knob`]s in [`Self::knobs`] — so locking, keyboard focus, hand edits,
+    /// live handles and the address-scheme tests all treat them exactly like
+    /// every other knob — and this says which of them the rack should draw as
+    /// a compact bar display rather than as dials, and how many of the bars
+    /// are currently playing. Absent (not `null`) everywhere else, so no other
+    /// module's JSON changed shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<StepLane>,
+}
+
+/// How to draw a [`RackModule`]'s knobs `first..first + count` as a step lane.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StepLane {
+    /// Index into [`RackModule::knobs`] of the first step value.
+    pub first: usize,
+    /// How many step bars there are (always
+    /// [`STEP_SLOTS`](crate::steps::STEP_SLOTS)).
+    pub count: usize,
+    /// How many of them play: the decoded `length`, `2..=count`. The rest are
+    /// latent — still in the genome, still editable, drawn greyed.
+    pub active: usize,
 }
 
 /// A patch cable between two modules.
@@ -243,6 +272,7 @@ fn describe_mod(
                 is_mod: true,
                 knobs,
                 structural_addrs: structural,
+                lane: None,
             });
             out.wires.push(Wire {
                 from: key.into(),
@@ -270,6 +300,7 @@ fn describe_mod(
                 is_mod: true,
                 knobs: Vec::new(),
                 structural_addrs: structural,
+                lane: None,
             });
             out.wires.push(Wire {
                 from: key.into(),
@@ -291,6 +322,7 @@ fn describe_mod(
         }
         _ => {}
     }
+    let mut lane = None;
     let (kind, title, knobs) = match m {
         // Handled above; the compiler cannot see that.
         ModNode::None | ModNode::Op { .. } | ModNode::Pair { .. } => return,
@@ -340,6 +372,33 @@ fn describe_mod(
                 knob_c(key, "epulses", "pulses", *pulses),
             ],
         ),
+        ModNode::Steps {
+            rate,
+            length,
+            slew,
+            values,
+            ..
+        } => {
+            let mut knobs = vec![
+                knob_c(key, STEPS_SITES[0], "rate", *rate),
+                knob_c(key, STEPS_SITES[1], "length", *length),
+                knob_c(key, STEPS_SITES[2], "glide", *slew),
+            ];
+            lane = Some(StepLane {
+                first: knobs.len(),
+                count: values.len(),
+                active: step_count(*length),
+            });
+            for (i, v) in values.iter().enumerate() {
+                knobs.push(knob_c(
+                    key,
+                    STEPS_SITES[3 + i],
+                    &format!("step {}", i + 1),
+                    *v,
+                ));
+            }
+            ("steps", "steps", knobs)
+        }
     };
     out.modules.push(RackModule {
         key: key.into(),
@@ -350,6 +409,7 @@ fn describe_mod(
         is_mod: true,
         knobs,
         structural_addrs: structural,
+        lane,
     });
     out.wires.push(Wire {
         from: key.into(),
@@ -474,6 +534,7 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
         is_mod: false,
         knobs,
         structural_addrs: structural,
+        lane: None,
     };
     match n {
         AudioNode::Vco {
@@ -1113,6 +1174,7 @@ pub fn describe(tree: &PatchTree) -> RackDescription {
             knob_c("amp", "release", "release", tree.amp.release),
         ],
         structural_addrs: Vec::new(),
+        lane: None,
     });
     out.wires.push(Wire {
         from: "node".into(),

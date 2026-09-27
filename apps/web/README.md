@@ -31,7 +31,7 @@ the bank head walks through what a generation is and what evolving costs.
 
 ## The node bank
 
-The rail on the right of PLAY is the instrument's **catalogue** — forty-one
+The rail on the right of PLAY is the instrument's **catalogue** — forty-two
 modules in eight signal-flow groups (sources → shape → filter → space → motion
 → dynamics → combine → modulation), not one alphabetical shelf. Every entry carries four things at
 rest: a **transfer-function glyph** (what this does to a wave — never a

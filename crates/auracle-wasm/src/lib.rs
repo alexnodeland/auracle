@@ -1625,6 +1625,9 @@ mod tests {
             (ModKind::Or, "or"),
             (ModKind::Xor, "xor"),
             (ModKind::Switch, "switch"),
+            // A leaf, and a `RackModule::kind` too: `describe` reports
+            // `steps` for the module this places.
+            (ModKind::Steps, "steps"),
         ] {
             assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{want}\""));
         }

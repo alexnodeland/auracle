@@ -68,8 +68,8 @@ Auracle treats the problem as inference:
   running voices' atomics (no recompile) *and* the genome. Rewire by dragging
   typed jacks; structural edits are grammar operations, so an edit always
   leaves a playable patch. Undo/redo, per-knob and per-module locks.
-- **Forty-one modules** — six sources (a wavetable, a physically-modelled
-  pluck and a formant oscillator among them), twenty processors, and fifteen
+- **Forty-two modules** — six sources (a wavetable, a physically-modelled
+  pluck and a formant oscillator among them), twenty processors, and sixteen
   modulators. Six processors are **binary**: a crossfade and a ring modulator
   that merge two chains into one, and a compressor, ducker, gate and vocoder
   whose second input is a *control* — real sidechaining, in a typed tree.

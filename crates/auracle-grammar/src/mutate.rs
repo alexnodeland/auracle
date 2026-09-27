@@ -118,12 +118,13 @@ impl NodeKind {
 
 /// A modulation choice for [`StructOp::SetMod`].
 ///
-/// The first five are **sources**: they replace whatever is in the slot. The
-/// eleven below them are **shapers**, and setting one *wraps* the slot's
-/// current term rather than discarding it — placing a quantizer on a cable
-/// that already carries an S&H is the gesture, and asking the panel to send a
-/// whole [`ModNode`] through [`StructOp::SetModTree`] to express it would make
-/// the common edit the awkward one.
+/// `Lfo` through `Euclid`, and `Steps`, are **sources**: they replace
+/// whatever is in the slot. The eleven between them are **shapers**, and
+/// setting one *wraps* the slot's current term rather than discarding it —
+/// placing a quantizer on a cable that already carries an S&H is the gesture,
+/// and asking the panel to send a whole [`ModNode`] through
+/// [`StructOp::SetModTree`] to express it would make the common edit the
+/// awkward one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModKind {
@@ -159,6 +160,11 @@ pub enum ModKind {
     Xor,
     /// …switching between them.
     Switch,
+    /// Clocked step sequence of CV values. A source, like the five above the
+    /// shapers; declared last only so the list reads in the order the palette
+    /// grew (this enum is serialized by *name*, so its order is not a wire
+    /// format — the `#mod` categorical's is, and there `Steps` is index 8).
+    Steps,
 }
 
 impl ModKind {
@@ -230,6 +236,29 @@ fn default_pair_b(kind: PairOp) -> ModNode {
             wave: Waveform::Triangle,
             rate: 0.3,
         }
+    }
+}
+
+/// The step sequence a hand-placed [`ModKind::Steps`] arrives with.
+///
+/// Audible the instant it lands, on the rule every default here follows: four
+/// steps (`length` 0.35 is the fourth of seven bins) at 4 steps a second
+/// (`rate` 0.6 on `0.5·2^(5x)`), so a bar of four at 60 BPM — slow enough to
+/// hear each step move the destination, fast enough to go round the pattern
+/// nearly twice inside the audition phrase's longest note (1.8 s). The values
+/// climb and fall back (−5, −1, +5, +1 V) rather than simply alternating,
+/// because an alternating pattern on a cutoff is indistinguishable from a
+/// square LFO and the point of the module is a *shape* an LFO cannot draw. A
+/// fifth of each step glides, so the steps are steps without clicking the
+/// filter. The four latent values continue the contour, so lengthening the
+/// pattern extends the phrase rather than revealing silence.
+pub fn default_steps() -> ModNode {
+    ModNode::Steps {
+        uid: Uid::NEW,
+        rate: 0.6,
+        length: 0.35,
+        slew: 0.2,
+        values: [0.0, 0.4, 1.0, 0.6, 0.2, 0.8, 0.3, 0.9],
     }
 }
 
@@ -901,6 +930,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                         steps: 0.5,
                         pulses: 0.4,
                     },
+                    ModKind::Steps => default_steps(),
                     // `None` and the ten handled above.
                     _ => ModNode::None,
                 }

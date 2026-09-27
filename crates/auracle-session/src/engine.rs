@@ -1856,18 +1856,25 @@ impl Engine {
         // euclid — which is a *leaf* — reads `n_mod_logic` too, because that
         // is the column it is counted in. Tilting it by anything else would
         // move the prior in a direction no observation supports.
-        let (shape, logic) = (g("n_mod_shape"), g("n_mod_logic"));
+        //
+        // The step sequencer reads `n_rand` for the same reason: that column
+        // is the stepped-CV family and counts it (`StructFeatures::n_stepped`),
+        // so a user whose votes lean toward stepped modulation tilts the S&H
+        // and the step sequence together, and nothing tilts it that has not
+        // seen it.
+        let (shape, logic, stepped) = (g("n_mod_shape"), g("n_mod_logic"), g("n_rand"));
         let md = tilt_weights(
             &prior.mod_weights,
             &[
                 0.0,
                 g("n_lfo"),
                 g("n_env"),
-                g("n_rand"),
+                stepped,
                 g("n_follow"),
-                logic, // euclid — counted inside n_mod_logic
-                shape, // op
-                logic, // pair
+                logic,   // euclid — counted inside n_mod_logic
+                shape,   // op
+                logic,   // pair
+                stepped, // steps — counted inside n_rand
             ],
             eta,
         );

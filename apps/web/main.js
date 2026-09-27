@@ -4315,6 +4315,9 @@ const STACK_GAP = 16;
 // overlapped by 6 units on every single patch — the collision the SILK
 // abbreviation table was papering over one label at a time.
 function plateStep(mod) {
+  // A step lane is eight bars wide, and eight bars want the widest plate: at
+  // 240 units each bar gets a 26-unit slot, about the pitch of a fingertip.
+  if (hasStepLane(mod)) return PLATE_W.length - 1;
   const slots =
     mod.knobs.length + mod.knobs.filter((k) => k.kind.t !== "continuous").length;
   const step = slots <= 1 ? 0 : slots <= 4 ? 1 : 2;
@@ -4345,8 +4348,166 @@ function moduleBox(mod, isEmpty) {
   if (isEmpty) return { w: PLATE_W[0], h: 36 + KNOB_ROW, perRow: 1 };
   const step = plateStep(mod);
   const perRow = PLATE_COLS[step];
-  const rows = Math.max(1, Math.ceil(mod.knobs.length / perRow));
-  return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW, perRow };
+  const rows = Math.max(1, Math.ceil(dialCount(mod) / perRow));
+  const lane = hasStepLane(mod) ? STEP_LANE_H : 0;
+  return { w: PLATE_W[step], h: 36 + rows * KNOB_ROW + lane, perRow };
+}
+
+// ---- the step lane ----
+// A `steps` module has eleven sites and a four-knob faceplate budget. Its rate,
+// length and glide are dials like any other; its eight step values are drawn
+// as a row of bars under them — the display every step sequencer has, and the
+// only one where the *pattern* is readable at a glance. The values are still
+// ordinary continuous knobs in `mod.knobs` (describe.rs puts them there and
+// says which with `lane`), so locks, the keyboard, undo and the live path all
+// treat a bar exactly as they treat a dial.
+const STEP_LANE_H = 62;
+const STEP_BAR_H = 44;
+
+/** Does this module draw a step lane? The ghost of a module not yet placed
+ *  has no `lane` (it is read off a fragment), so the kind answers for it. */
+function hasStepLane(mod) {
+  return !!mod.lane || mod.kind === "steps";
+}
+/** How many of this module's knobs are dials rather than lane bars. */
+function dialCount(mod) {
+  return mod.lane ? mod.lane.first : mod.knobs.length;
+}
+/** Is knob `i` one of the lane's bars? */
+function isLaneKnob(mod, i) {
+  return !!mod.lane && i >= mod.lane.first && i < mod.lane.first + mod.lane.count;
+}
+/** Where the lane sits on its plate, and each bar's slot within it. */
+function laneGeom(mod, box) {
+  const count = mod.lane ? mod.lane.count : 8;
+  const top = 36 + Math.max(1, Math.ceil(dialCount(mod) / box.perRow)) * KNOB_ROW + 2;
+  const inset = 14;
+  const slot = (box.w - 2 * inset) / count;
+  return { top, inset, slot, barW: Math.max(8, slot - 7), count };
+}
+
+/** Bring one bar's fill, readout and ARIA state in line with `knob.value`.
+ *  Bipolar, like the output it sets: the fill grows up from the 0 V line for
+ *  a positive step and down from it for a negative one. */
+function paintStepBar(kg, knob) {
+  const v = Math.min(1, Math.max(0, knob.value));
+  const fill = kg.querySelector(".step-fill");
+  if (fill) {
+    const mid = STEP_BAR_H / 2;
+    const y = v >= 0.5 ? mid - (v - 0.5) * STEP_BAR_H : mid;
+    fill.setAttribute("y", y.toFixed(2));
+    fill.setAttribute("height", Math.max(0.8, Math.abs(v - 0.5) * STEP_BAR_H).toFixed(2));
+  }
+  const text = knobUnit(knob.addr, v, kg.dataset.kind);
+  const tt = kg.querySelector("title");
+  if (tt) tt.textContent = `${tt.dataset.label}: ${text} — drag up/down`;
+  // A picture of a lane (the duel minis, an export) is not a control.
+  if (!kg.hasAttribute("role")) return;
+  kg.setAttribute("aria-valuenow", v.toFixed(3));
+  kg.setAttribute("aria-valuetext", text);
+}
+
+/** A `length` dial moved: grey out the bars it no longer plays, live. The rack
+ *  is not re-rendered mid-drag (that would drop pointer capture), so this is
+ *  the only way the lane can keep up with the hand. */
+function paintLaneLength(kg, value) {
+  const group = kg.closest("g.mod-group");
+  if (!group) return;
+  const active = stepCount(value);
+  group.querySelectorAll(".step-bar").forEach((bar) => {
+    bar.classList.toggle("latent", Number(bar.dataset.step) >= active);
+  });
+}
+
+/** Draw a module's step lane into its control group `g`. */
+function drawStepLane(g, m, box, interactive, locks) {
+  const L = laneGeom(m, box);
+  const lane = svgEl("g", { transform: `translate(0,${L.top})` }, "step-lane");
+  lane.appendChild(svgEl("line", {
+    x1: L.inset - 2, x2: box.w - L.inset + 2, y1: STEP_BAR_H / 2, y2: STEP_BAR_H / 2,
+  }, "step-zero"));
+  for (let i = 0; i < L.count; i++) {
+    const k = m.knobs[m.lane.first + i];
+    if (!k) break;
+    const x = L.inset + i * L.slot + (L.slot - L.barW) / 2;
+    const latent = i >= m.lane.active;
+    const kg = svgEl("g", { transform: `translate(${x.toFixed(2)},0)` },
+      `step-bar${latent ? " latent" : ""}`);
+    kg.dataset.step = String(i);
+    kg.appendChild(svgEl("rect", { width: L.barW, height: STEP_BAR_H, rx: 2 }, "step-track"));
+    kg.appendChild(svgEl("rect", { x: 0, width: L.barW, rx: 1.5 },
+      `step-fill${m.is_mod ? " modside" : ""}`));
+    const num = svgEl("text", { x: L.barW / 2, y: STEP_BAR_H + 11 }, "step-num");
+    num.textContent = String(i + 1);
+    kg.appendChild(num);
+    if (locks.has(k.addr)) {
+      kg.appendChild(svgEl("rect", {
+        x: -2.5, y: -2.5, width: L.barW + 5, height: STEP_BAR_H + 5, rx: 3,
+      }, "knob-locked-halo"));
+    }
+    kg.dataset.kind = m.kind;
+    if (interactive) {
+      // The track is the target: a press anywhere on the bar sets the value
+      // to where it landed, and the drag keeps following the pointer — the
+      // gesture every step sequencer's bar display uses, and the one a row of
+      // dials cannot offer.
+      const hit = svgEl("rect", {
+        x: -2, y: -2, width: L.barW + 4, height: STEP_BAR_H + 4,
+      }, "step-hit");
+      const tt = svgEl("title", {});
+      tt.dataset.label = `${m.title} ${k.label}`;
+      hit.appendChild(tt);
+      kg.appendChild(hit);
+      attachStepDrag(hit, kg, k);
+      kg.setAttribute("tabindex", "-1");
+      kg.setAttribute("role", "slider");
+      kg.setAttribute("aria-label", `${m.title} ${k.label}${latent ? " (not playing)" : ""}`);
+      kg.setAttribute("aria-valuemin", "0");
+      kg.setAttribute("aria-valuemax", "1");
+      kg.dataset.addr = k.addr;
+    }
+    paintStepBar(kg, k);
+    lane.appendChild(kg);
+  }
+  g.appendChild(lane);
+}
+
+/** Vertical drag on a bar: the value is where the pointer is on the track.
+ *  Same contract as `attachKnobDrag` — one undo step per gesture, pointer
+ *  capture, `knobDragging` held for the gesture so no re-render can replace
+ *  the element under the hand, and every move through `sendEdit`. */
+function attachStepDrag(el, kg, knob) {
+  claimGesture(el);
+  el.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    el.setPointerCapture(ev.pointerId);
+    pushUndo();
+    knobDragging = true;
+    kg.classList.add("dragging");
+    const track = kg.querySelector(".step-track");
+    const at = (e) => {
+      const r = track.getBoundingClientRect();
+      if (!(r.height > 0)) return;
+      const v = Math.min(1, Math.max(0, (r.bottom - e.clientY) / r.height));
+      if (v === knob.value) return;
+      knob.value = v;
+      paintStepBar(kg, knob);
+      sendEdit(knob.addr, v, false);
+    };
+    at(ev);
+    const onMove = (mv) => at(mv);
+    const onUp = () => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      knobDragging = false;
+      kg.classList.remove("dragging");
+      renderRack();
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+  });
 }
 
 // Knob pitch for the row `i` lands in — a short last row centres itself, so a
@@ -4354,7 +4515,7 @@ function moduleBox(mod, isEmpty) {
 // instead of hard against the left edge.
 function knobPitch(mod, i, box) {
   const row = Math.floor(i / box.perRow);
-  const inRow = Math.min(box.perRow, mod.knobs.length - row * box.perRow);
+  const inRow = Math.min(box.perRow, dialCount(mod) - row * box.perRow);
   return box.w / (inRow + 1);
 }
 
@@ -5745,7 +5906,11 @@ function buildRack(svg, rack, opts) {
       let dur = 1.6;
       if (src) {
         const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
+        // A step sequence has a real rate in steps per second, so its cable
+        // can breathe once a step rather than on the LFO's approximation.
+        const srate = src.knobs.find((k) => k.addr.endsWith("#srate"));
         if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
+        else if (srate) dur = Math.min(2.2, Math.max(0.25, 1 / stepRateHz(srate.value)));
         else {
           const att = src.knobs.find((k) => k.addr.endsWith("#att"));
           const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
@@ -6173,6 +6338,8 @@ function buildRack(svg, rack, opts) {
     // The knob detail is the whole of the difference between the two levels
     // of detail, so it is one conditional rather than a second renderer.
     if (!compact && !isEmpty) m.knobs.forEach((k, i) => {
+      // A step value is drawn as a bar in the lane below, not as a dial.
+      if (isLaneKnob(m, i)) return;
       const { x, y } = knobPos(m, i, box);
       const pitch = knobPitch(m, i, box);
       const kg = svgEl("g", { transform: `translate(${x},${y})` });
@@ -6328,6 +6495,9 @@ function buildRack(svg, rack, opts) {
       }
       g.appendChild(kg);
     });
+    // After the dials, so the roving tab order reads rate → length → glide →
+    // step 1 … step 8, the order the plate is read in.
+    if (!compact && !isEmpty && m.lane) drawStepLane(g, m, box, interactive, locks);
   }
 
   if (probeArt) ctrlLayer.appendChild(probeArt);
@@ -9094,7 +9264,35 @@ const KNOB_UNITS = {
   // usable quarter, so this is the real time constant.
   rise: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
   fall: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
+
+  // ---- the step sequencer (crates/auracle-grammar/src/steps.rs) ----
+  // Steps per second on `0.5·2^(5x)`: half a step a second to sixteen.
+  srate: (x) => fmtHz(stepRateHz(x)),
+  // Seven equal bins onto 2..8 — the same arithmetic as `steps::step_count`,
+  // so the plate and the bars it greys out agree mid-drag.
+  slen: (x) => `${stepCount(x)} steps`,
+  // A fraction of each step spent gliding, so a percentage is the physical
+  // quantity, and zero has a name.
+  sslew: (x) => (x < 0.005 ? "hard" : pct(x)),
+  // A step is bipolar, (2u − 1)·5 V, so its centre is "no push" rather than
+  // "50%": signed, with the real minus.
+  "steps#s0": stepValue, "steps#s1": stepValue, "steps#s2": stepValue, "steps#s3": stepValue,
+  "steps#s4": stepValue, "steps#s5": stepValue, "steps#s6": stepValue, "steps#s7": stepValue,
 };
+
+/** Steps per second for a normalized `srate` — `steps::rate_hz`. */
+function stepRateHz(x) {
+  return 0.5 * Math.pow(2, 5 * Math.min(1, Math.max(0, x)));
+}
+/** How many steps play for a normalized `slen` — `steps::step_count`. */
+function stepCount(x) {
+  return 2 + Math.min(6, Math.floor(Math.min(1, Math.max(0, x)) * 7));
+}
+/** A step value as a signed share of the ±5 V swing. */
+function stepValue(x) {
+  const v = Math.round((x * 2 - 1) * 100);
+  return v === 0 ? "0%" : minus(`${v > 0 ? "+" : ""}${v}%`);
+}
 
 /** A geometric 0.05–5 V detector threshold, as dB below full scale. */
 function threshDb(x) {
@@ -9156,6 +9354,10 @@ function enumDisplay(k) {
 // drag gesture and the keyboard, so a sweep stays at 60fps and the filter and
 // delay state inside the running voices survive it.
 function paintKnob(kg, knob) {
+  // The keyboard path lands here for a lane bar too: same `[data-addr]`
+  // contract, different picture.
+  if (kg.classList.contains("step-bar")) return paintStepBar(kg, knob);
+  if (knob.addr.endsWith("#slen")) paintLaneLength(kg, knob.value);
   const v = knob.value;
   const ang = (-135 + 270 * v) * (Math.PI / 180);
   const line = kg.querySelector(".knob-ind");
@@ -10111,6 +10313,22 @@ const MODULES = [
       `<path class="gl" d="M1.4 12 V5 M6.2 12 V5 M11 12 V5 M15.8 12 V5"/>` +
       `<path class="gl-ghost" d="M3.8 12 V8.6 M8.6 12 V8.6 M13.4 12 V8.6 M18.2 12 V8.6"/>`,
     frag: () => ({ Euclid: { rate: 0.45, steps: 0.35, pulses: 0.4 } }),
+  },
+  {
+    kind: "steps", tag: "Steps", name: "steps", sort: "mod", modSort: "leaf", group: "modulation",
+    // Counted with s&h rand in φ (`StructFeatures::n_stepped`): to the ear
+    // both are a value that jumps on a clock.
+    ins: 0, modTarget: null, phi: "n_rand",
+    tags: ["sequence", "sequencer", "step", "steps", "pattern", "rhythm", "stepped", "bars", "melody", "marbles"],
+    blurb: "Plays a short pattern of values on its own clock — up to eight steps, each one a bar you draw. Cabled to a cutoff or a fold, the timbre gets a rhythm of its own.",
+    heard: "as stepped movement, counted with s&h rand because the ear hears both as a value that jumps on a clock. φ cannot tell which values you drew.",
+    glyph:
+      `<path class="gl-rule" d="M0 12.5 H20"/>` +
+      `<path class="gl" d="M2.5 12.5 V9 M7.5 12.5 V5.2 M12.5 12.5 V2 M17.5 12.5 V7.4"/>` +
+      `<path class="gl-ghost" d="M1 9 h3 L6 5.2 h3 L11 2 h3 L16 7.4 h3"/>`,
+    frag: () => ({
+      Steps: { rate: 0.6, length: 0.35, slew: 0.2, values: [0.0, 0.4, 1.0, 0.6, 0.2, 0.8, 0.3, 0.9] },
+    }),
   },
 
   // ---- CV shapers: these WRAP the modulator already in the slot ----
@@ -13875,7 +14093,8 @@ const NICE_NAMES = {
   n_wavetable: "wavetables", n_pluck: "plucked strings", n_formant: "formant voices",
   n_filter: "filtering", n_drive: "drive & fold", n_time: "delay & grains",
   n_mod_fx: "chorus & sweeps", n_reverb: "reverbs", n_dynamics: "level control",
-  n_rand: "S&H mods", n_lfo: "LFO mods", n_env: "env mods", n_follow: "followers",
+  // `n_rand` is the stepped-CV family now — s&h rand and the step sequencer.
+  n_rand: "stepped mods", n_lfo: "LFO mods", n_env: "env mods", n_follow: "followers",
   n_mod_shape: "shaped mod", n_mod_logic: "gated mod", mod_depth_mean: "mod chaining",
   depth: "patch depth", size: "patch size",
   // The wave-3 arrangement coordinates. These are the only φ columns that

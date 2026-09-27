@@ -58,18 +58,45 @@ pub const N_SOURCES: usize = 7;
 /// Eq, Granular, Shift, Comp, Duck, Gate, Vocoder.
 pub const N_OPS: usize = 20;
 /// Modulation-kind categorical order: None, Lfo, Env, Rand, Follow, Euclid,
-/// Op, Pair.
+/// Op, Pair, Steps.
 ///
-/// The last three arrived in wave 2C, when modulation became a recursive sort:
-/// `Euclid` is a fifth leaf, `Op` wraps one modulation term and `Pair` two.
-pub const N_MODS: usize = 8;
+/// `Euclid`, `Op` and `Pair` arrived in wave 2C, when modulation became a
+/// recursive sort: `Euclid` is a fifth leaf, `Op` wraps one modulation term
+/// and `Pair` two. `Steps` is a sixth leaf, and it sits **after** the two
+/// branches rather than beside the other leaves because the order is the wire
+/// format — so leaf-ness is a predicate ([`mod_kind_is_leaf`]), not a range.
+pub const N_MODS: usize = 9;
 /// Unary CV-processor categorical order — [`ModOp::ALL`].
 pub const N_MOD_OPS: usize = 4;
 /// Binary CV-combiner categorical order — [`PairOp::ALL`].
 pub const N_PAIR_OPS: usize = 6;
-/// The first `#mod` index that is **not** a leaf. Kinds at or above it recurse
-/// and are what [`PatchGrammarPrior::max_mod_depth`] switches off.
-const MOD_FIRST_BRANCH: usize = 6;
+/// `#mod` index of [`ModNode::Op`], the unary recursive production.
+const MOD_OP: usize = 6;
+/// `#mod` index of [`ModNode::Pair`], the binary recursive production.
+const MOD_PAIR: usize = 7;
+/// `#mod` index of [`ModNode::Steps`], the step-sequencer leaf.
+const MOD_STEPS: usize = 8;
+
+/// The trace sites of a [`ModNode::Steps`], in draw (and encode) order: rate,
+/// length, glide, then the eight latent step values.
+pub const STEPS_SITES: &[&str] = &[
+    "srate", "slen", "sslew", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7",
+];
+
+/// Whether `#mod` index `kind` is a **leaf** — a kind that bottoms a term out
+/// rather than recursing into another one.
+///
+/// This used to be a range (`kind < 6`), which was true only as long as every
+/// leaf happened to be declared before the two branches. The categorical is
+/// append-only, so the first leaf added after wave 2C (`Steps`, index 8)
+/// broke it: at the depth bound the range would have zeroed the new leaf
+/// along with the branches it was never one of, and a slot forced to bottom
+/// out could not have drawn it. `None` (index 0) counts as a leaf here — it
+/// does not recurse — and is governed by the separate "never empty below a
+/// processor" rule in [`PatchGrammarPrior::mod_weights_at`].
+pub fn mod_kind_is_leaf(kind: usize) -> bool {
+    !matches!(kind, MOD_OP | MOD_PAIR)
+}
 
 /// The typed PCFG over patch terms.
 #[derive(Clone, Debug)]
@@ -97,7 +124,7 @@ pub struct PatchGrammarPrior {
     /// Duck, Gate, Vocoder]`.
     pub op_weights: [f64; N_OPS],
     /// Weights over modulation kinds
-    /// `[None, Lfo, Env, Rand, Follow, Euclid, Op, Pair]`.
+    /// `[None, Lfo, Env, Rand, Follow, Euclid, Op, Pair, Steps]`.
     pub mod_weights: [f64; N_MODS],
 }
 
@@ -198,8 +225,21 @@ impl Default for PatchGrammarPrior {
             // that draws **two** subterms, and at 1.5% a two-branch chain is
             // ~0.6% of filled slots rather than the 4% a naive weight gives.
             //
-            // [none, lfo, env, rand, follow, euclid, op, pair]
-            mod_weights: [0.40, 0.18, 0.20, 0.055, 0.08, 0.03, 0.04, 0.015],
+            // `steps` enters at the euclid's 3%, on the euclid's argument: it
+            // is a leaf (one node, no recursion, so its weight buys variety
+            // rather than chain length), and it is the palette's second
+            // rhythmic modulator — the one whose rhythm moves a *value* rather
+            // than opening a gate. Weighting it above the euclid would make
+            // step-sequenced timbre the pool's default gesture; well below
+            // it, a module a taste history takes hundreds of draws to meet.
+            // The table is left summing to 1.03 rather than rescaled by hand:
+            // `weighted_cat` divides by the total, so every older kind keeps
+            // its exact proportion to every other and each gives up the same
+            // 2.9% of its mass — the "nothing already learned moves relative
+            // to anything else" rule wave 2C applied with its 0.915.
+            //
+            // [none, lfo, env, rand, follow, euclid, op, pair, steps]
+            mod_weights: [0.40, 0.18, 0.20, 0.055, 0.08, 0.03, 0.04, 0.015, 0.03],
         }
     }
 }
@@ -379,7 +419,7 @@ impl PatchGrammarPrior {
     ///
     /// Two renormalizations, both by zeroing a weight and letting
     /// [`weighted_cat`] divide by what is left — which keeps the categorical's
-    /// **arity at eight everywhere**, so the value stored in the trace is
+    /// **arity at [`N_MODS`] everywhere**, so the value stored in the trace is
     /// always the absolute kind index and [`crate::genome`]'s encoding stays
     /// site-for-site identical to a generative run.
     ///
@@ -400,8 +440,10 @@ impl PatchGrammarPrior {
             w[0] = 0.0;
         }
         if depth >= self.max_mod_depth {
-            for slot in w.iter_mut().skip(MOD_FIRST_BRANCH) {
-                *slot = 0.0;
+            for (kind, slot) in w.iter_mut().enumerate() {
+                if !mod_kind_is_leaf(kind) {
+                    *slot = 0.0;
+                }
             }
         }
         w
@@ -450,10 +492,19 @@ impl PatchGrammarPrior {
                 steps: p[1],
                 pulses: p[2],
             }),
+            // Rate, length, glide, then the eight latent step values — the
+            // order `crate::genome` encodes them in.
+            MOD_STEPS => u01_seq(key.clone(), STEPS_SITES).map(|p| ModNode::Steps {
+                uid: Uid::NEW,
+                rate: p[0],
+                length: p[1],
+                slew: p[2],
+                values: [p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10]],
+            }),
             // The two recursive arms. Draw order — kind, then the op's own
             // knobs, then the subterms left to right — is the order
             // `crate::genome` encodes them in, and the two must not disagree.
-            6 => {
+            MOD_OP => {
                 let k = key.clone();
                 let cfg = cfg.clone();
                 sample(addr!(k.clone(), "modop"), uniform_cat(N_MOD_OPS)).bind(move |o| {
@@ -475,6 +526,7 @@ impl PatchGrammarPrior {
                 })
             }
             _ => {
+                debug_assert_eq!(kind, MOD_PAIR, "#mod index out of range");
                 let k = key.clone();
                 let cfg = cfg.clone();
                 sample(addr!(k.clone(), "pairop"), uniform_cat(N_PAIR_OPS)).bind(move |o| {
@@ -1245,7 +1297,14 @@ impl PatchGrammarPrior {
                 steps: rng.gen(),
                 pulses: rng.gen(),
             },
-            6 => {
+            MOD_STEPS => ModNode::Steps {
+                uid: Uid::NEW,
+                rate: rng.gen(),
+                length: rng.gen(),
+                slew: rng.gen(),
+                values: rng.gen(),
+            },
+            MOD_OP => {
                 let kind = ModOp::from_index(rng.gen_range(0..N_MOD_OPS));
                 let two = kind.param_sites().len() > 1;
                 let p0 = rng.gen();
@@ -1314,4 +1373,93 @@ impl GenomePrior for PatchGrammarPrior {
     // whose canonical encoding (crate::genome) IS this grammar's address
     // scheme — the two cannot drift apart without breaking the round-trip
     // property test.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fugue::runtime::handler::run;
+    use fugue::runtime::interpreters::PriorHandler;
+    use fugue::Trace;
+    use fugue_evo::genome::trace_genome::TraceGenome;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    /// The leaves are exactly the non-recursive kinds, wherever the append-only
+    /// order happened to put them.
+    #[test]
+    fn leafness_is_a_predicate_not_a_range() {
+        let leaves: Vec<usize> = (0..N_MODS).filter(|k| mod_kind_is_leaf(*k)).collect();
+        assert_eq!(leaves, vec![0, 1, 2, 3, 4, 5, 8]);
+        let prior = PatchGrammarPrior::default();
+        let at_bound = prior.mod_weights_at(prior.max_mod_depth, false);
+        assert_eq!(at_bound[MOD_OP], 0.0, "Op survived the depth bound");
+        assert_eq!(at_bound[MOD_PAIR], 0.0, "Pair survived the depth bound");
+        assert!(
+            at_bound[MOD_STEPS] > 0.0,
+            "the depth bound switched off the steps leaf along with the branches"
+        );
+    }
+
+    /// Every modulation term that reaches the depth bound can still bottom out
+    /// in `Steps`.
+    ///
+    /// The fixture offers the grammar *only* `Pair` and `Steps` below the top
+    /// of a slot, so a two-deep pair chain reaches the bound with `Steps` as
+    /// the single legal leaf. Under the old `skip(6)` rule the bound zeroed
+    /// index 8 too, left the categorical with no mass at all, and the draw
+    /// could not complete — which is exactly the regression this pins.
+    #[test]
+    fn a_max_depth_mod_term_can_still_draw_steps() {
+        let prior = PatchGrammarPrior {
+            mod_weights: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0],
+            ..PatchGrammarPrior::default()
+        };
+        fn leaves_are_steps(m: &ModNode) -> bool {
+            match m {
+                ModNode::None | ModNode::Steps { .. } => true,
+                ModNode::Pair { a, b, .. } => leaves_are_steps(a) && leaves_are_steps(b),
+                _ => false,
+            }
+        }
+        fn slots<'a>(n: &'a AudioNode, out: &mut Vec<&'a ModNode>) {
+            if let Some(m) = n.modulation() {
+                out.push(m);
+            }
+            for c in n.children() {
+                slots(c, out);
+            }
+        }
+        let mut rng = StdRng::seed_from_u64(0x57E95);
+        let mut deepest = 0usize;
+        for _ in 0..40 {
+            let (drawn, _): (PatchTree, Trace) = run(
+                PriorHandler {
+                    rng: &mut rng,
+                    trace: Trace::default(),
+                },
+                prior.model(),
+            );
+            let plain = prior.sample_with_rng(&mut rng);
+            for t in [&drawn, &plain] {
+                let mut ms = Vec::new();
+                slots(&t.root, &mut ms);
+                for m in ms {
+                    assert!(
+                        leaves_are_steps(m),
+                        "a leaf other than steps: {}",
+                        t.to_sexpr()
+                    );
+                    assert!(m.depth() <= prior.max_mod_depth + 1);
+                    deepest = deepest.max(m.depth());
+                }
+                assert_eq!(&PatchTree::from_trace(&t.to_trace()).unwrap(), t);
+            }
+        }
+        assert_eq!(
+            deepest,
+            prior.max_mod_depth + 1,
+            "no term reached the depth bound, so this proved nothing"
+        );
+    }
 }

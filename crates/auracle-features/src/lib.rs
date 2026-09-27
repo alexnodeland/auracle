@@ -679,7 +679,7 @@ mod tests {
             // is not available to a linear model.
             let slots = mod_slots(&tree);
             let filled = (s.mod_density * slots as f64).round();
-            let mod_leaves = s.n_lfo + s.n_env + s.n_rand + s.n_follow + s.n_euclid;
+            let mod_leaves = s.n_lfo + s.n_env + s.n_rand + s.n_steps + s.n_follow + s.n_euclid;
             let combiners = s.n_min + s.n_max + s.n_and + s.n_or + s.n_xor + s.n_switch;
             assert_eq!(
                 mod_leaves - combiners,
