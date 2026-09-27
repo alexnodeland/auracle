@@ -820,6 +820,11 @@ pub struct SessionState {
     /// option is gated on.
     #[serde(default)]
     pub style_shares: Vec<StyleShareRecord>,
+    /// The taste map's axes as last drawn, so the map comes back after a
+    /// reload facing the way it was left. Absent from sessions saved before
+    /// it existed; their first map takes the sign convention.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_axes: Option<[Vec<f64>; 2]>,
 }
 
 /// A chosen duel, with the reasoning that produced it.
@@ -1133,6 +1138,11 @@ pub struct Engine {
     /// What the most recent `refine_seed`/`refine_from` did — see
     /// [`RefineOutcome`]. Not persisted: it describes a call, not a session.
     last_refine: RefineOutcome,
+    /// The taste map's axes as last drawn, so the next map faces the same way
+    /// (see [`Engine::taste_map`]). Behind a lock because drawing the map is a
+    /// read of the session, and remembering how it was drawn is not a change
+    /// to it. Persisted with the session, so a reload does not mirror it either.
+    pub(crate) map_axes: std::sync::Mutex<Option<[Vec<f64>; 2]>>,
 }
 
 impl Engine {
@@ -1167,6 +1177,7 @@ impl Engine {
             repaired_cells: 0,
             dropped_observations: 0,
             last_refine: RefineOutcome::Idle,
+            map_axes: std::sync::Mutex::new(None),
         }
     }
 
@@ -3307,6 +3318,11 @@ impl Engine {
             events: self.events.clone(),
             forecasts: self.forecasts.clone(),
             style_shares: self.style_shares.clone(),
+            map_axes: self
+                .map_axes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
         }
     }
 
@@ -3355,6 +3371,7 @@ impl Engine {
         self.events = state.events;
         self.forecasts = state.forecasts;
         self.style_shares = state.style_shares;
+        *self.map_axes.get_mut().unwrap_or_else(|e| e.into_inner()) = state.map_axes;
         // The implicit stream stores raw φ on both sides of a hand edit, so it
         // is the fourth carrier of the corruption after the pool, the log and
         // the HELD tray — and the only one nothing reads yet, which is exactly

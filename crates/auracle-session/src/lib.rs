@@ -1734,6 +1734,65 @@ mod tests {
         assert!(map.points.iter().any(|p| p.x.abs() > 1e-6));
     }
 
+    /// The map keeps the orientation it was last drawn in, across a redraw
+    /// and across a save and reload. The remembered axes are forced to the
+    /// mirror image of what the sign convention picks, so both checks fail
+    /// without the memory, and the reload check fails without its persistence.
+    #[test]
+    fn taste_map_keeps_its_orientation_across_redraws_and_reloads() {
+        let mut rng = StdRng::seed_from_u64(0x0B1E);
+        let cfg = SessionConfig {
+            pool_size: 12,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg.clone());
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        for _ in 0..4 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            engine.record_duel(a, b, true);
+        }
+        let first = engine.taste_map();
+        assert!(first
+            .points
+            .iter()
+            .any(|p| p.x.abs() > 1e-6 && p.y.abs() > 1e-6));
+        // As though an earlier refit had left the map drawn the other way.
+        {
+            let mut drawn = engine.map_axes.lock().unwrap();
+            for axis in drawn
+                .as_mut()
+                .expect("the map remembers its axes")
+                .iter_mut()
+            {
+                for v in axis.iter_mut() {
+                    *v = -*v;
+                }
+            }
+        }
+        let redrawn = engine.taste_map();
+        assert_eq!(first.points.len(), redrawn.points.len());
+        for (p, q) in first.points.iter().zip(&redrawn.points) {
+            assert!(
+                (p.x + q.x).abs() < 1e-9 && (p.y + q.y).abs() < 1e-9,
+                "the redraw did not keep the orientation it was drawn in"
+            );
+        }
+
+        let json = serde_json::to_string(&engine.export_state()).unwrap();
+        let mut restored = Engine::new(PatchGrammarPrior::default(), cfg);
+        restored.begin_session();
+        restored.import_state(serde_json::from_str(&json).unwrap());
+        let reloaded = restored.taste_map();
+        assert_eq!(reloaded.points.len(), redrawn.points.len());
+        for (p, q) in redrawn.points.iter().zip(&reloaded.points) {
+            assert!(
+                (p.x - q.x).abs() < 1e-6 && (p.y - q.y).abs() < 1e-6,
+                "the reload mirrored the map"
+            );
+        }
+    }
+
     /// Profiles round-trip the log **with** its standardizer, and importing
     /// re-standardizes the pool under the imported standardizer.
     #[test]

@@ -28,6 +28,17 @@ each crate's API docs link the films about it, and the app's ⋯ menu gains
 **Watch the films**. Everything you hear is Auracle: the scores are played by
 its own engine. The narration is synthetic (Kokoro-82M, offline).
 
+### Fixed — the TASTE map stays the way round you left it
+
+A refit could mirror the map: in a taught session, one refit sent "Warm Drone
+2" from the far left to the far right and "Round Lead" from the bottom to the
+top, though the guide says the orientation is pinned. The rule that set each
+axis's sign (its largest loading positive) changes its answer as the axis
+turns, and with φ's near-equal brightness loadings that was routine. Each map
+now faces the way the last one was drawn, and the session saves it, so a
+reload does not mirror the map either (`a_redraw_never_mirrors_the_map`,
+`taste_map_keeps_its_orientation_across_redraws_and_reloads`).
+
 ### Fixed — every patch at one level, and none that blasts
 
 A fresh bank auditioned at levels 10 LU apart and played at the keys at levels
