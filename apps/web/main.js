@@ -2136,6 +2136,10 @@ let toastLive = null;
 const TOAST_STALE_MS = 9000;
 
 function note(text, opts = {}) {
+  // Booth attract plays the instrument by itself; its patch loads and pad
+  // presses are not news to anyone. A detached element keeps every caller's
+  // contract (they may hold the toast) without putting it on screen.
+  if (boothQuiet && !opts.urgent) return document.createElement("div");
   const el = document.createElement("div");
   el.className = `toast${opts.kind ? " " + opts.kind : ""}`;
   const msg = document.createElement("span");
@@ -2838,11 +2842,84 @@ async function bootPerform() {
   else if (currentView === "perform") perform.show();
 }
 
+// ---------- booth mode ----------
+// A kiosk: after a minute idle the instrument performs itself in PERFORM; any
+// touch hands it over; Shift+Esc forgets the visitor. See booth.js.
+let booth = null;
+let boothQuiet = false;
+
+/** Forget this visitor: the taste profile goes, booth mode and the measured
+ *  PERFORM wirings stay, and the next person gets the warm start. The same as
+ *  "Reset taste profile…" without the question — at a booth, staff press it
+ *  between visitors, and a confirmation is a step they will learn to skip. */
+async function boothResetVisitor() {
+  clearTimeout(saveTimer);
+  await idbDel("state");
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-view"])
+    localStorage.removeItem(k);
+  location.reload();
+}
+
+async function bootBooth() {
+  const { createBooth } = await import(`./booth.js?v=${BUILD}`);
+  booth = createBooth({
+    overlay: $("booth-attract"),
+    caption: $("ba-cap"),
+    ready: () => booted && !!perform && !!live && !!presetRows && $("warmstart").classList.contains("hidden"),
+    perform: () => perform,
+    showView,
+    noteOn: (n, v) => liveNoteOn(n, v),
+    // Attract's own notes are released outright, whatever the dock's latch
+    // or the sustain pedal say: they were never the player's.
+    noteOff: (n) => {
+      if (!live) return;
+      live.noteOff(n);
+      heldNotes.delete(n);
+      sustainedNotes.delete(n);
+      paintKey(n, false);
+    },
+    setArp: (on, div) => {
+      perf.arp = !!on;
+      if (div) perf.arpDiv = div;
+      $("arp-div").value = String(perf.arpDiv);
+      sendArp();
+    },
+    quiet: (on) => {
+      boothQuiet = !!on;
+    },
+    controlName: (k) => (PERFORM_CONTROLS[k] ? PERFORM_CONTROLS[k].name : ""),
+    loadPreset: (name) => {
+      const p = (presetRows || []).find((r) => r.name === name);
+      if (!p) return;
+      const id = presetIds.get(p.index);
+      if (id != null && rowOf(id)) openOnBench(id);
+      else send({ type: "load_preset", index: p.index });
+    },
+    resetVisitor: () => boothResetVisitor(),
+  });
+  if (!presetRows) send({ type: "presets" });
+  const paintBooth = () => {
+    $("booth-btn").setAttribute("aria-checked", String(booth.on));
+    $("booth-btn").textContent = booth.on ? "Booth mode: on" : "Booth mode";
+    $("booth-reset-btn").classList.toggle("hidden", !booth.on);
+  };
+  $("booth-btn").onclick = () => {
+    booth.setOn(!booth.on);
+    paintBooth();
+    note(booth.on
+      ? "Booth mode: after a minute with nobody at the keys it plays itself. Any touch hands it over; Shift+Esc starts a new visitor."
+      : "Booth mode off.");
+  };
+  $("booth-reset-btn").onclick = () => boothResetVisitor();
+  paintBooth();
+}
+
 // ---------- live instrument ----------
 async function bootLiveAudio() {
   const { initLiveAudio } = await import(`./live-audio.js?v=${BUILD}`);
   live = await initLiveAudio(audioCtx, BUILD, master);
   bootPerform();
+  bootBooth();
   // The analysers exist for the first time here, so this is the first moment
   // the persisted fft size, window and tap can actually be applied to one.
   scopeApply();
@@ -3497,7 +3574,10 @@ function midiSustain(on) {
 async function bootMidi() {
   const { createMidi } = await import(`./midi.js?v=${BUILD}`);
   midi = createMidi({
-    noteOn: (n, v) => liveNoteOn(n, v),
+    noteOn: (n, v) => {
+      booth?.poke();
+      liveNoteOn(n, v);
+    },
     noteOff: (n) => liveNoteOff(n),
     bend: (semis) => live && live.bend(semis),
     sustain: midiSustain,

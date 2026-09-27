@@ -97,6 +97,8 @@
           <div class="ovf-sep"></div>
           <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
           <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset taste profile…</button>
+          <button id="booth-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over">Booth mode</button>
+          <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor's taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
           <div class="ovf-sep"></div>
           <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
         </div>
@@ -678,6 +680,12 @@
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 <div class="alarm hidden" id="alarm" role="alert"></div>
 
+<!-- booth attract mode: shown only while the instrument plays itself -->
+<div id="booth-attract" class="booth-attract hidden" aria-hidden="true">
+  <div class="ba-title">AURACLE</div>
+  <div class="ba-sub">touch any key to play</div>
+  <div class="ba-cap mono" id="ba-cap"></div>
+</div>
 <!-- first-run taste elicitation -->
 <section id="warmstart" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="warm-title">
   <div class="warm-card panel">

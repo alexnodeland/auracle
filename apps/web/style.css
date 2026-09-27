@@ -4428,3 +4428,24 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 }
 .ng-card { max-width: 380px; text-align: center; color: var(--silk-dim); font-family: var(--font-voice); font-size: var(--t-lead); line-height: 1.5; }
 .ng-title { font-family: var(--font-silk); letter-spacing: 0.12em; text-transform: uppercase; color: var(--phos-a); margin-bottom: var(--s3); }
+
+/* ---------- booth attract mode ---------- */
+.booth-attract {
+  position: fixed;
+  top: 72px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 44;
+  pointer-events: none;
+  text-align: center;
+  padding: 14px 34px 12px;
+  border: 1px solid var(--phos-a-deep);
+  border-radius: 10px;
+  background: rgba(10, 12, 15, 0.82);
+  box-shadow: 0 0 40px rgba(142, 240, 177, 0.18);
+}
+.booth-attract.hidden { display: none; }
+.ba-title { font-family: var(--font-silk); letter-spacing: 0.5em; font-size: 28px; color: var(--phos-a); text-shadow: 0 0 18px rgba(142,240,177,0.6); padding-left: 0.5em; }
+.ba-sub { font-family: var(--font-voice); font-style: italic; font-size: var(--t-lead); color: var(--silk); margin-top: 4px; animation: ba-pulse 2.4s ease-in-out infinite; }
+.ba-cap { font-size: var(--t-label); color: var(--phos-b); margin-top: 6px; min-height: 1.2em; }
+@keyframes ba-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .ba-sub { animation: none; } }

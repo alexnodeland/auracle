@@ -8,6 +8,24 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — booth mode
+
+For a kiosk (⋯ menu, or `?booth` on the URL; `?booth=30` for a 30 s idle):
+
+- **Attract.** After a minute with nobody at the keys, the instrument plays
+  itself in PERFORM through a curated set of eight patches. It holds a chord
+  progression, moves two named controls under an invisible hand (the XY pad
+  follows), lets Wander turn the knobs, then grows an offer and blends it in.
+- **Hand over.** Any key, click, touch, wheel or MIDI note hands it to the
+  visitor on the spot.
+- **Next visitor.** Shift+Esc forgets the taste profile and keeps booth mode
+  and the measured controls.
+
+Attract is *quiet*: nothing it does is logged, and its offers are never
+answered, so it cannot teach the model. An offer it leaves in B starts unheard
+for the visitor. `tests/web/booth.spec.js` walks it: attract starts, a control
+moves, one key hands over, no pick recorded.
+
 ### Changed — PERFORM is playable at once on a patch it has measured before
 
 Measuring a patch takes seconds (about one render per knob, plus

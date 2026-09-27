@@ -119,6 +119,12 @@ export function createPerform(host) {
     touch: { i: 0, depth: 0.5, sites: [] },
   };
 
+  // Booth attract mode plays the instrument by itself; nothing it does is the
+  // player's, so none of it is logged or recorded as a pick.
+  const logImplicit = (kind, detail) => {
+    if (!state.quiet) host.logImplicit(kind, detail);
+  };
+
   // ---------- layout ----------
   const head = el("div", "pf-head");
   const title = el("div", "pf-title");
@@ -485,7 +491,7 @@ export function createPerform(host) {
         requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`);
       }
     }
-    host.logImplicit("perform_turn", { control: k.spec.name, value: +k.value.toFixed(3) });
+    logImplicit("perform_turn", { control: k.spec.name, value: +k.value.toFixed(3) });
   }
 
   // Long-press: the control explains itself by ear. A two-second sweep
@@ -628,7 +634,7 @@ export function createPerform(host) {
 
   function answerOffer(took) {
     const o = state.offer;
-    if (!o || !state.cur || (o.heardMs || 0) < HEARD_MS) return;
+    if (state.quiet || !o || !state.cur || (o.heardMs || 0) < HEARD_MS) return;
     const pick = { tree: state.cur.json, overrides: overrides(), offer: o.json, took };
     if (!took) {
       sendAnswer(pick);
@@ -807,7 +813,7 @@ export function createPerform(host) {
       }
       renderOffer();
       knobs.forEach(paintKnob);
-      host.logImplicit("perform_offer", { why: state.offerWhy || "" });
+      logImplicit("perform_offer", { why: state.offerWhy || "" });
       return true;
     }
     if (m.type === "perform_grafted") {
@@ -1045,7 +1051,7 @@ export function createPerform(host) {
     applyThen((json) => {
       if (!json || json === "null") return;
       const here = new Map(overrides());
-      host.logImplicit("perform_keep", { controls: state.c.map((x) => +x.toFixed(3)) });
+      logImplicit("perform_keep", { controls: state.c.map((x) => +x.toFixed(3)) });
       // The sound does not change, so neither does anything playing it: the
       // controls' deltas fold into the centre, the offer in B stays, and the
       // wiring is refreshed around the new centre in the background.
@@ -1068,7 +1074,7 @@ export function createPerform(host) {
 
   function back() {
     if (!state.home || !state.home.knobs) return;
-    host.logImplicit("perform_back", {});
+    logImplicit("perform_back", {});
     if (state.home.json !== state.cur.json && structureDiffers(state.home.json, state.cur.json)) {
       host.commitTree(state.home.json);
       return;
@@ -1086,7 +1092,7 @@ export function createPerform(host) {
 
   function take() {
     if (!state.offer) return host.note("nothing offered yet — press Offer, or turn Wander up");
-    host.logImplicit("perform_take", { why: state.offerWhy || "" });
+    logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
     const json = state.offer.json;
     // B keeps sounding until A has rebuilt as the offer, then fades out: at
@@ -1284,7 +1290,7 @@ export function createPerform(host) {
   });
   const xyEnd = (e) => {
     if (xyField.hasPointerCapture(e.pointerId)) xyField.releasePointerCapture(e.pointerId);
-    for (const i of [XY.x, XY.y]) host.logImplicit("perform_turn", { control: knobs[i].spec.name, value: +knobs[i].value.toFixed(3), via: "xy" });
+    for (const i of [XY.x, XY.y]) logImplicit("perform_turn", { control: knobs[i].spec.name, value: +knobs[i].value.toFixed(3), via: "xy" });
   };
   xyField.addEventListener("pointerup", xyEnd);
   xyField.addEventListener("pointercancel", xyEnd);
@@ -1375,6 +1381,26 @@ export function createPerform(host) {
   requestAnimationFrame(drawScope);
 
   return {
+    // For booth attract mode (booth.js): the pads by name, whether a control
+    // reaches this patch, whether B holds an offer, and quiet — nothing done
+    // while quiet is logged or taught.
+    press(name) {
+      if (name === "offer") requestOffer("attract");
+      else if (name === "take") take();
+      else if (name === "keep") keep();
+      else if (name === "back") back();
+    },
+    reaches(i) {
+      const w = state.wire && state.wire[i];
+      return !!(w && !w.search);
+    },
+    hasOffer: () => !!state.offer,
+    setQuiet(on) {
+      state.quiet = !!on;
+      // Whatever attract blended in was heard by nobody in particular: an
+      // offer it leaves behind starts unheard for the visitor.
+      if (!on && state.offer) state.offer.heardMs = 0;
+    },
     show() {
       state.visible = true;
       nameEl.textContent = host.label();

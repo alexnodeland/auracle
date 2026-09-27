@@ -58,6 +58,31 @@ keep serving a stale `worker.js` or `.wasm` across rebuilds. That looks like a
 rebuild that changed nothing, or an engine and a UI from two different commits.
 ```
 
+## At a booth
+
+For a kiosk or a show floor, turn on **Booth mode** in the **⋯** menu, or open
+the app with `?booth` on the URL (`?booth=30` sets the idle time to thirty
+seconds; the default is a minute).
+
+- **Attract.** With nobody at the keys, the instrument plays itself in
+  PERFORM, cycling through a curated set of patches. It holds a chord
+  progression, moves two named controls under an invisible hand (the XY pad
+  follows), lets Wander turn the knobs, then grows an offer in B and blends it
+  in.
+- **Hand over.** Any key, click, touch, wheel or MIDI note stops it on the
+  spot. The visitor is holding whatever was playing, with Wander still and
+  Blend home. Nothing attract does is logged or counted as a pick.
+- **Next visitor.** <kbd>shift</kbd>+<kbd>esc</kbd> (or **New visitor** in
+  the ⋯ menu) forgets the taste profile and starts again with the warm start.
+  Booth mode and PERFORM's measured controls are kept, so the demo set stays
+  instant.
+
+Visit the booth set's patches once while setting up (Glass Pad, Acid Line,
+Loom, Undertow, Sub & Sparkle, Detune Dream, Wobble Board, Cathedral). PERFORM
+keeps each measurement across reloads, so after that no visitor waits for one.
+A MIDI controller with eight knobs is picked up automatically: the first eight
+knobs you turn claim the six named controls, Blend and Wander.
+
 ## Browser support
 
 Auracle needs a current desktop browser. Specifically it needs AudioWorklet,
