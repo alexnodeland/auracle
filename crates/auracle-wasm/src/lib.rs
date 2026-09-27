@@ -883,7 +883,8 @@ impl WasmEngine {
             .drift(&mut self.rng, &tree, &locks, steps.max(1) as usize)
         {
             Ok(t) => {
-                let knobs = auracle_session::perform::continuous_knobs(&t);
+                let knobs =
+                    auracle_session::perform::live_knobs(&t, self.engine.cfg.phrase.sample_rate);
                 serde_json::json!({ "tree": t, "knobs": knobs, "taste": self.engine.has_taste() })
                     .to_string()
             }

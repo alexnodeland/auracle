@@ -94,6 +94,19 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Fixed — PERFORM reloaded the patch under the player's hands
+
+PERFORM wired, pushed and drifted every continuous site of the patch, and not
+every one has a live handle in the voices: a modulation depth with nothing to
+modulate compiles to nothing, and some values are baked into constants. The
+first push after a wiring wrote all of them, the misses came back, and the app
+answers a miss by reloading the patch — so turning a named control could
+restart the sound mid-phrase, re-measure the controls and drop the offer in B.
+Found on camera, in the Loom playthrough. PERFORM now uses only the knobs the
+compiler gave a handle (`perform::live_knobs`); the drift walk freezes
+everything else (`frozen_addrs`). On Loom that is 22 of 27 continuous sites.
+A test checks every preset.
+
 ### Fixed — 256 KiB of stack per level of the patch tree
 
 The compiler recurses once per level of the audio tree, and quiver's

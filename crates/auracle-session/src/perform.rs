@@ -287,6 +287,41 @@ pub fn continuous_knobs(tree: &PatchTree) -> Vec<(String, f64)> {
         .collect()
 }
 
+/// The continuous knobs of `tree` the voices can take **live**, as
+/// `(address, value)` in trace order: those the compiler gave a
+/// [`ParamHandle`](auracle_grammar::ParamHandle). Not every continuous site
+/// has one — a modulation depth with no modulator compiles to nothing, and a
+/// value the compiler bakes into a constant has no atomic to write — and a
+/// performance surface must only ever turn knobs it can turn without a
+/// recompile. Writing one without a handle is a miss, and the app answers a
+/// miss by reloading the patch: mid-phrase, that is a dropout and every
+/// pending offer lost. Empty if the tree does not compile.
+pub fn live_knobs(tree: &PatchTree, sample_rate: f64) -> Vec<(String, f64)> {
+    let Ok(voice) = auracle_grammar::compile(tree, sample_rate) else {
+        return Vec::new();
+    };
+    continuous_knobs(tree)
+        .into_iter()
+        .filter(|(a, _)| voice.params.contains_key(a))
+        .collect()
+}
+
+/// Every address of `tree` that is not a [live knob](live_knobs): structure,
+/// categorical choices and continuous sites without a live handle. Locking
+/// these makes a walk one the voices can follow by knob writes alone.
+pub fn frozen_addrs(tree: &PatchTree, sample_rate: f64) -> Vec<String> {
+    let live: HashSet<String> = live_knobs(tree, sample_rate)
+        .into_iter()
+        .map(|(a, _)| a)
+        .collect();
+    tree.to_trace()
+        .choices
+        .keys()
+        .map(|a| a.to_string())
+        .filter(|a| !live.contains(a))
+        .collect()
+}
+
 /// Every address of `tree` that is **not** a continuous knob: structure and
 /// categorical choices. Locking these makes a walk knob-only.
 pub fn structural_addrs(tree: &PatchTree) -> Vec<String> {
@@ -329,7 +364,7 @@ pub fn jacobian(
     std: &Standardizer,
 ) -> Option<Jacobian> {
     let z = audio_z(tree, spec, memo, std)?;
-    let knobs = continuous_knobs(tree);
+    let knobs = live_knobs(tree, spec.sample_rate);
     let mut cols = Vec::with_capacity(knobs.len());
     for (addr, v) in &knobs {
         let h = if *v < 0.5 {
@@ -619,7 +654,9 @@ impl Engine {
         player_locks: &[String],
         steps: usize,
     ) -> Result<PatchTree, RefineOutcome> {
-        let mut locked: HashSet<String> = structural_addrs(tree).into_iter().collect();
+        let mut locked: HashSet<String> = frozen_addrs(tree, self.cfg.phrase.sample_rate)
+            .into_iter()
+            .collect();
         locked.extend(player_locks.iter().cloned());
         self.refine_walk(rng, tree, &locked, steps)
     }
@@ -666,6 +703,37 @@ mod tests {
                 c.name
             );
         }
+    }
+
+    /// PERFORM only turns knobs the voices can take live. Every live knob has
+    /// a compiled handle, and on the shipped presets there are continuous
+    /// sites without one (a modulation depth with nothing to modulate): those
+    /// are exactly what the old list wrote, missed, and answered with a patch
+    /// reload mid-phrase. A drift may move nothing else.
+    #[test]
+    fn performance_touches_live_knobs_only() {
+        let sr = PhraseSpec::default().sample_rate;
+        let mut excluded = 0;
+        for p in preset_bank() {
+            let voice = auracle_grammar::compile(&p.tree, sr).expect("presets compile");
+            let live = live_knobs(&p.tree, sr);
+            for (a, _) in &live {
+                assert!(
+                    voice.params.contains_key(a),
+                    "{}: {a} has no handle",
+                    p.name
+                );
+            }
+            excluded += continuous_knobs(&p.tree).len() - live.len();
+            let frozen: HashSet<String> = frozen_addrs(&p.tree, sr).into_iter().collect();
+            for (a, _) in &live {
+                assert!(!frozen.contains(a), "{}: live {a} is frozen", p.name);
+            }
+        }
+        assert!(
+            excluded > 0,
+            "the presets have handle-less sites; this test must see one"
+        );
     }
 
     #[test]
