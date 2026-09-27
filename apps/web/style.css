@@ -321,6 +321,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--hairline);
 }
 .bank-head .silk-dim { font-size: var(--t-micro); }
+/* "+N arriving" owns the stretch between the label and the save count, and
+   gives it up by ellipsizing. It used to be as wide as its text, so the save
+   count beside it walked 66px left the moment the pool finished filling (and
+   a digit at a time before that), and on the 200px rail the pair ran into the
+   "?". The save count and the "?" now sit at the right edge whatever the
+   counter says, or whether it says anything. */
+#bank-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* Three banks: presets, the evolving pool, and what you kept. */
 .bank-filters {
   display: flex;
@@ -348,6 +360,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--hairline);
   border-radius: 999px;
   padding: 3px 8px;
+  /* WCAG 2.2's 24px target; the padding alone came to 23. */
+  min-height: 24px;
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
@@ -486,7 +500,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Each of these must out-specify `.bank-item .bi-row button` above (0,2,1) or
    its font-size, padding and tracking are silently discarded — which is how
    the save and cut labels ended up running into each other. */
-.bank-item .bi-row button.star { min-width: 22px; }
+.bank-item .bi-row button.star { min-width: 24px; }
 .bank-item .bi-row button.star.lit { color: var(--phos-b); text-shadow: 0 0 6px rgba(255,180,84,0.6); }
 /* Save is the user's own channel: silk, not a phosphor.
    A word, not a glyph. It shipped for one round as `▣` — borrowed from the
@@ -525,13 +539,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item.kbd .bi-kill { opacity: 1; visibility: visible; }
 .bank-item .bi-row button.bi-kill:hover { color: var(--led-red); }
 /* 200 identical dead stars said nothing. Unrated rows read as names; the
-   stars appear on approach or once they carry a rating. */
-.bank-item .stars { display: inline-flex; opacity: 0.28; transition: opacity 120ms ease; }
-.bank-item:hover .stars,
-.bank-item:focus-within .stars,
-.bank-item.kbd .stars,
-.bank-item.live .stars,
-.bank-item .stars:has(.star.lit) { opacity: 1; }
+   stars appear on approach or once they carry a rating. But five stars at 28%
+   opacity (1.3:1) said nothing either, including that the row could be rated
+   at all. At rest an unrated row now keeps one star, in outline, quiet and
+   legible, where the rating goes; the other four hold their places and arrive
+   on approach — hover, focus, the keyboard cursor, the patch on the bench. */
+.bank-item .stars { display: inline-flex; }
+.bank-item:not(:hover):not(:focus-within):not(.kbd):not(.live) .stars:not(:has(.star.lit)) .star + .star {
+  visibility: hidden;
+}
+.bank-item:not(:hover):not(:focus-within):not(.kbd):not(.live) .stars:not(:has(.star.lit)) .star:first-child {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--silk-dim);
+}
 
 /* ---- the preset library, browsed in place ---- */
 .pb-cat {
@@ -1525,7 +1545,10 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   padding: 1px 4px;
   outline: none;
 }
-.bank-head { position: relative; gap: 8px; }
+/* --s1, not 8px: the save count is pinned right now (`#bank-count`), and at
+   8px the counter's slot came up 6px short of "+30 arriving" on the 252px
+   rail, which cut it to "+30 arrivi…". */
+.bank-head { position: relative; gap: var(--s1); }
 .bank-head .util-btn { padding: 4px 8px; font-size: var(--t-micro); }
 /* ---- the three banks ---- */
 /* One "?" for both heads. The look was scoped to the bank's head, so the node
@@ -4632,7 +4655,11 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 
 /* ---------- narrow desktop window ---------- */
 .narrow-gate { display: none; }
-@media (max-width: 860px) and (pointer: fine) {
+/* At 999px and under, not 860: between the two (880×720) the rack was a
+   114px thumbnail, PERFORM's pads were half under the keybar with XY off the
+   bottom, and "0/10 saved" printed over the bank's own "?". The copy in
+   index.html says the same number, as does the handheld gate's comment there. */
+@media (max-width: 999px) and (pointer: fine) {
   html:not(.handheld) .narrow-gate {
     display: flex;
     position: fixed; inset: 0; z-index: 90;

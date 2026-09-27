@@ -17013,7 +17013,8 @@ function renderFillHint() {
   const el = $("bank-count");
   if (!el) return;
   const arriving = Math.max(0, fillTarget - fillPool);
-  el.textContent = arriving ? `+${arriving} arriving` : "";
+  // The word is its own span so a narrow rail can drop it and keep the count.
+  el.innerHTML = arriving ? `+${arriving}<span class="bc-word"> arriving</span>` : "";
   el.title = arriving ? `${arriving} more patches are still being rendered` : "";
 }
 
