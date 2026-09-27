@@ -3882,11 +3882,26 @@ $("rec-btn").onclick = () => {
 if (new URLSearchParams(location.search).has("film")) {
   const filmMidi = { inputs: new Map(), outputs: new Map(), sysexEnabled: false, onstatechange: null };
   Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async () => filmMidi });
+  // The film's sound is the page's whole output: the master bus, where the
+  // voices and every audition meet (▶ in the bank, the duel, the node bank's
+  // preview). The ● rec take taps the voices alone, which left a film silent
+  // wherever it showed an audition. The take downloads as a ● rec take does.
+  let tap = null;
   window.__film = {
     rec(on) {
       if (!live) return;
       recording = !!on;
-      live.rec(recording);
+      if (!tap) {
+        tap = new AudioWorkletNode(audioCtx, "auracle-tap", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+        const mute = audioCtx.createGain();
+        mute.gain.value = 0;
+        master.connect(tap);
+        tap.connect(mute).connect(audioCtx.destination);
+        tap.port.onmessage = (e) => {
+          if (e.data.type === "tap_done" && e.data.samples.length) downloadWav(e.data.samples, e.data.sampleRate);
+        };
+      }
+      tap.port.postMessage({ type: recording ? "on" : "off" });
     },
     midiDevice(name = "MIDI controller") {
       filmMidi.inputs.clear();
