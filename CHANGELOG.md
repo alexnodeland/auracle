@@ -99,6 +99,9 @@ A walkthrough of the first-run flow, played the way a visitor would, found:
 * The warm start is a real dialog (role, `aria-modal`, focus on the first ▶);
   the menubar's forecast count no longer runs one behind TRUST; style names
   are no longer clipped.
+* **A narrow desktop window** (under ~860 px, fine pointer) says to widen it,
+  instead of overprinting the controls into "BRIGSNAPTIOBODY". CSS only: it
+  disappears as the window widens, and nothing underneath is reset.
 * **PERFORM's pads.** The Hold pad is **Freeze** (the dock's **hold** latches
   notes — two buttons named the same doing different jobs); Take and Peek are
   disabled until there is an offer; Offer reads as the primary.
