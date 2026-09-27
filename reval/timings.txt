@@ -1,1 +1,2 @@
 make phi-stats: exit=0 wall=566s
+make norm-peak: exit=0 wall=79s
