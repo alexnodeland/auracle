@@ -19,7 +19,40 @@ const INK = {
   greenDim: cssVar("--phos-a-dim", "#63a97c"),
   amber: cssVar("--phos-b", "#ffb454"),
   amberDim: cssVar("--phos-b-dim", "#b8823c"),
+  amberDeep: cssVar("--phos-b-deep", "#7a5526"),
 };
+// Two phosphors and silk, and nothing else: every other colour the canvases
+// and the inline styles use is made *from* these tokens, so no third hue can
+// creep in as a literal and the whole instrument moves when the palette does.
+const inkRgb = (hex) => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex).trim());
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+};
+// A token at an opacity (`inkAlpha(INK.amber, 0.05)`), for washes and trails.
+function inkAlpha(hex, a) {
+  const c = inkRgb(hex);
+  return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})` : hex;
+}
+// A token `t` of the way toward another, as hex: shades between two inks.
+function inkMix(a, b, t) {
+  const x = inkRgb(a);
+  const y = inkRgb(b);
+  if (!x || !y) return a;
+  return `#${x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("")}`;
+}
+// A token as [hue°, saturation %, lightness %], for ramps that turn around it.
+function inkHsl(hex) {
+  const c = inkRgb(hex) || [0, 0, 0];
+  const [r, g, b] = c.map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return [0, 0, l * 100];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [(h * 60 + 360) % 360, s * 100, l * 100];
+}
 
 // Version-stamp the worker and all wasm fetches so a stale browser cache can
 // never pair an old engine with a newer UI.
@@ -6381,19 +6414,18 @@ function plugArt(rot) {
   return g;
 }
 
-// Five stops inside the green family — hue ±14°, lightness ±10% off
+// Five stops inside the green family — hue ±14°, lightness ±7% off
 // `--phos-a` (#8ef0b1 ≈ hsl(141 76% 75%)). Green still unambiguously means
 // audio; what the ramp buys is that two cables converging on one mixer are
 // two *different* greens, so you can follow either one back to where it came
 // from. Amber stays unsplit: there is only ever one modulation story per
 // cable and splitting it would compete with the amber-means-the-model law.
-const AUDIO_INK = [
-  "hsl(127, 74%, 68%)",
-  "hsl(134, 75%, 71%)",
-  "hsl(141, 76%, 75%)",
-  "hsl(148, 77%, 79%)",
-  "hsl(155, 78%, 82%)",
-];
+// Turned around the token rather than typed out, so the cables stay the
+// sound's phosphor when the palette moves; the middle stop *is* `--phos-a`.
+const AUDIO_INK = (() => {
+  const [h, s, l] = inkHsl(INK.green);
+  return [-2, -1, 0, 1, 2].map((i) => `hsl(${(h + 7 * i).toFixed(1)}, ${(s + i).toFixed(1)}%, ${(l + 3.5 * i).toFixed(1)}%)`);
+})();
 
 /** Which stop each audio cable takes, keyed by its *source* — the term is a
  *  tree, so a module has exactly one outgoing cable and its source names it.
@@ -15017,7 +15049,7 @@ const scopeState = {
   tap: "pre",        // pre | post  — the instrument, or what you hear
   fft: 2048,
   smooth: 0.6,       // the analyser's own window
-  colour: "green",   // green | amber | ice
+  colour: "green",   // green | amber — the two phosphors, and no third
   glow: true,
   trigger: true,
   gain: 1,
@@ -15030,16 +15062,19 @@ const scopeState = {
   size: "S",
   freeze: false,
 };
+// The trace is drawn in one of the two phosphors. An "ice" option shipped a
+// cyan third one — the brand's one hard rule is two, no third.
 const SCOPE_INK = {
-  green: { line: "#8ef0b1", glow: "rgba(142,240,177,0.75)" },
-  amber: { line: "#ffb454", glow: "rgba(255,180,84,0.75)" },
-  ice: { line: "#cfe6ff", glow: "rgba(207,230,255,0.7)" },
+  green: { line: INK.green, glow: inkAlpha(INK.green, 0.75) },
+  amber: { line: INK.amber, glow: inkAlpha(INK.amber, 0.75) },
 };
 function scopeLoad() {
   try {
     const saved = JSON.parse(localStorage.getItem(SCOPE_STORE) || "{}");
     for (const k of Object.keys(scopeState)) if (k in saved) scopeState[k] = saved[k];
   } catch (e) { /* a corrupt blob is not worth a boot failure */ }
+  // A colour this build no longer has (a saved "ice") comes back as the default.
+  if (!(scopeState.colour in SCOPE_INK)) scopeState.colour = "green";
 }
 function scopeSave() {
   try { localStorage.setItem(SCOPE_STORE, JSON.stringify(scopeState)); } catch (e) {}
@@ -15416,8 +15451,17 @@ function niceName(name) {
 }
 
 // Style hues are amber rotations, not an arbitrary categorical ramp: the
-// taste map is the model's mind, and the model speaks amber.
-const STYLE_COLORS = ["#ffb454", "#e08a3c", "#c9a86a", "#a8763f", "#d9d4c8"];
+// taste map is the model's mind, and the model speaks amber. Made from the
+// amber tokens and silk — amber; amber toward its dim; dim toward silk; dim
+// toward deep; silk — within a shade of the five hand-picked literals they
+// replace, and now unable to drift off the palette.
+const STYLE_COLORS = [
+  INK.amber,
+  inkMix(INK.amber, INK.amberDim, 0.5),
+  inkMix(INK.amberDim, INK.silk, 0.5),
+  inkMix(INK.amberDim, INK.amberDeep, 0.3),
+  INK.silk,
+];
 
 // A style's display name: the user's, or an auto-label from its strongest
 // positive pulls ("bright + punchy").
@@ -15743,7 +15787,9 @@ function drawMapTab(ctx, w, h, dpr) {
       if (p.id === wb.subjectId) {
         ctx.globalAlpha = 1;
         ctx.shadowBlur = 0;
-        ctx.strokeStyle = "#fff";
+        // Silk, the panel's own white: pure #fff was the one cold hue on
+        // the model's amber map.
+        ctx.strokeStyle = INK.silk;
         ctx.lineWidth = 1.2 * dpr;
         ctx.beginPath();
         ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
