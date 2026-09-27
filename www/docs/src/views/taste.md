@@ -85,8 +85,12 @@ small preference. Both are shown, because hiding the uncertainty is how a model
 starts sounding more certain than it is.
 
 The coordinates are named in perceptual and structural terms: *chorus &
-sweeps*, *drive & fold*, *bass weight*, *amp attack*, *mod density*. What each
-one measures is [in the reference](../../reference/features/audio.html).
+sweeps*, *drive & fold*, *body*, *amp attack*, *mod density*. Where a
+coordinate is what one of PERFORM's controls is made of, it carries that
+control's word: *body* is bass weight, *grit* is spectral flatness, *space* is
+the tail, *snap* is the crest. The reasons the model gives and the knobs you
+play say the same thing. What each coordinate measures is
+[in the reference](../../reference/features/audio.html).
 
 ## TRUST — is its confidence honest?
 

@@ -32,7 +32,7 @@ there.
 **The belief row.** What the model thinks of *this* patch and why:
 
 ```text
-MODEL'S GUESS 0.80 · chorus & sweeps +0.78 · bass weight −0.09 ·
+MODEL'S GUESS 0.80 · chorus & sweeps +0.78 · body −0.09 ·
 drive & fold −0.08   under your style 2 lens
 ```
 

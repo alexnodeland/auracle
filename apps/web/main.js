@@ -14753,11 +14753,16 @@ function drawWave(canvas, data) {
 }
 
 // ---------- taste instruments ----------
+// The coordinates a PERFORM control is *made of* carry that control's word, so
+// the model's reasons and the knobs a player turns speak one language: Body is
+// bass weight in both places, Grit is flatness, Space is the tail, Snap is the
+// crest. "body" used to label mean level here, while PERFORM's Body meant bass
+// weight — one word, two quantities, a layer apart.
 const NICE_NAMES = {
   centroid_mean: "brightness", centroid_std: "shimmer", rolloff_mean: "treble reach",
-  flatness_mean: "noisiness", flux_mean: "movement", zcr_mean: "edge",
-  rms_mean: "body", rms_std: "dynamics", crest: "punch", attack_s: "slow attack",
-  tail_ratio: "long tail", bass_fraction: "bass weight",
+  flatness_mean: "grit", flux_mean: "movement", zcr_mean: "edge",
+  rms_mean: "density", rms_std: "dynamics", crest: "snap", attack_s: "slow attack",
+  tail_ratio: "space", bass_fraction: "body",
   held_centroid_std: "held-note motion", high_ratio: "speaks up high",
   chord_flatness_delta: "stack mud",
   motion_slow: "slow motion", motion_mid: "pulsing", motion_fast: "flutter",
