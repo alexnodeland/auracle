@@ -749,6 +749,7 @@ kbd {
    the product's chrome should be recognisably the same object. */
 .shot-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s2);
   justify-content: center;
   margin-bottom: var(--s5);
@@ -769,6 +770,11 @@ kbd {
 }
 .shot-tab:hover { color: var(--silk); }
 .shot-tab[aria-selected="true"] { color: var(--phos-b); border-color: var(--phos-b-deep); }
+/* Four tabs at full padding ran 5 px past a 390 px phone and scrolled the page
+   sideways; tighter tabs fit, and the row wraps below that. */
+@media (max-width: 480px) {
+  .shot-tab { padding: 8px 12px; letter-spacing: 0.1em; }
+}
 
 .shot-pane { max-width: var(--wide); margin: 0 auto; }
 
@@ -792,176 +798,6 @@ kbd {
   text-align: center;
 }
 .shot-cap strong { color: var(--silk); font-weight: 500; letter-spacing: 0.08em; }
-
-/* ─── films ─────────────────────────────────────────────────────────────── */
-/* Written by www/video/tools/publish.py between markers in index.html, from
-   the films it has published: the launch film is the hero, and every other
-   film sits in the section it explains, so a film is on this page exactly
-   when it is in assets/film/, with its real running time. Every film opens in
-   one player over the page (viz.js); with no script, each link is the MP4.
-
-   Green, because a film is something you *hear*: the play badges are the
-   sound phosphor, the same as the instrument's play buttons. */
-
-.btn-film { padding-left: 12px; }
-.btn-film-play {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid var(--phos-a-deep);
-  color: var(--phos-a);
-  font-size: 0.62rem;
-  padding-left: 2px;
-}
-.btn-film:hover .btn-film-play { border-color: var(--phos-a); box-shadow: 0 0 10px rgba(142, 240, 177, 0.25); }
-.btn-film-len { font-size: var(--t-micro); color: var(--silk-dim); }
-
-/* The hero film: the launch film's opening, looping silently inside the
-   instrument's own bezel — a screen on the panel, not a video pasted on a
-   page. The whole screen is the button that plays it with sound. */
-.hero-film { padding: var(--s4); }
-.hero-film-screen {
-  position: relative;
-  display: block;
-  aspect-ratio: 16 / 9;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--bezel);
-  box-shadow: inset 0 0 0 1px var(--hairline), inset 0 0 60px rgba(0, 0, 0, 0.6);
-  text-decoration: none;
-  color: var(--silk);
-}
-.hero-film-screen video { display: block; width: 100%; height: 100%; object-fit: cover; }
-.hero-film-play {
-  position: absolute;
-  left: var(--s4);
-  bottom: var(--s4);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: 8px 16px 8px 8px;
-  border: 1px solid var(--phos-a-deep);
-  border-radius: 999px;
-  background: rgba(7, 8, 10, 0.78);
-  font-size: 0.92rem;
-  letter-spacing: 0.02em;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.hero-film-play .btn-film-play { width: 30px; height: 30px; font-size: 0.72rem; border-color: var(--phos-a); }
-.hero-film-screen:hover .hero-film-play,
-.hero-film-screen:focus-visible .hero-film-play { border-color: var(--phos-a); box-shadow: 0 0 18px rgba(142, 240, 177, 0.3); }
-.hero-film-screen:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 3px; }
-/* No film published yet: the hero is its copy alone. */
-.hero:not(:has(.hero-film)) { grid-template-columns: minmax(0, 1fr); }
-
-/* Try it here: the working duel, with its sentence beside it. */
-.try {
-  display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
-  gap: clamp(var(--s6), 5vw, var(--s8));
-  align-items: center;
-}
-.try-copy .voice { margin-top: var(--s5); text-wrap: pretty; }
-
-/* A section's films: small, beside the claim they show. */
-.film-chips {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 300px));
-  gap: var(--s4);
-  margin-top: var(--s7);
-}
-.film-chip {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-  color: var(--silk);
-  text-decoration: none;
-  min-width: 0;
-}
-.film-chip-shot {
-  position: relative;
-  display: block;
-  aspect-ratio: 16 / 9;
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--bezel);
-}
-.film-chip-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
-/* Bottom-left, never centred: a poster frame's centre is usually its
-   subject, and a badge on it hides it. */
-.film-chip-badge {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--phos-a-deep);
-  background: rgba(7, 8, 10, 0.75);
-  color: var(--phos-a);
-  font-size: 0.7rem;
-  padding-left: 2px;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-.film-chip:hover .film-chip-shot,
-.film-chip:focus-visible .film-chip-shot { border-color: var(--phos-a-deep); }
-.film-chip:hover .film-chip-badge,
-.film-chip:focus-visible .film-chip-badge { border-color: var(--phos-a); box-shadow: 0 0 14px rgba(142, 240, 177, 0.3); }
-.film-chip:focus-visible { outline: none; }
-.film-chip:focus-visible .film-chip-shot { outline: 2px solid var(--phos-a); outline-offset: 3px; }
-.film-chip-meta { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
-.film-chip-title { font-size: 0.92rem; letter-spacing: 0.01em; }
-.film-chip-len { font-size: var(--t-micro); color: var(--silk-dim); }
-
-/* The player: a native <dialog>, the page dimmed behind it. */
-.film-dialog {
-  width: min(1280px, 94vw);
-  max-width: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  overflow: visible;
-}
-.film-dialog::backdrop { background: rgba(7, 8, 10, 0.88); backdrop-filter: blur(4px); }
-.film-dialog-frame { position: relative; }
-.film-dialog video {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  background: var(--bezel);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
-}
-.film-dialog-close {
-  position: absolute;
-  top: -44px;
-  right: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--hairline);
-  background: var(--panel);
-  color: var(--silk);
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.film-dialog-close:hover { border-color: var(--silk-mute); }
-.film-dialog-close:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
-
-@media (max-width: 560px) {
-  .film-dialog-close { top: -40px; }
-  /* A phone's hero screen is ~330px wide: the pill says less and covers less. */
-  .hero-film { padding: var(--s2); }
-  .hero-film-play { left: var(--s2); bottom: var(--s2); padding: 5px 12px 5px 5px; font-size: 0.8rem; gap: var(--s2); }
-  .hero-film-play .btn-film-play { width: 24px; height: 24px; font-size: 0.6rem; }
-  .hero-film-play .hfp-more { display: none; }
-}
 
 /* ─── how it learns ─────────────────────────────────────────────────────── */
 
@@ -1133,8 +969,7 @@ kbd {
 
 @media (max-width: 960px) {
   .hero,
-  .learn,
-  .try {
+  .learn {
     grid-template-columns: minmax(0, 1fr);
   }
   /* Copy, then the panel, then the CTAs — so the thesis is read before the

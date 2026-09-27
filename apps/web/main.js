@@ -2710,7 +2710,7 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
     const fwd = vertical ? "ArrowDown" : "ArrowRight";
     const back = vertical ? "ArrowUp" : "ArrowLeft";
     if (e.key !== fwd && e.key !== back && e.key !== "Home" && e.key !== "End") return;
-    const items = [...container.querySelectorAll(itemSel)].filter((el) => !el.disabled);
+    const items = [...container.querySelectorAll(itemSel)].filter((el) => !el.disabled && !el.classList.contains("hidden"));
     if (items.length === 0) return;
     const cur = document.activeElement?.closest?.(itemSel);
     const i = items.indexOf(cur);
@@ -17664,6 +17664,15 @@ function showHelp(on) {
     : "https://auracle.alexnodeland.com/docs/";
   $("films-link").href = `${docs}films.html`;
   $("help-film").href = `${docs}views/perform.html#film-perform`;
+  // Shown only once the films are published beside the site (publish.py
+  // writes assets/film/films.json): before that they would open a page that
+  // does not exist yet.
+  const index = new URL("../assets/film/films.json", docs).href;
+  fetch(index, { method: "HEAD", cache: "no-store" })
+    .then((r) => {
+      if (r.ok) for (const id of ["films-link", "help-film"]) $(id).classList.remove("hidden");
+    })
+    .catch(() => {});
 }
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
