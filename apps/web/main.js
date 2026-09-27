@@ -1244,6 +1244,9 @@ worker.onmessage = (e) => {
     }
     case "bench": {
       wb.rack = m.rack;
+      // From here `wb.dirty` is the truth about COMMIT; the local guess that
+      // lit it ahead of this reply (`editPending`) has done its job.
+      editPending = false;
       // Every address in the identity index belongs to the rack it was built
       // from, and this is the only place a rack is ever replaced.
       lockIndex = null;
@@ -1479,6 +1482,7 @@ worker.onmessage = (e) => {
       } else if (auditionOnSettle) {
         auditionOnSettle = false;
       }
+      settleCommit();
       drainStruct();
       break;
     }
@@ -1561,6 +1565,9 @@ worker.onmessage = (e) => {
         if (wb.rack) renderRack();
       }
       editInFlight = false;
+      // Nothing landed, so COMMIT goes back to what the bench actually says.
+      editPending = false;
+      syncCommitBtn();
       // A rejected op never reached the tree, so nothing was posted early and
       // nothing is in flight; the next one may go. `restoreInFlight` matters
       // now that a whole-tree replace can *be* rejected (the ceiling check):
@@ -1583,6 +1590,7 @@ worker.onmessage = (e) => {
         editQueue = null;
         sendEdit(q.addr, q.value, q.isIndex);
       }
+      settleCommit();
       drainStruct();
       break;
     }
@@ -1866,6 +1874,11 @@ function releaseRequest(request, id) {
     case "edit_param":
       editInFlight = false;
       editQueue = null; // the knob is already where the player left it
+      // The edit did not land, so neither the guess that lit COMMIT nor a
+      // commit waiting on it stands.
+      editPending = false;
+      commitOnSettle = null;
+      syncCommitBtn();
       drainStruct();
       break;
     case "edit_structure":
@@ -5158,6 +5171,9 @@ const presetClicks = new Map(); // library index -> benchSeq at the click
  *  opened. */
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
+  // A COMMIT still waiting on the last patch's edit is about that patch; it
+  // must not land on this one when the edit settles.
+  commitOnSettle = null;
   // No separate `explain` request any more: the bench reply carries the
   // decomposition of the tree it is describing, so the readout can never name
   // a patch other than the one on screen. See `renderBelief`.
@@ -5182,7 +5198,41 @@ function openOnBench(id, { auto = false } = {}) {
 // posterior. That needs a measured evolution revalidation, not this stage.
 const LIVE_INDEX_SITES = new Set(["table", "oct"]);
 
+// COMMIT answers the hand, not the round trip. `wb.dirty` is set by the bench
+// reply to an edit — about a second after the knob moved on a busy engine —
+// and COMMIT waited for it, so the button still looked dead at the moment the
+// player reached for it. A local edit lights it at once; the reply confirms
+// it (and clears this), and a refusal (`edit_rejected`) takes it back.
+let editPending = false;
+// A COMMIT pressed while that edit is still on its way waits for it, so what
+// is committed (or duelled) is the tree with the edit in it.
+let commitOnSettle = null;
+
+/** COMMIT's enabled state and both of its tooltips, in one place. */
+function syncCommitBtn() {
+  const b = $("rack-commit");
+  if (!b) return;
+  const hasRack = !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
+  const edited = wb.dirty || editPending;
+  b.disabled = !(hasRack && edited && wb.vetOk);
+  // `title` never fires on a disabled element, so the reason it is disabled
+  // lives on the wrapper; what it does lives on the button itself.
+  const wrap = b.closest(".tt");
+  if (wrap) {
+    wrap.title = !b.disabled ? ""
+      : !hasRack ? "Pick a patch from the bank first"
+      : !edited ? "Nothing to commit — turn a knob first"
+      : "This patch failed the safety vet";
+  }
+  b.title = b.disabled ? ""
+    : "Plays your version against the original and asks which you prefer (with “my edit is better” ticked, it takes your word for it). Either answer teaches the model, and “the original” teaches it most.";
+}
+
 function sendEdit(addr, value, isIndex) {
+  if (!wb.dirty && !editPending) {
+    editPending = true;
+    syncCommitBtn();
+  }
   // Sound first: continuous knobs — and the two live categorical sites —
   // write straight into the running voices.
   const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
@@ -6514,7 +6564,7 @@ function renderRack() {
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
-  enable("rack-commit", hasRack && wb.dirty && wb.vetOk);
+  syncCommitBtn();
   enable("rack-evolve", hasRack);
   enable("lock-knobs", hasRack);
   enable("lock-structure", hasRack);
@@ -6526,7 +6576,6 @@ function renderRack() {
     if (wrap) wrap.title = $(id).disabled ? text : "";
   };
   reason("rack-play", !hasRack ? "Pick a patch from the bank first" : "This patch failed the safety vet and is muted");
-  reason("rack-commit", !hasRack ? "Pick a patch from the bank first" : !wb.dirty ? "Nothing to commit — turn a knob first" : "This patch failed the safety vet");
   reason("rack-evolve", "Pick a patch from the bank first");
   reason("lock-knobs", "Pick a patch from the bank first");
   reason("lock-structure", "Pick a patch from the bank first");
@@ -10703,14 +10752,15 @@ let commitDuel = null; // {orig, edit, origSide, then}
  *  engine's tree comparison is the fact; when it says "identical", this is how
  *  the panel stops saying otherwise. */
 function clearBenchDirty() {
-  if (!wb.dirty) return;
+  editPending = false;
+  if (!wb.dirty) return syncCommitBtn();
   wb.dirty = false;
   if (wb.subjectId != null) {
     // The worklet is holding a tree byte-identical to the stored patch, so it
     // is playing that patch — "(edited)" was a caption on a difference that
     // does not exist.
     livePatchId = wb.subjectId;
-    setLiveLabel(nameOf(wb.subjectId));
+    setLiveLabel(benchName(wb.subjectId));
   }
   renderRack(); // the subject line and COMMIT both read `dirty`
 }
@@ -10719,6 +10769,13 @@ function clearBenchDirty() {
  *  and the player has not already told us the answer. */
 function commitBench(opts = {}) {
   if (wb.subjectId == null) return;
+  // Pressed while the knob edit that lit it is still on its way: wait for it,
+  // or the duel would compare the tree from before the edit (and a bench not
+  // yet marked dirty would commit "none").
+  if (editInFlight || editQueue) {
+    commitOnSettle = opts;
+    return;
+  }
   if ($("improve-check").checked) {
     // The express path: asserted, not heard, and tagged as such.
     return sendCommit("self_edited", opts);
@@ -10728,6 +10785,17 @@ function commitBench(opts = {}) {
   // turned back is not an edit) and hands back the original's audio in the
   // same round trip.
   send({ type: "edit_duel", then: opts.evolving ? "evolve" : "" });
+}
+
+/** The deferred half of `commitBench`, once the edit it waited on has
+ *  settled. Only if it is still a commit worth making — the edit may have been
+ *  refused or the vet may have muted it — and silently otherwise: COMMIT then
+ *  says why it is disabled. */
+function settleCommit() {
+  if (!commitOnSettle || editInFlight || editQueue) return;
+  const opts = commitOnSettle;
+  commitOnSettle = null;
+  if (wb.dirty && wb.vetOk) commitBench(opts);
 }
 
 function sendCommit(outcome, opts = {}) {
