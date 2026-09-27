@@ -1455,7 +1455,13 @@ async function dispatch(m) {
       // `warm` rides along so the first-run elicitation can pair the loaded id
       // back to the preset the user picked; `preview` says the caller only
       // wants to hear it, so the UI must not haul it onto the bench.
-      post({ type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview, views: tasteViews(), status: status() });
+      // `prewarm` (booth mode) wants the tree itself, to measure PERFORM's
+      // wiring without opening the patch, so the tree rides back too.
+      post({
+        type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview,
+        prewarm: m.prewarm, json: m.prewarm && id > 0 ? engine.tree_json_of(id) : undefined,
+        views: tasteViews(), status: status(),
+      });
       break;
     }
     // The first-run elicitation, in one turn. It used to be nine

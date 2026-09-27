@@ -976,6 +976,7 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       fillPool = m.status.pool;
       fillTarget = m.status.pool_target;
+      poolSettled = true;
       // The bank grew behind the app: re-read the instruments over the full
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
@@ -1793,6 +1794,14 @@ worker.onmessage = (e) => {
       const evicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
+      // Booth mode's pre-warm asked for the tree, to measure it for PERFORM
+      // without opening it (see `boothPrewarm`): no bench, no toast.
+      if (m.prewarm) {
+        if (m.id > 0 && m.index !== undefined) presetIds.set(m.index, m.id);
+        boothPrewarmLanded(m);
+        scheduleSave();
+        break;
+      }
       // A preview is a listen, not a selection: no bench, no toast, no
       // interruption of the screen the user is standing on.
       if (m.preview) {
@@ -3006,6 +3015,36 @@ setInterval(paintPerformedKnobs, 100);
 let booth = null;
 let boothQuiet = false;
 
+// Booth mode's pre-warm: each demo patch measured for PERFORM before attract
+// or a visitor needs it. The measurement wants the patch's tree exactly as the
+// pool holds it, and the only way to that tree is to load the preset — which
+// for a bench load means a new patch under the player's hands. So the load is
+// flagged `prewarm`: the worker sends the tree back with the reply, and the
+// reply stops at the bank (see `case "preset_loaded"`). A preset already in
+// the pool is simply named again; one that is not takes a pool slot, as the
+// attract cycle playing it would. PERFORM then measures the tree for its
+// cache alone (`perform.prewarm`), leaving the bench and the voices as they
+// were.
+const boothTrees = new Map(); // demo patch name -> its tree JSON, as pooled
+const boothPrewarmWaiting = new Map(); // preset index -> resolve(json|null)
+function boothPrewarm(name) {
+  const p = (presetRows || []).find((r) => r.name === name);
+  if (!p || !perform) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    boothPrewarmWaiting.set(p.index, resolve);
+    send({ type: "load_preset", index: p.index, prewarm: true });
+  }).then((json) => {
+    if (!json) return null;
+    boothTrees.set(name, json);
+    return perform.prewarm(json);
+  });
+}
+function boothPrewarmLanded(m) {
+  const resolve = boothPrewarmWaiting.get(m.index);
+  boothPrewarmWaiting.delete(m.index);
+  if (resolve) resolve(m.id > 0 && m.json ? m.json : null);
+}
+
 /** Forget this visitor: the taste profile goes, booth mode and the measured
  *  PERFORM wirings stay, and the next person gets the warm start. The same as
  *  "Reset taste profile…" without the question — at a booth, staff press it
@@ -3060,6 +3099,22 @@ async function bootBooth() {
       }
     },
     resetVisitor: () => boothResetVisitor(),
+    // The pre-warm (booth.js): measure a demo patch without opening it, and
+    // what that measurement says — which named controls reach it.
+    prewarm: (name) => boothPrewarm(name),
+    reach: (name) => (perform && boothTrees.has(name) ? perform.reachOf(boothTrees.get(name)) : null),
+    // Is this demo patch the one the voices are playing (its bench load has
+    // landed, not merely been asked for)?
+    isLive: (name) => {
+      const p = (presetRows || []).find((r) => r.name === name);
+      const id = p ? presetIds.get(p.index) : null;
+      return id != null && livePatchId === id;
+    },
+    held: () => heldNotes.size,
+    // The engine between jobs: the pool is done arriving, and no fit or
+    // other long call is running. (Whether PERFORM has a question out,
+    // booth.js asks PERFORM itself.)
+    engineIdle: () => poolSettled && !engineBusy && !fitting,
   });
   if (!presetRows) send({ type: "presets" });
   const paintBooth = () => {
@@ -16991,6 +17046,9 @@ const bootDots = [];
 let booted = false;
 let fillPool = 0;
 let fillTarget = 0;
+// `filled` has landed: the pool is done arriving, so the engine's thread is
+// no longer shared with the boot fill (booth mode's pre-warm waits for it).
+let poolSettled = false;
 
 // Fade, don't cut — this is the surface the user has been staring at.
 // Idempotent: `playable` normally lifts it and `filled` re-asserts, and a

@@ -42,6 +42,9 @@ function rangeOf(w) {
   const ok = (m) => m == null || m >= HALF_OPEN;
   return [ok(w.down) ? -1 : 0, ok(w.up) ? 1 : 0];
 }
+// The named controls a wiring reaches: the ones `reaches(i)` says yes to.
+const reachOfWiring = (wiring) =>
+  (wiring || []).map((w, i) => (w && !w.search ? i : -1)).filter((i) => i >= 0);
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -586,19 +589,36 @@ export function createPerform(host) {
   const WIRE_CACHE_MAX = 48;
   const WIRE_STORE = "auracle-perform-wirings";
   const tasteRev = () => (host.tasteRev ? host.tasteRev() : 0);
+  // Keyed by what the patch *is*, not by the bytes it arrived as. A tree's
+  // JSON carries its node uids, and the pool mints those per session
+  // (`Uid::mint`, one process-wide counter), so the same preset loaded after
+  // a reload — or re-admitted after an eviction — came back as different
+  // bytes and missed a measurement the cache already held: a booth's demo
+  // set said "measuring…" again after every visitor reset. The wiring itself
+  // is uid-free (its knobs are trace addresses), and the engine already
+  // treats two trees that differ only in uids as the same patch.
+  function wireKey(json) {
+    try {
+      return JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
+    } catch {
+      return json;
+    }
+  }
   const wireCache = (() => {
     try {
       const raw = localStorage.getItem(WIRE_STORE);
-      return new Map(raw ? JSON.parse(raw) : []);
+      // Entries stored under the old byte keys are re-keyed on the way in.
+      return new Map((raw ? JSON.parse(raw) : []).map(([k, v]) => [wireKey(k), v]));
     } catch {
       return new Map();
     }
   })();
   let wireSaveTimer = null;
   function rememberWiring(json, data, rev) {
-    wireCache.delete(json);
+    const key = wireKey(json);
+    wireCache.delete(key);
     while (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
-    wireCache.set(json, { data: structuredClone(data), rev });
+    wireCache.set(key, { data: structuredClone(data), rev });
     clearTimeout(wireSaveTimer);
     wireSaveTimer = setTimeout(() => {
       try {
@@ -616,8 +636,14 @@ export function createPerform(host) {
   function wire() {
     if (!state.cur) return;
     const first = state.cur.knobs.size === 0;
-    const hit = first ? wireCache.get(state.cur.json) : null;
+    const key = first ? wireKey(state.cur.json) : null;
+    const hit = first ? wireCache.get(key) : null;
     if (hit) {
+      // A hit is a use: it moves to the young end, so the patches played
+      // most — a booth's demo set, round every few minutes — are the last
+      // ones the cache lets go.
+      wireCache.delete(key);
+      wireCache.set(key, hit);
       applyWired(structuredClone(hit.data));
       knobs.forEach(paintKnob);
       renderHood();
@@ -855,6 +881,13 @@ export function createPerform(host) {
     // A measurement is kept even when the player has already moved on: it
     // is still true of that patch, and flicking back is the common case.
     if (p.cacheAs && m.type === "perform_wired" && m.data) rememberWiring(p.cacheAs.json, m.data, p.cacheAs.rev);
+    // A pre-warm (see `prewarm` below) was for the cache alone: it answers its
+    // caller and goes no further, whatever is sounding when it lands.
+    if (p.prewarm) {
+      if (m.error) console.warn("[perform] prewarm:", m.error);
+      p.prewarm(m.type === "perform_wired" && m.data ? reachOfWiring(m.data.wiring) : null);
+      return true;
+    }
     // A recorded pick is in the log whatever has happened to the sound since.
     if (m.type === "perform_recorded") {
       if (m.recorded) host.voteLanded?.();
@@ -1572,6 +1605,37 @@ export function createPerform(host) {
     reaches(i) {
       const w = state.wire && state.wire[i];
       return !!(w && !w.search);
+    },
+    // Still waiting on the first measurement of the patch under the hands:
+    // its controls do nothing yet.
+    measuring: () => state.measuring,
+    // PERFORM has a question out to the engine — its own, not a pre-warm's.
+    // The worker is one thread, so booth mode's pre-warm waits for these
+    // when a player may be at the keys, rather than queueing its seconds of
+    // renders in front of whatever the player asks next.
+    busy: () => [...state.pending.values()].some((p) => !p.prewarm),
+    // Which named controls reach the patch `json`, from its cached wiring:
+    // null when it has never been measured.
+    reachOf(json) {
+      const hit = json ? wireCache.get(wireKey(json)) : null;
+      return hit ? reachOfWiring(hit.data.wiring) : null;
+    },
+    // Measure a patch that is *not* playing, for the cache alone (booth
+    // mode's pre-warm, booth.js), and answer with the named controls that
+    // reach it — at once when it was measured before. The request is an
+    // ordinary `perform_wire` whose reply belongs to no patch (`gen` −1), so
+    // it is cached and never applied: the sound under a player's hands is
+    // not disturbed by a measurement of something else.
+    prewarm(json) {
+      const hit = wireCache.get(wireKey(json));
+      if (hit) return Promise.resolve(reachOfWiring(hit.data.wiring));
+      return new Promise((resolve) => {
+        const req = request("perform_wire", { tree: json, overrides: [] });
+        const p = state.pending.get(req);
+        p.gen = -1;
+        p.cacheAs = { json, rev: tasteRev() };
+        p.prewarm = resolve;
+      });
     },
     hasOffer: () => !!state.offer,
     // Re-draw every control (after "Show measurements" changes).
