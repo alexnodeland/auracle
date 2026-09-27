@@ -1052,6 +1052,11 @@ impl RefineOutcome {
     }
 }
 
+/// How many dealt, unanswered check pairs the engine remembers (see
+/// `Engine::pending_checks`). A duel is answered within a few deals; this only
+/// bounds the pairs that never are.
+pub const PENDING_CHECKS: usize = 32;
+
 pub struct Engine {
     /// Configuration.
     pub cfg: SessionConfig,
@@ -1087,10 +1092,15 @@ pub struct Engine {
     /// Duels offered this run (not the same as observations recorded — the
     /// user may skip). Paces the random check duels.
     duels_shown: usize,
-    /// The most recently offered *check* pair, so the forecast it produces can
-    /// be tagged as unbiased even though the frontend records it like any
-    /// other duel.
-    last_check_pair: Option<(u64, u64)>,
+    /// Check pairs dealt and not yet answered, oldest first. An answer is
+    /// scored as a random check when its pair was dealt as one — not only
+    /// when it is the *last* pair dealt. The app records a vote after its
+    /// seven-second undo window, by which time the next pair has usually been
+    /// dealt, so matching the last pair alone tagged almost nothing: TRUST
+    /// read "0 of 20" checks after 33 duels that were every one of them a
+    /// uniform, i.e. check, pair. Bounded: a pair nobody answers is let go
+    /// after [`PENDING_CHECKS`] more are dealt.
+    pending_checks: VecDeque<(u64, u64)>,
     /// How many times the importance weights have collapsed and been
     /// resampled since the last full MCMC fit — the staleness signal behind
     /// [`Engine::needs_refit`].
@@ -1145,7 +1155,7 @@ impl Engine {
             shown_pairs: HashMap::new(),
             shown_candidates: HashMap::new(),
             duels_shown: 0,
-            last_check_pair: None,
+            pending_checks: VecDeque::new(),
             resamples_since_fit: 0,
             memo: RenderMemo::default(),
             audio_lru: VecDeque::new(),
@@ -2810,7 +2820,12 @@ impl Engine {
         *self.shown_pairs.entry(key).or_insert(0) += 1;
         *self.shown_candidates.entry(key.0).or_insert(0) += 1;
         *self.shown_candidates.entry(key.1).or_insert(0) += 1;
-        self.last_check_pair = choice.random_check.then_some(key);
+        if choice.random_check {
+            self.pending_checks.push_back(key);
+            if self.pending_checks.len() > PENDING_CHECKS {
+                self.pending_checks.pop_front();
+            }
+        }
         Some(choice)
     }
 
@@ -2984,10 +2999,17 @@ impl Engine {
     fn record_duel_as(&mut self, a: usize, b: usize, chose_a: bool, provenance: Provenance) {
         if let Some(p_a) = self.predict_duel(a, b) {
             let key = pair_key(self.pool[a].id, self.pool[b].id);
+            let random_check = match self.pending_checks.iter().position(|k| *k == key) {
+                Some(i) => {
+                    self.pending_checks.remove(i);
+                    true
+                }
+                None => false,
+            };
             self.forecasts.push(Forecast {
                 p_a,
                 chose_a,
-                random_check: self.last_check_pair == Some(key),
+                random_check,
                 provenance,
             });
         }
