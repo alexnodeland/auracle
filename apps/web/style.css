@@ -4560,6 +4560,9 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 .midi-h { font-family: var(--font-silk); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: var(--t-label); color: var(--silk-dim); margin-bottom: var(--s2); }
 .midi-rows { display: grid; gap: 4px; }
 .midi-row { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: var(--s2); align-items: center; }
+/* Eight rows of full-height keybar buttons made a panel taller than the knob
+   deck it maps. Slimmer, still a 24px target. */
+.midi-row .util-btn { padding-block: 4px; }
 .midi-slot { color: var(--silk); font-family: var(--font-silk); }
 .midi-src { color: var(--phos-a-dim); font-size: var(--t-micro); }
 .midi-foot { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); color: var(--silk-dim); font-size: var(--t-micro); align-items: center; }

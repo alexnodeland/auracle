@@ -378,16 +378,21 @@ export function createMidi(host) {
         state.learning = state.learning === i ? null : i;
         renderPanel();
       };
-      const clear = document.createElement("button");
-      clear.type = "button";
-      clear.className = "util-btn";
-      clear.textContent = "clear";
-      clear.disabled = !bound;
-      clear.onclick = () => {
-        if (bound) state.map.delete(bound[0]);
-        save();
-        renderPanel();
-      };
+      // CLEAR only where there is a mapping to clear. Eight disabled CLEARs
+      // down an unmapped panel read as a column of dead controls; an empty
+      // cell keeps the rows aligned instead.
+      let clear = document.createElement("span");
+      if (bound) {
+        clear = document.createElement("button");
+        clear.type = "button";
+        clear.className = "util-btn";
+        clear.textContent = "clear";
+        clear.onclick = () => {
+          state.map.delete(bound[0]);
+          save();
+          renderPanel();
+        };
+      }
       row.append(name, src, learn, clear);
       list.append(row);
     }
@@ -405,6 +410,10 @@ export function createMidi(host) {
     auto.append(cb, document.createTextNode(" first knobs you turn claim free controls"));
     const bend = document.createElement("label");
     const sel = document.createElement("select");
+    // The house select, like every other one on the keybar: a bare UA
+    // control is the one grey widget on the instrument.
+    sel.className = "perf-sel";
+    sel.setAttribute("aria-label", "Pitch-bend range in semitones");
     for (const r of [2, 7, 12, 24, 48]) {
       const o = document.createElement("option");
       o.value = String(r);
