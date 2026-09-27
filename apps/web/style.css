@@ -49,6 +49,15 @@
   --bezel: #07080a;         /* screen bezels */
   --hairline: #292e36;
 
+  /* machined graphite — the two faces of every raised control and the ink
+     of the shadow under it, one literal each, so a retune is one line */
+  --plate-hi: #232830;      /* util buttons, selects: top of the face */
+  --plate-lo: #181b21;      /*   …and the bottom */
+  --btn-hi: #2a2f37;        /* hardware buttons and pads: top of the face */
+  --btn-lo: #1a1d23;        /*   …and the bottom */
+  --shadow-ink: #0a0b0d;    /* the hard shadow line under a raised control */
+  --knob-body: #22262d;     /* PERFORM's knob caps */
+
   /* silk — warm silkscreen ink */
   --silk: #d9d4c8;          /* 13.1:1 on rack */
   --silk-dim: #9a958a;      /*  5.9:1 — all dimmed TEXT */
@@ -267,12 +276,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--silk);
-  background: linear-gradient(180deg, #232830, #181b21);
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   border: 1px solid #000;
   border-radius: 3px;
   padding: 6px 10px;
   cursor: pointer;
-  box-shadow: var(--lift), 0 2px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 2px 0 var(--shadow-ink);
   transition: transform 60ms ease, box-shadow 60ms ease;
 }
 .util-btn:hover { border-color: var(--silk-dim); }
@@ -1029,7 +1038,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .wire.mod-case { stroke: rgba(0,0,0,0.5); stroke-width: 4.5; }
 .rack-wires { filter: drop-shadow(1px 3px 3px rgba(0,0,0,0.55)); }
-.port { fill: #0a0b0d; stroke: #3a3f48; stroke-width: 1; }
+.port { fill: var(--shadow-ink); stroke: #3a3f48; stroke-width: 1; }
 
 /* ---- cable terminations ----
    The plug in the socket. A barrel, a knurled collar, and the strain-relief
@@ -1202,17 +1211,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 10px 8px;
   border-radius: 5px;
   border: 1px solid #000;
-  background: linear-gradient(180deg, #2a2f37, #1a1d23);
+  background: linear-gradient(180deg, var(--btn-hi), var(--btn-lo));
   box-shadow:
     var(--lift),
-    0 3px 0 #0a0b0d,
+    0 3px 0 var(--shadow-ink),
     0 5px 8px rgba(0,0,0,0.5);
   cursor: pointer;
   transition: transform 60ms ease, box-shadow 60ms ease;
 }
 .hw-btn:active {
   transform: translateY(2px);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 #0a0b0d;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 var(--shadow-ink);
 }
 /* Hover is a promise of what a press does: quieter than the press, never a
    change of size. Only where a pointer can hover — on a booth touchscreen the
@@ -1232,7 +1241,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   margin-left: 6px;
 }
 .hw-btn.play { color: var(--phos-a); }
-.hw-btn.play.playing { box-shadow: inset 0 0 12px rgba(142,240,177,0.25), 0 3px 0 #0a0b0d; }
+.hw-btn.play.playing { box-shadow: inset 0 0 12px rgba(142,240,177,0.25), 0 3px 0 var(--shadow-ink); }
 /* Its buffer is still rendering (the scope above says so). Dimmed, not
    disabled: a press still asks for that buffer first and plays it on arrival. */
 .hw-btn.play.pending { opacity: 0.5; }
@@ -1496,7 +1505,7 @@ input, textarea, .bi-rename {
   position: absolute;
   left: 1px; right: 1px; top: 4px;
   height: 1px;
-  background: #0a0b0d;
+  background: var(--shadow-ink);
   transform: rotate(28deg);
 }
 .screws i:nth-child(1) { top: 6px; left: 6px; }
@@ -1864,10 +1873,10 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--phos-a-dim);
-  background: linear-gradient(180deg, #232830, #181b21);
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   border: 1px solid #000;
   border-radius: 4px;
-  box-shadow: var(--lift), 0 1px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 1px 0 var(--shadow-ink);
   padding: 6px 24px 6px 8px;
 }
 .nb-q::placeholder { color: var(--silk-dim); }
@@ -1978,7 +1987,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   /* Light from 315°, a black seam, and a shelf to travel into — the same
      physics every other pressable object in the app has. Without it the rail's
      nineteen most-repeated elements read as web cards on an instrument. */
-  box-shadow: var(--lift), 0 2px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 2px 0 var(--shadow-ink);
   cursor: pointer;
   transition: border-color 120ms ease-out, color 120ms ease-out,
               transform 60ms ease-out, box-shadow 60ms ease-out;
@@ -2893,10 +2902,10 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
    buttons beside them — nothing in the keybar is a native widget. */
 .perf-sel, .perf-num {
   color: var(--phos-a-dim);
-  background: linear-gradient(180deg, #232830, #181b21);
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   border: 1px solid #000;
   border-radius: 3px;
-  box-shadow: var(--lift), 0 1px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 1px 0 var(--shadow-ink);
   font: var(--t-micro)/1.4 var(--font-mono);
   padding: 3px 4px;
   cursor: pointer;
@@ -3891,7 +3900,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 12px;
   height: 20px;
   border-radius: 2px;
-  background: linear-gradient(180deg, #2a2f37, #14161a);
+  background: linear-gradient(180deg, var(--btn-hi), #14161a);
   border: 1px solid #000;
   box-shadow: var(--lift), 0 2px 4px rgba(0, 0, 0, 0.6);
 }
@@ -3899,7 +3908,7 @@ input[type="range"]::-moz-range-thumb {
   width: 12px;
   height: 20px;
   border-radius: 2px;
-  background: linear-gradient(180deg, #2a2f37, #14161a);
+  background: linear-gradient(180deg, var(--btn-hi), #14161a);
   border: 1px solid #000;
   box-shadow: var(--lift), 0 2px 4px rgba(0, 0, 0, 0.6);
 }
@@ -3908,7 +3917,7 @@ input[type="range"]::-moz-range-thumb {
   padding-right: 16px;
   background-image: linear-gradient(45deg, transparent 50%, var(--silk-dim) 50%),
                     linear-gradient(135deg, var(--silk-dim) 50%, transparent 50%),
-                    linear-gradient(180deg, #232830, #181b21);
+                    linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   background-position: right 7px center, right 3px center, 0 0;
   background-size: 4px 4px, 4px 4px, 100% 100%;
   background-repeat: no-repeat;
@@ -3966,7 +3975,7 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1;
   padding: 0 0 0 2px;
   cursor: pointer;
-  box-shadow: var(--lift), 0 2px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 2px 0 var(--shadow-ink);
   transition: border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
 }
 .xport:hover:not(:disabled) { border-color: var(--phos-a); box-shadow: var(--lift), 0 0 12px rgba(142,240,177,0.24); }
@@ -4376,7 +4385,7 @@ html.handheld .handheld-gate {
 .pf-knob svg { width: 100%; max-width: 96px; height: auto; overflow: visible; }
 .pf-k-ring { fill: none; stroke: var(--hairline); stroke-width: 3; }
 .pf-k-arc { fill: none; stroke: var(--phos-a); stroke-width: 3.5; stroke-linecap: round; }
-.pf-k-body { fill: #22262d; stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
+.pf-k-body { fill: var(--knob-body); stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
 .pf-k-ptr { stroke: var(--silk); stroke-width: 3; stroke-linecap: round; }
 .pf-k-where { fill: var(--phos-b); }
 .pf-k-name {
@@ -4443,19 +4452,19 @@ html.handheld .handheld-gate {
   min-height: 64px;
   border-radius: 8px;
   border: 1px solid #000;
-  background: linear-gradient(180deg, #2a2f37, #1a1d23);
-  box-shadow: var(--lift), 0 3px 0 #0a0b0d, 0 5px 8px rgba(0,0,0,0.5);
+  background: linear-gradient(180deg, var(--btn-hi), var(--btn-lo));
+  box-shadow: var(--lift), 0 3px 0 var(--shadow-ink), 0 5px 8px rgba(0,0,0,0.5);
   cursor: pointer;
   touch-action: none;
   transition: transform 60ms ease, box-shadow 60ms ease;
 }
-.pf-pad:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 #0a0b0d; }
+.pf-pad:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 var(--shadow-ink); }
 @media (hover: hover) {
   .pf-pad:hover:not(:disabled) { background: linear-gradient(180deg, #333944, #1e2228); }
   .pf-knob:hover .pf-k-ring { stroke: var(--silk-mute); }
 }
 .pf-pad:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
-.pf-pad.lit { color: var(--phos-b); box-shadow: var(--lift), 0 0 12px rgba(255,180,84,0.3), 0 3px 0 #0a0b0d; }
+.pf-pad.lit { color: var(--phos-b); box-shadow: var(--lift), 0 0 12px rgba(255,180,84,0.3), 0 3px 0 var(--shadow-ink); }
 .pf-pad.flash { animation: pf-flash 500ms ease-out; }
 .pf-pad.primary { color: var(--phos-a); border-color: var(--phos-a-deep); }
 /* A pad with nothing to act on is *waiting*, and says for what — at 0.38 it
@@ -4598,13 +4607,13 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
   white-space: nowrap;
   background-image: linear-gradient(135deg, transparent 50%, var(--silk-dim) 50%),
                     linear-gradient(45deg, var(--silk-dim) 50%, transparent 50%),
-                    linear-gradient(180deg, #232830, #181b21);
+                    linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
 }
 .arp-chip[aria-expanded="true"] {
   color: var(--phos-a);
   background-image: linear-gradient(45deg, transparent 50%, var(--silk-dim) 50%),
                     linear-gradient(135deg, var(--silk-dim) 50%, transparent 50%),
-                    linear-gradient(180deg, #232830, #181b21);
+                    linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
 }
 /* …and it floats above the dock rather than growing it. As a third row it
    widened this column by ~120 px and made the dock taller, so switching the
