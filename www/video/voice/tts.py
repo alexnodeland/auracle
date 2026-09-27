@@ -20,8 +20,8 @@ and OUT_DIR receives
                     whitespace-separated word of the text, in seconds from the
                     start of the line's WAV. tts.py fills `words` from Kokoro's
                     duration predictor; asr_check.py replaces it with
-                    faster-whisper word timestamps aligned to the script
-                    (`words_source` says which)
+                    faster-whisper word timestamps aligned to the script,
+                    checked against Kokoro's (`words_source` says which)
     captions.vtt    WebVTT cues from those timings; long lines are split at
                     phrase boundaries into cues of at most 2 lines x 42 characters
                     and 1.0 to ~6 s on screen
@@ -45,11 +45,17 @@ differ in the G2P:
   different alphabet (aɪ, oʊ, dʒ as two symbols) and different vowel choices,
   so the model is fed sequences it did not see in training.
 
-Measured on this repo's test script with the same weights and voice (af_heart),
-misaki gave a lower Whisper word error rate than espeak-ng; see the numbers in
-the change that introduced this file. misaki also yields per-word timestamps
-from the duration predictor, which the caption splitter below uses. The cost is
-CPU-only torch (~0.9 GB installed; never the CUDA wheels, see requirements.txt).
+Measured on samples/test.json with the same weights and voice (af_heart),
+both front ends reach Whisper WER 0: Whisper is forgiving, so the difference
+lives in the phonemes. espeak-ng reads "Bayesian" as bay-EE-zhun (beɪˈiːʒən),
+"Jacobian" as jack-OH-bee-an (dʒækˈoʊbiən) and "WASM" as wah-zum (wˈɑːzəm), and
+feeds the US voices length marks and two-symbol diphthongs (ː, aɪ, oʊ) that
+misaki's training alphabet does not have. misaki reads the first two the way a
+dictionary does (bˈAziən, ʤəkˈObiən); its one miss, "WASM" spelled out as
+letters, is what the lexicon is for. misaki also yields per-word timestamps
+from the duration predictor, which the captions use and kokoro-onnx does not
+expose. The cost is CPU-only torch (~0.9 GB installed; never the CUDA wheels,
+see requirements.txt).
 
 Pronunciation control
 ---------------------
@@ -646,7 +652,9 @@ def main(argv: list[str] | None = None) -> int:
             "words": [round(w.start, 3) for w in words],
             "tts_word_times": [[w.text, round(w.start, 3), round(w.end, 3)] for w in words],
         })
-        # Captions show the script's text, not the respelled one.
+        # Captions show the script's text, not the respelled one. `nxt` is
+        # computed once and reused as the next line's start, so a chained cue
+        # ends on exactly the millisecond the next one starts.
         nxt = t + dur + line.pause_after
         last = nxt if k + 1 < len(rendered) and line.pause_after <= CUE_HOLD_S else t + dur + min(
             line.pause_after, CUE_HOLD_S)
@@ -655,7 +663,7 @@ def main(argv: list[str] | None = None) -> int:
             cues.append((f"{line.id}.{i}", a, b, text_lines))
         parts.append(y)
         parts.append(np.zeros(int(round(line.pause_after * OUT_SR)), np.float32))
-        t += dur + line.pause_after
+        t = nxt
 
     narration = np.concatenate(parts)
     sf.write(out / "narration.wav", narration, OUT_SR, subtype="PCM_24")

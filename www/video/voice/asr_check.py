@@ -10,8 +10,8 @@ OUT_DIR written by tts.py (manifest.json plus one WAV per line) this
      decoder gets no prompt and no vocabulary: a prompt would teach it the
      script's spellings and hide exactly the mispronunciations this is for;
   2. normalizes script and transcript the same way (case, punctuation, numbers
-     to words, "φ" to "phi", "Auracle" to its homophone "oracle") and scores
-     word error rate per line;
+     to words, "φ" to "phi", "Auracle" to its homophone "oracle", compounds
+     written joined or apart) and scores word error rate per line;
   3. measures the speaking rate, the leading and trailing silence, the peak and
      any clipped samples, and with --pitch the F0 variability (standard
      deviation in semitones over voiced frames, librosa.pyin) as a proxy for
@@ -32,8 +32,12 @@ WER over the limit, a clipped sample, or a missing file. So it can gate a render
     python tts.py script.json -o out && python asr_check.py out && make-the-film
 
 Known blind spot: Whisper writes what it thinks was *meant*. A word it would
-spell the same however it is said (say, "Jacobian" read with the wrong stress)
-passes. Read manifest.json's per-line `phonemes` for those.
+spell the same however it is said passes: "WASM" spelled out letter by letter
+still comes back as "WASM", a British "AW-ruh-kul" still comes back as
+"Oracle", and espeak-ng's "bay-EE-zhun" still comes back as "Bayesian". WER
+proves the words are intelligible, not that they are said the house way; for
+that, read the per-line `phonemes` in manifest.json (what the model was told to
+say) against the script's lexicon.
 """
 
 from __future__ import annotations
@@ -108,6 +112,27 @@ def normalize(text: str, aliases: dict[str, str]) -> list[str]:
     for w in s.split():
         w = _SPELLING.get(w, w)
         out.extend(aliases.get(w, w).split())
+    return out
+
+
+def merge_compounds(a: list[str], b: list[str]) -> list[str]:
+    """Join runs of two or three words in `a` that `b` writes as one word.
+
+    "patch-graph" normalizes to "patch graph", and Whisper may well write
+    "patchgraph": the same speech, spelled differently, so not an error.
+    """
+    vocab, have = set(b), set(a)
+    out, i = [], 0
+    while i < len(a):
+        for n in (3, 2):
+            joined = "".join(a[i : i + n])
+            if i + n <= len(a) and joined in vocab and joined not in have:
+                out.append(joined)
+                i += n
+                break
+        else:
+            out.append(a[i])
+            i += 1
     return out
 
 
@@ -293,27 +318,41 @@ def check_dir(out: Path, model, args) -> dict:
         )
         segments = list(segments)
         hyp_text = " ".join(s.text.strip() for s in segments).strip()
-        asr_words = [(w.word, w.start, w.end) for s in segments for w in (s.words or [])]
-        ref, hyp = normalize(line["text"], aliases), normalize(hyp_text, aliases)
+        # Beam search sometimes appends a phantom word over a long final
+        # fricative ("...not samples. schools." at p=0.02; greedy decoding does
+        # not hear it). Words under --min-word-prob are left out of the score and
+        # listed instead. A garbled word Whisper guesses at is still an error:
+        # dropping its guess leaves a deletion.
+        heard = [w for s in segments for w in (s.words or [])]
+        kept = [w for w in heard if w.probability >= args.min_word_prob]
+        ignored = [f"{w.word.strip()} (p={w.probability:.2f})" for w in heard if w.probability < args.min_word_prob]
+        asr_words = [(w.word, w.start, w.end) for w in kept]
+        ref = normalize(line["text"], aliases)
+        hyp = normalize("".join(w.word for w in kept) if heard else hyp_text, aliases)
+        ref = merge_compounds(ref, hyp)
+        hyp = merge_compounds(hyp, ref)
         ops = align(ref, hyp)
         errs = {k: sum(1 for o in ops if o[0] == k) for k in "SDI"}
         wer = (errs["S"] + errs["D"] + errs["I"]) / max(1, len(ref))
         lead, tail = silence_ms(x, sr)
         dur = len(x) / sr
         tts_times = [t[1] for t in line.get("tts_word_times") or []] or None
+        if args.word_times == "whisper":
+            tts_times = None
         starts, n_interp = word_starts(
             line["text"], asr_words, aliases, lead / 1000, dur - tail / 1000, tts=tts_times
         )
         line["words"] = [round(t, 3) for t in starts]
-        if tts_times and len(tts_times) == len(starts):
-            deltas.extend(abs(a - b) for a, b in zip(starts, tts_times))
+        kokoro = [t[1] for t in line.get("tts_word_times") or []]
+        if len(kokoro) == len(starts):
+            deltas.extend(abs(a - b) for a, b in zip(starts, kokoro))
         n_words = len(_WORD.findall(line["text"]))
         wpm = 60 * n_words / max(dur - (lead + tail) / 1000, 1e-3)
         peak = 20 * math.log10(max(float(np.abs(x).max()), 1e-12))
         clipped = int(np.count_nonzero(np.abs(x) >= 0.999))
         row.update(
-            transcript=hyp_text, wer=round(wer, 4), errors=errs, ref_words=len(ref),
-            words=line["words"], words_interpolated=n_interp,
+            transcript=hyp_text, ignored=ignored, wer=round(wer, 4), errors=errs, ref_words=len(ref),
+            words=line["words"], words_from_fallback=n_interp,
             duration_s=round(dur, 3), word_count=n_words, wpm=round(wpm, 1),
             lead_ms=round(lead, 1), tail_ms=round(tail, 1), peak_dbfs=round(peak, 2), clipped=clipped,
         )
@@ -331,7 +370,8 @@ def check_dir(out: Path, model, args) -> dict:
         rows.append(row)
         sd = row.get("f0_sd_st")
         print(f"  {line['id']:<6}{wer:>6.2f}{wpm:>7.1f}{lead:>6.0f}{tail:>6.0f}{peak:>7.1f}{clipped:>6}"
-              f"{'' if sd is None else f'{sd:.1f}':>6}  {'!! ' if row['fail'] else ''}{hyp_text}")
+              f"{'' if sd is None else f'{sd:.1f}':>6}  {'!! ' if row['fail'] else ''}{hyp_text}"
+              + (f"   [ignored: {', '.join(ignored)}]" if ignored else ""))
     for row in flagged:
         e = row["errors"]
         print(f"\n  FLAGGED {row['id']}  WER {row['wer']:.2f}  "
@@ -362,7 +402,7 @@ def check_dir(out: Path, model, args) -> dict:
         st = np.concatenate(st_all)
         summary["f0_sd_st"] = round(float(np.std(st)), 2)
         summary["f0_median_hz"] = round(float(100 * 2 ** (np.median(st) / 12)), 1)
-    summary["words_interpolated"] = sum(r.get("words_interpolated", 0) for r in ok)
+    summary["words_from_fallback"] = sum(r.get("words_from_fallback", 0) for r in ok)
     if deltas:
         summary["word_start_vs_tts_ms"] = {
             "median": round(1000 * float(np.median(deltas)), 1),
@@ -373,6 +413,9 @@ def check_dir(out: Path, model, args) -> dict:
     manifest["words_source"] = (
         f"faster-whisper {args.model} word timestamps, DP-aligned to the script; words it missed or "
         f"placed >150 ms from Kokoro's own alignment take that alignment, shifted to agree"
+        if args.word_times == "hybrid" and deltas else
+        f"faster-whisper {args.model} word timestamps, DP-aligned to the script; words it missed "
+        f"interpolated from their neighbours"
     )
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
                                        encoding="utf-8")
@@ -383,8 +426,8 @@ def check_dir(out: Path, model, args) -> dict:
           f"{worst['wer'] if worst else ''}, {summary['wpm']} wpm, {summary['failed']} failed")
     if deltas:
         d = summary["word_start_vs_tts_ms"]
-        print(f"  -> word starts written to manifest.json ({summary['words_interpolated']} not from Whisper); "
-              f"|whisper - kokoro| median {d['median']} ms, p90 {d['p90']} ms, max {d['max']} ms")
+        print(f"  -> word starts written to manifest.json ({summary['words_from_fallback']} not from Whisper); "
+              f"vs Kokoro's alignment: median {d['median']} ms, p90 {d['p90']} ms, max {d['max']} ms")
     return summary
 
 
@@ -396,7 +439,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="model cache (default: $AURACLE_VOICE_MODELS or ~/.cache/auracle-voice)")
     ap.add_argument("--max-wer", type=float, default=0.10)
     ap.add_argument("--beam-size", type=int, default=5)
+    ap.add_argument("--min-word-prob", type=float, default=0.10,
+                    help="recognized words less likely than this are listed, not scored")
     ap.add_argument("--pitch", action="store_true", help="also measure F0 variability (librosa.pyin)")
+    ap.add_argument("--word-times", choices=("hybrid", "whisper"), default="hybrid",
+                    help="hybrid (default): Whisper, with Kokoro's alignment for words Whisper missed or "
+                         "misplaced by >150 ms; whisper: Whisper only, missing words interpolated")
     ap.add_argument("--threads", type=int, default=int(os.environ.get("OMP_NUM_THREADS") or 0) or None,
                     help="CPU threads for Whisper (default: $OMP_NUM_THREADS, else every core)")
     args = ap.parse_args(argv)

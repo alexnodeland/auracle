@@ -56,11 +56,15 @@ def main():
     bar = spb * meter
 
     durs = {}
+    words = json.load(open(args.words)) if args.words else {}
     if args.voice:
         man = json.load(open(args.voice))
         for l in man["lines"]:
             durs[l["id"]] = l["duration_s"]
-    words = json.load(open(args.words)) if args.words else {}
+            # Word start times, measured (asr_check.py) or from the model's own
+            # alignment (tts.py): the picture lights each word as it is said.
+            if l.get("words") and l["id"] not in words:
+                words[l["id"]] = l["words"]
 
     # Music first, when there is a score: every section keeps the length it
     # was composed at, and a group of beats that needs more gets whole

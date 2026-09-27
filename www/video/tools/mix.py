@@ -73,8 +73,11 @@ def load(path):
 
 
 def write(path, x):
+    # 32-bit integer PCM at full scale: what every reader (ffmpeg included)
+    # assumes an int32 WAV means. A 24-bit value in a 32-bit word reads back
+    # 48 dB quiet.
     y = np.clip(x, -1, 1)
-    wavfile.write(path, SR, (y * 8388607).astype(np.int32))  # 32-bit container, 24-bit resolution
+    wavfile.write(path, SR, (y * 2147483647.0).astype(np.int32))
 
 
 # ---- loudness (ITU-R BS.1770-4) ------------------------------------------

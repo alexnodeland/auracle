@@ -5,7 +5,7 @@
   "fps": 30,
   "voice": {
     "voice": "af_heart",
-    "speed": 1.0
+    "speed": 0.82
   },
   "music": {
     "bed": "study",
