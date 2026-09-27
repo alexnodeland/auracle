@@ -28,13 +28,15 @@ pub mod farm;
 pub mod map;
 pub mod migrate;
 pub mod naming;
+pub mod perform;
 pub mod surrogate;
 
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
     phi_names, tilt_weights, Acquisition, BankEntry, Candidate, Contribution, DuelChoice,
     EditOutcome, Engine, Explanation, ImplicitEvent, LineageEvent, Origin, Profile, RefineKeep,
-    RenderPolicy, SessionConfig, SessionState,
+    RefineOutcome, RenderPolicy, SessionConfig, SessionState, EVENTS_CAP, EVENT_PHI_KEEP,
+    MIN_SESSION_OBS,
 };
 pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use map::{MapPoint, TasteMap};
@@ -562,6 +564,104 @@ mod tests {
         assert_eq!(plain.memo().stats().features, 0, "disabled memo retained");
     }
 
+    /// A listener who wants **slow** movement and dislikes **fast** flutter
+    /// is learnable from duels on the real pool.
+    ///
+    /// Before the motion bands this preference was not hard to learn but
+    /// inexpressible: a 0.55 Hz sweep and a 13 Hz flutter scored the same on
+    /// every coordinate φ had (`motion_probe`). The gate is the ordinary
+    /// closed loop — real prior draws, real renders, 60 duels, the shipped
+    /// fit — with a ground truth that lives *only* on the two band
+    /// coordinates, so every bit of recovered correlation had to come through
+    /// them.
+    #[test]
+    fn closed_loop_learns_motion_rate() {
+        const SEEDS: [u64; 3] = [0xE05, 0x1, 0x2];
+        fn user() -> SyntheticUser {
+            let names = Features::phi_names();
+            let mut theta = vec![0.0; names.len()];
+            for (name, w) in [("motion_slow", 1.5), ("motion_fast", -1.5)] {
+                let i = names
+                    .iter()
+                    .position(|n| n.split(':').next() == Some(name))
+                    .expect("motion band in φ");
+                theta[i] = w;
+            }
+            SyntheticUser {
+                theta,
+                tau: 0.0,
+                cuts: vec![-2.0, -0.9, 0.0, 0.9, 2.0],
+            }
+        }
+        fn one(seed: u64) -> (f64, f64, f64) {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let user = user();
+            let cfg = SessionConfig {
+                pool_size: 48,
+                refine_steps: 0,
+                mcmc_samples: SessionConfig::default().mcmc_samples,
+                mcmc_warmup: SessionConfig::default().mcmc_warmup,
+                ..fast()
+            };
+            let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+            engine.begin_session();
+            engine.fill_pool(&mut rng);
+            for _ in 0..4 {
+                for _ in 0..15 {
+                    let (a, b) = engine.next_duel(&mut rng).unwrap();
+                    let chose_a =
+                        user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+                    engine.record_duel(a, b, chose_a);
+                }
+                engine.fit_posterior(&mut rng);
+            }
+            let posterior = engine.posterior.as_ref().unwrap();
+            let (mut xs, mut ys) = (Vec::new(), Vec::new());
+            for c in &engine.pool {
+                xs.push(posterior.utility_mix(&c.phi_std).0);
+                ys.push(user.utility(&c.phi_std));
+            }
+            // How much the pool actually varies along the preference: a gate
+            // on a pool where every patch is static would pass or fail on
+            // nothing.
+            let my = ys.iter().sum::<f64>() / ys.len() as f64;
+            let spread =
+                (ys.iter().map(|y| (y - my) * (y - my)).sum::<f64>() / ys.len() as f64).sqrt();
+            let top5: f64 = engine
+                .ranked()
+                .iter()
+                .take(5)
+                .map(|&(i, _, _)| user.utility(&engine.pool[i].phi_std))
+                .sum::<f64>()
+                / 5.0;
+            (pearson(&xs, &ys), (top5 - my) / spread.max(1e-9), spread)
+        }
+        let rows: Vec<(u64, (f64, f64, f64))> = std::thread::scope(|s| {
+            let hs: Vec<_> = SEEDS
+                .iter()
+                .map(|&seed| s.spawn(move || (seed, one(seed))))
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        for (seed, (r, lift, spread)) in &rows {
+            println!("motion seed {seed:#x}: r = {r:.3}  top-5 lift = {lift:+.2}σ  truth spread = {spread:.3}");
+        }
+        for (seed, (r, lift, _)) in &rows {
+            assert!(*r > MOTION_R_FLOOR, "seed {seed:#x}: r = {r:.3}");
+            assert!(
+                *lift > MOTION_LIFT_FLOOR,
+                "seed {seed:#x}: top-5 lift {lift:+.2}σ"
+            );
+        }
+    }
+    /// Per-seed floors for [`closed_loop_learns_motion_rate`], set under the
+    /// measured values with margin. Measured when the bands shipped (3 seeds,
+    /// 60 duels, shipped MCMC budget): r = 0.631 / 0.594 / 0.434 and top-5
+    /// lift = +1.02 / +0.60 / +0.97σ over a truth spread of ~1.6. Chance is
+    /// r ≈ 0 and lift ≈ 0.
+    const MOTION_R_FLOOR: f64 = 0.25;
+    const MOTION_LIFT_FLOOR: f64 = 0.2;
+
     /// M4 gate: the headless closed loop. Fill a pool through the real
     /// pipeline, run rounds of acquisition-chosen duels answered by the
     /// synthetic user, re-fit between rounds, and assert:
@@ -901,10 +1001,18 @@ mod tests {
             median_gain > MEDIAN_GAIN_GATE,
             "median pool gain {median_gain:+.3} is under the {MEDIAN_GAIN_GATE:+.3} gate"
         );
-        assert!(
-            worst_max >= -1e-9,
-            "refinement degraded a pool's best member by {worst_max:+.3}"
-        );
+        // The worst per-seed change in the pool's *best* member is printed,
+        // not asserted. It used to be `assert!(worst_max >= -1e-9)`, which is
+        // not guaranteed by construction: `insert_candidate` evicts the
+        // *model*-worst member, and the model is a surrogate, so a misranking
+        // can evict the true best and the pool's max utility can fall on one
+        // seed while the search is working exactly as designed. It held on the
+        // sixteen fixed seeds — which is the class of flake this file's own
+        // header warns about — so it is a number to read, and the gates above
+        // (median gain, seeds improved, anything injected) are the claims.
+        if worst_max < -1e-9 {
+            println!("  note: one seed's best member fell by {worst_max:+.3} (surrogate eviction)");
+        }
     }
 
     /// Gates for [`refinement_improves_pool`], set from the observed 16-seed
@@ -995,6 +1103,275 @@ mod tests {
             }
         }
         assert!(children > 0, "no locked refinement ever accepted a move");
+    }
+
+    /// A seed the grammar prior cannot score is reported as such, not as a
+    /// walk that happened not to move.
+    ///
+    /// The tree here is deeper than `MAX_DEPTH` — the shape a session saved by
+    /// a build with the old ceilings (depth 9 against support that ends at 6)
+    /// can still hold. It has to **load and play** (`commit_edit` admits it,
+    /// `render_of` renders it; no load path re-checks the ceilings, by design),
+    /// and ⚡ evolve on it has to say *why* it did nothing: `init_from` returns
+    /// `None` before the first step, and until this the caller saw the same
+    /// `None` as for a walk that found no improvement. The generation counter
+    /// must not advance for a press that produced nothing, either.
+    #[test]
+    fn refine_names_a_seed_outside_the_prior_support() {
+        use auracle_grammar::mutate::MAX_DEPTH;
+        use auracle_grammar::term::{AudioNode, FilterKind, ModNode};
+        use auracle_grammar::{validate_tree, Uid};
+        let mut rng = StdRng::seed_from_u64(0x0D5);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            refine_steps: 20,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        assert_eq!(engine.last_refine(), RefineOutcome::Idle);
+        for _ in 0..20 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        // Before the fit there is no taste to refine toward.
+        let any = engine.pool[0].id;
+        assert_eq!(engine.refine_from(&mut rng, any, &[]), None);
+        assert_eq!(engine.last_refine(), RefineOutcome::NoTaste);
+        engine.fit_posterior(&mut rng);
+
+        // A filter stack two levels past the ceiling, over a shipped preset.
+        let mut deep = auracle_grammar::presets()[0].1.clone();
+        while deep.root.depth() < MAX_DEPTH + 2 {
+            deep.root = AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.6,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(deep.root),
+                modulation: ModNode::None,
+            };
+        }
+        assert!(
+            validate_tree(&deep).is_err(),
+            "the fixture must be over the ceiling"
+        );
+        // Admitted — featurized, vetted, in the pool — despite being over the
+        // ceiling: loading is not where the ceilings live.
+        let deep_id = engine
+            .commit_edit(None, deep, EditOutcome::Untold)
+            .expect("a hand edit always lands");
+        assert!(engine.find(deep_id).is_some());
+
+        let gen_before = engine.generation;
+        assert_eq!(engine.refine_from(&mut rng, deep_id, &[]), None);
+        assert_eq!(engine.last_refine(), RefineOutcome::OutsideSupport);
+        assert_eq!(
+            engine.generation, gen_before,
+            "nothing landed, no generation"
+        );
+
+        assert_eq!(engine.refine_from(&mut rng, 0xDEAD_BEEF, &[]), None);
+        assert_eq!(engine.last_refine(), RefineOutcome::UnknownSeed);
+
+        // Every in-support seed gets a real verdict, and at least one walk
+        // lands within a few tries — the reason surface must not be all noise.
+        let mut injected = false;
+        for i in 0..engine.pool.len().min(8) {
+            let id = engine.pool[i].id;
+            if id == deep_id {
+                continue;
+            }
+            let child = engine.refine_from(&mut rng, id, &[]);
+            let outcome = engine.last_refine();
+            assert_ne!(
+                outcome,
+                RefineOutcome::OutsideSupport,
+                "seed {id} is in support"
+            );
+            assert_ne!(outcome, RefineOutcome::Idle);
+            assert_eq!(child.is_some(), outcome == RefineOutcome::Injected);
+            injected |= child.is_some();
+            if injected {
+                break;
+            }
+        }
+        assert!(injected, "no in-support seed ever produced a child");
+    }
+
+    /// The engine's per-session history is bounded: the implicit-event stream
+    /// keeps at most `EVENTS_CAP` rows and raw φ on the newest `EVENT_PHI_KEEP`
+    /// of them, and the duel-exposure tallies forget an id the moment it is
+    /// evicted. All three used to grow for the life of the session and ride
+    /// along in every autosave.
+    #[test]
+    fn history_stays_bounded() {
+        let mut rng = StdRng::seed_from_u64(0xB0B);
+        let cfg = SessionConfig {
+            pool_size: 6,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let phi = vec![0.5; auracle_features::Features::phi_names().len()];
+        for i in 0..(EVENTS_CAP + 300) {
+            engine.log_event_detail("play", i as u64, 1.0, "", phi.clone(), phi.clone());
+        }
+        assert_eq!(engine.events.len(), EVENTS_CAP);
+        let with_phi = engine
+            .events
+            .iter()
+            .filter(|e| !e.phi_before.is_empty())
+            .count();
+        assert_eq!(with_phi, EVENT_PHI_KEEP);
+        assert!(
+            engine.events.last().unwrap().phi_after == phi,
+            "the newest event must keep its φ"
+        );
+        // The dropped rows are the oldest: the survivor ids start at 300.
+        assert_eq!(engine.events[0].id, 300);
+
+        // Exposure tallies: deal a duel, evict one of its sides, and the
+        // tallies no longer mention it.
+        let (a, _) = engine.next_duel(&mut rng).expect("a duel");
+        let gone = engine.pool[a].id;
+        // With no posterior every member ranks equal, and `insert_candidate`
+        // evicts the *first* of the tied worst — pool index 0. Put the dealt
+        // side there, so the one hand edit (which always lands) evicts it.
+        engine.pool.swap(0, a);
+        let mut t = engine.pool[1].tree.clone();
+        t.amp.attack = 0.017;
+        engine.commit_edit(None, t, EditOutcome::Untold);
+        assert!(
+            engine.find(gone).is_none(),
+            "the fixture never evicted the dealt side"
+        );
+        assert!(engine.shown_pairs_len() <= 1);
+        assert!(!engine.shown_candidate_ids().contains(&gone));
+    }
+
+    /// A reload opens a new τ session only once the current one has earned it.
+    /// Three votes then a reload used to be two sessions and two τ sites; the
+    /// merge at import folds sessions that never reached the floor into their
+    /// predecessor, so a once-per-visit voter stops accumulating a nuisance
+    /// site per visit.
+    #[test]
+    fn a_reload_reuses_a_session_that_has_not_earned_its_own_threshold() {
+        let mut rng = StdRng::seed_from_u64(0x5E55);
+        let cfg = SessionConfig {
+            pool_size: 8,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg.clone());
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        for i in 0..(MIN_SESSION_OBS - 2) {
+            engine.record_keep(i % engine.pool.len(), true);
+        }
+        let short = engine.export_state();
+        let mut back = Engine::new(PatchGrammarPrior::default(), cfg.clone());
+        back.begin_session();
+        back.import_state(short);
+        assert_eq!(
+            back.begin_session(),
+            0,
+            "three votes do not earn a second τ"
+        );
+        assert_eq!(back.log.n_sessions(), 1);
+
+        for i in 0..MIN_SESSION_OBS {
+            back.record_keep(i % back.pool.len(), false);
+        }
+        let long = back.export_state();
+        let mut again = Engine::new(PatchGrammarPrior::default(), cfg);
+        again.begin_session();
+        again.import_state(long);
+        assert_eq!(again.begin_session(), 1, "a session past the floor closes");
+
+        // A legacy log with one-vote sessions from eight reloads is regrouped
+        // at import into sessions that have earned a τ: the merge walks from
+        // the newest down and stops folding once a group reaches the floor,
+        // so eight singletons become {3 votes (the floor session), 5 votes}
+        // rather than eight τ sites.
+        let mut legacy = again.export_state();
+        let n_votes = legacy.profile.log.observations.len();
+        assert_eq!(n_votes, 2 * MIN_SESSION_OBS - 2);
+        for (i, o) in legacy.profile.log.observations.iter_mut().enumerate() {
+            o.session = i; // one session per vote
+        }
+        let mut merged = Engine::new(
+            PatchGrammarPrior::default(),
+            SessionConfig {
+                pool_size: 8,
+                ..fast()
+            },
+        );
+        merged.begin_session();
+        merged.import_state(legacy);
+        assert_eq!(
+            merged.log.n_sessions(),
+            2,
+            "one-vote sessions must fold together"
+        );
+        let in_last = merged
+            .log
+            .observations
+            .iter()
+            .filter(|o| o.session() == 1)
+            .count();
+        assert_eq!(in_last, MIN_SESSION_OBS);
+    }
+
+    /// A refit keeps each lens where the previous fit had it: the lens that
+    /// carried the pool's taste is at the same index afterwards, so the name
+    /// the player gave it still names it.
+    #[test]
+    fn refits_keep_the_dominant_lens_where_it_was() {
+        use auracle_taste::synthetic::cosine;
+        let mut rng = StdRng::seed_from_u64(0x1E45);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        // 45 duels → K = 1 + 45/20 = 3 lenses.
+        for _ in 0..45 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        let first = engine.posterior.clone().expect("fit");
+        assert!(first.k_styles() >= 2, "the test needs more than one lens");
+        let pool: Vec<Vec<f64>> = engine.pool.iter().map(|c| c.phi_std.clone()).collect();
+        let shares = first.style_share(&pool);
+        let dominant = (0..first.k_styles())
+            .max_by(|&i, &j| shares[i].total_cmp(&shares[j]))
+            .unwrap();
+        let before = first.theta_mean(dominant);
+
+        // A second fit from a different RNG state, over the same log.
+        let mut other = StdRng::seed_from_u64(0x7777);
+        engine.fit_posterior(&mut other);
+        let second = engine.posterior.clone().expect("refit");
+        let best = (0..second.k_styles())
+            .max_by(|&i, &j| {
+                cosine(&second.theta_mean(i), &before)
+                    .total_cmp(&cosine(&second.theta_mean(j), &before))
+            })
+            .unwrap();
+        assert_eq!(
+            best, dominant,
+            "the dominant lens moved from index {dominant} to {best} across a refit"
+        );
     }
 
     /// **R6.** A refined child keeps its seed's node identities wherever the
@@ -1120,6 +1497,65 @@ mod tests {
         assert_eq!((ev.parent_id, ev.child_id), (original_id, child_id));
         // The original survives (protected from eviction).
         assert!(engine.find(original_id).is_some());
+    }
+
+    /// PERFORM's offers are duels: the player hears the offer against the
+    /// sound they are playing and takes it or passes. Both answers have to
+    /// arrive — a stream that only ever recorded takes would be the model
+    /// agreeing with its own proposals — as ordinary duels tagged
+    /// `PerformOffer`, forecast before they are observed, without touching
+    /// the pool. Two identical patches record nothing.
+    #[test]
+    fn perform_offers_are_duels_both_ways_and_leave_the_pool_alone() {
+        let mut rng = StdRng::seed_from_u64(0x0FFE);
+        let cfg = SessionConfig {
+            pool_size: 12,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let home = engine.pool[0].tree.clone();
+        let offer = auracle_grammar::set_param(
+            &home,
+            "amp#attack",
+            auracle_grammar::ParamValue::Continuous(0.4),
+        )
+        .unwrap();
+        let pool_ids: Vec<u64> = engine.pool.iter().map(|c| c.id).collect();
+
+        assert!(engine.record_tree_duel(&home, &offer, false, Provenance::PerformOffer));
+        assert!(engine.record_tree_duel(&home, &offer, true, Provenance::PerformOffer));
+        assert!(
+            !engine.record_tree_duel(&home, &home, true, Provenance::PerformOffer),
+            "the same patch twice is not a question"
+        );
+        assert_eq!(engine.log.n_with(Provenance::PerformOffer), 2);
+        let taken = &engine.log.observations[0];
+        let auracle_taste::Feedback::Duel { chose_a, .. } = &taken.feedback else {
+            panic!("an offer answer is a duel");
+        };
+        assert!(!chose_a, "A is home, and the offer was taken");
+        assert_eq!(
+            engine.pool.iter().map(|c| c.id).collect::<Vec<_>>(),
+            pool_ids,
+            "a performance's passing sounds are evidence, not candidates"
+        );
+
+        // With a posterior, the forecast is scored in its own stream.
+        engine.fit_posterior(&mut rng);
+        let n_before = engine.forecasts.len();
+        assert!(engine.record_tree_duel(&home, &offer, true, Provenance::PerformOffer));
+        assert_eq!(engine.forecasts.len(), n_before + 1);
+        assert_eq!(
+            engine.forecasts.last().unwrap().provenance,
+            Provenance::PerformOffer
+        );
+        let cal = engine.calibration();
+        assert!(cal
+            .by_provenance
+            .iter()
+            .any(|r| r.provenance == "perform_offer" && r.n >= 1));
     }
 
     /// The losing direction is the half that used to be unrepresentable: a

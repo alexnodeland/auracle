@@ -1,0 +1,261 @@
+/* The film stage: one 1920×1080 frame, drawn in the instrument's own
+   materials — graphite faceplates, silk-screened type, and two phosphors.
+   Green is sound, amber is the model's mind; no third colour. The tokens are
+   the app's (apps/web/style.css) and the brand's (www/brand/index.html),
+   copied rather than invented, so a film cannot drift from the product it
+   shows. */
+
+@font-face {
+  font-family: "Jost";
+  src: url("../../../apps/web/fonts/jost-var.woff2") format("woff2-variations");
+  font-weight: 300 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("../../../apps/web/fonts/plexmono-400.woff2") format("woff2");
+  font-weight: 400;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("../../../apps/web/fonts/plexmono-600.woff2") format("woff2");
+  font-weight: 600;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("../../../apps/web/fonts/newsreader-it.woff2") format("woff2-variations");
+  font-weight: 300 600;
+  font-style: italic;
+}
+
+:root {
+  --rack: #0c0d10;
+  --panel: #171a1f;
+  --panel-hi: #1d2127;
+  --bezel: #07080a;
+  --hairline: #292e36;
+  --silk: #d9d4c8;
+  --silk-dim: #9a958a;
+  --silk-mute: #6f6c63;
+  --phos-a: #8ef0b1;
+  --phos-a-dim: #63a97c;
+  --phos-a-deep: #3d6a4d;
+  --phos-b: #ffb454;
+  --phos-b-dim: #b8823c;
+  --led-red: #ff5747;
+  --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --font-voice: "Newsreader", Georgia, serif;
+  --glow-a: drop-shadow(0 0 3px rgba(142, 240, 177, 0.9)) drop-shadow(0 0 14px rgba(142, 240, 177, 0.35));
+  --glow-b: drop-shadow(0 0 3px rgba(255, 180, 84, 0.9)) drop-shadow(0 0 16px rgba(255, 180, 84, 0.4));
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: var(--rack);
+  color: var(--silk);
+  font-family: var(--font-silk);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+body { overflow: hidden; }
+
+/* The frame. Everything is positioned in frame pixels; preview scales the
+   frame to the window, capture renders it 1:1. */
+#frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 45%, #111318 0%, var(--rack) 62%, #08090b 100%);
+  transform-origin: 0 0;
+}
+.layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.layer > svg.full {
+  position: absolute;
+  inset: 0;
+  width: 1920px;
+  height: 1080px;
+  overflow: visible;
+}
+
+/* Film grain and vignette ride on top of everything, as a lens would. */
+#grain {
+  position: absolute;
+  inset: 0;
+  z-index: 1001;
+  opacity: 0.04;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+#vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  background: radial-gradient(130% 100% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* ---- type ------------------------------------------------------------- */
+
+.silk {
+  font-family: var(--font-silk);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--silk);
+}
+.display {
+  font-family: var(--font-silk);
+  font-weight: 300;
+  letter-spacing: -0.022em;
+  line-height: 1.04;
+  color: var(--silk);
+}
+.voice {
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  line-height: 1.12;
+  color: var(--silk);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--silk-dim);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--phos-a-dim);
+}
+.eyebrow.b { color: var(--phos-b-dim); }
+.ga { color: var(--phos-a); text-shadow: 0 0 18px rgba(142, 240, 177, 0.45); }
+.gb { color: var(--phos-b); text-shadow: 0 0 18px rgba(255, 180, 84, 0.5); }
+
+/* A word revealed with the voice. Each word is its own span; the stage sets
+   --u from 0 to 1 as the narrator reaches it. */
+.w {
+  display: inline-block;
+  opacity: calc(0.12 + 0.88 * var(--u, 0));
+  transform: translateY(calc((1 - var(--u, 0)) * 10px));
+  filter: blur(calc((1 - var(--u, 0)) * 3px));
+  white-space: pre;
+}
+
+/* ---- the lockup (www/brand/index.html .lk, at film size) --------------- */
+
+.lk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.62em;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--silk);
+}
+.lk .glyph { width: 1.28em; height: 1.28em; flex: none; transform: translateY(-0.035em); }
+.lk .wm { letter-spacing: 0.095em; }
+
+/* ---- hardware ---------------------------------------------------------- */
+
+.plate {
+  position: absolute;
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.07), 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.screen {
+  position: absolute;
+  background: var(--bezel);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #000, inset 0 2px 14px rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+}
+.screen::after {
+  /* scanlines, as on the landing page's CRT */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+.screw {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #3a3f47, #15171b 70%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.screw::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 5px;
+  height: 2px;
+  background: #0b0c0e;
+  transform: rotate(var(--r, 35deg));
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: 10px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  color: var(--silk-dim);
+}
+.pill.a { border-color: var(--phos-a-deep); color: var(--phos-a); }
+.pill.b { border-color: var(--phos-b-dim); color: var(--phos-b); }
+
+/* Captions burned into a silent cut; the web films carry a VTT track. */
+#caption {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  max-width: 1400px;
+  padding: 10px 22px;
+  background: rgba(7, 8, 10, 0.78);
+  border-radius: 6px;
+  font-family: var(--font-silk);
+  font-size: 40px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--silk);
+  display: none;
+}
+
+/* Preview chrome, never in a captured frame. */
+#hud {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  font: 12px var(--font-mono);
+  color: var(--silk-dim);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6px 10px;
+  border-radius: 6px;
+  z-index: 10;
+}
+.capture #hud { display: none; }

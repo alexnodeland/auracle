@@ -5,12 +5,13 @@
 use fugue_evo::genome::trace_genome::{ChoiceValue, TraceGenome};
 use thiserror::Error;
 
+use crate::genome::clamp_param;
 use crate::term::PatchTree;
 
 /// A knob-edit value.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ParamValue {
-    /// Continuous parameter, clamped to `[0, 1]`.
+    /// Continuous parameter, clamped into [`crate::PARAM_DOMAIN`] (`[0, 1)`).
     Continuous(f64),
     /// Enum / octave selector index (clamped to the site's category count).
     Index(usize),
@@ -67,8 +68,9 @@ pub fn split_addr(addr: &str) -> (&str, &str) {
 
 /// Return a copy of `tree` with the choice at `addr` set to `value`.
 ///
-/// Continuous values are clamped to `[0, 1]`; enum indices are clamped to the
-/// site's arity. Structural sites are rejected — restructuring is evolution's
+/// Continuous values are clamped into [`crate::PARAM_DOMAIN`] — the top of a
+/// knob is [`crate::PARAM_MAX`], never `1.0`, because that is where the prior's
+/// support ends; enum indices are clamped to the site's arity. Structural sites are rejected — restructuring is evolution's
 /// job (or a future explicit structure-edit surface), not a knob gesture.
 ///
 /// Identity is carried across, because a knob turn changes no structure and
@@ -97,7 +99,7 @@ pub fn set_param(tree: &PatchTree, addr: &str, value: ParamValue) -> Result<Patc
     let slot = trace.choices.get_mut(&a).expect("present");
     match (&slot.value, value) {
         (ChoiceValue::F64(_), ParamValue::Continuous(v)) => {
-            slot.value = ChoiceValue::F64(v.clamp(0.0, 1.0));
+            slot.value = ChoiceValue::F64(clamp_param(v));
         }
         (ChoiceValue::Usize(_), ParamValue::Index(i)) => {
             let n = enum_arity(site).unwrap_or(usize::MAX);

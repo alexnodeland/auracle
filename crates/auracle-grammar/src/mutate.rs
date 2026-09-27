@@ -15,6 +15,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::genome::PARAM_MAX;
 use crate::term::{
     AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree, TableShape,
     Uid, Waveform,
@@ -23,18 +24,34 @@ use crate::term::{
 /// Hard ceilings on hand-built patches (protects the realtime voice and the
 /// feature pipeline; evolution's own prior rarely exceeds these).
 pub const MAX_SIZE: usize = 24;
-/// Maximum tree depth for hand-built patches.
-pub const MAX_DEPTH: usize = 9;
-/// Maximum nesting depth of a hand-built **modulation** term.
+/// Maximum tree depth for hand-built patches — **the deepest term the prior
+/// gives positive mass**, and not one level more.
 ///
-/// Above the prior's `max_mod_depth` of 2, on the same argument as
-/// [`MAX_DEPTH`] against the prior's `max_depth`: a person stacking shapers by
-/// hand knows what they are building, and the ceiling is there to protect the
-/// realtime voice rather than to shape the search. It stops well short of the
-/// audio ceiling because a `Pair` branches, so depth 4 is up to sixteen leaves
-/// on one cable — and each of them is another level of the compiler's
-/// by-value recursion on top of the audio tree's.
-pub const MAX_MOD_DEPTH: usize = 4;
+/// This used to be 9 against the prior's `max_depth` of 5, on the argument
+/// that a person stacking modules by hand knows what they are building and
+/// the ceiling only protects the realtime voice. That argument missed what the
+/// prior does with such a tree: `#leaf` is forced true at `max_depth`, so a
+/// term of depth `max_depth + 2` or more has `log p = −∞`, `init_from` returns
+/// `None`, and ⚡ evolve on it silently does nothing. The grammar gives
+/// `Silence` non-zero weight precisely so no hand edit can make a patch
+/// un-evolvable; a depth the prior cannot score did exactly that.
+///
+/// Derived from [`crate::prior::PRIOR_MAX_DEPTH`] rather than restated so the
+/// two cannot drift again. A session saved by an older build may hold a deeper
+/// tree: it still **loads** and **plays** (no load path re-checks the ceilings,
+/// by design — corruption must not be load-bearing), evolution reports it as
+/// outside the prior's support instead of pretending to try, and a structural
+/// edit that leaves it over the ceiling is refused until one brings it under.
+pub const MAX_DEPTH: usize = crate::prior::PRIOR_MAX_DEPTH + 1;
+/// Maximum nesting depth of a hand-built **modulation** term — the deepest
+/// mod term with positive prior mass, on the same argument as [`MAX_DEPTH`].
+///
+/// `Op`/`Pair` are zeroed at the prior's `max_mod_depth`, so the deepest term
+/// it can score is `max_mod_depth + 1`. It stops well short of the audio
+/// ceiling because a `Pair` branches, so depth 3 is up to eight leaves on one
+/// cable — and each of them is another level of the compiler's by-value
+/// recursion on top of the audio tree's.
+pub const MAX_MOD_DEPTH: usize = crate::prior::PRIOR_MAX_MOD_DEPTH + 1;
 
 /// The buildable node palette (everything the grammar can express).
 ///
@@ -102,6 +119,38 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
+    /// Every buildable kind, in declaration order — the palette as one table,
+    /// so a sweep over "everything a hand can place" cannot skip the newest
+    /// production.
+    pub const ALL: [NodeKind; 26] = [
+        NodeKind::Vco,
+        NodeKind::Supersaw,
+        NodeKind::Noise,
+        NodeKind::Mix,
+        NodeKind::Filter,
+        NodeKind::Fold,
+        NodeKind::Delay,
+        NodeKind::Chorus,
+        NodeKind::Reverb,
+        NodeKind::Wavetable,
+        NodeKind::Pluck,
+        NodeKind::Distortion,
+        NodeKind::Bitcrush,
+        NodeKind::Phaser,
+        NodeKind::RingMod,
+        NodeKind::Formant,
+        NodeKind::Flanger,
+        NodeKind::Tremolo,
+        NodeKind::Vibrato,
+        NodeKind::Eq,
+        NodeKind::Granular,
+        NodeKind::Shift,
+        NodeKind::Comp,
+        NodeKind::Duck,
+        NodeKind::Gate,
+        NodeKind::Vocoder,
+    ];
+
     /// Is this a source (leaf) kind?
     pub fn is_source(self) -> bool {
         matches!(
@@ -118,12 +167,13 @@ impl NodeKind {
 
 /// A modulation choice for [`StructOp::SetMod`].
 ///
-/// The first five are **sources**: they replace whatever is in the slot. The
-/// eleven below them are **shapers**, and setting one *wraps* the slot's
-/// current term rather than discarding it — placing a quantizer on a cable
-/// that already carries an S&H is the gesture, and asking the panel to send a
-/// whole [`ModNode`] through [`StructOp::SetModTree`] to express it would make
-/// the common edit the awkward one.
+/// `Lfo` through `Euclid`, and `Steps`, are **sources**: they replace
+/// whatever is in the slot. The eleven between them are **shapers**, and
+/// setting one *wraps* the slot's current term rather than discarding it —
+/// placing a quantizer on a cable that already carries an S&H is the gesture,
+/// and asking the panel to send a whole [`ModNode`] through
+/// [`StructOp::SetModTree`] to express it would make the common edit the
+/// awkward one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModKind {
@@ -159,9 +209,34 @@ pub enum ModKind {
     Xor,
     /// …switching between them.
     Switch,
+    /// Clocked step sequence of CV values. A source, like the five above the
+    /// shapers; declared last only so the list reads in the order the palette
+    /// grew (this enum is serialized by *name*, so its order is not a wire
+    /// format — the `#mod` categorical's is, and there `Steps` is index 8).
+    Steps,
 }
 
 impl ModKind {
+    /// Every modulation choice, in declaration order.
+    pub const ALL: [ModKind; 16] = [
+        ModKind::None,
+        ModKind::Lfo,
+        ModKind::Env,
+        ModKind::Rand,
+        ModKind::Follow,
+        ModKind::Euclid,
+        ModKind::Quantize,
+        ModKind::Slew,
+        ModKind::Rectify,
+        ModKind::Hold,
+        ModKind::Min,
+        ModKind::Max,
+        ModKind::And,
+        ModKind::Or,
+        ModKind::Xor,
+        ModKind::Switch,
+    ];
+
     /// The unary CV processor this kind wraps the slot in, if any.
     fn as_op(self) -> Option<ModOp> {
         Some(match self {
@@ -230,6 +305,29 @@ fn default_pair_b(kind: PairOp) -> ModNode {
             wave: Waveform::Triangle,
             rate: 0.3,
         }
+    }
+}
+
+/// The step sequence a hand-placed [`ModKind::Steps`] arrives with.
+///
+/// Audible the instant it lands, on the rule every default here follows: four
+/// steps (`length` 0.35 is the fourth of seven bins) at 4 steps a second
+/// (`rate` 0.6 on `0.5·2^(5x)`), so a bar of four at 60 BPM — slow enough to
+/// hear each step move the destination, fast enough to go round the pattern
+/// nearly twice inside the audition phrase's longest note (1.8 s). The values
+/// climb and fall back (−5, −1, +5, +1 V) rather than simply alternating,
+/// because an alternating pattern on a cutoff is indistinguishable from a
+/// square LFO and the point of the module is a *shape* an LFO cannot draw. A
+/// fifth of each step glides, so the steps are steps without clicking the
+/// filter. The four latent values continue the contour, so lengthening the
+/// pattern extends the phrase rather than revealing silence.
+pub fn default_steps() -> ModNode {
+    ModNode::Steps {
+        uid: Uid::NEW,
+        rate: 0.6,
+        length: 0.35,
+        slew: 0.2,
+        values: [0.0, 0.4, 1.0, 0.6, 0.2, 0.8, 0.3, 0.9],
     }
 }
 
@@ -502,8 +600,11 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             depth: 0.25,
             // Fully wet. A half-wet vibrato *is* a chorus, and shipping the
             // default at 0.5 would erase the distinction between the two
-            // modules on the very first click.
-            mix: 1.0,
+            // modules on the very first click. `PARAM_MAX` rather than `1.0`
+            // because the knob domain is half-open: the literal `1.0` scored
+            // `−∞` under the prior and made every patch this was inserted
+            // into un-evolvable.
+            mix: PARAM_MAX,
             mod_depth: 0.3,
             input: boxed(input),
             modulation: ModNode::None,
@@ -901,6 +1002,7 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
                         steps: 0.5,
                         pulses: 0.4,
                     },
+                    ModKind::Steps => default_steps(),
                     // `None` and the ten handled above.
                     _ => ModNode::None,
                 }
@@ -946,11 +1048,12 @@ pub fn apply_struct_op(tree: &PatchTree, op: &StructOp) -> Result<PatchTree, Str
             let path = parse_key(key).ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
             let slot = node_at_mut(&mut out.root, &path)
                 .ok_or_else(|| StructError::NoSuchNode(key.clone()))?;
-            // Normalized, because this is the one edit that installs a whole
-            // modulation term the panel built: a `Pair` with an empty branch
-            // or an `Op` over nothing is a rack module that cannot make a
-            // sound, and the prior can only rule those out for terms it drew
-            // itself. See [`ModNode::normalized`].
+            // Normalized, because this installs a whole modulation term the
+            // panel built: a `Pair` with an empty branch or an `Op` over
+            // nothing is a rack module that cannot make a sound, and the prior
+            // can only rule those out for terms it drew itself. See
+            // [`ModNode::normalized`]. (`finish()` now does the same for every
+            // slot of a grafted subtree, so this is the early, explicit copy.)
             *mod_slot_mut(slot)? = m.clone().normalized();
         }
     }
@@ -1415,6 +1518,11 @@ fn finish(mut tree: PatchTree) -> Result<PatchTree, StructError> {
     // `auracle_features::struct_features`: nothing this crate generates should
     // ever need repairing, and a silent clamp there would hide a real bug.
     tree.clamp_domains();
+    // Modulation fragments next, for the same two ops: `SetModTree` always
+    // normalized the term it installs, but a subtree grafted by `ReplaceTree`
+    // or `InsertTree` brings its mod slots along verbatim, and an `Op` over
+    // nothing in one of them is a term the prior gives zero mass.
+    tree.root.normalize_mods();
     check_ceilings(&mut tree)?;
     // Identity survives a structural edit for free, and the reason is worth
     // stating: [`apply_struct_op`] works on a *clone* of the incoming tree and

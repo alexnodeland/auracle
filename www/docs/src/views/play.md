@@ -1,14 +1,14 @@
-# PLAY — the patch
+# PATCH — the patch
 
 <p class="lede">One patch, in full, playable while you take it apart.</p>
 
-PLAY shows a single patch as its whole rack: every module, every cable, every
+PATCH shows a single patch as its whole rack: every module, every cable, every
 knob at its true position. It is running live the entire time. Turn a knob and
 you hear it on the next note you play.
 
 <figure>
-<img src="../img/play.webp" alt="The PLAY view, with the bank on the left, the rack centre, the node bank on the right and the keyboard docked below." loading="eager" width="1440" height="900">
-<figcaption><strong>PLAY.</strong> The bank on the left, the rack in the
+<img src="../img/play.webp" alt="The PATCH view, with the bank on the left, the rack centre, the node bank on the right and the keyboard docked below." loading="eager" width="1440" height="900">
+<figcaption><strong>PATCH.</strong> The bank on the left, the rack in the
 middle, the node bank on the right, the keyboard docked below. Everything
 here is live while you edit it.</figcaption>
 </figure>
@@ -32,7 +32,7 @@ there.
 **The belief row.** What the model thinks of *this* patch and why:
 
 ```text
-MODEL'S GUESS 0.80 · chorus & sweeps +0.78 · bass weight −0.09 ·
+MODEL'S GUESS 0.80 · chorus & sweeps +0.78 · body −0.09 ·
 drive & fold −0.08   under your style 2 lens
 ```
 
@@ -41,7 +41,7 @@ coordinates contributing most, and which style lens is currently judging it.
 When the model has no basis for a claim, this row says so instead of printing a
 number. See [Reading what it learned](../reading-the-model.md).
 
-Beside it, the **budget**: `8/24 modules · 6/9 depth · 1/4 mod depth`. These
+Beside it, the **budget**: `8/24 modules · 4/6 depth · 1/3 mod depth`. These
 are the ceilings evolution searches within. A hand-built patch past them is
 refused, and one *at* them has no room left to grow.
 
@@ -59,11 +59,11 @@ instead of vanishing, and stays across a reload. Drag it back onto any lit ○ t
 put it in.
 
 **The quick-pick strip.** <kbd>TEACH</kbd> plus the current duel pair, so you
-can vote without leaving PLAY.
+can vote without leaving PATCH.
 
 **The keyboard dock.** [Playing it](../playing.md).
 
-## The three things PLAY is for
+## The three things PATCH is for
 
 ### Hearing a patch properly
 

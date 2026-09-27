@@ -136,7 +136,7 @@
 
     <p class="honesty">
       A four-knob miniature. The real instrument measures
-      <a href="reference/features/audio.html">forty coordinates</a> and fits a
+      <a href="reference/features/audio.html">forty-four coordinates</a> and fits a
       posterior over up to five taste lenses.
     </p>
   </div>
@@ -170,21 +170,31 @@
 <!-- ─── showcase ───────────────────────────────────────────────────────── -->
 <section class="band">
   <p class="eyebrow">The instrument</p>
-  <h2 class="h2">Three views, one loop.</h2>
+  <h2 class="h2">Four views, one loop.</h2>
 
   <div class="shots">
     <div class="shot-tabs" role="tablist" aria-label="Views">
+      <button class="shot-tab" role="tab" id="tab-perform" aria-controls="pane-perform"
+              aria-selected="true" data-tab="perform">perform</button>
       <button class="shot-tab" role="tab" id="tab-play" aria-controls="pane-play"
-              aria-selected="true" data-tab="play">play</button>
+              aria-selected="false" tabindex="-1" data-tab="play">patch</button>
       <button class="shot-tab" role="tab" id="tab-evolve" aria-controls="pane-evolve"
               aria-selected="false" tabindex="-1" data-tab="evolve">evolve</button>
       <button class="shot-tab" role="tab" id="tab-taste" aria-controls="pane-taste"
               aria-selected="false" tabindex="-1" data-tab="taste">taste</button>
     </div>
 
-    <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0">
-      <img src="assets/screens/play.webp" alt="The PLAY view: a patch bank on the left, an eight-module rack wired with green audio cables and amber modulation cables, the node bank catalogue on the right, and a keyboard docked along the bottom." width="1440" height="900" loading="eager" decoding="async">
-      <p class="shot-cap"><strong>PLAY.</strong> The whole rack, with knobs at true
+    <div class="shot-pane" role="tabpanel" id="pane-perform" aria-labelledby="tab-perform" tabindex="0">
+      <img src="assets/screens/perform.webp" alt="The PERFORM view: eight round controls named Bright, Snap, Motion, Body, Grit, Space, Blend and Wander, six large pads (Keep, Back, Offer, Take, Peek, Freeze), a strip announcing an offer waiting in B, and an under-the-hood list of the patch's own knobs moving." width="1440" height="900" loading="eager" decoding="async">
+      <p class="shot-cap"><strong>PERFORM.</strong> Controls named for what you hear,
+      wired to this patch's own knobs by its measured response, with the knobs they
+      turn shown underneath. Wander lets the taste walk move it; Offer grows a
+      variant into B to blend or take.</p>
+    </div>
+
+    <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0" hidden>
+      <img src="assets/screens/play.webp" alt="The PATCH view: a patch bank on the left with match percentages, a five-module rack (two oscillators, a filter, a mixer and an envelope) wired with green audio cables, the model's guess and its reasons above it, the node bank catalogue on the right, and a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
+      <p class="shot-cap"><strong>PATCH.</strong> The whole rack, with knobs at true
       positions in musical units. Edit it and lock parts of it while it runs live
       under your hands.</p>
     </div>
@@ -267,7 +277,7 @@
 <!-- ─── the palette, by signal path ────────────────────────────────────── -->
 <section class="band">
   <p class="eyebrow">The module palette</p>
-  <h2 class="h2">Forty-one modules, from source to output.</h2>
+  <h2 class="h2">Forty-two modules, from source to output.</h2>
 
   <ol class="path">
     <li><span class="path-n mono">sources</span><span class="path-b">A wavetable, a
@@ -287,7 +297,7 @@
     <li><span class="path-n mono">combine</span><span class="path-b">Crossfade and
       ring modulation, merging two chains into one</span></li>
     <li><span class="path-n mono">modulation</span><span class="path-b">LFO, envelope,
-      sample-and-hold, slew, follower, Euclidean. These <strong>chain</strong>:
+      sample-and-hold, slew, follower, Euclidean, a step sequencer. These <strong>chain</strong>:
       <span class="mono">s&amp;h rand → quantize → slew</span> before it ever reaches a
       cutoff</span></li>
   </ol>

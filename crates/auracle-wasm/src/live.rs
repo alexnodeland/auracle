@@ -30,9 +30,36 @@
 //!   tails cannot transfer across a rewire and still die; that is accepted.
 //! - Released voices keep ticking through their tails and are parked once
 //!   effectively silent, so idle polyphony costs nothing.
+//!
+//! ## What a patch swap costs, and whom
+//!
+//! A swap **compiles on the render thread.** [`LivePoly::set_patch`] parses the
+//! tree JSON in the worklet's `onmessage` (render thread), and the rebuild
+//! stage runs one full `auracle_grammar::compile` per voice per quantum — the
+//! same compiler evolution uses, constructing every quiver module by value —
+//! for `n_voices` quanta. "A dropped quantum of silence is inaudible" is true
+//! of *this node*: its own gain is zero for the whole rebuild. It is not true
+//! of the rest of the graph. The duel auditions, the master gain, the
+//! analysers and the recorder share the render thread, and a compile that
+//! overruns the 2.9 ms quantum is a glitch in **their** output, not this one's.
+//! On the machines measured a single voice compiles well inside a quantum; a
+//! large patch on a slow laptop does not always. The design that removes this
+//! — compile in the engine worker and transfer a ready voice, or at least
+//! parse off-thread — is out of scope for now and recorded here so that the
+//! next person to see a click on a structural edit knows where it comes from.
+//!
+//! Per-quantum work outside a swap allocates nothing: the arpeggiator reuses
+//! two buffers sized for a full keyboard, and knob smoothers index a table of
+//! live parameter handles that is rebuilt once per swap (`param_slots`), so a
+//! knob write is a linear scan and an atomic store rather than a `String`
+//! allocation and a `HashMap` lookup per voice. Metering allocates while it is
+//! on (see [`Meter`]); the recorder while a take is rolling.
 
-use auracle_grammar::{compile, PatchTree};
+use std::sync::Arc;
+
+use auracle_grammar::{compile, ParamMap, PatchTree};
 use quiver::observer::{ObservableValue, StateObserver, SubscriptionTarget};
+use quiver::AtomicF64;
 use wasm_bindgen::prelude::*;
 
 const GATE_ON: f64 = 5.0;
@@ -61,6 +88,14 @@ const UNI_DETUNE_VOLT: f64 = 0.05;
 /// Arp gate lengths at or above this are *tied*: the step boundary slides the
 /// sounding voice to the next pitch instead of releasing and re-attacking.
 const ARP_TIE: f64 = 0.95;
+/// The velocity [`LivePoly::set_touch`] treats as "no offset": a mezzo touch
+/// plays the patch as it is, softer darkens (or thins, or stills — whichever
+/// control is on touch) and harder does the opposite.
+const TOUCH_MEZZO: f64 = 0.6;
+/// Largest value a touch offset may write, in normalized knob units: fugue's
+/// `Uniform(0, 1)` is half-open, and the live path should never produce a
+/// value the genome could not hold.
+const TOUCH_MAX: f64 = 1.0 - 1.0e-6;
 
 /// The classic supersaw detune curve, mapping a voice's uniform position in
 /// `[-1, 1]` to its share of the detune spread.
@@ -131,10 +166,106 @@ struct Voice {
     regate_in: u32,
 }
 
-struct Smoother {
+/// One live parameter across every voice: its trace address, its unit
+/// mapping, and the atomic each voice reads it from. Interned once per
+/// (re)build — see [`intern_params`] — so a knob write on the render thread
+/// is a scan of this table and an atomic store, with no allocation and no
+/// hashing per voice per quantum.
+struct ParamSlot {
     addr: String,
+    map: ParamMap,
+    /// Index-parallel to `voices`.
+    values: Vec<Arc<AtomicF64>>,
+}
+
+/// A `steps` module's tempo-sync wiring: its transport handle, its rate
+/// handle, and the rate the patch (or a gesture) asked for before snapping.
+struct SyncLane {
+    sync_slot: usize,
+    rate_slot: usize,
+    /// Normalized free rate: what the voices play with sync off, and what
+    /// the snap starts from with it on.
+    free: f64,
+    /// Steps per beat the lane is playing (0 before the first block synced).
+    div: f64,
+    /// Added to `beats × div`. Zero from a restart; set when `div` changes
+    /// mid-play so the sequencer keeps the step it is on and re-grids only
+    /// its phase, instead of leaping to wherever `beats × new div` points.
+    offset: f64,
+}
+
+/// Steps per beat a synced sequencer may run at: straight, triplet and
+/// dotted divisions from a whole bar's quarter down to 32nds' worth.
+const SYNC_DIVISIONS: [f64; 12] = [
+    0.25,
+    1.0 / 3.0,
+    0.5,
+    2.0 / 3.0,
+    0.75,
+    1.0,
+    1.5,
+    2.0,
+    3.0,
+    4.0,
+    6.0,
+    8.0,
+];
+
+/// The synced rate site for a free rate site at `bpm`: the musical division
+/// of the beat nearest the free rate in octaves (so a sequencer evolved at
+/// 3.7 steps/s at 120 BPM plays 16ths, 4 steps/s), among the divisions the
+/// knob can reach.
+pub(crate) fn snap_rate(free: f64, bpm: f64) -> f64 {
+    use auracle_grammar::steps::{rate_hz, rate_site};
+    let hz = rate_hz(free);
+    let beat = bpm.clamp(30.0, 300.0) / 60.0;
+    let (lo, hi) = (rate_hz(0.0), rate_hz(1.0));
+    let best = SYNC_DIVISIONS
+        .iter()
+        .map(|d| beat * d)
+        .filter(|h| *h >= lo * 0.999 && *h <= hi * 1.001)
+        .min_by(|a, b| (hz / a).log2().abs().total_cmp(&(hz / b).log2().abs()));
+    best.map_or(free, rate_site)
+}
+
+struct Smoother {
+    /// Index into `param_slots`.
+    slot: usize,
     current: f64,
     target: f64,
+}
+
+/// One knob that velocity reaches through [`LivePoly::set_touch`].
+struct TouchSite {
+    addr: String,
+    /// Normalized knob travel at full depth and full velocity distance from
+    /// [`TOUCH_MEZZO`] — the named control's measured wiring gain.
+    gain: f64,
+    /// The knob's current normalized value, which the offset is added to.
+    base: f64,
+}
+
+/// The live parameter table for a set of voices, sorted by address so the
+/// order is a property of the patch and not of `HashMap` iteration. Every
+/// voice is the same tree compiled, so voice 0's keys are everyone's keys;
+/// a voice missing one (which cannot happen) simply has no entry to write.
+fn intern_params(voices: &[Voice]) -> Vec<ParamSlot> {
+    let Some(first) = voices.first() else {
+        return Vec::new();
+    };
+    let mut addrs: Vec<&String> = first.voice.params.keys().collect();
+    addrs.sort();
+    addrs
+        .into_iter()
+        .map(|addr| ParamSlot {
+            addr: addr.clone(),
+            map: first.voice.params[addr].map,
+            values: voices
+                .iter()
+                .filter_map(|v| v.voice.params.get(addr).map(|h| Arc::clone(&h.value)))
+                .collect(),
+        })
+        .collect()
 }
 
 enum Stage {
@@ -159,6 +290,9 @@ pub struct LivePoly {
     /// Notes physically held right now, with velocity (survive patch swaps).
     held: Vec<(u8, f32)>,
     smoothers: Vec<Smoother>,
+    /// The live parameter handles of the current voices, rebuilt on every
+    /// swap. What `set_param` scans and `advance_smoothers` writes.
+    param_slots: Vec<ParamSlot>,
     stage: Stage,
     gain: f32,
     pending: Option<PatchTree>,
@@ -210,10 +344,38 @@ pub struct LivePoly {
     arp_base: Option<u8>,
     /// xorshift state for random mode (deterministic; no wall clock).
     rng_state: u64,
+    /// Scratch for [`LivePoly::tick_arp`]: the held chord sorted by pitch,
+    /// and the pattern it expands to across the octave range. Kept, not
+    /// rebuilt, so a step boundary allocates nothing; sized in `new` for a
+    /// full keyboard.
+    arp_chord: Vec<(u8, f32)>,
+    /// (pitch to play, the key it came from, velocity).
+    arp_notes: Vec<(u8, u8, f32)>,
     /// Interior signal metering, off until a surface asks for it. See
     /// [`LivePoly::set_meter`].
     meter: Meter,
+    /// Velocity → timbre: the knobs a note's velocity offsets on *its own*
+    /// voice. Empty (the default) is velocity-as-gain only, as before.
+    touch: Vec<TouchSite>,
+    touch_depth: f64,
+    /// Tempo sync for `steps` modules: on, their rate knobs are snapped to a
+    /// musical division of `bpm` and their clocks follow `transport`.
+    sync_on: bool,
+    /// Beats since the transport last started (a key sync or a MIDI start),
+    /// integrated block by block at the tempo *of that block*. A tempo change
+    /// therefore changes speed, never position: the first version computed
+    /// the position as elapsed samples × the current rate, and a 1 BPM nudge
+    /// two minutes in threw every sequencer four 16ths forward. Only
+    /// meaningful while `sync_on`.
+    beats: f64,
+    /// One per `steps` module in the patch.
+    sync_lanes: Vec<SyncLane>,
 }
+
+/// Every MIDI note held at once is the most a chord can be.
+const ARP_CHORD_CAP: usize = 128;
+/// …across the widest octave range the arp offers (`set_arp` clamps to 4).
+const ARP_NOTES_CAP: usize = ARP_CHORD_CAP * 4;
 
 /// Per-module level metering, read off the voice the player is hearing.
 ///
@@ -336,13 +498,15 @@ impl LivePoly {
             .map(|_| build_voice(&tree, sample_rate))
             .collect::<Result<_, _>>()
             .map_err(|e| JsValue::from_str(&e))?;
+        let param_slots = intern_params(&voices);
         Ok(LivePoly {
             voices,
             n_voices: n,
             sample_rate,
             counter: 0,
-            held: Vec::new(),
+            held: Vec::with_capacity(ARP_CHORD_CAP),
             smoothers: Vec::new(),
+            param_slots,
             stage: Stage::Run,
             gain: 1.0,
             pending: None,
@@ -373,8 +537,146 @@ impl LivePoly {
             arp_note: None,
             arp_base: None,
             rng_state: 0x9E37_79B9_7F4A_7C15,
+            arp_chord: Vec::with_capacity(ARP_CHORD_CAP),
+            arp_notes: Vec::with_capacity(ARP_NOTES_CAP),
             meter: Meter::new(),
+            touch: Vec::new(),
+            touch_depth: 0.0,
+            sync_on: false,
+            beats: 0.0,
+            sync_lanes: Vec::new(),
         })
+        .map(|mut p| {
+            p.rebuild_sync_lanes();
+            p
+        })
+    }
+
+    /// Find every `steps` module's transport and rate handles in the current
+    /// param table. Called when the table is (re)made — construction and a
+    /// patch swap — which is where parameter allocation already happens.
+    fn rebuild_sync_lanes(&mut self) {
+        let suffix = format!("#{}", auracle_grammar::compile::STEPS_SYNC_SITE);
+        self.sync_lanes = self
+            .param_slots
+            .iter()
+            .enumerate()
+            .filter_map(|(sync_slot, p)| {
+                let key = p.addr.strip_suffix(&suffix)?;
+                let rate_addr = format!("{key}#srate");
+                let rate_slot = self.param_slots.iter().position(|q| q.addr == rate_addr)?;
+                let free = self.param_slots[rate_slot]
+                    .values
+                    .first()
+                    .map_or(0.5, |v| v.get());
+                Some(SyncLane {
+                    sync_slot,
+                    rate_slot,
+                    free,
+                    div: 0.0,
+                    offset: 0.0,
+                })
+            })
+            .collect();
+        self.apply_sync();
+    }
+
+    /// Write every lane's rate (snapped with sync on, free with it off) and,
+    /// with it off, park the transport handles at free-running.
+    fn apply_sync(&mut self) {
+        // A rate smoother started before sync would otherwise go on writing
+        // its unsnapped target over the snapped value every block.
+        let rate_slots: Vec<usize> = self.sync_lanes.iter().map(|l| l.rate_slot).collect();
+        self.smoothers.retain(|s| !rate_slots.contains(&s.slot));
+        for lane in &self.sync_lanes {
+            let x = if self.sync_on {
+                snap_rate(lane.free, self.bpm)
+            } else {
+                lane.free
+            };
+            let p = &self.param_slots[lane.rate_slot];
+            let v = p.map.apply(x);
+            p.values.iter().for_each(|a| a.set(v));
+            if !self.sync_on {
+                let s = &self.param_slots[lane.sync_slot];
+                s.values
+                    .iter()
+                    .for_each(|a| a.set(auracle_grammar::steps::SYNC_FREE));
+            }
+        }
+    }
+
+    /// Tempo sync on or off. On, every `steps` module plays the musical
+    /// division of the arpeggiator's tempo nearest its own rate, on one
+    /// transport that restarts when the first key goes down (key sync) or on
+    /// [`Self::restart_transport`] — so the step sequence and the arp share a
+    /// grid, and a five-step pattern still cycles against a four-beat bar.
+    /// Off, each sequencer free-runs at its own rate, as evolved.
+    pub fn set_sync(&mut self, on: bool) {
+        if on != self.sync_on {
+            self.sync_on = on;
+            self.zero_transport();
+            self.apply_sync();
+        }
+    }
+
+    /// Restart the transport now (a MIDI start): the sequencers go back to
+    /// step 0 and, if a chord is held, the arp restarts on the same block.
+    pub fn restart_transport(&mut self) {
+        self.zero_transport();
+        if self.arp_on && !self.held.is_empty() {
+            self.arp_phase = f64::MAX;
+            self.arp_idx = 0;
+            self.arp_step = 0;
+            self.arp_up = true;
+        }
+    }
+
+    /// Where the transport is, in beats — for handing to a second instrument
+    /// that has to play on the same grid (the B slot).
+    pub fn transport_beats(&self) -> f64 {
+        self.beats
+    }
+
+    /// Put the transport at `beats` without restarting anything: the B slot
+    /// joining A's grid, or a MIDI clock pulling a free-running estimate back
+    /// onto the room's beat once per beat.
+    pub fn set_transport_beats(&mut self, beats: f64) {
+        if beats.is_finite() && beats >= 0.0 {
+            self.beats = beats;
+        }
+    }
+
+    fn zero_transport(&mut self) {
+        self.beats = 0.0;
+        for lane in &mut self.sync_lanes {
+            lane.div = 0.0;
+            lane.offset = 0.0;
+        }
+    }
+
+    /// Before a block: tell every sequencer where the transport is.
+    fn drive_sync(&mut self) {
+        if !self.sync_on {
+            return;
+        }
+        let beat_hz = self.bpm / 60.0;
+        let beats = self.beats;
+        for lane in &mut self.sync_lanes {
+            let div = auracle_grammar::steps::rate_hz(snap_rate(lane.free, self.bpm)) / beat_hz;
+            if (div - lane.div).abs() > 1e-9 {
+                if lane.div > 0.0 {
+                    // Keep the step it is on; take the new division's phase.
+                    let here = beats * lane.div + lane.offset;
+                    let grid = beats * div;
+                    lane.offset = here.floor() + (grid - grid.floor()) - grid;
+                }
+                lane.div = div;
+            }
+            let pos = (beats * div + lane.offset).max(0.0);
+            let s = &self.param_slots[lane.sync_slot];
+            s.values.iter().for_each(|a| a.set(pos));
+        }
     }
 
     /// Turn interior metering on or off.
@@ -426,6 +728,58 @@ impl LivePoly {
         self.meter.levels.len()
     }
 
+    /// Velocity → timbre. `sites_json` is `[[addr, gain, base], …]`: each
+    /// knob a note's velocity reaches, its travel at full depth (a named
+    /// control's measured wiring gain) and its current normalized value.
+    /// `depth` in 0..1 scales the whole thing; 0 or `[]` turns touch off.
+    ///
+    /// The offset is written on the pressed voice only, at note-on, so a chord
+    /// can hold a soft dark note beside a loud bright one. Stated limit: a
+    /// parameter ramp on the same knob ([`Self::set_param`]) writes every
+    /// voice and so resets held notes' offsets until their next note-on.
+    /// Returns false for unreadable JSON (touch is then off).
+    pub fn set_touch(&mut self, sites_json: &str, depth: f64) -> bool {
+        let Ok(sites) = serde_json::from_str::<Vec<(String, f64, f64)>>(sites_json) else {
+            self.touch.clear();
+            return false;
+        };
+        self.touch = sites
+            .into_iter()
+            .filter(|(_, g, b)| g.is_finite() && b.is_finite())
+            .map(|(addr, gain, base)| TouchSite { addr, gain, base })
+            .collect();
+        self.touch_depth = if depth.is_finite() {
+            depth.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        true
+    }
+
+    /// Update one touch site's base value (its index in the last
+    /// [`Self::set_touch`] list) as the knob moves. Allocation-free.
+    pub fn set_touch_base(&mut self, index: usize, base: f64) {
+        if let Some(t) = self.touch.get_mut(index) {
+            if base.is_finite() {
+                t.base = base;
+            }
+        }
+    }
+
+    /// Write this note's touch offsets onto voice `i`.
+    fn apply_touch(&mut self, i: usize, vel: f32) {
+        if self.touch.is_empty() || self.touch_depth <= 0.0 {
+            return;
+        }
+        let off = (vel as f64 - TOUCH_MEZZO) * 2.0 * self.touch_depth;
+        let Some(v) = self.voices.get(i) else { return };
+        for t in &self.touch {
+            if let Some(h) = v.voice.params.get(&t.addr) {
+                h.set_normalized((t.base + off * t.gain).clamp(0.0, TOUCH_MAX));
+            }
+        }
+    }
+
     /// Queue a patch swap. Parses eagerly (false = bad JSON, nothing
     /// changes); the actual voice rebuild is amortized over the next few
     /// silent quanta. Held notes are re-pressed on the new patch.
@@ -459,6 +813,11 @@ impl LivePoly {
     /// the arp on, the note joins the held set and the arp presses it.
     pub fn note_on(&mut self, note: u8, vel: f64) {
         let vel = (vel.clamp(0.0, 1.0) as f32).max(0.05);
+        // Key sync: the first key down restarts the transport, in the same
+        // block the arp fires its first step, so both start on one grid.
+        if self.sync_on && self.held.is_empty() {
+            self.zero_transport();
+        }
         self.held.retain(|(n, _)| *n != note);
         self.held.push((note, vel));
         if self.arp_on {
@@ -520,6 +879,9 @@ impl LivePoly {
                 v.vel = Self::vel_gain(vel);
                 v.pan_l = th.cos() as f32;
                 v.pan_r = th.sin() as f32;
+            }
+            for i in 0..n {
+                self.apply_touch(i, vel);
             }
             return;
         }
@@ -590,6 +952,7 @@ impl LivePoly {
             v.vel = Self::vel_gain(vel);
             v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
             v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
+            self.apply_touch(i, vel);
         }
     }
 
@@ -635,6 +998,9 @@ impl LivePoly {
 
     /// Pitch bend in semitones (smoothed on the audio thread).
     pub fn set_bend(&mut self, semitones: f64) {
+        if !semitones.is_finite() {
+            return;
+        }
         self.bend_tgt = semitones.clamp(-24.0, 24.0) / 12.0;
     }
 
@@ -689,7 +1055,12 @@ impl LivePoly {
     ) {
         self.arp_mode = mode.min(3);
         self.arp_div = div.clamp(0.5, 8.0);
-        self.bpm = bpm.clamp(30.0, 300.0);
+        let bpm = bpm.clamp(30.0, 300.0);
+        let retempo = (bpm - self.bpm).abs() > 1e-9;
+        self.bpm = bpm;
+        if retempo && self.sync_on {
+            self.apply_sync();
+        }
         self.arp_gate = if gate.is_finite() {
             gate.clamp(0.05, 1.0)
         } else {
@@ -705,9 +1076,12 @@ impl LivePoly {
             return;
         }
         self.arp_on = on;
+        // By index rather than over a clone: `press` and `release_voices`
+        // touch voices, never `held`, and this runs on the render thread.
         if on {
             // The scheduler owns the gates now.
-            for &(n, _) in self.held.clone().iter() {
+            for i in 0..self.held.len() {
+                let n = self.held[i].0;
                 self.release_voices(n);
             }
             self.arp_note = None;
@@ -721,7 +1095,8 @@ impl LivePoly {
                 self.release_voices(n);
             }
             self.arp_base = None;
-            for &(n, v) in self.held.clone().iter() {
+            for i in 0..self.held.len() {
+                let (n, v) = self.held[i];
                 self.press(n, v);
             }
         }
@@ -802,18 +1177,31 @@ impl LivePoly {
         if self.arp_phase < step_len {
             return;
         }
-        self.arp_phase = 0.0;
+        // Carry the overshoot. Steps fire on block boundaries, and resetting
+        // to zero dropped up to a block per step: at 44.1 kHz, 16ths at 120
+        // BPM ran 2.2% slow and fell a whole step behind the synced sequencers
+        // in under six seconds. The first step after a (re)start fires from
+        // `f64::MAX` and starts the count clean.
+        self.arp_phase = if self.arp_phase >= 2.0 * step_len {
+            0.0
+        } else {
+            self.arp_phase - step_len
+        };
         self.arp_step = self.arp_step.wrapping_add(1);
-        let mut chord: Vec<(u8, f32)> = self.held.clone();
-        chord.sort_by_key(|(n, _)| *n);
-        // (pitch to play, the key it came from, velocity)
-        let mut notes: Vec<(u8, u8, f32)> = Vec::with_capacity(chord.len() * 4);
+        // Into the kept buffers — a step boundary is render-thread code and
+        // used to allocate two `Vec`s here. Disjoint fields, so the chord can
+        // be read while the pattern is written.
+        self.arp_chord.clear();
+        self.arp_chord.extend_from_slice(&self.held);
+        self.arp_chord.sort_by_key(|(n, _)| *n);
+        self.arp_notes.clear();
         for o in 0..self.arp_octaves {
-            for &(n, vel) in &chord {
-                notes.push((n.saturating_add(12 * o as u8).min(127), n, vel));
+            for &(n, vel) in &self.arp_chord {
+                self.arp_notes
+                    .push((n.saturating_add(12 * o as u8).min(127), n, vel));
             }
         }
-        let len = notes.len();
+        let len = self.arp_notes.len();
         let pick = match self.arp_mode {
             1 => {
                 // Down.
@@ -850,7 +1238,7 @@ impl LivePoly {
                 self.arp_idx
             }
         };
-        let (note, base, vel) = notes[pick.min(len - 1)];
+        let (note, base, vel) = self.arp_notes[pick.min(len - 1)];
         match self.arp_note.filter(|_| tied) {
             // Tied: reuse the sounding voice so the gate never falls. If it was
             // stolen in the meantime, fall back to a normal press.
@@ -871,16 +1259,39 @@ impl LivePoly {
     /// `clamp(0.0, 1.0)` this used to apply would have folded all eight
     /// wavetables onto the first two and every octave onto −2 and −1.
     pub fn set_param(&mut self, addr: &str, value: f64) -> bool {
-        let Some(handle) = self.voices.first().and_then(|v| v.voice.params.get(addr)) else {
+        // `clamp` passes NaN, and a NaN target would ride the smoother into
+        // the atomic the voice reads every sample. Refuse it as a bad gesture.
+        if !value.is_finite() {
+            return false;
+        }
+        // A scan of the interned table, not a `HashMap` lookup plus an owned
+        // copy of the address: this runs in the worklet's `onmessage`, on the
+        // render thread, once per knob message of a drag.
+        let Some(slot) = self.param_slots.iter().position(|p| p.addr == addr) else {
             return false;
         };
-        let target = handle.map.apply(handle.map.clamp_input(value));
-        let current = handle.value.get();
-        if let Some(s) = self.smoothers.iter_mut().find(|s| s.addr == addr) {
+        // A `steps` rate knob is the free rate its lane snaps from: with sync
+        // on, a gesture (or a drift) moves which division plays, not the
+        // clock off the grid.
+        if let Some(lane) = self.sync_lanes.iter_mut().find(|l| l.rate_slot == slot) {
+            lane.free = self.param_slots[slot].map.clamp_input(value);
+            if self.sync_on {
+                self.smoothers.retain(|s| s.slot != slot);
+                let x = snap_rate(lane.free, self.bpm);
+                let p = &self.param_slots[slot];
+                let v = p.map.apply(x);
+                p.values.iter().for_each(|a| a.set(v));
+                return true;
+            }
+        }
+        let p = &self.param_slots[slot];
+        let target = p.map.apply(p.map.clamp_input(value));
+        let current = p.values.first().map_or(target, |v| v.get());
+        if let Some(s) = self.smoothers.iter_mut().find(|s| s.slot == slot) {
             s.target = target;
         } else {
             self.smoothers.push(Smoother {
-                addr: addr.to_string(),
+                slot,
                 current,
                 target,
             });
@@ -892,6 +1303,9 @@ impl LivePoly {
     /// deferred to swap completion when a patch swap is pending (so the
     /// outgoing patch fades at its own level).
     pub fn set_makeup(&mut self, gain: f64) {
+        if !gain.is_finite() {
+            return;
+        }
         let g = gain.clamp(0.1, 8.0) as f32;
         if self.pending.is_some() {
             self.pending_makeup = Some(g);
@@ -934,10 +1348,10 @@ impl LivePoly {
             if (s.current - s.target).abs() < SMOOTH_EPS {
                 s.current = s.target;
             }
-            for v in &self.voices {
-                if let Some(h) = v.voice.params.get(&s.addr) {
-                    h.value.set(s.current);
-                }
+            // One atomic store per voice; the handles were resolved at the
+            // swap, so nothing is hashed here.
+            for value in &self.param_slots[s.slot].values {
+                value.set(s.current);
             }
         }
         self.smoothers.retain(|s| s.current != s.target);
@@ -1040,6 +1454,10 @@ impl LivePoly {
         self.advance_smoothers();
         self.tick_arp(frames);
         self.advance_pitch(frames);
+        self.drive_sync();
+        if self.sync_on {
+            self.beats += frames as f64 * self.bpm / (60.0 * self.sample_rate);
+        }
         let rebuilding = matches!(self.stage, Stage::Rebuild { .. });
         if rebuilding {
             // Silent: compile exactly one voice per quantum. Overruns here
@@ -1068,7 +1486,14 @@ impl LivePoly {
                                 .collect();
                             self.voices = built;
                             self.pending = None;
+                            // New voices, new handles: the smoothers indexed
+                            // the old table, and the table is remade from the
+                            // voices that exist now. This is the one place
+                            // outside `new` that allocates for parameters,
+                            // and it is inside the swap that already compiles.
                             self.smoothers.clear();
+                            self.param_slots = intern_params(&self.voices);
+                            self.rebuild_sync_lanes();
                             // New patch, new node ids, and a new set of module
                             // keys. Re-taking the subscriptions here is what
                             // keeps a stale `NodeId` from resolving against a
@@ -1084,7 +1509,8 @@ impl LivePoly {
                                 // The scheduler re-presses on its next step.
                                 self.arp_note = None;
                             } else {
-                                for (n, v) in self.held.clone() {
+                                for i in 0..self.held.len() {
+                                    let (n, v) = self.held[i];
                                     self.press(n, v);
                                 }
                                 // Gates are up and no falling edge was ever
@@ -1366,6 +1792,213 @@ mod tests {
             },
         })
         .unwrap()
+    }
+
+    /// A tempo change changes speed, not position. Two minutes in at 120
+    /// BPM, a nudge to 121 used to throw every synced sequencer four 16ths
+    /// forward (position was elapsed samples × the current rate); integrated
+    /// beats move on by exactly one block's worth.
+    #[test]
+    fn a_tempo_change_does_not_jump_the_sequencers() {
+        let (_, tree) = auracle_grammar::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "Loom")
+            .expect("Loom exists");
+        let json = serde_json::to_string(&tree).unwrap();
+        let mut p = LivePoly::new(&json, 48_000.0, 2).expect("compiles");
+        p.set_arp(false, 0, 4.0, 120.0, 0.5, 1, 0.0);
+        p.set_sync(true);
+        p.note_on(60, 0.8);
+        let slot = p.sync_lanes[0].sync_slot;
+        let pos = |p: &LivePoly| p.param_slots[slot].values[0].get();
+        for _ in 0..(120 * 48_000 / 128) {
+            p.process(128);
+        }
+        // Each nudge is one block of travel at most, and never backwards —
+        // including 140, where the snapped division itself changes.
+        for bpm in [121.0, 126.0, 140.0] {
+            let before = pos(&p);
+            p.set_arp(false, 0, 4.0, bpm, 0.5, 1, 0.0);
+            p.process(128);
+            let after = pos(&p);
+            assert!(
+                (0.0..0.2).contains(&(after - before)),
+                "{bpm} BPM moved the sequencer {before:.2} -> {after:.2}"
+            );
+        }
+    }
+
+    /// The arp keeps time: over a minute at 120 BPM in 16ths it fires 480
+    /// steps, not the ~470 it did when each step dropped its overshoot past
+    /// the block boundary.
+    #[test]
+    fn the_arp_does_not_drift() {
+        let json = serde_json::to_string(&auracle_grammar::presets()[0].1).unwrap();
+        let mut p = LivePoly::new(&json, 44_100.0, 2).expect("compiles");
+        p.set_arp(true, 0, 4.0, 120.0, 0.5, 1, 0.0);
+        p.note_on(60, 0.8);
+        let blocks = 60 * 44_100 / 128;
+        for _ in 0..blocks {
+            p.process(128);
+        }
+        let steps = p.arp_step as i64;
+        assert!(
+            (steps - 480).abs() <= 1,
+            "arp fired {steps} steps in 60 s, want 480"
+        );
+    }
+
+    /// Tempo sync snaps a sequencer to the musical division nearest its own
+    /// rate: 3.7 steps/s at 120 BPM (2 beats/s) is 16ths, 4 steps/s.
+    #[test]
+    fn sync_snaps_to_the_nearest_division() {
+        use auracle_grammar::steps::{rate_hz, rate_site};
+        let x = snap_rate(rate_site(3.7), 120.0);
+        assert!((rate_hz(x) - 4.0).abs() < 1e-9, "{}", rate_hz(x));
+        // A slow patch goes to a slow division, not the nearest fast one.
+        let x = snap_rate(rate_site(0.9), 120.0);
+        assert!((rate_hz(x) - 1.0).abs() < 1e-9, "{}", rate_hz(x));
+        // Tempo changes move the division with it: at 90 BPM, 3.7 steps/s
+        // is nearer triplet 8ths (4.5) than straight 8ths (3), in octaves.
+        let x = snap_rate(rate_site(3.7), 90.0);
+        assert!((rate_hz(x) - 4.5).abs() < 1e-9, "{}", rate_hz(x));
+    }
+
+    /// With sync on, every voice's sequencer reads one transport, the first
+    /// key down restarts it, a gesture on the rate knob stays on the grid,
+    /// and sync off returns every sequencer to free-running at its own rate.
+    #[test]
+    fn sync_drives_every_voice_from_one_transport() {
+        use auracle_grammar::steps::{rate_hz, SYNC_FREE};
+        let (_, tree) = auracle_grammar::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "Loom")
+            .expect("Loom exists");
+        let json = serde_json::to_string(&tree).unwrap();
+        let mut p = LivePoly::new(&json, 44_100.0, 4).expect("compiles");
+        assert_eq!(p.sync_lanes.len(), 1, "Loom has one sequencer");
+        let lane = (p.sync_lanes[0].sync_slot, p.sync_lanes[0].rate_slot);
+        let free = p.sync_lanes[0].free;
+        p.set_arp(false, 0, 2.0, 120.0, 0.5, 1, 0.0);
+        p.set_sync(true);
+        p.process(128);
+        p.note_on(60, 0.8);
+        p.process(128);
+        let at = |p: &LivePoly| -> Vec<f64> {
+            p.param_slots[lane.0]
+                .values
+                .iter()
+                .map(|v| v.get())
+                .collect()
+        };
+        let first = at(&p);
+        assert!(
+            first.iter().all(|v| *v == first[0]),
+            "voices disagree: {first:?}"
+        );
+        assert_eq!(first[0], 0.0, "the first key down restarts the transport");
+        for _ in 0..100 {
+            p.process(128);
+        }
+        let later = at(&p);
+        let hz = rate_hz(snap_rate(free, 120.0));
+        let want = 100.0 * 128.0 * hz / 44_100.0;
+        assert!(
+            later.iter().all(|v| (v - want).abs() < 1e-9),
+            "{later:?} vs {want}"
+        );
+        // A drag of the rate knob moves the division, not off the grid.
+        let rate_addr = p.param_slots[lane.1].addr.clone();
+        assert!(p.set_param(&rate_addr, 0.93));
+        let r = rate_hz(p.param_slots[lane.1].values[0].get());
+        let beat = 2.0;
+        assert!(
+            SYNC_DIVISIONS.iter().any(|d| (r - beat * d).abs() < 1e-9),
+            "{r} is off the grid"
+        );
+        p.set_sync(false);
+        assert!(
+            at(&p).iter().all(|v| *v == SYNC_FREE),
+            "sync off must free-run"
+        );
+        assert!(
+            (p.param_slots[lane.1].values[0].get() - 0.93).abs() < 1e-12,
+            "free rate restored"
+        );
+    }
+
+    /// **Touch.** Velocity reaches timbre, per voice: two notes of one chord
+    /// at different velocities leave their own voices' wired knob at
+    /// different values, in the direction asked, and a mezzo note leaves it
+    /// exactly where the knob is.
+    #[test]
+    fn velocity_touch_offsets_its_own_voice_only() {
+        use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
+        use auracle_grammar::{AudioNode, ModNode, PatchTree};
+        let json = serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.01,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::Ladder,
+                cutoff: 0.5,
+                resonance: 0.3,
+                mod_depth: 0.0,
+                input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Saw,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                modulation: ModNode::None,
+            },
+        })
+        .unwrap();
+        let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        assert!(poly.set_touch(r#"[["node#cut", 0.3, 0.5]]"#, 1.0));
+        let cut = |poly: &LivePoly, note: u8| {
+            let v = poly
+                .voices
+                .iter()
+                .find(|v| v.note == Some(note))
+                .expect("voice");
+            v.voice.params.get("node#cut").unwrap().value.get()
+        };
+        poly.note_on(60, 1.0);
+        poly.note_on(64, 0.2);
+        poly.note_on(67, TOUCH_MEZZO);
+        let (loud, soft, mezzo) = (cut(&poly, 60), cut(&poly, 64), cut(&poly, 67));
+        assert!(
+            loud > mezzo && mezzo > soft,
+            "loud {loud} mezzo {mezzo} soft {soft}"
+        );
+        let home = poly.voices[0]
+            .voice
+            .params
+            .get("node#cut")
+            .unwrap()
+            .map
+            .apply(0.5);
+        // Relative: velocity crosses an f32 on the way in (0.6 is not exact
+        // there), and the cutoff map is exponential, so the leftover is a few
+        // parts per million of the value rather than zero.
+        assert!(
+            (mezzo - home).abs() < 1e-5 * home.abs(),
+            "mezzo moved the knob"
+        );
+        // Off is off: no offsets on the next note.
+        assert!(poly.set_touch("[]", 1.0));
+        poly.note_on(72, 1.0);
+        assert!((cut(&poly, 72) - home).abs() < 1e-9);
+        // Bad input turns touch off rather than half-applying it.
+        assert!(!poly.set_touch("not json", 1.0));
+        assert!(poly.touch.is_empty());
     }
 
     /// **The envelope carry.** Swapping the patch under a held pad used to

@@ -1,0 +1,180 @@
+{
+  "film": "perform",
+  "title": "PERFORM, in two minutes",
+  "description": "A walkthrough of PERFORM: the named controls, what they turn, Wander, and the offer loop.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.82
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
+    {
+      "id": "intro",
+      "music": "loop_a",
+      "lead": 1.5,
+      "tail": 0.4,
+      "lines": [
+        {
+          "id": "intro1",
+          "text": "PERFORM is where you play Auracle.",
+          "post": 0.5
+        },
+        {
+          "id": "intro2",
+          "text": "Everything in it is built for your hands, so nothing in it ever stops the music.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "keys",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "keys1",
+          "text": "Play it from your computer keyboard, or plug in any MIDI controller.",
+          "post": 0.4
+        },
+        {
+          "id": "keys2",
+          "text": "The first eight knobs you turn claim the eight controls.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "named",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "named1",
+          "text": "The six controls are named for what you hear: Bright, Snap, Motion, Body, Grit, and Space.",
+          "post": 0.5
+        },
+        {
+          "id": "named2",
+          "text": "None of them is fixed to a knob. For each patch, Auracle measures what every knob does to the sound, and wires each control to the knobs that do the work.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "hood",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "hood1",
+          "text": "Turn one, and the strip underneath shows the real knobs it's moving.",
+          "post": 0.4
+        },
+        {
+          "id": "hood2",
+          "text": "If a patch can't honestly do what a control says, the control turns amber. Turn it anyway, and Auracle adds what's missing, or grows a version that can.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "xy",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "xy1",
+          "text": "The XY pad puts two controls under one finger.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "wander",
+      "music": "loop_b",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "wander1",
+          "text": "Wander lets the model play along.",
+          "post": 0.3
+        },
+        {
+          "id": "wander2",
+          "text": "A little, and it offers ideas. More, and it drifts the knobs toward what you like. All the way, and it roams.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "offer",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "offer1",
+          "text": "Press Offer, and a new version of what you're playing grows in slot B.",
+          "post": 0.4
+        },
+        {
+          "id": "offer2",
+          "text": "Hold Peek to hear it, or turn Blend to move between the two.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "take",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "take1",
+          "text": "Take it, and it becomes your sound. Ask for another, and that's a pass.",
+          "post": 0.4
+        },
+        {
+          "id": "take2",
+          "text": "Once you've heard an offer, either answer teaches the model what you like.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "keep",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "keep1",
+          "text": "Keep marks where you are. Back returns to the last sound you kept.",
+          "post": 0.3
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "lead": 0.4,
+      "tail": 2.5,
+      "lines": [
+        {
+          "id": "outro1",
+          "text": "That's the loop: play, turn, offer.",
+          "post": 0.5
+        },
+        {
+          "id": "outro2",
+          "text": "And the circuit is always one tab away, in PATCH.",
+          "post": 0.3
+        }
+      ]
+    }
+  ]
+}

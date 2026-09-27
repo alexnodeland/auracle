@@ -54,7 +54,7 @@ the feature vector, and the audition buffer the user hears.
 | `render` | Deterministic headless rendering through quiver |
 | `vet` | The quarantine gate |
 | `loudness` | ITU-R BS.1770 K-weighting, gated integrated loudness, and the peak ceiling |
-| `audio` | $\varphi_{\text{audio}}$ — 15 perceptual descriptors |
+| `audio` | $\varphi_{\text{audio}}$ — 18 perceptual descriptors |
 | `structural` | $\varphi_{\text{struct}}$ — 25 structural descriptors |
 | `pipeline` | The composition, in the one order that is safe |
 | `cache` | Render memoization and the persistent-cache namespace; what makes the MH walk affordable |

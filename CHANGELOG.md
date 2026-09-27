@@ -8,6 +8,524 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — booth mode
+
+For a kiosk (⋯ menu, or `?booth` on the URL; `?booth=30` for a 30 s idle):
+
+- **Attract.** After a minute with nobody at the keys, the instrument plays
+  itself in PERFORM through a curated set of eight patches. It holds a chord
+  progression, moves two named controls under an invisible hand (the XY pad
+  follows), lets Wander turn the knobs, then grows an offer and blends it in.
+- **Hand over.** Any key, click, touch, wheel or MIDI note hands it to the
+  visitor on the spot.
+- **Next visitor.** Shift+Esc forgets the taste profile and keeps booth mode
+  and the measured controls.
+
+Attract is *quiet*: nothing it does is logged, and its offers are never
+answered, so it cannot teach the model. An offer it leaves in B starts unheard
+for the visitor. `tests/web/booth.spec.js` walks it: attract starts, a control
+moves, one key hands over, no pick recorded.
+
+### Added — first steps for a visitor, measurements for an engineer
+
+- **First steps.** A strip under PERFORM's header lays out the whole loop in
+  three moves: play a key, turn a lit control, press Offer. Each ticks off
+  when it happens, not when it is read, and the strip retires with *"That is
+  the loop. Every offer you take or pass teaches it what you like."* It is per
+  visitor: the booth's New visitor brings it back, and attract never ticks it.
+- **Show measurements** (⋯ menu). The controls' tooltips speak in knobs and
+  sounds. For whoever wants the evidence, this puts purity, reach in σ, the
+  verified halves, the position and the knob gains back underneath.
+
+### Added — the circuit shows what PERFORM is playing
+
+PATCH drew the kept patch, while PERFORM plays it with controls, glides and
+Wander on top. Opening the circuit mid-phrase showed knobs standing still
+while the sound moved. Now every knob PERFORM is playing away from its kept
+value carries an **amber pointer** at the sounding value, and its readout says
+that value. Hovering it names the control turning it (or Wander). Keep folds
+the two pointers into one. `tests/web/perform_circuit.spec.js`: turn Bright on
+First Bass, open PATCH, and the ladder's cutoff is drawn performed.
+
+### Changed — Offer answers at once
+
+Offer used to start ~10 s of renders on the press: the one gesture no other
+instrument has, made to wait. Once a patch has been steady for six seconds and
+nothing else is asking the engine for anything, PERFORM grows one offer in the
+background and keeps it. Offer hands it over at once, and a press while it is
+still growing claims it. A spare belongs to the sound it grew from: a new
+patch discards it, and so does moving the knobs outside the region it grew
+in. Measured: 0.15 s from press to B, against ~10 s grown on demand.
+
+A press while any offer is growing (Wander's, or attract's just before a
+visitor took over) claims that offer, and asks once more if it comes back
+empty. It used to be dropped silently, which could leave a press with nothing
+at all. Found recording the booth demo.
+
+Asking for another offer passes on the one in B, and that offer now leaves B
+(it fades out) instead of staying there, playable and takeable, while the next
+one grows. A player could Take the very sound they had just passed on, and a
+Take landing just after the next offer arrived was counted as an unheard
+answer to that one. CI caught the second case in `perform_teaches`.
+
+### Changed — PERFORM is playable at once on a patch it has measured before
+
+Measuring a patch takes seconds (about one render per knob, plus
+verification), and a booth flicks between the same demo patches all day.
+Every measurement is now kept, keyed by the patch, and persisted across
+reloads. A patch measured before is playable immediately from that
+measurement, and re-measured in the background when the model has refit since
+(the status line says *re-checking*). The directions a control turns its
+knobs survive a refit, since the standardizer only rescales each coordinate,
+so the old wiring is right about what moves and the fresh one sharpens how
+far. It never re-centres the controls under a moving hand; it waits for a
+pause. Measured in headless Chromium: first visits 10–16 s, a revisit 0.12 s,
+the same patch after a reload under 1 s (`tests/web/perform_instant.spec.js`).
+
+### Added — playing teaches: an offer heard and answered is a pick
+
+PERFORM used the taste model but never fed it: Keep, Take and every turn were
+logged and ignored (and Keep's tooltip claimed otherwise). An offer is the
+model's proposal played against the sound in your hands, which is the question
+an EVOLVE duel asks, asked without stopping the music. Now, once B has been
+**heard** (Peek held, or Blend past half, for a second while notes sound):
+
+* **Take** records *offer over what you had*, after an 8 s window whose toast
+  says **don't count it**;
+* asking for **another offer** records *what you had over the offer*.
+
+Both directions count. A log of takes alone would be the model hearing its own
+proposals agreed with. An offer answered unheard counts for nothing. The
+answers are ordinary duels (`Engine::record_tree_duel`; nothing enters the
+pool), forecast before they are observed and tagged with a new provenance,
+`perform_offer`. TRUST scores them as their own stream, *offers you took or
+passed*, which is how anyone will find out whether answers given
+mid-performance are as reliable as dealt ones. `tests/web/perform_teaches.spec.js`
+walks it on the real engine: a heard pass +1, a heard take +1, an unheard take
++0.
+
+### Added — an XY pad in PERFORM
+
+Two named controls under one finger, beside the under-the-hood strip, in the
+space the booth critique found empty. It starts as Bright × Motion, and either
+axis can be any of the six. Only a reachable axis moves; an amber one is
+struck through on the pad. Double-click returns it to the centre, and the arrow
+keys move it.
+
+### Changed — named controls turn the knob that does the work, and grow one when there is none
+
+A booth critique found PERFORM's controls mostly dead: 1–4 of 6 reached a
+patch, and Bright, where it did reach, was "mostly resonance".
+
+* **Ranked by effect, not coefficient.** A knob that barely moves the sound
+  needs a large coefficient to contribute anything, so it headed the wiring
+  and set the travel scale, and the knob doing the work got a sliver of a
+  turn. On Iron Bass, Bright moved the drive by half its range and the cutoff
+  (+4σ of centroid per unit) by almost nothing: 0.03σ of reach. Now the
+  largest-effect knob gets the whole `MAX_TRAVEL` and the rest clamp there.
+* **The control's own knobs first.** Bright tries cutoff, tone and the like,
+  and Motion tries mod depth and rate, before the solve may use anything else.
+  On Acid Line, Bright was the amp's attack and release; it is now the cutoff
+  (purity 0.87, reach 2.85σ).
+* **A half-travel retry** in `verify` for a control that would otherwise close.
+* Measured on the same 24 fresh-pool patches and the same build: Bright
+  reaches 50% (was 29%), Snap 79% (67%), Body 29% (21%), Space 46% (38%), and
+  the mean reachable controls per patch went from 2.21 to 2.54. Median
+  verified reach is 3–4× larger. **Motion fell**, 62% → 46%, and that is
+  written down in the reference rather than tuned away.
+* **Grafts.** Turning a search control now first tries to give it something
+  to turn (`perform::graft_for`). Bright and Body get a flat EQ, placed below
+  any stereo module that ends the chain; it is transparent (median |Δz|
+  0.000). Space, turned up, gets a ≈250 ms release, because every effect sits
+  before the amp envelope and a reverb's tail is cut at note-off. The graft is
+  one undo step; the patch is measured again and the control is set where the
+  hand left it. Over the presets, the EQ opens Bright on 7 of 10 and Body on
+  15 of 48, and the release opens Space on 41 of 46. Grit has no graft: its
+  axis hears noise, not saturation (a new open question).
+* Tooltips say "raises filter cutoff as you turn it toward bright", not
+  `node#cut +0.50 · purity 0.92 · 2.72σ`.
+
+### Fixed — the first minute at a booth
+
+A walkthrough of the first-run flow, played the way a visitor would, found:
+
+* **The warm start lost most of what it was told.** A visitor who listened to
+  the nine presets before choosing (≈25 s) had 9 of 18 preferences recorded
+  and a column of "that patch is gone" toasts: the nine inserts went into a
+  full pool one message at a time and the unpicked six evicted each other
+  before their duels were logged. It is now one worker turn (`warm_start`):
+  picks go in first and pinned, and each unpicked preset's three duels are
+  recorded the moment it lands. `tests/web/first_run.spec.js` walks the slow
+  path and requires 18; the old code gives 9.
+* **The warm-start ▶ could not be clicked.** A global rule lifts anything
+  with `aria-pressed` above the toast lane, and a warm card holds its pick in
+  `aria-pressed`, so the card painted over its own ▶ and "hear this" cast a
+  pick. The same rule put PERFORM's pad over the MIDI popover.
+* **PERFORM named the previous patch.** The tree reaches PERFORM before its
+  name does, and PERFORM read the name on the tree's arrival — so a sweep of
+  twelve presets was off by one every time.
+* **Measuring a patch took seconds, every time.** PERFORM now keeps the last
+  24 measurements, keyed by the tree and by how many votes the model had seen,
+  so flicking back to a patch is instant.
+* **The help dialog** was taller than a 900 px window with no scroll; its
+  title and GOT IT were unreachable.
+* **Toasts** covered B's title in EVOLVE, rack plates in PATCH and the TASTE
+  header. They now stack upward from just above the keybar.
+* **After the warm start, PERFORM** — not PATCH, the densest view — and a
+  returning player comes back to PERFORM if that is where they left.
+* **Bred children below their parent** are labelled *exploring*: the walk
+  samples the posterior rather than only climbing it, and a column of bare
+  negative Δtaste read as "it bred worse patches". The guide no longer says
+  every walk goes uphill.
+* **The arp's settings float above the dock** instead of widening it; turning
+  ARP on moved every key ~120 px under the player's hand.
+* **Unrated stars** on the selected bank row read as five lit stars; they are
+  muted until hovered.
+* **Copy**: the warm start's "about twenty votes" is eighteen; help's "PLAY" is
+  PATCH; the landing says four views, and its miniature uses the app's control
+  names; "model's guess: needs a few picks" after eighteen picks now says it is
+  fitting.
+* **B says what it changed**: the offer strip leads with the diff ("attack
+  0.03→0.09, +follower") instead of only "an offer is waiting".
+* **The rack draws legibly.** The scope's reserved corner was chosen by pixels,
+  not by what it cost the patch, and a two-row patch lost a third of its
+  height to it (First Bass at 0.63×, labels ≈6 px). It now takes the side that
+  leaves the larger fit, or none when that would shrink the patch by more than
+  a fifth (the scope already ducks out of any plate's way).
+* The warm start is a real dialog (role, `aria-modal`, focus on the first ▶);
+  the menubar's forecast count no longer runs one behind TRUST; style names
+  are no longer clipped.
+* **A narrow desktop window** (under ~860 px, fine pointer) says to widen it,
+  instead of overprinting the controls into "BRIGSNAPTIOBODY". CSS only: it
+  disappears as the window widens, and nothing underneath is reset.
+* **PERFORM's pads.** The Hold pad is **Freeze** (the dock's **hold** latches
+  notes — two buttons named the same doing different jobs); Take and Peek are
+  disabled until there is an offer; Offer reads as the primary.
+
+### Fixed — the preset bank, measured instead of written by feel
+
+`examples/preset_audit.rs` (auracle-features) measures what audition actually
+plays for every preset: makeup gain lost to the peak ceiling, and energy by
+band (sub, low, mid, presence, air, and the 200 Hz–5 kHz share a laptop or
+booth monitor reproduces). Its first run found two problems.
+
+* **Pink noise was 22 % infrasound.** quiver's 16-row Voss generator runs its
+  1/f slope down to ~1 Hz, with a DC-to-RMS ratio of 0.13. Loudness
+  normalization is K-weighted and ignores it, so it only spent headroom:
+  behind a lowpass, `Noise Wash` measured 77 % of its energy under 40 Hz and a
+  77 Hz centroid. The compiler now puts pink through the voice DC blocker's
+  20 Hz highpass at the source — 1 % below 20 Hz, no DC; `Noise Wash` is now
+  centred at 318 Hz. Every patch with a pink source renders differently, so
+  `RENDER_EPOCH` is 3.
+* **The leads could not cut.** `Filter.cutoff` is the pole frequency; at zero
+  resonance the ladder is −12 dB there and −3 dB an octave below (measured:
+  0.7 → 1.19 kHz, not the map's 2.5 kHz). Presets written as if it were the
+  −3 dB point left six of nine leads with under 1 % of their energy above
+  2 kHz at C4. Re-voiced: Wobble Board, Falling Sign, Loudhailer and Fifth
+  Wheel now carry 1.7–2.4 %; Tine's high partial is audible again (its
+  highpass sat at 5 kHz, above almost all of a C6 triangle); Coin Toss, Iron
+  Bass, Held Under, Anvil, Ember and Rotor open up. Acid Line's sweep is
+  longer (τ 16 → 63 ms) and it and Anvil sustain higher, so neither auditions
+  6–9 dB under its neighbours because of one attack spike. The table at the
+  top of `presets.rs` now gives the measured −3 dB point beside the map.
+
+### Added — PERFORM
+
+A performer reaches for *brighter*, not for `node/0#cut`, and until now the
+only way to change a sound while playing it was by address, one knob at a time,
+in a rack built for editing. **PERFORM** is a new first tab for playing the
+sound instead: six named controls (**Bright, Snap, Motion, Body, Grit, Space**),
+**Blend**, **Wander**, and six pads (**Keep · Back · Offer · Take · Peek ·
+Hold**). Nothing in it opens a dialog, because a player mid-phrase cannot answer
+one. The tab formerly labelled PLAY is now **PATCH**.
+
+A named control is a fixed direction in standardized audio-φ, the same on every
+patch. What it turns is measured per patch: one finite-difference render per
+knob gives the Jacobian ∂z/∂knob, and a ridge solve wires each control onto at
+most four knobs, no knob travelling more than half its range at a full turn. A
+table of what each kind of knob "usually does" was measured first and rejected:
+over the 61 presets, wiring from each patch's own Jacobian reaches a median
+purity (cosine between the movement produced and the one asked for) of 0.61,
+0.77 and 0.75 for Bright, Snap and Motion, and the best leave-one-out per-site
+table reaches 0.23, 0.16 and 0.09. The same knob does different things in
+different patches.
+
+**A control the knobs cannot honestly produce is not faked.** Below a purity of
+0.35 or a reach of 0.15σ it is drawn as an amber *search* control, and turning
+it asks for a structural offer instead of moving knobs that do not do what the
+label says. Grit and Space are search controls on most presets, because most
+patches have no drive or reverb to turn. And because the Jacobian is a local,
+linear claim that fails at boundaries, every half of every reachable control is
+rendered at ±½ and ±1 before it is offered, and closed if the sound did not move
+the asked way both times. On First Bass the linear prediction said Motion could
+go down; rendered, turning it down made the sound slightly more restless. That
+half is now closed and the control says *already as still as it gets*. The gate
+test checks every open half again at ±¾, a point verification never rendered,
+with a stated tolerance of 0.05σ: no finite set of samples proves a response
+monotone.
+
+**Wander** is one dial from *still* through *offer* and *drift* to *roam*. Drift
+is the locked Metropolis–Hastings walk refinement already uses, with every
+structural and categorical site locked, so structure never changes under the
+player's hands and the walk is still exact conditioning on the patch's shape.
+It inserts nothing into the pool. It pauses for 3.5 s after any touch, and a
+touch mid-glide stops the glide where it is. Offers may change structure, and
+are heard through a **B slot**: a second voice set that follows the same hands,
+crossfaded at equal power and matched loudness (Blend, Peek, Take).
+
+Before any taste has been fitted, drift and offers used to return nothing. The
+posterior before evidence is the prior, so they now walk the grammar prior
+restricted to patches that vet (`VetOnlyFitness`), and say so on screen.
+
+Two limits, stated where the player can see them. A search control's offer is
+not yet aimed at the direction turned. And Keep, Take, Back and every turn are
+logged as implicit events and not fitted: implicit evidence has to earn its
+place in the likelihood, and nothing here has yet.
+
+The `perform_wiring` example prints the wiring for any preset.
+
+### Added — MIDI that does more than notes
+
+A controller with knobs did nothing but play notes, so the instrument's new
+named controls could only be turned with a mouse. MIDI now maps itself: the
+first eight distinct CCs you move claim PERFORM's eight controls in the order
+you move them, each claim announced, and **learn** / **clear** in a new MIDI
+panel (click *midi* in the dock) remap any of them. The map, the auto-mapping
+switch and the bend range are remembered per device.
+
+Relative encoders are recognised with nothing to set. An absolute pot only
+sends when its value changes, so it rarely repeats; an encoder repeats its tick.
+That tell, rather than the range of values, is what separates a pot swept to
+its bottom stop from an encoder. Absolute pots get **soft takeover**: a pot does
+nothing until it passes the control's current position. That matters more here
+than on most instruments, because Wander moves the controls under a pot that
+has not moved, and without pickup the first nudge would snap the sound.
+
+Channel pressure rides Bright and the mod wheel drives Motion by default. Bend
+range is selectable (±2, 7, 12, 24 or 48 semitones). MIDI clock sets the tempo
+by a least-squares fit over the last two beats of ticks, so one late tick moves
+the estimate by a fraction of its lateness. The protocol's pure parts are unit
+tested with `node --test` (`make web-check`, and a new Web job in CI).
+
+### Fixed — the sustain pedal
+
+The sustain pedal was wired to the HOLD latch, and lifting it called panic(),
+which also killed every note still under the player's fingers. It now does
+what a sustain pedal does: notes released while it is down ring until it
+lifts, and lifting it releases exactly those. A note struck again under the
+pedal belongs to the finger again.
+
+### Fixed — turning on the arp stripped the rack's knobs
+
+Found recording a demo: on Loom, the tallest stock preset, opening the
+ARP/SYNC drawer shortens the rack band by 46 px, which moved its zoom from
+0.488 to 0.4265 against an automatic-detail threshold that moved to 0.4268 —
+so every knob and step bar vanished from the patch you were about to play
+with. Both numbers ride the frame height, so a patch near the line flipped on
+any small layout change. The automatic detail level now has hysteresis: once
+knobs are drawn they stay until the zoom is 8% below the line.
+
+### Fixed — one patch, two names
+
+Auto-names are relative to the pool, so a patch can be renamed as the pool
+fills. Several worker messages replaced the bank's rows and re-rendered only
+the bank, so a fresh session showed #1 as "Gritty Wash" in the bank and
+"Bright Wash" in the PATCH header, the dock and PERFORM. Every label naming a
+live or bench patch now refreshes from the same rows whenever the bank does.
+
+### Added — tempo sync for the step sequencers
+
+Steps free-ran at its evolved rate while the arpeggiator and MIDI clock kept a
+tempo, so the two drifted apart. **SYNC** in the dock snaps each sequencer's
+rate to the nearest musical division of the tempo in octaves (straight,
+triplet or dotted) and drives every voice's clock from one transport through a
+new `sync` port on `StepsCv`: whenever the position changes, the module
+re-seats on step ⌊pos⌋ mod length at phase frac(pos), and between changes it
+integrates as before, so blocks stay sample-accurate and a voice that wakes
+later lands on the grid. The transport restarts on the first key down — the
+same block the arp fires its first step — or on MIDI start, and counts steps,
+not bars, so polymeter survives. A rate knob turned with sync on moves between
+divisions. Auditions are untouched: the genome's clock stays free-running.
+Tests: two sequencers with different histories agree sample-for-sample once
+synced; every voice reads one transport; snapping picks the nearest division.
+
+A review of the first version found the grid was not yet shared, and fixed:
+- the transport is an integrated beat count, so a tempo change alters speed,
+  never position (positions had been elapsed samples × the current rate, and
+  a 1 BPM nudge two minutes in threw every sequencer four 16ths forward);
+  a division change keeps the current step and re-grids its phase;
+- the arpeggiator carries each step's overshoot past the block boundary — it
+  had run 2.2% slow at 16ths and fallen a step behind the sequencers in under
+  six seconds — and MIDI Start restarts it with the transport;
+- a freshly loaded B joins A's transport instead of starting its own at zero;
+- MIDI clock pulls the transport onto the room's beat every 24 ticks after a
+  Start, rather than free-running on an estimated tempo;
+- a rate smoother left over from before sync no longer overwrites the snap,
+  and the under-the-hood strip shows the rate a synced sequencer plays.
+
+### Added — under the hood, in PERFORM
+
+The named controls are a view onto a patch's own knobs, and PERFORM now shows
+which ones: every knob a reachable control moves, and any knob Wander has
+carried away from home, as a bar with its value in its own units and a tick
+where it sat when the sound became home. Turn Motion and the envelope's decay
+and the filter's mod depth visibly move; click one to open its module in
+PATCH, pulsing. The hierarchy runs PERFORM → the knobs → the rack, each a click
+deeper. The landing page gains a PERFORM screenshot, first among the views.
+
+### Changed — Wander drifts, instead of jumping and gliding
+
+Measured over 12 presets, an 8-step "drift" moved some knob by 0.3–0.85 of
+its range: the walk was refinement's, fugue's adaptive single-site kernel,
+which starts every fresh chain with a wide proposal. Drift is now its own
+local Metropolis walk on the live knobs — a reflected Gaussian step, symmetric,
+accepted on the same target — with the step set by the Wander dial: gentle
+drift moves the farthest knob about 0.06–0.14, roam 0.25–0.6. And the named
+controls are no longer re-measured after every glide (~46 renders), only once
+a knob has left the 0.12 neighbourhood their linear model was measured in.
+
+### Changed — named-control purity measures cross-talk, not correlates
+
+A census of the patches a new player actually meets (the first 24 of a fresh
+session pool, `reach_census`) found **Bright** reaching only a quarter of them,
+at a median purity of 0.26. Purity was the cosine with Bright's axis across the
+whole of φ, so the zero-crossing rate and high band that rise with any real
+brightening counted as impurity. It is now measured where cross-talk is heard:
+against the other named controls' axes. Two controls whose predicted moves are
+nearly collinear are now one gesture, and the later becomes a search control.
+Verified on real renders: Bright reaches 29% of patches (from 25%), Snap 71%
+(58%), Motion 62% (58%), Body 21% (17%); patches reaching nothing, 2 of 24
+(from 4). Bright's real limit is reach — many pool patches have no filter —
+which is what search controls are for.
+
+An earlier version of this entry claimed a jump to "purity 0.53" by aiming the
+wiring at each control's population *pattern*. That number measured purity
+against the pattern itself, and a review caught it: against the axis, the
+pattern wiring reached fewer patches than the bare axis. It was removed, and
+the reference records it as tried and not shipped.
+
+### Fixed — PERFORM reloaded the patch under the player's hands
+
+PERFORM wired, pushed and drifted every continuous site of the patch, and not
+every one has a live handle in the voices: a modulation depth with nothing to
+modulate compiles to nothing, and some values are baked into constants. The
+first push after a wiring wrote all of them, the misses came back, and the app
+answers a miss by reloading the patch — so turning a named control could
+restart the sound mid-phrase, re-measure the controls and drop the offer in B.
+Found on camera, in the Loom playthrough. PERFORM now uses only the knobs the
+compiler gave a handle (`perform::live_knobs`); the drift walk moves
+only those. On Loom that is 22 of 27 continuous sites.
+A test checks every preset.
+
+### Fixed — 256 KiB of stack per level of the patch tree
+
+The compiler recurses once per level of the audio tree, and quiver's
+`Wavetable` (128 KiB inline) and `PitchShifter` (38 KiB) were constructed by
+value inside that recursive function, so every level reserved their space
+whether or not it built one: over 256 KiB a level, measured from the binary's
+stack probe. Eight levels overflowed a 2 MiB thread — found when the audit's
+over-the-ceiling test met the merged tree. Both are now built in a
+non-inlined helper outside the recursion, and a level costs about 2.5 KiB. A
+test compiles a wavetable under sixteen filters on a 512 KiB thread, and
+overflows without the fix.
+
+Two merge interactions fixed alongside: PERFORM's walks now return the audit's
+`RefineOutcome`, so an offer on a patch outside the prior's support says so
+instead of "no offer beat this patch", and the build stamp hashes every app
+script (`perform.js` and `midi.js` were missing, and would have been served
+stale from cache after a change).
+
+### Fixed — a red-team pass over PERFORM, MIDI and the motion bands
+
+A review of the new surfaces before merge, every finding fixed:
+
+- **Render cache.** `RENDER_EPOCH` is 2: an epoch-1 row lacks the motion bands
+  and does not deserialize. The bank's cache-hit path now falls back to a
+  fresh render when a cached row is refused, rather than dropping the patch.
+- **Answers about a patch that is gone.** Every PERFORM request carries the
+  patch generation it was asked about, and a reply for an older patch is
+  consumed, not applied. Before, a slow wiring could land on the next patch
+  and wire its controls to knobs of the last one.
+- **Glides started from a moving point.** The glide wrote into the same map it
+  read its start from, so every glide was an exponential approach instead of
+  the smoothstep it claimed to be.
+- **Hands win.** A drift proposal computed while the player touched a control
+  is dropped. A wiring that lands after the controls moved folds in where the
+  sound *is*, not where it was when measuring began, so nothing jumps.
+- **Keep keeps.** It no longer discards the offer waiting in B or resets the
+  controls: the sound does not change, so nothing playing it does either.
+  PERFORM's commits also stopped taking two undo steps each.
+- **B hands over without a gap.** Take keeps B sounding until A has rebuilt as
+  the offer, then fades it; any B that leaves fades first and is freed only
+  when silent. B follows the arpeggiator when it loads, is silent while PERFORM
+  is out of sight, and its errors are said on screen. Its render view is
+  cached like A's instead of being allocated every quantum.
+- **The worker always answers.** A PERFORM call that throws still replies,
+  with the error, so a failed walk cannot leave an offer "in flight" forever.
+- **Expression is expression.** Channel pressure and an unmapped mod wheel
+  are offsets on top of the player's own turn — at rest they add nothing, and
+  they never count as a touch (which held Wander for as long as a key was
+  down). Bank select, data entry, (N)RPN, sostenuto, soft and every
+  channel-mode controller are reserved, so a keyboard setting its bend range
+  cannot claim a control on the first auto-map. A pot's gesture ends when it
+  goes quiet: it is logged and can ask a search control for an offer, as a
+  mouse release does. Moving a MIDI control measures the patch even if PERFORM
+  was never opened.
+- **Stuck notes.** Panic and a device change reset the sustain latch.
+- **Accessibility.** Pads answer assistive-technology clicks; a run of arrow
+  presses on a control is one logged gesture; the MIDI button reports
+  `aria-expanded`, the panel takes focus when opened and Escape returns it.
+- **Motion bands measure the held note, not its arrival.** The track starts
+  when the level reaches 97% of its peak if that is later than 250 ms, and a
+  dip reads at most 60 dB deep. A 0.9 s swell into a steady tone used to read
+  4.3 octaves over the floor in the slow band; it now reads still, as does a
+  tone that starts late. The modulation FFTs are planned once per thread.
+- **Search health ran out of time every night.** The scheduled workflow was
+  one 90-minute job that the 16-seed climb alone outlasts. It is now three
+  parallel jobs with their own limits.
+
+### Added — φ hears how fast a sound moves, not only how much
+
+A texture is mostly its motion, and φ could not tell a slow sweep from a fast
+flutter. Measured on one saw-into-ladder patch under a ladder of cutoff
+modulations (`motion_probe` example), `held_centroid_std` scored a 0.55 Hz
+sweep and a 13 Hz flutter at 0.098 and 0.094, and stepped random motion like a
+6 Hz LFO. A linear taste model on those coordinates cannot represent "slow
+breathing, not fast wobble" — the first thing anyone says about a pad.
+
+Three coordinates split the held note's motion by **modulation rate**:
+`motion_slow` (0.5–2 Hz), `motion_mid` (2–8 Hz) and `motion_fast` (8–30 Hz),
+each the log standard deviation of the detrended brightness and level
+trajectories in that band. Hearing groups fluctuation this way (Dau et al.
+1997), and band-wise modulation power is much of what makes a texture
+recognisable (McDermott & Simoncelli 2011). On the probe ladder the band that
+reads highest follows the rate — 0.55 Hz lands in slow, 2.7 Hz in mid, 13 Hz in
+fast — and a static tone reads the floor in all three, exactly.
+
+**It is learnable, not just representable.** A synthetic listener whose whole
+taste is *slow yes, fast no* (+1.5 on `motion_slow`, −1.5 on `motion_fast`,
+zero elsewhere) is recovered by the ordinary closed loop — real prior draws,
+real renders, 60 duels, the shipped fit — at r = 0.63 / 0.59 / 0.43 between
+posterior and true utility over three seeds, with the model's top five
++0.6 to +1.0σ above the pool mean. Every bit of that had to come through the
+two band coordinates. Gated as `closed_loop_learns_motion_rate` (13 s).
+
+No new render: the tracks come from the held note the phrase already plays,
+at a finer hop than the spectral features use (their 43 frames/s would fold the
+fast band). Old votes read the new columns as "no evidence" through the
+existing projection by name, so no tag bump and no migration.
+
+**Regularity was tried and is not shipped.** Telling a periodic sweep from a
+random walk needs several cycles in the window; in the held span's 1.55 s the
+two candidate measures separate them cleanly at 2.7 Hz and above and not at
+all below 1.5 Hz, which is exactly where evolving textures live. It waits for a
+longer stimulus rather than teaching the model a guess.
+
+Three measurement examples come with it, all rerunnable: `motion_probe` (the
+ladder), `leverage_probe` (how concentrated a patch's audible leverage is
+across its knobs — median 68% in the top four, 94% in the top eight, over the
+61 presets) and `jacobian_probe` (∂φ/∂knob per preset, the raw material for
+named performance controls).
 ### Added — a fourth design register, for the questions nobody has raised
 
 The reference could say what was chosen (decisions), what closed (milestones)
@@ -111,6 +629,614 @@ comment that the reference quotes a number from, the number in the reference is
 now wrong"* — and it is worth recording rather than fixing silently, because a
 book whose first commitment is that every number is sourced is one where a
 stale number costs more than it would anywhere else.
+
+### Added — `steps`, a step sequencer that lives inside the timbre
+
+Every rhythmic modulator the instrument had was a *gate*: the euclid opens and
+closes, and the logic ops combine openings. Nothing could make a timbre walk a
+pattern of **values** — a cutoff that goes dark, bright, middling, brightest on
+a clock — which is the gesture behind most evolving textures. `steps` is that
+modulator: up to eight steps of bipolar CV at 0.5–16 steps a second, with a
+glide that is a fraction of each step (0 is hard steps, 1 slides the whole
+way), free-running on its own clock like the euclid's. Tempo sync is left for
+when the instrument has a transport to lock to.
+
+**Each step value is its own genome site** (the Mutable Instruments *Marbles*
+design): an evolution proposal that moves one step moves that step and nothing
+else, and a lock on one bar holds that step while the rest of the pattern
+evolves. **`length` hides steps rather than deleting them**: all eight stay in
+the patch, so shortening a pattern and lengthening it again brings back what
+was there.
+
+It is Auracle's own module rather than quiver's `StepSequencer`, whose values
+are internal state with no ports: every one of the eleven sites here is a live
+knob, so dragging a bar is an atomic write into the running voices, not a patch
+recompile per pointer move. A test pins that the live handle and a recompile of
+the edited patch produce the same samples, bit for bit.
+
+Measured on a saw through a lowpass at full mod depth, with two steps
+alternating dark/bright at 2 steps a second: the bright steps render at
+**~190×** the RMS of the dark ones, the level flips exactly once per step
+boundary, and turning glide from 0 to 1 cuts the largest 10 ms level jump from
+2.65 to 0.43. The same module is sample-rate independent (the glide is a
+function of the step's phase, not of a sample count), NaN-safe at every port,
+allocation-free per sample, and resets to bit-identical output.
+
+In the rack it is three dials and a row of eight bars: press a bar and drag to
+set a step, or use the keyboard like any other knob; bars past `length` grey
+out, live, as the length dial turns. It is in the node bank under *sequence*,
+*pattern*, *rhythm* and *steps*, and a new texture preset, **Loom**, walks a
+ladder filter's cutoff through a slewed five-step pattern.
+
+For the model and the search:
+
+- **Prior weight 3%**, the euclid's: a leaf, so its mass buys variety rather
+  than chain length. The table is renormalized rather than rescaled, so every
+  older modulation kind keeps its exact proportion to every other.
+- **Wire format:** it is `#mod` index **8**, after `Pair` — the order is
+  append-only, so no saved patch or trace moves. That exposed an assumption in
+  the prior: "is a leaf" was an index range (`kind < 6`), which at the depth
+  bound would have switched the new leaf off along with the branches. It is now
+  a predicate, and a test forces a max-depth term to bottom out in `steps`.
+  Old traces and old JSON saves are pinned to decode to the same trees.
+- **φ:** counted in the `n_rand` column, which is now the *stepped CV* family
+  (S&H and step sequence — to the ear, a value that jumps on a clock). No new
+  column: at 3% of slots it would be a near-indicator. The column keeps its
+  stored name, since every observation on disk predates the step sequencer and
+  its `n_rand` already is its stepped count; the panel now labels it
+  "stepped mods". Cached feature rows from before this change still load.
+- The catalogue is now **forty-two modules** (sixteen modulators).
+
+The September 2026 audit ([`AUDIT-2026-09.md`](./AUDIT-2026-09.md)) read the
+whole stack against the pinned sources. The entries below are its auracle
+findings being closed, in the audit's priority order.
+
+### Fixed — a knob dragged to its stop made the patch un-evolvable
+
+Every continuous site is a draw from `Uniform(0, 1)`, and fugue's `Uniform` is
+half-open: `log_prob` is `−∞` at `x >= 1.0`. Auracle's own domain contract was
+closed — `PARAM_DOMAIN = 0.0..=1.0`, `in_domain` accepted `1.0`, `set_param`
+and `clamp_domains` clamped *to* `1.0`, and the panel's knob stops at `1`. So a
+knob dragged to the end of its travel produced a legal term with zero prior
+mass. `EvolutionChain::init_from` returns `None` for such a seed, `refine_one`
+returned `None` in turn, and ⚡ evolve did nothing and said nothing. Two of the
+61 shipped presets ("Sea Change" `mix`, "Ask The Dice" `mod_depth`) and the
+default Vibrato insert shipped in that state; any tree repaired by
+`clamp_domains` from a value above one landed there too.
+
+The domain is now half-open where it is enforced: `PARAM_DOMAIN` is `0.0..1.0`,
+the top of a knob is `PARAM_MAX = 1.0 − f64::EPSILON`, and one `clamp_param`
+serves `set_param`, `clamp_domains`, the live handles' `clamp_input` and the
+import routes, so "legal" cannot mean two things on two paths. `PARAM_MAX` is
+one epsilon below rather than the next float down so a JSON round trip cannot
+put it back on the boundary; no mapping in the compiler can hear the
+difference. The three literal `1.0`s are `PARAM_MAX`. A saved session whose
+knobs rest on `1.0` is mended on load by the same `clamp_domains` pass that
+already runs on every import path.
+
+**The gate that was missing:** `everything_a_hand_can_reach_has_finite_prior`
+scores every preset, every `default_node`, every knob at either end of its
+range, and every result of every structural op over a sweep of prior draws
+under `PatchGrammarPrior::default().model()`, and requires a finite log-prior.
+Nothing had scored what the panel produces; now something does.
+
+### Fixed — the hand-edit ceilings were above the prior's support
+
+`MAX_DEPTH` was 9 and `MAX_MOD_DEPTH` 4, against a prior whose `max_depth` is 5
+and `max_mod_depth` 2. The prior forces `#leaf` at `max_depth` and zeroes
+`Op`/`Pair` at `max_mod_depth`, so the deepest terms it can score have depth 6
+and 3; a hand edit past that had `log p = −∞` and hit exactly the silent
+`init_from → None` path above. The ceilings' comment said they were there to
+protect the realtime voice rather than to shape the search, without noting that
+the prior gave such trees zero mass.
+
+Both ceilings are now **derived**: `MAX_DEPTH = PRIOR_MAX_DEPTH + 1` and
+`MAX_MOD_DEPTH = PRIOR_MAX_MOD_DEPTH + 1`, read from `prior.rs`, so they cannot
+drift again. This was chosen over raising the prior's bounds because the latter
+changes every prior draw, widens the trees the wasm stack has to compile, and
+would owe a revalidation for a bug that is entirely in the ceiling. The budget
+readout is `n/24 modules · n/6 depth · n/3 mod depth`.
+
+A session saved under the old ceilings may hold a deeper tree. It **still loads
+and plays** — no load path re-checks the ceilings, because corruption must not
+be load-bearing — evolution now reports it as outside the prior's support (below)
+instead of pretending to walk, and a structural edit that leaves it over the
+ceiling is refused until one brings it under.
+`ceilings_end_exactly_where_the_prior_support_does` pins the boundary from both
+sides.
+
+### Fixed — evolve says why it did nothing
+
+`refine_seed`/`refine_from` returned `None` for four different reasons — no
+taste yet, the walk did not move, it landed on a duplicate, the child was not
+admitted — and, after the two findings above, for a fifth that is not like the
+others: the seed has zero prior mass and the walk **never started**. The engine
+now records a `RefineOutcome` after every refinement (`Engine::last_refine`),
+and the wasm layer exposes it as `last_refine_reason()`; `outside_support` is
+the one the UI should say out loud, because no budget or lock-loosening will
+change it.
+
+Two small things in the same code: `refine_from` no longer advances the
+generation counter when nothing landed (a run of "no move" presses read as
+empty generations in the lineage), and `absorb_bank_entry` no longer wraps the
+id allocator on a hostile `u64::MAX` in a shared file.
+
+### Fixed — `import_patch` skipped the ceilings, and the compiler had no guard of its own
+
+Every write route into the pool ran `validate_tree` except the one that takes
+untrusted input: `import_patch` repaired knob domains and then called
+`commit_edit`, which always lands a hand edit. A shared file with a depth-40
+tree entered the pool, evicted a member, and put its out-of-range φ into the
+log on the next vote. `import_patch` now refuses what every other route refuses
+(returns `0`).
+
+Behind it, `compile` refuses a term nested deeper than `COMPILE_MAX_NESTING`
+(32 levels, audio depth plus the deepest modulation chain) with an ordinary
+`PatchError`. This is a stack guard, not a grammar ceiling: the compiler
+recurses by value with frames large enough that ~60 nested nodes overflow the
+wasm build's 8 MB stack, and a wasm trap is not an error the caller sees — it
+poisons the engine for the rest of the session. Every caller of `compile`
+already handles its error; none could handle the overflow.
+
+### Added — the wasm boundary tells the app what it could not do
+
+Three places where the engine's answer folded a failure into a no-op, now with
+the distinction on the wire. Nothing existing changed shape; the web app is
+expected to move to these.
+
+- `import_session_checked(json)` and `import_session_deferred_v2(json)` return
+  `{"status":"ok"|"empty"|"unparseable", …}` beside the old `usize` / `"[]"`.
+  A save the current build cannot parse used to be indistinguishable from a
+  save with nothing in it, and the app treated both as "nothing to restore" —
+  then autosaved a fresh session over the record it could not read.
+  `unparseable` is the answer that must stop that write.
+- `record_duel`/`record_keep`/`record_stars` return `bool`, `false` when an id
+  is no longer in the pool (a duel side evicted inside the undo window). The
+  vote was always dropped in that case; the app counted it and toasted "rated".
+- `edit_param` refuses a non-finite value, as do `LivePoly::set_param`,
+  `set_bend` and `set_makeup`: `f64::clamp` passes NaN, and a NaN knob rode the
+  smoother into the atomic the voice reads every sample.
+- `budget_ceilings()` reports `{"size","depth","mod"}` from the grammar, so the
+  app stops restating numbers that just moved.
+
+### Fixed — a save this build could not read was overwritten by a fresh one
+
+The web app kept one IndexedDB record with no version on it and no backup, and
+the engine's restore answered `0` both for "nothing in this save" and for "I
+cannot parse this save". The app treated both as a first run: it booted from
+the prior, the first vote scheduled an autosave, and ~2.5 s later the record it
+had never understood — every patch and every pick in it — was gone under a
+fresh session. An older build served from the browser cache opening a newer
+save was enough to trigger it; so was one corrupt bank tree, because
+`SessionState` deserialises all-or-nothing outside the observation rows.
+
+The worker now restores through the verdicted forms
+(`import_session_deferred_v2`, `import_session_checked`) and posts
+`restore_failed` when the answer is `unparseable`. Main then, before anything
+else can write, copies the record to `state-quarantine-<timestamp>`, pins a
+`role="alert"` that says what happened and where the copy is, and turns
+autosave off until the player chooses **start fresh** — or reloads under a
+build that can read it, in which case the record is still exactly where it was.
+
+Around that, the persistence layer gained the shape it should have had:
+
+- The record is versioned, `{v: 2, session, ui}`; a v1 record reads as before.
+- `state-prev` holds the record the page **booted from**, written once per
+  session before the first overwrite. Every restore migrates and repairs the
+  session (schema-1 rows converted, out-of-range cells clamped, unreadable
+  votes dropped) and the first autosave used to make that the only copy — so a
+  conversion later found wrong had nothing to be undone from. Once per session
+  rather than rotated on every save, because a slot rotated every 2.5 s would
+  hold the already-migrated record within one vote of booting.
+- `idbPut` resolves on transaction completion and has `onerror`/`onabort`. A
+  full quota (`QuotaExceededError`) used to fail in silence with the app still
+  telling itself it had saved; it is an alert now, with a retry. One IndexedDB
+  connection is kept for the life of the page instead of one per save.
+
+### Fixed — an engine that crashed left an instrument that never found out
+
+`main.js` set `worker.onmessage` and nothing else, and `worker.js` caught
+errors around `init` and `render` only. Every other request that threw —
+including a wasm trap, which under `panic = "abort"` unwinds out of a `&mut
+self` call and leaves every later call failing with "recursive use of an
+object" — became an unhandled rejection inside the worker, which never reaches
+`worker.onerror`. The flag that request was holding stayed set for the rest of
+the session: the wordmark on "thinking" (`fitting` is cleared only by
+`fitted`), the evolve button on "breeding 2/3…" (only by `refined`), every knob
+edit queued behind one that would never return (`editInFlight`, only by `bench`
+or `edit_rejected`). The README promised a pinned alert for a crashed engine;
+it existed only for the worklet and for a failed boot.
+
+The worker now runs every request through one `dispatch` under a `try/catch`
+that answers `engine_error` with the request's type and id, and main releases
+exactly what that request was holding — `fitting`, `editInFlight`, `dealing`,
+`pendingEvolve`, `engineBusy`, the evolve buttons, a preview slot. A fatal
+error (a `WebAssembly.RuntimeError`, or the borrow-flag message that follows
+one) latches the worker as poisoned, so later requests are answered with the
+same error instead of a cascade of misleading ones; on the main thread it,
+`worker.onerror` and `messageerror` all reach one `engineCrashed`: everything
+released, autosave stopped — the record on disk is the last good session — and
+the `role="alert"` strip says to reload. Unhandled rejections in the worker are
+reported the same way.
+
+### Fixed — a vote on a patch that had just been evicted was counted as taken
+
+Every vote waits out a 7 s undo window before it reaches the engine, and a
+generation, a preset load or an import can evict one of its patches inside that
+window. The engine dropped such a vote silently; the worker posted `status`
+regardless; the app incremented its Brier tally, lit the star, toasted "rated
+★" and saved. The engine's `record_*` calls now answer `false` for that case
+(see the wasm entry above), the worker forwards it as `recorded` with the vote
+it describes, and the app rolls back — the star returns to what it was, the
+refit counter and the forecast score are left untouched — and says that the
+patch is gone and the vote was not recorded.
+
+The same round trip now carries **why** evolution did nothing. ⚡ evolve used
+to say "no accepted move — try again, or loosen some locks" for five different
+reasons, one of which — the seed has zero mass under the prior, a knob on its
+stop or a tree deeper than the model scores — no amount of trying or
+loosening can change. `last_refine_reason` rides back with `evolved_from` and
+(per seed) with `refined`, and `outside_support` gets its own sentence: nudge
+a knob off its stop, or take a module out.
+
+### Fixed — the budget readout restated ceilings the grammar had moved
+
+`main.js` carried `BUDGET = {size: 24, depth: 9, mod: 4}` as literals, so
+when the two depth ceilings were derived from the prior's support (6 and 3,
+above) the rack went on reading `n/9 depth · n/4 mod depth` — three and one
+steps past where the engine actually refuses, with the "tight" warning firing
+on trees the engine would no longer take. The worker now reads
+`budget_ceilings()` from the grammar at boot and posts it with `ready`; the
+literals remain only as the fallback for a binary too old to say, and match
+the grammar as of this writing.
+
+### Fixed — importing a profile replaced yours without asking or keeping a copy
+
+Picking a file in TASTE sent `import` on the spot; `import_profile` replaces
+the whole observation log and adopts the file's standardizer, and the autosave
+2.5 s later made it permanent. Now, when there is anything to lose, the app
+asks — "replace it" or "keep mine" — and on "replace it" the current profile
+is downloaded first as `auracle-profile-before-import.json`, through the same
+export path the ⤓ button uses. The worker is serial, so that file is the
+profile as it stood before the import ran. Merging two logs would be the better
+answer; the engine has no merge today, so the question is replace-or-keep
+rather than replace-or-merge.
+
+### Fixed — three small things the web app was leaking or forgetting
+
+- **The last 2.5 s were lost with the tab.** Autosave is debounced, and the
+  only unload handler committed a pending vote. Hiding or leaving the page now
+  commits the vote *and* saves at once, in that order, so the save the worker
+  writes contains it. Not before the boot veil has lifted: a session exported
+  mid-restore is a bank with half its patches missing.
+- **Every reload re-downloaded the engine.** The worker and wasm URLs were
+  stamped with `Date.now()`, which is a cache-buster for the ~2 MB binary on
+  every visit. `make wasm` now writes `pkg/build.json`, a content hash over the
+  engine and the app scripts; the same bytes get the same URL and a new build
+  gets a new one. Served from the repo with no build, the clock is the
+  fallback.
+- **Nothing was ever freed.** `renders` held one ~0.6 MB `AudioBuffer` per id
+  ever auditioned, and the stars and cuts of patches long since evicted rode
+  into every autosave. `applyViews` already computed what left the pool; it
+  now drops those ids' buffers, failure notes, stars and cuts — and the timer
+  of a cut whose undo window was still open, since there is nothing left to
+  record against.
+
+### Fixed — a pinned alert did not survive the first patch on the bench
+
+The alert strip is one slot, and its rule — written over `alarm()` — is that
+a handler clears only the condition it tagged. The `bench` reply handler did
+not follow it: on every clean vet it called `alarm(null)`, which was there to
+lift its own "Muted — this setting can run away" notice and which lifted
+whatever else was in the strip. At boot the first patch lands on the bench a
+moment after `restore_failed`, so the quarantine alert above was shown and
+then wiped before anyone could have read it — autosave stayed off, as it
+should, but the page no longer said why, and **start fresh** was gone with the
+text. Any later bench reply did the same to a crash alert or a refused save.
+The handler now tags its notice `vet` and clears only that.
+
+Found by the first browser test to provoke an unparseable save (below); the
+Rust gates could not see it, because the whole fault is in which DOM node one
+reply writes to.
+
+### Changed — the quality bar and the gates that enforce it say the same thing
+
+CONTRIBUTING promised `cargo test --workspace --release`; the Makefile and CI
+ran `--profile test-fast`. CONTRIBUTING said `node --check apps/web/live-audio.js`
+"catches [the backtick failure] and nothing else does"; nothing ran it. `make
+check` skipped the wasm32 check CI ran, so green locally and green in CI were
+two claims. Two of three workflows installed wasm-pack with an unpinned
+`curl | sh`; the third used a pinned action. `release.yml`'s header still said
+the Pages workflow fired on tags, a year after that was turned off. No browser
+ever opened the app in CI.
+
+- `make check` is now `fmt-check lint js-check wasm-check test`: `node --check`
+  on all four app scripts and `cargo check` for `wasm32-unknown-unknown` join
+  the gate, and CONTRIBUTING's list matches it, `test-fast` included.
+- CI gained a `web` job (`node --check`, seconds, gated on the app or the site
+  changing — not on Rust, because a JS-only PR is the one this check exists
+  for) and, inside the `site` job where the wasm is already built, **browser
+  tests**: `tests/web/smoke.spec.js` boots the instrument in Playwright's
+  Chromium and requires no console errors, a registered worklet and an engine
+  that reaches `playable`; `tests/web/failure_flows.spec.js` then provokes the
+  four failure flows this pass fixed and had not watched — an unparseable save
+  seeded into IndexedDB before the page runs (quarantined, `state` untouched
+  past the debounce, **start fresh** writes a fresh v2 record and keeps the
+  boot record as `state-prev`), an engine error (a real one from a malformed
+  request, released and toasted; a fatal one, injected as the worker would
+  post it after a trap, pinning the strip, freeing the evolve button and
+  blocking `saved`), a vote the engine refused (a real refusal for an id not
+  in the pool, rolled back; a star rollback from an injected reply) and the
+  profile-import prompt (keep leaves the log; replace downloads
+  `auracle-profile-before-import.json` first). Where a step is injected rather
+  than provoked the test's name says so. The numeric audio assertions are
+  still run by hand. Locally it is `make smoke` (`make smoke-tools` once).
+- `pages.yml` and `release.yml` install wasm-pack through
+  `taiki-e/install-action`, as `ci.yml` already did; `release.yml`'s header
+  says what actually deploys the site.
+
+### Changed — the live voice allocates nothing per quantum outside a swap, and says what a swap costs
+
+CONTRIBUTING asks that `LivePoly` stay allocation-free per quantum, and three
+paths were not: the arpeggiator cloned the held chord and built the pattern
+into a fresh `Vec` at every step boundary; a knob write allocated a `String`
+for its address on first touch, from the worklet's `onmessage` on the render
+thread; and every smoother did a `HashMap<String>` lookup per voice per
+quantum. The arp now reuses two buffers sized for a full keyboard, and the live
+parameter handles are interned into one table at each (re)build — a knob write
+is a scan of that table and an atomic store, a smoother tick is one store per
+voice. The three `held.clone()`s around swaps and arp toggles are index loops.
+
+Not changed, and now written down where it lives: **a patch swap compiles on
+the render thread.** `set_patch` parses the tree in `onmessage` and the rebuild
+runs a full `compile()` per voice per quantum with this node's gain at zero.
+That silence is inaudible from *this* node; the duel auditions, master gain,
+analysers and recorder share the thread, and a compile that overruns the
+quantum glitches them. Compiling in the engine worker and transferring a ready
+voice is the fix, and it is out of scope for this pass; `live.rs`'s header and
+`apps/web/README.md` say so, so the next click heard on a structural edit has
+a known cause.
+
+### Fixed — a φ coordinate declared unit-bounded was not, and the load-time repair rewrote it
+
+`mod_depth_mean` is the mean nesting depth of the filled modulation slots: 1
+for a bare modulator, 2 for one wrapped in a processor, 3 for two. It was
+listed in `StructFeatures::UNIT_NAMES` — the coordinates the saved-log repair
+clamps into `[0, 1]` on every load — so every stored vote on a patch with a
+shaped modulator was rewritten to 1.0, "unshaped", the next time the session
+opened, while freshly featurised pool rows kept their 2.0. The standardizer was
+fit on a mixture of the two, for exactly the coordinate that exists to say
+"this person likes modulation that has been shaped". A debug build panicked on
+about 4 % of prior draws at the assertion that UNIT_NAMES hold.
+
+It is out of `UNIT_NAMES`. Its definition is unchanged — it is a count-like
+mean and is treated as one, like the module counts beside it — so no
+`RENDER_EPOCH` bump is owed and no stored render is orphaned. What cannot be
+undone is the evidence already rewritten: a vote clamped by an earlier load
+says 1.0 where the patch had 2.0, and stays that way. Tested with an
+`Op`-wrapped modulator on both sides of the seam: the featurizer reads 2.0 and
+`repair_log` leaves it alone.
+
+### Fixed — the RNG sampler could never draw a hole
+
+`PatchGrammarPrior::sample_with_rng` mirrors the fugue program for callers
+without a trace (`EvolutionaryGenome::generate`, several tests). Its source
+match ended in `_ => Formant`, written before `Silence` joined the palette, so
+index 6 — the hole — became a formant oscillator: over 20 000 draws the RNG
+path produced 0 `silence` terms where the program produced 141. The two
+samplers are documented as agreeing, and now
+`the_two_samplers_agree_on_kind_frequencies` holds every module kind's
+frequency to it.
+
+### Fixed — the stars likelihood attenuated the wrong quantity
+
+An imputed coordinate attenuates the comparison it enters (#55). For keep/kill
+the code attenuated `u − τ`, correctly; for stars it attenuated `u` alone and
+then compared it to the cutpoints, which applies no correction at all at
+`u = 0` and moves the probability *away* from the marginalised truth elsewhere
+(0.205 against 0.133 at `u = 1.5`, one cutpoint, by Monte Carlo). Both bounds
+now use `σ(a·(c_k − u))`, and the imputation test gained a stars case that
+checks the attenuated probabilities against the marginal computed by
+quadrature. In the same expression the category probability is now computed in
+log space, so a rating far from `u` scores its real log-probability rather than
+the `ln(1e-12) = −27.6` floor two near-equal sigmoids used to cancel down to.
+Only reachable for `Stars` rows with imputed coordinates, i.e. after a
+stimulus-tag bump — which is when it matters.
+
+### Fixed — the render seeded quiver's RNG after compiling the main voice
+
+quiver's randomness is one thread-local stream and some of its module
+constructors draw from it. `render_phrase` compiled the main voice, *then*
+seeded. Deterministic today only because no module the grammar compiles draws
+in its constructor; the seed now precedes `compile`, so the `(term, spec) →
+bit-identical samples` contract is by construction rather than by luck.
+
+### Fixed — the render cache's namespace did not know which DSP it was rendering with
+
+`RENDER_EPOCH` names every function this workspace owns that can change a
+stored φ — formula, vet gate, compiler mapping — and not the DSP library all of
+them call into. A `quiver-dsp` bump can change a sample with no line here
+changing, and the cache would have served the old φ as the new. The namespace
+is now `e<epoch>:q<quiver version>:<spec hash>`; `QUIVER_DSP_VERSION` is
+hand-maintained and a test reads `Cargo.lock` to fail the suite the moment it
+is stale. Every stored row moves namespace once, on this build — the same cost
+as an epoch bump, paid deliberately.
+
+The `AUR_DCB_ALWAYS` environment override, which inserted a DC blocker into
+every voice tail and so made a process with it set write different φ into the
+same namespace, is removed from the render path. The blocker is decided by the
+term alone (`makes_dc`), as it was for every process without the variable.
+
+### Fixed — grafted subtrees are normalised like set modulation terms
+
+`SetModTree` always folded its fragment through `ModNode::normalized`;
+`ReplaceTree` and `InsertTree` grafted whole audio subtrees with their
+modulation slots verbatim. An `Op` over nothing in one of them encodes
+`#mod = 0` where the prior's weight is zero (`log p = −∞` — the un-evolvable
+state again), and a one-parameter `Op` carrying a stray `p1` would not survive
+its own trace round trip, which is the equality refinement uses to decide
+whether it moved. `finish()` now normalises every slot of every result,
+keeping identities wherever nothing changed.
+
+### Fixed — a follower on a source now has the knobs the rack advertises
+
+`Follow` reads the owning module's input, and a source has none, so under an
+oscillator it compiled to nothing: no attenuverter, no `mdepth` handle, no
+`sens`/`rel` handles, while the faceplate showed all three. A drag on any of
+them fell back to a full patch swap. The follower is now built with its input
+unpatched — it reads 0 V and emits 0 V — so the term above it compiles like any
+other and every knob gets its handle. The cable it drives carries `+0.0`, and
+`a_follower_on_a_source_changes_no_sample` pins the render bit-identical to the
+empty slot, which is why no `RENDER_EPOCH` bump accompanies this. The
+live-handle gate now covers every `mdepth` and every modulation-module knob,
+not just `table` and `oct`. The alternative — zeroing `Follow` in a source's
+slot weights — was rejected because saved sessions containing one would have
+become un-evolvable.
+
+### Fixed — three small grammar edges
+
+- The diff view's `src`/`op`/`mod` label tables had gone stale for exactly the
+  newest productions (`silence`; `shift`, `comp`, `duck`, `gate`, `vocoder`;
+  `euclid`, `op`, `pair`), for the second time. They are now read from one set
+  of tables in `prior.rs` whose lengths are the arity constants, so a
+  production cannot be added without a label.
+- A v1 trace decoded a module's missing `mod_depth` as 0.3 while v1 JSON
+  decoded it as 0.0; the same save was two different terms depending on route.
+  Both say 0.0 — the v1 behaviour, and the value that matters is only that
+  they agree.
+- `from_trace` refuses a categorical index outside its arity instead of
+  wrapping it (`oct = 9` used to become an octave; `fkind = 4` used to become
+  `svf lp`). Unreachable from MH or a knob; a hand-made trace is told.
+
+### Fixed — a refit no longer shuffles which lens is which
+
+`TastePosterior::aligned()` resolved label switching *within* one posterior —
+against its own last draw — and `fit_posterior` replaced the previous posterior
+with no reference to it. MCMC has no reason to return the lenses in the same
+order twice, so with probability about `1 − 1/K!` two consecutive fits ordered
+them differently, and everything keyed by lens index — the names the player
+gave their styles, the recorded style shares, the panel's lens colours —
+silently attached to a different taste after every refit.
+
+`aligned_to(reference)` aligns a fresh posterior to the previous fit's lens
+means; `fit_posterior` uses it whenever a previous posterior of the same
+dimension exists. A lens added because the log grew takes an index the old fit
+did not claim, so no name has to move. Tested at both layers: the taste crate
+pins that a label-switched draw set aligns to whichever reference order it is
+given (and that a one-lens reference pins lens 0 and leaves lens 1 free), and
+the session crate refits the same log from a different RNG state and finds the
+dominant lens at the index it had.
+
+### Fixed — the engine's history is bounded
+
+Three things grew for the life of a session and rode along in every autosave.
+The implicit-event stream stored two raw-φ vectors per edit, revert and play
+flush, forever; it now keeps at most `EVENTS_CAP` (4096) rows and the raw φ on
+only the newest `EVENT_PHI_KEEP` (256) rows that carry it — the stream exists to
+be fitted on later, and its shape (kind, id, value, detail) outlives any one
+row's vectors. The duel-exposure tallies (`shown_pairs`, `shown_candidates`)
+kept rows for ids that had been evicted and could never be dealt again; they
+are pruned at eviction and cleared at import. Forecasts and the lineage are
+left as they are: one small `Copy` record per vote and one per accepted child,
+growing at the rate of the observation log, which is the source of truth and
+grows the same way.
+
+### Fixed — every reload opened a new τ session
+
+All three import paths call `begin_session`, and it opened a new session
+unconditionally. The taste program has one τ (keep/kill threshold) site per
+session, so `sites = d·K + n_sessions + 5` grew by one on every visit — a
+once-per-visit voter accumulated a nuisance site per visit forever, each
+stealing single-site MH budget from θ.
+
+Two changes. `begin_session` opens a new session only when the latest one holds
+at least `MIN_SESSION_OBS` (5) observations, and resumes it otherwise. And at
+import, `merge_short_sessions` folds sessions that never reached the floor into
+their predecessor: the walk runs from the newest session down and stops folding
+once a group has earned a τ, so a legacy log of one-vote reload sessions
+regroups into sessions of at least five rather than collapsing into one or
+staying as dozens. A migration like the others — applied on load, and the log
+written back is the merged one.
+
+### Changed — the refinement gate prints its worst case instead of asserting it
+
+`refinement_improves_pool` asserted that no seed's *best* pool member got worse
+across a generation. That is not guaranteed by construction: `insert_candidate`
+evicts the *model*-worst member, the model is a surrogate, and a misranking can
+evict the true best while the search works exactly as designed. It held on the
+sixteen fixed seeds, which is the class of flake the test's own header warns
+about. The number is printed; the gates that remain (median gain, seeds
+improved, anything injected) are the claims.
+
+### Fixed — small robustness edges in the taste crate
+
+- `reweighted_with(feedback, session, absent)` takes the same imputation mask a
+  full fit does, so the between-fits update and the fit weigh an imputed row
+  alike; `reweighted` passes none, which is exact for any row written under the
+  current names.
+- `FitSet::build` checks the standardizer's dimension against φ and names the
+  mismatch, instead of indexing past a shorter standardizer three lines later.
+  `dot` carries a debug assertion for the same disagreement.
+- `Standardizer::fit` falls back to `(0, 1)` for a column whose moments
+  overflow, instead of writing `inf` — which `serde_json` serializes as `null`
+  and the profile then cannot load.
+- The site counts quoted in `model.rs` said `d = 40` and "the documented 206";
+  φ has been 41 coordinates for some time. They say 211 (216 with the
+  brightness group), and the test that hard-coded 40 now reads the live
+  feature set and will fail the day φ moves again.
+
+### Changed — the reference says what the taste tilt actually does
+
+`biased_prior` reweights the grammar's kind weights by the fitted structural θ
+and installs the result as the **prior** of the `EvolutionModel`. fugue-evo's
+target is `prior.model() + factor(β·f)`, and fugue's categorical proposal is a
+resample from that same prior, so the Hastings terms cancel and the chain is a
+correct MH sampler for `π' ∝ p_tilted(x)·exp(β·u(x))` — a different target from
+`π_β`. The proposals page said the opposite ("tilting the proposal changes the
+kernel, not the target … the stationary distribution is unchanged"). It, the
+two-loops page, the notation table and the doc comments now say it is a prior
+tilt, why a true proposal tilt is not available (fugue 0.2.2 offers only
+`PriorResample` for `usize` sites), and why it does not matter much in practice
+(refinement hill-climbs rather than samples). `SessionConfig::proposal_tilt`
+keeps its name; the app and the harness both set it.
+
+### Changed — three feature-extraction confounds are written down where they live
+
+- `rms_mean`/`rms_std` are measured after the peak cap, so the ~15 % of patches
+  the ceiling pulls down read as "quiet" for a reason that is peakiness, which
+  `crest` already carries. Documented on the fields rather than moved: moving
+  the measurement point is a `RENDER_EPOCH` bump for a confound the
+  standardized model largely absorbs.
+- `tail_ratio` measures the amp envelope's release first and mostly — the amp
+  ADSR → VCA is the last stage after every effect, so a reverb tail is
+  multiplied by the release rather than heard past it. The field doc no longer
+  claims it captures effect tails.
+- Frame silence is recognised only at (near-)exactly zero power, which works
+  because quiver's `Adsr` snaps exactly to 0; a tail that outlasts a rest never
+  gets a chain break. The relative threshold that would fix it moves φ for every
+  patch with a tail and owes a measurement that has not been made. Documented
+  at the line and in the open questions, not changed blind.
+
+### Changed — quiver-dsp 0.3.3, and a declared MSRV
+
+The workspace pinned `quiver-dsp 0.2.0` while the repo was at 0.3.3, and two
+reference pages still said the `voct_to_hz` clamp was "open upstream"; it
+shipped in 0.3.0. The pin is 0.3.3. Every module and port name the compiler
+uses exists unchanged in both versions, and renders inside ±32 octaves are
+bit-identical, so **no `RENDER_EPOCH` bump** accompanies this. Stored render
+rows still move, once, because the cache namespace now carries the quiver
+version as its own coordinate (above) — and that is the right outcome rather
+than a cost, because for pathological CV the two versions render *differently*
+(0.2.0 recovered an infinite phase increment by reset; 0.3.x aliases at a
+finite ~THz pitch), and an MH search can reach such values through chained
+`Offset`s. Both are garbage the vet gate quarantines; they are not the same
+garbage, and a cache that could not tell them apart would be wrong about
+exactly those rows.
+
+`rust-version = "1.87"` is declared in `[workspace.package]` and inherited by
+every crate. fugue-ppl requires 1.87, so this states a floor that already
+existed; CI runs on `stable` with clippy as errors, and a declared MSRV is what
+makes a new stable lint a deliberate bump rather than a surprise.
 
 ### Changed — the acquisition question was measured, and the tie does not break
 

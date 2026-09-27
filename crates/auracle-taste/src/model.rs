@@ -306,6 +306,17 @@ impl TasteSample {
 }
 
 fn dot(a: &[f64], b: &[f64]) -> f64 {
+    // `zip` truncates silently, which would turn a posterior loaded for a
+    // different feature set into a utility over a prefix of φ. Every caller
+    // pairs a θ with a φ of the posterior's own dimension; say so where it is
+    // cheapest to hear.
+    debug_assert_eq!(
+        a.len(),
+        b.len(),
+        "θ and φ dimensions disagree ({} vs {})",
+        a.len(),
+        b.len()
+    );
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
@@ -379,24 +390,35 @@ fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usiz
         Feedback::Stars { x, rating } => {
             // Same correction as keep/kill, and for the same reason: an
             // ordinal rating is a comparison of `u` against fixed cutpoints
-            // with nothing to cancel the imputation against.
-            let u = s.utility_mix(x) * attenuate(imputed_var(s, x, absent));
+            // with nothing to cancel the imputation against. The attenuation
+            // multiplies the **difference** `c_k − u`, exactly as keep/kill
+            // attenuates `u − τ`: it used to scale `u` alone, which applied no
+            // correction at all at `u = 0` and moved the probability *away*
+            // from the marginalised truth elsewhere (0.205 against 0.133 at
+            // `u = 1.5`, by Monte Carlo).
+            let a = attenuate(imputed_var(s, x, absent));
+            let u = s.utility_mix(x);
             let k = *rating as usize;
             let n_cats = s.cuts.len() + 1;
             let k = k.min(n_cats - 1);
-            // Cumulative logit: P(y=k) = σ(c_{k+1}−u) − σ(c_k−u),
-            // with c_0 = −∞ and c_{n} = +∞.
-            let upper = if k == n_cats - 1 {
-                1.0
-            } else {
-                sigmoid(s.cuts[k] - u)
-            };
-            let lower = if k == 0 {
-                0.0
-            } else {
-                sigmoid(s.cuts[k - 1] - u)
-            };
-            (upper - lower).max(1e-12).ln()
+            // Cumulative logit: P(y=k) = σ(a·(c_{k+1}−u)) − σ(a·(c_k−u)),
+            // with c_0 = −∞ and c_{n} = +∞ — computed in log space, so a
+            // rating far from `u` scores its real (very negative) log-prob
+            // rather than the `ln(1e-12) = −27.6` floor the subtraction of two
+            // near-equal sigmoids used to bottom out at.
+            match (k == 0, k == n_cats - 1) {
+                (true, true) => 0.0,
+                (true, false) => log_sigmoid(a * (s.cuts[k] - u)),
+                (false, true) => log_sigmoid(-a * (s.cuts[k - 1] - u)),
+                (false, false) => {
+                    let hi = log_sigmoid(a * (s.cuts[k] - u));
+                    let lo = log_sigmoid(a * (s.cuts[k - 1] - u));
+                    // ln(σ_hi − σ_lo) = ln σ_hi + ln(1 − σ_lo/σ_hi); the ratio
+                    // is < 1 because the cuts are ordered, so `ln_1p` of a
+                    // negative argument is the stable form.
+                    hi + (-(lo - hi).exp()).ln_1p()
+                }
+            }
         }
     }
 }
@@ -404,8 +426,8 @@ fn obs_loglik_with(o: &Feedback, session: usize, s: &TasteSample, absent: &[usiz
 /// The MCMC site addresses of one taste program, built once.
 ///
 /// Single-site MH re-executes the whole program on **every step**, so every
-/// `sample()` node — `d·K + S + (n_stars − 1) + K·G` of them, **206** as
-/// shipped (K = 5, d = 40, one session, and no fused group, since the fused
+/// `sample()` node — `d·K + S + (n_stars − 1) + K·G` of them, **226** as
+/// shipped (K = 5, d = 44, one session, and no fused group, since the fused
 /// prior defaults to off; a group would add K) — is reconstructed
 /// 26 000 times per fit. Building each address inline
 /// (`addr!(format!("theta{k}"), i)`) therefore cost a `format!` into a
@@ -442,9 +464,11 @@ impl SiteAddrs {
     /// step budget across, and the number the fit's cost is linear in.
     ///
     /// `d·K + S + (n_stars − 1) + K·G`, where `G` is the number of fused
-    /// groups. At K = 5, d = 40, S = 1 and one brightness group that is
-    /// 200 + 1 + 5 + 5 = **211**; without the group it is the 206 the module
-    /// doc quotes.
+    /// groups. At K = 5, d = 44, S = 1 and one brightness group that is
+    /// 220 + 1 + 5 + 5 = **231**; without the group it is the 226 the module
+    /// doc quotes. (φ was 40 coordinates when these numbers were first
+    /// written; `fusing_costs_one_site_per_style_and_nothing_when_unused`
+    /// now computes them from the live feature set.)
     pub fn site_count(&self) -> usize {
         self.theta.len() + self.tau.len() + self.cut.len() + self.mu.len()
     }
@@ -625,7 +649,7 @@ impl TasteModel {
     /// `adaptive_mcmc_chain` materialized every step — a `(TasteSample, Trace)`
     /// per iteration pushed into a `Vec` returned by value — and only then did
     /// `step_by(stride)` keep every 20th. At K = 5 that is ~10 000 `Trace`
-    /// clones of 206 `BTreeMap` entries held live at once to keep 500, scaling
+    /// clones of ~226 `BTreeMap` entries held live at once to keep 500, scaling
     /// with `n_samples`: a plausible mobile-Safari OOM rather than mere waste
     /// on a 32-bit heap.
     ///
@@ -813,6 +837,21 @@ impl TastePosterior {
     /// acquisition function reads a frozen posterior and re-asks the same
     /// question until the next refit.
     pub fn reweighted(&self, feedback: &Feedback, session: usize) -> TastePosterior {
+        self.reweighted_with(feedback, session, &[])
+    }
+
+    /// [`Self::reweighted`], told which coordinates of the observation were
+    /// imputed rather than measured — the same `absent` a full fit receives
+    /// through [`FitSet::absent`](crate::observe::FitSet::absent), so the
+    /// between-fits update and the fit weigh an imputed row the same way. An
+    /// observation written under the current feature names has nothing
+    /// absent, which is why [`Self::reweighted`] passes none.
+    pub fn reweighted_with(
+        &self,
+        feedback: &Feedback,
+        session: usize,
+        absent: &[usize],
+    ) -> TastePosterior {
         let n = self.samples.len();
         if n == 0 {
             return self.clone();
@@ -820,7 +859,7 @@ impl TastePosterior {
         let ll: Vec<f64> = self
             .samples
             .iter()
-            .map(|s| obs_loglik(feedback, session, s))
+            .map(|s| obs_loglik_with(feedback, session, s, absent))
             .collect();
         // Shift by the max before exponentiating: log-likelihoods here are
         // bounded above by 0, but the same guard keeps mixed modalities safe.
@@ -847,18 +886,46 @@ impl TastePosterior {
     /// ([`Self::theta_mean`] etc.) are only meaningful on an aligned
     /// posterior. No-op at K = 1. K is assumed small (≤ 5): alignment is
     /// exhaustive over permutations.
+    ///
+    /// This aligns a posterior **to itself**. Two posteriors aligned this way
+    /// agree on nothing about *which* lens is index 0 — with probability
+    /// ≈ 1 − 1/K! two consecutive fits order the lenses differently — so a
+    /// refit needs [`Self::aligned_to`] with the previous fit's means.
     pub fn aligned(&self) -> TastePosterior {
+        if self.k_styles() == 1 || self.samples.is_empty() {
+            return self.clone();
+        }
+        let reference = self.samples.last().expect("nonempty").theta.clone();
+        self.aligned_to(&reference)
+    }
+
+    /// [`Self::aligned`] against an **external** reference: one θ vector per
+    /// lens of a previous posterior, so lens `i` here is the lens that most
+    /// resembles lens `i` there. This is what keeps a style's identity — and
+    /// the name the player gave it — across refits, where the MCMC has no
+    /// reason to return the lenses in the same order twice.
+    ///
+    /// The reference may be shorter than `K` (a lens was added because the log
+    /// grew): the extra lenses land on the indices the reference does not
+    /// claim, chosen by the same exhaustive search, so an old lens never has
+    /// to move over to make room for a new one. A reference longer than `K`
+    /// is truncated. An empty reference falls back to [`Self::aligned`].
+    pub fn aligned_to(&self, reference: &[Vec<f64>]) -> TastePosterior {
         let k = self.k_styles();
         if k == 1 || self.samples.is_empty() {
             return self.clone();
         }
+        if reference.is_empty() {
+            return self.aligned();
+        }
         let perms = permutations(k);
         let relabel = |s: &TasteSample, reference: &[Vec<f64>]| -> TasteSample {
+            let scored = reference.len().min(k);
             let best = perms
                 .iter()
                 .max_by(|p, q| {
                     let score = |perm: &[usize]| -> f64 {
-                        (0..k)
+                        (0..scored)
                             .map(|i| cosine(&s.theta[perm[i]], &reference[i]))
                             .sum()
                     };
@@ -871,13 +938,8 @@ impl TastePosterior {
                 cuts: s.cuts.clone(),
             }
         };
-        // Pass 1: align to the last sample.
-        let reference = self.samples.last().expect("nonempty").theta.clone();
-        let pass1: Vec<TasteSample> = self
-            .samples
-            .iter()
-            .map(|s| relabel(s, &reference))
-            .collect();
+        // Pass 1: align every sample to the reference.
+        let pass1: Vec<TasteSample> = self.samples.iter().map(|s| relabel(s, reference)).collect();
         // Pass 2: align to the pass-1 mean.
         //
         // **Importance-weighted**, like every other summary on this type. The

@@ -1,7 +1,8 @@
 # What the model learns from
 
 <p class="lede">Four kinds of answer, one model, and a few things that feel like
-teaching but are not.</p>
+teaching but are not. A duel can be dealt in EVOLVE or answered while you play
+in PERFORM.</p>
 
 ## The four signals
 
@@ -12,7 +13,8 @@ utility.
 
 | Signal | Where | What it says |
 |---|---|---|
-| **A/B duel** | EVOLVE, or the quick-pick strip in PLAY | $A$ scores higher than $B$ |
+| **A/B duel** | EVOLVE, or the quick-pick strip in PATCH | $A$ scores higher than $B$ |
+| **an offer answered** | PERFORM: **Take** an offer you heard, or ask for another | The same duel, between the sound you were playing and the model's offer |
 | **★ stars** | Any bank row | This patch's utility falls in the band that rating covers |
 | **keep / kill** | *no surface yet* | This patch is above / below where I'm drawing the line today |
 | **edit beats original** | *my edit is better*, on commit | My edited version scores higher than what I started from |
@@ -54,6 +56,11 @@ mean fascination or confusion.
 
 **Saving a patch is also not a signal.** See
 [stars are not saves](./bank.md#stars-are-not-saves).
+
+**In PERFORM, only an answered offer is a signal.** Taking an offer you heard,
+or asking for another after hearing it, is a duel (above). Keep, Back and
+control turns are logged with your session and not fitted. See [what PERFORM
+teaches the model](./views/perform.md#what-perform-teaches-the-model).
 
 ## The warm start
 
@@ -132,7 +139,7 @@ Roughly in order:
 Worth knowing, so you do not spend a session teaching something that cannot be
 received.
 
-The model sees each patch through a fixed set of measurements: fifteen
+The model sees each patch through a fixed set of measurements: eighteen
 perceptual descriptors of a standard render plus twenty-six structural counts.
 **If a preference is not visible in those coordinates, no amount of voting will
 convey it.** The clearest case is stereo width: the feature vector has no

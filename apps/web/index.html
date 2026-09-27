@@ -50,6 +50,17 @@
 </script>
 </head>
 <body>
+<!-- A desktop window narrower than the instrument's layout. The handheld gate
+     is for coarse pointers and never loads the app; this one is CSS-only and
+     disappears the moment the window is wide enough, so nothing is lost by
+     narrowing it for a moment. -->
+<div id="narrow-gate" class="narrow-gate" role="status" aria-live="polite">
+  <div class="ng-card">
+    <div class="ng-title">A little wider</div>
+    <p>Auracle's rack, controls and keybed need about 1000 px side by side.
+      Widen the window and everything is where you left it.</p>
+  </div>
+</div>
 <div class="app">
 
   <!-- ===================== menu bar ===================== -->
@@ -58,7 +69,8 @@
          light — see `.wordmark b` in style.css and `wm-lamp` in main.js. -->
     <div class="wordmark">AURACL<b id="wm-lamp">E</b></div>
     <nav class="viewtabs" role="tablist" aria-label="Views">
-      <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play">play</button>
+      <button class="viewtab" data-view="perform" role="tab" aria-selected="false" aria-controls="view-perform" title="Play the sound: named controls, wander and pads">perform</button>
+      <button class="viewtab active" data-view="play" role="tab" aria-selected="true" aria-controls="view-play" title="Shape the sound: the patch, its modules and knobs">patch</button>
       <button class="viewtab" data-view="evolve" role="tab" aria-selected="false" aria-controls="view-evolve">evolve</button>
       <button class="viewtab" data-view="taste" role="tab" aria-selected="false" aria-controls="view-taste">taste</button>
     </nav>
@@ -68,7 +80,7 @@
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
       <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
-        <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, profile &amp; help">⋯</button>
+        <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, profile &amp; help" aria-label="More: files, profile and help">⋯</button>
         <div class="ovf-menu hidden" id="ovf-menu" role="menu">
           <button id="export-btn" class="ovf-item" role="menuitem">Save taste profile</button>
           <label class="ovf-item" role="menuitem" tabindex="0">Load taste profile<input id="import-input" type="file" accept=".json" hidden></label>
@@ -85,6 +97,9 @@
           <div class="ovf-sep"></div>
           <button id="warm-rerun-btn" class="ovf-item" role="menuitem">Re-run the three-pick warm start</button>
           <button id="taste-reset-btn" class="ovf-item" role="menuitem">Reset taste profile…</button>
+          <button id="engineer-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="Put the numbers behind PERFORM's controls in their tooltips — purity, reach in σ, the measured halves, the knob gains — and show the engine's own bookkeeping: patch ids, topology signatures and the full structural budget">Show measurements</button>
+          <button id="booth-btn" class="ovf-item" role="menuitemcheckbox" aria-checked="false" title="For a kiosk: after a minute with nobody at the keys, the instrument plays itself; any touch hands it over">Booth mode</button>
+          <button id="booth-reset-btn" class="ovf-item hidden" role="menuitem" title="Forget this visitor's taste and start again (booth mode keeps its settings)">New visitor <kbd>⇧Esc</kbd></button>
           <div class="ovf-sep"></div>
           <button id="help-btn" class="ovf-item" role="menuitem">Keyboard map &amp; gestures <kbd>?</kbd></button>
         </div>
@@ -127,7 +142,6 @@
               <select id="sp-colour">
                 <option value="green">phosphor</option>
                 <option value="amber">amber</option>
-                <option value="ice">ice</option>
               </select></label>
             <label class="sp-row"><span>corner</span>
               <select id="sp-corner">
@@ -251,9 +265,19 @@
 
     <main class="stage">
 
+      <!-- ------------- PERFORM: the sound under your hands ------------- -->
+      <!-- Built by perform.js. Nothing in it opens a modal: a player in the
+           middle of a phrase cannot answer a dialog. -->
+      <section id="view-perform" class="view perform hidden" role="tabpanel" aria-label="Perform"></section>
+
       <!-- ------------- PLAY: the patch is the instrument ------------- -->
       <section id="view-play" class="view" role="tabpanel" aria-label="Play">
-        <div class="stage-toolbar">
+        <!-- Two rows, always, whatever the patch is called: the name, the
+             callout and ⚡ on the first; teaching, the camera and the locks on
+             the second. This row used to wrap or unwrap with the length of the
+             name, which moved the rack and everything under it by 47px on a
+             patch change. -->
+        <div class="stage-toolbar patch-head">
           <!-- Transport belongs to the patch, not to the verb row: it plays
                *this* thing, so it sits against this thing's name as a round
                button the eye finds without reading. Out of the row, seven
@@ -265,17 +289,22 @@
               <div class="subject-meta" id="rack-meta"></div>
             </div>
           </div>
-          <!-- A reserved row, not an inline chip: the callout's position must
+          <!-- A reserved cell, not an inline chip: the callout's position must
                not be a function of how long the patch's name happens to be.
-               The row keeps its height when the button is empty. -->
+               The name's column is fixed, so the callout starts at the same x
+               for every patch, and the cell keeps its place when empty. -->
           <div class="callout-row">
             <button class="nextstep" id="nextstep" title="What to do next"></button>
           </div>
+          <!-- The act the whole app is for, on the name's row: beside the
+               thing it breeds from, and above the locks that prepare it. -->
+          <span class="tt evolve-slot" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
           <!-- Four groups, ranked, with real gutters between them. Seven
                equal pills in one run is zero hierarchy: teaching the model,
                aiming the camera, pinning what you like and breeding the next
                generation are four different kinds of act, and the last of
-               them is the one the whole app is for. -->
+               them is the one the whole app is for — which is why it has the
+               row above to itself. -->
           <div class="rack-tools">
             <div class="seg seg-teach" role="group" aria-label="Teach the model">
               <!-- The express path. Commit normally plays both versions and asks;
@@ -332,15 +361,16 @@
               <span class="tt" title="Pick a patch from the bank first"><button class="util-btn seg-item" id="lock-structure" disabled>lock wiring</button></span>
               <span class="tt" title="No locks set — click a lock dot or ▢ on a module first"><button class="util-btn seg-item" id="lock-clear" disabled>clear locks</button></span>
             </div>
-            <span class="tt evolve-slot" title="Pick a patch from the bank first"><button class="hw-btn small" id="rack-evolve" disabled>⚡ evolve from this</button></span>
           </div>
         </div>
+        <!-- One line, not three: at 77px this card was the second-largest
+             thing between the rack and the menubar on a first visit, and it
+             explained COMMIT and the node bank, which explain themselves (the
+             commit button's tooltip; the rail's own ?). What is left is the
+             three gestures nothing else on screen teaches. -->
         <div class="bench-tour hidden" id="bench-tour">
-          <span class="bt-copy">This patch is live under your fingers. <b>Drag a knob</b> — the
-            sound changes instantly. Click a <b>lock dot</b> (hover a knob) or a module's <b>▢</b>
-            to pin what you love, then <b>⚡ evolve from this</b> breeds variations that keep your
-            locks. Changed it by hand? <b>commit</b> plays your version against the original and
-            asks which you prefer — either answer teaches the model, and “the original” teaches it most. The rail on the right is the module catalogue — its <b>?</b> walks you through it.</span>
+          <span class="bt-copy">Live under your fingers: <b>drag a knob</b> and hear it change.
+            <b>Lock</b> what you love — a knob's dot, or a module's <b>▢</b> — then <b>⚡ evolve from this</b>.</span>
           <button class="util-btn" id="bt-close">got it</button>
         </div>
         <!-- What the model currently believes about the patch under your
@@ -410,23 +440,23 @@
             </div>
             <!-- The final say on the split below, and the in-house pattern for
                  it: the node bank's rail is dragged the same way, on the other
-                 axis. The automatic budget (a one-line strip whenever there is
-                 nothing to describe) reclaims ~70px for the patcher; this is
-                 how a player takes more, or gives it back. -->
+                 axis. The strip takes one line out of the patcher, always; a
+                 description opens over the rack's bottom edge rather than
+                 shrinking it, and this is how tall it opens. -->
             <div class="dock-resize" id="dock-resize" role="separator"
                  aria-orientation="horizontal" tabindex="0"
                  aria-label="Resize the spec strip — drag, or up and down arrows"
-                 title="Drag to give the canvas more room. The strip is one line whenever it has nothing to describe."></div>
+                 title="Drag to set how tall the spec strip opens when it describes a module. It opens over the rack, so the rack never resizes under the pointer."></div>
             <!-- The spec card, docked. It used to float over the graph it was
                  describing — you could read what a module does or look at
                  where it would go, never both — while the bench's lower band
                  sat empty. Reading left to right: what it is, what it does,
-                 what the model thinks of it. It reserves its height, so nothing
-                 under the pointer moves as its content changes — but there are
-                 two heights now (M4): a description gets the full strip, and
-                 "point at a module" gets one line, because 120px of that
-                 sentence was the difference between a patch with knobs on it
-                 and a block diagram at 1280×900. -->
+                 what the model thinks of it. Its box is one line, so nothing
+                 under the pointer moves as its content changes (M4: 120px of
+                 "point at a module" was the difference between a patch with
+                 knobs on it and a block diagram at 1280×900), and a
+                 description opens upward over the rack instead of taking the
+                 rack's height — see `.spec-dock` in style.css. -->
             <div class="spec-dock" id="spec-dock"></div>
             <!-- Held, not "tray". Placement goes direct from the node bank
                  now, so the only thing that lands here is what you unplugged —
@@ -442,7 +472,7 @@
                legally go (the port pips), and — only once the pool carries
                enough evidence — what the model thinks of it (the θ bar). -->
           <aside class="nodebank" id="nodebank" aria-label="Node bank">
-            <button class="nb-collapse" id="nb-collapse" title="Collapse the node bank" aria-expanded="true" aria-controls="nb-body">▸</button>
+            <button class="nb-collapse" id="nb-collapse" title="Collapse the node bank" aria-label="Collapse the node bank" aria-expanded="true" aria-controls="nb-body">▸</button>
             <!-- Collapsed, the rail keeps its name and its held-count. A drawer
                  that can hide staged work without saying so is a trap. -->
             <button class="nb-rail" id="nb-rail" type="button" aria-label="Show the node bank"></button>
@@ -601,9 +631,10 @@
         <button class="util-btn sq" id="oct-up" data-kbd="x" title="Octave up (X)" aria-label="Octave up">+</button>
         <button class="util-btn sq" id="panic-btn" title="Silence all voices" aria-label="Panic — silence all voices">◼</button>
         <button class="util-btn" id="bigkeys-btn" title="Taller keybed — worth it if you're playing with fingers rather than a mouse" aria-pressed="false">⇕ tall</button>
-        <button class="util-btn" id="hold-btn" title="Latch held notes">hold</button>
-        <button class="util-btn" id="uni-btn" title="Unison: all 4 voices on one note, detuned wide">uni</button>
-        <button class="util-btn" id="arp-btn" title="Arpeggiator: hold a chord, it plays the pattern">arp</button>
+        <button class="util-btn" id="hold-btn" title="Latch held notes" aria-pressed="false">hold</button>
+        <button class="util-btn" id="uni-btn" title="Unison: all 4 voices on one note, detuned wide" aria-pressed="false">uni</button>
+        <button class="util-btn" id="arp-btn" title="Arpeggiator: hold a chord, it plays the pattern" aria-pressed="false">arp</button>
+        <button class="util-btn" id="sync-btn" title="Tempo sync: step sequencers play the nearest division of the tempo, restarting with the first key (or MIDI start)" aria-pressed="false">sync</button>
         <label class="keys-span mono" title="How much of the keybed to show — fewer octaves means wider keys">
           <span class="pc-cap">keys</span>
           <select id="key-span" class="perf-sel" aria-label="Keybed width in octaves">
@@ -613,8 +644,11 @@
             <option value="48">4 oct</option>
           </select>
         </label>
+        <!-- The arp's drawer, folded: while ARP or SYNC runs, what it is set
+             to, in the grid cells the width selector leaves free. -->
+        <button type="button" class="perf-sel arp-chip hidden" id="arp-chip" aria-controls="arp-ctl" aria-expanded="false" title="Arp and tempo settings"></button>
       </div>
-      <div class="perf-ctl idle" id="arp-ctl">
+      <div class="perf-ctl idle" id="arp-ctl" role="group" aria-label="Arp and tempo settings">
         <span class="pc"><span class="pc-cap">pattern</span><select id="arp-mode" class="perf-sel" title="Arp pattern" aria-label="Arp pattern">
           <option value="0">up</option><option value="1">down</option>
           <option value="2">up·dn</option><option value="3">rnd</option>
@@ -637,7 +671,8 @@
       <div class="perf-ctl">
         <label class="perf-glide mono" title="Glide — how long a note takes to slide to the next one in a line">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"><span class="pc-val" id="glide-val">off</span></label>
         <button class="util-btn" id="rec-btn" title="Record what you play; stop to download a WAV">● rec</button>
-        <span class="mono midi-ind" id="midi-ind" title="MIDI input">midi —</span>
+        <button type="button" class="mono midi-ind" id="midi-ind" title="MIDI: devices, knob mapping, clock" aria-haspopup="dialog">midi —</button>
+        <div class="midi-panel hidden" id="midi-panel" role="dialog" aria-label="MIDI mapping"></div>
       </div>
       <div class="live-label mono" id="live-label">no patch</div>
       <label class="perf-glide mono" title="Master volume — live keys and every ▶ audition">vol<input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>
@@ -659,13 +694,19 @@
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 <div class="alarm hidden" id="alarm" role="alert"></div>
 
+<!-- booth attract mode: shown only while the instrument plays itself -->
+<div id="booth-attract" class="booth-attract hidden" aria-hidden="true">
+  <div class="ba-title">AURACLE</div>
+  <div class="ba-sub">touch any key to play</div>
+  <div class="ba-cap mono" id="ba-cap"></div>
+</div>
 <!-- first-run taste elicitation -->
-<section id="warmstart" class="warm hidden">
+<section id="warmstart" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="warm-title">
   <div class="warm-card panel">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <div class="boot-title">WHICH THREE DO YOU LIKE?</div>
-    <p class="warm-sub">Play them. Pick your three favourites — that’s worth about
-      twenty A/B votes, and it means the model starts out already pointed at you.</p>
+    <div class="boot-title" id="warm-title">WHICH THREE DO YOU LIKE?</div>
+    <p class="warm-sub">Play them. Pick your three favourites — that’s eighteen A/B
+      votes in one go, and it means the model starts out already pointed at you.</p>
     <div class="warm-grid" id="warm-grid"></div>
     <div class="warm-foot">
       <button class="util-btn" id="warm-skip">skip</button>
@@ -717,9 +758,14 @@
 <section id="help" class="help-overlay hidden" role="dialog" aria-modal="true" aria-label="How to play">
   <div class="help-card panel">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="help-scroll">
     <div class="boot-title">HOW TO PLAY</div>
-    <div class="help-cols mono">
+    <div class="help-cols">
       <div>
+        <div class="help-h">perform — play it</div>
+        <p><b>Bright, Snap, Motion, Body, Grit</b> and <b>Space</b> are named for what you hear. Each is wired to the knobs of <i>this</i> patch that do that job, measured when it loads, and the strip underneath shows them move. An <b>amber</b> control is one this patch cannot reach: turn it anyway, and it adds what is missing or grows a variant that can.</p>
+        <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. Asking for another is a pass. Once you have heard an offer, either answer teaches the model.</p>
+        <p><b>Wander</b> lets the model play along: a little offers ideas, more drifts the knobs toward your taste, all the way roams. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> holds everything still. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller's first eight knobs claim the eight controls.</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
@@ -727,8 +773,8 @@
         <div class="help-h">the rack canvas</div>
         <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
         <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
-        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a plate by its faceplate and it snaps to the grid — hold <kbd>shift</kbd> to place it freely. <b>apply grid</b> pins everything where it currently sits, which is how you start from an evolved patch. Positions are kept per patch, survive a reload and a generation of ⚡, and travel with an exported patch file.</p>
-        <div class="help-h">performance</div>
+        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a plate by its faceplate and it snaps to the grid — hold <kbd>shift</kbd> to place it freely. <b>snap</b> pins everything where it currently sits, on the grid, which is how you start from an evolved patch. Positions are kept per patch, survive a reload and a generation of ⚡, and travel with an exported patch file.</p>
+        <div class="help-h">the keybed</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>
         <p>A MIDI keyboard just works: velocity, pitch bend, sustain pedal.</p>
@@ -742,7 +788,7 @@
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module — quantize, slew, rectify, hold — on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill / replace / shape it is about to do.</p>
         <p>Drag a wired <b>in</b> jack off its socket to unplug — the chain is <b>held</b> under the rack until you reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PLAY). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
+        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>evolution</b> is the live pool of 40:
         each bred patch replaces the one the model thinks you like <i>least</i>.
         <b>presets</b> is the hand-made library that came with the instrument.
@@ -755,7 +801,8 @@
       </div>
     </div>
     <p class="help-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle">source</a></p>
-    <button class="hw-btn small" id="help-close">got it</button>
+    </div>
+    <div class="help-foot"><button class="hw-btn small" id="help-close">got it</button></div>
   </div>
 </section>
 

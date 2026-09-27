@@ -11,7 +11,12 @@ live pool the model reasons over and breeds from), **my patches** (what you
 saved), and **presets** (the hand-made library, browsed in place). A `?` in
 the bank head walks through what a generation is and what evolving costs.
 
-- **PLAY** — the patch is the hero: its full rack (modules, cables, knobs at
+- **PERFORM** — the sound under your hands: six named controls (Bright,
+  Snap, Motion, Body, Grit, Space) wired onto this patch's knobs by its own
+  measured response, a Wander dial (still → offer → drift → roam), pads to
+  Keep, go Back, grow an Offer into a second slot and Peek, Blend or Take it,
+  and velocity → timbre. MIDI controllers auto-map onto the controls.
+- **PATCH** — the patch is the hero: its full rack (modules, cables, knobs at
   true positions, mod wires pulsing at their modulator's rate), editable and
   lockable, playable from the keyboard while you turn knobs. The rack **scales
   to fill its frame** (1×–2.2×) and centres, knobs wear value arcs and read in
@@ -31,7 +36,7 @@ the bank head walks through what a generation is and what evolving costs.
 
 ## The node bank
 
-The rail on the right of PLAY is the instrument's **catalogue** — forty-one
+The rail on the right of PATCH is the instrument's **catalogue** — forty-two
 modules in eight signal-flow groups (sources → shape → filter → space → motion
 → dynamics → combine → modulation), not one alphabetical shelf. Every entry carries four things at
 rest: a **transfer-function glyph** (what this does to a wave — never a
@@ -122,6 +127,21 @@ to a pinned `role="alert"` strip that stays until resolved.
   limiter included — with oldest-note stealing and silent-tail voice
   parking. Every workbench edit re-patches the live instrument.
 
+  **A patch swap compiles on the render thread.** `set_patch` parses the tree
+  JSON in the worklet's `onmessage`, and the rebuild runs one full `compile()`
+  per voice per quantum, for `n_voices` quanta, while this node's own gain is
+  zero. "A dropped quantum of silence is inaudible" is true of this node only:
+  the duel auditions, the master gain, the analysers and the recorder share
+  the render thread, and a compile that overruns the ~2.9 ms quantum is a
+  glitch in *their* output. On the machines measured one voice compiles well
+  inside a quantum; a large patch on a slow laptop does not always. The fix —
+  compile in the engine worker and transfer a ready voice, or at least parse
+  off-thread — is recorded in `live.rs`'s header and not yet done. Everything
+  *else* the worklet does per quantum is allocation-free: the arpeggiator
+  reuses two buffers sized for a full keyboard, and knob writes scan a table
+  of live handles interned once per swap rather than allocating a `String`
+  and hashing per voice.
+
 - **worker.js** owns the wasm engine: pool filling (each candidate is
   compiled, rendered, vetted, featurized), posterior fits, refinement, and
   the workbench (address-based knob edits re-render off-thread). Candidates
@@ -154,7 +174,7 @@ to a pinned `role="alert"` strip that stays until resolved.
   natively by `farm_width_does_not_change_the_pool` and
   `farm_absorption_reproduces_the_serial_pool`, on `(id, tree, raw φ)`.
 
-  Restore is farmed too (`import_session_deferred` → `bank_absorb` →
+  Restore is farmed too (`import_session_deferred_v2` → `bank_absorb` →
   `restore_finish`), which is the bigger win: it used to be a full bank of
   serial renders behind a bar pinned at zero. Every degradation path — a
   worker that never initializes, one killed mid-boot, a build-stamp mismatch,
@@ -162,6 +182,54 @@ to a pinned `role="alert"` strip that stays until resolved.
   to the serial fill of the *same* draw stream, so it costs time and never
   content. The one exception is loud: a job retired after two attempts logs a
   console warning.
+
+  Both restore paths ask the engine for a **verdict**, not a count
+  (`import_session_deferred_v2`, `import_session_checked`). `unparseable` —
+  the save exists and this build cannot read it — is posted to main as
+  `restore_failed`, and is the one answer that must stop the next autosave.
+
+- **Worker replies are load-bearing, so a request that throws must still
+  reply.** `worker.js` runs every request through one `dispatch` under a
+  `try/catch` that answers `{type: "engine_error", request, id, message,
+  fatal}`; `main.js` releases exactly the state that request was holding
+  (`releaseRequest`: `editInFlight`, `fitting`, `dealing`, the evolve buttons,
+  a preview slot, …). `fatal` means the engine is gone — the wasm build has
+  `panic = "abort"`, so a Rust panic traps out of a `&mut self` call and every
+  later call fails with wasm-bindgen's "recursive use of an object" — and the
+  worker latches `poisoned`, answering everything after with the same fatal
+  error rather than calling into the binary again. On the main thread
+  `worker.onerror`, `worker.onmessageerror` and a fatal `engine_error` all
+  reach `engineCrashed`: every in-flight flag is released, autosave stops (the
+  record on disk is the last good session), and the pinned `role="alert"`
+  says to reload. Non-fatal errors release their request and toast.
+
+- **A vote the engine did not take is reported, not counted.** `record_duel`,
+  `record_keep` and `record_stars` answer `false` when an id has left the pool
+  (a duel side evicted by a generation, a preset load or an import inside the
+  7 s undo window); the worker's `status` reply carries `recorded` and the
+  `vote` it describes, and main rolls back what it did optimistically — the
+  star it lit (`prev` travels with the request), the refit count, the Brier
+  tally (`pred` is `null` for an untaken vote) — and toasts that the patch is
+  gone. `evolved_from` and `refined` carry the engine's `last_refine_reason`
+  (`reason` / per-seed `reasons`); `outside_support` is the one that changes
+  the advice, because no budget or lock-loosening reaches a seed the prior
+  gives zero mass.
+
+- **Persistence** is one IndexedDB record, `state`, shaped `{v: 2, session,
+  ui}` (a v1 record has no `v` and reads the same). Two more keys guard it.
+  `state-prev` is the record the page **booted from**, written once per
+  session before the first overwrite: every restore migrates and repairs
+  (schema conversions, clamped cells, dropped votes), and until this existed
+  the first autosave made the repaired copy the only copy. It is written once
+  per session rather than rotated on every save because a slot rotated every
+  2.5 s would hold the already-migrated record within one vote of booting.
+  `state-quarantine-<timestamp>` is where a save this build cannot parse is
+  copied on `restore_failed`, *before* any write; a pinned `role="alert"`
+  says where it is, and autosave stays off until the player chooses **start
+  fresh** or reloads under a build that can read it. `idbPut` resolves on
+  transaction completion and reports a refused write — a full quota used to
+  fail in silence — through the same alert strip. One connection is kept for
+  the life of the page.
 
 - **Hit targets are measured, not eyeballed.** Two controls turned out to be
   much smaller than they looked, both because an SVG shape only hit-tests
@@ -273,11 +341,15 @@ on most machines.
 
 ```bash
 # build the wasm package into apps/web/pkg (needs rustup's toolchain, not Homebrew's)
-PATH="$HOME/.cargo/bin:$PATH" wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
+make wasm      # wasm-pack with the 8 MB stack flag, then writes pkg/build.json
 
 # serve (any static server; module workers require http, not file://)
 cd apps/web && python3 serve.py   # no-store server — plain http.server lets the browser cache worker.js/pkg across rebuilds
 # open http://localhost:8642
 ```
 
-`pkg/` is a build artifact and is not committed.
+`pkg/` is a build artifact and is not committed. `pkg/build.json` is the
+version stamp `main.js` puts on its worker and wasm URLs: a content hash over
+the engine and the app scripts, so the ~2 MB binary is cached across reloads
+and re-fetched exactly when it changed. Without it (the repo served with no
+build) the app falls back to `Date.now()` — correct, never cached.

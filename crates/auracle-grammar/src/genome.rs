@@ -16,7 +16,7 @@ use fugue_evo::genome::trace_genome::{ChoiceValue, TraceGenome};
 use fugue_evo::genome::traits::EvolutionaryGenome;
 use rand::Rng;
 
-use crate::prior::PatchGrammarPrior;
+use crate::prior::{PatchGrammarPrior, STEPS_SITES};
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
     TableShape, Uid, Waveform,
@@ -119,6 +119,27 @@ fn mod_distance(a: &ModNode, b: &ModNode) -> f64 {
                 ..
             },
         ) => (ra - rb).abs() + (sa - sb).abs() + (pa - pb).abs(),
+        (
+            ModNode::Steps {
+                rate: ra,
+                length: la,
+                slew: ga,
+                values: va,
+                ..
+            },
+            ModNode::Steps {
+                rate: rb,
+                length: lb,
+                slew: gb,
+                values: vb,
+                ..
+            },
+        ) => {
+            (ra - rb).abs()
+                + (la - lb).abs()
+                + (ga - gb).abs()
+                + va.iter().zip(vb).map(|(a, b)| (a - b).abs()).sum::<f64>()
+        }
         // Recursive arms, on the same rule the audio tree uses: parameter L1
         // where the terms agree, and a flat penalty where they diverge.
         (
@@ -865,6 +886,24 @@ fn encode_mod(m: &ModNode, key: &str, t: &mut Trace) {
             put_f64(t, key, "esteps", *steps);
             put_f64(t, key, "epulses", *pulses);
         }
+        // Index 8: appended after `Pair` because the categorical is the wire
+        // format. Every step value is written, played or not — the latent ones
+        // are what a later `length` change reveals.
+        ModNode::Steps {
+            rate,
+            length,
+            slew,
+            values,
+            ..
+        } => {
+            put_usize(t, key, "mod", 8);
+            let knobs = [*rate, *length, *slew]
+                .into_iter()
+                .chain(values.iter().copied());
+            for (site, v) in STEPS_SITES.iter().zip(knobs) {
+                put_f64(t, key, site, v);
+            }
+        }
         // The recursive arms. Subterm keys are `<key>/0` and `<key>/1`, the
         // same convention the audio tree uses — unambiguous because every
         // modulation key already sits below a `/m`.
@@ -1345,6 +1384,23 @@ fn get_usize(t: &Trace, key: &str, site: &str) -> Result<usize, GenomeError> {
         .ok_or_else(|| GenomeError::MissingAddress(a.to_string()))
 }
 
+/// A categorical site that must fall inside its declared arity.
+///
+/// The enum decoders used to wrap with `% len` and the octave decoder did not
+/// check at all (`as i8 - 2` on an index of 250 is an octave of −8). Neither
+/// is reachable from MH — every categorical is sampled from a distribution of
+/// that arity — or from `set_param`, which clamps; a hand-made trace is the
+/// only way in, and it should be told rather than wrapped.
+fn get_index(t: &Trace, key: &str, site: &str, arity: usize) -> Result<usize, GenomeError> {
+    let i = get_usize(t, key, site)?;
+    if i >= arity {
+        return Err(GenomeError::InvalidStructure(format!(
+            "{key}#{site} = {i} is outside its {arity}-way categorical"
+        )));
+    }
+    Ok(i)
+}
+
 fn get_bool(t: &Trace, key: &str, site: &str) -> Result<bool, GenomeError> {
     let a = addr!(key, site);
     t.get_bool(&a)
@@ -1366,7 +1422,7 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
         0 => Ok(ModNode::None),
         1 => Ok(ModNode::Lfo {
             uid: Uid::NEW,
-            wave: Waveform::from_index(get_usize(t, key, "wave")?),
+            wave: Waveform::from_index(get_index(t, key, "wave", Waveform::ALL.len())?),
             rate: get_f64(t, key, "rate")?,
         }),
         2 => Ok(ModNode::Env {
@@ -1392,7 +1448,7 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
             pulses: get_f64(t, key, "epulses")?,
         }),
         6 => {
-            let kind = ModOp::from_index(get_usize(t, key, "modop")?);
+            let kind = ModOp::from_index(get_index(t, key, "modop", ModOp::ALL.len())?);
             let sites = kind.param_sites();
             Ok(ModNode::Op {
                 uid: Uid::NEW,
@@ -1409,10 +1465,23 @@ fn decode_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
         }
         7 => Ok(ModNode::Pair {
             uid: Uid::NEW,
-            kind: PairOp::from_index(get_usize(t, key, "pairop")?),
+            kind: PairOp::from_index(get_index(t, key, "pairop", PairOp::ALL.len())?),
             a: Box::new(decode_mod(t, &child_key(key, 0))?),
             b: Box::new(decode_mod(t, &child_key(key, 1))?),
         }),
+        8 => {
+            let mut p = [0.0; 11];
+            for (slot, site) in p.iter_mut().zip(STEPS_SITES) {
+                *slot = get_f64(t, key, site)?;
+            }
+            Ok(ModNode::Steps {
+                uid: Uid::NEW,
+                rate: p[0],
+                length: p[1],
+                slew: p[2],
+                values: [p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10]],
+            })
+        }
         k => Err(GenomeError::InvalidStructure(format!(
             "mod kind {k} out of range at {key}"
         ))),
@@ -1430,10 +1499,17 @@ fn decode_new_mod(t: &Trace, key: &str) -> Result<ModNode, GenomeError> {
     decode_mod(t, key)
 }
 
-/// The mod-depth a v2 module gets when its trace predates the slot. Matches
-/// `mutate::default_node`, so a migrated patch and a hand-placed one start
-/// from the same knob.
-const DEFAULT_MOD_DEPTH: f64 = 0.3;
+/// The mod-depth a v2 module gets when its trace predates the slot.
+///
+/// `0.0`, matching the `#[serde(default)]` on the same fields in
+/// [`crate::term`]: a v1 save has no modulation source either, so the depth
+/// knob's value is inaudible, and the one thing that matters is that the
+/// **two decode routes agree**. This used to be `0.3` (to match
+/// `mutate::default_node`), so the same v1 save decoded to two different
+/// terms depending on whether it arrived as JSON or as a trace — and the
+/// pool's dedup, `distance()` and refinement's "did it move" test are all
+/// `PatchTree` equality.
+const DEFAULT_MOD_DEPTH: f64 = 0.0;
 
 fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
     if get_bool(t, key, "leaf")? {
@@ -1443,15 +1519,15 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
             // through the defaulting accessors, exactly as `Delay` does.
             0 => Ok(AudioNode::Vco {
                 uid: Uid::NEW,
-                wave: Waveform::from_index(get_usize(t, key, "wave")?),
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                wave: Waveform::from_index(get_index(t, key, "wave", Waveform::ALL.len())?),
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
                 mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             1 => Ok(AudioNode::Supersaw {
                 uid: Uid::NEW,
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 detune: get_f64(t, key, "det")?,
                 mix: get_f64(t, key, "smix")?,
                 mod_depth: get_f64_or(t, key, "mdepth", DEFAULT_MOD_DEPTH),
@@ -1459,19 +1535,19 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
             }),
             2 => Ok(AudioNode::Noise {
                 uid: Uid::NEW,
-                color: NoiseColor::from_index(get_usize(t, key, "color")?),
+                color: NoiseColor::from_index(get_index(t, key, "color", NoiseColor::ALL.len())?),
             }),
             3 => Ok(AudioNode::Wavetable {
                 uid: Uid::NEW,
-                table: TableShape::from_index(get_usize(t, key, "table")?),
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                table: TableShape::from_index(get_index(t, key, "table", TableShape::ALL.len())?),
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 morph: get_f64(t, key, "morph")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_new_mod(t, &mod_key(key))?,
             }),
             4 => Ok(AudioNode::Pluck {
                 uid: Uid::NEW,
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 damping: get_f64(t, key, "damp")?,
                 brightness: get_f64(t, key, "bright")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
@@ -1481,7 +1557,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 uid: Uid::NEW,
                 vowel: get_f64(t, key, "vowel")?,
                 shift: get_f64(t, key, "fshift")?,
-                octave: get_usize(t, key, "oct")? as i8 - 2,
+                octave: get_index(t, key, "oct", 5)? as i8 - 2,
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_mod(t, &mod_key(key))?,
             }),
@@ -1500,7 +1576,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
             }),
             1 => Ok(AudioNode::Filter {
                 uid: Uid::NEW,
-                kind: FilterKind::from_index(get_usize(t, key, "fkind")?),
+                kind: FilterKind::from_index(get_index(t, key, "fkind", FilterKind::ALL.len())?),
                 cutoff: get_f64(t, key, "cut")?,
                 resonance: get_f64(t, key, "res")?,
                 mod_depth: get_f64(t, key, "mdepth")?,
@@ -1545,7 +1621,7 @@ fn decode_node(t: &Trace, key: &str) -> Result<AudioNode, GenomeError> {
                 uid: Uid::NEW,
                 drive: get_f64(t, key, "drive")?,
                 tone: get_f64(t, key, "tone")?,
-                mode: DriveMode::from_index(get_usize(t, key, "dmode")?),
+                mode: DriveMode::from_index(get_index(t, key, "dmode", DriveMode::ALL.len())?),
                 mod_depth: get_f64(t, key, "mdepth")?,
                 modulation: decode_mod(t, &mod_key(key))?,
                 input: Box::new(decode_node(t, &child_key(key, 0))?),
@@ -1713,14 +1789,53 @@ impl TraceGenome for PatchTree {
 /// a corruption rather than an unusual patch. Stated once, here, so the check
 /// and the repair below cannot drift from the generative model — and so that
 /// the day a site wants a different range, this is the line that has to change.
-pub const PARAM_DOMAIN: std::ops::RangeInclusive<f64> = 0.0..=1.0;
+///
+/// **Half-open, and the right end is the point.** `u01()` is fugue's
+/// `Uniform(0, 1)`, whose `log_prob` is `−∞` at `x >= 1.0`. This constant used
+/// to be `0.0..=1.0`, which made exactly `1.0` legal here and impossible there:
+/// a knob dragged to its stop, two shipped presets and the default vibrato
+/// insert all scored `log p = −∞` under the grammar, `EvolutionChain::init_from`
+/// returned `None`, and ⚡ evolve on such a patch did nothing and said nothing.
+/// The largest legal value is [`PARAM_MAX`]; every clamp in the crate lands
+/// there, never on `1.0`.
+pub const PARAM_DOMAIN: std::ops::Range<f64> = 0.0..1.0;
+
+/// The largest value a continuous site may hold — the top of
+/// [`PARAM_DOMAIN`], which is half-open.
+///
+/// One `f64::EPSILON` below `1.0` rather than the very next float down, so it
+/// survives a round trip through JSON (`float_roundtrip` is on) and through
+/// the panel's `Math.min(1, …)`-then-`toFixed` habits without being rounded
+/// back onto the boundary. Audibly it *is* fully wet / fully open / fully
+/// deep: no mapping in [`crate::compile`] can tell it from `1.0`.
+pub const PARAM_MAX: f64 = 1.0 - f64::EPSILON;
 
 /// Is `v` a legal value for a continuous site?
 ///
 /// Non-finite fails: `NaN` compares false against every bound, and an infinity
-/// is exactly the runaway this gate exists to stop.
+/// is exactly the runaway this gate exists to stop. Exactly `1.0` fails too —
+/// see [`PARAM_DOMAIN`] for why that is not pedantry.
 pub fn in_domain(v: f64) -> bool {
     v.is_finite() && PARAM_DOMAIN.contains(&v)
+}
+
+/// Pull one continuous value into [`PARAM_DOMAIN`]: `NaN` to the middle of
+/// the range (it carries no information about which way it went, and pinning
+/// it to a boundary would state one), everything else to the nearest legal
+/// value, with `1.0` and above landing on [`PARAM_MAX`].
+///
+/// The one clamp every write path shares — [`crate::set_param`],
+/// [`PatchTree::clamp_domains`], the live handles' `ParamMap::clamp_input` —
+/// so that "legal" cannot mean two different things on two routes.
+pub fn clamp_param(v: f64) -> f64 {
+    if v.is_nan() {
+        // Exactly the middle, stated as a literal: the arithmetic midpoint of
+        // `[0, PARAM_MAX]` is one ulp shy of it, and a repair should land on a
+        // number a person would recognise.
+        0.5
+    } else {
+        v.clamp(PARAM_DOMAIN.start, PARAM_MAX)
+    }
 }
 
 impl PatchTree {
@@ -1761,7 +1876,9 @@ impl PatchTree {
     ///
     /// `NaN` clamps to the middle of the range rather than to an end: it
     /// carries no information about which way it went, and pinning it to a
-    /// boundary would state one.
+    /// boundary would state one. Exactly `1.0` is repaired too, to
+    /// [`PARAM_MAX`] — this is the pass that mends a session saved by a build
+    /// that still let a knob rest on the stop, and it runs on every load.
     ///
     /// Identities survive. The rebuild goes through the trace, which does not
     /// carry `uid`s, so the repaired term inherits them back from the term it
@@ -1772,12 +1889,7 @@ impl PatchTree {
         for c in trace.choices.values_mut() {
             if let ChoiceValue::F64(v) = c.value {
                 if !in_domain(v) {
-                    let repaired = if v.is_nan() {
-                        (PARAM_DOMAIN.start() + PARAM_DOMAIN.end()) / 2.0
-                    } else {
-                        v.clamp(*PARAM_DOMAIN.start(), *PARAM_DOMAIN.end())
-                    };
-                    c.value = ChoiceValue::F64(repaired);
+                    c.value = ChoiceValue::F64(clamp_param(v));
                     fixed += 1;
                 }
             }
@@ -1854,7 +1966,10 @@ mod tests {
         else {
             panic!("decoded the wrong node: {}", tree.root.to_sexpr());
         };
-        assert_eq!(*mod_depth, 0.3, "new mod depth did not default");
+        assert_eq!(
+            *mod_depth, 0.0,
+            "a v1 trace must decode to the same term as v1 JSON: depth 0"
+        );
         assert_eq!(*modulation, ModNode::None, "absent slot must decode empty");
         let AudioNode::Filter {
             kind, modulation, ..
@@ -1896,6 +2011,297 @@ mod tests {
         // writes the new sites, and that trace round-trips.
         let back = PatchTree::from_trace(&tree.to_trace()).expect("re-encoded trace decodes");
         assert_eq!(back, tree);
+    }
+
+    fn amp_sites(t: &mut Trace) {
+        for (site, v) in [
+            ("attack", 0.1),
+            ("decay", 0.3),
+            ("sustain", 0.6),
+            ("release", 0.2),
+        ] {
+            put_f64(t, "amp", site, v);
+        }
+    }
+
+    /// The patch the two old-save fixtures below both describe: every
+    /// modulation kind that existed before `Steps` — all eight `#mod` indices,
+    /// `None` included — in one tree.
+    fn every_pre_steps_mod_kind() -> PatchTree {
+        PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 0.6,
+                release: 0.2,
+            },
+            root: AudioNode::Mix {
+                uid: Uid::NEW,
+                balance: 0.5,
+                a: Box::new(AudioNode::Delay {
+                    uid: Uid::NEW,
+                    time: 0.6,
+                    feedback: 0.4,
+                    mix: 0.35,
+                    mod_depth: 0.2,
+                    modulation: ModNode::Rand {
+                        uid: Uid::NEW,
+                        rate: 0.62,
+                        glide: 0.1,
+                    },
+                    input: Box::new(AudioNode::Fold {
+                        uid: Uid::NEW,
+                        threshold: 0.6,
+                        mod_depth: 0.4,
+                        modulation: ModNode::Follow {
+                            uid: Uid::NEW,
+                            sens: 0.5,
+                            release: 0.3,
+                        },
+                        input: Box::new(AudioNode::Filter {
+                            uid: Uid::NEW,
+                            kind: FilterKind::SvfLp,
+                            cutoff: 0.5,
+                            resonance: 0.4,
+                            mod_depth: 0.5,
+                            modulation: ModNode::Pair {
+                                uid: Uid::NEW,
+                                kind: PairOp::Xor,
+                                a: Box::new(ModNode::Euclid {
+                                    uid: Uid::NEW,
+                                    rate: 0.5,
+                                    steps: 0.5,
+                                    pulses: 0.4,
+                                }),
+                                b: Box::new(ModNode::Op {
+                                    uid: Uid::NEW,
+                                    kind: ModOp::Slew,
+                                    p0: 0.2,
+                                    p1: 0.3,
+                                    input: Box::new(ModNode::Lfo {
+                                        uid: Uid::NEW,
+                                        wave: Waveform::Sine,
+                                        rate: 0.4,
+                                    }),
+                                }),
+                            },
+                            input: Box::new(AudioNode::Vco {
+                                uid: Uid::NEW,
+                                wave: Waveform::Saw,
+                                octave: 0,
+                                detune: 0.5,
+                                mod_depth: 0.3,
+                                modulation: ModNode::Env {
+                                    uid: Uid::NEW,
+                                    attack: 0.2,
+                                    decay: 0.5,
+                                },
+                            }),
+                        }),
+                    }),
+                }),
+                b: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Square,
+                    octave: -1,
+                    detune: 0.5,
+                    mod_depth: 0.3,
+                    modulation: ModNode::None,
+                }),
+            },
+        }
+    }
+
+    /// A trace written **before `Steps` existed** decodes to the same tree,
+    /// and re-encodes to the same indices.
+    ///
+    /// Written site by site with the `#mod` numbers as literals rather than
+    /// through `to_trace`, because the point is the wire format: a saved
+    /// genome stores the number, so appending a kind must not move one. An
+    /// encoder-derived fixture would agree with any renumbering.
+    #[test]
+    fn a_pre_steps_trace_still_decodes_to_the_same_tree() {
+        let mut t = Trace::default();
+        amp_sites(&mut t);
+        put_bool(&mut t, "node", "leaf", false);
+        put_usize(&mut t, "node", "op", 0); // mix
+        put_f64(&mut t, "node", "bal", 0.5);
+        // node/0 = delay, slot = s&h rand (#mod 3)
+        put_bool(&mut t, "node/0", "leaf", false);
+        put_usize(&mut t, "node/0", "op", 3);
+        put_f64(&mut t, "node/0", "time", 0.6);
+        put_f64(&mut t, "node/0", "fb", 0.4);
+        put_f64(&mut t, "node/0", "dmix", 0.35);
+        put_f64(&mut t, "node/0", "mdepth", 0.2);
+        put_usize(&mut t, "node/0/m", "mod", 3);
+        put_f64(&mut t, "node/0/m", "rate", 0.62);
+        put_f64(&mut t, "node/0/m", "glide", 0.1);
+        // node/0/0 = fold, slot = follower (#mod 4)
+        put_bool(&mut t, "node/0/0", "leaf", false);
+        put_usize(&mut t, "node/0/0", "op", 2);
+        put_f64(&mut t, "node/0/0", "thresh", 0.6);
+        put_f64(&mut t, "node/0/0", "mdepth", 0.4);
+        put_usize(&mut t, "node/0/0/m", "mod", 4);
+        put_f64(&mut t, "node/0/0/m", "sens", 0.5);
+        put_f64(&mut t, "node/0/0/m", "rel", 0.3);
+        // node/0/0/0 = filter, slot = xor(euclid, slew(lfo)) — #mod 7, 5, 6, 1
+        let f = "node/0/0/0";
+        put_bool(&mut t, f, "leaf", false);
+        put_usize(&mut t, f, "op", 1);
+        put_usize(&mut t, f, "fkind", 0);
+        put_f64(&mut t, f, "cut", 0.5);
+        put_f64(&mut t, f, "res", 0.4);
+        put_f64(&mut t, f, "mdepth", 0.5);
+        put_usize(&mut t, "node/0/0/0/m", "mod", 7);
+        put_usize(&mut t, "node/0/0/0/m", "pairop", 4);
+        put_usize(&mut t, "node/0/0/0/m/0", "mod", 5);
+        put_f64(&mut t, "node/0/0/0/m/0", "erate", 0.5);
+        put_f64(&mut t, "node/0/0/0/m/0", "esteps", 0.5);
+        put_f64(&mut t, "node/0/0/0/m/0", "epulses", 0.4);
+        put_usize(&mut t, "node/0/0/0/m/1", "mod", 6);
+        put_usize(&mut t, "node/0/0/0/m/1", "modop", 1);
+        put_f64(&mut t, "node/0/0/0/m/1", "rise", 0.2);
+        put_f64(&mut t, "node/0/0/0/m/1", "fall", 0.3);
+        put_usize(&mut t, "node/0/0/0/m/1/0", "mod", 1);
+        put_usize(&mut t, "node/0/0/0/m/1/0", "wave", 0);
+        put_f64(&mut t, "node/0/0/0/m/1/0", "rate", 0.4);
+        // node/0/0/0/0 = vco, slot = mod env (#mod 2)
+        let v = "node/0/0/0/0";
+        put_bool(&mut t, v, "leaf", true);
+        put_usize(&mut t, v, "src", 0);
+        put_usize(&mut t, v, "wave", 2);
+        put_usize(&mut t, v, "oct", 2);
+        put_f64(&mut t, v, "det", 0.5);
+        put_f64(&mut t, v, "mdepth", 0.3);
+        put_usize(&mut t, "node/0/0/0/0/m", "mod", 2);
+        put_f64(&mut t, "node/0/0/0/0/m", "att", 0.2);
+        put_f64(&mut t, "node/0/0/0/0/m", "dec", 0.5);
+        // node/1 = vco, empty slot (#mod 0)
+        put_bool(&mut t, "node/1", "leaf", true);
+        put_usize(&mut t, "node/1", "src", 0);
+        put_usize(&mut t, "node/1", "wave", 3);
+        put_usize(&mut t, "node/1", "oct", 1);
+        put_f64(&mut t, "node/1", "det", 0.5);
+        put_f64(&mut t, "node/1", "mdepth", 0.3);
+        put_usize(&mut t, "node/1/m", "mod", 0);
+
+        let want = every_pre_steps_mod_kind();
+        let tree = PatchTree::from_trace(&t).expect("a pre-steps trace must still load");
+        assert_eq!(tree, want, "{}", tree.to_sexpr());
+        // Re-encoding writes back exactly the choices it was given: same
+        // addresses, same indices, nothing added.
+        let again = tree.to_trace();
+        assert_eq!(again.choices.len(), t.choices.len());
+        for (a, c) in &t.choices {
+            assert_eq!(again.choices[a].value, c.value, "moved at {a}");
+        }
+    }
+
+    /// A `PatchTree` saved as JSON before `Steps` existed — the shape bank
+    /// entries and sessions are persisted in — still deserializes to the same
+    /// tree, and serializes back byte for byte.
+    #[test]
+    fn a_pre_steps_json_save_still_loads() {
+        // The shape the pre-`Steps` (wave 2C) serializer wrote, uids included
+        // the way a settled bank entry carries them. The byte-for-byte
+        // assertion below is what pins that none of these variants' wire
+        // format moved when a new one was appended.
+        const SAVED: &str = r#"{"amp":{"attack":0.1,"decay":0.3,"sustain":0.6,"release":0.2},"root":{"Mix":{"balance":0.5,"a":{"Delay":{"time":0.6,"feedback":0.4,"mix":0.35,"mod_depth":0.2,"input":{"Fold":{"threshold":0.6,"mod_depth":0.4,"input":{"Filter":{"kind":"SvfLp","cutoff":0.5,"resonance":0.4,"mod_depth":0.5,"input":{"Vco":{"wave":"Saw","octave":0,"detune":0.5,"mod_depth":0.3,"modulation":{"Env":{"attack":0.2,"decay":0.5,"uid":9}},"uid":8}},"modulation":{"Pair":{"kind":"xor","a":{"Euclid":{"rate":0.5,"steps":0.5,"pulses":0.4,"uid":6}},"b":{"Op":{"kind":"slew","p0":0.2,"p1":0.3,"input":{"Lfo":{"wave":"Sine","rate":0.4,"uid":7}},"uid":10}},"uid":5}},"uid":4}},"modulation":{"Follow":{"sens":0.5,"release":0.3,"uid":11}},"uid":2}},"modulation":{"Rand":{"rate":0.62,"glide":0.1,"uid":3}},"uid":1}},"b":{"Vco":{"wave":"Square","octave":-1,"detune":0.5,"mod_depth":0.3,"modulation":"None","uid":12}},"uid":13}}}"#;
+        let tree: PatchTree = serde_json::from_str(SAVED).expect("an old save must still load");
+        assert_eq!(tree, every_pre_steps_mod_kind(), "{}", tree.to_sexpr());
+        assert_eq!(serde_json::to_string(&tree).unwrap(), SAVED);
+    }
+
+    /// `Steps` is `#mod` index **8** — after `Pair` — and every other kind is
+    /// where it was. Asserted as literals for the reason
+    /// `silence_round_trips_at_source_index_six` gives:
+    /// the index is the wire format.
+    #[test]
+    fn mod_kind_indices_are_append_only() {
+        let leaf_or = |m: ModNode| {
+            let mut t = Trace::default();
+            encode_mod(&m, "k", &mut t);
+            get_usize(&t, "k", "mod").unwrap()
+        };
+        let lfo = || ModNode::Lfo {
+            uid: Uid::NEW,
+            wave: Waveform::Sine,
+            rate: 0.4,
+        };
+        let steps = ModNode::Steps {
+            uid: Uid::NEW,
+            rate: 0.4,
+            length: 0.5,
+            slew: 0.25,
+            values: [0.0, 1.0, 0.2, 0.8, 0.4, 0.6, 0.3, 0.7],
+        };
+        let table = [
+            (ModNode::None, 0),
+            (lfo(), 1),
+            (
+                ModNode::Env {
+                    uid: Uid::NEW,
+                    attack: 0.1,
+                    decay: 0.2,
+                },
+                2,
+            ),
+            (
+                ModNode::Rand {
+                    uid: Uid::NEW,
+                    rate: 0.1,
+                    glide: 0.2,
+                },
+                3,
+            ),
+            (
+                ModNode::Follow {
+                    uid: Uid::NEW,
+                    sens: 0.1,
+                    release: 0.2,
+                },
+                4,
+            ),
+            (
+                ModNode::Euclid {
+                    uid: Uid::NEW,
+                    rate: 0.1,
+                    steps: 0.2,
+                    pulses: 0.3,
+                },
+                5,
+            ),
+            (
+                ModNode::Op {
+                    uid: Uid::NEW,
+                    kind: ModOp::Hold,
+                    p0: 0.5,
+                    p1: 0.0,
+                    input: Box::new(lfo()),
+                },
+                6,
+            ),
+            (
+                ModNode::Pair {
+                    uid: Uid::NEW,
+                    kind: PairOp::Min,
+                    a: Box::new(lfo()),
+                    b: Box::new(lfo()),
+                },
+                7,
+            ),
+            (steps.clone(), 8),
+        ];
+        for (m, want) in table {
+            assert_eq!(leaf_or(m.clone()), want, "{m:?}");
+        }
+        // All eleven sites of a Steps, latent values included, and nothing
+        // else under its key.
+        let mut t = Trace::default();
+        encode_mod(&steps, "k", &mut t);
+        assert_eq!(t.choices.len(), 1 + STEPS_SITES.len());
+        assert_eq!(steps.site_count(), t.choices.len());
+        assert_eq!(decode_mod(&t, "k").unwrap(), steps);
     }
 }
 
@@ -1965,7 +2371,7 @@ mod domain_tests {
 
         assert_eq!(t.clamp_domains(), 2);
         assert!(t.domain_violations().is_empty());
-        assert_eq!(t.amp.sustain, 1.0);
+        assert_eq!(t.amp.sustain, PARAM_MAX, "the top of the domain is open");
         assert_eq!(t.amp.attack, 0.1, "a clean site must not move");
         let AudioNode::Filter {
             uid,
@@ -1977,7 +2383,7 @@ mod domain_tests {
         else {
             panic!("the repair changed the term's shape");
         };
-        assert_eq!(*cutoff, 1.0);
+        assert_eq!(*cutoff, PARAM_MAX);
         assert_eq!(*resonance, 0.4);
         assert_eq!(*uid, Uid(7), "the repair reissued an identity");
         let AudioNode::Vco { uid, .. } = &**input else {
@@ -1987,6 +2393,36 @@ mod domain_tests {
 
         // Idempotent, and free on a clean term.
         assert_eq!(t.clamp_domains(), 0);
+    }
+
+    /// A categorical index past its arity is refused, not wrapped. Unreachable
+    /// from MH or a knob edit; a hand-made trace is the way in, and wrapping
+    /// `oct = 9` to some octave would be inventing a value.
+    #[test]
+    fn an_out_of_range_categorical_is_refused() {
+        let good = filter_over_vco(0.5);
+        let mut t = good.to_trace();
+        let addr = t
+            .choices
+            .keys()
+            .find(|k| k.ends_with("#oct"))
+            .cloned()
+            .expect("the vco has an octave site");
+        t.choices.get_mut(&addr).unwrap().value = ChoiceValue::Usize(9);
+        let err = PatchTree::from_trace(&t).expect_err("oct = 9 must not decode");
+        assert!(err.to_string().contains("categorical"), "{err}");
+        let addr = t
+            .choices
+            .keys()
+            .find(|k| k.ends_with("#fkind"))
+            .cloned()
+            .expect("the filter has a kind site");
+        let mut t2 = good.to_trace();
+        t2.choices.get_mut(&addr).unwrap().value = ChoiceValue::Usize(4);
+        assert!(
+            PatchTree::from_trace(&t2).is_err(),
+            "fkind = 4 must not wrap to svf lp"
+        );
     }
 
     /// NaN carries no direction, so it lands in the middle rather than being

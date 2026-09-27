@@ -100,20 +100,39 @@ pub fn canonical_tree_json(tree: &PatchTree) -> String {
 /// | epoch | what changed |
 /// |---|---|
 /// | 1 | first persistent cache; peak-capped loudness normalization |
-pub const RENDER_EPOCH: u32 = 1;
+/// | 2 | the motion bands: three φ_audio coordinates (`motion_slow`, `motion_mid`, `motion_fast`) — an epoch-1 row lacks them and does not deserialize |
+/// | 3 | pink noise leaves the compiler through a 20 Hz highpass (it carried 22 % of its energy below 20 Hz), so every patch with a pink source renders differently |
+pub const RENDER_EPOCH: u32 = 3;
 
-/// The persistent cache's namespace for one stimulus: `"e<epoch>:<spec hash>"`.
+/// The `quiver-dsp` version this build renders with, folded into
+/// [`cache_namespace`] beside [`RENDER_EPOCH`].
 ///
-/// Two coordinates, because two independent things invalidate a stored row —
-/// the featurizer changing ([`RENDER_EPOCH`]) and the stimulus changing (the
-/// spec). The spec is folded into [`render_key`] as well, so this is redundant
-/// for correctness and useful for operations: it makes a whole stimulus's rows
-/// a contiguous, droppable prefix instead of scattered keys that can only be
+/// The epoch's list of things that invalidate a stored row named the formula,
+/// the vet gate and the compiler's mapping — every function *this* workspace
+/// owns — and not the DSP library every one of them calls into. A dependency
+/// bump can change a sample without any line here changing, and a stored φ
+/// from the old DSP would then be served as if it were the new one. So the
+/// dependency is a coordinate of the namespace too.
+///
+/// Hand-maintained rather than read from the build, because Cargo does not
+/// expose a dependency's version to `env!`; `quiver_version_matches_the_lock`
+/// reads `Cargo.lock` and fails the suite the moment the two disagree.
+pub const QUIVER_DSP_VERSION: &str = "0.3.3";
+
+/// The persistent cache's namespace for one stimulus:
+/// `"e<epoch>:q<quiver version>:<spec hash>"`.
+///
+/// Three coordinates, because three independent things invalidate a stored
+/// row — the featurizer changing ([`RENDER_EPOCH`]), the DSP it renders with
+/// changing ([`QUIVER_DSP_VERSION`]) and the stimulus changing (the spec). The
+/// spec is folded into [`render_key`] as well, so that part is redundant for
+/// correctness and useful for operations: it makes a whole stimulus's rows a
+/// contiguous, droppable prefix instead of scattered keys that can only be
 /// evicted by trying them.
 pub fn cache_namespace(spec: &PhraseSpec) -> String {
     let spec_json = serde_json::to_string(spec).expect("PhraseSpec always serializes");
     let h = fnv1a128(FNV_OFFSET_128, spec_json.as_bytes());
-    format!("e{RENDER_EPOCH}:{h:032x}")
+    format!("e{RENDER_EPOCH}:q{QUIVER_DSP_VERSION}:{h:032x}")
 }
 
 /// Content address of one `(term, spec)` featurization, 32 lowercase hex
@@ -522,6 +541,30 @@ mod tests {
         assert_eq!(
             again.features.phi(),
             featurize(&t, &spec).unwrap().features.phi()
+        );
+    }
+
+    /// The version folded into the namespace is the version actually built.
+    #[test]
+    fn quiver_version_matches_the_lock() {
+        let lock =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.lock"))
+                .expect("workspace Cargo.lock");
+        let mut lines = lock.lines();
+        let mut found = None;
+        while let Some(l) = lines.next() {
+            if l.trim() == "name = \"quiver-dsp\"" {
+                found = lines
+                    .next()
+                    .and_then(|v| v.trim().strip_prefix("version = \""))
+                    .map(|v| v.trim_end_matches('"').to_string());
+                break;
+            }
+        }
+        assert_eq!(
+            found.as_deref(),
+            Some(QUIVER_DSP_VERSION),
+            "QUIVER_DSP_VERSION is stale"
         );
     }
 }

@@ -69,6 +69,22 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.meterTick = 0;
     this.meterView = null;
     this.meterPtr = 0;
+    // The B slot: a second instrument that follows the same hands, so an
+    // offer can be heard against home by crossfade rather than by a jump.
+    // Rendered whenever it is loaded (so its envelopes and tails are in step
+    // with A when the fader moves), mixed at equal power. held mirrors the
+    // notes under the player's fingers so a freshly loaded B joins the chord.
+    this.polyB = null;
+    this.mixB = 0;
+    this.mixCur = 0;
+    this.mixBuf = null;
+    this.viewB = null;
+    this.viewBPtr = 0;
+    // Retiring B: null, "swap" (wait for A to finish rebuilding, as on Take),
+    // or "fade" (fading out; freed once silent). Never freed mid-sound.
+    this.bRetire = null;
+    this.arpMsg = null;
+    this.held = new Map();
     this.port.onmessage = (e) => {
       try {
         this.handle(e.data);
@@ -102,21 +118,104 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         else this.loadPatch(m);
         break;
       }
-      case "on": if (this.poly) this.poly.note_on(m.note, m.vel == null ? 1.0 : m.vel); break;
-      case "off": if (this.poly) this.poly.note_off(m.note); break;
-      case "alloff": if (this.poly) this.poly.all_off(); break;
-      case "bend": if (this.poly) this.poly.set_bend(m.semis); break;
-      case "glide": if (this.poly) this.poly.set_glide(m.amount); break;
-      case "unison": if (this.poly) this.poly.set_unison(m.on, m.detune, m.spread); break;
-      case "arp":
-        if (this.poly) {
-          this.poly.set_arp(
-            m.on, m.mode, m.div, m.bpm,
-            m.gate == null ? 0.5 : m.gate,
-            m.octaves == null ? 1 : m.octaves,
-            m.swing == null ? 0.0 : m.swing
-          );
+      case "on": {
+        const vel = m.vel == null ? 1.0 : m.vel;
+        this.held.set(m.note, vel);
+        if (this.poly) this.poly.note_on(m.note, vel);
+        if (this.polyB) this.polyB.note_on(m.note, vel);
+        break;
+      }
+      case "off":
+        this.held.delete(m.note);
+        if (this.poly) this.poly.note_off(m.note);
+        if (this.polyB) this.polyB.note_off(m.note);
+        break;
+      case "alloff":
+        this.held.clear();
+        if (this.poly) this.poly.all_off();
+        if (this.polyB) this.polyB.all_off();
+        break;
+      case "bend":
+        if (this.poly) this.poly.set_bend(m.semis);
+        if (this.polyB) this.polyB.set_bend(m.semis);
+        break;
+      case "glide":
+        this.glideAmt = m.amount;
+        if (this.poly) this.poly.set_glide(m.amount);
+        if (this.polyB) this.polyB.set_glide(m.amount);
+        break;
+      case "unison":
+        this.uni = m;
+        if (this.poly) this.poly.set_unison(m.on, m.detune, m.spread);
+        if (this.polyB) this.polyB.set_unison(m.on, m.detune, m.spread);
+        break;
+      // Tempo sync for step sequencers: A and B share it, and both restart
+      // their transport on the same first key.
+      case "sync":
+        this.syncOn = !!m.on;
+        if (this.poly) this.poly.set_sync(this.syncOn);
+        if (this.polyB) this.polyB.set_sync(this.syncOn);
+        break;
+      case "transport":
+        if (this.poly) this.poly.restart_transport();
+        if (this.polyB) this.polyB.restart_transport();
+        break;
+      // MIDI clock, once a beat: where the room says the transport is.
+      case "transport_beats":
+        if (this.poly) this.poly.set_transport_beats(m.beats);
+        if (this.polyB) this.polyB.set_transport_beats(m.beats);
+        break;
+      // ---- the B slot ----
+      case "b_patch": {
+        if (!this.ready) break;
+        try {
+          if (this.polyB) {
+            if (!this.polyB.set_patch(m.tree)) {
+              this.port.postMessage({ type: "b_error", error: "unreadable patch" });
+              break;
+            }
+          } else {
+            this.polyB = new LivePoly(m.tree, sampleRate, 4);
+            if (this.glideAmt != null) this.polyB.set_glide(this.glideAmt);
+            if (this.uni) this.polyB.set_unison(this.uni.on, this.uni.detune, this.uni.spread);
+            if (this.arpMsg) this.applyArp(this.polyB, this.arpMsg);
+            if (this.syncOn) this.polyB.set_sync(true);
+            for (const [n, v] of this.held) this.polyB.note_on(n, v);
+            // Replaying the held chord key-synced B to zero; A has been
+            // playing for a while. B joins A's grid, or a Blend would cross
+            // two step patterns at unrelated positions.
+            if (this.syncOn && this.poly) this.polyB.set_transport_beats(this.poly.transport_beats());
+          }
+          this.bRetire = null;
+          if (m.makeup != null) this.polyB.set_makeup(m.makeup);
+          this.port.postMessage({ type: "b_ready" });
+        } catch (err) {
+          this.port.postMessage({ type: "b_error", error: String(err) });
         }
+        break;
+      }
+      case "touch":
+        if (this.poly) this.poly.set_touch(m.sites, m.depth);
+        break;
+      case "touch_base":
+        if (this.poly) this.poly.set_touch_base(m.i, m.v);
+        break;
+      case "b_mix": this.mixB = Math.min(1, Math.max(0, +m.mix || 0)); break;
+      case "b_param": if (this.polyB) this.polyB.set_param(m.addr, m.value); break;
+      case "b_clear":
+        if (!this.polyB) break;
+        if (m.afterSwap) {
+          this.bRetire = "swap";
+          this.bRetireN = 0;
+        }
+        else {
+          this.bRetire = "fade";
+          this.mixB = 0;
+        }
+        break;
+      case "arp":
+        this.arpMsg = m;
+        for (const p of [this.poly, this.polyB]) if (p) this.applyArp(p, m);
         break;
       case "rec": {
         if (m.on) {
@@ -164,6 +263,14 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       }
     }
   }
+  applyArp(p, m) {
+    p.set_arp(
+      m.on, m.mode, m.div, m.bpm,
+      m.gate == null ? 0.5 : m.gate,
+      m.octaves == null ? 1 : m.octaves,
+      m.swing == null ? 0.0 : m.swing
+    );
+  }
   loadPatch(m) {
     try {
       if (this.poly) {
@@ -178,6 +285,7 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       } else {
         this.poly = new LivePoly(m.tree, sampleRate, 4);
         if (m.makeup != null) this.poly.set_makeup(m.makeup);
+        if (this.syncOn) this.poly.set_sync(true);
         this.port.postMessage({ type: "patched" });
       }
     } catch (err) {
@@ -194,6 +302,9 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       // we view its memory directly. The cached view is rebuilt only when
       // wasm memory grows (buffer identity changes) or the pointer moves.
       const ptr = this.poly.process_ptr(n);
+      // B renders after A. A wasm memory grow during B's call invalidates
+      // every view but not A's data, so both views are taken after both calls.
+      const ptrB = this.polyB ? this.polyB.process_ptr(n) : 0;
       if (
         !this.view ||
         this.viewPtr !== ptr ||
@@ -203,7 +314,32 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         this.view = new Float32Array(wasm.memory.buffer, ptr, n * 2);
         this.viewPtr = ptr;
       }
-      const buf = this.view;
+      let buf = this.view;
+      if (this.polyB) {
+        if (
+          !this.viewB ||
+          this.viewBPtr !== ptrB ||
+          this.viewB.length !== n * 2 ||
+          this.viewB.buffer !== wasm.memory.buffer
+        ) {
+          this.viewB = new Float32Array(wasm.memory.buffer, ptrB, n * 2);
+          this.viewBPtr = ptrB;
+        }
+        const vb = this.viewB;
+        if (!this.mixBuf || this.mixBuf.length !== n * 2) this.mixBuf = new Float32Array(n * 2);
+        const mb = this.mixBuf;
+        // Equal-power, smoothed per sample (~10 ms), so a Peek is a gesture
+        // and not a click.
+        for (let i = 0; i < n; i++) {
+          this.mixCur += (this.mixB - this.mixCur) * 0.002;
+          const th = this.mixCur * 1.5707963267948966;
+          const ga = Math.cos(th);
+          const gb = Math.sin(th);
+          mb[2 * i] = buf[2 * i] * ga + vb[2 * i] * gb;
+          mb[2 * i + 1] = buf[2 * i + 1] * ga + vb[2 * i + 1] * gb;
+        }
+        buf = mb;
+      }
       for (let i = 0; i < n; i++) {
         L[i] = buf[2 * i];
         R[i] = buf[2 * i + 1];
@@ -211,7 +347,25 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       // Recording copies the interleaved block (allocation only while a
       // take is rolling — never in the steady state).
       if (this.rec) this.rec.push(buf.slice(0, n * 2));
+      if (this.polyB) {
+        const evB = this.polyB.poll_event();
+        if (evB === 2) this.port.postMessage({ type: "b_error", error: this.polyB.last_error() });
+      }
       const ev = this.poly.poll_event();
+      // A rebuilt (or failed to, or never needed to: ~2 s of quanta without
+      // word) — either way B's turn is over.
+      if (this.bRetire === "swap" && (ev === 1 || ev === 2 || ++this.bRetireN > 700)) {
+        this.bRetire = "fade";
+        this.mixB = 0;
+      }
+      // Faded out: now it can go. Freed between quanta, never under a sample.
+      if (this.bRetire === "fade" && this.polyB && this.mixCur < 1e-4) {
+        this.polyB.free();
+        this.polyB = null;
+        this.viewB = null;
+        this.bRetire = null;
+        this.mixCur = 0;
+      }
       if (ev === 1) this.port.postMessage({ type: "patched" });
       else if (ev === 2)
         this.port.postMessage({ type: "patch_error", error: this.poly.last_error() });
@@ -317,11 +471,43 @@ export async function initLiveAudio(audioCtx, build, dest) {
     unison(on, detune, spread) {
       node.port.postMessage({ type: "unison", on, detune, spread });
     },
+    sync(on) {
+      node.port.postMessage({ type: "sync", on });
+    },
+    transportStart() {
+      node.port.postMessage({ type: "transport" });
+    },
+    transportBeats(beats) {
+      node.port.postMessage({ type: "transport_beats", beats });
+    },
     arp(on, mode, div, bpm, gate, octaves, swing) {
       node.port.postMessage({ type: "arp", on, mode, div, bpm, gate, octaves, swing });
     },
     rec(on) {
       node.port.postMessage({ type: "rec", on });
+    },
+    // Velocity -> timbre (PERFORM's touch row): which knobs a note's velocity
+    // offsets on its own voice, and their current values as they move.
+    touch(sites, depth) {
+      node.port.postMessage({ type: "touch", sites: JSON.stringify(sites), depth });
+    },
+    touchBase(i, v) {
+      node.port.postMessage({ type: "touch_base", i, v });
+    },
+    // The B slot (PERFORM's offers): load, crossfade, tweak, clear.
+    bPatch(tree, makeup) {
+      node.port.postMessage({ type: "b_patch", tree, makeup });
+    },
+    bMix(mix) {
+      node.port.postMessage({ type: "b_mix", mix });
+    },
+    bParam(addr, value) {
+      node.port.postMessage({ type: "b_param", addr, value });
+    },
+    // Retire B: a short fade, or with afterSwap, wait for A to finish
+    // rebuilding first (Take hands B's tree to A).
+    bClear(opts) {
+      node.port.postMessage({ type: "b_clear", afterSwap: !!(opts && opts.afterSwap) });
     },
     // Interior level metering for the rack's flow animation. Replies with
     // `meter_keys` (the module keys the values are indexed by) and then

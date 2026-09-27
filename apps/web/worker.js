@@ -67,6 +67,18 @@ function endLongOp() {
   }
 }
 
+// One PERFORM reply: `field` carries the answer, or null with `error` set.
+function performReply(m, type, field, long, fn) {
+  if (long) beginLongOp();
+  try {
+    post({ type, req: m.req, [field]: fn() });
+  } catch (err) {
+    post({ type, req: m.req, [field]: null, error: String((err && err.message) || err) });
+  } finally {
+    if (long) endLongOp();
+  }
+}
+
 // How many vetted candidates make a bank worth duelling. Below this the
 // acquisition function is choosing from too few distinct patches for the
 // question to be worth asking; above it, waiting is pure cost — the pool is
@@ -460,16 +472,49 @@ const EMPTY_F32 = new Float32Array(0);
 // The deferred form does the same work in the same order — the native gate
 // `deferred_restore_equals_import_state` pins that — but one entry at a time,
 // off-engine, with the bar tracking it.
+//
+// Both paths ask the engine for a *verdict*, not a count. `import_session`
+// answered 0 for a save with nothing in it and for a save this build cannot
+// parse, and the app treated both as "nothing to restore" — then autosaved a
+// fresh session over a record it had never understood (an older cached build
+// opening a newer save, a new enum variant, one corrupt bank tree). The
+// `_checked` / `_v2` forms say `unparseable` for the second case, and that
+// verdict goes to main as `restore_failed`, which is what stops the write.
+function restoreFailed(status) {
+  post({ type: "restore_failed", status });
+  return 0;
+}
+function restoreSerial(saved) {
+  let verdict = null;
+  try {
+    verdict = JSON.parse(engine.import_session_checked(saved));
+  } catch (err) {
+    // A binary without the checked surface (stale cache): the old count, which
+    // cannot tell the two cases apart. Better than refusing to boot.
+    console.warn("[auracle] checked restore unavailable:", err);
+    return engine.import_session(saved);
+  }
+  if (verdict.status === "unparseable") return restoreFailed(verdict.status);
+  return verdict.restored | 0;
+}
 async function restoreSession(saved, farmed, stages) {
-  if (!farmed) return engine.import_session(saved);
+  if (!farmed) return restoreSerial(saved);
 
   let jobs = null;
   try {
-    jobs = JSON.parse(engine.import_session_deferred(saved));
+    const verdict = JSON.parse(engine.import_session_deferred_v2(saved));
+    if (verdict.status === "unparseable") return restoreFailed(verdict.status);
+    jobs = verdict.jobs;
   } catch (err) {
-    // A binary without the deferred surface (stale cache): today's path.
-    console.warn("[auracle] deferred restore unavailable:", err);
-    return engine.import_session(saved);
+    // A binary without the v2 surface (stale cache): the un-verdicted form, and
+    // failing that the serial path.
+    console.warn("[auracle] verdicted restore unavailable:", err);
+    try {
+      jobs = JSON.parse(engine.import_session_deferred(saved));
+    } catch (err2) {
+      console.warn("[auracle] deferred restore unavailable:", err2);
+      return restoreSerial(saved);
+    }
   }
   if (!Array.isArray(jobs) || jobs.length === 0) {
     try { return engine.restore_finish(); } catch (_) { return 0; }
@@ -492,9 +537,15 @@ async function restoreSession(saved, farmed, stages) {
     absorb: (i, r) => {
       next = i + 1;
       if (r.ok) {
-        // `false` here is a genuine vet failure: the entry no longer
-        // featurizes, and `import_state` drops it too.
+        // `false` from absorb is either a genuine vet failure or a farmed
+        // row this engine cannot read — one from an older featurizer
+        // (RENDER_EPOCH) that no longer deserializes. The second is not a
+        // verdict on the patch, and dropping a bank entry deletes a patch the
+        // user kept (the next autosave makes that permanent), so it is
+        // rendered here instead. A genuine vet failure fails that too, and
+        // the entry is dropped as `import_state` would drop it.
         if (engine.bank_absorb(i, r.cached, r.samples || EMPTY_F32)) landed++;
+        else if (engine.bank_render(i)) landed++;
         return;
       }
       // `!ok` on this path is a *watchdog retirement*, not a verdict on the
@@ -572,6 +623,20 @@ function bankTwinOf(json) {
   return 0;
 }
 
+// Why the last `refine_seed` / `refine_from` returned nothing: one of `idle`,
+// `injected`, `no_taste`, `unknown_seed`, `outside_support`, `no_move`,
+// `duplicate`, `not_admitted`. `outside_support` is the one worth a sentence
+// in the UI — the seed has zero mass under the prior (a knob on its stop, a
+// tree deeper than the prior scores), so the walk never started and no budget
+// or lock-loosening will change that. Null on a binary too old to say.
+function refineReason() {
+  try {
+    return engine.last_refine_reason();
+  } catch (_) {
+    return null;
+  }
+}
+
 // Everything the taste instruments need, in one bundle.
 function tasteViews() {
   return {
@@ -614,6 +679,18 @@ function postLiveTree(edited) {
   });
 }
 
+// What the model makes of the bench, without a render: a dot product against
+// the bench's cached φ under whatever posterior the engine holds now. Rides
+// with every refit, or the line above the rack goes on showing the guess from
+// before the fit — or "not yet" — until the next knob turn.
+function benchBelief() {
+  try {
+    return { utility: JSON.parse(engine.edit_utility()), explain: JSON.parse(engine.edit_explain()) };
+  } catch {
+    return null;
+  }
+}
+
 function postBench(extra) {
   const buf = engine.edit_render();
   const arr = new Float32Array(buf);
@@ -640,6 +717,59 @@ function postBench(extra) {
   );
 }
 
+// ---------- the engine failing ----------
+//
+// Every reply this worker sends is load-bearing: main holds a flag per
+// in-flight request (`fitting`, `editInFlight`, the evolve button, …) that only
+// the reply clears. So a request that *throws* instead of replying used to
+// leave that flag set for the rest of the session — and because `onmessage` is
+// async, the throw was an unhandled rejection inside the worker, which does not
+// reach `worker.onerror` on the main thread. The UI sat in "thinking" with
+// edits deadlocked and no message anywhere saying why.
+//
+// `dispatch` runs every request under one catch that answers with
+// `engine_error` carrying the request's type (and id, when it has one), so
+// main can release exactly the state that request was holding.
+//
+// The message also says whether the engine is *gone*. The wasm build has
+// `panic = "abort"`, so a Rust panic is a trap (`WebAssembly.RuntimeError`) that
+// unwinds out of a `&mut self` call without clearing wasm-bindgen's borrow
+// flag — and every later call fails with "recursive use of an object" instead
+// of the real fault. Once that has happened nothing here can be trusted, so
+// the worker latches `poisoned` and answers every further request with the
+// same fatal `engine_error` rather than calling into the binary again.
+let poisoned = null;
+
+function isFatal(err, message) {
+  return (
+    (typeof WebAssembly !== "undefined" && err instanceof WebAssembly.RuntimeError) ||
+    /recursive use of an object|unreachable|memory access out of bounds/i.test(message)
+  );
+}
+
+function engineError(request, id, err) {
+  const message = poisoned ? `the engine is down (${poisoned})` : String((err && err.message) || err);
+  const fatal = !!poisoned || isFatal(err, message);
+  if (fatal && !poisoned) poisoned = message;
+  console.error(`[auracle] engine error handling ${request}:`, err);
+  post({ type: "engine_error", request, id: id == null ? null : id, message, fatal });
+}
+
+// A rejection nothing awaited. Not a request's own failure — `dispatch`
+// catches those — but it is still an error the main thread would otherwise
+// never hear about.
+self.addEventListener("unhandledrejection", (ev) => {
+  const err = ev.reason;
+  console.error("[auracle] unhandled rejection in the engine worker:", err);
+  post({
+    type: "engine_error",
+    request: null,
+    id: null,
+    message: String((err && err.message) || err),
+    fatal: isFatal(err, String((err && err.message) || err)),
+  });
+});
+
 self.onmessage = async (e) => {
   const m = e.data;
   // Everything but `init` needs the engine, and `init` is async: it imports the
@@ -657,6 +787,18 @@ self.onmessage = async (e) => {
     post({ type: "not_ready", request: m.type });
     return;
   }
+  if (poisoned) {
+    engineError(m.type, m.id, null);
+    return;
+  }
+  try {
+    await dispatch(m);
+  } catch (err) {
+    engineError(m.type, m.id, err);
+  }
+};
+
+async function dispatch(m) {
   switch (m.type) {
     case "init": {
       // Boot owns the farm: N x ~15 MB of linear memory and N live ports
@@ -677,7 +819,16 @@ self.onmessage = async (e) => {
         });
         WasmEngine = mod.WasmEngine;
         engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);
-        post({ type: "ready" });
+        // The structural ceilings a hand-built patch must respect, from the
+        // grammar itself. The app used to restate them as literals, and the
+        // two depth ceilings moved when they were derived from the prior's
+        // support; a number the engine owns is read from the engine. Null on
+        // a binary too old to say, and main keeps its fallback.
+        let ceilings = null;
+        try {
+          ceilings = JSON.parse(mod.budget_ceilings());
+        } catch (_) { /* older engine */ }
+        post({ type: "ready", ceilings });
 
         // Farm ports arrive already connected to workers main spawned before it
         // even read the save, so their wasm init has been overlapping with ours.
@@ -852,7 +1003,7 @@ self.onmessage = async (e) => {
           beginLongOp();
           try {
             engine.fit();
-            post({ type: "fitted", views: tasteViews(), status: status() });
+            post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
           } finally {
             endLongOp();
           }
@@ -949,12 +1100,27 @@ self.onmessage = async (e) => {
       );
       break;
     }
+    // The three vote routes answer with `recorded`: `false` when the engine
+    // took nothing because the id is no longer in the pool — a duel side
+    // evicted by a generation, a preset load or an import inside the 7 s undo
+    // window. The engine always dropped that vote; the app used to count it,
+    // score it and toast "rated". `vote` rides back so main can undo what it
+    // did optimistically. `!== false` so a stale binary (no boolean) still
+    // reads as recorded.
     case "record_duel": {
       // Prediction is computed BEFORE the vote enters the log — this is the
       // model's honest forecast, scored against the user's actual choice.
       const pred = engine.duel_pred(m.a, m.b);
-      engine.record_duel(m.a, m.b, m.choseA);
-      post({ type: "status", status: status(), pred, choseA: m.choseA });
+      const recorded = engine.record_duel(m.a, m.b, m.choseA) !== false;
+      post({
+        type: "status",
+        status: status(),
+        // A forecast for a vote that was not taken must not be scored.
+        pred: recorded ? pred : null,
+        choseA: m.choseA,
+        recorded,
+        vote: { kind: "duel", a: m.a, b: m.b },
+      });
       break;
     }
     // The forecast alone, for immediate display: the vote itself is buffered
@@ -965,20 +1131,32 @@ self.onmessage = async (e) => {
       break;
     }
     case "record_keep": {
-      engine.record_keep(m.id, m.kept);
-      post({ type: "status", status: status() });
+      const recorded = engine.record_keep(m.id, m.kept) !== false;
+      post({
+        type: "status",
+        status: status(),
+        recorded,
+        vote: { kind: "keep", id: m.id, kept: m.kept },
+      });
       break;
     }
     case "record_stars": {
-      engine.record_stars(m.id, m.rating);
-      post({ type: "status", status: status() });
+      const recorded = engine.record_stars(m.id, m.rating) !== false;
+      post({
+        type: "status",
+        status: status(),
+        recorded,
+        // `prev` is what the bank showed before the optimistic update — echoed,
+        // not remembered here, because this worker holds no UI state.
+        vote: { kind: "stars", id: m.id, rating: m.rating, prev: m.prev || 0 },
+      });
       break;
     }
     case "fit": {
       beginLongOp();
       try {
         engine.fit();
-        post({ type: "fitted", views: tasteViews(), status: status() });
+        post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
       } finally {
         endLongOp();
       }
@@ -1005,12 +1183,20 @@ self.onmessage = async (e) => {
           break;
         }
         const born = [];
+        // Why each seed that produced nothing produced nothing — see
+        // `refineReason`. All of them, so main can say "every seed" when it is
+        // true rather than the first one's story.
+        const reasons = [];
         for (let i = 0; i < seeds.length; i++) {
           post({ type: "refine_progress", done: i, total: seeds.length });
           const childId = Number(engine.refine_seed(seeds[i]));
           if (childId > 0) born.push(childId);
+          else reasons.push(refineReason());
         }
-        post({ type: "refined", views: tasteViews(), status: status(), born });
+        // The last seed is bred; what is left is placing the children and
+        // re-drawing the views. Said, or the button sits on "10/10…".
+        post({ type: "refine_progress", done: seeds.length, total: seeds.length });
+        post({ type: "refined", views: tasteViews(), status: status(), born, reasons, bench: benchBelief() });
       } finally {
         endLongOp();
       }
@@ -1124,6 +1310,7 @@ self.onmessage = async (e) => {
           type: "evolved_from",
           seedId: m.id,
           childId,
+          reason: childId > 0 ? null : refineReason(),
           views: tasteViews(),
           status: status(),
         });
@@ -1132,6 +1319,40 @@ self.onmessage = async (e) => {
       }
       break;
     }
+    // ---- performance surface (PERFORM) ----
+    // Each of these replies exactly once, with the caller's `req` echoed, so
+    // main can drop a reply for a patch it has since moved away from.
+    // PERFORM's four questions. Every one answers, even on a throw: the page
+    // tracks each request until its reply lands, and a missing reply would
+    // leave (say) an offer "in flight" forever and refuse the next one.
+    case "perform_wire":
+      performReply(m, "perform_wired", "data", true, () =>
+        JSON.parse(engine.perform_wire(m.tree, JSON.stringify(m.overrides || []))));
+      break;
+    case "perform_apply":
+      performReply(m, "perform_applied", "json", false, () =>
+        engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])));
+      break;
+    case "perform_drift":
+      performReply(m, "perform_drifted", "drift", true, () =>
+        JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12, m.sigma || 0.05)));
+      break;
+    case "perform_graft":
+      performReply(m, "perform_grafted", "graft", false, () =>
+        JSON.parse(engine.perform_graft(m.tree, JSON.stringify(m.overrides || []), m.k)));
+      break;
+    // An offer answered in PERFORM: a heard comparison, recorded as a duel
+    // tagged `perform_offer`. The status follows so the picks counter and the
+    // refit pacing see it like any other vote.
+    case "perform_record":
+      performReply(m, "perform_recorded", "recorded", true, () =>
+        engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took));
+      post({ type: "status", status: status() });
+      break;
+    case "perform_offer":
+      performReply(m, "perform_offered", "offer", true, () =>
+        JSON.parse(engine.perform_offer(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 40)));
+      break;
     case "tree_json": {
       post({
         type: "tree_json",
@@ -1234,7 +1455,42 @@ self.onmessage = async (e) => {
       // `warm` rides along so the first-run elicitation can pair the loaded id
       // back to the preset the user picked; `preview` says the caller only
       // wants to hear it, so the UI must not haul it onto the bench.
-      post({ type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview, views: tasteViews(), status: status() });
+      // `prewarm` (booth mode) wants the tree itself, to measure PERFORM's
+      // wiring without opening the patch, so the tree rides back too.
+      post({
+        type: "preset_loaded", id, index: m.index, warm: m.warm, preview: m.preview,
+        prewarm: m.prewarm, json: m.prewarm && id > 0 ? engine.tree_json_of(id) : undefined,
+        views: tasteViews(), status: status(),
+      });
+      break;
+    }
+    // The first-run elicitation, in one turn. It used to be nine
+    // `load_preset`s and then eighteen `record_duel`s from main, and the pool
+    // is full by the time anyone has listened to nine sounds: each insert
+    // evicts something, the six unpicked presets evicted each other on the
+    // way in, and a user who took 25 s to choose lost 15 of 18 preferences
+    // ("that patch is gone"). Here every unpicked preset's three duels are
+    // recorded the moment it lands, before the next insert can evict it, and
+    // the picks go in first and pinned so they are alive for every pairing.
+    case "warm_start": {
+      const ids = {};
+      for (const i of m.picked) {
+        const id = Number(engine.load_preset(i));
+        if (id > 0) {
+          engine.set_pinned(id, true);
+          ids[i] = id;
+        }
+      }
+      let n = 0;
+      for (const i of m.rest) {
+        const id = Number(engine.load_preset(i));
+        if (id <= 0) continue;
+        ids[i] = id;
+        for (const p of m.picked) {
+          if (ids[p] != null && engine.record_duel(ids[p], id, true) !== false) n += 1;
+        }
+      }
+      post({ type: "warm_done", ids, n, first: ids[m.picked[0]] ?? null, views: tasteViews(), status: status() });
       break;
     }
     case "edit_structure": {
@@ -1255,7 +1511,8 @@ self.onmessage = async (e) => {
     }
     // ---- persistence ----
     case "export": {
-      post({ type: "exported", json: engine.export_profile() });
+      // `reason` is echoed so main can name a safety copy for what it is.
+      post({ type: "exported", json: engine.export_profile(), reason: m.reason || null });
       break;
     }
     case "import": {
@@ -1264,4 +1521,4 @@ self.onmessage = async (e) => {
       break;
     }
   }
-};
+}

@@ -110,7 +110,7 @@ sufficient; no server is required) keeps every word of
 
 **What it would close, and what it opens.** Directly: the K-cap question, whose
 evidence is the rows where `k == k_styles`. Indirectly, and worth more, a
-**population prior on $\theta$**. Cold start today is 41 coordinates starting
+**population prior on $\theta$**. Cold start today is 44 coordinates starting
 from a prior mean of zero, against which the [three-pick warm
 start](../../docs/teaching.html#the-warm-start) buys 18 observations in thirty
 seconds. A hierarchical prior fitted across donated profiles is the only
@@ -156,7 +156,7 @@ the instrument cannot express today.
 
 **The distance can only be over the audio half, and that is a feature.** A
 recording a user brings has no term, so it has no
-[φ_struct](../features/structural.md) at all — 26 of the 41 coordinates are
+[φ_struct](../features/structural.md) at all — 26 of the 44 coordinates are
 simply not defined for it, and $W$ has to zero them. That is the right
 behaviour rather than a limitation: *sound like this, by whatever means*, with
 the grammar prior left to supply the parsimony that keeps the means sane. A
@@ -167,11 +167,12 @@ topology the reference never had.
 is measured under the [standard phrase](../audition/phrase.md); the
 [`:p2` tag](../audition/phrase.md#the-p2-stimulus-tag) exists precisely because
 a coordinate's meaning is relative to the stimulus that produced it, and a
-reference clip is not that phrase. Twelve of the fifteen
+reference clip is not that phrase. Twelve of the eighteen
 [φ_audio](../features/audio.md) coordinates are whole-phrase statistics and
-survive the mismatch with a caveat about pitch content; the three
-**segment-local** ones (`held_centroid_std`, `high_ratio`,
-`chord_flatness_delta`) find their roles by property — first note, highest
+survive the mismatch with a caveat about pitch content; the six
+**segment-local** ones (`held_centroid_std` and the three motion bands, on
+the first held note; `high_ratio`; `chord_flatness_delta`) find their roles
+by property — first note, highest
 note, first chord — and arbitrary audio may have none of them. The imputation
 is already honest, since an absent coordinate reads as *no evidence*, but here
 the absence lands on the axes describing timbral motion and register, which is
@@ -436,7 +437,7 @@ system has ever computed is a labelled row, and the
 [persistent render cache](../persistence.md#the-persistent-render-cache) is
 exactly a table of them that survives reloads. `pipeline_stats` already draws
 1200 prior samples to compute the VIFs; the same draws are a design matrix. A
-ridge fit of the fifteen audio coordinates on the twenty-six structural ones is
+ridge fit of the eighteen audio coordinates on the twenty-six structural ones is
 $\partial\text{brightness}/\partial\text{production}$, which is the missing map.
 
 **Why it is worth more than it sounds.** The coefficients a listener can
@@ -553,7 +554,7 @@ which is precisely the problem that entry is about.
 
 ## 15. The fit budget is denominated in steps, not sweeps
 
-10 000 fixed steps over $210 + S$ sites at $K=5$ is ~47 sweeps per site,
+10 000 fixed steps over $225 + S$ sites at $K=5$ is ~44 sweeps per site,
 against ~200 at $K=1$. The [posterior](../taste/posterior.md) page states the
 consequence plainly: growing $K$ makes the fit both slower **and**
 statistically thinner. So the model that has learned the most about a user is

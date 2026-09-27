@@ -70,8 +70,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      # A prebuilt binary from the tool cache, the same way ci.yml gets it. This
+      # used to curl-pipe upstream's installer, unpinned, which ran a third-party
+      # script and took whatever version it served that day — and was the one
+      # place in three workflows that did.
+      - uses: taiki-e/install-action@wasm-pack
 
       # mdbook and mdbook-admonish ship prebuilt binaries; mdbook-katex does not
       # publish any, so it has to be compiled — which is why the cache is keyed on

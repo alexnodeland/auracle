@@ -179,9 +179,20 @@ impl Standardizer {
                     }
                 }
             }
+            // Finite by construction for any real column, but a column of
+            // ±1e308s overflows the moments to ±∞ — and `serde_json` writes a
+            // non-finite float as `null`, which the profile then cannot load.
+            // The degenerate case is the honest one here too.
+            if !m.is_finite() || !s.is_finite() {
+                continue;
+            }
             mean[j] = m;
             std[j] = if s < 1e-9 { 1.0 } else { s };
         }
+        debug_assert!(
+            mean.iter().chain(&std).all(|v| v.is_finite()),
+            "a standardizer with a non-finite moment would not survive its own save"
+        );
         Self { mean, std }
     }
 
@@ -328,5 +339,24 @@ mod tests {
         let sz = Standardizer::fit(&col(&[0.2, f64::NAN, 0.8, 0.5]));
         assert!(sz.mean[0].is_finite() && sz.std[0].is_finite());
         assert!(sz.transform(&[0.5])[0].is_finite());
+    }
+
+    /// A column whose moments overflow falls back to (0, 1) rather than
+    /// writing `inf` — which `serde_json` would serialize as `null` and the
+    /// profile would then fail to load.
+    #[test]
+    fn overflowing_moments_fall_back_to_the_degenerate_case() {
+        let rows: Vec<Vec<f64>> = (0..12)
+            .map(|i| vec![if i % 2 == 0 { 1e308 } else { -1e308 }, i as f64])
+            .collect();
+        let sz = Standardizer::fit(&rows);
+        assert!(sz.mean[0].is_finite() && sz.std[0].is_finite());
+        assert_eq!((sz.mean[0], sz.std[0]), (0.0, 1.0));
+        assert!(sz.mean[1].is_finite() && sz.std[1] > 0.0);
+        let json = serde_json::to_string(&sz).unwrap();
+        assert!(
+            !json.contains("null"),
+            "a standardizer must round-trip: {json}"
+        );
     }
 }

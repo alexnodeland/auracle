@@ -49,6 +49,17 @@
   --bezel: #07080a;         /* screen bezels */
   --hairline: #292e36;
 
+  /* machined graphite — the two faces of every raised control and the ink
+     of the shadow under it, one literal each, so a retune is one line */
+  --plate-hi: #232830;      /* util buttons, selects: top of the face */
+  --plate-lo: #181b21;      /*   …and the bottom */
+  --btn-hi: #2a2f37;        /* hardware buttons and pads: top of the face */
+  --btn-lo: #1a1d23;        /*   …and the bottom */
+  --btn-hover-hi: #333944;  /* the same face under a pointer: one step up */
+  --btn-hover-lo: #1e2228;
+  --shadow-ink: #0a0b0d;    /* the hard shadow line under a raised control */
+  --knob-body: #22262d;     /* PERFORM's knob caps */
+
   /* silk — warm silkscreen ink */
   --silk: #d9d4c8;          /* 13.1:1 on rack */
   --silk-dim: #9a958a;      /*  5.9:1 — all dimmed TEXT */
@@ -70,7 +81,7 @@
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
 
-  /* type scale — six roles, 10px floor. Nothing on an instrument panel
+  /* type scale — seven roles, 10px floor. Nothing on an instrument panel
      should be 6.5px. */
   --t-micro: 10px;   /* mono — knob values, jack labels */
   --t-label: 11px;   /* silk caps — panel labels */
@@ -78,6 +89,7 @@
   --t-lead: 15px;    /* the model speaking */
   --t-title: 17px;   /* view + module titles, counters */
   --t-hero: 22px;    /* wordmark */
+  --t-display: 26px; /* the patch in your hands, PERFORM's one headline */
 
   /* The rack draws through a camera the player aims (0.3×–2.5×, fitted to the
      frame on load and capped at 2.2× there), so its type floor has to hold at
@@ -164,6 +176,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 .panel-label.amber { color: var(--phos-b); }
+/* Tracked caps at 1× on Linux: hinting rounds a Jost "T" up to a whole
+   pixel, and with the tracking these carry that opens a gap after it — "ST
+   YLES", "T RUST", "PATC H". Fractional (unhinted) advances close it, and
+   run a few pixels narrower. Only the tracked caps: on running text the same
+   switch re-wraps paragraphs, and there is no gap there to close. */
+.panel-label, .viewtab, .tab, .counter-label, .util-btn, .hw-btn, .toggle,
+.bank-filters .bf, .pb-cat, .pc-cap, .pf-k-name, .pf-pad, .pf-xy-cap, .pf-hood-h,
+.help-h, .sp-title, .midi-h, .toast-undo, .tray-label, .ce-title {
+  text-rendering: geometricPrecision;
+}
 
 /* ===================== app frame ===================== */
 .app {
@@ -183,22 +205,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--hairline);
   background: linear-gradient(180deg, #1c2026, #14161a);
 }
-/* Rack ears carry screws at their ends, not a rail of sensor dust across the
-   full width — masked to the two ends where the "ears" would be. */
+/* Rack ears carry one screw at each end — not a rail of them. The rail was
+   masked to the ends, but the mask still let its second and third screws
+   through *behind the wordmark*, between the U and the R, and the first read
+   as a bullet before it ("·AURACLE"). One screw per ear, and the wordmark
+   starts a clear 10px after it. */
 .menubar::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle 2.6px at 10px 50%, #000 0 2.2px, #30343c 2.6px, transparent 3.4px);
-  background-size: 44px 100%;
-  -webkit-mask: linear-gradient(90deg, #000 0 60px, transparent 100px calc(100% - 100px), #000 calc(100% - 60px));
-  mask: linear-gradient(90deg, #000 0 60px, transparent 100px calc(100% - 100px), #000 calc(100% - 60px));
+  background:
+    radial-gradient(circle 2.6px at 8px 50%, #000 0 2.2px, #30343c 2.6px, transparent 3.4px),
+    radial-gradient(circle 2.6px at calc(100% - 8px) 50%, #000 0 2.2px, #30343c 2.6px, transparent 3.4px);
 }
 .wordmark {
+  padding-left: 6px;
   font-size: var(--t-hero);
   font-weight: 500;
-  letter-spacing: 0.3em;
+  /* The brand ramp (www/brand): 0.145em under 24px. Wider and AURACLE reads
+     as seven letters rather than a word. */
+  letter-spacing: 0.145em;
   color: var(--silk);
   display: flex;
   align-items: baseline;
@@ -251,12 +278,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--silk);
-  background: linear-gradient(180deg, #232830, #181b21);
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   border: 1px solid #000;
   border-radius: 3px;
   padding: 6px 10px;
   cursor: pointer;
-  box-shadow: var(--lift), 0 2px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 2px 0 var(--shadow-ink);
   transition: transform 60ms ease, box-shadow 60ms ease;
 }
 .util-btn:hover { border-color: var(--silk-dim); }
@@ -315,6 +342,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--hairline);
 }
 .bank-head .silk-dim { font-size: var(--t-micro); }
+/* "+N arriving" owns the stretch between the label and the save count, and
+   gives it up by ellipsizing. It used to be as wide as its text, so the save
+   count beside it walked 66px left the moment the pool finished filling (and
+   a digit at a time before that), and on the 200px rail the pair ran into the
+   "?". The save count and the "?" now sit at the right edge whatever the
+   counter says, or whether it says anything. */
+#bank-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* Three banks: presets, the evolving pool, and what you kept. */
 .bank-filters {
   display: flex;
@@ -342,6 +381,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--hairline);
   border-radius: 999px;
   padding: 3px 8px;
+  /* WCAG 2.2's 24px target; the padding alone came to 23. */
+  min-height: 24px;
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
@@ -480,7 +521,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Each of these must out-specify `.bank-item .bi-row button` above (0,2,1) or
    its font-size, padding and tracking are silently discarded — which is how
    the save and cut labels ended up running into each other. */
-.bank-item .bi-row button.star { min-width: 22px; }
+.bank-item .bi-row button.star { min-width: 24px; }
 .bank-item .bi-row button.star.lit { color: var(--phos-b); text-shadow: 0 0 6px rgba(255,180,84,0.6); }
 /* Save is the user's own channel: silk, not a phosphor.
    A word, not a glyph. It shipped for one round as `▣` — borrowed from the
@@ -519,13 +560,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item.kbd .bi-kill { opacity: 1; visibility: visible; }
 .bank-item .bi-row button.bi-kill:hover { color: var(--led-red); }
 /* 200 identical dead stars said nothing. Unrated rows read as names; the
-   stars appear on approach or once they carry a rating. */
-.bank-item .stars { display: inline-flex; opacity: 0.28; transition: opacity 120ms ease; }
-.bank-item:hover .stars,
-.bank-item:focus-within .stars,
-.bank-item.kbd .stars,
-.bank-item.live .stars,
-.bank-item .stars:has(.star.lit) { opacity: 1; }
+   stars appear on approach or once they carry a rating. But five stars at 28%
+   opacity (1.3:1) said nothing either, including that the row could be rated
+   at all. At rest an unrated row now keeps one star, in outline, quiet and
+   legible, where the rating goes; the other four hold their places and arrive
+   on approach — hover, focus, the keyboard cursor, the patch on the bench. */
+.bank-item .stars { display: inline-flex; }
+.bank-item:not(:hover):not(:focus-within):not(.kbd):not(.live) .stars:not(:has(.star.lit)) .star + .star {
+  visibility: hidden;
+}
+.bank-item:not(:hover):not(:focus-within):not(.kbd):not(.live) .stars:not(:has(.star.lit)) .star:first-child {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--silk-dim);
+}
 
 /* ---- the preset library, browsed in place ---- */
 .pb-cat {
@@ -540,7 +587,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .preset-item .pb-blurb {
   font-family: var(--font-voice);
   font-style: italic;
-  font-size: var(--t-label);
+  /* Serif italic at 11px is hairline-thin at 1×; the body size holds up. */
+  font-size: var(--t-body);
   color: var(--silk-dim);
   line-height: 1.4;
   margin-top: 1px;
@@ -584,6 +632,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
    equal pills. The gutter is what does the ranking work — inside a group the
    buttons touch, so they read as one control with several positions. */
 .rack-tools { margin-left: auto; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+/* PATCH's header is two rows at every width, and neither depends on the name.
+   As one wrapping run it did: a long name pushed the tools onto a second row
+   and a short one ("#43") let them back up, so the rack and everything under
+   it jumped 47px on a patch change — and at 1280 the tools broke onto a third
+   row of their own, with the callout on a fourth. Now the name has a fixed
+   column and ellipsizes, the callout starts where that column ends (the same
+   x for every patch), ⚡ ends the first row, and the three tool groups have the
+   second row to themselves, right-aligned so the locks sit under ⚡. Merging
+   the callout into the name's row is also 40px given back to the rack. */
+.patch-head {
+  display: grid;
+  grid-template-columns: clamp(180px, 26%, 320px) minmax(0, 1fr) auto;
+  grid-template-areas: "subject callout evolve" "tools tools tools";
+  align-items: center;
+  column-gap: var(--s4);
+  row-gap: var(--s2);
+}
+.patch-head .subject-block { grid-area: subject; }
+.patch-head .callout-row { grid-area: callout; }
+.patch-head .evolve-slot { grid-area: evolve; margin-left: 0; }
+.patch-head .rack-tools { grid-area: tools; margin-left: 0; justify-content: flex-end; }
 .seg { display: flex; align-items: center; }
 .seg > * { display: flex; }
 /* A segmented control: shared border, square inner corners, no gaps. */
@@ -607,12 +676,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   height: 24px;
 }
 .seg .seg-item:hover:not(:disabled) { position: relative; z-index: 1; }
-/* Locks are a preparation, not an act: 90% and quiet, so they sit below the
-   teaching pair and far below EVOLVE without needing to be hidden. */
+/* Locks are a preparation, not an act: quiet, so they sit below the teaching
+   pair and far below EVOLVE without needing to be hidden. Quiet by colour,
+   not by size: at 90% they fell under the 10px floor and could not be read. */
 .seg-locks .seg-item {
-  font-size: calc(var(--t-micro) * 0.9);
+  font-size: var(--t-micro);
   padding: 5px 8px;
-  color: var(--silk-mute);
+  color: var(--silk-dim);
 }
 .seg-locks .seg-item:hover:not(:disabled) { color: var(--silk); }
 /* The only filled amber button in the view. Everything else in this row is a
@@ -821,8 +891,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pt-wave { fill: var(--phos-a); fill-opacity: 0.82; stroke: none; }
 .pt-msg {
   font-family: var(--font-mono);
-  font-size: 8px;
-  fill: var(--silk-mute);
+  font-size: var(--t-rack-micro);
+  fill: var(--silk-dim);
   pointer-events: none;
 }
 /* Stale: the patch has moved and the render on screen is of the one before
@@ -842,12 +912,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  fill: var(--silk-mute);
+  fill: var(--silk-dim);
 }
 /* A one-knob plate is 96 units wide and gives up ~44 of them to the control
    well. 13px there means condensing the glyphs, and a squeezed name reads as
-   a rendering fault; one step down reads as a smaller panel, which it is. */
-.mod-title.narrow { font-size: 11px; letter-spacing: 0.12em; }
+   a rendering fault; one step down reads as a smaller panel, which it is.
+   One step down on the rack's own scale — the readout size — so the
+   silkscreen floor below treats it as the size it is. */
+.mod-title.narrow { font-size: var(--t-rack-value); letter-spacing: 0.12em; }
 .mod-title.modside { fill: var(--phos-b); }
 /* The masthead rule. One hairline is the difference between a name floating
    on a plate and a name that the knob grid hangs from. */
@@ -860,7 +932,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-size: var(--t-rack-label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  fill: var(--silk-mute);
+  fill: var(--silk-dim);
   text-anchor: middle;
 }
 /* Silkscreen is printed on the panel; it is not a control and must never take
@@ -882,6 +954,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: fill 380ms ease-out;
 }
 .knob-value.flashing { fill: var(--phos-a); transition: none; }
+/* The silkscreen floor (`syncSilkFloor` in main.js): the camera draws the
+   rack at 0.3–2.5×, and a tier of type that would print under 8px at the
+   current zoom steps aside rather than being drawn illegible — 5–7px labels
+   were the rule at 1280×800, not the exception. The tier names are set from
+   the size tokens, so a token change moves its threshold with it. Hidden,
+   not removed: `fitLabels` still measures them, and they come back the moment
+   the camera does. Under "detail full" nothing is hidden. */
+#rack-svg.silk-floor[data-illegible~="micro"] .jack text,
+#rack-svg.silk-floor[data-illegible~="micro"] .plate-hint,
+#rack-svg.silk-floor[data-illegible~="micro"] .pt-msg,
+#rack-svg.silk-floor[data-illegible~="label"] .knob-label,
+#rack-svg.silk-floor[data-illegible~="label"] .step-num,
+#rack-svg.silk-floor[data-illegible~="label"] .mod-tab-name,
+#rack-svg.silk-floor[data-illegible~="value"] .knob-value,
+#rack-svg.silk-floor[data-illegible~="value"] .enum-text,
+#rack-svg.silk-floor[data-illegible~="value"] .mod-title.narrow,
+#rack-svg.silk-floor[data-illegible~="title"] .mod-title { visibility: hidden; }
 .knob-body { fill: url(#knobGrad); stroke: #000; stroke-width: 1; cursor: ns-resize; }
 /* A knob's face is bigger than its body: the ticks, the travel track and the
    value arc all ride outside r, and all of them read as part of the control.
@@ -895,8 +984,29 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .knob-ind.modside { stroke: var(--phos-b); }
 .knob-locked-halo { fill: none; stroke: var(--phos-b); stroke-width: 1.2; stroke-dasharray: 2 2.5; pointer-events: none; }
 .enum-body { fill: #0a0c0e; stroke: #2c313a; stroke-width: 1; cursor: pointer; }
+/* The step lane (a `steps` module's eight values). The bar is bipolar: the
+   fill grows from the 0 V line, up for a positive step and down for a
+   negative one. Steps past `length` stay drawn — they are still in the
+   genome and still editable — but recede, because they are not playing. */
+.step-track { fill: #0a0c0e; stroke: #2c313a; stroke-width: 1; pointer-events: none; }
+.step-fill { fill: var(--phos-a); opacity: 0.85; pointer-events: none; }
+.step-fill.modside { fill: var(--phos-b); }
+.step-zero { stroke: var(--hairline); stroke-width: 1; pointer-events: none; }
+.step-num {
+  font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--silk-dim);
+  text-anchor: middle; pointer-events: none;
+}
+.step-hit { fill: transparent; cursor: ns-resize; }
+.step-bar.latent .step-fill { opacity: 0.25; }
+.step-bar.latent .step-num { opacity: 0.45; }
+.step-bar.dragging .step-track, .step-bar:hover .step-track { stroke: #4a505b; }
+[data-addr].step-bar:focus-visible .step-track { stroke: var(--phos-a); stroke-width: 2; }
+/* An enum chip's text is its readout — the option it is set to, and the part
+   of the chip that changes — so it is set at the readout size and leaves with
+   the readouts under the silkscreen floor, rather than a step below them,
+   where the floor emptied the chip while the knobs beside it still read. */
 .enum-text {
-  font-family: var(--font-mono); font-size: var(--t-rack-label); fill: var(--phos-a);
+  font-family: var(--font-mono); font-size: var(--t-rack-value); fill: var(--phos-a);
   text-anchor: middle; pointer-events: none;
 }
 .lock-dot { cursor: pointer; }
@@ -930,7 +1040,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .wire.mod-case { stroke: rgba(0,0,0,0.5); stroke-width: 4.5; }
 .rack-wires { filter: drop-shadow(1px 3px 3px rgba(0,0,0,0.55)); }
-.port { fill: #0a0b0d; stroke: #3a3f48; stroke-width: 1; }
+.port { fill: var(--shadow-ink); stroke: #3a3f48; stroke-width: 1; }
 
 /* ---- cable terminations ----
    The plug in the socket. A barrel, a knurled collar, and the strain-relief
@@ -964,7 +1074,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   letter-spacing: 0.1em;
   text-transform: uppercase;
   fill: var(--phos-b);
-  opacity: 0.45;
+  /* 0.45 was 3.0:1 at rack sizes — present but unreadable. */
+  opacity: 0.7;
   pointer-events: none;
 }
 /* Occupied, not shouting. The destination name is silkscreen either way —
@@ -1102,17 +1213,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 10px 8px;
   border-radius: 5px;
   border: 1px solid #000;
-  background: linear-gradient(180deg, #2a2f37, #1a1d23);
+  background: linear-gradient(180deg, var(--btn-hi), var(--btn-lo));
   box-shadow:
     var(--lift),
-    0 3px 0 #0a0b0d,
+    0 3px 0 var(--shadow-ink),
     0 5px 8px rgba(0,0,0,0.5);
   cursor: pointer;
   transition: transform 60ms ease, box-shadow 60ms ease;
 }
 .hw-btn:active {
   transform: translateY(2px);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 #0a0b0d;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 var(--shadow-ink);
+}
+/* Hover is a promise of what a press does: quieter than the press, never a
+   change of size. Only where a pointer can hover — on a booth touchscreen the
+   last touch would otherwise stay "hovered". The view tabs, TASTE tabs, pads,
+   knobs and duel cards get the same treatment further down. */
+@media (hover: hover) {
+  .hw-btn:hover:not(:disabled) { background: linear-gradient(180deg, var(--btn-hover-hi), var(--btn-hover-lo)); }
 }
 .hw-btn:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .hw-btn kbd {
@@ -1125,7 +1243,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   margin-left: 6px;
 }
 .hw-btn.play { color: var(--phos-a); }
-.hw-btn.play.playing { box-shadow: inset 0 0 12px rgba(142,240,177,0.25), 0 3px 0 #0a0b0d; }
+.hw-btn.play.playing { box-shadow: inset 0 0 12px rgba(142,240,177,0.25), 0 3px 0 var(--shadow-ink); }
+/* Its buffer is still rendering (the scope above says so). Dimmed, not
+   disabled: a press still asks for that buffer first and plays it on arrival. */
+.hw-btn.play.pending { opacity: 0.5; }
 .hw-btn.choose { color: var(--phos-b); }
 .hw-btn.small { flex: none; font-size: var(--t-micro); padding: 8px 12px; color: var(--phos-b); }
 .hw-btn:disabled { opacity: 0.45; cursor: default; }
@@ -1176,6 +1297,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: var(--phos-b);
   border-color: var(--phos-b-dim);
   box-shadow: 0 0 8px rgba(255,180,84,0.18), inset 0 0 6px rgba(255,180,84,0.08);
+}
+@media (hover: hover) {
+  .viewtab:not(.active):hover,
+  .tab:not(.active):hover { color: var(--silk); border-color: var(--silk-mute); }
+  .duel-card:not(.live-sel):hover { border-color: var(--silk-mute); }
 }
 .caption {
   flex: 1 1 300px;
@@ -1381,7 +1507,7 @@ input, textarea, .bi-rename {
   position: absolute;
   left: 1px; right: 1px; top: 4px;
   height: 1px;
-  background: #0a0b0d;
+  background: var(--shadow-ink);
   transform: rotate(28deg);
 }
 .screws i:nth-child(1) { top: 6px; left: 6px; }
@@ -1425,6 +1551,12 @@ input, textarea, .bi-rename {
 .bank-item .bi-name.custom { color: var(--phos-b); }
 .bank-item .bi-top .bi-name { flex: 0 1 auto; }
 .bank-item .bi-id { font-size: var(--t-micro); color: var(--silk-dim); }
+/* A patch id ("#43") and a topology signature ("saw-ladr", "2+-lp-cho-cho-mix")
+   are the engine's bookkeeping, not anything a player chose or can hear: they
+   wait behind ⋯ › Show measurements (`html.engineer`, set in main.js). The
+   name, the blurb and the prediction are what the rows are read by. */
+html:not(.engineer) .bank-item .bi-id,
+html:not(.engineer) .preset-item .pb-sig { display: none; }
 .bank-item input.bi-rename {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
@@ -1437,12 +1569,17 @@ input, textarea, .bi-rename {
   padding: 1px 4px;
   outline: none;
 }
-.bank-head { position: relative; gap: 8px; }
+/* --s1, not 8px: the save count is pinned right now (`#bank-count`), and at
+   8px the counter's slot came up 6px short of "+30 arriving" on the 252px
+   rail, which cut it to "+30 arrivi…". */
+.bank-head { position: relative; gap: var(--s1); }
 .bank-head .util-btn { padding: 4px 8px; font-size: var(--t-micro); }
 /* ---- the three banks ---- */
-.bank-head .bank-tour-btn {
-  margin-left: auto;
+/* One "?" for both heads. The look was scoped to the bank's head, so the node
+   bank's "?" rendered as a bare browser button, a grey square. */
+.bank-tour-btn {
   width: 20px; height: 20px;
+  padding: 0;
   border-radius: 50%;
   border: 1px solid var(--hairline);
   background: var(--bezel);
@@ -1453,7 +1590,8 @@ input, textarea, .bi-rename {
   cursor: pointer;
   flex: 0 0 auto;
 }
-.bank-head .bank-tour-btn:hover { color: var(--phos-b); border-color: var(--phos-b-dim); }
+.bank-head .bank-tour-btn { margin-left: auto; }
+.bank-tour-btn:hover { color: var(--phos-b); border-color: var(--phos-b-dim); }
 
 /* What you are looking at, said in place. */
 .bank-note {
@@ -1461,7 +1599,7 @@ input, textarea, .bi-rename {
   border-bottom: 1px solid var(--hairline);
   font-family: var(--font-voice);
   font-style: italic;
-  font-size: var(--t-label);
+  font-size: var(--t-body);
   line-height: 1.45;
   color: var(--silk-dim);
 }
@@ -1669,7 +1807,7 @@ input, textarea, .bi-rename {
   letter-spacing: 0.3em;
   text-transform: uppercase;
 }
-.nb-rail .rail-n { font-size: var(--t-micro); color: var(--silk-mute); }
+.nb-rail .rail-n { font-size: var(--t-micro); color: var(--silk-dim); }
 .nb-rail .rail-held {
   font-size: var(--t-micro);
   color: var(--phos-a);
@@ -1728,7 +1866,7 @@ input, textarea, .bi-rename {
   background: var(--bezel);
   border-bottom: 1px solid var(--hairline);
 }
-.nb-head .mono { font-size: var(--t-micro); color: var(--silk-mute); }
+.nb-head .mono { font-size: var(--t-micro); color: var(--silk-dim); }
 
 /* ---- search: the index. Machined like .perf-sel, never a native widget. ---- */
 .nb-search { position: relative; margin: 0 var(--s3); }
@@ -1737,13 +1875,13 @@ input, textarea, .bi-rename {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--phos-a-dim);
-  background: linear-gradient(180deg, #232830, #181b21);
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   border: 1px solid #000;
   border-radius: 4px;
-  box-shadow: var(--lift), 0 1px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 1px 0 var(--shadow-ink);
   padding: 6px 24px 6px 8px;
 }
-.nb-q::placeholder { color: var(--silk-mute); }
+.nb-q::placeholder { color: var(--silk-dim); }
 .nb-q:focus { color: var(--phos-a); outline-offset: 1px; }
 .nb-q::-webkit-search-cancel-button { -webkit-appearance: none; }
 .nb-slash {
@@ -1825,12 +1963,12 @@ input, textarea, .bi-rename {
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
-  color: var(--silk-mute);
+  color: var(--silk-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.nb-n { font-size: var(--t-micro); color: var(--silk-mute); letter-spacing: 0; }
+.nb-n { font-size: var(--t-micro); color: var(--silk-dim); letter-spacing: 0; }
 .nb-list { display: flex; flex-direction: column; gap: 3px; padding: 4px 0 2px; }
 
 /* ---- the chip: glyph, name, port signature, belief ---- */
@@ -1851,7 +1989,7 @@ input, textarea, .bi-rename {
   /* Light from 315°, a black seam, and a shelf to travel into — the same
      physics every other pressable object in the app has. Without it the rail's
      nineteen most-repeated elements read as web cards on an instrument. */
-  box-shadow: var(--lift), 0 2px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 2px 0 var(--shadow-ink);
   cursor: pointer;
   transition: border-color 120ms ease-out, color 120ms ease-out,
               transform 60ms ease-out, box-shadow 60ms ease-out;
@@ -2039,7 +2177,7 @@ input, textarea, .bi-rename {
 }
 .nb-status:empty { display: none; }
 .nb-status b { font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-.sp-dim { color: var(--silk-mute); }
+.sp-dim { color: var(--silk-dim); }
 
 /* The colour law as a legend — in the stroke tier it actually legends, and no
    longer hidden from assistive tech, since it is the app's only statement of
@@ -2047,7 +2185,7 @@ input, textarea, .bi-rename {
 .nb-legend { display: flex; flex-direction: column; gap: 3px; margin: var(--s3) var(--s3) 0; }
 .nb-legend .lg-row {
   display: flex; align-items: center; gap: 7px;
-  font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-mute);
+  font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim);
 }
 .nb-legend .lg-swatch { width: 22px; height: 0; border-top: 3px solid var(--phos-a-deep); border-radius: 2px; }
 .nb-legend .lg-swatch.mod { width: 22px; border-top: 1.8px dashed var(--phos-b-deep); }
@@ -2142,10 +2280,27 @@ input, textarea, .bi-rename {
 
    Resting and armed share the one-line height on purpose: arming is a gesture
    that happens over the canvas, and a canvas that resizes under a placement in
-   progress would be a worse defect than the one this fixes. */
+   progress would be a worse defect than the one this fixes.
+
+   And a description no longer takes its height out of the rack at all. It
+   did, and the frame shrank by the difference the moment the pointer touched
+   a catalogue chip — the rack refitted, every plate re-zoomed (0.91× → 0.70×
+   on Glass Pad at 1440×900), and it grew back on the way out: the patch
+   breathing in and out exactly while you were trying to see where a module
+   would go. The layout box is now always the one line; the description's
+   extra height is drawn upward, over the frame's bottom edge (the negative
+   margin cancels it out of the column), so the frame never resizes on hover.
+   It is on screen only while the pointer is in the catalogue (see
+   `nbSpecHide`), which is when the bottom of the rack is not what you are
+   reading. */
 .play-canvas { --spec-h: clamp(96px, 13vh, 150px); --spec-line: 46px; }
 .spec-dock {
   flex: 0 0 var(--spec-h);
+  margin-top: calc(min(var(--spec-h), var(--spec-line)) - var(--spec-h));
+  /* Over the frame's own overlays (scope 4, minimap and pick chip 6, fit
+     hint 7) and under everything that opens over the view (toasts 30+). */
+  position: relative;
+  z-index: 8;
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr) 300px;
   gap: var(--s4);
@@ -2154,7 +2309,9 @@ input, textarea, .bi-rename {
   border: 1px solid var(--hairline);
   border-radius: 6px;
   background: linear-gradient(180deg, #14171b, #101317);
-  box-shadow: var(--lift);
+  /* It is lying on the rack now, so it casts onto it — same lamp, same
+     shadow family as the plates under it. */
+  box-shadow: var(--lift), 0 -6px 16px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 /* Resting and armed are one line, so they span the whole strip rather than
@@ -2166,12 +2323,24 @@ input, textarea, .bi-rename {
      the line height — a control with no visible effect in the state you happen
      to be in is a control you stop trusting. */
   flex-basis: min(var(--spec-h), var(--spec-line));
+  margin-top: 0;
+  box-shadow: var(--lift);
   padding-top: 6px; padding-bottom: 6px;
+}
+/* The divider sets the height a description opens to, and no description is
+   up while the hand is on the divider (the pointer has left the catalogue) —
+   so for the length of a drag the strip opens to that height, over the rack,
+   and the drag has something to show. */
+.spec-dock.rest.sizing, .spec-dock.armed.sizing {
+  flex-basis: var(--spec-h);
+  margin-top: calc(min(var(--spec-h), var(--spec-line)) - var(--spec-h));
+  box-shadow: var(--lift), 0 -6px 16px rgba(0, 0, 0, 0.5);
+  align-items: start;
 }
 .sd-rest {
   font-size: var(--t-micro);
   line-height: 1.7;
-  color: var(--silk-mute);
+  color: var(--silk-dim);
   /* One line, and it ends in an ellipsis rather than wrapping out of a strip
      that is now one line tall. */
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -2198,13 +2367,13 @@ input, textarea, .bi-rename {
 .sd-line b { font-family: var(--font-silk); font-size: var(--t-body); color: var(--phos-a); letter-spacing: 0.02em; }
 .sd-verb {
   font-size: var(--t-micro); letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--silk-mute);
+  color: var(--silk-dim);
 }
 .sd-blurb {
   font-family: var(--font-voice); font-style: italic; font-size: var(--t-body);
   color: var(--silk-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sd-hint { font-size: var(--t-micro); color: var(--silk-mute); margin-left: auto; white-space: nowrap; }
+.sd-hint { font-size: var(--t-micro); color: var(--silk-dim); margin-left: auto; white-space: nowrap; }
 .sd-hint kbd { font-size: var(--t-micro); color: var(--silk-dim); }
 
 /* ---- priced sockets (WS-2 §5) ----
@@ -2228,9 +2397,9 @@ input, textarea, .bi-rename {
 .pr.down { color: var(--led-red); }
 .pr.pr-flat { color: var(--silk-dim); }
 .pr.pr-mute { color: var(--silk-mute); }
-.pr-dim { color: var(--silk-mute); }
+.pr-dim { color: var(--silk-dim); }
 .pr-note {
-  color: var(--silk-mute); text-transform: uppercase;
+  color: var(--silk-dim); text-transform: uppercase;
   letter-spacing: 0.14em; font-size: 0.9em;
   border-bottom: 1px dotted var(--hairline);
 }
@@ -2261,7 +2430,7 @@ input, textarea, .bi-rename {
    thing in it that is not text. 30px still reads as a waveform — it is a
    "does this sound like anything" glance, not a measurement. */
 .spec-dock.armed .pv-scope { height: 30px; }
-.pv-label { font-size: var(--t-micro); color: var(--silk-mute); white-space: nowrap; }
+.pv-label { font-size: var(--t-micro); color: var(--silk-dim); white-space: nowrap; }
 /* Rendering is a half-second of somebody else's CPU: say so by dimming the
    thing that is about to change rather than by adding a spinner. */
 .pv.busy .pv-scope { opacity: 0.45; }
@@ -2291,9 +2460,9 @@ input, textarea, .bi-rename {
   color: var(--silk-dim);
 }
 .sp-ports { color: var(--phos-a-dim); }
-.sp-params { color: var(--silk-mute); }
+.sp-params { color: var(--silk-dim); }
 .sp-model { margin-top: 6px; border-top: 1px solid var(--hairline); padding-top: 6px; }
-.sp-heard { color: var(--silk-mute); }
+.sp-heard { color: var(--silk-dim); }
 .sp-heard b { color: var(--phos-b-dim); font-weight: 400; }
 .sp-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
@@ -2312,20 +2481,25 @@ input, textarea, .bi-rename {
   border: 0;
 }
 
-/* ---- tray (staged, unwired modules) ---- */
+/* ---- tray (staged, unwired modules) ----
+   One line. It was a 64px shelf of two-line cards, and the moment anything was
+   unplugged the rack gave up those 64px and refitted smaller — at 1280×800
+   the frame fell to 118px. Everything a held module needs is on one line: its
+   jack (the drag source), its name, what it will bring with it (clipped, the
+   whole strip in its tooltip) and ✕. */
 .tray {
-  flex: 0 0 64px;
+  flex: 0 0 36px;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 10px;
   border: 1px dashed #3a4048;
   border-radius: 6px;
   background: rgba(10, 11, 13, 0.6);
-  padding: 6px 10px;
+  padding: 3px 10px;
 }
+/* Set across, like every other panel label: a one-line strip has no height
+   for the word to run down. */
 .tray-label {
-  writing-mode: vertical-lr;
-  transform: rotate(180deg);
   font-family: var(--font-silk);
   font-size: var(--t-micro);
   font-weight: 700;
@@ -2344,26 +2518,29 @@ input, textarea, .bi-rename {
   border-color: #1c2027;
   align-items: center;
 }
-.tray:not(:has(.tray-item)) .tray-label { writing-mode: horizontal-tb; transform: none; }
 .tray:not(:has(.tray-item)) .tray-hint { opacity: 0.55; }
-/* A staged module is a small faceplate, not a name tag: its head, its jack,
-   and the parameters it will bring with it. */
+/* A staged module is a small faceplate, not a name tag: its jack, its name,
+   and the parameters it will bring with it — in a row, so the strip stays one
+   line. The head's three parts join the row (`display: contents`) with the
+   parameters slotted in before the ✕. */
 .tray-item {
   position: relative;
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 7px;
   border: 1px dashed #4a505b;
   border-radius: 5px;
   background: linear-gradient(180deg, #1a1e24, #13161a);
-  padding: 6px 10px;
+  padding: 3px 8px;
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   color: var(--silk);
-  max-width: 240px;
+  max-width: 320px;
 }
-.tray-item .ti-head { display: flex; align-items: center; gap: 7px; }
+.tray-item .ti-head { display: contents; }
+.tray-item .ti-params { order: 1; min-width: 0; }
+.tray-item .t-x { order: 2; }
 .tray-item .ti-name {
   font-family: var(--font-silk);
   font-size: var(--t-micro);
@@ -2460,7 +2637,7 @@ input, textarea, .bi-rename {
 .plate-hint {
   font-family: var(--font-mono);
   font-size: var(--t-rack-micro);
-  fill: var(--silk-mute);
+  fill: var(--silk-dim);
   pointer-events: none;
 }
 
@@ -2554,7 +2731,7 @@ input, textarea, .bi-rename {
 .pick-chip kbd {
   font-family: var(--font-mono);
   font-size: var(--t-micro);
-  color: var(--silk-mute);
+  color: var(--silk-dim);
   border: 1px solid var(--hairline);
   border-radius: 3px;
   padding: 0 3px;
@@ -2671,14 +2848,17 @@ input, textarea, .bi-rename {
    interaction. The previous rule dropped B onto a third grid row inside an
    `overflow: hidden` view, so the cards overprinted the controls. */
 @media (max-width: 1280px) {
-  /* The chip gets its own row so it stops fighting the 8-control toolbar
-     for wrap space, and the toolbar tightens. */
+  /* The toolbar tightens, so PATCH's three tool groups still share one row
+     (`.patch-head`) at 1280. */
   .stage-toolbar { row-gap: 6px; }
   .rack-tools { gap: 6px; }
   .util-btn { padding: 6px 8px; }
 }
 @media (max-width: 1080px) {
   .bank { width: 200px; flex-basis: 200px; }
+  /* A 200px rail has room for "+15", not for "+15 arriving"; the tooltip
+     keeps the sentence. */
+  .bank-head .bc-word { display: none; }
   .rack-tools { gap: var(--s1); }
   .duel-mid { gap: var(--s3); }
 }
@@ -2689,7 +2869,6 @@ input, textarea, .bi-rename {
    was always meant to. */
 @media (max-height: 940px) {
   :root { --keybar-h: 108px; }
-  .tray { flex: 0 0 52px; }
   /* The canvas is the elastic part everywhere else in this block, and the spec
      strip is the newest claim on it — so it gives ground first. Its height is
      still reserved, just smaller: the blurb wraps rather than the strip
@@ -2725,10 +2904,10 @@ input, textarea, .bi-rename {
    buttons beside them — nothing in the keybar is a native widget. */
 .perf-sel, .perf-num {
   color: var(--phos-a-dim);
-  background: linear-gradient(180deg, #232830, #181b21);
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   border: 1px solid #000;
   border-radius: 3px;
-  box-shadow: var(--lift), 0 1px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 1px 0 var(--shadow-ink);
   font: var(--t-micro)/1.4 var(--font-mono);
   padding: 3px 4px;
   cursor: pointer;
@@ -2754,7 +2933,7 @@ input, textarea, .bi-rename {
 .style-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .style-chip .sc-name {
   background: transparent; border: none; outline: none;
-  color: var(--silk); font: var(--t-body)/1.4 var(--font-mono); width: 168px;
+  color: var(--silk); font: var(--t-body)/1.4 var(--font-mono); width: auto; max-width: 30ch;
 }
 .style-chip .sc-share { font-size: var(--t-micro); color: var(--silk-dim); }
 .style-chip .sc-play {
@@ -2794,6 +2973,9 @@ input, textarea, .bi-rename {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pd-side:hover { border-color: var(--phos-a, #8ef0b1); }
+/* A name still on its way: dimmed text, not a green "…" that reads as the
+   patch's name. */
+.pd-side .pd-wait { color: var(--silk-dim); }
 
 /* ---------- help overlay ---------- */
 .help-overlay {
@@ -2801,14 +2983,28 @@ input, textarea, .bi-rename {
   background: rgba(10, 12, 15, 0.82); backdrop-filter: blur(3px);
   display: flex; align-items: center; justify-content: center;
 }
-.help-card { max-width: 720px; width: min(92vw, 720px); padding: 22px 26px; position: relative; }
-.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; font-size: var(--t-label); line-height: 1.55; }
+.help-card {
+  max-width: 820px; width: min(92vw, 820px); padding: 22px 26px 16px; position: relative;
+  /* Taller than a short window: the content scrolls inside the card, so the
+     screws stay at its corners and GOT IT stays in reach below it. */
+  max-height: calc(100vh - 48px);
+  display: flex; flex-direction: column;
+}
+.help-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding-right: 6px; }
+.help-foot {
+  flex: none; display: flex; justify-content: flex-end;
+  margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--hairline);
+}
+/* Prose in the panel face at reading size; keys and values stay in mono. */
+.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; font-size: var(--t-body); line-height: 1.55; }
 .help-cols p { margin: 4px 0 10px; color: var(--silk); }
 .help-cols b { color: var(--phos-a, #8ef0b1); font-weight: 600; }
 .help-h {
   color: var(--phos-b, #ffb454); font-size: var(--t-micro); letter-spacing: 0.14em;
   text-transform: uppercase; margin-top: 8px;
 }
+/* Keys are named in the readout face everywhere, not the browser's monospace. */
+kbd { font-family: var(--font-mono); }
 .help-cols kbd {
   background: #1d222a; border: 1px solid #333a45; border-bottom-width: 2px;
   border-radius: 3px; padding: 0 4px; font-size: var(--t-micro);
@@ -2890,7 +3086,15 @@ input, textarea, .bi-rename {
 
 /* ---------- focus ----------
    Only .hw-btn had a focus ring, on a near-black palette where the UA default
-   is invisible, and two rules actively removed outlines. Everything gets one. */
+   is invisible, and two rules actively removed outlines. Everything gets one.
+   The :where() floor catches any HTML control the list below misses (the
+   warm-start ▶, the hood rows, a HELD item's ✕ all showed the browser's own
+   ring), at zero specificity so every control-specific rule still wins. SVG
+   is left out: the rack draws its own focus (.plate-focus, knob bodies). */
+:where(button, a[href], summary, label[tabindex], div[tabindex], canvas[tabindex], [role="button"]):focus-visible {
+  outline: 2px solid var(--phos-a);
+  outline-offset: 2px;
+}
 .util-btn:focus-visible,
 .viewtab:focus-visible,
 .tab:focus-visible,
@@ -2916,6 +3120,11 @@ input, textarea, .bi-rename {
 .nextstep:focus-visible,
 .pd-side:focus-visible,
 .bank-filters .bf:focus-visible,
+.wi-play:focus-visible,
+.pf-hood-row:focus-visible,
+.tray-item .t-x:focus-visible,
+.style-chip .sc-play:focus-visible,
+.toast-undo:focus-visible,
 input:focus-visible,
 select:focus-visible,
 [data-addr]:focus-visible {
@@ -2928,7 +3137,9 @@ select:focus-visible,
 [data-addr]:focus-visible .knob-body { stroke: var(--phos-a); stroke-width: 2; }
 
 /* ---------- menubar: skill readout + overflow ---------- */
-.skill { font-size: var(--t-micro); color: var(--phos-b-dim); max-width: 190px; }
+/* One line, always: at 190px it wrapped to "calibrating — 16 of 20 /
+   forecasts" and pushed the menubar's baseline around. */
+.skill { font-size: var(--t-micro); color: var(--phos-b-dim); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ovf { position: relative; }
 .ovf-menu {
   position: absolute;
@@ -2966,23 +3177,28 @@ select:focus-visible,
 /* ---------- next step ----------
    Nothing in the app ever answered "what now?". This always does.
 
-   It gets a RESERVED ROW of its own, left-aligned under the title, and that
-   row keeps its height whether or not there is a callout in it. It used to
-   sit inline between the patch name and the tool row, so its x was decided by
-   the character count of whatever patch was on the bench — "Gritty Swell" and
-   "Noisy Pad 2" put the app's one piece of guidance in two different places —
-   and at some widths it wrapped to a second row and pushed the canvas down.
-   A chip that moves when the content behind it changes is a chip nobody
-   learns the position of. */
+   It gets a RESERVED CELL of its own, and that cell keeps its place whether or
+   not there is a callout in it. It used to sit inline after the patch name,
+   so its x was decided by the character count of whatever patch was on the
+   bench — "Gritty Swell" and "Noisy Pad 2" put the app's one piece of guidance
+   in two different places — and at some widths it wrapped to a second row and
+   pushed the canvas down. It then had a whole row to itself, which fixed its x
+   and cost the rack 40px. Now it is the cell after the name's fixed column in
+   `.patch-head`: a fixed x again, and no row of its own. A chip that moves
+   when the content behind it changes is a chip nobody learns the position of. */
 .callout-row {
-  flex-basis: 100%;
-  order: 10;
+  min-width: 0;
   min-height: 30px;
   display: flex;
   align-items: center;
-  margin-top: -2px;
 }
 .nextstep {
+  /* One line in a cell that can be narrower than the longest callout; an
+     ellipsis, never a two-line pill that grows the header. */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-voice);
   font-style: italic;
   font-size: var(--t-lead);
@@ -3024,15 +3240,16 @@ select:focus-visible,
 .scope-shell .live-scope { opacity: var(--scope-floor, 0.35); transition: opacity 320ms ease; }
 .scope-shell.live .live-scope { opacity: 1; }
 /* …with one exception, and it is the reserve's other half. The fit keeps the
-   patch out from under the bezel; a *pan* can put eight plates under it, and
-   there the promise ("the trace never rides over a module") can only be kept by
-   the glass. So the whole housing — bezel included — ducks to the parked
-   presence the trace already uses, and the module underneath is readable
-   through it. Capped a little under the trace's own floor because this fade has
-   a different job: parked means "not asking for attention", ducked means "not
-   in your way", and the second one has to be got out of. */
+   patch out from under the bezel when it can afford to; when it cannot (the
+   reserve would cost the patch a fifth of its size) or a *pan* puts plates
+   under it, the promise ("the trace never rides over a module") can only be
+   kept by the glass. It used to duck to 30% and stay there, a dim bezel drawn
+   straight through ENV / OUT's sustain and release knobs — neither out of the
+   way nor readable. It goes altogether now, and comes back the moment the
+   plates are out from under it: the scope is an optional, aria-hidden
+   picture of the sound, and a module you are reading is neither. */
 .scope-shell { transition: opacity 220ms ease; }
-.scope-shell.ducked { opacity: min(0.3, var(--scope-floor, 0.35)); }
+.scope-shell.ducked { opacity: 0; }
 /* Four corners, three sizes. The scope is in the rack *frame*, so none of
    this moves when the camera does. */
 .scope-shell.corner-br { right: 8px; bottom: 8px; }
@@ -3067,7 +3284,7 @@ select:focus-visible,
   font-size: var(--t-rack-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--silk-mute);
+  color: var(--silk-dim);
   pointer-events: none;
   /* A spectrum fills the bottom of the screen, which is exactly where the
      caption is: the halo keeps it readable without a plate behind it. */
@@ -3298,6 +3515,9 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 }
 .dn-id { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim); }
 .dn-sig { font-size: var(--t-micro); color: var(--phos-a-dim); }
+/* The same bookkeeping on the duel cards: on request only. */
+html:not(.engineer) .dn-id,
+html:not(.engineer) .dn-sig { display: none; }
 .duel-controls .hw-btn.promote { flex: 0 0 auto; color: var(--phos-a-dim); font-size: var(--t-micro); }
 .duel-controls .hw-btn.promote:hover { color: var(--phos-a); }
 
@@ -3345,7 +3565,7 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
   position: fixed;
   top: 64px;
   right: 16px;
-  z-index: 46;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -3353,8 +3573,17 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
   pointer-events: none;
 }
 /* The primary teaching affordances, and every control that holds a state,
-   sit above transient chrome — always. */
-.play-duel, .duel-mid, [aria-pressed] { position: relative; z-index: 50; }
+   sit above transient chrome — always — and below anything that opens over
+   them. The ladder: toasts 30 < this lift 35 < popovers and tours (40–45:
+   the ⋯ menu, the bank tour, the arp drawer, the map tip, the booth banner)
+   < dialogs (55+). At 50 this lift put PERFORM's FREEZE pad over the ⋯
+   menu's last item (a click on it froze) and bank rows' save buttons over
+   the bank tour. */
+.play-duel, .duel-mid, [aria-pressed] { position: relative; z-index: 35; }
+/* …which lifts a warm-start card (it holds its pick in aria-pressed) over its
+   own ▶, so the button painted under the card and a click on it cast a pick
+   instead of playing. The ▶ sits one above. */
+.warm-cell .wi-play { z-index: 36; }
 .toast {
   pointer-events: auto;
   display: flex;
@@ -3379,7 +3608,7 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 .toast-stack {
   flex: 0 0 auto;
   font-size: var(--t-micro);
-  color: var(--silk-mute);
+  color: var(--silk-dim);
   border: 1px solid var(--hairline);
   border-radius: 999px;
   padding: 1px 6px;
@@ -3534,7 +3763,11 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 .boot-word {
   font-size: var(--t-hero);
   font-weight: 500;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.145em;
+  /* Tracked type centres half a letter-space left of true: letter-spacing
+     follows the last letter too. One letter-space of start margin puts the
+     word back on the card's axis. */
+  margin-inline-start: 0.145em;
   color: var(--silk);
 }
 .boot-word b { font-weight: 500; color: var(--phos-b); text-shadow: 0 0 14px rgba(255,180,84,0.7); }
@@ -3561,7 +3794,12 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
    comment claiming it shed the keybar's chrome while the markup kept the class
    that applied it. Splitting one component's rules across the file is how
    contradictions like those survive review. */
-.bank-item .bi-row button.star { color: var(--silk-dim); }
+/* An unrated star is a slot, not a mark: at full opacity on the live row,
+   silk-dim read as five lit stars beside a label saying "unrated". Mute
+   until hovered; only `.lit` is ever bright. */
+.bank-item .bi-row button.star { color: var(--silk-mute); }
+.bank-item .bi-row button.star:hover,
+.bank-item .bi-row button.star:focus-visible { color: var(--silk-dim); }
 
 @media (prefers-reduced-motion: reduce) {
   .toast, .duel-mid, .mod-plate, .lock-dot, .live-scope, .boot { transition: none !important; }
@@ -3617,8 +3855,8 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
 .belief .ex-lens b { color: var(--phos-b); font-weight: 400; }
 /* The number itself is the loudest thing in the row: it is what changes. */
 .belief .bl-u { color: var(--silk); font-weight: 500; font-size: var(--t-lead); }
-.belief .bl-was { color: var(--silk-mute); }
-.belief .bl-sep, .belief .bl-none { color: var(--silk-mute); }
+.belief .bl-was { color: var(--silk-dim); }
+.belief .bl-sep, .belief .bl-none { color: var(--silk-dim); }
 .belief .bl-arrow.up { color: var(--phos-a); }
 .belief .bl-arrow.down { color: var(--silk-mute); }
 /* Stale is drawn, never guessed: an edit is in flight and this number is about
@@ -3633,7 +3871,7 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
   align-items: baseline;
   gap: 6px;
   font-size: var(--t-micro);
-  color: var(--silk-mute);
+  color: var(--silk-dim);
   white-space: nowrap;
 }
 .budget .bg-sep { opacity: 0.45; }
@@ -3664,7 +3902,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 12px;
   height: 20px;
   border-radius: 2px;
-  background: linear-gradient(180deg, #2a2f37, #14161a);
+  background: linear-gradient(180deg, var(--btn-hi), #14161a);
   border: 1px solid #000;
   box-shadow: var(--lift), 0 2px 4px rgba(0, 0, 0, 0.6);
 }
@@ -3672,7 +3910,7 @@ input[type="range"]::-moz-range-thumb {
   width: 12px;
   height: 20px;
   border-radius: 2px;
-  background: linear-gradient(180deg, #2a2f37, #14161a);
+  background: linear-gradient(180deg, var(--btn-hi), #14161a);
   border: 1px solid #000;
   box-shadow: var(--lift), 0 2px 4px rgba(0, 0, 0, 0.6);
 }
@@ -3681,7 +3919,7 @@ input[type="range"]::-moz-range-thumb {
   padding-right: 16px;
   background-image: linear-gradient(45deg, transparent 50%, var(--silk-dim) 50%),
                     linear-gradient(135deg, var(--silk-dim) 50%, transparent 50%),
-                    linear-gradient(180deg, #232830, #181b21);
+                    linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
   background-position: right 7px center, right 3px center, 0 0;
   background-size: 4px 4px, 4px 4px, 100% 100%;
   background-repeat: no-repeat;
@@ -3739,7 +3977,7 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1;
   padding: 0 0 0 2px;
   cursor: pointer;
-  box-shadow: var(--lift), 0 2px 0 #0a0b0d;
+  box-shadow: var(--lift), 0 2px 0 var(--shadow-ink);
   transition: border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
 }
 .xport:hover:not(:disabled) { border-color: var(--phos-a); box-shadow: var(--lift), 0 0 12px rgba(142,240,177,0.24); }
@@ -3758,7 +3996,14 @@ input[type="range"]::-moz-range-thumb {
   max-width: 300px;
 }
 .subject-name.hearing { color: var(--phos-b); }
-.subject-meta { font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim); }
+/* The caption line holds its height when it has nothing to say (it often
+   does not, now that ids and signatures wait behind Show measurements), so
+   the name never shifts on its row between one patch and the next. */
+.subject-meta {
+  font-family: var(--font-mono); font-size: var(--t-micro); color: var(--silk-dim);
+  line-height: 1.5; min-height: 1.5em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 /* No rack dimming while auditioning: the candidate is FULLY benched, so the
    rack legitimately shows the sound you are hearing. The amber header line
    carries the "this is a candidate" state. */
@@ -3839,13 +4084,20 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--phos-b-deep);
   border-radius: 6px;
   background: rgba(255, 180, 84, 0.06);
-  padding: var(--s2) var(--s3);
+  /* A chip's padding: the button sets the height of a one-line strip. */
+  padding: var(--s1) var(--s1) var(--s1) var(--s3);
 }
 .bench-tour .bt-copy {
   flex: 1;
+  min-width: 0;
   font-size: var(--t-body);
   line-height: 1.5;
   color: var(--silk-dim);
+  /* One line at every width it has to live at; a narrower window loses the
+     tail of the sentence, not a row of the rack. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .bench-tour .bt-copy b { color: var(--phos-b); font-weight: 500; }
 
@@ -3979,6 +4231,9 @@ html.handheld .handheld-gate {
   padding: 32px 24px 24px;
 }
 .hg-card .boot-word { font-size: var(--t-title); }
+/* The lit E is instrumentation — it lights where the model is working. The
+   handheld gate runs nothing, so its E is silk like the rest of the word. */
+.hg-card .boot-word b { color: var(--silk); text-shadow: none; }
 .hg-lede {
   margin-top: var(--s4);
   font-family: var(--font-voice);
@@ -4022,7 +4277,7 @@ html.handheld .handheld-gate {
   margin-top: var(--s3);
   font-size: var(--t-micro);
   letter-spacing: 0.08em;
-  color: var(--silk-mute);
+  color: var(--silk-dim);
 }
 /* Deliberately quiet — it leads somewhere that doesn't work well yet. */
 .hg-anyway {
@@ -4033,7 +4288,7 @@ html.handheld .handheld-gate {
   background: none;
   font-family: var(--font-mono);
   font-size: var(--t-label);
-  color: var(--silk-mute);
+  color: var(--silk-dim);
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
@@ -4062,10 +4317,6 @@ html.handheld .handheld-gate {
 .app.bigkeys .bkey .hint { font-size: var(--t-label); }
 .app.bigkeys .bkey { width: 58%; }
 
-/* The arp strip is a settings panel, and in big mode it is the widest thing
-   standing between the keybed and the edge of the screen. The arp BUTTON
-   stays — only its six selects fold away, and they come back with the dock. */
-.app.bigkeys #arp-ctl { display: none; }
 /* No lit-state rule here on purpose: `.util-btn.lit` already says "engaged"
    for hold / uni / arp, and a fourth toggle in the same row that lit up a
    different colour would read as a different kind of thing. */
@@ -4073,5 +4324,499 @@ html.handheld .handheld-gate {
 /* The width selector sits in the control grid, spanning the cells the fifth
    column leaves over, with its caption inline so the row stays two deep. */
 .keys-span { display: flex; align-items: center; gap: 4px; grid-column: span 2; }
-.keys-span .pc-cap { font-size: var(--t-rack-micro); color: var(--silk-mute); text-transform: uppercase; letter-spacing: 0.1em; }
+.keys-span .pc-cap { font-size: var(--t-micro); color: var(--silk-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 .keys-span .perf-sel { flex: 1; min-width: 0; }
+
+/* ===================== PERFORM ===================== */
+/* The sound under your hands: eight fixed-name controls, a wander dial and six
+   pads, on one faceplate. Built by perform.js; nothing here opens a modal. */
+.view.perform {
+  align-items: center;
+  justify-content: flex-start;
+  overflow-y: auto;
+  gap: var(--s4);
+  padding: var(--s5) var(--s5) var(--s4);
+}
+.pf-head {
+  width: min(1040px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+.pf-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-display);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--silk);
+}
+.pf-status { font-size: var(--t-body); color: var(--silk-dim); margin-top: 2px; }
+.pf-scope {
+  width: 360px;
+  max-width: 40vw;
+  height: 72px;
+  background: var(--bezel);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+.pf-deck {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: var(--s3);
+  padding: var(--s4) var(--s4) var(--s3);
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  box-shadow: var(--lift), var(--cast);
+}
+.pf-knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s2) 2px;
+  border-radius: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.pf-knob:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+.pf-knob svg { width: 100%; max-width: 96px; height: auto; overflow: visible; }
+.pf-k-ring { fill: none; stroke: var(--hairline); stroke-width: 3; }
+.pf-k-arc { fill: none; stroke: var(--phos-a); stroke-width: 3.5; stroke-linecap: round; }
+.pf-k-body { fill: var(--knob-body); stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
+.pf-k-ptr { stroke: var(--silk); stroke-width: 3; stroke-linecap: round; }
+.pf-k-where { fill: var(--phos-b); }
+.pf-k-name {
+  font-family: var(--font-silk);
+  font-size: var(--t-title);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--silk);
+}
+.pf-k-ends { font-size: var(--t-micro); color: var(--silk-dim); }
+.pf-k-sub {
+  font-size: var(--t-micro);
+  color: var(--phos-a-dim);
+  max-width: 100%;
+  /* Two lines rather than an ellipsis: a knob list like "cutoff · resonance
+     · drive" is the answer to "what does this turn?", and cutting it off
+     mid-word read as broken. The block keeps two lines' height so the row
+     does not jump when a caption changes length. */
+  min-height: 2.6em;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-align: center;
+}
+/* Unreachable by this patch's knobs: amber, and the gesture asks for an offer. */
+.pf-knob.search .pf-k-arc { stroke: var(--phos-b); }
+.pf-knob.search .pf-k-ring { stroke: var(--phos-b-deep); stroke-dasharray: 3 5; }
+.pf-knob.search .pf-k-name { color: var(--phos-b-dim); }
+.pf-knob.search .pf-k-sub { color: var(--phos-b-dim); }
+.pf-knob.unwired .pf-k-ptr { stroke: var(--silk-mute); }
+.pf-knob.unwired .pf-k-arc { stroke: var(--silk-mute); }
+.pf-knob.held .pf-k-sub { color: var(--phos-b); }
+/* A half the patch's own renders did not confirm is closed, and looks it. */
+.pf-knob.half-lo .pf-k-ring { stroke-dasharray: 0 70 139 70; }
+.pf-knob.half-hi .pf-k-ring { stroke-dasharray: 139 139; }
+.pf-touch {
+  width: min(1040px, 100%);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--t-body);
+  color: var(--silk-dim);
+}
+.pf-touch-l { font-family: var(--font-silk); text-transform: uppercase; letter-spacing: 0.1em; font-size: var(--t-label); color: var(--silk); }
+.pf-touch select { background: var(--bezel); color: var(--silk); border: 1px solid var(--hairline); border-radius: 3px; font: inherit; padding: 2px 4px; }
+.pf-touch input[type=range] { width: 120px; }
+.pf-touch-n { color: var(--phos-a-dim); }
+.pf-pads {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s3);
+}
+.pf-pad {
+  font-family: var(--font-silk);
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--silk);
+  min-height: 64px;
+  border-radius: 8px;
+  border: 1px solid #000;
+  background: linear-gradient(180deg, var(--btn-hi), var(--btn-lo));
+  box-shadow: var(--lift), 0 3px 0 var(--shadow-ink), 0 5px 8px rgba(0,0,0,0.5);
+  cursor: pointer;
+  touch-action: none;
+  transition: transform 60ms ease, box-shadow 60ms ease;
+}
+.pf-pad:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 var(--shadow-ink); }
+@media (hover: hover) {
+  .pf-pad:hover:not(:disabled) { background: linear-gradient(180deg, var(--btn-hover-hi), var(--btn-hover-lo)); }
+  .pf-knob:hover .pf-k-ring { stroke: var(--silk-mute); }
+}
+.pf-pad:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+.pf-pad.lit { color: var(--phos-b); box-shadow: var(--lift), 0 0 12px rgba(255,180,84,0.3), 0 3px 0 var(--shadow-ink); }
+.pf-pad.flash { animation: pf-flash 500ms ease-out; }
+.pf-pad.primary { color: var(--phos-a); border-color: var(--phos-a-deep); }
+/* A pad with nothing to act on is *waiting*, and says for what — at 0.38 it
+   read as broken. Dashed, flat and legible, with the reason underneath. */
+.pf-pad:disabled {
+  opacity: 0.62;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+  border: 1px dashed var(--hairline);
+  background: linear-gradient(180deg, #1d2127, #15171c);
+  color: var(--silk-dim);
+}
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after {
+  content: attr(data-wait);
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+@keyframes pf-flash { from { color: var(--phos-a); box-shadow: 0 0 18px rgba(142,240,177,0.5); } }
+.pf-offer {
+  width: min(1040px, 100%);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px dashed var(--hairline);
+  border-radius: 6px;
+  color: var(--silk-dim);
+  font-family: var(--font-voice);
+  font-style: italic;
+  font-size: var(--t-lead);
+}
+.pf-offer.ready { border-style: solid; border-color: var(--phos-b-deep); color: var(--silk); }
+/* Two lines are kept whether or not an offer is there: B's strip used to grow
+   by a line when one landed, and push the XY pad down under a moving hand. */
+.pf-offer { min-height: calc(2 * 1.35em + 2 * var(--s2)); }
+.pf-offer-body {
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.pf-offer-label {
+  font-style: normal;
+  color: var(--phos-b);
+  border: 1px solid var(--phos-b-deep);
+  border-radius: 3px;
+  padding: 0 6px;
+}
+.pf-hood { width: min(1040px, 100%); }
+.pf-hood-h { font-family: var(--font-silk); text-transform: uppercase; letter-spacing: 0.1em; font-size: var(--t-label); color: var(--silk-dim); margin-bottom: var(--s2); }
+.pf-hood-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px var(--s4); }
+.pf-hood-row {
+  display: grid;
+  grid-template-columns: minmax(0, 11em) minmax(0, 1fr) 6.5em;
+  align-items: center;
+  gap: var(--s2);
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: var(--silk-dim);
+  font: inherit;
+  font-size: var(--t-label);
+  text-align: left;
+  cursor: pointer;
+}
+.pf-hood-row:hover .pf-hood-name, .pf-hood-row:focus-visible .pf-hood-name { color: var(--silk); }
+.pf-hood-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-hood-mod { font-family: var(--font-silk); text-transform: uppercase; letter-spacing: 0.08em; color: var(--silk); }
+.pf-hood-track { position: relative; height: 6px; border-radius: 3px; background: var(--bezel); border: 1px solid var(--hairline); overflow: hidden; }
+.pf-hood-fill { position: absolute; inset: 0 auto 0 0; background: var(--phos-a-deep); }
+.pf-hood-home { position: absolute; top: -1px; bottom: -1px; width: 2px; margin-left: -1px; background: var(--silk-dim); }
+.pf-hood-val { color: var(--phos-a-dim); text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#rack-svg .hood-pulse { animation: hood-pulse 1.4s ease-out; }
+@keyframes hood-pulse { 0%, 40% { filter: drop-shadow(0 0 6px var(--phos-a)); } 100% { filter: none; } }
+@media (prefers-reduced-motion: reduce) { #rack-svg .hood-pulse { animation: none; outline: 2px solid var(--phos-a); } }
+@media (max-width: 900px) { .pf-hood-grid { grid-template-columns: minmax(0, 1fr); } }
+.pf-why { width: min(1040px, 100%); }
+.pf-why-body { max-width: 72ch; font-family: var(--font-voice); font-size: var(--t-lead); color: var(--silk-dim); line-height: 1.5; }
+.pf-why-body b { color: var(--silk); font-weight: 600; }
+@media (max-width: 900px) {
+  .pf-deck { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pf-pads { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pf-scope { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-pad.flash { animation: none; }
+}
+
+/* ===================== MIDI panel ===================== */
+button.midi-ind { background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font: inherit; color: inherit; padding: 1px 4px; }
+button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairline); }
+.midi-panel {
+  position: absolute;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  z-index: 55;
+  width: min(420px, 92vw);
+  padding: var(--s3);
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  box-shadow: var(--lift), var(--cast);
+  font-size: var(--t-body);
+}
+.midi-h { font-family: var(--font-silk); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: var(--t-label); color: var(--silk-dim); margin-bottom: var(--s2); }
+.midi-rows { display: grid; gap: 4px; }
+.midi-row { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: var(--s2); align-items: center; }
+/* Eight rows of full-height keybar buttons made a panel taller than the knob
+   deck it maps. Slimmer, still a 24px target. */
+.midi-row .util-btn { padding-block: 4px; }
+.midi-slot { color: var(--silk); font-family: var(--font-silk); }
+.midi-src { color: var(--phos-a-dim); font-size: var(--t-micro); }
+.midi-foot { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); color: var(--silk-dim); font-size: var(--t-micro); align-items: center; }
+.key-side.right .perf-ctl { position: relative; }
+
+/* Level three at rest takes no room (notes/ui-hierarchy.md). */
+.tray.empty { display: none; }
+/* The arp's settings follow its switch: gone while it does not run. They were
+   recessed-but-present, which read as six controls that did nothing — and then
+   pinned open for as long as it ran, which covered the bank's last row and the
+   XY pad for a whole performance. Now a drawer: open when ARP or SYNC is
+   switched on and from the chip below, folded on the next click elsewhere or
+   note played (main.js `setArpDrawer`). */
+#arp-ctl:not(.open) { display: none; }
+/* What stays while it runs: the drawer folded to one machined chip under the
+   ARP and SYNC buttons, in the three grid cells the width selector leaves
+   empty — so it takes no row and no width, and the keybed never moves. Its
+   chevron points the way the drawer opens: up, and down to fold it. */
+.arp-chip {
+  grid-column: span 3;
+  justify-self: stretch;
+  text-align: left;
+  white-space: nowrap;
+  background-image: linear-gradient(135deg, transparent 50%, var(--silk-dim) 50%),
+                    linear-gradient(45deg, var(--silk-dim) 50%, transparent 50%),
+                    linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
+}
+.arp-chip[aria-expanded="true"] {
+  color: var(--phos-a);
+  background-image: linear-gradient(45deg, transparent 50%, var(--silk-dim) 50%),
+                    linear-gradient(135deg, var(--silk-dim) 50%, transparent 50%),
+                    linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
+}
+/* …and it floats above the dock rather than growing it. As a third row it
+   widened this column by ~120 px and made the dock taller, so switching the
+   arp on moved every key out from under the hand that was about to play it
+   (C3 went from x≈318 to x≈435). The keybed never moves now. */
+.keybar .key-side:first-child { position: relative; }
+#arp-ctl {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 16px);
+  z-index: 45;
+  flex-wrap: nowrap;
+  gap: var(--s2);
+  padding: 6px 10px;
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  box-shadow: var(--lift), var(--cast);
+  white-space: nowrap;
+}
+
+/* A bred child that landed below its parent: the sampler exploring, said so. */
+.lin-explore { color: var(--silk-dim); font-style: italic; border-bottom: 1px dotted var(--silk-mute); cursor: help; }
+.pf-offer-what { color: var(--phos-b); font-style: normal; font-weight: 600; }
+
+/* ---------- PERFORM: XY pad beside the hood ---------- */
+.pf-stage {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+  gap: var(--s5);
+  align-items: start;
+}
+.pf-stage .pf-hood { width: auto; }
+@media (max-width: 900px) { .pf-stage { grid-template-columns: 1fr; } }
+.pf-xy { display: flex; flex-direction: column; gap: var(--s2); }
+.pf-xy-head { display: flex; align-items: center; gap: var(--s2); color: var(--silk-dim); font-size: var(--t-label); }
+.pf-xy-cap { font-family: var(--font-silk); letter-spacing: 0.1em; text-transform: uppercase; }
+.pf-xy-field {
+  position: relative;
+  height: 190px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(142,240,177,0.12) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(142,240,177,0.12) 50%, transparent calc(50% + 0.5px)),
+    radial-gradient(circle at 50% 50%, rgba(142,240,177,0.06), transparent 70%),
+    #0e1013;
+  cursor: crosshair;
+  touch-action: none;
+  overflow: hidden;
+}
+.pf-xy-field:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+.pf-xy-dot {
+  position: absolute;
+  width: 18px; height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background: var(--phos-a);
+  box-shadow: 0 0 14px rgba(142,240,177,0.7);
+  pointer-events: none;
+  transition: left 60ms linear, top 60ms linear;
+}
+.pf-xy-l, .pf-xy-r, .pf-xy-t, .pf-xy-b {
+  position: absolute;
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
+  pointer-events: none;
+}
+.pf-xy-l { left: 8px; top: 50%; transform: translateY(-50%); }
+.pf-xy-r { right: 8px; top: 50%; transform: translateY(-50%); }
+.pf-xy-t { top: 6px; left: 50%; transform: translateX(-50%); }
+.pf-xy-b { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.pf-xy-field.dead-x .pf-xy-l, .pf-xy-field.dead-x .pf-xy-r,
+.pf-xy-field.dead-y .pf-xy-t, .pf-xy-field.dead-y .pf-xy-b { color: var(--phos-b-dim); opacity: 0.55; }
+.pf-xy-note {
+  position: absolute; left: 0; right: 0; bottom: 26px;
+  text-align: center; font-size: var(--t-micro); color: var(--phos-b);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .pf-xy-dot { transition: none; } }
+
+/* ---------- narrow desktop window ---------- */
+.narrow-gate { display: none; }
+/* At 999px and under, not 860: between the two (880×720) the rack was a
+   114px thumbnail, PERFORM's pads were half under the keybar with XY off the
+   bottom, and "0/10 saved" printed over the bank's own "?". The copy in
+   index.html says the same number, as does the handheld gate's comment there. */
+@media (max-width: 999px) and (pointer: fine) {
+  html:not(.handheld) .narrow-gate {
+    display: flex;
+    position: fixed; inset: 0; z-index: 90;
+    align-items: center; justify-content: center;
+    padding: 16px;
+    background: rgba(10, 12, 15, 0.94);
+    backdrop-filter: blur(3px);
+  }
+}
+.ng-card { max-width: 380px; text-align: center; color: var(--silk-dim); font-family: var(--font-voice); font-size: var(--t-lead); line-height: 1.5; }
+.ng-title { font-family: var(--font-silk); letter-spacing: 0.12em; text-transform: uppercase; color: var(--phos-a); margin-bottom: var(--s3); }
+
+/* ---------- booth attract mode ----------
+   The band sits in PERFORM's marquee row (under the title, where the first
+   steps go) rather than over the stage: attract is the product's pitch, and
+   the pitch is the knobs, pads, XY and hood moving — so the band covers none
+   of them, and booth mode keeps its row reserved so nothing moves when a
+   visitor takes over. The logotype follows the brand: silk Jost 500 on the
+   0.145em ramp, no glow. The phosphor is the caption's, because the caption
+   is the live reading — what the invisible hand is doing right now. */
+.pf-marquee { width: min(1040px, 100%); display: grid; align-items: center; }
+.pf-marquee > * { grid-area: 1 / 1; }
+.pf-marquee:not(:has(> :not(.hidden))) { display: none; }
+html.booth .pf-marquee { display: grid; min-height: 46px; }
+.pf-marquee:has(> .booth-attract:not(.hidden)) .pf-steps { visibility: hidden; }
+.booth-attract {
+  justify-self: center;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s4);
+  padding: 9px 24px 10px;
+  border: 1px solid var(--phos-a-deep);
+  border-radius: 999px;
+  background: rgba(10, 12, 15, 0.9);
+  box-shadow: var(--lift);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.booth-attract.hidden { display: none; }
+.ba-title {
+  font-family: var(--font-silk);
+  font-weight: 500;
+  font-size: var(--t-hero);
+  letter-spacing: 0.145em;
+  color: var(--silk);
+}
+.ba-sub { font-family: var(--font-voice); font-style: italic; font-size: var(--t-title); color: var(--silk); animation: ba-pulse 2.4s ease-in-out infinite; }
+.ba-cap { font-size: var(--t-body); color: var(--phos-b); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ba-cap:empty { display: none; }
+@keyframes ba-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .ba-sub { animation: none; } }
+
+/* PERFORM's live value on a rack knob, beside the kept pointer. */
+.knob-ghost {
+  stroke: var(--phos-b);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(255, 180, 84, 0.85));
+  pointer-events: stroke;
+}
+g.performed .knob-body { stroke: var(--phos-b-dim); }
+g.performed .knob-value { fill: var(--phos-b); }
+/* Under 0.8× — where the knob label tier drops below 8px (`syncSilkFloor`) —
+   the amber readout is too small to carry "performed", or is not drawn at
+   all, and the ghost pointer is a 2px stub on a knob 20px across. So the
+   body's ring lights amber too, at a weight that survives the zoom: the knob
+   PERFORM is playing can be found across the whole rack at a glance. */
+#rack-svg[data-illegible~="label"] g.performed .knob-body { stroke: var(--phos-b); stroke-width: 2.5; }
+
+/* ---------- PERFORM first steps ---------- */
+.pf-steps {
+  width: min(1040px, 100%);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  font-size: var(--t-label);
+  color: var(--silk-dim);
+}
+.pf-steps.hidden { display: none; }
+.pf-step { white-space: nowrap; }
+.pf-step.now { color: var(--phos-a); text-shadow: 0 0 8px rgba(142,240,177,0.45); }
+.pf-step.done { color: var(--silk-dim); }
+.pf-step.done.all { color: var(--phos-a); }
+
+/* A preset row whose load is on its way: said at once, where the eye is. */
+.preset-item.loading { border-color: var(--phos-a-deep); }
+.preset-item.loading .bi-name::after {
+  content: "opening…";
+  margin-left: var(--s2);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--phos-a-dim);
+  animation: pf-breathe 1.2s ease-in-out infinite;
+}
+@keyframes pf-breathe { 50% { opacity: 0.45; } }
+
+/* ---------- PERFORM on a shorter screen ----------
+   Everything PERFORM needs mid-phrase has to be on screen without scrolling.
+   At 1440×900 the XY pad ran under the keybed and at 1280×800 only its top
+   showed, so on a screen under ~960 px tall the deck tightens: smaller dials,
+   lower pads, a shorter XY field and less air between them. A 1920×1080 booth
+   display keeps the full size. */
+@media (max-height: 960px) {
+  .view.perform { gap: var(--s3); padding-top: var(--s4); }
+  .pf-knob svg { max-width: 80px; }
+  .pf-pad { min-height: 52px; }
+  .pf-xy-field { height: 150px; }
+}
+@media (max-height: 840px) {
+  .view.perform { gap: var(--s2); padding-top: var(--s3); }
+  .pf-knob svg { max-width: 68px; }
+  .pf-pad { min-height: 44px; }
+  .pf-xy-field { height: 118px; }
+}

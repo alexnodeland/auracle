@@ -28,7 +28,8 @@
 //!   Wavefolder, Distortion, Bitcrusher, DelayLine, Chorus, Reverb, Phaser,
 //!   Flanger, Tremolo, Vibrato, Granular, PitchShifter, RingModulator,
 //!   Compressor, Ducker, NoiseGate, Vocoder, Adsr, Vca, Lfo, SampleAndHold,
-//!   SlewLimiter, EnvelopeFollower.
+//!   SlewLimiter, EnvelopeFollower — plus one module of this crate's own,
+//!   [`steps::StepsCv`], a step sequencer whose every value is a port.
 //! - Every compiled patch gets the mandatory voice stage — amp ADSR → VCA →
 //!   **Limiter** → StereoOutput — and bounded parameter mappings (resonance,
 //!   feedback), so the grammar cannot express the most degenerate settings.
@@ -41,13 +42,14 @@ pub mod genome;
 pub mod mutate;
 pub mod presets;
 pub mod prior;
+pub mod steps;
 pub mod term;
 
-pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap};
+pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap, COMPILE_MAX_NESTING};
 pub use describe::{describe, RackDescription};
 pub use diff::{tree_diff, DiffEntry};
 pub use edit::{set_param, EditError, ParamValue};
-pub use genome::{in_domain, PARAM_DOMAIN};
+pub use genome::{clamp_param, in_domain, PARAM_DOMAIN, PARAM_MAX};
 pub use mutate::{apply_struct_op, validate_tree, ModKind, NodeKind, StructError, StructOp};
 pub use presets::{preset_bank, presets, Category, Preset, CATEGORIES};
 pub use prior::PatchGrammarPrior;
@@ -213,6 +215,76 @@ mod tests {
         }
     }
 
+    /// Both samplers actually reach every modulation kind — `Steps` included —
+    /// and every tree that contains one survives the codec both ways.
+    ///
+    /// The round-trip tests above run fifty draws each, and at a 3% prior
+    /// weight per slot a fifty-draw window is not *guaranteed* to contain the
+    /// newest leaf. This one keeps drawing until it has seen every kind, so the
+    /// property is checked on the kind rather than hoped for.
+    #[test]
+    fn every_mod_kind_is_drawn_and_round_trips() {
+        fn kinds(m: &ModNode, out: &mut std::collections::BTreeSet<&'static str>) {
+            let k = match m {
+                ModNode::None => return,
+                ModNode::Lfo { .. } => "lfo",
+                ModNode::Env { .. } => "env",
+                ModNode::Rand { .. } => "rand",
+                ModNode::Follow { .. } => "follow",
+                ModNode::Euclid { .. } => "euclid",
+                ModNode::Op { .. } => "op",
+                ModNode::Pair { .. } => "pair",
+                ModNode::Steps { .. } => "steps",
+            };
+            out.insert(k);
+            for c in m.children() {
+                kinds(c, out);
+            }
+        }
+        fn walk(n: &term::AudioNode, out: &mut std::collections::BTreeSet<&'static str>) {
+            if let Some(m) = n.modulation() {
+                kinds(m, out);
+            }
+            for c in n.children() {
+                walk(c, out);
+            }
+        }
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0x57E95);
+        let mut seen_gen = std::collections::BTreeSet::new();
+        let mut seen_plain = std::collections::BTreeSet::new();
+        let mut steps_trees = 0;
+        for _ in 0..600 {
+            let (tree, gen_trace) = draw(&prior, &mut rng);
+            let mut here = std::collections::BTreeSet::new();
+            walk(&tree.root, &mut here);
+            if here.contains("steps") {
+                steps_trees += 1;
+                let enc = tree.to_trace();
+                assert_eq!(enc.choices.len(), gen_trace.choices.len());
+                for (addr, choice) in &gen_trace.choices {
+                    assert_eq!(enc.choices[addr].value, choice.value, "at {addr}");
+                }
+                assert_eq!(PatchTree::from_trace(&enc).unwrap(), tree);
+                assert!(compile(&tree, SR).is_ok(), "{}", tree.to_sexpr());
+            }
+            seen_gen.extend(here);
+            let plain = prior.sample_with_rng(&mut rng);
+            walk(&plain.root, &mut seen_plain);
+            assert_eq!(PatchTree::from_trace(&plain.to_trace()).unwrap(), plain);
+        }
+        let all: std::collections::BTreeSet<&str> = [
+            "lfo", "env", "rand", "follow", "euclid", "op", "pair", "steps",
+        ]
+        .into();
+        assert_eq!(seen_gen, all, "the generative prior never drew some kind");
+        assert_eq!(seen_plain, all, "the plain sampler never drew some kind");
+        assert!(
+            steps_trees >= 3,
+            "only {steps_trees} trees held a steps leaf"
+        );
+    }
+
     /// `from_trace(to_trace(t)) == t` for prior draws and for the plain-RNG
     /// sampler (the two samplers must agree on representable trees).
     #[test]
@@ -241,39 +313,91 @@ mod tests {
     /// `oct` chip and would silently be back to a full patch swap per click —
     /// which is invisible in a diff and audible as a dropout, so it is checked
     /// here rather than left to be noticed.
+    ///
+    /// Extended from the two categorical sites to every `mdepth` and to every
+    /// knob of every **modulation** module. The gap that showed: a `Follow`
+    /// under a source compiled to nothing, so the owner's `mdepth` and the
+    /// follower's own knobs were on the faceplate with no handle behind them,
+    /// and a drag on any of them fell back to a full patch swap. Not extended
+    /// to every audio knob, because some are baked by design — a VCO's `det`
+    /// is folded into the pitch `Offset` with the octave — and the remaining
+    /// enums (`wave`, `fkind`, `color`, `dmode`) are documented as needing
+    /// `set_patch`.
     #[test]
     fn every_advertised_live_site_has_a_live_handle() {
+        use describe::KnobKind;
         let prior = PatchGrammarPrior::default();
         let mut rng = StdRng::seed_from_u64(0x1_11E);
         let mut seen = std::collections::BTreeSet::new();
-        for _ in 0..200 {
-            let tree = prior.sample_with_rng(&mut rng);
-            let rack = describe::describe(&tree);
-            let voice = compile(&tree, SR).expect("compiles");
+        let mut missing = std::collections::BTreeSet::new();
+        let mut trees: Vec<PatchTree> = (0..200).map(|_| prior.sample_with_rng(&mut rng)).collect();
+        // The case the draw is unlikely to produce often enough: a follower,
+        // and a shaped follower, directly on an oscillator's pitch slot.
+        let follow = term::ModNode::Follow {
+            uid: Uid::NEW,
+            sens: 0.5,
+            release: 0.4,
+        };
+        for m in [
+            follow.clone(),
+            term::ModNode::Op {
+                uid: Uid::NEW,
+                kind: term::ModOp::Slew,
+                p0: 0.5,
+                p1: 0.5,
+                input: Box::new(follow),
+            },
+        ] {
+            let mut t = presets::presets()[0].1.clone();
+            t.root = term::AudioNode::Vco {
+                uid: Uid::NEW,
+                wave: term::Waveform::Saw,
+                octave: 0,
+                detune: 0.5,
+                mod_depth: 0.5,
+                modulation: m,
+            };
+            trees.push(t);
+        }
+        for tree in &trees {
+            let rack = describe::describe(tree);
+            let voice = compile(tree, SR).expect("compiles");
             for m in &rack.modules {
+                // An empty slot's depth knob has nothing to attenuate and is
+                // advertised as a knob for the slot to come; it is live once
+                // the slot is filled, which the rack shows as a `<key>/m`
+                // module.
+                let slot_filled = rack.modules.iter().any(|o| o.key == format!("{}/m", m.key));
                 for knob in &m.knobs {
                     let site = knob.addr.rsplit('#').next().unwrap_or("");
-                    if site != "table" && site != "oct" {
+                    // The three selector knobs (`qroot`, `qscale`, `rmode`)
+                    // choose a scale or a mode *inside* a module and are baked
+                    // at compile, like the audio enums.
+                    let selector = matches!(site, "qroot" | "qscale" | "rmode");
+                    let live = (site == "mdepth" && slot_filled)
+                        || (m.is_mod && matches!(knob.kind, KnobKind::Continuous) && !selector)
+                        || site == "table"
+                        || site == "oct";
+                    if !live {
                         continue;
                     }
                     seen.insert(site.to_string());
-                    assert!(
-                        voice.params.contains_key(&knob.addr),
-                        "{} advertises {site} with no live handle — clicking it \
-                         is a full patch swap",
-                        m.kind
-                    );
+                    if !voice.params.contains_key(&knob.addr) {
+                        missing.insert(format!("{} {site}", m.kind));
+                    }
                 }
             }
         }
-        assert_eq!(
-            seen,
-            ["oct", "table"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect::<std::collections::BTreeSet<_>>(),
-            "the draw never produced both live sites, so this proved nothing"
+        assert!(
+            missing.is_empty(),
+            "advertised with no live handle (a click is a full patch swap): {missing:?}"
         );
+        for want in ["oct", "table", "mdepth", "sens", "rel", "rate"] {
+            assert!(
+                seen.contains(want),
+                "the sweep never met a `{want}` knob, so it proved nothing about it"
+            );
+        }
     }
 
     /// Every knob address in the rack description is a real trace site, every
@@ -315,6 +439,18 @@ mod tests {
                     let d = tree_diff(&tree, &edited);
                     assert!(d.len() <= 1, "edit at {} touched {:?}", knob.addr, d);
                     assert!(compile(&edited, SR).is_ok());
+                }
+            }
+            // A step lane names knobs that exist, all continuous, and the
+            // count of them that play is the decoded `length`.
+            for m in &rack.modules {
+                let Some(lane) = &m.lane else { continue };
+                assert_eq!(m.kind, "steps", "a lane on a {} module", m.kind);
+                assert_eq!(lane.count, steps::STEP_SLOTS);
+                assert!(lane.first + lane.count <= m.knobs.len());
+                assert!((steps::MIN_STEPS..=lane.count).contains(&lane.active));
+                for k in &m.knobs[lane.first..lane.first + lane.count] {
+                    assert_eq!(k.kind, describe::KnobKind::Continuous, "{}", k.addr);
                 }
             }
             // Wires reference existing modules only.
@@ -414,12 +550,28 @@ mod tests {
                     }
                 }
                 ops.push(StructOp::Delete { key: key.clone() });
+                // The whole modulation vocabulary: the sources replace the
+                // slot, the shapers wrap whatever the draw put there — which
+                // is how a `Steps` ends up under a quantizer or inside a pair
+                // here without anyone writing that case down.
                 for mk in [
                     ModKind::None,
                     ModKind::Lfo,
                     ModKind::Env,
                     ModKind::Rand,
                     ModKind::Follow,
+                    ModKind::Euclid,
+                    ModKind::Steps,
+                    ModKind::Quantize,
+                    ModKind::Slew,
+                    ModKind::Rectify,
+                    ModKind::Hold,
+                    ModKind::Min,
+                    ModKind::Max,
+                    ModKind::And,
+                    ModKind::Or,
+                    ModKind::Xor,
+                    ModKind::Switch,
                 ] {
                     ops.push(StructOp::SetMod {
                         key: key.clone(),
@@ -442,6 +594,359 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The log-prior of `tree` under `prior`, scored the way the engine scores
+    /// a seed: replay the generative program against the term's own trace.
+    fn log_prior(prior: &PatchGrammarPrior, tree: &PatchTree) -> f64 {
+        let (_, scored) = run(
+            ScoreGivenTrace {
+                base: tree.to_trace(),
+                trace: Trace::default(),
+            },
+            prior.model(),
+        );
+        scored.log_prior
+    }
+
+    /// **The finite-prior gate.** Every term a hand can reach — every shipped
+    /// preset, every `default_node` the palette places, every result of every
+    /// structural op over a sweep of prior draws, and every knob at either end
+    /// of its range — must have a finite log-prior under the default grammar.
+    ///
+    /// The engine's refinement path is `EvolutionChain::init_from(seed)`, and
+    /// fugue returns `None` for a seed whose total log-weight is not finite.
+    /// So `log p = −∞` is not a low score: it is ⚡ evolve doing nothing. Two
+    /// ways to get there were shipping when this test was written — a knob at
+    /// exactly `1.0` (the closed domain against fugue's half-open `Uniform`),
+    /// and a hand edit past the prior's `max_depth` (a ceiling of 9 against
+    /// support that ends at 6) — and neither had a test because nothing scored
+    /// what the panel produced. This does.
+    #[test]
+    fn everything_a_hand_can_reach_has_finite_prior() {
+        use mutate::{ModKind, NodeKind, StructOp};
+        let prior = PatchGrammarPrior::default();
+        let finite = |what: &str, t: &PatchTree| {
+            let lp = log_prior(&prior, t);
+            assert!(lp.is_finite(), "{what}: log-prior is {lp}");
+        };
+
+        for (name, tree) in presets::presets() {
+            finite(&format!("preset {name}"), &tree);
+        }
+
+        // Every default node, as a source and as an insert over a source.
+        let base = presets::presets()[0].1.clone();
+        for kind in NodeKind::ALL {
+            let op = StructOp::Replace {
+                key: "node".into(),
+                kind,
+            };
+            let t = mutate::apply_struct_op(&base, &op).expect("replace root is always legal");
+            finite(&format!("default_node({kind:?}) as root"), &t);
+            if !kind.is_source() {
+                let op = StructOp::Insert {
+                    key: "node".into(),
+                    kind,
+                };
+                let t = mutate::apply_struct_op(&base, &op).expect("insert over a preset root");
+                finite(&format!("default_node({kind:?}) inserted"), &t);
+            }
+        }
+        // Every modulation choice, set on the root and then wrapped again, so
+        // the shapers meet an occupied slot as well as an empty one.
+        for mk in ModKind::ALL {
+            let op = StructOp::SetMod {
+                key: "node".into(),
+                kind: mk,
+            };
+            if let Ok(t) = mutate::apply_struct_op(&base, &op) {
+                finite(&format!("SetMod({mk:?}) on a preset root"), &t);
+                if let Ok(t2) = mutate::apply_struct_op(&t, &op) {
+                    finite(&format!("SetMod({mk:?}) twice"), &t2);
+                }
+            }
+        }
+
+        // A knob at both ends of its range — the stop is where the panel puts
+        // a dragged knob, and the stop used to be `1.0`.
+        for (addr, v) in [
+            ("amp#attack", 1.0),
+            ("amp#sustain", 1e30),
+            ("node#cut", 0.0),
+        ] {
+            let t = set_param(&base, addr, ParamValue::Continuous(v))
+                .or_else(|_| set_param(&base, "amp#release", ParamValue::Continuous(v)))
+                .expect("a knob edit");
+            finite(&format!("knob {addr} = {v}"), &t);
+        }
+
+        // The whole op vocabulary over prior draws. Whatever `apply_struct_op`
+        // accepts, the prior must be able to score — that is what the ceilings
+        // are *for* now.
+        let mut rng = StdRng::seed_from_u64(20_260_905);
+        let mut applied = 0usize;
+        for i in 0..24 {
+            let (tree, _) = draw(&prior, &mut rng);
+            let keys: Vec<String> = describe::describe(&tree)
+                .modules
+                .iter()
+                .filter(|m| m.key != "amp" && !m.is_mod)
+                .map(|m| m.key.clone())
+                .collect();
+            for key in &keys {
+                let mut ops: Vec<StructOp> = vec![
+                    StructOp::Delete { key: key.clone() },
+                    StructOp::SwapMix { key: key.clone() },
+                ];
+                for kind in NodeKind::ALL {
+                    ops.push(StructOp::Replace {
+                        key: key.clone(),
+                        kind,
+                    });
+                    if !kind.is_source() {
+                        ops.push(StructOp::Insert {
+                            key: key.clone(),
+                            kind,
+                        });
+                    }
+                }
+                for mk in ModKind::ALL {
+                    ops.push(StructOp::SetMod {
+                        key: key.clone(),
+                        kind: mk,
+                    });
+                }
+                for op in ops {
+                    if let Ok(next) = mutate::apply_struct_op(&tree, &op) {
+                        applied += 1;
+                        finite(&format!("draw {i}: {op:?}"), &next);
+                    }
+                }
+            }
+        }
+        assert!(applied > 1000, "the sweep applied only {applied} ops");
+    }
+
+    /// A term far past every ceiling is an *error* from `compile`, not a stack
+    /// overflow. `import_patch` and the session file are parsed straight into
+    /// a `PatchTree`, and the compiler recurses by value with frames large
+    /// enough that ~60 nested nodes overflow the wasm stack — a trap that
+    /// poisons the engine rather than an error anyone sees. The guard has to
+    /// live in `compile` itself so no caller can route around it.
+    #[test]
+    fn compile_refuses_a_term_nested_past_the_stack_guard() {
+        let mut tree = presets::presets()[0].1.clone();
+        while tree.root.depth() <= compile::COMPILE_MAX_NESTING {
+            tree.root = default_filter_over(tree.root);
+        }
+        let err = match compile(&tree, SR) {
+            Err(e) => e,
+            Ok(_) => panic!("a 33-deep term must be refused"),
+        };
+        assert!(err.to_string().contains("nests"), "{err}");
+        // And the guard counts modulation nesting on top of audio depth: a
+        // legal audio tree with a legal mod chain is still fine.
+        let ok = presets::presets()[0].1.clone();
+        assert!(compile(&ok, SR).is_ok());
+    }
+
+    /// The depth boundary, from both sides: the deepest tree the ceilings admit
+    /// scores finite, and the first one they refuse is the first one the prior
+    /// cannot score. If either half fails, `MAX_DEPTH`/`MAX_MOD_DEPTH` and the
+    /// prior's support have drifted apart again.
+    #[test]
+    fn ceilings_end_exactly_where_the_prior_support_does() {
+        let prior = PatchGrammarPrior::default();
+        let mut tree = presets::presets()[0].1.clone();
+        tree.root = term::AudioNode::Vco {
+            uid: Uid::NEW,
+            wave: term::Waveform::Saw,
+            octave: 0,
+            detune: 0.5,
+            mod_depth: 0.3,
+            modulation: term::ModNode::None,
+        };
+        while tree.root.depth() < mutate::MAX_DEPTH {
+            tree.root = default_filter_over(tree.root);
+        }
+        assert_eq!(tree.root.depth(), mutate::MAX_DEPTH);
+        assert!(validate_tree(&tree).is_ok());
+        assert!(
+            log_prior(&prior, &tree).is_finite(),
+            "the deepest legal tree must score"
+        );
+        tree.root = default_filter_over(tree.root);
+        assert!(validate_tree(&tree).is_err());
+        assert_eq!(log_prior(&prior, &tree), f64::NEG_INFINITY);
+
+        // The same for a modulation chain: `Op` wrapping `Op` wrapping a leaf.
+        let mut m = term::ModNode::Lfo {
+            uid: Uid::NEW,
+            wave: term::Waveform::Sine,
+            rate: 0.5,
+        };
+        let wrap = |inner: term::ModNode| term::ModNode::Op {
+            uid: Uid::NEW,
+            kind: term::ModOp::Slew,
+            p0: 0.5,
+            p1: 0.0,
+            input: Box::new(inner),
+        };
+        while m.depth() < mutate::MAX_MOD_DEPTH {
+            m = wrap(m);
+        }
+        let mut shaped = presets::presets()[0].1.clone();
+        let op = mutate::StructOp::SetModTree {
+            key: "node".into(),
+            m: m.clone(),
+        };
+        let shaped_ok = mutate::apply_struct_op(&shaped, &op).expect("at the ceiling");
+        assert!(log_prior(&prior, &shaped_ok).is_finite());
+        let over = mutate::StructOp::SetModTree {
+            key: "node".into(),
+            m: wrap(m),
+        };
+        assert!(mutate::apply_struct_op(&shaped, &over).is_err());
+        shaped.root = shaped_ok.root;
+        assert!(validate_tree(&shaped).is_ok());
+    }
+
+    /// The plain-RNG sampler and the fugue program are documented as drawing
+    /// from the same grammar. Held to it by frequency: over a few thousand
+    /// trees from each, every module kind the rack can show appears at a rate
+    /// the other sampler agrees with, and `silence` — which the RNG path
+    /// could never draw at all, its arm having been written before the hole
+    /// joined the palette — appears in both.
+    #[test]
+    fn the_two_samplers_agree_on_kind_frequencies() {
+        use std::collections::BTreeMap;
+        let prior = PatchGrammarPrior::default();
+        let n = 3000;
+        let count = |trees: &[PatchTree]| -> (BTreeMap<String, f64>, f64) {
+            let mut c: BTreeMap<String, f64> = BTreeMap::new();
+            let mut total = 0.0;
+            for t in trees {
+                for m in describe::describe(t).modules {
+                    if m.key == "amp" {
+                        continue;
+                    }
+                    *c.entry(m.kind).or_insert(0.0) += 1.0;
+                    total += 1.0;
+                }
+            }
+            (c, total)
+        };
+        let mut rng = StdRng::seed_from_u64(0x5A11);
+        let by_rng: Vec<PatchTree> = (0..n).map(|_| prior.sample_with_rng(&mut rng)).collect();
+        let mut rng = StdRng::seed_from_u64(0x5A12);
+        let by_model: Vec<PatchTree> = (0..n).map(|_| draw(&prior, &mut rng).0).collect();
+        let (a, ta) = count(&by_rng);
+        let (b, tb) = count(&by_model);
+        assert!(
+            a.get("silence").copied().unwrap_or(0.0) > 0.0,
+            "the RNG path never drew a hole"
+        );
+        assert!(
+            b.get("silence").copied().unwrap_or(0.0) > 0.0,
+            "the program never drew a hole"
+        );
+        let kinds: std::collections::BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+        for k in kinds {
+            let fa = a.get(k).copied().unwrap_or(0.0) / ta;
+            let fb = b.get(k).copied().unwrap_or(0.0) / tb;
+            // ~12 000 modules a side: the standard error of a frequency is
+            // ≲ 0.005, so 0.02 is a four-sigma band on the busiest kind.
+            assert!(
+                (fa - fb).abs() < 0.02,
+                "{k}: rng sampler {fa:.4} vs program {fb:.4} — the samplers disagree"
+            );
+        }
+    }
+
+    /// `ReplaceTree`/`InsertTree` normalise the modulation slots of the
+    /// fragment they graft, as `SetModTree` always did for its one term. A
+    /// processor over nothing encodes `#mod = 0` where the prior's weight is
+    /// zero (`log p = −∞`, the un-evolvable state again), and a one-parameter
+    /// `Op` carrying a stray `p1` would not survive its own trace round trip —
+    /// which is the equality refinement uses to ask whether it moved.
+    #[test]
+    fn grafted_fragments_have_their_mod_slots_normalised() {
+        use mutate::StructOp;
+        let prior = PatchGrammarPrior::default();
+        let base = presets::presets()[0].1.clone();
+        let dead_op = term::ModNode::Op {
+            uid: Uid::NEW,
+            kind: term::ModOp::Quantize,
+            p0: 0.5,
+            p1: 0.5,
+            input: Box::new(term::ModNode::None),
+        };
+        let stray_p1 = term::ModNode::Op {
+            uid: Uid::NEW,
+            kind: term::ModOp::Rectify,
+            p0: 0.4,
+            p1: 0.7, // not a site for a one-parameter op
+            input: Box::new(term::ModNode::Lfo {
+                uid: Uid::NEW,
+                wave: term::Waveform::Sine,
+                rate: 0.3,
+            }),
+        };
+        let filter = |m: term::ModNode, inner: term::AudioNode| term::AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: term::FilterKind::SvfLp,
+            cutoff: 0.5,
+            resonance: 0.2,
+            mod_depth: 0.5,
+            input: Box::new(inner),
+            modulation: m,
+        };
+        let vco = term::AudioNode::Vco {
+            uid: Uid::NEW,
+            wave: term::Waveform::Saw,
+            octave: 0,
+            detune: 0.5,
+            mod_depth: 0.3,
+            modulation: term::ModNode::None,
+        };
+
+        let replaced = mutate::apply_struct_op(
+            &base,
+            &StructOp::ReplaceTree {
+                key: "node".into(),
+                node: filter(dead_op, vco.clone()),
+            },
+        )
+        .expect("a legal graft");
+        assert_eq!(
+            replaced.root.modulation(),
+            Some(&term::ModNode::None),
+            "an Op over nothing must fold to an empty slot"
+        );
+        assert!(log_prior(&prior, &replaced).is_finite());
+
+        let inserted = mutate::apply_struct_op(
+            &base,
+            &StructOp::InsertTree {
+                key: "node".into(),
+                node: filter(stray_p1, vco),
+            },
+        )
+        .expect("a legal graft");
+        let Some(term::ModNode::Op { p1, .. }) = inserted.root.modulation() else {
+            panic!(
+                "the shaped modulator should have survived: {}",
+                inserted.root.to_sexpr()
+            );
+        };
+        assert_eq!(*p1, 0.0, "a one-parameter op's p1 must be pinned to 0");
+        let back = PatchTree::from_trace(&inserted.to_trace()).unwrap();
+        assert_eq!(
+            back, inserted,
+            "the grafted tree must survive its own round trip"
+        );
+        assert!(log_prior(&prior, &inserted).is_finite());
     }
 
     /// Every structural path that treats a binary node specially, exercised on

@@ -40,7 +40,7 @@ pub mod vet;
 pub use audio::{audio_features, AudioFeatures};
 pub use cache::{
     cache_namespace, canonical_tree_json, featurize_memo, render_key, CachedFeatures, MemoStats,
-    RenderMemo, DEFAULT_AUDIO_CAP, DEFAULT_FEATURE_CAP, RENDER_EPOCH,
+    RenderMemo, DEFAULT_AUDIO_CAP, DEFAULT_FEATURE_CAP, QUIVER_DSP_VERSION, RENDER_EPOCH,
 };
 pub use loudness::{integrated_lufs, normalize_to, MAX_GAIN_DB, PEAK_CEILING};
 pub use phrase::PhraseSpec;
@@ -69,7 +69,7 @@ mod tests {
             amp: AmpEnv {
                 attack: 0.1,
                 decay: 0.3,
-                sustain: 1.0,
+                sustain: 0.9,
                 release: 0.3,
             },
             root: AudioNode::Silence { uid: Uid::NEW },
@@ -91,7 +91,7 @@ mod tests {
             amp: AmpEnv {
                 attack: 0.1,
                 decay: 0.3,
-                sustain: 1.0,
+                sustain: 0.9,
                 release: 0.3,
             },
             root: AudioNode::Mix {
@@ -106,6 +106,83 @@ mod tests {
         };
         featurize(&tree, &PhraseSpec::default())
             .expect("half a mixer is still a patch you can hear");
+    }
+
+    /// `mod_depth_mean` reads 2 for a modulator wrapped in one processor, and
+    /// it is not one of the unit-bounded coordinates — the pairing that made
+    /// every stored vote on a shaped patch get clamped to "unshaped" on load.
+    #[test]
+    fn a_shaped_modulator_has_depth_two_and_is_not_unit_bounded() {
+        use auracle_grammar::term::{FilterKind, ModOp};
+        let tree = PatchTree {
+            amp: AmpEnv {
+                attack: 0.1,
+                decay: 0.3,
+                sustain: 0.7,
+                release: 0.3,
+            },
+            root: AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.5,
+                resonance: 0.2,
+                mod_depth: 0.5,
+                modulation: ModNode::Op {
+                    uid: Uid::NEW,
+                    kind: ModOp::Slew,
+                    p0: 0.4,
+                    p1: 0.4,
+                    input: Box::new(ModNode::Lfo {
+                        uid: Uid::NEW,
+                        wave: Waveform::Sine,
+                        rate: 0.3,
+                    }),
+                },
+                input: Box::new(vco(Waveform::Saw).root),
+            },
+        };
+        let f = struct_features(&tree);
+        assert_eq!(f.mod_depth_mean, 2.0, "Op(Lfo) is a two-deep chain");
+        assert!(
+            !StructFeatures::UNIT_NAMES.contains(&"mod_depth_mean"),
+            "a count-like mean must not be declared unit-bounded"
+        );
+        // And the bounded ones really are, on this shaped term too.
+        for (name, v) in StructFeatures::UNIT_NAMES.iter().zip(f.unit_coordinates()) {
+            assert!((0.0..=1.0).contains(&v), "{name} = {v}");
+        }
+    }
+
+    /// A follower on a source now compiles to a follower with nothing on its
+    /// input (so its knobs have live handles) instead of to nothing. The cable
+    /// it drives carries exactly 0 V, and this pins that the render is
+    /// **bit-identical** to the same oscillator with an empty slot — which is
+    /// what lets the change ship without a `RENDER_EPOCH` bump.
+    #[test]
+    fn a_follower_on_a_source_changes_no_sample() {
+        let mut bare = vco(Waveform::Saw);
+        if let AudioNode::Vco { mod_depth, .. } = &mut bare.root {
+            *mod_depth = 0.8;
+        }
+        let mut followed = bare.clone();
+        if let AudioNode::Vco { modulation, .. } = &mut followed.root {
+            *modulation = ModNode::Follow {
+                uid: Uid::NEW,
+                sens: 0.6,
+                release: 0.4,
+            };
+        }
+        let spec = PhraseSpec::default();
+        let a = render::render_phrase(&bare, &spec).expect("renders");
+        let b = render::render_phrase(&followed, &spec).expect("renders");
+        assert_eq!(a.samples.len(), b.samples.len());
+        assert!(
+            a.samples
+                .iter()
+                .zip(&b.samples)
+                .all(|(x, y)| x.to_bits() == y.to_bits()),
+            "a follower with nothing to follow moved a sample"
+        );
     }
 
     /// Every built-in preset renders and passes the vetting gate — a preset
@@ -679,7 +756,7 @@ mod tests {
             // is not available to a linear model.
             let slots = mod_slots(&tree);
             let filled = (s.mod_density * slots as f64).round();
-            let mod_leaves = s.n_lfo + s.n_env + s.n_rand + s.n_follow + s.n_euclid;
+            let mod_leaves = s.n_lfo + s.n_env + s.n_rand + s.n_steps + s.n_follow + s.n_euclid;
             let combiners = s.n_min + s.n_max + s.n_and + s.n_or + s.n_xor + s.n_switch;
             assert_eq!(
                 mod_leaves - combiners,

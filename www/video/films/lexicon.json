@@ -1,0 +1,9 @@
+{
+  "lexicon": {
+    "Auracle": { "us": "ˈɔɹəkᵊl", "gb": "ˈɒɹəkᵊl" },
+    "Auracle's": { "us": "ˈɔɹəkᵊlz", "gb": "ˈɒɹəkᵊlz" },
+    "φ": "fˈI",
+    "WASM": "ˈwæzəm"
+  },
+  "asr_aliases": { "Auracle": "oracle", "Auracle's": "oracle's" }
+}

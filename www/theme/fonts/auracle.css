@@ -460,6 +460,61 @@ pre > code {
     font-weight: 500;
 }
 
+/* ─── Films ─────────────────────────────────────────────────────────────── */
+
+/* A film is a figure that moves: the same cap and the same caption as a
+   screenshot, but it fills the cap, because unlike a frame of the app its type
+   was set for the size it plays at (www/video/README.md). The poster carries
+   the dark tile, so nothing flashes white before it loads. */
+.content figure.film video {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    background: var(--bezel, #07080a);
+}
+
+/* The running time sits beside a film's heading, in the readout face. */
+.content .film-len {
+    font-family: var(--mono-font, "IBM Plex Mono", monospace);
+    font-size: 0.62em;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: var(--silk-dim);
+    margin-inline-start: 0.6em;
+}
+
+/* Chapters: a row of time stamps a reader can jump to. */
+.content ol.film-chapters {
+    list-style: none;
+    padding: 0;
+    margin: -0.6em auto 1.2em;
+    max-width: var(--figure-max-width);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35em 1.3em;
+    font-size: 1.3rem;
+    color: var(--silk-dim);
+}
+.content ol.film-chapters a {
+    font-family: var(--mono-font, "IBM Plex Mono", monospace);
+    margin-inline-end: 0.35em;
+}
+
+.content details.film-transcript {
+    max-width: var(--figure-max-width);
+    margin: 0 auto 2.4em;
+    color: var(--silk-dim);
+}
+.content details.film-transcript summary {
+    cursor: pointer;
+    font-size: 1.3rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
 /* ─── Callouts (mdbook-admonish) ────────────────────────────────────────── */
 
 /* admonish ships its own stylesheet with a six-colour palette. That palette is

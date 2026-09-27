@@ -47,7 +47,7 @@ type Counter = fn(&StructFeatures) -> f64;
 /// The per-kind counters, in the order the report prints them. Named here
 /// rather than derived from φ, because φ collapses several of these into
 /// families and this report is exactly the place you want them apart.
-const KINDS: [(&str, Counter); 41] = [
+const KINDS: [(&str, Counter); 42] = [
     ("vco", |f| f.n_vco),
     ("supersaw", |f| f.n_supersaw),
     ("noise", |f| f.n_noise),
@@ -79,6 +79,7 @@ const KINDS: [(&str, Counter); 41] = [
     ("rand", |f| f.n_rand),
     ("follow", |f| f.n_follow),
     ("euclid", |f| f.n_euclid),
+    ("steps", |f| f.n_steps),
     ("quantize", |f| f.n_quantize),
     ("slew", |f| f.n_slew),
     ("rectify", |f| f.n_rectify),
@@ -116,9 +117,11 @@ const OP_KINDS: [&str; 20] = [
     "gate",
     "vocoder",
 ];
-/// The `#mod` categorical's five filled leaf kinds plus its two recursive
+/// The `#mod` categorical's six filled leaf kinds plus its two recursive
 /// productions — the histogram a palette change has to be read against.
-const MOD_KINDS: [&str; 7] = ["lfo", "env", "rand", "follow", "euclid", "op", "pair"];
+const MOD_KINDS: [&str; 8] = [
+    "lfo", "env", "rand", "follow", "euclid", "op", "pair", "steps",
+];
 /// `#modop`, in categorical index order.
 const MODOP_KINDS: [&str; 4] = ["quantize", "slew", "rectify", "hold"];
 /// `#pairop`, in categorical index order.

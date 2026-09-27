@@ -20,21 +20,65 @@ WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
 WASM_STACK := 8388608
 WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
-.PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+.PHONY: web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+        js-check wasm-check smoke smoke-tools \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop revalidate \
-        wasm serve doc bundle clean \
+        wasm wasm-stamp serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve
 
 all: check
 
-## check: everything CI runs — format, lints as errors, full test suite
-check: fmt-check lint test
+## check: everything CI runs — format, lints as errors, the app's syntax and
+## its pure-logic unit tests, the wasm target, full test suite
+check: fmt-check lint web-check wasm-check test
+
+## web-check: every web module parses (js-check), and the pure-logic modules'
+## unit tests pass
+web-check: js-check
+	node --test apps/web/tests/*.test.mjs
 
 build:
 	$(CARGO) build --workspace
+
+# ─── the web app ─────────────────────────────────────────────────────────────
+
+WEB_JS := $(wildcard apps/web/*.js)
+
+## js-check: every app script parses. This is the only gate that catches a
+## backtick inside live-audio.js's PROCESSOR template literal — the failure
+## mode there is a worklet blob that silently never registers, not an error at
+## the edit site (CONTRIBUTING § Sharp edges).
+js-check:
+	@command -v node >/dev/null || { \
+		printf '  node not found — the web app is checked with `node --check`; install Node 18+\n'; exit 1; }
+	@for f in $(WEB_JS); do node --check $$f || exit 1; done
+	@printf '  %s: parse OK\n' $(WEB_JS)
+
+## wasm-check: the engine compiles for wasm32, which the native build does not
+## prove (cfg(target_arch) paths, wasm-bindgen signatures, `u64` at the
+## boundary). CI ran this and `make check` did not, so "green locally" and
+## "green in CI" were two different claims.
+wasm-check:
+	@rustup target list --installed 2>/dev/null | grep -q '^wasm32-unknown-unknown$$' || { \
+		printf '  the wasm32 target is missing — run: rustup target add wasm32-unknown-unknown\n'; exit 1; }
+	$(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
+
+## smoke: boot the instrument in a real browser against the built wasm and
+## require a clean console and a registered worklet, then provoke the failure
+## flows (unparseable save, engine error, refused vote, profile import) and
+## require each to be contained. Needs `make wasm` first, Node, and
+## Playwright's Chromium (`make smoke-tools` once).
+smoke:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	cd tests/web && npm ci --no-audit --no-fund && npx playwright test
+
+## smoke-tools: Playwright's Chromium, once. CI passes --with-deps for the
+## runner's system libraries; a workstation usually has them.
+smoke-tools:
+	cd tests/web && npm ci --no-audit --no-fund && npx playwright install chromium
 
 ## test: optimized — the grammar/features/session tests render real audio
 ## sample-by-sample; debug-mode DSP is ~20× slower
@@ -119,9 +163,24 @@ closed-loop:
 revalidate: phi-stats norm-peak climb search-check
 	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n\n'
 
-## wasm: build the web app's engine into apps/web/pkg
+## wasm: build the web app's engine into apps/web/pkg, and stamp the build
 wasm:
 	$(WASM_PATH) $(WASM_RUSTFLAGS) wasm-pack build crates/auracle-wasm --target web --release --out-dir ../../apps/web/pkg
+	@$(MAKE) --no-print-directory wasm-stamp
+
+# The version stamp main.js puts on its worker and wasm URLs (`?v=…`). A content
+# hash over the engine and the app scripts, so the same bytes get the same URL
+# and the ~2 MB binary is served from the browser's cache across reloads — and
+# re-fetched exactly when it changed. Without the file the app falls back to
+# `Date.now()`, which is correct and never cached. python3 because it is already
+# required (serve.py, checklinks.py) and `sha256sum`/`shasum` differ by OS.
+# Every app script, not a list: a module main.js imports with `?v=` (perform.js,
+# midi.js) that was left out would keep its old URL when it changed and be
+# served from cache.
+WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS)
+wasm-stamp:
+	@python3 -c 'import hashlib, json, sys; h = hashlib.sha256(); [h.update(open(f, "rb").read()) for f in sys.argv[1:]]; json.dump({"build": h.hexdigest()[:16]}, open("apps/web/pkg/build.json", "w"))' $(WEB_STAMPED)
+	@printf '  apps/web/pkg/build.json: %s\n' "$$(cat apps/web/pkg/build.json)"
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:

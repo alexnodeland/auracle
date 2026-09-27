@@ -50,9 +50,10 @@ outputs, so one module's NaN or Inf cannot poison another module's recursive
 state through the routing buffers. Containment at the graph boundary;
 per-module input sanitization remains defence in depth.
 
-Still open upstream, non-blocking: `voct_to_hz` is unclamped. Q198 *recovers*
-from the overflow rather than preventing it, and a pitch clamp would
-additionally tame the aliasing garbage that absurd-but-finite pitches produce.
+`voct_to_hz` is clamped to ±32 octaves as of quiver-dsp 0.3.0 (auracle pins
+0.3.3), so the overflow Q198 recovers from can no longer be produced by pitch
+CV at all; what remains at the clamp is finite aliasing garbage, which the vet
+gate quarantines like any other.
 
 ## Layer 1 — the vetting gate
 

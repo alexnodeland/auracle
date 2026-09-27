@@ -131,8 +131,8 @@ measurement that would settle it.
   a constant.
 - **Fit cost at the K cap.** Single-site MH re-executes the whole program per
   step, so a mature [fit](../taste/posterior.md) is both slower and
-  statistically thinner than an early one (210 + S sites over a fixed 10 000
-  steps ≈ 47 sweeps per site). The address table is hoisted out of the step
+  statistically thinner than an early one (225 + S sites over a fixed 10 000
+  steps ≈ 44 sweeps per site). The address table is hoisted out of the step
   loop and the chain no longer holds itself in memory, so what is left is purely
   the statistical shape of the problem — the budget can now be chosen on the
   recovery tables rather than against a memory ceiling. The written-down option
@@ -208,10 +208,55 @@ measurement that would settle it.
   What is left is real but smaller than the entry implies, and it is a UX
   number rather than a harness one: latency on a **single** refinement, which is
   the app's ⚡ button. Filed as that, not as a build-configuration change.
-- **Remaining quiver hardening** (non-blocking, tracked upstream):
-  `voct_to_hz` is unclamped — overflow is now *recovered* by Q198 rather than
-  prevented, and a pitch clamp would also tame aliasing garbage at
-  absurd-but-finite pitches.
+- **Bright and Body are entangled on a filtered bass** (open). On Acid Line the
+  cutoff is the obvious brightness knob, +3.2σ of centroid per unit, and the
+  [named-control](../search/perform.md) wiring does not use it: the same move
+  drops `bass_fraction` by 4.6σ, which is Body's axis, so the cross-talk gate is
+  right to call it impure, and Bright reads *search* on the patch where a
+  player most expects it. Solving in the six-dimensional named subspace instead
+  of across φ was tried and reverted: with more knobs than named axes it can
+  always cancel the cross-talk, and it did so musically — Ceiling's "Bright"
+  became a shorter release. Candidates: let Bright own a little of Body's axis
+  (a brightening is expected to thin a bass), or report a coupled control
+  honestly ("brighter, and thinner") instead of hiding it. Neither is decided.
+  *Update:* the wiring now tries a control's own sites first (Bright: cutoff,
+  tone, …) and ranks knobs by effect rather than coefficient, and on the
+  re-voiced Acid Line the cutoff alone clears the gate for Bright: purity 0.87,
+  reach 2.85σ. The entanglement is still there, and now shows up on the other
+  side. Body's best move is the same cutoff turned the other way, so `separate`
+  makes Body the search control.
+- **Grit hears noise, not saturation** (open). Grit's axis is
+  `flatness_mean`, and a drive on a tonal sound adds harmonics, which φ reads
+  as Bright, not as flatness. On Iron Bass, a saw through a tube drive, drive
+  moves flatness by 0.000σ per unit. Across 24 fresh-pool patches Grit reaches
+  0 to 1. A bitcrusher does move flatness. It is transparent only at 16 bits,
+  though, where its slope is zero and the local measurement cannot see it, and
+  it clips anything hotter than its ±5 V window. So PERFORM grafts nothing for
+  Grit. What would fix it is a roughness descriptor in φ (inharmonic or
+  beating partials, or Sethares-style sensory dissonance) with Grit's axis on
+  it. That is a φ change, and it needs a `RENDER_EPOCH` bump and a taste-model
+  revalidation.
+
+- **Remaining quiver hardening** — closed. `voct_to_hz` gained a ±32-octave
+  clamp in quiver-dsp 0.3.0, and auracle pins 0.3.3 as of the September 2026
+  audit. Renders inside ±32 octaves are unchanged, so no `RENDER_EPOCH` was
+  bumped for it; the render-cache namespace now carries the quiver version as
+  its own coordinate, which orphans the stored rows from 0.2.0 anyway — the
+  right outcome, because for pathological CV (chained `Offset`s past ±32
+  octaves) the two versions render *differently*: 0.2.0 recovered an infinite
+  increment by phase reset, 0.3.x aliases at a finite ~THz pitch. Both are
+  garbage the vet gate quarantines; they are not the same garbage.
+- **Frame silence is recognised only at exactly zero power** (AU-F2, open).
+  `audio.rs` splits the phrase into chains at frames whose unnormalised FFT
+  power is below `1e-12`, which is an amplitude of ≈2e-9 (−173 dBFS). Rests
+  read as silent only because quiver's `Adsr` snaps exactly to 0 at the end of
+  its release and the VCA is multiplicative; a release or chord tail that
+  outlasts a 0.15–0.2 s rest never gets a chain break, and the flux fix (#51)
+  and the segment features depend on one. The likely fix is a threshold
+  relative to the phrase (−60 dB of global RMS, say). It moves φ for every
+  patch with a tail, so it is a `RENDER_EPOCH` bump *and* owes the measurement
+  — φ over prior draws before and after, and `make revalidate` — that has not
+  been made. Documented at the line rather than changed blind.
 - **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
   `centroid_mean` are three genuine measurements of one perceptual thing.
   A fused prior over the cluster is now **implemented and switched off**, which

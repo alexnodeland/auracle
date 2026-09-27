@@ -35,8 +35,27 @@ it would have played a D every time.
 
 ### MIDI
 
-Plug in a keyboard and it works: **velocity**, **pitch bend** and **sustain
-pedal**. The dock's right side shows the MIDI state.
+Plug in a keyboard and it works: **velocity**, **pitch bend** and the
+**sustain pedal**. The dock's right side shows the MIDI state; click **midi**
+there for the mapping panel.
+
+A controller with knobs works too, with nothing to set up. The first eight
+knobs you turn claim [PERFORM](./views/perform.md)'s eight controls in the
+order you turn them, and the panel's **learn** remaps any of them. Endless
+encoders are recognised from what they send. Ordinary pots pick a control up
+as they pass through its position rather than snapping it, which matters
+because Wander moves the controls under a pot that has not moved. Channel
+pressure brightens the sound and the mod wheel drives Motion. Incoming MIDI
+clock sets the tempo. The mapping is remembered per device.
+
+**The sustain pedal sustains.** A note you release while the pedal is down
+keeps ringing until the pedal lifts, and lifting it releases exactly those
+notes. Notes still under your fingers keep sounding. Strike a sustained note
+again and it belongs to your finger again. The pedal is separate from
+**HOLD**, the dock's latch; it used to be wired to it.
+
+The whole map, including bend range and how encoders are detected, is in
+[Keyboard and MIDI](./keyboard.md#midi).
 
 Web MIDI is Chromium-only today. In Firefox and Safari the other two paths are
 unaffected.
@@ -73,6 +92,16 @@ see matches what your keyboard plays. Both height and width persist.
 It is **sample-accurate**: it runs inside the audio engine rather than on a
 page timer, so it does not drift and it does not stutter when the interface is
 busy.
+
+**SYNC** (next to ARP) puts a patch's step sequencers on the same tempo. Each
+one plays the musical division nearest the speed it was evolved at, so a
+pattern that ran at 3.7 steps a second becomes 16ths at 120 BPM, and all of
+them restart together with the first key you press, on the same beat the arp
+starts. MIDI start restarts them too, and with a MIDI clock running they are
+pulled back onto its beat once a beat. A five-step pattern still cycles against
+the bar; that is the point of it. Turning a sequencer's rate knob with sync on
+moves it between divisions rather than off the grid. Sync changes only what you
+hear live: the model still auditions every patch free-running.
 
 ## Recording
 

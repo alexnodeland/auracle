@@ -3,6 +3,7 @@ name = "auracle-grammar"
 description = "Typed probabilistic grammar over quiver combinator terms: the patch prior and term → Patch compiler"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -14,3 +15,7 @@ fugue-ppl.workspace = true
 rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# The old-save fixtures in `genome` are JSON, the shape sessions persist in.
+serde_json.workspace = true

@@ -70,15 +70,24 @@ pub enum Provenance {
     HeardEdit,
     /// A hand edit committed with "my edit is better" asserted, unheard.
     SelfReport,
+    /// PERFORM grew an offer from the sound being played; the player heard it
+    /// against that sound (held Peek, or had Blend past half, while notes
+    /// sounded) and then took it or passed on it. A comparison the app
+    /// assembled from a performance rather than dealt — the same question as a
+    /// duel, asked without stopping the music, which is exactly why it is
+    /// scored as its own stream.
+    PerformOffer,
 }
 
 impl Provenance {
-    /// Stable wire/display name (`"duel"`, `"heard_edit"`, `"self_report"`).
+    /// Stable wire/display name (`"duel"`, `"heard_edit"`, `"self_report"`,
+    /// `"perform_offer"`).
     pub fn as_str(&self) -> &'static str {
         match self {
             Provenance::Duel => "duel",
             Provenance::HeardEdit => "heard_edit",
             Provenance::SelfReport => "self_report",
+            Provenance::PerformOffer => "perform_offer",
         }
     }
 
@@ -441,8 +450,20 @@ impl FitSet {
     /// legacy standardized log are re-used as-is (they are already z-scores);
     /// they are on a different geometry, so the session layer migrates them to
     /// raw values first where it can.
+    ///
+    /// # Panics
+    /// If the standardizer's dimension is not `names.len()`: the two are the
+    /// same coordinate system or nothing below is a measurement, and indexing
+    /// past a shorter standardizer would otherwise panic three lines further
+    /// down without saying why.
     pub fn build(log: &ObservationLog, names: &[String], sz: &Standardizer) -> Self {
         let d = names.len();
+        assert_eq!(
+            sz.dimension(),
+            d,
+            "standardizer is {}-dimensional but φ has {d} coordinates",
+            sz.dimension()
+        );
         let rows: (Vec<_>, Vec<_>) = log
             .observations
             .iter()

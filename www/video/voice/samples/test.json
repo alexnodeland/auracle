@@ -1,0 +1,20 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "lexicon": {
+    "Auracle": { "us": "ˈɔɹəkᵊl", "gb": "ˈɒɹəkᵊl" },
+    "φ": "fˈI",
+    "WASM": "ˈwæzəm"
+  },
+  "asr_aliases": { "Auracle": "oracle" },
+  "lines": [
+    { "id": "l01", "text": "Every synthesizer has a sound in it that's yours. Finding it is the hard part.", "pause_after": 0.5 },
+    { "id": "l02", "text": "Auracle is a synthesizer that searches for your sound.", "pause_after": 0.5 },
+    { "id": "l03", "text": "Play. Pick what you like. It learns your taste, and grows new patches toward it: real modular circuits, not samples.", "pause_after": 0.5 },
+    { "id": "l04", "text": "Turn Bright, and it finds the knobs that make this patch brighter.", "pause_after": 0.5 },
+    { "id": "l05", "text": "Press Offer, and a new version grows from the sound in your hands.", "pause_after": 0.5 },
+    { "id": "l06", "text": "Each named control is a direction in a 44-dimensional space of what you hear, wired to this patch's knobs by its measured Jacobian.", "pause_after": 0.5 },
+    { "id": "l07", "text": "Under the hood: a Bayesian posterior over your taste, and evolution as inference, written in Rust and running in your browser as WASM.", "pause_after": 0.5 },
+    { "id": "l08", "text": "Every sound in this film is Auracle. Play it in your browser today.", "pause_after": 0.5 }
+  ]
+}

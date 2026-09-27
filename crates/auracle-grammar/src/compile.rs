@@ -24,7 +24,7 @@
 //!
 //! ## Parameter mapping
 //!
-//! Genome parameters are normalized `[0, 1]`; this module owns their musical
+//! Genome parameters are normalized `[0, 1)`; this module owns their musical
 //! mapping. Ranges are deliberately **bounded away from pathology** (max
 //! resonance 0.85, max delay feedback 0.7) — the grammar cannot express the
 //! most degenerate settings, which is safety layer 3 of the vetting design.
@@ -41,8 +41,14 @@ use quiver::modules::{
 use quiver::prelude::*;
 use quiver::{AtomicF64, ExternalInput};
 
+use crate::prior::STEPS_SITES;
+use crate::steps::StepsCv;
+/// The live-only handle a `steps` module's transport position rides on
+/// (`<key>#~sync`). Never a trace site; the live engine finds it by suffix.
+pub const STEPS_SYNC_SITE: &str = "~sync";
 use crate::term::{
-    rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, PairOp, PatchTree,
+    rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp,
+    PatchTree,
 };
 
 /// quiver reads `Adsr.shape`, `Vca.response` and `Limiter.soft` as *gates* at
@@ -279,15 +285,17 @@ pub enum ParamMap {
 impl ParamMap {
     /// Clamp a value arriving from the panel to this map's input domain.
     ///
-    /// Continuous knobs are 0..1 and always were. The two categorical sites
-    /// that became live send a *category index*, so the blanket
-    /// `value.clamp(0.0, 1.0)` the live path used to apply would have folded
-    /// all eight wavetables onto the first two.
+    /// Continuous knobs are `[0, 1)` ([`crate::PARAM_DOMAIN`]) and go through
+    /// the same [`crate::clamp_param`] as a tree edit, so the value the live
+    /// voice hears is the value the term will hold once the gesture commits.
+    /// The two categorical sites that became live send a *category index*, so
+    /// the blanket `value.clamp(0.0, 1.0)` the live path used to apply would
+    /// have folded all eight wavetables onto the first two.
     pub fn clamp_input(self, x: f64) -> f64 {
         match self {
             ParamMap::TableIndex => x.round().clamp(0.0, 7.0),
             ParamMap::OctaveTrim(_) => x.round().clamp(0.0, 4.0),
-            _ => x.clamp(0.0, 1.0),
+            _ => crate::genome::clamp_param(x),
         }
     }
 
@@ -1109,10 +1117,10 @@ impl Compiler {
     /// tapped before it enters. Only [`ModNode::Follow`] reads it, and it is
     /// `None` exactly where there is nothing to tap — a source's own mod slot
     /// (a wavetable or a pluck generates its input rather than receiving
-    /// one). That case wires no modulation at all rather than failing: the
-    /// grammar and the panel can both express "follower on an oscillator",
-    /// and the honest compilation of it is silence on that cable, not a
-    /// refusal to compile a term the prior can draw.
+    /// one). That case builds a follower with nothing on its input, which
+    /// emits 0 V: the grammar and the panel can both express "follower on an
+    /// oscillator", the honest compilation of it is a cable carrying nothing,
+    /// and every knob the rack advertises for it still gets its live handle.
     ///
     /// `scale` says what kind of port `target` is. The source's polarity is
     /// decided here, but "how many volts is full depth" is a property of the
@@ -1213,13 +1221,25 @@ impl Compiler {
                 // enters — so the follower measures what the module is about
                 // to process rather than what it produced, which would be a
                 // feedback loop through the parameter it drives.
-                let Some(input) = owner_input else {
-                    return Ok(None);
-                };
+                //
+                // A source has no input to tap. This used to return `Ok(None)`
+                // — wire nothing — which was honest about the sound and wrong
+                // about the panel: the rack still advertised the owner's
+                // `mdepth` and the follower's own knobs, none of which had a
+                // live handle, so a drag on any of them fell back to a full
+                // patch swap. The follower is now built regardless: its input
+                // port is left unpatched and reads its default of 0 V, so it
+                // emits exactly 0 V, the term above it compiles as any other,
+                // every advertised knob gets its handle, and the cable that
+                // finally reaches the destination carries `+0.0` — which adds
+                // nothing to any sample (`a_follower_on_a_source_changes_no_sample`
+                // pins that bit-for-bit).
                 let f = self
                     .patch
                     .add(format!("{key}:follow"), EnvelopeFollower::new(self.sr()));
-                self.feed(input, f.in_("in"))?;
+                if let Some(input) = owner_input {
+                    self.feed(input, f.in_("in"))?;
+                }
                 self.knob(key, "sens", *sens, ParamMap::Unit, false, f.in_("gain"))?;
                 self.knob(
                     key,
@@ -1316,6 +1336,53 @@ impl Compiler {
                 self.patch.connect(clk.out("out"), gate.in_("trig"))?;
                 (gate.out("out"), false)
             }
+            ModNode::Steps {
+                rate,
+                length,
+                slew,
+                values,
+                ..
+            } => {
+                // Our own module rather than quiver's `StepSequencer`, whose
+                // values are internal state: every one of the eleven sites
+                // here is a live knob on a port, so dragging a step bar is an
+                // atomic write and not a recompile. The ports take the
+                // normalized knob straight through and the musical maps live
+                // in `crate::steps`, next to the clock that uses them.
+                let seq = self
+                    .patch
+                    .add(format!("{key}:steps"), StepsCv::new(self.sr()));
+                let knobs = [(*rate, "rate"), (*length, "length"), (*slew, "slew")]
+                    .into_iter()
+                    .chain(
+                        values
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| (*v, StepsCv::value_port(i))),
+                    );
+                for ((raw, port), site) in knobs.zip(STEPS_SITES) {
+                    self.knob(key, site, raw, ParamMap::Unit, false, seq.in_(port))?;
+                }
+                // The transport position for tempo sync: a live handle that is
+                // not a genome site (the `~` keeps it out of any address a
+                // term can produce), free-running until the live engine
+                // drives it.
+                let sync = Arc::new(AtomicF64::new(crate::steps::SYNC_FREE));
+                let n = self.patch.add(
+                    format!("{key}:sync!"),
+                    ExternalInput::cv_bipolar(Arc::clone(&sync)),
+                );
+                self.patch.connect(n.out("out"), seq.in_("sync"))?;
+                self.params.insert(
+                    format!("{key}#{STEPS_SYNC_SITE}"),
+                    ParamHandle {
+                        value: sync,
+                        map: ParamMap::Unit,
+                    },
+                );
+                // ±5 V, like an LFO — so it takes the bipolar depth taper.
+                (seq.out("out"), false)
+            }
             ModNode::Op {
                 kind,
                 p0,
@@ -1337,10 +1404,11 @@ impl Compiler {
                 );
                 // A branch that produced nothing collapses to the other one
                 // rather than to a constant, matching
-                // [`ModNode::normalized`]. In practice only a `Follow` on a
-                // source can get here — every other empty branch was already
-                // folded away — and the honest compilation of "follow an
-                // oscillator" is the rest of the term, not silence.
+                // [`ModNode::normalized`]. Nothing reaches this today — a
+                // `Follow` on a source now builds (above) and every other
+                // empty branch is folded away before compile — but the fold
+                // stays, so a future term that compiles to nothing degrades
+                // the same way rather than to a stuck constant.
                 match (a, b) {
                     (None, None) => return Ok(None),
                     (Some(x), None) | (None, Some(x)) => x,
@@ -1710,7 +1778,20 @@ impl Compiler {
                 let noise = self
                     .patch
                     .add(format!("{key}:noise"), NoiseGenerator::new());
-                Ok(Sig::mono(noise.out(color.port_name())))
+                let out = noise.out(color.port_name());
+                // quiver's pink is a 16-row Voss generator, so its 1/f slope
+                // runs down to ~1 Hz: measured, 22 % of its energy sits below
+                // 20 Hz, with a DC-to-RMS ratio of 0.13. That is inaudible,
+                // and it is not harmless — loudness normalization is
+                // K-weighted and ignores it, so it spends the peak ceiling:
+                // behind a lowpass `Noise Wash` measured 77 % sub-40 Hz and
+                // gave up the level it should have had. The voice's DC
+                // blocker is the same 20 Hz corner, applied at the source.
+                let out = match color {
+                    NoiseColor::Pink => self.dc_blocker(&format!("{key}:sub"), out)?,
+                    NoiseColor::White => out,
+                };
+                Ok(Sig::mono(out))
             }
             // A `Vca` with nothing patched into its audio input, which is a
             // constant zero: quiver reads an unpatched port as 0.0, and the
@@ -1734,9 +1815,10 @@ impl Compiler {
                 modulation,
                 ..
             } => {
+                let sr = self.sr();
                 let wt = self
                     .patch
-                    .add(format!("{key}:wavetable"), Wavetable::new(self.sr()));
+                    .add_boxed(format!("{key}:wavetable"), off_frame(|| Wavetable::new(sr)));
                 // Detune 0.5 is the no-offset centre of `map::detune_voct`:
                 // this module has no detune site, but pitch still goes
                 // through the same Offset every other source uses.
@@ -2466,9 +2548,10 @@ impl Compiler {
                 ..
             } => {
                 let in_out = self.build(input, &format!("{key}/0"))?;
+                let sr = self.sr();
                 let ps = self
                     .patch
-                    .add(format!("{key}:shift"), PitchShifter::new(self.sr()));
+                    .add_boxed(format!("{key}:shift"), off_frame(|| PitchShifter::new(sr)));
                 self.feed(in_out, ps.in_("in"))?;
                 // `#semis` and the mod cable sum on one port, as on the
                 // wavefolder threshold — which is why each is given half of
@@ -2807,8 +2890,50 @@ fn makes_dc(node: &AudioNode) -> bool {
     }
 }
 
+/// The deepest nesting `compile` will attempt: audio depth plus the deepest
+/// modulation chain hanging off it, which is how deep the compiler's by-value
+/// recursion actually goes.
+///
+/// **A stack guard, not a grammar ceiling.** The ceilings on what a hand may
+/// build are [`crate::mutate::MAX_DEPTH`] and [`crate::mutate::MAX_MOD_DEPTH`],
+/// enforced by `validate_tree` on every edit route. This is the line behind
+/// them: a shared patch file or a saved session is parsed straight into a
+/// `PatchTree`, and until this constant existed nothing between that parse and
+/// the recursive compiler asked how deep the term was. At ~60 nested nodes the
+/// compiler's frames (38 KB and up) overflow the wasm build's 8 MB stack, and a
+/// wasm trap is not an error the caller sees — it poisons the engine for the
+/// rest of the session. 32 is well above any tree a session written under any
+/// ceiling this crate has ever shipped can hold (`MAX_SIZE` is 24, so a valid
+/// tree is never deeper than 24 audio nodes), and well below the overflow.
+pub const COMPILE_MAX_NESTING: usize = 32;
+
+/// Build a module on the heap from outside the recursive compile frame.
+///
+/// `build_node` recurses once per level of the audio tree, and every module a
+/// match arm constructs by value is laid out in *that* frame, whether or not
+/// the arm runs. quiver's `Wavetable` is 128 KiB inline (its tables) and
+/// `PitchShifter` 38 KiB, so while they were built in place each level of the
+/// tree reserved over 256 KiB of stack: a patch eight levels deep overflowed
+/// a 2 MiB thread (measured, a test thread compiling a filter stack past the
+/// depth ceiling). Built here, in a frame of their own that is gone before
+/// the recursion continues, they cost the recursion nothing.
+#[inline(never)]
+fn off_frame<M: GraphModule + 'static>(make: impl FnOnce() -> M) -> Box<dyn GraphModule> {
+    Box::new(make())
+}
+
 /// Compile a patch term into a playable voice at the given sample rate.
+///
+/// Refuses, with [`PatchError::CompilationFailed`], a term nested deeper than
+/// [`COMPILE_MAX_NESTING`] — an error every caller already handles, in place
+/// of a stack overflow none of them can.
 pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, PatchError> {
+    let nesting = tree.root.depth() + tree.root.max_mod_depth();
+    if nesting > COMPILE_MAX_NESTING {
+        return Err(PatchError::CompilationFailed(format!(
+            "patch nests {nesting} levels deep; the compiler stops at {COMPILE_MAX_NESTING}"
+        )));
+    }
     let mut patch = Patch::new(sample_rate);
     patch.set_validation_mode(ValidationMode::Warn);
 
@@ -2873,7 +2998,14 @@ pub fn compile(tree: &PatchTree, sample_rate: f64) -> Result<CompiledVoice, Patc
     // and `Svf::tick` evaluates three transcendentals per sample — measured at
     // 0.057 s of render per patch, ~18% of a typical voice — so putting one on
     // every patch taxes the 91% that have no rectifying nonlinearity at all.
-    let block_dc = makes_dc(&tree.root) || std::env::var("AUR_DCB_ALWAYS").is_ok();
+    //
+    // Decided by the term alone. There used to be an `AUR_DCB_ALWAYS`
+    // environment override here (a measurement hook from when the blocker was
+    // made conditional), which meant a process with it set rendered a different
+    // voice — and wrote different φ into the same persistent cache namespace —
+    // for the same `(term, spec)`. The render is a function of its inputs, and
+    // the environment is not one of them.
+    let block_dc = makes_dc(&tree.root);
     let left = c.voice_tail("", audio_out.left, env, block_dc)?;
     let right = match audio_out.right {
         Some(r) => Some(c.voice_tail("R", r, env, block_dc)?),
@@ -2927,6 +3059,42 @@ mod tests {
     };
 
     const SR: f64 = 44_100.0;
+
+    /// The compiler's recursion stays cheap per level. A wavetable under a
+    /// sixteen-deep filter stack (over twice the depth ceiling) compiles on a
+    /// 512 KiB thread. While `Wavetable` and `PitchShifter` were built inside
+    /// `build_node`, every level of the recursion reserved over 256 KiB and
+    /// eight levels overflowed a 2 MiB test thread; now a level is ~2.5 KiB.
+    #[test]
+    fn deep_trees_compile_on_a_small_stack() {
+        let mut root = AudioNode::Wavetable {
+            table: TableShape::Sine,
+            octave: 0,
+            morph: 0.3,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+            uid: Uid::NEW,
+        };
+        for _ in 0..16 {
+            root = AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::SvfLp,
+                cutoff: 0.6,
+                resonance: 0.2,
+                mod_depth: 0.0,
+                input: Box::new(root),
+                modulation: ModNode::None,
+            };
+        }
+        let tree = sustained(root);
+        let ok = std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || compile(&tree, SR).is_ok())
+            .unwrap()
+            .join()
+            .expect("compile overflowed a 512 KiB stack");
+        assert!(ok, "the deep tree should compile");
+    }
 
     fn sustained(root: AudioNode) -> PatchTree {
         PatchTree {
@@ -4174,6 +4342,158 @@ mod tests {
                 "euclid at steps {steps} / pulses {pulses} emits a constant"
             );
         }
+    }
+
+    /// A saw through a lowpass whose cutoff is driven by `m` at full depth.
+    fn stepped_filter(m: ModNode) -> PatchTree {
+        sustained(AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: FilterKind::SvfLp,
+            cutoff: 0.5,
+            resonance: 0.1,
+            mod_depth: 1.0,
+            input: Box::new(saw()),
+            modulation: m,
+        })
+    }
+
+    /// Two steps, dark and bright, at 2 steps a second (`0.5·2^(5·0.4)`).
+    fn dark_bright(slew: f64) -> ModNode {
+        ModNode::Steps {
+            uid: Uid::NEW,
+            rate: 0.4,
+            length: 0.0,
+            slew,
+            values: [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+        }
+    }
+
+    /// RMS of consecutive `frame`-sample frames.
+    fn frame_rms(out: &[(f64, f64)], frame: usize) -> Vec<f64> {
+        out.chunks_exact(frame).map(rms).collect()
+    }
+
+    /// A step pattern on a cutoff is **a rhythm in the timbre**: the output
+    /// alternates dark/bright at the step rate, step for step.
+    ///
+    /// Measured per step (the middle 400 ms of each 500 ms step, clear of the
+    /// filter settling on the edge) rather than as "something moved", so the
+    /// test pins the rate, the order and the depth together: step 0 is `s0`
+    /// (dark), step 1 is `s1` (bright), and a full-depth cable swings the
+    /// cutoff across the whole spectrum. The first step is skipped because the
+    /// amp envelope is still attacking through it.
+    #[test]
+    fn a_step_pattern_on_the_cutoff_alternates_at_the_step_rate() {
+        let mut v = compile(&stepped_filter(dark_bright(0.0)), SR).expect("compiles");
+        let out = hold(&mut v, 0.0, (SR * 3.0) as usize);
+        let step = (SR * 0.5) as usize;
+        let per_step: Vec<f64> = (1..6)
+            .map(|k| rms(&out[k * step + step / 10..(k + 1) * step - step / 10]))
+            .collect();
+        for (i, pair) in per_step.windows(2).enumerate() {
+            let k = i + 1;
+            let (bright, dark) = if k % 2 == 1 {
+                (pair[0], pair[1])
+            } else {
+                (pair[1], pair[0])
+            };
+            assert!(
+                bright > 3.0 * dark,
+                "steps {k}/{}: bright {bright:.4} vs dark {dark:.4} — the pattern \
+                 is not reaching the cutoff ({per_step:?})",
+                k + 1
+            );
+        }
+        // …and it changes exactly at the step rate: ten 50 ms frames per
+        // step, so over the five measured steps the level crosses its
+        // midpoint once per step boundary and nowhere else.
+        let frames = frame_rms(&out[step..6 * step], (SR * 0.05) as usize);
+        let (lo, hi) = frames
+            .iter()
+            .fold((f64::MAX, 0.0f64), |(a, b), x| (a.min(*x), b.max(*x)));
+        let mid = 0.5 * (lo + hi);
+        let flips = frames
+            .windows(2)
+            .filter(|w| (w[0] > mid) != (w[1] > mid))
+            .count();
+        assert_eq!(flips, 4, "{flips} level flips in 2.5 s of a 2 Hz pattern");
+    }
+
+    /// Slew turns the steps into glides: at `slew` 1 the level never jumps
+    /// between adjacent frames the way hard steps do.
+    ///
+    /// The largest frame-to-frame change is the statistic, for the reason
+    /// `the_slew_knob_spends_its_travel_on_audible_glide_times` gives: a glide
+    /// spreads one big jump over many frames, so it lowers the maximum while
+    /// leaving the total travel alone.
+    #[test]
+    fn full_slew_is_smoother_than_hard_steps() {
+        let jump = |slew: f64| {
+            let mut v = compile(&stepped_filter(dark_bright(slew)), SR).expect("compiles");
+            let out = hold(&mut v, 0.0, (SR * 3.0) as usize);
+            let frames = frame_rms(&out[(SR * 0.5) as usize..], (SR * 0.01) as usize);
+            frames
+                .windows(2)
+                .map(|w| (w[1] - w[0]).abs())
+                .fold(0.0f64, f64::max)
+        };
+        let (hard, glided) = (jump(0.0), jump(1.0));
+        assert!(hard > 0.0, "the hard steps never moved the level");
+        assert!(
+            glided < 0.5 * hard,
+            "full slew's largest 10 ms jump is {glided:.4} against hard steps' \
+             {hard:.4} — the glide is not smoothing the pattern"
+        );
+    }
+
+    /// Every one of a `Steps`' eleven sites is a live knob, and moving a step
+    /// value through its handle changes the sound **in the running voice** —
+    /// and lands exactly where recompiling the edited tree would have.
+    ///
+    /// This is the reason the module is not quiver's `StepSequencer`, whose
+    /// values are internal state: there, a bar drag would be a full patch
+    /// swap per pointer move.
+    #[test]
+    fn every_steps_site_is_live_and_a_step_moves_without_a_recompile() {
+        let tree = stepped_filter(dark_bright(0.0));
+        let params = tree_params(&tree);
+        for site in STEPS_SITES {
+            let addr = format!("node/m#{site}");
+            assert!(params.contains(&addr), "{addr} has no live handle");
+        }
+        assert!(params.contains(&"node#mdepth".to_string()));
+
+        // Two voices from one tree; turn `s0` bright on one of them a quarter
+        // of the way into the first (dark) step, without recompiling.
+        let mut base = compile(&tree, SR).expect("compiles");
+        let mut live = compile(&tree, SR).expect("compiles");
+        let quarter = (SR * 0.125) as usize;
+        let a = hold(&mut base, 0.0, quarter);
+        let b = hold(&mut live, 0.0, quarter);
+        assert_eq!(a, b, "two compiles of one tree disagree");
+        live.params["node/m#s0"].set_normalized(1.0);
+        let dark = rms(&hold(&mut base, 0.0, 3 * quarter)[quarter..]);
+        let lit = rms(&hold(&mut live, 0.0, 3 * quarter)[quarter..]);
+        assert!(
+            lit > 3.0 * dark,
+            "setting s0 through its handle did not brighten the step that is \
+             playing: {lit:.4} vs {dark:.4}"
+        );
+
+        // From the first sample, the handle and a recompile are the same
+        // edit, bit for bit.
+        let edited =
+            crate::edit::set_param(&tree, "node/m#s0", crate::edit::ParamValue::Continuous(1.0))
+                .expect("s0 is a knob");
+        let mut handled = compile(&tree, SR).expect("compiles");
+        handled.params["node/m#s0"].set_normalized(1.0);
+        let mut rebuilt = compile(&edited, SR).expect("compiles");
+        let n = (SR * 1.2) as usize;
+        assert_eq!(
+            hold(&mut handled, 0.0, n),
+            hold(&mut rebuilt, 0.0, n),
+            "the live handle and a recompile disagree about s0"
+        );
     }
 
     /// The switch hears **both** of its branches.

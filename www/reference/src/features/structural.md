@@ -26,14 +26,14 @@ mod_density  mod_depth_mean  amp_attack  amp_sustain  amp_release
 chain_balance  frac_sidechained
 ```
 
-Twenty-six in total, appended after the [fifteen audio
-coordinates](./audio.md) to give $\varphi \in \R^{41}$.
+Twenty-six in total, appended after the [eighteen audio
+coordinates](./audio.md) to give $\varphi \in \R^{44}$.
 
 ## Families, not one column per module
 
 `StructFeatures` keeps a raw counter per module kind internally (the Styles tab
 and the auto-namer both want "two filters", not "two subtractive stages"), but
-`NAMES` and `to_vec` collapse **forty-two productions into nineteen family
+`NAMES` and `to_vec` collapse **forty-three productions into nineteen family
 counts**.
 
 Two reasons.
@@ -57,6 +57,18 @@ rounding error with a name in the UI.
 
 Sixteen sparse columns would also cost sixteen dimensions of posterior variance
 for the cold start to pay down before the model says anything at all.
+
+The step sequencer shows the rule applied to a newcomer. The prior draws it
+into about 3% of slots, so a column of its own would be exactly the
+near-indicator above. It joins `n_rand`, which has become the **stepped CV**
+family (`StructFeatures::n_stepped`): to a listener an S&H and a step pattern
+are the same gesture, a value that holds and jumps (or glides) on a clock, and
+they differ only in whether the values were drawn once into the genome or
+anew at every tick. It does not join the euclid in `n_mod_logic`, because a
+euclid emits a gate and a step sequence emits a value. The column keeps the
+name `n_rand` because stored observations carry φ names, and every row already
+on disk predates the step sequencer, so its `n_rand` already *is* its
+stepped-CV count. The panel labels the column "stepped mods".
 
 ## What is deliberately not in φ
 

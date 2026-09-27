@@ -49,7 +49,7 @@ probabilistic choices at path-keyed addresses:
 | source-vs-processor | `<p>#leaf` | $\mathrm{Bernoulli}(\text{source\_prob})$, forced at max depth |
 | source kind | `<p>#src` | $\mathrm{Categorical}(w_{\text{src}})$, 6 kinds |
 | processor kind | `<p>#op` | $\mathrm{Categorical}(w_{\text{op}})$, 20 kinds |
-| modulation kind | `<p>/m#mod` | $\mathrm{Categorical}(w_{\text{mod}})$, 8 kinds |
+| modulation kind | `<p>/m#mod` | $\mathrm{Categorical}(w_{\text{mod}})$, 9 kinds |
 | CV-processor kind | `<p>/m#modop` | Uniform over `ModOp::ALL` |
 | CV-combiner kind | `<p>/m#pairop` | Uniform over `PairOp::ALL` |
 | discrete params | `<p>#wave`, `#oct`, `#color`, `#fkind`, `#table`, `#dmode` | Uniform categoricals |
@@ -57,7 +57,7 @@ probabilistic choices at path-keyed addresses:
 
 The amplitude envelope is fixed at `amp#attack` … `amp#release`.
 
-The three categorical orders (7 sources, 20 processors, 8 modulation kinds) are
+The three categorical orders (7 sources, 20 processors, 9 modulation kinds) are
 the **persisted wire format**, because the codec writes the chosen index into
 the trace. They are append-only.
 
@@ -79,10 +79,44 @@ $p_{\text{grammar}}$ is exactly the parsimony pressure.
 A modulation input does not take "an LFO". It takes a **modulation term**,
 which can itself be built from modulation terms:
 
-- Five **leaves**: LFO, envelope, random (sample-and-hold), envelope follower,
-  Euclidean.
+- Six **leaves**: LFO, envelope, random (sample-and-hold), envelope follower,
+  Euclidean, step sequencer.
 - **`Op`** wraps one modulation term: quantize, slew, rectify, hold.
 - **`Pair`** combines two.
+
+The `#mod` order is `None, Lfo, Env, Rand, Follow, Euclid, Op, Pair, Steps`.
+The step sequencer is a leaf that sits *after* the two branches, because the
+order is append-only wire format and it arrived last. So "is this kind a leaf"
+is a predicate (`mod_kind_is_leaf`), not an index range: the range it replaced
+(`kind < 6`) would have switched the new leaf off at the depth bound along with
+the branches, and a term forced to bottom out could never have drawn it.
+
+### The step sequencer's values are latent
+
+`Steps` carries eleven continuous sites: `#srate`, `#slen`, `#sslew`, and one
+per step, `#s0` … `#s7`. Each step value $u_i$ is its own
+$\mathrm{Uniform}(0,1)$ draw and plays as $(2u_i - 1)\cdot 5\text{ V}$;
+`#slen` decides how many of the eight play (2 to 8, seven equal bins of the
+knob). This is the Mutable Instruments *Marbles* design, turned into a genome:
+
+- **One site, one step.** An MH proposal that moves `#s3` re-voices step four
+  and nothing else, so evolution edits a pattern the way a hand does.
+- **Hidden, not deleted.** The steps past `#slen` stay in the trace. A
+  proposal that shortens the pattern and a later one that lengthens it give
+  back the steps that were hidden instead of inventing new ones.
+
+The module behind it is Auracle's own (`auracle_grammar::steps::StepsCv`)
+rather than quiver's `StepSequencer`, whose values are internal state with no
+ports: every one of the eleven sites is a port driven by a live knob, so a bar
+drag in the rack is an atomic write, not a recompile. Its clock is free-running
+(`#srate` is $0.5\cdot 2^{5x}$ steps per second), and every audition hears it
+that way; tempo sync is a live-instrument concern and is not in the genome.
+With the dock's **sync** on, the live engine snaps each sequencer's rate to the
+nearest division of the tempo in octaves (straight, triplet or dotted, a
+quarter-step per beat up to eight) and drives every voice's clock from one
+transport through a `sync` port the term never sees (`<key>#~sync`). The
+transport restarts on the first key down or on MIDI start, and it counts steps,
+not bars, so a five-step pattern keeps its polymeter against a four-beat arp.
 
 So `s&h rand → quantize → slew` is a legal modulation term, and the rack draws
 the whole chain. Subterms live at `<p>/m/0` and `<p>/m/1`, the same child
@@ -102,7 +136,7 @@ dynamics productions take two subterms and carry a slot as well.
 
 ## The palette
 
-Forty-two modules: **7 sources**, **20 processors**, **15 modulators**.
+Forty-three modules: **7 sources**, **20 processors**, **16 modulators**.
 
 ```text
 sources     Vco  Supersaw  NoiseGenerator  Wavetable  KarplusStrong  FormantOsc
@@ -111,6 +145,7 @@ processors  Mix  Filter  Fold  Delay  Chorus  Reverb  Distortion  Bitcrush
             Phaser  RingMod  Flanger  Tremolo  Vibrato  Eq  Granular  Shift
             Comp  Duck  Gate  Vocoder
 modulators  Lfo  Adsr  SampleAndHold  SlewLimiter  EnvelopeFollower  …
+            StepsCv (Auracle's own: a step sequencer whose values are ports)
 ```
 
 Six processors are **binary**:

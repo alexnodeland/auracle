@@ -138,6 +138,19 @@ coordinates:
 
 If two numbers could be added to $\varphi$, these are the two.
 
+**Status — rate is measured now; periodicity was tried and cannot be, in this
+window.** Rate arrived as three [motion bands](../features/audio.md#motion-bands)
+rather than one dominant-rate number: a single "rate" coordinate is undefined
+for a static patch and meaningless for a random walk, while band energies are
+defined for everything and let a linear model hold *slow yes, fast no* as two
+coefficients of opposite sign. On the probe ladder the band that reads highest
+follows the LFO rate from 0.55 Hz to 13 Hz. Periodicity failed its own test:
+both an autocorrelation peak and the harmonic share of the modulation spectrum
+separate an LFO from a random walk at 2.7 Hz and above and **not at all below
+1.5 Hz**, because the held span holds fewer than three slow cycles. That is the
+range evolving textures live in, so the coordinate was not shipped; it is now a
+stimulus-length question, and belongs with §1.
+
 ## 3. Loudness is normalized away, and the raw level is already computed
 
 [Normalizing every render to −18 LUFS](../audition/loudness.md) is correct, and
@@ -294,6 +307,7 @@ reports a discrete edit; the other puts the direction under a finger.
 
 1. **Two coordinates for modulation rate and periodicity**
    ([§2](#2-modulation-is-the-distinctive-claim-and-its-rate-is-not-measured)).
+   *Rate done, as three motion bands; periodicity blocked on stimulus length.*
    Cheapest and highest value: it lets the search be rewarded for the
    instrument's best feature, and the segment it needs already exists for this
    exact purpose.

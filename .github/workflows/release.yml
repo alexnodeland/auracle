@@ -1,9 +1,11 @@
 name: Release
 
 # A release is one gesture: push a `vX.Y.Z` tag on a green main. This workflow
-# packages the prebuilt web instrument and publishes the GitHub Release; the
-# Pages workflow watches the same tags and puts that same build on the live
-# site. See CONTRIBUTING.md § Cutting a release.
+# packages the prebuilt web instrument and publishes the GitHub Release. The
+# live site is NOT deployed from here: pages.yml fires on pushes to `main`
+# only (the github-pages environment rejects deployments from a tag), and the
+# tag is cut from a green `main` that has therefore already deployed. See
+# CONTRIBUTING.md § Cutting a release, and the header of pages.yml.
 
 on:
   push:
@@ -47,8 +49,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      # A prebuilt binary from the tool cache, the same way ci.yml and
+      # pages.yml get it — not an unpinned `curl | sh` of upstream's installer.
+      - uses: taiki-e/install-action@wasm-pack
 
       # Through the Makefile, so the wasm stack size lives in exactly one
       # place. Building wasm-pack directly here would ship a 1 MB stack, which

@@ -1,0 +1,25 @@
+{
+  "viewport": [1920, 1080],
+  "dpr": 1,
+  "query": "?film",
+  "setup": [
+    { "op": "click", "sel": "#warm-skip" }
+  ],
+  "shots": [
+    {
+      "id": "test-bright",
+      "beat": "hood",
+      "pre": 1.0,
+      "dur": 7.0,
+      "setup": [
+        { "op": "preset", "name": "Glass Pad" },
+        { "op": "view", "v": "perform" },
+        { "op": "measured", "name": "Glass Pad" }
+      ],
+      "actions": [
+        { "at": 0.4, "op": "hold", "keys": ["a", "d", "g"], "ms": 5500 },
+        { "at": 1.6, "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -90, "ms": 1800 }
+      ]
+    }
+  ]
+}

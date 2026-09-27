@@ -114,6 +114,7 @@ The tag is what makes the claim auditable. `Provenance` distinguishes:
 | `Duel` | A dealt duel you listened to |
 | `HeardEdit` | An edit committed through a heard comparison |
 | `SelfReport` | An edit committed by ticking the box |
+| `PerformOffer` | A PERFORM offer heard against the sound being played, then taken (offer wins) or passed by asking for another (the played sound wins) |
 
 These make the same claim in the log, and there is no reason to believe they
 are equally reliable. [Calibration](./calibration.md#by-provenance) scores them
@@ -150,8 +151,8 @@ The model has
 
 $$K \cdot d + S + (n_{\text{stars}} - 1)$$
 
-sample sites. With $d = 41$ and 6 star categories, that is $41K + S + 5$: **46
-+ $S$** at $K=1$ and **210 + $S$** at $K=5$.
+sample sites. With $d = 44$ and 6 star categories, that is $44K + S + 5$: **49
++ $S$** at $K=1$ and **225 + $S$** at $K=5$.
 
 Single-site MH re-executes the whole program on **every step**, so every site
 is reconstructed once per step. Two consequences, both measured by

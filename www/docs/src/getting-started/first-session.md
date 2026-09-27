@@ -102,9 +102,12 @@ worth checking even now:
 
 Back in **EVOLVE**, press **EVOLVE POOL**.
 
-The model takes your best patches, walks each one a short distance uphill on
-what it now believes, and injects the children into the pool. The **EVOLUTION**
-strip below reports what each step did, in plain terms:
+The model takes your best patches, walks each one a short distance on what it
+now believes, and injects the children into the pool. The walk samples your
+taste rather than only climbing it, so most children land above their parent
+and some land below: those are marked *exploring*, and your next picks decide
+whether they were worth it. The **EVOLUTION** strip below reports what each
+step did, in plain terms:
 
 ```text
 gen 31 ⚡ evolution on #90 → #91 · attack 0.59→0.83, decay 0.45→0.28,

@@ -139,12 +139,34 @@ and flux, in the definitions
 for why octave-based frequency axes and segment-local measurements are the
 right coordinates for a *perceptual* feature vector.
 
+**Dau, T., Kollmeier, B. & Kohlrausch, A. (1997).** *Modeling auditory
+processing of amplitude modulation. I. Detection and masking with narrow-band
+carriers.* JASA 102(5), 2892–2905. → The modulation filterbank: hearing sorts
+envelope fluctuation by rate. Why [motion is measured in
+bands](./features/audio.md#motion-bands) and not as one variance.
+
+**McDermott, J. H. & Simoncelli, E. P. (2011).** *Sound texture perception via
+statistics of the auditory periphery.* Neuron 71(5), 926–940. → Band-wise
+modulation power is much of what makes a texture recognisable; the grounding
+for treating motion rate as a first-class axis of taste.
+
 ## Statistics of the feature space
 
 **Belsley, D. A., Kuh, E. and Welsch, R. E. (1980).** *Regression Diagnostics:
 Identifying Influential Data and Sources of Collinearity.* Wiley. → Variance
 inflation factors, the diagnostic that found
 [two exact dependencies in φ_struct](./features/structural.md#what-is-deliberately-not-in-φ).
+
+**Haufe, S., Meinecke, F., Görgen, K., Dähne, S., Haynes, J.-D., Blankertz, B.
+and Bießmann, F. (2014).** *On the Interpretation of Weight Vectors of Linear
+Models in Multivariate Neuroimaging.* NeuroImage 87, 96–110. → A direction's
+*pattern* $\Sigma a$ versus its *filter* $a$, and why
+[a wiring tried and not shipped](./search/perform.md#purity-measures-cross-talk-not-correlates).
+
+**Schäfer, J. and Strimmer, K. (2005).** *A Shrinkage Approach to Large-Scale
+Covariance Matrix Estimation and Implications for Functional Genomics.*
+Statistical Applications in Genetics and Molecular Biology 4(1), Article 32. →
+The shrinkage that made that measurement fair.
 
 **Huber, P. J. (1981).** *Robust Statistics.* Wiley. → Winsorizing, and the
 reasoning behind

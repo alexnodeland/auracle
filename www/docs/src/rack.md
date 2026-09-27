@@ -55,7 +55,8 @@ Zoom runs 0.30×–2.50×, and it fits to the frame on load (capped at 2.2× the
 
 Drag a knob, or focus it and use <kbd>↑</kbd>/<kbd>↓</kbd>; hold
 <kbd>Shift</kbd> for fine. Click a selector (`saw`, `square`, `−2 oct`) to
-cycle it.
+cycle it. A step sequencer's bars are knobs too: press one where you want the
+step to sit and drag ([more on the step sequencer](./wiring.md#the-step-sequencer)).
 
 Every edit is a **one-site write at that knob's trace address**. The patch is
 re-rendered and re-vetted before it can be auditioned, and the live instrument

@@ -6,7 +6,7 @@
 //!
 //! # Every parameter here is normalized; none of them are in units
 //!
-//! A `PatchTree` field is `0.0..=1.0` and the musical meaning lives in the
+//! A `PatchTree` field is `0.0..1.0` (half-open; see `PARAM_DOMAIN`) and the musical meaning lives in the
 //! compiler and in quiver. Writing these by feel rather than by the maps is
 //! how the first nine went wrong in a way nobody could see: **every modulated
 //! preset in the library ran between 0.033 Hz and 0.165 Hz** — six to thirty
@@ -36,6 +36,22 @@
 //! | `Follow.release` | `1 + 999x` ms | .2→200 ms · .4→400 ms · .7→700 ms |
 //!
 //! `AmpEnv.sustain` and every `mix`/`balance`/`depth` are levels, not times.
+//!
+//! **`Filter.cutoff` is the pole frequency, not the −3 dB point**, and the
+//! difference is an octave on the ladder. Measured on white noise at zero
+//! resonance (`auracle-features/examples/preset_audit.rs` has the story):
+//!
+//! | `cutoff` | map | ladder −3 dB | SVF LP −3 dB |
+//! |---|---|---|---|
+//! | 0.5 | 632 Hz | 307 Hz | 393 Hz |
+//! | 0.6 | 1.26 kHz | 506 Hz | 716 Hz |
+//! | 0.7 | 2.5 kHz | 1.19 kHz | 1.70 kHz |
+//! | 0.8 | 5.0 kHz | 2.32 kHz | 2.93 kHz |
+//!
+//! Four poles each −3 dB at the corner is −12 dB there; that is what a
+//! ladder is, not a bug. Reading the map as a −3 dB point is how the lead
+//! section ended up with nothing above 2 kHz at C4 — a lead is the part
+//! that is supposed to cut. Resonance buys some of it back at the corner.
 //!
 //! **The envelope map is a time constant, not a duration.** `compile.rs` runs
 //! the ADSR in exponential mode, so the mapped value is a one-pole τ: reaching
@@ -99,6 +115,7 @@
 //! produces a bank that honestly reports itself as `Soft Lead`, `Soft Lead 2`,
 //! `Soft Lead 3`. Coverage here is what gives the whole app its adjectives.
 
+use crate::genome::PARAM_MAX;
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
     TableShape, Uid, Waveform,
@@ -230,17 +247,17 @@ pub fn preset_bank() -> Vec<Preset> {
             // decay (0.30 ≈ 16 ms) is what makes it spit rather than wobble.
             blurb: "a 303 that got out of the cage",
             tree: PatchTree {
-                amp: amp(0.0, 0.42, 0.3, 0.3),
+                amp: amp(0.0, 0.42, 0.5, 0.3),
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.3,
+                    cutoff: 0.36,
                     resonance: 0.8,
                     mod_depth: 0.65,
                     modulation: ModNode::Env {
                         uid: Uid::NEW,
                         attack: 0.0,
-                        decay: 0.3,
+                        decay: 0.45,
                     },
                     input: Box::new(vco(Waveform::Saw, -1, 0.52)),
                 },
@@ -279,11 +296,11 @@ pub fn preset_bank() -> Vec<Preset> {
             category: "bass",
             blurb: "a square driven into the folder, then hammered flat",
             tree: PatchTree {
-                amp: amp(0.0, 0.45, 0.45, 0.3),
+                amp: amp(0.0, 0.45, 0.7, 0.3),
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.42,
+                    cutoff: 0.56,
                     resonance: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -315,7 +332,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.48,
+                    cutoff: 0.62, // −3 dB ≈600 Hz — the drive's grit has to get through
                     resonance: 0.3,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -356,7 +373,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
-                        cutoff: 0.4, // ≈316 Hz
+                        cutoff: 0.45, // ≈450 Hz
                         resonance: 0.3,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
@@ -487,7 +504,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.55,
+                    cutoff: 0.74, // −3 dB ≈1.5 kHz; 0.55 put nothing above 2 kHz
                     resonance: 0.4,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -519,7 +536,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
-                    cutoff: 0.6,
+                    cutoff: 0.74, // −3 dB ≈2.1 kHz; 0.6 put 0.2 % above 2 kHz
                     resonance: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -562,7 +579,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::Ladder,
-                        cutoff: 0.55,
+                        cutoff: 0.74, // a megaphone is all 1–4 kHz; 0.55 had none of it
                         resonance: 0.5,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
@@ -594,7 +611,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::Ladder,
-                        cutoff: 0.55, // ≈1.2 kHz
+                        cutoff: 0.68, // −3 dB ≈1 kHz before the env opens it
                         resonance: 0.45,
                         mod_depth: 0.5,
                         modulation: ModNode::Env {
@@ -680,7 +697,7 @@ pub fn preset_bank() -> Vec<Preset> {
                         b: Box::new(Filter {
                             uid: Uid::NEW,
                             kind: FilterKind::SvfHp,
-                            cutoff: 0.78,
+                            cutoff: 0.6, // 1.26 kHz: at 0.78 (5 kHz) the tine was filtered out
                             resonance: 0.2,
                             mod_depth: 0.0,
                             modulation: ModNode::None,
@@ -699,7 +716,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.55,
+                    cutoff: 0.68,
                     resonance: 0.6,
                     mod_depth: 0.3,
                     modulation: ModNode::Rand {
@@ -930,7 +947,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
-                        cutoff: 0.42,
+                        cutoff: 0.5,
                         resonance: 0.25,
                         mod_depth: 0.25,
                         modulation: ModNode::Lfo {
@@ -1052,7 +1069,10 @@ pub fn preset_bank() -> Vec<Preset> {
                     uid: Uid::NEW,
                     rate: 0.55, // 1.6 Hz on quiver's own 0.1·150^x map
                     depth: 0.3,
-                    mix: 1.0,
+                    // The top of the domain, not `1.0`: the knob range is
+                    // half-open (`PARAM_DOMAIN`), and a literal `1.0` here
+                    // gave this preset zero prior mass — un-evolvable.
+                    mix: PARAM_MAX,
                     mod_depth: 0.4,
                     modulation: ModNode::Lfo {
                         uid: Uid::NEW,
@@ -1256,7 +1276,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
-                        cutoff: 0.42,
+                        cutoff: 0.58,
                         resonance: 0.4,
                         mod_depth: 0.4,
                         modulation: ModNode::Rand {
@@ -1490,6 +1510,53 @@ pub fn preset_bank() -> Vec<Preset> {
                             }),
                         },
                         input: Box::new(vco(Waveform::Triangle, 0, 0.5)),
+                    }),
+                },
+            },
+        },
+        Preset {
+            name: "Loom",
+            category: "texture",
+            // `steps` on the cutoff: the pad's brightness walks a five-step
+            // path at two steps a second, so the pattern comes round every
+            // 2.5 s — longer than any held note in the audition phrase, which
+            // is the point: each note catches a different stretch of it, and
+            // what the ear hears is a timbre with a rhythm inside it rather
+            // than a sweep. A third of each step glides (`slew`), so the
+            // ladder does not click on the edges and the contour reads as a
+            // phrase, not a gate. The three steps past `length` are latent —
+            // lengthen the pattern and they join in.
+            blurb: "a pad whose brightness walks a five-step pattern — rhythm woven into the tone",
+            tree: PatchTree {
+                amp: amp(0.3, 0.5, 0.85, 0.5),
+                root: Reverb {
+                    uid: Uid::NEW,
+                    size: 0.7,
+                    damp: 0.45,
+                    mix: 0.3,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                    input: Box::new(Filter {
+                        uid: Uid::NEW,
+                        kind: FilterKind::Ladder,
+                        cutoff: 0.5, // 632 Hz at rest; the steps swing it
+                        resonance: 0.45,
+                        mod_depth: 0.7,
+                        modulation: ModNode::Steps {
+                            uid: Uid::NEW,
+                            rate: 0.4,   // 0.5·2^(5·0.4) = 2 steps a second
+                            length: 0.5, // fourth of seven bins → 5 steps
+                            slew: 0.35,
+                            // dark, bright, middling, brightest, dark-ish —
+                            // then three latent steps that continue it.
+                            values: [0.15, 0.85, 0.45, 0.98, 0.3, 0.7, 0.1, 0.6],
+                        },
+                        input: Box::new(Mix {
+                            uid: Uid::NEW,
+                            balance: 0.5,
+                            a: Box::new(vco(Waveform::Saw, 0, 0.42)),
+                            b: Box::new(vco(Waveform::Saw, 0, 0.58)),
+                        }),
                     }),
                 },
             },
@@ -1992,7 +2059,9 @@ pub fn preset_bank() -> Vec<Preset> {
                         wave: Waveform::Saw,
                         octave: 0,
                         detune: 0.5,
-                        mod_depth: 1.0,
+                        // Full depth is `PARAM_MAX`, not `1.0` — see `Sea
+                        // Change` above for why the literal was a defect.
+                        mod_depth: PARAM_MAX,
                         // The wave's headline term, two processors deep:
                         // noise sampled and held, snapped to a scale, then
                         // glided between. The slew is last so it glides
@@ -2128,10 +2197,13 @@ mod tests {
     }
 
     fn hz_of(kind: &str, cv: f64) -> f64 {
-        if kind == "chorus" {
-            chorus_hz(cv)
-        } else {
-            mod_hz(cv)
+        match kind {
+            "chorus" => chorus_hz(cv),
+            // A step sequence changes value once per step, so the step rate is
+            // the rate at which it is heard to move — `0.5·2^(5x)`, whose
+            // floor is already above this file's 0.2 Hz gate.
+            "steps" => crate::steps::rate_hz(cv),
+            _ => mod_hz(cv),
         }
     }
 
@@ -2162,6 +2234,7 @@ mod tests {
                         note(b, name, out);
                     }
                     ModNode::Euclid { rate, .. } => out.push((name, "euclid", *rate)),
+                    ModNode::Steps { rate, .. } => out.push((name, "steps", *rate)),
                 }
             }
             match n {
@@ -2360,6 +2433,9 @@ mod tests {
                 }
                 ModNode::Euclid { .. } => {
                     self.mods.insert("euclid");
+                }
+                ModNode::Steps { .. } => {
+                    self.mods.insert("steps");
                 }
                 ModNode::Op { kind, input, .. } => {
                     self.mods.insert(kind.label());
@@ -2623,7 +2699,7 @@ mod tests {
             "the wavetable oscillator is never heard"
         );
         assert!(!drive_modes.is_empty(), "the distortion is never heard");
-        // Every modulation **source** — the five leaf kinds plus the empty
+        // Every modulation **source** — the six leaf kinds plus the empty
         // slot — has to appear, on the same argument as the node list: a
         // source no preset demonstrates is a source nobody discovers.
         //
@@ -2634,7 +2710,7 @@ mod tests {
         // each of the three new *productions* — a leaf generator, a unary
         // processor, a binary combiner — is shown at least once, so the shape
         // of the sort is discoverable from the bank.
-        for src in ["none", "lfo", "env", "rand", "follow", "euclid"] {
+        for src in ["none", "lfo", "env", "rand", "follow", "euclid", "steps"] {
             assert!(mods.contains(src), "no preset uses the {src} modulator");
         }
         // The shapers *were* held to a weaker bar than the sources, on the

@@ -68,8 +68,8 @@ Auracle treats the problem as inference:
   running voices' atomics (no recompile) *and* the genome. Rewire by dragging
   typed jacks; structural edits are grammar operations, so an edit always
   leaves a playable patch. Undo/redo, per-knob and per-module locks.
-- **Forty-one modules** — six sources (a wavetable, a physically-modelled
-  pluck and a formant oscillator among them), twenty processors, and fifteen
+- **Forty-two modules** — six sources (a wavetable, a physically-modelled
+  pluck and a formant oscillator among them), twenty processors, and sixteen
   modulators. Six processors are **binary**: a crossfade and a ring modulator
   that merge two chains into one, and a compressor, ducker, gate and vocoder
   whose second input is a *control* — real sidechaining, in a typed tree.
@@ -137,7 +137,7 @@ takes both apart.
 | `auracle-taste` | Max-of-experts utility, three likelihoods, recency weighting, MCMC posterior, label alignment, portable profiles |
 | `auracle-session` | Two-loop engine: pool, duel acquisition (uniform by default; BALD selectable), locked refinement, taste-tilted proposals, session persistence |
 | `auracle-wasm` | `WasmEngine` (worker-side brain) and `LivePoly` (worklet-side instrument) |
-| `apps/web` | The instrument: PLAY / EVOLVE / TASTE, patch bank, keyboard dock |
+| `apps/web` | The instrument: PERFORM / PATCH / EVOLVE / TASTE, patch bank, keyboard dock, MIDI |
 
 ## 🚀 Quick Start
 

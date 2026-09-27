@@ -41,6 +41,7 @@
 - [Proposals, and the taste tilt](./search/proposals.md)
 - [Locks as conditional refinement](./search/locks.md)
 - [Refinement — what ships](./search/refinement.md)
+- [Performance: named controls and the drift walk](./search/perform.md)
 - [Acquisition](./search/acquisition.md)
 
 # Systems

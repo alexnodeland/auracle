@@ -1,0 +1,265 @@
+{
+  "_about": "Launch bed 'Signal'. D minor, 100 BPM, 4/4. Every sound is an Auracle preset played through LivePoly. Render: cargo run --release -p auracle-wasm --example score -- www/video/sound/signal.json <out_dir>. Bars and beats are 1-based within each section; pitches are written as they sound (a track's transpose maps them onto the keys its preset needs).",
+  "_harmony": "Progression, one chord per bar: Dm9 | Bbmaj7 | Fmaj7/A | C6sus2. Pad voicing (4 voices, rootless over the bass): F3 C4 E4 A4 | F3 Bb3 D4 A4 | F3 C4 E4 A4 | G3 C4 D4 A4. A4 is held on top throughout, the inner voices move by step (C-Bb and E-D in parallel thirds, F-G against E-D in contrary motion), so no two voices ever move in parallel fifths. The intro adds the root (D3) because there is no bass yet. The finale's last bar is Dm(add9): D3 F3 D4 E4 A4 over D2.",
+  "title": "Signal",
+  "tempo": 100,
+  "sample_rate": 48000,
+  "beats_per_bar": 4,
+  "seed": 20260927,
+  "render": { "full": true, "sections": true, "lead_in_bars": 2, "tail_s": 9, "silence_dbfs": -80 },
+  "master": { "gain_db": null, "peak_dbfs": -1.0 },
+  "sections": [
+    { "name": "intro", "bars": 4 },
+    { "name": "build", "bars": 8 },
+    { "name": "main_a", "bars": 8 },
+    { "name": "main_b", "bars": 8 },
+    { "name": "breakdown", "bars": 4 },
+    { "name": "finale", "bars": 8 },
+    { "name": "sting", "bars": 2 }
+  ],
+  "tracks": [
+    {
+      "name": "pad",
+      "preset": "Glass Pad",
+      "_why": "Supersaw through a gently moving lowpass and chorus: the only pad in the bank that is bright and wide without reverb wash (audit: 18% low, 80% mid). Eight voices so a chord's release overlaps the next chord; tie holds common tones.",
+      "voices": 8,
+      "tie": true,
+      "gain_db": -1.0,
+      "trim_db": -5.0,
+      "params": { "node/0/m#rate": 0.4658 },
+      "notes": {
+        "intro": [
+          [1, 1, 16, "D3", 0.62], [1, 1, 16, "F3", 0.62], [1, 1, 16, "C4", 0.62], [1, 1, 16, "E4", 0.62], [1, 1, 16, "A4", 0.62]
+        ],
+        "finale": [
+          [8, 1, 4, "D3", 0.6], [8, 1, 4, "F3", 0.62], [8, 1, 4, "D4", 0.62], [8, 1, 4, "E4", 0.62], [8, 1, 4, "A4", 0.62]
+        ]
+      },
+      "patterns": [
+        { "type": "chords", "section": "build", "vel": 0.62,
+          "chords": [["F3", "C4", "E4", "A4"], ["F3", "Bb3", "D4", "A4"], ["F3", "C4", "E4", "A4"], ["G3", "C4", "D4", "A4"]] },
+        { "type": "chords", "section": "main_a", "vel": 0.62,
+          "chords": [["F3", "C4", "E4", "A4"], ["F3", "Bb3", "D4", "A4"], ["F3", "C4", "E4", "A4"], ["G3", "C4", "D4", "A4"]] },
+        { "type": "chords", "section": "main_b", "vel": 0.62,
+          "chords": [["F3", "C4", "E4", "A4"], ["F3", "Bb3", "D4", "A4"], ["F3", "C4", "E4", "A4"], ["G3", "C4", "D4", "A4"]] },
+        { "type": "chords", "section": "breakdown", "vel": 0.56,
+          "chords": [["F3", "C4", "E4", "A4"], ["F3", "Bb3", "D4", "A4"], ["F3", "C4", "E4", "A4"], ["G3", "C4", "D4", "A4"]] },
+        { "type": "chords", "section": "finale", "bars": [1, 7], "vel": 0.62,
+          "chords": [["F3", "C4", "E4", "A4"], ["F3", "Bb3", "D4", "A4"], ["F3", "C4", "E4", "A4"], ["G3", "C4", "D4", "A4"],
+                     ["F3", "C4", "E4", "A4"], ["F3", "Bb3", "D4", "A4"], ["F3", "C4", "E4", "A4"]] }
+      ],
+      "automation": [
+        { "param": "node/0#cut", "points": [
+          ["intro", 1, 1, 0.40], ["intro", 4, 4, 0.63], ["build", 1, 1, 0.63],
+          ["main_a", 1, 1, 0.68], ["main_b", 8, 4, 0.68],
+          ["breakdown", 1, 1, 0.68], ["breakdown", 1, 2, 0.58], ["breakdown", 4, 4, 0.60],
+          ["finale", 1, 1, 0.70] ] },
+        { "param": "amp#release", "points": [
+          ["finale", 8, 1, 0.65], ["finale", 8, 2, 0.80] ] }
+      ],
+      "fader": [["intro", 1, 1, -34], ["intro", 3, 3, -1], ["intro", 4, 1, 0]]
+    },
+    {
+      "name": "loom",
+      "preset": "Loom",
+      "_why": "A two-saw pad whose ladder cutoff walks a step pattern: a pulse woven into the tone. Tempo-synced like the app's sync switch, eight steps of 8ths so the pattern turns over once a bar. Plays guide-tone dyads under the pad.",
+      "voices": 8,
+      "tie": true,
+      "sync": true,
+      "gain_db": -4.5,
+      "trim_db": -3.0,
+      "params": { "node/0/m#srate": 0.547, "node/0/m#slen": 0.95, "node/0#mdepth": 0.85 },
+      "notes": { "finale": [[8, 1, 4, "A3", 0.55], [8, 1, 4, "D4", 0.55]] },
+      "patterns": [
+        { "type": "chords", "section": "build", "vel": 0.58,
+          "chords": [["A3", "D4"], ["Bb3", "D4"], ["A3", "C4"], ["G3", "C4"]] },
+        { "type": "chords", "section": "finale", "bars": [1, 7], "vel": 0.55,
+          "chords": [["A3", "D4"], ["Bb3", "D4"], ["A3", "C4"], ["G3", "C4"], ["A3", "D4"], ["Bb3", "D4"], ["A3", "C4"]] }
+      ],
+      "fader": [["build", 1, 1, -5], ["build", 8, 4, 0]]
+    },
+    {
+      "name": "bass",
+      "preset": "First Bass",
+      "_why": "'The plain correct one': saw into a ladder with an envelope pluck. Its oscillator sits an octave below the key, so transpose +12 puts D2 on D2.",
+      "voices": 4,
+      "transpose": 12,
+      "gain_db": 2.5,
+      "trim_db": 0.0,
+      "notes": { "finale": [[8, 1, 4, "D2", 0.8]] },
+      "patterns": [
+        { "type": "pulse", "section": "build", "roots": ["D2", "Bb1", "A1", "C2"], "hits": [1], "gate": 0.97, "vel": 0.7 },
+        { "type": "pulse", "section": "main_a", "roots": ["D2", "Bb1", "A1", "C2"], "step": 0.5, "gate": 0.7, "vel": 0.74, "accent": 0.12, "last_octave_up": true },
+        { "type": "pulse", "section": "main_b", "roots": ["D2", "Bb1", "A1", "C2"], "step": 0.5, "gate": 0.7, "vel": 0.74, "accent": 0.12, "last_octave_up": true },
+        { "type": "pulse", "section": "finale", "bars": [1, 7], "roots": ["D2", "Bb1", "A1", "C2", "D2", "Bb1", "A1"], "step": 0.5, "gate": 0.7, "vel": 0.76, "accent": 0.12, "last_octave_up": true }
+      ],
+      "automation": [
+        { "param": "amp#release", "points": [["finale", 8, 1, 0.2], ["finale", 8, 1.5, 0.7]] }
+      ]
+    },
+    {
+      "name": "arp",
+      "preset": "Acid Line",
+      "_why": "Saw into a resonant ladder with a fast envelope: a 16th-note pluck whose cutoff knob is automated from dark to open across the build, the gesture the PERFORM view makes by hand. Resonance eased to 0.5 so it pulses rather than squelches.",
+      "voices": 4,
+      "transpose": 12,
+      "gain_db": -6.3,
+      "params": { "node#res": 0.5 },
+      "patterns": [
+        { "type": "arp", "section": "build", "bars": [5, 8], "order": "updown", "step": 0.25, "gate": 0.5,
+          "vel": 0.6, "accent": 0.18, "off_accent": 0.06, "vel_ramp": [0.7, 1.0],
+          "chords": [["D4", "F4", "A4", "C5", "D5", "F5", "A5", "C6"], ["D4", "F4", "A4", "Bb4", "D5", "F5", "A5", "Bb5"],
+                     ["E4", "F4", "A4", "C5", "E5", "F5", "A5", "C6"], ["D4", "G4", "A4", "C5", "D5", "G5", "A5", "C6"]] },
+        { "type": "arp", "section": "main_a", "order": "updown", "step": 0.25, "gate": 0.5,
+          "vel": 0.6, "accent": 0.18, "off_accent": 0.06,
+          "chords": [["D4", "F4", "A4", "C5", "D5", "F5", "A5", "C6"], ["D4", "F4", "A4", "Bb4", "D5", "F5", "A5", "Bb5"],
+                     ["E4", "F4", "A4", "C5", "E5", "F5", "A5", "C6"], ["D4", "G4", "A4", "C5", "D5", "G5", "A5", "C6"]] },
+        { "type": "arp", "section": "main_b", "order": "updown", "step": 0.25, "gate": 0.5,
+          "vel": 0.6, "accent": 0.18, "off_accent": 0.06,
+          "chords": [["D4", "F4", "A4", "C5", "D5", "F5", "A5", "C6"], ["D4", "F4", "A4", "Bb4", "D5", "F5", "A5", "Bb5"],
+                     ["E4", "F4", "A4", "C5", "E5", "F5", "A5", "C6"], ["D4", "G4", "A4", "C5", "D5", "G5", "A5", "C6"]] },
+        { "type": "arp", "section": "finale", "bars": [1, 7], "order": "updown", "step": 0.25, "gate": 0.5,
+          "vel": 0.62, "accent": 0.18, "off_accent": 0.06,
+          "chords": [["D4", "F4", "A4", "C5", "D5", "F5", "A5", "C6"], ["D4", "F4", "A4", "Bb4", "D5", "F5", "A5", "Bb5"],
+                     ["E4", "F4", "A4", "C5", "E5", "F5", "A5", "C6"], ["D4", "G4", "A4", "C5", "D5", "G5", "A5", "C6"],
+                     ["D4", "F4", "A4", "C5", "D5", "F5", "A5", "C6"], ["D4", "F4", "A4", "Bb4", "D5", "F5", "A5", "Bb5"],
+                     ["E4", "F4", "A4", "C5", "E5", "F5", "A5", "C6"]] }
+      ],
+      "automation": [
+        { "param": "node#cut", "points": [
+          ["build", 5, 1, 0.22], ["build", 8, 4.75, 0.50],
+          ["main_a", 1, 1, 0.53], ["main_b", 1, 1, 0.545], ["finale", 1, 1, 0.555] ] }
+      ]
+    },
+    {
+      "name": "lead",
+      "preset": "Bell Jar",
+      "_why": "A folded sine is harmonic (odd partials), so it reads as a clear pitched bell over the saw arp. Its oscillator is an octave above the key (transpose -12). Decay and release knobs raised from 0.55/0.7 to 0.72 so held notes ring for about 1.7 s rather than 0.4 s.",
+      "voices": 6,
+      "transpose": -12,
+      "gain_db": -1.0,
+      "trim_db": -6.0,
+      "params": { "amp#decay": 0.72, "amp#release": 0.72 },
+      "notes": {
+        "finale": [
+          [5, 1, 1.5, "D5", 0.66], [5, 1, 1.5, "F5", 0.56], [5, 2.5, 1.5, "F5", 0.60], [5, 2.5, 1.5, "A5", 0.52],
+          [5, 4, 0.5, "A5", 0.70], [5, 4, 0.5, "C6", 0.60], [5, 4.5, 0.5, "G5", 0.54], [5, 4.5, 0.5, "Bb5", 0.46],
+          [6, 1, 1, "F5", 0.64], [6, 1, 1, "A5", 0.54], [6, 2, 1, "E5", 0.54], [6, 2, 1, "G5", 0.46], [6, 3, 2, "D5", 0.60], [6, 3, 2, "F5", 0.52],
+          [7, 1, 1.5, "C5", 0.62], [7, 1, 1.5, "E5", 0.52], [7, 2.5, 1.5, "D5", 0.56], [7, 2.5, 1.5, "F5", 0.48],
+          [7, 4, 0.5, "F5", 0.66], [7, 4, 0.5, "A5", 0.56], [7, 4.5, 0.5, "E5", 0.54], [7, 4.5, 0.5, "G5", 0.46],
+          [8, 1, 4, "D5", 0.74], [8, 1, 4, "F5", 0.64]
+        ]
+      },
+      "patterns": [
+        { "type": "phrase", "section": "main_b", "start_bar": 1, "repeat": 2, "every_bars": 4,
+          "_motif": "D5 F5 A5 G5 | F5 E5 D5 | C5 D5 F5 E5 | D5: 3+3+1+1 eighths, then quarter-quarter-half; the second half answers the first.",
+          "notes": [
+            [1, 1, 1.5, "D5", 0.78], [1, 2.5, 1.5, "F5", 0.7], [1, 4, 0.5, "A5", 0.84], [1, 4.5, 0.5, "G5", 0.64],
+            [2, 1, 1, "F5", 0.76], [2, 2, 1, "E5", 0.64], [2, 3, 2, "D5", 0.72],
+            [3, 1, 1.5, "C5", 0.74], [3, 2.5, 1.5, "D5", 0.66], [3, 4, 0.5, "F5", 0.8], [3, 4.5, 0.5, "E5", 0.64],
+            [4, 1, 3.5, "D5", 0.74]
+          ] },
+        { "type": "phrase", "section": "finale", "start_bar": 1, "repeat": 1, "transpose": 12, "vel_scale": 0.84,
+          "notes": [
+            [1, 1, 1.5, "D5", 0.78], [1, 2.5, 1.5, "F5", 0.7], [1, 4, 0.5, "A5", 0.84], [1, 4.5, 0.5, "G5", 0.64],
+            [2, 1, 1, "F5", 0.76], [2, 2, 1, "E5", 0.64], [2, 3, 2, "D5", 0.72],
+            [3, 1, 1.5, "C5", 0.74], [3, 2.5, 1.5, "D5", 0.66], [3, 4, 0.5, "F5", 0.8], [3, 4.5, 0.5, "E5", 0.64],
+            [4, 1, 3.5, "D5", 0.74]
+          ] }
+      ]
+    },
+    {
+      "name": "bell",
+      "preset": "Ghost Bell",
+      "_why": "Ring-modulated sines an octave and two above the key (transpose -12 puts the strongest partial on the written note); the detuned partial beats, which is the shimmer. Decay/release raised so a struck note rings about 2 s.",
+      "voices": 6,
+      "transpose": -12,
+      "gain_db": -5.0,
+      "trim_db": -4.0,
+      "params": { "amp#decay": 0.72, "amp#release": 0.75 },
+      "notes": {
+        "intro": [
+          [1, 3.5, 0.5, "A5", 0.38],
+          [2, 1.5, 0.5, "D6", 0.44], [2, 3.5, 0.5, "A5", 0.42],
+          [3, 2.5, 0.5, "F6", 0.5], [3, 4.5, 0.5, "D6", 0.46],
+          [4, 1.5, 0.5, "A5", 0.55], [4, 3.5, 0.5, "D6", 0.55]
+        ],
+        "breakdown": [
+          [1, 1.5, 0.5, "A5", 0.58], [1, 3.5, 0.5, "D6", 0.46],
+          [2, 1.5, 0.5, "F5", 0.55], [2, 3.5, 0.5, "A5", 0.45],
+          [3, 1.5, 0.5, "E5", 0.55], [3, 3.5, 0.5, "C6", 0.45],
+          [4, 1.5, 0.5, "D5", 0.55], [4, 3.5, 0.5, "A5", 0.42]
+        ],
+        "sting": [[1, 1, 0.5, "D6", 0.8], [1, 1, 0.5, "A6", 0.7]]
+      },
+      "fader": [["intro", 1, 1, -8], ["intro", 3, 1, 0]]
+    },
+    {
+      "name": "kick",
+      "preset": "Deadfall",
+      "_why": "A sine two octaves below the key into a ladder, decaying in ~150 ms. Pitch bend (the app's bend wheel) pre-set two octaves up and let fall with a 30 ms time constant gives the sine pitch drop of a kick: 215 Hz to 57 Hz in 110 ms, landing on A1.",
+      "voices": 2,
+      "gain_db": -1.6,
+      "trim_db": -3.0,
+      "params": { "amp#decay": 0.5 },
+      "pitch_drop": { "semis": 24, "tau_ms": 36, "pre_ms": 12 },
+      "patterns": [
+        { "type": "pulse", "section": "main_a", "roots": ["A3"], "hits": [1, 3], "gate": 0.1, "vel": 0.85 },
+        { "type": "pulse", "section": "main_b", "roots": ["A3"], "hits": [1, 3], "gate": 0.1, "vel": 0.85 },
+        { "type": "pulse", "section": "finale", "bars": [1, 7], "roots": ["A3"], "hits": [1, 3], "gate": 0.1, "vel": 0.88 },
+        { "type": "pulse", "section": "finale", "bars": [8, 8], "roots": ["A3"], "hits": [1], "gate": 0.1, "vel": 0.88 }
+      ]
+    },
+    {
+      "name": "hat",
+      "preset": "Flint",
+      "_why": "White noise through a resonant highpass with a 25 ms decay: a short filtered-noise tick. Cutoff knob down from 0.72 to 0.62 for some body. Off-beat 8ths only, low in the mix.",
+      "voices": 2,
+      "gain_db": -3.5,
+      "params": { "node#cut": 0.62 },
+      "patterns": [
+        { "type": "pulse", "section": "main_a", "roots": ["C4"], "step": 1, "offset": 0.5, "gate": 0.3, "vel": 0.6 },
+        { "type": "pulse", "section": "main_b", "roots": ["C4"], "step": 1, "offset": 0.5, "gate": 0.3, "vel": 0.62 },
+        { "type": "pulse", "section": "finale", "bars": [1, 7], "roots": ["C4"], "step": 1, "offset": 0.5, "gate": 0.3, "vel": 0.64 }
+      ]
+    },
+    {
+      "name": "riser",
+      "preset": "Static Ocean",
+      "_why": "White noise through a resonant bandpass into a large reverb. The bandpass cutoff is swept from 0.35 to 0.9 over two bars (centroid 0.6 to 10 kHz, measured), the LFO depth zeroed so the sweep is clean, attack shortened so it swells over the first bar and release shortened so it stops on the downbeat.",
+      "voices": 2,
+      "gain_db": -17.0,
+      "params": { "amp#attack": 0.75, "amp#release": 0.45, "node/0#mdepth": 0.0 },
+      "notes": {
+        "build": [[7, 1, 8, "C4", 0.9]]
+      },
+      "automation": [
+        { "param": "node/0#cut", "points": [
+          ["build", 7, 1, 0.35], ["build", 8, 4.9, 0.9] ] }
+      ]
+    },
+    {
+      "name": "boom",
+      "preset": "Deadfall",
+      "_why": "The logo hit's floor: D1 and D2 sines with a slow one-octave pitch drop (the bend again, 150 ms) and decay/release knobs raised to ring for about four seconds.",
+      "voices": 2,
+      "gain_db": 2.0,
+      "trim_db": -8.0,
+      "params": { "amp#decay": 0.8, "amp#release": 0.8 },
+      "pitch_drop": { "semis": 12, "tau_ms": 150, "pre_ms": 12 },
+      "notes": { "sting": [[1, 1, 4, "D3", 0.9], [1, 1, 4, "D4", 0.75]] }
+    },
+    {
+      "name": "boom_body",
+      "preset": "First Bass",
+      "_why": "The boom's sines are below what a laptop speaker reproduces; the same D2 on the bass preset (saw harmonics through the ladder), sustain off and decay/release raised, with the same pitch drop, is the part of the hit small speakers can carry.",
+      "voices": 2,
+      "transpose": 12,
+      "gain_db": 0.0,
+      "trim_db": -4.0,
+      "params": { "amp#sustain": 0.0, "amp#decay": 0.78, "amp#release": 0.78 },
+      "pitch_drop": { "semis": 12, "tau_ms": 150, "pre_ms": 12 },
+      "notes": { "sting": [[1, 1, 4, "D2", 0.8]] }
+    }
+  ]
+}

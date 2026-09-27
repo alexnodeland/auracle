@@ -9,7 +9,8 @@
 
 # The instrument
 
-- [PLAY — the patch](./views/play.md)
+- [PERFORM — the sound under your hands](./views/perform.md)
+- [PATCH — the patch](./views/play.md)
 - [EVOLVE — the duels](./views/evolve.md)
 - [TASTE — the model's mind](./views/taste.md)
 - [The patch bank](./bank.md)

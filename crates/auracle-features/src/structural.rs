@@ -10,7 +10,7 @@
 //! [`StructFeatures`] keeps a raw counter per kind — the Styles tab and the
 //! auto-namer both want "two filters", not "two subtractive stages" — but
 //! [`StructFeatures::NAMES`] and [`StructFeatures::to_vec`] collapse the
-//! forty-two productions into nineteen family counts plus seven term-level
+//! forty-three productions into nineteen family counts plus seven term-level
 //! numbers — five about modulation and the amp envelope, two about how the
 //! term is arranged. Two reasons, and the second is the load-bearing one:
 //!
@@ -142,6 +142,9 @@
 //!   signal. The one family whose members all sit inside the binary-node
 //!   identity above, which is why that paragraph checks it rather than
 //!   assuming it.
+//! - `n_rand` = s&h rand + step sequence. Stepped CV: a value held on a clock
+//!   and glided or jumped to the next. The column kept the name it had before
+//!   it was a family — see [`StructFeatures::n_stepped`].
 //! - `n_mod_shape` = quantizer + slew + rectifier + clocked hold. CV that has
 //!   been worked on before it lands.
 //! - `n_mod_logic` = euclid + min + max + and + or + xor + switch. Gate and
@@ -157,7 +160,7 @@
 //! exactly `f + p` leaves:
 //!
 //! ```text
-//! n_lfo + n_env + n_rand + n_follow + n_euclid
+//! n_lfo + n_env + (n_rand + n_steps) + n_follow + n_euclid
 //!     = filled_slots + (n_min + n_max + n_and + n_or + n_xor + n_switch)
 //! ```
 //!
@@ -406,13 +409,24 @@ pub struct StructFeatures {
     pub n_lfo: f64,
     /// Number of envelope modulators.
     pub n_env: f64,
-    /// Number of S&H random modulators.
+    /// Number of S&H random modulators. The `n_rand` **column** of φ also
+    /// counts [`Self::n_steps`] — see [`Self::n_stepped`].
     pub n_rand: f64,
     /// Number of envelope followers.
     pub n_follow: f64,
     /// Number of euclidean gate patterns. Folded into the `n_mod_logic`
     /// family in φ.
     pub n_euclid: f64,
+    /// Number of step sequences. Folded into the `n_rand` column in φ — see
+    /// [`Self::n_stepped`].
+    ///
+    /// `#[serde(default)]` because a [`crate::CachedFeatures`] row persisted
+    /// before this field existed must still load: no term that could have
+    /// produced such a row contains a step sequence, so zero is not an
+    /// imputation but the value, and the row stays valid without an epoch
+    /// bump.
+    #[serde(default)]
+    pub n_steps: f64,
     /// Number of scale quantizers in modulation chains. `n_mod_shape` family.
     pub n_quantize: f64,
     /// Number of slew limiters in modulation chains. `n_mod_shape` family.
@@ -437,6 +451,13 @@ pub struct StructFeatures {
     /// Mean nesting depth of the *filled* modulation slots (1 for a bare
     /// modulator, 2 for one wrapped in a processor, …); 0 when nothing is
     /// modulated.
+    ///
+    /// **Count-like, not unit-bounded**: it lives in `[0, MAX_MOD_DEPTH]`, not
+    /// `[0, 1]`, and it is deliberately *not* in [`Self::UNIT_NAMES`]. It was,
+    /// once — which made the load-time repair clamp every stored vote on a
+    /// patch with a shaped modulator to 1.0 ("unshaped") while fresh pool rows
+    /// kept their 2.0, so the standardizer was fit on a mixture, and a debug
+    /// build panicked on ~4 % of prior draws.
     pub mod_depth_mean: f64,
     /// Tree depth. **Not a φ coordinate** — VIF ≈ 21.7 against the module
     /// counts; see the module doc. Kept for display.
@@ -513,17 +534,22 @@ impl StructFeatures {
     ];
 
     /// The φ_struct coordinates that are bounded to `[0, 1]` — three
-    /// normalized genome sites read straight off the term, and four ratios of
-    /// two counts.
+    /// normalized genome sites read straight off the term, and three ratios
+    /// of two counts.
     ///
     /// A subset of [`Self::NAMES`] and *not* a reordering of it: the counts
     /// have no upper bound, so a range check over the whole vector could only
     /// be a finiteness check. Named here so the debug assertion below, the
     /// featurizer's quarantine and the saved-log repair all read one list
     /// instead of three that drift.
-    pub const UNIT_NAMES: [&'static str; 7] = [
+    ///
+    /// `mod_depth_mean` is **not** here. It is a mean of depths — 1 for a bare
+    /// modulator, 2 for `Op(leaf)`, 3 for `Op(Op(leaf))` — so it is 2 or more
+    /// for exactly the shaped chains it exists to measure, and listing it as
+    /// unit-bounded made the saved-log repair rewrite every such vote to 1.0
+    /// on every load. See the field.
+    pub const UNIT_NAMES: [&'static str; 6] = [
         "mod_density",
-        "mod_depth_mean",
         "amp_attack",
         "amp_sustain",
         "amp_release",
@@ -532,10 +558,9 @@ impl StructFeatures {
     ];
 
     /// This term's values for [`Self::UNIT_NAMES`], in that order.
-    pub fn unit_coordinates(&self) -> [f64; 7] {
+    pub fn unit_coordinates(&self) -> [f64; 6] {
         [
             self.mod_density,
-            self.mod_depth_mean,
             self.amp_attack,
             self.amp_sustain,
             self.amp_release,
@@ -603,6 +628,48 @@ impl StructFeatures {
         self.n_quantize + self.n_slew + self.n_rectify + self.n_hold
     }
 
+    /// Stepped CV: s&h rand + step sequence. This is what φ's `n_rand`
+    /// column carries.
+    ///
+    /// # Why a step sequencer is counted with the sample-and-hold
+    ///
+    /// Grouped by what it is **to a listener**, which is the rule every family
+    /// here follows. A step sequence and an S&H are the same gesture — a
+    /// destination that holds a value, jumps to another on a clock, and (with
+    /// their glide knobs open) slides there instead — and the difference is
+    /// whether the values were drawn once, into the genome, or are drawn anew
+    /// at every tick. That is a real difference, but not one a person states
+    /// as a preference before "I like it when the timbre steps"; the ear hears
+    /// the family first. It is *not* the euclid's family: a euclid emits a
+    /// gate, which is what `n_mod_logic` counts, and a step sequence emits a
+    /// continuous value that lands on a knob exactly as an S&H's does.
+    ///
+    /// # Why not a column of its own
+    ///
+    /// The prior draws it into about 3% of slots, so a standalone `n_steps`
+    /// would be zero in nearly every pool member — the near-indicator column
+    /// the family scheme exists to avoid — and every Styles-tab weight on it
+    /// would be fitted from a handful of rows.
+    ///
+    /// # The identity stays out of φ
+    ///
+    /// The modulation forest's leaf identity gains a term — `n_steps` is a
+    /// leaf — but it joins the *leaf* side of the equation, summed with
+    /// `n_rand` rather than against anything, so the combiners are still
+    /// visible only inside `n_mod_logic` together with the euclid and the
+    /// argument in the module doc goes through unchanged.
+    ///
+    /// # The column keeps its name
+    ///
+    /// Stored observations carry φ **names** (see `auracle-session`'s
+    /// `migrate::RENAMES`), so renaming the column would need a rename entry
+    /// for no gain in what is measured: every row already on disk predates the
+    /// step sequencer, so its `n_rand` *is* its stepped-CV count. The panel's
+    /// display label says "stepped mods"; the wire name stays `n_rand`.
+    pub fn n_stepped(&self) -> f64 {
+        self.n_rand + self.n_steps
+    }
+
     /// Gate and decision CV: euclid + min + max + and + or + xor + switch.
     ///
     /// The euclidean generator belongs with the combiners rather than with the
@@ -641,7 +708,7 @@ impl StructFeatures {
             self.n_dynamics(),
             self.n_lfo,
             self.n_env,
-            self.n_rand,
+            self.n_stepped(),
             self.n_follow,
             self.n_mod_shape(),
             self.n_mod_logic(),
@@ -711,7 +778,7 @@ pub fn struct_features(tree: &PatchTree) -> StructFeatures {
     };
     // The invariant, shouted where it is cheapest to hear it. Every coordinate
     // in `UNIT_NAMES` is either a normalized genome site read straight through
-    // or a ratio of two counts, so all seven live in [0,1] for any term the
+    // or a ratio of two counts, so all six live in [0,1] for any term the
     // grammar can produce — and `amp_sustain` sat at 1e30 for four patches and
     // six cells of the persisted log precisely because nothing ever said so.
     //
@@ -807,6 +874,7 @@ fn count_mod_nodes(m: &ModNode, f: &mut StructFeatures) {
         ModNode::Rand { .. } => f.n_rand += 1.0,
         ModNode::Follow { .. } => f.n_follow += 1.0,
         ModNode::Euclid { .. } => f.n_euclid += 1.0,
+        ModNode::Steps { .. } => f.n_steps += 1.0,
         ModNode::Op { kind, input, .. } => {
             match kind {
                 ModOp::Quantize => f.n_quantize += 1.0,

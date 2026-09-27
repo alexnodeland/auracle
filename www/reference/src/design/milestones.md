@@ -50,7 +50,7 @@ All modes are emitters into the same
 radio, sequenced by signal quality rather than by effort.
 
 1. **Duel stream + workbench — shipped.** The core loop is A/B duels in
-   **EVOLVE**; candidates land on the **PLAY** workbench where stars,
+   **EVOLVE**; candidates land on the **PLAY** workbench (since renamed **PATCH**) where stars,
    free-play, hand edits, locks and export happen. **TASTE** is the model
    reporting on itself: the map, the style lenses, their coefficients with
    credible intervals, and the calibration diagram.

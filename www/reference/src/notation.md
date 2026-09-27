@@ -10,9 +10,9 @@ the code's name is given.
 | $x$ | A patch **term** — a tree in the typed grammar | `PatchTree` |
 | $p$ | A tree **path**, e.g. `node/0/1` | path keys |
 | $t$ | A **trace** — the execution record of the grammar program | `fugue::Trace` |
-| $\varphi(x) \in \R^{41}$ | The feature vector of $x$ | `Features::phi()` |
-| $\varphi_{\text{audio}} \in \R^{15}$ | Perceptual descriptors of the render | `AudioFeatures` |
-| $\varphi_{\text{struct}} \in \R^{25}$ | Structural descriptors of the term | `StructFeatures` |
+| $\varphi(x) \in \R^{44}$ | The feature vector of $x$ | `Features::phi()` |
+| $\varphi_{\text{audio}} \in \R^{18}$ | Perceptual descriptors of the render | `AudioFeatures` |
+| $\varphi_{\text{struct}} \in \R^{26}$ | Structural descriptors of the term | `StructFeatures` |
 | $z$ | A **standardized** feature vector, $z = (\varphi - \mu)/s$ | `phi_std` |
 
 $\varphi$ is always the concatenation $[\varphi_{\text{audio}} ;
@@ -42,7 +42,7 @@ $\phi$ throughout; the code's `phi` is this vector.
 | $p_{\text{grammar}}(x)$ | Prior probability of term $x$ | `PatchGrammarPrior` |
 | $\beta$ | Boltzmann sharpness | `SessionConfig::beta` |
 | $\pi_\beta$ | The target, $\propto p_{\text{grammar}}(x)\,e^{\beta\,\E[u_\theta(x)]}$ | — |
-| $\eta$ | Proposal-tilt strength | `SessionConfig::proposal_tilt` |
+| $\eta$ | Taste-tilt strength (a tilt of the prior; see [Proposals](search/proposals.md)) | `SessionConfig::proposal_tilt` |
 | $\mathcal{L}$ | The set of locked addresses | `locked: HashSet<String>` |
 
 ## Conventions
