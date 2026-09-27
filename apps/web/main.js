@@ -10655,7 +10655,7 @@ const KNOB_UNITS = {
   low: (x) => eqBand(x),
   mid: (x) => eqBand(x),
   high: (x) => eqBand(x),
-  gsize: (x) => fmtSec((0.01 + x * 0.49) * 1000),        // quiver Granular: 10–500 ms
+  gsize: (x) => fmtSec(0.01 + x * 0.49),                 // quiver Granular: 10–500 ms, in seconds
   gdens: (x) => `${(1 + x * 19).toFixed(0)}/s`,          // grains per second
 
   // ---- wave 2B ----
@@ -10693,9 +10693,11 @@ const KNOB_UNITS = {
   qroot: (x) => `${Math.round(x * 100)}%`,
   qscale: (x) => `${Math.round(x * 100)}%`,
   // SlewLimiter's own map is square-law and the compiler scales into its
-  // usable quarter, so this is the real time constant.
-  rise: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
-  fall: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
+  // usable quarter, so this is the real time constant, in seconds (compile.rs
+  // slew_time: 1.6 s at the top). It was multiplied by 1000 on the way into
+  // fmtSec, which takes seconds, so a 53 ms glide read "52.84 s".
+  rise: (x) => fmtSec(0.001 + Math.pow(0.4 * x, 2) * 10),
+  fall: (x) => fmtSec(0.001 + Math.pow(0.4 * x, 2) * 10),
 
   // ---- the step sequencer (crates/auracle-grammar/src/steps.rs) ----
   // Steps per second on `0.5·2^(5x)`: half a step a second to sixteen.
