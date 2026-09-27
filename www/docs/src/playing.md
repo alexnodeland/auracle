@@ -25,8 +25,9 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 black:   w  e     t  y  u     o  p
 ```
 
-<kbd>z</kbd> / <kbd>x</kbd> shift octave. The left of the dock always shows the
-current anchor (`a = C4`).
+<kbd>z</kbd> / <kbd>x</kbd> shift octave, from `a = C0` to `a = C7`, so the
+letters reach C0 to C8: an 88-key piano's compass, and a few notes below. The
+left of the dock always shows the current anchor (`a = C4`).
 
 ```admonish note title="Letters only play when the interface does not want them"
 Note letters reach the synth only when focus is not in a control, and they get

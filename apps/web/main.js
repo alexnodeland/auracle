@@ -3326,6 +3326,8 @@ function panic() {
 
 // ---------- virtual keyboard ----------
 const PIANO_LO = 48; // C3
+const PIANO_MIN = 12; // C0, the lowest key the keybed shows
+const PIANO_MAX = 108; // C8, the highest
 const PIANO_HI = 84; // C6
 // The keybed's width is a performance decision, not a constant. Three octaves
 // across a tablet is 22 white keys at ~27px — narrower than a fingertip, so
@@ -3358,7 +3360,9 @@ function buildPiano() {
   // play C4–F5, i.e. an octave you cannot type and none of the one you can. So
   // the narrow sizes anchor on the keymap itself.
   const anchor = perf.keySpan >= 36 ? PIANO_LO : PIANO_LO + 12;
-  const lo = anchor + 12 * octShift;
+  // …but never below C0 or above C8: at the ends of the shift the wide keybed
+  // would otherwise show keys off either end of a piano.
+  const lo = Math.max(PIANO_MIN, Math.min(PIANO_MAX - perf.keySpan, anchor + 12 * octShift));
   const hi = lo + perf.keySpan;
   for (let n = lo; n <= hi; n++) {
     if (BLACK.has(n % 12)) continue;
@@ -3650,8 +3654,13 @@ document.addEventListener("click", (e) => {
   if (b) b.blur();
 });
 
+// Z/X shift the keymap from a = C0 to a = C7, whose octave runs up to C8: the
+// compass of an 88-key piano (A0–C8) and a few notes below. It stopped at C2
+// and C6, two octaves short of the bass and one of the top.
+const OCT_MIN = -4;
+const OCT_MAX = 3;
 function octave(d) {
-  const next = Math.max(-2, Math.min(2, octShift + d));
+  const next = Math.max(OCT_MIN, Math.min(OCT_MAX, octShift + d));
   if (next === octShift) return;
   octShift = next;
   buildPiano(); // the keybed moves with the shift, not just the letter hints
@@ -17847,7 +17856,7 @@ bootMidi();
       master.gain.value = volume;
       renderVolVal();
     }
-    if (saved.ui.oct != null) { octShift = saved.ui.oct; buildPiano(); }
+    if (saved.ui.oct != null) { octShift = Math.max(OCT_MIN, Math.min(OCT_MAX, saved.ui.oct | 0)); buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
     restoreTray(saved.ui.held);
