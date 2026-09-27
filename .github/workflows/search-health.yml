@@ -37,12 +37,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  search-health:
-    name: Search health
+  # Three jobs, not one: they share nothing but the checkout, so run side by
+  # side each gets its own runner and its own clock. As a single 90-minute job
+  # the scheduled run was cancelled every day — the 16-seed climb alone is
+  # longer than that on a hosted runner — and a cancelled run reports nothing,
+  # which is worse than a slow one.
+  stats:
+    name: φ statistics and peaks
     runs-on: ubuntu-latest
-    # A climb run plus the full battery is tens of minutes of rendering, and
-    # the default 360 is enough rope to hang a stuck run for six hours.
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -63,24 +66,57 @@ jobs:
           make norm-peak 2>&1 | tee /tmp/peak.log
           { echo "## Normalized peaks"; echo '```'; cat /tmp/peak.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Pool climb
-        run: |
-          set -euo pipefail
-          make climb SEEDS="${{ github.event.inputs.seeds || '16' }}" 2>&1 | tee /tmp/climb.log
-          { echo "## Pool climb"; echo '```'; cat /tmp/climb.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Full search-health battery
-        run: |
-          set -euo pipefail
-          make search-check 2>&1 | tee /tmp/search.log
-          { echo "## Search health"; echo '```'; cat /tmp/search.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-
       # Kept as an artifact so two runs can be diffed directly rather than by
       # scrolling two summaries side by side.
       - name: Upload the measurements
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: search-health-${{ github.sha }}
+          name: search-health-stats-${{ github.sha }}
+          path: /tmp/*.log
+          if-no-files-found: warn
+
+  climb:
+    name: Pool climb
+    runs-on: ubuntu-latest
+    # Measured: over 90 minutes for 16 paired seeds on a hosted runner. The
+    # cap is still a cap — enough for the measurement with margin, not the
+    # default six hours a stuck run would otherwise hold a runner for.
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Pool climb
+        run: |
+          set -euo pipefail
+          make climb SEEDS="${{ github.event.inputs.seeds || '16' }}" 2>&1 | tee /tmp/climb.log
+          { echo "## Pool climb"; echo '```'; cat /tmp/climb.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-health-climb-${{ github.sha }}
+          path: /tmp/*.log
+          if-no-files-found: warn
+
+  battery:
+    name: Search-health battery
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Full search-health battery
+        run: |
+          set -euo pipefail
+          make search-check 2>&1 | tee /tmp/search.log
+          { echo "## Search health"; echo '```'; cat /tmp/search.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-health-battery-${{ github.sha }}
           path: /tmp/*.log
           if-no-files-found: warn

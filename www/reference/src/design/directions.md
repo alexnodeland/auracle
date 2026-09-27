@@ -167,11 +167,12 @@ topology the reference never had.
 is measured under the [standard phrase](../audition/phrase.md); the
 [`:p2` tag](../audition/phrase.md#the-p2-stimulus-tag) exists precisely because
 a coordinate's meaning is relative to the stimulus that produced it, and a
-reference clip is not that phrase. Twelve of the fifteen
+reference clip is not that phrase. Twelve of the eighteen
 [φ_audio](../features/audio.md) coordinates are whole-phrase statistics and
-survive the mismatch with a caveat about pitch content; the three
-**segment-local** ones (`held_centroid_std`, `high_ratio`,
-`chord_flatness_delta`) find their roles by property — first note, highest
+survive the mismatch with a caveat about pitch content; the six
+**segment-local** ones (`held_centroid_std` and the three motion bands, on
+the first held note; `high_ratio`; `chord_flatness_delta`) find their roles
+by property — first note, highest
 note, first chord — and arbitrary audio may have none of them. The imputation
 is already honest, since an absent coordinate reads as *no evidence*, but here
 the absence lands on the axes describing timbral motion and register, which is

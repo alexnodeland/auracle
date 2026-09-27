@@ -78,6 +78,12 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
     this.mixB = 0;
     this.mixCur = 0;
     this.mixBuf = null;
+    this.viewB = null;
+    this.viewBPtr = 0;
+    // Retiring B: null, "swap" (wait for A to finish rebuilding, as on Take),
+    // or "fade" (fading out; freed once silent). Never freed mid-sound.
+    this.bRetire = null;
+    this.arpMsg = null;
     this.held = new Map();
     this.port.onmessage = (e) => {
       try {
@@ -156,8 +162,10 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
             this.polyB = new LivePoly(m.tree, sampleRate, 4);
             if (this.glideAmt != null) this.polyB.set_glide(this.glideAmt);
             if (this.uni) this.polyB.set_unison(this.uni.on, this.uni.detune, this.uni.spread);
+            if (this.arpMsg) this.applyArp(this.polyB, this.arpMsg);
             for (const [n, v] of this.held) this.polyB.note_on(n, v);
           }
+          this.bRetire = null;
           if (m.makeup != null) this.polyB.set_makeup(m.makeup);
           this.port.postMessage({ type: "b_ready" });
         } catch (err) {
@@ -174,20 +182,19 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       case "b_mix": this.mixB = Math.min(1, Math.max(0, +m.mix || 0)); break;
       case "b_param": if (this.polyB) this.polyB.set_param(m.addr, m.value); break;
       case "b_clear":
-        if (this.polyB) { this.polyB.free(); this.polyB = null; }
-        this.mixB = 0;
-        this.mixCur = 0;
+        if (!this.polyB) break;
+        if (m.afterSwap) {
+          this.bRetire = "swap";
+          this.bRetireN = 0;
+        }
+        else {
+          this.bRetire = "fade";
+          this.mixB = 0;
+        }
         break;
       case "arp":
-        for (const p of [this.poly, this.polyB]) {
-          if (!p) continue;
-          p.set_arp(
-            m.on, m.mode, m.div, m.bpm,
-            m.gate == null ? 0.5 : m.gate,
-            m.octaves == null ? 1 : m.octaves,
-            m.swing == null ? 0.0 : m.swing
-          );
-        }
+        this.arpMsg = m;
+        for (const p of [this.poly, this.polyB]) if (p) this.applyArp(p, m);
         break;
       case "rec": {
         if (m.on) {
@@ -235,6 +242,14 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       }
     }
   }
+  applyArp(p, m) {
+    p.set_arp(
+      m.on, m.mode, m.div, m.bpm,
+      m.gate == null ? 0.5 : m.gate,
+      m.octaves == null ? 1 : m.octaves,
+      m.swing == null ? 0.0 : m.swing
+    );
+  }
   loadPatch(m) {
     try {
       if (this.poly) {
@@ -279,7 +294,16 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
       }
       let buf = this.view;
       if (this.polyB) {
-        const vb = new Float32Array(wasm.memory.buffer, ptrB, n * 2);
+        if (
+          !this.viewB ||
+          this.viewBPtr !== ptrB ||
+          this.viewB.length !== n * 2 ||
+          this.viewB.buffer !== wasm.memory.buffer
+        ) {
+          this.viewB = new Float32Array(wasm.memory.buffer, ptrB, n * 2);
+          this.viewBPtr = ptrB;
+        }
+        const vb = this.viewB;
         if (!this.mixBuf || this.mixBuf.length !== n * 2) this.mixBuf = new Float32Array(n * 2);
         const mb = this.mixBuf;
         // Equal-power, smoothed per sample (~10 ms), so a Peek is a gesture
@@ -306,6 +330,20 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         if (evB === 2) this.port.postMessage({ type: "b_error", error: this.polyB.last_error() });
       }
       const ev = this.poly.poll_event();
+      // A rebuilt (or failed to, or never needed to: ~2 s of quanta without
+      // word) — either way B's turn is over.
+      if (this.bRetire === "swap" && (ev === 1 || ev === 2 || ++this.bRetireN > 700)) {
+        this.bRetire = "fade";
+        this.mixB = 0;
+      }
+      // Faded out: now it can go. Freed between quanta, never under a sample.
+      if (this.bRetire === "fade" && this.polyB && this.mixCur < 1e-4) {
+        this.polyB.free();
+        this.polyB = null;
+        this.viewB = null;
+        this.bRetire = null;
+        this.mixCur = 0;
+      }
       if (ev === 1) this.port.postMessage({ type: "patched" });
       else if (ev === 2)
         this.port.postMessage({ type: "patch_error", error: this.poly.last_error() });
@@ -435,8 +473,10 @@ export async function initLiveAudio(audioCtx, build, dest) {
     bParam(addr, value) {
       node.port.postMessage({ type: "b_param", addr, value });
     },
-    bClear() {
-      node.port.postMessage({ type: "b_clear" });
+    // Retire B: a short fade, or with afterSwap, wait for A to finish
+    // rebuilding first (Take hands B's tree to A).
+    bClear(opts) {
+      node.port.postMessage({ type: "b_clear", afterSwap: !!(opts && opts.afterSwap) });
     },
     // Interior level metering for the rack's flow animation. Replies with
     // `meter_keys` (the module keys the values are indexed by) and then

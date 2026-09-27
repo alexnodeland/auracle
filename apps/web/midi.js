@@ -18,7 +18,13 @@
 
 export const CC_MOD = 1;
 export const CC_SUSTAIN = 64;
-const RESERVED = new Set([CC_SUSTAIN, 120, 121, 123]);
+// Controllers with a meaning of their own in the MIDI spec, never claimed as
+// knobs: bank select (0, 32), data entry and (N)RPN (6, 38, 96–101), the
+// pedals (64 sustain, 66 sostenuto, 67 soft) and the channel-mode messages
+// (120–127). A keyboard that sends a program change with bank select, or an
+// RPN to set its bend range, would otherwise have those grab PERFORM's
+// controls on the first auto-map.
+const RESERVED = new Set([0, 6, 32, 38, 96, 97, 98, 99, 100, 101, CC_SUSTAIN, 66, 67, 120, 121, 122, 123, 124, 125, 126, 127]);
 const SLOTS = 8;
 const STORE = "auracle-midi-map";
 
@@ -229,8 +235,10 @@ export function createMidi(host) {
         m = state.map.get(key);
       }
     }
+    // The mod wheel, unmapped, is expression: at rest it adds nothing, and
+    // pushing it adds Motion on top of wherever the control is.
     if (cc === CC_MOD && !m) {
-      drive(key, state.modSlot, value / 127, "abs");
+      host.perform()?.setExpression("mod", state.modSlot, value / 127);
       return;
     }
     if (!m) return;
@@ -276,11 +284,14 @@ export function createMidi(host) {
         host.bend((m.value / 8192) * state.bendRange);
         break;
       case "pressure":
-        drive("pressure", state.pressureSlot, 0.5 + m.value / 2, "free");
+        // Press harder, brighter — an offset under the player's own turn, so
+        // letting go returns exactly to where the control was.
+        host.perform()?.setExpression("pressure", state.pressureSlot, m.value);
         break;
       case "cc":
         if (m.cc === CC_SUSTAIN) host.sustain(m.value >= 64);
         else if (m.cc === 123 || m.cc === 120) host.panic();
+        else if (m.cc === 121) host.perform()?.setExpression(null);
         else if (!RESERVED.has(m.cc)) onCc(m.ch, m.cc, m.value);
         break;
       case "clock": {
@@ -397,6 +408,10 @@ export function createMidi(host) {
     state.inputs = inputs;
     state.device = inputs.map((i) => i.name).sort().join("+") || "none";
     load();
+    // A device that left with the pedal down or a key pressed would leave
+    // both stuck: the new set of inputs starts from nothing held.
+    host.sustain(false);
+    host.perform()?.setExpression(null);
     for (const input of inputs) input.onmidimessage = onMessage;
     host.onDevices(inputs.length);
     renderPanel();

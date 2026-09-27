@@ -51,7 +51,7 @@ Two candidates, pick one. The primary teaching signal.
 
 ### Feature vector (φ)
 
-The forty numbers the model sees each patch through: fifteen perceptual
+The forty-four numbers the model sees each patch through: eighteen perceptual
 descriptors of the standard render, twenty-six structural counts of the term.
 **If a preference is not visible in these, it cannot be learned.**
 

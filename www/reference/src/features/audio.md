@@ -187,12 +187,19 @@ band-wise modulation power of a sound is much of what makes it recognisable as
 a texture at all (McDermott & Simoncelli 2011). The three coordinates are that
 filterbank, cut to three bands.
 
-Over the held span, starting 250 ms after onset so the attack is not read as
-motion, two trajectories are taken at a 256-sample hop (≈ 172 frames/s — the
-spectral features' own 43 frames/s would fold the fast band): brightness
+Over the held span, starting once the note has *arrived* so the attack is not
+read as motion — 250 ms after onset, or later if the level (smoothed over
+≈ 46 ms) has not yet reached 97% of its peak — two trajectories are taken at a
+256-sample hop (≈ 172 frames/s — the spectral features' own 43 frames/s would
+fold the fast band): brightness
 $c_t = \log_2(\text{centroid}_t / 20\,\text{Hz})$ in octaves, and level
-$\ell_t = \log_2 \text{RMS}_t$, where one unit is 6 dB — one doubling, the same
-currency as an octave of brightness. Each is linearly detrended (a ramp across
+$\ell_t = \max(\log_2 \text{RMS}_t,\ \log_2 \text{peak} - 10)$, where one unit
+is 6 dB — one doubling, the same currency as an octave of brightness — and a
+dip reads at most 60 dB deep, so one frame of digital silence in a chopped
+sound cannot outweigh every audible wobble. The arrival rule matters for pads:
+a 0.9 s swell measured from the fixed 250 ms alone read 4.3 octaves over the
+floor in the slow band, because a ramp is curved in log level and detrending
+leaves most of it. Each is linearly detrended (a ramp across
 the span is drift, which `held_centroid_std` already carries), Hann-windowed
 and transformed. With $r$ the detrended residual, $\sigma^2_r$ its variance and
 $P(f)$ its modulation power spectrum, band $B$ gets the variance share

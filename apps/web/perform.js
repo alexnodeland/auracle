@@ -86,7 +86,19 @@ export function createPerform(host) {
     blend: 0,
     offer: null, // {json, makeup}
     req: 0,
-    pending: new Map(), // req -> kind
+    // Every reply is checked against the patch it was asked about: a patch
+    // change bumps gen, and anything still in flight for the old patch is
+    // dropped when it lands rather than applied to the new one.
+    gen: 0,
+    pending: new Map(), // req -> {kind, gen, at}
+    applyThen: new Map(), // req -> callback for perform_apply
+    // Expression (channel pressure, the mod wheel): source -> {i, v}, an
+    // offset on one named control added under the player's own turn. Never
+    // counted as a touch — it would hold Wander for as long as a key is down.
+    expr: new Map(),
+    // Set by Keep while its tree travels through the bench and back, so the
+    // echo is not mistaken for a new patch.
+    keeping: null,
     measuring: false,
     lastTouch: 0,
     lastMove: performance.now(),
@@ -276,7 +288,10 @@ export function createPerform(host) {
       e.preventDefault();
       e.stopPropagation();
       touch();
-      onRelease(k);
+      // A run of arrow presses is one gesture: logged, and a search control
+      // asked, once the keys go quiet.
+      clearTimeout(k.keyTimer);
+      k.keyTimer = setTimeout(() => onRelease(k), 450);
     });
   }
 
@@ -291,9 +306,11 @@ export function createPerform(host) {
     let v = base;
     if (state.wire) {
       state.wire.forEach((w, i) => {
-        if (w.search || !state.c[i]) return;
+        let p = 0;
+        for (const x of state.expr.values()) if (x.i === i) p += x.v;
+        if (w.search || !(state.c[i] + p)) return;
         const [lo, hi] = rangeOf(w);
-        const c = clamp(state.c[i], lo, hi);
+        const c = clamp(state.c[i] + p, lo, hi);
         for (const [a, g] of w.knobs) if (a === addr) v += c * g;
       });
     }
@@ -454,9 +471,15 @@ export function createPerform(host) {
   // ---------- worker plumbing ----------
   function request(kind, msg) {
     const req = ++state.req;
-    state.pending.set(req, kind);
+    state.pending.set(req, { kind, gen: state.gen, at: performance.now() });
     host.send({ ...msg, type: kind, req });
     return req;
+  }
+
+  // Is a request of this kind already out for the current patch?
+  function inFlight(kind) {
+    for (const p of state.pending.values()) if (p.kind === kind && p.gen === state.gen) return true;
+    return false;
   }
 
   function wire() {
@@ -468,7 +491,7 @@ export function createPerform(host) {
   }
 
   function requestDrift() {
-    if (!state.cur || state.glide || [...state.pending.values()].includes("perform_drift")) return;
+    if (!state.cur || state.glide || inFlight("perform_drift")) return;
     const pace = wanderPace(state.wander);
     state.lastMove = performance.now();
     request("perform_drift", {
@@ -481,7 +504,7 @@ export function createPerform(host) {
   }
 
   function requestOffer(why) {
-    if (!state.cur || [...state.pending.values()].includes("perform_offer")) return;
+    if (!state.cur || inFlight("perform_offer")) return;
     state.lastMove = performance.now();
     state.offerWhy = why || "";
     // Twenty steps is ~10 s of renders: long enough to find a real variant,
@@ -493,21 +516,35 @@ export function createPerform(host) {
   }
 
   function onWorker(m) {
-    const kind = state.pending.get(m.req);
-    if (!kind) return false;
+    const p = state.pending.get(m.req);
+    if (!p) return false;
     state.pending.delete(m.req);
+    const then = state.applyThen.get(m.req);
+    state.applyThen.delete(m.req);
+    // An answer about a patch that is no longer sounding is consumed, not used.
+    if (p.gen !== state.gen) return true;
+    if (m.error) console.warn(`[perform] ${p.kind}:`, m.error);
     if (m.type === "perform_wired") {
       state.measuring = false;
       if (!m.data) {
         state.wire = null;
-        renderStatus("the taste model has not seen enough patches to measure against yet");
+        renderStatus(m.error ? "could not measure this patch" : "the taste model has not seen enough patches to measure against yet");
       } else {
-        // The knob values the wiring was measured at become the new centre;
-        // the controls return to zero there, so nothing audibly moves.
-        state.cur.knobs = new Map(m.data.addrs.map((a, i) => [a, m.data.values[i]]));
+        // Where the sound is *now* becomes the new centre and the controls
+        // return to zero there, so nothing audibly moves. Now, not when the
+        // measurement was asked for: the player may have kept turning while
+        // it rendered, and the old wiring's deltas are folded in before it is
+        // replaced. A knob this patch had not been measured on yet takes the
+        // value the measurement read.
+        const had = state.cur.knobs;
+        const here = new Map(m.data.addrs.map((a, i) => [a, had.has(a) ? liveValue(a) : m.data.values[i]]));
+        state.cur.knobs = here;
         state.c = state.c.map(() => 0);
         knobs.forEach((k) => {
-          if (k.spec.kind === "named") k.value = 0;
+          if (k.spec.kind === "named") {
+            k.value = 0;
+            host.controlMoved?.(k.i);
+          }
         });
         state.wire = m.data.wiring;
         if (state.home && !state.home.knobs) state.home.knobs = new Map(state.cur.knobs);
@@ -530,8 +567,11 @@ export function createPerform(host) {
       return true;
     }
     if (m.type === "perform_drifted") {
+      // Hands came on while the walk ran: the player's sound wins, and the
+      // proposal (made from where the knobs were) is dropped.
+      if (state.lastTouch > p.at) return true;
       if (!m.drift) {
-        renderStatus("nothing nearby it likes better — staying");
+        renderStatus(m.error ? "the walk failed on this patch — staying" : "nothing nearby it likes better — staying");
         return true;
       }
       const pace = wanderPace(state.wander);
@@ -541,14 +581,14 @@ export function createPerform(host) {
     }
     if (m.type === "perform_offered") {
       if (!m.offer) {
-        renderOffer("no offer beat this patch — try again, or loosen a lock");
+        renderOffer(m.error ? "the walk failed on this patch — try again" : "no offer beat this patch — try again, or loosen a lock");
         return true;
       }
       state.offer = { json: JSON.stringify(m.offer.tree), makeup: m.offer.makeup, taste: !!m.offer.taste };
       const live = host.live();
       if (live) {
         live.bPatch(state.offer.json, state.offer.makeup);
-        live.bMix(state.blend);
+        live.bMix(state.visible ? state.blend : 0);
       }
       renderOffer();
       knobs.forEach(paintKnob);
@@ -556,14 +596,59 @@ export function createPerform(host) {
       return true;
     }
     if (m.type === "perform_applied") {
-      const then = state.applyThen && state.applyThen.get(m.req);
-      if (then) {
-        state.applyThen.delete(m.req);
-        then(m.json);
-      }
+      if (then) then(m.json);
       return true;
     }
     return true;
+  }
+
+  // A new tree reached the voices from anywhere in the app. It becomes home,
+  // and the controls are re-measured around it.
+  function patchChanged(json, makeup) {
+    nameEl.textContent = host.label();
+    if (!json) return;
+    if (state.cur && state.cur.json === json) {
+      state.keeping = null;
+      return;
+    }
+    // Keep's own tree coming back from the bench: same structure, same
+    // sound. Nothing to reset.
+    if (state.keeping && state.cur && !structureDiffers(state.cur.json, json)) {
+      state.keeping = null;
+      state.cur.json = json;
+      state.cur.makeup = makeup;
+      state.home.json = json;
+      state.home.makeup = makeup;
+      wire();
+      return;
+    }
+    state.keeping = null;
+    state.gen++;
+    state.applyThen.clear();
+    state.measuring = false;
+    state.cur = { json, makeup, knobs: new Map() };
+    state.home = { json, makeup, knobs: null };
+    // Addresses mean nothing across a patch change until re-measured: a
+    // stale touch site could land on a different module's knob.
+    state.touch.sites = [];
+    const lv = host.live();
+    if (lv && lv.touch) lv.touch([], state.touch.depth);
+    state.sent.clear();
+    state.wire = null;
+    state.glide = null;
+    if (state.offer) clearOffer();
+    if (state.visible) wire();
+    knobs.forEach(paintKnob);
+  }
+
+  // Measure now even if PERFORM has never been looked at: a MIDI control can
+  // be turned from any view.
+  function ensureWired() {
+    if (!state.cur) {
+      const t = host.liveTree();
+      if (t && t.json) patchChanged(t.json, t.makeup);
+    }
+    if (state.cur && !state.wire && !state.measuring) wire();
   }
 
   // ---------- glides (drift and back) ----------
@@ -572,7 +657,9 @@ export function createPerform(host) {
     for (const a of state.cur.knobs.keys()) from.set(a, liveValue(a));
     // The controls' deltas are part of where the glide starts; fold them into
     // the base so the controls read zero at the destination.
-    state.cur.knobs = from;
+    // A copy: the glide writes into cur.knobs every frame and must keep
+    // reading its fixed starting point from `from`.
+    state.cur.knobs = new Map(from);
     state.c = state.c.map(() => 0);
     knobs.forEach((k) => {
       if (k.spec.kind === "named") {
@@ -616,7 +703,6 @@ export function createPerform(host) {
 
   // ---------- pads ----------
   function applyThen(then) {
-    if (!state.applyThen) state.applyThen = new Map();
     const req = request("perform_apply", { tree: state.cur.json, overrides: overrides() });
     state.applyThen.set(req, then);
   }
@@ -625,8 +711,22 @@ export function createPerform(host) {
     if (!state.cur) return;
     applyThen((json) => {
       if (!json || json === "null") return;
-      state.home = { json, makeup: state.cur.makeup, knobs: new Map(overrides()) };
+      const here = new Map(overrides());
       host.logImplicit("perform_keep", { controls: state.c.map((x) => +x.toFixed(3)) });
+      // The sound does not change, so neither does anything playing it: the
+      // controls' deltas fold into the centre, the offer in B stays, and the
+      // wiring is refreshed around the new centre in the background.
+      state.cur.knobs = here;
+      state.c = state.c.map(() => 0);
+      knobs.forEach((k) => {
+        if (k.spec.kind === "named") {
+          k.value = 0;
+          paintKnob(k);
+          host.controlMoved?.(k.i);
+        }
+      });
+      state.home = { json, makeup: state.cur.makeup, knobs: new Map(here) };
+      state.keeping = json;
       host.commitTree(json);
       host.note("kept — this is home now");
       flash("keep");
@@ -655,7 +755,13 @@ export function createPerform(host) {
     if (!state.offer) return host.note("nothing offered yet — press Offer, or turn Wander up");
     host.logImplicit("perform_take", { why: state.offerWhy || "" });
     const json = state.offer.json;
-    clearOffer();
+    // B keeps sounding until A has rebuilt as the offer, then fades out: at
+    // any Blend position the handover has no gap and no jump.
+    state.offer = null;
+    const live = host.live();
+    if (live) live.bClear({ afterSwap: true });
+    renderOffer();
+    knobs.forEach(paintKnob);
     host.commitTree(json);
     flash("take");
   }
@@ -692,12 +798,13 @@ export function createPerform(host) {
         if (e.buttons) onUp();
       });
     }
-    b.addEventListener("keydown", (e) => {
-      if (e.key === " " || e.key === "Enter") {
-        e.preventDefault();
-        onDown();
-        if (onUp) setTimeout(onUp, 600);
-      }
+    // Keyboard and assistive tech arrive as a click with no pointer behind
+    // it (detail 0); a pointer press was already handled on pointerdown.
+    b.addEventListener("click", (e) => {
+      if (e.detail !== 0) return;
+      touch();
+      onDown();
+      if (onUp) setTimeout(onUp, 600);
     });
     padEls[key] = b;
     pads.append(b);
@@ -827,37 +934,24 @@ export function createPerform(host) {
       state.visible = true;
       nameEl.textContent = host.label();
       const t = host.liveTree();
-      if (t && t.json && (!state.cur || state.cur.json !== t.json)) this.patchChanged(t.json, t.makeup);
+      if (t && t.json && (!state.cur || state.cur.json !== t.json)) patchChanged(t.json, t.makeup);
       // Measured lazily: a patch that changed while PERFORM was hidden is
       // wired the first time it is looked at, not every time it changed.
       if (state.cur && !state.wire && !state.measuring) wire();
+      const live = host.live();
+      if (live && state.offer) live.bMix(state.blend);
       renderStatus();
       knobs.forEach(paintKnob);
     },
+    // B is PERFORM's: out of sight it is silent, so editing in PATCH never
+    // hears a blend it cannot see. The offer itself stays for coming back.
     hide() {
       state.visible = false;
+      const live = host.live();
+      if (live && state.offer) live.bMix(0);
     },
-    // A new tree reached the voices from anywhere in the app. It becomes home,
-    // and the controls are re-measured around it.
-    patchChanged(json, makeup) {
-      nameEl.textContent = host.label();
-      if (!json) return;
-      if (state.cur && state.cur.json === json) return;
-      state.cur = { json, makeup, knobs: new Map() };
-      state.home = { json, makeup, knobs: null };
-      // Addresses mean nothing across a patch change until re-measured: a
-      // stale touch site could land on a different module's knob.
-      state.touch.sites = [];
-      const lv = host.live();
-      if (lv && lv.touch) lv.touch([], state.touch.depth);
-      state.sent.clear();
-      state.wire = null;
-      state.glide = null;
-      if (state.offer) clearOffer();
-      if (state.visible) wire();
-      else state.measuring = false;
-      knobs.forEach(paintKnob);
-    },
+    ensureWired,
+    patchChanged,
     onWorker,
     // For MIDI and the keyboard: set a named control (0..5), Blend (6) or
     // Wander (7) from a normalized 0..1 value.
@@ -865,12 +959,26 @@ export function createPerform(host) {
       const k = knobs[i];
       if (!k) return;
       touch();
+      ensureWired();
       k.value = k.spec.kind === "named" ? v01 * 2 - 1 : v01;
       paintKnob(k);
       onKnob(k, true);
+      // A pot has no "let go": the gesture ends when it goes quiet.
+      clearTimeout(k.keyTimer);
+      k.keyTimer = setTimeout(() => onRelease(k), 450);
     },
     // The control's position as 0..1, what a MIDI pot is compared against
     // for pickup.
+    // Expression from `src` on control i (0..5): 0..1 pushes toward its high
+    // end, and 0 is exactly where the player left it. A null src clears every
+    // source (reset-all-controllers, a device leaving).
+    setExpression(src, i, v01) {
+      if (src == null) state.expr.clear();
+      else if (!v01) state.expr.delete(src);
+      else state.expr.set(src, { i, v: clamp(v01, 0, 1) });
+      if (state.cur && state.wire) push();
+      else if (v01) ensureWired();
+    },
     getControl(i) {
       const k = knobs[i];
       if (!k) return 0.5;

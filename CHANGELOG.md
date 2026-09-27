@@ -94,6 +94,55 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Fixed — a red-team pass over PERFORM, MIDI and the motion bands
+
+A review of the new surfaces before merge, every finding fixed:
+
+- **Render cache.** `RENDER_EPOCH` is 2: an epoch-1 row lacks the motion bands
+  and does not deserialize. The bank's cache-hit path now falls back to a
+  fresh render when a cached row is refused, rather than dropping the patch.
+- **Answers about a patch that is gone.** Every PERFORM request carries the
+  patch generation it was asked about, and a reply for an older patch is
+  consumed, not applied. Before, a slow wiring could land on the next patch
+  and wire its controls to knobs of the last one.
+- **Glides started from a moving point.** The glide wrote into the same map it
+  read its start from, so every glide was an exponential approach instead of
+  the smoothstep it claimed to be.
+- **Hands win.** A drift proposal computed while the player touched a control
+  is dropped. A wiring that lands after the controls moved folds in where the
+  sound *is*, not where it was when measuring began, so nothing jumps.
+- **Keep keeps.** It no longer discards the offer waiting in B or resets the
+  controls: the sound does not change, so nothing playing it does either.
+  PERFORM's commits also stopped taking two undo steps each.
+- **B hands over without a gap.** Take keeps B sounding until A has rebuilt as
+  the offer, then fades it; any B that leaves fades first and is freed only
+  when silent. B follows the arpeggiator when it loads, is silent while PERFORM
+  is out of sight, and its errors are said on screen. Its render view is
+  cached like A's instead of being allocated every quantum.
+- **The worker always answers.** A PERFORM call that throws still replies,
+  with the error, so a failed walk cannot leave an offer "in flight" forever.
+- **Expression is expression.** Channel pressure and an unmapped mod wheel
+  are offsets on top of the player's own turn — at rest they add nothing, and
+  they never count as a touch (which held Wander for as long as a key was
+  down). Bank select, data entry, (N)RPN, sostenuto, soft and every
+  channel-mode controller are reserved, so a keyboard setting its bend range
+  cannot claim a control on the first auto-map. A pot's gesture ends when it
+  goes quiet: it is logged and can ask a search control for an offer, as a
+  mouse release does. Moving a MIDI control measures the patch even if PERFORM
+  was never opened.
+- **Stuck notes.** Panic and a device change reset the sustain latch.
+- **Accessibility.** Pads answer assistive-technology clicks; a run of arrow
+  presses on a control is one logged gesture; the MIDI button reports
+  `aria-expanded`, the panel takes focus when opened and Escape returns it.
+- **Motion bands measure the held note, not its arrival.** The track starts
+  when the level reaches 97% of its peak if that is later than 250 ms, and a
+  dip reads at most 60 dB deep. A 0.9 s swell into a steady tone used to read
+  4.3 octaves over the floor in the slow band; it now reads still, as does a
+  tone that starts late. The modulation FFTs are planned once per thread.
+- **Search health ran out of time every night.** The scheduled workflow was
+  one 90-minute job that the 16-seed climb alone outlasts. It is now three
+  parallel jobs with their own limits.
+
 ### Added — φ hears how fast a sound moves, not only how much
 
 A texture is mostly its motion, and φ could not tell a slow sweep from a fast

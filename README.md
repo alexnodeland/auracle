@@ -137,7 +137,7 @@ takes both apart.
 | `auracle-taste` | Max-of-experts utility, three likelihoods, recency weighting, MCMC posterior, label alignment, portable profiles |
 | `auracle-session` | Two-loop engine: pool, duel acquisition (uniform by default; BALD selectable), locked refinement, taste-tilted proposals, session persistence |
 | `auracle-wasm` | `WasmEngine` (worker-side brain) and `LivePoly` (worklet-side instrument) |
-| `apps/web` | The instrument: PLAY / EVOLVE / TASTE, patch bank, keyboard dock |
+| `apps/web` | The instrument: PERFORM / PATCH / EVOLVE / TASTE, patch bank, keyboard dock, MIDI |
 
 ## 🚀 Quick Start
 

@@ -44,9 +44,11 @@ occupy space at rest.
   ("point at a module…", "anything you unplug is held here…") is level 3 and
   appears only when it has content. The info strip becomes a floating card on
   hover; HELD appears when something is held.
-- **Nothing overlays the thing you touch.** The scope moved off the rack frame
-  (it occupied its lower-right quarter permanently, which is why an eight-module
-  patch rendered at a third of its natural size) into the header.
+- **Nothing overlays the thing you touch.** The scope occupied the rack
+  frame's lower-right quarter permanently, which is why an eight-module patch
+  rendered at a third of its natural size. What shipped: it defaults to its
+  small size (still in the frame, resizable). Moving it into the header is the
+  intended end state and not yet done.
 - **Settings follow their switch.** The arpeggiator's six controls show when ARP
   is on; unison's when UNI is on.
 - **Toolbars are grouped by concern.** PATCH's ten equal-weight buttons become:

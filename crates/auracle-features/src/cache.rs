@@ -100,7 +100,8 @@ pub fn canonical_tree_json(tree: &PatchTree) -> String {
 /// | epoch | what changed |
 /// |---|---|
 /// | 1 | first persistent cache; peak-capped loudness normalization |
-pub const RENDER_EPOCH: u32 = 1;
+/// | 2 | the motion bands: three φ_audio coordinates (`motion_slow`, `motion_mid`, `motion_fast`) — an epoch-1 row lacks them and does not deserialize |
+pub const RENDER_EPOCH: u32 = 2;
 
 /// The persistent cache's namespace for one stimulus: `"e<epoch>:<spec hash>"`.
 ///

@@ -2375,12 +2375,12 @@ async function bootPerform() {
     heldCount: () => heldNotes.size,
     noteOn: (n, v) => liveNoteOn(n, v),
     noteOff: (n) => liveNoteOff(n),
-    // A performed sound becomes the bench's tree: one undo step, the same
-    // whole-tree route a restore takes, so PATCH shows what PERFORM kept.
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
+    // A performed sound becomes the bench's tree by the same whole-tree route
+    // a restore takes, so PATCH shows what PERFORM kept. queueStruct stages
+    // the one undo step itself.
     commitTree: (json) => {
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
-      pushUndo();
       queueStruct({ type: "edit_set_tree", json }, null, { op: "perform" });
     },
   });
@@ -2399,6 +2399,7 @@ async function bootLiveAudio() {
   live.onMessage((m) => {
     (window.__aurLog = window.__aurLog || []).push(m);
     if (m.type === "patch_error") note(`live patch failed to compile: ${m.error}`);
+    if (m.type === "b_error") note(`the offer in B could not be played: ${m.error}`);
     if (m.type === "param_miss") healParamMiss(m.addr);
     if (m.type === "rec_done" && m.samples && m.samples.length > 0) {
       downloadWav(m.samples, m.sampleRate);
@@ -2486,6 +2487,7 @@ function liveNoteOff(note_) {
 }
 
 function panic() {
+  sustainPedal = false;
   sustainedNotes.clear();
   if (live) live.allOff();
   for (const n of [...heldNotes]) paintKey(n, false);
@@ -3010,12 +3012,14 @@ const sustainedNotes = new Set();
 function midiSustain(on) {
   sustainPedal = on;
   if (on) return;
+  const any = sustainedNotes.size > 0;
   for (const n of sustainedNotes) {
     if (live) live.noteOff(n);
     heldNotes.delete(n);
     paintKey(n, false);
   }
   sustainedNotes.clear();
+  if (any && heldNotes.size === 0) setTimeout(() => { if (heldNotes.size === 0) setSignalFlow(false); }, 400);
 }
 
 async function bootMidi() {
@@ -3040,7 +3044,24 @@ async function bootMidi() {
     },
   });
   midi.attachPanel($("midi-panel"));
-  $("midi-ind").onclick = () => midi.togglePanel();
+  const ind = $("midi-ind");
+  const panel = $("midi-panel");
+  ind.setAttribute("aria-controls", "midi-panel");
+  ind.setAttribute("aria-expanded", "false");
+  const setOpen = (open) => {
+    if (open === !panel.classList.contains("hidden")) return;
+    midi.togglePanel();
+    ind.setAttribute("aria-expanded", String(open));
+    if (open) panel.querySelector("button, input, select")?.focus();
+  };
+  ind.onclick = () => setOpen(panel.classList.contains("hidden"));
+  // Escape closes it and hands focus back to the button that opened it.
+  panel.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    setOpen(false);
+    ind.focus();
+  });
 }
 
 // ---------- duel flow ----------

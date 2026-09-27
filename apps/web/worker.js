@@ -67,6 +67,18 @@ function endLongOp() {
   }
 }
 
+// One PERFORM reply: `field` carries the answer, or null with `error` set.
+function performReply(m, type, field, long, fn) {
+  if (long) beginLongOp();
+  try {
+    post({ type, req: m.req, [field]: fn() });
+  } catch (err) {
+    post({ type, req: m.req, [field]: null, error: String((err && err.message) || err) });
+  } finally {
+    if (long) endLongOp();
+  }
+}
+
 // How many vetted candidates make a bank worth duelling. Below this the
 // acquisition function is choosing from too few distinct patches for the
 // question to be worth asking; above it, waiting is pure cost — the pool is
@@ -492,9 +504,15 @@ async function restoreSession(saved, farmed, stages) {
     absorb: (i, r) => {
       next = i + 1;
       if (r.ok) {
-        // `false` here is a genuine vet failure: the entry no longer
-        // featurizes, and `import_state` drops it too.
+        // `false` from absorb is either a genuine vet failure or a farmed
+        // row this engine cannot read — one from an older featurizer
+        // (RENDER_EPOCH) that no longer deserializes. The second is not a
+        // verdict on the patch, and dropping a bank entry deletes a patch the
+        // user kept (the next autosave makes that permanent), so it is
+        // rendered here instead. A genuine vet failure fails that too, and
+        // the entry is dropped as `import_state` would drop it.
         if (engine.bank_absorb(i, r.cached, r.samples || EMPTY_F32)) landed++;
+        else if (engine.bank_render(i)) landed++;
         return;
       }
       // `!ok` on this path is a *watchdog retirement*, not a verdict on the
@@ -1135,40 +1153,25 @@ self.onmessage = async (e) => {
     // ---- performance surface (PERFORM) ----
     // Each of these replies exactly once, with the caller's `req` echoed, so
     // main can drop a reply for a patch it has since moved away from.
-    case "perform_wire": {
-      beginLongOp();
-      try {
-        const data = JSON.parse(engine.perform_wire(m.tree, JSON.stringify(m.overrides || [])));
-        post({ type: "perform_wired", req: m.req, data });
-      } finally {
-        endLongOp();
-      }
+    // PERFORM's four questions. Every one answers, even on a throw: the page
+    // tracks each request until its reply lands, and a missing reply would
+    // leave (say) an offer "in flight" forever and refuse the next one.
+    case "perform_wire":
+      performReply(m, "perform_wired", "data", true, () =>
+        JSON.parse(engine.perform_wire(m.tree, JSON.stringify(m.overrides || []))));
       break;
-    }
-    case "perform_apply": {
-      post({ type: "perform_applied", req: m.req, json: engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])) });
+    case "perform_apply":
+      performReply(m, "perform_applied", "json", false, () =>
+        engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])));
       break;
-    }
-    case "perform_drift": {
-      beginLongOp();
-      try {
-        const drift = JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12));
-        post({ type: "perform_drifted", req: m.req, drift });
-      } finally {
-        endLongOp();
-      }
+    case "perform_drift":
+      performReply(m, "perform_drifted", "drift", true, () =>
+        JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12)));
       break;
-    }
-    case "perform_offer": {
-      beginLongOp();
-      try {
-        const offer = JSON.parse(engine.perform_offer(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 40));
-        post({ type: "perform_offered", req: m.req, offer });
-      } finally {
-        endLongOp();
-      }
+    case "perform_offer":
+      performReply(m, "perform_offered", "offer", true, () =>
+        JSON.parse(engine.perform_offer(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 40)));
       break;
-    }
     case "tree_json": {
       post({
         type: "tree_json",

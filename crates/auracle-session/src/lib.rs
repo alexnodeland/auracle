@@ -563,29 +563,6 @@ mod tests {
         assert_eq!(plain.memo().stats().features, 0, "disabled memo retained");
     }
 
-    /// M4 gate: the headless closed loop. Fill a pool through the real
-    /// pipeline, run rounds of acquisition-chosen duels answered by the
-    /// synthetic user, re-fit between rounds, and assert:
-    /// 1. the posterior's ranking correlates with true utility on the pool;
-    /// 2. the engine's top picks are genuinely better than the pool average;
-    /// 3. the dominant style lens points roughly at the true θ.
-    ///
-    /// **Run over a fixed set of seeds, with the gates on the means.** One
-    /// run of this loop is a single draw — over the pool lottery, the duel
-    /// answers and the MH chain — and the seed-to-seed spread of `r` is
-    /// sd ≈ 0.08 across a range of ≈ 0.25, wider than the difference between
-    /// any two MCMC budgets from 6 000 steps up (the measurement is in
-    /// [`SessionConfig::mcmc_samples`]). At the shipped budget a single-seed
-    /// `r > 0.6` gate fails on ~2 of 13 draws, so a one-seed version of this
-    /// test would go red about 15 % of the time for any change that merely
-    /// perturbs the upstream RNG stream — grammar, features, render,
-    /// acquisition, or the fit itself — while telling you nothing about the
-    /// change. The seeds run concurrently, so the wall cost is ~one run.
-    ///
-    /// The surviving per-seed asserts are deliberately loose floors — "this
-    /// seed learned *something*" — set below the worst of 13 seeds at the
-    /// shipped budget (min r 0.551, min cos 0.315). They catch a loop that
-    /// stopped working; they are not the gate.
     /// A listener who wants **slow** movement and dislikes **fast** flutter
     /// is learnable from duels on the real pool.
     ///
@@ -684,6 +661,29 @@ mod tests {
     const MOTION_R_FLOOR: f64 = 0.25;
     const MOTION_LIFT_FLOOR: f64 = 0.2;
 
+    /// M4 gate: the headless closed loop. Fill a pool through the real
+    /// pipeline, run rounds of acquisition-chosen duels answered by the
+    /// synthetic user, re-fit between rounds, and assert:
+    /// 1. the posterior's ranking correlates with true utility on the pool;
+    /// 2. the engine's top picks are genuinely better than the pool average;
+    /// 3. the dominant style lens points roughly at the true θ.
+    ///
+    /// **Run over a fixed set of seeds, with the gates on the means.** One
+    /// run of this loop is a single draw — over the pool lottery, the duel
+    /// answers and the MH chain — and the seed-to-seed spread of `r` is
+    /// sd ≈ 0.08 across a range of ≈ 0.25, wider than the difference between
+    /// any two MCMC budgets from 6 000 steps up (the measurement is in
+    /// [`SessionConfig::mcmc_samples`]). At the shipped budget a single-seed
+    /// `r > 0.6` gate fails on ~2 of 13 draws, so a one-seed version of this
+    /// test would go red about 15 % of the time for any change that merely
+    /// perturbs the upstream RNG stream — grammar, features, render,
+    /// acquisition, or the fit itself — while telling you nothing about the
+    /// change. The seeds run concurrently, so the wall cost is ~one run.
+    ///
+    /// The surviving per-seed asserts are deliberately loose floors — "this
+    /// seed learned *something*" — set below the worst of 13 seeds at the
+    /// shipped budget (min r 0.551, min cos 0.315). They catch a loop that
+    /// stopped working; they are not the gate.
     #[test]
     fn closed_loop_learns_synthetic_taste() {
         // Fixed, not drawn: a regression gate has to fail for the same

@@ -786,9 +786,11 @@ impl WasmEngine {
 
     /// One knob-only drift step from the performed state (`tree` plus
     /// `overrides`) on the taste target, structure and the player's
-    /// `locks_json` held fixed. Returns `{tree, knobs: [[addr, value], …]}`,
-    /// or `null` if the walk found nothing (no posterior yet, or no accepted
-    /// move beat the start). Inserts nothing into the pool.
+    /// `locks_json` held fixed. Returns `{tree, knobs: [[addr, value], …],
+    /// taste}`, or `null` if no accepted move beat the start. With no
+    /// posterior yet the walk still runs, on the prior alone (`taste: false`):
+    /// the grammar's own idea of a nearby sound. Inserts nothing into the
+    /// pool.
     pub fn perform_drift(
         &mut self,
         tree_json: &str,
@@ -814,8 +816,9 @@ impl WasmEngine {
     }
 
     /// A structural offer from the performed state: the locked walk with only
-    /// the player's locks. Returns `{tree, makeup}` so the offer can be heard
-    /// at matched loudness, or `null`. Inserts nothing into the pool.
+    /// the player's locks. Returns `{tree, makeup, taste}` — makeup so the
+    /// offer is heard at matched loudness, taste as for [`Self::perform_drift`]
+    /// — or `null`. Inserts nothing into the pool.
     pub fn perform_offer(
         &mut self,
         tree_json: &str,

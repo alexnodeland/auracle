@@ -49,6 +49,11 @@ thread_local! {
     /// The forward transform for [`FRAME`], planned once per thread.
     /// See the note at its use site for why this is safe to cache.
     static FFT_PLAN: Arc<dyn Fft<f64>> = FftPlanner::<f64>::new().plan_fft_forward(FRAME);
+    /// Planner for the modulation spectra, whose length follows the span.
+    /// A planner caches every plan it has made, so after the first patch of
+    /// a given phrase this is a lookup.
+    static MOD_PLANNER: std::cell::RefCell<FftPlanner<f64>> =
+        std::cell::RefCell::new(FftPlanner::new());
 }
 
 /// Anchor of the log-frequency axis: below this, frequency is inaudible as
@@ -506,9 +511,25 @@ const MOTION_FRAME: usize = 2048;
 /// own hop ([`HOP`]) gives 43 frames/s, whose Nyquist (21.5 Hz) would fold
 /// the fast band onto itself.
 const MOTION_HOP: usize = 256;
-/// Seconds skipped at the held note's onset: the attack is an *event*, and
-/// its one-off sweep would otherwise read as motion in every band.
+/// Seconds skipped at the held note's onset, at least: the attack is an
+/// *event*, and its one-off sweep would otherwise read as motion in every
+/// band. A slower attack is skipped until it arrives ([`MOTION_ARRIVED`]).
 const MOTION_SKIP_S: f64 = 0.25;
+/// The track starts once the level first reaches this fraction of the held
+/// note's peak (smoothed over [`MOTION_SMOOTH`] frames), if that is later
+/// than [`MOTION_SKIP_S`]. A pad's one-second swell is an attack, not
+/// motion — and linear detrending does not remove it, because a swell is
+/// curved in log level.
+const MOTION_ARRIVED: f64 = 0.97;
+/// Frames the arrival test smooths over (~46 ms at 44.1 kHz): short enough
+/// to find a real attack's end, long enough that one tremolo peak does not
+/// count as arrival before the note has.
+const MOTION_SMOOTH: usize = 8;
+/// Deepest a level-track dip can read, in octaves (6 dB each) under the
+/// peak: 60 dB. A gated or chopped sound is motion, but a frame of digital
+/// silence would otherwise read as −17 octaves and dwarf every audible
+/// wobble in the variance.
+const MOTION_DIP: f64 = 10.0;
 /// Shortest analysable span. Below this the slow band cannot hold a single
 /// cycle and every band is reported at the floor.
 const MOTION_MIN_S: f64 = 0.75;
@@ -538,8 +559,9 @@ pub const MOTION_FLOOR: f64 = -6.643_856_189_774_724; // 0.5·log2(1e-4)
 ///
 /// ## What
 ///
-/// Two trajectories over the held span, starting [`MOTION_SKIP_S`] after
-/// onset: brightness as `log2` spectral centroid (octaves above 20 Hz) and
+/// Two trajectories over the held span, starting once the note has arrived
+/// (the later of [`MOTION_SKIP_S`] after onset and the attack reaching
+/// [`MOTION_ARRIVED`] of its peak): brightness as `log2` spectral centroid (octaves above 20 Hz) and
 /// level as `log2` frame RMS (one unit = 6 dB, one doubling — the same
 /// currency as an octave of brightness). Each is linearly detrended — a slow
 /// ramp across the span is drift, and [`AudioFeatures::held_centroid_std`]
@@ -560,9 +582,41 @@ pub const MOTION_FLOOR: f64 = -6.643_856_189_774_724; // 0.5·log2(1e-4)
 /// there. It waits for a longer stimulus rather than shipping a coordinate
 /// that guesses.
 pub fn motion_bands(x: &[f64], sr: f64, on_start: usize, on_end: usize) -> [f64; 3] {
-    let lo = on_start + (MOTION_SKIP_S * sr) as usize;
     let hi = on_end.min(x.len());
-    if hi <= lo || ((hi - lo) as f64) < MOTION_MIN_S * sr {
+    if hi <= on_start + MOTION_FRAME {
+        return [MOTION_FLOOR; 3];
+    }
+    // Level per hop from onset, then where the note has arrived: the later
+    // of the fixed skip and the first frame at MOTION_ARRIVED of the peak.
+    let rms_at = |pos: usize| {
+        let f = &x[pos..pos + MOTION_FRAME];
+        (f.iter().map(|s| s * s).sum::<f64>() / MOTION_FRAME as f64).sqrt()
+    };
+    let n_all = (hi - on_start - MOTION_FRAME) / MOTION_HOP + 1;
+    let env: Vec<f64> = (0..n_all)
+        .map(|k| rms_at(on_start + k * MOTION_HOP))
+        .collect();
+    let smooth: Vec<f64> = (0..n_all)
+        .map(|k| {
+            let a = k.saturating_sub(MOTION_SMOOTH / 2);
+            let b = (k + MOTION_SMOOTH / 2).min(n_all);
+            env[a..b].iter().sum::<f64>() / (b - a) as f64
+        })
+        .collect();
+    let peak = smooth.iter().cloned().fold(0.0, f64::max);
+    if peak <= 1e-9 {
+        return [MOTION_FLOOR; 3];
+    }
+    let arrived = smooth
+        .iter()
+        .position(|&v| v >= MOTION_ARRIVED * peak)
+        .unwrap_or(n_all);
+    let first = ((MOTION_SKIP_S * sr) as usize)
+        .div_ceil(MOTION_HOP)
+        .max(arrived);
+    if first >= n_all
+        || ((n_all - first) * MOTION_HOP) as f64 + (MOTION_FRAME as f64) < MOTION_MIN_S * sr
+    {
         return [MOTION_FLOOR; 3];
     }
     let fft = FFT_PLAN.with(Arc::clone);
@@ -570,35 +624,30 @@ pub fn motion_bands(x: &[f64], sr: f64, on_start: usize, on_end: usize) -> [f64;
         .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / MOTION_FRAME as f64).cos())
         .collect();
     let bin_hz = sr / MOTION_FRAME as f64;
-    let mut bright = Vec::new();
-    let mut level = Vec::new();
-    let mut last_c = 0.0;
-    let mut pos = lo;
-    while pos + MOTION_FRAME <= hi {
-        let frame = &x[pos..pos + MOTION_FRAME];
-        let mut buf: Vec<Complex<f64>> = frame
-            .iter()
-            .zip(&hann)
-            .map(|(s, w)| Complex::new(s * w, 0.0))
-            .collect();
+    let floor = (peak + 1e-5).log2() - MOTION_DIP;
+    let mut bright = Vec::with_capacity(n_all - first);
+    let mut level = Vec::with_capacity(n_all - first);
+    let mut buf = vec![Complex::new(0.0, 0.0); MOTION_FRAME];
+    let mut last_c = None;
+    for (k, rms) in env.iter().enumerate().skip(first) {
+        let pos = on_start + k * MOTION_HOP;
+        for ((b, s), w) in buf.iter_mut().zip(&x[pos..pos + MOTION_FRAME]).zip(&hann) {
+            *b = Complex::new(s * w, 0.0);
+        }
         fft.process(&mut buf);
-        let mag: Vec<f64> = buf[..MOTION_FRAME / 2].iter().map(|c| c.norm()).collect();
-        let msum: f64 = mag.iter().sum();
+        let (mut msum, mut wsum) = (0.0, 0.0);
+        for (i, c) in buf[..MOTION_FRAME / 2].iter().enumerate() {
+            let m = c.norm();
+            msum += m;
+            wsum += i as f64 * bin_hz * m;
+        }
         // A silent frame has no centroid; hold the last one so a gap reads as
         // "no change in brightness" rather than as a leap to the axis floor.
         if msum > 1e-9 {
-            let hz = mag
-                .iter()
-                .enumerate()
-                .map(|(i, m)| i as f64 * bin_hz * m)
-                .sum::<f64>()
-                / msum;
-            last_c = (hz.max(F_ANCHOR) / F_ANCHOR).log2();
+            last_c = Some((wsum / msum).max(F_ANCHOR) / F_ANCHOR);
         }
-        bright.push(last_c);
-        let rms = (frame.iter().map(|s| s * s).sum::<f64>() / MOTION_FRAME as f64).sqrt();
-        level.push((rms + 1e-5).log2());
-        pos += MOTION_HOP;
+        bright.push(last_c.map_or(0.0, f64::log2));
+        level.push((rms + 1e-5).log2().max(floor));
     }
     if bright.len() < 16 {
         return [MOTION_FLOOR; 3];
@@ -650,8 +699,8 @@ fn band_variances(track: &[f64], fps: f64) -> [f64; 3] {
             }
         })
         .collect();
-    FftPlanner::<f64>::new()
-        .plan_fft_forward(len)
+    MOD_PLANNER
+        .with(|p| p.borrow_mut().plan_fft_forward(len))
         .process(&mut buf);
     let df = fps / len as f64;
     let power: Vec<f64> = buf[1..len / 2].iter().map(|c| c.norm_sqr()).collect();
@@ -813,7 +862,7 @@ mod tests {
         let still = bands(&am(1.0, 0.0));
         for b in still {
             assert!(
-                (b - MOTION_FLOOR).abs() < 1e-6,
+                (b - MOTION_FLOOR).abs() < 1e-5,
                 "static tone moved: {still:?}"
             );
         }
@@ -835,5 +884,38 @@ mod tests {
         let x = sine(440.0, SR as usize, 0.5);
         let m = motion_bands(&x, SR, 0, (0.5 * SR) as usize);
         assert_eq!(m, [MOTION_FLOOR; 3]);
+    }
+
+    /// A slow swell is an attack, not motion: a 0.9 s ramp into a steady tone
+    /// reads still, as does a steady tone that starts after a silent gap.
+    /// (Measured from the fixed 0.25 s skip alone, the swell read 4.3 octaves
+    /// over the floor in the slow band — a ramp is curved in log level, so
+    /// detrending leaves most of it.)
+    #[test]
+    fn motion_bands_ignore_a_slow_attack() {
+        let n = (1.8 * SR) as usize;
+        let tone = |t: f64| 0.3 * (TAU * 440.0 * t).sin();
+        let swell: Vec<f64> = (0..n)
+            .map(|i| {
+                let t = i as f64 / SR;
+                (t / 0.9).min(1.0) * tone(t)
+            })
+            .collect();
+        let late: Vec<f64> = (0..n)
+            .map(|i| {
+                let t = i as f64 / SR;
+                if t < 0.6 {
+                    0.0
+                } else {
+                    tone(t)
+                }
+            })
+            .collect();
+        for (what, x) in [("swell", &swell), ("late start", &late)] {
+            let m = motion_bands(x, SR, 0, n);
+            for b in m {
+                assert!(b < MOTION_FLOOR + 0.5, "{what} read as motion: {m:?}");
+            }
+        }
     }
 }
