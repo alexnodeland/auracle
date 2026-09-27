@@ -4356,3 +4356,60 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 /* A bred child that landed below its parent: the sampler exploring, said so. */
 .lin-explore { color: var(--silk-dim); font-style: italic; border-bottom: 1px dotted var(--silk-mute); cursor: help; }
 .pf-offer-what { color: var(--phos-b); font-style: normal; font-weight: 600; }
+
+/* ---------- PERFORM: XY pad beside the hood ---------- */
+.pf-stage {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+  gap: var(--s5);
+  align-items: start;
+}
+.pf-stage .pf-hood { width: auto; }
+@media (max-width: 900px) { .pf-stage { grid-template-columns: 1fr; } }
+.pf-xy { display: flex; flex-direction: column; gap: var(--s2); }
+.pf-xy-head { display: flex; align-items: center; gap: var(--s2); color: var(--silk-dim); font-size: var(--t-label); }
+.pf-xy-cap { font-family: var(--font-silk); letter-spacing: 0.1em; text-transform: uppercase; }
+.pf-xy-field {
+  position: relative;
+  height: 190px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(142,240,177,0.12) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(0deg, transparent calc(50% - 0.5px), rgba(142,240,177,0.12) 50%, transparent calc(50% + 0.5px)),
+    radial-gradient(circle at 50% 50%, rgba(142,240,177,0.06), transparent 70%),
+    #0e1013;
+  cursor: crosshair;
+  touch-action: none;
+  overflow: hidden;
+}
+.pf-xy-field:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+.pf-xy-dot {
+  position: absolute;
+  width: 18px; height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background: var(--phos-a);
+  box-shadow: 0 0 14px rgba(142,240,177,0.7);
+  pointer-events: none;
+  transition: left 60ms linear, top 60ms linear;
+}
+.pf-xy-l, .pf-xy-r, .pf-xy-t, .pf-xy-b {
+  position: absolute;
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
+  pointer-events: none;
+}
+.pf-xy-l { left: 8px; top: 50%; transform: translateY(-50%); }
+.pf-xy-r { right: 8px; top: 50%; transform: translateY(-50%); }
+.pf-xy-t { top: 6px; left: 50%; transform: translateX(-50%); }
+.pf-xy-b { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.pf-xy-field.dead-x .pf-xy-l, .pf-xy-field.dead-x .pf-xy-r,
+.pf-xy-field.dead-y .pf-xy-t, .pf-xy-field.dead-y .pf-xy-b { color: var(--phos-b-dim); text-decoration: line-through; }
+.pf-xy-note {
+  position: absolute; left: 0; right: 0; bottom: 26px;
+  text-align: center; font-size: var(--t-micro); color: var(--phos-b);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .pf-xy-dot { transition: none; } }

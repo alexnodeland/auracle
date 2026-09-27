@@ -144,7 +144,13 @@ export function createPerform(host) {
   // The named controls are a *view* onto these; this is where that becomes
   // visible, and each one opens its module in PATCH.
   const hood = el("div", "pf-hood");
-  root.append(head, deck, touchRow, pads, offerCard, hood, why);
+  // The XY pad: two named controls under one finger, the gesture a
+  // performer reaches for first. Beside the hood strip, so the knobs it
+  // moves are visible while it moves them.
+  const xy = el("div", "pf-xy");
+  const stage = el("div", "pf-stage");
+  stage.append(xy, hood);
+  root.append(head, deck, touchRow, pads, offerCard, stage, why);
 
   // ---------- knobs ----------
   const knobs = [];
@@ -190,6 +196,7 @@ export function createPerform(host) {
   }
 
   function paintKnob(k) {
+    if (k.spec.kind === "named" && typeof paintXY === "function" && (k.i === XY.x || k.i === XY.y)) queueMicrotask(paintXY);
     const bipolar = k.spec.kind === "named" || k.spec.kind === "blend-bipolar";
     const v = k.value;
     const a = angleOf(v, bipolar);
@@ -1087,6 +1094,104 @@ export function createPerform(host) {
   };
   whyBtn.setAttribute("aria-expanded", "false");
   why.append(whyBtn, whyBody);
+
+  // ---------- XY pad ----------
+  const XY = { x: 0, y: 2 }; // named-control indices on each axis
+  const xyHead = el("div", "pf-xy-head mono");
+  const xyField = el("div", "pf-xy-field");
+  xyField.tabIndex = 0;
+  xyField.setAttribute("role", "slider");
+  const xyDot = el("div", "pf-xy-dot");
+  const xyLab = { l: el("span", "pf-xy-l mono"), r: el("span", "pf-xy-r mono"), t: el("span", "pf-xy-t mono"), b: el("span", "pf-xy-b mono") };
+  const xyNote = el("div", "pf-xy-note mono");
+  xyField.append(xyLab.t, xyLab.b, xyLab.l, xyLab.r, xyDot, xyNote);
+  const axisSel = (axis) => {
+    const sel = el("select", "perf-sel");
+    sel.setAttribute("aria-label", `XY pad ${axis} axis`);
+    (host.controls || []).forEach((c, i) => {
+      const o = el("option", null, c.name);
+      o.value = String(i);
+      sel.append(o);
+    });
+    sel.value = String(XY[axis]);
+    sel.onchange = () => {
+      XY[axis] = Number(sel.value);
+      paintXY();
+    };
+    return sel;
+  };
+  xyHead.append(el("span", "pf-xy-cap", "XY"), axisSel("x"), el("span", null, "×"), axisSel("y"));
+  xy.append(xyHead, xyField);
+
+  const xyReach = (i) => {
+    const w = state.wire && state.wire[i];
+    return !!(w && !w.search);
+  };
+  function paintXY() {
+    const kx = knobs[XY.x], ky = knobs[XY.y];
+    if (!kx || !ky) return;
+    const cx = (kx.value + 1) / 2, cy = (ky.value + 1) / 2;
+    xyDot.style.left = `${(cx * 100).toFixed(1)}%`;
+    xyDot.style.top = `${((1 - cy) * 100).toFixed(1)}%`;
+    xyLab.l.textContent = kx.spec.low;
+    xyLab.r.textContent = kx.spec.high;
+    xyLab.b.textContent = ky.spec.low;
+    xyLab.t.textContent = ky.spec.high;
+    const rx = xyReach(XY.x), ry = xyReach(XY.y);
+    xyField.classList.toggle("dead-x", !rx);
+    xyField.classList.toggle("dead-y", !ry);
+    xyNote.textContent = !state.wire
+      ? (state.measuring ? "measuring…" : "")
+      : !rx && !ry
+        ? "neither reaches this patch — pick two others"
+        : !rx ? `${kx.spec.name} doesn't reach this patch` : !ry ? `${ky.spec.name} doesn't reach this patch` : "";
+    xyField.setAttribute("aria-valuetext", `${kx.spec.name} ${Math.round(kx.value * 100)}%, ${ky.spec.name} ${Math.round(ky.value * 100)}%`);
+  }
+  // Only a reachable axis moves: dragging along an amber one would be a
+  // knob that does nothing, and the pad has no "let go to ask" gesture.
+  function setXY(cx, cy) {
+    touch();
+    for (const [i, v] of [[XY.x, cx], [XY.y, cy]]) {
+      if (!xyReach(i)) continue;
+      const k = knobs[i];
+      const [lo, hi] = rangeOf(state.wire[i]);
+      k.value = clamp(v * 2 - 1, lo, hi);
+      paintKnob(k);
+      onKnob(k);
+    }
+    paintXY();
+  }
+  const xyAt = (e) => {
+    const r = xyField.getBoundingClientRect();
+    return [clamp((e.clientX - r.left) / r.width, 0, 1), clamp(1 - (e.clientY - r.top) / r.height, 0, 1)];
+  };
+  xyField.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    xyField.focus();
+    xyField.setPointerCapture(e.pointerId);
+    ensureWired();
+    setXY(...xyAt(e));
+  });
+  xyField.addEventListener("pointermove", (e) => {
+    if (xyField.hasPointerCapture(e.pointerId)) setXY(...xyAt(e));
+  });
+  const xyEnd = (e) => {
+    if (xyField.hasPointerCapture(e.pointerId)) xyField.releasePointerCapture(e.pointerId);
+    for (const i of [XY.x, XY.y]) host.logImplicit("perform_turn", { control: knobs[i].spec.name, value: +knobs[i].value.toFixed(3), via: "xy" });
+  };
+  xyField.addEventListener("pointerup", xyEnd);
+  xyField.addEventListener("pointercancel", xyEnd);
+  // Home is a double-tap away.
+  xyField.addEventListener("dblclick", () => setXY(0.5, 0.5));
+  xyField.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 0.01 : 0.05;
+    const cx = (knobs[XY.x].value + 1) / 2, cy = (knobs[XY.y].value + 1) / 2;
+    const mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
+    if (!mv) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setXY(clamp(cx + mv[0], 0, 1), clamp(cy + mv[1], 0, 1));
+  });
 
   // ---------- build ----------
   const NAMED = host.controls; // [{name, low, high}] in engine order

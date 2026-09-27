@@ -155,6 +155,19 @@ reverb the patch lacked, but nothing steers it there. Listen before you take
 it.
 ```
 
+## The XY pad
+
+Under the pads, beside the under-the-hood strip, is an **XY pad**: two named
+controls under one finger. It starts as Bright across and Motion up; either
+axis can be any of the six. Drag to play both at once, double-click to go
+back to the centre, or use the arrow keys when it has focus (hold
+<kbd>shift</kbd> for fine steps). The pad follows the knobs, so turning
+Bright on the dial moves the dot too.
+
+Only an axis whose control reaches the patch moves. An amber control's end
+words are struck through on the pad and a note says so. The pad has no
+"turn to ask" gesture; use the dial for that.
+
 ## Blend, Peek and the B slot
 
 An offer is a second patch, loaded into a second voice set that follows the

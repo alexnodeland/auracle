@@ -8,6 +8,14 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — an XY pad in PERFORM
+
+Two named controls under one finger, beside the under-the-hood strip, in the
+space the booth critique found empty. It starts as Bright × Motion, and either
+axis can be any of the six. Only a reachable axis moves; an amber one is
+struck through on the pad. Double-click returns it to the centre, and the arrow
+keys move it.
+
 ### Changed — named controls turn the knob that does the work, and grow one when there is none
 
 A booth critique found PERFORM's controls mostly dead: 1–4 of 6 reached a
