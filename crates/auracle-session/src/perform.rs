@@ -89,6 +89,11 @@ impl fugue_evo::fitness::traits::Fitness for VetOnlyFitness {
 pub const JACOBIAN_STEP: f64 = 0.08;
 /// Ridge on the wiring solve, in the units of `z` per unit knob.
 pub const RIDGE: f64 = 0.05;
+/// Share of [`RIDGE`] a semantically named knob pays ([`NamedControl::sites`]).
+/// In Bayesian terms the wiring is the posterior mean under a Gaussian prior
+/// on the knob move, and a named knob's prior variance is `1 / 0.25 = 4×`
+/// wider: it is *expected* to matter, but its sign still comes from the data.
+pub const SEMANTIC_RIDGE: f64 = 0.25;
 /// Most knobs one named control may move. Four carried a median 68% of a
 /// preset's audible leverage (`leverage_probe`); more makes a control that
 /// is hard to hear as one gesture.
@@ -122,6 +127,12 @@ pub struct NamedControl {
     pub high: &'static str,
     /// The direction, as `(audio φ name without its stimulus tag, weight)`.
     pub axis: &'static [(&'static str, f64)],
+    /// Knob sites a musician would reach for to do this, by trace site name
+    /// (`cut`, `attack`, `rmix`, …). A prior, not a mapping: these knobs get a
+    /// wider prior in the wiring solve ([`SEMANTIC_RIDGE`]), so where the
+    /// measurement is ambiguous the knob that says what it does wins — and
+    /// where the measurement disagrees, it does not.
+    pub sites: &'static [&'static str],
 }
 
 /// The six measured controls, in panel order. Blend and Wander are not
@@ -132,12 +143,16 @@ pub const CONTROLS: [NamedControl; 6] = [
         low: "dark",
         high: "bright",
         axis: &[("centroid_mean", 1.0), ("rolloff_mean", 1.0)],
+        sites: &[
+            "cut", "bright", "tone", "high", "thresh", "drive", "morph", "vowel",
+        ],
     },
     NamedControl {
         name: "Snap",
         low: "bloom",
         high: "snap",
         axis: &[("attack_s", -1.0), ("crest", 1.0)],
+        sites: &["attack", "att", "decay", "dec", "sustain"],
     },
     NamedControl {
         name: "Motion",
@@ -149,24 +164,31 @@ pub const CONTROLS: [NamedControl; 6] = [
             ("motion_mid", 1.0),
             ("motion_fast", 1.0),
         ],
+        sites: &[
+            "mdepth", "rate", "crate", "cdepth", "prate", "pdepth", "trate", "tdepth", "vrate",
+            "vdepth", "frate", "fdepth", "erate", "hrate", "glide",
+        ],
     },
     NamedControl {
         name: "Body",
         low: "thin",
         high: "full",
         axis: &[("bass_fraction", 1.0)],
+        sites: &["det", "smix", "low", "bal", "cut"],
     },
     NamedControl {
         name: "Grit",
         low: "smooth",
         high: "rough",
         axis: &[("flatness_mean", 1.0)],
+        sites: &["drive", "bits", "dsamp", "thresh", "res"],
     },
     NamedControl {
         name: "Space",
         low: "close",
         high: "far",
         axis: &[("tail_ratio", 1.0)],
+        sites: &["rmix", "rsize", "rdamp", "time", "fb", "dmix", "release"],
     },
 ];
 
@@ -370,8 +392,9 @@ fn solve(mut m: Vec<Vec<f64>>, mut b: Vec<f64>) -> Vec<f64> {
     x
 }
 
-/// Ridge least squares over the columns in `support`: `(AᵀA + λI)⁻¹ Aᵀ d`.
-fn ridge(cols: &[Vec<f64>], support: &[usize], d: &[f64]) -> Vec<f64> {
+/// Weighted ridge least squares over the columns in `support`:
+/// `(AᵀA + λ·diag(w))⁻¹ Aᵀ d`, with `w` the per-column penalty share.
+fn ridge(cols: &[Vec<f64>], support: &[usize], d: &[f64], w: &[f64]) -> Vec<f64> {
     let k = support.len();
     let mut m = vec![vec![0.0; k]; k];
     let mut b = vec![0.0; k];
@@ -380,17 +403,26 @@ fn ridge(cols: &[Vec<f64>], support: &[usize], d: &[f64]) -> Vec<f64> {
         for (j, &cj) in support.iter().enumerate() {
             m[i][j] = cols[ci].iter().zip(&cols[cj]).map(|(a, x)| a * x).sum();
         }
-        m[i][i] += RIDGE;
+        m[i][i] += RIDGE * w[ci];
     }
     solve(m, b)
 }
 
 /// Wire every [`CONTROLS`] entry onto the patch `jac` was measured on.
 pub fn wire(jac: &Jacobian) -> Vec<Wiring> {
-    CONTROLS.iter().map(|c| wire_one(c, jac)).collect()
+    wire_with(jac, SEMANTIC_RIDGE)
 }
 
-fn wire_one(control: &NamedControl, jac: &Jacobian) -> Wiring {
+/// [`wire`] with the semantic prior's penalty share given explicitly: 1.0 is
+/// no prior at all. For measuring what the prior costs and buys.
+pub fn wire_with(jac: &Jacobian, semantic: f64) -> Vec<Wiring> {
+    CONTROLS
+        .iter()
+        .map(|c| wire_one(c, jac, semantic))
+        .collect()
+}
+
+fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
     let d = direction(control, &jac.names);
     let position: f64 = d.iter().zip(&jac.z).map(|(a, b)| a * b).sum();
     let n = jac.cols.len();
@@ -410,7 +442,19 @@ fn wire_one(control: &NamedControl, jac: &Jacobian) -> Wiring {
         return out;
     }
     let all: Vec<usize> = (0..n).collect();
-    let x = ridge(&jac.cols, &all, &d);
+    let w: Vec<f64> = jac
+        .addrs
+        .iter()
+        .map(|a| {
+            let site = a.rsplit('#').next().unwrap_or(a);
+            if control.sites.contains(&site) {
+                semantic
+            } else {
+                1.0
+            }
+        })
+        .collect();
+    let x = ridge(&jac.cols, &all, &d, &w);
     let mut support: Vec<usize> = all.clone();
     support.sort_by(|&a, &b| x[b].abs().total_cmp(&x[a].abs()));
     support.truncate(MAX_KNOBS);
@@ -418,7 +462,7 @@ fn wire_one(control: &NamedControl, jac: &Jacobian) -> Wiring {
     if support.is_empty() {
         return out;
     }
-    let xs = ridge(&jac.cols, &support, &d);
+    let xs = ridge(&jac.cols, &support, &d, &w);
     // The φ movement this wiring predicts, per unit of x.
     let m = jac.names.len();
     let mut moved = vec![0.0; m];
