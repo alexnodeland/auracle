@@ -47,7 +47,8 @@ use crate::steps::StepsCv;
 /// (`<key>#~sync`). Never a trace site; the live engine finds it by suffix.
 pub const STEPS_SYNC_SITE: &str = "~sync";
 use crate::term::{
-    rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, PairOp, PatchTree,
+    rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp,
+    PatchTree,
 };
 
 /// quiver reads `Adsr.shape`, `Vca.response` and `Limiter.soft` as *gates* at
@@ -1777,7 +1778,20 @@ impl Compiler {
                 let noise = self
                     .patch
                     .add(format!("{key}:noise"), NoiseGenerator::new());
-                Ok(Sig::mono(noise.out(color.port_name())))
+                let out = noise.out(color.port_name());
+                // quiver's pink is a 16-row Voss generator, so its 1/f slope
+                // runs down to ~1 Hz: measured, 22 % of its energy sits below
+                // 20 Hz, with a DC-to-RMS ratio of 0.13. That is inaudible,
+                // and it is not harmless — loudness normalization is
+                // K-weighted and ignores it, so it spends the peak ceiling:
+                // behind a lowpass `Noise Wash` measured 77 % sub-40 Hz and
+                // gave up the level it should have had. The voice's DC
+                // blocker is the same 20 Hz corner, applied at the source.
+                let out = match color {
+                    NoiseColor::Pink => self.dc_blocker(&format!("{key}:sub"), out)?,
+                    NoiseColor::White => out,
+                };
+                Ok(Sig::mono(out))
             }
             // A `Vca` with nothing patched into its audio input, which is a
             // constant zero: quiver reads an unpatched port as 0.0, and the

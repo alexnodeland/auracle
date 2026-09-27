@@ -8,6 +8,33 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — the preset bank, measured instead of written by feel
+
+`examples/preset_audit.rs` (auracle-features) measures what audition actually
+plays for every preset: makeup gain lost to the peak ceiling, and energy by
+band (sub, low, mid, presence, air, and the 200 Hz–5 kHz share a laptop or
+booth monitor reproduces). Its first run found two problems.
+
+* **Pink noise was 22 % infrasound.** quiver's 16-row Voss generator runs its
+  1/f slope down to ~1 Hz, with a DC-to-RMS ratio of 0.13. Loudness
+  normalization is K-weighted and ignores it, so it only spent headroom:
+  behind a lowpass, `Noise Wash` measured 77 % of its energy under 40 Hz and a
+  77 Hz centroid. The compiler now puts pink through the voice DC blocker's
+  20 Hz highpass at the source — 1 % below 20 Hz, no DC; `Noise Wash` is now
+  centred at 318 Hz. Every patch with a pink source renders differently, so
+  `RENDER_EPOCH` is 3.
+* **The leads could not cut.** `Filter.cutoff` is the pole frequency; at zero
+  resonance the ladder is −12 dB there and −3 dB an octave below (measured:
+  0.7 → 1.19 kHz, not the map's 2.5 kHz). Presets written as if it were the
+  −3 dB point left six of nine leads with under 1 % of their energy above
+  2 kHz at C4. Re-voiced: Wobble Board, Falling Sign, Loudhailer and Fifth
+  Wheel now carry 1.7–2.4 %; Tine's high partial is audible again (its
+  highpass sat at 5 kHz, above almost all of a C6 triangle); Coin Toss, Iron
+  Bass, Held Under, Anvil, Ember and Rotor open up. Acid Line's sweep is
+  longer (τ 16 → 63 ms) and it and Anvil sustain higher, so neither auditions
+  6–9 dB under its neighbours because of one attack spike. The table at the
+  top of `presets.rs` now gives the measured −3 dB point beside the map.
+
 ### Added — PERFORM
 
 A performer reaches for *brighter*, not for `node/0#cut`, and until now the

@@ -101,7 +101,8 @@ pub fn canonical_tree_json(tree: &PatchTree) -> String {
 /// |---|---|
 /// | 1 | first persistent cache; peak-capped loudness normalization |
 /// | 2 | the motion bands: three φ_audio coordinates (`motion_slow`, `motion_mid`, `motion_fast`) — an epoch-1 row lacks them and does not deserialize |
-pub const RENDER_EPOCH: u32 = 2;
+/// | 3 | pink noise leaves the compiler through a 20 Hz highpass (it carried 22 % of its energy below 20 Hz), so every patch with a pink source renders differently |
+pub const RENDER_EPOCH: u32 = 3;
 
 /// The `quiver-dsp` version this build renders with, folded into
 /// [`cache_namespace`] beside [`RENDER_EPOCH`].

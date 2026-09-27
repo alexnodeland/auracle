@@ -37,6 +37,22 @@
 //!
 //! `AmpEnv.sustain` and every `mix`/`balance`/`depth` are levels, not times.
 //!
+//! **`Filter.cutoff` is the pole frequency, not the −3 dB point**, and the
+//! difference is an octave on the ladder. Measured on white noise at zero
+//! resonance (`auracle-features/examples/preset_audit.rs` has the story):
+//!
+//! | `cutoff` | map | ladder −3 dB | SVF LP −3 dB |
+//! |---|---|---|---|
+//! | 0.5 | 632 Hz | 307 Hz | 393 Hz |
+//! | 0.6 | 1.26 kHz | 506 Hz | 716 Hz |
+//! | 0.7 | 2.5 kHz | 1.19 kHz | 1.70 kHz |
+//! | 0.8 | 5.0 kHz | 2.32 kHz | 2.93 kHz |
+//!
+//! Four poles each −3 dB at the corner is −12 dB there; that is what a
+//! ladder is, not a bug. Reading the map as a −3 dB point is how the lead
+//! section ended up with nothing above 2 kHz at C4 — a lead is the part
+//! that is supposed to cut. Resonance buys some of it back at the corner.
+//!
 //! **The envelope map is a time constant, not a duration.** `compile.rs` runs
 //! the ADSR in exponential mode, so the mapped value is a one-pole τ: reaching
 //! 90% takes ≈2.3 τ and settling takes ≈6.9 τ. `Cathedral`'s attack of `0.75`
@@ -231,17 +247,17 @@ pub fn preset_bank() -> Vec<Preset> {
             // decay (0.30 ≈ 16 ms) is what makes it spit rather than wobble.
             blurb: "a 303 that got out of the cage",
             tree: PatchTree {
-                amp: amp(0.0, 0.42, 0.3, 0.3),
+                amp: amp(0.0, 0.42, 0.5, 0.3),
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.3,
+                    cutoff: 0.36,
                     resonance: 0.8,
                     mod_depth: 0.65,
                     modulation: ModNode::Env {
                         uid: Uid::NEW,
                         attack: 0.0,
-                        decay: 0.3,
+                        decay: 0.45,
                     },
                     input: Box::new(vco(Waveform::Saw, -1, 0.52)),
                 },
@@ -280,11 +296,11 @@ pub fn preset_bank() -> Vec<Preset> {
             category: "bass",
             blurb: "a square driven into the folder, then hammered flat",
             tree: PatchTree {
-                amp: amp(0.0, 0.45, 0.45, 0.3),
+                amp: amp(0.0, 0.45, 0.7, 0.3),
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.42,
+                    cutoff: 0.56,
                     resonance: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -316,7 +332,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.48,
+                    cutoff: 0.62, // −3 dB ≈600 Hz — the drive's grit has to get through
                     resonance: 0.3,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -357,7 +373,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
-                        cutoff: 0.4, // ≈316 Hz
+                        cutoff: 0.45, // ≈450 Hz
                         resonance: 0.3,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
@@ -488,7 +504,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.55,
+                    cutoff: 0.74, // −3 dB ≈1.5 kHz; 0.55 put nothing above 2 kHz
                     resonance: 0.4,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -520,7 +536,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::SvfLp,
-                    cutoff: 0.6,
+                    cutoff: 0.74, // −3 dB ≈2.1 kHz; 0.6 put 0.2 % above 2 kHz
                     resonance: 0.35,
                     mod_depth: 0.0,
                     modulation: ModNode::None,
@@ -563,7 +579,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::Ladder,
-                        cutoff: 0.55,
+                        cutoff: 0.74, // a megaphone is all 1–4 kHz; 0.55 had none of it
                         resonance: 0.5,
                         mod_depth: 0.0,
                         modulation: ModNode::None,
@@ -595,7 +611,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::Ladder,
-                        cutoff: 0.55, // ≈1.2 kHz
+                        cutoff: 0.68, // −3 dB ≈1 kHz before the env opens it
                         resonance: 0.45,
                         mod_depth: 0.5,
                         modulation: ModNode::Env {
@@ -681,7 +697,7 @@ pub fn preset_bank() -> Vec<Preset> {
                         b: Box::new(Filter {
                             uid: Uid::NEW,
                             kind: FilterKind::SvfHp,
-                            cutoff: 0.78,
+                            cutoff: 0.6, // 1.26 kHz: at 0.78 (5 kHz) the tine was filtered out
                             resonance: 0.2,
                             mod_depth: 0.0,
                             modulation: ModNode::None,
@@ -700,7 +716,7 @@ pub fn preset_bank() -> Vec<Preset> {
                 root: Filter {
                     uid: Uid::NEW,
                     kind: FilterKind::Ladder,
-                    cutoff: 0.55,
+                    cutoff: 0.68,
                     resonance: 0.6,
                     mod_depth: 0.3,
                     modulation: ModNode::Rand {
@@ -931,7 +947,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
-                        cutoff: 0.42,
+                        cutoff: 0.5,
                         resonance: 0.25,
                         mod_depth: 0.25,
                         modulation: ModNode::Lfo {
@@ -1260,7 +1276,7 @@ pub fn preset_bank() -> Vec<Preset> {
                     input: Box::new(Filter {
                         uid: Uid::NEW,
                         kind: FilterKind::SvfLp,
-                        cutoff: 0.42,
+                        cutoff: 0.58,
                         resonance: 0.4,
                         mod_depth: 0.4,
                         modulation: ModNode::Rand {
