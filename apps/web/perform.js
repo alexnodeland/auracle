@@ -281,6 +281,20 @@ export function createPerform(host) {
     }
   }
 
+  // Where a control's dial may sit. A named control stops at the centre on a
+  // half its wiring closed, as the sound already did (liveValue): the dial
+  // used to turn on past it, drawing an arc on the closed side that nothing
+  // played, and the next drag then started from a value the sound had never
+  // had. A search control turns both ways, because turning it is how you ask,
+  // and so does one whose wiring has not been measured yet.
+  function spanOf(k) {
+    if (k.spec.kind !== "named") return [0, 1];
+    const w = state.wire?.[k.i];
+    if (!w || w.search) return [-1, 1];
+    const [lo, hi] = rangeOf(w);
+    return lo === hi ? [-1, 1] : [lo, hi];
+  }
+
   function bindDrag(k) {
     let startY = 0;
     let startV = 0;
@@ -289,7 +303,7 @@ export function createPerform(host) {
     let hearTimer = null;
     const lo = () => (k.spec.kind === "named" ? -1 : 0);
     const set = (v, fine) => {
-      k.value = clamp(v, lo(), 1);
+      k.value = clamp(v, ...spanOf(k));
       // A light detent at the centre of a bipolar control: home is findable
       // by feel.
       if (k.spec.kind === "named" && !fine && Math.abs(k.value) < 0.03) k.value = 0;
@@ -552,7 +566,7 @@ export function createPerform(host) {
         if (!playing) host.noteOff(48);
         return;
       }
-      k.value = clamp(start + path(u), -1, 1);
+      k.value = clamp(start + path(u), ...spanOf(k));
       state.c[k.i] = k.value;
       paintKnob(k);
       push();
@@ -1765,7 +1779,7 @@ export function createPerform(host) {
       if (!k) return;
       touch();
       ensureWired();
-      k.value = k.spec.kind === "named" ? v01 * 2 - 1 : v01;
+      k.value = clamp(k.spec.kind === "named" ? v01 * 2 - 1 : v01, ...spanOf(k));
       paintKnob(k);
       onKnob(k, true);
       // A pot has no "let go": the gesture ends when it goes quiet.

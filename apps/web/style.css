@@ -4704,8 +4704,13 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 .pf-xy-r { right: 8px; top: 50%; transform: translateY(-50%); }
 .pf-xy-t { top: 6px; left: 50%; transform: translateX(-50%); }
 .pf-xy-b { bottom: 6px; left: 50%; transform: translateX(-50%); }
+/* An axis the patch can't move says so in its end words, struck through as
+   the guide promises: dimmed alone, they read as merely unselected. */
 .pf-xy-field.dead-x .pf-xy-l, .pf-xy-field.dead-x .pf-xy-r,
-.pf-xy-field.dead-y .pf-xy-t, .pf-xy-field.dead-y .pf-xy-b { color: var(--phos-b-dim); opacity: 0.55; }
+.pf-xy-field.dead-y .pf-xy-t, .pf-xy-field.dead-y .pf-xy-b {
+  color: var(--phos-b-dim); opacity: 0.55;
+  text-decoration: line-through; text-decoration-thickness: 1px;
+}
 .pf-xy-note {
   position: absolute; left: 0; right: 0; bottom: 26px;
   text-align: center; font-size: var(--t-micro); color: var(--phos-b);
