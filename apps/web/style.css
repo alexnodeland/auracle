@@ -55,6 +55,8 @@
   --plate-lo: #181b21;      /*   …and the bottom */
   --btn-hi: #2a2f37;        /* hardware buttons and pads: top of the face */
   --btn-lo: #1a1d23;        /*   …and the bottom */
+  --btn-hover-hi: #333944;  /* the same face under a pointer: one step up */
+  --btn-hover-lo: #1e2228;
   --shadow-ink: #0a0b0d;    /* the hard shadow line under a raised control */
   --knob-body: #22262d;     /* PERFORM's knob caps */
 
@@ -1228,7 +1230,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
    last touch would otherwise stay "hovered". The view tabs, TASTE tabs, pads,
    knobs and duel cards get the same treatment further down. */
 @media (hover: hover) {
-  .hw-btn:hover:not(:disabled) { background: linear-gradient(180deg, #333944, #1e2228); }
+  .hw-btn:hover:not(:disabled) { background: linear-gradient(180deg, var(--btn-hover-hi), var(--btn-hover-lo)); }
 }
 .hw-btn:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .hw-btn kbd {
@@ -4460,7 +4462,7 @@ html.handheld .handheld-gate {
 }
 .pf-pad:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 var(--shadow-ink); }
 @media (hover: hover) {
-  .pf-pad:hover:not(:disabled) { background: linear-gradient(180deg, #333944, #1e2228); }
+  .pf-pad:hover:not(:disabled) { background: linear-gradient(180deg, var(--btn-hover-hi), var(--btn-hover-lo)); }
   .pf-knob:hover .pf-k-ring { stroke: var(--silk-mute); }
 }
 .pf-pad:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }

@@ -139,6 +139,11 @@ const playCounts = new Map();
 let volume = 0.8;            // JS-owned master volume (DOM slider is a view)
 let live = null;             // from initLiveAudio
 let perform = null;          // from perform.js, once the voices exist
+// The id an open is waiting on, until its bench reply lands. The first
+// arrival must not bench a pool patch on top of an open already on its way —
+// a preset already in the bank opens directly, and its reply can come after
+// the first `ranked`. (Up here with the other state a worker message reads.)
+let benchPending = null;
 let livePatchId = null;      // id whose tree the worklet is playing (null = edited)
 let liveLabelText = "no patch";
 let octShift = 0;
@@ -1299,6 +1304,7 @@ worker.onmessage = (e) => {
           setDuelSelection(null);
         }
         wb.subjectId = m.subject;
+        benchPending = null;
         wb.dirty = false;
         // A new subject: whatever the spec strip was describing belonged to
         // the pointer's last trip along the catalogue, not to this patch.
@@ -1766,7 +1772,7 @@ worker.onmessage = (e) => {
       // unless a preset they (or booth attract) asked for is already on its
       // way: benching a pool patch first would start PERFORM measuring the
       // wrong patch, and the worker would measure it before the right one.
-      if (wb.subjectId == null && presetClicks.size === 0 && views.ranked && views.ranked.length > 0) {
+      if (wb.subjectId == null && benchPending == null && presetClicks.size === 0 && views.ranked && views.ranked.length > 0) {
         openOnBench(views.ranked[0].id, { auto: true });
       }
       break;
@@ -1936,6 +1942,10 @@ function releaseRequest(request, id) {
     case "fit":
       fitting = false;
       $("wm-lamp").classList.remove("thinking");
+      break;
+    case "edit_begin":
+      // An open that failed is not on its way either.
+      benchPending = null;
       break;
     case "load_preset":
       // A load that failed is not still on its way: its row stops saying
@@ -5428,6 +5438,7 @@ const presetClicks = new Map(); // library index -> benchSeq at the click
  *  opened. */
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
+  benchPending = id;
   // A COMMIT still waiting on the last patch's edit is about that patch; it
   // must not land on this one when the edit settles.
   commitOnSettle = null;
