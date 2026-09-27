@@ -165,6 +165,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-transform: uppercase;
 }
 .panel-label.amber { color: var(--phos-b); }
+/* Tracked caps at 1× on Linux: hinting rounds a Jost "T" up to a whole
+   pixel, and with the tracking these carry that opens a gap after it — "ST
+   YLES", "T RUST", "PATC H". Fractional (unhinted) advances close it, and
+   run a few pixels narrower. Only the tracked caps: on running text the same
+   switch re-wraps paragraphs, and there is no gap there to close. */
+.panel-label, .viewtab, .tab, .counter-label, .util-btn, .hw-btn, .toggle,
+.bank-filters .bf, .pb-cat, .pc-cap, .pf-k-name, .pf-pad, .pf-xy-cap, .pf-hood-h,
+.help-h, .sp-title, .midi-h, .toast-undo, .tray-label, .ce-title {
+  text-rendering: geometricPrecision;
+}
 
 /* ===================== app frame ===================== */
 .app {
