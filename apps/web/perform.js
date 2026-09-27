@@ -398,7 +398,11 @@ export function createPerform(host) {
     if (!state.cur || [...state.pending.values()].includes("perform_offer")) return;
     state.lastMove = performance.now();
     state.offerWhy = why || "";
-    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 40 });
+    // Twenty steps is ~10 s of renders: long enough to find a real variant,
+    // short enough to still be the same moment in a performance. Roam asks
+    // for a longer walk and so a farther offer.
+    const steps = wanderZone(state.wander) === "roam" ? 40 : 20;
+    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps });
     renderOffer("growing an offer…");
   }
 
@@ -433,6 +437,7 @@ export function createPerform(host) {
       }
       const pace = wanderPace(state.wander);
       startGlide(new Map(m.drift.knobs), JSON.stringify(m.drift.tree), pace.glide);
+      renderStatus(m.drift.taste ? "drifting toward your taste" : "drifting through the grammar — no taste yet");
       return true;
     }
     if (m.type === "perform_offered") {
@@ -440,7 +445,7 @@ export function createPerform(host) {
         renderOffer("no offer beat this patch — try again, or loosen a lock");
         return true;
       }
-      state.offer = { json: JSON.stringify(m.offer.tree), makeup: m.offer.makeup };
+      state.offer = { json: JSON.stringify(m.offer.tree), makeup: m.offer.makeup, taste: !!m.offer.taste };
       const live = host.live();
       if (live) {
         live.bPatch(state.offer.json, state.offer.makeup);
@@ -625,7 +630,10 @@ export function createPerform(host) {
     const lab = el("div", "pf-offer-label mono", "B");
     const body = el("div", "pf-offer-body");
     if (msg) body.textContent = msg;
-    else if (state.offer) body.textContent = `an offer is waiting${state.offerWhy ? ` (${state.offerWhy})` : ""} — hold Peek to hear it, slide Blend, or Take it`;
+    else if (state.offer) {
+      const src = state.offer.taste ? "grown toward your taste" : "drawn from the grammar — it has not learned your taste yet";
+      body.textContent = `an offer is waiting, ${src}${state.offerWhy ? ` (${state.offerWhy})` : ""} — hold Peek to hear it, slide Blend, or Take it`;
+    }
     else body.textContent = "no offer — press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);
     offerCard.append(lab, body);

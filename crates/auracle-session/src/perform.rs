@@ -55,6 +55,33 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::engine::Engine;
+use crate::surrogate::QUARANTINE_FITNESS;
+
+/// The fitness of a taste model that has seen nothing: zero for every patch
+/// that vets, quarantine for one that does not. Under it the Boltzmann target
+/// is the grammar prior restricted to listenable patches, which is what the
+/// posterior *is* before any evidence — so an offer or a drift made before the
+/// first pick is exploration by the grammar, stated as such, rather than
+/// nothing at all.
+#[derive(Clone, Debug)]
+pub struct VetOnlyFitness {
+    /// The audition stimulus the vet is run under.
+    pub phrase: PhraseSpec,
+    /// The engine's featurization memo.
+    pub memo: RenderMemo,
+}
+
+impl fugue_evo::fitness::traits::Fitness for VetOnlyFitness {
+    type Genome = PatchTree;
+    type Value = f64;
+
+    fn evaluate(&self, genome: &PatchTree) -> f64 {
+        match featurize_memo(genome, &self.phrase, &self.memo, false) {
+            Ok(_) => 0.0,
+            Err(_) => QUARANTINE_FITNESS,
+        }
+    }
+}
 
 /// Finite-difference step on a knob's normalized range. Large enough to move
 /// φ past its numerical floor on a 5 s render, small enough to stay local;
@@ -67,15 +94,18 @@ pub const RIDGE: f64 = 0.05;
 /// is hard to hear as one gesture.
 pub const MAX_KNOBS: usize = 4;
 /// Largest share of a knob's range a full turn of a named control may move it.
-pub const MAX_TRAVEL: f64 = 0.35;
+pub const MAX_TRAVEL: f64 = 0.5;
 /// Largest value [`apply`] writes. fugue's `Uniform(0, 1)` is half-open, so a
 /// knob at exactly 1.0 has log-prior −∞ and makes the patch un-evolvable; a
 /// performance gesture must never be the thing that does that.
 pub const KNOB_MAX: f64 = 1.0 - 1.0e-6;
 /// Below this purity a control is a *search* control on this patch.
 pub const PURITY_FLOOR: f64 = 0.35;
-/// Below this reach (σ of the named direction at a full turn) likewise.
-pub const REACH_FLOOR: f64 = 0.25;
+/// Below this reach (σ of the named direction at a full turn) likewise. The
+/// σ is the session pool's spread, which is wider than a curated library's,
+/// so a floor set against the presets (0.25σ) hid controls that are plainly
+/// audible on a live patch.
+pub const REACH_FLOOR: f64 = 0.15;
 
 /// A named performance control: a fixed direction in audio-φ.
 #[derive(Clone, Copy, Debug)]
@@ -413,6 +443,12 @@ pub fn apply(jac: &Jacobian, wiring: &[Wiring], c: &[f64]) -> Vec<(String, f64)>
 }
 
 impl Engine {
+    /// True once the walks are taste-directed; false while they explore the
+    /// vetted grammar prior.
+    pub fn has_taste(&self) -> bool {
+        self.posterior.is_some() && self.standardizer.is_some()
+    }
+
     /// [`jacobian`] under this session's stimulus, memo and standardizer.
     pub fn jacobian(&self, tree: &PatchTree) -> Option<Jacobian> {
         let std = self.standardizer.as_deref()?;
@@ -421,8 +457,9 @@ impl Engine {
 
     /// One knob-only drift: the locked MH walk on the taste target with every
     /// structural and categorical site locked, plus the player's own locks.
-    /// Nothing enters the pool. `None` when there is no posterior yet or the
-    /// walk found nothing better than where it started.
+    /// Nothing enters the pool. Before any taste has been fitted the target is
+    /// the vetted grammar prior ([`VetOnlyFitness`]); `None` when the walk
+    /// accepted no move.
     pub fn drift<R: Rng>(
         &self,
         rng: &mut R,
@@ -436,7 +473,8 @@ impl Engine {
     }
 
     /// A structural offer: the same walk with only the player's locks. Like
-    /// [`Self::drift`], it inserts nothing.
+    /// [`Self::drift`], it inserts nothing, and it too falls back to the
+    /// vetted grammar prior before the first fit.
     pub fn offer<R: Rng>(
         &self,
         rng: &mut R,

@@ -1935,7 +1935,14 @@ impl Engine {
         locked: &HashSet<String>,
         steps: usize,
     ) -> Option<PatchTree> {
-        self.refine_one(rng, seed, locked, steps)
+        if self.posterior.is_some() && self.standardizer.is_some() {
+            return self.refine_one(rng, seed, locked, steps);
+        }
+        let fitness = crate::perform::VetOnlyFitness {
+            phrase: self.cfg.phrase.clone(),
+            memo: self.memo.clone(),
+        };
+        self.walk_with(rng, seed, locked, steps, fitness)
     }
 
     /// Run locked MH refinement from one seed. Returns the end state if it
@@ -1957,6 +1964,30 @@ impl Engine {
             phrase: self.cfg.phrase.clone(),
             memo: self.memo.clone(),
         };
+        self.walk_with(rng, seed, locked, steps, fitness)
+    }
+
+    /// The locked walk itself, over any scalar fitness. [`Self::refine_one`]
+    /// hands it the taste surrogate; the performance surfaces hand it
+    /// [`crate::perform::VetOnlyFitness`] when no taste has been fitted yet,
+    /// which makes the target `π ∝ p_grammar` restricted to vetted patches —
+    /// exactly what the posterior is before it has seen any evidence.
+    fn walk_with<R, F>(
+        &self,
+        rng: &mut R,
+        seed: &PatchTree,
+        locked: &HashSet<String>,
+        steps: usize,
+        fitness: F,
+    ) -> Option<PatchTree>
+    where
+        R: Rng,
+        F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+    {
         let model = EvolutionModel::new(self.biased_prior(), fitness).with_beta(self.cfg.beta);
         let mut chain = EvolutionChain::new(model);
         let mut trace = chain.init_from(seed)?;

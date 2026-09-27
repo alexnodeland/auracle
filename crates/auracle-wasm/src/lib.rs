@@ -807,7 +807,8 @@ impl WasmEngine {
         {
             Some(t) => {
                 let knobs = auracle_session::perform::continuous_knobs(&t);
-                serde_json::json!({ "tree": t, "knobs": knobs }).to_string()
+                serde_json::json!({ "tree": t, "knobs": knobs, "taste": self.engine.has_taste() })
+                    .to_string()
             }
             None => "null".into(),
         }
@@ -836,7 +837,8 @@ impl WasmEngine {
         let makeup = featurize_memo(&t, &self.engine.cfg.phrase, self.engine.memo(), false)
             .map(|(cf, _)| makeup_linear(cf.features.gain_db))
             .unwrap_or(1.0);
-        serde_json::json!({ "tree": t, "makeup": makeup }).to_string()
+        serde_json::json!({ "tree": t, "makeup": makeup, "taste": self.engine.has_taste() })
+            .to_string()
     }
 
     /// Ranked pool as JSON
