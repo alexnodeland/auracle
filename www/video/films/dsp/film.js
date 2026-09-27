@@ -134,7 +134,11 @@ function drawable(p) {
   const len = p.getTotalLength() || 1;
   p.setAttribute("stroke-dasharray", `${len} ${len}`);
   p.setAttribute("stroke-dashoffset", len);
-  return (u) => p.setAttribute("stroke-dashoffset", (len * (1 - clamp(u))).toFixed(2));
+  return (u) => {
+    p.setAttribute("stroke-dashoffset", (len * (1 - clamp(u))).toFixed(2));
+    // A round cap draws a dot for a zero-length dash: hide the path until it starts.
+    p.style.visibility = u <= 0.0005 ? "hidden" : "";
+  };
 }
 const P = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
 /** A path through `n + 1` samples of a function of u ∈ [0, 1]. */
@@ -318,7 +322,7 @@ function sceneIntro({ stage, beat, line }) {
       // The beam sweeps in real time, so the render can be heard as it is drawn
       // (out/dsp/sfx/render_glass_pad.wav: the engine's own normalized audition).
       const tSweep = b.t0 + 0.3;
-      stage.sfx("render_glass_pad", tSweep, -10);
+      stage.sfx("render_glass_pad", tSweep, -6);
       return (tl, t) => {
         show(eb, ramp(t, b.t0 + 0.1, b.t0 + 0.8));
         const u = ramp(t, tSweep, tSweep + PHRASE_S, E.lin);
@@ -371,7 +375,7 @@ function modPlate(under, svg, { x, y, w, h, name, type, knobs = [], color = "a" 
     const k = knob(svg, { cx, cy, r: 16, color, glow: false });
     k.set(kn.v);
     const lb = el("div", { class: "mono" }, d, kn.label);
-    Object.assign(lb.style, { position: "absolute", left: `${cx - x - 30}px`, width: "60px", textAlign: "center", top: `${h - 24}px`, fontSize: "12px", color: C.mute });
+    Object.assign(lb.style, { position: "absolute", left: `${cx - x - 30}px`, width: "60px", textAlign: "center", top: `${h - 25}px`, fontSize: "13px", color: C.mute });
     return { k, cx, cy, ...kn };
   });
   return { d, ks, x, y, w, h };
@@ -423,7 +427,7 @@ function sceneGraph({ stage, beat, line }) {
       const scr = place(el("div", { class: "screen" }, under), { x: 1180, y: 668, w: 600, h: 200 });
       const scrT = label(over, "voice:out · one sample per tick", { x: 1180, y: 634, size: 17, color: C.dim });
       const cnt = label(over, "", { x: 1780, y: 632, size: 20, color: C.a, ax: 1 });
-      const rate = label(over, "44 100 ticks a second", { x: 1780, y: 880, size: 15, color: C.mute, ax: 1 });
+      const rate = label(over, "then 44 100 ticks a second", { x: 1780, y: 880, size: 15, color: C.mute, ax: 1 });
       const stems = samplesOf(DATA.fb.stem);
       const sMax = Math.max(...stems.map(Math.abs));
       const stemG = group(svg, "a");
@@ -463,6 +467,16 @@ function sceneGraph({ stage, beat, line }) {
       const xs = ROW.map((r) => r.x + PW / 2);
       const dotG = group(svg, "a");
       const dots = Array.from({ length: 5 }, () => el("circle", { r: 8, fill: "#eafff2", opacity: 0 }, dotG));
+      // A sample is seen on the cables and goes out of sight inside a module,
+      // which lights while it has it.
+      const onCable = (x) => {
+        let v = 1;
+        for (const r of ROW) {
+          const d = Math.min(x - r.x, r.x + PW - x);
+          if (d > 0) v = Math.min(v, clamp(1 - d / 16));
+        }
+        return v;
+      };
       // Knobs: a continuous one (live) and a categorical one (a rebuild).
       const wave = knob(svg, { cx: 215, cy: 742, r: 42, label: "wave", labelSize: 15, color: "a", dim: true, glow: false });
       wave.set(0.66, { glowOn: false });
@@ -470,7 +484,7 @@ function sceneGraph({ stage, beat, line }) {
       const waveLead = path(svg, "M215 684 L215 566", { stroke: C.mute, "stroke-width": 1.5, "stroke-dasharray": "4 6" });
       const cut = knob(svg, { cx: 505, cy: 742, r: 58, label: "cut", labelSize: 17, color: "a" });
       const leadG = group(svg);
-      const lead = path(leadG, `M505 684 L462 ${PY + PH - 34}`, { stroke: C.silk, "stroke-width": 1.8, "stroke-dasharray": "5 6" });
+      path(leadG, `M505 684 L462 ${PY + PH - 34}`, { stroke: C.silk, "stroke-width": 1.8, "stroke-dasharray": "5 6" });
       const hnd = pill(over, "ParamHandle · Arc<AtomicF64>", { x: 610, y: 690 });
       const addr = label(over, "", { x: 624, y: 740, size: 20, color: C.silk, ay: 0.5 });
       const norec = pill(over, "no recompile · the next sample hears it", { x: 610, y: 796, cls: "a" });
@@ -527,7 +541,7 @@ function sceneGraph({ stage, beat, line }) {
           if (x == null) return d.setAttribute("opacity", 0);
           d.setAttribute("cx", x.toFixed(1));
           d.setAttribute("cy", CY);
-          d.setAttribute("opacity", o.toFixed(3));
+          d.setAttribute("opacity", (o * onCable(x)).toFixed(3));
           ROW.forEach((r, j) => {
             if (Math.abs(x - xs[j]) < PW / 2 && o > 0.5) lit.add(j);
           });
@@ -551,8 +565,8 @@ function sceneGraph({ stage, beat, line }) {
         });
         const n = DATA.fb.stem0 + done + (t > tAll ? Math.floor((t - tAll) * SR) : 0);
         cnt.textContent = `n = ${fmtInt(n)}`;
-        cnt.style.opacity = scrU;
-        rate.style.opacity = ramp(t, tAll + 0.2, tAll + 0.6);
+        cnt.style.opacity = scrU * stemsOn;
+        rate.style.opacity = ramp(t, tAll + 0.2, tAll + 0.6) * stemsOn;
         // graph3: a knob is an atomic the audio thread reads.
         const k3 = ramp(t, l3.t0 - 0.2, l3.t0 + 0.3, E.out3);
         wave.g.setAttribute("opacity", k3 * 0.8);
@@ -715,7 +729,7 @@ function sceneModules({ stage, beat, line }) {
       const ladL = label(filtO, "diode ladder · k = 4·res", { x: 1598, y: 426, size: 18, color: C.dim, ax: 0.5 });
       // The diode's transfer curve, and what it does to a sine: a DC offset.
       const TX = 170, TY = 490, TW = 520, TH = 340;
-      panel(filtU, { x: TX, y: TY, w: TW, h: TH });
+      const trPanel = panel(filtU, { x: TX, y: TY, w: TW, h: TH });
       const trT = label(filtO, "DiodeLadderFilter::diode_sat", { x: TX + 16, y: TY + 12, size: 16, color: C.silk });
       const tr = group(filtS);
       const tcx = TX + TW / 2;
@@ -732,7 +746,7 @@ function sceneModules({ stage, beat, line }) {
       const tNeg = label(filtO, "tanh(0.8x)", { x: txs(-0.9), y: tys(-0.9) + 10, size: 17, color: C.a, ax: 1 });
       const tRef = label(filtO, "tanh(x)", { x: txs(2.0), y: tys(Math.tanh(2.0)) + 26, size: 15, color: C.mute, ax: 0.5 });
       const SX = 800, SY = 490, SW = 1000, SH = 340;
-      panel(filtU, { x: SX, y: SY, w: SW, h: SH });
+      const scPanel = panel(filtU, { x: SX, y: SY, w: SW, h: SH });
       const scT = label(filtO, "a sine through it: the mean lifts off zero", { x: SX + 16, y: SY + 12, size: 16, color: C.silk });
       const scy = SY + SH / 2 + 16;
       const scA = 118;
@@ -854,6 +868,7 @@ function sceneModules({ stage, beat, line }) {
           const tu = ramp(t, tLad + 0.1, tLad + 0.5);
           tr.setAttribute("opacity", tu);
           trT.style.opacity = tu;
+          show(trPanel, tu, 6);
           refP.setAttribute("opacity", tu);
           trDraw(ramp(t, tLad + 0.2, tSat + 0.4, E.io2));
           tPos.style.opacity = ramp(t, tSat, tSat + 0.4);
@@ -862,6 +877,7 @@ function sceneModules({ stage, beat, line }) {
           const su = ramp(t, tSat - 0.1, tSat + 0.3);
           sc.setAttribute("opacity", su);
           scT.style.opacity = su;
+          show(scPanel, su, 6);
           scDraw(ramp(t, tSat, tSat + 1.0, E.io2));
           const mu = ramp(t, tSat + 0.9, tSat + 1.3);
           meanL.setAttribute("opacity", mu);
@@ -982,10 +998,10 @@ function sceneCompile({ stage, beat, line }) {
       const dcT = label(over, "", { x: DX + 14, y: DY + 10, size: 15, color: C.silk });
       // A ±0.1 gauge for the mean: the offset is a few per cent of the wave.
       const GX0 = DX + DW - 30;
-      const gTrack = el("line", { x1: GX0, x2: GX0, y1: dcy - 50, y2: dcy + 50, stroke: C.hair, "stroke-width": 8, "stroke-linecap": "round" }, dcS);
+      el("line", { x1: GX0, x2: GX0, y1: dcy - 50, y2: dcy + 50, stroke: C.hair, "stroke-width": 8, "stroke-linecap": "round" }, dcS);
       const gBarG = group(svg, "a");
       const gBar = el("line", { x1: GX0, x2: GX0, y1: dcy, y2: dcy, stroke: C.a, "stroke-width": 8, "stroke-linecap": "round" }, gBarG);
-      const gTick = el("line", { x1: GX0 - 9, x2: GX0 + 9, y1: dcy, y2: dcy, stroke: C.silk, "stroke-width": 1.5 }, dcS);
+      el("line", { x1: GX0 - 9, x2: GX0 + 9, y1: dcy, y2: dcy, stroke: C.silk, "stroke-width": 1.5 }, dcS);
       // The amp envelope: exponential segments, against the linear ones it replaced.
       const EX = 1120, EY = 420, EW = 660, EH = 250;
       const envPanel = panel(under, { x: EX, y: EY, w: EW, h: EH });
@@ -1355,11 +1371,10 @@ function sceneVetting({ stage, beat, line }) {
         const mark = label(over, "", { x: GX + 6, y: 230 + i * 118, size: 26, color: C.a, ax: 0.5, ay: 0.5 });
         return { ...c, d, mark, y: 230 + i * 118 };
       });
-      const onlyScreen = label(over, "(on screen only)", { x: GX + 30, y: 268, size: 14, color: C.mute });
       // Where things go.
       const passScr = place(el("div", { class: "screen" }, under), { x: 1400, y: 190, w: 400, h: 170 });
       const passG = group(svg, "a");
-      const passP = path(passG, envD(fb, { x: 1414, y: 275, w: 372, h: 100, gain: rawGain }), { stroke: C.a, "stroke-width": 1 });
+      path(passG, envD(fb, { x: 1414, y: 275, w: 372, h: 100, gain: rawGain }), { stroke: C.a, "stroke-width": 1 });
       const passT = label(over, "✓ vetted → loudness", { x: 1400, y: 154, size: 20, color: C.a });
       const qBox = place(el("div", { class: "plate" }, under), { x: 1400, y: 470, w: 400, h: 250 });
       const qT = label(over, "quarantine", { x: 1424, y: 488, size: 20, color: C.silk, cls: "silk", ls: "0.16em" });
@@ -1386,11 +1401,14 @@ function sceneVetting({ stage, beat, line }) {
         inScr.style.opacity = inU;
         gateG.setAttribute("opacity", ramp(t, b.t0 + 0.2, b.t0 + 0.6));
         CHECKS.forEach((c, i) => show(c.d, ramp(t, b.t0 + 0.3 + i * 0.12, b.t0 + 0.7 + i * 0.12)));
-        onlyScreen.style.opacity = ramp(t, b.t0 + 0.8, b.t0 + 1.2);
         // Which signal is on the incoming screen, and where it is.
         let cur = "pass";
         let t0 = l1.t0 - 0.1;
+        let tNext = tFail.silent - 0.55;
         for (const k of ["silent", "runaway", "dc"]) if (t >= tFail[k] - 0.55) { cur = k; t0 = tFail[k] - 0.55; }
+        if (cur === "silent") tNext = tFail.runaway - 0.55;
+        else if (cur === "runaway") tNext = tFail.dc - 0.55;
+        else if (cur === "dc") tNext = l3.t0 + 0.2;
         const push = ramp(t, t0 + 0.2, t0 + 0.55, E.in2);
         const back = cur === "pass" ? 0 : ramp(t, t0 + 0.7, t0 + 1.0, E.out3);
         const dx = cur === "pass" ? 140 * ramp(t, tPass - 0.1, tPass + 0.5, E.in2) : 110 * push * (1 - back);
@@ -1405,7 +1423,7 @@ function sceneVetting({ stage, beat, line }) {
           const s = st[cur];
           inT.textContent = { silent: "a silent render", runaway: "a runaway render", dc: "a DC-dominated render" }[cur];
           inM.textContent = { silent: `RMS ${sup(s.rms)}`, runaway: `peak ${s.peak.toFixed(1)}`, dc: `|mean| / RMS = ${s.dc.toFixed(2)}` }[cur];
-          o *= ramp(t, t0, t0 + 0.2) * (1 - ramp(t, t0 + 1.0, t0 + 1.15));
+          o *= ramp(t, t0, t0 + 0.2) * (1 - ramp(t, tNext - 0.15, tNext));
         }
         inWG.setAttribute("opacity", o);
         inZ.setAttribute("opacity", inU);
@@ -1417,14 +1435,14 @@ function sceneVetting({ stage, beat, line }) {
           if (cur === "pass" && t > tPass + i * 0.12) m = "✓";
           if (cur !== "pass") {
             const failAt = CHECKS.findIndex((x) => x.k === cur);
-            if (t > t0 + 0.5) {
+            if (t > t0 + 0.5 && t < tNext) {
               if (i < failAt) m = "✓";
               if (i === failAt) { m = "✕"; col = C.silk; }
             }
           }
           c.mark.textContent = m;
           c.mark.style.color = col;
-          const hot = cur !== "pass" && CHECKS.findIndex((x) => x.k === cur) === i && t > t0 + 0.5 && t < t0 + 1.3;
+          const hot = cur !== "pass" && CHECKS.findIndex((x) => x.k === cur) === i && t > t0 + 0.5 && t < tNext;
           c.d.style.borderColor = hot ? C.silk : "";
           c.d.style.color = hot ? C.silk : "";
           c.mark.style.opacity = m ? 1 - ramp(t, l3.t0 - 0.2, l3.t0 + 0.3) : 0;
@@ -1675,7 +1693,7 @@ function sceneLoudness({ stage, beat, line }) {
         }
         if (Cu > 0) {
           show(form, ramp(t, l3.t0 - 0.1, l3.t0 + 0.4));
-          const gu = ramp(t, l3.t0 + 0.3, tStop + 0.4, E.io3);
+          const gu = ramp(t, l3.t0 - 0.1, tStop + 0.6, E.io2);
           const gNow = gu * gain;
           const G = Math.pow(10, (gNow - DATA.fb.gain) / 20);
           gW.setAttribute("d", envD(fb, { x: GX, y: GY, w: GW, h: GA, gain: G, lim: 1.0 }));
@@ -1815,11 +1833,11 @@ function sceneFeatures({ stage, beat, line }) {
       });
       el("line", { x1: MX, y1: MY, x2: MX + MW, y2: MY, stroke: C.hair, "stroke-width": 1.5 }, f5S);
       for (const f of [0.5, 2, 8, 30]) el("line", { x1: mx(f), y1: MY - MH + 20, x2: mx(f), y2: MY + 6, stroke: C.mute, "stroke-width": 1 }, f5S);
-      const specG = group(f5S, "a");
-      const sB = path(specG, P(spec.map((s) => [mx(s[0]), my(s[1])])), { stroke: C.a, "stroke-width": 2.6 });
-      const sL = path(f5S, P(spec.map((s) => [mx(s[0]), my(s[2])])), { stroke: C.silk, "stroke-width": 2, "stroke-dasharray": "6 5" });
-      const sBd = drawable(sB);
-      const sLd = drawable(sL);
+      const sClipR = el("rect", { x: MX - 4, y: MY - MH - 10, width: 0, height: MH + 20 }, el("clipPath", { id: "specclip" }, el("defs", {}, f5S)));
+      const specC = el("g", { "clip-path": "url(#specclip)" }, f5S);
+      const specG = group(specC, "a");
+      path(specG, P(spec.map((s) => [mx(s[0]), my(s[1])])), { stroke: C.a, "stroke-width": 2.6 });
+      path(specC, P(spec.map((s) => [mx(s[0]), my(s[2])])), { stroke: C.silk, "stroke-width": 2, "stroke-dasharray": "7 6" });
       const legend = label(f5, "── brightness (log₂ centroid) · - - level (log₂ RMS)", { x: MX, y: MY - MH - 48, size: 15, color: C.dim });
       const mForm = label(f5, "motion_B = ½ log₂(v_B(brightness) + v_B(level) + 10⁻⁴)", { x: MX, y: 820, size: 18, color: C.silk });
       const mTag = label(f5, `held C4, from ${DATA.motion.arrived.toFixed(2)} s (arrived) to 1.80 s · MOTION_BANDS`, { x: MX, y: MY - MH - 76, size: 15, color: C.mute });
@@ -1933,8 +1951,7 @@ function sceneFeatures({ stage, beat, line }) {
         const u5 = fade(t, l5.t0 - 0.2, l5.t0 + 0.2, l6.t0 - 0.3, l6.t0);
         f5.style.opacity = u5;
         f5S.setAttribute("opacity", u5);
-        sBd(ramp(t, l5.t0, l5.t0 + 1.2, E.io2));
-        sLd(ramp(t, l5.t0 + 0.2, l5.t0 + 1.4, E.io2));
+        sClipR.setAttribute("width", (MW + 8) * ramp(t, l5.t0, l5.t0 + 1.3, E.io2));
         bandR.forEach((br, k) => {
           const u = ramp(t, tB5[k] - 0.1, tB5[k] + 0.3);
           br.r.setAttribute("opacity", 0.1 * u);
@@ -1956,7 +1973,7 @@ function sceneFeatures({ stage, beat, line }) {
         f6a.style.opacity = ramp(t, tStruct, tStruct + 0.4);
         f6b.style.opacity = ramp(t, tNoR - 0.2, tNoR + 0.2);
         show(sPill, ramp(t, tNoR, tNoR + 0.4));
-        show(phi, ramp(t, l6.t1 + 0.1, l6.t1 + 0.5));
+        show(phi, ramp(t, tNoR + 0.3, tNoR + 0.7));
         speak(v1, t, l1, l2.t0);
         speak(v2, t, l2, l3.t0);
         speak(v3, t, l3, l4.t0);
@@ -2005,7 +2022,7 @@ function sceneLive({ stage, beat, line }) {
       const qy = (v) => QY + QH - 30 - v * (QH - 70);
       const qS = group(svg);
       el("line", { x1: QX + 20, y1: qy(0), x2: QX + QW - 20, y2: qy(0), stroke: C.hair, "stroke-width": 1 }, qS);
-      const powP = path(qS, fnD(80, (m) => [qx(m), qy(1)]), { stroke: C.mute, "stroke-width": 1.5, "stroke-dasharray": "5 5" });
+      path(qS, fnD(80, (m) => [qx(m), qy(1)]), { stroke: C.mute, "stroke-width": 1.5, "stroke-dasharray": "5 5" });
       const cg = group(qS, "a");
       path(cg, fnD(80, (m) => [qx(m), qy(Math.cos((Math.PI * m) / 2))]), { stroke: C.a, "stroke-width": 2.6 });
       const sg = group(qS, "b");
@@ -2033,9 +2050,9 @@ function sceneLive({ stage, beat, line }) {
       });
       const buf = place(el("div", {}, q3U), { x: 1400, y: 690, w: 400, h: 74 });
       Object.assign(buf.style, { borderRadius: "8px", border: `1.5px solid ${C.a}`, background: "rgba(142,240,177,.08)", boxShadow: "0 0 24px rgba(142,240,177,.15)" });
-      const bufT = label(q3, "out_buf · one persistent buffer", { x: 1600, y: 716, size: 17, color: C.a, ax: 0.5, ay: 0.5 });
-      const bufT2 = label(q3, "process_ptr() → a pointer into wasm memory", { x: 1600, y: 744, size: 14, color: C.dim, ax: 0.5, ay: 0.5 });
-      const q3T = label(q3, "render quanta, 128 frames each", { x: 100, y: 664, size: 17, color: C.dim });
+      label(q3, "out_buf · one persistent buffer", { x: 1600, y: 716, size: 17, color: C.a, ax: 0.5, ay: 0.5 });
+      label(q3, "process_ptr() → a pointer into wasm memory", { x: 1600, y: 744, size: 14, color: C.dim, ax: 0.5, ay: 0.5 });
+      label(q3, "render quanta, 128 frames each", { x: 100, y: 664, size: 17, color: C.dim });
       const q3P = pill(q3, "no allocation per quantum · in steady state", { x: 100, y: 810, cls: "a" });
       const writeP = path(q3S, "", { stroke: C.a, "stroke-width": 2, "stroke-dasharray": "4 5" });
       // live4: a patch swap on a frame clock.
@@ -2060,9 +2077,20 @@ function sceneLive({ stage, beat, line }) {
       const silT = label(s4, "rebuilt in silence · one voice per quantum", { x: fx(512), y: gy(0) - 20, size: 16, color: C.a, ax: 0.5, ay: 1 });
       // The held chord: keys lit across the whole swap; envelope phase carried.
       const KX = 1430;
-      const kb = keyboard(s4S, { x: KX, y: 690, w: 370, h: 130, low: 60, octaves: 1 });
+      const kb = keyboard(s4S, { x: KX, y: 690, w: 370, h: 104, low: 60, octaves: 1 });
+      // Their amp envelope over the same frames: carried (green) against the
+      // fresh attack a re-press would otherwise start after the rebuild (grey).
+      const ex = (f) => KX + (f / FR) * 370;
+      const ey = (v) => 876 - v * 44;
+      const envS = group(s4S);
+      el("line", { x1: KX, y1: ey(0), x2: KX + 370, y2: ey(0), stroke: C.hair, "stroke-width": 1 }, envS);
+      const reAtt = path(envS, fnD(80, (q) => { const f = 768 + q * 256; return [ex(f), ey(0.6 * (1 - Math.exp(-q * 5)) / (1 - Math.exp(-5)))]; }), { stroke: C.mute, "stroke-width": 2, "stroke-dasharray": "5 5" });
+      const carG = group(envS, "a");
+      path(carG, `M${ex(0)} ${ey(0.6)} L${ex(FR)} ${ey(0.6)}`, { stroke: C.a, "stroke-width": 2.6 });
+      const carT = label(s4, "envelope phase carried", { x: KX, y: 812, size: 13, color: C.a });
+      const reT = label(s4, "a re-press would re-attack", { x: KX + 370, y: 882, size: 13, color: C.mute, ax: 1 });
       const heldT = label(s4, "held C · E · G", { x: KX, y: 660, size: 16, color: C.dim });
-      const carryT = label(s4, "re-pressed with the envelope phase carried: no new attack", { x: KX - 20, y: 836, size: 15, color: C.silk, w: 390 });
+      const carryT = label(s4, "no new attack", { x: KX + 200, y: 812, size: 13, color: C.silk });
       const v1 = voiceLine(over, "Live, the same compiler builds *four voices* inside an *AudioWorklet*.");
       const v2 = voiceLine(over, "Four more play _PERFORM's offers_, crossfaded at *equal power*.");
       const v3 = voiceLine(over, "In steady state, the audio thread *allocates nothing*.");
@@ -2078,23 +2106,25 @@ function sceneLive({ stage, beat, line }) {
       return (tl, t) => {
         show(comp, ramp(t, b.t0, b.t0 + 0.4, E.out3));
         inArr.update(ramp(t, b.t0 + 0.3, b.t0 + 0.8));
-        show(wk, ramp(t, tAW - 0.5, tAW, E.out3));
-        wkT.style.opacity = ramp(t, tAW - 0.3, tAW + 0.2);
+        show(wk, ramp(t, b.t0 + 0.3, b.t0 + 0.8, E.out3));
+        wkT.style.opacity = lerp(0.35, 1, ramp(t, tAW - 0.3, tAW + 0.2)) * ramp(t, b.t0 + 0.5, b.t0 + 0.9);
+        wk.style.borderColor = fade(t, tAW - 0.2, tAW + 0.2, tAW + 1.2, tAW + 1.8) > 0.02 ? `rgba(142,240,177,${(0.55 * fade(t, tAW - 0.2, tAW + 0.2, tAW + 1.2, tAW + 1.8)).toFixed(3)})` : C.hair;
         aT.style.opacity = ramp(t, tFour - 0.2, tFour + 0.2);
         bT.style.opacity = ramp(t, tOff - 0.2, tOff + 0.2);
         // The blend: A alone, then across to B, then back (a Peek).
         const m = keys(t, [[tEq - 0.1, 0], [tEq + 0.9, 1, E.io3], [tEq + 2.4, 1], [tEq + 3.3, 0, E.io3]]);
         const ga = Math.cos((Math.PI * m) / 2);
         const gb = Math.sin((Math.PI * m) / 2);
+        const frameU = ramp(t, b.t0 + 0.4, b.t0 + 0.9);
         A.forEach((ln, i) => {
           const u = ramp(t, tFour - 0.1 + i * 0.12, tFour + 0.25 + i * 0.12);
-          ln.bg.style.opacity = u;
+          ln.bg.style.opacity = Math.max(0.45 * frameU, u);
           ln.g.setAttribute("opacity", u * (0.3 + 0.7 * ga));
           ln.p.setAttribute("d", fnD(110, (q) => [LX + 8 + q * (LW - 16), ln.y + 17 - 12 * ln.fn(q, t)]));
         });
         Bl.forEach((ln, i) => {
           const u = ramp(t, tOff - 0.1 + i * 0.12, tOff + 0.25 + i * 0.12);
-          ln.bg.style.opacity = u;
+          ln.bg.style.opacity = Math.max(0.45 * frameU, u);
           ln.g.setAttribute("opacity", u * (0.3 + 0.7 * gb));
           ln.p.setAttribute("d", fnD(110, (q) => [LX + 8 + q * (LW - 16), ln.y + 17 - 12 * ln.fn(q, t)]));
         });
@@ -2137,7 +2167,12 @@ function sceneLive({ stage, beat, line }) {
         silT.style.opacity = ramp(t, tReb, tReb + 0.4);
         kb.update(ramp(t, l4.t0, l4.t0 + 0.3) > 0.5 ? new Set([60, 64, 67]) : new Set());
         heldT.style.opacity = u4;
-        show(carryT, ramp(t, tHeld - 0.1, tHeld + 0.3));
+        show(carryT, ramp(t, tHeld + 0.2, tHeld + 0.6));
+        const eu = ramp(t, tHeld - 0.2, tHeld + 0.2);
+        envS.setAttribute("opacity", eu);
+        carT.style.opacity = eu;
+        reT.style.opacity = ramp(t, tHeld + 0.3, tHeld + 0.7);
+        reAtt.setAttribute("opacity", ramp(t, tHeld + 0.3, tHeld + 0.7));
         speak(v1, t, l1, l2.t0);
         speak(v2, t, l2, l3.t0);
         speak(v3, t, l3, l4.t0);
@@ -2189,7 +2224,7 @@ function sceneFarm({ stage, beat, line }) {
           Object.assign(d.style, { borderRadius: "6px", border: `1px solid ${C.hair}`, background: "#14171b" });
           const g = group(svg, "a");
           const p = path(g, cellD(i, x, y), { stroke: C.a, "stroke-width": 1.8 });
-          const n = label(over, `${i}`, { x: x + PC - 18, y: y + 4, size: 12, color: C.mute, ax: 1 });
+          const n = label(over, `${i}`, { x: x + PC - 18, y: y + 4, size: 13, color: C.mute, ax: 1 });
           return { d, g, p, n };
         });
         return { lb, cells, y };
