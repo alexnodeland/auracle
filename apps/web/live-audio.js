@@ -165,6 +165,12 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
         }
         break;
       }
+      case "touch":
+        if (this.poly) this.poly.set_touch(m.sites, m.depth);
+        break;
+      case "touch_base":
+        if (this.poly) this.poly.set_touch_base(m.i, m.v);
+        break;
       case "b_mix": this.mixB = Math.min(1, Math.max(0, +m.mix || 0)); break;
       case "b_param": if (this.polyB) this.polyB.set_param(m.addr, m.value); break;
       case "b_clear":
@@ -410,6 +416,14 @@ export async function initLiveAudio(audioCtx, build, dest) {
     },
     rec(on) {
       node.port.postMessage({ type: "rec", on });
+    },
+    // Velocity -> timbre (PERFORM's touch row): which knobs a note's velocity
+    // offsets on its own voice, and their current values as they move.
+    touch(sites, depth) {
+      node.port.postMessage({ type: "touch", sites: JSON.stringify(sites), depth });
+    },
+    touchBase(i, v) {
+      node.port.postMessage({ type: "touch_base", i, v });
     },
     // The B slot (PERFORM's offers): load, crossfade, tweak, clear.
     bPatch(tree, makeup) {

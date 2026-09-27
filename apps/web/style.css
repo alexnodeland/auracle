@@ -4169,6 +4169,18 @@ html.handheld .handheld-gate {
 /* A half the patch's own renders did not confirm is closed, and looks it. */
 .pf-knob.half-lo .pf-k-ring { stroke-dasharray: 0 70 139 70; }
 .pf-knob.half-hi .pf-k-ring { stroke-dasharray: 139 139; }
+.pf-touch {
+  width: min(1040px, 100%);
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--t-body);
+  color: var(--silk-dim);
+}
+.pf-touch-l { font-family: var(--font-silk); text-transform: uppercase; letter-spacing: 0.1em; font-size: var(--t-label); color: var(--silk); }
+.pf-touch select { background: var(--bezel); color: var(--silk); border: 1px solid var(--hairline); border-radius: 3px; font: inherit; padding: 2px 4px; }
+.pf-touch input[type=range] { width: 120px; }
+.pf-touch-n { color: var(--phos-a-dim); }
 .pf-pads {
   width: min(1040px, 100%);
   display: grid;

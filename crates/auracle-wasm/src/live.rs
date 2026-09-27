@@ -61,6 +61,14 @@ const UNI_DETUNE_VOLT: f64 = 0.05;
 /// Arp gate lengths at or above this are *tied*: the step boundary slides the
 /// sounding voice to the next pitch instead of releasing and re-attacking.
 const ARP_TIE: f64 = 0.95;
+/// The velocity [`LivePoly::set_touch`] treats as "no offset": a mezzo touch
+/// plays the patch as it is, softer darkens (or thins, or stills — whichever
+/// control is on touch) and harder does the opposite.
+const TOUCH_MEZZO: f64 = 0.6;
+/// Largest value a touch offset may write, in normalized knob units: fugue's
+/// `Uniform(0, 1)` is half-open, and the live path should never produce a
+/// value the genome could not hold.
+const TOUCH_MAX: f64 = 1.0 - 1.0e-6;
 
 /// The classic supersaw detune curve, mapping a voice's uniform position in
 /// `[-1, 1]` to its share of the detune spread.
@@ -135,6 +143,16 @@ struct Smoother {
     addr: String,
     current: f64,
     target: f64,
+}
+
+/// One knob that velocity reaches through [`LivePoly::set_touch`].
+struct TouchSite {
+    addr: String,
+    /// Normalized knob travel at full depth and full velocity distance from
+    /// [`TOUCH_MEZZO`] — the named control's measured wiring gain.
+    gain: f64,
+    /// The knob's current normalized value, which the offset is added to.
+    base: f64,
 }
 
 enum Stage {
@@ -213,6 +231,10 @@ pub struct LivePoly {
     /// Interior signal metering, off until a surface asks for it. See
     /// [`LivePoly::set_meter`].
     meter: Meter,
+    /// Velocity → timbre: the knobs a note's velocity offsets on *its own*
+    /// voice. Empty (the default) is velocity-as-gain only, as before.
+    touch: Vec<TouchSite>,
+    touch_depth: f64,
 }
 
 /// Per-module level metering, read off the voice the player is hearing.
@@ -374,6 +396,8 @@ impl LivePoly {
             arp_base: None,
             rng_state: 0x9E37_79B9_7F4A_7C15,
             meter: Meter::new(),
+            touch: Vec::new(),
+            touch_depth: 0.0,
         })
     }
 
@@ -424,6 +448,58 @@ impl LivePoly {
     /// How many taps [`Self::meter_ptr`] holds.
     pub fn meter_len(&self) -> usize {
         self.meter.levels.len()
+    }
+
+    /// Velocity → timbre. `sites_json` is `[[addr, gain, base], …]`: each
+    /// knob a note's velocity reaches, its travel at full depth (a named
+    /// control's measured wiring gain) and its current normalized value.
+    /// `depth` in 0..1 scales the whole thing; 0 or `[]` turns touch off.
+    ///
+    /// The offset is written on the pressed voice only, at note-on, so a chord
+    /// can hold a soft dark note beside a loud bright one. Stated limit: a
+    /// parameter ramp on the same knob ([`Self::set_param`]) writes every
+    /// voice and so resets held notes' offsets until their next note-on.
+    /// Returns false for unreadable JSON (touch is then off).
+    pub fn set_touch(&mut self, sites_json: &str, depth: f64) -> bool {
+        let Ok(sites) = serde_json::from_str::<Vec<(String, f64, f64)>>(sites_json) else {
+            self.touch.clear();
+            return false;
+        };
+        self.touch = sites
+            .into_iter()
+            .filter(|(_, g, b)| g.is_finite() && b.is_finite())
+            .map(|(addr, gain, base)| TouchSite { addr, gain, base })
+            .collect();
+        self.touch_depth = if depth.is_finite() {
+            depth.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        true
+    }
+
+    /// Update one touch site's base value (its index in the last
+    /// [`Self::set_touch`] list) as the knob moves. Allocation-free.
+    pub fn set_touch_base(&mut self, index: usize, base: f64) {
+        if let Some(t) = self.touch.get_mut(index) {
+            if base.is_finite() {
+                t.base = base;
+            }
+        }
+    }
+
+    /// Write this note's touch offsets onto voice `i`.
+    fn apply_touch(&mut self, i: usize, vel: f32) {
+        if self.touch.is_empty() || self.touch_depth <= 0.0 {
+            return;
+        }
+        let off = (vel as f64 - TOUCH_MEZZO) * 2.0 * self.touch_depth;
+        let Some(v) = self.voices.get(i) else { return };
+        for t in &self.touch {
+            if let Some(h) = v.voice.params.get(&t.addr) {
+                h.set_normalized((t.base + off * t.gain).clamp(0.0, TOUCH_MAX));
+            }
+        }
     }
 
     /// Queue a patch swap. Parses eagerly (false = bad JSON, nothing
@@ -521,6 +597,9 @@ impl LivePoly {
                 v.pan_l = th.cos() as f32;
                 v.pan_r = th.sin() as f32;
             }
+            for i in 0..n {
+                self.apply_touch(i, vel);
+            }
             return;
         }
         self.counter += 1;
@@ -590,6 +669,7 @@ impl LivePoly {
             v.vel = Self::vel_gain(vel);
             v.pan_l = std::f32::consts::FRAC_1_SQRT_2;
             v.pan_r = std::f32::consts::FRAC_1_SQRT_2;
+            self.apply_touch(i, vel);
         }
     }
 
@@ -1366,6 +1446,80 @@ mod tests {
             },
         })
         .unwrap()
+    }
+
+    /// **Touch.** Velocity reaches timbre, per voice: two notes of one chord
+    /// at different velocities leave their own voices' wired knob at
+    /// different values, in the direction asked, and a mezzo note leaves it
+    /// exactly where the knob is.
+    #[test]
+    fn velocity_touch_offsets_its_own_voice_only() {
+        use auracle_grammar::term::{AmpEnv, FilterKind, Waveform};
+        use auracle_grammar::{AudioNode, ModNode, PatchTree};
+        let json = serde_json::to_string(&PatchTree {
+            amp: AmpEnv {
+                attack: 0.01,
+                decay: 0.3,
+                sustain: 0.8,
+                release: 0.3,
+            },
+            root: AudioNode::Filter {
+                uid: Uid::NEW,
+                kind: FilterKind::Ladder,
+                cutoff: 0.5,
+                resonance: 0.3,
+                mod_depth: 0.0,
+                input: Box::new(AudioNode::Vco {
+                    uid: Uid::NEW,
+                    wave: Waveform::Saw,
+                    octave: 0,
+                    detune: 0.5,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                }),
+                modulation: ModNode::None,
+            },
+        })
+        .unwrap();
+        let mut poly = LivePoly::new(&json, 44_100.0, 4).unwrap();
+        assert!(poly.set_touch(r#"[["node#cut", 0.3, 0.5]]"#, 1.0));
+        let cut = |poly: &LivePoly, note: u8| {
+            let v = poly
+                .voices
+                .iter()
+                .find(|v| v.note == Some(note))
+                .expect("voice");
+            v.voice.params.get("node#cut").unwrap().value.get()
+        };
+        poly.note_on(60, 1.0);
+        poly.note_on(64, 0.2);
+        poly.note_on(67, TOUCH_MEZZO);
+        let (loud, soft, mezzo) = (cut(&poly, 60), cut(&poly, 64), cut(&poly, 67));
+        assert!(
+            loud > mezzo && mezzo > soft,
+            "loud {loud} mezzo {mezzo} soft {soft}"
+        );
+        let home = poly.voices[0]
+            .voice
+            .params
+            .get("node#cut")
+            .unwrap()
+            .map
+            .apply(0.5);
+        // Relative: velocity crosses an f32 on the way in (0.6 is not exact
+        // there), and the cutoff map is exponential, so the leftover is a few
+        // parts per million of the value rather than zero.
+        assert!(
+            (mezzo - home).abs() < 1e-5 * home.abs(),
+            "mezzo moved the knob"
+        );
+        // Off is off: no offsets on the next note.
+        assert!(poly.set_touch("[]", 1.0));
+        poly.note_on(72, 1.0);
+        assert!((cut(&poly, 72) - home).abs() < 1e-9);
+        // Bad input turns touch off rather than half-applying it.
+        assert!(!poly.set_touch("not json", 1.0));
+        assert!(poly.touch.is_empty());
     }
 
     /// **The envelope carry.** Swapping the patch under a held pad used to

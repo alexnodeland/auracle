@@ -92,6 +92,9 @@ export function createPerform(host) {
     lastMove: performance.now(),
     glide: null, // {from: Map, to: Map, t0, dur, json}
     visible: false,
+    // Velocity -> timbre: which named control a note's velocity plays, per
+    // voice, and how far. -1 is off.
+    touch: { i: 0, depth: 0.5, sites: [] },
   };
 
   // ---------- layout ----------
@@ -112,9 +115,10 @@ export function createPerform(host) {
   const pads = el("div", "pf-pads");
   pads.setAttribute("role", "group");
   pads.setAttribute("aria-label", "Performance pads");
+  const touchRow = el("div", "pf-touch mono");
   const offerCard = el("div", "pf-offer");
   const why = el("div", "pf-why");
-  root.append(head, deck, pads, offerCard, why);
+  root.append(head, deck, touchRow, pads, offerCard, why);
 
   // ---------- knobs ----------
   const knobs = [];
@@ -313,8 +317,72 @@ export function createPerform(host) {
       if (prev == null || Math.abs(prev - v) > 1e-5) {
         live.param(a, v);
         state.sent.set(a, v);
+        const ti = state.touch.sites.findIndex(([ta]) => ta === a);
+        if (ti >= 0) {
+          state.touch.sites[ti][2] = v;
+          live.touchBase(ti, v);
+        }
       }
     }
+  }
+
+  // Send the touch wiring: the chosen control's knobs, their gains and where
+  // they sit now. Off, or a control this patch cannot reach, sends nothing to
+  // play — velocity is then loudness only, as it always was.
+  function sendTouch() {
+    const live = host.live();
+    const w = state.wire && state.touch.i >= 0 ? state.wire[state.touch.i] : null;
+    const [lo, hi] = rangeOf(w);
+    state.touch.sites =
+      w && !w.search && lo < 0 && hi > 0 ? w.knobs.map(([a, g]) => [a, g, liveValue(a) ?? 0]) : [];
+    if (live && live.touch) live.touch(state.touch.sites, state.touch.depth);
+    renderTouch();
+  }
+
+  function renderTouch() {
+    touchRow.innerHTML = "";
+    const lab = el("span", "pf-touch-l", "touch");
+    const sel = document.createElement("select");
+    sel.id = "pf-touch-sel";
+    sel.setAttribute("aria-label", "What your velocity plays");
+    const off = document.createElement("option");
+    off.value = "-1";
+    off.textContent = "loudness only";
+    sel.append(off);
+    host.controls.forEach((c, i) => {
+      const w = state.wire && state.wire[i];
+      const [lo, hi] = rangeOf(w);
+      const o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = `${c.name.toLowerCase()} — soft ${c.low}, hard ${c.high}`;
+      o.disabled = !w || w.search || lo === 0 || hi === 0;
+      if (i === state.touch.i) o.selected = true;
+      sel.append(o);
+    });
+    if (state.touch.i < 0) off.selected = true;
+    sel.onchange = () => {
+      state.touch.i = Number(sel.value);
+      sendTouch();
+    };
+    const depth = document.createElement("input");
+    depth.type = "range";
+    depth.min = "0";
+    depth.max = "1";
+    depth.step = "0.05";
+    depth.value = String(state.touch.depth);
+    depth.id = "pf-touch-depth";
+    depth.setAttribute("aria-label", "How far velocity reaches");
+    depth.oninput = () => {
+      state.touch.depth = Number(depth.value);
+      const live = host.live();
+      if (live && live.touch) live.touch(state.touch.sites, state.touch.depth);
+    };
+    const note = el(
+      "span",
+      "pf-touch-n",
+      state.touch.sites.length ? `velocity moves ${state.touch.sites.map(([a]) => a.split("#")[1]).join(" · ")}` : "velocity sets loudness only",
+    );
+    touchRow.append(lab, sel, depth, note);
   }
 
   function onKnob(k, fromMidi) {
@@ -443,6 +511,19 @@ export function createPerform(host) {
         });
         state.wire = m.data.wiring;
         if (state.home && !state.home.knobs) state.home.knobs = new Map(state.cur.knobs);
+        // Touch follows the player's choice if this patch can play it, and
+        // otherwise falls back to the first control it can (Bright, Snap,
+        // Motion…) rather than silently doing nothing.
+        const playable = (i) => {
+          const w = state.wire[i];
+          const [lo, hi] = rangeOf(w);
+          return w && !w.search && lo < 0 && hi > 0;
+        };
+        if (state.touch.i >= 0 && !playable(state.touch.i)) {
+          const first = state.wire.findIndex((_, i) => playable(i));
+          if (first >= 0) state.touch.i = first;
+        }
+        sendTouch();
         renderStatus();
       }
       knobs.forEach(paintKnob);
@@ -702,6 +783,7 @@ export function createPerform(host) {
   knobs.forEach(paintKnob);
   renderOffer();
   renderStatus();
+  renderTouch();
 
   // ---------- the wander clock ----------
   setInterval(() => {
@@ -763,6 +845,11 @@ export function createPerform(host) {
       if (state.cur && state.cur.json === json) return;
       state.cur = { json, makeup, knobs: new Map() };
       state.home = { json, makeup, knobs: null };
+      // Addresses mean nothing across a patch change until re-measured: a
+      // stale touch site could land on a different module's knob.
+      state.touch.sites = [];
+      const lv = host.live();
+      if (lv && lv.touch) lv.touch([], state.touch.depth);
       state.sent.clear();
       state.wire = null;
       state.glide = null;
