@@ -155,6 +155,16 @@ reverb the patch lacked, but nothing steers it there. Listen before you take
 it.
 ```
 
+## Opening the circuit
+
+Everything PERFORM does lands on real knobs, and PATCH shows it while it
+happens. A knob PERFORM is playing away from its kept value, because a control
+turned it or Wander moved it, carries a second **amber pointer** at the value
+actually sounding, and its readout shows that value in amber. The green
+pointer is the kept value. **Keep** writes the amber into the patch, and the
+two pointers become one. Hover the amber pointer to see which control is
+turning it.
+
 ## The XY pad
 
 Under the pads, beside the under-the-hood strip, is an **XY pad**: two named

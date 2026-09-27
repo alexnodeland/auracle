@@ -1448,6 +1448,24 @@ export function createPerform(host) {
       return !!(w && !w.search);
     },
     hasOffer: () => !!state.offer,
+    // What PERFORM is playing right now, knob by knob — the kept values plus
+    // every control, glide and Wander move on top — for PATCH to draw beside
+    // the kept ones. Null before a patch is under PERFORM's hands.
+    performedKnobs() {
+      if (!state.cur) return null;
+      const out = new Map();
+      for (const a of state.cur.knobs.keys()) {
+        const v = liveValue(a);
+        if (v != null) out.set(a, v);
+      }
+      return out;
+    },
+    // The named controls that turn `addr` on this patch.
+    controlsOn(addr) {
+      return (state.wire || [])
+        .filter((w) => !w.search && w.knobs.some(([a]) => a === addr))
+        .map((w) => w.name);
+    },
     setQuiet(on) {
       state.quiet = !!on;
       // Whatever attract blended in was heard by nobody in particular: an

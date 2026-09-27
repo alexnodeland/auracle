@@ -2842,6 +2842,56 @@ async function bootPerform() {
   else if (currentView === "perform") perform.show();
 }
 
+// ---------- the performed circuit ----------
+// PATCH draws the kept patch; PERFORM plays it with its controls, glides and
+// Wander on top, and until Keep those moves live only in the voices. So the
+// circuit showed knobs standing still while the sound moved under them. Every
+// knob PERFORM is playing away from its kept value now carries a second,
+// amber pointer at the value actually sounding: open the circuit mid-phrase
+// and you watch the controls and the taste walk turn real knobs. Keep writes
+// them in and the ghosts fold into the pointers.
+function paintPerformedKnobs() {
+  if (currentView !== "play" || !perform || !perform.performedKnobs) return;
+  const svg = $("rack-svg");
+  if (!svg) return;
+  const playing = perform.performedKnobs();
+  for (const kg of svg.querySelectorAll("g[data-addr][aria-valuenow]")) {
+    const v = playing ? playing.get(kg.dataset.addr) : null;
+    const kept = Number(kg.getAttribute("aria-valuenow"));
+    let ghost = kg.querySelector(".knob-ghost");
+    const val = kg.querySelector(".knob-value");
+    if (v == null || Math.abs(v - kept) < 0.004) {
+      if (ghost) ghost.remove();
+      if (kg.classList.contains("performed") && val && val.dataset.kept != null) {
+        val.textContent = val.dataset.kept;
+        delete val.dataset.kept;
+      }
+      kg.classList.remove("performed");
+      continue;
+    }
+    // The readout says what is sounding; the kept value is the green pointer.
+    if (val) {
+      if (val.dataset.kept == null) val.dataset.kept = val.textContent;
+      val.textContent = knobUnit(kg.dataset.addr, v, kg.dataset.kind, kg.dataset.variant || null);
+    }
+    if (!ghost) {
+      ghost = svgEl("line", {}, "knob-ghost");
+      const t = svgEl("title", {});
+      ghost.appendChild(t);
+      kg.insertBefore(ghost, kg.querySelector(".knob-hit"));
+    }
+    const ang = (-135 + 270 * v) * (Math.PI / 180);
+    ghost.setAttribute("x1", (Math.sin(ang) * KNOB_R * 0.2).toFixed(2));
+    ghost.setAttribute("y1", (-Math.cos(ang) * KNOB_R * 0.2).toFixed(2));
+    ghost.setAttribute("x2", (Math.sin(ang) * (KNOB_R + 4)).toFixed(2));
+    ghost.setAttribute("y2", (-Math.cos(ang) * (KNOB_R + 4)).toFixed(2));
+    const by = perform.controlsOn(kg.dataset.addr);
+    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM${by.length ? ` (${by.join(", ")})` : " (Wander)"} — Keep writes it in`;
+    kg.classList.add("performed");
+  }
+}
+setInterval(paintPerformedKnobs, 100);
+
 // ---------- booth mode ----------
 // A kiosk: after a minute idle the instrument performs itself in PERFORM; any
 // touch hands it over; Shift+Esc forgets the visitor. See booth.js.

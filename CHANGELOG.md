@@ -26,6 +26,16 @@ answered, so it cannot teach the model. An offer it leaves in B starts unheard
 for the visitor. `tests/web/booth.spec.js` walks it: attract starts, a control
 moves, one key hands over, no pick recorded.
 
+### Added — the circuit shows what PERFORM is playing
+
+PATCH drew the kept patch, while PERFORM plays it with controls, glides and
+Wander on top. Opening the circuit mid-phrase showed knobs standing still
+while the sound moved. Now every knob PERFORM is playing away from its kept
+value carries an **amber pointer** at the sounding value, and its readout says
+that value. Hovering it names the control turning it (or Wander). Keep folds
+the two pointers into one. `tests/web/perform_circuit.spec.js`: turn Bright on
+First Bass, open PATCH, and the ladder's cutoff is drawn performed.
+
 ### Changed — Offer answers at once
 
 Offer used to start ~10 s of renders on the press: the one gesture no other

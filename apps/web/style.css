@@ -4449,3 +4449,14 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 .ba-cap { font-size: var(--t-label); color: var(--phos-b); margin-top: 6px; min-height: 1.2em; }
 @keyframes ba-pulse { 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .ba-sub { animation: none; } }
+
+/* PERFORM's live value on a rack knob, beside the kept pointer. */
+.knob-ghost {
+  stroke: var(--phos-b);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(255, 180, 84, 0.85));
+  pointer-events: stroke;
+}
+g.performed .knob-body { stroke: var(--phos-b-dim); }
+g.performed .knob-value { fill: var(--phos-b); }
