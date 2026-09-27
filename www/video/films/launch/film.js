@@ -220,7 +220,7 @@ function sceneTitle({ stage, beat, line }) {
       desc.textContent = "a synthesizer that searches for your sound";
 
       stage.sfx("whoosh", b.t0 - 0.9, -3);
-      stage.sfx("logo_sting", b.t0 + 1.9 - 0.05, 0);
+      stage.sfx("logo_sting", b.t0 + 1.9 - 0.05, -5);
       // Final lockup geometry (measured once, at the final tracking).
       wm.style.letterSpacing = "0.095em";
       const wmW = wm.getBoundingClientRect().width;
@@ -833,7 +833,8 @@ function sceneEnd({ stage, beat, line }) {
       M.cx = left + markPx / 2;
       const mk = mark(svg, { cx: M.cx, cy: M.cy, size: markPx });
       place(lock, { x: left + markPx + gap, y: M.cy, ay: 0.5 });
-      stage.sfx("logo_sting", b.t0 - 0.2, 0);
+      // No sting here: the score's own sting section lands its hit on this
+      // downbeat.
       const say = textBlock(over, { x: 960, y: 610, w: 1400, cls: "voice", size: 64, align: "center", ax: 0.5, ay: 0.5 });
       const sp = words(say, "Play it *today*.");
       const url = el("div", { class: "pill a" }, over, "alexnodeland.github.io/auracle  ▸");

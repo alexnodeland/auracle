@@ -28,6 +28,9 @@ import os
 import re
 
 WPS = 2.75
+# The unit a section may grow by, in bars: half a four-bar phrase still lands
+# a cut on a strong beat, and a whole one wastes up to ten seconds of film.
+PHRASE = 2
 
 
 def est_duration(text):
@@ -42,6 +45,7 @@ def main():
     ap.add_argument("film_dir")
     ap.add_argument("--voice", help="manifest.json from voice/tts.py")
     ap.add_argument("--words", help="per-line word times, {line_id: [t, …]} relative to the line start")
+    ap.add_argument("--score", help="the bed's score (sound/*.json): lay the film on its composed sections")
     args = ap.parse_args()
 
     script = json.load(open(os.path.join(args.film_dir, "script.json")))
@@ -58,11 +62,51 @@ def main():
             durs[l["id"]] = l["duration_s"]
     words = json.load(open(args.words)) if args.words else {}
 
+    # Music first, when there is a score: every section keeps the length it
+    # was composed at, and a group of beats that needs more gets whole
+    # PHRASE-bar steps added, never bars cut (a score anchors its endings to
+    # its last bars). Whatever the narration leaves over in a section is the
+    # music breathing, at the section's end.
+    composed = {}
+    if args.score:
+        sc = json.load(open(args.score))
+        composed = {x["name"]: x["bars"] for x in sc["sections"]}
+    groups = []
+    for b in script["beats"]:
+        if b.get("music") or not groups:
+            groups.append([])
+        groups[-1].append(b)
+
+    def natural(beat_list):
+        d = 0.0
+        for b in beat_list:
+            d += b.get("lead", 0.0)
+            for l in b["lines"]:
+                d += (durs.get(l["id"]) or est_duration(l["text"])) + l.get("post", 0.0)
+            d += b.get("tail", 0.0)
+        return d
+
+    section_end = {}
+    if composed:
+        t = 0.0
+        for g in groups:
+            name = g[0].get("music")
+            need = math.ceil(natural(g) / bar - 1e-6)
+            have = composed.get(name, need)
+            bars = have if need <= have else have + PHRASE * math.ceil((need - have) / PHRASE)
+            section_end[g[0]["id"]] = t + bars * bar
+            t += bars * bar
+
     t = 0.0
     lines, beats = [], []
     sections = []  # (name, start_time)
     default_snap = script.get("snap", "bar")
+    group_of = {b["id"]: g[0]["id"] for g in groups for b in g}
     for b in script["beats"]:
+        if composed and b.get("music"):
+            # A section starts exactly where the previous one ended.
+            prev = [section_end[k] for k in section_end if section_end[k] <= t + 1e-6]
+            t = max(prev) if prev else 0.0
         snap = b.get("snap", default_snap)
         if snap == "bar":
             t = math.ceil(t / bar - 1e-6) * bar
@@ -80,6 +124,12 @@ def main():
             lines.append(entry)
             t += d + l.get("post", 0.0)
         t += b.get("tail", 0.0)
+        # The last beat of a section holds until the section ends.
+        if composed:
+            g = group_of[b["id"]]
+            last = [x for x in script["beats"] if group_of[x["id"]] == g][-1]["id"] == b["id"]
+            if last:
+                t = max(t, section_end[g])
         beats.append({"id": b["id"], "t0": round(b0, 3), "t1": round(t, 3), "music": b.get("music")})
 
     # The film ends with the last beat, rounded up to a whole bar so the sting

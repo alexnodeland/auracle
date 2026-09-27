@@ -1,66 +1,66 @@
 {
  "film": "launch",
  "fps": 30,
- "duration": 93.6,
+ "duration": 98.4,
  "grid": {
   "bpm": 100,
   "meter": 4,
   "t0": 0.0
  },
- "estimated": true,
+ "estimated": false,
  "beats": [
   {
    "id": "open",
    "t0": 0.0,
-   "t1": 11.553,
+   "t1": 12.0,
    "music": "intro"
   },
   {
    "id": "title",
    "t0": 12.0,
-   "t1": 17.673,
+   "t1": 18.127,
    "music": "build"
   },
   {
    "id": "duel",
-   "t0": 18.0,
-   "t1": 26.275,
+   "t0": 18.6,
+   "t1": 25.487,
    "music": null
   },
   {
    "id": "grow",
-   "t0": 26.275,
-   "t1": 34.237,
+   "t0": 25.487,
+   "t1": 33.6,
    "music": null
   },
   {
    "id": "play",
-   "t0": 36.0,
-   "t1": 49.178,
+   "t0": 33.6,
+   "t1": 45.6,
    "music": "main_a"
   },
   {
    "id": "offer",
-   "t0": 50.4,
-   "t1": 62.267,
+   "t0": 45.6,
+   "t1": 57.6,
    "music": "main_b"
   },
   {
    "id": "depth",
-   "t0": 62.4,
-   "t1": 78.331,
+   "t0": 57.6,
+   "t1": 74.4,
    "music": "breakdown"
   },
   {
    "id": "close",
-   "t0": 79.2,
-   "t1": 88.115,
+   "t0": 74.4,
+   "t1": 93.6,
    "music": "finale"
   },
   {
    "id": "end",
-   "t0": 88.8,
-   "t1": 93.6,
+   "t0": 93.6,
+   "t1": 98.4,
    "music": "sting"
   }
  ],
@@ -70,119 +70,119 @@
    "text": "Every synthesizer has a sound in it that's yours.",
    "beat": "open",
    "t0": 2.4,
-   "t1": 5.673
+   "t1": 5.697
   },
   {
    "id": "open2",
    "text": "Finding it means turning hundreds of knobs, one at a time.",
    "beat": "open",
-   "t0": 6.373,
-   "t1": 10.553
+   "t0": 6.397,
+   "t1": 10.105
   },
   {
    "id": "title1",
    "text": "Auracle is a synthesizer that searches for your sound.",
    "beat": "title",
    "t0": 13.2,
-   "t1": 16.473
+   "t1": 16.927
   },
   {
    "id": "duel1",
    "text": "It plays you two patches. You pick the one you like better.",
    "beat": "duel",
-   "t0": 18.3,
-   "t1": 22.964
+   "t0": 18.9,
+   "t1": 22.51
   },
   {
    "id": "duel2",
    "text": "Every pick teaches it your taste,",
    "beat": "duel",
-   "t0": 23.464,
-   "t1": 25.825
+   "t0": 23.01,
+   "t1": 25.037
   },
   {
    "id": "grow1",
    "text": "and it grows new patches toward it.",
    "beat": "grow",
-   "t0": 26.275,
-   "t1": 28.821
+   "t0": 25.487,
+   "t1": 27.585
   },
   {
    "id": "grow2",
    "text": "Not samples. Real modular circuits, built and wired from scratch.",
    "beat": "grow",
-   "t0": 29.321,
-   "t1": 33.437
+   "t0": 28.085,
+   "t1": 32.565
   },
   {
    "id": "play1",
    "text": "Then you play it.",
    "beat": "play",
-   "t0": 36.6,
-   "t1": 38.055
+   "t0": 34.2,
+   "t1": 35.383
   },
   {
    "id": "play2",
    "text": "Turn Bright, and it finds the knobs that make this patch brighter.",
    "beat": "play",
-   "t0": 38.955,
-   "t1": 43.498
+   "t0": 36.283,
+   "t1": 39.898
   },
   {
    "id": "play3",
    "text": "Let it wander, and the knobs turn themselves toward your taste.",
    "beat": "play",
-   "t0": 44.298,
-   "t1": 48.478
+   "t0": 40.698,
+   "t1": 44.283
   },
   {
    "id": "offer1",
    "text": "Press Offer, and a new version grows from the sound in your hands.",
    "beat": "offer",
-   "t0": 50.8,
-   "t1": 55.707
+   "t0": 46.0,
+   "t1": 49.94
   },
   {
    "id": "offer2",
    "text": "Blend into it. Take it, or pass. Either way, it learns.",
    "beat": "offer",
-   "t0": 56.407,
-   "t1": 61.367
+   "t0": 50.64,
+   "t1": 54.41
   },
   {
    "id": "depth1",
    "text": "Open the circuit any time. Every knob is real, and you can watch the performance turn them.",
    "beat": "depth",
-   "t0": 62.9,
-   "t1": 69.562
+   "t0": 58.1,
+   "t1": 64.285
   },
   {
    "id": "depth2",
    "text": "Underneath, a model of your taste bets on every choice before you make it, and keeps score in public.",
    "beat": "depth",
-   "t0": 70.262,
-   "t1": 77.531
+   "t0": 64.985,
+   "t1": 71.29
   },
   {
    "id": "close1",
    "text": "Every note in this film is Auracle.",
    "beat": "close",
-   "t0": 80.2,
-   "t1": 82.745
+   "t0": 75.4,
+   "t1": 77.637
   },
   {
    "id": "close2",
    "text": "Free, open source, and running in your browser.",
    "beat": "close",
-   "t0": 83.745,
-   "t1": 87.015
+   "t0": 78.637,
+   "t1": 81.69
   },
   {
    "id": "end1",
    "text": "Play it today.",
    "beat": "end",
-   "t0": 89.1,
-   "t1": 90.191
+   "t0": 93.9,
+   "t1": 95.007
   }
  ],
  "cues": {}
