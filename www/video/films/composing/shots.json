@@ -142,7 +142,7 @@
         {"at": "keep3:Stars", "op": "click", "sel": ".bank-item.live .star[data-s='4']"},
         {"at": "keep3:Stars+0.2", "op": "mark", "name": "stars", "sel": ".bank-item.live .stars"},
         {"at": "keep3:name", "op": "dblclick", "sel": ".bank-item.live .bi-name"},
-        {"at": "keep3:name+0.35", "op": "type", "text": "night pad", "ms": 85, "enter": true}
+        {"at": "keep3:name+0.35", "op": "type", "text": "verse", "ms": 110, "enter": true}
       ]
     },
     {

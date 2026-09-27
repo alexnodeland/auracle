@@ -250,7 +250,9 @@
         {"at": "dock3:arpeggiator+1.15", "op": "mark", "name": "drawer", "sel": "#arp-ctl"},
         {"at": "dock3:arpeggiator+1.15", "op": "mark", "name": "tempo", "sel": "#bpm"},
         {"at": "dock3:arpeggiator+1.4", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "ms": 300},
-        {"at": "dock4:Sync", "op": "click", "sel": "#sync-btn"}
+        {"at": "dock4:Sync", "op": "click", "sel": "#sync-btn"},
+        {"at": "dock2:Glide+0.8", "op": "log", "name": "glide", "js": "document.getElementById('glide-val').textContent"},
+        {"at": "dock3:tempo", "op": "log", "name": "arp", "js": "[document.getElementById('arp-mode').selectedOptions[0].textContent, document.getElementById('arp-ctl').classList.contains('open') ? 'drawer open' : 'drawer shut', document.getElementById('hold-btn').classList.contains('lit') ? 'hold lit' : 'hold off'].join(' · ')"}
       ]
     },
     {
