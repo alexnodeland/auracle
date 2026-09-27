@@ -3871,9 +3871,10 @@ $("rec-btn").onclick = () => {
   if (recording) note("recording — play something; stop to download the take");
 };
 
-// The film pipeline (www/video/tools/footage.mjs) records the instrument's
-// own sound for a walkthrough without the ● rec button's toast landing in the
-// shot. Present only on `?film`; the take downloads exactly as a rec does.
+// The film pipeline (www/video/tools/footage.mjs) records a walkthrough's
+// sound from the master bus (below), independently of the ● rec button, which
+// a film can press on camera like anyone else. Present only on `?film`; the
+// capture downloads as a WAV, as a take does, but without a take's toast.
 // It also plays MIDI in: under `?film` the page's MIDI access is the film's
 // own port, installed here before bootMidi() asks for one. `midiDevice(name)`
 // plugs a device in (midi.js wires it as it wires a real one, and the panel
@@ -3886,11 +3887,14 @@ if (new URLSearchParams(location.search).has("film")) {
   // voices and every audition meet (▶ in the bank, the duel, the node bank's
   // preview). The ● rec take taps the voices alone, which left a film silent
   // wherever it showed an audition. The take downloads as a ● rec take does.
+  // Its own flag, not the ● rec button's: a film may press ● rec on camera,
+  // and that press must start a take whether or not the film is capturing.
   let tap = null;
+  let tapping = false;
   window.__film = {
     rec(on) {
       if (!live) return;
-      recording = !!on;
+      tapping = !!on;
       if (!tap) {
         tap = new AudioWorkletNode(audioCtx, "auracle-tap", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
         const mute = audioCtx.createGain();
@@ -3898,10 +3902,10 @@ if (new URLSearchParams(location.search).has("film")) {
         master.connect(tap);
         tap.connect(mute).connect(audioCtx.destination);
         tap.port.onmessage = (e) => {
-          if (e.data.type === "tap_done" && e.data.samples.length) downloadWav(e.data.samples, e.data.sampleRate);
+          if (e.data.type === "tap_done" && e.data.samples.length) downloadWav(e.data.samples, e.data.sampleRate, { quiet: true });
         };
       }
-      tap.port.postMessage({ type: recording ? "on" : "off" });
+      tap.port.postMessage({ type: tapping ? "on" : "off" });
     },
     midiDevice(name = "MIDI controller") {
       filmMidi.inputs.clear();
@@ -3915,7 +3919,7 @@ if (new URLSearchParams(location.search).has("film")) {
   };
 }
 
-function downloadWav(samples, sampleRate) {
+function downloadWav(samples, sampleRate, { quiet = false } = {}) {
   // Interleaved stereo float → 16-bit PCM WAV.
   const nFrames = samples.length / 2;
   const buf = new ArrayBuffer(44 + samples.length * 2);
@@ -3943,7 +3947,7 @@ function downloadWav(samples, sampleRate) {
   a.download = `auracle-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);
-  note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`);
+  if (!quiet) note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`);
 }
 
 // ---------- Web MIDI ----------
