@@ -760,14 +760,15 @@ export function createPerform(host) {
     hoodRows = new Map();
     if (!addrs.length) return;
     const h = el("div", "pf-hood-h", "under the hood");
-    h.title = "The patch's own knobs these controls are turning right now. Click one to open it in PATCH.";
+    h.title =
+      "The patch's own knobs these controls are turning right now. Click one to open it in PATCH — which shows the kept sound until you press Keep.";
     hood.append(h);
     const grid = el("div", "pf-hood-grid");
     for (const a of addrs) {
       const info = host.knobInfo ? host.knobInfo(a, 0) : { module: "", label: a };
       const row = el("button", "pf-hood-row");
       row.type = "button";
-      row.title = `${info.module} ${info.label} — open in PATCH`;
+      row.title = `${info.module} ${info.label} — open in PATCH (it shows the kept value until you Keep)`;
       const name = el("span", "pf-hood-name");
       name.append(el("span", "pf-hood-mod", info.module), document.createTextNode(` ${info.label}`));
       const track = el("span", "pf-hood-track");

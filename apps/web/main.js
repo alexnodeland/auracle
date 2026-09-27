@@ -2749,15 +2749,22 @@ async function bootPerform() {
       }
       return { module: "", label: addr.split("#").pop(), text: knobUnit(addr, v) };
     },
+    // Opening PATCH re-renders the rack, which can replace the node found on
+    // the first frame, so the pulse re-finds its knob until the rack settles.
     showKnob: (addr) => {
       showView("play");
-      requestAnimationFrame(() => {
-        const node = document.querySelector(`#rack-svg [data-addr="${CSS.escape(addr)}"]`);
-        if (!node) return;
-        ensureRackVisible(node);
-        node.classList.add("hood-pulse");
-        setTimeout(() => node.classList.remove("hood-pulse"), 1400);
-      });
+      const sel = `#rack-svg [data-addr="${CSS.escape(addr)}"]`;
+      let tries = 0;
+      const mark = () => {
+        const node = document.querySelector(sel);
+        if (node && !node.classList.contains("hood-pulse")) {
+          if (tries === 0) ensureRackVisible(node);
+          node.classList.add("hood-pulse");
+          setTimeout(() => node.classList.remove("hood-pulse"), 1400);
+        }
+        if (++tries < 6) setTimeout(mark, 80);
+      };
+      requestAnimationFrame(mark);
     },
     // A performed sound becomes the bench's tree by the same whole-tree route
     // a restore takes, so PATCH shows what PERFORM kept. queueStruct stages

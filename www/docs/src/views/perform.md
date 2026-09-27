@@ -39,7 +39,8 @@ turning right now, each as a bar with its value in its own units and a tick
 where it sat when this sound became home. Turn Motion and you watch the
 envelope's decay and the filter's mod depth move; let Wander drift and the knobs
 it carries away from home join the list. Click one to open its module in
-[PATCH](./play.md), pulsing where it is.
+[PATCH](./play.md), pulsing where it is. PATCH shows the sound you last kept:
+what PERFORM plays is live until you press **Keep**, and then PATCH has it too.
 
 **how this works.** A disclosure with a short version of this page. It is
 closed at rest.
