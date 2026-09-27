@@ -1,0 +1,31 @@
+{
+ "film": "view-taste",
+ "title": "probe",
+ "description": "probe",
+ "fps": 30,
+ "voice": {
+  "voice": "af_heart",
+  "speed": 0.9
+ },
+ "music": {
+  "bed": "study",
+  "bpm": 84,
+  "meter": 4
+ },
+ "snap": "beat",
+ "beats": [
+  {
+   "id": "probe",
+   "music": "loop_a",
+   "lead": 0.5,
+   "tail": 0.5,
+   "lines": [
+    {
+     "id": "probe1",
+     "text": "Probe.",
+     "post": 0.2
+    }
+   ]
+  }
+ ]
+}

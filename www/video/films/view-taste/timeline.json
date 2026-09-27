@@ -1,0 +1,29 @@
+{
+ "film": "view-taste",
+ "fps": 30,
+ "duration": 2.857,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "probe",
+   "t0": 0.0,
+   "t1": 2.857,
+   "music": "loop_a"
+  }
+ ],
+ "lines": [
+  {
+   "id": "probe1",
+   "text": "Probe.",
+   "beat": "probe",
+   "t0": 0.5,
+   "t1": 0.864
+  }
+ ],
+ "cues": {}
+}

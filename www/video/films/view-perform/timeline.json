@@ -1,0 +1,539 @@
+{
+ "film": "view-perform",
+ "fps": 30,
+ "duration": 365.714,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "open",
+   "t0": 0.0,
+   "t1": 11.43,
+   "music": null
+  },
+  {
+   "id": "title",
+   "t0": 14.286,
+   "t1": 25.466,
+   "music": "loop_a"
+  },
+  {
+   "id": "turn-play",
+   "t0": 25.714,
+   "t1": 28.571,
+   "music": null
+  },
+  {
+   "id": "play",
+   "t0": 28.571,
+   "t1": 61.064,
+   "music": null
+  },
+  {
+   "id": "turn-named",
+   "t0": 62.857,
+   "t1": 65.714,
+   "music": null
+  },
+  {
+   "id": "named",
+   "t0": 65.714,
+   "t1": 103.671,
+   "music": null
+  },
+  {
+   "id": "turn-honest",
+   "t0": 105.714,
+   "t1": 108.571,
+   "music": null
+  },
+  {
+   "id": "honest",
+   "t0": 108.571,
+   "t1": 142.742,
+   "music": null
+  },
+  {
+   "id": "turn-xy",
+   "t0": 142.857,
+   "t1": 145.714,
+   "music": null
+  },
+  {
+   "id": "xy",
+   "t0": 145.714,
+   "t1": 163.611,
+   "music": null
+  },
+  {
+   "id": "turn-offer",
+   "t0": 165.714,
+   "t1": 168.571,
+   "music": null
+  },
+  {
+   "id": "offer",
+   "t0": 168.571,
+   "t1": 201.497,
+   "music": null
+  },
+  {
+   "id": "turn-wander",
+   "t0": 202.857,
+   "t1": 205.714,
+   "music": "loop_b"
+  },
+  {
+   "id": "wander",
+   "t0": 205.714,
+   "t1": 232.325,
+   "music": null
+  },
+  {
+   "id": "turn-keep",
+   "t0": 234.286,
+   "t1": 237.143,
+   "music": null
+  },
+  {
+   "id": "keep",
+   "t0": 237.143,
+   "t1": 253.823,
+   "music": null
+  },
+  {
+   "id": "turn-dock",
+   "t0": 254.286,
+   "t1": 257.143,
+   "music": null
+  },
+  {
+   "id": "dock",
+   "t0": 257.143,
+   "t1": 286.426,
+   "music": null
+  },
+  {
+   "id": "turn-midi",
+   "t0": 288.571,
+   "t1": 291.428,
+   "music": null
+  },
+  {
+   "id": "midi",
+   "t0": 291.429,
+   "t1": 321.339,
+   "music": null
+  },
+  {
+   "id": "turn-together",
+   "t0": 322.857,
+   "t1": 325.714,
+   "music": null
+  },
+  {
+   "id": "together",
+   "t0": 325.714,
+   "t1": 345.972,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 348.571,
+   "t1": 365.714,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "title1",
+   "text": "PERFORM is where you play the sound.",
+   "beat": "title",
+   "t0": 15.686,
+   "t1": 18.231
+  },
+  {
+   "id": "title2",
+   "text": "Its controls are named for what you hear, and nothing in it stops the music.",
+   "beat": "title",
+   "t0": 18.831,
+   "t1": 24.466
+  },
+  {
+   "id": "play1",
+   "text": "Two rows of your computer keyboard are keys: A to L for the white notes, W to P for the black.",
+   "beat": "play",
+   "t0": 29.071,
+   "t1": 37.188
+  },
+  {
+   "id": "play2",
+   "text": "Z and X move the octave. Hold Shift for an accent.",
+   "beat": "play",
+   "t0": 37.588,
+   "t1": 41.888
+  },
+  {
+   "id": "play3",
+   "text": "On the screen, strike a key lower down for a harder note.",
+   "beat": "play",
+   "t0": 42.288,
+   "t1": 46.831
+  },
+  {
+   "id": "play4",
+   "text": "A MIDI keyboard plays too, with velocity and pitch bend.",
+   "beat": "play",
+   "t0": 47.231,
+   "t1": 51.048
+  },
+  {
+   "id": "play5",
+   "text": "And velocity can play the timbre. With the touch row on Bright, soft notes come out darker and hard ones brighter.",
+   "beat": "play",
+   "t0": 51.548,
+   "t1": 59.664
+  },
+  {
+   "id": "named1",
+   "text": "Six controls are named for what they do to the sound: Bright, Snap, Motion, Body, Grit and Space.",
+   "beat": "named",
+   "t0": 66.214,
+   "t1": 73.78
+  },
+  {
+   "id": "named2",
+   "text": "Hold a chord and ride Bright up. The sound swells, and the note never breaks.",
+   "beat": "named",
+   "t0": 74.18,
+   "t1": 80.114
+  },
+  {
+   "id": "named3",
+   "text": "Underneath, the real knobs move with it.",
+   "beat": "named",
+   "t0": 80.614,
+   "t1": 83.34
+  },
+  {
+   "id": "named4",
+   "text": "When a patch loads, PERFORM nudges each of its knobs and listens, then wires every control to the few knobs that move the sound its way.",
+   "beat": "named",
+   "t0": 83.74,
+   "t1": 93.554
+  },
+  {
+   "id": "named5",
+   "text": "So Bright means brighter on every patch, however that patch gets there.",
+   "beat": "named",
+   "t0": 93.954,
+   "t1": 98.498
+  },
+  {
+   "id": "named6",
+   "text": "Long-press a control to hear what it does here.",
+   "beat": "named",
+   "t0": 98.998,
+   "t1": 102.271
+  },
+  {
+   "id": "honest1",
+   "text": "Some controls only go one way.",
+   "beat": "honest",
+   "t0": 109.071,
+   "t1": 111.253
+  },
+  {
+   "id": "honest2",
+   "text": "This pad is already as close as it gets, so Space only turns toward far, and the line under it says so.",
+   "beat": "honest",
+   "t0": 111.653,
+   "t1": 120.013
+  },
+  {
+   "id": "honest3",
+   "text": "An amber control with a dashed ring is one this patch can't honestly reach.",
+   "beat": "honest",
+   "t0": 120.513,
+   "t1": 125.604
+  },
+  {
+   "id": "honest4",
+   "text": "Turn it anyway, and it asks for a sound that can.",
+   "beat": "honest",
+   "t0": 126.004,
+   "t1": 130.184
+  },
+  {
+   "id": "honest5",
+   "text": "Grit springs back, and a variant grows in B, labelled with what you asked for.",
+   "beat": "honest",
+   "t0": 130.584,
+   "t1": 136.399
+  },
+  {
+   "id": "honest6",
+   "text": "It isn't aimed at grit yet, so listen before you take it.",
+   "beat": "honest",
+   "t0": 136.799,
+   "t1": 141.342
+  },
+  {
+   "id": "xy1",
+   "text": "The XY pad puts two controls under one hand.",
+   "beat": "xy",
+   "t0": 146.214,
+   "t1": 149.487
+  },
+  {
+   "id": "xy2",
+   "text": "Choose its axes up here.",
+   "beat": "xy",
+   "t0": 149.887,
+   "t1": 151.705
+  },
+  {
+   "id": "xy3",
+   "text": "Then hold a chord, and draw.",
+   "beat": "xy",
+   "t0": 152.105,
+   "t1": 154.467
+  },
+  {
+   "id": "xy4",
+   "text": "The dials follow the dot, so you always see where you are.",
+   "beat": "xy",
+   "t0": 157.667,
+   "t1": 162.211
+  },
+  {
+   "id": "offer1",
+   "text": "Press Offer, and a variant of what you're playing grows in slot B.",
+   "beat": "offer",
+   "t0": 169.071,
+   "t1": 173.979
+  },
+  {
+   "id": "offer2",
+   "text": "It follows your hands. Every note you play sounds in both.",
+   "beat": "offer",
+   "t0": 174.379,
+   "t1": 178.679
+  },
+  {
+   "id": "offer3",
+   "text": "Hold Peek to hear B alone.",
+   "beat": "offer",
+   "t0": 179.079,
+   "t1": 181.261
+  },
+  {
+   "id": "offer4",
+   "text": "Or ride Blend across. B plays at matched loudness, so you judge the sound, not the level.",
+   "beat": "offer",
+   "t0": 182.061,
+   "t1": 188.902
+  },
+  {
+   "id": "offer5",
+   "text": "Take it, and it becomes your sound. Press Offer again, and that's a pass.",
+   "beat": "offer",
+   "t0": 189.402,
+   "t1": 195.153
+  },
+  {
+   "id": "offer6",
+   "text": "Once you've heard it, either answer teaches the model what you like.",
+   "beat": "offer",
+   "t0": 195.553,
+   "t1": 200.097
+  },
+  {
+   "id": "wander1",
+   "text": "Wander lets the model play the controls with you.",
+   "beat": "wander",
+   "t0": 206.214,
+   "t1": 209.487
+  },
+  {
+   "id": "wander2",
+   "text": "A little, and ideas grow into B.",
+   "beat": "wander",
+   "t0": 209.887,
+   "t1": 212.612
+  },
+  {
+   "id": "wander3",
+   "text": "Further, and the knobs drift toward your taste.",
+   "beat": "wander",
+   "t0": 213.112,
+   "t1": 216.202
+  },
+  {
+   "id": "wander4",
+   "text": "All the way up, and it roams.",
+   "beat": "wander",
+   "t0": 216.702,
+   "t1": 219.427
+  },
+  {
+   "id": "wander5",
+   "text": "Structure never changes on its own. A new module only arrives as an offer.",
+   "beat": "wander",
+   "t0": 219.927,
+   "t1": 225.318
+  },
+  {
+   "id": "wander6",
+   "text": "Touch anything, and it waits for you. Freeze holds it where it is.",
+   "beat": "wander",
+   "t0": 225.718,
+   "t1": 230.925
+  },
+  {
+   "id": "keep1",
+   "text": "Keep makes the sound you hear home.",
+   "beat": "keep",
+   "t0": 237.643,
+   "t1": 240.188
+  },
+  {
+   "id": "keep2",
+   "text": "Then go as far out as you like.",
+   "beat": "keep",
+   "t0": 240.588,
+   "t1": 243.497
+  },
+  {
+   "id": "keep3",
+   "text": "Back glides you home.",
+   "beat": "keep",
+   "t0": 244.697,
+   "t1": 246.152
+  },
+  {
+   "id": "keep4",
+   "text": "Keep also puts the sound on the workbench, so PATCH shows what you kept.",
+   "beat": "keep",
+   "t0": 247.152,
+   "t1": 252.423
+  },
+  {
+   "id": "dock1",
+   "text": "Hold latches the notes you play.",
+   "beat": "dock",
+   "t0": 257.643,
+   "t1": 259.825
+  },
+  {
+   "id": "dock2",
+   "text": "Unison stacks all four voices on one note.",
+   "beat": "dock",
+   "t0": 260.225,
+   "t1": 263.134
+  },
+  {
+   "id": "dock3",
+   "text": "Glide slides a line from note to note, and chords stay clean.",
+   "beat": "dock",
+   "t0": 263.534,
+   "t1": 268.077
+  },
+  {
+   "id": "dock4",
+   "text": "The arpeggiator plays a held chord up, down or both ways, at the tempo you set.",
+   "beat": "dock",
+   "t0": 268.577,
+   "t1": 274.756
+  },
+  {
+   "id": "dock5",
+   "text": "Sync puts the patch's own step sequencer on that tempo too.",
+   "beat": "dock",
+   "t0": 275.256,
+   "t1": 279.256
+  },
+  {
+   "id": "dock6",
+   "text": "And when you like what you're playing, REC keeps it as a WAV file.",
+   "beat": "dock",
+   "t0": 279.756,
+   "t1": 285.026
+  },
+  {
+   "id": "midi1",
+   "text": "Plug in a controller and turn its knobs. The first eight you turn claim the eight controls.",
+   "beat": "midi",
+   "t0": 291.929,
+   "t1": 298.41
+  },
+  {
+   "id": "midi2",
+   "text": "Learn moves any control to the next knob you touch.",
+   "beat": "midi",
+   "t0": 298.81,
+   "t1": 302.447
+  },
+  {
+   "id": "midi3",
+   "text": "Pressure pushes Bright, and the mod wheel drives Motion.",
+   "beat": "midi",
+   "t0": 302.847,
+   "t1": 306.299
+  },
+  {
+   "id": "midi4",
+   "text": "The sustain pedal holds what you let go of, and MIDI clock sets the tempo.",
+   "beat": "midi",
+   "t0": 306.699,
+   "t1": 312.334
+  },
+  {
+   "id": "midi5",
+   "text": "With two tabs open, MIDI plays the one you used last. The other stands aside, and says so.",
+   "beat": "midi",
+   "t0": 312.734,
+   "t1": 319.939
+  },
+  {
+   "id": "together1",
+   "text": "Now all of it at once.",
+   "beat": "together",
+   "t0": 326.214,
+   "t1": 328.396
+  },
+  {
+   "id": "together2",
+   "text": "An arpeggio at eighty-four, Wander drifting, and an offer growing in B.",
+   "beat": "together",
+   "t0": 328.796,
+   "t1": 333.52
+  },
+  {
+   "id": "together3",
+   "text": "When it sounds right, take it on the downbeat.",
+   "beat": "together",
+   "t0": 335.52,
+   "t1": 338.972
+  },
+  {
+   "id": "outro1",
+   "text": "That's PERFORM: play it, turn it, and let it offer.",
+   "beat": "outro",
+   "t0": 349.371,
+   "t1": 353.668
+  },
+  {
+   "id": "outro2",
+   "text": "Next, open the patch in PATCH, and see what the sound is made of.",
+   "beat": "outro",
+   "t0": 354.268,
+   "t1": 359.719
+  }
+ ],
+ "cues": {}
+}

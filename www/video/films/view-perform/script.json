@@ -1,0 +1,200 @@
+{
+  "film": "view-perform",
+  "title": "PERFORM: playing the sound",
+  "description": "PERFORM in depth, for players: the keys and touch, six controls named for what you hear, honest controls, the XY pad, offers, Wander, Keep and Back, the dock and MIDI.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
+    {
+      "id": "open",
+      "snap": "bar",
+      "bed_db": -60,
+      "lead": 11.43,
+      "tail": 0.0,
+      "lines": []
+    },
+    {
+      "id": "title",
+      "music": "loop_a",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 1.4,
+      "tail": 0.6,
+      "lines": [
+        {"id": "title1", "text": "PERFORM is where you play the sound.", "post": 0.6},
+        {"id": "title2", "text": "Its controls are named for what you hear, and nothing in it stops the music.", "post": 0.4}
+      ]
+    },
+    {"id": "turn-play", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "play",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "play1", "text": "Two rows of your computer keyboard are keys: A to L for the white notes, W to P for the black.", "post": 0.4},
+        {"id": "play2", "text": "Z and X move the octave. Hold Shift for an accent.", "post": 0.4},
+        {"id": "play3", "text": "On the screen, strike a key lower down for a harder note.", "post": 0.4},
+        {"id": "play4", "text": "A MIDI keyboard plays too, with velocity and pitch bend.", "post": 0.5},
+        {"id": "play5", "text": "And velocity can play the timbre. With the touch row on Bright, soft notes come out darker and hard ones brighter.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-named", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "named",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "named1", "text": "Six controls are named for what they do to the sound: Bright, Snap, Motion, Body, Grit and Space.", "post": 0.4},
+        {"id": "named2", "text": "Hold a chord and ride Bright up. The sound swells, and the note never breaks.", "post": 0.5},
+        {"id": "named3", "text": "Underneath, the real knobs move with it.", "post": 0.4},
+        {"id": "named4", "text": "When a patch loads, PERFORM nudges each of its knobs and listens, then wires every control to the few knobs that move the sound its way.", "post": 0.4},
+        {"id": "named5", "text": "So Bright means brighter on every patch, however that patch gets there.", "post": 0.5},
+        {"id": "named6", "text": "Long-press a control to hear what it does here.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-honest", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "honest",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "honest1", "text": "Some controls only go one way.", "post": 0.4},
+        {"id": "honest2", "text": "This pad is already as close as it gets, so Space only turns toward far, and the line under it says so.", "post": 0.5},
+        {"id": "honest3", "text": "An amber control with a dashed ring is one this patch can't honestly reach.", "post": 0.4},
+        {"id": "honest4", "text": "Turn it anyway, and it asks for a sound that can.", "post": 0.4},
+        {"id": "honest5", "text": "Grit springs back, and a variant grows in B, labelled with what you asked for.", "post": 0.4},
+        {"id": "honest6", "text": "It isn't aimed at grit yet, so listen before you take it.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-xy", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "xy",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "xy1", "text": "The XY pad puts two controls under one hand.", "post": 0.4},
+        {"id": "xy2", "text": "Choose its axes up here.", "post": 0.4},
+        {"id": "xy3", "text": "Then hold a chord, and draw.", "post": 3.2},
+        {"id": "xy4", "text": "The dials follow the dot, so you always see where you are.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-offer", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "offer",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "offer1", "text": "Press Offer, and a variant of what you're playing grows in slot B.", "post": 0.4},
+        {"id": "offer2", "text": "It follows your hands. Every note you play sounds in both.", "post": 0.4},
+        {"id": "offer3", "text": "Hold Peek to hear B alone.", "post": 0.8},
+        {"id": "offer4", "text": "Or ride Blend across. B plays at matched loudness, so you judge the sound, not the level.", "post": 0.5},
+        {"id": "offer5", "text": "Take it, and it becomes your sound. Press Offer again, and that's a pass.", "post": 0.4},
+        {"id": "offer6", "text": "Once you've heard it, either answer teaches the model what you like.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-wander", "music": "loop_b", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "wander",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "wander1", "text": "Wander lets the model play the controls with you.", "post": 0.4},
+        {"id": "wander2", "text": "A little, and ideas grow into B.", "post": 0.5},
+        {"id": "wander3", "text": "Further, and the knobs drift toward your taste.", "post": 0.5},
+        {"id": "wander4", "text": "All the way up, and it roams.", "post": 0.5},
+        {"id": "wander5", "text": "Structure never changes on its own. A new module only arrives as an offer.", "post": 0.4},
+        {"id": "wander6", "text": "Touch anything, and it waits for you. Freeze holds it where it is.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-keep", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "keep",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "keep1", "text": "Keep makes the sound you hear home.", "post": 0.4},
+        {"id": "keep2", "text": "Then go as far out as you like.", "post": 1.2},
+        {"id": "keep3", "text": "Back glides you home.", "post": 1.0},
+        {"id": "keep4", "text": "Keep also puts the sound on the workbench, so PATCH shows what you kept.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-dock", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "dock",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "dock1", "text": "Hold latches the notes you play.", "post": 0.4},
+        {"id": "dock2", "text": "Unison stacks all four voices on one note.", "post": 0.4},
+        {"id": "dock3", "text": "Glide slides a line from note to note, and chords stay clean.", "post": 0.5},
+        {"id": "dock4", "text": "The arpeggiator plays a held chord up, down or both ways, at the tempo you set.", "post": 0.5},
+        {"id": "dock5", "text": "Sync puts the patch's own step sequencer on that tempo too.", "post": 0.5},
+        {"id": "dock6", "text": "And when you like what you're playing, REC keeps it as a WAV file.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-midi", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "midi",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 0.8,
+      "lines": [
+        {"id": "midi1", "text": "Plug in a controller and turn its knobs. The first eight you turn claim the eight controls.", "post": 0.4},
+        {"id": "midi2", "text": "Learn moves any control to the next knob you touch.", "post": 0.4},
+        {"id": "midi3", "text": "Pressure pushes Bright, and the mod wheel drives Motion.", "post": 0.4},
+        {"id": "midi4", "text": "The sustain pedal holds what you let go of, and MIDI clock sets the tempo.", "post": 0.4},
+        {"id": "midi5", "text": "With two tabs open, MIDI plays the one you used last. The other stands aside, and says so.", "post": 0.6}
+      ]
+    },
+    {"id": "turn-together", "snap": "bar", "bed_db": 0, "lead": 2.857, "tail": 0.0, "lines": []},
+    {
+      "id": "together",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.5,
+      "tail": 1.0,
+      "lines": [
+        {"id": "together1", "text": "Now all of it at once.", "post": 0.4},
+        {"id": "together2", "text": "An arpeggio at eighty-four, Wander drifting, and an offer growing in B.", "post": 2.0},
+        {"id": "together3", "text": "When it sounds right, take it on the downbeat.", "post": 6.0}
+      ]
+    },
+    {
+      "id": "outro",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 0.8,
+      "tail": 3.0,
+      "lines": [
+        {"id": "outro1", "text": "That's PERFORM: play it, turn it, and let it offer.", "post": 0.6},
+        {"id": "outro2", "text": "Next, open the patch in PATCH, and see what the sound is made of.", "post": 0.4}
+      ]
+    }
+  ]
+}
