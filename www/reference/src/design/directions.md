@@ -436,7 +436,7 @@ system has ever computed is a labelled row, and the
 [persistent render cache](../persistence.md#the-persistent-render-cache) is
 exactly a table of them that survives reloads. `pipeline_stats` already draws
 1200 prior samples to compute the VIFs; the same draws are a design matrix. A
-ridge fit of the fifteen audio coordinates on the twenty-six structural ones is
+ridge fit of the eighteen audio coordinates on the twenty-six structural ones is
 $\partial\text{brightness}/\partial\text{production}$, which is the missing map.
 
 **Why it is worth more than it sounds.** The coefficients a listener can
