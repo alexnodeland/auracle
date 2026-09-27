@@ -643,7 +643,8 @@
       <div class="perf-ctl">
         <label class="perf-glide mono" title="Glide — how long a note takes to slide to the next one in a line">gld<input type="range" id="glide" min="0" max="1" step="0.01" value="0" aria-label="Glide"><span class="pc-val" id="glide-val">off</span></label>
         <button class="util-btn" id="rec-btn" title="Record what you play; stop to download a WAV">● rec</button>
-        <span class="mono midi-ind" id="midi-ind" title="MIDI input">midi —</span>
+        <button type="button" class="mono midi-ind" id="midi-ind" title="MIDI: devices, knob mapping, clock" aria-haspopup="dialog">midi —</button>
+        <div class="midi-panel hidden" id="midi-panel" role="dialog" aria-label="MIDI mapping"></div>
       </div>
       <div class="live-label mono" id="live-label">no patch</div>
       <label class="perf-glide mono" title="Master volume — live keys and every ▶ audition">vol<input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Master volume"><span class="pc-val" id="vol-val">−2 dB</span></label>

@@ -2377,6 +2377,7 @@ async function bootPerform() {
     noteOff: (n) => liveNoteOff(n),
     // A performed sound becomes the bench's tree: one undo step, the same
     // whole-tree route a restore takes, so PATCH shows what PERFORM kept.
+    controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
     commitTree: (json) => {
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
       pushUndo();
@@ -2426,6 +2427,7 @@ async function bootLiveAudio() {
 
 function liveNoteOn(note_, vel = 1.0) {
   if (!live) return;
+  sustainedNotes.delete(note_);
   ensureAudio();
   live.noteOn(note_, vel);
   heldNotes.add(note_);
@@ -2473,6 +2475,10 @@ setInterval(flushPlayCounts, 45_000);
 function liveNoteOff(note_) {
   if (!live) return;
   if (hold) return; // latched — released on hold-off or panic
+  if (sustainPedal) {
+    sustainedNotes.add(note_); // rings until the pedal lifts
+    return;
+  }
   live.noteOff(note_);
   heldNotes.delete(note_);
   paintKey(note_, false);
@@ -2480,6 +2486,7 @@ function liveNoteOff(note_) {
 }
 
 function panic() {
+  sustainedNotes.clear();
   if (live) live.allOff();
   for (const n of [...heldNotes]) paintKey(n, false);
   heldNotes.clear();
@@ -2990,37 +2997,50 @@ function downloadWav(samples, sampleRate) {
 }
 
 // ---------- Web MIDI ----------
-function bootMidi() {
-  if (!navigator.requestMIDIAccess) return;
-  navigator.requestMIDIAccess({ sysex: false }).then((access) => {
-    const wire = () => {
-      let n = 0;
-      for (const input of access.inputs.values()) {
-        n += 1;
-        input.onmidimessage = (ev) => {
-          const [stat, d1, d2] = ev.data;
-          const kind = stat & 0xf0;
-          if (kind === 0x90 && d2 > 0) liveNoteOn(d1, d2 / 127);
-          else if (kind === 0x80 || (kind === 0x90 && d2 === 0)) liveNoteOff(d1);
-          else if (kind === 0xe0 && live) {
-            live.bend((((d2 << 7) | d1) - 8192) / 8192 * 2); // ±2 semitones
-          } else if (kind === 0xb0 && d1 === 64) {
-            // Sustain pedal = hold latch.
-            hold = d2 >= 64;
-            $("hold-btn").classList.toggle("lit", hold);
-            $("hold-btn").setAttribute("aria-pressed", String(hold));
-            if (!hold) panic();
-          } else if (kind === 0xb0 && d1 === 123) {
-            panic();
-          }
-        };
-      }
+// The protocol lives in midi.js (auto-mapping, learn, encoders, pickup, clock).
+// What stays here is what only the app knows: which notes are sounding, and
+// what the sustain pedal means for them.
+let midi = null;
+// Sustain is not the HOLD latch. HOLD keeps every note until it is switched
+// off; the pedal keeps only the notes released *while it is down*, and lifting
+// it releases exactly those. The old handler mapped the pedal onto HOLD and
+// called panic() on pedal-up, which also killed notes still under the fingers.
+let sustainPedal = false;
+const sustainedNotes = new Set();
+function midiSustain(on) {
+  sustainPedal = on;
+  if (on) return;
+  for (const n of sustainedNotes) {
+    if (live) live.noteOff(n);
+    heldNotes.delete(n);
+    paintKey(n, false);
+  }
+  sustainedNotes.clear();
+}
+
+async function bootMidi() {
+  const { createMidi } = await import(`./midi.js?v=${BUILD}`);
+  midi = createMidi({
+    noteOn: (n, v) => liveNoteOn(n, v),
+    noteOff: (n) => liveNoteOff(n),
+    bend: (semis) => live && live.bend(semis),
+    sustain: midiSustain,
+    panic: () => panic(),
+    perform: () => perform,
+    controlNames: () => [...PERFORM_CONTROLS.map((c) => c.name), "Blend", "Wander"],
+    setBpm: (bpm) => {
+      perf.bpm = Math.max(30, Math.min(300, bpm));
+      $("bpm").value = String(Math.round(perf.bpm));
+      sendArp();
+    },
+    note,
+    onDevices: (n) => {
       $("midi-ind").textContent = n > 0 ? `midi ●${n > 1 ? n : ""}` : "midi —";
       $("midi-ind").classList.toggle("on", n > 0);
-    };
-    wire();
-    access.onstatechange = wire;
-  }).catch(() => {});
+    },
+  });
+  midi.attachPanel($("midi-panel"));
+  $("midi-ind").onclick = () => midi.togglePanel();
 }
 
 // ---------- duel flow ----------

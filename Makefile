@@ -20,7 +20,7 @@ WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
 WASM_STACK := 8388608
 WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
-.PHONY: all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+.PHONY: web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop revalidate \
         wasm serve doc bundle clean \
@@ -31,7 +31,12 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 all: check
 
 ## check: everything CI runs — format, lints as errors, full test suite
-check: fmt-check lint test
+check: fmt-check lint test web-check
+
+## web-check: every web module parses, and the pure-logic modules' unit tests pass
+web-check:
+	for f in apps/web/*.js; do node --check $$f || exit 1; done
+	node --test apps/web/tests/*.test.mjs
 
 build:
 	$(CARGO) build --workspace

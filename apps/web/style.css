@@ -4228,3 +4228,27 @@ html.handheld .handheld-gate {
 @media (prefers-reduced-motion: reduce) {
   .pf-pad.flash { animation: none; }
 }
+
+/* ===================== MIDI panel ===================== */
+button.midi-ind { background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font: inherit; color: inherit; padding: 1px 4px; }
+button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairline); }
+.midi-panel {
+  position: absolute;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  width: min(420px, 92vw);
+  padding: var(--s3);
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  box-shadow: var(--lift), var(--cast);
+  font-size: var(--t-body);
+}
+.midi-h { font-family: var(--font-silk); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: var(--t-label); color: var(--silk-dim); margin-bottom: var(--s2); }
+.midi-rows { display: grid; gap: 4px; }
+.midi-row { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: var(--s2); align-items: center; }
+.midi-slot { color: var(--silk); font-family: var(--font-silk); }
+.midi-src { color: var(--phos-a-dim); font-size: var(--t-micro); }
+.midi-foot { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); color: var(--silk-dim); font-size: var(--t-micro); align-items: center; }
+.key-side.right .perf-ctl { position: relative; }

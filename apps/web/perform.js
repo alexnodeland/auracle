@@ -317,7 +317,8 @@ export function createPerform(host) {
     }
   }
 
-  function onKnob(k) {
+  function onKnob(k, fromMidi) {
+    if (!fromMidi) host.controlMoved?.(k.i);
     if (k.spec.kind === "named") {
       state.c[k.i] = k.value;
       const w = state.wire && state.wire[k.i];
@@ -496,6 +497,7 @@ export function createPerform(host) {
       if (k.spec.kind === "named") {
         k.value = 0;
         paintKnob(k);
+        host.controlMoved?.(k.i);
       }
     });
     state.glide = { from, to, t0: performance.now(), dur: Math.max(0.2, seconds) * 1000, json };
@@ -778,7 +780,14 @@ export function createPerform(host) {
       touch();
       k.value = k.spec.kind === "named" ? v01 * 2 - 1 : v01;
       paintKnob(k);
-      onKnob(k);
+      onKnob(k, true);
+    },
+    // The control's position as 0..1, what a MIDI pot is compared against
+    // for pickup.
+    getControl(i) {
+      const k = knobs[i];
+      if (!k) return 0.5;
+      return k.spec.kind === "named" ? (k.value + 1) / 2 : k.value;
     },
     pad(key) {
       ({ keep, back, offer: () => requestOffer(), take, hold: toggleHold })[key]?.();

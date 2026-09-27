@@ -187,6 +187,24 @@ jobs:
   # link that only exists once four sections are assembled, a root-absolute path
   # that works locally and 404s under the /auracle/ project subpath. All of those
   # would otherwise be found on the live site by a reader.
+  # The web app has no build step, so nothing else would notice a syntax error
+  # in one of its modules until a browser loaded it — and the worklet's is a
+  # template literal that fails silently. `node --check` on every module, and
+  # the node unit tests for the parts that are pure logic (MIDI decoding,
+  # pickup, clock tempo). Seconds, no toolchain.
+  web:
+    name: Web
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: make web-check
+
   site:
     name: Site
     needs: changes
@@ -262,7 +280,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, test, wasm, site]
+    needs: [changes, lint, test, wasm, web, site]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
