@@ -1223,6 +1223,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .hw-btn.play { color: var(--phos-a); }
 .hw-btn.play.playing { box-shadow: inset 0 0 12px rgba(142,240,177,0.25), 0 3px 0 #0a0b0d; }
+/* Its buffer is still rendering (the scope above says so). Dimmed, not
+   disabled: a press still asks for that buffer first and plays it on arrival. */
+.hw-btn.play.pending { opacity: 0.5; }
 .hw-btn.choose { color: var(--phos-b); }
 .hw-btn.small { flex: none; font-size: var(--t-micro); padding: 8px 12px; color: var(--phos-b); }
 .hw-btn:disabled { opacity: 0.45; cursor: default; }

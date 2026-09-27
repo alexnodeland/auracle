@@ -1150,6 +1150,7 @@ worker.onmessage = (e) => {
       // Anything waiting on this id has to be released, or it waits forever.
       if (m.failed || !m.buffer || m.buffer.length === 0) {
         renderFailures.set(m.id, m.reason || null);
+        onRenderArrived(m.id); // a pending scope stops sweeping and says so
         // The duel table asks for its buffers fire-and-forget (after the
         // settle delay), so nothing is polling on its behalf — without this a
         // side that cannot render is just a scope that stays blank.
@@ -1967,6 +1968,7 @@ function releaseRequest(request, id) {
     case "render":
       if (id != null) {
         renderFailures.set(id, "engine error");
+        onRenderArrived(id); // a pending scope stops sweeping and says so
         if (currentDuel && currentDuel.includes(id)) renderFailed(id, "engine error");
       }
       break;
@@ -4033,8 +4035,101 @@ function loadSide(side, id) {
   $(`readout-${side}`).textContent = "…";
   $(`style-${side}`).innerHTML = "";
   clearScope($(`scope-${side}`));
+  // Named on the deal, not when its audio lands: a pending scope saying
+  // "rendering…" under the previous candidate's name describes the wrong
+  // patch.
+  paintDuelName(side, id);
   if (renders.has(id)) onRenderArrived(id);
-  else requestPairRenders();
+  else {
+    markScopePending(side, id);
+    requestPairRenders();
+  }
+}
+
+// The card leads with a name a musician can hold onto and carry back to the
+// bank. The s-expression is engine truth, not a label — it lives under the
+// ⇄ circuit flip, where an expert can still find it.
+function paintDuelName(side, id) {
+  $(`name-${side}`).innerHTML =
+    `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
+}
+
+// A side whose buffer is on its way. The scopes used to sit as empty
+// graticules while the next pair rendered — seconds, behind a fit — which is
+// exactly what a patch that makes no sound looks like. So a pending side says
+// what is happening in the boot field's terms: the model's amber, a slow
+// sweep across the graticule, and the word. SAMPLE is dimmed, not disabled:
+// pressing it still jumps the queue for that buffer and plays it on arrival.
+const SCOPE_SWEEP_MS = 1800;
+const scopePending = { a: null, b: null }; // side -> the id it is waiting on
+let scopePendingRaf = null;
+const stillMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function markScopePending(side, id) {
+  scopePending[side] = id;
+  const btn = $(`play-${side}`);
+  btn.classList.toggle("pending", id != null);
+  if (id != null) btn.setAttribute("aria-busy", "true");
+  else btn.removeAttribute("aria-busy");
+  if (id == null) return;
+  drawPendingScope(side, performance.now());
+  if (scopePendingRaf == null && !stillMotion.matches) scopePendingRaf = requestAnimationFrame(sweepPendingScopes);
+}
+
+function sweepPendingScopes(now) {
+  scopePendingRaf = null;
+  let any = false;
+  for (const side of ["a", "b"]) {
+    const id = scopePending[side];
+    if (id == null) continue;
+    // Superseded by a new pair, or answered with a failure: nothing to sweep.
+    if (!currentDuel || currentDuel[side === "a" ? 0 : 1] !== id) {
+      markScopePending(side, null);
+      continue;
+    }
+    drawPendingScope(side, now);
+    if (!renderFailures.has(id)) any = true;
+  }
+  if (any) scopePendingRaf = requestAnimationFrame(sweepPendingScopes);
+}
+
+function drawPendingScope(side, now) {
+  const canvas = $(`scope-${side}`);
+  // Out of sight (another view, or flipped to the circuit): drawn when shown.
+  if (!canvas || !canvas.clientWidth) return;
+  const failed = renderFailures.has(scopePending[side]);
+  const ctx = scopeCtx(canvas);
+  const { width: w, height: h } = canvas;
+  const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, w, h);
+  drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.05));
+  if (!failed && !stillMotion.matches) {
+    // The line, with a short afterglow behind it, left to right.
+    const x = ((now % SCOPE_SWEEP_MS) / SCOPE_SWEEP_MS) * w;
+    const trail = Math.min(x, w * 0.16);
+    if (trail > 0) {
+      const glow = ctx.createLinearGradient(x - trail, 0, x, 0);
+      glow.addColorStop(0, inkAlpha(INK.amber, 0));
+      glow.addColorStop(1, inkAlpha(INK.amber, 0.1));
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - trail, 0, trail, h);
+    }
+    ctx.strokeStyle = inkAlpha(INK.amber, 0.75);
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.shadowColor = INK.amber;
+    ctx.shadowBlur = 8 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.fillStyle = failed ? INK.silkDim : INK.amberDim;
+  ctx.font = `${11 * dpr}px ${getComputedStyle(document.body).getPropertyValue("--font-mono") || "monospace"}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(failed ? "no audio for this one" : "rendering…", w / 2, h / 2);
+  ctx.textBaseline = "alphabetic";
 }
 
 function redrawDuelScopes() {
@@ -4050,13 +4145,15 @@ function onRenderArrived(id) {
   const r = renders.get(id);
   // The render may not have arrived yet — switching views calls this
   // speculatively. Missing is normal; throwing here used to abort the rest of
-  // `showView`, leaving the scopes unsized at 0×0 until the next duel.
-  if (!r) return;
-  // The card leads with a name a musician can hold onto and carry back to the
-  // bank. The s-expression is engine truth, not a label — it lives under the
-  // ⇄ circuit flip, where an expert can still find it.
-  $(`name-${side}`).innerHTML =
-    `${esc(nameOf(id))}<span class="dn-id">#${id}</span><span class="dn-sig mono">${esc(sigOf(id))}</span>`;
+  // `showView`, leaving the scopes unsized at 0×0 until the next duel. The
+  // pending sweep is redrawn, though: showing the view resizes the canvas,
+  // which clears it.
+  if (!r) {
+    if (scopePending[side] === id) drawPendingScope(side, performance.now());
+    return;
+  }
+  markScopePending(side, null);
+  paintDuelName(side, id);
   $(`readout-${side}`).textContent = r.sexpr;
   styleBadge($(`style-${side}`), r.bestStyle);
   drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
