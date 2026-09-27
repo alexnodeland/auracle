@@ -3886,7 +3886,8 @@ if (new URLSearchParams(location.search).has("film")) {
   // The film's sound is the page's whole output: the master bus, where the
   // voices and every audition meet (▶ in the bank, the duel, the node bank's
   // preview). The ● rec take taps the voices alone, which left a film silent
-  // wherever it showed an audition. The take downloads as a ● rec take does.
+  // wherever it showed an audition. The capture downloads quietly under its
+  // own name, so a ● rec take pressed on camera is never mistaken for it.
   // Its own flag, not the ● rec button's: a film may press ● rec on camera,
   // and that press must start a take whether or not the film is capturing.
   let tap = null;
@@ -3902,7 +3903,7 @@ if (new URLSearchParams(location.search).has("film")) {
         master.connect(tap);
         tap.connect(mute).connect(audioCtx.destination);
         tap.port.onmessage = (e) => {
-          if (e.data.type === "tap_done" && e.data.samples.length) downloadWav(e.data.samples, e.data.sampleRate, { quiet: true });
+          if (e.data.type === "tap_done" && e.data.samples.length) downloadWav(e.data.samples, e.data.sampleRate, { quiet: true, name: "film-capture" });
         };
       }
       tap.port.postMessage({ type: tapping ? "on" : "off" });
@@ -3919,7 +3920,7 @@ if (new URLSearchParams(location.search).has("film")) {
   };
 }
 
-function downloadWav(samples, sampleRate, { quiet = false } = {}) {
+function downloadWav(samples, sampleRate, { quiet = false, name = null } = {}) {
   // Interleaved stereo float → 16-bit PCM WAV.
   const nFrames = samples.length / 2;
   const buf = new ArrayBuffer(44 + samples.length * 2);
@@ -3943,7 +3944,7 @@ function downloadWav(samples, sampleRate, { quiet = false } = {}) {
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
-  const who = (liveLabelText || "take").replace(/[^\w-]+/g, "_").slice(0, 32);
+  const who = name || (liveLabelText || "take").replace(/[^\w-]+/g, "_").slice(0, 32);
   a.download = `auracle-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);

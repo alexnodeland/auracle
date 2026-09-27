@@ -14,17 +14,16 @@
 // Picture: Chromium's screencast, JPEG q92, every frame the page paints, with
 // its own timestamp; resampled to a constant 30 fps by time, not by count, so
 // a dropped paint repeats a frame instead of shortening the clip. Sound: the
-// app's own recorder (the same bounce as the ● rec button), started through
-// the capture hook so no toast lands in the shot. Both are stamped in wall
-// time, and the offset between them is written beside the clip.
+// app's master bus, tapped through the ?film capture hook (main.js), so the
+// voices and every audition are in it (▶ on a bank row, the duels, the node
+// bank's preview, space), and no toast lands in the shot. Both are stamped in
+// wall time, and the offset between them is written beside the clip.
 //
-// Only the recorder's `.wav` is the shot's sound: a download the shot itself
-// starts (an export: .auracle.json, .png, .svg, a taste profile) is kept
-// beside the clip in ID.dl/ and listed in the sidecar. Because the recorder
-// IS the ● rec button's buffer, ● rec cannot be pressed on camera — the press
-// would end the capture. Show what a take leaves (its toast), not the press.
-// Auditions (▶ on a bank row, the commit duel, the node bank's preview,
-// space) play outside the voices the recorder taps, so they are not in it.
+// Only the capture (auracle-film-capture.wav) is the shot's sound: any other
+// download the shot starts (an export: .auracle.json, .png, .svg, a taste
+// profile, a ● rec take) is kept beside the clip in ID.dl/ and listed in the
+// sidecar. The capture has its own switch, so ● rec can be pressed on camera:
+// the take it makes, and its "saved … take" toast, are the app's own.
 //
 // A rehearsal (`--dry`) runs every shot's set-up and actions against the live
 // app at their times, and records neither picture nor sound. It saves a
@@ -118,9 +117,8 @@
 //                                       nearest a time (`start: "clock2:start"`)
 //     {start: true} | {stop: true} | {bytes: [0xB0, 74, 64]}
 //   seq {steps}                         steps in order, as one action
-//   rec {on: false}                     stop the shot's capture now: its take downloads and
-//                                       the app says "saved … take" on camera (the result of
-//                                       ● rec without the press); the shot's sound ends here
+//   rec {on: false}                     stop the shot's capture now: the shot's sound ends
+//                                       here (quietly; to show a take, press ● rec on camera)
 //   eval {js}                           run js in the page
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
@@ -561,8 +559,7 @@ async function step(page, s, ctx = {}) {
       for (const x of s.steps) await step(page, x, ctx);
       return;
     case "rec":
-      // Stop the shot's capture now: its take downloads, and the app says so
-      // ("saved … take") on camera. The shot's sound ends here.
+      // Stop the shot's capture now, quietly. The shot's sound ends here.
       if (s.on !== false) throw new Error("rec: only {on: false} (stop the capture mid-shot)");
       if (ctx.stopCapture) return ctx.stopCapture();
       return;
@@ -630,8 +627,7 @@ async function shoot(browser, port, shot, ff) {
   }
   if (snap) await snap("start");
 
-  // Every download the shot starts; only the recorder's .wav after the stop
-  // is its sound.
+  // Every download the shot starts; only the capture is its sound.
   const downloads = [];
   let t0 = null;
   page.on("download", (d) => downloads.push({ t: t0 == null ? null : +(Date.now() / 1000 - t0).toFixed(2), name: d.suggestedFilename(), d }));
@@ -657,16 +653,19 @@ async function shoot(browser, port, shot, ff) {
       }
     });
   }
-  // The sound: the app's recorder, from here to the end (or to a `rec`
-  // action). A rehearsal runs it only for a shot that stops it on camera, so
-  // the take's toast shows up there too.
+  // The sound: the master-bus capture, from here to the end (or to a `rec`
+  // action). A rehearsal runs it only for a shot that stops it mid-shot.
   const usesRec = (list) => (list || []).some((a) => a.op === "rec" || (a.op === "seq" && usesRec(a.steps)));
+  let hooked = false; // the ?film capture hook; else the ● rec button's own take
   if (!DRY || usesRec(shot.actions)) {
-    recAt = await page.evaluate(() => {
+    [recAt, hooked] = await page.evaluate(() => {
       const t = (performance.timeOrigin + performance.now()) / 1000;
-      if (window.__film?.rec) window.__film.rec(true);
-      else document.getElementById("rec-btn").click();
-      return t;
+      if (window.__film?.rec) {
+        window.__film.rec(true);
+        return [t, true];
+      }
+      document.getElementById("rec-btn").click();
+      return [t, false];
     });
   }
   if (cdp) await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: W * (spec.dpr || 1), maxHeight: H * (spec.dpr || 1), everyNthFrame: 1 });
@@ -759,9 +758,11 @@ async function shoot(browser, port, shot, ff) {
       else document.getElementById("rec-btn").click();
     });
   }
+  // The capture, by its name; without the hook, the ● rec take the click
+  // above ended.
   let take = null;
   for (let i = 0; i < 1200 && !take; i++) {
-    take = downloads.slice(k).find((x) => /\.wav$/i.test(x.name));
+    take = hooked ? downloads.find((x) => x.name === "auracle-film-capture.wav") : downloads.slice(k).find((x) => /\.wav$/i.test(x.name));
     if (!take) await sleep(100);
   }
   await saveMid(downloads.filter((x) => x !== take));

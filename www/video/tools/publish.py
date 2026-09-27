@@ -106,13 +106,20 @@ def main():
         for ext, p in files.items():
             shutil.copy2(p, os.path.join(DEST, f"{f}.{ext}"))
         make_loop(f, files["mp4"])
-        names = CHAPTER_NAMES.get(f, {})
+        # A film with names lists exactly its chapters, so a chapter can open
+        # on a wordless turn (its card) and the demo after it stays inside it.
+        # Without names, every beat that speaks is a chapter.
+        names = CHAPTER_NAMES.get(f)
         chapters = []
         for b in tl["beats"]:
-            lines = [l for l in tl["lines"] if l["beat"] == b["id"]]
-            if not lines:
+            if names is not None:
+                if b["id"] not in names:
+                    continue
+                name = names[b["id"]]
+            elif any(l["beat"] == b["id"] for l in tl["lines"]):
+                name = b["id"].replace("_", " ").capitalize()
+            else:
                 continue
-            name = names.get(b["id"]) or b["id"].replace("_", " ").capitalize()
             chapters.append({"t": round(b["t0"], 2), "name": name})
         reg[f] = {
             "title": script["title"],
