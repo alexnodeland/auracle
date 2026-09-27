@@ -1,0 +1,202 @@
+{
+ "film": "perform",
+ "fps": 30,
+ "duration": 120.0,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "intro",
+   "t0": 0.0,
+   "t1": 10.88,
+   "music": "loop_a"
+  },
+  {
+   "id": "keys",
+   "t0": 11.429,
+   "t1": 20.909,
+   "music": null
+  },
+  {
+   "id": "named",
+   "t0": 21.429,
+   "t1": 41.779,
+   "music": null
+  },
+  {
+   "id": "hood",
+   "t0": 42.143,
+   "t1": 59.008,
+   "music": null
+  },
+  {
+   "id": "xy",
+   "t0": 59.286,
+   "t1": 63.458,
+   "music": null
+  },
+  {
+   "id": "wander",
+   "t0": 63.571,
+   "t1": 76.093,
+   "music": "loop_b"
+  },
+  {
+   "id": "offer",
+   "t0": 76.429,
+   "t1": 87.907,
+   "music": null
+  },
+  {
+   "id": "take",
+   "t0": 88.571,
+   "t1": 100.53,
+   "music": null
+  },
+  {
+   "id": "keep",
+   "t0": 100.714,
+   "t1": 106.642,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 107.143,
+   "t1": 120.0,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "intro1",
+   "text": "PERFORM is where you play Auracle.",
+   "beat": "intro",
+   "t0": 1.5,
+   "t1": 3.682
+  },
+  {
+   "id": "intro2",
+   "text": "Everything in it is built for your hands, so nothing in it ever stops the music.",
+   "beat": "intro",
+   "t0": 4.182,
+   "t1": 10.18
+  },
+  {
+   "id": "keys1",
+   "text": "Play it from your computer keyboard, or plug in any MIDI controller.",
+   "beat": "keys",
+   "t0": 11.729,
+   "t1": 16.272
+  },
+  {
+   "id": "keys2",
+   "text": "The first eight knobs you turn claim the eight controls.",
+   "beat": "keys",
+   "t0": 16.672,
+   "t1": 20.309
+  },
+  {
+   "id": "named1",
+   "text": "The six controls are named for what you hear: Bright, Snap, Motion, Body, Grit, and Space.",
+   "beat": "named",
+   "t0": 21.729,
+   "t1": 28.747
+  },
+  {
+   "id": "named2",
+   "text": "None of them is fixed to a knob. For each patch, Auracle measures what every knob does to the sound, and wires each control to the knobs that do the work.",
+   "beat": "named",
+   "t0": 29.247,
+   "t1": 41.179
+  },
+  {
+   "id": "hood1",
+   "text": "Turn one, and the strip underneath shows the real knobs it's moving.",
+   "beat": "hood",
+   "t0": 42.443,
+   "t1": 46.986
+  },
+  {
+   "id": "hood2",
+   "text": "If a patch can't honestly do what a control says, the control turns amber. Turn it anyway, and Auracle adds what's missing, or grows a version that can.",
+   "beat": "hood",
+   "t0": 47.386,
+   "t1": 58.408
+  },
+  {
+   "id": "xy1",
+   "text": "The XY pad puts two controls under one finger.",
+   "beat": "xy",
+   "t0": 59.586,
+   "t1": 62.858
+  },
+  {
+   "id": "wander1",
+   "text": "Wander lets the model play along.",
+   "beat": "wander",
+   "t0": 63.871,
+   "t1": 66.053
+  },
+  {
+   "id": "wander2",
+   "text": "A little, and it offers ideas. More, and it drifts the knobs toward what you like. All the way, and it roams.",
+   "beat": "wander",
+   "t0": 66.353,
+   "t1": 75.493
+  },
+  {
+   "id": "offer1",
+   "text": "Press Offer, and a new version of what you're playing grows in slot B.",
+   "beat": "offer",
+   "t0": 76.729,
+   "t1": 81.999
+  },
+  {
+   "id": "offer2",
+   "text": "Hold Peek to hear it, or turn Blend to move between the two.",
+   "beat": "offer",
+   "t0": 82.399,
+   "t1": 87.307
+  },
+  {
+   "id": "take1",
+   "text": "Take it, and it becomes your sound. Ask for another, and that's a pass.",
+   "beat": "take",
+   "t0": 88.871,
+   "t1": 94.622
+  },
+  {
+   "id": "take2",
+   "text": "Once you've heard an offer, either answer teaches the model what you like.",
+   "beat": "take",
+   "t0": 95.022,
+   "t1": 99.93
+  },
+  {
+   "id": "keep1",
+   "text": "Keep marks where you are. Back returns to the last sound you kept.",
+   "beat": "keep",
+   "t0": 101.014,
+   "t1": 106.042
+  },
+  {
+   "id": "outro1",
+   "text": "That's the loop: play, turn, offer.",
+   "beat": "outro",
+   "t0": 107.543,
+   "t1": 110.385
+  },
+  {
+   "id": "outro2",
+   "text": "And the circuit is always one tab away, in PATCH.",
+   "beat": "outro",
+   "t0": 110.885,
+   "t1": 114.701
+  }
+ ],
+ "cues": {}
+}

@@ -1,0 +1,99 @@
+{
+  "film": "launch",
+  "title": "Auracle",
+  "description": "The launch film: what Auracle is, what it feels like to play, and what is underneath.",
+  "fps": 30,
+  "voice": { "voice": "af_heart", "speed": 1.0 },
+  "music": { "bed": "signal", "bpm": 100, "meter": 4 },
+  "beats": [
+    {
+      "id": "open",
+      "music": "intro",
+      "lead": 2.4,
+      "tail": 0.6,
+      "lines": [
+        { "id": "open1", "text": "Every synthesizer has a sound in it that's yours.", "post": 0.7 },
+        { "id": "open2", "text": "Finding it means turning hundreds of knobs, one at a time.", "post": 0.4 }
+      ]
+    },
+    {
+      "id": "title",
+      "music": "build",
+      "lead": 1.2,
+      "tail": 1.0,
+      "lines": [
+        { "id": "title1", "text": "Auracle is a synthesizer that searches for your sound.", "post": 0.2 }
+      ]
+    },
+    {
+      "id": "duel",
+      "snap": "beat",
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        { "id": "duel1", "text": "It plays you two patches. You pick the one you like better.", "post": 0.5 },
+        { "id": "duel2", "text": "Every pick teaches it your taste,", "post": 0.15 }
+      ]
+    },
+    {
+      "id": "grow",
+      "snap": "none",
+      "lead": 0.0,
+      "tail": 0.6,
+      "lines": [
+        { "id": "grow1", "text": "and it grows new patches toward it.", "post": 0.5 },
+        { "id": "grow2", "text": "Not samples. Real modular circuits, built and wired from scratch.", "post": 0.2 }
+      ]
+    },
+    {
+      "id": "play",
+      "music": "main_a",
+      "lead": 0.6,
+      "tail": 0.4,
+      "lines": [
+        { "id": "play1", "text": "Then you play it.", "post": 0.9 },
+        { "id": "play2", "text": "Turn Bright, and it finds the knobs that make this patch brighter.", "post": 0.8 },
+        { "id": "play3", "text": "Let it wander, and the knobs turn themselves toward your taste.", "post": 0.3 }
+      ]
+    },
+    {
+      "id": "offer",
+      "music": "main_b",
+      "lead": 0.4,
+      "tail": 0.6,
+      "lines": [
+        { "id": "offer1", "text": "Press Offer, and a new version grows from the sound in your hands.", "post": 0.7 },
+        { "id": "offer2", "text": "Blend into it. Take it, or pass. Either way, it learns.", "post": 0.3 }
+      ]
+    },
+    {
+      "id": "depth",
+      "music": "breakdown",
+      "lead": 0.5,
+      "tail": 0.5,
+      "lines": [
+        { "id": "depth1", "text": "Open the circuit any time. Every knob is real, and you can watch the performance turn them.", "post": 0.7 },
+        { "id": "depth2", "text": "Underneath, a model of your taste bets on every choice before you make it, and keeps score in public.", "post": 0.3 }
+      ]
+    },
+    {
+      "id": "close",
+      "music": "finale",
+      "lead": 1.0,
+      "tail": 0.8,
+      "lines": [
+        { "id": "close1", "text": "Every note in this film is Auracle.", "post": 1.0 },
+        { "id": "close2", "text": "Free, open source, and running in your browser.", "post": 0.3 }
+      ]
+    },
+    {
+      "id": "end",
+      "music": "sting",
+      "lead": 0.3,
+      "tail": 3.2,
+      "lines": [
+        { "id": "end1", "text": "Play it today.", "post": 0.0 }
+      ]
+    }
+  ]
+}

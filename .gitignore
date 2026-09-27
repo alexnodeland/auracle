@@ -41,3 +41,8 @@ www/docs/src/img/
 # The browser smoke test's run output (tests/web).
 test-results/
 playwright-report/
+
+# Film renders: frames, clips, mixes and drafts. Only finished films are
+# published, into www/landing/assets/film/ (see www/video/README.md).
+www/video/out/
+__pycache__/

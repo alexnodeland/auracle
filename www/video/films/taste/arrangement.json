@@ -1,0 +1,18 @@
+{
+ "film": "taste",
+ "bpm": 84,
+ "meter": 4,
+ "bed": "study",
+ "sections": [
+  {
+   "section": "loop_a",
+   "bars": 16,
+   "t0": 0.0
+  },
+  {
+   "section": "loop_b",
+   "bars": 29,
+   "t0": 45.714
+  }
+ ]
+}

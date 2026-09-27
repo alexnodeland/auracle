@@ -1,0 +1,189 @@
+{
+ "film": "launch",
+ "fps": 30,
+ "duration": 93.6,
+ "grid": {
+  "bpm": 100,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "open",
+   "t0": 0.0,
+   "t1": 11.553,
+   "music": "intro"
+  },
+  {
+   "id": "title",
+   "t0": 12.0,
+   "t1": 17.673,
+   "music": "build"
+  },
+  {
+   "id": "duel",
+   "t0": 18.0,
+   "t1": 26.275,
+   "music": null
+  },
+  {
+   "id": "grow",
+   "t0": 26.275,
+   "t1": 34.237,
+   "music": null
+  },
+  {
+   "id": "play",
+   "t0": 36.0,
+   "t1": 49.178,
+   "music": "main_a"
+  },
+  {
+   "id": "offer",
+   "t0": 50.4,
+   "t1": 62.267,
+   "music": "main_b"
+  },
+  {
+   "id": "depth",
+   "t0": 62.4,
+   "t1": 78.331,
+   "music": "breakdown"
+  },
+  {
+   "id": "close",
+   "t0": 79.2,
+   "t1": 88.115,
+   "music": "finale"
+  },
+  {
+   "id": "end",
+   "t0": 88.8,
+   "t1": 93.6,
+   "music": "sting"
+  }
+ ],
+ "lines": [
+  {
+   "id": "open1",
+   "text": "Every synthesizer has a sound in it that's yours.",
+   "beat": "open",
+   "t0": 2.4,
+   "t1": 5.673
+  },
+  {
+   "id": "open2",
+   "text": "Finding it means turning hundreds of knobs, one at a time.",
+   "beat": "open",
+   "t0": 6.373,
+   "t1": 10.553
+  },
+  {
+   "id": "title1",
+   "text": "Auracle is a synthesizer that searches for your sound.",
+   "beat": "title",
+   "t0": 13.2,
+   "t1": 16.473
+  },
+  {
+   "id": "duel1",
+   "text": "It plays you two patches. You pick the one you like better.",
+   "beat": "duel",
+   "t0": 18.3,
+   "t1": 22.964
+  },
+  {
+   "id": "duel2",
+   "text": "Every pick teaches it your taste,",
+   "beat": "duel",
+   "t0": 23.464,
+   "t1": 25.825
+  },
+  {
+   "id": "grow1",
+   "text": "and it grows new patches toward it.",
+   "beat": "grow",
+   "t0": 26.275,
+   "t1": 28.821
+  },
+  {
+   "id": "grow2",
+   "text": "Not samples. Real modular circuits, built and wired from scratch.",
+   "beat": "grow",
+   "t0": 29.321,
+   "t1": 33.437
+  },
+  {
+   "id": "play1",
+   "text": "Then you play it.",
+   "beat": "play",
+   "t0": 36.6,
+   "t1": 38.055
+  },
+  {
+   "id": "play2",
+   "text": "Turn Bright, and it finds the knobs that make this patch brighter.",
+   "beat": "play",
+   "t0": 38.955,
+   "t1": 43.498
+  },
+  {
+   "id": "play3",
+   "text": "Let it wander, and the knobs turn themselves toward your taste.",
+   "beat": "play",
+   "t0": 44.298,
+   "t1": 48.478
+  },
+  {
+   "id": "offer1",
+   "text": "Press Offer, and a new version grows from the sound in your hands.",
+   "beat": "offer",
+   "t0": 50.8,
+   "t1": 55.707
+  },
+  {
+   "id": "offer2",
+   "text": "Blend into it. Take it, or pass. Either way, it learns.",
+   "beat": "offer",
+   "t0": 56.407,
+   "t1": 61.367
+  },
+  {
+   "id": "depth1",
+   "text": "Open the circuit any time. Every knob is real, and you can watch the performance turn them.",
+   "beat": "depth",
+   "t0": 62.9,
+   "t1": 69.562
+  },
+  {
+   "id": "depth2",
+   "text": "Underneath, a model of your taste bets on every choice before you make it, and keeps score in public.",
+   "beat": "depth",
+   "t0": 70.262,
+   "t1": 77.531
+  },
+  {
+   "id": "close1",
+   "text": "Every note in this film is Auracle.",
+   "beat": "close",
+   "t0": 80.2,
+   "t1": 82.745
+  },
+  {
+   "id": "close2",
+   "text": "Free, open source, and running in your browser.",
+   "beat": "close",
+   "t0": 83.745,
+   "t1": 87.015
+  },
+  {
+   "id": "end1",
+   "text": "Play it today.",
+   "beat": "end",
+   "t0": 89.1,
+   "t1": 90.191
+  }
+ ],
+ "cues": {}
+}

@@ -3593,6 +3593,19 @@ $("rec-btn").onclick = () => {
   if (recording) note("recording — play something; stop to download the take");
 };
 
+// The film pipeline (www/video/tools/footage.mjs) records the instrument's
+// own sound for a walkthrough without the ● rec button's toast landing in the
+// shot. Present only on `?film`; the take downloads exactly as a rec does.
+if (new URLSearchParams(location.search).has("film")) {
+  window.__film = {
+    rec(on) {
+      if (!live) return;
+      recording = !!on;
+      live.rec(recording);
+    },
+  };
+}
+
 function downloadWav(samples, sampleRate) {
   // Interleaved stereo float → 16-bit PCM WAV.
   const nFrames = samples.length / 2;

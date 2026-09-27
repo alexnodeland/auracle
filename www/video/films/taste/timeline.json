@@ -1,0 +1,195 @@
+{
+ "film": "taste",
+ "fps": 30,
+ "duration": 128.571,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "hook",
+   "t0": 0.0,
+   "t1": 13.282,
+   "music": "loop_a"
+  },
+  {
+   "id": "hears",
+   "t0": 13.571,
+   "t1": 33.342,
+   "music": null
+  },
+  {
+   "id": "evidence",
+   "t0": 33.571,
+   "t1": 45.653,
+   "music": null
+  },
+  {
+   "id": "posterior",
+   "t0": 45.714,
+   "t1": 55.738,
+   "music": "loop_b"
+  },
+  {
+   "id": "lenses",
+   "t0": 56.429,
+   "t1": 68.754,
+   "music": null
+  },
+  {
+   "id": "forecast",
+   "t0": 69.286,
+   "t1": 83.906,
+   "music": null
+  },
+  {
+   "id": "search",
+   "t0": 84.286,
+   "t1": 98.366,
+   "music": null
+  },
+  {
+   "id": "reading",
+   "t0": 98.571,
+   "t1": 108.495,
+   "music": null
+  },
+  {
+   "id": "playing",
+   "t0": 108.571,
+   "t1": 117.584,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 117.857,
+   "t1": 128.571,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "hook1",
+   "text": "You know which of two sounds you prefer long before you can say why.",
+   "beat": "hook",
+   "t0": 1.6,
+   "t1": 6.691
+  },
+  {
+   "id": "hook2",
+   "text": "So Auracle never asks you to describe a sound. It asks you to choose.",
+   "beat": "hook",
+   "t0": 7.191,
+   "t1": 12.582
+  },
+  {
+   "id": "hears1",
+   "text": "Behind every choice, it listens for the things you hear: how bright a sound is, how noisy, how it starts, and how fast it moves.",
+   "beat": "hears",
+   "t0": 13.871,
+   "t1": 23.982
+  },
+  {
+   "id": "hears2",
+   "text": "That's eighteen measurements of every patch's sound, all from the same short phrase, and twenty-six more of how the patch is built.",
+   "beat": "hears",
+   "t0": 24.382,
+   "t1": 32.742
+  },
+  {
+   "id": "evidence1",
+   "text": "Each pick is evidence: you liked this set of measurements more than that one.",
+   "beat": "evidence",
+   "t0": 33.871,
+   "t1": 39.262
+  },
+  {
+   "id": "evidence2",
+   "text": "Many tastes could explain one pick. A few picks rule most of them out.",
+   "beat": "evidence",
+   "t0": 39.662,
+   "t1": 45.053
+  },
+  {
+   "id": "posterior1",
+   "text": "Auracle keeps every taste that still fits, weighted by how well it fits.",
+   "beat": "posterior",
+   "t0": 46.014,
+   "t1": 50.922
+  },
+  {
+   "id": "posterior2",
+   "text": "With every answer, that cloud of possible tastes draws tighter.",
+   "beat": "posterior",
+   "t0": 51.322,
+   "t1": 55.138
+  },
+  {
+   "id": "lenses1",
+   "text": "And taste isn't one direction. You can love dark drones and bright plucks.",
+   "beat": "lenses",
+   "t0": 56.729,
+   "t1": 61.756
+  },
+  {
+   "id": "lenses2",
+   "text": "So the model keeps several lenses, and a sound only has to please one of them.",
+   "beat": "lenses",
+   "t0": 62.156,
+   "t1": 68.154
+  },
+  {
+   "id": "forecast1",
+   "text": "Before every duel, it writes down a forecast. Afterwards, it checks.",
+   "beat": "forecast",
+   "t0": 69.586,
+   "t1": 74.246
+  },
+  {
+   "id": "forecast2",
+   "text": "The TRUST view shows how honest those forecasts have been, even when the answer is: no better than a coin flip, yet.",
+   "beat": "forecast",
+   "t0": 74.646,
+   "t1": 83.306
+  },
+  {
+   "id": "search1",
+   "text": "Then it searches. Evolution proposes new patches from a grammar of modules, and your taste tilts every proposal toward what you'll like.",
+   "beat": "search",
+   "t0": 84.586,
+   "t1": 93.066
+  },
+  {
+   "id": "search2",
+   "text": "Thousands are heard silently. Only the best few ever reach you.",
+   "beat": "search",
+   "t0": 93.466,
+   "t1": 97.766
+  },
+  {
+   "id": "reading1",
+   "text": "You can read what it learned: a map of every patch you've heard, the styles it found, and each direction with its uncertainty.",
+   "beat": "reading",
+   "t0": 98.871,
+   "t1": 107.895
+  },
+  {
+   "id": "playing1",
+   "text": "And when you play, it keeps listening. An offer you hear, then take or pass, counts just like a duel.",
+   "beat": "playing",
+   "t0": 108.871,
+   "t1": 116.984
+  },
+  {
+   "id": "outro1",
+   "text": "Your taste, learned in the open. And it never leaves your browser.",
+   "beat": "outro",
+   "t0": 118.257,
+   "t1": 123.101
+  }
+ ],
+ "cues": {}
+}

@@ -1,0 +1,43 @@
+{
+ "film": "launch",
+ "bpm": 100,
+ "meter": 4,
+ "bed": "signal",
+ "sections": [
+  {
+   "section": "intro",
+   "bars": 5,
+   "t0": 0.0
+  },
+  {
+   "section": "build",
+   "bars": 10,
+   "t0": 12.0
+  },
+  {
+   "section": "main_a",
+   "bars": 6,
+   "t0": 36.0
+  },
+  {
+   "section": "main_b",
+   "bars": 5,
+   "t0": 50.4
+  },
+  {
+   "section": "breakdown",
+   "bars": 7,
+   "t0": 62.4
+  },
+  {
+   "section": "finale",
+   "bars": 4,
+   "t0": 79.2
+  },
+  {
+   "section": "sting",
+   "bars": 2,
+   "t0": 88.8
+  }
+ ]
+}

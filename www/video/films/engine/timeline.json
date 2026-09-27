@@ -1,0 +1,194 @@
+{
+ "film": "engine",
+ "fps": 30,
+ "duration": 131.429,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "intro",
+   "t0": 0.0,
+   "t1": 11.687,
+   "music": "loop_a"
+  },
+  {
+   "id": "genome",
+   "t0": 12.143,
+   "t1": 26.286,
+   "music": null
+  },
+  {
+   "id": "compile",
+   "t0": 26.429,
+   "t1": 35.145,
+   "music": null
+  },
+  {
+   "id": "audition",
+   "t0": 35.714,
+   "t1": 43.7,
+   "music": null
+  },
+  {
+   "id": "features",
+   "t0": 44.286,
+   "t1": 57.846,
+   "music": null
+  },
+  {
+   "id": "utility",
+   "t0": 57.857,
+   "t1": 72.724,
+   "music": "loop_b"
+  },
+  {
+   "id": "calibration",
+   "t0": 72.857,
+   "t1": 81.39,
+   "music": null
+  },
+  {
+   "id": "search",
+   "t0": 81.429,
+   "t1": 93.023,
+   "music": null
+  },
+  {
+   "id": "perform",
+   "t0": 93.571,
+   "t1": 109.413,
+   "music": null
+  },
+  {
+   "id": "runtime",
+   "t0": 110.0,
+   "t1": 119.44,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 120.0,
+   "t1": 131.429,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "intro1",
+   "text": "Auracle is a Rust workspace of five crates, compiled to WebAssembly.",
+   "beat": "intro",
+   "t0": 1.5,
+   "t1": 5.68
+  },
+  {
+   "id": "intro2",
+   "text": "Here's how a patch becomes a sound, and a choice becomes a model.",
+   "beat": "intro",
+   "t0": 6.08,
+   "t1": 10.987
+  },
+  {
+   "id": "genome1",
+   "text": "A patch is a term in a typed grammar: a probabilistic program over modules.",
+   "beat": "genome",
+   "t0": 12.443,
+   "t1": 17.834
+  },
+  {
+   "id": "genome2",
+   "text": "Every knob and every structural choice has a trace address, so a whole patch is one draw from a prior.",
+   "beat": "genome",
+   "t0": 18.234,
+   "t1": 25.686
+  },
+  {
+   "id": "compile1",
+   "text": "It compiles to a quiver signal graph, which runs one sample at a time with no allocation on the audio path.",
+   "beat": "compile",
+   "t0": 26.729,
+   "t1": 34.545
+  },
+  {
+   "id": "audition1",
+   "text": "Every candidate plays the same standard phrase, loudness-normalized, through a vetting gate that rejects silence, clipping and DC.",
+   "beat": "audition",
+   "t0": 36.014,
+   "t1": 43.1
+  },
+  {
+   "id": "features1",
+   "text": "From that phrase come eighteen perceptual features, from brightness and noisiness to envelope shape and three bands of modulation rate. Twenty-six structural ones come from the patch itself, and every one is standardized.",
+   "beat": "features",
+   "t0": 44.586,
+   "t1": 57.246
+  },
+  {
+   "id": "utility1",
+   "text": "Taste is a utility: the maximum over a few linear experts on those features.",
+   "beat": "utility",
+   "t0": 58.157,
+   "t1": 63.548
+  },
+  {
+   "id": "utility2",
+   "text": "Duels, heard edits and self-reports each have their own likelihood, and the posterior is a Laplace approximation, refitted as answers arrive.",
+   "beat": "utility",
+   "t0": 63.948,
+   "t1": 72.124
+  },
+  {
+   "id": "calibration1",
+   "text": "Every duel is forecast before it's answered, and scored with a proper scoring rule, separately for each kind of evidence.",
+   "beat": "calibration",
+   "t0": 73.157,
+   "t1": 80.79
+  },
+  {
+   "id": "search1",
+   "text": "Search targets a Boltzmann distribution: the grammar's prior, tilted by expected utility.",
+   "beat": "search",
+   "t0": 81.729,
+   "t1": 86.572
+  },
+  {
+   "id": "search2",
+   "text": "Refinement is Metropolis-Hastings on the trace, through fugue-evo, and a lock is exact conditioning.",
+   "beat": "search",
+   "t0": 86.972,
+   "t1": 92.423
+  },
+  {
+   "id": "perform1",
+   "text": "PERFORM's named controls are fixed directions in that standardized space of sound.",
+   "beat": "perform",
+   "t0": 93.871,
+   "t1": 98.235
+  },
+  {
+   "id": "perform2",
+   "text": "For each patch, a finite-difference Jacobian and a ridge solve wire each one to the knobs, and every half of every control is checked on real renders.",
+   "beat": "perform",
+   "t0": 98.635,
+   "t1": 108.813
+  },
+  {
+   "id": "runtime1",
+   "text": "In the browser, the engine runs in a worker, the voices in an AudioWorklet, and a render farm featurizes candidates in parallel.",
+   "beat": "runtime",
+   "t0": 110.3,
+   "t1": 118.84
+  },
+  {
+   "id": "outro1",
+   "text": "Every claim here has a measurement behind it, in the reference. Read it, run it, and change it.",
+   "beat": "outro",
+   "t0": 120.4,
+   "t1": 127.785
+  }
+ ],
+ "cues": {}
+}
