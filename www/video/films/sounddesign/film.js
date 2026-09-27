@@ -12,7 +12,8 @@
 // - evolve: the ⚡ press is on camera; the beat cuts to the benched child.
 // - The spec card fills the strip under the rack (#spec-dock), not #nb-spec.
 // - chains: Ask The Dice's filter slot is `.jack[data-modkey='node']` (a mod
-//   socket is keyed by its owner).
+//   socket is keyed by its owner); the slew is dropped on it, where the mod
+//   env already is, and the callout points at the slew that now holds it.
 // - open3 turns the resonance on "updates", so the guess moves on camera.
 // - commit: ▶ plays "the original" and "your edit" by name (the sides are
 //   shuffled); auditions are not in the recorded sound (see footage.mjs).
@@ -97,7 +98,7 @@ export async function build(stage) {
           { at: "chains2:sample", until: "chains3", mark: "rand", side: "bottom", dx: -40, dy: 110, text: "sample and hold" },
           { at: "chains2:quantizer", until: "chains3", mark: "quantize", side: "bottom", dx: 40, dy: 110, text: "quantize: root A · minor" },
           { at: "chains2:slew", until: "chains3", mark: "slew", side: "top", dx: 40, dy: -90, text: "slew" },
-          { at: "chains4:wraps", mark: "wrapped", side: "top", dx: 60, dy: -90, text: "wrapped, not replaced" },
+          { at: "chains4:wraps+0.2", mark: "wrapped", side: "top", dx: 60, dy: -90, text: "wrapped, not replaced" },
         ],
       },
       {

@@ -7,10 +7,12 @@
 // `aim(z, x, y)` centres the camera on a point of the 1920×1080 app.
 //
 // Where this departs from storyboard.md, because the app does otherwise:
-// - Every shot is one seeded session (shots.json `init`): the same pool, the
-//   same warm-start cards, near-identical PERFORM wiring. On Glass Pad, Grit is
-//   a search control in every seeded run (turning it grows an offer), so no
-//   beat turns Grit; Snap and Motion reach upward, so nudges go up and back.
+// - Every shot is one seeded session (shots.json `init`): the same pool and
+//   the same warm-start cards. PERFORM still measures its wiring per session,
+//   and the reach varies a little (Snap has reached up, down or both ways).
+//   On Glass Pad, Grit is a search control in every run (turning it grows an
+//   offer), so no beat turns Grit; the nudges go up and back on Motion and
+//   Body, which reach upward in every run. Each shot logs its `wiring`.
 // - A MIDI keyboard is plugged in through the app's `?film` port in every
 //   shot; keys4 plays MIDI notes soft and hard, a bend and the sustain pedal,
 //   and the midi beat maps three knobs, learns Space (not Grit, which would

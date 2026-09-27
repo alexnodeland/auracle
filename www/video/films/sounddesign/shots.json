@@ -125,9 +125,9 @@
         {"at": "bank1:click+0.3", "op": "mark", "name": "delay", "sel": ".nb-item[data-kind='delay']"},
         {"at": "bank2:lights+0.3", "op": "mark", "name": "lit", "sel": "#rack-svg .jack.legal"},
         {"at": "bank2:lights+0.3", "op": "mark", "name": "status", "sel": "#nb-status"},
-        {"at": "bank3:Green-0.2", "op": "move", "sel": "#rack-svg .jack[data-childkey='node/0']", "ms": 400},
+        {"at": "bank3:Green-0.2", "op": "move", "sel": "#rack-svg .jack[data-childkey='node/0'] circle:last-of-type", "ms": 400},
         {"at": "bank3:Green+0.8", "op": "log", "name": "green", "js": "document.getElementById('nb-status').textContent"},
-        {"at": "bank3:Amber-0.35", "op": "seq", "steps": [{"op": "key", "key": "Escape", "ms": 80}, {"op": "click", "sel": ".nb-item[data-kind='formant']"}, {"op": "mark", "name": "formant", "sel": ".nb-item[data-kind='formant']"}, {"op": "move", "sel": "#rack-svg .jack[data-childkey='node/0/0']", "ms": 400}, {"op": "log", "name": "amber", "js": "document.getElementById('nb-status').textContent + ' | ' + document.querySelector(\"#rack-svg .jack[data-childkey='node/0/0']\").getAttribute('class')"}]},
+        {"at": "bank3:Amber-0.35", "op": "seq", "steps": [{"op": "key", "key": "Escape", "ms": 80}, {"op": "click", "sel": ".nb-item[data-kind='formant']"}, {"op": "mark", "name": "formant", "sel": ".nb-item[data-kind='formant']"}, {"op": "move", "sel": "#rack-svg .jack[data-childkey='node/0/0'] circle:last-of-type", "ms": 400}, {"op": "log", "name": "amber", "js": "document.getElementById('nb-status').textContent + ' | ' + document.querySelector(\"#rack-svg .jack[data-childkey='node/0/0']\").getAttribute('class')"}]},
         {"at": "bank4:Rest", "op": "until", "js": "document.querySelector('#spec-dock .pv-label')?.textContent === 'hear it here'", "ms": 30000, "stamp": "rendered"},
         {"at": "bank4:play-0.4", "op": "seq", "steps": [{"op": "until", "js": "document.querySelector('#spec-dock .pv-label')?.textContent === 'hear it here'", "ms": 30000}, {"op": "mark", "name": "play", "sel": "#pv-play"}, {"op": "move", "sel": "#pv-play", "ms": 300}, {"op": "click", "sel": "#pv-play"}, {"op": "log", "name": "preview", "js": "document.querySelector('#spec-dock .sd-line')?.textContent"}, {"op": "wait", "ms": 1600}, {"op": "key", "key": "Escape", "ms": 80}]}
       ]
@@ -171,10 +171,10 @@
       "marks": {"rand": "#rack-svg g.mod-group[data-kind='rand']", "quantize": "#rack-svg g.mod-group[data-kind='quantize']", "slew": "#rack-svg g.mod-group[data-kind='slew']", "slot": "#rack-svg .jack[data-modkey='node']", "filter": "#rack-svg g.mod-group[data-key='node']", "vco": "#rack-svg g.mod-group[data-key='node/0']"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a"], "ms": "end"},
-        {"at": "chains4:Drop", "op": "seq", "steps": [{"op": "click", "sel": ".nb-item[data-kind='slew']"}, {"op": "wait", "until": "chains4:modulated"}, {"op": "move", "sel": "#rack-svg .jack[data-modkey='node']", "ms": 400}, {"op": "wait", "ms": 300}, {"op": "log", "name": "slot", "js": "document.getElementById('nb-status').textContent"}, {"op": "wait", "until": "chains4:wraps"}, {"op": "click", "sel": "#rack-svg .jack[data-modkey='node']"}]},
-        {"at": "chains4:wraps+1.5", "op": "mark", "name": "wrapped", "sel": "#rack-svg g.mod-group[data-key='node']"},
-        {"at": "chains4:wraps+1.5", "op": "log", "name": "toast", "js": "document.getElementById('toasts').textContent"},
-        {"at": "chains4:wraps+1.5", "op": "log", "name": "chain", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map((g) => g.dataset.key + ':' + g.dataset.kind).join(' ')"}
+        {"at": "chains4:Drop", "op": "seq", "steps": [{"op": "click", "sel": ".nb-item[data-kind='slew']"}, {"op": "wait", "until": "chains4:modulated"}, {"op": "move", "sel": "#rack-svg .jack[data-modkey='node'] circle:last-of-type", "ms": 400}, {"op": "wait", "ms": 300}, {"op": "log", "name": "slot", "js": "document.getElementById('nb-status').textContent"}, {"op": "wait", "until": "chains4:wraps-0.6"}, {"op": "click", "sel": "#rack-svg .jack[data-modkey='node'] circle:last-of-type"}]},
+        {"at": "chains4:wraps+0.9", "op": "mark", "name": "wrapped", "sel": "#rack-svg g.mod-group[data-key='node/m']"},
+        {"at": "chains4:wraps+0.9", "op": "log", "name": "toast", "js": "document.getElementById('toasts').textContent"},
+        {"at": "chains4:wraps+0.9", "op": "log", "name": "chain", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map((g) => g.dataset.key + ':' + g.dataset.kind).join(' ')"}
       ]
     },
     {
@@ -222,15 +222,16 @@
         {"op": "wait", "ms": 1200},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
-      "marks": {"res": "#rack-svg [data-addr='node/0#res']", "chorus": "#rack-svg g.mod-group[data-key='node']", "menu": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn", "tray": "#tray"},
+      "marks": {"res": "#rack-svg [data-addr='node/0#res']", "chorus": "#rack-svg g.mod-group[data-key='node']", "menu": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "undo1:change-0.3", "op": "eval", "js": "window.__res0 = document.querySelector(\"#rack-svg [data-addr='node/0#res']\").textContent"},
         {"at": "undo1:change", "op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -60, "ms": 600},
         {"at": "undo1:undo", "op": "hold", "keys": ["Control", "z"], "ms": 150},
-        {"at": "undo2:bypass-0.5", "op": "seq", "steps": [{"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"}, {"op": "until", "sel": "#ctx-menu .cm-item", "ms": 5000}, {"op": "wait", "ms": 300}, {"op": "click", "sel": "#ctx-menu .cm-item:has-text('bypass')"}]},
+        {"at": "undo2:bypass-0.5", "op": "seq", "steps": [{"op": "until", "js": "document.querySelector(\"#rack-svg [data-addr='node/0#res']\").textContent === window.__res0", "ms": 30000, "stamp": "undone"}, {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"}, {"op": "until", "sel": "#ctx-menu .cm-item", "ms": 5000}, {"op": "wait", "ms": 300}, {"op": "click", "sel": "#ctx-menu .cm-item:has-text('bypass')"}]},
         {"at": "undo2:held", "op": "mark", "name": "tray", "sel": "#tray"},
         {"at": "undo2:held", "op": "mark", "name": "item", "sel": "#tray-items .tray-item"},
-        {"at": "undo2:reload+0.5", "op": "drag", "sel": "#tray-items .tray-item .t-jack", "to": "#rack-svg .jack[data-childkey='node']", "ms": 900},
+        {"at": "undo2:reload+0.5", "op": "seq", "steps": [{"op": "until", "sel": "#tray-items .tray-item:not(.pending)", "ms": 30000}, {"op": "drag", "sel": "#tray-items .tray-item .t-jack", "to": "#rack-svg .jack[data-childkey='node'] circle:last-of-type", "ms": 900}]},
         {"at": "undo2:reload+2.0", "op": "log", "name": "after", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map((g) => g.dataset.key + ':' + g.dataset.kind).join(' ') + ' | held ' + document.querySelectorAll('#tray-items .tray-item').length"}
       ]
     },

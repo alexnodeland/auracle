@@ -157,7 +157,7 @@
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a"], "until": "steps4:restarts-0.3"},
         {"at": "steps1:Steps", "op": "seq", "steps": [{"op": "click", "sel": ".nb-item[data-kind='steps']"}, {"op": "mark", "name": "steps", "sel": ".nb-item[data-kind='steps']"}]},
-        {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/1']"},
+        {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/1'] circle:last-of-type"},
         {"at": "steps2:draw", "op": "seq", "steps": [{"op": "until", "sel": "#rack-svg [data-addr='node/1/m#s0']", "ms": 20000}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s0']", "dy": -30, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s1']", "dy": 25, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s2']", "dy": -40, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s3']", "dy": 10, "ms": 300}]},
         {"at": "steps2:eight", "op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-key='node/1/m']"},
         {"at": "steps3:Sync", "op": "click", "sel": "#sync-btn"},

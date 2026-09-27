@@ -104,7 +104,7 @@
       "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "body": ".pf-knob[data-i='3']", "space": ".pf-knob[data-i='5']", "hood": ".pf-hood"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
-        {"at": "controls1:named", "op": "seq", "steps": [{"op": "drag", "sel": ".pf-knob[data-i='1']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='1']", "dy": 30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 30, "ms": 450}]},
+        {"at": "controls1:named", "op": "seq", "steps": [{"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='3']", "dy": 30, "ms": 450}]},
         {"at": "controls2:interrupts", "op": "drag", "sel": ".pf-knob[data-i='5']", "dy": -40, "ms": 900},
         {"at": "controls3:ride-0.2", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -110, "ms": 2300},
         {"at": "controls4:press+0.2", "op": "press", "sel": ".pf-knob[data-i='3']", "ms": 700}
@@ -152,11 +152,14 @@
       "marks": {"wander": ".pf-knob[data-i='7']", "status": ".pf-status", "offer": ".pf-offer", "hood": ".pf-hood", "freeze": ".pf-pad:has-text('Freeze')", "motion": ".pf-knob[data-i='2']"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["f", "h", "k"], "ms": "end"},
-        {"at": "wander1:Wander", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -30, "ms": 700},
+        {"at": "wander1:Wander-0.15", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -30, "ms": 450},
+        {"at": "wander1:Wander+0.8", "op": "until", "sel": ".pf-offer.ready", "ms": 30000, "stamp": "offered"},
+        {"at": "wander2:More-0.1", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"},
         {"at": "wander2:More", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -45, "ms": 800},
         {"at": "wander3:way", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -75, "ms": 900},
         {"at": "wander4:waits", "op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 20, "ms": 500},
-        {"at": "wander4:Freeze", "op": "click", "sel": ".pf-pad:has-text('Freeze')"}
+        {"at": "wander4:Freeze", "op": "click", "sel": ".pf-pad:has-text('Freeze')"},
+        {"at": "wander4:Freeze+0.6", "op": "log", "name": "B at the end", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"}
       ]
     },
     {
