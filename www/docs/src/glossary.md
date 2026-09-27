@@ -18,7 +18,7 @@ patches** (what you saved), **presets** (the built-in library). See
 
 ### Belief row
 
-The line under the toolbar in PLAY saying what the model thinks of the current
+The line under the toolbar in PATCH saying what the model thinks of the current
 patch and which coordinates drove that. It reports a silence rather than a
 number when it has no basis for one.
 
@@ -31,7 +31,7 @@ the menu bar and on [TRUST](./views/taste.md#trust--is-its-confidence-honest).
 ### Budget
 
 The ceilings evolution searches inside: modules, tree depth, modulation depth.
-Shown in PLAY as `8/24 modules · 6/9 depth · 1/4 mod depth`. A patch at its
+Shown in PATCH as `8/24 modules · 6/9 depth · 1/4 mod depth`. A patch at its
 ceilings has no room to grow.
 
 ### Candidate
@@ -91,6 +91,30 @@ The loudness unit every render is normalized to (−18 LUFS). Louder reliably
 wins A/B tests, so without it the model would learn "I like loud" and present
 it as a preference about timbre.
 
+### Named control
+
+One of PERFORM's six controls: **Bright, Snap, Motion, Body, Grit, Space**. Each
+is a fixed direction in what the instrument can hear, with the same name and
+the same two end words on every patch. What it turns is measured per patch: at
+most four of that patch's knobs, chosen because they move the sound most purely
+in that direction. See [PERFORM](./views/perform.md#the-named-controls).
+
+### Offer / B slot
+
+A variant grown from the sound you are playing, held in a second voice set
+called **B** that plays every note you play. You hear it by crossfading with
+**Blend** or holding **Peek**, at matched loudness, and it replaces your sound
+only if you press **Take**. An offer may change structure; nothing else in
+PERFORM does. See [Blend, Peek and the B
+slot](./views/perform.md#blend-peek-and-the-b-slot).
+
+### Pickup
+
+Soft takeover for a MIDI pot: it does nothing until it passes through the
+control's current position, then follows your hand. It stops a pot left in one
+place from snapping a control that Wander, the mouse or the keys have since
+moved. See [soft takeover](./keyboard.md#soft-takeover).
+
 ### Pool
 
 The evolution bank: 40 vetted candidates the model reasons over and breeds
@@ -125,6 +149,14 @@ The standard five-second audition phrase, identical for every patch. Audio
 measurements are only comparable under an identical stimulus, which is what
 makes it fixed. It is a measuring instrument, not a demo. Play the patch from
 the keyboard to judge it.
+
+### Search control
+
+A named control drawn in amber with a dashed ring: this patch's knobs cannot
+honestly make the change it names (no drive to make it rougher, no reverb to
+make it farther). Turning it moves no knobs. It springs back and asks for an
+offer in B instead. See [search
+controls](./views/perform.md#amber-dashed-search-controls).
 
 ### Standardizer
 
@@ -162,6 +194,14 @@ which is why it can rank a patch it has never shown you.
 The gate every render passes before it can be heard or measured: all-finite,
 under a peak ceiling, not silent, not DC-dominated. Evolution does produce
 screaming resonance and silent duds; this is why you never hear them.
+
+### Wander
+
+PERFORM's dial for how alive the patch is on its own: **still**, **offer**
+(variants appear in B), **drift** (the knobs glide through nearby settings the
+search prefers), **roam** (bigger and faster). It never changes structure, it
+pauses while your hands are on the controls, and a tap holds it. See
+[Wander](./views/perform.md#wander).
 
 ### Warm start
 

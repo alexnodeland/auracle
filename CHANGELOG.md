@@ -8,6 +8,92 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Added — PERFORM
+
+A performer reaches for *brighter*, not for `node/0#cut`, and until now the
+only way to change a sound while playing it was by address, one knob at a time,
+in a rack built for editing. **PERFORM** is a new first tab for playing the
+sound instead: six named controls (**Bright, Snap, Motion, Body, Grit, Space**),
+**Blend**, **Wander**, and six pads (**Keep · Back · Offer · Take · Peek ·
+Hold**). Nothing in it opens a dialog, because a player mid-phrase cannot answer
+one. The tab formerly labelled PLAY is now **PATCH**.
+
+A named control is a fixed direction in standardized audio-φ, the same on every
+patch. What it turns is measured per patch: one finite-difference render per
+knob gives the Jacobian ∂z/∂knob, and a ridge solve wires each control onto at
+most four knobs, no knob travelling more than half its range at a full turn. A
+table of what each kind of knob "usually does" was measured first and rejected:
+over the 61 presets, wiring from each patch's own Jacobian reaches a median
+purity (cosine between the movement produced and the one asked for) of 0.61,
+0.77 and 0.75 for Bright, Snap and Motion, and the best leave-one-out per-site
+table reaches 0.23, 0.16 and 0.09. The same knob does different things in
+different patches.
+
+**A control the knobs cannot honestly produce is not faked.** Below a purity of
+0.35 or a reach of 0.15σ it is drawn as an amber *search* control, and turning
+it asks for a structural offer instead of moving knobs that do not do what the
+label says. Grit and Space are search controls on most presets, because most
+patches have no drive or reverb to turn. And because the Jacobian is a local,
+linear claim that fails at boundaries, every half of every reachable control is
+rendered at ±½ and ±1 before it is offered, and closed if the sound did not move
+the asked way both times. On First Bass the linear prediction said Motion could
+go down; rendered, turning it down made the sound slightly more restless. That
+half is now closed and the control says *already as still as it gets*. The gate
+test checks every open half again at ±¾, a point verification never rendered,
+with a stated tolerance of 0.05σ: no finite set of samples proves a response
+monotone.
+
+**Wander** is one dial from *still* through *offer* and *drift* to *roam*. Drift
+is the locked Metropolis–Hastings walk refinement already uses, with every
+structural and categorical site locked, so structure never changes under the
+player's hands and the walk is still exact conditioning on the patch's shape.
+It inserts nothing into the pool. It pauses for 3.5 s after any touch, and a
+touch mid-glide stops the glide where it is. Offers may change structure, and
+are heard through a **B slot**: a second voice set that follows the same hands,
+crossfaded at equal power and matched loudness (Blend, Peek, Take).
+
+Before any taste has been fitted, drift and offers used to return nothing. The
+posterior before evidence is the prior, so they now walk the grammar prior
+restricted to patches that vet (`VetOnlyFitness`), and say so on screen.
+
+Two limits, stated where the player can see them. A search control's offer is
+not yet aimed at the direction turned. And Keep, Take, Back and every turn are
+logged as implicit events and not fitted: implicit evidence has to earn its
+place in the likelihood, and nothing here has yet.
+
+The `perform_wiring` example prints the wiring for any preset.
+
+### Added — MIDI that does more than notes
+
+A controller with knobs did nothing but play notes, so the instrument's new
+named controls could only be turned with a mouse. MIDI now maps itself: the
+first eight distinct CCs you move claim PERFORM's eight controls in the order
+you move them, each claim announced, and **learn** / **clear** in a new MIDI
+panel (click *midi* in the dock) remap any of them. The map, the auto-mapping
+switch and the bend range are remembered per device.
+
+Relative encoders are recognised with nothing to set. An absolute pot only
+sends when its value changes, so it rarely repeats; an encoder repeats its tick.
+That tell, rather than the range of values, is what separates a pot swept to
+its bottom stop from an encoder. Absolute pots get **soft takeover**: a pot does
+nothing until it passes the control's current position. That matters more here
+than on most instruments, because Wander moves the controls under a pot that
+has not moved, and without pickup the first nudge would snap the sound.
+
+Channel pressure rides Bright and the mod wheel drives Motion by default. Bend
+range is selectable (±2, 7, 12, 24 or 48 semitones). MIDI clock sets the tempo
+by a least-squares fit over the last two beats of ticks, so one late tick moves
+the estimate by a fraction of its lateness. The protocol's pure parts are unit
+tested with `node --test` (`make web-check`, and a new Web job in CI).
+
+### Fixed — the sustain pedal
+
+The sustain pedal was wired to the HOLD latch, and lifting it called panic(),
+which also killed every note still under the player's fingers. It now does
+what a sustain pedal does: notes released while it is down ring until it
+lifts, and lifting it releases exactly those. A note struck again under the
+pedal belongs to the finger again.
+
 ### Added — φ hears how fast a sound moves, not only how much
 
 A texture is mostly its motion, and φ could not tell a slow sweep from a fast

@@ -21,7 +21,7 @@ Swell* mean something.
 | <kbd>1</kbd> / <kbd>2</kbd>, or **▶ SAMPLE** | Play the standard five-second phrase |
 | Click the card body | Load that candidate live on the keyboard |
 | <kbd>←</kbd> / <kbd>→</kbd>, or **CHOOSE A/B** | Vote |
-| **⊕ BENCH** | Send it to the workbench in [PLAY](./play.md) without voting |
+| **⊕ BENCH** | Send it to the workbench in [PATCH](./play.md) without voting |
 | **↻** | Deal a different pair |
 | **skip** | This pair is uninformative; do not record anything |
 
@@ -112,5 +112,5 @@ everything that produced a patch, not only what the machine did.
    first batch.
 2. **Check [TASTE](./taste.md).** Has a style separated out? Is TRUST improving?
 3. **EVOLVE POOL** and listen to the children.
-4. Repeat. When a child is genuinely good, take it to [PLAY](./play.md), lock
+4. Repeat. When a child is genuinely good, take it to [PATCH](./play.md), lock
    what you like, and **⚡ evolve from this** for variations around it.
