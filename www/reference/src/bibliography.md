@@ -157,6 +157,12 @@ Identifying Influential Data and Sources of Collinearity.* Wiley. → Variance
 inflation factors, the diagnostic that found
 [two exact dependencies in φ_struct](./features/structural.md#what-is-deliberately-not-in-φ).
 
+**Haufe, S., Meinecke, F., Görgen, K., Dähne, S., Haynes, J.-D., Blankertz, B.
+and Bießmann, F. (2014).** *On the Interpretation of Weight Vectors of Linear
+Models in Multivariate Neuroimaging.* NeuroImage 87, 96–110. → A direction's
+*pattern* $\Sigma a$ versus its *filter* $a$, and why
+[the named controls aim at the pattern](./search/perform.md#aiming-at-the-pattern-not-the-axis).
+
 **Huber, P. J. (1981).** *Robust Statistics.* Wiley. → Winsorizing, and the
 reasoning behind
 [using it as a fault detector rather than routinely](./features/standardization.md#why-not-just-winsorize-always).

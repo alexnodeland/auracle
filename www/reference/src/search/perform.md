@@ -177,6 +177,52 @@ Several controls turned at once add: each contributes $c_i \alpha_i \delta_{S_i}
 to the knobs it wires, and the sum is clipped. The composition is linear by
 assumption and is not verified.
 
+### Aiming at the pattern, not the axis
+
+The axis $\hat e$ says what a control *measures*: Bright is centroid and
+rolloff. It does not say how a sound that gets brighter moves everywhere else,
+and it always moves elsewhere too — its zero-crossing rate and high band rise
+with it. Solved against the bare axis, those correlates count as off-axis
+motion, and an honest cutoff turn is scored as an impure control.
+
+The distinction is the one between a linear model's *filter* and its
+*pattern* (Haufe et al. 2014): the pattern of a direction $a$ over a population
+with correlation $\Sigma$ is $\Sigma a$, the movement that typically
+accompanies movement along $a$. The shipped wiring aims the solve and the
+purity at the pattern,
+
+$$
+\hat p \;=\; \frac{\Sigma\,\hat e}{\lVert \Sigma\,\hat e \rVert},
+\qquad
+\delta^\star = \big(J^\top J + \lambda I\big)^{-1} J^\top \hat p,
+\qquad
+\rho = \frac{\hat p^\top J_S \delta_S}{\lVert J_S \delta_S \rVert},
+$$
+
+with $\Sigma$ the correlation of standardized audio φ over the session's own
+pool (`Engine::audio_correlation`; below 8 members, `PATTERN_MIN_POOL`, the bare
+axis is used). Reach, position and [verification](#verification-on-real-renders)
+stay on the axis $\hat e$: the question the renders answer is still "did it
+get brighter".
+
+Measured over the first 24 patches of a fresh session pool (`reach_census`,
+seed 7), with verification:
+
+| | Bright | Snap | Motion | Body | Grit | Space |
+|---|---|---|---|---|---|---|
+| Reachable, bare axis | 25% | 58% | 58% | 17% | 4% | 38% |
+| Reachable, pattern | 38% | 58% | 54% | 33% | 8% | 33% |
+| Median purity, bare axis | 0.26 | 0.61 | 0.63 | 0.08 | 0.03 | 0.00 |
+| Median purity, pattern | 0.53 | 0.66 | 0.59 | 0.52 | 0.38 | 0.25 |
+
+Patches on which no control reaches fell from 4 of 24 to 1, and the typical
+patch reaches two or three of the six. Grit and Space stay rare for the reason
+they always were: most patches have no drive or reverb to turn, and those
+controls ask for an offer instead. The same census under the preset library's
+standardizer matches the pool's bare-axis rows closely, so the pool's wider
+spread is not what held Bright back. The gate test holds both wirings to the
+same promise on real renders.
+
 ## Verification on real renders
 
 The Jacobian is a local, linear claim, and it fails exactly where a player
@@ -274,12 +320,14 @@ attached.
 | `cargo run -p auracle-features --example jacobian_probe --release > jac.csv` | $\partial\varphi_{\text{audio}}/\partial\text{knob}$ for every preset: the raw material for both purity rows |
 | `cargo run -p auracle-features --example leverage_probe --release > leverage.csv` | Per-knob leverage for every preset |
 | `cargo run -p auracle-session --example perform_wiring --release -- "First Bass"` | The shipped wiring on named presets: knobs, purity, reach, position, search |
+| `cargo run -p auracle-session --example reach_census --release -- 24 7` | How many controls reach the patches of a fresh session pool: bare axes vs the shipped pattern, with verification |
 
 The two probes print CSV and the medians are computed from it. `jacobian_probe`
 uses central differences on raw φ at the same $h = 0.08$, so it measures the
 same response as the shipped code without being bit-identical to it.
-`perform_wiring` runs the shipped `jacobian` and `wire` under a
-preset-library standardizer, and does not run verification.
+`perform_wiring` runs the shipped `jacobian` and the bare-axis `wire` under a
+preset-library standardizer, and does not run verification; `reach_census`
+runs the shipped path (`Engine::wire_controls`) with verification.
 
 ## Drift: the locked walk, knob-only
 

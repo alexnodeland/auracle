@@ -94,6 +94,21 @@ what a sustain pedal does: notes released while it is down ring until it
 lifts, and lifting it releases exactly those. A note struck again under the
 pedal belongs to the finger again.
 
+### Changed — named controls aim at how a sound usually moves, not at one axis
+
+A census of the patches a new player actually meets (the first 24 of a fresh
+session pool, `reach_census`) found **Bright** reaching only a quarter of them,
+at a median purity of 0.26 — the most universal control, on the most
+universal knob. The wiring was solving toward the bare axis (centroid and
+rolloff), so the zero-crossing rate and high band that rise with any real
+brightening were counted as impurity. The fix is the filter/pattern
+distinction of Haufe et al. (2014): the solve and purity now aim at the
+control's **pattern** $\Sigma a$ under the pool's own audio correlation, while
+reach, position and verification still ask the renders "did it get brighter".
+Bright's median purity is 0.53, Bright reaches 38% of patches and Body 33%
+(from 25% and 17%), and patches with no reachable control fall from 4 to 1.
+The gate test now holds both wirings to the same promise on real renders.
+
 ### Fixed — PERFORM reloaded the patch under the player's hands
 
 PERFORM wired, pushed and drifted every continuous site of the patch, and not

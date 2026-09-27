@@ -87,6 +87,9 @@ impl fugue_evo::fitness::traits::Fitness for VetOnlyFitness {
 /// φ past its numerical floor on a 5 s render, small enough to stay local;
 /// the same step the `jacobian_probe` measurements used.
 pub const JACOBIAN_STEP: f64 = 0.08;
+/// Fewest pool members [`Engine::audio_correlation`] estimates a
+/// correlation from. Below it the named controls aim at their bare axes.
+pub const PATTERN_MIN_POOL: usize = 8;
 /// Ridge on the wiring solve, in the units of `z` per unit knob.
 pub const RIDGE: f64 = 0.05;
 /// Share of [`RIDGE`] a semantically named knob pays ([`NamedControl::sites`]).
@@ -453,12 +456,50 @@ pub fn wire(jac: &Jacobian) -> Vec<Wiring> {
 pub fn wire_with(jac: &Jacobian, semantic: f64) -> Vec<Wiring> {
     CONTROLS
         .iter()
-        .map(|c| wire_one(c, jac, semantic))
+        .map(|c| wire_one(c, jac, semantic, None))
         .collect()
 }
 
-fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
+/// [`wire`] toward each control's **pattern** rather than its bare axis.
+///
+/// `corr` is the correlation matrix of standardized audio φ over a
+/// population (`m × m`, `m` = the Jacobian's coordinates). A control's axis
+/// `a` (Bright is +centroid +rolloff) says what it *measures*; the pattern
+/// `Σa` says how a sound that moves along `a` *usually moves everywhere else*
+/// too — the activation-pattern reading of a linear direction (Haufe et al.
+/// 2014). Brightening a sound also raises its zero-crossing rate and high
+/// band; against the bare axis those correlates read as impurity, and an
+/// honest cutoff turn scores as a dishonest control. So the solve and the
+/// purity use the pattern, while reach, position and verification stay on
+/// the axis: "did it get brighter" is still the question the renders answer.
+pub fn wire_patterned(jac: &Jacobian, corr: &[Vec<f64>]) -> Vec<Wiring> {
+    CONTROLS
+        .iter()
+        .map(|c| {
+            let a = direction(c, &jac.names);
+            let mut p: Vec<f64> = corr
+                .iter()
+                .map(|row| row.iter().zip(&a).map(|(r, x)| r * x).sum())
+                .collect();
+            let n = p.iter().map(|x| x * x).sum::<f64>().sqrt();
+            if n > 0.0 {
+                p.iter_mut().for_each(|x| *x /= n);
+            }
+            wire_one(c, jac, SEMANTIC_RIDGE, Some(&p))
+        })
+        .collect()
+}
+
+fn wire_one(
+    control: &NamedControl,
+    jac: &Jacobian,
+    semantic: f64,
+    pattern: Option<&[f64]>,
+) -> Wiring {
     let d = direction(control, &jac.names);
+    // What the solve aims at and purity is measured against; `d` itself
+    // stays the axis reach and position are read on.
+    let target: Vec<f64> = pattern.map_or_else(|| d.clone(), <[f64]>::to_vec);
     let position: f64 = d.iter().zip(&jac.z).map(|(a, b)| a * b).sum();
     let n = jac.cols.len();
     let mut out = Wiring {
@@ -489,7 +530,7 @@ fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
             }
         })
         .collect();
-    let x = ridge(&jac.cols, &all, &d, &w);
+    let x = ridge(&jac.cols, &all, &target, &w);
     let mut support: Vec<usize> = all.clone();
     support.sort_by(|&a, &b| x[b].abs().total_cmp(&x[a].abs()));
     support.truncate(MAX_KNOBS);
@@ -497,7 +538,7 @@ fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
     if support.is_empty() {
         return out;
     }
-    let xs = ridge(&jac.cols, &support, &d, &w);
+    let xs = ridge(&jac.cols, &support, &target, &w);
     // The φ movement this wiring predicts, per unit of x.
     let m = jac.names.len();
     let mut moved = vec![0.0; m];
@@ -507,13 +548,14 @@ fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
         }
     }
     let along: f64 = moved.iter().zip(&d).map(|(a, b)| a * b).sum();
+    let shaped: f64 = moved.iter().zip(&target).map(|(a, b)| a * b).sum();
     let norm = moved.iter().map(|v| v * v).sum::<f64>().sqrt();
     if norm <= 1e-12 || along <= 0.0 {
         return out;
     }
     let peak = xs.iter().fold(0.0f64, |p, v| p.max(v.abs()));
     let alpha = MAX_TRAVEL / peak.max(1e-12);
-    out.purity = along / norm;
+    out.purity = shaped / norm;
     out.reach = alpha * along;
     out.knobs = support
         .iter()
@@ -618,14 +660,71 @@ pub fn verify(
 
 impl Engine {
     /// Measure, wire and verify the named controls on `tree`: [`jacobian`],
-    /// [`wire`], then [`verify`]. `None` before a standardizer exists or when
-    /// the tree does not vet.
+    /// [`wire_patterned`] against this pool's audio correlation (the bare
+    /// axes of [`wire`] while the pool is too small to estimate one), then
+    /// [`verify`]. `None` before a standardizer exists or when the tree does
+    /// not vet.
+    ///
+    /// Measured over 24 patches of a fresh pool (`reach_census`): against
+    /// the pattern, Bright's median purity is 0.53 where the bare axis gave
+    /// 0.26, Bright reaches 38% of patches (25%) and Body 33% (17%), and
+    /// patches reaching no control fall from 4 to 1.
     pub fn wire_controls(&self, tree: &PatchTree) -> Option<(Jacobian, Vec<Wiring>)> {
         let std = self.standardizer.as_deref()?;
         let jac = jacobian(tree, &self.cfg.phrase, self.memo(), std)?;
-        let mut wiring = wire(&jac);
+        let mut wiring = match self.audio_correlation(jac.names.len()) {
+            Some(corr) => wire_patterned(&jac, &corr),
+            None => wire(&jac),
+        };
         verify(tree, &jac, &mut wiring, &self.cfg.phrase, self.memo(), std);
         Some((jac, wiring))
+    }
+
+    /// Correlation of the first `m` standardized φ coordinates (the audio
+    /// half) over the pool, or `None` below [`PATTERN_MIN_POOL`] members.
+    /// A constant coordinate correlates with nothing but itself.
+    pub fn audio_correlation(&self, m: usize) -> Option<Vec<Vec<f64>>> {
+        let rows: Vec<&[f64]> = self
+            .pool
+            .iter()
+            .filter(|c| c.phi_std.len() >= m)
+            .map(|c| &c.phi_std[..m])
+            .collect();
+        if rows.len() < PATTERN_MIN_POOL {
+            return None;
+        }
+        let n = rows.len() as f64;
+        let mean: Vec<f64> = (0..m)
+            .map(|j| rows.iter().map(|r| r[j]).sum::<f64>() / n)
+            .collect();
+        let sd: Vec<f64> = (0..m)
+            .map(|j| (rows.iter().map(|r| (r[j] - mean[j]).powi(2)).sum::<f64>() / n).sqrt())
+            .collect();
+        Some(
+            (0..m)
+                .map(|i| {
+                    (0..m)
+                        .map(|j| {
+                            if i == j {
+                                1.0
+                            } else if sd[i] < 1e-9 || sd[j] < 1e-9 {
+                                0.0
+                            } else {
+                                rows.iter()
+                                    .map(|r| (r[i] - mean[i]) * (r[j] - mean[j]))
+                                    .sum::<f64>()
+                                    / (n * sd[i] * sd[j])
+                            }
+                        })
+                        .collect()
+                })
+                .collect(),
+        )
+    }
+
+    /// The standardizer this session's φ lives under, once the pool is filled.
+    pub fn standardizer(&self) -> Option<&Standardizer> {
+        self.standardizer.as_deref()
     }
 
     /// True once the walks are taste-directed; false while they explore the
@@ -759,49 +858,87 @@ mod tests {
         let std = preset_standardizer(&spec);
         let memo = RenderMemo::default();
         let bank = preset_bank();
+        // The shipped wiring aims at each control's pattern under a
+        // population's audio correlation; the bare axes are the fallback. The
+        // promise is the same for both, so both are held to it — here with
+        // the preset bank's correlation.
+        let m = AudioFeatures::NAMES.len();
+        let rows: Vec<Vec<f64>> = bank
+            .iter()
+            .filter_map(|p| audio_z(&p.tree, &spec, &memo, &std))
+            .collect();
+        let n = rows.len() as f64;
+        let mean: Vec<f64> = (0..m)
+            .map(|j| rows.iter().map(|r| r[j]).sum::<f64>() / n)
+            .collect();
+        let sd: Vec<f64> = (0..m)
+            .map(|j| (rows.iter().map(|r| (r[j] - mean[j]).powi(2)).sum::<f64>() / n).sqrt())
+            .collect();
+        let corr: Vec<Vec<f64>> = (0..m)
+            .map(|i| {
+                (0..m)
+                    .map(|j| {
+                        if i == j || sd[i] < 1e-9 || sd[j] < 1e-9 {
+                            f64::from(u8::from(i == j))
+                        } else {
+                            rows.iter()
+                                .map(|r| (r[i] - mean[i]) * (r[j] - mean[j]))
+                                .sum::<f64>()
+                                / (n * sd[i] * sd[j])
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
         let mut checked = 0;
-        for name in ["First Bass", "Ceiling", "Detune Dream", "Long Way Down"] {
-            let p = bank.iter().find(|p| p.name == name).expect("preset exists");
-            let jac = jacobian(&p.tree, &spec, &memo, &std).expect("preset vets");
-            let mut wiring = wire(&jac);
-            verify(&p.tree, &jac, &mut wiring, &spec, &memo, &std);
-            for (i, w) in wiring.iter().enumerate() {
-                let (lo, hi) = w.range();
-                if w.search {
-                    continue;
-                }
-                let d = direction(&CONTROLS[i], &jac.names);
-                let at = |c: f64| {
-                    let mut cs = vec![0.0; wiring.len()];
-                    cs[i] = c;
-                    let mut t = p.tree.clone();
-                    for (a, v) in apply(&jac, &wiring, &cs) {
-                        t = set_param(&t, &a, ParamValue::Continuous(v)).unwrap();
-                    }
-                    let z = audio_z(&t, &spec, &memo, &std).expect("still vets");
-                    z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>()
+        for patterned in [false, true] {
+            for name in ["First Bass", "Ceiling", "Detune Dream", "Long Way Down"] {
+                let p = bank.iter().find(|p| p.name == name).expect("preset exists");
+                let jac = jacobian(&p.tree, &spec, &memo, &std).expect("preset vets");
+                let mut wiring = if patterned {
+                    wire_patterned(&jac, &corr)
+                } else {
+                    wire(&jac)
                 };
-                let mid = at(0.0);
-                if hi > 0.0 {
-                    let h = at(0.75);
-                    assert!(
-                        h > mid - MONO_TOL,
-                        "{name}/{} up half: {mid:.3} -> {h:.3}",
-                        w.name
-                    );
-                    checked += 1;
-                }
-                if lo < 0.0 {
-                    let l = at(-0.75);
-                    assert!(
-                        l < mid + MONO_TOL,
-                        "{name}/{} down half: {mid:.3} -> {l:.3}",
-                        w.name
-                    );
-                    checked += 1;
+                verify(&p.tree, &jac, &mut wiring, &spec, &memo, &std);
+                for (i, w) in wiring.iter().enumerate() {
+                    let (lo, hi) = w.range();
+                    if w.search {
+                        continue;
+                    }
+                    let d = direction(&CONTROLS[i], &jac.names);
+                    let at = |c: f64| {
+                        let mut cs = vec![0.0; wiring.len()];
+                        cs[i] = c;
+                        let mut t = p.tree.clone();
+                        for (a, v) in apply(&jac, &wiring, &cs) {
+                            t = set_param(&t, &a, ParamValue::Continuous(v)).unwrap();
+                        }
+                        let z = audio_z(&t, &spec, &memo, &std).expect("still vets");
+                        z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>()
+                    };
+                    let mid = at(0.0);
+                    if hi > 0.0 {
+                        let h = at(0.75);
+                        assert!(
+                            h > mid - MONO_TOL,
+                            "{name}/{} up half (patterned {patterned}): {mid:.3} -> {h:.3}",
+                            w.name
+                        );
+                        checked += 1;
+                    }
+                    if lo < 0.0 {
+                        let l = at(-0.75);
+                        assert!(
+                            l < mid + MONO_TOL,
+                            "{name}/{} down half (patterned {patterned}): {mid:.3} -> {l:.3}",
+                            w.name
+                        );
+                        checked += 1;
+                    }
                 }
             }
         }
-        assert!(checked >= 8, "too few open halves to be a gate: {checked}");
+        assert!(checked >= 16, "too few open halves to be a gate: {checked}");
     }
 }
