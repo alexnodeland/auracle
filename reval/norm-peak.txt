@@ -1,0 +1,12 @@
+cargo run -p auracle-features --example norm_peak --release -- 150
+   Compiling auracle-features v0.2.0 (/home/user/auracle/crates/auracle-features)
+    Finished `release` profile [optimized] target(s) in 14.14s
+     Running `target/release/examples/norm_peak 150`
+featurized 144/150
+peak: min 0.103  p50 0.623  p90 1.000  p99 1.000  max 1.000   (ceiling 1.00)
+over ceiling: 0/144 (0%)   over 1.25 (clips at master 0.8): 0/144 (0%)
+pulled down to clear the ceiling: 28/144 (19%)  mean 2.9 dB  worst 12.2 dB
+
+real	0m47.501s
+user	0m46.444s
+sys	0m0.409s
