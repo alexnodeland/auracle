@@ -65,6 +65,10 @@ test("PERFORM's first steps tick off as they happen; measurements are one menu i
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(800);
   await page.locator('.viewtab[data-view="perform"]').click();
+  // The preset can land after the tab opens: until PERFORM names it, "controls
+  // reach" may be the previous patch's, and a turn made then is a turn on a
+  // patch still being measured.
+  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30000 });
   await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 90000 });
   await expect(page.locator(".pf-step.now")).toContainText("Play a key");
   await page.keyboard.down("a"); await page.waitForTimeout(300); await page.keyboard.up("a");

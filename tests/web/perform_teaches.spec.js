@@ -17,6 +17,9 @@ test("an offer heard and answered is a pick; unheard, it is not", async ({ page 
   await page.locator(".bank-item", { hasText: "Glass Pad" }).first().click();
   await page.waitForTimeout(1500);
   await page.locator('.viewtab[data-view="perform"]').click();
+  // Until PERFORM names the preset, "controls reach" may be the previous
+  // patch's (the first pool patch lands on the bench at boot).
+  await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30000 });
   await page.waitForSelector(".pf-status:has-text('controls reach')", { timeout: 90000 });
   const picks = async () => Number(await page.locator("#duel-count").textContent());
   const p0 = await picks();

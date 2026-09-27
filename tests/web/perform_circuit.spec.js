@@ -14,6 +14,9 @@ test("a knob turned in PERFORM is drawn performed in PATCH", async ({ page }) =>
   await page.locator(".bank-item", { hasText: "First Bass" }).first().click();
   await page.waitForTimeout(800);
   await page.locator('.viewtab[data-view="perform"]').click();
+  // Until PERFORM names the preset, "controls reach" may be the previous
+  // patch's (the first pool patch lands on the bench at boot).
+  await expect(page.locator(".pf-name")).toHaveText("First Bass", { timeout: 30000 });
   await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 90000 });
   const box = await page.locator(".pf-knob").nth(0).boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
