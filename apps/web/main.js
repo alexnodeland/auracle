@@ -2496,6 +2496,9 @@ function showView(name) {
   // go on swallowing EVOLVE's arrow-key votes.
   if (name !== "play") { disarm(); cancelPending(); }
   currentView = name;
+  // Per-viewer convenience: a returning player comes back to the view they
+  // were in. Storage can throw (private windows); it is never load-bearing.
+  try { localStorage.setItem("auracle-view", name); } catch { /* ignore */ }
   for (const v of ["perform", "play", "evolve", "taste"]) {
     $(`view-${v}`).classList.toggle("hidden", v !== name);
   }
@@ -2815,7 +2818,10 @@ async function bootPerform() {
     },
   });
   if (liveTreeJson) perform.patchChanged(liveTreeJson, liveMakeup);
-  if (currentView === "perform") perform.show();
+  let saved = null;
+  try { saved = localStorage.getItem("auracle-view"); } catch { /* ignore */ }
+  if (saved === "perform" && currentView === "play") showView("perform");
+  else if (currentView === "perform") perform.show();
 }
 
 // ---------- live instrument ----------
@@ -3743,7 +3749,9 @@ function renderBelief() {
     el.classList.remove("stale");
     el.innerHTML = wb.subjectId == null
       ? ""
-      : `<span class="ex-why">model's guess</span> <span class="bl-none">not yet — it needs a few picks first</span>`;
+      : status.observations > 0
+        ? `<span class="ex-why">model's guess</span> <span class="bl-none">fitting to your ${status.observations} picks…</span>`
+        : `<span class="ex-why">model's guess</span> <span class="bl-none">not yet — it needs a few picks first</span>`;
     return;
   }
   el.classList.toggle("stale", belief.stale);
@@ -15394,9 +15402,17 @@ function drawLineage() {
     .map((ev) => {
       const du = ev.child_utility - ev.parent_utility;
       const sign = du >= 0 ? "+" : "−";
+      // The walk samples the taste posterior rather than climbing it, so
+      // some children land below their parent on purpose. Printed bare, a
+      // column of negative Δtaste read as "it bred worse patches"; said
+      // plainly, it is the search looking around.
+      const explore = ev.kind !== "edit" && du < -0.05;
+      const tag = explore
+        ? ` <span class="lin-explore" title="Evolution samples your taste rather than only climbing it: some steps go sideways or down so it does not get stuck. Your picks decide whether they were worth it.">exploring</span>`
+        : "";
       return `<div><span class="gen-tag">gen ${ev.generation}</span>` +
         `${ev.kind === "edit" ? "✎ your edit" : "⚡ evolution"} on #${ev.parent_id} → <b>#${ev.child_id}</b> · ` +
-        `${humanizeDiff(ev.diff)} · Δtaste ${sign}${Math.abs(du).toFixed(2)}</div>`;
+        `${humanizeDiff(ev.diff)} · Δtaste ${sign}${Math.abs(du).toFixed(2)}${tag}</div>`;
     })
     .join("");
 }
@@ -16637,6 +16653,10 @@ function warmStartDone(m) {
   $("wm-lamp").classList.add("thinking");
   note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
   if (m.first != null) openOnBench(m.first);
+  // Straight to the instrument, not the rack: the first thing after teaching
+  // it should be playing it. PATCH is the densest view in the app and it was
+  // where a newcomer landed.
+  showView("perform");
 }
 
 // ---------- overflow menu ----------

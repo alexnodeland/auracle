@@ -219,6 +219,23 @@ measurement that would settle it.
   became a shorter release. Candidates: let Bright own a little of Body's axis
   (a brightening is expected to thin a bass), or report a coupled control
   honestly ("brighter, and thinner") instead of hiding it. Neither is decided.
+  *Update:* the wiring now tries a control's own sites first (Bright: cutoff,
+  tone, …) and ranks knobs by effect rather than coefficient, and on the
+  re-voiced Acid Line the cutoff alone clears the gate for Bright: purity 0.87,
+  reach 2.85σ. The entanglement is still there, and now shows up on the other
+  side. Body's best move is the same cutoff turned the other way, so `separate`
+  makes Body the search control.
+- **Grit hears noise, not saturation** (open). Grit's axis is
+  `flatness_mean`, and a drive on a tonal sound adds harmonics, which φ reads
+  as Bright, not as flatness. On Iron Bass, a saw through a tube drive, drive
+  moves flatness by 0.000σ per unit. Across 24 fresh-pool patches Grit reaches
+  0 to 1. A bitcrusher does move flatness. It is transparent only at 16 bits,
+  though, where its slope is zero and the local measurement cannot see it, and
+  it clips anything hotter than its ±5 V window. So PERFORM grafts nothing for
+  Grit. What would fix it is a roughness descriptor in φ (inharmonic or
+  beating partials, or Sethares-style sensory dissonance) with Grit's axis on
+  it. That is a φ change, and it needs a `RENDER_EPOCH` bump and a taste-model
+  revalidation.
 
 - **Remaining quiver hardening** — closed. `voct_to_hz` gained a ±32-octave
   clamp in quiver-dsp 0.3.0, and auracle pins 0.3.3 as of the September 2026

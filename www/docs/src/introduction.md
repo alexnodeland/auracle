@@ -57,8 +57,8 @@ Four views, one loop between them.
 | **EVOLVE** | the question | Two candidates; pick one. This is what teaches it |
 | **TASTE** | the answer | What it thinks your taste is, how sure it is, whether it has been right |
 
-You will spend most of your time in PATCH and EVOLVE. TASTE is where you go to
-find out whether it is working.
+PERFORM is where you play; EVOLVE is where you teach; PATCH is where you
+open the hood. TASTE is where you go to find out whether it is working.
 
 ```admonish tip title="The shortest version"
 Open it, pick 3 of 9 presets when it asks, then answer duels in EVOLVE. After a

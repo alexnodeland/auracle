@@ -3588,7 +3588,12 @@ g:hover > .lock-dot, [data-addr]:focus-visible .lock-dot { opacity: 1; }
    comment claiming it shed the keybar's chrome while the markup kept the class
    that applied it. Splitting one component's rules across the file is how
    contradictions like those survive review. */
-.bank-item .bi-row button.star { color: var(--silk-dim); }
+/* An unrated star is a slot, not a mark: at full opacity on the live row,
+   silk-dim read as five lit stars beside a label saying "unrated". Mute
+   until hovered; only `.lit` is ever bright. */
+.bank-item .bi-row button.star { color: var(--silk-mute); }
+.bank-item .bi-row button.star:hover,
+.bank-item .bi-row button.star:focus-visible { color: var(--silk-dim); }
 
 @media (prefers-reduced-motion: reduce) {
   .toast, .duel-mid, .mod-plate, .lock-dot, .live-scope, .boot { transition: none !important; }
@@ -4328,3 +4333,25 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
    does not. They were recessed-but-present, which read as six controls that
    did nothing. */
 #arp-ctl.idle { display: none; }
+/* …and it floats above the dock rather than growing it. As a third row it
+   widened this column by ~120 px and made the dock taller, so switching the
+   arp on moved every key out from under the hand that was about to play it
+   (C3 went from x≈318 to x≈435). The keybed never moves now. */
+.keybar .key-side:first-child { position: relative; }
+#arp-ctl {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 16px);
+  z-index: 45;
+  flex-wrap: nowrap;
+  gap: var(--s2);
+  padding: 6px 10px;
+  background: var(--surface-pop);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  box-shadow: var(--lift), var(--cast);
+  white-space: nowrap;
+}
+
+/* A bred child that landed below its parent: the sampler exploring, said so. */
+.lin-explore { color: var(--silk-dim); font-style: italic; border-bottom: 1px dotted var(--silk-mute); cursor: help; }

@@ -1322,6 +1322,10 @@ async function dispatch(m) {
       performReply(m, "perform_drifted", "drift", true, () =>
         JSON.parse(engine.perform_drift(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 12, m.sigma || 0.05)));
       break;
+    case "perform_graft":
+      performReply(m, "perform_grafted", "graft", false, () =>
+        JSON.parse(engine.perform_graft(m.tree, JSON.stringify(m.overrides || []), m.k)));
+      break;
     case "perform_offer":
       performReply(m, "perform_offered", "offer", true, () =>
         JSON.parse(engine.perform_offer(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 40)));

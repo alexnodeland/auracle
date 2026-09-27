@@ -846,6 +846,21 @@ impl WasmEngine {
         .to_string()
     }
 
+    /// The performed state (`tree` plus `overrides`) with the module that
+    /// gives named control `k` something to turn grafted onto its output
+    /// ([`auracle_session::perform::graft_for`]): `{tree}`, or `{reason:
+    /// "no_graft"}` when there is none to give, or `null` if the tree does
+    /// not parse. Renders nothing; the page commits the tree and re-measures.
+    pub fn perform_graft(&self, tree_json: &str, overrides_json: &str, k: u32) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "null".into();
+        };
+        match auracle_session::perform::graft_for(&tree, k as usize) {
+            Some(t) => serde_json::json!({ "tree": t }).to_string(),
+            None => serde_json::json!({ "reason": "no_graft" }).to_string(),
+        }
+    }
+
     /// `tree` with knob `overrides` (`[[addr, value], …]`) written into its
     /// genome, as JSON; `null` if the tree does not parse. Unknown or
     /// structural addresses are skipped rather than failing the whole write:

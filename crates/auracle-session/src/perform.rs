@@ -55,7 +55,9 @@ use std::collections::HashSet;
 
 use auracle_features::{featurize_memo, AudioFeatures, PhraseSpec, RenderMemo};
 use auracle_grammar::edit::{set_param, ParamValue};
+use auracle_grammar::term::{AudioNode, ModNode, Uid};
 use auracle_grammar::PatchTree;
+use auracle_grammar::{apply_struct_op, StructOp};
 use auracle_taste::Standardizer;
 use fugue_evo::genome::trace_genome::{ChoiceValue, TraceGenome};
 use rand::Rng;
@@ -292,6 +294,87 @@ pub fn direction(control: &NamedControl, names: &[String]) -> Vec<f64> {
     d
 }
 
+/// The module PERFORM grafts onto the output of a patch whose knobs cannot
+/// reach control `k` ([`CONTROLS`] order), so the control has something to
+/// turn: a neutral EQ, for Bright and Body. At 0 dB on all three bands it is
+/// transparent, and its high and low shelves are the knobs a player would
+/// name for either. `examples/perform_inserts.rs` measures both claims.
+///
+/// `None` for everything else, each for a measured reason:
+///
+/// * **Snap, Motion** — no single module answers them.
+/// * **Grit** — its axis is spectral flatness, and a drive adds harmonics
+///   (which is Bright), not noise. A crusher is transparent only at 16 bits,
+///   where its slope is zero so the local measurement cannot see it, and it
+///   clips anything hotter than its ±5 V window.
+/// * **Space** — every effect sits before the voice's amp envelope, so a
+///   reverb's tail is cut at note-off: on First Bass with a reverb grafted,
+///   ∂(Space)/∂mix measured −0.04 and ∂/∂release +3.65. What gives a patch
+///   space here is its release, which [`graft_for`] lengthens instead.
+///
+/// The fragment's input is a placeholder; `StructOp::InsertTree` replaces it
+/// with the patch it wraps.
+pub fn insert_for(k: usize) -> Option<AudioNode> {
+    match CONTROLS.get(k)?.name {
+        "Bright" | "Body" => Some(AudioNode::Eq {
+            uid: Uid::NEW,
+            low: 0.5,
+            mid: 0.5,
+            high: 0.5,
+            mod_depth: 0.0,
+            modulation: ModNode::None,
+            input: Box::new(AudioNode::Silence { uid: Uid::NEW }),
+        }),
+        _ => None,
+    }
+}
+
+/// `tree` changed so named control `k` has something to turn, or `None`:
+/// Bright and Body get [`insert_for`]'s EQ on the output, below any stereo
+/// effect that ends the chain (unless the patch
+/// already has one, or it would break the size ceilings); Space gets its amp
+/// release brought up to [`SPACE_RELEASE`] (unless it is already there).
+/// Space is only grafted when turned up, so the longer release is what was
+/// asked for; the EQ is transparent in either direction.
+pub fn graft_for(tree: &PatchTree, k: usize) -> Option<PatchTree> {
+    if CONTROLS.get(k)?.name == "Space" {
+        if tree.amp.release >= SPACE_RELEASE {
+            return None;
+        }
+        let mut t = tree.clone();
+        t.amp.release = SPACE_RELEASE;
+        return Some(t);
+    }
+    let node = insert_for(k)?;
+    let same = |n: &AudioNode| std::mem::discriminant(n) == std::mem::discriminant(&node);
+    fn any(n: &AudioNode, f: &dyn Fn(&AudioNode) -> bool) -> bool {
+        f(n) || n.children().into_iter().any(|c| any(c, f))
+    }
+    if any(&tree.root, &same) {
+        return None;
+    }
+    // Below any stereo tail, not after it: the EQ is mono, and grafted onto
+    // a reverb or chorus at the output it folded the patch to one channel
+    // (Ghost Bell moved 0.27σ). The stereo modules have one input, at `/0`.
+    let mut key = String::from("node");
+    let mut n = &tree.root;
+    while matches!(
+        n,
+        AudioNode::Reverb { .. }
+            | AudioNode::Chorus { .. }
+            | AudioNode::Phaser { .. }
+            | AudioNode::Flanger { .. }
+    ) {
+        n = n.children()[0];
+        key.push_str("/0");
+    }
+    apply_struct_op(tree, &StructOp::InsertTree { key, node }).ok()
+}
+
+/// The amp release a Space graft brings a patch up to: a ≈250 ms time
+/// constant (`1 ms·10000^x`), long enough for a tail to exist.
+pub const SPACE_RELEASE: f64 = 0.6;
+
 /// The continuous knobs of `tree`, as `(address, value)` in trace order.
 pub fn continuous_knobs(tree: &PatchTree) -> Vec<(String, f64)> {
     tree.to_trace()
@@ -489,7 +572,35 @@ pub fn separate(wiring: &mut [Wiring]) {
     }
 }
 
+/// Wire `control`, preferring the knobs a musician would name for it.
+///
+/// First the solve is restricted to the control's own sites
+/// ([`NamedControl::sites`]); if that wiring clears the gate it is the one
+/// used, because a player who turns Bright and watches the cutoff move has
+/// learned something true about the patch, and one who watches the amp
+/// release move has learned nothing. Only when the named knobs cannot do it
+/// honestly does the solve range over every live knob — which is how Bright
+/// ended up on Acid Line's attack and release. `semantic` is kept as the
+/// soft prior inside the unrestricted solve.
 fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
+    let named: Vec<usize> = jac
+        .addrs
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| control.sites.contains(&a.rsplit('#').next().unwrap_or(a)))
+        .map(|(i, _)| i)
+        .collect();
+    if !named.is_empty() && named.len() < jac.addrs.len() {
+        let w = wire_over(control, jac, semantic, &named);
+        if !w.search {
+            return w;
+        }
+    }
+    let all: Vec<usize> = (0..jac.cols.len()).collect();
+    wire_over(control, jac, semantic, &all)
+}
+
+fn wire_over(control: &NamedControl, jac: &Jacobian, semantic: f64, all: &[usize]) -> Wiring {
     let d = direction(control, &jac.names);
     let position: f64 = d.iter().zip(&jac.z).map(|(a, b)| a * b).sum();
     let n = jac.cols.len();
@@ -506,10 +617,9 @@ fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
         down: None,
         moved: Vec::new(),
     };
-    if n == 0 {
+    if n == 0 || all.is_empty() {
         return out;
     }
-    let all: Vec<usize> = (0..n).collect();
     let w: Vec<f64> = jac
         .addrs
         .iter()
@@ -522,21 +632,55 @@ fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
             }
         })
         .collect();
-    let x = ridge(&jac.cols, &all, &d, &w);
-    let mut support: Vec<usize> = all.clone();
-    support.sort_by(|&a, &b| x[b].abs().total_cmp(&x[a].abs()));
+    let x_sub = ridge(&jac.cols, all, &d, &w);
+    let mut x = vec![0.0; n];
+    for (&i, v) in all.iter().zip(&x_sub) {
+        x[i] = *v;
+    }
+    // Rank by *effect* — coefficient times how much the knob moves φ at all —
+    // not by coefficient, and let only the knobs that do real work set the
+    // travel scale. A knob that barely moves the sound needs a large
+    // coefficient to contribute anything; ranked by coefficient it headed the
+    // support, and scaled so the largest coefficient got MAX_TRAVEL it gave
+    // the knob doing the work a sliver of a turn. Iron Bass: Bright wired to
+    // drive (|∂z| 0.15 per unit) at +0.50 and its cutoff (|∂z| 5.2, +4σ of
+    // centroid per unit) barely moved: 0.03σ of reach. Weak knobs are kept —
+    // Motion leans on several small ones together, and dropping them cost it
+    // a sixth of its patches — but clamped at MAX_TRAVEL instead of setting
+    // the scale. (Letting any knob with a quarter of the top effect set it
+    // still held Iron Bass's Bright to 0.56σ, via the distortion's tone.)
+    let col_norm: Vec<f64> = jac
+        .cols
+        .iter()
+        .map(|c| c.iter().map(|v| v * v).sum::<f64>().sqrt())
+        .collect();
+    let effect = |i: usize, xi: f64| xi.abs() * col_norm[i];
+    let mut support: Vec<usize> = all.to_vec();
+    support.sort_by(|&a, &b| effect(b, x[b]).total_cmp(&effect(a, x[a])));
     support.truncate(MAX_KNOBS);
     support.retain(|&i| x[i].abs() > 1e-9);
     if support.is_empty() {
         return out;
     }
     let xs = ridge(&jac.cols, &support, &d, &w);
-    // The φ movement this wiring predicts, per unit of x.
+    // The knob with the largest effect gets the full MAX_TRAVEL; the rest
+    // follow in proportion and clamp there.
+    let peak = support
+        .iter()
+        .zip(&xs)
+        .max_by(|(&i, &a), (&j, &b)| effect(i, a).total_cmp(&effect(j, b)))
+        .map_or(0.0, |(_, v)| v.abs());
+    let alpha = MAX_TRAVEL / peak.max(1e-12);
+    let travel: Vec<f64> = xs
+        .iter()
+        .map(|v| (alpha * v).clamp(-MAX_TRAVEL, MAX_TRAVEL))
+        .collect();
+    // The φ movement this wiring predicts at a full turn.
     let m = jac.names.len();
     let mut moved = vec![0.0; m];
     for (i, &ci) in support.iter().enumerate() {
         for (mv, j) in moved.iter_mut().zip(&jac.cols[ci]) {
-            *mv += j * xs[i];
+            *mv += j * travel[i];
         }
     }
     let along: f64 = moved.iter().zip(&d).map(|(a, b)| a * b).sum();
@@ -544,8 +688,6 @@ fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
     if norm <= 1e-12 || along <= 0.0 {
         return out;
     }
-    let peak = xs.iter().fold(0.0f64, |p, v| p.max(v.abs()));
-    let alpha = MAX_TRAVEL / peak.max(1e-12);
     // Purity is measured where cross-talk is heard: against the other named
     // axes. A real brightening also raises the zero-crossing rate and the
     // high band, and against the full φ those correlates read as impurity
@@ -566,11 +708,11 @@ fn wire_one(control: &NamedControl, jac: &Jacobian, semantic: f64) -> Wiring {
         .sum();
     out.purity = along / (along * along + off).sqrt().max(1e-12);
     out.moved = moved.iter().map(|v| v / norm).collect();
-    out.reach = alpha * along;
+    out.reach = along;
     out.knobs = support
         .iter()
-        .zip(&xs)
-        .map(|(&ci, v)| (jac.addrs[ci].clone(), alpha * v))
+        .zip(&travel)
+        .map(|(&ci, &v)| (jac.addrs[ci].clone(), v))
         .collect();
     out.search = out.purity < PURITY_FLOOR || out.reach < REACH_FLOOR;
     out
@@ -649,16 +791,32 @@ pub fn verify(
         // A half is confirmed only if the sound moved the asked-for way at
         // both half and full travel; its reach is the full-travel movement.
         // A half that moves at the end but reverses on the way is closed.
-        let half = |c: f64| -> f64 {
-            let near = at(c * 0.5).map(|v| (v - base) * c).unwrap_or(0.0);
-            let far = at(c).map(|v| (v - base) * c).unwrap_or(0.0);
+        let half = |c: f64, scale: f64| -> f64 {
+            let near = at(c * scale * 0.5).map(|v| (v - base) * c).unwrap_or(0.0);
+            let far = at(c * scale).map(|v| (v - base) * c).unwrap_or(0.0);
             if near > 0.0 && far > near {
                 far
             } else {
                 0.0
             }
         };
-        let (up, down) = (half(1.0), half(-1.0));
+        let (mut up, mut down) = (half(1.0, 1.0), half(-1.0, 1.0));
+        // A control that would close at full travel gets one retry at half:
+        // the same two-point test over ±¼ and ±½ (±½ is already rendered and
+        // memoized). Wiring by effect gives the knob doing the work its whole
+        // MAX_TRAVEL, which is where a Motion wiring most often turns back on
+        // itself — so it keeps half the turn instead of closing.
+        let open = |m: f64| m >= REACH_FLOOR * 0.5;
+        if !open(up) && !open(down) {
+            let (u2, d2) = (half(1.0, 0.5), half(-1.0, 0.5));
+            if open(u2) || open(d2) {
+                for (_, g) in wiring[i].knobs.iter_mut() {
+                    *g *= 0.5;
+                }
+                wiring[i].reach *= 0.5;
+                (up, down) = (u2, d2);
+            }
+        }
         wiring[i].up = Some(up);
         wiring[i].down = Some(down);
         let (lo, hi) = wiring[i].range();
@@ -771,6 +929,51 @@ mod tests {
     /// sites without one (a modulation depth with nothing to modulate): those
     /// are exactly what the old list wrote, missed, and answered with a patch
     /// reload mid-phrase. A drift may move nothing else.
+    /// A control the knobs cannot reach may be given something to turn, and
+    /// the EQ that does it for Bright and Body is inaudible until turned: on
+    /// every preset that has no EQ, the grafted patch vets and its audio φ
+    /// stays within a hair of the original (standardized, so "a hair" is in
+    /// the units the controls move in). A second EQ is never grafted, and
+    /// Space's release graft is a floor, not a reset.
+    #[test]
+    fn grafts_are_transparent_and_do_not_stack() {
+        let spec = PhraseSpec::default();
+        let std = preset_standardizer(&spec);
+        let n_audio = AudioFeatures::NAMES.len();
+        let z = |t: &PatchTree| {
+            let v = featurize(t, &spec).expect("grafted patch vets");
+            std.transform(&v.features.phi())[..n_audio].to_vec()
+        };
+        let bright = CONTROLS.iter().position(|c| c.name == "Bright").unwrap();
+        let space = CONTROLS.iter().position(|c| c.name == "Space").unwrap();
+        let mut grafted = 0;
+        let mut worst: f64 = 0.0;
+        for p in preset_bank().into_iter().step_by(4) {
+            let Some(t) = graft_for(&p.tree, bright) else {
+                continue;
+            };
+            grafted += 1;
+            let d = z(&p.tree)
+                .iter()
+                .zip(z(&t))
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f64>()
+                .sqrt();
+            worst = worst.max(d);
+            assert!(graft_for(&t, bright).is_none(), "{}: a second EQ", p.name);
+        }
+        assert!(grafted >= 8, "only {grafted} presets took the EQ graft");
+        assert!(worst < 0.05, "an EQ graft moved the sound by {worst:.3}σ");
+
+        let mut short = preset_bank()[0].tree.clone();
+        short.amp.release = 0.2;
+        let long = graft_for(&short, space).expect("a short release grows");
+        assert_eq!(long.amp.release, SPACE_RELEASE);
+        assert_eq!(long.root, short.root, "Space changes the release only");
+        assert!(graft_for(&long, space).is_none(), "already long enough");
+        assert!(insert_for(space).is_none() && graft_for(&short, 4).is_none());
+    }
+
     #[test]
     fn performance_touches_live_knobs_only() {
         let sr = PhraseSpec::default().sample_rate;

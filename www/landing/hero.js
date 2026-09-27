@@ -44,10 +44,12 @@
    * audible axis and they are as close to independent as four knobs get.
    */
   const AXES = [
-    { key: 'bright', label: 'brightness' },
-    { key: 'motion', label: 'movement' },
+    // Labelled with the instrument's own control names (PERFORM's Bright,
+    // Motion, Grit, Body), so the page and the app speak one vocabulary.
+    { key: 'bright', label: 'bright' },
+    { key: 'motion', label: 'motion' },
     { key: 'grit',   label: 'grit' },
-    { key: 'weight', label: 'weight' },
+    { key: 'weight', label: 'body' },
   ];
   const D = AXES.length;
 

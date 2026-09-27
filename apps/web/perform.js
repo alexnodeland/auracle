@@ -87,6 +87,8 @@ export function createPerform(host) {
     home: null,
     cur: null,
     wire: null, // [{name, low, high, knobs:[[addr,gain]], purity, reach, position, search}]
+    grafted: new Set(), // control names already given a module on this patch
+    intent: null, // {i, dir, at}: a turn waiting on its graft to be measured
     c: [0, 0, 0, 0, 0, 0],
     sent: new Map(), // addr -> value last written to the voices
     wander: 0,
@@ -217,10 +219,13 @@ export function createPerform(host) {
             ? `already as ${w.low} as it gets`
             : hi === 0
               ? `already as ${w.high} as it gets`
-              : w.knobs.map(([a]) => a.split("#")[1]).join(" · ");
+              : w.knobs.map(([a]) => knobWord(a)).join(" · ");
+        // A sentence a player can read, not the measurement: addresses,
+        // purity and σ are the engineer's, and live in the docs and the
+        // under-the-hood strip, not on the knob.
         k.wrap.title = search
-          ? `${w.name}: this patch's knobs cannot honestly make it ${w.high} (purity ${w.purity.toFixed(2)}). Turning it asks evolution for a variant that can.`
-          : `${w.name}: moves ${w.knobs.map(([a, g]) => `${a} ${g >= 0 ? "+" : "−"}${Math.abs(g).toFixed(2)}`).join(", ")} · purity ${w.purity.toFixed(2)} · measured ${w.down != null ? `−${w.down.toFixed(2)}σ / +${w.up.toFixed(2)}σ` : `${w.reach.toFixed(1)}σ predicted`} · long-press to hear it`;
+          ? `${w.name}: nothing in this patch makes it ${w.high} without changing something else. Turn it and it grows a variant that can.`
+          : `${w.name}: ${w.knobs.map(([a, g]) => `${g >= 0 ? "raises" : "lowers"} ${knobWord(a, true)}`).join(", ")} as you turn it toward ${w.high}. Long-press to hear it.`;
       } else {
         where.style.display = "none";
         k.sub.textContent = state.measuring ? "measuring…" : "";
@@ -410,9 +415,26 @@ export function createPerform(host) {
     const note = el(
       "span",
       "pf-touch-n",
-      state.touch.sites.length ? `velocity moves ${state.touch.sites.map(([a]) => a.split("#")[1]).join(" · ")}` : "velocity sets loudness only",
+      state.touch.sites.length ? `velocity moves ${state.touch.sites.map(([a]) => knobWord(a)).join(" · ")}` : "velocity sets loudness only",
     );
     touchRow.append(lab, sel, depth, note);
+  }
+
+  // What PERFORM adds when a control has nothing to turn (the engine's
+  // `perform::insert_for`); Snap and Motion have no one-module answer.
+  // `perform::graft_for`: a transparent EQ gives Bright and Body its shelves;
+  // Space, asked for more of, gets a release long enough to have a tail
+  // (every effect here sits before the amp envelope, so a reverb alone is cut
+  // at note-off). Grit, Snap and Motion have no honest one-step answer.
+  const GRAFTS = { Bright: "tone EQ", Body: "tone EQ", Space: "longer release" };
+
+  // A knob as a player names it: "cutoff", or with its module, "filter
+  // cutoff". The rack's own labels, via the host; the address suffix only
+  // when the host has nothing better.
+  function knobWord(addr, withModule) {
+    const info = host.knobInfo ? host.knobInfo(addr, 0) : null;
+    const label = (info && info.label) || addr.split("#").pop();
+    return withModule && info && info.module ? `${info.module.toLowerCase()} ${label.toLowerCase()}` : label.toLowerCase();
   }
 
   function onKnob(k, fromMidi) {
@@ -436,14 +458,25 @@ export function createPerform(host) {
     const w = state.wire && state.wire[k.i];
     if (w && w.search && Math.abs(k.value) > 0.3) {
       // Honest about what happens: this patch cannot make the sound the label
-      // names by turning knobs, so the gesture becomes a request for a patch
-      // that can. The control springs back; the offer arrives in B.
+      // names by turning knobs. If one change would give it something to turn
+      // (see GRAFTS), that change goes in as one undo step on the bench, and
+      // the control is measured again and set where the hand left it.
+      // Otherwise the gesture becomes a request for a patch that can: the
+      // control springs back and the offer arrives in B.
       const up = k.value > 0;
-      host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing an offer instead`);
       k.value = 0;
       state.c[k.i] = 0;
       paintKnob(k);
-      requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`);
+      const graft = GRAFTS[w.name];
+      if (graft && (up || w.name !== "Space") && !state.grafted.has(w.name) && !inFlight("perform_graft")) {
+        state.grafted.add(w.name);
+        state.intent = { i: k.i, dir: up ? 1 : -1, at: performance.now() };
+        host.note(`${w.name}: giving it a ${graft} to turn…`);
+        request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: k.i });
+      } else {
+        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing an offer instead`);
+        requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`);
+      }
     }
     host.logImplicit("perform_turn", { control: k.spec.name, value: +k.value.toFixed(3) });
   }
@@ -586,6 +619,24 @@ export function createPerform(host) {
     }
     sendTouch();
     renderStatus();
+    // A graft was asked for by a turn: finish the gesture on the new patch.
+    const it = state.intent;
+    if (it && performance.now() - it.at < 30_000) {
+      state.intent = null;
+      const w = state.wire[it.i];
+      const k = knobs[it.i];
+      const [lo, hi] = rangeOf(w);
+      if (w && k && !w.search && (it.dir > 0 ? hi > 0 : lo < 0)) {
+        k.value = 0.5 * it.dir;
+        state.c[it.i] = k.value;
+        push();
+        paintKnob(k);
+        host.note(`${w.name} now turns ${w.knobs.map(([a]) => knobWord(a, true)).join(" and ")}`);
+      } else if (w) {
+        host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} did not reach it here — growing an offer instead`);
+        requestOffer(`${w.name.toLowerCase()} ${it.dir > 0 ? "up" : "down"}`);
+      }
+    }
   }
 
   function onWorker(m) {
@@ -644,6 +695,23 @@ export function createPerform(host) {
       host.logImplicit("perform_offer", { why: state.offerWhy || "" });
       return true;
     }
+    if (m.type === "perform_grafted") {
+      const t = m.graft && m.graft.tree;
+      if (!t) {
+        const i = state.intent ? state.intent.i : -1;
+        state.intent = null;
+        const w = state.wire && state.wire[i];
+        if (w) {
+          host.note(`${w.name}: nothing to add here — growing an offer instead`);
+          requestOffer(`${w.name.toLowerCase()}`);
+        }
+        return true;
+      }
+      // Committed like Keep: one undo step on the bench, and the patch comes
+      // back through patchChanged to be measured.
+      host.commitTree(JSON.stringify(t));
+      return true;
+    }
     if (m.type === "perform_applied") {
       if (then) then(m.json);
       return true;
@@ -685,6 +753,7 @@ export function createPerform(host) {
     state.sent.clear();
     state.wire = null;
     state.glide = null;
+    state.grafted.clear();
     if (state.offer) clearOffer();
     if (state.visible) wire();
     knobs.forEach(paintKnob);

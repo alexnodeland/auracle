@@ -8,6 +8,39 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — named controls turn the knob that does the work, and grow one when there is none
+
+A booth critique found PERFORM's controls mostly dead: 1–4 of 6 reached a
+patch, and Bright, where it did reach, was "mostly resonance".
+
+* **Ranked by effect, not coefficient.** A knob that barely moves the sound
+  needs a large coefficient to contribute anything, so it headed the wiring
+  and set the travel scale, and the knob doing the work got a sliver of a
+  turn. On Iron Bass, Bright moved the drive by half its range and the cutoff
+  (+4σ of centroid per unit) by almost nothing: 0.03σ of reach. Now the
+  largest-effect knob gets the whole `MAX_TRAVEL` and the rest clamp there.
+* **The control's own knobs first.** Bright tries cutoff, tone and the like,
+  and Motion tries mod depth and rate, before the solve may use anything else.
+  On Acid Line, Bright was the amp's attack and release; it is now the cutoff
+  (purity 0.87, reach 2.85σ).
+* **A half-travel retry** in `verify` for a control that would otherwise close.
+* Measured on the same 24 fresh-pool patches and the same build: Bright
+  reaches 50% (was 29%), Snap 79% (67%), Body 29% (21%), Space 46% (38%), and
+  the mean reachable controls per patch went from 2.21 to 2.54. Median
+  verified reach is 3–4× larger. **Motion fell**, 62% → 46%, and that is
+  written down in the reference rather than tuned away.
+* **Grafts.** Turning a search control now first tries to give it something
+  to turn (`perform::graft_for`). Bright and Body get a flat EQ, placed below
+  any stereo module that ends the chain; it is transparent (median |Δz|
+  0.000). Space, turned up, gets a ≈250 ms release, because every effect sits
+  before the amp envelope and a reverb's tail is cut at note-off. The graft is
+  one undo step; the patch is measured again and the control is set where the
+  hand left it. Over the presets, the EQ opens Bright on 7 of 10 and Body on
+  15 of 48, and the release opens Space on 41 of 46. Grit has no graft: its
+  axis hears noise, not saturation (a new open question).
+* Tooltips say "raises filter cutoff as you turn it toward bright", not
+  `node#cut +0.50 · purity 0.92 · 2.72σ`.
+
 ### Fixed — the first minute at a booth
 
 A walkthrough of the first-run flow, played the way a visitor would, found:
@@ -34,6 +67,20 @@ A walkthrough of the first-run flow, played the way a visitor would, found:
   title and GOT IT were unreachable.
 * **Toasts** covered B's title in EVOLVE, rack plates in PATCH and the TASTE
   header. They now stack upward from just above the keybar.
+* **After the warm start, PERFORM** — not PATCH, the densest view — and a
+  returning player comes back to PERFORM if that is where they left.
+* **Bred children below their parent** are labelled *exploring*: the walk
+  samples the posterior rather than only climbing it, and a column of bare
+  negative Δtaste read as "it bred worse patches". The guide no longer says
+  every walk goes uphill.
+* **The arp's settings float above the dock** instead of widening it; turning
+  ARP on moved every key ~120 px under the player's hand.
+* **Unrated stars** on the selected bank row read as five lit stars; they are
+  muted until hovered.
+* **Copy**: the warm start's "about twenty votes" is eighteen; help's "PLAY" is
+  PATCH; the landing says four views, and its miniature uses the app's control
+  names; "model's guess: needs a few picks" after eighteen picks now says it is
+  fitting.
 * **PERFORM's pads.** The Hold pad is **Freeze** (the dock's **hold** latches
   notes — two buttons named the same doing different jobs); Take and Peek are
   disabled until there is an offer; Offer reads as the primary.

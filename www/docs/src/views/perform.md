@@ -122,11 +122,30 @@ much farther away. Measured over the preset library, **Grit** and **Space** are
 search controls on most patches for exactly that reason.
 
 The line under it reads *not in this patch — turn to ask*. Turning it about a
-third of the way to either end and letting go does two things:
+third of the way to either end and letting go does one of two things.
+
+**Where one change would give it something to turn, that change is made.**
+
+| Control | What it gets |
+|---|---|
+| **Bright**, **Body** | A tone EQ at the end of the chain (below any reverb, chorus, phaser or flanger), set flat, so the sound does not change until you turn it |
+| **Space**, turned up | A longer amp release (≈250 ms), because every effect here sits before the amp envelope and a reverb's tail is cut at note-off |
+
+It goes onto the workbench as one undo step. The patch is measured again, and
+the control is set to where your hand left it. The toast names what it now
+turns. The graft is made once per control per patch, and never twice: a patch
+that already has an EQ does not get a second one.
+
+**Otherwise** (Snap, Motion, Grit, Space turned down, or a graft that still
+did not reach it):
 
 1. The control springs back to the centre. No knob moved.
 2. An **offer** is grown from the current sound and arrives in **B**, with a
    note saying what you asked for.
+
+Grit has no graft because of how it is measured. Grit is spectral flatness, or
+noisiness. A drive adds harmonics, and harmonics read as Bright. A bitcrusher
+is transparent only at 16 bits, where turning it changes nothing measurable.
 
 ```admonish warning title="What the offer is and is not"
 The offer is a variant grown from where you are, on the same walk evolution

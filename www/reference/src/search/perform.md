@@ -110,8 +110,9 @@ columns nearly collinear, and many knobs are nearly inaudible, which makes
 columns nearly zero. Unregularized, the solve answers
 both with large, cancelling moves.
 
-The support $S$ is the four largest $\lvert \delta^\star_k \rvert$
-(`MAX_KNOBS`), and the move is **re-solved** on it:
+The support $S$ is the four knobs with the largest **effect**
+$\lvert \delta^\star_k \rvert \, \lVert J_{\cdot k} \rVert$ (`MAX_KNOBS`), and
+the move is **re-solved** on it:
 
 $$
 \delta_S \;=\; \big(J_S^\top J_S + \lambda I\big)^{-1} J_S^\top \hat e .
@@ -119,8 +120,23 @@ $$
 
 Truncating $\delta^\star$ would throw away the other knobs' contribution
 without letting the four that remain compensate; the re-solve is the best move
-on those four. Choosing the four by $\lvert\delta^\star\rvert$ is a heuristic,
-not a best-subset search.
+on those four. Choosing the four by effect is a heuristic, not a best-subset
+search. It is effect and not $\lvert\delta^\star\rvert$ because a knob that barely
+moves the sound needs a large coefficient to contribute anything. Ranked by
+coefficient, that knob headed the support, and the scale below then gave the
+knob doing the work a sliver of a turn. On Iron Bass, Bright wired to the
+drive ($\lVert J_{\cdot k}\rVert = 0.15$) at $+0.5$, and the cutoff
+($\lVert J_{\cdot k}\rVert = 5.2$, $+4\sigma$ of centroid per unit) barely
+moved: $0.03\sigma$ of reach.
+
+**The control's own knobs first.** The solve runs twice at most. First it is
+restricted to the knobs a musician would name for the control
+(`NamedControl::sites`: cutoff, tone, … for Bright; mod depth and rate for
+Motion). If that wiring clears the gate below, it is used. Only if it does not
+does the solve range over every live knob, with those sites as a soft prior
+(`SEMANTIC_RIDGE`). A player who turns Bright and watches the cutoff move has
+learned something true about the patch. One who watches the amp release move,
+which is what the unrestricted solve chose on Acid Line, has learned nothing.
 
 Four, because a control is heard as one gesture, and because four is where
 most of a patch's audible leverage already is: over the preset library, a
@@ -141,13 +157,22 @@ of the movement is $\sqrt{1 - 0.35^2} / 0.35 \approx 2.7$ times the on-axis
 part.
 
 **Scale.** A full turn may move no knob by more than `MAX_TRAVEL` $= 0.5$ of its
-range:
+range. The knob with the largest effect gets all of it, and the rest follow in
+proportion, clamped at the same limit:
 
 $$
-\alpha \;=\; \frac{0.5}{\max_{k \in S} \lvert \delta_{S,k} \rvert},
+\alpha \;=\; \frac{0.5}{\lvert \delta_{S,k^\ast} \rvert},\quad
+k^\ast = \arg\max_{k\in S} \lvert\delta_{S,k}\rvert\,\lVert J_{\cdot k}\rVert,
 \qquad
-v(c) \;=\; \operatorname{clip}\!\big(v_0 + c\,\alpha\,\delta_S,\; 0,\; 1 - 10^{-6}\big).
+t_k \;=\; \operatorname{clip}(\alpha\,\delta_{S,k},\, \pm 0.5),
 $$
+
+$$
+v(c) \;=\; \operatorname{clip}\!\big(v_0 + c\,t,\; 0,\; 1 - 10^{-6}\big).
+$$
+
+Purity and reach below are computed from the clamped travel $t$, so they
+describe the move the control actually makes.
 
 The upper clip is `KNOB_MAX`. Every continuous site is $\mathrm{Uniform}(0,1)$
 on the half-open interval, so a knob at exactly $1$ has log-prior $-\infty$ and
@@ -157,7 +182,7 @@ would make the patch un-evolvable. A performance gesture must never do that.
 units:
 
 $$
-R \;=\; \alpha\, \hat e^\top J_S \delta_S .
+R \;=\; \hat e^\top J_S\, t .
 $$
 
 A control is a **search control** on this patch when the knobs cannot honestly
@@ -212,6 +237,23 @@ is about 0.1σ, since many pool patches have no filter for a named control to
 turn. That is the honest reading, and a search control's offer is the answer
 to it.
 
+The same 24 patches, after the effect ranking, the control's-own-knobs pass
+and a half-travel retry in `verify` (all three above and below). Both rows
+are measured on the same build, since the pink-noise fix and the re-voiced
+presets moved the pool standardizer:
+
+| Reachable | Bright | Snap | Motion | Body | Grit | Space | mean per patch |
+|---|---|---|---|---|---|---|---|
+| Ranked by coefficient | 29% | 67% | 62% | 21% | 4% | 38% | 2.21 |
+| Ranked by effect | **50%** | **79%** | 46% | **29%** | 4% | **46%** | **2.54** |
+
+The median verified reach of a reachable control grew three- to four-fold
+(Bright 0.09σ → 0.33σ, Snap 0.54σ → 0.95σ). **Motion lost**: 62% → 46%.
+Motion leans on several small knobs together, and giving the strongest one its
+whole turn is where a Motion wiring most often turns back on itself. The
+half-travel retry did not win those patches back. Dropping the weak knobs was
+tried first and cost Motion more.
+
 **Tried and not shipped.** Aiming the solve at each control's population
 *pattern* $\Sigma \hat e$ (the correlation-weighted direction, Haufe et al.
 2014) first looked like a large improvement, but only because purity was then
@@ -252,8 +294,15 @@ half open becomes a search control. The instrument draws a half-closed control
 with half its ring and names the end it is stuck at: *already as still as it
 gets*, for Motion on First Bass.
 
+A control that would close at full travel gets **one retry at half**: the same
+two-point test over $c \in \{\pm\tfrac14, \pm\tfrac12\}$ (the $\pm\tfrac12$ renders
+are already in the memo). If a half opens, the wiring keeps half its travel
+rather than closing.
+
 Total cost for a patch with $n$ knobs and $r$ reachable controls is $n + 1 + 4r$
-renders, at most $n + 25$, all through the memo. The view re-wires after every
+renders, plus two for each retry, all through the memo. In the browser that is
+around 20–30 renders, and the page caches each measurement by tree and by vote
+count, so returning to a patch costs none. The view re-wires after every
 glide and every patch change, so the claims are always about the neighbourhood
 the sound is in.
 
@@ -305,6 +354,20 @@ the grammar exists, and it is the reason the table is not used.
 presets, because most patches contain no drive or reverb to turn. They are the
 controls most often drawn as search controls.
 
+**Grafts.** Turning a search control first tries to give it something to turn
+(`graft_for`). Bright and Body get a flat EQ, placed below any stereo module
+that ends the chain, because above one it folds the patch to mono (Ghost Bell
+moved 0.27σ that way). Space, turned up, gets its amp release raised to 0.6
+(≈250 ms). A reverb was tried first, and every effect here sits before the amp
+envelope: on First Bass with a reverb grafted, ∂Space/∂mix measured −0.04 and
+∂Space/∂release +3.65. Grit gets nothing (see the
+[open question](../design/open-questions.md)). `perform_inserts` measures each
+graft. Over the preset bank, the EQ is transparent (median |Δz| 0.000; the
+unit test bounds it at 0.05σ). It opens Bright on 7 of the 10 presets where
+Bright was a search control, and Body on 15 of 48. The release graft opens
+Space on 41 of 46, at 1–2σ of reach. It is not transparent, and is not meant
+to be: it is what "farther" asked for.
+
 **Leverage.** Nudging every knob of every preset by $\pm 0.15$ and measuring how
 far $\varphi_{\text{audio}}$ moves, in units of the library's own
 per-coordinate spread: over 61 presets and 821 knobs, a patch's four most
@@ -318,6 +381,7 @@ attached.
 | `cargo run -p auracle-features --example jacobian_probe --release > jac.csv` | $\partial\varphi_{\text{audio}}/\partial\text{knob}$ for every preset: the raw material for both purity rows |
 | `cargo run -p auracle-features --example leverage_probe --release > leverage.csv` | Per-knob leverage for every preset |
 | `cargo run -p auracle-session --example perform_wiring --release -- "First Bass"` | The shipped wiring on named presets: knobs, purity, reach, position, search |
+| `cargo run -p auracle-session --example perform_inserts --release` | For each preset's search controls, whether PERFORM's graft is transparent and whether it makes the control reachable |
 | `cargo run -p auracle-session --example reach_census --release -- 24 7` | How many controls reach the patches of a fresh session pool, with verification, and how the gate would read with purity against the whole of φ |
 
 The two probes print CSV and the medians are computed from it. `jacobian_probe`
