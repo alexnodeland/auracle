@@ -1,0 +1,298 @@
+{
+  "viewport": [1920, 1080],
+  "dpr": 1,
+  "query": "?film",
+  "init": "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();",
+  "setup": [
+    {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+    {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+    {"op": "click", "sel": ".warm-item >> nth=0"},
+    {"op": "click", "sel": ".warm-item >> nth=4"},
+    {"op": "click", "sel": ".warm-item >> nth=7"},
+    {"op": "click", "sel": "#warm-go"},
+    {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+    {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000}
+  ],
+  "shots": [
+    {
+      "id": "sd-intro",
+      "beat": "intro",
+      "pre": 1.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"rack": "#rack-scroll", "subject": "#rack-subject"},
+      "actions": [
+        {"at": 0.3, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"}
+      ]
+    },
+    {
+      "id": "sd-open",
+      "beat": "open",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"filter": "#rack-svg g.mod-group[data-key='node/0']", "hz": "#rack-svg [data-addr='node/0#cut']", "ms": "#rack-svg [data-addr='amp#release']", "db": "#rack-svg [data-addr='amp#sustain']", "belief": "#belief"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "open1:edit", "op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -60, "ms": 1500},
+        {"at": "open3:updates", "op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -40, "ms": 1000},
+        {"at": "open3:edit", "op": "mark", "name": "belief", "sel": "#belief"},
+        {"at": "open3:edit", "op": "log", "name": "belief", "js": "document.getElementById('belief').textContent"}
+      ]
+    },
+    {
+      "id": "sd-lock",
+      "beat": "lock",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"knobs": "#lock-knobs", "wiring": "#lock-structure", "chorus": "#rack-svg g.mod-group[data-key='node']"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
+        {"at": "lock1:dot-0.6", "op": "move", "sel": "#rack-svg [data-addr='node/0#cut']", "ms": 400},
+        {"at": "lock1:dot", "op": "click", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"},
+        {"at": "lock1:dot+0.1", "op": "mark", "name": "dot", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"},
+        {"at": "lock1:square-0.5", "op": "move", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "ms": 400},
+        {"at": "lock1:square", "op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"},
+        {"at": "lock1:square+0.1", "op": "mark", "name": "square", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"},
+        {"at": "lock2:knob", "op": "move", "sel": "#lock-knobs", "ms": 400},
+        {"at": "lock2:wiring", "op": "move", "sel": "#lock-structure", "ms": 400}
+      ]
+    },
+    {
+      "id": "sd-evolve",
+      "beat": "evolve",
+      "pre": 0.5,
+      "clips": [["evolve2", "@benched-0.5"]],
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "move", "sel": "#rack-svg [data-addr='node/0#cut']", "ms": 400},
+        {"op": "click", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"},
+        {"op": "move", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "ms": 400},
+        {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"},
+        {"op": "wait", "ms": 800},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"evolve": "#rack-evolve", "subject": "#rack-subject", "meta": "#rack-meta"},
+      "actions": [
+        {"at": 0.1, "op": "hold", "keys": ["a", "d", "g"], "until": "evolve1:Evolve+0.6"},
+        {"at": "evolve1:Evolve-0.4", "op": "move", "sel": "#rack-evolve", "ms": 400},
+        {"at": "evolve1:Evolve", "op": "click", "sel": "#rack-evolve"},
+        {"at": "evolve1:Evolve+0.2", "op": "until", "sel": "#toasts .toast:has-text('now on the bench')", "ms": 300000, "stamp": "benched"},
+        {"at": "evolve2+0.6", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "evolve2+0.8", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "evolve2+0.8", "op": "mark", "name": "subject", "sel": "#rack-subject"},
+        {"at": "evolve2+0.8", "op": "mark", "name": "chorus", "sel": "#rack-svg g.mod-group[data-key='node']"},
+        {"at": "evolve2+0.8", "op": "log", "name": "child", "js": "document.getElementById('rack-subject').textContent + ' | ' + document.getElementById('rack-meta').textContent"}
+      ]
+    },
+    {
+      "id": "sd-bank",
+      "beat": "bank",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"bank": "#nodebank", "green": "#rack-svg .jack[data-childkey='node/0']", "amber": "#rack-svg .jack[data-childkey='node/0/0']", "dock": "#spec-dock"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "bank1:click", "op": "click", "sel": ".nb-item[data-kind='delay']"},
+        {"at": "bank1:click+0.3", "op": "mark", "name": "delay", "sel": ".nb-item[data-kind='delay']"},
+        {"at": "bank2:lights+0.3", "op": "mark", "name": "lit", "sel": "#rack-svg .jack.legal"},
+        {"at": "bank2:lights+0.3", "op": "mark", "name": "status", "sel": "#nb-status"},
+        {"at": "bank3:Green", "op": "move", "sel": "#rack-svg .jack[data-childkey='node/0']", "ms": 400},
+        {"at": "bank3:Green+0.4", "op": "log", "name": "green", "js": "document.getElementById('nb-status').textContent"},
+        {"at": "bank3:Amber-0.3", "op": "key", "key": "Escape", "ms": 80},
+        {"at": "bank3:Amber", "op": "click", "sel": ".nb-item[data-kind='formant']"},
+        {"at": "bank3:Amber+0.25", "op": "mark", "name": "formant", "sel": ".nb-item[data-kind='formant']"},
+        {"at": "bank3:Amber+0.45", "op": "move", "sel": "#rack-svg .jack[data-childkey='node/0/0']", "ms": 400},
+        {"at": "bank3:Amber+1.0", "op": "log", "name": "amber", "js": "document.getElementById('nb-status').textContent + ' | ' + document.querySelector(\"#rack-svg .jack[data-childkey='node/0/0']\").getAttribute('class')"},
+        {"at": "bank4:play", "op": "click", "sel": "#pv-play"},
+        {"at": "bank4:play+0.2", "op": "mark", "name": "play", "sel": "#pv-play"},
+        {"at": "bank4:place", "op": "key", "key": "Escape", "ms": 80}
+      ]
+    },
+    {
+      "id": "sd-spec",
+      "beat": "spec",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"bank": "#nodebank", "dock": "#spec-dock"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "spec1:card", "op": "move", "sel": ".nb-item[data-kind='chorus']", "ms": 400},
+        {"at": "spec1:card+0.7", "op": "mark", "name": "chorus", "sel": ".nb-item[data-kind='chorus']"},
+        {"at": "spec1:card+0.7", "op": "mark", "name": "blurb", "sel": "#spec-dock .sp-blurb"},
+        {"at": "spec1:card+0.7", "op": "mark", "name": "params", "sel": "#spec-dock .sp-params"},
+        {"at": "spec1:card+0.7", "op": "mark", "name": "model", "sel": "#spec-dock .sd-model"},
+        {"at": "spec1:card+0.7", "op": "mark", "name": "heard", "sel": "#spec-dock .sp-heard"},
+        {"at": "spec1:card+0.7", "op": "log", "name": "model", "js": "document.querySelector('#spec-dock .sd-model')?.textContent"}
+      ]
+    },
+    {
+      "id": "sd-chains",
+      "beat": "chains",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Ask The Dice"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"rand": "#rack-svg g.mod-group[data-kind='rand']", "quantize": "#rack-svg g.mod-group[data-kind='quantize']", "slew": "#rack-svg g.mod-group[data-kind='slew']", "slot": "#rack-svg .jack[data-modkey='node']", "filter": "#rack-svg g.mod-group[data-key='node']", "vco": "#rack-svg g.mod-group[data-key='node/0']"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a"], "ms": "end"},
+        {"at": "chains4:Drop", "op": "click", "sel": ".nb-item[data-kind='slew']"},
+        {"at": "chains4:modulated", "op": "move", "sel": "#rack-svg .jack[data-modkey='node']", "ms": 400},
+        {"at": "chains4:modulated+0.4", "op": "log", "name": "slot", "js": "document.getElementById('nb-status').textContent"},
+        {"at": "chains4:wraps", "op": "click", "sel": "#rack-svg .jack[data-modkey='node']"},
+        {"at": "chains4:wraps+1.2", "op": "mark", "name": "wrapped", "sel": "#rack-svg g.mod-group[data-key='node']"},
+        {"at": "chains4:wraps+1.2", "op": "log", "name": "chain", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map((g) => g.dataset.key + ':' + g.dataset.kind).join(' ')"}
+      ]
+    },
+    {
+      "id": "sd-commit",
+      "beat": "commit",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -50, "ms": 700},
+        {"op": "wait", "ms": 2500},
+        {"op": "until", "sel": "#rack-commit:not([disabled])", "ms": 30000},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"commit": "#rack-commit", "tick": "#improve-check", "teach": ".seg-teach"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "until": "commit1:Commit-0.1"},
+        {"at": "commit1:Commit", "op": "click", "sel": "#rack-commit"},
+        {"at": "commit1:Commit+0.2", "op": "until", "sel": "#cduel:not(.hidden)", "ms": 30000, "stamp": "duel"},
+        {"at": "commit1:random", "op": "mark", "name": "card", "sel": "#cduel .cduel-card"},
+        {"at": "commit1:original", "op": "click", "sel": ".cduel-cell:has-text('the original') .cd-play"},
+        {"at": "commit1:edit", "op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-play"},
+        {"at": "commit2:Either", "op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-pick"},
+        {"at": "commit2:Either+0.5", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "commit3", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "commit3+0.1", "op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -40, "ms": 900},
+        {"at": "commit3:tick", "op": "click", "sel": "#improve-check"},
+        {"at": "commit4:claim", "op": "click", "sel": "#rack-commit"},
+        {"at": "commit4:claim+0.6", "op": "mark", "name": "toast2", "sel": "#toasts .toast"}
+      ]
+    },
+    {
+      "id": "sd-undo",
+      "beat": "undo",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"res": "#rack-svg [data-addr='node/0#res']", "chorus": "#rack-svg g.mod-group[data-key='node']", "menu": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn", "tray": "#tray"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "undo1:change", "op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -60, "ms": 600},
+        {"at": "undo1:undo", "op": "hold", "keys": ["Control", "z"], "ms": 150},
+        {"at": "undo2:bypass-0.5", "op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"},
+        {"at": "undo2:bypass+0.1", "op": "click", "sel": "#ctx-menu .cm-item:has-text('bypass')"},
+        {"at": "undo2:held", "op": "mark", "name": "tray", "sel": "#tray"},
+        {"at": "undo2:held", "op": "mark", "name": "item", "sel": "#tray-items .tray-item"},
+        {"at": "undo2:reload+0.5", "op": "drag", "sel": "#tray-items .tray-item .t-jack", "to": "#rack-svg .jack[data-childkey='node']", "ms": 900},
+        {"at": "undo2:reload+2.0", "op": "log", "name": "after", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map((g) => g.dataset.key + ':' + g.dataset.kind).join(' ') + ' | held ' + document.querySelectorAll('#tray-items .tray-item').length"}
+      ]
+    },
+    {
+      "id": "sd-lineage",
+      "beat": "lineage",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -50, "ms": 700},
+        {"op": "wait", "ms": 2500},
+        {"op": "click", "sel": "#rack-commit"},
+        {"op": "until", "sel": "#cduel:not(.hidden)", "ms": 60000},
+        {"op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-pick"},
+        {"op": "wait", "ms": 2500},
+        {"op": "move", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "ms": 400},
+        {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"},
+        {"op": "click", "sel": "#rack-evolve"},
+        {"op": "until", "sel": "#toasts .toast:has-text('now on the bench')", "ms": 300000},
+        {"op": "wait", "ms": 2500},
+        {"op": "view", "v": "evolve"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "log", "name": "lineage", "js": "document.getElementById('lineage-log').innerHTML"}
+      ],
+      "marks": {"lineage": "#lineage-log", "strip": ".lineage-strip"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"}
+      ]
+    },
+    {
+      "id": "sd-outro",
+      "beat": "outro",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -50, "ms": 700},
+        {"op": "wait", "ms": 2500},
+        {"op": "click", "sel": "#rack-commit"},
+        {"op": "until", "sel": "#cduel:not(.hidden)", "ms": 60000},
+        {"op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-pick"},
+        {"op": "wait", "ms": 2500},
+        {"op": "move", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "ms": 400},
+        {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"},
+        {"op": "click", "sel": "#rack-evolve"},
+        {"op": "until", "sel": "#toasts .toast:has-text('now on the bench')", "ms": 300000},
+        {"op": "wait", "ms": 2500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"rack": "#rack-scroll", "subject": "#rack-subject"},
+      "actions": [
+        {"at": 0.1, "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": 2750},
+        {"at": 2.957, "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2750},
+        {"at": 5.814, "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2750},
+        {"at": 8.671, "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": "end"}
+      ]
+    }
+  ]
+}

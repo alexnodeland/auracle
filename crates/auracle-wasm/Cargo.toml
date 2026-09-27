@@ -29,6 +29,11 @@ console_error_panic_hook = "0.1"
 # explicitly, but the js feature is required for the crate to compile at all.
 getrandom = { version = "0.2", features = ["js"] }
 
+[dev-dependencies]
+# The `pool_loudness` probe's spectra (band shares, centroid). Already in the
+# tree through auracle-features; nothing here ships in the wasm bundle.
+rustfft = "6"
+
 # Post-link optimization. The explicit --enable-* set matches what rustc's
 # wasm32-unknown-unknown output already uses, so wasm-opt neither adds nor
 # forbids features — it only optimizes. Never add --fast-math: it licenses

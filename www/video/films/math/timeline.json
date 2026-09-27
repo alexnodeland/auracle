@@ -1,78 +1,78 @@
 {
  "film": "math",
  "fps": 30,
- "duration": 174.286,
+ "duration": 165.714,
  "grid": {
   "bpm": 84,
   "meter": 4,
   "t0": 0.0
  },
- "estimated": true,
+ "estimated": false,
  "beats": [
   {
    "id": "intro",
    "t0": 0.0,
-   "t1": 6.58,
+   "t1": 5.775,
    "music": "loop_a"
   },
   {
    "id": "utility",
-   "t0": 7.143,
-   "t1": 23.765,
+   "t0": 6.429,
+   "t1": 22.264,
    "music": null
   },
   {
    "id": "likelihoods",
-   "t0": 24.286,
-   "t1": 46.251,
+   "t0": 22.857,
+   "t1": 43.107,
    "music": null
   },
   {
    "id": "posterior",
-   "t0": 46.429,
-   "t1": 64.538,
+   "t0": 43.571,
+   "t1": 61.211,
    "music": null
   },
   {
    "id": "calibration",
-   "t0": 65.0,
-   "t1": 80.387,
+   "t0": 61.429,
+   "t1": 76.591,
    "music": null
   },
   {
    "id": "acquisition",
-   "t0": 80.714,
-   "t1": 94.053,
+   "t0": 77.143,
+   "t1": 90.235,
    "music": null
   },
   {
    "id": "target",
-   "t0": 94.286,
-   "t1": 111.451,
+   "t0": 90.714,
+   "t1": 108.269,
    "music": "loop_b"
   },
   {
    "id": "refine",
-   "t0": 112.143,
-   "t1": 127.13,
+   "t0": 108.571,
+   "t1": 122.796,
    "music": null
   },
   {
    "id": "locks",
-   "t0": 127.143,
-   "t1": 138.314,
+   "t0": 122.857,
+   "t1": 133.892,
    "music": null
   },
   {
    "id": "perform",
-   "t0": 138.571,
-   "t1": 162.622,
+   "t0": 134.286,
+   "t1": 156.633,
    "music": null
   },
   {
    "id": "outro",
-   "t0": 162.857,
-   "t1": 174.286,
+   "t0": 157.143,
+   "t1": 165.714,
    "music": null
   }
  ],
@@ -82,238 +82,272 @@
    "text": "The math inside Auracle, and why each piece has its shape.",
    "beat": "intro",
    "t0": 1.5,
-   "t1": 5.68
+   "t1": 4.875,
+   "words": [1.54, 1.66, 1.94, 2.38, 3.22, 3.38, 3.56, 3.78, 4.02, 4.26, 4.42]
   },
   {
    "id": "utility1",
    "text": "Each patch becomes forty-four features, standardized to one scale.",
    "beat": "utility",
-   "t0": 7.343,
-   "t1": 10.796
+   "t0": 6.629,
+   "t1": 10.566,
+   "words": [6.669, 6.869, 7.169, 7.529, 8.009, 8.941, 9.653, 9.809, 10.009]
   },
   {
    "id": "utility2",
    "text": "Utility is the maximum over a few linear experts, never their average.",
    "beat": "utility",
-   "t0": 11.196,
-   "t1": 15.739
+   "t0": 10.966,
+   "t1": 15.784,
+   "words": [11.005, 11.675, 11.846, 12.026, 12.637, 12.906, 13.026, 13.206, 13.526, 14.586, 14.906, 15.106]
   },
   {
    "id": "utility3",
    "text": "So you can love dark drones and bright plucks, and each is scored by its own best lens.",
    "beat": "utility",
-   "t0": 16.139,
-   "t1": 22.865
+   "t0": 16.184,
+   "t1": 21.364,
+   "words": [16.223, 16.364, 16.484, 16.644, 16.904, 17.244, 17.664, 17.944, 18.164, 18.984, 19.144, 19.384, 19.584, 19.864, 20.124, 20.304, 20.544, 20.764]
   },
   {
    "id": "likelihoods1",
    "text": "Three kinds of answer feed that one utility.",
    "beat": "likelihoods",
-   "t0": 24.486,
-   "t1": 27.395
+   "t0": 23.057,
+   "t1": 25.937,
+   "words": [23.097, 23.377, 23.637, 23.797, 24.425, 24.697, 24.917, 25.197]
   },
   {
    "id": "likelihoods2",
    "text": "A duel is Bradley-Terry, logistic in the utility difference.",
    "beat": "likelihoods",
-   "t0": 27.795,
-   "t1": 31.248
+   "t0": 26.337,
+   "t1": 30.26,
+   "words": [26.377, 26.497, 26.757, 27.057, 28.517, 28.897, 29.097, 29.197, 29.577]
   },
   {
    "id": "likelihoods3",
    "text": "Cutting a patch is a kill, judged against a bar fitted per session.",
    "beat": "likelihoods",
-   "t0": 31.648,
-   "t1": 36.555
+   "t0": 30.66,
+   "t1": 34.61,
+   "words": [30.699, 30.94, 31.08, 31.34, 31.58, 31.72, 32.42, 32.76, 33.08, 33.24, 33.48, 33.8, 34.06]
   },
   {
    "id": "likelihoods4",
-   "text": "A picky day moves the bar, not the taste.",
+   "text": "A picky day moves the bar. Not the taste.",
    "beat": "likelihoods",
-   "t0": 36.955,
-   "t1": 40.408
+   "t0": 35.01,
+   "t1": 37.27,
+   "words": [35.049, 35.17, 35.47, 35.63, 35.89, 36.07, 36.51, 36.59, 36.73]
   },
   {
    "id": "likelihoods5",
    "text": "Stars fall between fitted cutpoints, so a harsh rater moves the cutpoints.",
    "beat": "likelihoods",
-   "t0": 40.808,
-   "t1": 45.351
+   "t0": 37.67,
+   "t1": 42.207,
+   "words": [37.708, 38.09, 38.39, 38.73, 39.03, 40.07, 40.27, 40.43, 40.69, 41.09, 41.35, 41.57]
   },
   {
    "id": "posterior1",
    "text": "With no hidden lens labels, every parameter is a real number.",
    "beat": "posterior",
-   "t0": 46.629,
-   "t1": 50.809
+   "t0": 43.771,
+   "t1": 47.774,
+   "words": [43.81, 43.931, 44.211, 44.471, 44.791, 45.791, 46.031, 46.694, 46.851, 47.031, 47.191]
   },
   {
    "id": "posterior2",
    "text": "So plain Metropolis-Hastings fits it, and keeps five hundred draws.",
    "beat": "posterior",
-   "t0": 51.209,
-   "t1": 55.025
+   "t0": 48.174,
+   "t1": 52.471,
+   "words": [48.214, 48.434, 48.814, 49.794, 50.134, 50.658, 50.874, 51.134, 51.434, 51.734]
   },
   {
    "id": "posterior3",
    "text": "Between fits, each answer reweights the draws, exactly and nearly free.",
    "beat": "posterior",
-   "t0": 55.425,
-   "t1": 59.785
+   "t0": 52.871,
+   "t1": 57.399,
+   "words": [52.909, 53.171, 53.871, 54.011, 54.411, 54.791, 54.991, 55.691, 56.423, 56.591, 56.871]
   },
   {
    "id": "posterior4",
    "text": "When the weights collapse, it pays for a refit.",
    "beat": "posterior",
-   "t0": 60.185,
-   "t1": 63.638
+   "t0": 57.799,
+   "t1": 60.311,
+   "words": [57.839, 57.959, 58.079, 58.319, 59.139, 59.239, 59.439, 59.699, 59.759]
   },
   {
    "id": "calibration1",
    "text": "Each duel is forecast before you answer, then scored by Brier.",
    "beat": "calibration",
-   "t0": 65.2,
-   "t1": 69.38
+   "t0": 61.629,
+   "t1": 65.509,
+   "words": [61.667, 61.909, 62.129, 62.349, 62.904, 63.229, 63.389, 64.209, 64.409, 64.709, 64.969]
   },
   {
    "id": "calibration2",
    "text": "Brier is a proper rule, so only an honest probability scores best.",
    "beat": "calibration",
-   "t0": 69.78,
-   "t1": 74.324
+   "t0": 65.909,
+   "t1": 70.296,
+   "words": [65.949, 66.349, 66.509, 66.629, 66.849, 67.689, 67.809, 68.109, 68.289, 68.629, 69.329, 69.689]
   },
   {
    "id": "calibration3",
    "text": "Accuracy cannot see overconfidence.",
    "beat": "calibration",
-   "t0": 74.724,
-   "t1": 76.178
+   "t0": 70.696,
+   "t1": 73.069,
+   "words": [70.736, 71.236, 71.696, 72.036]
   },
   {
    "id": "calibration4",
    "text": "Each kind of evidence gets its own score.",
    "beat": "calibration",
-   "t0": 76.578,
-   "t1": 79.487
+   "t0": 73.469,
+   "t1": 75.691,
+   "words": [73.508, 73.709, 73.909, 74.049, 74.429, 74.709, 74.889, 75.109]
   },
   {
    "id": "acquisition1",
    "text": "Which pair should it ask about?",
    "beat": "acquisition",
-   "t0": 80.914,
-   "t1": 83.096
+   "t0": 77.343,
+   "t1": 78.855,
+   "words": [77.382, 77.583, 77.783, 78.003, 78.083, 78.283]
   },
   {
    "id": "acquisition2",
    "text": "Picking the most informative pair only tied random pairs. Thompson sampling lost.",
    "beat": "acquisition",
-   "t0": 83.546,
-   "t1": 88.21
+   "t0": 79.305,
+   "t1": 84.795,
+   "words": [79.343, 79.585, 79.725, 79.905, 80.505, 80.925, 81.345, 81.705, 82.105, 83.069, 83.765, 84.085]
   },
   {
    "id": "acquisition3",
    "text": "So pairs are random, and every duel is also an unbiased check.",
    "beat": "acquisition",
-   "t0": 88.61,
-   "t1": 93.153
+   "t0": 85.195,
+   "t1": 89.335,
+   "words": [85.233, 85.435, 85.735, 85.935, 86.815, 86.975, 87.275, 87.535, 87.755, 88.075, 88.215, 88.715]
   },
   {
    "id": "target1",
    "text": "Search aims at a Boltzmann target, the grammar's prior times the exponential of beta times expected utility.",
    "beat": "target",
-   "t0": 94.486,
-   "t1": 100.848
+   "t0": 90.914,
+   "t1": 97.897,
+   "words": [90.953, 91.274, 91.674, 91.894, 91.894, 92.434, 93.374, 93.534, 94.034, 94.254, 94.654, 94.874, 95.474, 95.814, 96.094, 96.554, 97.094]
   },
   {
    "id": "target2",
    "text": "The prior supplies parsimony as a probability, not a penalty to tune.",
    "beat": "target",
-   "t0": 101.248,
-   "t1": 105.791
+   "t0": 98.297,
+   "t1": 102.839,
+   "words": [98.336, 98.457, 98.737, 99.297, 100.114, 100.257, 100.377, 101.457, 101.637, 101.777, 102.077, 102.317]
   },
   {
    "id": "target3",
    "text": "Beta, at two, is the one dial between browsing and optimizing.",
    "beat": "target",
-   "t0": 106.191,
-   "t1": 110.551
+   "t0": 103.239,
+   "t1": 107.369,
+   "words": [103.279, 103.619, 103.919, 104.608, 104.799, 104.979, 105.219, 105.459, 105.799, 106.371, 106.559]
   },
   {
    "id": "refine1",
    "text": "Refinement is Metropolis-Hastings on the trace, through fugue-evo.",
    "beat": "refine",
-   "t0": 112.343,
-   "t1": 115.432
+   "t0": 108.771,
+   "t1": 112.904,
+   "words": [108.811, 109.291, 109.551, 110.711, 110.871, 110.971, 111.791, 112.011]
   },
   {
    "id": "refine2",
    "text": "It walks forty steps from each of the ten best patches.",
    "beat": "refine",
-   "t0": 115.832,
-   "t1": 119.832
+   "t0": 113.304,
+   "t1": 116.294,
+   "words": [113.343, 113.464, 113.704, 114.104, 114.424, 114.724, 114.904, 115.064, 115.144, 115.344, 115.584]
   },
   {
    "id": "refine3",
    "text": "Keeping where each walk ends climbs the target instead of sampling it, which suits a shortlist.",
    "beat": "refine",
-   "t0": 120.232,
-   "t1": 126.23
+   "t0": 116.694,
+   "t1": 121.896,
+   "words": [116.732, 116.954, 117.254, 117.514, 117.834, 118.174, 118.454, 118.674, 119.014, 119.414, 119.554, 119.894, 120.634, 120.774, 121.014, 121.214]
   },
   {
    "id": "locks1",
    "text": "A lock is exact conditioning.",
    "beat": "locks",
-   "t0": 127.343,
-   "t1": 129.161
+   "t0": 123.057,
+   "t1": 124.962,
+   "words": [123.097, 123.217, 123.497, 123.737, 124.137]
   },
   {
    "id": "locks2",
    "text": "Moves that change, delete or create a locked address are rejected.",
    "beat": "locks",
-   "t0": 129.561,
-   "t1": 133.741
+   "t0": 125.362,
+   "t1": 129.365,
+   "words": [125.402, 125.702, 125.942, 126.705, 127.042, 127.302, 127.642, 127.862, 128.142, 128.462, 128.702]
   },
   {
    "id": "locks3",
    "text": "Checking births as well as deaths keeps detailed balance.",
    "beat": "locks",
-   "t0": 134.141,
-   "t1": 137.414
+   "t0": 129.765,
+   "t1": 132.992,
+   "words": [129.803, 130.105, 130.445, 130.705, 130.885, 131.065, 131.555, 131.845, 132.305]
   },
   {
    "id": "perform1",
    "text": "PERFORM's controls are fixed directions in standardized sound. Bright is centroid plus rolloff.",
    "beat": "perform",
-   "t0": 138.771,
-   "t1": 143.799
+   "t0": 134.486,
+   "t1": 140.598,
+   "words": [134.526, 134.946, 135.406, 135.726, 136.006, 136.566, 136.906, 137.551, 138.551, 138.886, 139.106, 139.606, 139.901]
   },
   {
    "id": "perform2",
    "text": "Each patch gets its own Jacobian from one nudged render per knob, since knobs act differently in each.",
    "beat": "perform",
-   "t0": 144.199,
-   "t1": 150.924
+   "t0": 140.998,
+   "t1": 147.196,
+   "words": [141.037, 141.258, 141.578, 141.818, 142.038, 142.278, 142.898, 143.098, 143.398, 143.758, 144.018, 144.298, 144.958, 145.338, 145.718, 146.078, 146.458, 146.718]
   },
   {
    "id": "perform3",
    "text": "A ridge solve picks at most four knobs for each control.",
    "beat": "perform",
-   "t0": 151.324,
-   "t1": 155.324
+   "t0": 147.596,
+   "t1": 150.498,
+   "words": [147.635, 147.736, 147.936, 148.276, 148.536, 148.696, 148.876, 149.136, 149.516, 149.716, 149.876]
   },
   {
    "id": "perform4",
    "text": "Each half is then rendered for real, and closes if it stops moving the right way.",
    "beat": "perform",
-   "t0": 155.724,
-   "t1": 161.722
+   "t0": 150.898,
+   "t1": 155.733,
+   "words": [150.938, 151.118, 151.458, 151.658, 151.878, 152.238, 152.518, 153.208, 153.378, 153.933, 154.098, 154.218, 154.478, 154.858, 155.058, 155.218]
   },
   {
    "id": "outro1",
    "text": "Every constant here is in the reference, with its measurement where there is one.",
    "beat": "outro",
-   "t0": 163.057,
-   "t1": 168.328
+   "t0": 157.343,
+   "t1": 161.708,
+   "words": [157.382, 157.663, 158.063, 158.403, 158.663, 158.803, 158.903, 159.783, 159.983, 160.163, 160.702, 160.903, 161.083, 161.283]
   }
  ],
  "cues": {}

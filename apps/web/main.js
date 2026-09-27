@@ -3874,12 +3874,28 @@ $("rec-btn").onclick = () => {
 // The film pipeline (www/video/tools/footage.mjs) records the instrument's
 // own sound for a walkthrough without the ● rec button's toast landing in the
 // shot. Present only on `?film`; the take downloads exactly as a rec does.
+// It also plays MIDI in: under `?film` the page's MIDI access is the film's
+// own port, installed here before bootMidi() asks for one. `midiDevice(name)`
+// plugs a device in (midi.js wires it as it wires a real one, and the panel
+// names it), and `midi(bytes)` hands a message to that device's
+// `onmidimessage`, the path a controller's notes, knobs and clock take.
 if (new URLSearchParams(location.search).has("film")) {
+  const filmMidi = { inputs: new Map(), outputs: new Map(), sysexEnabled: false, onstatechange: null };
+  Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async () => filmMidi });
   window.__film = {
     rec(on) {
       if (!live) return;
       recording = !!on;
       live.rec(recording);
+    },
+    midiDevice(name = "MIDI controller") {
+      filmMidi.inputs.clear();
+      if (name) filmMidi.inputs.set(name, { id: name, name, type: "input", state: "connected", onmidimessage: null });
+      filmMidi.onstatechange?.();
+    },
+    midi(bytes, timeStamp = performance.now()) {
+      const ev = { data: Uint8Array.from(bytes), timeStamp };
+      for (const input of filmMidi.inputs.values()) input.onmidimessage?.(ev);
     },
   };
 }

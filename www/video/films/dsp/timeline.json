@@ -1,0 +1,338 @@
+{
+ "film": "dsp",
+ "fps": 30,
+ "duration": 165.714,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": false,
+ "beats": [
+  {
+   "id": "intro",
+   "t0": 0.0,
+   "t1": 6.183,
+   "music": "loop_a"
+  },
+  {
+   "id": "graph",
+   "t0": 6.429,
+   "t1": 21.196,
+   "music": null
+  },
+  {
+   "id": "modules",
+   "t0": 21.429,
+   "t1": 39.281,
+   "music": null
+  },
+  {
+   "id": "compile",
+   "t0": 39.286,
+   "t1": 52.066,
+   "music": null
+  },
+  {
+   "id": "phrase",
+   "t0": 52.143,
+   "t1": 69.468,
+   "music": null
+  },
+  {
+   "id": "vetting",
+   "t0": 70.0,
+   "t1": 80.05,
+   "music": null
+  },
+  {
+   "id": "loudness",
+   "t0": 80.714,
+   "t1": 96.909,
+   "music": "loop_b"
+  },
+  {
+   "id": "features",
+   "t0": 97.143,
+   "t1": 125.41,
+   "music": null
+  },
+  {
+   "id": "live",
+   "t0": 125.714,
+   "t1": 144.927,
+   "music": null
+  },
+  {
+   "id": "farm",
+   "t0": 145.0,
+   "t1": 154.727,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 155.0,
+   "t1": 165.714,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "intro1",
+   "text": "How Auracle makes sound, from the patch graph to the live voices.",
+   "beat": "intro",
+   "t0": 1.5,
+   "t1": 5.283,
+   "words": [1.538, 1.84, 2.26, 3.24, 3.32, 3.46, 3.7, 4.02, 4.26, 4.36, 4.58]
+  },
+  {
+   "id": "graph1",
+   "text": "Underneath is quiver, a modular synthesis library in Rust.",
+   "beat": "graph",
+   "t0": 6.629,
+   "t1": 10.456,
+   "words": [6.669, 7.189, 7.389, 8.109, 8.309, 8.629, 9.149, 9.609, 9.929]
+  },
+  {
+   "id": "graph2",
+   "text": "On each tick, one sample moves through the whole graph.",
+   "beat": "graph",
+   "t0": 10.856,
+   "t1": 13.564,
+   "words": [10.896, 11.116, 11.416, 11.796, 12.076, 12.476, 12.676, 12.816, 12.996]
+  },
+  {
+   "id": "graph3",
+   "text": "Continuous knobs are atomic values the audio thread reads, so turning one needs no recompile.",
+   "beat": "graph",
+   "t0": 13.964,
+   "t1": 20.296,
+   "words": [14.002, 14.484, 14.984, 15.264, 15.704, 16.204, 16.424, 16.844, 17.124, 17.984, 18.284, 18.584, 18.864, 19.164, 19.464]
+  },
+  {
+   "id": "modules1",
+   "text": "The palette has forty-two modules, from a plucked string to sidechained dynamics.",
+   "beat": "modules",
+   "t0": 21.629,
+   "t1": 26.149,
+   "words": [21.667, 21.809, 22.029, 22.309, 22.789, 23.709, 23.909, 24.049, 24.249, 24.589, 24.889, 25.349]
+  },
+  {
+   "id": "modules2",
+   "text": "The filter is a state variable design, or a diode ladder that saturates harder one way.",
+   "beat": "modules",
+   "t0": 26.549,
+   "t1": 32.376,
+   "words": [26.595, 26.709, 27.009, 27.289, 27.469, 27.769, 28.229, 29.296, 29.489, 29.649, 30.089, 30.409, 30.689, 31.309, 31.589, 31.929]
+  },
+  {
+   "id": "modules3",
+   "text": "Audio and modulation are separate Rust types, so a mistyped patch cannot even be built.",
+   "beat": "modules",
+   "t0": 32.776,
+   "t1": 38.381,
+   "words": [32.814, 33.096, 33.396, 34.061, 34.256, 34.676, 34.936, 35.736, 36.076, 36.216, 36.776, 37.056, 37.376, 37.736, 37.916]
+  },
+  {
+   "id": "compile1",
+   "text": "Every voice ends with a DC blocker where needed, an exponential envelope, and a limiter.",
+   "beat": "compile",
+   "t0": 39.486,
+   "t1": 45.196,
+   "words": [39.525, 39.786, 40.126, 40.506, 40.766, 40.926, 41.326, 41.666, 41.986, 42.886, 42.986, 43.661, 44.486, 44.606, 44.726]
+  },
+  {
+   "id": "compile2",
+   "text": "Resonance and feedback are capped, so filters cannot oscillate and delays cannot run away.",
+   "beat": "compile",
+   "t0": 45.596,
+   "t1": 51.166,
+   "words": [45.634, 46.196, 46.376, 46.616, 46.936, 47.616, 47.916, 48.336, 48.696, 49.336, 49.476, 50.096, 50.376, 50.676]
+  },
+  {
+   "id": "phrase1",
+   "text": "For comparison, every patch plays the same five second phrase.",
+   "beat": "phrase",
+   "t0": 52.343,
+   "t1": 56.265,
+   "words": [52.381, 52.543, 53.603, 53.823, 54.103, 54.383, 54.623, 54.903, 55.283, 55.583]
+  },
+  {
+   "id": "phrase2",
+   "text": "It holds a C, stabs an octave higher, and plays a two note chord.",
+   "beat": "phrase",
+   "t0": 56.665,
+   "t1": 60.628,
+   "words": [56.704, 56.805, 57.045, 57.225, 57.873, 58.285, 58.365, 58.745, 59.285, 59.365, 59.585, 59.785, 59.965, 60.145]
+  },
+  {
+   "id": "phrase3",
+   "text": "It ends on a low C, with a long release.",
+   "beat": "phrase",
+   "t0": 61.028,
+   "t1": 63.485,
+   "words": [61.066, 61.228, 61.448, 61.608, 61.728, 61.908, 62.188, 62.428, 62.588, 62.828]
+  },
+  {
+   "id": "phrase4",
+   "text": "The random seed is reset every render, so the samples repeat bit for bit.",
+   "beat": "phrase",
+   "t0": 63.885,
+   "t1": 68.568,
+   "words": [63.925, 64.045, 64.405, 64.725, 64.925, 65.305, 65.745, 66.525, 66.745, 66.905, 67.285, 67.705, 67.945, 68.125]
+  },
+  {
+   "id": "vetting1",
+   "text": "First, each raw render goes through a gate.",
+   "beat": "vetting",
+   "t0": 70.2,
+   "t1": 72.24,
+   "words": [70.239, 70.44, 70.68, 70.96, 71.32, 71.52, 71.66]
+  },
+  {
+   "id": "vetting2",
+   "text": "It fails silence, runaway peaks, and signals dominated by DC.",
+   "beat": "vetting",
+   "t0": 72.64,
+   "t1": 77.135,
+   "words": [72.68, 72.84, 73.12, 74.14, 74.32, 75.08, 75.18, 75.54, 76.12, 76.46]
+  },
+  {
+   "id": "vetting3",
+   "text": "What fails is never played.",
+   "beat": "vetting",
+   "t0": 77.535,
+   "t1": 79.15,
+   "words": [77.575, 77.735, 78.075, 78.295, 78.555]
+  },
+  {
+   "id": "loudness1",
+   "text": "Loudness is measured the broadcast way, with K weighting and gated blocks.",
+   "beat": "loudness",
+   "t0": 80.914,
+   "t1": 85.547,
+   "words": [80.952, 81.514, 81.674, 81.994, 82.194, 82.634, 83.454, 83.674, 83.934, 84.294, 84.614, 84.894]
+  },
+  {
+   "id": "loudness2",
+   "text": "Each patch is matched to minus eighteen loudness units, since louder wins comparisons.",
+   "beat": "loudness",
+   "t0": 85.947,
+   "t1": 91.192,
+   "words": [85.985, 86.207, 86.467, 86.667, 87.027, 87.327, 87.587, 88.127, 88.607, 89.327, 89.607, 89.867, 90.227]
+  },
+  {
+   "id": "loudness3",
+   "text": "The gain stops short of clipping instead of limiting, so timbre is untouched.",
+   "beat": "loudness",
+   "t0": 91.592,
+   "t1": 96.009,
+   "words": [91.631, 91.752, 92.012, 92.332, 92.632, 92.752, 92.972, 93.392, 93.532, 94.352, 94.572, 95.012, 95.192]
+  },
+  {
+   "id": "features1",
+   "text": "From that render come eighteen audio features.",
+   "beat": "features",
+   "t0": 97.343,
+   "t1": 100.03,
+   "words": [97.383, 97.543, 97.783, 98.103, 98.383, 98.883, 99.283]
+  },
+  {
+   "id": "features2",
+   "text": "Four measure the spectrum's brightness and its movement, on a logarithmic frequency axis.",
+   "beat": "features",
+   "t0": 100.43,
+   "t1": 105.87,
+   "words": [100.468, 100.83, 101.11, 101.31, 101.83, 102.447, 102.63, 102.79, 103.672, 103.85, 104.01, 104.63, 105.197]
+  },
+  {
+   "id": "features3",
+   "text": "Texture, level and envelope take seven more, and one measures the bass.",
+   "beat": "features",
+   "t0": 106.27,
+   "t1": 110.65,
+   "words": [106.31, 106.915, 107.19, 107.45, 107.99, 108.13, 108.47, 109.21, 109.37, 109.57, 109.91, 110.13]
+  },
+  {
+   "id": "features4",
+   "text": "Three are read from single notes. Three more are bands of motion on the held note.",
+   "beat": "features",
+   "t0": 111.05,
+   "t1": 115.663,
+   "words": [111.089, 111.41, 111.67, 111.91, 112.13, 112.47, 113.37, 113.47, 113.71, 113.93, 114.15, 114.33, 114.65, 114.89, 114.99, 115.17]
+  },
+  {
+   "id": "features5",
+   "text": "The bands run from half a hertz to two, from two to eight, and from eight to thirty.",
+   "beat": "features",
+   "t0": 116.063,
+   "t1": 120.25,
+   "words": [116.104, 116.203, 116.503, 116.843, 117.043, 117.243, 117.383, 117.663, 117.803, 118.463, 118.683, 118.823, 119.323, 119.403, 119.583, 119.743]
+  },
+  {
+   "id": "features6",
+   "text": "Twenty-six structural features come from the patch, with no render.",
+   "beat": "features",
+   "t0": 120.65,
+   "t1": 124.51,
+   "words": [120.688, 121.31, 121.67, 122.15, 122.49, 122.71, 122.83, 123.518, 123.71, 123.97]
+  },
+  {
+   "id": "live1",
+   "text": "Live, the same compiler builds four voices inside an AudioWorklet.",
+   "beat": "live",
+   "t0": 125.914,
+   "t1": 130.144,
+   "words": [125.952, 126.574, 126.674, 126.934, 127.374, 127.714, 128.014, 128.394, 128.874, 129.061]
+  },
+  {
+   "id": "live2",
+   "text": "Four more play PERFORM's offers, crossfaded at equal power.",
+   "beat": "live",
+   "t0": 130.544,
+   "t1": 134.292,
+   "words": [130.582, 130.864, 131.064, 131.344, 131.804, 132.627, 133.304, 133.424, 133.664]
+  },
+  {
+   "id": "live3",
+   "text": "In steady state, the audio thread allocates nothing.",
+   "beat": "live",
+   "t0": 134.692,
+   "t1": 137.829,
+   "words": [134.731, 134.872, 135.132, 135.932, 136.032, 136.352, 136.712, 137.292]
+  },
+  {
+   "id": "live4",
+   "text": "A patch change fades out, rebuilds the voices in silence, and carries your held notes across.",
+   "beat": "live",
+   "t0": 138.229,
+   "t1": 144.027,
+   "words": [138.268, 138.389, 138.669, 139.069, 139.369, 140.169, 140.689, 140.769, 141.049, 141.349, 142.149, 142.349, 142.649, 142.829, 143.049, 143.369]
+  },
+  {
+   "id": "farm1",
+   "text": "Auditions render in parallel, on up to six workers.",
+   "beat": "farm",
+   "t0": 145.2,
+   "t1": 148.52,
+   "words": [145.238, 145.76, 146.16, 146.42, 147.176, 147.38, 147.52, 147.7, 147.86]
+  },
+  {
+   "id": "farm2",
+   "text": "Draws are indexed and absorbed in order, so the pool is identical at any width.",
+   "beat": "farm",
+   "t0": 148.92,
+   "t1": 153.827,
+   "words": [148.958, 149.4, 149.52, 150.0, 150.3, 150.68, 150.88, 151.58, 151.8, 151.94, 152.18, 152.38, 152.993, 153.14, 153.34]
+  },
+  {
+   "id": "outro1",
+   "text": "One compiler serves search and stage, so what you play is what the model measured.",
+   "beat": "outro",
+   "t0": 155.2,
+   "t1": 160.188,
+   "words": [155.239, 155.48, 155.86, 156.32, 156.68, 156.92, 157.832, 158.02, 158.18, 158.34, 158.832, 159.0, 159.16, 159.26, 159.54]
+  }
+ ],
+ "cues": {}
+}

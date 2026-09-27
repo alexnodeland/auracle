@@ -23,7 +23,7 @@
       "lines": [
         {
           "id": "intro1",
-          "text": "Auracle's sound engine, from the patch graph to the live voices.",
+          "text": "This is how Auracle makes sound, from the patch graph to the live voices.",
           "post": 0.7
         }
       ]
@@ -41,7 +41,7 @@
         },
         {
           "id": "graph2",
-          "text": "Each tick carries one sample through the whole graph.",
+          "text": "On each tick, one sample moves through the whole graph.",
           "post": 0.4
         },
         {
@@ -110,7 +110,7 @@
         },
         {
           "id": "phrase3",
-          "text": "It ends on a low C with a long release.",
+          "text": "It ends on a low C, with a long release.",
           "post": 0.4
         },
         {
@@ -128,7 +128,7 @@
       "lines": [
         {
           "id": "vetting1",
-          "text": "Each raw render passes a gate first.",
+          "text": "First, each raw render goes through a gate.",
           "post": 0.4
         },
         {
@@ -180,7 +180,7 @@
         },
         {
           "id": "features2",
-          "text": "Four read the spectrum's brightness and its movement, on a logarithmic frequency axis.",
+          "text": "Four measure the spectrum's brightness and its movement, on a logarithmic frequency axis.",
           "post": 0.4
         },
         {
@@ -190,12 +190,12 @@
         },
         {
           "id": "features4",
-          "text": "Three are read from single notes, and three are bands of motion on the held note.",
+          "text": "Three are read from single notes. Three more are bands of motion on the held note.",
           "post": 0.4
         },
         {
           "id": "features5",
-          "text": "The bands run from half a hertz to two, two to eight, and eight to thirty.",
+          "text": "The bands run from half a hertz to two, and from two to eight. The fastest runs from eight to thirty.",
           "post": 0.4
         },
         {

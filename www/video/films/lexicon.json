@@ -53,6 +53,14 @@
     "WAV": {
       "us": "wˈAv",
       "gb": "wˈeɪv"
+    },
+    "sidechained": {
+      "us": "sˈIdʧˌAnd",
+      "gb": "sˈIdʧˌAnd"
+    },
+    "bass": {
+      "us": "bˈAs",
+      "gb": "bˈAs"
     }
   },
   "asr_aliases": {
@@ -64,6 +72,10 @@
     "timbre": "timber",
     "WAV": "wave",
     "cutpoints": "cut points",
-    "reweights": "re weights"
+    "reweights": "re weights",
+    "sidechained": "side chained",
+    "weighting": "waiting",
+    "Breyer": "briar",
+    "bass": "base"
   }
 }

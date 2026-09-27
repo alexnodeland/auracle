@@ -2,8 +2,10 @@
 //
 // A walkthrough film is a list of beats, each played over one recorded shot
 // (tools/footage.mjs). The clip is placed so that its actions land on the
-// words that name them, then framed: a slow camera (zoom and pan keyframes),
-// callouts that draw a leader to the thing being named, and a chapter label.
+// words that name them (or cut inside the beat, when a press and its result
+// are tens of seconds apart), then framed: a slow camera (zoom and pan
+// keyframes), callouts that draw a leader to the thing being named, and a
+// chapter label.
 // Nothing here is drawn over the product except what points at it.
 
 import { el, place, clamp, lerp, ramp, fade, keys, E, words, reveal } from "./stage.js";
@@ -31,6 +33,15 @@ export function at(stage, beat, spec) {
   return w ? wordTime(l, w) : l.t0;
 }
 
+/** A camera keyframe's [z, fx, fy] that centres the app point (x, y) (in
+ *  the recorded 1920×1080 pixels) at zoom z, as nearly as the frame allows:
+ *  `cam: [["keys1:Play", ...aim(1.45, 700, 900)]]`. */
+export function aim(z, x, y) {
+  if (z <= 1) return [z, 0.5, 0.5];
+  const f = (p, span) => clamp(((p * z) / span - 0.5) / (z - 1), 0, 1);
+  return [z, f(x, 1920), f(y, 1080)];
+}
+
 /** A point on a recorded element: its centre, or the middle of one side. */
 function anchor(r, side) {
   const cx = r.x + r.w / 2;
@@ -55,6 +66,15 @@ function place_(c, meta) {
   return { ...c, x: px, y: py, tx: px + (c.dx ?? 0), ty: py + (c.dy ?? -90) };
 }
 
+/** A shot-clock time: seconds, or "@stamp±s" against the stamps footage.mjs
+ *  recorded (NaN until the shot has been recorded). */
+function shotSecs(v, meta) {
+  if (typeof v === "number") return v;
+  const m = /^@([\w-]+)([+-]\d+(?:\.\d+)?)?$/.exec(v || "");
+  const s = m && meta.stamps ? meta.stamps[m[1]] : undefined;
+  return s == null ? NaN : s + Number(m[2] || 0);
+}
+
 /**
  * plan: [{
  *   beat, shot, chapter,
@@ -64,13 +84,32 @@ function place_(c, meta) {
  *                x, y, tx, ty       // in app pixels (1920×1080), or
  *                mark, side, dx, dy // pinned to an element footage.mjs measured
  *              }]
+ *   clips: [[at, from, rate?], …]  // a cut inside the beat (see below)
  * }]
  *
- * Async: it reads each shot's sidecar (out/FILM/shots/ID.json) for the marks,
- * so a film's build must await it.
+ * A beat shows its shot continuously, from `pre` seconds before the beat.
+ * A cut inside it is a list of clip windows: from film time `at` (a word, as
+ * `cam` and callouts take) the clip plays from shot time `from` (seconds, or
+ * "@stamp±s" from the shot's sidecar) at `rate` (default 1). That is how a
+ * press and its result tens of seconds later share one beat (EVOLVE POOL,
+ * ⚡ evolve from this). A cut never goes back: a window starts no earlier
+ * than where the one before it has reached. The windows are normally the
+ * shot's own `clips` in shots.json, with the stamps footage.mjs resolved; a
+ * plan's `clips` replace them.
+ *
+ * Async: it reads shots.json (each shot's `pre` and `clips`) and each shot's
+ * sidecar (out/FILM/shots/ID.json: the marks and stamps), so a film's build
+ * must await it.
  */
 export async function walkthrough(stage, { plan, shots = "shots", captions = true }) {
   const metas = {};
+  const defs = {};
+  try {
+    const r = await fetch("shots.json", { cache: "no-store" });
+    if (r.ok) for (const s of (await r.json()).shots || []) defs[s.id] = { pre: s.pre || 0, clips: s.clips };
+  } catch {
+    /* no shots.json beside the film: the plan's own `pre` and `clips` */
+  }
   await Promise.all(
     [...new Set(plan.map((p) => p.shot))].map(async (id) => {
       try {
@@ -85,7 +124,7 @@ export async function walkthrough(stage, { plan, shots = "shots", captions = tru
   beats.forEach((p, i) => {
     const b = p.b;
     const next = beats[i + 1]?.b;
-    const meta = { ...(metas[p.shot] || {}), ...(p.meta || {}) };
+    const meta = { ...(defs[p.shot] || {}), ...(metas[p.shot] || {}), ...(p.meta || {}) };
     stage.scene({
       id: `walk-${p.beat}`,
       t0: b.t0,
@@ -119,6 +158,23 @@ export async function walkthrough(stage, { plan, shots = "shots", captions = tru
         }) : [];
         // The shot started `pre` seconds before its beat (footage.mjs).
         const origin = b.t0 - (meta.pre ?? p.pre ?? 1.0);
+        // Clip time for film time t: continuous, or through the last cut
+        // whose `at` has passed. A cut whose stamp is unknown (the shot is not
+        // recorded yet) is left out, and the clip simply runs on.
+        const cuts = (p.clips || meta.clips || [])
+          .map(([a, from, rate = 1]) => ({ t: at(stage, b, a), from: shotSecs(from, meta), rate }))
+          .filter((c) => Number.isFinite(c.t) && Number.isFinite(c.from))
+          .sort((x, y) => x.t - y.t);
+        // A cut skips a wait and never goes back (footage.mjs does the same).
+        cuts.forEach((c, i) => {
+          const prev = cuts[i - 1];
+          c.from = Math.max(c.from, prev ? prev.from + (c.t - prev.t) * prev.rate : c.t - origin);
+        });
+        const clipTime = (t) => {
+          let c = null;
+          for (const x of cuts) if (t >= x.t) c = x;
+          return c ? c.from + (t - c.t) * c.rate : t - origin;
+        };
         const cam = (p.cam || [[0, 1, 0.5, 0.5]]).map(([a, z, fx, fy]) => [at(stage, b, a), z, fx, fy]);
         // A point in the recorded app (1920×1080 px) as it sits on screen
         // under the camera: footage() scales the clip by z about (fx, fy).
@@ -128,7 +184,7 @@ export async function walkthrough(stage, { plan, shots = "shots", captions = tru
         ];
         return (tl, t) => {
           const k = cam.length > 1 ? keys(t, cam.map(([tt, z, fx, fy]) => [tt, [z, fx, fy], E.io3])) : [cam[0][1], cam[0][2], cam[0][3]];
-          stage.wait(clip.seek(t - origin, { z: k[0], fx: k[1], fy: k[2] }));
+          stage.wait(clip.seek(clipTime(t), { z: k[0], fx: k[1], fy: k[2] }));
           cs.forEach(({ c, api }) => {
             const a0 = at(stage, b, c.at);
             const a1 = c.until != null ? at(stage, b, c.until) : b.t1;
