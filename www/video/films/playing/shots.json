@@ -101,13 +101,13 @@
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
-      "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "body": ".pf-knob[data-i='3']", "space": ".pf-knob[data-i='5']", "hood": ".pf-hood"},
+      "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "body": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired) >> nth=0", "space": ".pf-knob[data-i='5']", "hood": ".pf-hood"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
-        {"at": "controls1:named", "op": "seq", "steps": [{"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='3']", "dy": 30, "ms": 450}]},
+        {"at": "controls1:named", "op": "seq", "steps": [{"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0", "dy": 30, "ms": 450}, {"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=1", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=1", "dy": 30, "ms": 450}]},
         {"at": "controls2:interrupts", "op": "drag", "sel": ".pf-knob[data-i='5']", "dy": -40, "ms": 900},
         {"at": "controls3:ride-0.2", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -110, "ms": 2300},
-        {"at": "controls4:press+0.2", "op": "press", "sel": ".pf-knob[data-i='3']", "ms": 700}
+        {"at": "controls4:press+0.2", "op": "press", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired) >> nth=0", "ms": 700}
       ]
     },
     {
@@ -158,7 +158,7 @@
         {"at": "wander2:More-0.1", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"},
         {"at": "wander2:More", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -45, "ms": 800},
         {"at": "wander3:way", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -75, "ms": 900},
-        {"at": "wander4:waits", "op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 20, "ms": 500},
+        {"at": "wander4:waits", "op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired) >> nth=0", "dy": 20, "ms": 500},
         {"at": "wander4:Freeze", "op": "click", "sel": ".pf-pad:has-text('Freeze')"},
         {"at": "wander4:Freeze+0.6", "op": "log", "name": "B at the end", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"}
       ]
@@ -210,7 +210,7 @@
       "marks": {"keep": ".pf-pad:has-text('Keep')", "back": ".pf-pad:has-text('Back')", "deck": ".pf-deck", "hood": ".pf-hood"},
       "actions": [
         {"at": 0.1, "op": "hold", "keys": ["g", "j", "l"], "ms": "end"},
-        {"at": "keep1:Keep", "op": "seq", "steps": [{"op": "click", "sel": ".pf-pad:has-text('Keep')"}, {"op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -60, "ms": 550}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 550}, {"op": "wait", "until": "keep2:Back"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}, {"op": "wait", "until": "keep2:wander"}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -80, "ms": 900}, {"op": "wait", "until": "keep2:come"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}]}
+        {"at": "keep1:Keep", "op": "seq", "steps": [{"op": "click", "sel": ".pf-pad:has-text('Keep')"}, {"op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0", "dy": -60, "ms": 550}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 550}, {"op": "wait", "until": "keep2:Back"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}, {"op": "wait", "until": "keep2:wander"}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -80, "ms": 900}, {"op": "wait", "until": "keep2:come"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}]}
       ]
     },
     {

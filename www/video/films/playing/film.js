@@ -9,17 +9,21 @@
 // Where this departs from storyboard.md, because the app does otherwise:
 // - Every shot is one seeded session (shots.json `init`): the same pool and
 //   the same warm-start cards. PERFORM still measures its wiring per session,
-//   and the reach varies a little (Snap has reached up, down or both ways).
-//   On Glass Pad, Grit is a search control in every run (turning it grows an
-//   offer), so no beat turns Grit; the nudges go up and back on Motion and
-//   Body, which reach upward in every run. Each shot logs its `wiring`.
+//   and which control reaches which way moves with the pool (Snap has reached
+//   up, down or both ways; Body has been a search control in some sessions).
+//   Turning a search control grows an offer, so the gestures pick controls by
+//   their wiring in the session, not by name: the nudges go up and back on
+//   the first two named controls that turn upward, the long press and the
+//   "touch" are on the first that reaches, and no beat turns Grit (a search
+//   control in every run). Each shot logs its `wiring`.
 // - A MIDI keyboard is plugged in through the app's `?film` port in every
 //   shot; keys4 plays MIDI notes soft and hard, a bend and the sustain pedal,
 //   and the midi beat maps three knobs, learns Space (not Grit, which would
 //   grow an offer), then plays pressure, the mod wheel and clock at 96.
 // - touch: the hood does not show per-note touch (it happens per voice, in
 //   the worklet), so the callouts point at the struck key instead.
-// - keep: the sound wanders out on Body and Bright, and comes back twice.
+// - keep: the sound wanders out on a control that turns upward and on
+//   Bright, and comes back twice.
 // - dock: HOLD latches before ARP opens its drawer (a click on HOLD folds the
 //   drawer), the pointer rests on the drawer so the chord does not fold it,
 //   and the chord lands on the score's beat (`snap`).

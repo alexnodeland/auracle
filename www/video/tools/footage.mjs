@@ -74,6 +74,10 @@
 // struck at the shot's start can last to the first bar line, where the next
 // one (snapped) comes in.
 //
+// A `sel` is a Playwright selector, and an op acts on its first match: CSS
+// with :has(), :has-text() and :text-is(), a list `a, b` (the first in page
+// order: "the first bass card on the grid") and `>> nth=1` (the second).
+//
 // Ops, for set-up steps and actions alike:
 //   wait {ms} | {until}                 pause; in a `seq`, until a narration time (if not past)
 //   until {sel, state?, ms?, stamp?}    wait for an element state (default visible), or {js} for a
