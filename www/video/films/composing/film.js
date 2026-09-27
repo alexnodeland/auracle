@@ -9,9 +9,11 @@
 //
 // Where this departs from storyboard.md, because the app does otherwise:
 // - Every shot is one seeded session (shots.json `init`), so the warm start
-//   always deals the same nine cards; this film picks Acid Line, Sea Change
-//   and Glass Rain by name (a bass, a pad, a moving texture). The warm start
-//   also saves its three picks, so the keep beat's save is 4 of 10.
+//   deals the same nine cards in every shot (which nine moves whenever the
+//   app draws one more random number at boot). The film picks the first bass,
+//   pad and texture card on the grid (the deal always holds one of each):
+//   a bass, a pad, a moving texture. The warm start also saves its three
+//   picks, so the keep beat's save is 4 of 10.
 // - direction: "teach it" takes seconds and then switches to PERFORM, so the
 //   beat cuts from the press to when it has taught, then votes.
 // - evolve: the generation runs on camera; the beat cuts from the press to

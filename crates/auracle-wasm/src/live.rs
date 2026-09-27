@@ -86,10 +86,11 @@ const MASTER_RELEASE: f32 = 2.8e-4;
 /// brings a patch's phrase to the audition target (`crate::level`), and on a
 /// fresh pool that spans −18 to +49 dB. The top is the vet's silence floor
 /// (`VetConfig::rms_floor`, −80 dBFS RMS), about 60 dB under the target, so any
-/// patch the pool can admit fits; the bottom is a single voice at full scale,
-/// which the per-voice limiter makes the loudest a phrase can be, with a few dB
-/// to spare. What a makeup fitted on the phrase gets wrong about a note held
-/// past it is the [`Leveler`]'s to catch, not this clamp's.
+/// patch the pool can admit fits; the bottom leaves a few dB under the loudest
+/// phrase there can be (the per-voice limiter holds each voice at full scale,
+/// and the phrase sounds two at once). What a makeup fitted on the phrase gets
+/// wrong about a note held past it is the [`Leveler`]'s to catch, not this
+/// clamp's.
 pub(crate) const MAKEUP_MIN_DB: f64 = -24.0;
 pub(crate) const MAKEUP_MAX_DB: f64 = 60.0;
 /// Where the [`Leveler`] holds a sustained sound, in LU over the audition
