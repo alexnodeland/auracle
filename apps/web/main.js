@@ -3567,7 +3567,18 @@ document.addEventListener("keydown", (e) => {
     }
   }
   const noteKey = k in KEYMAP || k === "z" || k === "x";
-  if (!noteKey && e.target?.closest?.("button, [role=tab], [data-addr], input[type=range]")) return;
+  // A focused control keeps only the keys it uses. A button uses Space and
+  // Enter; tabs, menu items, options, knobs and sliders also steer with the
+  // arrows and Home/End. Swallowing every non-note key made one click on HOLD
+  // or ▶ turn off `[`/`]`, `m`, 1–5 and EVOLVE's ←/→ until the player clicked
+  // elsewhere.
+  const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], input[type=range]";
+  const ctl = noteKey ? null : e.target?.closest?.(`button, [role=button], ${STEERED}`);
+  if (ctl) {
+    const activates = e.key === " " || e.key === "Enter";
+    const steers = /^(Arrow|Page)|^(Home|End)$/.test(e.key) && ctl.matches(STEERED);
+    if (activates || steers) return;
+  }
   if (k in KEYMAP) {
     const midi = 60 + 12 * octShift + KEYMAP[k];
     if (midi >= 0 && midi <= 127 && !downComputerKeys.has(k)) {
