@@ -28,7 +28,8 @@
 //!   Wavefolder, Distortion, Bitcrusher, DelayLine, Chorus, Reverb, Phaser,
 //!   Flanger, Tremolo, Vibrato, Granular, PitchShifter, RingModulator,
 //!   Compressor, Ducker, NoiseGate, Vocoder, Adsr, Vca, Lfo, SampleAndHold,
-//!   SlewLimiter, EnvelopeFollower.
+//!   SlewLimiter, EnvelopeFollower — plus one module of this crate's own,
+//!   [`steps::StepsCv`], a step sequencer whose every value is a port.
 //! - Every compiled patch gets the mandatory voice stage — amp ADSR → VCA →
 //!   **Limiter** → StereoOutput — and bounded parameter mappings (resonance,
 //!   feedback), so the grammar cannot express the most degenerate settings.
@@ -41,6 +42,7 @@ pub mod genome;
 pub mod mutate;
 pub mod presets;
 pub mod prior;
+pub mod steps;
 pub mod term;
 
 pub use compile::{compile, CompiledVoice, ParamHandle, ParamMap};
@@ -213,6 +215,76 @@ mod tests {
         }
     }
 
+    /// Both samplers actually reach every modulation kind — `Steps` included —
+    /// and every tree that contains one survives the codec both ways.
+    ///
+    /// The round-trip tests above run fifty draws each, and at a 3% prior
+    /// weight per slot a fifty-draw window is not *guaranteed* to contain the
+    /// newest leaf. This one keeps drawing until it has seen every kind, so the
+    /// property is checked on the kind rather than hoped for.
+    #[test]
+    fn every_mod_kind_is_drawn_and_round_trips() {
+        fn kinds(m: &ModNode, out: &mut std::collections::BTreeSet<&'static str>) {
+            let k = match m {
+                ModNode::None => return,
+                ModNode::Lfo { .. } => "lfo",
+                ModNode::Env { .. } => "env",
+                ModNode::Rand { .. } => "rand",
+                ModNode::Follow { .. } => "follow",
+                ModNode::Euclid { .. } => "euclid",
+                ModNode::Op { .. } => "op",
+                ModNode::Pair { .. } => "pair",
+                ModNode::Steps { .. } => "steps",
+            };
+            out.insert(k);
+            for c in m.children() {
+                kinds(c, out);
+            }
+        }
+        fn walk(n: &term::AudioNode, out: &mut std::collections::BTreeSet<&'static str>) {
+            if let Some(m) = n.modulation() {
+                kinds(m, out);
+            }
+            for c in n.children() {
+                walk(c, out);
+            }
+        }
+        let prior = PatchGrammarPrior::default();
+        let mut rng = StdRng::seed_from_u64(0x57E95);
+        let mut seen_gen = std::collections::BTreeSet::new();
+        let mut seen_plain = std::collections::BTreeSet::new();
+        let mut steps_trees = 0;
+        for _ in 0..600 {
+            let (tree, gen_trace) = draw(&prior, &mut rng);
+            let mut here = std::collections::BTreeSet::new();
+            walk(&tree.root, &mut here);
+            if here.contains("steps") {
+                steps_trees += 1;
+                let enc = tree.to_trace();
+                assert_eq!(enc.choices.len(), gen_trace.choices.len());
+                for (addr, choice) in &gen_trace.choices {
+                    assert_eq!(enc.choices[addr].value, choice.value, "at {addr}");
+                }
+                assert_eq!(PatchTree::from_trace(&enc).unwrap(), tree);
+                assert!(compile(&tree, SR).is_ok(), "{}", tree.to_sexpr());
+            }
+            seen_gen.extend(here);
+            let plain = prior.sample_with_rng(&mut rng);
+            walk(&plain.root, &mut seen_plain);
+            assert_eq!(PatchTree::from_trace(&plain.to_trace()).unwrap(), plain);
+        }
+        let all: std::collections::BTreeSet<&str> = [
+            "lfo", "env", "rand", "follow", "euclid", "op", "pair", "steps",
+        ]
+        .into();
+        assert_eq!(seen_gen, all, "the generative prior never drew some kind");
+        assert_eq!(seen_plain, all, "the plain sampler never drew some kind");
+        assert!(
+            steps_trees >= 3,
+            "only {steps_trees} trees held a steps leaf"
+        );
+    }
+
     /// `from_trace(to_trace(t)) == t` for prior draws and for the plain-RNG
     /// sampler (the two samplers must agree on representable trees).
     #[test]
@@ -317,6 +389,18 @@ mod tests {
                     assert!(compile(&edited, SR).is_ok());
                 }
             }
+            // A step lane names knobs that exist, all continuous, and the
+            // count of them that play is the decoded `length`.
+            for m in &rack.modules {
+                let Some(lane) = &m.lane else { continue };
+                assert_eq!(m.kind, "steps", "a lane on a {} module", m.kind);
+                assert_eq!(lane.count, steps::STEP_SLOTS);
+                assert!(lane.first + lane.count <= m.knobs.len());
+                assert!((steps::MIN_STEPS..=lane.count).contains(&lane.active));
+                for k in &m.knobs[lane.first..lane.first + lane.count] {
+                    assert_eq!(k.kind, describe::KnobKind::Continuous, "{}", k.addr);
+                }
+            }
             // Wires reference existing modules only.
             for w in &rack.wires {
                 assert!(rack.modules.iter().any(|m| m.key == w.from) || w.from == "node");
@@ -414,12 +498,28 @@ mod tests {
                     }
                 }
                 ops.push(StructOp::Delete { key: key.clone() });
+                // The whole modulation vocabulary: the sources replace the
+                // slot, the shapers wrap whatever the draw put there — which
+                // is how a `Steps` ends up under a quantizer or inside a pair
+                // here without anyone writing that case down.
                 for mk in [
                     ModKind::None,
                     ModKind::Lfo,
                     ModKind::Env,
                     ModKind::Rand,
                     ModKind::Follow,
+                    ModKind::Euclid,
+                    ModKind::Steps,
+                    ModKind::Quantize,
+                    ModKind::Slew,
+                    ModKind::Rectify,
+                    ModKind::Hold,
+                    ModKind::Min,
+                    ModKind::Max,
+                    ModKind::And,
+                    ModKind::Or,
+                    ModKind::Xor,
+                    ModKind::Switch,
                 ] {
                     ops.push(StructOp::SetMod {
                         key: key.clone(),

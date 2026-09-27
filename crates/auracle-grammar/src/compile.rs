@@ -41,6 +41,8 @@ use quiver::modules::{
 use quiver::prelude::*;
 use quiver::{AtomicF64, ExternalInput};
 
+use crate::prior::STEPS_SITES;
+use crate::steps::StepsCv;
 use crate::term::{
     rect_mode_index, AudioNode, DriveMode, FilterKind, ModNode, ModOp, PairOp, PatchTree,
 };
@@ -1315,6 +1317,36 @@ impl Compiler {
                 self.patch.connect(eu.out("out"), gate.in_("in"))?;
                 self.patch.connect(clk.out("out"), gate.in_("trig"))?;
                 (gate.out("out"), false)
+            }
+            ModNode::Steps {
+                rate,
+                length,
+                slew,
+                values,
+                ..
+            } => {
+                // Our own module rather than quiver's `StepSequencer`, whose
+                // values are internal state: every one of the eleven sites
+                // here is a live knob on a port, so dragging a step bar is an
+                // atomic write and not a recompile. The ports take the
+                // normalized knob straight through and the musical maps live
+                // in `crate::steps`, next to the clock that uses them.
+                let seq = self
+                    .patch
+                    .add(format!("{key}:steps"), StepsCv::new(self.sr()));
+                let knobs = [(*rate, "rate"), (*length, "length"), (*slew, "slew")]
+                    .into_iter()
+                    .chain(
+                        values
+                            .iter()
+                            .enumerate()
+                            .map(|(i, v)| (*v, StepsCv::value_port(i))),
+                    );
+                for ((raw, port), site) in knobs.zip(STEPS_SITES) {
+                    self.knob(key, site, raw, ParamMap::Unit, false, seq.in_(port))?;
+                }
+                // ±5 V, like an LFO — so it takes the bipolar depth taper.
+                (seq.out("out"), false)
             }
             ModNode::Op {
                 kind,
@@ -4174,6 +4206,158 @@ mod tests {
                 "euclid at steps {steps} / pulses {pulses} emits a constant"
             );
         }
+    }
+
+    /// A saw through a lowpass whose cutoff is driven by `m` at full depth.
+    fn stepped_filter(m: ModNode) -> PatchTree {
+        sustained(AudioNode::Filter {
+            uid: Uid::NEW,
+            kind: FilterKind::SvfLp,
+            cutoff: 0.5,
+            resonance: 0.1,
+            mod_depth: 1.0,
+            input: Box::new(saw()),
+            modulation: m,
+        })
+    }
+
+    /// Two steps, dark and bright, at 2 steps a second (`0.5·2^(5·0.4)`).
+    fn dark_bright(slew: f64) -> ModNode {
+        ModNode::Steps {
+            uid: Uid::NEW,
+            rate: 0.4,
+            length: 0.0,
+            slew,
+            values: [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+        }
+    }
+
+    /// RMS of consecutive `frame`-sample frames.
+    fn frame_rms(out: &[(f64, f64)], frame: usize) -> Vec<f64> {
+        out.chunks_exact(frame).map(rms).collect()
+    }
+
+    /// A step pattern on a cutoff is **a rhythm in the timbre**: the output
+    /// alternates dark/bright at the step rate, step for step.
+    ///
+    /// Measured per step (the middle 400 ms of each 500 ms step, clear of the
+    /// filter settling on the edge) rather than as "something moved", so the
+    /// test pins the rate, the order and the depth together: step 0 is `s0`
+    /// (dark), step 1 is `s1` (bright), and a full-depth cable swings the
+    /// cutoff across the whole spectrum. The first step is skipped because the
+    /// amp envelope is still attacking through it.
+    #[test]
+    fn a_step_pattern_on_the_cutoff_alternates_at_the_step_rate() {
+        let mut v = compile(&stepped_filter(dark_bright(0.0)), SR).expect("compiles");
+        let out = hold(&mut v, 0.0, (SR * 3.0) as usize);
+        let step = (SR * 0.5) as usize;
+        let per_step: Vec<f64> = (1..6)
+            .map(|k| rms(&out[k * step + step / 10..(k + 1) * step - step / 10]))
+            .collect();
+        for (i, pair) in per_step.windows(2).enumerate() {
+            let k = i + 1;
+            let (bright, dark) = if k % 2 == 1 {
+                (pair[0], pair[1])
+            } else {
+                (pair[1], pair[0])
+            };
+            assert!(
+                bright > 3.0 * dark,
+                "steps {k}/{}: bright {bright:.4} vs dark {dark:.4} — the pattern \
+                 is not reaching the cutoff ({per_step:?})",
+                k + 1
+            );
+        }
+        // …and it changes exactly at the step rate: ten 50 ms frames per
+        // step, so over the five measured steps the level crosses its
+        // midpoint once per step boundary and nowhere else.
+        let frames = frame_rms(&out[step..6 * step], (SR * 0.05) as usize);
+        let (lo, hi) = frames
+            .iter()
+            .fold((f64::MAX, 0.0f64), |(a, b), x| (a.min(*x), b.max(*x)));
+        let mid = 0.5 * (lo + hi);
+        let flips = frames
+            .windows(2)
+            .filter(|w| (w[0] > mid) != (w[1] > mid))
+            .count();
+        assert_eq!(flips, 4, "{flips} level flips in 2.5 s of a 2 Hz pattern");
+    }
+
+    /// Slew turns the steps into glides: at `slew` 1 the level never jumps
+    /// between adjacent frames the way hard steps do.
+    ///
+    /// The largest frame-to-frame change is the statistic, for the reason
+    /// `the_slew_knob_spends_its_travel_on_audible_glide_times` gives: a glide
+    /// spreads one big jump over many frames, so it lowers the maximum while
+    /// leaving the total travel alone.
+    #[test]
+    fn full_slew_is_smoother_than_hard_steps() {
+        let jump = |slew: f64| {
+            let mut v = compile(&stepped_filter(dark_bright(slew)), SR).expect("compiles");
+            let out = hold(&mut v, 0.0, (SR * 3.0) as usize);
+            let frames = frame_rms(&out[(SR * 0.5) as usize..], (SR * 0.01) as usize);
+            frames
+                .windows(2)
+                .map(|w| (w[1] - w[0]).abs())
+                .fold(0.0f64, f64::max)
+        };
+        let (hard, glided) = (jump(0.0), jump(1.0));
+        assert!(hard > 0.0, "the hard steps never moved the level");
+        assert!(
+            glided < 0.5 * hard,
+            "full slew's largest 10 ms jump is {glided:.4} against hard steps' \
+             {hard:.4} — the glide is not smoothing the pattern"
+        );
+    }
+
+    /// Every one of a `Steps`' eleven sites is a live knob, and moving a step
+    /// value through its handle changes the sound **in the running voice** —
+    /// and lands exactly where recompiling the edited tree would have.
+    ///
+    /// This is the reason the module is not quiver's `StepSequencer`, whose
+    /// values are internal state: there, a bar drag would be a full patch
+    /// swap per pointer move.
+    #[test]
+    fn every_steps_site_is_live_and_a_step_moves_without_a_recompile() {
+        let tree = stepped_filter(dark_bright(0.0));
+        let params = tree_params(&tree);
+        for site in STEPS_SITES {
+            let addr = format!("node/m#{site}");
+            assert!(params.contains(&addr), "{addr} has no live handle");
+        }
+        assert!(params.contains(&"node#mdepth".to_string()));
+
+        // Two voices from one tree; turn `s0` bright on one of them a quarter
+        // of the way into the first (dark) step, without recompiling.
+        let mut base = compile(&tree, SR).expect("compiles");
+        let mut live = compile(&tree, SR).expect("compiles");
+        let quarter = (SR * 0.125) as usize;
+        let a = hold(&mut base, 0.0, quarter);
+        let b = hold(&mut live, 0.0, quarter);
+        assert_eq!(a, b, "two compiles of one tree disagree");
+        live.params["node/m#s0"].set_normalized(1.0);
+        let dark = rms(&hold(&mut base, 0.0, 3 * quarter)[quarter..]);
+        let lit = rms(&hold(&mut live, 0.0, 3 * quarter)[quarter..]);
+        assert!(
+            lit > 3.0 * dark,
+            "setting s0 through its handle did not brighten the step that is \
+             playing: {lit:.4} vs {dark:.4}"
+        );
+
+        // From the first sample, the handle and a recompile are the same
+        // edit, bit for bit.
+        let edited =
+            crate::edit::set_param(&tree, "node/m#s0", crate::edit::ParamValue::Continuous(1.0))
+                .expect("s0 is a knob");
+        let mut handled = compile(&tree, SR).expect("compiles");
+        handled.params["node/m#s0"].set_normalized(1.0);
+        let mut rebuilt = compile(&edited, SR).expect("compiles");
+        let n = (SR * 1.2) as usize;
+        assert_eq!(
+            hold(&mut handled, 0.0, n),
+            hold(&mut rebuilt, 0.0, n),
+            "the live handle and a recompile disagree about s0"
+        );
     }
 
     /// The switch hears **both** of its branches.

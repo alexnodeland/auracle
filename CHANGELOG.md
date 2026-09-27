@@ -289,6 +289,63 @@ now wrong"* — and it is worth recording rather than fixing silently, because a
 book whose first commitment is that every number is sourced is one where a
 stale number costs more than it would anywhere else.
 
+### Added — `steps`, a step sequencer that lives inside the timbre
+
+Every rhythmic modulator the instrument had was a *gate*: the euclid opens and
+closes, and the logic ops combine openings. Nothing could make a timbre walk a
+pattern of **values** — a cutoff that goes dark, bright, middling, brightest on
+a clock — which is the gesture behind most evolving textures. `steps` is that
+modulator: up to eight steps of bipolar CV at 0.5–16 steps a second, with a
+glide that is a fraction of each step (0 is hard steps, 1 slides the whole
+way), free-running on its own clock like the euclid's. Tempo sync is left for
+when the instrument has a transport to lock to.
+
+**Each step value is its own genome site** (the Mutable Instruments *Marbles*
+design): an evolution proposal that moves one step moves that step and nothing
+else, and a lock on one bar holds that step while the rest of the pattern
+evolves. **`length` hides steps rather than deleting them**: all eight stay in
+the patch, so shortening a pattern and lengthening it again brings back what
+was there.
+
+It is Auracle's own module rather than quiver's `StepSequencer`, whose values
+are internal state with no ports: every one of the eleven sites here is a live
+knob, so dragging a bar is an atomic write into the running voices, not a patch
+recompile per pointer move. A test pins that the live handle and a recompile of
+the edited patch produce the same samples, bit for bit.
+
+Measured on a saw through a lowpass at full mod depth, with two steps
+alternating dark/bright at 2 steps a second: the bright steps render at
+**~190×** the RMS of the dark ones, the level flips exactly once per step
+boundary, and turning glide from 0 to 1 cuts the largest 10 ms level jump from
+2.65 to 0.43. The same module is sample-rate independent (the glide is a
+function of the step's phase, not of a sample count), NaN-safe at every port,
+allocation-free per sample, and resets to bit-identical output.
+
+In the rack it is three dials and a row of eight bars: press a bar and drag to
+set a step, or use the keyboard like any other knob; bars past `length` grey
+out, live, as the length dial turns. It is in the node bank under *sequence*,
+*pattern*, *rhythm* and *steps*, and a new texture preset, **Loom**, walks a
+ladder filter's cutoff through a slewed five-step pattern.
+
+For the model and the search:
+
+- **Prior weight 3%**, the euclid's: a leaf, so its mass buys variety rather
+  than chain length. The table is renormalized rather than rescaled, so every
+  older modulation kind keeps its exact proportion to every other.
+- **Wire format:** it is `#mod` index **8**, after `Pair` — the order is
+  append-only, so no saved patch or trace moves. That exposed an assumption in
+  the prior: "is a leaf" was an index range (`kind < 6`), which at the depth
+  bound would have switched the new leaf off along with the branches. It is now
+  a predicate, and a test forces a max-depth term to bottom out in `steps`.
+  Old traces and old JSON saves are pinned to decode to the same trees.
+- **φ:** counted in the `n_rand` column, which is now the *stepped CV* family
+  (S&H and step sequence — to the ear, a value that jumps on a clock). No new
+  column: at 3% of slots it would be a near-indicator. The column keeps its
+  stored name, since every observation on disk predates the step sequencer and
+  its `n_rand` already is its stepped count; the panel now labels it
+  "stepped mods". Cached feature rows from before this change still load.
+- The catalogue is now **forty-two modules** (sixteen modulators).
+
 ### Changed — the acquisition question was measured, and the tie does not break
 
 BALD ties uniform random pairing at session horizon, and the open question named

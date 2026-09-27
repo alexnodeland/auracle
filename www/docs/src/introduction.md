@@ -9,7 +9,7 @@ uncertainty you can inspect, and uses it to steer the search. Over a session it
 stops guessing and starts proposing.
 
 It is also just a synthesizer. Four-voice polyphony, a keyboard, MIDI, an
-arpeggiator, a patchable rack with typed cables and forty-one modules. You can
+arpeggiator, a patchable rack with typed cables and forty-two modules. You can
 ignore the model entirely and play it like an instrument.
 
 <figure>

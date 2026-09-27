@@ -150,7 +150,7 @@ macro_rules! modulated_variants {
 /// empty slot is not a module and carries no identity.
 macro_rules! mod_variants {
     ($mac:ident) => {
-        $mac!(Lfo, Env, Rand, Follow, Euclid, Op, Pair)
+        $mac!(Lfo, Env, Rand, Follow, Euclid, Op, Pair, Steps)
     };
 }
 
@@ -550,9 +550,10 @@ pub fn rect_mode_index(x: f64) -> usize {
 /// - **`StepSequencer`** — its eight step values are `steps: [f64; 8]`
 ///   *internal state* with no ports (`utilities.rs`, and its own comment says
 ///   so). It would need eight genome sites baked at compile time and could not
-///   be edited live, which breaks both the four-knob faceplate budget and the
-///   "every knob is a trace address you can turn" contract the instrument
-///   rests on.
+///   be edited live, which breaks the "every knob is a trace address you can
+///   turn" contract the instrument rests on. [`ModNode::Steps`] is the step
+///   sequencer this grammar does have, built on [`crate::steps::StepsCv`],
+///   whose every value is a port.
 /// - **`Quantizer`** — subsumed by `ScaleQuantizer`, which is the same module
 ///   with a scale rather than raw semitones.
 /// - **`Comparator`** — its useful output is a gate, and [`PairOp`]'s logic
@@ -674,6 +675,34 @@ pub enum ModNode {
         /// Second input. Never [`ModNode::None`]; on
         /// [`PairOp::Switch`] it is also the control.
         b: Box<ModNode>,
+        /// Stable identity for this node; see [`Uid`].
+        #[serde(default, skip_serializing_if = "Uid::is_new")]
+        uid: Uid,
+    },
+    /// A clocked step sequence of CV values — rhythm *inside* a timbre: a
+    /// cutoff, a fold or a morph that moves through a pattern rather than
+    /// sweeping. A **leaf**, like the euclid: it generates, and its clock is
+    /// its own (free-running; tempo sync is a live-instrument concern for
+    /// later — see [`crate::steps`]).
+    ///
+    /// Declared last because the `#mod` categorical is a persisted wire
+    /// format and is append-only: this is index 8, after `Pair`.
+    ///
+    /// The eight `values` are **latent uniforms** (the Mutable Instruments
+    /// *Marbles* design): each is its own trace site, step `i` outputs
+    /// `(2·values[i] − 1)·5 V`, and only the first `length` of them play. A
+    /// mutation of one site re-voices one step and nothing else, and a
+    /// `length` change hides or reveals steps without destroying them.
+    Steps {
+        /// Normalized step rate (0-1 → `0.5·2^(5x)`, 0.5..16 steps/s).
+        rate: f64,
+        /// Normalized pattern length (0-1 → 2..8 steps, seven equal bins).
+        length: f64,
+        /// Normalized glide, as a fraction of each step (0 = hard steps,
+        /// 1 = glide across the whole step).
+        slew: f64,
+        /// The eight step values, normalized (0-1 → −5..+5 V).
+        values: [f64; 8],
         /// Stable identity for this node; see [`Uid`].
         #[serde(default, skip_serializing_if = "Uid::is_new")]
         uid: Uid,
@@ -1314,6 +1343,8 @@ impl ModNode {
             ModNode::Follow { .. } => 3, // #mod #sens #rel
             // #mod #erate #esteps #epulses
             ModNode::Euclid { .. } => 4,
+            // #mod #srate #slen #sslew #s0..#s7
+            ModNode::Steps { .. } => 4 + crate::steps::STEP_SLOTS,
             // #mod #modop, the op's own knobs, then the subterm.
             ModNode::Op { kind, input, .. } => 2 + kind.param_sites().len() + input.site_count(),
             // #mod #pairop and two subterms — no continuous sites of its own.
@@ -1333,7 +1364,8 @@ impl ModNode {
             | ModNode::Env { .. }
             | ModNode::Rand { .. }
             | ModNode::Follow { .. }
-            | ModNode::Euclid { .. } => 1,
+            | ModNode::Euclid { .. }
+            | ModNode::Steps { .. } => 1,
             ModNode::Op { input, .. } => 1 + input.depth(),
             ModNode::Pair { a, b, .. } => 1 + a.depth().max(b.depth()),
         }
@@ -2064,6 +2096,19 @@ fn mod_sexpr(m: &ModNode) -> String {
             pulses,
             ..
         } => format!("(euclid r={rate:.2} s={steps:.2} p={pulses:.2})"),
+        ModNode::Steps {
+            rate,
+            length,
+            slew,
+            values,
+            ..
+        } => {
+            let vals: Vec<String> = values.iter().map(|v| format!("{v:.2}")).collect();
+            format!(
+                "(steps r={rate:.2} l={length:.2} g={slew:.2} [{}])",
+                vals.join(" ")
+            )
+        }
         ModNode::Op {
             kind,
             p0,

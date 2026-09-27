@@ -1494,6 +1494,53 @@ pub fn preset_bank() -> Vec<Preset> {
                 },
             },
         },
+        Preset {
+            name: "Loom",
+            category: "texture",
+            // `steps` on the cutoff: the pad's brightness walks a five-step
+            // path at two steps a second, so the pattern comes round every
+            // 2.5 s — longer than any held note in the audition phrase, which
+            // is the point: each note catches a different stretch of it, and
+            // what the ear hears is a timbre with a rhythm inside it rather
+            // than a sweep. A third of each step glides (`slew`), so the
+            // ladder does not click on the edges and the contour reads as a
+            // phrase, not a gate. The three steps past `length` are latent —
+            // lengthen the pattern and they join in.
+            blurb: "a pad whose brightness walks a five-step pattern — rhythm woven into the tone",
+            tree: PatchTree {
+                amp: amp(0.3, 0.5, 0.85, 0.5),
+                root: Reverb {
+                    uid: Uid::NEW,
+                    size: 0.7,
+                    damp: 0.45,
+                    mix: 0.3,
+                    mod_depth: 0.0,
+                    modulation: ModNode::None,
+                    input: Box::new(Filter {
+                        uid: Uid::NEW,
+                        kind: FilterKind::Ladder,
+                        cutoff: 0.5, // 632 Hz at rest; the steps swing it
+                        resonance: 0.45,
+                        mod_depth: 0.7,
+                        modulation: ModNode::Steps {
+                            uid: Uid::NEW,
+                            rate: 0.4,   // 0.5·2^(5·0.4) = 2 steps a second
+                            length: 0.5, // fourth of seven bins → 5 steps
+                            slew: 0.35,
+                            // dark, bright, middling, brightest, dark-ish —
+                            // then three latent steps that continue it.
+                            values: [0.15, 0.85, 0.45, 1.0, 0.3, 0.7, 0.1, 0.6],
+                        },
+                        input: Box::new(Mix {
+                            uid: Uid::NEW,
+                            balance: 0.5,
+                            a: Box::new(vco(Waveform::Saw, 0, 0.42)),
+                            b: Box::new(vco(Waveform::Saw, 0, 0.58)),
+                        }),
+                    }),
+                },
+            },
+        },
         // ---------------------------------------------------------------
         // PERC
         // ---------------------------------------------------------------
@@ -2128,10 +2175,13 @@ mod tests {
     }
 
     fn hz_of(kind: &str, cv: f64) -> f64 {
-        if kind == "chorus" {
-            chorus_hz(cv)
-        } else {
-            mod_hz(cv)
+        match kind {
+            "chorus" => chorus_hz(cv),
+            // A step sequence changes value once per step, so the step rate is
+            // the rate at which it is heard to move — `0.5·2^(5x)`, whose
+            // floor is already above this file's 0.2 Hz gate.
+            "steps" => crate::steps::rate_hz(cv),
+            _ => mod_hz(cv),
         }
     }
 
@@ -2162,6 +2212,7 @@ mod tests {
                         note(b, name, out);
                     }
                     ModNode::Euclid { rate, .. } => out.push((name, "euclid", *rate)),
+                    ModNode::Steps { rate, .. } => out.push((name, "steps", *rate)),
                 }
             }
             match n {
@@ -2360,6 +2411,9 @@ mod tests {
                 }
                 ModNode::Euclid { .. } => {
                     self.mods.insert("euclid");
+                }
+                ModNode::Steps { .. } => {
+                    self.mods.insert("steps");
                 }
                 ModNode::Op { kind, input, .. } => {
                     self.mods.insert(kind.label());
@@ -2623,7 +2677,7 @@ mod tests {
             "the wavetable oscillator is never heard"
         );
         assert!(!drive_modes.is_empty(), "the distortion is never heard");
-        // Every modulation **source** — the five leaf kinds plus the empty
+        // Every modulation **source** — the six leaf kinds plus the empty
         // slot — has to appear, on the same argument as the node list: a
         // source no preset demonstrates is a source nobody discovers.
         //
@@ -2634,7 +2688,7 @@ mod tests {
         // each of the three new *productions* — a leaf generator, a unary
         // processor, a binary combiner — is shown at least once, so the shape
         // of the sort is discoverable from the bank.
-        for src in ["none", "lfo", "env", "rand", "follow", "euclid"] {
+        for src in ["none", "lfo", "env", "rand", "follow", "euclid", "steps"] {
             assert!(mods.contains(src), "no preset uses the {src} modulator");
         }
         // The shapers *were* held to a weaker bar than the sources, on the
