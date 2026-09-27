@@ -62,6 +62,12 @@ visitor took over) claims that offer, and asks once more if it comes back
 empty. It used to be dropped silently, which could leave a press with nothing
 at all. Found recording the booth demo.
 
+Asking for another offer passes on the one in B, and that offer now leaves B
+(it fades out) instead of staying there, playable and takeable, while the next
+one grows. A player could Take the very sound they had just passed on, and a
+Take landing just after the next offer arrived was counted as an unheard
+answer to that one. CI caught the second case in `perform_teaches`.
+
 ### Changed — PERFORM is playable at once on a patch it has measured before
 
 Measuring a patch takes seconds (about one render per knob, plus

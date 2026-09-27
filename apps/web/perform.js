@@ -723,8 +723,21 @@ export function createPerform(host) {
     renderStatus("walking…");
   }
 
+  // Asking for another offer is passing on the one in B, and the offer passed
+  // on leaves B (it fades out). It used to stay there, playable and takeable,
+  // while the next one grew: a player could Take the very sound they had just
+  // passed on, and a Take landing just after the next offer arrived was
+  // counted as an unheard answer to *that* one.
+  function passOffer() {
+    answerOffer(false);
+    state.offer = null;
+    const live = host.live();
+    if (live) live.bClear();
+  }
+
   function requestOffer(why) {
     if (!state.cur) return;
+    if (state.offer) passOffer();
     const growing = [...state.pending.values()].find((q) => q.kind === "perform_offer" && q.gen === state.gen);
     if (growing && !growing.spare) {
       // One is already on its way: this press is a claim on it, and if it
@@ -737,8 +750,6 @@ export function createPerform(host) {
       renderOffer("growing an offer…");
       return;
     }
-    // Asking again after hearing B is passing on it.
-    if (state.offer) answerOffer(false);
     state.lastMove = performance.now();
     state.offerWhy = why || "";
     if (why !== "wander" && why !== "attract") stepDone("offer");
