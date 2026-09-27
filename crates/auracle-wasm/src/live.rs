@@ -213,7 +213,7 @@ const SYNC_DIVISIONS: [f64; 12] = [
 
 /// The synced rate site for a free rate site at `bpm`: the musical division
 /// of the beat nearest the free rate in octaves (so a sequencer evolved at
-/// 3.7 steps/s at 120 BPM plays 16ths, 4 steps/s), among the divisions the
+/// 3.7 steps/s at 120 BPM plays 8ths, 4 steps/s), among the divisions the
 /// knob can reach.
 pub(crate) fn snap_rate(free: f64, bpm: f64) -> f64 {
     use auracle_grammar::steps::{rate_hz, rate_site};

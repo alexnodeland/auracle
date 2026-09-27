@@ -206,7 +206,12 @@ a least-squares fit over the last two beats of clock ticks, so a single late
 tick moves it by a fraction of its lateness rather than all of it. It needs one
 full beat of ticks before it reads anything, updates when it moves by more than
 0.4 BPM, and stays within 30–300 BPM. A gap of more than a second is read as a
-stop rather than a very slow tempo. Start, stop and continue are not acted on.
+stop rather than a very slow tempo.
+
+**Start** is a restart: a running arpeggio begins again from its first note if
+a chord is held, and with **SYNC** on the step sequencers go back to their first
+step. From a Start until a **Stop**, the clock also pulls the synced sequencers
+back onto its beat once a beat. Stop silences nothing, and continue is ignored.
 
 ### Per device
 

@@ -211,7 +211,7 @@ in a pool is auditioned under one stimulus and duels stay apples-to-apples.
 
 The declared context also already exists, half-built and discarded at the model
 boundary: `presets::CATEGORIES` is a seven-way family label (`bass`, `lead`,
-`keys`, `pad`, `texture`, `perc`, `weird`) carried by all 61 presets, used for
+`keys`, `pad`, `texture`, `perc`, `weird`) carried by all 62 presets, used for
 copy and for spanning the [warm start](../../docs/teaching.html#the-warm-start),
 and read by nothing downstream.
 
@@ -243,7 +243,8 @@ and a player needs the corner they are working in tonight.
 ## 4. Radio is a throughput fix, not the third mode
 
 [Grid and radio remain open](./milestones.md), and keep/kill is a fitted
-likelihood with no surface. The usual reading is *two modes left to build*.
+likelihood whose only surface, the bank's **cut**, records kills alone. The
+usual reading is *two modes left to build*.
 There is a sharper one.
 
 The two unbuilt modes are the ones that produce observations in **bulk** — grid
@@ -536,9 +537,9 @@ argues for the per-session threshold exactly right:
 That argument is fully general over absolute-scale signals, and the
 [star cutpoints](../taste/likelihoods.md#star-ratings--a-cumulative-logit) are
 fitted **globally**. Worse, the asymmetry runs the wrong way round from ship
-state: keep/kill has no surface and appears in zero logs, while stars are a
-signal users actually emit — so the mechanism exists on the modelled-but-unused
-signal and is missing from the used one.
+state: keep/kill reaches the log only as kills, from the bank's **cut**, while
+stars are a signal users actually emit — so the mechanism exists on the
+one-sided signal and is missing from the full scale.
 
 The cutpoints do already absorb *drift*, which the page says and which is true:
 a user who becomes harsher over months moves them rather than $\theta$. What

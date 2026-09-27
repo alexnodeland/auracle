@@ -86,8 +86,8 @@ Auracle treats the problem as inference:
   feed one max-of-experts posterior (fitted style count grows with evidence).
   It forecasts each duel *before* your vote and shows its running calibration;
   styles are nameable and color-coded everywhere; old votes fade with a recency
-  half-life. A keep/kill likelihood is fitted too, though no screen emits one
-  yet.
+  half-life. A keep/kill likelihood is fitted too; the bank's cut records a
+  kill once its undo window closes.
 - **Taste-directed evolution** — refinement warm-starts typed MH from your best
   patches and takes a short *local* walk on the Boltzmann target (the pool is
   moved uphill on `π_β`, not sampled from it), with kind-proposal weights

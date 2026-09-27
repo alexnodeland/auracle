@@ -160,7 +160,7 @@ controls](./views/perform.md#amber-dashed-search-controls).
 
 ### Standardizer
 
-The scaling that puts the forty raw feature values on a common footing. Saved
+The scaling that puts the forty-four raw feature values on a common footing. Saved
 **with** the taste profile, always, because the model's coefficients are
 meaningless without it.
 

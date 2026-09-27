@@ -129,7 +129,8 @@ improves, which is what you want to watch.
 ```
 
 Split out at the right, the same scores by where the answer came from: dealt
-duels, edits you heard, edits you only asserted. A hand edit you committed
+duels, edits you heard, edits you only asserted, and offers you took or passed
+in PERFORM. A hand edit you committed
 after listening and one you committed by ticking *my edit is better* make the
 same claim in the log, and there is no reason to assume they are equally
 reliable. This is how you find out.

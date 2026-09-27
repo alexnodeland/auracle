@@ -81,7 +81,7 @@
       "lines": [
         {
           "id": "steps1",
-          "text": "Steps is a sequencer for timbre: eight values that walk any knob through a pattern, in time with the tempo.",
+          "text": "Steps is a sequencer for timbre: eight values that walk one knob through a pattern, in time with the tempo when Sync is on.",
           "post": 0.25
         }
       ]

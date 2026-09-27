@@ -45,7 +45,7 @@ export async function build(stage) {
         shot: "c-steps",
         chapter: "05 · steps",
         cam: [[0, 1.0, 0.5, 0.5], ["steps1:sequencer", 1.4, 0.5, 0.45]],
-        callouts: [{ at: "steps1:eight", mark: "steps", side: "top", dx: 60, dy: -90, text: "eight steps, any knob" }],
+        callouts: [{ at: "steps1:eight", mark: "steps", side: "top", dx: 60, dy: -90, text: "eight steps, one knob" }],
       },
       {
         beat: "performed",

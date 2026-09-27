@@ -76,7 +76,7 @@ candidates. The head shows your pin budget when you are near it.
 
 ## Presets
 
-Sixty-one hand-made patches across seven families — bass, lead, keys, pad,
+Sixty-two hand-made patches across seven families — bass, lead, keys, pad,
 texture, perc, weird — browsed in place: clicking one loads it on the workbench
 without adding it to the pool.
 

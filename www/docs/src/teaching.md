@@ -10,16 +10,16 @@ in PERFORM.</p>
 
 Everything you tell Auracle enters **one observation log** and conditions **one
 latent quantity**: a utility $u(x)$, "how much this person would like patch
-$x$". The four signals differ only in how they connect an answer to that
-utility.
+$x$". The signals differ only in how they connect an answer to that utility,
+and there are three ways: a duel, stars and keep/kill.
 
 | Signal | Where | What it says |
 |---|---|---|
 | **A/B duel** | EVOLVE, or the quick-pick strip in PATCH | $A$ scores higher than $B$ |
 | **an offer answered** | PERFORM: **Take** an offer you heard, or ask for another | The same duel, between the sound you were playing and the model's offer |
 | **★ stars** | Any bank row | This patch's utility falls in the band that rating covers |
-| **keep / kill** | *no surface yet* | This patch is above / below where I'm drawing the line today |
-| **edit beats original** | *my edit is better*, on commit | My edited version scores higher than what I started from |
+| **keep / kill** | A bank row's **cut** (kills only) | This patch is above / below where I'm drawing the line today |
+| **edit beats original** | *my edit is better*, on commit | The same duel: my edited version scores higher than what I started from |
 
 **Duels are the primary signal.** They have the best statistical properties and
 the lowest cognitive load: people compare two things reliably, and assign
@@ -46,9 +46,9 @@ Keep/kill is modelled against a **per-session threshold** the model also fits.
 where you kill almost everything is read as a strict session rather than a
 change in your taste.
 
-Nothing in the app records one yet. The likelihood and the threshold are
-implemented, but the triage screens that would emit them have not been built, so
-today you teach it with duels, stars and edits.
+A bank row's **cut** records a kill once its seven-second undo window closes;
+undo inside it and nothing is recorded. Nothing records a keep yet: the triage
+screens that would emit one have not been built.
 
 ### What is *not* a signal
 
@@ -75,7 +75,7 @@ duels, and eighteen observations before you have answered a single one is the
 difference between a model that has an opinion by the end of your first session
 and one that does not.
 
-The nine are drawn **one per family first** from the 61-patch library, then
+The nine are drawn **one per family first** from the 62-patch library, then
 filled from what is left, so the first thirty seconds span the space rather than
 landing in one corner. Only those nine are loaded, which keeps the first run
 short and most of the pool free for what the search finds.

@@ -2210,16 +2210,17 @@ collects, for the reason above.
 
 ### Fixed — three counts and one screen that does not exist
 
-- **The preset library is 61 patches across seven families, not 29.** The guide
+- **The preset library is 62 patches across seven families, not 29.** The guide
   and the reference had both been quoting the count from an earlier wave; a
   screenshot in the guide had been showing `presets 61` next to prose saying
   twenty-nine. The warm start's nine cards are also described correctly now:
   one per family first, then filled out to nine, rather than "one per family".
-- **Keep/kill has no UI surface.** The guide's table of teaching signals sent
+- **Keep/kill has no triage screen.** The guide's table of teaching signals sent
   readers to a "Triage" screen that has never been built. The likelihood, the
-  per-session threshold and `Engine::record_keep` are all real and reachable
-  through the wasm binding, but nothing in `apps/web` calls them. The guide, the
-  reference and `DESIGN.md` now say so.
+  per-session threshold and `Engine::record_keep` are all real; in `apps/web`
+  only the bank's **cut** calls it, recording a kill once its undo window
+  closes, and nothing records a keep. The guide, the reference and `DESIGN.md`
+  now say so.
 - The README's architecture diagram named Thompson sampling as the duel
   acquisition rule. It is selectable, it is not the default, and it measurably
   loses; the default is uniform pairing. The diagram now says so.

@@ -84,8 +84,8 @@ see matches what your keyboard plays. Both height and width persist.
 
 | | |
 |---|---|
-| **PATTERN** | up / down / up-down / random / order played |
-| **RATE** | Division: 1/4 through 1/32, straight or triplet |
+| **PATTERN** | up / down / up-down / random |
+| **RATE** | Division: 1/4, 1/8, 1/16 or 1/8 triplet |
 | **TEMPO** | BPM |
 | **RANGE** | How many octaves it walks |
 | **GATE** | Note length as a fraction of the division |
@@ -97,10 +97,10 @@ busy.
 
 **SYNC** (next to ARP) puts a patch's step sequencers on the same tempo. Each
 one plays the musical division nearest the speed it was evolved at, so a
-pattern that ran at 3.7 steps a second becomes 16ths at 120 BPM, and all of
+pattern that ran at 3.7 steps a second becomes 8ths at 120 BPM, and all of
 them restart together with the first key you press, on the same beat the arp
-starts. MIDI start restarts them too, and with a MIDI clock running they are
-pulled back onto its beat once a beat. A five-step pattern still cycles against
+starts. MIDI start restarts them too, and from then until a MIDI stop the
+clock pulls them back onto its beat once a beat. A five-step pattern still cycles against
 the bar; that is the point of it. Turning a sequencer's rate knob with sync on
 moves it between divisions rather than off the grid. Sync changes only what you
 hear live: the model still auditions every patch free-running.

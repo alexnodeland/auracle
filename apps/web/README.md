@@ -37,8 +37,8 @@ the bank head walks through what a generation is and what evolving costs.
 ## The node bank
 
 The rail on the right of PATCH is the instrument's **catalogue** — forty-two
-modules in eight signal-flow groups (sources → shape → filter → space → motion
-→ dynamics → combine → modulation), not one alphabetical shelf. Every entry carries four things at
+modules in ten signal-flow groups (sources → shape → filter → space → motion
+→ dynamics → combine → modulation → shape cv → combine cv), not one alphabetical shelf. Every entry carries four things at
 rest: a **transfer-function glyph** (what this does to a wave — never a
 pictogram, so the set cannot drift as it grows), the name a synthesist would
 use, a **port signature** in both phosphors, and, once the model has been fitted
@@ -86,10 +86,10 @@ different instruments.
 On first run a **warm-start** screen asks you to pick 3 of 9 presets — one
 ~30 s interaction worth 18 pairwise observations, which is how the model gets
 past a cold start that the repo's own synthetic gates measure in the hundreds
-of duels. Those nine are **sampled one per family** from the 29-patch library
+of duels. Those nine are **sampled one per family first** from the 62-patch library
 and only those nine are loaded: the screen used to render a card per preset and
-load every one of them, which at 29 would be a scrolling first run that spent
-more than half a 40-slot pool before the user had said anything. Library size
+load every one of them, which at 62 would be a scrolling first run that
+overflowed a 40-slot pool before the user had said anything. Library size
 and grid size are independent on purpose.
 
 Playing: on-screen keys (mouse/touch with glissando), computer keys
