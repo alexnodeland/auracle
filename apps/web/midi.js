@@ -169,6 +169,8 @@ const ACCESS_WHY = {
     "MIDI access was refused. Allow MIDI for this site in the browser's site settings (the icon left of the address), then press connect.",
   failed: "The browser couldn't open its MIDI system. Press connect to try again; if it keeps failing, reload the page.",
   ready: "No MIDI device yet. Plug one in — it shows up here as soon as the browser sees it.",
+  elsewhere:
+    "MIDI is playing another Auracle tab. Click anywhere in this one to play it here instead.",
 };
 
 export function createMidi(host) {
@@ -190,6 +192,10 @@ export function createMidi(host) {
     ticks: null, // clock ticks since the last Start; null when stopped
     pressureSlot: 0, // Bright
     modSlot: 2, // Motion
+    down: new Set(), // notes this tab is holding from MIDI
+    pedal: false, // the sustain pedal is down
+    bent: false, // the pitch wheel is off centre
+    expressed: false, // pressure or the mod wheel is adding to a control
   };
 
   function load() {
@@ -253,6 +259,7 @@ export function createMidi(host) {
     // The mod wheel, unmapped, is expression: at rest it adds nothing, and
     // pushing it adds Motion on top of wherever the control is.
     if (cc === CC_MOD && !m) {
+      state.expressed = true;
       host.perform()?.setExpression("mod", state.modSlot, value / 127);
       return;
     }
@@ -287,25 +294,36 @@ export function createMidi(host) {
   }
 
   function onMessage(ev) {
+    if (!tab.here) return; // another Auracle tab is playing MIDI
     const m = parse(ev.data);
     switch (m.kind) {
       case "on":
+        state.down.add(m.note);
         host.noteOn(m.note, m.vel);
         break;
       case "off":
+        state.down.delete(m.note);
         host.noteOff(m.note);
         break;
       case "bend":
+        state.bent = m.value !== 0;
         host.bend((m.value / 8192) * state.bendRange);
         break;
       case "pressure":
         // Press harder, brighter — an offset under the player's own turn, so
         // letting go returns exactly to where the control was.
+        state.expressed = true;
         host.perform()?.setExpression("pressure", state.pressureSlot, m.value);
         break;
       case "cc":
-        if (m.cc === CC_SUSTAIN) host.sustain(m.value >= 64);
-        else if (m.cc === 123 || m.cc === 120) host.panic();
+        if (m.cc === CC_SUSTAIN) {
+          state.pedal = m.value >= 64;
+          host.sustain(state.pedal);
+        }
+        else if (m.cc === 123 || m.cc === 120) {
+          state.down.clear();
+          host.panic();
+        }
         else if (m.cc === 121) host.perform()?.setExpression(null);
         else if (!RESERVED.has(m.cc)) onCc(m.ch, m.cc, m.value);
         break;
@@ -359,9 +377,10 @@ export function createMidi(host) {
     panel.innerHTML = "";
     const h = document.createElement("div");
     h.className = "midi-h";
+    const where = shown();
     h.textContent = state.inputs.length
-      ? `MIDI · ${state.inputs.map((i) => i.name).join(", ")}`
-      : state.status === "ready"
+      ? `MIDI · ${state.inputs.map((i) => i.name).join(", ")}${where === "elsewhere" ? " · in another tab" : ""}`
+      : where === "ready" || where === "elsewhere"
         ? "MIDI · no device"
         : "MIDI · unavailable";
     panel.append(h);
@@ -370,17 +389,17 @@ export function createMidi(host) {
     // permission prompt nobody answered, and access refused all left the
     // input list empty, so a controller the OS could see was reported as
     // not plugged in. Each case says what it is and what to do about it.
-    if (!state.inputs.length) {
+    if (!state.inputs.length || where === "elsewhere") {
       const why = document.createElement("div");
       why.className = "midi-why";
-      why.textContent = ACCESS_WHY[state.status] || ACCESS_WHY.ready;
+      why.textContent = ACCESS_WHY[where] || ACCESS_WHY.ready;
       panel.append(why);
-      if (state.status !== "unsupported" && state.status !== "ready") {
+      if (where !== "unsupported" && where !== "ready") {
         const retry = document.createElement("button");
         retry.type = "button";
         retry.className = "util-btn";
-        retry.textContent = "connect midi";
-        retry.onclick = () => connect(true);
+        retry.textContent = where === "elsewhere" ? "play midi here" : "connect midi";
+        retry.onclick = () => (where === "elsewhere" ? claim() : connect(true));
         panel.append(retry);
       }
     }
@@ -478,8 +497,7 @@ export function createMidi(host) {
     host.sustain(false);
     host.perform()?.setExpression(null);
     for (const input of inputs) input.onmidimessage = onMessage;
-    host.onDevices(inputs.length, state.status);
-    renderPanel();
+    report();
   }
 
   // Asking for access. At load it is asked for once, as before; a click on
@@ -490,14 +508,12 @@ export function createMidi(host) {
   function connect(fromClick = false) {
     if (!navigator.requestMIDIAccess) {
       state.status = "unsupported";
-      host.onDevices(0, state.status);
-      renderPanel();
+      report();
       return;
     }
     if (state.access || (state.status === "asking" && !fromClick)) return;
     state.status = "asking";
-    host.onDevices(0, state.status);
-    renderPanel();
+    report();
     navigator
       .requestMIDIAccess({ sysex: false })
       .then((access) => {
@@ -517,10 +533,87 @@ export function createMidi(host) {
         // browser's MIDI system, and the fix is different.
         const refused = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
         state.status = refused ? "denied" : "failed";
-        host.onDevices(0, state.status);
-        renderPanel();
+        report();
       });
   }
+
+  // What the dock and the panel show: where access stands, or, with access,
+  // that another Auracle tab is the one playing MIDI.
+  function shown() {
+    return state.status === "ready" && !tab.here ? "elsewhere" : state.status;
+  }
+  function report() {
+    host.onDevices(state.inputs.length, shown());
+    renderPanel();
+  }
+
+  // ---------- one tab plays ----------
+  // Chrome hands the same MIDI input to every tab that has MIDI access, while
+  // the computer keyboard reaches only the tab in front. So a second Auracle
+  // tab (an older one, left open) played every note too, with its own patch:
+  // a preset changed or a control turned in this tab changed only part of
+  // what you heard, and a loud patch in the other tab could drown it. Now MIDI
+  // works like the keyboard: the Auracle tab you last used plays it, and
+  // every other one stands aside and lets go of what it held.
+  //
+  // Tabs agree over a BroadcastChannel (`host.tabs()`; none means a lone tab,
+  // which always plays). A claim carries when it was made, and the later
+  // claim wins, ties going to the larger id, so any two tabs that hear from
+  // each other settle on one: a tab that hears a claim it beats says so, and
+  // the other stands aside.
+  const tab = {
+    id: Math.random().toString(36).slice(2, 10),
+    channel: host.tabs?.() || null,
+    here: true, // this tab plays MIDI
+    at: 0, // when it last claimed MIDI; 0 = never
+    owner: null, // who has MIDI while this tab stands aside
+  };
+  const beats = (a, b) => a.at > b.at || (a.at === b.at && a.id > b.id);
+  const post = (type) => tab.channel?.postMessage({ type, id: tab.id, at: tab.at });
+  // The player used this tab: it plays MIDI from now on.
+  function claim() {
+    if (tab.here && tab.at > 0) return;
+    tab.at = host.now?.() || Date.now();
+    tab.owner = null;
+    if (!tab.here) {
+      tab.here = true;
+      report();
+    }
+    post("claim");
+  }
+  function standAside(owner) {
+    tab.owner = owner;
+    if (!tab.here) return;
+    tab.here = false;
+    // Let go of whatever MIDI was holding here: the pedal first, so the
+    // notes it sustains go too, then the keys still down, the bend and the
+    // expression. A tab MIDI never touched has nothing to let go of.
+    if (state.pedal) host.sustain(false);
+    for (const n of state.down) host.noteOff(n);
+    if (state.bent) host.bend(0);
+    if (state.expressed) host.perform()?.setExpression(null);
+    state.down.clear();
+    state.pedal = state.bent = state.expressed = false;
+    report();
+  }
+  if (tab.channel) {
+    tab.channel.onmessage = ({ data: m }) => {
+      if (!m || m.id === tab.id) return;
+      if (m.type === "claim") {
+        if (beats(m, tab)) standAside(m.id);
+        else if (tab.here) post("claim");
+      } else if (m.type === "hello") {
+        if (tab.here) post("claim");
+      } else if (m.type === "bye") {
+        if (m.id === tab.owner && host.visible?.()) claim();
+      }
+    };
+    // A tab opened in front takes MIDI; one opened behind asks who has it,
+    // and keeps it only if nobody does.
+    if (host.visible?.()) claim();
+    else post("hello");
+  }
+
   connect();
 
   return {
@@ -537,6 +630,12 @@ export function createMidi(host) {
       renderPanel();
     },
     controlMovedElsewhere,
+    claim,
+    // The page is going away: if it had MIDI, the tab that had it before
+    // takes it back (when it is in view).
+    leave() {
+      if (tab.here) post("bye");
+    },
     // For tests and scripted captures: feed a raw message as if from a device.
     feed(data, timeStamp) {
       onMessage({ data: Uint8Array.from(data), timeStamp: timeStamp ?? performance.now() });

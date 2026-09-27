@@ -23,6 +23,13 @@ changelog that edits its own past is not a record.
   the panel says which, with a **connect midi** button that asks again from a
   click. The guide no longer says Web MIDI is Chromium-only: Firefox has it
   too, and Troubleshooting has a section for a controller that does not play.
+- **MIDI plays one tab.** The browser sends a controller to every tab that
+  asks for it, while the computer keyboard reaches only the tab in front. With
+  Auracle open twice, an older tab played every MIDI note too, with its own
+  patch: changing preset, or turning a PERFORM control or the XY pad, in the
+  tab you were using seemed not to apply to MIDI notes at all. Now the tab you
+  used last plays MIDI and any other stands aside (`midi ○` in its dock; a
+  click takes MIDI back), releasing whatever it held.
 - **TRUST counts every check.** A calibration check answered after the next
   duel had been dealt was recorded as an ordinary duel, so the check count
   could sit at 0 of 20 after thirty random duels. The engine now remembers the

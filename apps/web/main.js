@@ -3976,15 +3976,23 @@ async function bootMidi() {
       sendArp();
     },
     note,
-    // A device (●), none plugged in (—), or MIDI itself not reachable yet
-    // (?): no Web MIDI in this browser, a permission prompt unanswered, or
-    // access refused. The panel says which, and how to fix it.
+    // The other Auracle tabs, to agree with them which one plays MIDI (see
+    // midi.js, "one tab plays"), and whether this one is in view.
+    tabs: () => (typeof BroadcastChannel === "function" ? new BroadcastChannel("auracle-midi") : null),
+    visible: () => document.visibilityState === "visible",
+    // A device (●), none plugged in (—), MIDI itself not reachable yet (?):
+    // no Web MIDI in this browser, a permission prompt unanswered, access
+    // refused — or another Auracle tab playing it (○). The panel says which,
+    // and what to do about it.
     onDevices: (n, status = "ready") => {
       const ind = $("midi-ind");
-      ind.textContent = n > 0 ? `midi ●${n > 1 ? n : ""}` : status === "ready" ? "midi —" : "midi ?";
-      ind.classList.toggle("on", n > 0);
+      ind.textContent =
+        status === "elsewhere" ? "midi ○" : n > 0 ? `midi ●${n > 1 ? n : ""}` : status === "ready" ? "midi —" : "midi ?";
+      ind.classList.toggle("on", n > 0 && status !== "elsewhere");
       ind.title =
-        n > 0 || status === "ready"
+        status === "elsewhere"
+          ? "MIDI is playing another Auracle tab — click to play this one"
+          : n > 0 || status === "ready"
           ? "MIDI: devices, knob mapping, clock"
           : status === "unsupported"
             ? "MIDI: this browser has no Web MIDI — click for which ones do"
@@ -4014,6 +4022,18 @@ async function bootMidi() {
     setOpen(false);
     ind.focus();
   });
+  // Using this tab (bringing it into view, focusing it, a click, a key) makes
+  // it the Auracle tab that plays MIDI, as the computer keyboard already only
+  // plays the tab in front; closing it hands MIDI back. See midi.js, "one tab
+  // plays". A claim from the tab that already has MIDI costs nothing.
+  const claimMidi = () => midi.claim();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") claimMidi();
+  });
+  window.addEventListener("focus", claimMidi);
+  document.addEventListener("pointerdown", claimMidi, true);
+  document.addEventListener("keydown", claimMidi, true);
+  window.addEventListener("pagehide", () => midi.leave());
 }
 
 // ---------- duel flow ----------

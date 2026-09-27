@@ -146,3 +146,101 @@ test("a refusal after a grant does not undo it", async () => {
     globalThis.document = doc;
   }
 });
+
+// Tabs on one machine, as BroadcastChannel joins them: a message reaches every
+// other end, later, never its sender.
+function tabBus() {
+  const ends = new Set();
+  return () => {
+    const end = {
+      onmessage: null,
+      postMessage(data) {
+        for (const o of ends) if (o !== end) queueMicrotask(() => o.onmessage?.({ data }));
+      },
+    };
+    ends.add(end);
+    return end;
+  };
+}
+
+// An Auracle tab: its MIDI, and a log of what reached its synth.
+async function auracleTab(join, { visible = true, clock } = {}) {
+  const { createMidi } = await import("../midi.js");
+  const heard = [];
+  const devices = [];
+  const host = new Proxy(
+    {
+      noteOn: (n) => heard.push(`on ${n}`),
+      noteOff: (n) => heard.push(`off ${n}`),
+      sustain: (on) => heard.push(`pedal ${on}`),
+      onDevices: (n, status) => devices.push(status),
+      controlNames: () => [],
+      tabs: join,
+      visible: () => visible,
+      now: clock,
+    },
+    { get: (t, k) => (k in t ? t[k] : () => {}) },
+  );
+  // Access granted, with no device yet: the tab's MIDI is "ready". Granting
+  // it resets the pedal, which is not what these tests are about: the log
+  // starts once the tab is up.
+  navigator.requestMIDIAccess = async () => ({ inputs: new Map() });
+  let midi;
+  try {
+    midi = createMidi(host);
+  } finally {
+    delete navigator.requestMIDIAccess;
+  }
+  await settle();
+  heard.length = 0;
+  return { midi, heard, devices };
+}
+
+test("MIDI plays the Auracle tab last used, and only that one", async () => {
+  const join = tabBus();
+  let t = 0;
+  const clock = () => ++t;
+  const a = await auracleTab(join, { clock });
+  await settle();
+  a.midi.feed([0xb0, 64, 127]); // the pedal down
+  a.midi.feed([0x90, 64, 100]); // and a key held in the first tab
+  const b = await auracleTab(join, { clock }); // a second tab, opened in front
+  await settle();
+  assert.deepEqual(a.heard, ["pedal true", "on 64", "pedal false", "off 64"], "the first tab lets go of what it held");
+  assert.equal(a.devices.at(-1), "elsewhere");
+  a.midi.feed([0x90, 60, 100]);
+  b.midi.feed([0x90, 60, 100]);
+  assert.deepEqual(a.heard.slice(4), [], "one note, one tab: the tab standing aside plays nothing");
+  assert.deepEqual(b.heard, ["on 60"]);
+  a.midi.claim(); // the player clicks back into the first tab
+  await settle();
+  assert.deepEqual(b.heard, ["on 60", "off 60"]);
+  assert.equal(b.devices.at(-1), "elsewhere");
+  a.midi.feed([0x90, 62, 100]);
+  assert.deepEqual(a.heard.slice(4), ["on 62"]);
+  assert.equal(a.devices.at(-1), "ready");
+});
+
+test("a tab opened behind leaves MIDI with the tab that has it", async () => {
+  const join = tabBus();
+  let t = 0;
+  const clock = () => ++t;
+  const front = await auracleTab(join, { clock });
+  const behind = await auracleTab(join, { visible: false, clock });
+  await settle();
+  front.midi.feed([0x90, 60, 100]);
+  behind.midi.feed([0x90, 60, 100]);
+  assert.deepEqual(front.heard, ["on 60"]);
+  assert.deepEqual(behind.heard, []);
+});
+
+test("two tabs that never claimed settle on one", async () => {
+  const join = tabBus();
+  const x = await auracleTab(join, { visible: false });
+  const y = await auracleTab(join, { visible: false });
+  await settle();
+  await settle();
+  x.midi.feed([0x90, 60, 100]);
+  y.midi.feed([0x90, 60, 100]);
+  assert.equal(x.heard.length + y.heard.length, 1, "exactly one of them plays");
+});
