@@ -47,8 +47,8 @@ export async function build(stage) {
         chapter: "03 · locks",
         cam: [[0, 1.0, 0.5, 0.5], ["lock1:dot-0.8", ...aim(1.35, 1000, 380)], ["lock2-0.3", ...aim(1.3, 1450, 300)]],
         callouts: [
-          { at: "lock1:dot", until: "lock1:square", mark: "dot", side: "top", dx: 50, dy: -100, text: "one knob" },
-          { at: "lock1:square", until: "lock2", mark: "square", side: "top", dx: 60, dy: -100, text: "the whole module" },
+          { at: "lock1:dot", until: "lock1:square", mark: "cut", side: "top", ox: 28, oy: 8, dx: 50, dy: -100, text: "one knob, by its dot" },
+          { at: "lock1:square", until: "lock2", mark: "square", side: "top", dx: 60, dy: -100, text: "the whole module, by its ▢" },
           { at: "lock2:knob", mark: "knobs", side: "bottom", dx: -80, dy: 110, text: "every knob · all the wiring" },
         ],
       },

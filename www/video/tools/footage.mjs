@@ -73,7 +73,7 @@
 // time with the music.
 //
 // Ops, for set-up steps and actions alike:
-//   wait {ms}                           pause (a set-up step; actions have `at`)
+//   wait {ms} | {until}                 pause; in a `seq`, until a narration time (if not past)
 //   until {sel, state?, ms?, stamp?}    wait for an element state (default visible), or {js} for a
 //                                       page predicate; `stamp` records when, for "@stamp" times
 //   mark {name, sel}                    measure an element now (a popover, a toast)
@@ -287,8 +287,13 @@ class Clock {
   }
 }
 
+/** Where an element is, scrolled into view first (a chip far down the node
+ *  bank is outside its scroll box until then, and a pointer sent to it would
+ *  land on whatever covers it), as a user would scroll to it. */
 async function box(page, sel) {
-  const b = await page.locator(sel).first().boundingBox();
+  const l = page.locator(sel).first();
+  await l.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+  const b = await l.boundingBox({ timeout: 5000 }).catch(() => null);
   if (!b) throw new Error(`nothing visible matches ${sel}`);
   return b;
 }
@@ -404,6 +409,9 @@ async function midi(page, s, ctx = {}) {
 async function step(page, s, ctx = {}) {
   switch (s.op) {
     case "wait":
+      // In a `seq`, `until` waits for a narration time (not before the step
+      // ahead of it is done, and at once if that time has passed).
+      if (s.until != null && ctx.clock) return sleep(((await ctx.clock.at(s.until)) - ctx.now()) * 1000);
       return page.waitForTimeout(s.ms);
     case "until":
       // Wait for the app to reach a state (an offer ready, a view shown); a
@@ -419,7 +427,7 @@ async function step(page, s, ctx = {}) {
       return;
     case "mark": {
       // Measure an element that only exists mid-shot (a popover, a toast).
-      const b = await page.locator(s.sel).first().boundingBox().catch(() => null);
+      const b = await page.locator(s.sel).first().boundingBox({ timeout: 3000 }).catch(() => null);
       if (b && ctx.rects) ctx.rects[s.name] = { x: b.x, y: b.y, w: b.width, h: b.height };
       else if (!b) ctx.errors?.push(`mark ${s.name}: nothing visible matches ${s.sel}`);
       if (ctx.snap) await ctx.snap(s.name);
@@ -610,7 +618,7 @@ async function shoot(browser, port, shot, ff) {
   // the arrow with it instead of leaving it pointing at the wrong control.
   const rects = {};
   for (const [name, sel] of Object.entries(shot.marks || {})) {
-    const b = await page.locator(sel).first().boundingBox().catch(() => null);
+    const b = await page.locator(sel).first().boundingBox({ timeout: 3000 }).catch(() => null);
     if (b) rects[name] = { x: b.x, y: b.y, w: b.width, h: b.height };
     else errors.push(`mark ${name}: nothing matches ${sel}`);
   }

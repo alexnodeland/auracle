@@ -104,10 +104,7 @@
       "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "body": ".pf-knob[data-i='3']", "space": ".pf-knob[data-i='5']", "hood": ".pf-hood"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
-        {"at": "controls1:named", "op": "drag", "sel": ".pf-knob[data-i='1']", "dy": -30, "ms": 450},
-        {"at": "controls1:named+0.55", "op": "drag", "sel": ".pf-knob[data-i='1']", "dy": 30, "ms": 450},
-        {"at": "controls1:named+1.15", "op": "drag", "sel": ".pf-knob[data-i='2']", "dy": -30, "ms": 450},
-        {"at": "controls1:named+1.70", "op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 30, "ms": 450},
+        {"at": "controls1:named", "op": "seq", "steps": [{"op": "drag", "sel": ".pf-knob[data-i='1']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='1']", "dy": 30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 30, "ms": 450}]},
         {"at": "controls2:interrupts", "op": "drag", "sel": ".pf-knob[data-i='5']", "dy": -40, "ms": 900},
         {"at": "controls3:ride-0.2", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -110, "ms": 2300},
         {"at": "controls4:press+0.2", "op": "press", "sel": ".pf-knob[data-i='3']", "ms": 700}
@@ -209,12 +206,7 @@
       "marks": {"keep": ".pf-pad:has-text('Keep')", "back": ".pf-pad:has-text('Back')", "deck": ".pf-deck", "hood": ".pf-hood"},
       "actions": [
         {"at": 0.1, "op": "hold", "keys": ["g", "j", "l"], "ms": "end"},
-        {"at": "keep1:Keep", "op": "click", "sel": ".pf-pad:has-text('Keep')"},
-        {"at": "keep1:marks", "op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -60, "ms": 650},
-        {"at": "keep1:marks+0.75", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 650},
-        {"at": "keep2:Back", "op": "click", "sel": ".pf-pad:has-text('Back')"},
-        {"at": "keep2:wander", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -80, "ms": 900},
-        {"at": "keep2:come", "op": "click", "sel": ".pf-pad:has-text('Back')"}
+        {"at": "keep1:Keep", "op": "seq", "steps": [{"op": "click", "sel": ".pf-pad:has-text('Keep')"}, {"op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -60, "ms": 550}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 550}, {"op": "wait", "until": "keep2:Back"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}, {"op": "wait", "until": "keep2:wander"}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -80, "ms": 900}, {"op": "wait", "until": "keep2:come"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}]}
       ]
     },
     {
@@ -233,8 +225,7 @@
       "actions": [
         {"at": "dock1:Hold", "op": "click", "sel": "#hold-btn"},
         {"at": "dock1:Hold+0.15", "op": "hold", "keys": ["h", "k", ";"], "ms": 600},
-        {"at": "dock1:Unison-0.1", "op": "click", "sel": "#hold-btn"},
-        {"at": "dock1:Unison+0.15", "op": "click", "sel": "#uni-btn"},
+        {"at": "dock1:Unison-0.1", "op": "seq", "steps": [{"op": "click", "sel": "#hold-btn"}, {"op": "click", "sel": "#uni-btn"}]},
         {"at": "dock1:Unison+0.45", "op": "hold", "keys": ["a"], "ms": 1100},
         {"at": "dock2:Glide", "op": "drag", "sel": "#glide", "ox": -18, "dx": 12, "ms": 600},
         {"at": "dock2:Glide+0.9", "op": "hold", "keys": ["a"], "ms": 480},
@@ -242,13 +233,7 @@
         {"at": "dock2:Glide+1.7", "op": "hold", "keys": ["k"], "ms": 600},
         {"at": "dock2:Glide+2.45", "op": "click", "sel": "#uni-btn"},
         {"at": "dock2:chords", "op": "hold", "keys": ["a", "d", "g"], "ms": 900},
-        {"at": "dock3:arpeggiator-0.35", "op": "click", "sel": "#hold-btn"},
-        {"at": "dock3:arpeggiator", "op": "click", "sel": "#arp-btn"},
-        {"at": "dock3:arpeggiator+0.45", "op": "select", "sel": "#arp-mode", "value": 2},
-        {"at": "dock3:arpeggiator+0.8", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
-        {"at": "dock3:arpeggiator+0.85", "op": "move", "sel": "#arp-ctl", "ms": 240},
-        {"at": "dock3:arpeggiator+1.15", "op": "mark", "name": "drawer", "sel": "#arp-ctl"},
-        {"at": "dock3:arpeggiator+1.15", "op": "mark", "name": "tempo", "sel": "#bpm"},
+        {"at": "dock3:arpeggiator-0.35", "op": "seq", "steps": [{"op": "click", "sel": "#hold-btn"}, {"op": "click", "sel": "#arp-btn"}, {"op": "select", "sel": "#arp-mode", "value": 2}, {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "move", "sel": "#arp-ctl", "ms": 300}, {"op": "mark", "name": "drawer", "sel": "#arp-ctl"}, {"op": "mark", "name": "tempo", "sel": "#bpm"}]},
         {"at": "dock3:arpeggiator+1.4", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "ms": 300},
         {"at": "dock4:Sync", "op": "click", "sel": "#sync-btn"},
         {"at": "dock2:Glide+0.8", "op": "log", "name": "glide", "js": "document.getElementById('glide-val').textContent"},

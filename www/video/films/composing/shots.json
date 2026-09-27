@@ -46,9 +46,7 @@
       "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go"},
       "actions": [
         {"at": "direction1:shows", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line')) + .wi-play"},
-        {"at": "direction2:Pick", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"},
-        {"at": "direction2:Pick+0.5", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"},
-        {"at": "direction2:Pick+1.0", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"},
+        {"at": "direction2:Pick", "op": "seq", "steps": [{"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"}]},
         {"at": "direction2:eighteen", "op": "click", "sel": "#warm-go"},
         {"at": "direction2:eighteen+0.2", "op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
         {"at": "@taught+0.2", "op": "view", "v": "evolve"},
@@ -141,8 +139,7 @@
         {"at": "keep1:Patches+0.4", "op": "mark", "name": "row", "sel": ".bank-item.live"},
         {"at": "keep3:Stars", "op": "click", "sel": ".bank-item.live .star[data-s='4']"},
         {"at": "keep3:Stars+0.2", "op": "mark", "name": "stars", "sel": ".bank-item.live .stars"},
-        {"at": "keep3:name", "op": "dblclick", "sel": ".bank-item.live .bi-name"},
-        {"at": "keep3:name+0.35", "op": "type", "text": "verse", "ms": 110, "enter": true}
+        {"at": "keep3:name", "op": "seq", "steps": [{"op": "dblclick", "sel": ".bank-item.live .bi-name"}, {"op": "until", "sel": ".bi-rename", "ms": 5000}, {"op": "type", "text": "verse", "ms": 110, "enter": true}]}
       ]
     },
     {
@@ -159,8 +156,7 @@
       "marks": {"slot": "#rack-svg .jack[data-modkey='node/1']", "filter": "#rack-svg g.mod-group[data-key='node/1']", "sync": "#sync-btn"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a"], "until": "steps4:restarts-0.3"},
-        {"at": "steps1:Steps", "op": "click", "sel": ".nb-item[data-kind='steps']"},
-        {"at": "steps1:Steps+0.3", "op": "mark", "name": "steps", "sel": ".nb-item[data-kind='steps']"},
+        {"at": "steps1:Steps", "op": "seq", "steps": [{"op": "click", "sel": ".nb-item[data-kind='steps']"}, {"op": "mark", "name": "steps", "sel": ".nb-item[data-kind='steps']"}]},
         {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/1']"},
         {"at": "steps2:draw", "op": "seq", "steps": [{"op": "until", "sel": "#rack-svg [data-addr='node/1/m#s0']", "ms": 20000}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s0']", "dy": -30, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s1']", "dy": 25, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s2']", "dy": -40, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s3']", "dy": 10, "ms": 300}]},
         {"at": "steps2:eight", "op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-key='node/1/m']"},
@@ -287,14 +283,8 @@
       "marks": {"ovf": "#ovf-btn", "rack": "#rack-scroll"},
       "actions": [
         {"at": 0.3, "op": "hold", "keys": ["a", "d", "g"], "ms": 1800},
-        {"at": "share1:export-0.45", "op": "click", "sel": "#ovf-btn"},
-        {"at": "share1:export-0.35", "op": "mark", "name": "menu", "sel": "#ovf-menu"},
-        {"at": "share1:export+0.3", "op": "click", "sel": "#patch-export-btn"},
-        {"at": "share2:picture", "op": "click", "sel": "#ovf-btn"},
-        {"at": "share2:picture+0.45", "op": "click", "sel": "#image-btn"},
-        {"at": "share2:picture+1.0", "op": "select", "sel": "#ix-fmt", "value": "svg"},
-        {"at": "share2:picture+1.2", "op": "mark", "name": "panel", "sel": "#image-panel"},
-        {"at": "share2:picture+1.2", "op": "mark", "name": "note", "sel": "#image-panel .sp-note"},
+        {"at": "share1:export-0.5", "op": "seq", "steps": [{"op": "click", "sel": "#ovf-btn"}, {"op": "mark", "name": "menu", "sel": "#ovf-menu"}, {"op": "wait", "ms": 350}, {"op": "click", "sel": "#patch-export-btn"}]},
+        {"at": "share2:picture", "op": "seq", "steps": [{"op": "click", "sel": "#ovf-btn"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": "#image-btn"}, {"op": "select", "sel": "#ix-fmt", "value": "svg"}, {"op": "mark", "name": "panel", "sel": "#image-panel"}, {"op": "mark", "name": "note", "sel": "#image-panel .sp-note"}]},
         {"at": "share2:inside", "op": "click", "sel": "#ix-go"},
         {"at": "share3:Drop-0.45", "op": "key", "key": "Escape", "ms": 100},
         {"at": "share3:Drop", "op": "drop", "file": "fixtures/First_Bass.svg", "ms": 1300},
@@ -324,10 +314,7 @@
       "marks": {"ovf": "#ovf-btn", "rail": "#bank-list"},
       "actions": [
         {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
-        {"at": "outro1:profile-0.7", "op": "click", "sel": "#ovf-btn"},
-        {"at": "outro1:profile-0.6", "op": "mark", "name": "menu", "sel": "#ovf-menu"},
-        {"at": "outro1:profile-0.6", "op": "mark", "name": "export", "sel": "#export-btn"},
-        {"at": "outro1:profile+0.2", "op": "click", "sel": "#export-btn"}
+        {"at": "outro1:profile-0.7", "op": "seq", "steps": [{"op": "click", "sel": "#ovf-btn"}, {"op": "mark", "name": "menu", "sel": "#ovf-menu"}, {"op": "mark", "name": "export", "sel": "#export-btn"}, {"op": "wait", "ms": 500}, {"op": "click", "sel": "#export-btn"}]}
       ]
     }
   ]
