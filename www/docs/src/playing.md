@@ -2,6 +2,8 @@
 
 <p class="lede">Four voices, three ways in, and an arpeggiator.</p>
 
+<!-- film:playing --><!-- /film:playing -->
+
 The current patch is always live: four-voice polyphony, with oldest-note
 stealing and silent-tail voice parking. Every edit you make on the rack
 re-patches the running instrument, so held chords survive a patch change
@@ -23,8 +25,9 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 black:   w  e     t  y  u     o  p
 ```
 
-<kbd>z</kbd> / <kbd>x</kbd> shift octave. The left of the dock always shows the
-current anchor (`a = C4`).
+<kbd>z</kbd> / <kbd>x</kbd> shift octave, from `a = C0` to `a = C7`, so the
+letters reach C0 to C8: an 88-key piano's compass, and a few notes below. The
+left of the dock always shows the current anchor (`a = C4`).
 
 ```admonish note title="Letters only play when the interface does not want them"
 Note letters reach the synth only when focus is not in a control, and they get
@@ -57,8 +60,11 @@ again and it belongs to your finger again. The pedal is separate from
 The whole map, including bend range and how encoders are detected, is in
 [Keyboard and MIDI](./keyboard.md#midi).
 
-Web MIDI is Chromium-only today. In Firefox and Safari the other two paths are
-unaffected.
+Web MIDI works in Chrome, Edge and the other Chromium browsers, and in
+Firefox, which asks the first time whether to add a site permission for it.
+Safari has none; there the other two ways in still play. Whenever MIDI is not
+available the dock reads `midi ?`, and the MIDI panel says why, with a
+**connect midi** button that asks again.
 
 ## The dock
 
@@ -82,8 +88,8 @@ see matches what your keyboard plays. Both height and width persist.
 
 | | |
 |---|---|
-| **PATTERN** | up / down / up-down / random / order played |
-| **RATE** | Division: 1/4 through 1/32, straight or triplet |
+| **PATTERN** | up / down / up-down / random |
+| **RATE** | Division: 1/4, 1/8, 1/16 or 1/8 triplet |
 | **TEMPO** | BPM |
 | **RANGE** | How many octaves it walks |
 | **GATE** | Note length as a fraction of the division |
@@ -95,10 +101,10 @@ busy.
 
 **SYNC** (next to ARP) puts a patch's step sequencers on the same tempo. Each
 one plays the musical division nearest the speed it was evolved at, so a
-pattern that ran at 3.7 steps a second becomes 16ths at 120 BPM, and all of
+pattern that ran at 3.7 steps a second becomes 8ths at 120 BPM, and all of
 them restart together with the first key you press, on the same beat the arp
-starts. MIDI start restarts them too, and with a MIDI clock running they are
-pulled back onto its beat once a beat. A five-step pattern still cycles against
+starts. MIDI start restarts them too, and from then until a MIDI stop the
+clock pulls them back onto its beat once a beat. A five-step pattern still cycles against
 the bar; that is the point of it. Turning a sequencer's rate knob with sync on
 moves it between divisions rather than off the grid. Sync changes only what you
 hear live: the model still auditions every patch free-running.

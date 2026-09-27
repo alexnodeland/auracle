@@ -749,6 +749,7 @@ kbd {
    the product's chrome should be recognisably the same object. */
 .shot-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s2);
   justify-content: center;
   margin-bottom: var(--s5);
@@ -769,6 +770,11 @@ kbd {
 }
 .shot-tab:hover { color: var(--silk); }
 .shot-tab[aria-selected="true"] { color: var(--phos-b); border-color: var(--phos-b-deep); }
+/* Four tabs at full padding ran 5 px past a 390 px phone and scrolled the page
+   sideways; tighter tabs fit, and the row wraps below that. */
+@media (max-width: 480px) {
+  .shot-tab { padding: 8px 12px; letter-spacing: 0.1em; }
+}
 
 .shot-pane { max-width: var(--wide); margin: 0 auto; }
 

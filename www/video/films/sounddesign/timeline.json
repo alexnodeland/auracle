@@ -1,0 +1,285 @@
+{
+ "film": "sounddesign",
+ "fps": 30,
+ "duration": 162.857,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "intro",
+   "t0": 0.0,
+   "t1": 6.944,
+   "music": "loop_a"
+  },
+  {
+   "id": "open",
+   "t0": 7.143,
+   "t1": 22.61,
+   "music": null
+  },
+  {
+   "id": "lock",
+   "t0": 22.857,
+   "t1": 35.443,
+   "music": null
+  },
+  {
+   "id": "evolve",
+   "t0": 35.714,
+   "t1": 45.031,
+   "music": null
+  },
+  {
+   "id": "bank",
+   "t0": 45.714,
+   "t1": 66.672,
+   "music": null
+  },
+  {
+   "id": "spec",
+   "t0": 67.143,
+   "t1": 91.377,
+   "music": null
+  },
+  {
+   "id": "chains",
+   "t0": 91.429,
+   "t1": 111.903,
+   "music": "loop_b"
+  },
+  {
+   "id": "commit",
+   "t0": 112.143,
+   "t1": 131.706,
+   "music": null
+  },
+  {
+   "id": "undo",
+   "t0": 132.143,
+   "t1": 141.639,
+   "music": null
+  },
+  {
+   "id": "lineage",
+   "t0": 142.143,
+   "t1": 153.277,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 153.571,
+   "t1": 162.857,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "intro1",
+   "text": "Start from a preset, and end with a sound of your own.",
+   "beat": "intro",
+   "t0": 1.5,
+   "t1": 6.044
+  },
+  {
+   "id": "open1",
+   "text": "Open the circuit in PATCH. Every edit is live under your fingers.",
+   "beat": "open",
+   "t0": 7.343,
+   "t1": 12.006
+  },
+  {
+   "id": "open2",
+   "text": "Knobs read in musical units, like hertz, milliseconds and decibels.",
+   "beat": "open",
+   "t0": 12.406,
+   "t1": 16.403
+  },
+  {
+   "id": "open3",
+   "text": "Above the rack, the model's guess for this patch updates as you edit.",
+   "beat": "open",
+   "t0": 16.803,
+   "t1": 21.71
+  },
+  {
+   "id": "lock1",
+   "text": "Find what you love and lock it, a knob by its dot or a module by its square.",
+   "beat": "lock",
+   "t0": 23.057,
+   "t1": 29.783
+  },
+  {
+   "id": "lock2",
+   "text": "Or lock every knob, or all the wiring, in one press.",
+   "beat": "lock",
+   "t0": 30.183,
+   "t1": 34.543
+  },
+  {
+   "id": "evolve1",
+   "text": "Then press Evolve from this.",
+   "beat": "evolve",
+   "t0": 35.914,
+   "t1": 37.732
+  },
+  {
+   "id": "evolve2",
+   "text": "The search changes only what you left unlocked, and puts one new patch on the bench.",
+   "beat": "evolve",
+   "t0": 38.132,
+   "t1": 44.131
+  },
+  {
+   "id": "bank1",
+   "text": "To change the structure, click a module in the node bank.",
+   "beat": "bank",
+   "t0": 45.914,
+   "t1": 50.094
+  },
+  {
+   "id": "bank2",
+   "text": "It is in your hand, and every socket it fits lights up.",
+   "beat": "bank",
+   "t0": 50.494,
+   "t1": 55.038
+  },
+  {
+   "id": "bank3",
+   "text": "Green inserts it after what is there. Amber replaces it.",
+   "beat": "bank",
+   "t0": 55.438,
+   "t1": 59.374
+  },
+  {
+   "id": "bank4",
+   "text": "Rest on a socket and press play to hear it spliced in, before you place it.",
+   "beat": "bank",
+   "t0": 59.774,
+   "t1": 65.772
+  },
+  {
+   "id": "spec1",
+   "text": "Its card says what the module does and what it arrives set to.",
+   "beat": "spec",
+   "t0": 67.343,
+   "t1": 72.07
+  },
+  {
+   "id": "spec2",
+   "text": "It also says what the model believes about it, or that it does not know yet.",
+   "beat": "spec",
+   "t0": 72.47,
+   "t1": 78.468
+  },
+  {
+   "id": "spec3",
+   "text": "And it says what the model cannot hear. There is no stereo width in what it measures.",
+   "beat": "spec",
+   "t0": 78.868,
+   "t1": 85.35
+  },
+  {
+   "id": "spec4",
+   "text": "So it will never learn that you love a chorus for its width.",
+   "beat": "spec",
+   "t0": 85.75,
+   "t1": 90.477
+  },
+  {
+   "id": "chains1",
+   "text": "Modulation can chain.",
+   "beat": "chains",
+   "t0": 91.629,
+   "t1": 92.719
+  },
+  {
+   "id": "chains2",
+   "text": "In Ask The Dice, a sample and hold feeds a quantizer, and then a slew.",
+   "beat": "chains",
+   "t0": 93.119,
+   "t1": 98.934
+  },
+  {
+   "id": "chains3",
+   "text": "Together they play the oscillator's pitch as a random melody, in key and gliding.",
+   "beat": "chains",
+   "t0": 99.334,
+   "t1": 104.605
+  },
+  {
+   "id": "chains4",
+   "text": "Drop a shaper on a slot that is already modulated, and it wraps what is there.",
+   "beat": "chains",
+   "t0": 105.005,
+   "t1": 111.003
+  },
+  {
+   "id": "commit1",
+   "text": "Commit, and it asks which is better, the original or your edit, in random order.",
+   "beat": "commit",
+   "t0": 112.343,
+   "t1": 118.337
+  },
+  {
+   "id": "commit2",
+   "text": "Either answer teaches it.",
+   "beat": "commit",
+   "t0": 118.737,
+   "t1": 120.192
+  },
+  {
+   "id": "commit3",
+   "text": "If you already know, tick my edit is better and skip the comparison.",
+   "beat": "commit",
+   "t0": 120.592,
+   "t1": 125.499
+  },
+  {
+   "id": "commit4",
+   "text": "That answer is filed as a claim, and scored apart from heard ones.",
+   "beat": "commit",
+   "t0": 125.899,
+   "t1": 130.806
+  },
+  {
+   "id": "undo1",
+   "text": "Every change is one undo step.",
+   "beat": "undo",
+   "t0": 132.343,
+   "t1": 134.525
+  },
+  {
+   "id": "undo2",
+   "text": "Anything you unplug, delete or bypass waits in the held tray, even across a reload.",
+   "beat": "undo",
+   "t0": 134.925,
+   "t1": 140.739
+  },
+  {
+   "id": "lineage1",
+   "text": "And the lineage in EVOLVE keeps the history of your edits and evolution's steps.",
+   "beat": "lineage",
+   "t0": 142.343,
+   "t1": 147.434
+  },
+  {
+   "id": "lineage2",
+   "text": "Each entry says what changed, and how far the model's estimate moved.",
+   "beat": "lineage",
+   "t0": 147.834,
+   "t1": 152.377
+  },
+  {
+   "id": "outro1",
+   "text": "Lock what you know, evolve the rest, and keep what sounds like you.",
+   "beat": "outro",
+   "t0": 153.771,
+   "t1": 158.859
+  }
+ ],
+ "cues": {}
+}

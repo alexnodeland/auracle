@@ -1,0 +1,248 @@
+{
+  "film": "composing",
+  "title": "Composing with it",
+  "description": "For writing a piece: teach it a direction, breed and keep a palette, put timbre and arpeggios on the tempo, record takes, and carry the sounds with you.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
+    {
+      "id": "intro",
+      "music": "loop_a",
+      "lead": 1.5,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "intro1",
+          "text": "A piece needs a palette, like a bass, a pad and a moving texture.",
+          "post": 0.4
+        },
+        {
+          "id": "intro2",
+          "text": "Here is how to grow one.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "direction",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "direction1",
+          "text": "First, point it. The warm start shows nine presets.",
+          "post": 0.4
+        },
+        {
+          "id": "direction2",
+          "text": "Pick the three nearest your piece. That is eighteen answers in thirty seconds.",
+          "post": 0.4
+        },
+        {
+          "id": "direction3",
+          "text": "Then answer duels, fast. A gut reaction is the data.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "evolve",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "evolve1",
+          "text": "Press Evolve Pool, and it breeds from the ten patches it rates highest.",
+          "post": 0.4
+        },
+        {
+          "id": "evolve2",
+          "text": "The children resemble their parents, bent toward what you chose.",
+          "post": 0.4
+        },
+        {
+          "id": "evolve3",
+          "text": "The weakest leave the pool, and anything you saved stays.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "keep",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "keep1",
+          "text": "When a sound fits the piece, save it to My Patches.",
+          "post": 0.4
+        },
+        {
+          "id": "keep2",
+          "text": "A saved patch is never replaced, up to a quarter of the pool.",
+          "post": 0.4
+        },
+        {
+          "id": "keep3",
+          "text": "Stars are opinions, and they teach. Then name the sound for its part.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "steps",
+      "music": "loop_b",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "steps1",
+          "text": "For movement, put Steps on a filter.",
+          "post": 0.4
+        },
+        {
+          "id": "steps2",
+          "text": "You draw up to eight bars, and the timbre plays them as a pattern.",
+          "post": 0.4
+        },
+        {
+          "id": "steps3",
+          "text": "Turn on Sync, and the pattern snaps to the nearest division of the tempo.",
+          "post": 0.4
+        },
+        {
+          "id": "steps4",
+          "text": "It restarts with your first key.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "arp",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "arp1",
+          "text": "The arpeggiator runs at the same tempo.",
+          "post": 0.4
+        },
+        {
+          "id": "arp2",
+          "text": "Latch a chord with Hold, and the line plays itself while you shape the sound.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "clock",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "clock1",
+          "text": "Send MIDI clock from your sequencer, and both follow its tempo.",
+          "post": 0.4
+        },
+        {
+          "id": "clock2",
+          "text": "A MIDI start brings the sequencers and the arpeggiator in on its downbeat.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "scenes",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "scenes1",
+          "text": "Inside a part, Keep marks a sound as home, and Back glides the knobs home again.",
+          "post": 0.4
+        },
+        {
+          "id": "scenes2",
+          "text": "Between parts, step through My Patches with the bracket keys.",
+          "post": 0.4
+        },
+        {
+          "id": "scenes3",
+          "text": "Held notes carry across the change without a click.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "record",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "record1",
+          "text": "Press record, play the part, and press stop.",
+          "post": 0.4
+        },
+        {
+          "id": "record2",
+          "text": "The take downloads as a WAV file, the instrument's own output after its limiter.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "share",
+      "lead": 0.2,
+      "tail": 0.2,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "share1",
+          "text": "To keep a sound with the piece, export it as a patch file.",
+          "post": 0.4
+        },
+        {
+          "id": "share2",
+          "text": "Or export a picture of the rack, with the patch inside it.",
+          "post": 0.4
+        },
+        {
+          "id": "share3",
+          "text": "Drop either onto Auracle, and it opens as the same patch.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "lead": 0.2,
+      "tail": 2.5,
+      "snap": "beat",
+      "lines": [
+        {
+          "id": "outro1",
+          "text": "Everything autosaves in your browser. Before you move machines, save your taste profile too.",
+          "post": 0.7
+        }
+      ]
+    }
+  ]
+}

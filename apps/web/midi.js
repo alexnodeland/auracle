@@ -159,9 +159,23 @@ export class ClockTempo {
   }
 }
 
+// What the panel says when there is no input to list, by where access stands.
+const ACCESS_WHY = {
+  unsupported:
+    "This browser can't reach MIDI devices: Safari has no Web MIDI. Chrome, Edge, Brave, Arc and Firefox do — open Auracle in one of those.",
+  idle: "Press connect to let this page use your MIDI devices.",
+  asking: "Waiting for your browser's permission to use MIDI — answer its prompt (in Firefox it asks to add a site permission). No prompt? Press connect.",
+  denied:
+    "MIDI access was refused. Allow MIDI for this site in the browser's site settings (the icon left of the address), then press connect.",
+  failed: "The browser couldn't open its MIDI system. Press connect to try again; if it keeps failing, reload the page.",
+  ready: "No MIDI device yet. Plug one in — it shows up here as soon as the browser sees it.",
+};
+
 export function createMidi(host) {
   const state = {
     access: null,
+    // unsupported | idle | asking | denied | failed | ready — see ACCESS_WHY.
+    status: "idle",
     inputs: [],
     device: "",
     // `${ch}:${cc}` -> {slot, mode}
@@ -347,8 +361,29 @@ export function createMidi(host) {
     h.className = "midi-h";
     h.textContent = state.inputs.length
       ? `MIDI · ${state.inputs.map((i) => i.name).join(", ")}`
-      : "MIDI · no device — plug one in";
+      : state.status === "ready"
+        ? "MIDI · no device"
+        : "MIDI · unavailable";
     panel.append(h);
+    // "No device" used to be the only thing this panel could say, whatever
+    // had actually happened. A browser with no Web MIDI (Safari), a
+    // permission prompt nobody answered, and access refused all left the
+    // input list empty, so a controller the OS could see was reported as
+    // not plugged in. Each case says what it is and what to do about it.
+    if (!state.inputs.length) {
+      const why = document.createElement("div");
+      why.className = "midi-why";
+      why.textContent = ACCESS_WHY[state.status] || ACCESS_WHY.ready;
+      panel.append(why);
+      if (state.status !== "unsupported" && state.status !== "ready") {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "util-btn";
+        retry.textContent = "connect midi";
+        retry.onclick = () => connect(true);
+        panel.append(retry);
+      }
+    }
     const list = document.createElement("div");
     list.className = "midi-rows";
     for (let i = 0; i < SLOTS; i++) {
@@ -433,6 +468,7 @@ export function createMidi(host) {
   }
 
   function wire() {
+    state.status = "ready";
     const inputs = [...state.access.inputs.values()];
     state.inputs = inputs;
     state.device = inputs.map((i) => i.name).sort().join("+") || "none";
@@ -442,20 +478,50 @@ export function createMidi(host) {
     host.sustain(false);
     host.perform()?.setExpression(null);
     for (const input of inputs) input.onmidimessage = onMessage;
-    host.onDevices(inputs.length);
+    host.onDevices(inputs.length, state.status);
     renderPanel();
   }
 
-  if (navigator.requestMIDIAccess) {
+  // Asking for access. At load it is asked for once, as before; a click on
+  // "connect midi" (or opening the panel) asks again, because some browsers
+  // only show their permission prompt for a request a click made — Firefox
+  // grants MIDI through a prompt of its own — and because a player who has
+  // just allowed MIDI in the site settings should not have to reload.
+  function connect(fromClick = false) {
+    if (!navigator.requestMIDIAccess) {
+      state.status = "unsupported";
+      host.onDevices(0, state.status);
+      renderPanel();
+      return;
+    }
+    if (state.access || (state.status === "asking" && !fromClick)) return;
+    state.status = "asking";
+    host.onDevices(0, state.status);
+    renderPanel();
     navigator
       .requestMIDIAccess({ sysex: false })
       .then((access) => {
+        // A click can ask again while an earlier request is still waiting,
+        // and both can be granted. The first grant wins: wiring a second
+        // MIDIAccess would hang a second handler on every device, and each
+        // message would arrive twice (an encoder would turn at double speed).
+        if (state.access) return;
         state.access = access;
         wire();
         access.onstatechange = wire;
       })
-      .catch(() => host.onDevices(0));
+      .catch((e) => {
+        // The other request was granted; this one's refusal says nothing.
+        if (state.access) return;
+        // A refusal (the player, or a site setting) is not a failure of the
+        // browser's MIDI system, and the fix is different.
+        const refused = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+        state.status = refused ? "denied" : "failed";
+        host.onDevices(0, state.status);
+        renderPanel();
+      });
   }
+  connect();
 
   return {
     attachPanel(el) {
@@ -465,6 +531,9 @@ export function createMidi(host) {
     togglePanel() {
       if (!panel) return;
       panel.classList.toggle("hidden");
+      // Opening the panel is a click: the moment to ask again if access
+      // has not been granted yet.
+      if (!panel.classList.contains("hidden") && !state.access && state.status !== "unsupported") connect(true);
       renderPanel();
     },
     controlMovedElsewhere,

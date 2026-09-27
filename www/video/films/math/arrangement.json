@@ -1,0 +1,18 @@
+{
+ "film": "math",
+ "bpm": 84,
+ "meter": 4,
+ "bed": "study",
+ "sections": [
+  {
+   "section": "loop_a",
+   "bars": 32,
+   "t0": 0.0
+  },
+  {
+   "section": "loop_b",
+   "bars": 26,
+   "t0": 90.714
+  }
+ ]
+}

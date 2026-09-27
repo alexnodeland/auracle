@@ -1,72 +1,78 @@
 {
  "film": "perform",
  "fps": 30,
- "duration": 120.0,
+ "duration": 108.571,
  "grid": {
   "bpm": 84,
   "meter": 4,
   "t0": 0.0
  },
- "estimated": true,
+ "estimated": false,
  "beats": [
   {
    "id": "intro",
    "t0": 0.0,
-   "t1": 10.88,
+   "t1": 9.97,
    "music": "loop_a"
   },
   {
    "id": "keys",
-   "t0": 11.429,
-   "t1": 20.909,
+   "t0": 10.0,
+   "t1": 18.798,
    "music": null
   },
   {
    "id": "named",
-   "t0": 21.429,
-   "t1": 41.779,
+   "t0": 19.286,
+   "t1": 37.486,
    "music": null
   },
   {
    "id": "hood",
-   "t0": 42.143,
-   "t1": 59.008,
+   "t0": 37.857,
+   "t1": 42.87,
+   "music": null
+  },
+  {
+   "id": "amber",
+   "t0": 43.571,
+   "t1": 55.206,
    "music": null
   },
   {
    "id": "xy",
-   "t0": 59.286,
-   "t1": 63.458,
+   "t0": 55.714,
+   "t1": 60.067,
    "music": null
   },
   {
    "id": "wander",
-   "t0": 63.571,
-   "t1": 76.093,
+   "t0": 60.714,
+   "t1": 71.192,
    "music": "loop_b"
   },
   {
    "id": "offer",
-   "t0": 76.429,
-   "t1": 87.907,
+   "t0": 71.429,
+   "t1": 80.766,
    "music": null
   },
   {
    "id": "take",
-   "t0": 88.571,
-   "t1": 100.53,
+   "t0": 81.429,
+   "t1": 91.581,
    "music": null
   },
   {
    "id": "keep",
-   "t0": 100.714,
-   "t1": 106.642,
+   "t0": 92.143,
+   "t1": 97.008,
    "music": null
   },
   {
    "id": "outro",
-   "t0": 107.143,
-   "t1": 120.0,
+   "t0": 97.143,
+   "t1": 108.571,
    "music": null
   }
  ],
@@ -76,126 +82,144 @@
    "text": "PERFORM is where you play Auracle.",
    "beat": "intro",
    "t0": 1.5,
-   "t1": 3.682
+   "t1": 3.717,
+   "words": [1.539, 2.296, 2.46, 2.62, 2.78, 3.02]
   },
   {
    "id": "intro2",
    "text": "Everything in it is built for your hands, so nothing in it ever stops the music.",
    "beat": "intro",
-   "t0": 4.182,
-   "t1": 10.18
+   "t0": 4.217,
+   "t1": 9.27,
+   "words": [4.256, 4.697, 4.977, 5.117, 5.297, 5.477, 5.697, 5.857, 6.697, 6.977, 7.397, 7.637, 7.797, 8.077, 8.438, 8.677]
   },
   {
    "id": "keys1",
    "text": "Play it from your computer keyboard, or plug in any MIDI controller.",
    "beat": "keys",
-   "t0": 11.729,
-   "t1": 16.272
+   "t0": 10.3,
+   "t1": 14.735,
+   "words": [10.34, 10.62, 10.78, 10.92, 11.06, 11.44, 12.4, 12.72, 13.08, 13.4, 13.66, 13.86]
   },
   {
    "id": "keys2",
    "text": "The first eight knobs you turn claim the eight controls.",
    "beat": "keys",
-   "t0": 16.672,
-   "t1": 20.309
+   "t0": 15.135,
+   "t1": 18.198,
+   "words": [15.175, 15.335, 15.615, 15.935, 16.355, 16.495, 16.755, 17.015, 17.195, 17.395]
   },
   {
    "id": "named1",
    "text": "The six controls are named for what you hear: Bright, Snap, Motion, Body, Grit, and Space.",
    "beat": "named",
-   "t0": 21.729,
-   "t1": 28.747
+   "t0": 19.586,
+   "t1": 26.076,
+   "words": [19.626, 19.766, 20.026, 20.646, 20.766, 20.966, 21.226, 21.366, 21.506, 22.346, 22.986, 23.786, 24.486, 24.934, 25.406, 25.446]
   },
   {
    "id": "named2",
    "text": "None of them is fixed to a knob. For each patch, Auracle measures what every knob does to the sound, and wires each control to the knobs that do the work.",
    "beat": "named",
-   "t0": 29.247,
-   "t1": 41.179
+   "t0": 26.576,
+   "t1": 36.886,
+   "words": [26.615, 26.876, 27.056, 27.236, 27.476, 27.716, 27.976, 28.096, 29.176, 29.276, 29.536, 30.364, 30.696, 31.427, 31.616, 31.956, 32.236, 32.496, 32.636, 32.776, 33.714, 33.876, 34.316, 34.616, 35.136, 35.396, 35.516, 35.896, 36.136, 36.316, 36.456]
   },
   {
    "id": "hood1",
    "text": "Turn one, and the strip underneath shows the real knobs it's moving.",
    "beat": "hood",
-   "t0": 42.443,
-   "t1": 46.986
+   "t0": 38.157,
+   "t1": 42.27,
+   "words": [38.195, 38.437, 39.077, 39.177, 39.277, 39.497, 40.317, 40.537, 40.797, 41.037, 41.497, 41.737]
   },
   {
    "id": "hood2",
    "text": "If a patch can't honestly do what a control says, the control turns amber. Turn it anyway, and Auracle adds what's missing, or grows a version that can.",
-   "beat": "hood",
-   "t0": 47.386,
-   "t1": 58.408
+   "beat": "amber",
+   "t0": 43.771,
+   "t1": 54.606,
+   "words": [43.792, 43.991, 44.171, 44.431, 44.971, 45.351, 45.651, 45.811, 45.931, 46.251, 47.171, 47.251, 47.671, 48.131, 49.411, 49.591, 49.711, 50.751, 50.811, 51.131, 51.591, 51.931, 52.737, 52.911, 53.291, 53.511, 53.791, 54.071]
   },
   {
    "id": "xy1",
    "text": "The XY pad puts two controls under one finger.",
    "beat": "xy",
-   "t0": 59.586,
-   "t1": 62.858
+   "t0": 56.014,
+   "t1": 59.467,
+   "words": [56.053, 56.194, 56.574, 57.331, 57.574, 57.854, 58.274, 58.654, 58.894]
   },
   {
    "id": "wander1",
    "text": "Wander lets the model play along.",
    "beat": "wander",
-   "t0": 63.871,
-   "t1": 66.053
+   "t0": 61.014,
+   "t1": 63.087,
+   "words": [61.053, 61.434, 61.734, 61.974, 62.214, 62.514]
   },
   {
    "id": "wander2",
    "text": "A little, and it offers ideas. More, and it drifts the knobs toward what you like. All the way, and it roams.",
    "beat": "wander",
-   "t0": 66.353,
-   "t1": 75.493
+   "t0": 63.387,
+   "t1": 70.592,
+   "words": [63.427, 63.607, 64.047, 64.107, 64.207, 64.507, 65.818, 66.427, 66.487, 66.587, 66.887, 67.067, 67.447, 67.707, 67.887, 68.047, 68.947, 69.147, 69.287, 69.767, 69.847, 69.947]
   },
   {
    "id": "offer1",
    "text": "Press Offer, and a new version of what you're playing grows in slot B.",
    "beat": "offer",
-   "t0": 76.729,
-   "t1": 81.999
+   "t0": 71.729,
+   "t1": 76.036,
+   "words": [71.769, 71.989, 72.809, 72.949, 73.069, 73.309, 73.747, 73.889, 74.009, 74.189, 74.469, 75.022, 75.189, 75.469]
   },
   {
    "id": "offer2",
    "text": "Hold Peek to hear it, or turn Blend to move between the two.",
    "beat": "offer",
-   "t0": 82.399,
-   "t1": 87.307
+   "t0": 76.436,
+   "t1": 80.166,
+   "words": [76.476, 76.776, 76.996, 77.196, 77.376, 77.916, 78.136, 78.536, 78.756, 78.976, 79.176, 79.496, 79.656]
   },
   {
    "id": "take1",
    "text": "Take it, and it becomes your sound. Ask for another, and that's a pass.",
    "beat": "take",
-   "t0": 88.871,
-   "t1": 94.622
+   "t0": 81.729,
+   "t1": 86.184,
+   "words": [81.767, 82.089, 82.509, 82.549, 82.629, 82.929, 83.129, 84.309, 84.429, 84.609, 85.189, 85.289, 85.549, 85.589]
   },
   {
    "id": "take2",
    "text": "Once you've heard an offer, either answer teaches the model what you like.",
    "beat": "take",
-   "t0": 95.022,
-   "t1": 99.93
+   "t0": 86.584,
+   "t1": 90.981,
+   "words": [86.624, 86.924, 87.224, 87.384, 87.524, 88.484, 88.684, 89.104, 89.524, 89.784, 90.104, 90.304, 90.464]
   },
   {
    "id": "keep1",
    "text": "Keep marks where you are. Back returns to the last sound you kept.",
    "beat": "keep",
-   "t0": 101.014,
-   "t1": 106.042
+   "t0": 92.443,
+   "t1": 96.408,
+   "words": [92.482, 92.743, 93.023, 93.263, 93.403, 94.061, 94.363, 94.783, 95.043, 95.163, 95.423, 95.683, 95.883]
   },
   {
    "id": "outro1",
    "text": "That's the loop: play, turn, offer.",
    "beat": "outro",
-   "t0": 107.543,
-   "t1": 110.385
+   "t0": 97.543,
+   "t1": 99.995,
+   "words": [97.584, 97.963, 98.103, 98.633, 98.943, 99.303]
   },
   {
    "id": "outro2",
    "text": "And the circuit is always one tab away, in PATCH.",
    "beat": "outro",
-   "t0": 110.885,
-   "t1": 114.701
+   "t0": 100.495,
+   "t1": 103.78,
+   "words": [100.535, 100.735, 100.875, 101.195, 101.435, 101.755, 102.055, 102.315, 103.095, 103.195]
   }
  ],
  "cues": {}

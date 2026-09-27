@@ -52,7 +52,7 @@
         { "op": "view", "v": "perform" },
         { "op": "measured", "name": "First Bass" },
         { "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -90, "ms": 900 },
-        { "op": "view", "v": "patch" },
+        { "op": "view", "v": "play" },
         { "op": "wait", "ms": 1200 }
       ],
       "actions": [

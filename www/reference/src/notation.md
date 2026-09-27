@@ -24,7 +24,7 @@ $\phi$ throughout; the code's `phi` is this vector.
 | Symbol | Is | In the code |
 |---|---|---|
 | $K$ | Number of style lenses ($\le 5$) | `TasteConfig::k_styles` |
-| $d$ | Feature dimension ($40$) | `TasteConfig::n_features` |
+| $d$ | Feature dimension ($44$) | `TasteConfig::n_features` |
 | $\theta_k \in \R^{d}$ | Lens $k$'s weight vector | `TasteSample::theta[k]` |
 | $\theta$ | All of them, $K \times d$ | `TasteSample::theta` |
 | $u(x)$ | Latent utility of $x$ | `utility_mix` |

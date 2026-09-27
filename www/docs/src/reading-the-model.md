@@ -3,6 +3,8 @@
 <p class="lede">How to tell a real preference from a coefficient that happens to
 be pointing somewhere.</p>
 
+<!-- film:math --><!-- /film:math -->
+
 The [TASTE view](./views/taste.md) documents what each tab shows. This page is
 about reading it well: the interpretation mistakes that are easy to make, and
 how the interface tries to stop you making them.

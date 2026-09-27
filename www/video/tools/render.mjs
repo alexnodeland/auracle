@@ -7,9 +7,13 @@
 // The page is served from the repo root (so a film can reach apps/web/fonts
 // and recorded footage), opened once per job at exactly 1920×1080, and told
 // each frame's time through `window.__stage.seek(t)`. The stage awaits its own
-// video seeks, so a frame is never captured half-drawn. Frames are piped to
-// ffmpeg as PNG; the picture is encoded near-losslessly here and compressed
-// for the web only once, in mix.py, after the sound is laid in.
+// video seeks, so a frame is never captured half-drawn. Frames are captured as
+// JPEG at quality 95 and muxed as they are (MJPEG in Matroska, no encode here):
+// PNG capture plus an x264 intermediate cost ~0.5 s a frame on this machine,
+// most of it compressing a picture that mix.py compresses again anyway. The
+// picture is compressed for the web once, in mix.py, after the sound is laid
+// in. `--lossless` keeps the old PNG → x264 CRF 12 4:4:4 path, for a film
+// whose fine lines show the JPEG.
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -127,12 +131,16 @@ async function main() {
         if (a >= b) return;
         const part = path.join(outDir, `part-${String(j).padStart(2, "0")}.mkv`);
         parts[j] = part;
-        const enc = spawn(ff, ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(fps), "-c:v", "png", "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "12", "-pix_fmt", "yuv444p", part], { stdio: ["pipe", "inherit", "inherit"] });
+        const lossless = process.argv.includes("--lossless");
+        const encArgs = lossless
+          ? ["-c:v", "png", "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "12", "-pix_fmt", "yuv444p"]
+          : ["-c:v", "mjpeg", "-i", "-", "-c:v", "copy"];
+        const enc = spawn(ff, ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(fps), ...encArgs, part], { stdio: ["pipe", "inherit", "inherit"] });
         const page = await openPage(browser, port);
         for (let i = a; i < b; i++) {
           await page.evaluate((t) => window.__stage.seek(t), i / fps);
-          const png = await page.screenshot({ type: "png" });
-          if (!enc.stdin.write(png)) await new Promise((r) => enc.stdin.once("drain", r));
+          const shot = lossless ? await page.screenshot({ type: "png" }) : await page.screenshot({ type: "jpeg", quality: 95 });
+          if (!enc.stdin.write(shot)) await new Promise((r) => enc.stdin.once("drain", r));
           done++;
           if (done % 60 === 0) {
             const el = (Date.now() - t0) / 1000;

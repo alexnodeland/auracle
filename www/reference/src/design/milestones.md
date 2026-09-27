@@ -18,7 +18,7 @@ them closed on "the code is written".</p>
 styles are nameable and persist, and profiles
 [export and import](../persistence.md) as a portable observation log plus its
 standardizer. **Grid and radio modes remain open**, and with them keep/kill's
-only intended UI surface.
+triage surface: today it is emitted only by the bank's **cut**, as a kill.
 
 The pass-by-pass record is
 [`CHANGELOG.md`](https://github.com/alexnodeland/auracle/blob/main/CHANGELOG.md).
@@ -63,4 +63,4 @@ radio, sequenced by signal quality rather than by effort.
 The app grew a long way beyond the original duel-mode scope on the way there:
 four-voice AudioWorklet polyphony, MIDI, an arpeggiator, an interactive lockable
 rack with typed rewiring and a node bank, three separate banks, session
-persistence in IndexedDB, and a 61-patch preset library across seven families.
+persistence in IndexedDB, and a 62-patch preset library across seven families.

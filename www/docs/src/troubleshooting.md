@@ -60,6 +60,21 @@ The instrument runs on a real-time audio thread.
 - **Unison ×4 with the arpeggiator at a fast division** is the heaviest
   configuration available, and the first place to look.
 
+## A MIDI controller does not play
+
+The dock's right side reads `midi ●` when a device is connected. `midi ?`
+means the page cannot reach MIDI at all; click it, and the panel says why:
+
+- **Safari** has no Web MIDI. Use a Chromium browser or Firefox.
+- **Firefox** asks whether to add a site permission for MIDI. Answer the
+  prompt; if it never appeared, press **connect midi** in the panel.
+- **Access was refused** earlier. Allow MIDI for the site in the browser's
+  site settings (the icon left of the address), then press **connect midi**.
+
+`midi —` means MIDI works and the browser sees no device: replug it, and it
+appears without a reload. On Windows, a device another program has open cannot
+be opened by the browser too; close that program and replug.
+
 ## Evolution does nothing
 
 **EVOLVE POOL does nothing at all** when there is no fitted posterior; there is

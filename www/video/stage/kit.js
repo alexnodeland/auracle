@@ -420,17 +420,30 @@ export function callout(layer, svg, { x, y, tx, ty, text, color = "a" }) {
   const line = el("path", { d: `M${x} ${y} L${tx} ${ty}`, stroke: PHOS[color], "stroke-width": 2, fill: "none" }, svg);
   const dot = el("circle", { cx: x, cy: y, r: 6, fill: PHOS[color] }, svg);
   dot.style.filter = GLOW[color];
-  const len = Math.hypot(tx - x, ty - y);
+  let len = Math.hypot(tx - x, ty - y);
   line.setAttribute("stroke-dasharray", `${len} ${len}`);
   const pill = place(el("div", { class: `pill ${color}` }, layer, text), { x: tx, y: ty, ax: tx < x ? 1 : 0, ay: 0.5 });
-  return {
+  let u0 = 0;
+  const api = {
     update(u) {
+      u0 = u;
       line.setAttribute("stroke-dashoffset", len * (1 - clamp(u * 1.6)));
       dot.setAttribute("opacity", clamp(u * 4));
       pill.style.opacity = clamp((u - 0.35) * 2.5);
       pill.style.transform = `translateY(${(1 - clamp((u - 0.35) * 2.5)) * 8}px)`;
     },
+    /** Re-aim: the point and the label move (a camera move over footage). */
+    move(x2, y2, tx2, ty2) {
+      line.setAttribute("d", `M${x2} ${y2} L${tx2} ${ty2}`);
+      dot.setAttribute("cx", x2);
+      dot.setAttribute("cy", y2);
+      len = Math.hypot(tx2 - x2, ty2 - y2);
+      line.setAttribute("stroke-dasharray", `${len} ${len}`);
+      place(pill, { x: tx2, y: ty2, ax: tx2 < x2 ? 1 : 0, ay: 0.5 });
+      api.update(u0);
+    },
   };
+  return api;
 }
 
 export { GLOW, noise1 };
@@ -569,10 +582,11 @@ export function pressPad(p, u, color = "a") {
 
 // ---- φ: a sound's measurements, as a meter bridge -------------------------
 
-/** The eighteen audio coordinates, in order (www/reference/src/features/audio.md). */
+/** The eighteen audio coordinates, in order: `AudioFeatures::NAMES` in
+ *  crates/auracle-features/src/audio.rs (www/reference/src/features/audio.md). */
 export const PHI_AUDIO = [
-  "brightness", "movement", "rolloff", "noisiness", "flux", "zero-cross", "level", "attack",
-  "decay", "sustain", "tail", "bass", "held move", "high note", "chord noise", "slow motion", "mid motion", "fast motion",
+  "brightness", "movement", "rolloff", "noisiness", "flux", "zero-cross", "level", "level swing",
+  "crest", "attack", "tail", "bass", "held move", "high note", "chord noise", "slow motion", "mid motion", "fast motion",
 ];
 
 /**

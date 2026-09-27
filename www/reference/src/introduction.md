@@ -2,6 +2,8 @@
 
 <p class="lede">What Auracle computes, in enough detail to disagree with.</p>
 
+<!-- film:engine --><!-- /film:engine -->
+
 This book is the technical companion to the [User Guide](../docs/). The guide
 tells you what the instrument does; this tells you how, with the math written
 out and pointers into the code that implements it.

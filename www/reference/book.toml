@@ -4,7 +4,7 @@
 # rather than 0.5. This book is the one that actually needs KaTeX.
 
 [book]
-title = "Auracle Reference"
+title = "Auracle | Reference"
 description = "How Auracle works: the typed patch grammar, the audition pipeline, the taste posterior, and the search."
 authors = ["Alex Nodeland"]
 language = "en"

@@ -2710,7 +2710,7 @@ function wireArrowNav(container, itemSel, { activate = false, vertical = false }
     const fwd = vertical ? "ArrowDown" : "ArrowRight";
     const back = vertical ? "ArrowUp" : "ArrowLeft";
     if (e.key !== fwd && e.key !== back && e.key !== "Home" && e.key !== "End") return;
-    const items = [...container.querySelectorAll(itemSel)].filter((el) => !el.disabled);
+    const items = [...container.querySelectorAll(itemSel)].filter((el) => !el.disabled && !el.classList.contains("hidden"));
     if (items.length === 0) return;
     const cur = document.activeElement?.closest?.(itemSel);
     const i = items.indexOf(cur);
@@ -3326,6 +3326,8 @@ function panic() {
 
 // ---------- virtual keyboard ----------
 const PIANO_LO = 48; // C3
+const PIANO_MIN = 12; // C0, the lowest key the keybed shows
+const PIANO_MAX = 108; // C8, the highest
 const PIANO_HI = 84; // C6
 // The keybed's width is a performance decision, not a constant. Three octaves
 // across a tablet is 22 white keys at ~27px — narrower than a fingertip, so
@@ -3358,7 +3360,9 @@ function buildPiano() {
   // play C4–F5, i.e. an octave you cannot type and none of the one you can. So
   // the narrow sizes anchor on the keymap itself.
   const anchor = perf.keySpan >= 36 ? PIANO_LO : PIANO_LO + 12;
-  const lo = anchor + 12 * octShift;
+  // …but never below C0 or above C8: at the ends of the shift the wide keybed
+  // would otherwise show keys off either end of a piano.
+  const lo = Math.max(PIANO_MIN, Math.min(PIANO_MAX - perf.keySpan, anchor + 12 * octShift));
   const hi = lo + perf.keySpan;
   for (let n = lo; n <= hi; n++) {
     if (BLACK.has(n % 12)) continue;
@@ -3650,8 +3654,13 @@ document.addEventListener("click", (e) => {
   if (b) b.blur();
 });
 
+// Z/X shift the keymap from a = C0 to a = C7, whose octave runs up to C8: the
+// compass of an 88-key piano (A0–C8) and a few notes below. It stopped at C2
+// and C6, two octaves short of the bass and one of the top.
+const OCT_MIN = -4;
+const OCT_MAX = 3;
 function octave(d) {
-  const next = Math.max(-2, Math.min(2, octShift + d));
+  const next = Math.max(OCT_MIN, Math.min(OCT_MAX, octShift + d));
   if (next === octShift) return;
   octShift = next;
   buildPiano(); // the keybed moves with the shift, not just the letter hints
@@ -3865,12 +3874,28 @@ $("rec-btn").onclick = () => {
 // The film pipeline (www/video/tools/footage.mjs) records the instrument's
 // own sound for a walkthrough without the ● rec button's toast landing in the
 // shot. Present only on `?film`; the take downloads exactly as a rec does.
+// It also plays MIDI in: under `?film` the page's MIDI access is the film's
+// own port, installed here before bootMidi() asks for one. `midiDevice(name)`
+// plugs a device in (midi.js wires it as it wires a real one, and the panel
+// names it), and `midi(bytes)` hands a message to that device's
+// `onmidimessage`, the path a controller's notes, knobs and clock take.
 if (new URLSearchParams(location.search).has("film")) {
+  const filmMidi = { inputs: new Map(), outputs: new Map(), sysexEnabled: false, onstatechange: null };
+  Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async () => filmMidi });
   window.__film = {
     rec(on) {
       if (!live) return;
       recording = !!on;
       live.rec(recording);
+    },
+    midiDevice(name = "MIDI controller") {
+      filmMidi.inputs.clear();
+      if (name) filmMidi.inputs.set(name, { id: name, name, type: "input", state: "connected", onmidimessage: null });
+      filmMidi.onstatechange?.();
+    },
+    midi(bytes, timeStamp = performance.now()) {
+      const ev = { data: Uint8Array.from(bytes), timeStamp };
+      for (const input of filmMidi.inputs.values()) input.onmidimessage?.(ev);
     },
   };
 }
@@ -3951,9 +3976,23 @@ async function bootMidi() {
       sendArp();
     },
     note,
-    onDevices: (n) => {
-      $("midi-ind").textContent = n > 0 ? `midi ●${n > 1 ? n : ""}` : "midi —";
-      $("midi-ind").classList.toggle("on", n > 0);
+    // A device (●), none plugged in (—), or MIDI itself not reachable yet
+    // (?): no Web MIDI in this browser, a permission prompt unanswered, or
+    // access refused. The panel says which, and how to fix it.
+    onDevices: (n, status = "ready") => {
+      const ind = $("midi-ind");
+      ind.textContent = n > 0 ? `midi ●${n > 1 ? n : ""}` : status === "ready" ? "midi —" : "midi ?";
+      ind.classList.toggle("on", n > 0);
+      ind.title =
+        n > 0 || status === "ready"
+          ? "MIDI: devices, knob mapping, clock"
+          : status === "unsupported"
+            ? "MIDI: this browser has no Web MIDI — click for which ones do"
+            : status === "denied"
+              ? "MIDI: access refused — click for how to allow it"
+              : status === "failed"
+                ? "MIDI: the browser couldn't open MIDI — click to try again"
+                : "MIDI: waiting for the browser's permission — click to connect";
     },
   });
   midi.attachPanel($("midi-panel"));
@@ -17631,6 +17670,20 @@ function showHelp(on) {
     helpReturnFocus = null;
   }
 }
+// The films live in the guide beside the instrument (/play/ → /docs/): the
+// help card's is PERFORM's own walkthrough, on PERFORM's page; ⋯ opens the
+// index of all of them. A local build has no site around it, so it links to
+// the published one.
+{
+  const docs = location.pathname.includes("/play/")
+    ? new URL("../docs/", location.href).href
+    : "https://auracle.alexnodeland.com/docs/";
+  $("films-link").href = `${docs}films.html`;
+  $("help-film").href = `${docs}views/perform.html#film-perform`;
+  // Both stay hidden (index.html) until the films are published: publish.py
+  // un-hides them when it puts the films beside the site. A request asking
+  // the site whether they exist would log a 404 in every console until then.
+}
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {
@@ -17822,7 +17875,7 @@ bootMidi();
       master.gain.value = volume;
       renderVolVal();
     }
-    if (saved.ui.oct != null) { octShift = saved.ui.oct; buildPiano(); }
+    if (saved.ui.oct != null) { octShift = Math.max(OCT_MIN, Math.min(OCT_MAX, saved.ui.oct | 0)); buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
     restoreTray(saved.ui.held);

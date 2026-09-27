@@ -34,12 +34,25 @@ import argparse
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import lfilter, resample_poly
+
+
+# Arrays of numbers (word times, the picture's envelopes) on one line each: a
+# timeline pretty-printed one number per line ran to 17 000 lines of diff.
+_NUMS = re.compile(r"\[\s*(-?[\d.eE+-]+(?:,\s*-?[\d.eE+-]+)*)\s*\]")
+
+
+def dump_json(obj, path):
+    s = json.dumps(obj, indent=1, ensure_ascii=False)
+    s = _NUMS.sub(lambda m: "[" + ", ".join(x.strip() for x in m.group(1).split(",")) + "]", s)
+    with open(path, "w") as f:
+        f.write(s + "\n")
 
 SR = 48000
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -243,7 +256,21 @@ def main():
     app = np.zeros((n, 2), np.float32)
     if args.app:
         for a in json.load(open(args.app)):
-            lay(app, load(a["file"]), a["t"], 10 ** (a.get("gain_db", 0) / 20))
+            x = load(a["file"])
+            # A shot is recorded from before its beat to after it; only the
+            # stretch its beat shows is heard (`from`/`to`, in film time),
+            # faded in and out so a cut between shots never clicks.
+            if "from" in a or "to" in a:
+                x = x.copy()
+                s0 = max(0, int(round((a.get("from", a["t"]) - a["t"]) * SR)))
+                s1 = min(len(x), int(round((a.get("to", a["t"] + len(x) / SR) - a["t"]) * SR)))
+                x[:s0] = 0
+                x[s1:] = 0
+                fi, fo = int(0.12 * SR), int(0.25 * SR)
+                if s1 - s0 > fi + fo:
+                    x[s0:s0 + fi] *= np.linspace(0, 1, fi, dtype=np.float32)[:, None]
+                    x[s1 - fo:s1] *= np.linspace(1, 0, fo, dtype=np.float32)[:, None]
+            lay(app, x, a["t"], 10 ** (a.get("gain_db", 0) / 20))
 
     # Duck the music (and the app's own sound) under the narration.
     if args.voice and np.any(vo):
@@ -277,7 +304,7 @@ def main():
         "music": {"rate": 60, "v": envelope(music[:end])},
         "voice": {"rate": 60, "v": envelope(vo[:end])},
     }
-    json.dump(tl, open(os.path.join(fdir, "timeline.json"), "w"), indent=1, ensure_ascii=False)
+    dump_json(tl, os.path.join(fdir, "timeline.json"))
 
     # Captions from the narration's own timing.
     vtt = ["WEBVTT", ""]

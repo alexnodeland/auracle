@@ -3,6 +3,8 @@
 <p class="lede">Three thread kinds, one wasm binary, and a set of constraints that shaped
 the architecture more than any design preference did.</p>
 
+<!-- film:dsp --><!-- /film:dsp -->
+
 ## The threads
 
 | Thread | Holds | Runs |

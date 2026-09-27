@@ -1,0 +1,323 @@
+{
+  "viewport": [1920, 1080],
+  "dpr": 1,
+  "query": "?film",
+  "init": "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();",
+  "setup": [
+    {"op": "click", "sel": "#warm-skip"},
+    {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+    {"op": "midi", "device": "MIDI keyboard"}
+  ],
+  "shots": [
+    {
+      "id": "pl-intro",
+      "beat": "intro",
+      "pre": 1.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "keybed": "#piano"},
+      "actions": [
+        {"at": 0.3, "op": "hold", "keys": ["a", "d", "g"], "until": "intro1:chords-0.05"},
+        {"at": "intro1:chords", "op": "hold", "keys": ["h", "k", ";"], "ms": 650},
+        {"at": "intro1:chords+0.68", "op": "hold", "keys": ["f", "h", "k"], "ms": 650},
+        {"at": "intro1:chords+1.36", "op": "hold", "keys": ["a"], "ms": 160},
+        {"at": "intro1:chords+1.53", "op": "hold", "keys": ["s"], "ms": 160},
+        {"at": "intro1:chords+1.70", "op": "hold", "keys": ["d"], "ms": 160},
+        {"at": "intro1:chords+1.87", "op": "hold", "keys": ["g"], "ms": 160},
+        {"at": "intro1:chords+2.04", "op": "hold", "keys": ["h"], "ms": 220},
+        {"at": "intro1:chords+2.30", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "intro1:chords+2.40", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -70, "ms": 2400}
+      ]
+    },
+    {
+      "id": "pl-keys",
+      "beat": "keys",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"keybed": "#piano", "oct": "#oct-label", "midi": "#midi-ind", "e4": ".pkey[data-note='64']"},
+      "actions": [
+        {"at": "keys1:rows", "op": "hold", "keys": ["a"], "ms": 210},
+        {"at": "keys1:rows+0.23", "op": "hold", "keys": ["s"], "ms": 210},
+        {"at": "keys1:rows+0.46", "op": "hold", "keys": ["d"], "ms": 210},
+        {"at": "keys1:rows+0.69", "op": "hold", "keys": ["f"], "ms": 210},
+        {"at": "keys1:rows+0.92", "op": "hold", "keys": ["g"], "ms": 210},
+        {"at": "keys1:rows+1.15", "op": "hold", "keys": ["a", "d", "g"], "ms": 700},
+        {"at": "keys1:X-0.1", "op": "key", "key": "x", "ms": 120},
+        {"at": "keys1:X+0.25", "op": "hold", "keys": ["a"], "ms": 350},
+        {"at": "keys1:octaves+0.35", "op": "key", "key": "z", "ms": 120},
+        {"at": "keys2:Shift", "op": "hold", "keys": ["a"], "ms": 350},
+        {"at": "keys2:Shift+0.5", "op": "hold", "keys": ["Shift", "a"], "ms": 350},
+        {"at": "keys3:strike", "op": "press", "sel": ".pkey[data-note='64']", "fx": 0.62, "fy": 0.08, "ms": 380},
+        {"at": "keys3:harder", "op": "press", "sel": ".pkey[data-note='64']", "fx": 0.62, "fy": 0.97, "ms": 380},
+        {"at": "keys4:MIDI", "op": "click", "sel": "#midi-ind"},
+        {"at": "keys4:MIDI+0.5", "op": "mark", "name": "panel", "sel": "#midi-panel"},
+        {"at": "keys4:velocity", "op": "midi", "note": 60, "vel": 32, "ms": 280},
+        {"at": "keys4:velocity+0.33", "op": "midi", "note": 60, "vel": 124, "ms": 280},
+        {"at": "keys4:bend", "op": "midi", "note": 67, "vel": 96, "ms": 1100},
+        {"at": "keys4:bend+0.1", "op": "midi", "bend": [0, 0.9, 0], "ms": 900},
+        {"at": "keys4:sustain", "op": "midi", "cc": 64, "value": 127},
+        {"at": "keys4:sustain+0.05", "op": "midi", "note": [60, 64, 67], "vel": 90, "ms": 250},
+        {"at": "keys4:pedal+1.3", "op": "midi", "cc": 64, "value": 0}
+      ]
+    },
+    {
+      "id": "pl-touch",
+      "beat": "touch",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"touch": ".pf-touch", "sel": "#pf-touch-sel", "c4": ".pkey[data-note='60']", "keybed": "#piano"},
+      "actions": [
+        {"at": "touch1:touch", "op": "move", "sel": "#pf-touch-sel", "ms": 360},
+        {"at": "touch1:level+0.3", "op": "hold", "keys": ["a", "d", "g"], "ms": 700},
+        {"at": "touch2:soft", "op": "press", "sel": ".pkey[data-note='60']", "fx": 0.5, "fy": 0.08, "ms": 650},
+        {"at": "touch2:hard", "op": "press", "sel": ".pkey[data-note='60']", "fx": 0.5, "fy": 0.97, "ms": 900}
+      ]
+    },
+    {
+      "id": "pl-controls",
+      "beat": "controls",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"deck": ".pf-deck", "bright": ".pf-knob[data-i='0']", "body": ".pf-knob[data-i='3']", "space": ".pf-knob[data-i='5']", "hood": ".pf-hood"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
+        {"at": "controls1:named", "op": "seq", "steps": [{"op": "drag", "sel": ".pf-knob[data-i='1']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='1']", "dy": 30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": -30, "ms": 450}, {"op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 30, "ms": 450}]},
+        {"at": "controls2:interrupts", "op": "drag", "sel": ".pf-knob[data-i='5']", "dy": -40, "ms": 900},
+        {"at": "controls3:ride-0.2", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -110, "ms": 2300},
+        {"at": "controls4:press+0.2", "op": "press", "sel": ".pf-knob[data-i='3']", "ms": 700}
+      ]
+    },
+    {
+      "id": "pl-xy",
+      "beat": "xy",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"xy": ".pf-xy-field", "hood": ".pf-hood"},
+      "actions": [
+        {"at": 0.1, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "xy1:XY", "op": "path", "sel": ".pf-xy-field", "points": [[0.5, 0.5], [0.22, 0.72], [0.85, 0.72], [0.85, 0.22], [0.6, 0.4]], "ms": 3800}
+      ]
+    },
+    {
+      "id": "pl-wander",
+      "beat": "wander",
+      "pre": 0.5,
+      "own_setup": true,
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "click", "sel": ".warm-item >> nth=0"},
+        {"op": "click", "sel": ".warm-item >> nth=4"},
+        {"op": "click", "sel": ".warm-item >> nth=7"},
+        {"op": "click", "sel": "#warm-go"},
+        {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "midi", "device": "MIDI keyboard"},
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "wait", "ms": 9000},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"wander": ".pf-knob[data-i='7']", "status": ".pf-status", "offer": ".pf-offer", "hood": ".pf-hood", "freeze": ".pf-pad:has-text('Freeze')", "motion": ".pf-knob[data-i='2']"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["f", "h", "k"], "ms": "end"},
+        {"at": "wander1:Wander", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -30, "ms": 700},
+        {"at": "wander2:More", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -45, "ms": 800},
+        {"at": "wander3:way", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -75, "ms": 900},
+        {"at": "wander4:waits", "op": "drag", "sel": ".pf-knob[data-i='2']", "dy": 20, "ms": 500},
+        {"at": "wander4:Freeze", "op": "click", "sel": ".pf-pad:has-text('Freeze')"}
+      ]
+    },
+    {
+      "id": "pl-offer",
+      "beat": "offer",
+      "pre": 0.5,
+      "own_setup": true,
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "click", "sel": ".warm-item >> nth=0"},
+        {"op": "click", "sel": ".warm-item >> nth=4"},
+        {"op": "click", "sel": ".warm-item >> nth=7"},
+        {"op": "click", "sel": "#warm-go"},
+        {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "midi", "device": "MIDI keyboard"},
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "wait", "ms": 9000},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"offer-pad": ".pf-pad.primary", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']", "peek": ".pf-pad:has-text('Peek')", "take": ".pf-pad:has-text('Take')"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "offer1:press", "op": "click", "sel": ".pf-pad.primary"},
+        {"at": "offer2:joins", "op": "until", "sel": ".pf-offer.ready", "ms": 60000, "stamp": "ready"},
+        {"at": "offer3:Peek", "op": "press", "sel": ".pf-pad:has-text('Peek')", "ms": 1600},
+        {"at": "offer3:Blend", "op": "drag", "sel": ".pf-knob[data-i='6']", "dy": -120, "ms": 2000},
+        {"at": "offer4:Take", "op": "click", "sel": ".pf-pad:has-text('Take')"},
+        {"at": "offer4:Take+1.0", "op": "mark", "name": "toast", "sel": "#toasts .toast"}
+      ]
+    },
+    {
+      "id": "pl-keep",
+      "beat": "keep",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"keep": ".pf-pad:has-text('Keep')", "back": ".pf-pad:has-text('Back')", "deck": ".pf-deck", "hood": ".pf-hood"},
+      "actions": [
+        {"at": 0.1, "op": "hold", "keys": ["g", "j", "l"], "ms": "end"},
+        {"at": "keep1:Keep", "op": "seq", "steps": [{"op": "click", "sel": ".pf-pad:has-text('Keep')"}, {"op": "drag", "sel": ".pf-knob[data-i='3']", "dy": -60, "ms": 550}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 550}, {"op": "wait", "until": "keep2:Back"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}, {"op": "wait", "until": "keep2:wander"}, {"op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -80, "ms": 900}, {"op": "wait", "until": "keep2:come"}, {"op": "click", "sel": ".pf-pad:has-text('Back')"}]}
+      ]
+    },
+    {
+      "id": "pl-dock",
+      "beat": "dock",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Acid Line"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Acid Line"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"hold": "#hold-btn", "uni": "#uni-btn", "glide": "#glide", "arp": "#arp-btn", "sync": "#sync-btn", "keybed": "#piano"},
+      "actions": [
+        {"at": "dock1:Hold", "op": "click", "sel": "#hold-btn"},
+        {"at": "dock1:Hold+0.15", "op": "hold", "keys": ["h", "k", ";"], "ms": 600},
+        {"at": "dock1:Unison-0.1", "op": "seq", "steps": [{"op": "click", "sel": "#hold-btn"}, {"op": "click", "sel": "#uni-btn"}]},
+        {"at": "dock1:Unison+0.45", "op": "hold", "keys": ["a"], "ms": 1100},
+        {"at": "dock2:Glide", "op": "drag", "sel": "#glide", "ox": -18, "dx": 12, "ms": 600},
+        {"at": "dock2:Glide+0.9", "op": "hold", "keys": ["a"], "ms": 480},
+        {"at": "dock2:Glide+1.3", "op": "hold", "keys": ["g"], "ms": 480},
+        {"at": "dock2:Glide+1.7", "op": "hold", "keys": ["k"], "ms": 600},
+        {"at": "dock2:Glide+2.45", "op": "click", "sel": "#uni-btn"},
+        {"at": "dock2:chords", "op": "hold", "keys": ["a", "d", "g"], "ms": 900},
+        {"at": "dock3:arpeggiator-0.35", "op": "seq", "steps": [{"op": "click", "sel": "#hold-btn"}, {"op": "click", "sel": "#arp-btn"}, {"op": "select", "sel": "#arp-mode", "value": 2}, {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "move", "sel": "#arp-ctl", "ms": 300}, {"op": "mark", "name": "drawer", "sel": "#arp-ctl"}, {"op": "mark", "name": "tempo", "sel": "#bpm"}]},
+        {"at": "dock3:arpeggiator+1.4", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "ms": 300},
+        {"at": "dock4:Sync", "op": "click", "sel": "#sync-btn"},
+        {"at": "dock2:Glide+0.8", "op": "log", "name": "glide", "js": "document.getElementById('glide-val').textContent"},
+        {"at": "dock3:tempo", "op": "log", "name": "arp", "js": "[document.getElementById('arp-mode').selectedOptions[0].textContent, document.getElementById('arp-ctl').classList.contains('open') ? 'drawer open' : 'drawer shut', document.getElementById('hold-btn').classList.contains('lit') ? 'hold lit' : 'hold off'].join(' · ')"}
+      ]
+    },
+    {
+      "id": "pl-midi",
+      "beat": "midi",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"ind": "#midi-ind", "bright": ".pf-knob[data-i='0']", "motion": ".pf-knob[data-i='2']", "hood": ".pf-hood"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "midi1:controller", "op": "click", "sel": "#midi-ind"},
+        {"at": "midi1:controller+0.4", "op": "mark", "name": "panel", "sel": "#midi-panel"},
+        {"at": "midi1:controller+0.4", "op": "mark", "name": "rows", "sel": "#midi-panel .midi-rows"},
+        {"at": "midi1:first", "op": "midi", "cc": 74, "values": [44, 96], "ms": 650},
+        {"at": "midi1:first+0.75", "op": "midi", "cc": 71, "values": [80, 34], "ms": 650},
+        {"at": "midi1:first+1.5", "op": "midi", "cc": 73, "values": [80, 40], "ms": 650},
+        {"at": "midi1:Learn", "op": "click", "sel": "#midi-panel .midi-row:has-text('Space') button:has-text('learn')"},
+        {"at": "midi1:Learn+0.6", "op": "midi", "cc": 20, "values": [50, 90], "ms": 700},
+        {"at": "midi1:Learn+1.4", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "midi2:Pressure", "op": "midi", "pressure": [0, 115, 115, 0], "ms": 1900},
+        {"at": "midi2:mod", "op": "midi", "cc": 1, "values": [0, 110, 110, 0], "ms": 1800},
+        {"at": "midi2:clock", "op": "midi", "clock": 96, "beats": 5},
+        {"at": "midi2:clock+1.5", "op": "mark", "name": "clock", "sel": "#midi-panel .midi-foot"}
+      ]
+    },
+    {
+      "id": "pl-booth",
+      "beat": "booth",
+      "pre": 0.5,
+      "setup": [
+        {"op": "click", "sel": "#ovf-btn"},
+        {"op": "click", "sel": "#booth-btn"},
+        {"op": "wait", "ms": 64000},
+        {"op": "until", "sel": "#booth-attract:not(.hidden)", "ms": 120000},
+        {"op": "until", "js": "/under one hand/.test(document.getElementById('ba-cap')?.textContent || '')", "ms": 180000},
+        {"op": "wait", "ms": 1500}
+      ],
+      "marks": {"attract": "#booth-attract", "deck": ".pf-deck", "keybed": "#piano"},
+      "actions": [
+        {"at": "booth2:touch", "op": "hold", "keys": ["a"], "ms": 600},
+        {"at": "booth2:touch+0.9", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"}
+      ]
+    },
+    {
+      "id": "pl-outro",
+      "beat": "outro",
+      "pre": 0.5,
+      "own_setup": true,
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "click", "sel": ".warm-item >> nth=0"},
+        {"op": "click", "sel": ".warm-item >> nth=4"},
+        {"op": "click", "sel": ".warm-item >> nth=7"},
+        {"op": "click", "sel": "#warm-go"},
+        {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "midi", "device": "MIDI keyboard"},
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "wait", "ms": 9000},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"offer-pad": ".pf-pad.primary", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']"},
+      "actions": [
+        {"at": 0.1, "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": 2750},
+        {"at": 2.957, "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2750},
+        {"at": 5.814, "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2750},
+        {"at": 8.671, "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": "end"},
+        {"at": "outro1:Nothing", "op": "click", "sel": ".pf-pad.primary"},
+        {"at": "outro1:phrase", "op": "drag", "sel": ".pf-knob[data-i='6']", "dy": -90, "ms": 2200}
+      ]
+    }
+  ]
+}

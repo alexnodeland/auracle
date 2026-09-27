@@ -1,60 +1,60 @@
 {
  "film": "circuit",
  "fps": 30,
- "duration": 85.714,
+ "duration": 77.143,
  "grid": {
   "bpm": 84,
   "meter": 4,
   "t0": 0.0
  },
- "estimated": true,
+ "estimated": false,
  "beats": [
   {
    "id": "intro",
    "t0": 0.0,
-   "t1": 8.858,
+   "t1": 9.265,
    "music": "loop_a"
   },
   {
    "id": "rack",
    "t0": 9.286,
-   "t1": 23.662,
+   "t1": 23.116,
    "music": null
   },
   {
    "id": "edit",
-   "t0": 24.286,
-   "t1": 39.6,
+   "t0": 23.571,
+   "t1": 35.914,
    "music": null
   },
   {
    "id": "bank",
-   "t0": 40.0,
-   "t1": 48.653,
+   "t0": 36.429,
+   "t1": 45.181,
    "music": "loop_b"
   },
   {
    "id": "steps",
-   "t0": 49.286,
-   "t1": 57.938,
+   "t0": 45.714,
+   "t1": 54.107,
    "music": null
   },
   {
    "id": "performed",
-   "t0": 58.571,
-   "t1": 68.859,
+   "t0": 54.286,
+   "t1": 63.578,
    "music": null
   },
   {
    "id": "evolve",
-   "t0": 69.286,
-   "t1": 75.029,
+   "t0": 64.286,
+   "t1": 69.711,
    "music": null
   },
   {
    "id": "outro",
-   "t0": 75.714,
-   "t1": 85.714,
+   "t0": 70.0,
+   "t1": 77.143,
    "music": null
   }
  ],
@@ -64,70 +64,80 @@
    "text": "Every sound in Auracle is a real modular patch: oscillators, filters, envelopes and effects, wired together.",
    "beat": "intro",
    "t0": 1.5,
-   "t1": 8.158
+   "t1": 8.815,
+   "words": [1.539, 1.8, 2.12, 2.32, 2.76, 2.9, 3.06, 3.32, 3.68, 4.723, 5.88, 6.62, 7.16, 7.18, 7.86, 8.18]
   },
   {
    "id": "rack1",
    "text": "PATCH shows the whole circuit. Every knob sits at its true position, in musical units: hertz, seconds, decibels.",
    "beat": "rack",
-   "t0": 9.586,
-   "t1": 17.271
+   "t0": 9.486,
+   "t1": 17.078,
+   "words": [9.524, 9.786, 10.086, 10.286, 10.486, 11.586, 11.806, 12.086, 12.366, 12.546, 12.686, 12.906, 13.606, 13.766, 14.126, 15.168, 15.926, 16.466]
   },
   {
    "id": "rack2",
    "text": "Green cables carry the sound. A knob that something is modulating pulses with it.",
    "beat": "rack",
-   "t0": 17.671,
-   "t1": 23.062
+   "t0": 17.428,
+   "t1": 22.666,
+   "words": [17.466, 17.748, 18.228, 18.528, 18.788, 19.768, 19.908, 20.108, 20.348, 20.648, 20.908, 21.588, 21.988, 22.328]
   },
   {
    "id": "edit1",
    "text": "Turn any knob and you hear it at once.",
    "beat": "edit",
-   "t0": 24.586,
-   "t1": 27.858
+   "t0": 23.771,
+   "t1": 26.014,
+   "words": [23.81, 24.031, 24.291, 24.831, 24.991, 25.131, 25.311, 25.431, 25.511]
   },
   {
    "id": "edit2",
    "text": "Every knob is an address in the patch's genome, so an edit becomes part of what the search works from. Lock a knob, and evolution leaves it alone.",
    "beat": "edit",
-   "t0": 28.158,
-   "t1": 39.0
+   "t0": 26.364,
+   "t1": 35.464,
+   "words": [26.404, 26.704, 26.964, 27.224, 27.344, 27.684, 27.944, 28.064, 28.464, 29.264, 29.524, 29.704, 29.984, 30.384, 30.744, 30.884, 31.004, 31.144, 31.384, 31.724, 32.804, 32.904, 33.044, 33.784, 33.884, 34.503, 34.724, 34.904]
   },
   {
    "id": "bank1",
-   "text": "The node bank holds all forty-two modules. Hover one to read what it does, then drag it into the patch.",
+   "text": "The node bank holds all forty-two modules. Hover one to read what it does. Click it, and every socket it can go into lights up.",
    "beat": "bank",
-   "t0": 40.3,
-   "t1": 48.053
+   "t0": 36.629,
+   "t1": 44.731,
+   "words": [36.689, 36.809, 37.069, 37.349, 37.709, 38.089, 38.669, 39.737, 40.029, 40.289, 40.489, 40.669, 40.869, 40.969, 41.889, 42.069, 42.569, 42.709, 43.049, 43.429, 43.609, 43.749, 43.889, 44.089, 44.349]
   },
   {
    "id": "steps1",
-   "text": "Steps is a sequencer for timbre: eight values that walk any knob through a pattern, in time with the tempo.",
+   "text": "Steps is a sequencer for timbre: eight values that walk one knob through a pattern, in time with the tempo when Sync is on.",
    "beat": "steps",
-   "t0": 49.586,
-   "t1": 57.338
+   "t0": 45.914,
+   "t1": 53.657,
+   "words": [45.952, 46.294, 46.554, 46.714, 47.094, 47.354, 48.414, 48.574, 49.074, 49.314, 49.534, 49.874, 50.194, 50.454, 50.594, 51.374, 51.574, 51.834, 52.034, 52.154, 52.454, 52.794, 53.054, 53.234]
   },
   {
    "id": "performed1",
    "text": "When PERFORM is turning knobs, PATCH shows it. An amber pointer marks the value you're hearing, and hovering names the control that's turning it.",
    "beat": "performed",
-   "t0": 58.871,
-   "t1": 68.259
+   "t0": 54.486,
+   "t1": 63.128,
+   "words": [54.526, 54.646, 55.006, 55.286, 55.586, 56.327, 56.626, 56.986, 57.946, 58.046, 58.366, 58.786, 59.106, 59.326, 59.626, 59.866, 60.589, 60.766, 61.106, 61.486, 61.706, 62.106, 62.506, 62.746]
   },
   {
    "id": "evolve1",
    "text": "And EVOLVE keeps the lineage: what every generation changed, in plain words.",
    "beat": "evolve",
-   "t0": 69.586,
-   "t1": 74.429
+   "t0": 64.486,
+   "t1": 69.261,
+   "words": [64.526, 64.666, 64.986, 65.306, 65.506, 66.506, 66.606, 66.886, 67.498, 68.211, 68.366, 68.626]
   },
   {
    "id": "outro1",
    "text": "The whole instrument, all the way down. Nothing is hidden.",
    "beat": "outro",
-   "t0": 76.114,
-   "t1": 80.231
+   "t0": 70.2,
+   "t1": 73.52,
+   "words": [70.226, 70.36, 70.6, 71.222, 71.4, 71.52, 71.66, 72.58, 72.76, 73.02]
   }
  ],
  "cues": {}

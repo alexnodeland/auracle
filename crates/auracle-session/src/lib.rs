@@ -2273,6 +2273,45 @@ mod tests {
         assert!(c.by_provenance.iter().all(|r| r.provenance != "duel"));
     }
 
+    /// A check pair still counts as a check when it is answered after the
+    /// next pair has been dealt — which is how the app always answers, since
+    /// it records a vote only once its undo window has passed. Tagging only
+    /// the last pair dealt left TRUST reading "0 of 20" checks after 33
+    /// duels that were every one of them uniform.
+    #[test]
+    fn a_check_answered_after_the_next_deal_still_counts() {
+        let mut rng = StdRng::seed_from_u64(0xC4EC);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            acquisition: Acquisition::Random,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        for _ in 0..8 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        let before = engine.calibration().check_n;
+        let first = engine.next_duel_full(&mut rng).unwrap();
+        let second = engine.next_duel_full(&mut rng).unwrap();
+        assert!(
+            first.random_check && second.random_check,
+            "uniform pairs are checks"
+        );
+        engine.record_duel(first.a, first.b, true);
+        engine.record_duel(second.a, second.b, false);
+        assert_eq!(
+            engine.calibration().check_n,
+            before + 2,
+            "a check answered after the next deal lost its tag"
+        );
+    }
+
     /// A profile written before raw-φ logging still loads and still means
     /// something: its standardized vectors are inverted back to raw values,
     /// re-projected by name, and the votes survive the feature-set change

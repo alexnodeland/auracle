@@ -9,9 +9,9 @@ cut. It follows the same conventions as
 For the web app's internals see [`apps/web/README.md`](./apps/web/README.md);
 for the documentation site see [`www/README.md`](./www/README.md); for how the
 instrument works see the [technical
-reference](https://alexnodeland.github.io/auracle/reference/), which holds the
+reference](https://auracle.alexnodeland.com/reference/), which holds the
 model, the search, and the [design
-decisions](https://alexnodeland.github.io/auracle/reference/design/decisions.html).
+decisions](https://auracle.alexnodeland.com/reference/design/decisions.html).
 
 ## Code of Conduct
 
@@ -72,8 +72,8 @@ make reference-serve
 CI runs `make site` and `make site-check` on every PR, because the site's
 failure modes are invisible to `make check`: an undefined KaTeX macro is a
 build *warning*, a cross-section link only exists once four sections are
-assembled, and a root-absolute path works locally and 404s under the
-`/auracle/` project subpath.
+assembled, and a root-absolute path works at a domain root and 404s under a
+project subpath or from a `file://` copy.
 
 - **Tests run in release mode.** The grammar/features/session suites render
   real audio sample-by-sample; debug DSP is ~20× slower.

@@ -2,7 +2,7 @@
 <html lang="en" class="rack">
 <head>
 <meta charset="utf-8">
-<title>Auracle — a synthesizer that learns what you like</title>
+<title>Auracle</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="A playable modular synthesizer that generates patches by evolutionary search, learns your taste from A/B picks, and can show you what it learned. Runs in the browser.">
 <meta name="color-scheme" content="dark">
@@ -11,6 +11,7 @@
 <link rel="icon" href="favicon.svg">
 <link rel="shortcut icon" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="canonical" href="https://auracle.alexnodeland.com/">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="viz.css">
 
@@ -18,7 +19,8 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Auracle — a synthesizer that learns what you like">
 <meta property="og:description" content="It plays you two patches. You pick one. It learns, and starts making more of it.">
-<meta property="og:image" content="assets/og.png">
+<meta property="og:url" content="https://auracle.alexnodeland.com/">
+<meta property="og:image" content="https://auracle.alexnodeland.com/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
@@ -193,14 +195,14 @@
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-play" aria-labelledby="tab-play" tabindex="0" hidden>
-      <img src="assets/screens/play.webp" alt="The PATCH view: a patch bank on the left with match percentages, a five-module rack (two oscillators, a filter, a mixer and an envelope) wired with green audio cables, the model's guess and its reasons above it, the node bank catalogue on the right, and a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
+      <img src="assets/screens/play.webp" alt="The PATCH view: a patch bank on the left with match percentages; on the rack, Fat Bell's chain of phaser, distortion, chorus, compressor and a second distortion, with envelope followers, a step sequencer and mod envelopes driving it through amber modulation cables; the model's guess and its reasons above; the node bank catalogue on the right; a keyboard docked along the bottom." width="1440" height="900" loading="lazy" decoding="async">
       <p class="shot-cap"><strong>PATCH.</strong> The whole rack, with knobs at true
       positions in musical units. Edit it and lock parts of it while it runs live
       under your hands.</p>
     </div>
 
     <div class="shot-pane" role="tabpanel" id="pane-evolve" aria-labelledby="tab-evolve" tabindex="0" hidden>
-      <img src="assets/screens/evolve.webp" alt="The EVOLVE view: two duel cards side by side with rendered waveforms, a teaching meter reading forty-four picks in, and a generation lineage log below." width="1440" height="900" loading="lazy" decoding="async">
+      <img src="assets/screens/evolve.webp" alt="The EVOLVE view: two duel cards side by side with rendered waveforms, a teaching meter reading fifty-three picks in, and a log below of what each generation changed." width="1440" height="900" loading="lazy" decoding="async">
       <p class="shot-cap"><strong>EVOLVE.</strong> Duels under a meter that counts down
       to the next refit, and a lineage log that says what each generation changed:
       <span class="mono">attack 0.59→0.83, +noise, −distortion</span>.</p>

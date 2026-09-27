@@ -1,0 +1,321 @@
+{
+  "viewport": [1920, 1080],
+  "dpr": 1,
+  "query": "?film",
+  "init": "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();",
+  "setup": [
+    {"op": "click", "sel": "#warm-skip"},
+    {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000}
+  ],
+  "shots": [
+    {
+      "id": "co-intro",
+      "beat": "intro",
+      "pre": 1.5,
+      "setup": [
+        {"op": "preset", "name": "Loom"},
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "preset", "name": "First Bass"},
+        {"op": "view", "v": "play"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"rack": "#rack-scroll", "subject": "#rack-subject", "rail": "#bank-list"},
+      "actions": [
+        {"at": 0.4, "op": "hold", "keys": ["a"], "ms": 900},
+        {"at": 1.6, "op": "hold", "keys": ["a"], "ms": 500},
+        {"at": 2.3, "op": "hold", "keys": ["g"], "ms": 400},
+        {"at": "intro1:bass", "op": "hold", "keys": ["a"], "ms": 900},
+        {"at": "intro1:pad-0.25", "op": "click", "sel": ".bank-item.preset-item:has(.bi-name:text-is('Glass Pad')) .bi-name"},
+        {"at": "intro1:pad+0.35", "op": "hold", "keys": ["a", "d", "g"], "ms": 1300},
+        {"at": "intro1:texture-0.25", "op": "click", "sel": ".bank-item.preset-item:has(.bi-name:text-is('Loom')) .bi-name"},
+        {"at": "intro1:texture+0.4", "op": "hold", "keys": ["a", "g"], "ms": "end"}
+      ]
+    },
+    {
+      "id": "co-direction",
+      "beat": "direction",
+      "pre": 0.5,
+      "own_setup": true,
+      "clips": [["direction3", "@taught+0.9"]],
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go"},
+      "actions": [
+        {"at": "direction1:shows", "op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line')) + .wi-play"},
+        {"at": "direction2:Pick", "op": "seq", "steps": [{"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"}]},
+        {"at": "direction2:eighteen", "op": "click", "sel": "#warm-go"},
+        {"at": "direction2:eighteen+0.2", "op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
+        {"at": "@taught+0.2", "op": "view", "v": "evolve"},
+        {"at": "@taught+0.8", "op": "mark", "name": "mid", "sel": "#duel-mid"},
+        {"at": "direction3:gut", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": "ArrowRight", "ms": 120}]}
+      ]
+    },
+    {
+      "id": "co-evolve",
+      "beat": "evolve",
+      "pre": 0.5,
+      "own_setup": true,
+      "clips": [["evolve2", "@bred-0.6"]],
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"},
+        {"op": "click", "sel": "#warm-go"},
+        {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+        {"op": "view", "v": "evolve"},
+        {"op": "wait", "ms": 2000},
+        {"op": "click", "sel": "#choose-a"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-b"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-a"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-b"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-a"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-b"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "view", "v": "evolve"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"btn": "#evolve-btn", "lineage": "#lineage-log", "lamp": "#wm-lamp", "bank": "#bank-list"},
+      "actions": [
+        {"at": "evolve1:Press", "op": "click", "sel": "#evolve-btn"},
+        {"at": "evolve1:Press+0.3", "op": "until", "sel": "#evolve-btn:not([disabled])", "ms": 600000, "stamp": "bred"},
+        {"at": "evolve2+0.7", "op": "mark", "name": "lineage", "sel": "#lineage-log"},
+        {"at": "evolve3", "op": "mark", "name": "fresh", "sel": "#bank-list .bank-item.fresh"}
+      ]
+    },
+    {
+      "id": "co-keep",
+      "beat": "keep",
+      "pre": 0.5,
+      "own_setup": true,
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"},
+        {"op": "click", "sel": "#warm-go"},
+        {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+        {"op": "view", "v": "evolve"},
+        {"op": "wait", "ms": 2000},
+        {"op": "click", "sel": "#choose-a"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-b"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-a"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-b"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-a"},
+        {"op": "wait", "ms": 1500},
+        {"op": "click", "sel": "#choose-b"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "view", "v": "play"},
+        {"op": "click", "sel": ".bf[data-f='pool']"},
+        {"op": "click", "sel": ".bank-item:not(.saved) >> nth=0 >> .bi-name"},
+        {"op": "until", "sel": ".bank-item.live", "ms": 30000},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"rail": "#bank-list", "chips": ".bank-filters", "budget": "#pin-budget"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
+        {"at": "keep1:save", "op": "click", "sel": ".bank-item.live .bi-save"},
+        {"at": "keep1:save+0.9", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "keep1:Patches", "op": "click", "sel": ".bf[data-f='mine']"},
+        {"at": "keep1:Patches+0.4", "op": "mark", "name": "row", "sel": ".bank-item.live"},
+        {"at": "keep3:Stars", "op": "click", "sel": ".bank-item.live .star[data-s='4']"},
+        {"at": "keep3:Stars+0.2", "op": "mark", "name": "stars", "sel": ".bank-item.live .stars"},
+        {"at": "keep3:name", "op": "seq", "steps": [{"op": "dblclick", "sel": ".bank-item.live .bi-name"}, {"op": "until", "sel": ".bi-rename", "ms": 5000}, {"op": "type", "text": "verse", "ms": 110, "enter": true}]}
+      ]
+    },
+    {
+      "id": "co-steps",
+      "beat": "steps",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Sub & Sparkle"},
+        {"op": "view", "v": "play"},
+        {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"slot": "#rack-svg .jack[data-modkey='node/1']", "filter": "#rack-svg g.mod-group[data-key='node/1']", "sync": "#sync-btn"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a"], "until": "steps4:restarts-0.3"},
+        {"at": "steps1:Steps", "op": "seq", "steps": [{"op": "click", "sel": ".nb-item[data-kind='steps']"}, {"op": "mark", "name": "steps", "sel": ".nb-item[data-kind='steps']"}]},
+        {"at": "steps1:filter", "op": "click", "sel": "#rack-svg .jack[data-modkey='node/1']"},
+        {"at": "steps2:draw", "op": "seq", "steps": [{"op": "until", "sel": "#rack-svg [data-addr='node/1/m#s0']", "ms": 20000}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s0']", "dy": -30, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s1']", "dy": 25, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s2']", "dy": -40, "ms": 300}, {"op": "wait", "ms": 60}, {"op": "drag", "sel": "#rack-svg [data-addr='node/1/m#s3']", "dy": 10, "ms": 300}]},
+        {"at": "steps2:eight", "op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-key='node/1/m']"},
+        {"at": "steps3:Sync", "op": "click", "sel": "#sync-btn"},
+        {"at": "steps3:Sync+0.5", "op": "mark", "name": "bpm", "sel": "#bpm"},
+        {"at": "steps3:Sync+0.5", "op": "mark", "name": "drawer", "sel": "#arp-ctl"},
+        {"at": "steps4:restarts", "op": "hold", "keys": ["a"], "ms": "end"}
+      ]
+    },
+    {
+      "id": "co-arp",
+      "beat": "arp",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Acid Line"},
+        {"op": "view", "v": "play"},
+        {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
+        {"op": "click", "sel": "#arp-btn"},
+        {"op": "select", "sel": "#arp-div", "value": 4},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "move", "sel": "#arp-ctl", "ms": 400},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"arp": "#arp-btn", "drawer": "#arp-ctl", "hold": "#hold-btn", "cut": "#rack-svg [data-addr='node#cut']", "tempo": "#bpm"},
+      "actions": [
+        {"at": 0.1, "op": "move", "sel": "#arp-ctl", "ms": 400},
+        {"at": "arp1:arpeggiator", "snap": "beat", "op": "hold", "keys": ["a", "g", "k"], "until": "arp2:Latch-0.25"},
+        {"at": "arp2:Latch", "op": "click", "sel": "#hold-btn"},
+        {"at": "arp2:Latch+0.15", "snap": "beat", "op": "hold", "keys": ["a", "g", "k"], "ms": 300},
+        {"at": "arp2:shape", "op": "drag", "sel": "#rack-svg [data-addr='node#cut']", "dy": -45, "ms": 2400}
+      ]
+    },
+    {
+      "id": "co-clock",
+      "beat": "clock",
+      "pre": 0.5,
+      "setup": [
+        {"op": "midi", "device": "Sequencer"},
+        {"op": "preset", "name": "Loom"},
+        {"op": "view", "v": "play"},
+        {"op": "click", "sel": "#sync-btn"},
+        {"op": "click", "sel": "#arp-btn"},
+        {"op": "click", "sel": "#hold-btn"},
+        {"op": "hold", "keys": ["a", "d", "g"], "ms": 400},
+        {"op": "click", "sel": "#midi-ind"},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"panel": "#midi-panel", "foot": "#midi-panel .midi-foot", "lane": "#rack-svg g.mod-group[data-key='node/0/m']", "chip": "#arp-chip"},
+      "actions": [
+        {"at": "clock1:Send", "snap": "beat", "op": "midi", "clock": 84, "beats": 14, "start": "clock2:start", "start_snap": "bar"},
+        {"at": "clock1:tempo", "op": "mark", "name": "foot", "sel": "#midi-panel .midi-foot"}
+      ]
+    },
+    {
+      "id": "co-scenes",
+      "beat": "scenes",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "First Bass"},
+        {"op": "click", "sel": ".bf[data-f='pool']"},
+        {"op": "click", "sel": ".bank-item.live .bi-save"},
+        {"op": "wait", "ms": 800},
+        {"op": "preset", "name": "Loom"},
+        {"op": "click", "sel": ".bf[data-f='pool']"},
+        {"op": "click", "sel": ".bank-item.live .bi-save"},
+        {"op": "wait", "ms": 800},
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "click", "sel": ".bf[data-f='pool']"},
+        {"op": "click", "sel": ".bank-item.live .bi-save"},
+        {"op": "wait", "ms": 800},
+        {"op": "click", "sel": ".bf[data-f='mine']"},
+        {"op": "log", "name": "mine", "js": "[...document.querySelectorAll('#bank-list .bank-item .bi-name')].map((e) => e.textContent).join(' | ')"},
+        {"op": "view", "v": "perform"},
+        {"op": "measured", "name": "Glass Pad"},
+        {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"rail": "#bank-list", "deck": ".pf-deck", "keep": ".pf-pad:has-text('Keep')", "back": ".pf-pad:has-text('Back')", "name": ".pf-name"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "scenes1:Keep", "op": "click", "sel": ".pf-pad:has-text('Keep')"},
+        {"at": "scenes1:home", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 700},
+        {"at": "scenes1:glides", "op": "click", "sel": ".pf-pad:has-text('Back')"},
+        {"at": "scenes2:step-0.3", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"at": "scenes2:step", "op": "key", "key": "[", "ms": 120},
+        {"at": "scenes2:step+1.5", "op": "log", "name": "after first [", "js": "document.querySelector('.pf-name').textContent"},
+        {"at": "scenes3:carry", "op": "key", "key": "[", "ms": 120},
+        {"at": "scenes3:click", "op": "log", "name": "after second [", "js": "document.querySelector('.pf-name').textContent"}
+      ]
+    },
+    {
+      "id": "co-record",
+      "beat": "record",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"rec": "#rec-btn", "keybed": "#piano", "rack": "#rack-scroll"},
+      "actions": [
+        {"at": 0.5, "op": "hold", "keys": ["a", "d", "g"], "ms": 1350},
+        {"at": 1.929, "op": "hold", "keys": ["h", "k", ";"], "ms": 1350},
+        {"at": 3.357, "op": "hold", "keys": ["f", "h", "k"], "ms": 1350},
+        {"at": 4.786, "op": "hold", "keys": ["g", "j", "l"], "ms": 1350},
+        {"at": 6.35, "op": "rec", "on": false},
+        {"at": 7.0, "op": "mark", "name": "toast", "sel": "#toasts .toast"}
+      ]
+    },
+    {
+      "id": "co-share",
+      "beat": "share",
+      "pre": 0.5,
+      "setup": [
+        {"op": "preset", "name": "Glass Pad"},
+        {"op": "view", "v": "play"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"ovf": "#ovf-btn", "rack": "#rack-scroll"},
+      "actions": [
+        {"at": 0.3, "op": "hold", "keys": ["a", "d", "g"], "ms": 1800},
+        {"at": "share1:export-0.5", "op": "seq", "steps": [{"op": "click", "sel": "#ovf-btn"}, {"op": "mark", "name": "menu", "sel": "#ovf-menu"}, {"op": "wait", "ms": 350}, {"op": "click", "sel": "#patch-export-btn"}]},
+        {"at": "share2:picture", "op": "seq", "steps": [{"op": "click", "sel": "#ovf-btn"}, {"op": "wait", "ms": 250}, {"op": "click", "sel": "#image-btn"}, {"op": "select", "sel": "#ix-fmt", "value": "svg"}, {"op": "mark", "name": "panel", "sel": "#image-panel"}, {"op": "mark", "name": "note", "sel": "#image-panel .sp-note"}]},
+        {"at": "share2:inside", "op": "click", "sel": "#ix-go"},
+        {"at": "share3:Drop-0.45", "op": "key", "key": "Escape", "ms": 100},
+        {"at": "share3:Drop", "op": "drop", "file": "fixtures/First_Bass.svg", "ms": 1300},
+        {"at": "share3:same", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "share3:same", "op": "mark", "name": "subject", "sel": "#rack-subject"}
+      ]
+    },
+    {
+      "id": "co-outro",
+      "beat": "outro",
+      "pre": 0.5,
+      "own_setup": true,
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Acid Line'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Sea Change'))"},
+        {"op": "click", "sel": ".warm-item:has(.wi-name:text-is('Glass Rain'))"},
+        {"op": "click", "sel": "#warm-go"},
+        {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "view", "v": "play"},
+        {"op": "click", "sel": ".bf[data-f='mine']"},
+        {"op": "wait", "ms": 1500},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"ovf": "#ovf-btn", "rail": "#bank-list"},
+      "actions": [
+        {"at": 0.2, "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
+        {"at": "outro1:profile-0.7", "op": "seq", "steps": [{"op": "click", "sel": "#ovf-btn"}, {"op": "mark", "name": "menu", "sel": "#ovf-menu"}, {"op": "mark", "name": "export", "sel": "#export-btn"}, {"op": "wait", "ms": 500}, {"op": "click", "sel": "#export-btn"}]}
+      ]
+    }
+  ]
+}

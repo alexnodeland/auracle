@@ -2,6 +2,8 @@
 
 <p class="lede">One patch, in full, playable while you take it apart.</p>
 
+<!-- film:circuit --><!-- /film:circuit -->
+
 PATCH shows a single patch as its whole rack: every module, every cable, every
 knob at its true position. It is running live the entire time. Turn a knob and
 you hear it on the next note you play.

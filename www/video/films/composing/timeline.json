@@ -1,0 +1,278 @@
+{
+ "film": "composing",
+ "fps": 30,
+ "duration": 148.571,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": true,
+ "beats": [
+  {
+   "id": "intro",
+   "t0": 0.0,
+   "t1": 10.433,
+   "music": "loop_a"
+  },
+  {
+   "id": "direction",
+   "t0": 10.714,
+   "t1": 25.511,
+   "music": null
+  },
+  {
+   "id": "evolve",
+   "t0": 25.714,
+   "t1": 40.154,
+   "music": null
+  },
+  {
+   "id": "keep",
+   "t0": 40.714,
+   "t1": 56.909,
+   "music": null
+  },
+  {
+   "id": "steps",
+   "t0": 57.143,
+   "t1": 74.892,
+   "music": "loop_b"
+  },
+  {
+   "id": "arp",
+   "t0": 75.0,
+   "t1": 84.68,
+   "music": null
+  },
+  {
+   "id": "clock",
+   "t0": 85.0,
+   "t1": 95.407,
+   "music": null
+  },
+  {
+   "id": "scenes",
+   "t0": 95.714,
+   "t1": 110.882,
+   "music": null
+  },
+  {
+   "id": "record",
+   "t0": 111.429,
+   "t1": 121.469,
+   "music": null
+  },
+  {
+   "id": "share",
+   "t0": 122.143,
+   "t1": 137.674,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 137.857,
+   "t1": 148.571,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "intro1",
+   "text": "A piece needs a palette, like a bass, a pad and a moving texture.",
+   "beat": "intro",
+   "t0": 1.5,
+   "t1": 6.951
+  },
+  {
+   "id": "intro2",
+   "text": "Here is how to grow one.",
+   "beat": "intro",
+   "t0": 7.351,
+   "t1": 9.533
+  },
+  {
+   "id": "direction1",
+   "text": "First, point it. The warm start shows nine presets.",
+   "beat": "direction",
+   "t0": 10.914,
+   "t1": 14.667
+  },
+  {
+   "id": "direction2",
+   "text": "Pick the three nearest your piece. That is eighteen answers in thirty seconds.",
+   "beat": "direction",
+   "t0": 15.067,
+   "t1": 20.094
+  },
+  {
+   "id": "direction3",
+   "text": "Then answer duels, fast. A gut reaction is the data.",
+   "beat": "direction",
+   "t0": 20.494,
+   "t1": 24.611
+  },
+  {
+   "id": "evolve1",
+   "text": "Press Evolve Pool, and it breeds from the ten patches it rates highest.",
+   "beat": "evolve",
+   "t0": 25.914,
+   "t1": 30.822
+  },
+  {
+   "id": "evolve2",
+   "text": "The children resemble their parents, bent toward what you chose.",
+   "beat": "evolve",
+   "t0": 31.222,
+   "t1": 35.038
+  },
+  {
+   "id": "evolve3",
+   "text": "The weakest leave the pool, and anything you saved stays.",
+   "beat": "evolve",
+   "t0": 35.438,
+   "t1": 39.254
+  },
+  {
+   "id": "keep1",
+   "text": "When a sound fits the piece, save it to My Patches.",
+   "beat": "keep",
+   "t0": 40.914,
+   "t1": 45.094
+  },
+  {
+   "id": "keep2",
+   "text": "A saved patch is never replaced, up to a quarter of the pool.",
+   "beat": "keep",
+   "t0": 45.494,
+   "t1": 50.402
+  },
+  {
+   "id": "keep3",
+   "text": "Stars are opinions, and they teach. Then name the sound for its part.",
+   "beat": "keep",
+   "t0": 50.802,
+   "t1": 56.009
+  },
+  {
+   "id": "steps1",
+   "text": "For movement, put Steps on a filter.",
+   "beat": "steps",
+   "t0": 57.343,
+   "t1": 60.068
+  },
+  {
+   "id": "steps2",
+   "text": "You draw up to eight bars, and the timbre plays them as a pattern.",
+   "beat": "steps",
+   "t0": 60.468,
+   "t1": 65.739
+  },
+  {
+   "id": "steps3",
+   "text": "Turn on Sync, and the pattern snaps to the nearest division of the tempo.",
+   "beat": "steps",
+   "t0": 66.139,
+   "t1": 71.41
+  },
+  {
+   "id": "steps4",
+   "text": "It restarts with your first key.",
+   "beat": "steps",
+   "t0": 71.81,
+   "t1": 73.992
+  },
+  {
+   "id": "arp1",
+   "text": "The arpeggiator runs at the same tempo.",
+   "beat": "arp",
+   "t0": 75.2,
+   "t1": 77.745
+  },
+  {
+   "id": "arp2",
+   "text": "Latch a chord with Hold, and the line plays itself while you shape the sound.",
+   "beat": "arp",
+   "t0": 78.145,
+   "t1": 83.78
+  },
+  {
+   "id": "clock1",
+   "text": "Send MIDI clock from your sequencer, and both follow its tempo.",
+   "beat": "clock",
+   "t0": 85.2,
+   "t1": 89.38
+  },
+  {
+   "id": "clock2",
+   "text": "A MIDI start brings the sequencers and the arpeggiator in on its downbeat.",
+   "beat": "clock",
+   "t0": 89.78,
+   "t1": 94.507
+  },
+  {
+   "id": "scenes1",
+   "text": "Inside a part, Keep marks a sound as home, and Back glides the knobs home again.",
+   "beat": "scenes",
+   "t0": 95.914,
+   "t1": 102.092
+  },
+  {
+   "id": "scenes2",
+   "text": "Between parts, step through My Patches with the bracket keys.",
+   "beat": "scenes",
+   "t0": 102.492,
+   "t1": 106.309
+  },
+  {
+   "id": "scenes3",
+   "text": "Held notes carry across the change without a click.",
+   "beat": "scenes",
+   "t0": 106.709,
+   "t1": 109.982
+  },
+  {
+   "id": "record1",
+   "text": "Press record, play the part, and press stop.",
+   "beat": "record",
+   "t0": 111.629,
+   "t1": 114.898
+  },
+  {
+   "id": "record2",
+   "text": "The take downloads as a WAV file, the instrument's own output after its limiter.",
+   "beat": "record",
+   "t0": 115.298,
+   "t1": 120.569
+  },
+  {
+   "id": "share1",
+   "text": "To keep a sound with the piece, export it as a patch file.",
+   "beat": "share",
+   "t0": 122.343,
+   "t1": 127.25
+  },
+  {
+   "id": "share2",
+   "text": "Or export a picture of the rack, with the patch inside it.",
+   "beat": "share",
+   "t0": 127.65,
+   "t1": 132.194
+  },
+  {
+   "id": "share3",
+   "text": "Drop either onto Auracle, and it opens as the same patch.",
+   "beat": "share",
+   "t0": 132.594,
+   "t1": 136.774
+  },
+  {
+   "id": "outro1",
+   "text": "Everything autosaves in your browser. Before you move machines, save your taste profile too.",
+   "beat": "outro",
+   "t0": 138.057,
+   "t1": 143.628
+  }
+ ],
+ "cues": {}
+}

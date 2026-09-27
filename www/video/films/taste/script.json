@@ -5,7 +5,7 @@
   "fps": 30,
   "voice": {
     "voice": "af_heart",
-    "speed": 0.82
+    "speed": 0.9
   },
   "music": {
     "bed": "study",
@@ -18,156 +18,156 @@
       "id": "hook",
       "music": "loop_a",
       "lead": 1.6,
-      "tail": 0.4,
+      "tail": 0.2,
       "lines": [
         {
           "id": "hook1",
-          "text": "You know which of two sounds you prefer long before you can say why.",
-          "post": 0.5
+          "text": "You know which of two sounds you like, long before you can say why.",
+          "post": 0.35
         },
         {
           "id": "hook2",
           "text": "So Auracle never asks you to describe a sound. It asks you to choose.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "hears",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "hears1",
           "text": "Behind every choice, it listens for the things you hear: how bright a sound is, how noisy, how it starts, and how fast it moves.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "hears2",
           "text": "That's eighteen measurements of every patch's sound, all from the same short phrase, and twenty-six more of how the patch is built.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "evidence",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "evidence1",
           "text": "Each pick is evidence: you liked this set of measurements more than that one.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "evidence2",
           "text": "Many tastes could explain one pick. A few picks rule most of them out.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "posterior",
       "music": "loop_b",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "posterior1",
           "text": "Auracle keeps every taste that still fits, weighted by how well it fits.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "posterior2",
           "text": "With every answer, that cloud of possible tastes draws tighter.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "lenses",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "lenses1",
           "text": "And taste isn't one direction. You can love dark drones and bright plucks.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "lenses2",
           "text": "So the model keeps several lenses, and a sound only has to please one of them.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "forecast",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "forecast1",
           "text": "Before every duel, it writes down a forecast. Afterwards, it checks.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "forecast2",
           "text": "The TRUST view shows how honest those forecasts have been, even when the answer is: no better than a coin flip, yet.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "search",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "search1",
           "text": "Then it searches. Evolution proposes new patches from a grammar of modules, and your taste tilts every proposal toward what you'll like.",
-          "post": 0.4
+          "post": 0.35
         },
         {
           "id": "search2",
           "text": "Thousands are heard silently. Only the best few ever reach you.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "reading",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "reading1",
           "text": "You can read what it learned: a map of every patch you've heard, the styles it found, and each direction with its uncertainty.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "playing",
-      "lead": 0.3,
-      "tail": 0.3,
+      "lead": 0.2,
+      "tail": 0.2,
       "lines": [
         {
           "id": "playing1",
           "text": "And when you play, it keeps listening. An offer you hear, then take or pass, counts just like a duel.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     },
     {
       "id": "outro",
-      "lead": 0.4,
+      "lead": 0.2,
       "tail": 2.8,
       "lines": [
         {
           "id": "outro1",
           "text": "Your taste, learned in the open. And it never leaves your browser.",
-          "post": 0.3
+          "post": 0.25
         }
       ]
     }

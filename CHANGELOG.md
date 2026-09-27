@@ -8,6 +8,41 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — held notes, MIDI, and the TRUST count
+
+- **Held notes stay held.** A trill played over a held chord took the chord's
+  voices one by one: stealing went by age, and the held notes were the oldest.
+  A new note now takes, in order, the voice already on that note, a silent
+  voice, the release tail that began first, and only then the oldest held
+  note. A trill cycles through tails and the chord under it holds
+  (`held_notes_survive_a_trill_over_them` in `live.rs`).
+- **MIDI says why it is unavailable.** The MIDI panel said "no device — plug
+  one in" whether the browser had no Web MIDI (Safari), was still waiting on a
+  permission prompt (Firefox asks to add a site permission), had been refused
+  it, or failed to open MIDI. The dock now reads `midi ?` for all of those, and
+  the panel says which, with a **connect midi** button that asks again from a
+  click. The guide no longer says Web MIDI is Chromium-only: Firefox has it
+  too, and Troubleshooting has a section for a controller that does not play.
+- **TRUST counts every check.** A calibration check answered after the next
+  duel had been dealt was recorded as an ordinary duel, so the check count
+  could sit at 0 of 20 after thirty random duels. The engine now remembers the
+  last 32 checks it dealt
+  (`a_check_answered_after_the_next_deal_still_counts`).
+
+### Changed — the keys reach C0 to C8
+
+<kbd>z</kbd> / <kbd>x</kbd> shift the computer keymap from `a = C0` to
+`a = C7`, and the on-screen keybed follows, so every note of an 88-key piano
+is in reach.
+
+### Changed — one name in the tab, one address
+
+Every tab reads **Auracle**, or **Auracle | Play**, **Auracle | Guide**,
+**Auracle | Reference**, with nothing after it. The site moves to
+**auracle.alexnodeland.com**, and the github.io address redirects there. The
+landing page and the in-app help point at it, and the screenshots are
+re-captured from a taught session by `www/capture-screens.mjs`.
+
 ### Added — booth mode
 
 For a kiosk (⋯ menu, or `?booth` on the URL; `?booth=30` for a 30 s idle):
@@ -2210,16 +2245,17 @@ collects, for the reason above.
 
 ### Fixed — three counts and one screen that does not exist
 
-- **The preset library is 61 patches across seven families, not 29.** The guide
+- **The preset library is 62 patches across seven families, not 29.** The guide
   and the reference had both been quoting the count from an earlier wave; a
   screenshot in the guide had been showing `presets 61` next to prose saying
   twenty-nine. The warm start's nine cards are also described correctly now:
   one per family first, then filled out to nine, rather than "one per family".
-- **Keep/kill has no UI surface.** The guide's table of teaching signals sent
+- **Keep/kill has no triage screen.** The guide's table of teaching signals sent
   readers to a "Triage" screen that has never been built. The likelihood, the
-  per-session threshold and `Engine::record_keep` are all real and reachable
-  through the wasm binding, but nothing in `apps/web` calls them. The guide, the
-  reference and `DESIGN.md` now say so.
+  per-session threshold and `Engine::record_keep` are all real; in `apps/web`
+  only the bank's **cut** calls it, recording a kill once its undo window
+  closes, and nothing records a keep. The guide, the reference and `DESIGN.md`
+  now say so.
 - The README's architecture diagram named Thompson sampling as the duel
   acquisition rule. It is selectable, it is not the default, and it measurably
   loses; the default is uniform pairing. The diagram now says so.
