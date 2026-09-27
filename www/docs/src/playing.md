@@ -60,8 +60,11 @@ again and it belongs to your finger again. The pedal is separate from
 The whole map, including bend range and how encoders are detected, is in
 [Keyboard and MIDI](./keyboard.md#midi).
 
-Web MIDI is Chromium-only today. In Firefox and Safari the other two paths are
-unaffected.
+Web MIDI works in Chrome, Edge and the other Chromium browsers, and in
+Firefox, which asks the first time whether to add a site permission for it.
+Safari has none; there the other two ways in still play. Whenever MIDI is not
+available the dock reads `midi ?`, and the MIDI panel says why, with a
+**connect midi** button that asks again.
 
 ## The dock
 

@@ -141,8 +141,10 @@ with knobs and they work too.
 | MIDI clock | Sets the tempo |
 | CC 120, CC 123 | All sound off / all notes off: the same as **◼** |
 
-Web MIDI is Chromium-only today. In Firefox and Safari the computer keyboard
-and the on-screen keys are unaffected.
+Web MIDI works in Chromium browsers and in Firefox, which asks once whether
+to add a site permission for it. Safari has none; there the computer keyboard
+and the on-screen keys still play. When MIDI is not available the dock reads
+`midi ?`, and the panel says why and offers **connect midi** to ask again.
 
 ### The MIDI panel
 

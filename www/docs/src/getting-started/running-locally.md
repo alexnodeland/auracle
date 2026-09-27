@@ -92,11 +92,12 @@ years. It uses them hard.
 | | |
 |---|---|
 | **Chrome / Edge** | Recommended. Best worker throughput, and Web MIDI works |
-| **Firefox** | Fully supported. No Web MIDI, so keyboard and on-screen keys only |
+| **Firefox** | Fully supported. Web MIDI works once you allow its site permission |
 | **Safari** | Supported. No Web MIDI. Boot is slower; render workers are capped |
 
-**Web MIDI** is Chromium-only today. Without it everything still works from the
-computer keyboard and the on-screen keys; see [Playing it](../playing.md).
+**Web MIDI** works in Chromium browsers and in Firefox. Without it everything
+still works from the computer keyboard and the on-screen keys; see
+[Playing it](../playing.md).
 
 ### Handheld devices
 
