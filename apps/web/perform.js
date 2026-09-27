@@ -655,6 +655,48 @@ export function createPerform(host) {
     request("perform_record", pick);
   }
 
+  // ---------- a spare offer, grown ahead ----------
+  // Offer used to cost ~10 s of renders after the press — the one gesture no
+  // other instrument has, made to wait. Once a patch has been steady for a few
+  // seconds and nothing else is asking the engine for anything, one offer is
+  // grown in the background and kept; Offer hands it over at once. It belongs
+  // to the sound it grew from: a new patch discards it (the generation
+  // changes), and so do hands that have carried the knobs outside the trust
+  // region it was grown in, since it would no longer be a variant of *this*.
+  const SPARE_STEADY_MS = 6000;
+  function spareFresh(sp) {
+    for (const [a, v] of state.cur.knobs) {
+      const at = sp.at.get(a);
+      if (at == null || Math.abs(liveValue(a) - at) > TRUST) return false;
+    }
+    return true;
+  }
+  function growSpare() {
+    const now = performance.now();
+    if (!state.visible || !state.cur || !state.wire || state.spare || state.offer) return;
+    if (state.pending.size > 0 || state.glide) return;
+    if (now - (state.changedAt || 0) < SPARE_STEADY_MS || now - state.lastTouch < 2000) return;
+    const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20 });
+    state.pending.get(req).spare = { at: new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)])) };
+  }
+
+  function presentOffer(offer) {
+    state.offer = {
+      json: JSON.stringify(offer.tree),
+      makeup: offer.makeup,
+      taste: !!offer.taste,
+      changes: host.describeDiff && offer.diff ? host.describeDiff(offer.diff) : "",
+    };
+    const live = host.live();
+    if (live) {
+      live.bPatch(state.offer.json, state.offer.makeup);
+      live.bMix(state.visible ? state.blend : 0);
+    }
+    renderOffer();
+    knobs.forEach(paintKnob);
+    logImplicit("perform_offer", { why: state.offerWhy || "" });
+  }
+
   function requestDrift() {
     if (!state.cur || state.glide || inFlight("perform_drift")) return;
     const pace = wanderPace(state.wander);
@@ -670,11 +712,27 @@ export function createPerform(host) {
   }
 
   function requestOffer(why) {
-    if (!state.cur || inFlight("perform_offer")) return;
+    if (!state.cur) return;
+    const growing = [...state.pending.values()].find((q) => q.kind === "perform_offer" && q.gen === state.gen);
+    if (growing && !growing.spare) return;
     // Asking again after hearing B is passing on it.
     if (state.offer) answerOffer(false);
     state.lastMove = performance.now();
     state.offerWhy = why || "";
+    // A spare grown ahead from this sound is handed over at once; one still
+    // growing is claimed, and lands in B the moment it is done.
+    if (state.spare && spareFresh(state.spare)) {
+      const sp = state.spare;
+      state.spare = null;
+      presentOffer(sp.offer);
+      return;
+    }
+    state.spare = null;
+    if (growing) {
+      growing.promote = true;
+      renderOffer("growing an offer…");
+      return;
+    }
     // Twenty steps is ~10 s of renders: long enough to find a real variant,
     // short enough to still be the same moment in a performance. Roam asks
     // for a longer walk and so a farther offer.
@@ -796,24 +854,16 @@ export function createPerform(host) {
       return true;
     }
     if (m.type === "perform_offered") {
+      // A spare nobody has asked for yet is kept, not shown.
+      if (p.spare && !p.promote) {
+        if (m.offer && m.offer.tree) state.spare = { offer: m.offer, at: p.spare.at };
+        return true;
+      }
       if (!m.offer || !m.offer.tree) {
         renderOffer(whyNot(m, m.offer, "no offer beat this patch — try again, or loosen a lock"));
         return true;
       }
-      state.offer = {
-        json: JSON.stringify(m.offer.tree),
-        makeup: m.offer.makeup,
-        taste: !!m.offer.taste,
-        changes: host.describeDiff && m.offer.diff ? host.describeDiff(m.offer.diff) : "",
-      };
-      const live = host.live();
-      if (live) {
-        live.bPatch(state.offer.json, state.offer.makeup);
-        live.bMix(state.visible ? state.blend : 0);
-      }
-      renderOffer();
-      knobs.forEach(paintKnob);
-      logImplicit("perform_offer", { why: state.offerWhy || "" });
+      presentOffer(m.offer);
       return true;
     }
     if (m.type === "perform_grafted") {
@@ -876,6 +926,8 @@ export function createPerform(host) {
     state.glide = null;
     state.grafted.clear();
     state.deferredWire = null;
+    state.spare = null;
+    state.changedAt = performance.now();
     state.revalidating = false;
     if (state.offer) clearOffer();
     if (state.visible) wire();
@@ -1345,6 +1397,7 @@ export function createPerform(host) {
 
   // ---------- the wander clock ----------
   setInterval(() => {
+    growSpare();
     if (!state.visible || state.hold || !state.cur || !state.wire) return;
     const now = performance.now();
     if (now - state.lastTouch < HANDS_OFF_MS) return;

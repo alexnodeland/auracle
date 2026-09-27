@@ -26,6 +26,16 @@ answered, so it cannot teach the model. An offer it leaves in B starts unheard
 for the visitor. `tests/web/booth.spec.js` walks it: attract starts, a control
 moves, one key hands over, no pick recorded.
 
+### Changed — Offer answers at once
+
+Offer used to start ~10 s of renders on the press: the one gesture no other
+instrument has, made to wait. Once a patch has been steady for six seconds and
+nothing else is asking the engine for anything, PERFORM grows one offer in the
+background and keeps it. Offer hands it over at once, and a press while it is
+still growing claims it. A spare belongs to the sound it grew from: a new
+patch discards it, and so does moving the knobs outside the region it grew
+in. Measured: 0.15 s from press to B, against ~10 s grown on demand.
+
 ### Changed — PERFORM is playable at once on a patch it has measured before
 
 Measuring a patch takes seconds (about one render per knob, plus
