@@ -535,33 +535,72 @@ export function createPerform(host) {
     return false;
   }
 
-  // Measured wirings, by patch and by how much the taste model had seen when
-  // it measured them. A measurement is ~one render per knob plus the
-  // verification renders — seconds, on the same worker that fills the pool —
-  // and a player flicking between presets asks for the same few again and
-  // again. Only a first measurement (no knob overrides yet) is cached: that is
-  // the one a patch change asks for, and it is a pure function of the tree
-  // and the model.
-  const wireCache = new Map();
-  const WIRE_CACHE_MAX = 24;
-  const wireKey = (json) => `${host.tasteRev ? host.tasteRev() : 0}|${json}`;
+  // Measured wirings, by patch. A measurement is ~one render per knob plus
+  // the verification renders — seconds, on the same worker that fills the
+  // pool — and a player flicking between presets asks for the same few again
+  // and again, so every first measurement (no knob overrides yet) is kept,
+  // tagged with how much the model had seen when it was taken (a refit moves
+  // the standardizer the wiring is expressed in).
+  //
+  // Stale-while-revalidate: a patch measured before is playable *at once*
+  // from its last measurement, whatever the tag, and re-measured in the
+  // background when the tag is stale. The directions a control turns its
+  // knobs survive a refit — the standardizer rescales each coordinate by a
+  // positive factor — so the old wiring is right about what the knobs do,
+  // and the fresh one only sharpens how far. The cache persists across
+  // reloads, so a booth machine that has visited its demo set once never
+  // says "measuring…" on it again.
+  const WIRE_CACHE_MAX = 48;
+  const WIRE_STORE = "auracle-perform-wirings";
+  const tasteRev = () => (host.tasteRev ? host.tasteRev() : 0);
+  const wireCache = (() => {
+    try {
+      const raw = localStorage.getItem(WIRE_STORE);
+      return new Map(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Map();
+    }
+  })();
+  let wireSaveTimer = null;
+  function rememberWiring(json, data, rev) {
+    wireCache.delete(json);
+    while (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
+    wireCache.set(json, { data: structuredClone(data), rev });
+    clearTimeout(wireSaveTimer);
+    wireSaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(WIRE_STORE, JSON.stringify([...wireCache]));
+      } catch {
+        // Quota or a private window: the cache is a convenience, never
+        // load-bearing. Halve it and carry on in memory.
+        const keep = [...wireCache].slice(-Math.floor(WIRE_CACHE_MAX / 2));
+        wireCache.clear();
+        keep.forEach(([k, v]) => wireCache.set(k, v));
+      }
+    }, 1500);
+  }
 
   function wire() {
     if (!state.cur) return;
-    if (state.cur.knobs.size === 0) {
-      const hit = wireCache.get(wireKey(state.cur.json));
-      if (hit) {
-        applyWired(structuredClone(hit));
-        knobs.forEach(paintKnob);
-        renderHood();
-        return;
-      }
+    const first = state.cur.knobs.size === 0;
+    const hit = first ? wireCache.get(state.cur.json) : null;
+    if (hit) {
+      applyWired(structuredClone(hit.data));
+      knobs.forEach(paintKnob);
+      renderHood();
+      if (hit.rev === tasteRev()) return;
+      // Playable now; the fresh measurement lands when it lands.
+      state.revalidating = true;
+      renderStatus();
+      const req = request("perform_wire", { tree: state.cur.json, overrides: [] });
+      state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
+      return;
     }
     state.measuring = true;
     renderStatus();
     knobs.forEach(paintKnob);
     const req = request("perform_wire", { tree: state.cur.json, overrides: overrides() });
-    if (state.cur.knobs.size === 0) state.pending.get(req).cacheAs = wireKey(state.cur.json);
+    if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev() };
   }
 
   // ---------- offers are duels ----------
@@ -575,6 +614,13 @@ export function createPerform(host) {
   const HEARD_MS = 1000;
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
+    if (state.deferredWire && performance.now() - state.lastTouch >= 1500) {
+      const d = state.deferredWire;
+      state.deferredWire = null;
+      applyWired(d);
+      knobs.forEach(paintKnob);
+      renderHood();
+    }
     const o = state.offer;
     if (!o || !state.visible) return;
     if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) o.heardMs = (o.heardMs || 0) + 250;
@@ -695,10 +741,7 @@ export function createPerform(host) {
     state.applyThen.delete(m.req);
     // A measurement is kept even when the player has already moved on: it
     // is still true of that patch, and flicking back is the common case.
-    if (p.cacheAs && m.type === "perform_wired" && m.data) {
-      if (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
-      wireCache.set(p.cacheAs, structuredClone(m.data));
-    }
+    if (p.cacheAs && m.type === "perform_wired" && m.data) rememberWiring(p.cacheAs.json, m.data, p.cacheAs.rev);
     // A recorded pick is in the log whatever has happened to the sound since.
     if (m.type === "perform_recorded") {
       if (m.recorded) host.voteLanded?.();
@@ -708,6 +751,20 @@ export function createPerform(host) {
     if (p.gen !== state.gen) return true;
     if (m.error) console.warn(`[perform] ${p.kind}:`, m.error);
     if (m.type === "perform_wired") {
+      if (p.cacheAs && p.cacheAs.quiet) {
+        // A background re-measurement of a patch already playing from its
+        // last one: never clears a working wiring, and never re-centres the
+        // controls under a moving hand — it waits for a pause.
+        state.revalidating = false;
+        if (m.data) {
+          if (performance.now() - state.lastTouch < 1500) state.deferredWire = m.data;
+          else applyWired(m.data);
+        }
+        knobs.forEach(paintKnob);
+        renderHood();
+        renderStatus();
+        return true;
+      }
       if (!m.data) {
         state.measuring = false;
         state.wire = null;
@@ -812,6 +869,8 @@ export function createPerform(host) {
     state.wire = null;
     state.glide = null;
     state.grafted.clear();
+    state.deferredWire = null;
+    state.revalidating = false;
     if (state.offer) clearOffer();
     if (state.visible) wire();
     knobs.forEach(paintKnob);
@@ -1101,6 +1160,7 @@ export function createPerform(host) {
     else if (state.wire) {
       const n = state.wire.filter((w) => !w.search).length;
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
+      if (state.revalidating) parts.push("re-checking");
     }
     if (state.hold) parts.push("wander held");
     else if (z !== "still") parts.push(`wander: ${z}`);

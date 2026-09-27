@@ -8,6 +8,20 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — PERFORM is playable at once on a patch it has measured before
+
+Measuring a patch takes seconds (about one render per knob, plus
+verification), and a booth flicks between the same demo patches all day.
+Every measurement is now kept, keyed by the patch, and persisted across
+reloads. A patch measured before is playable immediately from that
+measurement, and re-measured in the background when the model has refit since
+(the status line says *re-checking*). The directions a control turns its
+knobs survive a refit, since the standardizer only rescales each coordinate,
+so the old wiring is right about what moves and the fresh one sharpens how
+far. It never re-centres the controls under a moving hand; it waits for a
+pause. Measured in headless Chromium: first visits 10–16 s, a revisit 0.12 s,
+the same patch after a reload under 1 s (`tests/web/perform_instant.spec.js`).
+
 ### Added — playing teaches: an offer heard and answered is a pick
 
 PERFORM used the taste model but never fed it: Keep, Take and every turn were
