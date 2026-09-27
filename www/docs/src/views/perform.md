@@ -117,7 +117,7 @@ the ring is drawn only on the side you can turn toward, the control will not
 go past the centre on the other side, and the line under it says so:
 
 ```text
-already as still as it gets
+at the still end
 ```
 
 ### Amber, dashed: search controls
@@ -128,7 +128,7 @@ get rougher by turning a filter, and a patch with no delay or reverb cannot get
 much farther away. Measured over the preset library, **Grit** and **Space** are
 search controls on most patches for exactly that reason.
 
-The line under it reads *not in this patch — turn to ask*. Turning it about a
+The line under it reads *turn to ask for it*. Turning it about a
 third of the way to either end and letting go does one of two things.
 
 **Where one change would give it something to turn, that change is made.**

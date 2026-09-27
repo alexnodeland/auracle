@@ -80,7 +80,7 @@
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
       <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
-        <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, profile &amp; help">⋯</button>
+        <button id="ovf-btn" class="util-btn" aria-haspopup="menu" aria-expanded="false" title="Files, profile &amp; help" aria-label="More: files, profile and help">⋯</button>
         <div class="ovf-menu hidden" id="ovf-menu" role="menu">
           <button id="export-btn" class="ovf-item" role="menuitem">Save taste profile</button>
           <label class="ovf-item" role="menuitem" tabindex="0">Load taste profile<input id="import-input" type="file" accept=".json" hidden></label>
@@ -462,7 +462,7 @@
                legally go (the port pips), and — only once the pool carries
                enough evidence — what the model thinks of it (the θ bar). -->
           <aside class="nodebank" id="nodebank" aria-label="Node bank">
-            <button class="nb-collapse" id="nb-collapse" title="Collapse the node bank" aria-expanded="true" aria-controls="nb-body">▸</button>
+            <button class="nb-collapse" id="nb-collapse" title="Collapse the node bank" aria-label="Collapse the node bank" aria-expanded="true" aria-controls="nb-body">▸</button>
             <!-- Collapsed, the rail keeps its name and its held-count. A drawer
                  that can hide staged work without saying so is a trap. -->
             <button class="nb-rail" id="nb-rail" type="button" aria-label="Show the node bank"></button>
@@ -745,9 +745,14 @@
 <section id="help" class="help-overlay hidden" role="dialog" aria-modal="true" aria-label="How to play">
   <div class="help-card panel">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="help-scroll">
     <div class="boot-title">HOW TO PLAY</div>
-    <div class="help-cols mono">
+    <div class="help-cols">
       <div>
+        <div class="help-h">perform — play it</div>
+        <p><b>Bright, Snap, Motion, Body, Grit</b> and <b>Space</b> are named for what you hear. Each is wired to the knobs of <i>this</i> patch that do that job, measured when it loads, and the strip underneath shows them move. An <b>amber</b> control is one this patch cannot reach: turn it anyway, and it adds what is missing or grows a variant that can.</p>
+        <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. Asking for another is a pass. Once you have heard an offer, either answer teaches the model.</p>
+        <p><b>Wander</b> lets the model play along: a little offers ideas, more drifts the knobs toward your taste, all the way roams. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> holds everything still. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller's first eight knobs claim the eight controls.</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
@@ -755,8 +760,8 @@
         <div class="help-h">the rack canvas</div>
         <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
         <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
-        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a plate by its faceplate and it snaps to the grid — hold <kbd>shift</kbd> to place it freely. <b>apply grid</b> pins everything where it currently sits, which is how you start from an evolved patch. Positions are kept per patch, survive a reload and a generation of ⚡, and travel with an exported patch file.</p>
-        <div class="help-h">performance</div>
+        <p><b>chain</b> draws the signal path on one baseline, <b>compact</b> packs it tight, and <b>freeform</b> is yours: drag a plate by its faceplate and it snaps to the grid — hold <kbd>shift</kbd> to place it freely. <b>snap</b> pins everything where it currently sits, on the grid, which is how you start from an evolved patch. Positions are kept per patch, survive a reload and a generation of ⚡, and travel with an exported patch file.</p>
+        <div class="help-h">the keybed</div>
         <p><b>hold</b> latches notes · <b>arp</b> plays held chords in patterns at the BPM, with octave range, gate and swing · <b>uni</b> stacks all 4 voices detuned · <b>gld</b> slides one note into the next when you play a line (chords stay clean) · <b>● rec</b> bounces your playing to a WAV</p>
         <p><b>⇕ tall</b> gives the keybed the height of a real keyboard, and <b>keys</b> sets how many octaves it shows — fewer octaves, wider keys. Both are worth having if you're playing with fingers.</p>
         <p>A MIDI keyboard just works: velocity, pitch bend, sustain pedal.</p>
@@ -783,7 +788,8 @@
       </div>
     </div>
     <p class="help-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle">source</a></p>
-    <button class="hw-btn small" id="help-close">got it</button>
+    </div>
+    <div class="help-foot"><button class="hw-btn small" id="help-close">got it</button></div>
   </div>
 </section>
 

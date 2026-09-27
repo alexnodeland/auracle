@@ -159,7 +159,12 @@ export function createPerform(host) {
   // First steps: the whole loop in three moves, ticked off as they happen.
   const stepsEl = el("div", "pf-steps mono");
   stepsEl.setAttribute("role", "status");
-  root.append(head, stepsEl, deck, touchRow, pads, offerCard, stage, why);
+  // The marquee row holds the first steps, and in booth mode the attract band
+  // laid over the same slot (main.js moves it in): attract then hides nothing
+  // it is showing off, and nothing moves when a visitor takes over.
+  const marquee = el("div", "pf-marquee");
+  marquee.append(stepsEl);
+  root.append(head, marquee, deck, touchRow, pads, offerCard, stage, why);
 
   // ---------- knobs ----------
   const knobs = [];
@@ -229,13 +234,15 @@ export function createPerform(host) {
         const [lo, hi] = rangeOf(w);
         k.wrap.classList.toggle("half-lo", !search && lo === 0);
         k.wrap.classList.toggle("half-hi", !search && hi === 0);
+        // Short enough for the cell at 1280 px: a caption cut off with an
+        // ellipsis reads as broken, whatever it was going to say.
         k.sub.textContent = search
-          ? "not in this patch — turn to ask"
+          ? "turn to ask for it"
           : lo === 0
-            ? `already as ${w.low} as it gets`
+            ? `at the ${w.low} end`
             : hi === 0
-              ? `already as ${w.high} as it gets`
-              : w.knobs.map(([a]) => knobWord(a)).join(" · ");
+              ? `at the ${w.high} end`
+              : knobWords(w.knobs.map(([a]) => a));
         // A sentence a player can read, not the measurement: addresses,
         // purity and σ are the engineer's, and live in the docs and the
         // under-the-hood strip, not on the knob.
@@ -284,7 +291,7 @@ export function createPerform(host) {
     };
     k.wrap.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      k.wrap.focus();
+      k.wrap.focus({ preventScroll: true });
       k.wrap.setPointerCapture(e.pointerId);
       startY = e.clientY;
       startV = k.value;
@@ -437,7 +444,7 @@ export function createPerform(host) {
     const note = el(
       "span",
       "pf-touch-n",
-      state.touch.sites.length ? `velocity moves ${state.touch.sites.map(([a]) => knobWord(a)).join(" · ")}` : "velocity sets loudness only",
+      state.touch.sites.length ? `velocity moves ${knobWords(state.touch.sites.map(([a]) => a))}` : "velocity sets loudness only",
     );
     touchRow.append(lab, sel, depth, note);
   }
@@ -457,6 +464,14 @@ export function createPerform(host) {
     const info = host.knobInfo ? host.knobInfo(addr, 0) : null;
     const label = (info && info.label) || addr.split("#").pop();
     return withModule && info && info.module ? `${info.module.toLowerCase()} ${label.toLowerCase()}` : label.toLowerCase();
+  }
+
+  // Several knobs as a phrase: bare names where they are unambiguous, with the
+  // module where two share a name ("env attack · lfo attack", never
+  // "attack · attack").
+  function knobWords(addrs) {
+    const bare = addrs.map((a) => knobWord(a));
+    return addrs.map((a, i) => (bare.indexOf(bare[i]) !== bare.lastIndexOf(bare[i]) ? knobWord(a, true) : bare[i])).join(" · ");
   }
 
   function onKnob(k, fromMidi) {
@@ -1284,7 +1299,12 @@ export function createPerform(host) {
     offerCard.classList.toggle("ready", !!state.offer);
     offerCard.append(lab, body);
     // Take and Peek act on an offer; until there is one they look it.
-    for (const k of ["take", "peek"]) if (padEls[k]) padEls[k].disabled = !state.offer;
+    // Waiting, not broken: a disabled pad says what it is waiting for.
+    for (const k of ["take", "peek"]) {
+      if (!padEls[k]) continue;
+      padEls[k].disabled = !state.offer;
+      padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
+    }
   }
 
   why.innerHTML = "";
@@ -1347,7 +1367,11 @@ export function createPerform(host) {
   renderSteps();
 
   // ---------- XY pad ----------
-  const XY = { x: 0, y: 2 }; // named-control indices on each axis
+  // Named-control indices on each axis. Until the player picks, the pad
+  // follows the patch: its two axes are the first two controls this patch
+  // reaches (see pickXY), so the first thing under a finger always moves.
+  const XY = { x: 0, y: 2, chosen: false };
+  const xySels = {};
   const xyHead = el("div", "pf-xy-head mono");
   const xyField = el("div", "pf-xy-field");
   xyField.tabIndex = 0;
@@ -1367,8 +1391,10 @@ export function createPerform(host) {
     sel.value = String(XY[axis]);
     sel.onchange = () => {
       XY[axis] = Number(sel.value);
+      XY.chosen = true;
       paintXY();
     };
+    xySels[axis] = sel;
     return sel;
   };
   xyHead.append(el("span", "pf-xy-cap", "XY"), axisSel("x"), el("span", null, "×"), axisSel("y"));
@@ -1378,7 +1404,19 @@ export function createPerform(host) {
     const w = state.wire && state.wire[i];
     return !!(w && !w.search);
   };
+  // A fresh wiring: unless the player has chosen the axes, put the first two
+  // reachable controls under the finger (Bright × Motion when both reach).
+  function pickXY() {
+    if (XY.chosen || !state.wire) return;
+    const order = [0, 2, 1, 3, 5, 4];
+    const reach = order.filter((i) => xyReach(i));
+    if (reach.length < 2 || (xyReach(XY.x) && xyReach(XY.y))) return;
+    [XY.x, XY.y] = reach.slice(0, 2);
+    if (xySels.x) xySels.x.value = String(XY.x);
+    if (xySels.y) xySels.y.value = String(XY.y);
+  }
   function paintXY() {
+    pickXY();
     const kx = knobs[XY.x], ky = knobs[XY.y];
     if (!kx || !ky) return;
     const cx = (kx.value + 1) / 2, cy = (ky.value + 1) / 2;
@@ -1418,7 +1456,7 @@ export function createPerform(host) {
   };
   xyField.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    xyField.focus();
+    xyField.focus({ preventScroll: true });
     xyField.setPointerCapture(e.pointerId);
     ensureWired();
     setXY(...xyAt(e));
@@ -1520,6 +1558,8 @@ export function createPerform(host) {
   requestAnimationFrame(drawScope);
 
   return {
+    // The row under the title, where booth mode lays its attract band.
+    marquee,
     // For booth attract mode (booth.js): the pads by name, whether a control
     // reaches this patch, whether B holds an offer, and quiet — nothing done
     // while quiet is logged or taught.

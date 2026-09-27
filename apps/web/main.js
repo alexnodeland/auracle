@@ -1186,13 +1186,15 @@ worker.onmessage = (e) => {
       $("wm-lamp").classList.remove("thinking");
       applyViews(m.views);
       applyStatus(m.status);
+      // The bench's guess under the model just fitted ("was" is the old one).
+      if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       refreshInstruments();
       scheduleSave();
       break;
     }
     case "refine_progress": {
       const btn = $("evolve-btn");
-      btn.textContent = `breeding ${m.done + 1}/${m.total}…`;
+      btn.textContent = m.done >= m.total ? "placing in the pool…" : `breeding ${m.done + 1}/${m.total}…`;
       break;
     }
     case "refined": {
@@ -1208,6 +1210,7 @@ worker.onmessage = (e) => {
         for (const id of m.born) lastBorn.add(id);
       }
       applyStatus(m.status);
+      if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       refreshInstruments();
       redrawDuelScopes();
       scheduleSave();
@@ -1231,7 +1234,7 @@ worker.onmessage = (e) => {
       } else if (m.born) {
         offerBankTourAfterFirstGeneration();
         const made = evicted.length
-          ? ` ${evicted.length} lowest-predicted made room.`
+          ? madeRoom(evicted)
           : "";
         note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`);
       } else {
@@ -1787,14 +1790,24 @@ worker.onmessage = (e) => {
         scheduleSave();
         break;
       }
+      const clickedAt = presetClicks.get(m.index);
+      presetClicks.delete(m.index);
+      const row = document.querySelector(`.preset-item[data-index="${m.index}"]`);
+      if (row) { row.classList.remove("loading"); row.removeAttribute("aria-busy"); }
       if (m.id > 0) {
         // Remember which library row this id came from, so the preset bank can
         // say "in bank" and open it next time instead of loading it again.
         // Only the warm-start preview path used to record this, so a plain
         // click re-loaded the same preset forever and never marked it.
         if (m.index !== undefined) presetIds.set(m.index, m.id);
-        openOnBench(m.id);
-        note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
+        if (clickedAt !== undefined && clickedAt !== benchSeq) {
+          // The player opened something else while this was loading: it is in
+          // the bank now, and the patch in their hands stays there.
+          note(`${nameOf(m.id)} is in the bank now — you had moved on, so it was not opened.${madeRoom(evicted)}`);
+        } else {
+          openOnBench(m.id);
+          note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
+        }
         scheduleSave();
       } else {
         // `insert_preset` returns 0 before the standardizer exists, and this
@@ -1946,6 +1959,7 @@ function applyStatus(st) {
   $("gen-count").textContent = st.generation;
   renderTeach();
   renderNextStep();
+  if (!belief.has) renderBelief();
   // A deferred warm start gets one re-offer once the user has proven they'll
   // vote at all — after that it lives in ⋯ only.
   if (
@@ -2179,9 +2193,11 @@ function preemptToast(entry) {
   if (!held) return;
   clearTimeout(held.timer);
   held.timer = null;
-  held.el.classList.remove("out");
   held.el.remove();
   toastLive = null;
+  // A toast already fading out had its whole window: it is spent, not
+  // interrupted, so it is not brought back.
+  if (held.el.classList.contains("out")) return;
   toastQueue.splice(1, 0, held);
 }
 
@@ -2227,9 +2243,11 @@ function renderToastStack() {
 function dismissToast(t, immediate) {
   if (toastLive !== t) {
     // Never made it to the lane: drop it out of the queue rather than leaving
-    // a dead entry to be shown after its moment has passed.
+    // a dead entry to be shown after its moment has passed. And if it is on
+    // screen anyway, it goes: a toast is never left behind with no timer.
     const i = toastQueue.indexOf(t);
     if (i >= 0) toastQueue.splice(i, 1);
+    t.el.remove();
     return;
   }
   clearTimeout(t.timer);
@@ -2239,8 +2257,12 @@ function dismissToast(t, immediate) {
   const b = t.el.querySelector(".toast-undo");
   if (b) { b.disabled = true; b.style.pointerEvents = "none"; }
   t.el.classList.add("out");
+  // The fade can be overtaken: a refusal may pre-empt this toast mid-fade and
+  // take the lane. Then this toast no longer owns the live slot, and clearing
+  // it would orphan the refusal on screen for the rest of the session.
   const gone = () => {
     t.el.remove();
+    if (toastLive !== t) return;
     toastLive = null;
     toastPump();
   };
@@ -2338,7 +2360,7 @@ function renderSkill() {
   }
   const n = E ? E.n : calib.n;
   if (n >= 1) {
-    el.textContent = `calibrating — ${Math.min(n, SKILL_MIN_N)} of ${SKILL_MIN_N} forecasts`;
+    el.textContent = `calibrating · ${Math.min(n, SKILL_MIN_N)}/${SKILL_MIN_N}`;
     el.title = `The model forecasts each duel before your vote; after ${SKILL_MIN_N} it reports how much sharper than a coin flip it has been.`;
   } else {
     el.textContent = "";
@@ -2443,7 +2465,7 @@ function applyViews(next) {
 // is reported as an exchange rather than as a gift.
 function madeRoom(evicted) {
   if (!evicted || evicted.length === 0) return "";
-  return ` ${evicted.length} lowest-predicted made room.`;
+  return ` ${evicted.length === 1 ? "The patch it liked least was" : `The ${evicted.length} patches it liked least were`} retired to make room.`;
 }
 
 function rowOf(id) {
@@ -2836,6 +2858,8 @@ async function bootPerform() {
       queueStruct({ type: "edit_set_tree", json }, null, { op: "perform" });
     },
   });
+  // Booth attract's band lives in PERFORM's marquee row, over the first steps.
+  if (perform.marquee) perform.marquee.append($("booth-attract"));
   if (liveTreeJson) perform.patchChanged(liveTreeJson, liveMakeup);
   let saved = null;
   try { saved = localStorage.getItem("auracle-view"); } catch { /* ignore */ }
@@ -2975,6 +2999,9 @@ async function bootBooth() {
   });
   if (!presetRows) send({ type: "presets" });
   const paintBooth = () => {
+    // Booth mode reserves the attract band's row, so the band can come and go
+    // without moving anything a visitor might be reaching for.
+    document.documentElement.classList.toggle("booth", booth.on);
     $("booth-btn").setAttribute("aria-checked", String(booth.on));
     $("booth-btn").textContent = booth.on ? "Booth mode: on" : "Booth mode";
     $("booth-reset-btn").classList.toggle("hidden", !booth.on);
@@ -3926,16 +3953,34 @@ function applyBelief(m) {
   previewInvalidate();
 }
 
+/** "style 2" is the engine's name for an unnamed mixture component; on the
+ *  surface it is the player's second style. Named ones keep their name. */
+function styleWord(lens) {
+  const m = /^style (\d+)$/.exec(lens);
+  if (!m) return lens;
+  const n = Number(m[1]);
+  const suf = n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th";
+  return `${n}${suf}`;
+}
+
 function renderBelief() {
   const el = $("belief");
   if (!el) return;
   if (!belief.has) {
     el.classList.remove("stale");
+    // Say what is actually missing. "Fitting to your 2 picks…" stayed up
+    // through twenty more picks and a generation: it was only re-rendered
+    // on a bench reply, and it claimed a fit that was not running.
+    const n = status.observations;
+    const fitted = !!(views && views.styles && views.styles.length);
+    const why = fitting
+      ? `fitting to your ${n} pick${n === 1 ? "" : "s"}…`
+      : n === 0 || !fitted
+        ? "not yet — it needs a few picks first"
+        : "no guess for this patch yet";
     el.innerHTML = wb.subjectId == null
       ? ""
-      : status.observations > 0
-        ? `<span class="ex-why">model's guess</span> <span class="bl-none">fitting to your ${status.observations} picks…</span>`
-        : `<span class="ex-why">model's guess</span> <span class="bl-none">not yet — it needs a few picks first</span>`;
+      : `<span class="ex-why">model's guess</span> <span class="bl-none">${why}</span>`;
     return;
   }
   el.classList.toggle("stale", belief.stale);
@@ -3961,7 +4006,7 @@ function renderBelief() {
   el.innerHTML =
     `<span class="ex-why">model's guess</span> <b class="bl-u">${u.toFixed(2)}</b> ${was}${arrow}` +
     (parts.length ? ` <span class="bl-sep">·</span> ${parts.join(" · ")}` : "") +
-    (belief.lens ? ` <span class="ex-lens">under your <b>${esc(belief.lens)}</b> lens</span>` : "") +
+    (belief.lens ? ` <span class="ex-lens">in your <b>${esc(styleWord(belief.lens))}</b> style</span>` : "") +
     (belief.stale ? ` <span class="bl-stale">· re-measuring…</span>` : "");
   el.title = belief.stale
     ? "An edit is in flight — this describes the patch before it."
@@ -4601,6 +4646,7 @@ function renderPresetBank(list) {
     const inBank = loadedId != null && !!rowOf(loadedId);
     const el = document.createElement("div");
     el.className = "bank-item preset-item" + (inBank ? " in-bank" : "");
+    el.dataset.index = String(p.index);
     el.setAttribute("role", "option");
     el.setAttribute("aria-selected", "false");
     el.tabIndex = -1;
@@ -4619,10 +4665,18 @@ function renderPresetBank(list) {
       </div>`;
     const hear = el.querySelector(".bi-hear");
     hear.onclick = () => previewPreset(p, hear);
+    if (presetClicks.has(p.index)) el.classList.add("loading");
     el.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
       if (inBank) { openOnBench(loadedId); showView("play"); }
-      else send({ type: "load_preset", index: p.index });
+      else {
+        // Said at once: the engine may be busy for seconds, and a click
+        // that shows nothing gets clicked again, or given up on.
+        presetClicks.set(p.index, benchSeq);
+        el.classList.add("loading");
+        el.setAttribute("aria-busy", "true");
+        send({ type: "load_preset", index: p.index });
+      }
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
     frag.appendChild(el);
@@ -5023,7 +5077,13 @@ document.addEventListener("click", (e) => {
 });
 
 // ---------- workbench ----------
+// A preset click answered late (the engine busy with renders or a breed) must
+// not take the bench from a patch the player has opened since: every open
+// bumps this, and a click remembers the value it saw.
+let benchSeq = 0;
+const presetClicks = new Map(); // library index -> benchSeq at the click
 function openOnBench(id) {
+  benchSeq += 1;
   // No separate `explain` request any more: the bench reply carries the
   // decomposition of the tree it is describing, so the readout can never name
   // a patch other than the one on screen. See `renderBelief`.
@@ -9875,8 +9935,10 @@ function setFlip(side, on) {
   $(`scope-${side}`).classList.toggle("hidden", on);
   // The raw term is engine truth, not a label. It belongs *with* the circuit
   // view, not permanently under the waveform where it reads as the card's
-  // description — truncated mid-token, at that.
-  $(`readout-${side}`).classList.toggle("hidden", !on);
+  // description — truncated mid-token, at that. And only for those who asked
+  // for the numbers (⋯ › Show measurements): the drawing already says what
+  // the s-expression says, in a form a player can read.
+  $(`readout-${side}`).classList.toggle("hidden", !(on && engineerMode));
   $(`mini-${side}`).classList.toggle("hidden", !on);
   $(`flip-${side}`).textContent = on ? "⇄ wave" : "⇄ circuit";
   if (on && currentDuel) {
@@ -11621,7 +11683,9 @@ function fragParamStrip(frag) {
   let chain = 0;
   for (const [k, v] of Object.entries(body)) {
     if (v && typeof v === "object") { chain += subtreeSize(v); continue; }
-    if (v === "None" || k === "kind") continue;
+    // `uid` is the engine's identity for a module (it keys the lineage and
+    // the locks), not a parameter anyone set: "uid 224" read as a knob.
+    if (v === "None" || k === "kind" || k === "uid") continue;
     const slot = k === "p0" ? 0 : k === "p1" ? 1 : -1;
     if (slot >= 0 && named && !named[slot]) continue; // a one-parameter op
     // Serde field names are the wire, not the silkscreen.
@@ -11659,7 +11723,7 @@ function renderTray() {
       <div class="ti-head">
         <span class="t-jack" title="${esc(jackTitle)}"></span>
         <span class="ti-name">${esc(t.label)}${t.note ? ` <span class="ti-why">${esc(t.note)}</span>` : ""}</span>
-        <button class="t-x" title="Discard">✕</button>
+        <button class="t-x" title="Discard" aria-label="Discard">✕</button>
       </div>
       <div class="ti-params mono">${esc(fragParamStrip(t.frag)) || "—"}</div>`;
     // Discarding something the engine is in the middle of accepting would race
@@ -11764,6 +11828,17 @@ const NB_SUPPORT_MIN = 5;
  *  the posterior does not have. The engine already refuses to let such a θ
  *  move a proposal (`shrink` in engine.rs); the surface has to be at least as
  *  careful, because here it is being read as the user's own taste. */
+/** Why a module has no reading. Two different things used to share one
+ *  sentence: before the first fit there is no model at all, and after it a
+ *  style can simply carry no coordinate for this module — "hasn't been fitted
+ *  yet" after twenty picks and a refit read as the app forgetting them. */
+function unfittedWhy() {
+  const fitted = !!(views && views.styles && views.styles.length);
+  return fitted
+    ? "No reading on this module yet — your picks haven't leaned on it."
+    : "The model hasn't been fitted yet — make a few picks.";
+}
+
 function beliefState(t, support) {
   if (!t) return "unfitted";
   if (support < NB_SUPPORT_MIN) return "thin";
@@ -11945,6 +12020,7 @@ function nbSetCollapsed(shut, silent) {
   const btn = $("nb-collapse");
   btn.textContent = nbState.collapsed ? "◂" : "▸";
   btn.title = nbState.collapsed ? "Show the node bank" : "Collapse the node bank";
+  btn.setAttribute("aria-label", btn.title);
   btn.setAttribute("aria-expanded", String(!nbState.collapsed));
   if (nbState.collapsed) disarm();
   if (!silent) nbSave();
@@ -12100,7 +12176,7 @@ function nbPaintTheta(cell, m, byPhi, total) {
     cell.innerHTML = "";
     cell.title =
       state === "unmeasured" ? "Not something the taste model measures directly."
-      : state === "unfitted" ? "The model hasn't been fitted yet — make a few picks."
+      : state === "unfitted" ? unfittedWhy()
       : state === "thin" ? `Too little to go on — ${sup} of ${total} patches carry this.`
       : `The model has looked and has no lean either way (θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}).`;
     return;
@@ -12352,7 +12428,7 @@ function specParts(m) {
   if (state === "unmeasured") {
     belief = `<span class="sp-dim">Not a coordinate the taste model measures on its own.</span>`;
   } else if (state === "unfitted") {
-    belief = `<span class="sp-dim">The model hasn't been fitted yet — make a few picks.</span>`;
+    belief = `<span class="sp-dim">${unfittedWhy()}</span>`;
   } else if (state === "thin") {
     belief = `<span class="sp-dim">In ${sup} of ${total} patches — too few for the model to have an opinion yet.</span>`;
   } else if (state === "flat") {
@@ -15007,7 +15083,7 @@ function renderStyleChips() {
       `<i style="background:${color};box-shadow:0 0 6px ${color}"></i>` +
       `<input class="sc-name" maxlength="24" value="${esc(s.name || "")}" placeholder="${esc(styleName(s, k))}" title="Name this style">` +
       `<span class="sc-share">${Math.round(s.share * 100)}%</span>` +
-      `<button class="sc-play" title="Audition this style's exemplar">▶</button>`;
+      `<button class="sc-play" title="Audition this style's exemplar" aria-label="Hear this style">▶</button>`;
     const input = chip.querySelector(".sc-name");
     // Sized to its text (or placeholder): a fixed 168 px clipped an
     // auto-name like "env mods + sidechained" mid-word.
@@ -15416,6 +15492,11 @@ function drawDirectionsTab(ctx, w, h, dpr) {
   ctx.strokeStyle = "rgba(255,180,84,0.28)";
   ctx.beginPath(); ctx.moveTo(cx, rowH * 0.4); ctx.lineTo(cx, h - rowH * 0.4); ctx.stroke();
 
+  // A bar is at most 0.7 of the half-width and its ±σ whisker at most 0.3,
+  // so neither can reach the label column: a long negative bar plus its
+  // whisker used to strike through "filtering" and "shimmer". The clip is the
+  // belt to that pair of braces.
+  const barMax = usable * 0.7;
   names.forEach((name, i) => {
     const y = rowH * (i + 1);
     ctx.fillStyle = INK.amberDim;
@@ -15423,25 +15504,32 @@ function drawDirectionsTab(ctx, w, h, dpr) {
     ctx.fillText(niceName(name), cx - usable - 10 * dpr, y + 3 * dpr);
     ctx.textAlign = "left";
     const lane = 7 * dpr;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cx - usable - 2 * dpr, 0, 2 * usable + 4 * dpr, h);
+    ctx.clip();
     styles.forEach((s, si) => {
       const r = s.theta.find((t) => t.name === name);
       if (!r) return;
       const yy = y + (si - (styles.length - 1) / 2) * lane;
-      const len = (r.mean / maxAbs) * usable;
-      const wl = Math.min((r.std / maxAbs) * usable, usable * 0.4);
+      const len = (r.mean / maxAbs) * barMax;
+      const wl = Math.min((r.std / maxAbs) * barMax, usable * 0.3);
       const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
       ctx.fillStyle = color;
       ctx.shadowColor = color;
       ctx.shadowBlur = 6;
       ctx.fillRect(Math.min(cx, cx + len), yy - 2 * dpr, Math.abs(len), 4 * dpr);
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = "rgba(255,220,160,0.5)";
+      // Silk, not a fourth amber: the whisker is a reading about the bar,
+      // and has to show over it.
+      ctx.strokeStyle = "rgba(217,212,200,0.55)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx + len - wl, yy);
       ctx.lineTo(cx + len + wl, yy);
       ctx.stroke();
     });
+    ctx.restore();
   });
 }
 
@@ -15638,17 +15726,33 @@ const SITE_NAMES = {
   rsize: "reverb size", rdamp: "reverb damp", rmix: "reverb mix",
 };
 
+const STRUCT_SITES = new Set(["op", "src", "mod"]);
+const SKIP_SITES = new Set(["leaf", "uid"]);
+
 function humanizeDiff(diff) {
   if (!diff || diff.length === 0) return "no visible change";
   const parts = [];
   const added = diff.filter((d) => d.before == null);
   const removed = diff.filter((d) => d.after == null);
   const changed = diff.filter((d) => d.before != null && d.after != null);
-  for (const d of changed.slice(0, 3)) {
+  // In a player's words: knob values in their own units ("cutoff 1.2 kHz →
+  // 3.4 kHz", not "cut 0.41→0.62"), a swapped module as the swap ("filter →
+  // distortion", not "op filter→distortion"), and no grammar bookkeeping (a
+  // leaf's kind flips whenever a module is swapped, which says it better).
+  const shown = changed.filter((d) => !SKIP_SITES.has(d.addr.split("#").pop()));
+  for (const d of shown.slice(0, 3)) {
     const site = d.addr.split("#").pop();
-    parts.push(`${SITE_NAMES[site] || site} ${d.before}→${d.after}`);
+    if (STRUCT_SITES.has(site)) { parts.push(`${d.before} → ${d.after}`); continue; }
+    const name = SITE_NAMES[site] || site;
+    // A continuous site's display value is its latent position, two decimals
+    // in [0, 1] (grammar `display_value`); anything else (an octave "+1", an
+    // enum name) is already in words.
+    const latent = (v) => /^-?\d+\.\d\d$/.test(v) && Number(v) >= 0 && Number(v) <= 1;
+    parts.push(latent(d.before) && latent(d.after)
+      ? `${name} ${knobUnit(d.addr, Number(d.before))} → ${knobUnit(d.addr, Number(d.after))}`
+      : `${name} ${d.before} → ${d.after}`);
   }
-  if (changed.length > 3) parts.push(`+${changed.length - 3} more`);
+  if (shown.length > 3) parts.push(`+${shown.length - 3} more`);
   const struct = (list, sign) => {
     const ops = list.filter((d) => d.addr.endsWith("#op") || d.addr.endsWith("#src") || d.addr.endsWith("#mod"));
     // "no mod" / "none" are the empty slot, not a module: filling a slot
@@ -16901,7 +17005,12 @@ function showHelp(on) {
     // A modal that doesn't move focus is a modal a keyboard user cannot reach
     // or leave.
     helpReturnFocus = document.activeElement;
-    $("help-close").focus();
+    // Focus without scrolling to it: GOT IT is the card's last line, and
+    // focusing it scrolled a card taller than the window to its foot, so the
+    // dialog opened with its title cut off at every window size.
+    const card = el.querySelector(".help-card");
+    if (card) card.scrollTop = 0;
+    $("help-close").focus({ preventScroll: true });
   } else if (!on && wasOpen) {
     if (helpReturnFocus && helpReturnFocus.focus) helpReturnFocus.focus();
     helpReturnFocus = null;

@@ -679,6 +679,18 @@ function postLiveTree(edited) {
   });
 }
 
+// What the model makes of the bench, without a render: a dot product against
+// the bench's cached φ under whatever posterior the engine holds now. Rides
+// with every refit, or the line above the rack goes on showing the guess from
+// before the fit — or "not yet" — until the next knob turn.
+function benchBelief() {
+  try {
+    return { utility: JSON.parse(engine.edit_utility()), explain: JSON.parse(engine.edit_explain()) };
+  } catch {
+    return null;
+  }
+}
+
 function postBench(extra) {
   const buf = engine.edit_render();
   const arr = new Float32Array(buf);
@@ -991,7 +1003,7 @@ async function dispatch(m) {
           beginLongOp();
           try {
             engine.fit();
-            post({ type: "fitted", views: tasteViews(), status: status() });
+            post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
           } finally {
             endLongOp();
           }
@@ -1144,7 +1156,7 @@ async function dispatch(m) {
       beginLongOp();
       try {
         engine.fit();
-        post({ type: "fitted", views: tasteViews(), status: status() });
+        post({ type: "fitted", views: tasteViews(), status: status(), bench: benchBelief() });
       } finally {
         endLongOp();
       }
@@ -1181,7 +1193,10 @@ async function dispatch(m) {
           if (childId > 0) born.push(childId);
           else reasons.push(refineReason());
         }
-        post({ type: "refined", views: tasteViews(), status: status(), born, reasons });
+        // The last seed is bred; what is left is placing the children and
+        // re-drawing the views. Said, or the button sits on "10/10…".
+        post({ type: "refine_progress", done: seeds.length, total: seeds.length });
+        post({ type: "refined", views: tasteViews(), status: status(), born, reasons, bench: benchBelief() });
       } finally {
         endLongOp();
       }
