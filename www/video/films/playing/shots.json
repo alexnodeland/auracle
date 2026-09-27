@@ -314,10 +314,10 @@
       ],
       "marks": {"offer-pad": ".pf-pad.primary", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']"},
       "actions": [
-        {"at": 0.1, "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": 2750},
-        {"at": 2.957, "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2750},
-        {"at": 5.814, "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2750},
-        {"at": 8.671, "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": "end"},
+        {"at": 0.1, "op": "hold", "keys": ["a", "d", "g"], "until": 0.6, "until_snap": "bar"},
+        {"at": 0.6, "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2750},
+        {"at": 3.457, "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2750},
+        {"at": 6.314, "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": "end"},
         {"at": "outro1:Nothing", "op": "click", "sel": ".pf-pad.primary"},
         {"at": "outro1:phrase", "op": "drag", "sel": ".pf-knob[data-i='6']", "dy": -90, "ms": 2200}
       ]
