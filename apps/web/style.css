@@ -4589,6 +4589,9 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
   font-size: var(--t-body);
 }
 .midi-h { font-family: var(--font-silk); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: var(--t-label); color: var(--silk-dim); margin-bottom: var(--s2); }
+/* Why there is nothing to list: no Web MIDI, a prompt, a refusal, or no device. */
+.midi-why { font-size: var(--t-body); line-height: 1.45; color: var(--silk); max-width: 34ch; margin: 0 0 var(--s2); text-wrap: pretty; }
+.midi-why + .util-btn { margin-bottom: var(--s3); }
 .midi-rows { display: grid; gap: 4px; }
 .midi-row { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: var(--s2); align-items: center; }
 /* Eight rows of full-height keybar buttons made a panel taller than the knob

@@ -3951,9 +3951,23 @@ async function bootMidi() {
       sendArp();
     },
     note,
-    onDevices: (n) => {
-      $("midi-ind").textContent = n > 0 ? `midi ●${n > 1 ? n : ""}` : "midi —";
-      $("midi-ind").classList.toggle("on", n > 0);
+    // A device (●), none plugged in (—), or MIDI itself not reachable yet
+    // (?): no Web MIDI in this browser, a permission prompt unanswered, or
+    // access refused. The panel says which, and how to fix it.
+    onDevices: (n, status = "ready") => {
+      const ind = $("midi-ind");
+      ind.textContent = n > 0 ? `midi ●${n > 1 ? n : ""}` : status === "ready" ? "midi —" : "midi ?";
+      ind.classList.toggle("on", n > 0);
+      ind.title =
+        n > 0 || status === "ready"
+          ? "MIDI: devices, knob mapping, clock"
+          : status === "unsupported"
+            ? "MIDI: this browser has no Web MIDI — click for which ones do"
+            : status === "denied"
+              ? "MIDI: access refused — click for how to allow it"
+              : status === "failed"
+                ? "MIDI: the browser couldn't open MIDI — click to try again"
+                : "MIDI: waiting for the browser's permission — click to connect";
     },
   });
   midi.attachPanel($("midi-panel"));
