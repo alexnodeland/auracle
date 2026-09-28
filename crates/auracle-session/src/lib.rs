@@ -2374,7 +2374,71 @@ mod tests {
         );
     }
 
-    /// A profile written before raw-φ logging still loads and still means
+    /// The check cadence counts pairs the player was shown, not pairs dealt.
+    /// The app deals the next pair ahead and throws some deals away unseen
+    /// (the engine dealt the pair on the table, a side was cut or replaced,
+    /// a pick was taken back); counted at the deal, a scheduled check could
+    /// be one of those and the calibration subsample shrank. Here every pair
+    /// shown is preceded by two deals thrown away: each is dealt under the
+    /// same schedule as the one shown, and exactly every third pair shown is
+    /// a check.
+    #[test]
+    fn discarded_deals_do_not_advance_the_check_cadence() {
+        let mut rng = StdRng::seed_from_u64(0xDEA1);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            acquisition: Acquisition::Thompson,
+            duel_check_every: 3,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        // Nine pairs shown and answered (random, before any fit): the next
+        // pair shown is the tenth, and checks fall on the 10th, 13th, 16th.
+        for _ in 0..9 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        let checks_before = engine.calibration().check_n;
+        let mut shown = Vec::new();
+        for _ in 0..9 {
+            let thrown: Vec<&str> = (0..2)
+                .map(|_| engine.deal_duel_except(&mut rng, &[]).unwrap().method)
+                .collect();
+            let d = engine.deal_duel_except(&mut rng, &[]).unwrap();
+            assert!(
+                thrown.iter().all(|m| *m == d.method),
+                "a deal thrown away moved the schedule: {thrown:?} then {}",
+                d.method
+            );
+            let (a, b) = (engine.pool[d.a].id, engine.pool[d.b].id);
+            assert!(
+                engine.duel_shown(b, a),
+                "a dealt pair is shown, either order"
+            );
+            assert!(
+                !engine.duel_shown(a, b),
+                "putting it back up is not a second showing"
+            );
+            shown.push(d.method);
+            engine.record_duel(d.a, d.b, true);
+        }
+        assert_eq!(
+            shown,
+            ["check", "thompson", "thompson"].repeat(3),
+            "every third pair shown is a check"
+        );
+        assert_eq!(
+            engine.calibration().check_n,
+            checks_before + 3,
+            "every check shown and answered is scored as one, and nothing thrown away is"
+        );
+    }
+
     /// something: its standardized vectors are inverted back to raw values,
     /// re-projected by name, and the votes survive the feature-set change
     /// that motivated the whole exercise.

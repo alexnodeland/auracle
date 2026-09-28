@@ -5331,6 +5331,7 @@ function placePair(pair, meta) {
     setDuelSelection(null);
     dealCards();
     mark("pair-dealt");
+    send({ type: "duel_shown", a: currentDuel[0], b: currentDuel[1] });
   }
   renderPlayDuel();
   // The pair is on the table; a refit armed by the last vote can now be

@@ -125,6 +125,13 @@ synchronously (`placePair`); the pair is re-checked at that moment against
 cuts and replacements made since (`aheadUsable`). Only with nothing waiting
 does a pick wait for a deal.
 
+The worker deals with `deal_duel_ex`, which does not count the pair as shown;
+`placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
+unseen (the engine re-dealt the pair on the table, a side was cut or
+replaced, a retraction put the old pair back) moves neither the check-probe
+cadence nor the repeat and exposure penalties: under a choosing rule the
+unbiased probes stay one in `duel_check_every` of the pairs the player saw.
+
 ## Audio
 
 `live-audio.js` builds the worklet as a blob with the wasm-bindgen glue

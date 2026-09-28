@@ -1333,7 +1333,17 @@ async function dispatch(m) {
       try {
         // The patches the player cut are never dealt again (`exclude`, ids
         // main holds from the cut on, undo window included).
-        const ex = JSON.parse(engine.next_duel_ex(new Uint32Array(m.exclude || [])));
+        // `deal_duel_ex` deals without counting the pair as shown: main
+        // deals ahead and throws some deals away, and says which pair it put
+        // on the table (`duel_shown` below), so a check dealt and dropped
+        // unseen does not use up the check's turn. Older binary: counted at
+        // the deal, as before.
+        const exclude = new Uint32Array(m.exclude || []);
+        const ex = JSON.parse(
+          typeof engine.deal_duel_ex === "function"
+            ? engine.deal_duel_ex(exclude)
+            : engine.next_duel_ex(exclude),
+        );
         if (ex && ex.a != null) {
           pair = [ex.a, ex.b];
           meta = ex;
@@ -1360,6 +1370,14 @@ async function dispatch(m) {
           try { engine.prefetch_render(id); } catch (_) { break; }
         }
       }
+      break;
+    }
+    // Main put a dealt pair on the table (`placePair`). The engine counts
+    // pairs shown, not dealt: the check cadence and the repeat and exposure
+    // penalties move here. A pair not dealt, or already counted, counts
+    // nothing.
+    case "duel_shown": {
+      try { engine.duel_shown(m.a, m.b); } catch (_) { /* older engine: counted at the deal */ }
       break;
     }
     case "calibration": {

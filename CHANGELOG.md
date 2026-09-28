@@ -70,7 +70,11 @@ changelog that edits its own past is not a record.
   20 s of dimmed cards, with the new pair's sounds rendered after it. Taking
   a pick back puts its pair back and keeps the other as the next, and a
   patch cut meanwhile is never dealt: its pair is dropped and dealt again
-  (`evolve_ahead.spec.js`, `budgets.spec.js`).
+  (`evolve_ahead.spec.js`, `budgets.spec.js`). A pair dropped unseen does not
+  count as asked: under an information-seeking pairing rule the unbiased
+  probes TRUST scores on are one in ten of the pairs you were shown, and a
+  probe dealt ahead and dropped used to take its turn and leave the sample
+  smaller (`discarded_deals_do_not_advance_the_check_cadence`).
 - **What the instrument promises about time is measured.** The app marks
   its own moments (boot start, the veil lifting, the first sound, a full
   pool, PERFORM's controls wired, a patch opened, a pair dealt), every film

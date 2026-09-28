@@ -418,6 +418,15 @@ fn bench_audio(
 /// Parse `tree_json` and write the knob `overrides_json` (`[[addr, value]]`)
 /// into it. Non-finite values and addresses that are not continuous knobs on
 /// this tree are skipped. `None` only if the tree itself does not parse.
+/// The ids a deal must not use, from the worker's `Uint32Array`.
+fn exclude_ids(exclude: Option<Vec<u32>>) -> Vec<u64> {
+    exclude
+        .unwrap_or_default()
+        .into_iter()
+        .map(u64::from)
+        .collect()
+}
+
 fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
     let mut tree = serde_json::from_str::<PatchTree>(tree_json).ok()?;
     let overrides: Vec<(String, f64)> = serde_json::from_str(overrides_json).unwrap_or_default();
@@ -743,7 +752,36 @@ impl WasmEngine {
     ///
     /// `exclude` lists candidate ids that must not be dealt (the patches the
     /// player has cut); omitted, every standardized candidate may be.
+    ///
+    /// The pair counts as shown at once. The app, which deals ahead and
+    /// throws some deals away, uses [`WasmEngine::deal_duel_ex`] and
+    /// [`WasmEngine::duel_shown`] instead.
     pub fn next_duel_ex(&mut self, exclude: Option<Vec<u32>>) -> String {
+        let exclude = exclude_ids(exclude);
+        let choice = self.engine.next_duel_except(&mut self.rng.duel, &exclude);
+        self.duel_json(choice)
+    }
+
+    /// [`WasmEngine::next_duel_ex`] without counting the pair as shown: the
+    /// caller says when it puts the pair in front of the player
+    /// ([`WasmEngine::duel_shown`]). A deal thrown away unseen then moves
+    /// nothing — not the check cadence the calibration sample is paced by,
+    /// not the repeat and exposure penalties. Same JSON, same random stream.
+    pub fn deal_duel_ex(&mut self, exclude: Option<Vec<u32>>) -> String {
+        let exclude = exclude_ids(exclude);
+        let choice = self.engine.deal_duel_except(&mut self.rng.duel, &exclude);
+        self.duel_json(choice)
+    }
+
+    /// The pair `a`, `b` (ids, either order), dealt by
+    /// [`WasmEngine::deal_duel_ex`], is on the table now. False, counting
+    /// nothing, for a pair not dealt or already reported (a retracted pick's
+    /// pair put back up is not shown twice).
+    pub fn duel_shown(&mut self, a: u32, b: u32) -> bool {
+        self.engine.duel_shown(u64::from(a), u64::from(b))
+    }
+
+    fn duel_json(&self, choice: Option<auracle_session::DuelChoice>) -> String {
         #[derive(Serialize)]
         struct Row {
             a: u64,
@@ -752,12 +790,7 @@ impl WasmEngine {
             random_check: bool,
             method: &'static str,
         }
-        let exclude: Vec<u64> = exclude
-            .unwrap_or_default()
-            .into_iter()
-            .map(u64::from)
-            .collect();
-        match self.engine.next_duel_except(&mut self.rng.duel, &exclude) {
+        match choice {
             Some(d) => serde_json::to_string(&Row {
                 a: self.engine.pool[d.a].id,
                 b: self.engine.pool[d.b].id,
@@ -2683,6 +2716,50 @@ mod tests {
         }
         // Cut all but one and there is no pair left to deal.
         assert_eq!(dealt(engine.next_duel_ex(Some(ids[1..].to_vec()))), None);
+    }
+
+    /// The app's deal is counted when it reports the pair on the table, not
+    /// when it is dealt: `deal_duel_ex` deals what `next_duel_ex` would from
+    /// the same stream, and only `duel_shown` of a pair it dealt counts.
+    #[test]
+    fn a_deal_counts_when_it_is_shown() {
+        let fresh = || {
+            let mut e = WasmEngine::new(0x5E1, 6);
+            while e.fill_step(3) > 0 {}
+            e
+        };
+        let pair = |reply: &str| -> [u32; 2] {
+            let v: serde_json::Value = serde_json::from_str(reply).unwrap();
+            [
+                v["a"].as_u64().unwrap() as u32,
+                v["b"].as_u64().unwrap() as u32,
+            ]
+        };
+        let (mut counted, mut deferred) = (fresh(), fresh());
+        for _ in 0..5 {
+            let a = counted.next_duel_ex(None);
+            let b = deferred.deal_duel_ex(None);
+            assert_eq!(a, b, "one stream, one deal");
+            let [x, y] = pair(&b);
+            assert!(deferred.duel_shown(y, x));
+            assert!(!deferred.duel_shown(x, y), "shown once");
+        }
+        assert_eq!(
+            counted.engine.shown_pairs_len(),
+            deferred.engine.shown_pairs_len()
+        );
+        // Deals thrown away until one is a pair never shown before: under
+        // the old count-at-the-deal it would have added a row.
+        let before = deferred.engine.shown_pairs_len();
+        for _ in 0..20 {
+            let _ = deferred.deal_duel_ex(None);
+        }
+        assert!(!deferred.duel_shown(u32::MAX, u32::MAX - 1), "never dealt");
+        assert_eq!(
+            deferred.engine.shown_pairs_len(),
+            before,
+            "a deal thrown away is not shown"
+        );
     }
 
     /// The import route enforces the same ceilings as every other write route,
