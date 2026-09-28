@@ -1060,9 +1060,27 @@ self.onmessage = (e) => {
     }
     return;
   }
-  lanes[laneOf(m)].push(m);
+  const lane = laneOf(m);
+  lanes[lane].push(m);
+  // The player's requests run on arrival, as every request used to: parked
+  // behind a timer, the boot fill's next batch — a second or more of renders
+  // — could slip in ahead of them. Long work waits for the pump, so a burst of
+  // messages is all queued before any of it starts and the gestures in it go
+  // first.
+  if (lane === NOW) drainNow();
   if (runnable()) schedulePump();
 };
+
+let draining = false;
+async function drainNow() {
+  if (draining) return;
+  draining = true;
+  try {
+    while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
+  } finally {
+    draining = false;
+  }
+}
 
 async function dispatch(m) {
   switch (m.type) {
