@@ -16423,7 +16423,9 @@ function drawLineage() {
 }
 
 const SITE_NAMES = {
-  cut: "cutoff", res: "resonance", mdepth: "mod depth", thresh: "fold",
+  // `thresh` is a threshold wherever it appears (the wavefolder's, and the
+  // compressor's): "fold" read backwards on the folder and wrong on the rest.
+  cut: "cutoff", res: "resonance", mdepth: "mod depth", thresh: "threshold",
   time: "delay time", fb: "feedback", dmix: "delay mix", crate: "chorus rate",
   cdepth: "chorus depth", cmix: "chorus mix", bal: "balance", det: "detune",
   smix: "stack mix", rate: "lfo rate", att: "mod attack", dec: "mod decay",
