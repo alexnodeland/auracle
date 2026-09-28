@@ -1,0 +1,108 @@
+---
+title: "The web runtime: threads, lanes and the bench"
+last_updated: 2026-09-28
+related_adrs: [1, 2]
+---
+
+# The web runtime: threads, lanes and the bench
+
+## Purpose
+
+For anyone changing `apps/web`. How the instrument is split across threads,
+how requests reach the engine and in what order, and the invariants that keep
+a player's gestures correct under load. `apps/web/README.md` has the longer
+history of each choice.
+
+## Overview
+
+```text
+ main thread (main.js, perform.js, midi.js, booth.js)
+   │  views, bank, rack SVG, toasts, persistence, the bench lane
+   │
+   ├── postMessage ──► engine worker (worker.js + WasmEngine)
+   │                      lanes: now │ soon │ later ; long jobs breathe
+   │                      └── farm workers (farm.js): stateless pool renders
+   │
+   └── AudioWorklet (live-audio.js + LivePoly)
+          N compiled voices of the current patch, the arpeggiator, the limiter
+```
+
+- **Main thread** draws everything and owns every piece of persisted UI state.
+  It never runs the engine.
+- **Engine worker** owns `WasmEngine`. Every call there can take seconds
+  (renders, MCMC), and wasm cannot be interrupted.
+- **Farm workers** render pool draws in parallel from the indexed draw stream,
+  and the worker folds them in stream order, so the pool matches the serial
+  path's.
+- **AudioWorklet** plays the patch under the player's hands: `LivePoly`, a
+  voice per note, allocation-free per quantum, no clock.
+
+## The worker's lanes
+
+Requests are served in three lanes, most urgent first and first come, first
+served within a lane (`laneOf` in `worker.js`):
+
+- **now**: the player's gestures and everything that must stay in order with
+  them (edits, votes, opens, auditions, saves, logs).
+- **soon**: long work the player asked for (a generation, a pressed offer, the
+  first measurement of the patch in their hands).
+- **later**: work nobody is waiting on (refits, re-measurements, spare
+  offers, Wander's drift, booth pre-warms).
+
+Queueing cannot help a request that arrives while a long call is *running*,
+so long jobs are cut into pieces (`measure`, `breed`) and `breathe` between
+pieces, answering every `now` request that arrived meanwhile. One long job
+holds the floor at a time. A hidden PERFORM's measurement drops to `later`.
+
+**Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
+or the main thread's in-flight queue deadlocks.
+
+## The bench lane
+
+Every edit to the patch on the bench (knobs, bypass, unplug, insert, ⌘Z) goes
+through one ordered lane in `main.js`:
+
+- edits to one control coalesce, and distinct edits are sent in order;
+- the rack draws the player's unconfirmed values over any reply, so a drag
+  starts from the value last set, never a stale reply;
+- a value-only redraw repaints knobs in place, and no knob is rebuilt under a
+  held pointer (`knobDragging`);
+- an undo retires the toast of what it undid.
+
+## PERFORM on the main thread
+
+`perform.js` asks the worker to measure the patch (`perform_wire`), caches
+wirings by tree text (`wireKey`), keeps the old wiring working while a new one
+is measured ("re-checking"), and compares trees by text to tell a new
+structure from new knob values. That comparison is why trees must serialize in
+one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
+
+## Audio
+
+`live-audio.js` builds the worklet as a blob with the wasm-bindgen glue
+inlined behind a TextDecoder polyfill, and transfers raw wasm bytes for a
+synchronous compile inside the worklet. A patch swap compiles one voice per
+quantum while that node is muted. Levels follow one policy
+(`auracle-wasm/src/level.rs`) for auditions and live play.
+
+## Toasts
+
+One lane, bottom right, one visible toast with a counter. A later toast with
+the same `replace` key takes the earlier one's place; a refusal (`urgent`)
+jumps the queue; an undo keeps its full window. Read the comment above
+`note()` before adding a toast.
+
+## Modes
+
+- `?film` hides chrome that must not be on camera (the film chip).
+- Booth mode (the ⋯ menu) plays itself when idle and hides links out of the
+  instrument.
+- `window.__aur` is the debugging handle; browser tests wrap `Worker` instead
+  of relying on test-only hooks.
+
+## References
+
+- `apps/web/README.md` § Architecture
+- [ADR-001](../decisions/001-one-random-stream-per-consumer.md),
+  [ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)
+- [`testing.md`](testing.md) for the specs that pin these behaviours

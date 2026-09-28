@@ -6,6 +6,11 @@ cut. It follows the same conventions as
 [quiver](https://github.com/alexnodeland/quiver) and the
 [fugue ecosystem](https://github.com/alexnodeland/fugue).
 
+The engineering record (architecture notes, decisions, proposals, runbooks)
+is in [`docs/`](./docs/README.md), and each area's working rules are in its
+`AGENTS.md`, starting from the [root one](./AGENTS.md); coding agents read
+the same files.
+
 For the web app's internals see [`apps/web/README.md`](./apps/web/README.md);
 for the documentation site see [`www/README.md`](./www/README.md); for how the
 instrument works see the [technical

@@ -1,0 +1,68 @@
+# docs: for people and agents working on Auracle
+
+This directory is for working **on** Auracle. What the instrument does and how
+it works, for players and curious readers, is the site in `www/` (the guide and
+the technical reference). Nothing here is published.
+
+It follows the [principled](https://github.com/alexnodeland/principled)
+documentation layout, so the `principled-docs` and `principled-architecture`
+plugins work on it.
+
+| Directory | Holds | Changes |
+| --- | --- | --- |
+| [`architecture/`](architecture/) | How the system fits together, as it is now | Living: kept current with the code |
+| [`decisions/`](decisions/) | ADRs: an engineering decision, its context and its consequences | Immutable once accepted; superseded, never edited |
+| [`proposals/`](proposals/) | RFCs: a change worth deciding before building | `draft → in-review → accepted / rejected / superseded` |
+| [`plans/`](plans/) | How an accepted proposal gets built, decomposed into tasks | `active → complete / abandoned` |
+| [`runbooks/`](runbooks/) | What to do when a known thing breaks | Living |
+
+## Which record gets what
+
+- **A user-facing design choice** (why duels and not ratings, why the phrase
+  is five seconds): the published
+  [design decisions](../www/reference/src/design/decisions.md) in the
+  reference, where players and reviewers read it.
+- **An engineering rule contributors must keep** (every consumer has its own
+  random stream, trees serialize in declaration order): an ADR here, and a
+  one-line rule in the `AGENTS.md` of the area it governs, linking to the ADR.
+- **A change big enough to argue about first** (parallel evolution walks,
+  directed search): a proposal here. When it is accepted, the ADR records the
+  decision and a plan breaks it down.
+- **Something that went wrong and will again** (the disk filled mid-render,
+  the wasm engine panicked): a runbook.
+
+## Architecture
+
+- [`system.md`](architecture/system.md): the engine, from a patch drawn to a
+  pick learned to a generation bred, and adding a module
+- [`web-runtime.md`](architecture/web-runtime.md): the app's threads, the
+  worker's lanes, the bench lane, PERFORM, audio
+- [`testing.md`](architecture/testing.md): every gate, what it proves and when
+  to run it
+- [`films.md`](architecture/films.md): how a film goes from script to the site
+
+## Decisions
+
+| ADR | Decision |
+| --- | --- |
+| [001](decisions/001-one-random-stream-per-consumer.md) | Every consumer of randomness has its own stream |
+| [002](decisions/002-trees-serialize-in-declaration-order.md) | Patch trees serialize from their types, in declaration order |
+| [003](decisions/003-one-browser-at-a-time.md) | One browser job at a time, first come first served |
+| [004](decisions/004-descriptions-stay-true.md) | Descriptions stay true, and the app is fixed first |
+| [005](decisions/005-tests-run-optimized.md) | Rust tests run in an optimized profile |
+| [006](decisions/006-layered-agent-context.md) | Agent context is layered: AGENTS.md per area, deeper docs here |
+
+## Proposals
+
+| RFC | Status | Proposal |
+| --- | --- | --- |
+| [001](proposals/001-evolve-pool-parallel-walks.md) | draft | Breed a generation in seconds: walks in parallel on the render farm |
+| [002](proposals/002-directed-search-offers.md) | draft | Aim PERFORM's search-control offers along the control's direction |
+
+## Runbooks
+
+- [`wasm-engine-poisoned.md`](runbooks/wasm-engine-poisoned.md): "recursive use of an object", "memory access out of bounds"
+- [`stale-wasm.md`](runbooks/stale-wasm.md): the app runs old engine code
+- [`disk-full.md`](runbooks/disk-full.md): no space left, mid-build or mid-render
+- [`film-shot-fails.md`](runbooks/film-shot-fails.md): a rehearsal shot errors or runs late
+- [`browser-queue.md`](runbooks/browser-queue.md): a browser job waits forever

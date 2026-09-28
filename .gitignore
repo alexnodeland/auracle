@@ -46,3 +46,8 @@ playwright-report/
 # published, into www/landing/assets/film/ (see www/video/README.md).
 www/video/out/
 __pycache__/
+
+# Claude Code: agents' worktrees and per-person settings stay local. The
+# shared setup (settings.json, hooks, skills, agents) is committed.
+.claude/worktrees/
+.claude/settings.local.json

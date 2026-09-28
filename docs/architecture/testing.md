@@ -1,0 +1,62 @@
+---
+title: "Testing: every gate, what it proves, when to run it"
+last_updated: 2026-09-28
+related_adrs: [3, 5]
+---
+
+# Testing: every gate, what it proves, when to run it
+
+## Purpose
+
+To pick the right checks for a change without running everything, and to
+know what a green result does and does not claim. The `check` skill applies
+this table.
+
+## The gates
+
+| Gate | Command | Proves | Run when |
+| --- | --- | --- | --- |
+| Format | `make fmt-check` | rustfmt is clean | Any Rust (a hook formats on edit) |
+| Lint | `make lint` | clippy with `-D warnings` | Any Rust |
+| JS syntax | `make js-check` | Every app script parses, including the worklet literal | Any JS (a hook checks on edit) |
+| Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`) | Any JS |
+| wasm32 | `make wasm-check` | The engine compiles for the browser target | Rust in session or wasm |
+| Crate tests | `cargo test -p <crate> --profile test-fast` | That crate's gates | The crate you changed |
+| All tests | `make test` | The workspace, optimized | Before a commit that touches Rust |
+| Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
+| Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
+| Browser suite | `tests/web` specs (see its `AGENTS.md`) | Every behaviour a spec names | Any app behaviour change |
+| Site | `make site && make site-check` | The site builds; every link, asset and anchor resolves | Any `www/` change, public API docs |
+| Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
+| φ | `make revalidate` (both sides, diff) | What the model can hear did not silently change | Any φ, phrase, vetting or normalization change |
+| Model | `make fit-bench`, `make closed-loop` | The posterior still recovers a synthetic user | Model or budget changes |
+
+## What each browser spec pins
+
+| Spec | Pins |
+| --- | --- |
+| `smoke.spec.js` | Clean boot, worklet registered, engine playable |
+| `failure_flows.spec.js` | Bad save, engine error, refused vote, profile import are contained |
+| `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off |
+| `bank_row.spec.js` | A bank row's controls appear on approach and work |
+| `evolve_feedback.spec.js` | PICKS counts at once, vote toasts replace, the dealing rule, the sixth-pick redraw, bank ▶ |
+| `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts |
+| `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |
+| `perform_instant.spec.js` | Cached wirings play at once; a spare offer lands at once |
+| `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
+| `perform_circuit.spec.js` | A knob turned in PERFORM is drawn performed in PATCH |
+| `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
+| `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
+| `film_chip.spec.js` | The menu bar's film chip |
+
+## Rules
+
+- **Optimized profile for Rust tests**
+  ([ADR-005](../decisions/005-tests-run-optimized.md)).
+- **One browser at a time, own port for a worktree**
+  ([ADR-003](../decisions/003-one-browser-at-a-time.md)).
+- **Gate tests over mocks.** Extend the gate that covers a behaviour.
+- **A green browser test against a stale `pkg/` proves nothing** about Rust
+  changes. Check the session-start hook's warning, or `make wasm` first.
+- **Timing assertions need slack** on a loaded machine (1.5 s or more), and a
+  spec should accept the app being faster than when it was written.
