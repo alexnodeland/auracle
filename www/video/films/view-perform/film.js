@@ -153,7 +153,7 @@ const PLAN = [
       ["honest5:variant-0.3", ...aim(1.25, 1086, 480)],
     ]),
     callouts: [
-      { at: "honest2:close", until: "honest3:amber-1.35", mark: "space", side: "bottom", dx: 70, dy: 150, text: "at the close end: only toward far" },
+      { at: "honest2:close", until: "honest3:amber-1.35", mark: "space", side: "bottom", dx: 70, dy: 150, text: "turns toward far only: a stop at the centre" },
       { at: "honest3:amber", until: "honest5:variant-1.25", mark: "grit", side: "bottom", dx: -90, dy: 150, text: "amber, dashed: out of reach", color: "b" },
       { at: "honest5:marked", until: "honest6:listen", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "B: grown because you asked", color: "b" },
       { at: "honest6:listen", mark: "peek", side: "top", dx: 40, dy: -100, text: "Peek: hear it first" },

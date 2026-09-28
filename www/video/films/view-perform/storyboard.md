@@ -48,9 +48,11 @@ PERFORM's first steps as done. The tour film shows both. Two set-ups:
 build 06fee64, whose per-consumer random streams dealt a new session):
 
 - Plain, Glass Pad: Bright both ways (cutoff), Snap only toward bloom
-  (*at the snap end*), Motion only toward restless (*at the still end*),
-  Space only toward far (*at the close end*). Body and Grit are search
-  controls. 4 of 6 reach.
+  (*turns toward bloom only*), Motion only toward restless (*turns toward
+  restless only*), Space only toward far (*turns toward far only*). Body and
+  Grit are search controls. 4 of 6 reach. (Captions as of the Wave 0 fixes;
+  the rehearsal logs before them read *at the snap end* and so on, which the
+  amber dot often contradicted.)
 - Plain, other patches:
   - Bell Jar: Bright turns the wavefolder's *threshold* (Bright up lowers
     it, so the wave folds more); Snap turns the envelopes. 2 of 6.
@@ -133,7 +135,7 @@ are the offer, drift and roam boundaries.
   - a long press on Bright sweeps it low, high and back, under the chord.
 - **Bell Jar:** on "wiring" it is opened from the bank. A preset not yet in
   the bank loads and stays in PERFORM; one already in the bank would switch
-  to PATCH. The status reads *measuring how this patch moves…*, and the bell
+  to PATCH. The status reads *listening to this patch…*, and the bell
   is played in quarter notes while it measures (the measurement renders
   offline; the keys still play). The beat cuts (`clips`) at `named7`
   ("Then it wires…") to 0.6 s before the wiring lands. Bell Jar's Bright is
@@ -147,27 +149,31 @@ are the offer, drift and roam boundaries.
 
 - **Set-up:** plain · Glass Pad.
 - **Actions:**
-  - a short chord, then Space turned up (toward far), then a short chord
-    again, so the longer tail is heard;
+  - a short chord, then Space dragged toward close, where it stops at the
+    centre (the pointer bumps against the stop), then turned up (toward far),
+    then a short chord again, so the longer tail is heard;
   - under a held Am7, Grit (amber, dashed) is turned up. It springs back,
     and a variant grows in B, marked *(grit up)*. If it grows slowly, the
     beat cuts to it (`clips`);
   - Peek plays B alone.
-- **Callouts:** *at the close end: only toward far* · *amber, dashed: out of
+- **Callouts:** *turns toward far only: a stop at the centre* · *amber, dashed: out of
   reach* (amber) · *B: grown because you asked* (amber) · *Peek: hear it
   first*.
-- The film says what the sound does ("Space can only take it toward far").
-  Off camera, the set-up drags Space the closed way and logs where the dial
-  and the sound end up, then double-clicks it back to the centre. The guide
-  says the control will not go past the centre; the drag code clamps only
-  the sound.
+- The film says what the control does ("On this pad, Space stops at the
+  centre toward close. It only turns toward far, and the line under it says
+  so."), not where the sound sits: the old line, "This pad already sits at
+  the close end", narrated a caption the amber dot contradicted. Off camera,
+  the set-up drags Space the closed way and logs where the dial and the sound
+  end up (`space dragged down: 0.00`: the drag code clamps the dial at the
+  centre, as the guide says), then double-clicks it back to the centre.
 
 ## 5. `xy` — **04 · The XY pad** · *How do you move two things at once?* (shot `vp-xy`)
 
 - **Actions:**
-  - the Y axis is set to Grit: its end words dim to amber, and the pad says
-    *Grit doesn't reach this patch*;
-  - it goes back to Motion;
+  - the Y axis is set to Grit: its end words are struck through in amber,
+    and the pad says *Grit doesn't reach this patch*;
+  - it goes back to Motion. Each choice hands the keys back to the pad, so
+    the chord that follows plays with no click elsewhere first;
   - under a held Am7, a gesture of about 3.6 s;
   - a double-click takes the dot and the dials home.
 - **Callouts:** *choose the axes* · *an amber axis says so* (amber) ·

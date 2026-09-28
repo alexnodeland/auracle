@@ -168,7 +168,7 @@
         },
         {
           "id": "honest2",
-          "text": "This pad already sits at the close end, so Space can only take it toward far, and the line under it says so.",
+          "text": "On this pad, Space stops at the centre toward close. It only turns toward far, and the line under it says so.",
           "post": 1.2
         },
         {
