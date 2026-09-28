@@ -1341,7 +1341,10 @@ async function dispatch(m) {
       } catch (_) {
         pair = JSON.parse(engine.next_duel());
       }
-      post({ type: "duel", pair, meta });
+      // `ahead`: main asked for the pair after this one, dealt while this one
+      // is on the table (see `requestAhead` in main.js); it rides back so the
+      // reply is not taken for the table's.
+      post({ type: "duel", pair, meta, ahead: !!m.ahead });
       // Renders are lazy now (`RenderPolicy::Lazy`): the pool holds φ for
       // everything and audio for only the last dozen auditions, so the pair
       // just dealt is very likely cold. Materialize both sides *here*, after

@@ -55,6 +55,15 @@ changelog that edits its own past is not a record.
   working from where it is, scaled so each end of the pot still reaches the
   control's end; it used to go dead until swept back through the middle,
   every few seconds in *roam* (`perform_recentre.spec.js`, `midi.test.mjs`).
+- **The next pair is already waiting in EVOLVE.** While a pair is on the
+  table the engine deals the next one and renders both its sounds, so a pick
+  or a skip puts it up at once and its ▶ plays at once; the pair after is
+  dealt behind it. A pick used to put the table away and wait for the deal,
+  and during a generation that wait was a whole seed's walk, up to about
+  20 s of dimmed cards, with the new pair's sounds rendered after it. Taking
+  a pick back puts its pair back and keeps the other as the next, and a
+  patch cut meanwhile is never dealt: its pair is dropped and dealt again
+  (`evolve_ahead.spec.js`, `budgets.spec.js`).
 
 ### Fixed — true today
 

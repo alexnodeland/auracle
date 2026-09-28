@@ -38,11 +38,20 @@ its seven seconds. With none left it changes nothing and says *nothing to undo
 here — PATCH edits undo in PATCH*: edits to the patch are undone in PATCH,
 where you can see them.
 
-After a pick or a skip the cards dim and their buttons do nothing until the
-next pair is dealt, usually a few hundredths of a second. A deal that takes
-longer says why on the cards; during a generation, a deal waits for the seed
-being bred, and the cards read, for example, *dealing — the engine is breeding
-(seed 4/10)*.
+The next pair is already waiting. While a pair is on the table the engine
+deals the one after it and renders both its sounds, so a pick or a skip puts
+it up at once, sounds and all, and the pair after that is dealt behind it. It
+is chosen before your pick is known, which changes nothing: the pick is held
+in its seven seconds anyway, and pairs are dealt at random (see below). A
+patch you cut meanwhile is never put up: that pair is dropped and dealt again.
+Taking a pick back puts its pair back on the table, and the pair it had
+brought up waits as the next.
+
+Only when no pair is waiting (right after a cut, say) do the cards dim and
+their buttons do nothing until the next pair is dealt, usually a few
+hundredths of a second. A deal that takes longer says why on the cards; during
+a generation, a deal waits for the seed being bred, and the cards read, for
+example, *dealing — the engine is breeding (seed 4/10)*.
 
 Both sides play the *same* phrase. That is the point: audio features are only
 comparable across patches under an identical stimulus, so the sample is a fixed
