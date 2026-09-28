@@ -72,7 +72,8 @@ test("PERFORM's first steps tick off as they happen; measurements are one menu i
   await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 90000 });
   await expect(page.locator(".pf-step.now")).toContainText("Play a key");
   await page.keyboard.down("a"); await page.waitForTimeout(300); await page.keyboard.up("a");
-  await expect(page.locator(".pf-step.now")).toContainText("Turn a lit control");
+  // Step 2 names a control that turns on this patch ("Turn BRIGHT: drag up or down").
+  await expect(page.locator(".pf-step.now")).toContainText(/Turn [A-Z]+: drag up or down/);
   const box = await page.locator(".pf-knob").nth(0).boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
