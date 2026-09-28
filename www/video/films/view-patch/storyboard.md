@@ -6,7 +6,7 @@ movement (chains, Steps), **protect** what you love (locks, ⚡ evolve from
 this), and **keep** your version (commit, files). Every change is heard.
 
 A cold open with no words, the title over the bed, nine chapters, *putting it
-together*, and the outro: 106 bars at 84 BPM, 5:03. Each chapter opens on a
+together*, and the outro: 107 bars at 84 BPM, 5:06. Each chapter opens on a
 **one-bar card** over the bed (chapter number, name, the musical question it
 answers, and a row of nine small plates with this one lit). On the chapter's
 downbeat the card's veil lifts and the demo starts, with the bed out and the
@@ -69,8 +69,8 @@ knobs `[data-addr='node/0#cut']`, `amp#release`, `amp#sustain`; a plate's ⋯
 PATCH chips `.nb-chip[data-kind]`; catalogue `.nb-item[data-kind]`, its search
 `#nb-q`, armed status `#nb-status`, preview ▶ `#pv-play`; HELD `#tray`,
 `#tray-items .tray-item`; toolbar `#rack-evolve`, `#rack-commit`,
-`#improve-check`; the commit duel `#cduel`, `.cduel-cell:has-text('the
-original'|'your edit') .cd-play|.cd-pick`; files `#ovf-btn`,
+`#improve-check`; the commit duel `#cduel`, `#cd-play-a|b`,
+`#cd-pick-a|b` (blind: the card never says which side is the edit); files `#ovf-btn`,
 `#patch-export-btn`, `#image-btn`, `#ix-fmt`, `#ix-go`; dock `#hold-btn`,
 `#arp-btn`, `#arp-div`, `#arp-mode`, `#bpm`, `#sync-btn`.
 
@@ -195,18 +195,25 @@ chapter 01's card.
 
 ## 9. `keep` — shot `vp-keep` (keep1–4) · Glass Pad (edited in set-up)
 
-- **Actions:** chords, then COMMIT: the duel (*which one is better?*, sides
-  shuffled). ▶ *the original*, then ▶ *your edit*, each heard (keep2 has a 5 s
-  pause after it). keep3: *this one* under your edit. keep4: once settled, the
-  resonance nudged, *my edit is better* ticked, COMMIT: committed as a claim,
-  no duel.
-- **Callouts:** "sides shuffled"; "▶ the original"; "▶ your edit"; "heard, and
-  taught" (amber); "my edit is better"; "a claim, scored apart from what you
-  heard" (amber).
+- **Actions:** chords, then COMMIT: the duel (*which one is better?*). It is
+  blind: the sides are A and B, in a random order, and nothing says which is
+  the edit until the pick. ▶ A, then ▶ B, each heard (keep2 has a 5 s pause
+  after it). keep3: *this one* under B, and the receipt reveals the order
+  (*B was your edit — taught: you heard both and your edit won*, or *A was
+  your edit — … the original won*). The order is the seeded `Math.random`, so
+  a take matches its rehearsal; the words hold either way. keep4: once
+  settled, the resonance nudged, *my edit is better* ticked (it unticks
+  itself after one commit), COMMIT: committed as a claim, no duel.
+- **Callouts:** "blind: A and B, in random order"; "▶ A"; "▶ B"; "heard, and
+  taught" (amber); "then: which one was yours" (amber); "my edit is better";
+  "a claim, scored apart from what you heard" (amber).
+- keep3 says the reveal ("…and then it tells you which was yours"): the card
+  used to title its sides *your edit* and *the original*, and the film
+  pointed at them.
 
 ## 10. `take` — shot `vp-take` (take1–3) · Glass Pad → its ⚡ child
 
-- **Set-up:** an edit committed through the heard duel, the chorus locked, ⚡
+- **Set-up:** an edit committed through the heard duel (B picked, blind), the chorus locked, ⚡
   run to its child (so the lineage has both kinds of entry).
 - **Actions:** ⋯ → *Export this patch* (a `.auracle.json`); ⋯ → *Export as
   image…*, SVG, export (its note: the patch rides inside). take2: the panel

@@ -431,6 +431,14 @@ shots.append({
 })
 
 # ---- keep: the commit duel, heard; then a claim --------------------------
+# The comparison is blind: the card shows A and B in a random order and says
+# nothing more until the pick, and the receipt then names the side that was
+# the edit ("B was your edit — taught: …"). The app exposes the order nowhere
+# before the pick (it is Math.random, seeded here), so the shot picks by
+# position, B, and logs the reveal. Either answer teaches, and the narration
+# and callouts say only that, so the film is true whichever side B turns out
+# to be in a take.
+PICK_SIDE = "b"
 shots.append({
     "id": "vp-keep", "beat": "keep", "pre": PRE,
     "setup": bench("Glass Pad",
@@ -444,12 +452,13 @@ shots.append({
         *run("keep", 0, "keep2:Commit-0.1"),
         {"at": "keep2:Commit", "op": "click", "sel": "#rack-commit"},
         {"at": "keep2:Commit+0.2", "op": "until", "sel": "#cduel:not(.hidden)", "ms": 30000, "stamp": "duel"},
-        {"at": "keep2:random", "op": "seq", "steps": [mark("card", "#cduel .cduel-card"), mark("orig", ".cduel-cell:has-text('the original')"), mark("edit", ".cduel-cell:has-text('your edit')"),
-                                                        log("sides", "document.getElementById('cd-name-a').textContent + ' | ' + document.getElementById('cd-name-b').textContent")]},
-        {"at": "keep2:better+0.35", "op": "click", "sel": ".cduel-cell:has-text('the original') .cd-play"},
-        {"at": "keep2:better+2.75", "op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-play"},
-        {"at": "keep3:Either", "op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-pick"},
+        {"at": "keep2:random", "op": "seq", "steps": [mark("card", "#cduel .cduel-card"), mark("sideA", ".cduel-cell >> nth=0"), mark("sideB", ".cduel-cell >> nth=1"),
+                                                        log("sides", "[...document.querySelectorAll('.cduel-cell .cd-head')].map((h) => h.textContent.trim()).join(' | ')")]},
+        {"at": "keep2:better+0.35", "op": "click", "sel": "#cd-play-a"},
+        {"at": "keep2:better+2.75", "op": "click", "sel": "#cd-play-b"},
+        {"at": "keep3:Either", "op": "click", "sel": "#cd-pick-" + PICK_SIDE},
         {"at": "keep3:Either+0.6", "op": "seq", "steps": [mark("toast", "#toasts .toast"), log("taught", "document.getElementById('toasts').innerText")]},
+        {"at": "keep3:yours", "op": "log", "name": "reveal", "js": "document.getElementById('toasts').innerText"},
         {"at": "keep4", "snap": "beat", "op": "hold", "keys": F, "ms": "end"},
         {"at": "keep4:sure", "op": "seq", "steps": [
             {"op": "until", "js": SETTLED, "ms": 60000},
@@ -473,7 +482,8 @@ shots.append({
         {"op": "until", "js": SETTLED, "ms": 180000},
         {"op": "click", "sel": "#rack-commit"},
         {"op": "until", "sel": "#cduel:not(.hidden)", "ms": 60000},
-        {"op": "click", "sel": ".cduel-cell:has-text('your edit') .cd-pick"},
+        {"op": "click", "sel": "#cd-pick-" + PICK_SIDE},
+        log("reveal", "document.getElementById('toasts').innerText"),
         {"op": "wait", "ms": 2500},
         {"op": "until", "js": SETTLED, "ms": 180000},
         {"op": "move", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "ms": 300},

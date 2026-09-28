@@ -96,7 +96,7 @@
       "id": "hear",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 0.546,
+      "tail": 0.326,
       "lines": [
         {
           "id": "hear1",
@@ -115,7 +115,7 @@
         },
         {
           "id": "hear4",
-          "text": "Point at a module, and the strip below says what it does, and what the model can't hear.",
+          "text": "Point at any module, and the strip below says what it does, and what the model can't hear.",
           "post": 0.4
         },
         {
@@ -307,7 +307,7 @@
       "id": "keep",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 2.03,
+      "tail": 2.839,
       "lines": [
         {
           "id": "keep1",
@@ -321,7 +321,7 @@
         },
         {
           "id": "keep3",
-          "text": "Either answer teaches the model.",
+          "text": "Either answer teaches the model, and then it tells you which was yours.",
           "post": 0.6
         },
         {
@@ -365,14 +365,14 @@
       "id": "t-together",
       "bed_db": 0,
       "lead": 2.75,
-      "tail": 0.087,
+      "tail": 0.088,
       "lines": []
     },
     {
       "id": "together",
       "bed_db": -60,
       "lead": 1.5,
-      "tail": 1.403,
+      "tail": 1.402,
       "lines": [
         {
           "id": "together1",
