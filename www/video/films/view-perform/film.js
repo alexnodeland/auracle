@@ -31,8 +31,8 @@
 //   you could hear.
 // - The PERFORM wiring is measured per session, and the seeded session
 //   decides it. As rehearsed (plain session): Glass Pad reaches Bright both
-//   ways, Snap only toward bloom, Motion only toward restless, Body only
-//   toward full and Space only toward far; Grit is a search control. Bell
+//   ways, Snap only toward bloom, Motion only toward restless and Space only
+//   toward far; Body and Grit are search controls. Bell
 //   Jar's Bright turns its wavefolder's threshold. Each shot logs its wiring.
 // - Every shot's session is a returning player's (the film's `init` marks
 //   the first-run coach and PERFORM's first steps as done), so neither sits

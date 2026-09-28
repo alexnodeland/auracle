@@ -44,17 +44,19 @@ PERFORM's first steps as done. The tour film shows both. Two set-ups:
   above. It adds `wait 9000`, so a spare offer has grown for Offer to hand
   over at once.
 
-**The wiring this session measures** (logged by every shot):
+**The wiring this session measures** (logged by every shot; rehearsed on
+build 06fee64, whose per-consumer random streams dealt a new session):
 
 - Plain, Glass Pad: Bright both ways (cutoff), Snap only toward bloom
   (*at the snap end*), Motion only toward restless (*at the still end*),
-  Body only toward full (*at the thin end*), Space only toward far (*at the
-  close end*). Grit is a search control. 5 of 6 reach.
+  Space only toward far (*at the close end*). Body and Grit are search
+  controls. 4 of 6 reach.
 - Plain, other patches:
-  - Bell Jar: Bright turns the wavefolder's *threshold*.
-  - Loom: Bright both ways; Motion and Body up only.
-  - Tine: Bright both ways; Snap down only.
-- Taught, Glass Pad: as plain, but Body is a search control (4 of 6).
+  - Bell Jar: Bright turns the wavefolder's *threshold* (Bright up lowers
+    it, so the wave folds more); Snap turns the envelopes. 2 of 6.
+  - Loom and Tine: as logged by vp-dock and vp-play.
+- Taught, Glass Pad: Bright and Motion both ways, Space toward far; Snap,
+  Body and Grit are search controls (3 of 6).
 
 **Keys.** `a` = C4. The computer keymap's chords used below:
 
