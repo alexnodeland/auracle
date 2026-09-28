@@ -1,7 +1,7 @@
 ---
 title: "Aim PERFORM's search-control offers along the control's direction"
 number: 2
-status: in-review
+status: accepted
 author: Claude Code
 created: 2026-09-28
 updated: 2026-09-28
@@ -15,7 +15,7 @@ superseded_by: null
 
 Anyone changing PERFORM: `crates/auracle-session/src/perform.rs`,
 `Engine::refine_walk`/`walk_with`, the `perform_offer` binding, and
-`apps/web/perform.js`. The decision to accept is the maintainer's.
+`apps/web/perform.js`. Accepted by the maintainer on 2026-09-28.
 
 ## Context
 

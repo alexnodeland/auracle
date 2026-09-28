@@ -1,7 +1,7 @@
 ---
 title: "Breed a generation in seconds: walks in parallel on the render farm"
 number: 1
-status: in-review
+status: accepted
 author: Claude Code
 created: 2026-09-28
 updated: 2026-09-28

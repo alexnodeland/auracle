@@ -52,13 +52,22 @@ plugins work on it.
 | [004](decisions/004-descriptions-stay-true.md) | Descriptions stay true, and the app is fixed first |
 | [005](decisions/005-tests-run-optimized.md) | Rust tests run in an optimized profile |
 | [006](decisions/006-layered-agent-context.md) | Agent context is layered: AGENTS.md per area, deeper docs here |
+| [007](decisions/007-generations-breed-in-parallel.md) | A generation breeds its walks in parallel, absorbed in job order |
+| [008](decisions/008-search-offers-are-aimed.md) | A search control's offer is aimed along the control's direction |
 
 ## Proposals
 
 | RFC | Status | Proposal |
 | --- | --- | --- |
-| [001](proposals/001-evolve-pool-parallel-walks.md) | in review | Breed a generation in seconds: walks in parallel on the render farm |
-| [002](proposals/002-directed-search-offers.md) | in review | Aim PERFORM's search-control offers along the control's direction |
+| [001](proposals/001-evolve-pool-parallel-walks.md) | accepted | Breed a generation in seconds: walks in parallel on the render farm |
+| [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
+
+## Plans
+
+| Plan | Status | Implements |
+| --- | --- | --- |
+| [001](plans/001-evolve-pool-parallel-walks.md) | active | RFC-001, ADR-007 |
+| [002](plans/002-directed-search-offers.md) | active | RFC-002, ADR-008 |
 
 ## Notes
 
