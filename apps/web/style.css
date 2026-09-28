@@ -3953,8 +3953,10 @@ html:not(.engineer) .dn-sig { display: none; }
 .duel-rule.check { color: var(--phos-b); }
 /* The centre column is as wide as its widest line, and the meter's copy
    takes what is left: on a tablet (768px) a one-line rule beside skip left
-   the copy 42px wide, a word to a line. Narrower, the rule wraps above skip. */
-@media (max-width: 1080px) {
+   the copy 42px wide, a word to a line. Narrower than any desktop window the
+   app opens in, the rule wraps above skip (at 1000px it fits beside it, and
+   stacked it cost the cards 22px of height). */
+@media (max-width: 900px) {
   .duel-deal { flex-direction: column; gap: 3px; }
   .duel-rule { white-space: normal; max-width: 16ch; text-align: center; line-height: 1.3; }
 }
