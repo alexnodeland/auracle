@@ -425,6 +425,14 @@ fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
     Some(tree)
 }
 
+/// A JSON array of memo keys as a set; empty for anything else.
+fn key_set(json: &str) -> std::collections::HashSet<String> {
+    serde_json::from_str::<Vec<String>>(json)
+        .unwrap_or_default()
+        .into_iter()
+        .collect()
+}
+
 #[wasm_bindgen]
 impl WasmEngine {
     /// Create an engine with the default grammar and session config.
@@ -924,6 +932,109 @@ impl WasmEngine {
         .to_string()
     }
 
+    /// The renders [`Self::perform_wire`] on this performed state would make
+    /// next and the memo does not hold: JSON `[{"key", "tree"}]` (`tree` as
+    /// JSON text, ready for a farm job), empty when the measurement can be
+    /// finished from the memo — see `Engine::wire_plan`. `failed_json` is a
+    /// JSON array of the keys already known not to vet. Renders nothing, so
+    /// it is cheap enough to ask between the player's requests.
+    pub fn perform_wire_plan(
+        &self,
+        tree_json: &str,
+        overrides_json: &str,
+        failed_json: &str,
+    ) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "[]".into();
+        };
+        let failed = key_set(failed_json);
+        let need: Vec<serde_json::Value> = self
+            .engine
+            .wire_plan(&tree, &failed)
+            .into_iter()
+            .map(|(key, t)| {
+                serde_json::json!({
+                    "key": key,
+                    "tree": serde_json::to_string(&t).unwrap_or_default(),
+                })
+            })
+            .collect();
+        serde_json::to_string(&need).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// [`Self::perform_wire`], skipping the renders `failed_json` names as
+    /// known not to vet (the memo keeps only successes). Once
+    /// [`Self::perform_wire_plan`] answers `[]`, this renders nothing; the
+    /// answer is the one `perform_wire` would give.
+    pub fn perform_wire_known(
+        &self,
+        tree_json: &str,
+        overrides_json: &str,
+        failed_json: &str,
+    ) -> String {
+        let Some(tree) = performed_tree(tree_json, overrides_json) else {
+            return "null".into();
+        };
+        let Some((jac, wiring)) = self
+            .engine
+            .wire_controls_known(&tree, &key_set(failed_json))
+        else {
+            return "null".into();
+        };
+        serde_json::json!({
+            "addrs": jac.addrs,
+            "values": jac.values,
+            "z": jac.z,
+            "wiring": wiring,
+        })
+        .to_string()
+    }
+
+    /// The knobs of `tree_json` the voices can take live, as `[[addr, value],
+    /// …]` (`auracle_session::perform::live_knobs`): a compile, no render.
+    /// Rides with a tree on its way to the voices, so PERFORM can keep playing
+    /// a taken offer on the wiring it had until the offer's own measurement
+    /// lands — it needs the new tree's knob values to centre on, and which of
+    /// the old wiring's addresses the new tree still has. `[]` if the tree
+    /// does not parse or compile.
+    pub fn perform_knobs(&self, tree_json: &str) -> String {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+            return "[]".into();
+        };
+        let knobs = auracle_session::perform::live_knobs(&tree, self.engine.cfg.phrase.sample_rate);
+        serde_json::to_string(&knobs).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// Featurize one tree into the engine's memo, φ only: the unit a
+    /// measurement is paid in when it is paid here, one render per turn, so
+    /// the thread answers the player between renders. False when the tree does
+    /// not parse or does not vet.
+    pub fn memo_render(&self, tree_json: &str) -> bool {
+        let Ok(tree) = serde_json::from_str::<PatchTree>(tree_json) else {
+            return false;
+        };
+        featurize_memo(&tree, &self.engine.cfg.phrase, self.engine.memo(), false).is_ok()
+    }
+
+    /// Fold a farm featurization (`farm_render`'s `cached`) of `tree_json`
+    /// into the engine's memo. Checked, not trusted, as the pool's farm path
+    /// is ([`Self::pre_featurized`]): a row whose key is not this tree's under
+    /// this engine's stimulus is refused, so a farm on another build or
+    /// another phrase can cost a render but never a wrong φ.
+    pub fn memo_absorb(&self, tree_json: &str, cached_json: &str) -> bool {
+        let (Ok(tree), Ok(cached)) = (
+            serde_json::from_str::<PatchTree>(tree_json),
+            serde_json::from_str::<CachedFeatures>(cached_json),
+        ) else {
+            return false;
+        };
+        if cached.key != auracle_features::render_key(&tree, &self.engine.cfg.phrase) {
+            return false;
+        }
+        self.engine.memo().put(cached, None);
+        true
+    }
+
     /// The performed state (`tree` plus `overrides`) with the module that
     /// gives named control `k` something to turn grafted onto its output
     /// ([`auracle_session::perform::graft_for`]): `{tree}`, or `{reason:
@@ -1350,6 +1461,28 @@ impl WasmEngine {
         let Some((name, tree)) = all.into_iter().nth(index) else {
             return 0;
         };
+        self.engine.insert_preset(tree, name).unwrap_or(0) as u32
+    }
+
+    /// [`Self::load_preset`] for a caller about to play it — a warm-start ▶.
+    ///
+    /// Hearing a preset used to cost two full phrase renders back to back:
+    /// one to featurize it into the pool, which keeps φ and drops the audio
+    /// (the pool is `RenderPolicy::Lazy`), and a second for the `render` that
+    /// followed, of the very same phrase. Featurizing with audio first keeps
+    /// the buffer in the memo's audio tier, where `render_of` finds it, so the
+    /// ▶ waits on one render instead of two. Nothing else differs: the insert
+    /// is a φ hit on the same featurization.
+    pub fn load_preset_heard(&mut self, index: usize) -> u32 {
+        let all = presets();
+        let Some((name, tree)) = all.into_iter().nth(index) else {
+            return 0;
+        };
+        // Before the standardizer exists the insert refuses, and a render
+        // made for it would be a render made for nothing.
+        if self.engine.standardizer.is_some() {
+            let _ = featurize_memo(&tree, &self.engine.cfg.phrase, self.engine.memo(), true);
+        }
         self.engine.insert_preset(tree, name).unwrap_or(0) as u32
     }
 

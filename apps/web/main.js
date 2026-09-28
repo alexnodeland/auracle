@@ -208,12 +208,22 @@ let healedRev = -1;
 let liveOptimisticJson = null;
 let liveMuted = false;
 
-function setLivePatchJson(json, makeup) {
+function setLivePatchJson(json, makeup, knobs) {
   liveTreeJson = json;
   liveMakeup = makeup;
   liveRev += 1;
-  if (perform) perform.patchChanged(json, makeup);
+  // `knobs` (the tree's live knobs, when the worker sent them) lets PERFORM
+  // keep a taken offer playable on the wiring it had until it is re-measured.
+  if (perform) perform.patchChanged(json, makeup, knobs);
 }
+
+// Why the bench differs from the bank entry it was opened from, in the words
+// every label uses: "edited", or "taken offer" when the difference is an offer
+// taken in PERFORM. A Take is not a hand edit, and "Glass Pad (edited)" read as
+// one. Set from each edit's reply (the worker echoes `why`), cleared by a new
+// subject or a commit.
+let benchDirtyWhy = null;
+const dirtySuffix = () => ` (${benchDirtyWhy || "edited"})`;
 
 // The one place the instrument is silenced without touching the player's
 // fader. `alarm()` has claimed "Muted" on an unvetted state since the beginning
@@ -1074,6 +1084,7 @@ worker.onmessage = (e) => {
     case "bench_missing": {
       // Not on its way any more, either (PERFORM holds a measurement for it).
       if (benchPending === m.id) benchPending = null;
+      renderSubject(); // the rack stops saying "opening…"
       if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
       note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
       send({ type: "taste_views" });
@@ -1185,7 +1196,8 @@ worker.onmessage = (e) => {
     case "tree_json": {
       if (!(m.json && m.json !== "null" && live)) break;
       live.setPatch(m.json, m.makeup);
-      setLivePatchJson(m.json, m.makeup);
+      if (m.edited !== undefined) benchDirtyWhy = m.why || null;
+      setLivePatchJson(m.json, m.makeup, m.knobs);
       if (m.edited !== undefined) {
         // The bench speaking early: the worker posts the edited tree the
         // instant it is adopted and featurizes afterwards, so this arrives
@@ -1193,7 +1205,7 @@ worker.onmessage = (e) => {
         // in the voices now; the vet lands later and mutes if it fails.
         liveOptimisticJson = m.json;
         livePatchId = null;
-        setLiveLabel(`${benchName(wb.subjectId)} (edited)`);
+        setLiveLabel(`${benchName(wb.subjectId)}${dirtySuffix()}`);
       } else {
         livePatchId = m.id;
         setLiveLabel(benchName(m.id));
@@ -1325,6 +1337,7 @@ worker.onmessage = (e) => {
         wb.subjectId = m.subject;
         benchPending = null;
         wb.dirty = false;
+        benchDirtyWhy = null;
         // A new subject: whatever the spec strip was describing belonged to
         // the pointer's last trip along the catalogue, not to this patch.
         specRest();
@@ -1385,6 +1398,7 @@ worker.onmessage = (e) => {
       const settlingRestore = m.edited === "restore" && restorePending !== null;
       if (m.edited !== undefined) {
         wb.dirty = true;
+        benchDirtyWhy = m.why || null;
         if (structural) {
           // Everything keyed by trace address is invalidated by the same
           // fact — the addresses moved. Locks were already being cleared
@@ -1501,7 +1515,7 @@ worker.onmessage = (e) => {
         live.setPatch(m.treeJson, m.makeup);
         setLivePatchJson(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
-        setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)} (edited)` : benchName(wb.subjectId));
+        setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)}${dirtySuffix()}` : benchName(wb.subjectId));
       }
       // Optimism's other half: the sound arrived before the verdict. A patch
       // that fails vetting can self-oscillate, and it is already in the
@@ -1715,6 +1729,7 @@ worker.onmessage = (e) => {
       if (m.id > 0) {
         wb.subjectId = m.id;
         wb.dirty = false;
+        benchDirtyWhy = null;
         // The bench is now a different patch — the child this commit inserted
         // — and everything keyed by subject has to be told, or it stays filed
         // under the parent. `lockKey()` and `ffKey()`/`holesRemember()` all
@@ -1860,6 +1875,10 @@ worker.onmessage = (e) => {
       scheduleSave();
       break;
     }
+    case "warm_first": {
+      warmFirstLanded(m);
+      break;
+    }
     case "warm_done": {
       applyViews(m.views);
       applyStatus(m.status);
@@ -1887,7 +1906,7 @@ worker.onmessage = (e) => {
         // it holds. That is defensible, but it has to be *said*: this branch
         // used to drop the eviction on the floor, so pressing ▶ destroyed a
         // patch and reported nothing at all.
-        warmPreviewLoaded(m.id, evicted);
+        warmPreviewLoaded(m.index, m.id, evicted);
         scheduleSave();
         break;
       }
@@ -1984,11 +2003,14 @@ function releaseRequest(request, id) {
     case "edit_begin":
       // An open that failed is not on its way either.
       benchPending = null;
+      renderSubject();
+      renderBank();
       break;
     case "load_preset":
       // A load that failed is not still on its way: its row stops saying
       // "opening…", and the first-arrival open is no longer held for it.
       presetClicks.clear();
+      warmPreviewCancel(); // a ▶ waiting on it is not going to play
       document.querySelectorAll(".preset-item.loading").forEach((r) => {
         r.classList.remove("loading");
         r.removeAttribute("aria-busy");
@@ -1998,6 +2020,10 @@ function releaseRequest(request, id) {
       $("wm-lamp").classList.remove("thinking");
       $("evolve-btn").disabled = false;
       $("evolve-btn").textContent = "evolve pool";
+      break;
+    case "warm_start":
+      // The first pick is not on its way: PERFORM stops saying so.
+      openExpect = null;
       break;
     case "refine_from":
       $("wm-lamp").classList.remove("thinking");
@@ -2754,10 +2780,10 @@ function sigOf(id) {
 // because only one of the messages that replace the rows re-rendered them.
 function refreshNames() {
   renderSubject();
-  const edited = liveLabelText.endsWith("(edited)");
+  const edited = / \((edited|taken offer)\)$/.test(liveLabelText);
   const id = livePatchId != null ? livePatchId : edited ? wb.subjectId : null;
   if (id == null || !rowOf(id)) return;
-  const text = `${nameOf(id)}${edited ? " (edited)" : ""}`;
+  const text = `${nameOf(id)}${edited ? dirtySuffix() : ""}`;
   if (text === liveLabelText) return;
   liveLabelText = text;
   $("live-label").textContent = text;
@@ -3106,6 +3132,8 @@ async function bootPerform() {
     // Another patch is on its way to the bench: PERFORM holds a measurement
     // of the one in hand, which is about to be replaced.
     opening: () => openingNow(),
+    // …and its name, which PERFORM says while it waits.
+    openingName: () => openingName(),
     // A PERFORM offer answer joined the log: it paces refits like any pick.
     voteLanded: () => {
       duelsSinceFit += 1;
@@ -3156,9 +3184,11 @@ async function bootPerform() {
     // A performed sound becomes the bench's tree by the same whole-tree route
     // a restore takes, so PATCH shows what PERFORM kept. queueStruct stages
     // the one undo step itself.
-    commitTree: (json) => {
+    // `why` names a tree that is not a hand edit ("taken offer"), so the
+    // labels say what it is (see `benchDirtyWhy`).
+    commitTree: (json, why) => {
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
-      queueStruct({ type: "edit_set_tree", json }, null, { op: "perform" });
+      queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
     },
   });
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.
@@ -5129,7 +5159,9 @@ function bankRow(r, fitted) {
     // rated a patch nobody had selected. See `kbdRowId`.
     + (r.id === kbdRowId ? " kbd" : "")
     + (r.pinned ? " saved" : "")
-    + (lastBorn.has(r.id) ? " fresh" : "");
+    + (lastBorn.has(r.id) ? " fresh" : "")
+    // Its bench open is on its way (see `openOnBench`).
+    + (r.id === benchPending && r.id !== wb.subjectId ? " opening" : "");
   const frac = fitted ? sq(r.mean) : 0;
   const lo = fitted ? sq(r.mean - (r.std || 0)) : 0;
   const hi = fitted ? sq(r.mean + (r.std || 0)) : 0;
@@ -5769,9 +5801,29 @@ const presetClicks = new Map(); // library index -> benchSeq at the click
 // costs PERFORM's hold (see `heldForOpen` in perform.js), never its
 // measurement.
 let openAskedAt = 0;
+// An open promised before there is an id to open: "teach it" names its first
+// pick before the engine has inserted it. {name, at}, or null.
+let openExpect = null;
 function openingNow() {
+  if (openExpect && performance.now() - openExpect.at < 60_000) return true;
   if (benchPending == null && presetClicks.size === 0) return false;
+  // The patch on its way is already the one the voices play (the warm start
+  // hands its first pick to the voices ahead of the bench): nothing is being
+  // left behind, so nothing need wait for it.
+  if (benchPending != null && benchPending === livePatchId && presetClicks.size === 0) return false;
   return performance.now() - openAskedAt < 60_000;
+}
+/** The name of the patch on its way to the player's hands, or null. PERFORM
+ *  says it ("opening Acid Line…") where it used to say "opening the patch you
+ *  picked…" beside the name of the patch being left — which read as though
+ *  that were the pick. */
+function openingName() {
+  if (!openingNow()) return null;
+  if (openExpect) return openExpect.name;
+  if (benchPending != null && rowOf(benchPending)) return nameOf(benchPending);
+  const index = [...presetClicks.keys()].pop();
+  const p = index != null ? (presetRows || []).find((r) => r.index === index) : null;
+  return p ? p.name : null;
 }
 /** Put a patch on the bench. `auto` marks an open the app made on its own
  *  (the first patch landing after boot or a reload, booth attract): it is not
@@ -5789,6 +5841,13 @@ function openOnBench(id, { auto = false } = {}) {
   // decomposition of the tree it is describing, so the readout can never name
   // a patch other than the one on screen. See `renderBelief`.
   send({ type: "edit_begin", id });
+  // Said at once, on the row and over the rack, until the rack is this patch:
+  // a bench open is a render, and a click that shows nothing gets clicked
+  // again or given up on.
+  if (id !== wb.subjectId) {
+    renderBank();
+    renderSubject();
+  }
 }
 
 // The categorical sites that reach the running voices without a recompile.
@@ -7299,7 +7358,7 @@ function renderSubject() {
   }
   // "(edited)", the same words the keybar and PERFORM use for the same fact —
   // the header said "· edited" while the dock under it said "(edited)".
-  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? " (edited)" : ""}`;
+  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}`;
   // The name's column is fixed and ellipsizes (`.patch-head`); the whole of
   // it is one hover away.
   nameEl.title = nameEl.textContent;
@@ -7307,6 +7366,10 @@ function renderSubject() {
   // bookkeeping, not the patch's name: on request only (⋯ › Show
   // measurements). What the caption keeps is what the player did to it.
   metaEl.textContent = [
+    // The rack is still this patch; the one asked for is on its way.
+    benchPending != null && benchPending !== wb.subjectId && rowOf(benchPending)
+      ? `opening ${nameOf(benchPending)}…`
+      : "",
     engineerMode ? `#${wb.subjectId}` : "",
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
@@ -17871,31 +17934,62 @@ function renderWarmStart(all) {
 // purpose, and strictly better than a screen that asks you to judge nine
 // sounds you cannot hear.
 const presetIds = new Map(); // preset index -> bank id
-let warmPreview = null; // {index, btn} — the one preview in flight
+// The one ▶ the player is waiting to hear: {index, btn}. Only this one may
+// play when its sound arrives. It used to be a lock as well as a claim — a
+// second ▶ while the first was loading was ignored outright — and it outlived
+// the card: a preview still loading when "teach it" closed the screen played
+// seconds later, in PERFORM, over whatever the player was doing by then. Now
+// the latest ▶ wins, pressing the waiting ▶ again takes it back, and closing
+// the card takes it back too; an answer that arrives for anything else still
+// lands in the bank (it was inserted), and is simply not played.
+let warmPreview = null;
+
+function warmPreviewCancel() {
+  if (warmPreview) {
+    warmPreview.btn.classList.remove("loading");
+    warmPreview.btn.removeAttribute("aria-busy");
+  }
+  warmPreview = null;
+}
+
+// Play `id` for this claim once its buffer is here, unless the claim has gone.
+function warmPreviewPlay(req, id) {
+  awaitRender(id, () => {
+    if (warmPreview !== req) return;
+    warmPreviewCancel();
+    play(id, req.btn);
+  }, { abandoned: () => warmPreview !== req });
+}
 
 function previewPreset(row, btn) {
   if (stopAudition()) return; // pressing ▶ again stops it
-  const known = presetIds.get(row.index);
-  if (known != null) return awaitRender(known, () => play(known, btn));
-  if (warmPreview) return; // one load at a time; the engine is single-file
+  // …and pressing a ▶ that is still waiting takes it back.
+  if (warmPreview && warmPreview.btn === btn) return warmPreviewCancel();
+  warmPreviewCancel();
+  const req = { index: row.index, btn };
+  warmPreview = req;
   btn.classList.add("loading");
-  warmPreview = { index: row.index, btn };
+  btn.setAttribute("aria-busy", "true");
+  const known = presetIds.get(row.index);
+  if (known != null) return warmPreviewPlay(req, known);
   send({ type: "load_preset", index: row.index, preview: true });
 }
 
-function warmPreviewLoaded(id, evicted) {
-  const req = warmPreview;
-  warmPreview = null;
-  if (!req) return;
-  req.btn.classList.remove("loading");
-  if (!id) return note("That preset wouldn't load.");
-  presetIds.set(req.index, id);
+function warmPreviewLoaded(index, id, evicted) {
+  if (id) presetIds.set(index, id);
   if (evicted && evicted.length) note(`Loaded to play it.${madeRoom(evicted)}`);
   if (bankFilter === "preset") renderBank(); // it can now say "in bank"
-  awaitRender(id, () => play(id, req.btn));
+  const req = warmPreview;
+  if (!req || req.index !== index) return; // superseded, taken back, or the card closed
+  if (!id) {
+    warmPreviewCancel();
+    return note("That preset wouldn't load.");
+  }
+  warmPreviewPlay(req, id);
 }
 
 function closeWarmStart(mark = true) {
+  warmPreviewCancel();
   $("warmstart").classList.add("hidden");
   if (mark) localStorage.setItem("auracle-warmed", "1");
   // The film note waited for the warm start; now it can speak.
@@ -17917,35 +18011,71 @@ $("warm-skip").onclick = () => {
 
 $("warm-go").onclick = () => {
   if (warmPicked.size !== 3 || !warmRows) return;
+  const picked = [...warmPicked];
+  const first = warmRows.find((r) => r.index === picked[0]);
+  // Straight onto the first pick. It used to wait for the whole warm start —
+  // nine inserts, seconds of renders — and then for a refit queued in front
+  // of the bench open, while PERFORM showed the patch that had been on the
+  // bench before, beside "opening the patch you picked…". A pick the player
+  // has heard is already in the bank, so it opens now, ahead of the inserts;
+  // one they have not is handed to the voices by the worker the moment it is
+  // inserted (`warm_first`), and until then PERFORM names it.
+  const known = presetIds.get(picked[0]);
+  if (known != null && rowOf(known)) openOnBench(known);
+  else openExpect = { name: first ? first.name : "the patch you picked", at: performance.now() };
   // Every chosen ≻ every unchosen, logged as a duel: same likelihood, same
   // log format, no new inference path. One worker turn does the inserts and
   // the votes together (see its `warm_start`), so nothing can be evicted
   // between a preset landing and its preferences being recorded.
   send({
     type: "warm_start",
-    picked: [...warmPicked],
+    picked,
     rest: warmRows.map((r) => r.index).filter((i) => !warmPicked.has(i)),
   });
   closeWarmStart();
+  // Straight to the instrument, not the rack: the first thing after teaching
+  // it should be playing it. PATCH is the densest view in the app and it was
+  // where a newcomer landed.
+  showView("perform");
   // The result replaces this when it lands (`replace`): it used to wait out
   // this toast's window, so PICKS read 18 beside "Loading those in…" for
   // seconds, and the result surfaced about fifteen seconds in.
   note("Loading those in and teaching the model what you picked…", { replace: "warm" });
 };
 
+// The warm start's first pick, inserted, while its other eight are still
+// loading: into the voices now, onto the bench when the worker gets to it.
+function warmFirstLanded(m) {
+  openExpect = null;
+  if (m.id <= 0 || m.id === wb.subjectId || m.id === benchPending) return;
+  presetIds.set(m.index, m.id);
+  openOnBench(m.id);
+  if (!live || !m.json || m.json === "null") return;
+  livePatchId = m.id;
+  // The bench reply for this subject carries the identical tree: it must not
+  // swap it in a second time (see `spokeEarly`).
+  liveOptimisticJson = m.json;
+  live.setPatch(m.json, m.makeup);
+  setLivePatchJson(m.json, m.makeup);
+  // Named from the library: the bank has no row for it until the warm start
+  // is done.
+  const p = (presetRows || warmRows || []).find((r) => r.index === m.index);
+  setLiveLabel(p ? p.name : benchName(m.id));
+}
+
 function warmStartDone(m) {
   for (const [idx, id] of Object.entries(m.ids || {})) presetIds.set(Number(idx), id);
+  openExpect = null;
+  if (m.first != null && m.first !== wb.subjectId && m.first !== benchPending) openOnBench(m.first);
+  // After the open, never before it: the refit is background work (the
+  // worker's `later` lane), and the pick's bench, its sound and its
+  // measurement are what the player is waiting for.
   send({ type: "fit" });
   fitting = true;
   $("wm-lamp").classList.add("thinking");
   note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`, {
     replace: "warm",
   });
-  if (m.first != null) openOnBench(m.first);
-  // Straight to the instrument, not the rack: the first thing after teaching
-  // it should be playing it. PATCH is the densest view in the app and it was
-  // where a newcomer landed.
-  showView("perform");
 }
 
 // ---------- overflow menu ----------

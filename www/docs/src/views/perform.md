@@ -23,6 +23,9 @@ From the top:
 **The header.** The patch's name, a status line, and a small scope. The status
 line says what PERFORM is doing: *measuring how this patch moves…*, *4 of 6
 controls reach this patch*, *wander: drift*, *paused — your hands are on it*.
+While a patch you opened is on its way it names it, *opening Acid Line…*, and
+the name above stays the patch your keys still play, dimmed, until the new one
+lands.
 
 **Eight controls in a row.** Six named controls (**Bright, Snap, Motion, Body,
 Grit, Space**), then **Blend** and **Wander**. Each named control is bipolar
@@ -241,7 +244,7 @@ it is. The dial reads *held*. Tap again to release.
 | **Keep** | Make the sound you hear home. The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it |
 | **Back** | Glide back to home, the last sound you kept or loaded |
 | **Offer** | Grow a variant from here into B |
-| **Take** | Make the offer in B your sound. It becomes home |
+| **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep or commit it, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is |
 | **Peek** | Hold to hear the offer alone |
 | **Freeze** | Freeze Wander. Same as tapping the Wander dial (not the dock's **hold**, which latches notes) |
 

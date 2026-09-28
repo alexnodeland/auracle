@@ -102,6 +102,12 @@ and a generation moves the pool rather than replacing it. The
 Nothing happens if there is no fitted model yet; there is no direction to climb
 in. Answer some duels first.
 
+A generation is a walk of a few dozen renders from each of ten seeds, a minute
+or two on a laptop. The rest of the instrument stays playable while it runs:
+a ▶, a bench open or a pick is answered between one seed and the next, and the
+button counts the seeds as they go. A refit waits for the generation to
+finish.
+
 ## The EVOLUTION strip
 
 What each generation did, per step:

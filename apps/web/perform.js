@@ -685,7 +685,9 @@ export function createPerform(host) {
   function revalidate() {
     state.revalidating = true;
     renderStatus();
-    const req = request("perform_wire", { tree: state.cur.json, overrides: [] });
+    // Background (`bg`): the patch is already playable from its last
+    // measurement, so this waits behind anything the player asks for.
+    const req = request("perform_wire", { tree: state.cur.json, overrides: [], bg: true });
     state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
   }
 
@@ -723,6 +725,9 @@ export function createPerform(host) {
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
     if (state.heldWire && !host.opening?.()) releaseHeld();
+    // An open began or ended somewhere else in the app: say so here.
+    const incoming = host.opening?.() ? host.openingName?.() || null : null;
+    if (state.visible && incoming !== (state.incoming || null)) renderStatus();
     if (state.deferredWire && performance.now() - state.lastTouch >= 1500) {
       const d = state.deferredWire;
       state.deferredWire = null;
@@ -789,7 +794,9 @@ export function createPerform(host) {
     if (host.opening?.()) return;
     if (now - (state.changedAt || 0) < SPARE_STEADY_MS || now - state.playableAt < SPARE_PLAYABLE_MS) return;
     if (now - state.lastTouch < 2000) return;
-    const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20 });
+    // Nobody has asked for it yet, so it waits behind anything that is asked
+    // for (`bg`), and is promoted the moment Offer claims it.
+    const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20, bg: true });
     state.pending.get(req).spare = { at: new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)])) };
   }
 
@@ -839,7 +846,11 @@ export function createPerform(host) {
   function requestOffer(why) {
     if (!state.cur) return;
     if (state.offer) passOffer();
-    const growing = [...state.pending.values()].find((q) => q.kind === "perform_offer" && q.gen === state.gen);
+    const growingAt = [...state.pending.entries()].find(([, q]) => q.kind === "perform_offer" && q.gen === state.gen);
+    const growing = growingAt ? growingAt[1] : null;
+    // A claim makes a background offer (a spare, Wander's) the player's: if it
+    // is still waiting in the engine's background lane, it moves up.
+    if (growing && why !== "wander" && why !== "attract") host.send({ type: "promote", kind: "perform_offer", req: growingAt[0] });
     if (growing && !growing.spare) {
       // One is already on its way: this press is a claim on it, and if it
       // comes back empty it is asked for once more. It used to be dropped
@@ -872,7 +883,10 @@ export function createPerform(host) {
     // short enough to still be the same moment in a performance. Roam asks
     // for a longer walk and so a farther offer.
     const steps = wanderZone(state.wander) === "roam" ? 40 : 20;
-    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps });
+    // Wander's and attract's offers are nobody's request (`bg`); a pressed
+    // Offer is the player's, and goes ahead of background work.
+    const bg = why === "wander" || why === "attract";
+    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps, bg });
     renderOffer("growing an offer…");
   }
 
@@ -966,6 +980,11 @@ export function createPerform(host) {
         if (m.data) {
           if (performance.now() - state.lastTouch < 1500) state.deferredWire = m.data;
           else applyWired(m.data);
+        } else if (p.cacheAs.carried) {
+          // A wiring borrowed from another sound is not this patch's: with no
+          // measurement to replace it, it goes rather than lingering.
+          state.wire = null;
+          renderStatus("could not measure this patch");
         }
         knobs.forEach(paintKnob);
         renderHood();
@@ -1039,7 +1058,7 @@ export function createPerform(host) {
 
   // A new tree reached the voices from anywhere in the app. It becomes home,
   // and the controls are re-measured around it.
-  function patchChanged(json, makeup) {
+  function patchChanged(json, makeup, liveKnobs) {
     nameEl.textContent = host.label();
     if (!json) return;
     if (state.cur && state.cur.json === json) {
@@ -1058,6 +1077,27 @@ export function createPerform(host) {
       return;
     }
     state.keeping = null;
+    // A Take coming back from the bench, with the taken tree's live knobs: the
+    // controls keep the wiring they had instead of reading "measuring…" for
+    // the whole re-measurement — 14 s on a busy laptop, mid-phrase. Only the
+    // knobs the taken tree still has are kept (addresses are positional, and
+    // an offer can change structure), centred on the taken tree's values; the
+    // offer's own measurement replaces it the moment it lands. This is the
+    // stale-while-revalidate a remeasured patch already gets (see `wire`),
+    // with the wiring borrowed from the sound the offer grew out of.
+    const taking = state.taking;
+    const taken = !!taking && performance.now() - taking.at < 15_000 && treeShape(json) === taking.key;
+    if (taken || (taking && performance.now() - taking.at >= 15_000)) state.taking = null;
+    const carried =
+      taken && Array.isArray(liveKnobs) && liveKnobs.length ? carryWiring(taking.wire, liveKnobs) : null;
+    // The patch being left: a measurement of it is still worth finishing
+    // (cached, for flicking back) but nobody is waiting on it, so it drops to
+    // the engine's background lane; offers and drifts grown from it are worth
+    // nothing, and are withdrawn if they have not started.
+    const leaving = [...state.pending.entries()]
+      .filter(([, p]) => p.gen === state.gen && /^perform_(wire|offer|drift)$/.test(p.kind))
+      .map(([req]) => req);
+    if (leaving.length) host.send({ type: "retire", reqs: leaving });
     state.gen++;
     state.applyThen.clear();
     state.measuring = false;
@@ -1082,9 +1122,61 @@ export function createPerform(host) {
     // offer…" for ever when the patch changed under a growing offer.
     if (state.offer) clearOffer();
     else renderOffer();
-    if (state.visible) wire();
+    if (carried) {
+      const here = new Map(liveKnobs);
+      state.cur.knobs = here;
+      state.home.knobs = new Map(here);
+      state.wiredAt = new Map(here);
+      state.wire = carried;
+      state.playableAt = performance.now();
+      // The offer was grown from the performed sound, controls and all, so
+      // the taken tree already contains their deltas: they read zero on it.
+      state.c = state.c.map(() => 0);
+      knobs.forEach((k) => {
+        if (k.spec.kind === "named") {
+          k.value = 0;
+          host.controlMoved?.(k.i);
+        }
+      });
+      sendTouch();
+      state.revalidating = true;
+      const req = request("perform_wire", { tree: json, overrides: [] });
+      state.pending.get(req).cacheAs = { json, rev: tasteRev(), quiet: true, carried: true };
+      renderStatus();
+    } else if (state.visible) wire();
     knobs.forEach(paintKnob);
     renderHood();
+  }
+
+  // A tree as its content alone — keys sorted, node uids dropped — so the
+  // offer that was taken and the tree the bench echoes back compare equal
+  // however either was serialized: the bench mints uids for the offer's
+  // nodes, and a reply is free to order a tree's keys its own way.
+  function treeShape(json) {
+    const canon = (v) => {
+      if (Array.isArray(v)) return v.map(canon);
+      if (!v || typeof v !== "object") return v;
+      const out = {};
+      for (const k of Object.keys(v).sort()) if (k !== "uid") out[k] = canon(v[k]);
+      return out;
+    };
+    try {
+      return JSON.stringify(canon(JSON.parse(json)));
+    } catch {
+      return json;
+    }
+  }
+
+  // The wiring `wire` had, kept for the tree whose live knobs are `list`: each
+  // control keeps the knobs that tree still has; one left with none has
+  // nothing to turn until the measurement says otherwise.
+  function carryWiring(wire, list) {
+    const live = new Set(list.map(([a]) => a));
+    return wire.map((w) => {
+      if (!w || w.search) return w;
+      const kept = w.knobs.filter(([a]) => live.has(a));
+      return kept.length ? { ...w, knobs: kept } : { ...w, knobs: [], search: true };
+    });
   }
 
   // Measure now even if PERFORM has never been looked at: a MIDI control can
@@ -1304,9 +1396,26 @@ export function createPerform(host) {
     state.offer = null;
     const live = host.live();
     if (live) live.bClear({ afterSwap: true });
+    // …and Blend comes home. What was in B *is* A now, and B is empty: left
+    // turned toward "offer", the next offer would sound at that level the
+    // moment it arrived, over the sound the player just chose.
+    const blend = knobs.find((k) => k.spec.kind === "blend");
+    if (blend) {
+      blend.value = 0;
+      state.blend = 0;
+      host.controlMoved?.(blend.i);
+    }
+    // The controls stay under the hands through the handover (see
+    // `patchChanged`): the wiring measured on the sound being left carries
+    // over to the one taken until the offer's own measurement lands.
+    // Keyed by the taken tree itself (uids aside, see `wireKey`): a Take the
+    // bench refuses must not lend its wiring to whatever patch comes next. The
+    // wiring is the one under the hands now, kept here because an edit still
+    // in flight can land first and clear it.
+    if (state.wire) state.taking = { at: performance.now(), key: treeShape(json), wire: state.wire };
     renderOffer();
     knobs.forEach(paintKnob);
-    host.commitTree(json);
+    host.commitTree(json, "taken offer");
     flash("take");
   }
 
@@ -1365,7 +1474,15 @@ export function createPerform(host) {
   function renderStatus(msg) {
     const z = wanderZone(state.wander);
     const parts = [];
+    // Another patch is on its way to the player's hands. The title still
+    // names what the keys play — that is true until it lands — dimmed, and
+    // this line names what is coming, so the patch being left can never read
+    // as the one that was picked.
+    const incoming = host.opening?.() ? host.openingName?.() : null;
+    state.incoming = incoming || null;
+    nameEl.classList.toggle("pending", !!incoming);
     if (msg) parts.push(msg);
+    else if (incoming) parts.push(`opening ${incoming}…`);
     else if (state.heldWire === "measure") parts.push("opening the patch you picked…");
     else if (state.measuring) parts.push("measuring how this patch moves…");
     else if (state.wire) {
@@ -1704,7 +1821,7 @@ export function createPerform(host) {
       const hit = wireCache.get(wireKey(json));
       if (hit) return Promise.resolve(reachOfWiring(hit.data.wiring));
       return new Promise((resolve) => {
-        const req = request("perform_wire", { tree: json, overrides: [] });
+        const req = request("perform_wire", { tree: json, overrides: [], bg: true });
         const p = state.pending.get(req);
         p.gen = -1;
         p.cacheAs = { json, rev: tasteRev() };
@@ -1746,6 +1863,14 @@ export function createPerform(host) {
     },
     show() {
       state.visible = true;
+      // Back in sight: a first measurement of this patch that `hide` let drop
+      // into the engine's background lane is the player's again. (A re-check
+      // is background by nature, and stays there.)
+      for (const [req, p] of state.pending) {
+        if (p.kind === "perform_wire" && p.gen === state.gen && !(p.cacheAs && p.cacheAs.quiet)) {
+          host.send({ type: "promote", kind: "perform_wire", req });
+        }
+      }
       nameEl.textContent = host.label();
       const t = host.liveTree();
       if (t && t.json && (!state.cur || state.cur.json !== t.json)) patchChanged(t.json, t.makeup);
@@ -1764,6 +1889,17 @@ export function createPerform(host) {
       state.visible = false;
       const live = host.live();
       if (live && state.offer) live.bMix(0);
+      // Out of sight, a measurement is nobody's to wait on. It still
+      // finishes, and is cached for coming back, but in the engine's
+      // background lane, where the player's own long work elsewhere — ⚡, a
+      // generation — goes first. The films caught the cost of not doing this:
+      // a preset opened while PERFORM was still showing started a measurement
+      // that ran on after the view changed to PATCH, and the first knob edit
+      // there waited 16 s behind it.
+      const measuring = [...state.pending.entries()]
+        .filter(([, p]) => p.kind === "perform_wire" && p.gen === state.gen)
+        .map(([req]) => req);
+      if (measuring.length) host.send({ type: "retire", reqs: measuring });
     },
     ensureWired,
     patchChanged,

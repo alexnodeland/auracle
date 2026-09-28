@@ -53,7 +53,7 @@
 
 use std::collections::HashSet;
 
-use auracle_features::{featurize_memo, AudioFeatures, PhraseSpec, RenderMemo};
+use auracle_features::{featurize_memo, render_key, AudioFeatures, PhraseSpec, RenderMemo};
 use auracle_grammar::edit::{set_param, ParamValue};
 use auracle_grammar::term::{AudioNode, ModNode, Uid};
 use auracle_grammar::PatchTree;
@@ -417,6 +417,17 @@ pub fn structural_addrs(tree: &PatchTree) -> Vec<String> {
         .collect()
 }
 
+/// Standardized audio φ from a featurization's raw features.
+fn standardized_audio(features: &auracle_features::Features, std: &Standardizer) -> Vec<f64> {
+    features
+        .audio
+        .to_vec()
+        .iter()
+        .enumerate()
+        .map(|(i, x)| (x - std.mean[i]) / std.std[i])
+        .collect()
+}
+
 /// Standardized audio φ of `tree`, or `None` if it does not vet.
 fn audio_z(
     tree: &PatchTree,
@@ -425,13 +436,37 @@ fn audio_z(
     std: &Standardizer,
 ) -> Option<Vec<f64>> {
     let (cf, _) = featurize_memo(tree, spec, memo, false).ok()?;
-    let raw = cf.features.audio.to_vec();
-    Some(
-        raw.iter()
-            .enumerate()
-            .map(|(i, x)| (x - std.mean[i]) / std.std[i])
-            .collect(),
-    )
+    Some(standardized_audio(&cf.features, std))
+}
+
+/// What a measurement knows about one tree's standardized audio φ.
+///
+/// A measurement ([`jacobian`] then [`verify`]) is thirty-odd renders, each a
+/// pure function of one tree, and it used to be one synchronous call of 10–30
+/// s on the engine's only thread — in front of every ▶, bench open and ⌘Z the
+/// player made meanwhile. Asking through a lookup instead of rendering inline
+/// lets the same code do three jobs: **measure** (render on a miss, exactly
+/// what it always did), **plan** (a miss is written down as a render still
+/// owed, and nothing is rendered), and **finish** a measurement whose renders
+/// were made elsewhere — in chunks between the player's requests, or on the
+/// render farm — and are now in the memo. The numbers are the same in all
+/// three, because the arithmetic below never sees which one it is in.
+pub(crate) enum Look {
+    /// Measured.
+    Z(Vec<f64>),
+    /// Does not vet (or does not build): the measurement treats it exactly as
+    /// the rendering path always treated a failed render.
+    Fails,
+    /// Not measured yet. Only a plan ever answers this.
+    Pending,
+}
+
+/// The rendering lookup: memo first, render on a miss.
+fn rendered(tree: &PatchTree, spec: &PhraseSpec, memo: &RenderMemo, std: &Standardizer) -> Look {
+    match audio_z(tree, spec, memo, std) {
+        Some(z) => Look::Z(z),
+        None => Look::Fails,
+    }
 }
 
 /// Measure the audio Jacobian of `tree` by one-sided finite differences,
@@ -447,29 +482,68 @@ pub fn jacobian(
     memo: &RenderMemo,
     std: &Standardizer,
 ) -> Option<Jacobian> {
-    let z = audio_z(tree, spec, memo, std)?;
-    let knobs = live_knobs(tree, spec.sample_rate);
-    let mut cols = Vec::with_capacity(knobs.len());
+    jacobian_by(tree, spec.sample_rate, &mut |t| {
+        rendered(t, spec, memo, std)
+    })
+    .ok()
+    .flatten()
+}
+
+/// [`jacobian`] through a lookup. `Err(())` means some render is still
+/// [`Look::Pending`] — every one of them has been asked for by then, the
+/// patch's own and each knob's nudge alike, since none depends on another's
+/// result. `Ok(None)` is a patch that does not vet, as before.
+pub(crate) fn jacobian_by(
+    tree: &PatchTree,
+    sample_rate: f64,
+    look: &mut dyn FnMut(&PatchTree) -> Look,
+) -> Result<Option<Jacobian>, ()> {
+    // A patch that does not vet has no Jacobian, and its nudges are never
+    // rendered — the order the rendering path has always had.
+    let base = look(tree);
+    if matches!(base, Look::Fails) {
+        return Ok(None);
+    }
+    let mut pending = matches!(base, Look::Pending);
+    let knobs = live_knobs(tree, sample_rate);
+    let mut nudged = Vec::with_capacity(knobs.len());
     for (addr, v) in &knobs {
         let h = if *v < 0.5 {
             JACOBIAN_STEP
         } else {
             -JACOBIAN_STEP
         };
-        let col = set_param(tree, addr, ParamValue::Continuous(v + h))
-            .ok()
-            .and_then(|t| audio_z(&t, spec, memo, std))
-            .map(|zn| zn.iter().zip(&z).map(|(a, b)| (a - b) / h).collect())
-            .unwrap_or_else(|| vec![0.0; z.len()]);
-        cols.push(col);
+        let zn = match set_param(tree, addr, ParamValue::Continuous(v + h)) {
+            Ok(t) => match look(&t) {
+                Look::Z(zn) => Some(zn),
+                Look::Fails => None,
+                Look::Pending => {
+                    pending = true;
+                    None
+                }
+            },
+            Err(_) => None,
+        };
+        nudged.push((h, zn));
     }
-    Some(Jacobian {
+    let z = match base {
+        Look::Z(z) if !pending => z,
+        _ => return Err(()),
+    };
+    let cols = nudged
+        .into_iter()
+        .map(|(h, zn)| match zn {
+            Some(zn) => zn.iter().zip(&z).map(|(a, b)| (a - b) / h).collect(),
+            None => vec![0.0; z.len()],
+        })
+        .collect();
+    Ok(Some(Jacobian {
         addrs: knobs.iter().map(|(a, _)| a.clone()).collect(),
         values: knobs.iter().map(|(_, v)| *v).collect(),
         names: AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect(),
         z,
         cols,
-    })
+    }))
 }
 
 /// Solve the symmetric positive-definite system `M x = b` (Gaussian
@@ -764,6 +838,48 @@ pub fn verify(
     memo: &RenderMemo,
     std: &Standardizer,
 ) {
+    verify_by(tree, jac, wiring, &mut |t| rendered(t, spec, memo, std));
+}
+
+/// The patch at `c` on control `i` alone (every other control at zero), with
+/// the wiring taken at the Jacobian's word — the tree [`verify`] renders to
+/// test one point of one half. `None` if a knob write fails.
+fn tree_at(
+    tree: &PatchTree,
+    jac: &Jacobian,
+    wiring: &[Wiring],
+    i: usize,
+    c: f64,
+) -> Option<PatchTree> {
+    let mut cs = vec![0.0; wiring.len()];
+    cs[i] = c;
+    let unverified: Vec<Wiring> = wiring
+        .iter()
+        .map(|w| Wiring {
+            up: None,
+            down: None,
+            ..w.clone()
+        })
+        .collect();
+    let mut t = tree.clone();
+    for (a, v) in apply(jac, &unverified, &cs) {
+        t = set_param(&t, &a, ParamValue::Continuous(v)).ok()?;
+    }
+    Some(t)
+}
+
+/// [`verify`] through a lookup. Returns false while any render it needs is
+/// still [`Look::Pending`]; a control with an unmeasured point is left
+/// unverified rather than decided on a guess, and its retry at half travel —
+/// which depends on the full-travel result — is not asked for until that
+/// result exists.
+pub(crate) fn verify_by(
+    tree: &PatchTree,
+    jac: &Jacobian,
+    wiring: &mut [Wiring],
+    look: &mut dyn FnMut(&PatchTree) -> Look,
+) -> bool {
+    let mut complete = true;
     for i in 0..wiring.len() {
         if wiring[i].search {
             continue;
@@ -771,36 +887,44 @@ pub fn verify(
         let d = direction(&CONTROLS[i], &jac.names);
         let along = |z: &[f64]| z.iter().zip(&d).map(|(a, b)| a * b).sum::<f64>();
         let base = along(&jac.z);
-        let at = |c: f64| -> Option<f64> {
-            let mut cs = vec![0.0; wiring.len()];
-            cs[i] = c;
-            let unverified: Vec<Wiring> = wiring
-                .iter()
-                .map(|w| Wiring {
-                    up: None,
-                    down: None,
-                    ..w.clone()
-                })
-                .collect();
-            let mut t = tree.clone();
-            for (a, v) in apply(jac, &unverified, &cs) {
-                t = set_param(&t, &a, ParamValue::Continuous(v)).ok()?;
+        let mut pending = false;
+        // One point: its movement along the control's own axis, `None` for a
+        // point that does not vet.
+        let mut at = |c: f64, wiring: &[Wiring], pending: &mut bool| -> Option<f64> {
+            let t = tree_at(tree, jac, wiring, i, c)?;
+            match look(&t) {
+                Look::Z(z) => Some(along(&z)),
+                Look::Fails => None,
+                Look::Pending => {
+                    *pending = true;
+                    None
+                }
             }
-            audio_z(&t, spec, memo, std).map(|z| along(&z))
         };
         // A half is confirmed only if the sound moved the asked-for way at
         // both half and full travel; its reach is the full-travel movement.
         // A half that moves at the end but reverses on the way is closed.
-        let half = |c: f64, scale: f64| -> f64 {
-            let near = at(c * scale * 0.5).map(|v| (v - base) * c).unwrap_or(0.0);
-            let far = at(c * scale).map(|v| (v - base) * c).unwrap_or(0.0);
+        let mut half = |c: f64, scale: f64, wiring: &[Wiring], pending: &mut bool| -> f64 {
+            let near = at(c * scale * 0.5, wiring, pending)
+                .map(|v| (v - base) * c)
+                .unwrap_or(0.0);
+            let far = at(c * scale, wiring, pending)
+                .map(|v| (v - base) * c)
+                .unwrap_or(0.0);
             if near > 0.0 && far > near {
                 far
             } else {
                 0.0
             }
         };
-        let (mut up, mut down) = (half(1.0, 1.0), half(-1.0, 1.0));
+        let (mut up, mut down) = (
+            half(1.0, 1.0, wiring, &mut pending),
+            half(-1.0, 1.0, wiring, &mut pending),
+        );
+        if pending {
+            complete = false;
+            continue;
+        }
         // A control that would close at full travel gets one retry at half:
         // the same two-point test over ±¼ and ±½ (±½ is already rendered and
         // memoized). Wiring by effect gives the knob doing the work its whole
@@ -808,7 +932,14 @@ pub fn verify(
         // itself — so it keeps half the turn instead of closing.
         let open = |m: f64| m >= REACH_FLOOR * 0.5;
         if !open(up) && !open(down) {
-            let (u2, d2) = (half(1.0, 0.5), half(-1.0, 0.5));
+            let (u2, d2) = (
+                half(1.0, 0.5, wiring, &mut pending),
+                half(-1.0, 0.5, wiring, &mut pending),
+            );
+            if pending {
+                complete = false;
+                continue;
+            }
             if open(u2) || open(d2) {
                 for (_, g) in wiring[i].knobs.iter_mut() {
                     *g *= 0.5;
@@ -824,6 +955,7 @@ pub fn verify(
             wiring[i].search = true;
         }
     }
+    complete
 }
 
 impl Engine {
@@ -831,11 +963,81 @@ impl Engine {
     /// [`wire`], then [`verify`]. `None` before a standardizer exists or when
     /// the tree does not vet.
     pub fn wire_controls(&self, tree: &PatchTree) -> Option<(Jacobian, Vec<Wiring>)> {
+        self.wire_controls_known(tree, &HashSet::new())
+    }
+
+    /// [`Self::wire_controls`] with the renders already known not to vet
+    /// named by their memo key, so they are not rendered again: the memo keeps
+    /// only successes, and a measurement finished from renders made elsewhere
+    /// ([`Self::wire_plan`]) would otherwise re-render each of its failures
+    /// here, on the thread the split exists to keep free. Every other render
+    /// comes from the memo, or is made here on a miss. The result is the one
+    /// `wire_controls` would give: a failure is deterministic, so skipping its
+    /// render changes nothing but the time.
+    pub fn wire_controls_known(
+        &self,
+        tree: &PatchTree,
+        failed: &HashSet<String>,
+    ) -> Option<(Jacobian, Vec<Wiring>)> {
         let std = self.standardizer.as_deref()?;
-        let jac = jacobian(tree, &self.cfg.phrase, self.memo(), std)?;
+        let (spec, memo) = (&self.cfg.phrase, self.memo());
+        let mut look = |t: &PatchTree| {
+            if !failed.is_empty() && failed.contains(&render_key(t, spec)) {
+                Look::Fails
+            } else {
+                rendered(t, spec, memo, std)
+            }
+        };
+        let jac = jacobian_by(tree, spec.sample_rate, &mut look).ok()??;
         let mut wiring = wire(&jac);
-        verify(tree, &jac, &mut wiring, &self.cfg.phrase, self.memo(), std);
+        verify_by(tree, &jac, &mut wiring, &mut look);
         Some((jac, wiring))
+    }
+
+    /// The renders [`Self::wire_controls`] would make next on `tree` and the
+    /// memo does not hold, as `(memo key, tree)`, rendering nothing.
+    ///
+    /// A measurement comes in up to three rounds, because each depends on the
+    /// last: the patch and its nudges (the Jacobian), then four points per
+    /// reachable control (their trees depend on the wiring the Jacobian
+    /// gives), then a retry at half travel for any control that closed at full
+    /// travel (which depends on those results). This answers the earliest round
+    /// still owed, all of it at once, so a caller can render the round in
+    /// parallel or one tree at a time between other requests, fold the results
+    /// into the memo, and ask again. Empty when nothing more is owed: then
+    /// [`Self::wire_controls_known`] finishes from the memo without a render.
+    /// `failed` names the renders already known not to vet, which the memo
+    /// does not keep. Empty, too, before a standardizer exists.
+    pub fn wire_plan(
+        &self,
+        tree: &PatchTree,
+        failed: &HashSet<String>,
+    ) -> Vec<(String, PatchTree)> {
+        let mut need: Vec<(String, PatchTree)> = Vec::new();
+        let Some(std) = self.standardizer.as_deref() else {
+            return need;
+        };
+        let (spec, memo) = (&self.cfg.phrase, self.memo());
+        let mut look = |t: &PatchTree| {
+            let key = render_key(t, spec);
+            if failed.contains(&key) {
+                return Look::Fails;
+            }
+            match memo.get(&key) {
+                Some(cf) => Look::Z(standardized_audio(&cf.features, std)),
+                None => {
+                    if !need.iter().any(|(k, _)| *k == key) {
+                        need.push((key, t.clone()));
+                    }
+                    Look::Pending
+                }
+            }
+        };
+        if let Ok(Some(jac)) = jacobian_by(tree, spec.sample_rate, &mut look) {
+            let mut wiring = wire(&jac);
+            verify_by(tree, &jac, &mut wiring, &mut look);
+        }
+        need
     }
 
     /// The standardizer this session's φ lives under, once the pool is filled.
@@ -1117,5 +1319,71 @@ mod tests {
             }
         }
         assert!(checked >= 8, "too few open halves to be a gate: {checked}");
+    }
+
+    /// A measurement paid for in rounds — planned, its renders made elsewhere
+    /// and folded into the memo, then finished — is the measurement
+    /// `wire_controls` makes in one call: the same wiring, to the bit. And a
+    /// plan renders nothing: the thread asking for one stays free.
+    #[test]
+    fn a_planned_measurement_is_the_measurement() {
+        use crate::engine::{Engine, SessionConfig};
+        let bank = preset_bank();
+        for name in ["First Bass", "Glass Pad"] {
+            let p = bank.iter().find(|p| p.name == name).expect("preset exists");
+            let fresh = || {
+                let mut e = Engine::new(
+                    auracle_grammar::PatchGrammarPrior::default(),
+                    SessionConfig::default(),
+                );
+                e.standardizer = Some(std::sync::Arc::new(preset_standardizer(&e.cfg.phrase)));
+                e
+            };
+            let whole = fresh().wire_controls(&p.tree).expect("preset vets");
+
+            // The planned path, with its renders made on a separate memo — a
+            // stand-in for a farm worker — and handed over as rows.
+            let engine = fresh();
+            let farm = RenderMemo::default();
+            let mut failed: HashSet<String> = HashSet::new();
+            let mut rounds = 0;
+            loop {
+                let misses = engine.memo().stats().misses;
+                let need = engine.wire_plan(&p.tree, &failed);
+                assert_eq!(
+                    engine.memo().stats().misses,
+                    misses,
+                    "{name}: a plan rendered"
+                );
+                if need.is_empty() {
+                    break;
+                }
+                rounds += 1;
+                assert!(rounds <= 3, "{name}: a measurement is at most three rounds");
+                for (key, t) in need {
+                    match featurize_memo(&t, &engine.cfg.phrase, &farm, false) {
+                        Ok((cf, _)) => engine.memo().put(cf, None),
+                        Err(_) => {
+                            failed.insert(key);
+                        }
+                    }
+                }
+            }
+            let before = engine.memo().stats().misses;
+            let planned = engine
+                .wire_controls_known(&p.tree, &failed)
+                .expect("preset vets");
+            assert_eq!(
+                engine.memo().stats().misses,
+                before,
+                "{name}: finishing a planned measurement rendered"
+            );
+            assert_eq!(
+                serde_json::to_string(&planned.1).unwrap(),
+                serde_json::to_string(&whole.1).unwrap(),
+                "{name}: the wiring differs"
+            );
+            assert_eq!(planned.0.cols, whole.0.cols, "{name}: the Jacobian differs");
+        }
     }
 }
