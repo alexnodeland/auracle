@@ -517,7 +517,9 @@ pub struct SessionConfig {
     /// steps. Expressed as a fraction of the observed SD, 0.6 means the same
     /// softness whatever the spread.
     pub duel_temperature: f64,
-    /// Show one uniformly-random "check" duel every N duels. An
+    /// Show one uniformly-random "check" duel every N pairs shown (pairs
+    /// dealt and thrown away unseen do not count; see
+    /// [`Engine::duel_shown`]). An
     /// information-seeking acquisition deliberately picks pairs near p = 0.5,
     /// so calibration measured on acquisition-chosen duels is
     /// selection-biased; these are the unbiased subsample.
@@ -1064,6 +1066,12 @@ impl RefineOutcome {
 /// bounds the pairs that never are.
 pub const PENDING_CHECKS: usize = 32;
 
+/// How many pairs dealt but not yet reported shown the engine remembers (see
+/// `Engine::dealt_unshown`). The app holds at most a pair on the table, the
+/// pair dealt ahead and a few re-deals of it; this only bounds the deals it
+/// throws away.
+pub const DEALT_UNSHOWN: usize = 8;
+
 pub struct Engine {
     /// Configuration.
     pub cfg: SessionConfig,
@@ -1096,9 +1104,17 @@ pub struct Engine {
     shown_pairs: HashMap<(u64, u64), u32>,
     /// How many times each candidate has been offered, by any pairing.
     shown_candidates: HashMap<u64, u32>,
-    /// Duels offered this run (not the same as observations recorded — the
-    /// user may skip). Paces the random check duels.
+    /// Pairs put in front of the player this run (not the same as
+    /// observations recorded — the user may skip; not the same as pairs
+    /// dealt — a deal ahead can be thrown away unseen). Paces the random check
+    /// duels, so the calibration subsample is a fixed share of what the player
+    /// was actually asked.
     duels_shown: usize,
+    /// Pairs dealt by [`Engine::deal_duel_except`] and not yet reported shown
+    /// by [`Engine::duel_shown`], oldest first, each with whether it was dealt
+    /// as a random check. Bounded by [`DEALT_UNSHOWN`]: a deal the caller
+    /// threw away is simply forgotten.
+    dealt_unshown: VecDeque<((u64, u64), bool)>,
     /// Check pairs dealt and not yet answered, oldest first. An answer is
     /// scored as a random check when its pair was dealt as one — not only
     /// when it is the *last* pair dealt. The app records a vote after its
@@ -1167,6 +1183,7 @@ impl Engine {
             shown_pairs: HashMap::new(),
             shown_candidates: HashMap::new(),
             duels_shown: 0,
+            dealt_unshown: VecDeque::new(),
             pending_checks: VecDeque::new(),
             resamples_since_fit: 0,
             memo: RenderMemo::default(),
@@ -2757,7 +2774,61 @@ impl Engine {
     /// caller owns the list (the app holds a cut back for its undo window
     /// before the engine hears of it, and persists the set itself), so it is
     /// passed in rather than inferred from the log, whose kills carry no ids.
+    ///
+    /// For a caller that shows every pair it deals: the deal counts as shown
+    /// at once. A caller that deals ahead and may throw a deal away uses
+    /// [`Engine::deal_duel_except`] and reports what it shows.
     pub fn next_duel_except<R: Rng>(&mut self, rng: &mut R, exclude: &[u64]) -> Option<DuelChoice> {
+        let choice = self.deal_duel_except(rng, exclude)?;
+        self.duel_shown(self.pool[choice.a].id, self.pool[choice.b].id);
+        Some(choice)
+    }
+
+    /// Record that the pair `(a_id, b_id)` (candidate ids, either order),
+    /// dealt by [`Engine::deal_duel_except`], is now in front of the player.
+    /// Returns false, and counts nothing, for a pair not dealt or already
+    /// reported — putting a pair back up (a retracted pick restores its
+    /// question) is not a second showing.
+    ///
+    /// Everything that is about what the player has *seen* moves here rather
+    /// than at the deal: the check cadence, the repeat and exposure penalties
+    /// the choosing rules read, and the pending check a later answer is
+    /// scored against. A deal thrown away unseen (the app deals the next pair
+    /// ahead, and drops it after a cut, an eviction or a retraction, or when
+    /// the engine deals the pair already on the table) then moves none of
+    /// them. Counted at the deal, a scheduled check dealt ahead and thrown
+    /// away was a check nobody was asked, and the calibration subsample
+    /// shrank with every one.
+    pub fn duel_shown(&mut self, a_id: u64, b_id: u64) -> bool {
+        let key = pair_key(a_id, b_id);
+        // The newest deal of the pair is the one on the table; any older deal
+        // of it was thrown away, and goes too, so a later putting-back finds
+        // nothing to count.
+        let Some(&(_, random_check)) = self.dealt_unshown.iter().rev().find(|(k, _)| *k == key)
+        else {
+            return false;
+        };
+        self.dealt_unshown.retain(|(k, _)| *k != key);
+        self.duels_shown += 1;
+        *self.shown_pairs.entry(key).or_insert(0) += 1;
+        *self.shown_candidates.entry(key.0).or_insert(0) += 1;
+        *self.shown_candidates.entry(key.1).or_insert(0) += 1;
+        if random_check {
+            self.pending_checks.push_back(key);
+            if self.pending_checks.len() > PENDING_CHECKS {
+                self.pending_checks.pop_front();
+            }
+        }
+        true
+    }
+
+    /// Choose the next duel as [`Engine::next_duel_except`] does, without
+    /// counting it as shown: the caller reports the pairs it puts in front
+    /// of the player with [`Engine::duel_shown`]. Whether this deal is a
+    /// scheduled check depends on how many pairs have been *shown*, so a deal
+    /// thrown away and dealt again is dealt under the same schedule. The
+    /// random stream is consumed exactly as `next_duel_except` consumes it.
+    pub fn deal_duel_except<R: Rng>(&mut self, rng: &mut R, exclude: &[u64]) -> Option<DuelChoice> {
         // Un-standardized candidates score utility exactly 0 (`dot` over an
         // empty vector), which beats every real utility once a user has killed
         // enough patches — they must not be selectable, the same guard
@@ -2845,16 +2916,10 @@ impl Engine {
             }
         };
 
-        self.duels_shown += 1;
         let key = pair_key(self.pool[choice.a].id, self.pool[choice.b].id);
-        *self.shown_pairs.entry(key).or_insert(0) += 1;
-        *self.shown_candidates.entry(key.0).or_insert(0) += 1;
-        *self.shown_candidates.entry(key.1).or_insert(0) += 1;
-        if choice.random_check {
-            self.pending_checks.push_back(key);
-            if self.pending_checks.len() > PENDING_CHECKS {
-                self.pending_checks.pop_front();
-            }
+        self.dealt_unshown.push_back((key, choice.random_check));
+        if self.dealt_unshown.len() > DEALT_UNSHOWN {
+            self.dealt_unshown.pop_front();
         }
         Some(choice)
     }
@@ -3405,6 +3470,7 @@ impl Engine {
         self.audio_lru.clear();
         self.shown_pairs.clear();
         self.shown_candidates.clear();
+        self.dealt_unshown.clear();
         self.bound_events();
         // Every saved term, repaired on the way in. This is the *only* place a
         // tree written by an older build enters the engine, and a bank entry

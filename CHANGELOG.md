@@ -20,8 +20,11 @@ changelog that edits its own past is not a record.
   background (*re-checking*) and the controls keep working meanwhile. While
   the warm start is open, its nine cards are measured against your session
   too, once the pool has filled. `make perform-wirings` regenerates the file,
-  and `make test` fails when a preset changes without it
-  (`shipped_preset_wirings_are_current`, `budgets.spec.js`).
+  and `make test` fails when it is stale: a preset changed, or what the
+  measurement is made of (the phrase, φ, loudness, the DSP, the standard
+  pool, PERFORM itself), re-measured on a sample of the file
+  (`shipped_preset_wirings_are_current`,
+  `shipped_preset_wirings_measure_the_same_today`, `budgets.spec.js`).
 - **A preset clicked in the bank opens with one render instead of two.** Its
   insert used to throw its audio away and the bench then rendered the same
   phrase again; the insert now keeps it, as the warm start's ▶ already did,
@@ -67,7 +70,11 @@ changelog that edits its own past is not a record.
   20 s of dimmed cards, with the new pair's sounds rendered after it. Taking
   a pick back puts its pair back and keeps the other as the next, and a
   patch cut meanwhile is never dealt: its pair is dropped and dealt again
-  (`evolve_ahead.spec.js`, `budgets.spec.js`).
+  (`evolve_ahead.spec.js`, `budgets.spec.js`). A pair dropped unseen does not
+  count as asked: under an information-seeking pairing rule the unbiased
+  probes TRUST scores on are one in ten of the pairs you were shown, and a
+  probe dealt ahead and dropped used to take its turn and leave the sample
+  smaller (`discarded_deals_do_not_advance_the_check_cadence`).
 - **What the instrument promises about time is measured.** The app marks
   its own moments (boot start, the veil lifting, the first sound, a full
   pool, PERFORM's controls wired, a patch opened, a pair dealt), every film

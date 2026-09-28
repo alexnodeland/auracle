@@ -417,8 +417,10 @@ pub fn structural_addrs(tree: &PatchTree) -> Vec<String> {
         .collect()
 }
 
-/// Standardized audio φ from a featurization's raw features.
-fn standardized_audio(features: &auracle_features::Features, std: &Standardizer) -> Vec<f64> {
+/// Standardized audio φ from a featurization's raw features: the `z` every
+/// measurement starts from (and the one `apps/web/perform-wirings.json`
+/// records per preset, which is why it is public).
+pub fn standardized_audio(features: &auracle_features::Features, std: &Standardizer) -> Vec<f64> {
     features
         .audio
         .to_vec()

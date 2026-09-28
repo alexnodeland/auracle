@@ -82,9 +82,18 @@ measured natively through the same `WasmEngine` surface the worker uses
 (`make perform-wirings`, the `preset_wirings` example) and keyed at load by the
 same `wireKey`. The player's own cache is asked first, then the file. A shipped
 wiring is always re-measured in the background (it was taken under a native
-standardizer, not the session's). The file carries fingerprints of what it
-was measured from, and `shipped_preset_wirings_are_current` fails `make test`
-when a preset or the measurement's inputs change without regenerating it.
+standardizer, not the session's). A stale file wires controls to the wrong
+knobs until that re-check lands, and the re-check then re-centres them, so
+`make test` guards it two ways. `shipped_preset_wirings_are_current` compares
+fingerprints of each preset and of the measurement's named inputs (phrase,
+feature names, controls, PERFORM's constants), rendering nothing.
+`shipped_preset_wirings_measure_the_same_today` covers what no fingerprint
+sees (feature maths, loudness normalization, vetting, compiler and DSP, the
+standard pool's fill, PERFORM's solver): it boots the standard engine and
+re-measures a sample of the file natively, the standardizer, every eighth
+preset's standardized φ and two presets' whole wiring, in about ten seconds on
+four cores. A change that moves nothing in the sample can still pass. Any φ
+change owes `make perform-wirings`.
 While the warm start is open, `main.js` pre-warms its nine cards
 (`perform.prewarm(tree, {fresh: true})`, trees from the file, no pool
 inserts), one at a time in `later`, once the pool is full.
@@ -115,6 +124,13 @@ resident, and fetches the new pair's renders. A pick or ↻ swaps it in
 synchronously (`placePair`); the pair is re-checked at that moment against
 cuts and replacements made since (`aheadUsable`). Only with nothing waiting
 does a pick wait for a deal.
+
+The worker deals with `deal_duel_ex`, which does not count the pair as shown;
+`placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
+unseen (the engine re-dealt the pair on the table, a side was cut or
+replaced, a retraction put the old pair back) moves neither the check-probe
+cadence nor the repeat and exposure penalties: under a choosing rule the
+unbiased probes stay one in `duel_check_every` of the pairs the player saw.
 
 ## Audio
 
