@@ -28,6 +28,12 @@ each crate's API docs link the films about it, and the app's ⋯ menu gains
 **Watch the films**. Everything you hear is Auracle: the scores are played by
 its own engine. The narration is synthetic (Kokoro-82M, offline).
 
+In the app, **▶ film** in the menu bar opens the film of the view you are in,
+with its length on hover. The first time you open a view it says so ("new to
+PATCH? watch PATCH in depth"), and a newcomer's first note is the tour; after
+that it folds away. It stays out of booth mode and out of the films
+themselves (`film_chip.spec.js`).
+
 ### Fixed — what the films found
 
 Rehearsing a film of each view meant doing everything the guide says, on
@@ -69,6 +75,89 @@ was fixed, not the words.
   every module's line was written to follow.
 - **A node-bank preview ends at silence.** Its fade stopped one step short of
   zero and left a sliver of a loud patch's last sample.
+- **Renaming a style renames that style and nothing else.** A rename showed
+  every change the votes and stars had made since the last redraw, so naming
+  one style "dark drones" renamed the other two and moved every share. The
+  name now changes alone, at once, and sticks through refits.
+- **The bank scrolls to the patch you opened**, not the one you left. Opening
+  a patch from the TASTE map scrolled the list to the previous patch, so the
+  one just opened, and its stars, stayed out of sight.
+- **PICKS counts a pick the moment you make it.** It showed the engine's log,
+  which hears of a pick only after its seven-second undo window, so it lagged
+  every pick and read 22 after 23 quick picks. Now picks, cuts and stars count
+  at once, and ⌘Z uncounts a pick everywhere it was counted.
+- **The latest word replaces the last.** Each pick's toast takes the place of
+  the one before instead of queueing behind it (the lane used to name the
+  first pick six seconds after the third). The warm start's result replaces
+  "Loading those in…" and names the patch under your fingers; ● rec's "saved"
+  replaces "recording"; a MIDI mapping's confirmation replaces the last.
+- **EVOLVE says how its pairs are dealt, truly and steadily.** A line beside
+  skip ↻ reads "◇ random pair — a fair test": the model doesn't choose what you
+  hear, so every pick is a fair test of its forecast, which TRUST scores. The
+  old "unbiased probe" mark claimed only one duel in ten was random, and
+  vanished after five.
+- **The sixth pick always redraws your taste map**, and "● it just learned"
+  says so. After picks the model agreed with, the promised redraw used to
+  quietly not happen (`evolve_feedback.spec.js`).
+- **The first generation's result arrives at once**, with "what happened?" on
+  it. A separate one-time explanation used to hold "Gen 1: 10 new patches in
+  the bank" back for seven seconds. ⚡ evolve from this now announces its child
+  when it is actually on the bench.
+- **The newest generation says "new" in the bank**, and a bank row's ▶ (and
+  EVOLVE's ▶ SAMPLE) lights while it plays and stops on a second press.
+- **TASTE draws uncertainty so you can read it.** Map dots now range from 2.5
+  to 9 px over the map's own spread of uncertainty (they were 5.6–7.5 px), and
+  DIRECTIONS draws each whisker on its bar's scale: a capped whisker made
+  grit's −0.12 ± 0.13 look settled. An interval that includes zero now crosses
+  the centre line.
+- **The menu bar says "generations"** and fits every window the app opens in;
+  at 1000 px it used to push ⋯ off the edge.
+- **Wander says it is paused while your hands are on it.** It waits a few
+  seconds after any touch, but only said so when a touch interrupted a glide.
+- **PERFORM says "re-checking" when the controls keep working.** After Wander
+  moved the sound a long way, the status read "measuring how this patch
+  moves…", the words for a patch whose controls are waiting, while the dials
+  worked on.
+- **Back after a drift glides home.** After Wander's drift, Back used to jump
+  seconds late and clear the offer in B, because the drifted patch was written
+  out with its fields in a different order and read as a new patch. Keep after
+  a drift, and PERFORM's memory of measured patches, had the same fault
+  (`perform_replies_write_trees_in_their_own_key_order`).
+
+### Fixed — the player first
+
+The engine does long work (measuring a patch for PERFORM, growing offers,
+refitting), and every request used to wait its turn behind all of it. Films of
+the app caught a warm-start ▶ silent for 18 s and every PERFORM control
+reading "measuring…" for 14 s after a Take.
+
+- **Your gestures are answered first.** The engine serves the player's own
+  requests (plays, edits, picks, opens) ahead of work nobody is waiting on, and
+  long jobs pause between pieces to answer them (`responsive.spec.js`).
+- **Take keeps the controls under your hands**, names the offer you took
+  ("Acid Line (taken offer)") and brings Blend home. The controls used to go
+  dead while the new patch was measured.
+- **A warm-start ▶ says it is waiting and never plays late**, and "teach it"
+  opens PERFORM straight onto the pick.
+- **Out of sight, PERFORM waits.** Its measurements step back while PERFORM is
+  hidden, so editing in PATCH is not slowed by a view you are not using.
+
+### Fixed — editing a patch
+
+- **Every edit lands, in order.** Two knobs turned close together could lose
+  the first one, and a second drag could start from a stale value. Every edit
+  to the patch on the bench now goes through one ordered lane, and a drag
+  starts from the value you last set (`patch_editing.spec.js`).
+- **A knob survives the redraw that follows an edit**, and a knob you are
+  holding is never rebuilt. For a moment after an edit a knob could vanish
+  from under the pointer.
+- **Undo retires the toast of what it undid**, and the newest edit's toast
+  replaces the last one's instead of queueing behind it.
+- **⚡ evolve from this never overwrites edits** you made while it bred: the
+  child waits in the bank ("open it").
+- **With SYNC on, a sequencer's RATE reads the division it plays**; HOLD, the
+  dock and notes leave the arp drawer open; ▶ on a placement preview plays the
+  socket being previewed.
 
 ### Fixed — every patch at one level, and none that blasts
 
