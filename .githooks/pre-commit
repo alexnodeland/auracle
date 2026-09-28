@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Fast checks on what is being committed (install with `make install-hooks`).
+# Seconds, not minutes: formatting and syntax of the staged files, and the
+# tooling's own checks when the docs or the Claude setup changed. `make check`
+# is still the gate; this catches the cheap mistakes before a commit exists.
+# Skip once with `git commit --no-verify`.
+set -uo pipefail
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+fail=0
+
+rs=$(printf '%s\n' "$staged" | grep -E '\.rs$' || true)
+if [ -n "$rs" ] && command -v rustfmt >/dev/null; then
+  # shellcheck disable=SC2086
+  rustfmt --edition 2021 --check $rs >/dev/null 2>&1 || { echo "pre-commit: rustfmt would change staged Rust (run \`make fmt\`)"; fail=1; }
+fi
+
+for f in $(printf '%s\n' "$staged" | grep -E '\.(js|mjs|cjs)$' || true); do
+  node --check "$f" 2>/dev/null || { echo "pre-commit: $f does not parse (node --check)"; fail=1; }
+done
+for f in $(printf '%s\n' "$staged" | grep -E '\.py$' || true); do
+  python3 -m py_compile "$f" 2>/dev/null || { echo "pre-commit: $f has a Python syntax error"; fail=1; }
+done
+for f in $(printf '%s\n' "$staged" | grep -E '\.sh$|^\.githooks/' || true); do
+  bash -n "$f" 2>/dev/null || { echo "pre-commit: $f has a shell syntax error"; fail=1; }
+done
+
+if printf '%s\n' "$staged" | grep -qE '(^|/)(AGENTS|CLAUDE)\.md$|^docs/|^\.claude/|^www/(docs|reference)/src/|^www/video/tools/'; then
+  make -s dev-check >/dev/null 2>&1 || { echo "pre-commit: make dev-check fails (run it to see why)"; fail=1; }
+fi
+
+[ "$fail" = 0 ] || echo "pre-commit: fix the above, or commit with --no-verify to skip once."
+exit "$fail"

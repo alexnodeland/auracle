@@ -36,6 +36,10 @@ Be respectful and constructive.
    [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) if you're touching the
    web app.
 3. **Verify your setup** with `make check`.
+4. **Optionally, `make install-hooks`**: a pre-commit hook that checks the
+   formatting and syntax of what you stage, in seconds (skip once with
+   `git commit --no-verify`). `.editorconfig` sets each file type's
+   indentation for your editor.
 
 ## Layout
 

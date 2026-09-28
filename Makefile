@@ -29,7 +29,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
         film-sounds film-voice film film-rehearse film-record film-publish \
-        film-record-all film-preview dev-check help
+        film-record-all film-preview dev-check help install-hooks
 
 all: check
 
@@ -42,6 +42,12 @@ check: fmt-check lint web-check dev-check wasm-check test
 help:
 	@awk '/^## [a-z][a-z0-9-]*:/ { sub(/^## /, ""); split($$0, a, ":"); \
 		printf "  %-18s%s\n", a[1], substr($$0, length(a[1]) + 2) }' $(MAKEFILE_LIST)
+
+## install-hooks: use the repo's git hooks (.githooks): fast format and syntax
+## checks on staged files before each commit. Opt-in, per clone.
+install-hooks:
+	git config core.hooksPath .githooks
+	@printf '  git hooks: .githooks (skip once with --no-verify)\n'
 
 ## dev-check: the tooling around the code stays sound — the agent docs'
 ## links, anchors and frontmatter, the constants the books quote by name, the
