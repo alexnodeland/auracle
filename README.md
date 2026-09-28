@@ -188,7 +188,7 @@ data](https://auracle.alexnodeland.com/docs/your-data.html).
 Two books, published as part of the site and built from `www/`:
 
 - **[User Guide](https://auracle.alexnodeland.com/docs/)** — playing it.
-  The three views, teaching it your taste, reading what it learned, the full
+  The four views, teaching it your taste, reading what it learned, the full
   key map, accessibility, troubleshooting. Start at [Your first
   session](https://auracle.alexnodeland.com/docs/getting-started/first-session.html).
 - **[Reference](https://auracle.alexnodeland.com/reference/)** — how it
@@ -212,14 +212,21 @@ In the repo:
 - [`apps/web/README.md`](./apps/web/README.md) — the web app's architecture
   (worklet assembly, worker protocol, workbench).
 - [`CHANGELOG.md`](./CHANGELOG.md) — notable changes by pass.
+- [`docs/`](./docs/README.md) — the engineering record: architecture notes,
+  decisions (ADRs), proposals, runbooks and design notes.
+- [`AGENTS.md`](./AGENTS.md) — the working rules for coding agents (and
+  people), one per area of the repo, each linking deeper.
+- [`www/video/README.md`](./www/video/README.md) — how the films are made,
+  from script to the site, with every tool.
 
 ## 🛠 Development
 
 ```bash
-make check   # fmt-check + clippy (-D warnings) + tests — the CI gate
-make test    # cargo test --workspace --release (DSP tests need release)
+make check   # fmt-check + clippy (-D warnings) + app syntax + dev-check + wasm32 + tests: the CI gate
+make test    # cargo test --workspace --profile test-fast (DSP tests need optimized code)
 make fmt     # rustfmt
 make lint    # clippy
+make help    # every target, with what it does
 ```
 
 The site:
