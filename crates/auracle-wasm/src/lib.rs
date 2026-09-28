@@ -273,6 +273,33 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
     }
 }
 
+/// A PERFORM reply that carries a tree (a graft, a drift, an offer).
+///
+/// Serialized from this struct, so the tree goes out through its own
+/// `Serialize`, keys in declaration order, as every other path writes it.
+/// Through `serde_json::json!` its keys came out sorted (this workspace's
+/// serde_json has no `preserve_order`), so the same patch read as two
+/// different texts. PERFORM compares trees' text to tell a new structure from
+/// new knob values, and after any drift it took Back home for a new patch: B
+/// was cleared, the dials reset, and nothing glided. The wiring cache's keys
+/// split the same way.
+#[derive(Serialize)]
+struct TreeReply<'a> {
+    tree: &'a PatchTree,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    knobs: Option<&'a [(String, f64)]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    makeup: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    taste: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diff: Option<&'a [auracle_grammar::DiffEntry]>,
+}
+
+fn tree_reply(r: &TreeReply) -> String {
+    serde_json::to_string(r).unwrap_or_else(|_| "null".into())
+}
+
 /// The engine's randomness, one stream per consumer.
 ///
 /// It used to be one generator for everything, and anything that drew from it
@@ -689,10 +716,11 @@ impl WasmEngine {
     /// ```
     ///
     /// `a`/`b` are candidate **ids**. `info_gain` is expected information
-    /// about θ in nats (max `ln 2 ≈ 0.693`). `method` is `"bald"`,
-    /// `"check"` (a uniformly-random calibration probe — worth labelling in
-    /// the UI, since the model is deliberately not choosing it) or
-    /// `"random"` (no posterior yet).
+    /// about θ in nats (max `ln 2 ≈ 0.693`). `method` is `"random"` (the
+    /// default rule deals every pair at random, and so does any rule before
+    /// the first fit), `"check"` (a scheduled random probe under a choosing
+    /// rule, worth labelling in the UI since the model is deliberately not
+    /// choosing it), `"thompson"` or `"bald"`.
     pub fn next_duel_ex(&mut self) -> String {
         #[derive(Serialize)]
         struct Row {
@@ -1017,7 +1045,13 @@ impl WasmEngine {
             return "null".into();
         };
         match auracle_session::perform::graft_for(&tree, k as usize) {
-            Some(t) => serde_json::json!({ "tree": t }).to_string(),
+            Some(t) => tree_reply(&TreeReply {
+                tree: &t,
+                knobs: None,
+                makeup: None,
+                taste: None,
+                diff: None,
+            }),
             None => serde_json::json!({ "reason": "no_graft" }).to_string(),
         }
     }
@@ -1092,8 +1126,13 @@ impl WasmEngine {
             Ok(t) => {
                 let knobs =
                     auracle_session::perform::live_knobs(&t, self.engine.cfg.phrase.sample_rate);
-                serde_json::json!({ "tree": t, "knobs": knobs, "taste": self.engine.has_taste() })
-                    .to_string()
+                tree_reply(&TreeReply {
+                    tree: &t,
+                    knobs: Some(&knobs),
+                    makeup: None,
+                    taste: Some(self.engine.has_taste()),
+                    diff: None,
+                })
             }
             Err(why) => serde_json::json!({ "reason": why.as_str() }).to_string(),
         }
@@ -1127,13 +1166,13 @@ impl WasmEngine {
         // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
         // kHz") instead of only "an offer is waiting".
         let diff = auracle_grammar::tree_diff(&tree, &t);
-        serde_json::json!({
-            "tree": t,
-            "makeup": makeup,
-            "taste": self.engine.has_taste(),
-            "diff": diff,
+        tree_reply(&TreeReply {
+            tree: &t,
+            knobs: None,
+            makeup: Some(makeup),
+            taste: Some(self.engine.has_taste()),
+            diff: Some(&diff),
         })
-        .to_string()
     }
 
     /// Why the most recent `refine_seed`/`refine_from` returned what it did,
@@ -2053,6 +2092,42 @@ impl WasmEngine {
 mod tests {
     use super::*;
     use rand::RngCore;
+
+    /// PERFORM's replies write a tree exactly as the rest of the app does, key
+    /// for key: through `json!` they came out with sorted keys, and PERFORM,
+    /// which tells a new structure from new knob values by comparing trees'
+    /// text, took Back after a drift for a new patch.
+    #[test]
+    fn perform_replies_write_trees_in_their_own_key_order() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let tree_json = engine.edit_tree_json();
+        let mut compared = 0;
+        for reply in [
+            engine.perform_drift(&tree_json, "{}", "[]", 3, 0.15),
+            engine.perform_offer(&tree_json, "{}", "[]", 3),
+        ] {
+            let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+            if v.get("reason").is_some() {
+                continue; // nothing grew this time; nothing to compare
+            }
+            let tree: PatchTree = serde_json::from_value(v["tree"].clone()).unwrap();
+            let own = serde_json::to_string(&tree).unwrap();
+            assert!(
+                reply.starts_with(&format!("{{\"tree\":{own}")),
+                "the reply's tree is not in its own key order"
+            );
+            compared += 1;
+        }
+        assert!(
+            compared > 0,
+            "neither a drift nor an offer grew, so nothing was checked"
+        );
+    }
 
     /// A draw on one stream never moves another: a spare offer grown in the
     /// background, however early or late it lands, leaves the duels and the
