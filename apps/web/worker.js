@@ -903,10 +903,11 @@ async function breed() {
 // - **later**: work nobody is waiting on — refits, re-measurements, spare
 //   offers, Wander's drift, booth pre-warms.
 //
-// Reordering between lanes is safe because nothing in `soon` or `later` reads
-// state a `now` request is still on its way to write: they carry the tree they
-// are about, or read only the pool and the posterior, and a vote landing ahead
-// of a refit is a refit that has seen one more vote.
+// Reordering between lanes only ever moves a `soon` or `later` request *later*,
+// past gestures that arrived after it, and none of them depends on the state
+// from before those gestures: PERFORM's carry the tree they are about, ⚡ names
+// its seed by id, and a generation or a refit reads the pool and the log as it
+// finds them — a refit that runs after one more vote has seen one more vote.
 //
 // Queueing alone cannot help a request that arrives while a long call is
 // already *running* — wasm cannot be interrupted. That half is chunking: a
