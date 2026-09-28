@@ -22,6 +22,16 @@ changelog that edits its own past is not a record.
   too, once the pool has filled. `make perform-wirings` regenerates the file,
   and `make test` fails when a preset changes without it
   (`shipped_preset_wirings_are_current`, `budgets.spec.js`).
+- **The second offer comes as fast as the first, and NEXT says it passes on
+  B.** PERFORM now grows the next offer in the background while B still holds
+  one, so offer, hear it, pass, offer is instant every time; the second offer
+  used to be grown on demand and took 10.9 s where the first took 0.01 s.
+  While B holds an offer the Offer pad reads **NEXT** with *passes on B*
+  under it: pressing it was a verdict on B that the pad never mentioned. A
+  pass now carries **undo** for seven seconds (B comes back and nothing is
+  recorded), as a Take carries *don't count it*, and a B you pass on without
+  hearing it says *B skipped — not counted, you hadn't heard it* instead of
+  vanishing without a word (`perform_next.spec.js`).
 
 ### Fixed — true today
 

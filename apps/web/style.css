@@ -4673,8 +4673,12 @@ html.handheld .handheld-gate {
   background: linear-gradient(180deg, #1d2127, #15171c);
   color: var(--silk-dim);
 }
-.pf-pad:disabled[data-wait]:not([data-wait=""])::after {
-  content: attr(data-wait);
+/* …and a pad whose press does more than its name says (Offer, while B holds
+   an offer, passes on it: NEXT · passes on B) says so the same way. */
+.pf-pad[data-sub]:not([data-sub=""])::after { content: attr(data-sub); }
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after { content: attr(data-wait); }
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after,
+.pf-pad[data-sub]:not([data-sub=""])::after {
   display: block;
   margin-top: 3px;
   font-family: var(--font-mono);

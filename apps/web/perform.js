@@ -1069,7 +1069,7 @@ export function createPerform(host) {
   const HEARD_MS = 1000;
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
-    watchTake();
+    watchAnswer();
     if (state.heldWire && !host.opening?.()) releaseHeld();
     // An open began or ended somewhere else in the app: say so here.
     const incoming = host.opening?.() ? host.openingName?.() || null : null;
@@ -1086,24 +1086,29 @@ export function createPerform(host) {
     if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) o.heardMs = (o.heardMs || 0) + 250;
   }, 250);
 
-  function answerOffer(took) {
+  // An answer waits out a short window before it is sent, counted from when
+  // its toast is on screen (the lane can hold a toast back behind another):
+  // taking something to hear it in place is not always a verdict, and neither
+  // is a Next pressed to move on. A Take's toast offers "don't count it"; a
+  // pass's offers UNDO, which brings B back as well. One answer waits at a
+  // time, which keeps the log in order: a new one commits the one before, as
+  // a second EVOLVE pick does.
+  const PASS_WINDOW_MS = 7000;
+  function holdAnswer(took) {
     const o = state.offer;
-    if (state.quiet || !o || !state.cur || (o.heardMs || 0) < HEARD_MS) return;
-    // One answer waiting at a time keeps the log in order: a new one commits
-    // the Take still inside its window, as a second EVOLVE pick does.
-    commitTake();
+    if (state.quiet || !o || !state.cur || (o.heardMs || 0) < HEARD_MS) return null;
+    commitAnswer();
     const pick = { tree: state.cur.json, overrides: overrides(), offer: o.json, took };
-    if (!took) {
-      sendAnswer(pick);
-      host.note("Passed on B — that counts as a pick for what you had.", { replace: "pf-offer" });
-      return;
-    }
-    // A take waits out a short window: taking something to hear it in place
-    // is not always a verdict, and the toast says how to say so. The window
-    // is counted from when the toast is on screen, not from the press: the
-    // lane can hold a toast back behind another, and its "don't count it"
-    // used to appear after the pick had already been sent, and do nothing.
-    const pt = { pick, sent: false, dropped: false, at: performance.now(), shownAt: 0, timer: null, toast: null };
+    const pt = { pick, sent: false, dropped: false, at: performance.now(), shownAt: 0, timer: null, toast: null, windowMs: took ? TAKE_SETTLE_MS : PASS_WINDOW_MS };
+    return pt;
+  }
+  function waitAnswer(pt) {
+    state.answerWait = pt;
+    watchAnswer();
+  }
+  function answerOffer(took) {
+    const pt = holdAnswer(took);
+    if (!pt) return;
     pt.toast = host.note("Took B — that counts as a pick over what you had.", {
       undo: () => {
         if (pt.sent) {
@@ -1112,37 +1117,36 @@ export function createPerform(host) {
         }
         pt.dropped = true;
         clearTimeout(pt.timer);
-        if (state.takeWait === pt) state.takeWait = null;
+        if (state.answerWait === pt) state.answerWait = null;
       },
       undoLabel: "don't count it",
       replace: "pf-offer",
     });
-    state.takeWait = pt;
-    watchTake();
+    waitAnswer(pt);
   }
 
-  // The Take waiting out its window (see answerOffer): its clock starts when
+  // The answer waiting out its window (see holdAnswer): its clock starts when
   // its toast reaches the screen, and it is counted when the window ends or
   // when the toast leaves the screen early (a later word on the offer took
   // its place, so its undo is gone). A toast that never gets on screen at all
   // is counted after a generous wait rather than held for ever.
-  function watchTake() {
-    const pt = state.takeWait;
+  function watchAnswer() {
+    const pt = state.answerWait;
     if (!pt || pt.sent || pt.dropped) return;
     const onScreen = !!(pt.toast && pt.toast.isConnected);
     if (!pt.shownAt) {
       if (onScreen) {
         pt.shownAt = performance.now();
-        pt.timer = setTimeout(commitTake, TAKE_SETTLE_MS);
-      } else if (performance.now() - pt.at > 30_000) commitTake();
+        pt.timer = setTimeout(commitAnswer, pt.windowMs);
+      } else if (performance.now() - pt.at > 30_000) commitAnswer();
       return;
     }
-    if (!onScreen) commitTake();
+    if (!onScreen) commitAnswer();
   }
-  function commitTake() {
-    const pt = state.takeWait;
+  function commitAnswer() {
+    const pt = state.answerWait;
     if (!pt) return;
-    state.takeWait = null;
+    state.answerWait = null;
     clearTimeout(pt.timer);
     if (pt.sent || pt.dropped) return;
     pt.sent = true;
@@ -1176,9 +1180,17 @@ export function createPerform(host) {
     }
     return true;
   }
+  // …and while B holds an offer too. The spare belongs to the sound in your
+  // hands, not to B, and the moment a player is exploring fastest — offer,
+  // pass, offer — is the moment it is needed: the second Offer, grown on
+  // demand, took 10.9 s where the first took 0.01 s. It still waits for hands
+  // off (two seconds), and for the engine to have nothing else asked of it.
+  function knobsNow() {
+    return new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)]));
+  }
   function growSpare() {
     const now = performance.now();
-    if (!state.visible || !state.cur || !state.wire || state.spare || state.offer) return;
+    if (!state.visible || !state.cur || !state.wire || state.spare) return;
     if (state.pending.size > 0 || state.glide) return;
     // No spare for a patch on its way out, either (see `heldForOpen`).
     if (host.opening?.()) return;
@@ -1187,15 +1199,20 @@ export function createPerform(host) {
     // Nobody has asked for it yet, so it waits behind anything that is asked
     // for (`bg`), and is promoted the moment Offer claims it.
     const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20, bg: true });
-    state.pending.get(req).spare = { at: new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)])) };
+    state.pending.get(req).spare = { at: knobsNow() };
   }
 
-  function presentOffer(offer) {
+  // `at`: the knobs the offer grew from (for handing it back as a spare, see
+  // `restoreOffer`); `again`: an offer brought back by an undo, not news.
+  function presentOffer(offer, at, again) {
     state.offer = {
       json: JSON.stringify(offer.tree),
       makeup: offer.makeup,
       taste: !!offer.taste,
       changes: host.describeDiff && offer.diff ? host.describeDiff(offer.diff) : "",
+      src: offer,
+      at: at || knobsNow(),
+      why: state.offerWhy || "",
     };
     const live = host.live();
     if (live) {
@@ -1204,7 +1221,7 @@ export function createPerform(host) {
     }
     renderOffer();
     knobs.forEach(paintKnob);
-    logImplicit("perform_offer", { why: state.offerWhy || "" });
+    if (!again) logImplicit("perform_offer", { why: state.offerWhy || "" });
   }
 
   function requestDrift() {
@@ -1226,8 +1243,17 @@ export function createPerform(host) {
   // while the next one grew: a player could Take the very sound they had just
   // passed on, and a Take landing just after the next offer arrived was
   // counted as an unheard answer to *that* one.
+  //
+  // A pass is a verdict only once B has been heard, and it is said either way:
+  // a heard pass counts as a pick for what you had, after a window with UNDO
+  // (B comes back, and nothing is recorded); an unheard one says it was not
+  // counted, with UNDO too. B used to vanish unheard with no word and no way
+  // back, and a heard pass was recorded at once with no undo, while a Take
+  // had eight seconds of "don't count it".
   function passOffer() {
-    answerOffer(false);
+    const o = state.offer;
+    const gen = state.gen;
+    const pt = holdAnswer(false);
     state.offer = null;
     const live = host.live();
     if (live) live.bClear();
@@ -1237,6 +1263,53 @@ export function createPerform(host) {
     blendHome();
     renderOffer();
     knobs.forEach(paintKnob);
+    if (!o || state.quiet) return;
+    if (!pt) {
+      host.note("B skipped — not counted, you hadn't heard it.", {
+        undo: () => restoreOffer(o, gen),
+        undoLabel: "undo",
+        replace: "pf-offer",
+      });
+      return;
+    }
+    pt.toast = host.note("Passed on B — that counts as a pick for what you had.", {
+      undo: () => {
+        if (pt.sent) {
+          host.note("Already counted — that pass's window had closed.", { urgent: true });
+          return;
+        }
+        pt.dropped = true;
+        clearTimeout(pt.timer);
+        if (state.answerWait === pt) state.answerWait = null;
+        restoreOffer(o, gen);
+      },
+      undoLabel: "undo",
+      replace: "pf-offer",
+    });
+    waitAnswer(pt);
+  }
+
+  // An undone pass: B comes back as it was, heard as far as it had been. The
+  // offer that took its place goes back to being the spare, and one still
+  // growing stops being claimed (it lands as the spare), so the next Next is
+  // as quick as this one was. Across a patch change B cannot come back: it
+  // was a variant of the sound before.
+  function restoreOffer(o, gen) {
+    if (gen !== state.gen || !state.cur) {
+      host.note("Not counted — B was a variant of the patch before, so it can't come back.", { replace: "pf-offer" });
+      return;
+    }
+    const cur = state.offer;
+    if (cur && cur.src && !state.spare) state.spare = { offer: cur.src, at: cur.at };
+    for (const q of state.pending.values()) {
+      if (q.kind !== "perform_offer" || q.gen !== state.gen) continue;
+      q.again = false;
+      q.promote = false;
+      if (!q.spare) q.spare = { at: knobsNow() };
+    }
+    state.offerWhy = o.why;
+    presentOffer(o.src, o.at, true);
+    state.offer.heardMs = o.heardMs || 0;
   }
 
   // Blend back to *home*: at once for the sound (B is empty or emptying), and
@@ -1295,7 +1368,7 @@ export function createPerform(host) {
     if (state.spare && spareFresh(state.spare)) {
       const sp = state.spare;
       state.spare = null;
-      presentOffer(sp.offer);
+      presentOffer(sp.offer, sp.at);
       return;
     }
     state.spare = null;
@@ -1311,7 +1384,8 @@ export function createPerform(host) {
     // Wander's and attract's offers are nobody's request (`bg`); a pressed
     // Offer is the player's, and goes ahead of background work.
     const bg = why === "wander" || why === "attract";
-    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps, bg });
+    const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps, bg });
+    state.pending.get(req).from = knobsNow();
     renderOffer("growing an offer…");
   }
 
@@ -1462,7 +1536,7 @@ export function createPerform(host) {
         renderOffer(whyNot(m, m.offer, "no offer beat this patch — try again, or loosen a lock"));
         return true;
       }
-      presentOffer(m.offer);
+      presentOffer(m.offer, p.from || (p.spare && p.spare.at));
       return true;
     }
     if (m.type === "perform_grafted") {
@@ -1970,6 +2044,14 @@ export function createPerform(host) {
       if (!padEls[k]) continue;
       padEls[k].disabled = !state.offer;
       padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
+    }
+    // While B holds an offer, pressing Offer passes on it: the pad says so
+    // before it is pressed, not in a toast after.
+    const op = padEls.offer;
+    if (op) {
+      op.textContent = state.offer ? "Next" : "Offer";
+      op.dataset.sub = state.offer ? "passes on B" : "";
+      op.title = state.offer ? "Pass on the offer in B and hear the next one" : "Grow a variant from here into B";
     }
   }
 
