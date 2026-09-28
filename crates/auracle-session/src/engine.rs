@@ -840,7 +840,9 @@ pub struct DuelChoice {
     /// True when this pair was drawn uniformly at random as a calibration
     /// check rather than chosen by the acquisition function.
     pub random_check: bool,
-    /// `"random"` (no posterior), `"check"`, or `"bald"`.
+    /// How the pair was dealt: `"random"` (the random rule, or no posterior
+    /// yet), `"check"` (a scheduled random probe under a choosing rule),
+    /// `"thompson"` or `"bald"`.
     pub method: &'static str,
 }
 
@@ -2784,6 +2786,21 @@ impl Engine {
                     method: "random",
                 }
             }
+            // Under the random rule every pair is random, so a scheduled
+            // check is no different from any other deal and says "random".
+            // Matched before the check arm: labelled "check", every tenth
+            // pair read as the exception to a rule that has none. Both arms
+            // draw the pair the same way, so a seeded deal is unchanged.
+            (Some(_), _) if self.cfg.acquisition == Acquisition::Random => {
+                let (a, b) = uniform(rng);
+                DuelChoice {
+                    a,
+                    b,
+                    info_gain: 0.0,
+                    random_check: true,
+                    method: "random",
+                }
+            }
             (Some(_), true) => {
                 let (a, b) = uniform(rng);
                 DuelChoice {
@@ -2792,16 +2809,6 @@ impl Engine {
                     info_gain: 0.0,
                     random_check: true,
                     method: "check",
-                }
-            }
-            (Some(_), false) if self.cfg.acquisition == Acquisition::Random => {
-                let (a, b) = uniform(rng);
-                DuelChoice {
-                    a,
-                    b,
-                    info_gain: 0.0,
-                    random_check: true,
-                    method: "random",
                 }
             }
             (Some(posterior), false) if self.cfg.acquisition == Acquisition::Thompson => {
