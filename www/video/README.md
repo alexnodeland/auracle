@@ -158,11 +158,12 @@ MP4, the WebM and the 720p preview side by side.
 `tools/record_films.sh [--draft] <film> <poster> …` records every film first
 and logs "quiet window over", then finishes each in turn.
 
-Where the time goes, for a 4½-minute film (EVOLVE): the shots themselves take
-about 11 minutes and their set-ups about 7; the render about 10 at four pages;
-the draft encode about 3, the full encode about 12. Encoding each shot to VP9
-used to hold the browser another 19 minutes, and the final MP4 and WebM ran
-one after the other.
+Where the time went, for a 4½-minute film (EVOLVE, recorded 28 September):
+about 11 minutes of shots and 7 of set-ups, 19 with the browser idle while
+each shot was encoded to VP9 (now gone), about 16 rendering (now about 1.5×
+faster per frame on the same machine, and on every core), and 8 + 12 for the
+MP4 and the WebM one after the other (now side by side, or a few minutes for
+a `--draft`).
 
 ## Publishing
 
