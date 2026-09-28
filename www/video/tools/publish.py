@@ -67,6 +67,7 @@ CHAPTER_NAMES = {
     "view-evolve": {"title": "EVOLVE", "turn1": "The duel", "turn2": "Play it yourself", "turn3": "Point it", "turn4": "What a pick does", "turn5": "Fair questions", "turn6": "A generation", "turn7": "Stars, save, cut", "turn8": "A working rhythm", "outro": "Next: TASTE"},
     "view-perform": {"open": "PERFORM", "turn-play": "Play it", "turn-named": "Named for what you hear", "turn-honest": "Honest controls", "turn-xy": "The XY pad", "turn-offer": "Offers", "turn-wander": "Wander, Keep and Back", "turn-dock": "The dock", "turn-midi": "MIDI", "turn-together": "All of it at once", "outro": "Next: PATCH"},
     "view-patch": {"cold": "A filter sweep", "title": "What PATCH is for", "t-read": "Reading the circuit", "t-hear": "Hearing it properly", "t-change": "Changing it", "t-add": "Adding a module", "t-move": "Modulation chains", "t-steps": "Steps", "t-lock": "Locks and ⚡ evolve", "t-keep": "Commit", "t-take": "Taking it with you", "t-together": "Putting it together", "outro": "Next: EVOLVE"},
+    "view-taste": {"open": "The map lights up", "title": "TASTE", "tabs": "Four ways in", "map": "The map", "styles": "Styles", "directions": "Directions", "trust": "Trust", "wrong": "When it's wrong", "profile": "Your profile", "together": "The loop", "outro": "Keep picking"},
     "engine": {"intro": "Five crates", "genome": "The genome", "compile": "Compiling to DSP", "audition": "The audition", "features": "Features", "utility": "Utility", "calibration": "Calibration", "search": "Search", "perform": "PERFORM's wiring", "runtime": "The runtime", "outro": "Read it, run it"},
 }
 
@@ -290,6 +291,7 @@ VIEW_LOOPS = {
     "view-perform": (60.2, 74.0),
     "view-patch": (0.6, 10.8),
     "view-evolve": (116.5, 128.5),
+    "view-taste": (0.0, 14.0),
 }
 LOOPS.update(VIEW_LOOPS)
 
