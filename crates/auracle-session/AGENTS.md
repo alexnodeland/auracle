@@ -12,7 +12,7 @@ loop (observe, refit). Rules shared by all crates are in
 | `engine.rs` | `Engine`: pool, fills, duel choice (`next_duel_full`), `fit_posterior`, refinement (`refine_jobs` → `refine_absorb` → `refine_finish`, and the serial `refine`, `refine_seed`, `refine_from`), PERFORM's `offer`/`drift`, persistence |
 | `walk.rs` | A generation's walks as data: `WalkContext`, `WalkJob`, `WalkResult`, and `run_walk`, the walk as a pure function the farm runs ([ADR-007](../../docs/decisions/007-generations-breed-in-parallel.md)) |
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |
-| `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts |
+| `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts, the aimed offer (`TiltedFitness`, `Engine::offer_toward`) |
 | `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits |
 | `calib.rs` | Prequential calibration: forecasts scored on random (check) duels |
 | `naming.rs` | Musical names for patches and styles, read off φ |
@@ -46,4 +46,6 @@ loop (observe, refit). Rules shared by all crates are in
 
 `cargo test -p auracle-session --profile test-fast`. `make search-check`,
 `make climb` and `make islands` measure the search; the examples in
-`examples/` measure PERFORM (`perform_wiring`, `reach_census`) and the loops.
+`examples/` measure PERFORM (`perform_wiring`, `reach_census`, and
+`offer_census` behind `make offer-census`, which chose `AIM_GAMMA` and
+`AIM_WALKS`) and the loops.

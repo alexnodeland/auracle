@@ -23,7 +23,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 .PHONY: web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
-        closed-loop walk-payload revalidate \
+        closed-loop walk-payload offer-census revalidate \
         wasm wasm-stamp perform-wirings serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
@@ -194,6 +194,11 @@ closed-loop:
 ## walk-payload: what a generation's walks cost to ship to the render farm (RFC-001)
 walk-payload:
 	$(CARGO) run -p auracle-session --example walk_payload --release
+
+## offer-census: how far a search control's aimed offer moves, and what it
+## costs in taste, at several γ (the measurement behind AIM_GAMMA)
+offer-census:
+	$(CARGO) run -p auracle-session --example offer_census --release -- 16 2 20
 
 ## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
 revalidate: phi-stats norm-peak climb search-check
