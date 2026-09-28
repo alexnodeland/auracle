@@ -103,7 +103,7 @@ test("the app marks boot, the veil, first sound, a full pool, PERFORM wired and 
   console.log(`marks (ms since load): ${marks.map((m) => `${m.name} ${m.t}`).join(" · ")}`);
   expect(at("boot-start")).toBeLessThanOrEqual(at("veil-down"));
   expect(at("veil-down")).toBeLessThanOrEqual(at("pool-full"));
-  expect(marks.find((m) => m.name === "perform-wired" && m.detail?.name === "Glass Pad")?.detail.how).toBe("shipped");
+  expect(marks.some((m) => m.name === "perform-wired" && m.detail?.how === "shipped"), "a preset wired from the shipped file").toBe(true);
   expect(errs).toEqual([]);
 });
 

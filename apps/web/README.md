@@ -13,7 +13,8 @@ the bank head walks through what a generation is and what evolving costs.
 
 - **PERFORM** — the sound under your hands: six named controls (Bright,
   Snap, Motion, Body, Grit, Space) wired onto this patch's knobs by its own
-  measured response, a Wander dial (still → offer → drift → roam), pads to
+  measured response (every preset ships measured), a Wander dial (still →
+  ideas → drift → roam), pads to
   Keep, go Back, grow an Offer into a second slot and Peek, Blend or Take it,
   and velocity → timbre. MIDI controllers auto-map onto the controls.
 - **PATCH** — the patch is the hero: its full rack (modules, cables, knobs at

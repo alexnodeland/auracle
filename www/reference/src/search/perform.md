@@ -303,9 +303,16 @@ rather than closing.
 Total cost for a patch with $n$ knobs and $r$ reachable controls is $n + 1 + 4r$
 renders, plus two for each retry, all through the memo. In the browser that is
 around 20–30 renders, and the page caches each measurement by tree and by vote
-count, so returning to a patch costs none. The view re-wires after every
-glide and every patch change, so the claims are always about the neighbourhood
-the sound is in.
+count, so returning to a patch costs none. Every preset's measurement also
+ships with the app (`apps/web/perform-wirings.json`, made natively through the
+same `WasmEngine` calls by `make perform-wirings`), so a preset is playable the
+moment it lands; the page re-measures it in the background, because the file
+was measured under a standardizer fitted to a standard pool, not the session's.
+The view re-wires after every patch change, and after a glide or a Keep that
+carries the knobs out of the neighbourhood the wiring was measured in (see
+below), so the claims are always about the neighbourhood the sound is in. A
+background re-measurement that wires each control to the same knobs is taken
+in place, without re-centring the controls.
 
 ### The gate, and why it samples somewhere else
 
