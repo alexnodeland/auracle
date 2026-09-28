@@ -42,9 +42,13 @@ const INIT = `(() => {
   window.Worker = Wrapped;
 })();`;
 
-async function boot(page) {
+// `shipped: false` blocks the presets' shipped wirings, so a preset is
+// measured as a patch never seen before is: the only way to watch a
+// measurement in progress on a known patch.
+async function boot(page, { shipped = true } = {}) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -157,7 +161,7 @@ test("a half-closed control draws its ring on the side it turns toward, and says
 
 test("a control still being listened to does nothing, and never looks or acts like a search control", async ({ page }) => {
   test.setTimeout(300_000);
-  const errs = await boot(page);
+  const errs = await boot(page, { shipped: false });
   await openOnPerform(page, "Glass Pad");
   // A fresh profile has no wiring cached: the first measurement takes seconds.
   await expect(page.locator(".pf-status")).toContainText("listening to this patch", { timeout: 30_000 });
@@ -267,7 +271,10 @@ test("a search control springs back when let go, and says what letting go will d
   await drag(page, grit, -90, { hold: async () => { during = await sub.textContent(); } });
   expect(during).toBe("let go to ask for rough");
   await expect(grit).toHaveAttribute("aria-valuenow", "0.00");
-  await expect(page.locator("#toasts")).toContainText("growing an offer instead", { timeout: 5_000 });
+  // Said in the toast lane, which may still be saying the preset's arrival:
+  // the preset's controls work at once now, so this turn comes seconds
+  // sooner than it used to after opening it.
+  await expect(page.locator("#toasts")).toContainText("growing an offer instead", { timeout: 15_000 });
   expect(errs).toEqual([]);
 });
 

@@ -37,7 +37,10 @@ const INIT = `(() => {
   window.__pwEngine = () => workers.find((w) => /worker\\.js/.test(w.__pwUrl)) || null;
 })();`;
 
-async function boot(page, { skipWarm = true } = {}) {
+// `shipped: false` blocks the presets' shipped wirings, so a preset is
+// measured as a patch never seen before is.
+async function boot(page, { skipWarm = true, shipped = true } = {}) {
+  if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -57,12 +60,13 @@ test("a player's ▶ is answered while PERFORM is still listening to a patch", a
   test.setTimeout(240_000);
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await boot(page);
+  await boot(page, { shipped: false });
   await openPreset(page, "Glass Pad");
   await page.locator('.viewtab[data-view="perform"]').click();
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
-  // A fresh profile has no wiring cached: the measurement is thirty-odd
-  // renders. Ask for a render of another patch while it runs.
+  // A fresh profile has no wiring cached (and the shipped one is blocked):
+  // the measurement is thirty-odd renders. Ask for a render of another patch
+  // while it runs.
   await page.waitForSelector(".pf-status:has-text('listening to this patch')", { timeout: 30_000 });
   await page.locator('.bf[data-f="pool"]').click();
   const target = await page.evaluate(() =>
