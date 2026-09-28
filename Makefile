@@ -77,11 +77,14 @@ WEB_JS := $(wildcard apps/web/*.js)
 ## js-check: every app script parses. This is the only gate that catches a
 ## backtick inside live-audio.js's PROCESSOR template literal — the failure
 ## mode there is a worklet blob that silently never registers, not an error at
-## the edit site (CONTRIBUTING § Sharp edges).
+## the edit site (CONTRIBUTING § Sharp edges). Parsed as the ES modules they
+## are: `node --check file.js` reads a .js as CommonJS first and let a name
+## declared twice inside a function (a SyntaxError the browser refuses the
+## whole module for) pass as "parse OK".
 js-check:
 	@command -v node >/dev/null || { \
 		printf '  node not found — the web app is checked with `node --check`; install Node 18+\n'; exit 1; }
-	@for f in $(WEB_JS); do node --check $$f || exit 1; done
+	@for f in $(WEB_JS); do node --check --input-type=module < $$f || { printf '  in %s\n' $$f; exit 1; }; done
 	@printf '  %s: parse OK\n' $(WEB_JS)
 
 ## wasm-check: the engine compiles for wasm32, which the native build does not
