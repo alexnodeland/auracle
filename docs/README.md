@@ -48,13 +48,14 @@ plugins work on it.
 | --- | --- |
 | [001](decisions/001-one-random-stream-per-consumer.md) | Every consumer of randomness has its own stream |
 | [002](decisions/002-trees-serialize-in-declaration-order.md) | Patch trees serialize from their types, in declaration order |
-| [003](decisions/003-one-browser-at-a-time.md) | One browser job at a time, first come first served |
+| [003](decisions/003-one-browser-at-a-time.md) | One browser job at a time, first come first served (superseded by 010) |
 | [004](decisions/004-descriptions-stay-true.md) | Descriptions stay true, and the app is fixed first |
 | [005](decisions/005-tests-run-optimized.md) | Rust tests run in an optimized profile |
 | [006](decisions/006-layered-agent-context.md) | Agent context is layered: AGENTS.md per area, deeper docs here |
 | [007](decisions/007-generations-breed-in-parallel.md) | A generation breeds its walks in parallel, absorbed in job order |
 | [008](decisions/008-search-offers-are-aimed.md) | A search control's offer is aimed along the control's direction |
 | [009](decisions/009-one-instrument-contracts.md) | One vocabulary, one colour contract, one undo, one keymap across the instrument |
+| [010](decisions/010-tests-share-the-browser-recordings-do-not.md) | Browser tests share the machine, two at a time; rehearsals and recordings do not |
 
 ## Proposals
 

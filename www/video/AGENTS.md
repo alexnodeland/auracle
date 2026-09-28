@@ -35,10 +35,11 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   shot and summarises lateness and errors. A film is ready when every shot
   passes with no errors, `tools/validate.mjs` is clean, `tools/framing.py`
   shows no callout leaving the frame and the voice passes its ASR gate.
-- **One browser at a time.** Every rehearsal and recording goes through
-  `tools/one_browser.sh` (first come, first served); `rehearse.sh` and
-  `walkthrough.sh` already do. Record on a quiet machine: no builds, suites or
-  renders at the same time. Only recording needs it: `record_films.sh` logs
+- **Rehearsals and recordings run alone.** Every rehearsal and recording goes
+  through `tools/one_browser.sh` (first come, first served, exclusive lane);
+  `rehearse.sh` and `walkthrough.sh` already do. Browser tests share the
+  machine two at a time, never beside one of these (ADR-010). Record on a
+  quiet machine: no builds, suites or renders at the same time. Only recording needs it: `record_films.sh` logs
   "quiet window over" once every take is in, and the renders and encodes
   after that can share the machine.
 - **Wait on the app, not the clock.** A shot waits for a state (`until`, a

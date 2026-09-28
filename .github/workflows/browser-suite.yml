@@ -7,8 +7,8 @@ name: Browser suite
 # can. The rest pin behaviour a player sees: the bank, EVOLVE's feedback,
 # PATCH editing, PERFORM's controls and offers, the engine answering the player
 # first, booth mode, the film chip (docs/architecture/testing.md lists what
-# each pins). Together they take about fifteen minutes, which is why they run
-# here rather than in the required `CI` check:
+# each pins). Together they take about twenty minutes in one job, so they run
+# here, split across three runners, rather than in the required `CI` check:
 #
 # - on a PR that touches the app, its tests or the engine, as a report that
 #   does not block merging (make it a required check in the ruleset once it
@@ -37,9 +37,15 @@ concurrency:
 
 jobs:
   browser:
-    name: Every browser spec
+    # Three runners, each a third of the specs: about seven minutes instead of
+    # twenty for the whole suite in one job.
+    name: Every browser spec (${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/3", "2/3", "3/3"]
     steps:
       - uses: actions/checkout@v7
 
@@ -69,12 +75,12 @@ jobs:
       - name: Run every spec
         env:
           AURACLE_TEST_PORT: "8690"
-        run: cd tests/web && npx playwright test --reporter=list
+        run: cd tests/web && npx playwright test --shard=${{ matrix.shard }} --reporter=list
 
       - name: Keep the traces of failed specs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-suite-results-${{ github.sha }}
+          name: browser-suite-results-${{ github.sha }}-${{ strategy.job-index }}
           path: tests/web/test-results/
           if-no-files-found: ignore

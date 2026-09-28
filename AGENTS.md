@@ -48,11 +48,11 @@ contributor guide; this file does not repeat it.
 4. **Rebuild the wasm after Rust changes the app uses.** `apps/web/pkg` is
    generated and ignored by git: `make wasm`, then reload. A session-start hook
    warns when it is older than the Rust sources.
-5. **One browser at a time.** Rehearsals, recordings and browser tests share
-   the machine and slow each other down. Run every browser job through
-   `www/video/tools/one_browser.sh` (a first-come, first-served queue), and run
-   a suite from a worktree on its own port with `AURACLE_TEST_PORT`
-   ([ADR-003](docs/decisions/003-one-browser-at-a-time.md)).
+5. **Browser jobs take a ticket.** Run every browser job through
+   `www/video/tools/one_browser.sh` (a first-come, first-served line):
+   rehearsals and recordings get the machine to themselves, browser tests run
+   two at a time. Run a suite on its own port with `AURACLE_TEST_PORT`
+   ([ADR-010](docs/decisions/010-tests-share-the-browser-recordings-do-not.md)).
 6. **Seeded means reproducible.** Every consumer of randomness in the engine
    draws from its own stream, so timing cannot change what a seed deals
    ([ADR-001](docs/decisions/001-one-random-stream-per-consumer.md)). Do not

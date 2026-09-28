@@ -1,11 +1,11 @@
 ---
 title: "One browser job at a time, first come first served"
 number: 3
-status: accepted
+status: superseded
 author: Claude Code
 created: 2026-09-28
 originating_proposal: null
-superseded_by: null
+superseded_by: 10
 ---
 
 # ADR-003: One browser job at a time, first come first served

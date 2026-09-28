@@ -61,7 +61,7 @@ this table.
 - **Optimized profile for Rust tests**
   ([ADR-005](../decisions/005-tests-run-optimized.md)).
 - **One browser at a time, own port for a worktree**
-  ([ADR-003](../decisions/003-one-browser-at-a-time.md)).
+  ([ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md)).
 - **Gate tests over mocks.** Extend the gate that covers a behaviour.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust
   changes. Check the session-start hook's warning, or `make wasm` first.

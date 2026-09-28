@@ -70,7 +70,7 @@ A walkthrough is ready to record when:
    ([ADR-004](../decisions/004-descriptions-stay-true.md)).
 
 Record on a quiet machine, one film at a time
-([ADR-003](../decisions/003-one-browser-at-a-time.md)). Only the recording
+([ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md)). Only the recording
 needs quiet: `record_films.sh` records every film first and logs "quiet
 window over", then finishes them. Re-record only what changed
 (`--shot a,b`), and review a `--draft` encode before the full one. After encoding, review
@@ -95,7 +95,7 @@ preview (`make film-preview FILM=<name>`), about 13 MB for five minutes.
 ## References
 
 - `www/video/README.md`: every tool, and setting up the voice environment
-- [ADR-003](../decisions/003-one-browser-at-a-time.md),
+- [ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md),
   [ADR-004](../decisions/004-descriptions-stay-true.md)
 - [`../runbooks/film-shot-fails.md`](../runbooks/film-shot-fails.md),
   [`../runbooks/disk-full.md`](../runbooks/disk-full.md)

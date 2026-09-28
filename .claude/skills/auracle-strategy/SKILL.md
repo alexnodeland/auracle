@@ -42,7 +42,7 @@ Auracle's context is layered (ADR-006). Load only what the task needs.
 - Every consumer of randomness has its own stream (ADR-001).
 - Every worker request gets a reply; gestures go in the `now` lane.
 - One browser job at a time, through `one_browser.sh`; suites from worktrees
-  on their own port (ADR-003).
+  on their own port (ADR-010).
 - Descriptions stay true, and the app is fixed first (ADR-004).
 
 ## Skills and agents
