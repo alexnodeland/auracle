@@ -53,7 +53,7 @@ deliberating is how a session stops being fun. If you cannot tell, press
 The strip above the cards is the session's state of play:
 
 <figure>
-<img src="../img/teach-meter.webp" alt="The teaching meter: six pips, then the line 44 picks in. Every 6 it redraws your taste map. In the middle, how the pair was dealt, beside a skip button, and EVOLVE POOL at the right end." loading="eager" width="1172" height="60">
+<img src="../img/teach-meter.webp" alt="The teaching meter: six pips, then the line 12 picks in. Every 6 it redraws your taste map. In the middle, ◇ random pair — a fair test beside a skip button, and EVOLVE POOL at the right end." loading="eager" width="1172" height="60">
 <figcaption><strong>The teaching meter.</strong> Six pips to the next refit, the
 count so far, and how the pair on the table was dealt.</figcaption>
 </figure>
