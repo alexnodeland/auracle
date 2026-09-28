@@ -1069,6 +1069,7 @@ worker.onmessage = (e) => {
     case "bench_missing": {
       // Not on its way any more, either (PERFORM holds a measurement for it).
       if (benchPending === m.id) benchPending = null;
+      if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
       note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
       send({ type: "taste_views" });
       break;
@@ -1349,7 +1350,17 @@ worker.onmessage = (e) => {
         holesRestoreFor(m.subject);
         undoStack.length = 0;
         redoStack.length = 0;
-        note(`${nameOf(m.subject)} on the bench`);
+        // ⚡'s child is announced here, where it is true (see `evolved_from`);
+        // `replace` lets it take over from "⚡ evolving around…" if that is
+        // still up, rather than queue behind it.
+        const evolved = evolvedAnnounce && evolvedAnnounce.id === m.subject ? evolvedAnnounce : null;
+        if (evolved) {
+          evolvedAnnounce = null;
+          const row = rowOf(m.subject);
+          note(evolved.text(row ? `${row.name} #${m.subject}` : `patch #${m.subject}`), { replace: "evolve-from" });
+        } else {
+          note(`${nameOf(m.subject)} on the bench`);
+        }
         // First patch on the bench: a one-time walkthrough of the gestures
         // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
         if (!localStorage.getItem("auracle-bench-tour")) {
@@ -1765,7 +1776,15 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       refreshInstruments();
       if (m.childId > 0) {
-        note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench, play it.${madeRoom(evolveEvicted)}`);
+        // Said when it is true. The child exists now, but the bench swaps
+        // only when `edit_begin` has rendered and vetted it, 1–3 s on — and
+        // "now on the bench, play it" said here was played on the parent.
+        // The `bench` reply for this id says it instead of "X on the bench".
+        evolvedAnnounce = {
+          id: m.childId,
+          text: (name) =>
+            `⚡ gen ${m.status.generation}: evolution proposed ${name} — it's on the bench, play it.${madeRoom(evolveEvicted)}`,
+        };
         send({ type: "edit_begin", id: m.childId });
         scheduleSave();
       } else {
@@ -1774,6 +1793,7 @@ worker.onmessage = (e) => {
             m.reason,
             "⚡ evolution found no accepted move — try again, or loosen some locks",
           ),
+          { replace: "evolve-from" },
         );
       }
       break;
@@ -11246,7 +11266,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
 function startEvolveFrom(id) {
   $("rack-evolve").disabled = true;
   $("wm-lamp").classList.add("thinking");
-  note("⚡ evolving around the locked controls…");
+  note("⚡ evolving around the locked controls…", { replace: "evolve-from" });
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
   // that is on screen on the way out.
