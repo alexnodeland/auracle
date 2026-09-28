@@ -110,6 +110,15 @@ the result, so a large patch takes a moment. Meanwhile every control reads
 throughout. Until the session's pool has warmed up there is nothing to measure
 against, and the status line says so.
 
+The presets never wait. Every one of them was measured when the app was built,
+so a preset's controls work the moment it lands: from the preset bank, from
+the warm start, or in booth mode. That measurement was taken against a
+standard pool rather than yours, so PERFORM measures the preset again in the
+background, with *re-checking* on the status line meanwhile. While the warm
+start is open, its nine cards are measured this way too, once the pool has
+filled. A patch you have played before is just as quick, from its last
+measurement, even after a reload.
+
 ### Turning them
 
 | | |

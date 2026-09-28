@@ -77,6 +77,18 @@ is measured ("re-checking"), and compares trees by text to tell a new
 structure from new knob values. That comparison is why trees must serialize in
 one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
 
+Every preset's wiring ships with the app in `apps/web/perform-wirings.json`,
+measured natively through the same `WasmEngine` surface the worker uses
+(`make perform-wirings`, the `preset_wirings` example) and keyed at load by the
+same `wireKey`. The player's own cache is asked first, then the file. A shipped
+wiring is always re-measured in the background (it was taken under a native
+standardizer, not the session's). The file carries fingerprints of what it
+was measured from, and `shipped_preset_wirings_are_current` fails `make test`
+when a preset or the measurement's inputs change without regenerating it.
+While the warm start is open, `main.js` pre-warms its nine cards
+(`perform.prewarm(tree, {fresh: true})`, trees from the file, no pool
+inserts), one at a time in `later`, once the pool is full.
+
 A continuous knob turned in PATCH reaches the voices as a parameter, never as
 a new tree, so PERFORM hears it separately: `sendEdit` calls
 `perform.knobSet` (PERFORM's base and home take the value at once), and the

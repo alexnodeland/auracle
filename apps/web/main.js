@@ -1177,6 +1177,7 @@ worker.onmessage = (e) => {
       send({ type: "taste_views" });
       if (!currentDuel && !dealing) requestDeal();
       renderFillHint();
+      warmPrewarmPump();
       break;
     }
     case "saved": {
@@ -19260,6 +19261,35 @@ function bootField(pool, target) {
 let warmRows = null;
 const warmPicked = new Set();
 
+// While the warm start is open, PERFORM's wiring of its nine cards is measured
+// in the background, under this session's model, so the pick the player lands
+// on after "teach it" is not playing from the shipped wiring alone (which was
+// measured natively, and is re-checked the moment it is used). One card at a
+// time, in the engine's background lane, and only once the pool is full: a
+// measurement is thirty-odd renders on the engine's one thread, and during the
+// fill they would slow the bank's arrival. Picked cards first, then the ones
+// the player has heard, then the rest. It stops when the card closes; a
+// measurement already running finishes and is kept.
+const warmHeard = new Set(); // preset indices ▶'d on the warm start
+let warmPrewarm = null; // {done: Set<index>, busy} while the card is open
+function warmPrewarmPump() {
+  const w = warmPrewarm;
+  if (!w || w.busy || !perform || !poolSettled || !warmRows) return;
+  if ($("warmstart").classList.contains("hidden")) return;
+  const order = [...warmPicked, ...warmHeard, ...warmRows.map((r) => r.index)];
+  const next = order.find((i) => !w.done.has(i));
+  if (next == null) return;
+  w.done.add(next);
+  const row = warmRows.find((r) => r.index === next);
+  const tree = row && perform.shippedTree ? perform.shippedTree(row.name) : null;
+  if (!tree) return warmPrewarmPump();
+  w.busy = true;
+  perform.prewarm(tree, { fresh: true }).finally(() => {
+    w.busy = false;
+    warmPrewarmPump();
+  });
+}
+
 function openWarmStart() {
   send({ type: "presets" });
   warmPending = true;
@@ -19334,6 +19364,7 @@ function renderWarmStart(all) {
       else if (warmPicked.size < 3) warmPicked.add(r.index);
       b.classList.toggle("picked", warmPicked.has(r.index));
       b.setAttribute("aria-pressed", String(warmPicked.has(r.index)));
+      warmPrewarmPump();
       $("warm-go").disabled = warmPicked.size !== 3;
       $("warm-go").textContent =
         warmPicked.size === 3 ? "teach it"
@@ -19346,6 +19377,9 @@ function renderWarmStart(all) {
   $("warm-go").disabled = true;
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
+  warmHeard.clear();
+  warmPrewarm = { done: new Set(), busy: false };
+  warmPrewarmPump();
   // A modal that leaves focus on <body> cannot be reached from the keyboard.
   // Land on the first ▶: hearing comes before choosing.
   grid.querySelector(".wi-play")?.focus();
@@ -19393,6 +19427,8 @@ function previewPreset(row, btn) {
   warmPreviewCancel();
   const req = { index: row.index, btn };
   warmPreview = req;
+  warmHeard.add(row.index);
+  warmPrewarmPump();
   btn.classList.add("loading");
   btn.setAttribute("aria-busy", "true");
   const known = presetIds.get(row.index);
@@ -19415,6 +19451,7 @@ function warmPreviewLoaded(index, id, evicted) {
 
 function closeWarmStart(mark = true) {
   warmPreviewCancel();
+  warmPrewarm = null;
   $("warmstart").classList.add("hidden");
   if (mark) localStorage.setItem("auracle-warmed", "1");
   // The film note waited for the warm start; now it can speak.
