@@ -387,6 +387,12 @@ struct TreeReply<'a> {
     taste: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diff: Option<&'a [auracle_grammar::DiffEntry]>,
+    /// An aimed offer's move along the control it was asked for, in σ,
+    /// positive toward the control's high word
+    /// ([`auracle_session::Engine::moved_along`]). Only on a search control's
+    /// offer: the Offer button's is not aimed anywhere.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    moved: Option<f64>,
 }
 
 fn tree_reply(r: &TreeReply) -> String {
@@ -1312,6 +1318,7 @@ impl WasmEngine {
                 makeup: None,
                 taste: None,
                 diff: None,
+                moved: None,
             }),
             None => serde_json::json!({ "reason": "no_graft" }).to_string(),
         }
@@ -1393,6 +1400,7 @@ impl WasmEngine {
                     makeup: None,
                     taste: Some(self.engine.has_taste()),
                     diff: None,
+                    moved: None,
                 })
             }
             Err(why) => serde_json::json!({ "reason": why.as_str() }).to_string(),
@@ -1403,21 +1411,39 @@ impl WasmEngine {
     /// the player's locks. Returns `{tree, makeup, taste, diff}` — makeup so the
     /// offer is heard at matched loudness, taste as for [`Self::perform_drift`]
     /// — or `{reason}` / `null` as there. Inserts nothing into the pool.
+    ///
+    /// With `control` (a named control's index, [`auracle_session::perform::CONTROLS`]
+    /// order) the offer is a search control's, aimed along that control's
+    /// direction, up for a positive `sign` and down otherwise
+    /// ([`auracle_session::Engine::offer_toward`]), and the reply adds `moved`:
+    /// how far the offer went that way, in σ, positive toward the control's
+    /// high word — so the page can say "grittier by 0.8σ", or that it did not
+    /// move that way. Without `control` it is the Offer button's undirected
+    /// walk, and there is no `moved`.
     pub fn perform_offer(
         &mut self,
         tree_json: &str,
         overrides_json: &str,
         locks_json: &str,
         steps: u32,
+        control: Option<u32>,
+        sign: Option<f64>,
     ) -> String {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return "null".into();
         };
         let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
-        let t = match self
-            .engine
-            .offer(&mut self.rng.perform, &tree, &locks, steps.max(1) as usize)
-        {
+        let steps = steps.max(1) as usize;
+        let rng = &mut self.rng.perform;
+        let grown = match control {
+            Some(k) => {
+                let s = sign.unwrap_or(1.0);
+                self.engine
+                    .offer_toward(rng, &tree, &locks, steps, k as usize, s)
+            }
+            None => self.engine.offer(rng, &tree, &locks, steps),
+        };
+        let t = match grown {
             Ok(t) => t,
             Err(why) => return serde_json::json!({ "reason": why.as_str() }).to_string(),
         };
@@ -1427,12 +1453,14 @@ impl WasmEngine {
         // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
         // kHz") instead of only "an offer is waiting".
         let diff = auracle_grammar::tree_diff(&tree, &t);
+        let moved = control.and_then(|k| self.engine.moved_along(&tree, &t, k as usize));
         tree_reply(&TreeReply {
             tree: &t,
             knobs: None,
             makeup: Some(makeup),
             taste: Some(self.engine.has_taste()),
             diff: Some(&diff),
+            moved,
         })
     }
 
@@ -2383,7 +2411,7 @@ mod tests {
         let mut compared = 0;
         for reply in [
             engine.perform_drift(&tree_json, "{}", "[]", 3, 0.15),
-            engine.perform_offer(&tree_json, "{}", "[]", 3),
+            engine.perform_offer(&tree_json, "{}", "[]", 3, None, None),
         ] {
             let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
             if v.get("reason").is_some() {
@@ -2520,6 +2548,53 @@ mod tests {
             farmed.refine_from_job(0xDEAD, "[]"),
             r#"{"reason":"unknown_seed"}"#
         );
+    }
+
+    /// A search control's offer says how far it moved the way it was turned
+    /// (ADR-008): the reply is the struct reply with `moved`, a number in σ
+    /// that is the engine's own measure of the move, the tree still in its
+    /// own key order. The Offer button's reply has no `moved`, and neither
+    /// does one for a control that does not exist (it walks undirected).
+    #[test]
+    fn an_aimed_offer_reply_carries_how_far_it_moved() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let tree_json = engine.edit_tree_json();
+        let home: PatchTree = serde_json::from_str(&tree_json).unwrap();
+        let grit = auracle_session::perform::CONTROLS
+            .iter()
+            .position(|c| c.name == "Grit")
+            .unwrap() as u32;
+        let mut aimed = 0;
+        for _ in 0..4 {
+            let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, Some(grit), Some(1.0));
+            let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+            if v.get("reason").is_some() {
+                continue; // nothing grew this time
+            }
+            let tree: PatchTree = serde_json::from_value(v["tree"].clone()).unwrap();
+            let own = serde_json::to_string(&tree).unwrap();
+            assert!(reply.starts_with(&format!("{{\"tree\":{own}")));
+            let moved = v["moved"]
+                .as_f64()
+                .expect("an aimed offer says how far it moved");
+            let want = engine
+                .engine
+                .moved_along(&home, &tree, grit as usize)
+                .unwrap();
+            assert!((moved - want).abs() < 1e-9, "{moved} vs {want}");
+            aimed += 1;
+        }
+        assert!(aimed > 0, "no aimed offer grew, so nothing was checked");
+        for (control, sign) in [(None, None), (Some(99), Some(-1.0))] {
+            let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, control, sign);
+            let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+            assert!(v.get("moved").is_none(), "{control:?}: {reply}");
+        }
     }
 
     /// A draw on one stream never moves another: a spare offer grown in the
