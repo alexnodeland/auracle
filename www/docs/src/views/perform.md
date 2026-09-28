@@ -131,6 +131,15 @@ measurement, even after a reload.
 Turning a control changes knob values only. The voices take them without a
 recompile, so a held chord keeps sounding through the turn.
 
+**The controls re-centre without moving the sound.** After a Keep, a Take, a
+fresh measurement or a Wander glide, what the controls were doing is folded
+into the patch and they return to 12 o'clock. The pointer glides home over a
+quarter of a second while a faint tick marks where it was and fades (no glide
+and no tick with reduced motion). A re-check in the background leaves the
+controls where you left them, unless it finds the control now turns different
+knobs. A MIDI pot on a re-centred control keeps working from where it is (see
+[soft takeover](../keyboard.md#soft-takeover)).
+
 ### Long-press to hear it
 
 A long-press plays the control to you: over about two and a half seconds it

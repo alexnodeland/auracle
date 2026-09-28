@@ -3501,7 +3501,9 @@ async function bootPerform() {
       renderTeach();
       settleFit();
     },
-    controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
+    // A control moved without its pot: set by the mouse, the keys or the XY
+    // pad (the pot lets go), or re-centred (the pot keeps working, anchored).
+    controlMoved: (i, how) => midi && midi.controlMovedElsewhere(i, how),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
     knobInfo: (addr, v) => {

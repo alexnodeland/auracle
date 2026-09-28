@@ -45,6 +45,16 @@ changelog that edits its own past is not a record.
   *held*, *staying — nothing better nearby*) with a thin arc filling toward
   the next move, and PERFORM's status line keeps to the patch
   (`perform_wander.spec.js`).
+- **PERFORM's controls stay under your hands.** When the controls re-centre
+  (after a Keep, a Take, a fresh measurement or a Wander glide, where the
+  sound does not move), the pointer glides home over a quarter of a second
+  and a faint tick marks where it was, instead of jumping to 12 o'clock in
+  one frame. A re-check in the background no longer re-centres anything
+  unless it wired a control to different knobs: it used to take a turn away
+  seconds after the hand had let go. A MIDI pot on a re-centred control keeps
+  working from where it is, scaled so each end of the pot still reaches the
+  control's end; it used to go dead until swept back through the middle,
+  every few seconds in *roam* (`perform_recentre.spec.js`, `midi.test.mjs`).
 
 ### Fixed — true today
 
