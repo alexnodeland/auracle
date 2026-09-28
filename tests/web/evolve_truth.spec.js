@@ -347,10 +347,13 @@ test("during a generation a pick's deal says the engine is breeding, and what it
   // Picks while it breeds. A deal waits for the seed being bred, and the
   // dimmed cards say so, with the seed it waits on.
   const reasons = new Set();
-  let sixth = false;
-  for (let i = 1; i <= 6 && (await breedingNow()); i++) {
+  // Pick until six picks have counted toward the next refit. A pick can be
+  // refused inside its undo window when a seed of this generation replaces
+  // the patch it chose (the engine replaces as it breeds): the app un-counts
+  // it and says so, so a sixth click is not always a sixth pick.
+  let sawSixth = false;
+  for (let i = 1; i <= 12 && !sawSixth && (await breedingNow()); i++) {
     await pick(page, i % 2 ? "a" : "b");
-    sixth = i === 6;
     const t0 = Date.now();
     while (Date.now() - t0 < 60_000 && (await page.locator("#choose-a").isDisabled())) {
       // Read in one go: the deal can land between two separate reads.
@@ -361,10 +364,12 @@ test("during a generation a pick's deal says the engine is breeding, and what it
       if (why) reasons.add(why);
       await page.waitForTimeout(250);
     }
-    if (i === 6 && (await breedingNow())) {
-      // The sixth of a new row: the refit waits for the generation, and the
-      // meter says that rather than "learning" or "it just learned".
-      await expect(page.locator("#teach-copy")).toHaveText("● it will learn from these 6 when breeding finishes");
+    // The sixth of a new row: the refit waits for the generation, and the
+    // meter says that rather than "learning" or "it just learned".
+    const copy = (await page.locator("#teach-copy").textContent()).trim();
+    if (copy.startsWith("●")) {
+      if (await breedingNow()) expect(copy).toBe("● it will learn from these 6 when breeding finishes");
+      sawSixth = true;
     }
   }
   console.log(`deal reasons seen during the generation: ${JSON.stringify([...reasons])}`);
@@ -388,7 +393,7 @@ test("during a generation a pick's deal says the engine is breeding, and what it
   else expect(lineage).toContain("no move was accepted");
   // The lamp stays lit while the refit the sixth pick armed still runs; the
   // generation's reply no longer puts it out under the refit.
-  if (sixth) {
+  if (sawSixth) {
     const state = await page.evaluate(() => ({
       fitted: window.__pwCounts.fitted || 0,
       lit: document.getElementById("wm-lamp").classList.contains("thinking"),

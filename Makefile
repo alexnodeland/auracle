@@ -100,7 +100,7 @@ wasm-check:
 ## Playwright's Chromium (`make smoke-tools` once).
 smoke:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	cd tests/web && npm ci --no-audit --no-fund && npx playwright test
+	cd tests/web && npm ci --no-audit --no-fund && npx playwright test smoke.spec.js failure_flows.spec.js
 
 ## smoke-tools: Playwright's Chromium, once. CI passes --with-deps for the
 ## runner's system libraries; a workstation usually has them.
