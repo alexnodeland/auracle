@@ -2304,9 +2304,21 @@ async function dispatch(m) {
         engine.perform_record(m.tree, JSON.stringify(m.overrides || []), m.offer, !!m.took));
       post({ type: "status", status: status() });
       break;
+    // A search control's offer carries the control and the way it was turned
+    // (aimed, and its reply says how far it `moved`); the Offer button's and
+    // Wander's carry neither, and are not aimed.
     case "perform_offer":
       performReply(m, "perform_offered", "offer", true, () =>
-        JSON.parse(engine.perform_offer(m.tree, JSON.stringify(m.overrides || []), JSON.stringify(m.locks || []), m.steps || 40)));
+        JSON.parse(
+          engine.perform_offer(
+            m.tree,
+            JSON.stringify(m.overrides || []),
+            JSON.stringify(m.locks || []),
+            m.steps || 40,
+            Number.isInteger(m.control) ? m.control : undefined,
+            Number.isFinite(m.sign) ? m.sign : undefined,
+          ),
+        ));
       break;
     case "tree_json": {
       post({

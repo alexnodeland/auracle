@@ -4964,6 +4964,9 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 /* A bred child that landed below its parent: the sampler exploring, said so. */
 .lin-explore { color: var(--silk-dim); font-style: italic; border-bottom: 1px dotted var(--silk-mute); cursor: help; }
 .pf-offer-what { color: var(--phos-b); font-style: normal; font-weight: 600; }
+/* How far an aimed offer went the way its control was turned: the model's
+   measurement, so amber; a miss says so in words, not in another colour. */
+.pf-offer-aim { color: var(--phos-b-dim); font-style: normal; }
 
 /* ---------- PERFORM: XY pad beside the hood ---------- */
 .pf-stage {

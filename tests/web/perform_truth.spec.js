@@ -279,7 +279,7 @@ test("a search control springs back when let go, and says what letting go will d
   // Said in the toast lane, which may still be saying the preset's arrival:
   // the preset's controls work at once now, so this turn comes seconds
   // sooner than it used to after opening it.
-  await expect(page.locator("#toasts")).toContainText("growing an offer instead", { timeout: 15_000 });
+  await expect(page.locator("#toasts")).toContainText("growing a grittier offer instead", { timeout: 15_000 });
   expect(errs).toEqual([]);
 });
 

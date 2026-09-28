@@ -819,6 +819,24 @@ export function createPerform(host) {
   // at note-off). Grit, Snap and Motion have no honest one-step answer.
   const GRAFTS = { Bright: "tone EQ", Body: "tone EQ", Space: "longer release" };
 
+  // A search control's offer is aimed the way the control was turned
+  // (`Engine::offer_toward`, ADR-008), and B says how far it went. The words
+  // for "more of it" each way, [down, up], in the controls' own terms.
+  const AIM_WORDS = {
+    Bright: ["darker", "brighter"],
+    Snap: ["softer", "snappier"],
+    Motion: ["stiller", "more restless"],
+    Body: ["thinner", "fuller"],
+    Grit: ["smoother", "grittier"],
+    Space: ["closer", "farther"],
+  };
+  // `{k, sign}` for control `i` turned `dir` (+1 up, −1 down), with its word.
+  function aimAt(i, dir) {
+    const c = host.controls[i];
+    const words = c && AIM_WORDS[c.name];
+    return words ? { k: i, sign: dir > 0 ? 1 : -1, word: words[dir > 0 ? 1 : 0] } : null;
+  }
+
   // A knob as a player names it: "cutoff", or with its module, "filter
   // cutoff". The rack's own labels, via the host; the address suffix only
   // when the host has nothing better.
@@ -955,8 +973,9 @@ export function createPerform(host) {
         host.note(`${w.name}: giving it a ${graft} to turn…`, { replace: `pf-graft:${w.name}` });
         request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: k.i });
       } else {
-        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing an offer instead`, { replace: "pf-offer" });
-        requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`);
+        const aim = aimAt(k.i, up ? 1 : -1);
+        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing ${aim ? `a ${aim.word}` : "an"} offer instead`, { replace: "pf-offer" });
+        requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`, aim);
       }
     }
     logImplicit("perform_turn", { control: k.spec.name, value: +was.toFixed(3) });
@@ -1390,6 +1409,7 @@ export function createPerform(host) {
       src: offer,
       at: at || knobsNow(),
       why: state.offerWhy || "",
+      aim: offer.aim ? { ...offer.aim, moved: offer.moved } : null,
     };
     const live = host.live();
     if (live) {
@@ -1526,10 +1546,11 @@ export function createPerform(host) {
     k.tween = requestAnimationFrame(step);
   }
 
-  function requestOffer(why) {
+  function requestOffer(why, aim) {
     if (!state.cur) return;
     if (state.offer) passOffer();
-    const growingAt = [...state.pending.entries()].find(([, q]) => q.kind === "perform_offer" && q.gen === state.gen);
+    if (aim) return requestAimed(why, aim);
+    const growingAt = [...state.pending.entries()].find(([, q]) => q.kind === "perform_offer" && q.gen === state.gen && !q.superseded);
     const growing = growingAt ? growingAt[1] : null;
     // A claim makes a background offer (a spare, Wander's) the player's: if it
     // is still waiting in the engine's background lane, it moves up.
@@ -1573,6 +1594,71 @@ export function createPerform(host) {
     const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps, bg });
     state.pending.get(req).from = knobsNow();
     renderOffer("growing an offer…");
+  }
+
+  // A search control's offer, aimed the way it was turned (ADR-008). A spare,
+  // or an undirected offer already growing, is not the answer to this: it
+  // stays (or becomes) the spare for the next Offer, and this one is grown for
+  // the gesture. The same turn again while it grows is a claim on it; another
+  // control's aimed offer still growing is withdrawn.
+  function requestAimed(why, aim) {
+    state.lastMove = performance.now();
+    state.offerWhy = why || "";
+    stepDone("offer");
+    const growing = `growing a ${aim.word} offer…`;
+    for (const [req, q] of state.pending) {
+      if (q.kind !== "perform_offer" || q.gen !== state.gen || q.superseded) continue;
+      if (q.aim && q.aim.k === aim.k && q.aim.sign === aim.sign) {
+        q.promote = true;
+        renderOffer(growing);
+        return;
+      }
+      if (q.aim) {
+        q.superseded = true;
+        host.send({ type: "retire", reqs: [req] });
+      } else {
+        q.again = false;
+        q.promote = false;
+        if (!q.spare) q.spare = { at: new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)])) };
+      }
+    }
+    const steps = wanderZone(state.wander) === "roam" ? 40 : 20;
+    const req = request("perform_offer", {
+      tree: state.cur.json,
+      overrides: overrides(),
+      locks: host.locks(),
+      steps,
+      control: aim.k,
+      sign: aim.sign,
+    });
+    state.pending.get(req).aim = aim;
+    renderOffer(growing);
+    // Progress past the first second: B counts while the walk runs, so a
+    // turn that springs back is not followed by a strip that looks stuck.
+    const t0 = performance.now();
+    const tick = () => {
+      const q = state.pending.get(req);
+      if (!q || q.superseded || q.gen !== state.gen || state.offer || !state.visible) return;
+      renderOffer(`${growing} ${Math.round((performance.now() - t0) / 1000)} s`);
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 1000);
+  }
+
+  // What an aimed offer did the way it was asked, in the model's colour:
+  // "grittier by 0.8σ", or plainly that it did not go that way. σ is the
+  // spread of the patches in this session, the unit a control's reach is
+  // measured in. Below AIM_SAID (half of `REACH_FLOOR`, the line a control's
+  // half must clear to be said to turn that way) it did not move that way.
+  const AIM_SAID = 0.075;
+  function aimNote(aim) {
+    const span = el("span", "pf-offer-aim");
+    span.title = "How far this offer moved the way you turned, in σ: the spread of the patches in this session. Offers from the Offer button and Wander are not aimed.";
+    const by = aim.sign * Number(aim.moved);
+    if (aim.moved == null || !Number.isFinite(by)) span.textContent = `aimed ${aim.word}, not measured`;
+    else if (by >= AIM_SAID) span.textContent = `${aim.word} by ${by.toFixed(1)}σ`;
+    else span.textContent = `not ${aim.word}: this walk found no way there — turn it again to try another`;
+    return span;
   }
 
   // A measurement arrived (or came out of the cache): wire the controls.
@@ -1628,7 +1714,7 @@ export function createPerform(host) {
         host.note(`${w.name} now turns ${w.knobs.map(([a]) => knobWord(a, true)).join(" and ")}`, { replace: `pf-graft:${w.name}` });
       } else if (w) {
         host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} did not reach it here — growing an offer instead`, { replace: `pf-graft:${w.name}` });
-        requestOffer(`${w.name.toLowerCase()} ${it.dir > 0 ? "up" : "down"}`);
+        requestOffer(`${w.name.toLowerCase()} ${it.dir > 0 ? "up" : "down"}`, aimAt(it.i, it.dir));
       }
     }
   }
@@ -1759,6 +1845,8 @@ export function createPerform(host) {
       return true;
     }
     if (m.type === "perform_offered") {
+      // An aimed offer another turn has replaced is not shown.
+      if (p.superseded) return true;
       // A spare nobody has asked for yet is kept, not shown.
       if (p.spare && !p.promote) {
         if (m.offer && m.offer.tree) state.spare = { offer: m.offer, at: p.spare.at };
@@ -1769,9 +1857,10 @@ export function createPerform(host) {
           requestOffer(state.offerWhy);
           return true;
         }
-        renderOffer(whyNot(m, m.offer, "no offer beat this patch — try again, or loosen a lock"));
+        renderOffer(whyNot(m, m.offer, p.aim ? `no ${p.aim.word} offer grew this time — turn it again, or loosen a lock` : "no offer beat this patch — try again, or loosen a lock"));
         return true;
       }
+      if (p.aim) m.offer.aim = p.aim;
       presentOffer(m.offer, p.from || (p.spare && p.spare.at));
       return true;
     }
@@ -1779,11 +1868,12 @@ export function createPerform(host) {
       const t = m.graft && m.graft.tree;
       if (!t) {
         const i = state.intent ? state.intent.i : -1;
+        const dir = state.intent ? state.intent.dir : 1;
         state.intent = null;
         const w = state.wire && state.wire[i];
         if (w) {
           host.note(`${w.name}: nothing to add here — growing an offer instead`, { replace: `pf-graft:${w.name}` });
-          requestOffer(`${w.name.toLowerCase()}`);
+          requestOffer(`${w.name.toLowerCase()} ${dir > 0 ? "up" : "down"}`, aimAt(i, dir));
         }
         return true;
       }
@@ -2251,7 +2341,9 @@ export function createPerform(host) {
       // where it came from, then what to do with it.
       body.innerHTML = "";
       if (state.offer.changes) body.append(el("b", "pf-offer-what", state.offer.changes), document.createTextNode(" · "));
-      body.append(document.createTextNode(`${src}${state.offerWhy ? ` (${state.offerWhy})` : ""} — hold Peek to hear it, slide Blend, or Take it`));
+      const aim = state.offer.aim;
+      if (aim) body.append(aimNote(aim), document.createTextNode(" · "));
+      body.append(document.createTextNode(`${src}${state.offerWhy && !aim ? ` (${state.offerWhy})` : ""} — hold Peek to hear it, slide Blend, or Take it`));
     }
     else body.textContent = "no offer — press Offer to grow a variant from here";
     offerCard.classList.toggle("ready", !!state.offer);
@@ -2280,7 +2372,7 @@ export function createPerform(host) {
   whyBody.innerHTML =
     "<p>Each control is a direction in what the instrument can hear — <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a patch loads, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
     "<p>The amber dot on a control's ring is where this sound measures on it, compared with the patches in your session. A control that turns only one way on this patch says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the centre on the other. One that reads <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>" +
-    "<p>A control drawn in amber cannot be reached by this patch's knobs (a patch with no drive cannot get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, which arrives in <b>B</b>; short of the notch it springs back and asks nothing.</p>" +
+    "<p>A control drawn in amber cannot be reached by this patch's knobs (a patch with no drive cannot get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, aimed the way you turned it, which arrives in <b>B</b> saying how far it went (<i>grittier by 1.8σ</i>, σ being the spread of your session's patches) or that it did not get there; short of the notch it springs back and asks nothing.</p>" +
     "<p><b>Wander</b> sets how alive the patch is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to hold it; touching any other control pauses it for a few seconds.</p>";
   whyBtn.onclick = () => {
     whyBody.classList.toggle("hidden");
