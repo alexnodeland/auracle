@@ -2862,8 +2862,25 @@ function ensureAudio() {
 }
 
 let playingGain = null;
+// What is sounding, by name ("bank:12", "duel:31"), so a ▶ can tell its own
+// phrase from someone else's and a ▶ drawn after the press can still light:
+// a bank row is rebuilt on every render, so the button that was pressed is
+// usually not the one on screen when the phrase ends. Buttons that stand for
+// a key carry it as `data-hear`.
+let playingKey = null;
+let playingBtn = null;
 
-function playBuffer(buffer, btn) {
+function paintHearing(key, btn, on) {
+  if (btn) btn.classList.toggle("playing", on);
+  if (key) for (const b of document.querySelectorAll(`[data-hear="${key}"]`)) b.classList.toggle("playing", on);
+}
+
+/** A ▶ is a transport: pressed while its own phrase plays, it stops it. */
+function hearingNow(key) {
+  return !!(key && playingSrc && playingKey === key);
+}
+
+function playBuffer(buffer, btn, key = null) {
   if (!buffer) return;
   ensureAudio();
   if (playingSrc) {
@@ -2873,6 +2890,9 @@ function playBuffer(buffer, btn) {
     const oldGain = playingGain;
     if (oldGain) oldGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
     setTimeout(() => { try { oldSrc.stop(); } catch (_) {} }, 20);
+    // The old phrase's ▶ goes dark with it, not 20 ms later when its source
+    // reports: by then the same button may be lit for the new phrase.
+    paintHearing(playingKey, playingBtn, false);
   }
   const src = audioCtx.createBufferSource();
   const g = audioCtx.createGain();
@@ -2882,11 +2902,19 @@ function playBuffer(buffer, btn) {
   src.start();
   playingSrc = src;
   playingGain = g;
+  playingKey = key;
+  playingBtn = btn || null;
   src.onended = () => {
-    if (playingSrc === src) { playingSrc = null; playingGain = null; }
-    if (btn) btn.classList.remove("playing");
+    // Stopped or replaced, it was painted dark then; only a phrase that ran
+    // to its end still owns its buttons.
+    if (playingSrc !== src) return;
+    playingSrc = null;
+    playingGain = null;
+    playingKey = null;
+    playingBtn = null;
+    paintHearing(key, btn, false);
   };
-  if (btn) btn.classList.add("playing");
+  paintHearing(key, btn, true);
 }
 
 // Space is a transport: it stops what's sounding, or auditions the current
@@ -2897,8 +2925,11 @@ function stopAudition() {
   const g = playingGain;
   if (g) g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
   setTimeout(() => { try { s.stop(); } catch (_) {} }, 20);
+  paintHearing(playingKey, playingBtn, false);
   playingSrc = null;
   playingGain = null;
+  playingKey = null;
+  playingBtn = null;
   return true;
 }
 
@@ -2928,9 +2959,9 @@ function stepBank(d) {
   openOnBench(next.id);
 }
 
-function play(id, btn) {
+function play(id, btn, key = null) {
   const r = renders.get(id);
-  if (r) playBuffer(r.buffer, btn);
+  if (r) playBuffer(r.buffer, btn, key);
 }
 
 // Every "hear this thing that isn't loaded yet" path in the app used to be its
@@ -4899,7 +4930,11 @@ $("duel-b").addEventListener("click", (e) => {
 function auditionDuelSide(i, btn) {
   if (!currentDuel) return;
   const want = currentDuel[i];
-  awaitRender(want, () => play(want, btn), {
+  // Pressed again while this candidate's phrase plays, it stops, as every ▶
+  // in the app does; a press for the other side, or a newly dealt one, plays.
+  const key = `duel:${want}`;
+  if (hearingNow(key)) return void stopAudition();
+  awaitRender(want, () => play(want, btn, key), {
     // Voted past it: stop silently, this is not a failure.
     abandoned: () => !currentDuel || currentDuel[i] !== want,
   });
@@ -5112,7 +5147,7 @@ function bankRow(r, fitted) {
       <span class="bi-id">#${r.id}</span>
     </div>
     <div class="bi-row">
-      <button class="bi-hear" title="Hear this patch" aria-label="Audition ${esc(r.name)}">▶</button>
+      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}" data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
       ${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ — teaches the model, ${s > 3 ? "does not" : "does not"} keep the patch">★</button>`)
@@ -5134,7 +5169,14 @@ function bankRow(r, fitted) {
     openOnBench(r.id);
     showView("play");
   });
-  el.querySelector(".bi-hear").onclick = () => awaitRender(r.id, () => play(r.id));
+  // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
+  // phrase plays, and pressed again it stops rather than starting over.
+  el.querySelector(".bi-hear").onclick = (e) => {
+    const key = `bank:${r.id}`;
+    if (hearingNow(key)) return void stopAudition();
+    const btn = e.currentTarget;
+    awaitRender(r.id, () => play(r.id, btn, key));
+  };
   el.querySelectorAll(".star").forEach((btn) => {
     btn.onclick = () => {
       // The row you just rated is the one a follow-up 1–5 should correct,
