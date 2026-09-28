@@ -362,8 +362,20 @@ export function createPerform(host) {
     });
   }
 
+  // Wander waits HANDS_OFF_MS after any touch; the status line says so for
+  // that long, and says Wander's zone again when it resumes. Only a glide
+  // interrupted mid-way used to say "paused", so a touch between moves left
+  // the line reading "wander: roam" while nothing moved.
+  let pausedTimer = null;
   function touch() {
+    const was = handsOn();
     state.lastTouch = performance.now();
+    if (!was && wanderZone(state.wander) !== "still" && !state.hold) renderStatus();
+    clearTimeout(pausedTimer);
+    pausedTimer = setTimeout(() => renderStatus(), HANDS_OFF_MS + 20);
+  }
+  function handsOn() {
+    return performance.now() - state.lastTouch < HANDS_OFF_MS;
   }
 
   // ---------- the sound ----------
@@ -1491,6 +1503,7 @@ export function createPerform(host) {
       if (state.revalidating) parts.push("re-checking");
     }
     if (state.hold) parts.push("wander held");
+    else if (z !== "still" && handsOn() && !/^paused/.test(msg || "")) parts.push("paused — your hands are on it");
     else if (z !== "still") parts.push(`wander: ${z}`);
     statusEl.textContent = parts.join(" · ");
   }

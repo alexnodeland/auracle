@@ -709,10 +709,13 @@ async function shoot(browser, port, shot, ff) {
   // that stamp without holding up the rest.
   const tasks = (shot.actions || []).map((a) => (async () => {
     let t;
-    let t2 = null;
+    // `until` is asked for now but awaited only for the release: a time past
+    // a stamp-keyed cut resolves when that stamp comes, and the press must
+    // not wait for it (the same trap "end" had).
+    const t2P = a.until != null ? clock.at(a.until, a.until_snap) : null;
+    t2P?.catch(() => {});
     try {
       t = await clock.at(a.at, a.snap);
-      if (a.until != null) t2 = await clock.at(a.until, a.until_snap);
     } catch (e) {
       return errors.push(`${describe(a)} @ ${a.at}: ${e.message}`);
     }
@@ -721,10 +724,10 @@ async function shoot(browser, port, shot, ff) {
     const lag = now() - t;
     const row = { op: describe(a), at: a.at, t: +t.toFixed(2), late: +lag.toFixed(3) };
     late.push(row);
-    // "end" is asked for after the press (holdMs): the shot's end may wait on
-    // a stamp that a cut needs, and the keys must still go down at `at`.
-    const ms = t2 != null
-      ? Math.max(100, (t2 - now()) * 1000)
+    // "end" and `until` are asked for after the press (holdMs): either may
+    // wait on a stamp that a cut needs, and the keys must still go down at `at`.
+    const ms = t2P
+      ? async () => Math.max(100, ((await t2P) - now()) * 1000)
       : a.ms === "end" ? async () => Math.max(200, ((endT ?? (await endP)) - now() - 0.3) * 1000) : a.ms;
     try {
       await step(page, { ...a, ms }, actx);
