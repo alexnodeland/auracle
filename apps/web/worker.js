@@ -1331,7 +1331,9 @@ async function dispatch(m) {
       let pair = null;
       let meta = null;
       try {
-        const ex = JSON.parse(engine.next_duel_ex());
+        // The patches the player cut are never dealt again (`exclude`, ids
+        // main holds from the cut on, undo window included).
+        const ex = JSON.parse(engine.next_duel_ex(new Uint32Array(m.exclude || [])));
         if (ex && ex.a != null) {
           pair = [ex.a, ex.b];
           meta = ex;

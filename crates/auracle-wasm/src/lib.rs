@@ -736,7 +736,10 @@ impl WasmEngine {
     /// the first fit), `"check"` (a scheduled random probe under a choosing
     /// rule, worth labelling in the UI since the model is deliberately not
     /// choosing it), `"thompson"` or `"bald"`.
-    pub fn next_duel_ex(&mut self) -> String {
+    ///
+    /// `exclude` lists candidate ids that must not be dealt (the patches the
+    /// player has cut); omitted, every standardized candidate may be.
+    pub fn next_duel_ex(&mut self, exclude: Option<Vec<u32>>) -> String {
         #[derive(Serialize)]
         struct Row {
             a: u64,
@@ -745,7 +748,12 @@ impl WasmEngine {
             random_check: bool,
             method: &'static str,
         }
-        match self.engine.next_duel_full(&mut self.rng.duel) {
+        let exclude: Vec<u64> = exclude
+            .unwrap_or_default()
+            .into_iter()
+            .map(u64::from)
+            .collect();
+        match self.engine.next_duel_except(&mut self.rng.duel, &exclude) {
             Some(d) => serde_json::to_string(&Row {
                 a: self.engine.pool[d.a].id,
                 b: self.engine.pool[d.b].id,
@@ -2629,6 +2637,48 @@ mod tests {
             before + 3,
             "a refused vote was logged"
         );
+    }
+
+    /// A cut patch is never dealt again. The cut hides the row and logs a
+    /// kill, but the patch stays in the pool until a generation replaces it;
+    /// dealing used to ignore the cut, so a sound the player had thrown out
+    /// came back as a duel side. The app passes its cut ids with every deal.
+    #[test]
+    fn a_cut_patch_is_never_dealt_again() {
+        let mut engine = WasmEngine::new(0xC07, 6);
+        while engine.fill_step(3) > 0 {}
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&engine.ranked()).unwrap();
+        let ids: Vec<u32> = ranked
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect();
+        assert!(ids.len() >= 4, "pool too small to test: {}", ids.len());
+        let cut = ids[0];
+        assert!(engine.record_keep(cut, false));
+        let dealt = |reply: String| -> Option<[u32; 2]> {
+            let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+            (!v.is_null()).then(|| {
+                [
+                    v["a"].as_u64().unwrap() as u32,
+                    v["b"].as_u64().unwrap() as u32,
+                ]
+            })
+        };
+        // Without the exclusion the cut patch is dealt (the old behaviour),
+        // which is what makes the check below mean something.
+        let mut seen_uncut = false;
+        for _ in 0..200 {
+            let [a, b] = dealt(engine.next_duel_ex(None)).expect("a pair");
+            seen_uncut |= a == cut || b == cut;
+        }
+        assert!(seen_uncut, "the cut patch was never dealt even unexcluded");
+        for _ in 0..200 {
+            let [a, b] = dealt(engine.next_duel_ex(Some(vec![cut]))).expect("a pair");
+            assert!(a != cut && b != cut, "the cut patch #{cut} was dealt");
+            assert_ne!(a, b);
+        }
+        // Cut all but one and there is no pair left to deal.
+        assert_eq!(dealt(engine.next_duel_ex(Some(ids[1..].to_vec()))), None);
     }
 
     /// The import route enforces the same ceilings as every other write route,

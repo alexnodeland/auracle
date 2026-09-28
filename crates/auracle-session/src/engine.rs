@@ -2746,12 +2746,24 @@ impl Engine {
     /// pair, its expected information gain in nats, and whether it is one of
     /// the uniformly-random check duels that calibration is scored on.
     pub fn next_duel_full<R: Rng>(&mut self, rng: &mut R) -> Option<DuelChoice> {
+        self.next_duel_except(rng, &[])
+    }
+
+    /// [`Engine::next_duel_full`], never dealing a candidate whose id is in
+    /// `exclude`: the patches the player has cut. A cut hides the row and
+    /// teaches the model a kill, but the patch stays in the pool until a
+    /// generation replaces it, and without this it could be put back in front
+    /// of the player as a duel side minutes after they threw it out. The
+    /// caller owns the list (the app holds a cut back for its undo window
+    /// before the engine hears of it, and persists the set itself), so it is
+    /// passed in rather than inferred from the log, whose kills carry no ids.
+    pub fn next_duel_except<R: Rng>(&mut self, rng: &mut R, exclude: &[u64]) -> Option<DuelChoice> {
         // Un-standardized candidates score utility exactly 0 (`dot` over an
         // empty vector), which beats every real utility once a user has killed
         // enough patches — they must not be selectable, the same guard
         // `ranked()` applies.
         let cands: Vec<usize> = (0..self.pool.len())
-            .filter(|&i| !self.pool[i].phi_std.is_empty())
+            .filter(|&i| !self.pool[i].phi_std.is_empty() && !exclude.contains(&self.pool[i].id))
             .collect();
         if cands.len() < 2 {
             return None;
