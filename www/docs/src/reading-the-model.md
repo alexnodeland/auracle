@@ -17,20 +17,23 @@ The [TASTE view](./views/taste.md) documents what each tab shows. This page is
 about reading it well: the interpretation mistakes that are easy to make, and
 how the interface tries to stop you making them.
 
-## Four states, and what each means
+## Five states, and what each means
 
-The instrument distinguishes four, and never lets two of them look alike:
+The instrument distinguishes five, and never lets two of them look alike. A
+module's spec card in the node bank says them in these words:
 
-| It says | It means |
+| The card says | It means |
 |---|---|
-| *not measured* | The feature vector has no coordinate for this. It never will |
-| *not fitted* | No posterior yet. Answer some duels |
-| *too few examples* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
-| a value **± an interval** | Here is the belief, and here is how much to trust it |
+| *Not a coordinate the taste model measures on its own.* | The feature vector has no coordinate for this. It never will |
+| *The model hasn't been fitted yet — make a few picks.* | No posterior yet. Answer some duels |
+| *In 3 of 40 patches — too few for the model to have an opinion yet.* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
+| *The model has looked and has no lean either way — θ 0.05 ± 0.17, an interval that straddles zero.* | Enough patches use it, and the model has found nothing either way |
+| *In 12 of 40 patches. in drive & fold + chorus (60% of your bank) you lean toward it — θ +0.62 ± 0.20* | Here is the belief, and here is how much to trust it |
 
 A dash is not zero. "The model is indifferent to this" and "the model has never
 had a chance to form a view" are different statements, and one grey bar cannot
-say both.
+say both. On the node bank's θ bars, *no lean* is a dot on the zero line; the
+three silences before it are a dash.
 
 ## Read the interval, not the bar
 
@@ -96,12 +99,14 @@ Two things follow:
 ## The prediction on a bank row
 
 The percentage is roughly "how likely you are to prefer this patch in a duel
-against an average pool member". It is a posterior mean, so it already accounts
-for the model's uncertainty by averaging over it, which means a confident 80%
-and an unsure 80% look identical here.
+against an average pool member". It is a posterior mean, so on its own a
+confident 80% and an unsure 80% print the same number.
 
-If you want the uncertainty, that is what the map's size channel and the belief
-row's interval are for. The row is a ranking aid, not a measurement.
+The bar under the row tells them apart. Its bright tick is the same mean, and
+the dimmer block around the tick spans one standard deviation either way: a
+narrow block is a sure guess, a wide one an unsure guess. The map's size channel
+and the belief row's interval say the same thing at more length. The row is
+still a ranking aid, not a measurement.
 
 ## Trust, and what to expect over time
 
@@ -125,9 +130,11 @@ Two failure shapes worth recognising:
   learn](./teaching.md#what-it-cannot-learn)), or your answers are
   inconsistent, which happens: some days you are not choosing on one axis.
 
-The number to watch is **check-duel skill** rather than overall skill. The
-overall number is measured on questions the model helped choose; the check
-duels are drawn at random.
+The number to watch is **check-duel skill** rather than overall skill. Check
+duels are the ones dealt at random, which under the default pairing is every
+duel EVOLVE and PATCH deal you. The overall number also counts comparisons you
+chose yourself (an edit against its original, a PERFORM offer), and those are
+not a fair sample.
 
 ```admonish note title="Why a low score early is the honest one"
 Auracle forecasts every duel *before* you answer it, then reports its own error
@@ -139,7 +146,8 @@ early on it does. That is what makes it worth reading later.
 
 You will notice it before the numbers say so:
 
-- The duels get **harder** — both candidates are plausible.
+- More pairs hold **two patches you like**. The pairs are still dealt at
+  random; it is the pool that has moved toward you.
 - Generations produce children you want to keep rather than children you want
   to skip.
 - The belief row's explanation matches your own reason for liking a patch.

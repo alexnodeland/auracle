@@ -52,13 +52,16 @@ Five things:
 1. One sentence in the instrument's voice.
 2. The port map.
 3. The parameters it will arrive with.
-4. **What the model believes**, with four ways of saying nothing: *not
-   measured* / *not fitted* / *too few examples* / *here is the belief, with
-   its interval*. The card above shows an interval straddling zero, which means
-   the model has looked and found nothing.
+4. **What the model believes**, in one of five states: *not measured*, *not
+   fitted*, *too few examples*, *looked and has no lean*, or *here is the
+   belief, with its interval*. The card above is the fourth: *the model has
+   looked and has no lean either way*, with an interval that straddles zero.
+   [Reading what it learned](./reading-the-model.md#five-states-and-what-each-means)
+   quotes all five.
 5. **heard**: what the feature extractor can and cannot pick up about this
-   module. Chorus's card says outright that the model will never learn it,
-   because the feature vector has no stereo-width coordinate.
+   module. Chorus's card says the model hears it *as comb filtering, not as
+   width*: the feature pipeline sums left and right, so the model can learn the
+   artefact but never the effect.
 
 That fifth line tells you when your preference is real but *invisible* to the
 machinery. In that case, starring patches that use it will not teach the model
@@ -148,11 +151,11 @@ knob, so it can change one step of a pattern without touching the others, and a
 lock on a bar (press <kbd>L</kbd> with it focused) holds that step while the rest
 evolve.
 
-Nearly every module carries a modulation slot with a named destination; on the
-oscillators the slot bends pitch. The exceptions are the ones with nowhere
-sensible to send it: `noise`, whose only control is a colour switch, and `mix`
-and `ring mod`, whose two inputs are both audio and whose single knob is the
-blend.
+Nearly every module carries a modulation slot with a named destination. Among
+the sources, `vco` and `supersaw` take it as pitch, `wavetable` as morph,
+`pluck` as decay and `formant` as vowel. The exceptions are the ones with
+nowhere sensible to send it: `noise`, whose only control is a colour switch,
+and `mix` and `ring mod`, whose two inputs are both audio.
 
 ## Binary modules
 

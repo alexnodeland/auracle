@@ -5,7 +5,7 @@
 <!-- film:composing --><!-- /film:composing -->
 
 <figure>
-<img src="./img/bank.webp" alt="The bank rail: three bank tabs — evolution 40, my patches 1, presets 61 — above a list of rows, each with a name, prediction percentage, play button, five stars and a save icon." loading="eager" width="252" height="720">
+<img src="./img/bank.webp" alt="The bank rail: three bank tabs — evolution, my patches and presets, each with its count — above a list of rows, each with a name, prediction percentage, play button, five stars and a save icon." loading="eager" width="252" height="720">
 <figcaption><strong>The bank rail.</strong> Three collections, and a row for
 each patch carrying what the model predicts you would say about it.</figcaption>
 </figure>
@@ -23,7 +23,7 @@ evolving costs.
 
 ## Reading a row
 
-Each row carries a name, an id, a prediction, stars and a save control:
+Each row carries a name, an id, a prediction, stars, a save control and a cut:
 
 <figure>
 <img src="./img/bank-row.webp" alt="One bank row, outlined in green because it is the row the cursor is on: a diamond glyph, the name Round Wash, the prediction 80% and the id #35 on the right, and below them a play triangle, five filled stars, a save icon, and a horizontal bar drawn at the same 80%." loading="lazy" width="252" height="70">
@@ -32,13 +32,22 @@ Everything else on it is described below.</figcaption>
 </figure>
 
 - **The name** is generated from what the patch is, and you can rename it.
+  Double-click it.
+- **new** beside the name marks a child of the latest generation.
 - **The percentage** is the model's prediction: roughly, how likely you are to
-  prefer this patch in a duel. It is blank when the model has no basis for a
-  claim.
-- **The bar** under the row is the same value, drawn.
+  prefer this patch in a duel. Before the model has been fitted it reads
+  **—**.
+- **The bar** along the row's bottom edge draws the prediction. The bright tick
+  is the model's guess; the dimmer block around it spans one standard
+  deviation either way, so its width is how sure the model is. Before a fit the
+  bar is an empty hatched track.
 - **▶** plays the standard sample.
 - **★★★★★** rates it. This is an observation and it teaches the model.
 - **💾** saves it. This is storage and it teaches nothing.
+- **cut** teaches the model "not this one" and takes the row out of the bank.
+  The message *Cut Name #id.* offers an undo for seven seconds, and nothing is
+  recorded until they are up. It shows when you hover the row or put the
+  cursor on it, and always on a touch screen.
 
 ## Stars are not saves
 
@@ -47,8 +56,9 @@ Two controls, two unrelated jobs.
 **★ is a judgement.** It enters the observation log as an ordinal rating and
 moves the taste posterior. Rate honestly, including rating things low.
 
-**save is storage.** It copies the patch into **my patches** and exempts it
-from eviction. It records nothing about your preferences.
+**save is storage.** It lists the patch in **my patches** as well as in
+**evolution**, and exempts it from eviction. It records nothing about your
+preferences.
 
 Merging them is tempting and wrong. The pool evicts its lowest-utility members,
 so the moment a rating decides what survives, people rate strategically to
@@ -72,7 +82,8 @@ why.)
 
 Saving pins a patch so eviction skips it. Pins are capped at a quarter of the
 pool, so it can never be pinned solid and leave the search nowhere to put new
-candidates. The head shows your pin budget when you are near it.
+candidates. The head shows how many you have used, `3/10 saved`, from the
+moment the app knows the cap.
 
 ## Presets
 
@@ -98,6 +109,9 @@ The bank is a **single tab stop**. Reach it with <kbd>Tab</kbd>, then:
 | <kbd>Enter</kbd> | Open the patch |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate |
 | <kbd>m</kbd> | Save |
+
+In **presets**, <kbd>Enter</kbd> opens the preset under the cursor and
+<kbd>p</kbd> plays it.
 
 The save key is <kbd>m</kbd> rather than <kbd>s</kbd> because <kbd>s</kbd> is a
 note in the computer keymap, and note letters get through even when a control

@@ -46,7 +46,12 @@ Pick on sound alone. There is no wrong answer and you are not committing to
 anything; the model treats these like any other preference, and they fade with
 time like any other.
 
-You can re-run it later from the **⋯** menu → *Re-run the three-pick warm
+Your three are also **saved**, so no generation can evict them, and the first
+one opens ready to play. The message says so (*Your three are saved*). They
+take 3 of your 10 save slots; release any of them from its row if you want the
+room.
+
+You can re-run it at any time from the **⋯** menu → *Re-run the three-pick warm
 start*.
 
 ## 2. Answer some duels
@@ -112,22 +117,23 @@ whether they were worth it. The **EVOLUTION** strip below reports what each
 step did, in plain terms:
 
 ```text
-gen 1 ⚡ evolution on #43 → #57 · decay 100 ms → 91 ms, granular → filter,
-op → lfo, +mix, +mix, −vco, −lfo · Δtaste +0.62
+gen 1 ⚡ evolution on #43 → #57 · release 100 ms → 251 ms,
+cutoff 1.78 kHz → 20 kHz, delay → chorus, +lfo · Δtaste +0.62
 ```
 
 The bank marks the new generation's children ⚡ **new**.
 
-Then keep duelling. New candidates are in the mix now, and the questions get
-better as the model gets less uncertain.
+Then keep duelling. New candidates are in the mix now, and every pick still
+teaches the model and tests its forecast.
 
 ## 5. Keep what you like
 
 Anything worth keeping:
 
 - **★ stars** it. That is an *observation*, and it teaches the model.
-- **save** it. That is *storage*: it moves the patch to **my patches** and
-  exempts it from eviction. It teaches the model nothing.
+- **save** it. That is *storage*: the patch stays in **evolution**, is also
+  listed in **my patches**, and is exempt from eviction. It teaches the model
+  nothing.
 
 Two controls, two different jobs, and it is worth knowing
 [which one you want](../bank.md#stars-are-not-saves).

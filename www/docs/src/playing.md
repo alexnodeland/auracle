@@ -25,15 +25,18 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 black:   w  e     t  y  u     o  p
 ```
 
-<kbd>z</kbd> / <kbd>x</kbd> shift octave, from `a = C0` to `a = C7`, so the
-letters reach C0 to C8: an 88-key piano's compass, and a few notes below. The
-left of the dock always shows the current anchor (`a = C4`).
+<kbd>z</kbd> / <kbd>x</kbd> shift octave, from `a = C0` to `a = C7`. At the
+bottom <kbd>a</kbd> plays C0; at the top <kbd>'</kbd> plays F8, five notes past
+an 88-key piano's C8. The on-screen keybed stops at C8, so the last few letters
+sound without a key lighting. The left of the dock always shows the current
+anchor (`a = C4`).
 
-```admonish note title="Letters only play when the interface does not want them"
-Note letters reach the synth only when focus is not in a control, and they get
-through even when it is. That is why <kbd>m</kbd> saves a patch in the bank
-instead of the obvious <kbd>s</kbd>: <kbd>s</kbd> is a note, so binding save to
-it would have played a D every time.
+```admonish note title="Letters play unless you are typing"
+Note letters are blocked only while a text field (or a drop-down) has focus, so
+naming a patch does not play a melody. A focused button, knob or tab keeps just
+the keys it uses (Space, Enter, the arrows) and lets the letters through. That
+is why <kbd>m</kbd> saves a patch instead of the obvious <kbd>s</kbd>:
+<kbd>s</kbd> is a note, so binding save to it would have played a D every time.
 ```
 
 ### MIDI
@@ -75,7 +78,7 @@ takes MIDI back. The computer keyboard already worked that way.
 
 | Control | |
 |---|---|
-| **HOLD** | Latch: notes stay on until you play them again |
+| **HOLD** | Latch: every note you play stays on until you switch HOLD off or press **◼**. Playing a held note again restrikes it |
 | **◼** | Panic. Kills every voice immediately |
 | **⇕ tall** | Grow the dock; the rack re-zooms into what is left |
 | **keys** | Keybed width, 1–4 octaves |

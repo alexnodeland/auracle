@@ -4,8 +4,9 @@
 
 ## In the browser, hosted
 
-[**auracle.alexnodeland.com/play/**](../../play/) is the live build. Every
-push to `main` deploys it, and so does every tagged release.
+[**auracle.alexnodeland.com/play/**](../../play/) is the live build. It
+tracks `main`: every push to `main` deploys it. A tagged release does not
+deploy on its own; it is cut from a `main` that has already deployed.
 
 Nothing to install, and nothing leaves your machine: the engine is WebAssembly
 running in your tab, and your bank and taste model live in your browser's
@@ -27,8 +28,8 @@ Any static server works (`npx serve`, `php -S`, …), but it must be **HTTP, not
 `file://`**. The instrument uses module workers, and browsers refuse to load
 those from a file URL.
 
-The bundle is built from the same commit as the tagged live site, so the two
-are identical.
+The bundle is pinned to its tag. The live site tracks `main`, so it is the same
+build on the day a release is cut and may be newer after that.
 
 ## From source
 
@@ -76,10 +77,12 @@ seconds; the default is a minute).
   the ⋯ menu) forgets the taste profile and starts again with the warm start.
   Booth mode and PERFORM's measured controls are kept, so the demo set stays
   instant.
+- **Pre-warm.** As soon as booth mode is on, it measures the booth set's
+  patches for PERFORM in the background (Glass Pad, Acid Line, Loom, Undertow, Sub &
+  Sparkle, Detune Dream, Wobble Board, Cathedral), one at a time and only in a
+  quiet moment. PERFORM keeps each measurement across reloads, so after the
+  machine's first boot no visitor waits for one. Nothing to do by hand.
 
-Visit the booth set's patches once while setting up (Glass Pad, Acid Line,
-Loom, Undertow, Sub & Sparkle, Detune Dream, Wobble Board, Cathedral). PERFORM
-keeps each measurement across reloads, so after that no visitor waits for one.
 A MIDI controller with eight knobs is picked up automatically: the first eight
 knobs you turn claim the six named controls, Blend and Wander.
 
@@ -101,8 +104,8 @@ still works from the computer keyboard and the on-screen keys; see
 
 ### Handheld devices
 
-A coarse pointer with a viewport narrower than 620px **does not boot the
-engine**. You get a stand-in screen asking for a desktop, with a *look around
+A touch screen whose window is under 620px on its shorter side **does not boot
+the engine**. Rotating does not change that. You get a stand-in screen asking for a desktop, with a *look around
 anyway* link if you want to see the interface.
 
 This is deliberate. Boot costs about forty audio renders, and a phone would pay
@@ -138,4 +141,6 @@ A few knobs, for when the defaults are wrong for your machine:
 
 The candidate pool is **identical at every worker count, including zero**: the
 draw stream is indexed and absorbed in index order. If a worker dies mid-boot,
-the fill falls back to the serial path over the same draws.
+the fill falls back to the serial path over the same draws. The one exception is
+a render that times out twice: that draw is retired and skipped, and the note
+goes to `window.__aurLog` rather than the console.

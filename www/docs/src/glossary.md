@@ -31,8 +31,10 @@ the menu bar and on [TRUST](./views/taste.md#trust--is-its-confidence-honest).
 ### Budget
 
 The ceilings evolution searches inside: modules, tree depth, modulation depth.
-Shown in PATCH as `8/24 modules · 4/6 depth · 1/3 mod depth`. A patch at its
-ceilings has no room to grow.
+PATCH shows a cell only when it is tight (one short of its ceiling) or full,
+such as `23/24 modules`; **⋯ → Show measurements** shows all three
+(`8/24 modules · 4/6 depth · 1/3 mod depth`). A patch at its ceilings has no
+room to grow.
 
 ### Candidate
 
@@ -107,8 +109,9 @@ in that direction. See [PERFORM](./views/perform.md#the-named-controls).
 A variant grown from the sound you are playing, held in a second voice set
 called **B** that plays every note you play. You hear it by crossfading with
 **Blend** or holding **Peek**, at matched loudness, and it replaces your sound
-only if you press **Take**. An offer may change structure; nothing else in
-PERFORM does. See [Blend, Peek and the B
+only if you press **Take**. An offer may change structure. The only other
+thing in PERFORM that can is a **search control** that grafts a tone EQ on (see
+below); Wander never does. See [Blend, Peek and the B
 slot](./views/perform.md#blend-peek-and-the-b-slot).
 
 ### Pickup
@@ -132,8 +135,9 @@ comes from its spread.
 ### Prediction
 
 The percentage on a bank row: roughly how likely you are to prefer this patch
-in a duel. A posterior mean, so it averages the uncertainty away. For the
-uncertainty itself, read the map's dot sizes.
+in a duel. A posterior mean, so the number alone averages the uncertainty away.
+The bar under it shows the uncertainty: a tick at the mean inside a block one
+standard deviation wide on each side. The map's dot sizes show it too.
 
 ### Quarantine
 
@@ -157,9 +161,14 @@ the keyboard to judge it.
 
 A named control drawn in amber with a dashed ring: this patch's knobs cannot
 honestly make the change it names (no drive to make it rougher, no reverb to
-make it farther). Turning it moves no knobs. It springs back and asks for an
-offer in B instead. See [search
-controls](./views/perform.md#amber-dashed-search-controls).
+make it farther). Turn it about a third of the way to either end and let go,
+and it does one of two things. **Bright** and **Body** can be given something
+to turn: a flat tone EQ grafted onto the patch. So can **Space** turned up: a
+longer release. The graft
+goes in as one undo step, the patch is measured again, and the control is set
+where your hand left it (*Bright now turns …*). Otherwise, or when the graft
+does not reach, the control springs back and asks for an offer in B. See
+[search controls](./views/perform.md#amber-dashed-search-controls).
 
 ### Standardizer
 
@@ -210,4 +219,5 @@ pauses while your hands are on the controls, and a tap holds it. See
 
 The three-of-nine preset pick on first run. Worth 18 pairwise observations for
 about thirty seconds of work, which is how the model gets past a cold start
-that otherwise takes hundreds of duels.
+that otherwise takes hundreds of duels. Your three picks are saved. Re-run it
+from **⋯** at any time.

@@ -27,7 +27,7 @@ and there are three ways: a duel, stars and keep/kill.
 | **an offer answered** | PERFORM: **Take** an offer you heard, or ask for another | The same duel, between the sound you were playing and the model's offer |
 | **★ stars** | Any bank row | This patch's utility falls in the band that rating covers |
 | **keep / kill** | A bank row's **cut** (kills only) | This patch is above / below where I'm drawing the line today |
-| **edit beats original** | *my edit is better*, on commit | The same duel: my edited version scores higher than what I started from |
+| **edit against original** | **commit** on an edited patch: the **WHICH ONE IS BETTER?** card, or *my edit is better* to skip it | The same duel, between my edit and what I started from, whichever way I answered |
 
 **Duels are the primary signal.** They have the best statistical properties and
 the lowest cognitive load: people compare two things reliably, and assign
@@ -88,6 +88,10 @@ filled from what is left, so the first thirty seconds span the space rather than
 landing in one corner. Only those nine are loaded, which keeps the first run
 short and most of the pool free for what the search finds.
 
+Your three picks are also **saved**, so no generation can evict them: they take
+3 of the pool's 10 save slots, and the message that ends the warm start says
+*Your three are saved*. The first of them is opened, ready to play.
+
 Re-run it any time from **⋯** → *Re-run the three-pick warm start*.
 
 ## When it learns
@@ -97,20 +101,23 @@ Two mechanisms, at two speeds.
 **Between refits: reweighting.** Every vote is folded in immediately by
 importance sampling, where the draws the model already has get reweighted by
 how well each one predicted your answer. It costs almost nothing, and it is
-what makes the *next* question respond to the *last* answer. Without it the
-pairing rule would read a frozen model and re-ask the same question until the
-next full fit.
+what lets the model's next forecast, and its read of the patch in front of you,
+answer your last pick instead of waiting for the next full fit.
 
 **At a refit: inference.** Full Markov-chain inference over the entire log, a
 few seconds of work off the audio thread. This is where the model can change
 its mind, discover a new style lens, or re-fit the star cutpoints.
 
-The teaching meter counts down to the next refit: at most every six duels, and
-only when the between-fit reweighting has run out of road. That condition is
-measurable. The *effective* sample size of the reweighted draws falls as the
-weights concentrate on fewer and fewer of them, and once it has collapsed far
-enough the model would be claiming more certainty than it has. That is the
-trigger to pay for a real fit. The wordmark's **E** lights while one runs.
+**Every sixth pick refits.** The teaching meter counts down to it in six pips
+(*3 more picks and it redraws your taste map*). A pick is a duel answered in
+EVOLVE or in PATCH's pick strip, or an offer answered in PERFORM. On the sixth,
+the meter reads **● it just learned — see what changed ▸**, the TASTE map is
+redrawn, and the wordmark's **E** lights while the fit runs.
+
+Reweighting alone would wear thin: as the weights concentrate on fewer and
+fewer draws, the model starts claiming more certainty than it has. Refitting on
+a fixed count keeps that from building up, and keeps the meter's promise every
+time.
 
 ## Recency
 
@@ -133,16 +140,17 @@ quarter of a fresh one's weight.</figcaption>
 Roughly in order:
 
 1. **Duels between genuinely different patches.** The most information per answer.
-2. **The warm start.** Eighteen observations for thirty seconds, available once
-   per reset.
+2. **The warm start.** Eighteen observations for thirty seconds. Re-running it
+   adds eighteen more.
 3. **Duels the model got wrong.** A surprising answer moves a posterior further
-   than a confirming one. This is also why the pairing rule serves near-ties.
+   than a confirming one.
 4. **Stars, in volume.** Weaker per observation, but cheap, and they anchor the
    absolute scale that duels alone cannot pin down.
-5. **Hand edits committed with *my edit is better*.** These carry a lot: a
-   direction in genome space, and the claim that the direction was good. TRUST
-   scores them separately, because an asserted improvement and a heard one may
-   not be equally reliable.
+5. **Hand edits, committed.** These carry a lot: a direction in genome space,
+   and your verdict on it. Answered on the **WHICH ONE IS BETTER?** card, the
+   verdict is heard, and "the original won" teaches it the most. Ticked
+   as *my edit is better*, it is a claim. TRUST scores the two apart, because an
+   asserted improvement and a heard one may not be equally reliable.
 
 ## What it cannot learn
 
