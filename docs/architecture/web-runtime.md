@@ -113,8 +113,19 @@ While a pair is on the table, `main.js` deals the next one (`duel` with
 `ahead: true`, echoed in the reply) once the table's own two sounds are
 resident, and fetches the new pair's renders. A pick or ↻ swaps it in
 synchronously (`placePair`); the pair is re-checked at that moment against
-cuts and replacements made since (`aheadUsable`). Only with nothing waiting
-does a pick wait for a deal.
+cuts and replacements made since, and against the pair just put away
+(`aheadUsable`). Only with nothing waiting does a pick wait for a deal, and a
+deal already out (asked for ahead) is the one it waits for: no second deal
+is asked for.
+
+Every deal's reply goes through `onDealt`, whichever request asked for it:
+the first to land while the table waits goes up, any other waits as the next
+pair. The worker answers deals in the order they were asked, so pairs go up
+in the order they were dealt whatever the timing (a seeded session shows the
+same pairs, [ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
+`dealsOut` counts deals not yet answered; a taken-back pick leaves a deal
+still out to become the next pair. `placePair` is the one place a pair goes
+up: anything owed to a pair being shown belongs there.
 
 ## Audio
 

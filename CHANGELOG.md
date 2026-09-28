@@ -66,8 +66,11 @@ changelog that edits its own past is not a record.
   and during a generation that wait was a whole seed's walk, up to about
   20 s of dimmed cards, with the new pair's sounds rendered after it. Taking
   a pick back puts its pair back and keeps the other as the next, and a
-  patch cut meanwhile is never dealt: its pair is dropped and dealt again
-  (`evolve_ahead.spec.js`, `budgets.spec.js`).
+  patch cut meanwhile is never dealt: its pair is dropped and dealt again.
+  Pairs go up in the order they were dealt: a pick made while the next deal
+  is still out (a generation holds it) waits for that deal instead of asking
+  for a second, so a seeded session shows the same pairs in the same order
+  however long each deal took (`evolve_ahead.spec.js`, `budgets.spec.js`).
 - **What the instrument promises about time is measured.** The app marks
   its own moments (boot start, the veil lifting, the first sound, a full
   pool, PERFORM's controls wired, a patch opened, a pair dealt), every film
