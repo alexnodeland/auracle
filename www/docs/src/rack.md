@@ -76,7 +76,8 @@ last set, never an older one the engine is still catching up on.
 Edits are staged. The toolbar's **commit** inserts the result as a new
 candidate, leaving the original intact. <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> undo and
 redo, and ⌘Z always undoes the last thing you did, even if the engine has not
-finished it yet. Undoing an edit also takes down the message that announced it.
+finished it yet. Each structural edit's message replaces the last one's, and
+undoing an edit takes down the message that announced it.
 
 **my edit is better** is a separate claim. Ticking it teaches the model an
 "edit beat original" duel, which the

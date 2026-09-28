@@ -243,9 +243,12 @@ test("a second drag of the same knob starts from where the first one left it", a
   await path(64, 12, 2900);
   await page.waitForTimeout(250);
   await path(-50, 12, 3000);
+  const want = Math.min(1, Math.max(0, was + 14 / 140));
+  // At once, not only once the engine has caught up: the film saw 12 kHz
+  // here, with the knob let go at 2.9 kHz.
+  expect(Number(await page.locator(`#rack-svg g[data-addr="${k.addr}"]`).getAttribute("aria-valuenow"))).toBeCloseTo(want, 2);
   await settled(page);
   await slow(page, {});
-  const want = Math.min(1, Math.max(0, was + 14 / 140));
   expect(await rackValue(page, k.addr)).toBeCloseTo(want, 2);
   expect(Number(await page.locator(`#rack-svg g[data-addr="${k.addr}"]`).getAttribute("aria-valuenow"))).toBeCloseTo(want, 2);
   expect(errors).toEqual([]);
@@ -438,6 +441,33 @@ test("⌘Z retires the toast that described the edit it undid", async ({ page })
   await dragKnob(page, k, 10, 3);
   await settled(page);
   await expect(again.locator(".toast-undo")).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test("the newest edit's receipt replaces the last one's, and ⌘Z takes it down", async ({ page }) => {
+  // The film's vp-change: a bypass, then a cable pulled. The bypass's
+  // receipt stayed up over the empty socket with the unplug's queued behind
+  // it, and the unplug's surfaced only after it had been undone.
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  const p = await plateWith(page, "bypass");
+  await menuVerb(page, p.key, "bypass");
+  await settled(page);
+  const q = await plateWith(page, "extract to HELD");
+  await menuVerb(page, q.key, "extract to HELD");
+  await settled(page);
+  await expect(page.locator("#toasts .toast", { hasText: "bypassed" })).toHaveCount(0, { timeout: 3_000 });
+  const receipt = page.locator("#toasts .toast", { hasText: "held below" });
+  await expect(receipt).toBeVisible({ timeout: 20_000 });
+  const seen = await page.evaluate(() => window.__pwToasts.length);
+  await page.keyboard.press("Control+z");
+  await settled(page);
+  await expect(receipt).toHaveCount(0, { timeout: 2_000 });
+  // Nothing about either edit surfaces afterwards: the undone one's receipt
+  // is gone, and the replaced one does not come back.
+  await page.waitForTimeout(3_000);
+  const after = await page.evaluate((n) => window.__pwToasts.slice(n), seen);
+  expect(after.filter((t) => /held below|bypassed/.test(t))).toEqual([]);
   expect(errors).toEqual([]);
 });
 

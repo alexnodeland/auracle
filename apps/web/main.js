@@ -781,9 +781,18 @@ function settleLanded(step) {
   for (const uid of landedDrops) unstage(uid);
   landedDrops = [];
   if (!l) return;
+  // The newest edit's receipt replaces the last one's rather than queueing
+  // behind it. A receipt carries an undo, so the lane holds it for its whole
+  // seven seconds: pull a cable just after a bypass and the bypass's receipt
+  // stayed up over the empty socket, the unplug's waiting "+1" behind it
+  // until after the player had already undone the unplug. Its button was
+  // retired anyway the moment this edit landed on top of it (`landedOver`).
+  for (const old of editReceipts) retireToast(old);
   const el = note(l.text, l.opts);
+  editReceipts = [el];
   if (step) (step.toasts = step.toasts || []).push(el);
 }
+let editReceipts = [];
 /** …and take it all back when the engine refuses: nothing was announced,
  *  and nothing left the shelf. */
 function forgetLanded() {
