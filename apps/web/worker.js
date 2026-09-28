@@ -670,12 +670,28 @@ function tasteViews() {
 // makeup gain riding along here is still the previous edit's, because measuring
 // the new one is the expensive half; main corrects it from the bench reply with
 // a bare `setMakeup` rather than a second swap.
-function postLiveTree(edited) {
+//
+// `knobs` is the tree's live knobs (a compile, no render): PERFORM keeps a
+// taken offer playable on the wiring it had until the offer's own measurement
+// lands, and centres that wiring on these values. `why` is echoed — see
+// `edit_set_tree`.
+function postLiveTree(edited, why) {
+  const json = engine.edit_tree_json();
+  let knobs;
+  if (typeof engine.perform_knobs === "function") {
+    try {
+      knobs = JSON.parse(engine.perform_knobs(json));
+    } catch (_) {
+      knobs = undefined;
+    }
+  }
   post({
     type: "tree_json",
     edited,
-    json: engine.edit_tree_json(),
+    json,
     makeup: engine.edit_makeup(),
+    knobs,
+    why: why || undefined,
   });
 }
 
@@ -1596,9 +1612,12 @@ async function dispatch(m) {
         post({ type: "edit_rejected", error: err });
         break;
       }
-      postLiveTree("restore");
+      // `why` names what the new tree is when it is not a hand edit — "taken
+      // offer", from PERFORM's Take — and rides back on both replies so every
+      // label calls it that instead of "(edited)".
+      postLiveTree("restore", m.why);
       engine.edit_revet();
-      postBench({ edited: "restore" });
+      postBench({ edited: "restore", why: m.why || undefined });
       break;
     }
     case "import_patch": {

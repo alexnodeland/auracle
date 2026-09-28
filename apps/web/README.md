@@ -153,6 +153,30 @@ to a pinned `role="alert"` strip that stays until resolved.
   downstream of it still runs. `fill_progress` carries `stage`/`stages` so a
   restore and the top-up fill each own a labelled share of the boot bar.
 
+  **The player first.** Requests are served in three lanes, most urgent
+  first and in arrival order within a lane: *now* (every gesture, and
+  everything that must stay in order with one — edits, votes, opens, renders,
+  saves, logs), *soon* (long work the player asked for: `refine`,
+  `refine_from`, a pressed offer, the first `perform_wire` of the patch in
+  their hands) and *later* (`fit`, `perform_drift`, and anything main tags
+  `bg: true` — re-measurements, booth pre-warms, spare and Wander offers,
+  `load_preset` with `prewarm`). Long jobs that can be cut into renders hold
+  the floor and breathe between pieces, answering every *now* request that
+  arrived meanwhile: `perform_wire` is measured in rounds
+  (`perform_wire_plan` names the renders still owed without rendering,
+  `memo_render` makes one, `perform_wire_known` finishes from the memo — the
+  same numbers as `perform_wire`, pinned natively by
+  `a_planned_measurement_is_the_measurement`), and `refine` breathes between
+  seeds. A *later* measurement gives the floor up to *soon* work and resumes
+  from the memo. `{type: "promote", req, kind}` moves a queued background
+  offer to *soon* when Offer claims it; `{type: "retire", reqs}` demotes
+  PERFORM's measurement of a patch it has left and answers its queued offers
+  and drifts empty. `warm_start` posts `warm_first` (the first pick's
+  `{id, index, json, makeup}`) as soon as it is inserted, and a preview's
+  `load_preset` uses `load_preset_heard`, which keeps the render's audio so
+  the `render` that follows is a memo hit. `tree_json` from an edit carries
+  the tree's live `knobs` and echoes the edit's `why` (`"taken offer"`).
+
 - **farm.js** is a stateless render worker — a wasm instance and nothing else.
   Boot's cost is ~40 renders, each a pure function of `(term, phrase)`, so
   main compiles the binary **once**, spawns

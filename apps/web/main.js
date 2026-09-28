@@ -200,12 +200,22 @@ let healedRev = -1;
 let liveOptimisticJson = null;
 let liveMuted = false;
 
-function setLivePatchJson(json, makeup) {
+function setLivePatchJson(json, makeup, knobs) {
   liveTreeJson = json;
   liveMakeup = makeup;
   liveRev += 1;
-  if (perform) perform.patchChanged(json, makeup);
+  // `knobs` (the tree's live knobs, when the worker sent them) lets PERFORM
+  // keep a taken offer playable on the wiring it had until it is re-measured.
+  if (perform) perform.patchChanged(json, makeup, knobs);
 }
+
+// Why the bench differs from the bank entry it was opened from, in the words
+// every label uses: "edited", or "taken offer" when the difference is an offer
+// taken in PERFORM. A Take is not a hand edit, and "Glass Pad (edited)" read as
+// one. Set from each edit's reply (the worker echoes `why`), cleared by a new
+// subject or a commit.
+let benchDirtyWhy = null;
+const dirtySuffix = () => ` (${benchDirtyWhy || "edited"})`;
 
 // The one place the instrument is silenced without touching the player's
 // fader. `alarm()` has claimed "Muted" on an unvetted state since the beginning
@@ -1176,7 +1186,8 @@ worker.onmessage = (e) => {
     case "tree_json": {
       if (!(m.json && m.json !== "null" && live)) break;
       live.setPatch(m.json, m.makeup);
-      setLivePatchJson(m.json, m.makeup);
+      if (m.edited !== undefined) benchDirtyWhy = m.why || null;
+      setLivePatchJson(m.json, m.makeup, m.knobs);
       if (m.edited !== undefined) {
         // The bench speaking early: the worker posts the edited tree the
         // instant it is adopted and featurizes afterwards, so this arrives
@@ -1184,7 +1195,7 @@ worker.onmessage = (e) => {
         // in the voices now; the vet lands later and mutes if it fails.
         liveOptimisticJson = m.json;
         livePatchId = null;
-        setLiveLabel(`${benchName(wb.subjectId)} (edited)`);
+        setLiveLabel(`${benchName(wb.subjectId)}${dirtySuffix()}`);
       } else {
         livePatchId = m.id;
         setLiveLabel(benchName(m.id));
@@ -1309,6 +1320,7 @@ worker.onmessage = (e) => {
         wb.subjectId = m.subject;
         benchPending = null;
         wb.dirty = false;
+        benchDirtyWhy = null;
         // A new subject: whatever the spec strip was describing belonged to
         // the pointer's last trip along the catalogue, not to this patch.
         specRest();
@@ -1359,6 +1371,7 @@ worker.onmessage = (e) => {
       const settlingRestore = m.edited === "restore" && restorePending !== null;
       if (m.edited !== undefined) {
         wb.dirty = true;
+        benchDirtyWhy = m.why || null;
         if (structural) {
           // Everything keyed by trace address is invalidated by the same
           // fact — the addresses moved. Locks were already being cleared
@@ -1475,7 +1488,7 @@ worker.onmessage = (e) => {
         live.setPatch(m.treeJson, m.makeup);
         setLivePatchJson(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
-        setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)} (edited)` : benchName(wb.subjectId));
+        setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)}${dirtySuffix()}` : benchName(wb.subjectId));
       }
       // Optimism's other half: the sound arrived before the verdict. A patch
       // that fails vetting can self-oscillate, and it is already in the
@@ -1689,6 +1702,7 @@ worker.onmessage = (e) => {
       if (m.id > 0) {
         wb.subjectId = m.id;
         wb.dirty = false;
+        benchDirtyWhy = null;
         // The bench is now a different patch — the child this commit inserted
         // — and everything keyed by subject has to be told, or it stays filed
         // under the parent. `lockKey()` and `ffKey()`/`holesRemember()` all
@@ -2635,10 +2649,10 @@ function sigOf(id) {
 // because only one of the messages that replace the rows re-rendered them.
 function refreshNames() {
   renderSubject();
-  const edited = liveLabelText.endsWith("(edited)");
+  const edited = / \((edited|taken offer)\)$/.test(liveLabelText);
   const id = livePatchId != null ? livePatchId : edited ? wb.subjectId : null;
   if (id == null || !rowOf(id)) return;
-  const text = `${nameOf(id)}${edited ? " (edited)" : ""}`;
+  const text = `${nameOf(id)}${edited ? dirtySuffix() : ""}`;
   if (text === liveLabelText) return;
   liveLabelText = text;
   $("live-label").textContent = text;
@@ -3002,9 +3016,11 @@ async function bootPerform() {
     // A performed sound becomes the bench's tree by the same whole-tree route
     // a restore takes, so PATCH shows what PERFORM kept. queueStruct stages
     // the one undo step itself.
-    commitTree: (json) => {
+    // `why` names a tree that is not a hand edit ("taken offer"), so the
+    // labels say what it is (see `benchDirtyWhy`).
+    commitTree: (json, why) => {
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
-      queueStruct({ type: "edit_set_tree", json }, null, { op: "perform" });
+      queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
     },
   });
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.
@@ -7106,7 +7122,7 @@ function renderSubject() {
   }
   // "(edited)", the same words the keybar and PERFORM use for the same fact —
   // the header said "· edited" while the dock under it said "(edited)".
-  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? " (edited)" : ""}`;
+  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}`;
   // The name's column is fixed and ellipsizes (`.patch-head`); the whole of
   // it is one hover away.
   nameEl.title = nameEl.textContent;

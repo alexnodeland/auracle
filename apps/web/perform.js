@@ -966,6 +966,11 @@ export function createPerform(host) {
         if (m.data) {
           if (performance.now() - state.lastTouch < 1500) state.deferredWire = m.data;
           else applyWired(m.data);
+        } else if (p.cacheAs.carried) {
+          // A wiring borrowed from another sound is not this patch's: with no
+          // measurement to replace it, it goes rather than lingering.
+          state.wire = null;
+          renderStatus("could not measure this patch");
         }
         knobs.forEach(paintKnob);
         renderHood();
@@ -1105,9 +1110,42 @@ export function createPerform(host) {
     // offer…" for ever when the patch changed under a growing offer.
     if (state.offer) clearOffer();
     else renderOffer();
-    if (state.visible) wire();
+    if (carried) {
+      const here = new Map(liveKnobs);
+      state.cur.knobs = here;
+      state.home.knobs = new Map(here);
+      state.wiredAt = new Map(here);
+      state.wire = carried;
+      state.playableAt = performance.now();
+      // The offer was grown from the performed sound, controls and all, so
+      // the taken tree already contains their deltas: they read zero on it.
+      state.c = state.c.map(() => 0);
+      knobs.forEach((k) => {
+        if (k.spec.kind === "named") {
+          k.value = 0;
+          host.controlMoved?.(k.i);
+        }
+      });
+      sendTouch();
+      state.revalidating = true;
+      const req = request("perform_wire", { tree: json, overrides: [] });
+      state.pending.get(req).cacheAs = { json, rev: tasteRev(), quiet: true, carried: true };
+      renderStatus();
+    } else if (state.visible) wire();
     knobs.forEach(paintKnob);
     renderHood();
+  }
+
+  // The wiring `wire` had, kept for the tree whose live knobs are `list`: each
+  // control keeps the knobs that tree still has; one left with none has
+  // nothing to turn until the measurement says otherwise.
+  function carryWiring(wire, list) {
+    const live = new Set(list.map(([a]) => a));
+    return wire.map((w) => {
+      if (!w || w.search) return w;
+      const kept = w.knobs.filter(([a]) => live.has(a));
+      return kept.length ? { ...w, knobs: kept } : { ...w, knobs: [], search: true };
+    });
   }
 
   // Measure now even if PERFORM has never been looked at: a MIDI control can
@@ -1327,9 +1365,24 @@ export function createPerform(host) {
     state.offer = null;
     const live = host.live();
     if (live) live.bClear({ afterSwap: true });
+    // …and Blend comes home. What was in B *is* A now, and B is empty: left
+    // turned toward "offer", the next offer would sound at that level the
+    // moment it arrived, over the sound the player just chose.
+    const blend = knobs.find((k) => k.spec.kind === "blend");
+    if (blend) {
+      blend.value = 0;
+      state.blend = 0;
+      host.controlMoved?.(blend.i);
+    }
+    // The controls stay under the hands through the handover (see
+    // `patchChanged`): the wiring measured on the sound being left carries
+    // over to the one taken until the offer's own measurement lands.
+    // Keyed by the taken tree itself (uids aside, see `wireKey`): a Take the
+    // bench refuses must not lend its wiring to whatever patch comes next.
+    if (state.wire) state.taking = { at: performance.now(), key: wireKey(json) };
     renderOffer();
     knobs.forEach(paintKnob);
-    host.commitTree(json);
+    host.commitTree(json, "taken offer");
     flash("take");
   }
 
