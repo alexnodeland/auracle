@@ -58,7 +58,7 @@ plugins work on it.
 | RFC | Status | Proposal |
 | --- | --- | --- |
 | [001](proposals/001-evolve-pool-parallel-walks.md) | in review | Breed a generation in seconds: walks in parallel on the render farm |
-| [002](proposals/002-directed-search-offers.md) | draft | Aim PERFORM's search-control offers along the control's direction |
+| [002](proposals/002-directed-search-offers.md) | in review | Aim PERFORM's search-control offers along the control's direction |
 
 ## Notes
 
