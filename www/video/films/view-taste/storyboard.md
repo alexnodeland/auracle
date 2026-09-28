@@ -82,12 +82,15 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
 - **Actions:** `1.6` view evolve; `2.0` ▶ A; `4.2` ▶ B (the pair's phrase
   plays on); `6.2` the listener's pick (`[data-vt='pick']`), then *see what
   changed ▸* (stamp `learned`), clicked at `@learned+0.5`; the fit lands
-  (stamp `lit`); `@lit+0.5` the brightest dot marked, hovered (its tooltip)
-  and clicked; `@best+0.1` Fmaj7 held to the end.
+  (stamp `lit`); `@lit+0.5` a bright dot the listener likes (the brightest
+  quarter's first) marked, hovered (its tooltip) and clicked; Fmaj7 as the
+  bench has it, to the bar line; Em7 on that bar, to the end.
 - **Clips:** `[7.9, "@lit-0.9"]`, a cut from the link to just before the fit
   lands (no cut when it is quick).
 - **Camera:** wide on the pre-fit map; in on the pair; wide as the map
-  lights; a slow push onto the brightest dot.
+  lights; a slow, centred push. Centred because FRESH's first deal can
+  differ between takes (the pair-lost-a-side re-deal during the fill), and
+  with it which bright dot is played; the RICH session reproduces exactly.
 - **Reads without sound:** dim, even dots and *nothing predicted yet*, then
   the whole map lit.
 
