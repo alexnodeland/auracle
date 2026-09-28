@@ -111,7 +111,7 @@ than your impression. Then:
 
 - **Fewer than ~20 picks.** It is genuinely too early.
 - **Your preference may not be in the feature space.** The clearest case is
-  stereo width, which has no coordinate at all. Read the **heard as** line on
+  stereo width, which has no coordinate at all. Read the **heard** line on
   the modules involved; it will tell you outright. See [what it cannot
   learn](./teaching.md#what-it-cannot-learn).
 - **You have been saving instead of starring.** Saving teaches nothing.

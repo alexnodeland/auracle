@@ -78,7 +78,7 @@ crop nodebank.png  927x133+266+598  spec-card.webp
 # on the patch as well as the layout: re-aim it when the PATCH shot changes.
 crop play.png      560x300+448+188  rack-detail.webp
 # The teaching meter (#duel-mid, 1160x56) with 6px either side and 2px above
-# and below, and the unbiased-probe note inside it.
+# and below, and the line saying how the pair was dealt inside it.
 crop evolve.png    1172x60+260+59   teach-meter.webp
 # The bank rail: its head, the three banks, and nine rows with per-row
 # prediction, stars and save — cut in the gap under the ninth.

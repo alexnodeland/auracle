@@ -41,9 +41,12 @@ feature vector and a lineage.
 
 ### Check duel
 
-A duel whose pair was drawn **at random** rather than chosen by the pairing
-rule. Marked **◇ unbiased probe**. Calibration measured on these is the number
-without an asterisk.
+A duel whose pair was drawn **at random** rather than chosen by the model.
+Under the default pairing that is every duel EVOLVE deals, and the meter says
+so of every pair: **◇ random pair — a fair test**. Under the
+information-seeking pairing it is about one duel in ten, each marked
+**◇ unbiased probe — dealt at random**. Calibration measured on these is the
+number without an asterisk.
 
 ### Duel
 

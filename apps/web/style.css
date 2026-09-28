@@ -266,8 +266,88 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .menubar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 /* The menubar should lead with what the machine has learned, not with file
    management — so the counters carry title weight and the amber of the mind. */
-.counter { font-family: var(--font-mono); font-size: var(--t-body); font-weight: 600; color: var(--phos-b); }
+.counter { font-family: var(--font-mono); font-size: var(--t-body); font-weight: 600; color: var(--phos-b); white-space: nowrap; }
 .counter-label { color: var(--silk-dim); font-family: var(--font-silk); font-size: var(--t-micro); letter-spacing: 0.16em; text-transform: uppercase; margin-right: 5px; }
+/* The skill line gives way first when the bar is full (it ellipsizes). */
+.menubar-right .skill { min-width: 0; }
+
+/* The film of this view (main.js, pointFilmChip). Folded, a quiet "▶ film";
+   open, on a view's first visit, the one line a newcomer needs, in the
+   phosphor of sound, with a way to fold it. */
+.film-chip { display: flex; align-items: center; gap: 2px; flex: none; }
+.fc-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--silk-dim);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+.fc-play { color: var(--phos-a-dim); }
+.fc-link:hover, .fc-link:focus-visible { color: var(--phos-a); border-color: var(--phos-a-dim); }
+.fc-link:hover .fc-play, .fc-link:focus-visible .fc-play { color: var(--phos-a); }
+.film-chip.open .fc-link {
+  color: var(--phos-a);
+  border-color: var(--phos-a-dim);
+  background: rgba(142, 240, 177, 0.06);
+  box-shadow: 0 0 10px rgba(142, 240, 177, 0.12);
+  animation: fc-arrive 420ms ease-out;
+}
+.film-chip.open .fc-play { color: var(--phos-a); }
+.fc-lead { color: var(--silk); }
+.fc-close {
+  display: none;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--silk-dim);
+  font-size: var(--t-body);
+  line-height: 1;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+.film-chip.open .fc-close { display: inline-block; }
+.fc-close:hover, .fc-close:focus-visible { color: var(--silk); }
+@keyframes fc-arrive { from { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .film-chip.open .fc-link { animation: none; } }
+/* A narrower bar keeps the film's name and length and drops the greeting. */
+@media (max-width: 1320px) { .fc-lead { display: none; } }
+
+/* The bar is one row of things that do not shrink — the wordmark, four tabs,
+   the counters, ? and ⋯ — and they did not fit the windows the app opens in.
+   Measured with a full skill line: at 1000px, the narrowest desktop window it
+   allows, ⋯ sat past the right edge; on a tablet in portrait (768px, which
+   loads the app with no gate) so did ? and the skill line; on a phone that
+   chose "open anyway" (390px) the counters and two of the tabs too. So:
+   tighter first, then, where one row cannot hold them, two rows with the
+   tabs on the second. The counters keep their words, "picks" and
+   "generations", at every width; what gives way is the skill line (TASTE →
+   TRUST carries it) and, on a phone, the ? that ⋯ repeats. */
+@media (max-width: 1240px) {
+  .menubar { gap: 14px; }
+  .viewtab { padding: 7px 12px; }
+  .menubar-right { gap: 10px; }
+  .skill { max-width: 170px; }
+}
+@media (max-width: 860px) {
+  :root { --menubar-h: 88px; }
+  .menubar { flex-wrap: wrap; row-gap: 6px; padding: 6px 12px; }
+  /* One screw per ear sits at the bar's middle — between the rows, here. */
+  .menubar::before { display: none; }
+  .viewtabs { order: 3; flex: 1 0 100%; }
+  .viewtab { flex: 1 1 0; padding: 7px 0; }
+  .skill { display: none; }
+}
+@media (max-width: 480px) {
+  .wordmark { font-size: var(--t-title); padding-left: 0; }
+  #help-open { display: none; }
+  .counter-label { letter-spacing: 0.1em; }
+}
 
 /* Same physics as .hw-btn at reduced amplitude — a tool, not a web chip.
    Without the cast and the depress, PLAY read as a web app with a synth
@@ -450,6 +530,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item .bi-origin.preset { color: var(--phos-a-dim); }
 /* Just born this generation. */
 .bank-item.fresh .bi-origin.refined { text-shadow: 0 0 7px rgba(255,180,84,0.8); }
+/* The latest generation's children, said in a word as well as a glow. */
+.bank-item .bi-new {
+  flex: 0 0 auto;
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--phos-b);
+  border: 1px solid var(--phos-b-dim);
+  border-radius: 2px;
+  padding: 1px 3px;
+}
 
 /* The prediction meter is a full-width underline on the row's bottom edge.
    At 54px, 1% was 0.54px — the number beside it existed because the bar could
@@ -518,6 +611,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   line-height: 1;
 }
 .bank-item .bi-row button:hover { color: var(--silk); }
+/* Sounding: the same lit ▶ as the warm start's and ▶ SAMPLE's, so a row
+   that is playing says so, and says what pressing it again will do. */
+.bank-item .bi-row button.bi-hear.playing {
+  color: var(--phos-a);
+  text-shadow: 0 0 6px rgba(142, 240, 177, 0.6);
+  box-shadow: inset 0 0 8px rgba(142, 240, 177, 0.25);
+  border-radius: 4px;
+}
 /* Each of these must out-specify `.bank-item .bi-row button` above (0,2,1) or
    its font-size, padding and tracking are silently discarded — which is how
    the save and cut labels ended up running into each other. */
@@ -3902,9 +4003,22 @@ html:not(.engineer) .dn-sig { display: none; }
 .budget .bg-cell.full { color: var(--led-red); }
 .budget .bg-cell.full b { color: var(--led-red); }
 
-/* A duel drawn at random rather than by the acquisition function. */
-.duel-pred.check { color: var(--phos-b); }
-.duel-pred.check::before { content: "◇ "; }
+/* How the pair on the table was chosen (`renderDealRule`): quiet silk under
+   the default, where it is the same fact about every pair; amber only for a
+   check dealt at random under a rule that otherwise chooses. */
+.duel-deal { display: flex; align-items: center; gap: var(--s2); }
+.duel-rule { font-size: var(--t-micro); color: var(--silk-dim); white-space: nowrap; cursor: help; }
+.duel-rule:empty { display: none; }
+.duel-rule.check { color: var(--phos-b); }
+/* The centre column is as wide as its widest line, and the meter's copy
+   takes what is left: on a tablet (768px) a one-line rule beside skip left
+   the copy 42px wide, a word to a line. Narrower than any desktop window the
+   app opens in, the rule wraps above skip (at 1000px it fits beside it, and
+   stacked it cost the cards 22px of height). */
+@media (max-width: 900px) {
+  .duel-deal { flex-direction: column; gap: 3px; }
+  .duel-rule { white-space: normal; max-width: 16ch; text-align: center; line-height: 1.3; }
+}
 
 /* ---------- round-2 corrections ---------- */
 
@@ -4221,8 +4335,10 @@ input[type="range"]::-moz-range-thumb {
 .map-legend .ml-ramp-wrap { display: inline-flex; align-items: center; gap: 5px; }
 .map-legend .ml-ring { display: inline-flex; align-items: center; gap: 4px; }
 .map-legend .ml-ring i { display: inline-block; border: 1px solid var(--phos-b-dim); border-radius: 50%; }
-.map-legend .ml-ring .sm { width: 7px; height: 7px; }
-.map-legend .ml-ring .lg { width: 13px; height: 13px; }
+/* The map's smallest and largest dots, to the pixel: 2 × MAP_R_SURE and
+   2 × MAP_R_UNSURE in main.js. */
+.map-legend .ml-ring .sm { width: 5px; height: 5px; }
+.map-legend .ml-ring .lg { width: 18px; height: 18px; }
 
 /* ===================== handheld gate =====================
    Shown only when the early script in index.html sets html.handheld, which

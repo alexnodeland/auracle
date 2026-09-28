@@ -337,21 +337,32 @@ function midiSend(page, bytes, ts) {
   }, [bytes, ts ?? null]);
 }
 
+/** How long a held op holds, in ms. `"ms": "end"` arrives as a function:
+ *  the time left to the shot's end, which a cut keyed to a stamp only knows
+ *  once that stamp has come. Every op asks for it *after* it has pressed, so
+ *  the keys go down at `at` and only the release waits. (Asked before the
+ *  press, a hold "to the end" pressed nothing until the stamp arrived, and
+ *  the rehearsal still called it on time.) */
+const holdMs = async (ms, dflt) => (typeof ms === "function" ? await ms() : ms) || dflt;
+
 /** Through `values` (a number, or points to move between) over `ms`, sending
  *  what `make` builds for each value; like a hand on a pot, only changes. */
 async function midiSweep(page, values, ms, make) {
   const pts = Array.isArray(values) ? values : [values];
   if (pts.length === 1 || !ms) return midiSend(page, make(pts[pts.length - 1]));
-  const n = Math.max(2, Math.round(ms / 25));
+  // The first value at once; the length may be the time to the shot's end.
+  let last = make(pts[0]).join();
+  await midiSend(page, make(pts[0]));
+  const dur = await holdMs(ms, 0);
+  const n = Math.max(2, Math.round(dur / 25));
   const t0 = Date.now();
-  let last = null;
-  for (let i = 0; i <= n; i++) {
+  for (let i = 1; i <= n; i++) {
+    await sleep(t0 + (i * dur) / n - Date.now());
     const u = (i / n) * (pts.length - 1);
     const k = Math.min(pts.length - 2, Math.floor(u));
     const msg = make(pts[k] + (pts[k + 1] - pts[k]) * (u - k));
     if (msg.join() !== last) await midiSend(page, msg);
     last = msg.join();
-    await sleep(t0 + ((i + 1) * ms) / n - Date.now());
   }
 }
 
@@ -375,7 +386,7 @@ async function midi(page, s, ctx = {}) {
   if (s.note != null) {
     const notes = Array.isArray(s.note) ? s.note : [s.note];
     for (const n of notes) await midiSend(page, [0x90 | ch, n, b7(s.vel ?? 100)]);
-    await sleep(s.ms ?? 500);
+    await sleep(await holdMs(s.ms, 500));
     for (const n of notes) await midiSend(page, [0x80 | ch, n, 0]);
   }
   if (s.clock) {
@@ -416,7 +427,7 @@ async function step(page, s, ctx = {}) {
       // In a `seq`, `until` waits for a narration time (not before the step
       // ahead of it is done, and at once if that time has passed).
       if (s.until != null && ctx.clock) return sleep(((await ctx.clock.at(s.until)) - ctx.now()) * 1000);
-      return page.waitForTimeout(s.ms);
+      return page.waitForTimeout(await holdMs(s.ms, 0));
     case "until":
       // Wait for the app to reach a state (an offer ready, a view shown); a
       // stamp records when, on the shot's clock.
@@ -468,13 +479,13 @@ async function step(page, s, ctx = {}) {
       return page.waitForTimeout(s.settle ?? 400);
     case "key":
       await page.keyboard.down(s.key);
-      await page.waitForTimeout(s.ms || 250);
+      await page.waitForTimeout(await holdMs(s.ms, 250));
       return page.keyboard.up(s.key);
     case "hold": {
       // All at once, not one round trip after another: on a busy machine a
       // chord sent key by key is strummed.
       await Promise.all(s.keys.map((k) => page.keyboard.down(k)));
-      await page.waitForTimeout(s.ms);
+      await page.waitForTimeout(await holdMs(s.ms, 250));
       await Promise.all(s.keys.map((k) => page.keyboard.up(k)));
       return;
     }
@@ -498,7 +509,7 @@ async function step(page, s, ctx = {}) {
       }
       await travel(page, x, y, 150);
       await page.mouse.down();
-      await glide(page, x, y, dx, dy, s.ms || 800);
+      await glide(page, x, y, dx, dy, await holdMs(s.ms, 800));
       return page.mouse.up();
     }
     case "press": {
@@ -509,7 +520,7 @@ async function step(page, s, ctx = {}) {
       const y = s.fy != null ? b.y + s.fy * b.height : b.y + b.height / 2 + (s.oy || 0);
       await travel(page, x, y, 150);
       await page.mouse.down();
-      await page.waitForTimeout(s.ms || 1500);
+      await page.waitForTimeout(await holdMs(s.ms, 1500));
       return page.mouse.up();
     }
     case "path": {
@@ -519,7 +530,7 @@ async function step(page, s, ctx = {}) {
       const pts = s.points.map(([fx, fy]) => [b.x + fx * b.width, b.y + fy * b.height]);
       await travel(page, pts[0][0], pts[0][1], 200);
       await page.mouse.down();
-      const per = (s.ms || 2000) / Math.max(1, pts.length - 1);
+      const per = (await holdMs(s.ms, 2000)) / Math.max(1, pts.length - 1);
       for (let i = 1; i < pts.length; i++) {
         await glide(page, pts[i - 1][0], pts[i - 1][1], pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], per);
       }
@@ -710,7 +721,11 @@ async function shoot(browser, port, shot, ff) {
     const lag = now() - t;
     const row = { op: describe(a), at: a.at, t: +t.toFixed(2), late: +lag.toFixed(3) };
     late.push(row);
-    const ms = t2 != null ? Math.max(100, (t2 - now()) * 1000) : a.ms === "end" ? Math.max(200, ((endT ?? (await endP)) - now() - 0.3) * 1000) : a.ms;
+    // "end" is asked for after the press (holdMs): the shot's end may wait on
+    // a stamp that a cut needs, and the keys must still go down at `at`.
+    const ms = t2 != null
+      ? Math.max(100, (t2 - now()) * 1000)
+      : a.ms === "end" ? async () => Math.max(200, ((endT ?? (await endP)) - now() - 0.3) * 1000) : a.ms;
     try {
       await step(page, { ...a, ms }, actx);
     } catch (e) {

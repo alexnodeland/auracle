@@ -77,6 +77,11 @@ const BUILD = await (async () => {
   } catch (_) { /* no build, or no server: fall through to the clock */ }
   return String(Date.now());
 })();
+// The TASTE view's lengths — dot sizes, bars, whiskers — pure, so they are
+// unit-tested (taste-geom.js, tests/taste-geom.test.mjs). Awaited before the
+// worker exists, so no reply can arrive while it loads.
+const { mapUnsureScale, mapDotRadius, directionsScale, directionsBar } =
+  await import(`./taste-geom.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -114,10 +119,13 @@ let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
 let engineCalib = null;    // authoritative calibration, incl. unbiased check-duel skill
 let duelsSinceFit = 0;
-const FIT_EVERY = 6;   // pacing floor between refits, not the trigger — see settleFit()
+const FIT_EVERY = 6;   // every sixth pick refits — see settleFit()
 let fitDue = false;    // armed by a vote, enqueued once the next pair is on screen
 let fitting = false;
 let playingSrc = null;
+// ⚡'s child, waiting for the bench to hold it before it is announced:
+// {id, text(name)} — see `evolved_from` and the `bench` reply.
+let evolvedAnnounce = null;
 
 let views = null;          // {map, styles, lineage, ranked} from the worker
 let tasteTab = "map";
@@ -1077,6 +1085,7 @@ worker.onmessage = (e) => {
       // Not on its way any more, either (PERFORM holds a measurement for it).
       if (benchPending === m.id) benchPending = null;
       renderSubject(); // the rack stops saying "opening…"
+      if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
       note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
       send({ type: "taste_views" });
       break;
@@ -1137,7 +1146,8 @@ worker.onmessage = (e) => {
       duelMeta = m.meta || null;
       dealing = false;
       setDuelControlsEnabled(true);
-      renderCheckBadge();
+      retireForecast();
+      renderDealRule();
       if (currentDuel) {
         setFlip("a", false);
         setFlip("b", false);
@@ -1211,6 +1221,9 @@ worker.onmessage = (e) => {
       break;
     }
     case "status": {
+      // Taken or refused, the log has answered for this one: from here the
+      // engine's count is the whole truth about it (see `taughtAhead`).
+      if (m.vote) aheadDrop(aheadKey(m.vote));
       applyStatus(m.status);
       send({ type: "calibration" });
       // The engine took nothing: the patch left the pool between the gesture
@@ -1244,6 +1257,10 @@ worker.onmessage = (e) => {
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       refreshInstruments();
       scheduleSave();
+      // A sixth pick made while this fit ran was told a redraw was coming;
+      // it goes out now rather than waiting for a seventh. Mid-deal, the
+      // deal's own `settleFit` sends it, behind the pair's audio.
+      if (fitDue && !dealing) settleFit();
       break;
     }
     case "refine_progress": {
@@ -1351,7 +1368,17 @@ worker.onmessage = (e) => {
         holesRestoreFor(m.subject);
         undoStack.length = 0;
         redoStack.length = 0;
-        note(`${nameOf(m.subject)} on the bench`);
+        // ⚡'s child is announced here, where it is true (see `evolved_from`);
+        // `replace` lets it take over from "⚡ evolving around…" if that is
+        // still up, rather than queue behind it.
+        const evolved = evolvedAnnounce && evolvedAnnounce.id === m.subject ? evolvedAnnounce : null;
+        if (evolved) {
+          evolvedAnnounce = null;
+          const row = rowOf(m.subject);
+          note(evolved.text(row ? `${row.name} #${m.subject}` : `patch #${m.subject}`), { replace: "evolve-from" });
+        } else {
+          note(`${nameOf(m.subject)} on the bench`);
+        }
         // First patch on the bench: a one-time walkthrough of the gestures
         // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
         if (!localStorage.getItem("auracle-bench-tour")) {
@@ -1769,7 +1796,15 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       refreshInstruments();
       if (m.childId > 0) {
-        note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench, play it.${madeRoom(evolveEvicted)}`);
+        // Said when it is true. The child exists now, but the bench swaps
+        // only when `edit_begin` has rendered and vetted it, 1–3 s on — and
+        // "now on the bench, play it" said here was played on the parent.
+        // The `bench` reply for this id says it instead of "X on the bench".
+        evolvedAnnounce = {
+          id: m.childId,
+          text: (name) =>
+            `⚡ gen ${m.status.generation}: evolution proposed ${name} — it's on the bench, play it.${madeRoom(evolveEvicted)}`,
+        };
         send({ type: "edit_begin", id: m.childId });
         scheduleSave();
       } else {
@@ -1778,6 +1813,7 @@ worker.onmessage = (e) => {
             m.reason,
             "⚡ evolution found no accepted move — try again, or loosen some locks",
           ),
+          { replace: "evolve-from" },
         );
       }
       break;
@@ -2063,9 +2099,49 @@ worker.onmessageerror = () => {
 let status = { observations: 0, generation: 0 };
 let hasPlayed = !!localStorage.getItem("auracle-played");
 
+// ---------- what PICKS counts ----------
+// What you have taught it, from the moment you teach it. `status.observations`
+// is the engine's log, and the log sees a pick only once its undo window has
+// closed and the worker has answered — so PICKS read 18 for seven seconds
+// after the nineteenth pick, read 22 after 23 picks made two seconds apart,
+// and disagreed with the pips beside it, which light at the click. Picks the
+// log has not answered for yet are counted here, keyed by the request they
+// are or will become, so the worker's reply settles exactly the one it
+// answers (a refused vote settles too, and so is uncounted) and a reply to
+// anyone else's request settles nothing. An undo takes its key back.
+const taughtAhead = new Map(); // "duel:a:b" | "keep:id" | "stars:id" -> n
+
+function aheadKey(v) {
+  return v.kind === "duel" ? `duel:${v.a}:${v.b}` : `${v.kind}:${v.id}`;
+}
+function aheadAdd(key) {
+  taughtAhead.set(key, (taughtAhead.get(key) || 0) + 1);
+  renderPicks();
+}
+/** Settle or take back one taught-ahead pick; false when none was waiting. */
+function aheadDrop(key) {
+  const n = taughtAhead.get(key) || 0;
+  if (n === 0) return false;
+  if (n === 1) taughtAhead.delete(key);
+  else taughtAhead.set(key, n - 1);
+  renderPicks();
+  return true;
+}
+/** PICKS: the log, plus what it has not answered for yet. */
+function picksTaught() {
+  let n = status.observations || 0;
+  for (const k of taughtAhead.values()) n += k;
+  return n;
+}
+function renderPicks() {
+  $("duel-count").textContent = picksTaught();
+  renderTeach();
+  renderNextStep();
+}
+
 function applyStatus(st) {
   status = st;
-  $("duel-count").textContent = st.observations;
+  $("duel-count").textContent = picksTaught();
   $("gen-count").textContent = st.generation;
   renderTeach();
   renderNextStep();
@@ -2098,11 +2174,13 @@ function renderTeach() {
   const pips = $("teach-pips");
   const copy = $("teach-copy");
   if (!pips || !copy) return;
-  // Wraps rather than saturates: `duelsSinceFit` can now run past FIT_EVERY,
-  // because a refit the engine says it doesn't need is skipped and re-armed
-  // on the next vote (see settleFit). The countdown restarting is the right
-  // reading of that — the next pick is a candidate for the refit again.
-  const into = duelsSinceFit % FIT_EVERY;
+  // The sixth pip lights on the sixth pick and the row stays full while the
+  // refit it counted down to is armed (behind a fit already running, at
+  // most) or being announced; the first pick after that starts the next row.
+  // It used to empty on the sixth pick itself — "23 picks in", six dark pips
+  // — before anything had been redrawn.
+  const full = fitDue || (teachTakeover && duelsSinceFit === 0);
+  const into = full ? FIT_EVERY : duelsSinceFit % FIT_EVERY;
   const dots = Array.from(
     { length: FIT_EVERY },
     (_, i) => `<i class="${i < into ? "lit" : ""}"></i>`
@@ -2114,14 +2192,18 @@ function renderTeach() {
   if (teachTakeover) return;
   // Single-line copy: the duel bar is a grid now, and the sentence that
   // teaches the whole product should land whole. Name the payoff, not the
-  // refit schedule.
-  if (status.observations === 0) {
+  // refit schedule. The count is PICKS's own (`picksTaught`), so the line
+  // and the menubar move on the same click.
+  const n = picksTaught();
+  if (n === 0) {
     copy.innerHTML = "Play both. Keep the one you’d reach for.";
   } else {
     const left = FIT_EVERY - into;
-    copy.innerHTML = left === FIT_EVERY
-      ? `<b>${status.observations}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
-      : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
+    copy.innerHTML = left === 0
+      ? `<b>${n}</b> picks in — redrawing your taste map…`
+      : left === FIT_EVERY
+        ? `<b>${n}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
+        : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
   }
 }
 
@@ -2149,7 +2231,7 @@ function teachLearned() {
 function renderNextStep() {
   const el = $("nextstep");
   if (!el) return;
-  const n = status.observations;
+  const n = picksTaught();
   let label, act;
   // Every state of this chip is now actionable. The previous "go play" branch
   // was inert *and* outranked the teaching guidance for votes 1–5, so the one
@@ -2252,6 +2334,16 @@ const UNDO_WINDOW_MS = 7000;
 // about, and under a burst it never surfaced at all — it carries no action, so
 // the staleness drop and the backlog trim both cut exactly it. So `urgent`
 // jumps the queue, displaces what is on screen, and is exempt from both cuts.
+//
+// Rule 5, from the films: A LATER WORD ON THE SAME THING SUPERSEDES THE
+// EARLIER ONE. First-in-first-out is right for different news and wrong for
+// news about one thing that has moved on. Voting every two seconds, the lane
+// still named the first pick six seconds after the third, beside a ⌘Z that
+// would undo the third; the warm start's result ("18 preferences learned")
+// waited out the "Loading those in…" it answered while PICKS already read 18.
+// A toast given `replace: key` takes the place of any earlier toast with the
+// same key, on screen or queued: on screen it takes the floor at once with
+// its own full window, queued it takes the earlier one's place in line.
 const toastQueue = [];
 let toastLive = null;
 /** A queued remark about a patch state that has moved on is worse than
@@ -2286,10 +2378,48 @@ function note(text, opts = {}) {
   stack.className = "toast-stack mono hidden";
   el.appendChild(stack);
   if (opts.urgent) preemptToast(entry);
-  else toastQueue.push(entry);
+  else if (!(opts.replace && supersedeToast(entry))) toastQueue.push(entry);
   trimToastQueue();
   toastPump();
   return el;
+}
+
+/** Rule 5: put `entry` where the last toast with its `replace` key is. False
+ *  when there is none, and the caller queues it as usual. */
+function supersedeToast(entry) {
+  const key = entry.opts.replace;
+  const same = (t) => t.opts.replace === key;
+  const held = toastLive && same(toastLive) ? toastLive : null;
+  const at = toastQueue.findIndex(same);
+  // Every earlier word on it goes; only the newest is ever said.
+  for (let i = toastQueue.length - 1; i >= 0; i--) {
+    if (!same(toastQueue[i])) continue;
+    toastQueue[i].el.remove();
+    toastQueue.splice(i, 1);
+  }
+  if (held) {
+    // On screen, even mid-fade: the floor passes straight to the newer word.
+    // The old toast's timer goes with it, so it cannot dismiss its successor.
+    clearTimeout(held.timer);
+    held.el.remove();
+    toastLive = null;
+    toastQueue.unshift(entry);
+    return true;
+  }
+  if (at < 0) return false;
+  toastQueue.splice(at, 0, entry);
+  return true;
+}
+
+/** Take a toast off the lane now, whether it is on screen or still waiting —
+ *  for a toast whose claim stopped being true before its window ran out. */
+function dropToast(el) {
+  if (!el) return;
+  if (toastLive && toastLive.el === el) return dismissToast(toastLive, true);
+  const i = toastQueue.findIndex((t) => t.el === el);
+  if (i >= 0) toastQueue.splice(i, 1);
+  el.remove();
+  renderToastStack();
 }
 
 /** Put a refusal at the head of the lane and take the floor for it. Whatever
@@ -2576,6 +2706,7 @@ function applyViews(next) {
     if (t !== undefined) {
       clearTimeout(t);
       pendingCuts.delete(id);
+      aheadDrop(aheadKey({ kind: "keep", id })); // never sent, so never taught
     }
   }
   // A pair that just lost a side to the pool is a question about a patch that
@@ -2702,6 +2833,7 @@ function showView(name) {
   // The lane is anchored to the rack frame, which only exists in PLAY, and it
   // has to clear whichever teaching strip this view puts up.
   positionToastLane();
+  pointFilmChip();
   if (name === "taste") drawTaste();
   if (name === "evolve") {
     drawLineage();
@@ -2712,8 +2844,15 @@ function showView(name) {
   }
 }
 
+// When the player last chose a view themselves (a click, or the tab list's
+// arrow keys, which click): the film chip's tour note gives way to that, and
+// not to the app changing view on its own.
+let viewChosenAt = 0;
 document.querySelectorAll(".viewtab").forEach((t) => {
-  t.onclick = () => showView(t.dataset.view);
+  t.onclick = () => {
+    viewChosenAt = performance.now();
+    showView(t.dataset.view);
+  };
 });
 
 // role=tablist / role=menu promise arrow keys; deliver them. One wiring for
@@ -2762,8 +2901,25 @@ function ensureAudio() {
 }
 
 let playingGain = null;
+// What is sounding, by name ("bank:12", "duel:31"), so a ▶ can tell its own
+// phrase from someone else's and a ▶ drawn after the press can still light:
+// a bank row is rebuilt on every render, so the button that was pressed is
+// usually not the one on screen when the phrase ends. Buttons that stand for
+// a key carry it as `data-hear`.
+let playingKey = null;
+let playingBtn = null;
 
-function playBuffer(buffer, btn) {
+function paintHearing(key, btn, on) {
+  if (btn) btn.classList.toggle("playing", on);
+  if (key) for (const b of document.querySelectorAll(`[data-hear="${key}"]`)) b.classList.toggle("playing", on);
+}
+
+/** A ▶ is a transport: pressed while its own phrase plays, it stops it. */
+function hearingNow(key) {
+  return !!(key && playingSrc && playingKey === key);
+}
+
+function playBuffer(buffer, btn, key = null) {
   if (!buffer) return;
   ensureAudio();
   if (playingSrc) {
@@ -2773,6 +2929,9 @@ function playBuffer(buffer, btn) {
     const oldGain = playingGain;
     if (oldGain) oldGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
     setTimeout(() => { try { oldSrc.stop(); } catch (_) {} }, 20);
+    // The old phrase's ▶ goes dark with it, not 20 ms later when its source
+    // reports: by then the same button may be lit for the new phrase.
+    paintHearing(playingKey, playingBtn, false);
   }
   const src = audioCtx.createBufferSource();
   const g = audioCtx.createGain();
@@ -2782,11 +2941,19 @@ function playBuffer(buffer, btn) {
   src.start();
   playingSrc = src;
   playingGain = g;
+  playingKey = key;
+  playingBtn = btn || null;
   src.onended = () => {
-    if (playingSrc === src) { playingSrc = null; playingGain = null; }
-    if (btn) btn.classList.remove("playing");
+    // Stopped or replaced, it was painted dark then; only a phrase that ran
+    // to its end still owns its buttons.
+    if (playingSrc !== src) return;
+    playingSrc = null;
+    playingGain = null;
+    playingKey = null;
+    playingBtn = null;
+    paintHearing(key, btn, false);
   };
-  if (btn) btn.classList.add("playing");
+  paintHearing(key, btn, true);
 }
 
 // Space is a transport: it stops what's sounding, or auditions the current
@@ -2797,8 +2964,11 @@ function stopAudition() {
   const g = playingGain;
   if (g) g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
   setTimeout(() => { try { s.stop(); } catch (_) {} }, 20);
+  paintHearing(playingKey, playingBtn, false);
   playingSrc = null;
   playingGain = null;
+  playingKey = null;
+  playingBtn = null;
   return true;
 }
 
@@ -2828,9 +2998,9 @@ function stepBank(d) {
   openOnBench(next.id);
 }
 
-function play(id, btn) {
+function play(id, btn, key = null) {
   const r = renders.get(id);
-  if (r) playBuffer(r.buffer, btn);
+  if (r) playBuffer(r.buffer, btn, key);
 }
 
 // Every "hear this thing that isn't loaded yet" path in the app used to be its
@@ -2967,11 +3137,9 @@ async function bootPerform() {
     // A PERFORM offer answer joined the log: it paces refits like any pick.
     voteLanded: () => {
       duelsSinceFit += 1;
+      if (duelsSinceFit >= FIT_EVERY) fitDue = true;
       renderTeach();
-      if (duelsSinceFit >= FIT_EVERY) {
-        fitDue = true;
-        settleFit();
-      }
+      settleFit();
     },
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
     // The under-the-hood strip: a knob's module, label and value in its own
@@ -3232,6 +3400,7 @@ async function bootBooth() {
     $("booth-btn").setAttribute("aria-checked", String(booth.on));
     $("booth-btn").textContent = booth.on ? "Booth mode: on" : "Booth mode";
     $("booth-reset-btn").classList.toggle("hidden", !booth.on);
+    pointFilmChip();
   };
   $("booth-btn").onclick = () => {
     booth.setOn(!booth.on);
@@ -4295,19 +4464,6 @@ function onRenderArrived(id) {
   drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
 }
 
-// Roughly one duel in ten is drawn uniformly at random rather than by the
-// acquisition function. Those are the only ones whose accuracy means anything —
-// the acquisition rule deliberately serves near-ties, so scoring it on its own
-// choices measures the chooser, not the model. Say so on screen.
-// How many of the recent duels were uniformly-random probes. Under
-// `Acquisition::Random` that is all of them, and a badge that fires every
-// time distinguishes nothing — it is only worth saying when the model is
-// *usually* choosing and this one time it isn't.
-const checkWindow = [];
-function checksAreUniversal() {
-  return checkWindow.length >= 6 && checkWindow.every(Boolean);
-}
-
 // The forecast is the payoff for the vote just cast, and the next pair arrives
 // ~15 ms later. Hold it long enough to be read.
 let predHoldUntil = 0;
@@ -4325,7 +4481,6 @@ function showForecast(pChosen) {
     : pChosen <= 0.45 ? `⚡ Surprise — it had this backwards. ${Math.round(pChosen * 100)}%`
     : `Toss-up — that one taught it the most. ${Math.round(pChosen * 100)}%`;
   el.title = "The model's forecast, made before your vote. Surprises are where it's still learning.";
-  el.classList.remove("check");
   predHoldUntil = performance.now() + PRED_HOLD_MS;
   const pd = $("pd-pred");
   if (pd) {
@@ -4334,25 +4489,70 @@ function showForecast(pChosen) {
   }
 }
 
-function renderCheckBadge() {
+/** A forecast belongs to the pair it was made for: a deal after it has been
+ *  read clears it. Never one the user has not had time to read. */
+function retireForecast() {
   const el = $("duel-pred");
-  if (!el) return;
-  const check = !!(duelMeta && duelMeta.random_check);
-  checkWindow.push(check);
-  if (checkWindow.length > 10) checkWindow.shift();
-  // Never step on a forecast the user has not had time to read.
-  if (performance.now() < predHoldUntil) return;
+  if (!el || performance.now() < predHoldUntil) return;
   el.textContent = "";
   el.classList.remove("hit", "miss");
-  // Below ~10 picks the badge is suppressed outright: a brand-new user's
-  // first duel captioned "picked at random" reads as "this question is
-  // arbitrary". When it does appear, it states its benefit.
-  const show = check && !checksAreUniversal() && status.observations >= 10;
-  el.classList.toggle("check", show);
-  if (show) {
-    el.textContent = "unbiased probe — picks like this one score the honesty meter";
-    el.title = "About one duel in ten is dealt at random rather than by the acquisition rule. Only those score the model's honesty — see TASTE → trust.";
-  }
+}
+
+// ---------- how the pair was chosen ----------
+// The engine says, on every deal, which rule dealt the pair (`meta.method`):
+// "random", "bald" or "thompson", or "check" — a pair dealt at random on the
+// one-in-ten schedule rather than by the rule. It used to be shown as a ◇
+// "unbiased probe" mark over the forecast line, captioned "about one duel in
+// ten is dealt at random rather than by the acquisition rule". Under the
+// default rule, `Acquisition::Random`, that caption was false: *every* pair is
+// dealt at random, which is the reason it is the default (engine.rs). So the
+// mark was hidden after five deals as saying nothing, never drawn on the deal
+// after a vote (the forecast held its slot), and the rule in use went unsaid.
+//
+// Now the rule is stated on its own line, where it holds its place while
+// forecasts come and go above it. Under the default it is one fact about
+// every pair — the model does not choose what you hear, which is what makes
+// every pick a fair test of its forecast — and it does not change from deal
+// to deal. The one-in-ten ◇ mark is kept for what it is true of: a check
+// dealt at random under a rule that otherwise chooses.
+//
+// The rule is read from the deals themselves, as the method of the last deal
+// that was not a scheduled check. Under `Random` the engine still tags every
+// tenth pair "check", though it is drawn exactly like the other nine; reading
+// the rule from the rest keeps that from being taken for a change of rule.
+// (An engine's first deal is never a check.)
+let dealRule = null;
+
+const DEAL_RULE = {
+  random: {
+    text: "◇ random pair — a fair test",
+    title: "The model doesn't choose what you hear: every pair is dealt at random from the pool. That is what makes every pick a fair test of the forecast it makes before you vote — TASTE → TRUST scores them all.",
+  },
+  bald: {
+    text: "chosen where it's least sure",
+    title: "The model dealt this pair where its forecast is closest to a coin flip: the question it learns most from. About one duel in ten is dealt at random instead, as a check (◇).",
+  },
+  thompson: {
+    text: "chosen from its best guesses",
+    title: "The model drew two plausible versions of your taste and dealt each one's favourite. About one duel in ten is dealt at random instead, as a check (◇).",
+  },
+  check: {
+    text: "◇ unbiased probe — dealt at random",
+    title: "About one duel in ten is dealt at random rather than chosen by the model. Picks like this one score its honesty without the chooser's bias — see TASTE → TRUST.",
+  },
+};
+
+function renderDealRule() {
+  const el = $("duel-rule");
+  if (!el || !duelMeta || !duelMeta.method) return;
+  const method = duelMeta.method;
+  if (method !== "check") dealRule = method;
+  // A scheduled check is only news under a rule that otherwise chooses.
+  const said = DEAL_RULE[method === "check" && dealRule !== "random" ? "check" : dealRule || method];
+  if (!said) return;
+  el.textContent = said.text;
+  el.title = said.title;
+  el.classList.toggle("check", said === DEAL_RULE.check);
 }
 
 // ---------- the live utility readout ----------
@@ -4441,7 +4641,7 @@ function renderBelief() {
     // Say what is actually missing. "Fitting to your 2 picks…" stayed up
     // through twenty more picks and a generation: it was only re-rendered
     // on a bench reply, and it claimed a fit that was not running.
-    const n = status.observations;
+    const n = picksTaught();
     const fitted = !!(views && views.styles && views.styles.length);
     const why = fitting
       ? `fitting to your ${n} pick${n === 1 ? "" : "s"}…`
@@ -4639,14 +4839,19 @@ function commitPendingVote() {
 function retractVote() {
   if (!pendingVote) return false;
   clearTimeout(pendingVote.timer);
-  const pair = pendingVote.pair;
+  const { pair, key, toast } = pendingVote;
   pendingVote = null;
   // The next deal was requested at vote time; if it hasn't landed yet it
   // must not overwrite the pair we are restoring.
   if (dealing) ignoreNextDeal = true;
   duelsSinceFit = Math.max(0, duelsSinceFit - 1);
   fitDue = duelsSinceFit >= FIT_EVERY;
-  renderTeach();
+  // Uncounted everywhere it was counted: PICKS, the meter's copy, the pips
+  // (`aheadDrop` re-renders all three). And the toast goes: ⌘Z does not pass
+  // through its button, and "Picked X over Y." left standing over a pick
+  // that was just taken back is the lane saying something untrue.
+  aheadDrop(key);
+  dropToast(toast);
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
   dealing = false;
@@ -4689,16 +4894,26 @@ function choose(side) {
   pendingVote = {
     timer,
     pair: [a, b],
+    // The `record_duel` it becomes, so its reply settles this count.
+    key: aheadKey({ kind: "duel", a, b }),
     commit: () => send({ type: "record_duel", a, b, choseA }),
   };
   const win = choseA ? a : b;
   const lose = choseA ? b : a;
+  // `replace`: only one vote is ever undoable (this one commits the last), so
+  // the lane names this one, not whichever pick's toast was first in line.
   pendingVote.toast = note(`Picked ${nameOf(win)} over ${nameOf(lose)}.`, {
     undo: () => retractVote(),
     undoLabel: "not what I meant",
+    replace: "vote",
   });
   duelsSinceFit += 1;
-  renderTeach();
+  // The refit is *armed* here and enqueued in `settleFit`, once the new pair
+  // has actually landed. See that function for why it is not sent from here.
+  // Armed before the meter draws, so the sixth pip lights on the sixth pick.
+  if (duelsSinceFit >= FIT_EVERY) fitDue = true;
+  // Counted now, not when the log hears of it seven seconds on.
+  aheadAdd(pendingVote.key);
 
   // Ask for the next pair BEFORE the refit. The worker is one thread and
   // processes in order, so queueing a ~2.7 s posterior fit ahead of the deal
@@ -4712,37 +4927,28 @@ function choose(side) {
   dealing = true;
   setDuelControlsEnabled(false);
   send({ type: "duel" });
-
-  // The refit is *armed* here and enqueued in `settleFit`, once the new pair
-  // has actually landed. See that function for why it is not sent from here.
-  if (duelsSinceFit >= FIT_EVERY) fitDue = true;
 }
 
-// A refit is armed. Two things have to be true before it goes out.
+// A refit is armed by the sixth pick, and it goes out once the pair is
+// audible. The worker is one thread and processes in order, so a fit queued
+// ahead of the pair's buffers hands the user two cards they cannot hear for
+// the whole fit. The renders jump the settle delay and go in front of it; that
+// delay exists to protect the *next deal* from a render nobody is looking at,
+// which is the opposite situation to this one.
 //
-// 1. **The engine has to want it.** `status.needs_refit` is the engine's own
-//    answer — the importance weights have collapsed since the last fit, or the
-//    log holds evidence no posterior has seen. It has been shipped in
-//    `status()` all along with nobody reading it, while the app spent 3–13 s on
-//    a fixed every-sixth-vote fit whether or not the posterior had gone stale.
-//    `FIT_EVERY` stays, but as a *floor*: pacing, so a fast voter is never
-//    interrupted more often than every sixth pick. `needs_refit` decides above
-//    it. `duelsSinceFit` is therefore reset only when a fit actually goes out,
-//    so a skipped one re-arms on the very next vote instead of waiting out
-//    another six.
-//    An engine too old to report the flag leaves it `undefined`, and only an
-//    explicit `false` suppresses the fit — a stale binary must not be able to
-//    turn refitting off altogether.
-//
-// 2. **The pair has to be audible first.** The worker is one thread and
-//    processes in order, so a fit queued ahead of the pair's buffers hands the
-//    user two cards they cannot hear for the whole fit. The renders jump the
-//    settle delay and go in front of it; that delay exists to protect the
-//    *next deal* from a render nobody is looking at, which is the opposite
-//    situation to this one.
+// The sixth pick always refits: the meter promises it ("1 more pick and it
+// redraws your taste map"), and a promise kept only sometimes teaches the
+// player the meter is noise. It used to be gated on the engine's own
+// `status.needs_refit` as well — the importance weights collapsing since the
+// last fit — to save the seconds of a fit whose posterior had not gone
+// stale. Which picks those were depended on how surprising they had been, so
+// a run of agreeable picks ended with the pips wrapping to zero and the copy
+// reading "23 picks in" with no "● it just learned", no redrawn map and no
+// lamp: the meter counting down to something it then did not do. A fit costs
+// a few seconds off the audio thread, at most once every sixth pick — the
+// pacing `FIT_EVERY` has always set — and the pair is audible through it.
 function settleFit() {
   if (!fitDue || fitting) return;
-  if (status.needs_refit === false) return;
   fitDue = false;
   duelsSinceFit = 0;
   // A vote still inside its undo window belongs in the log the fit reads.
@@ -4768,7 +4974,11 @@ $("duel-b").addEventListener("click", (e) => {
 function auditionDuelSide(i, btn) {
   if (!currentDuel) return;
   const want = currentDuel[i];
-  awaitRender(want, () => play(want, btn), {
+  // Pressed again while this candidate's phrase plays, it stops, as every ▶
+  // in the app does; a press for the other side, or a newly dealt one, plays.
+  const key = `duel:${want}`;
+  if (hearingNow(key)) return void stopAudition();
+  awaitRender(want, () => play(want, btn, key), {
     // Voted past it: stop silently, this is not a failure.
     abandoned: () => !currentDuel || currentDuel[i] !== want,
   });
@@ -4977,13 +5187,17 @@ function bankRow(r, fitted) {
   el.setAttribute("aria-label", said.join(", "));
   el.innerHTML = `
     <div class="bi-top">
-      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
+      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>${
+        // "Gen 3: 5 new patches in the bank" sent the player to a column of
+        // ⚡ rows where the only thing marking the five was a glow on a glyph.
+        lastBorn.has(r.id) ? `<span class="bi-new" title="Bred in the latest generation">new</span>` : ""
+      }
       <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} — ` : ""}double-click to rename">${esc(r.name)}</span>
       <span class="bi-pct mono" title="${fitted ? "How much the model thinks you'd like this" : "No prediction yet — teach it with a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "—"}</span>
       <span class="bi-id">#${r.id}</span>
     </div>
     <div class="bi-row">
-      <button class="bi-hear" title="Hear this patch" aria-label="Audition ${esc(r.name)}">▶</button>
+      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}" data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
       ${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ — teaches the model, ${s > 3 ? "does not" : "does not"} keep the patch">★</button>`)
@@ -5005,7 +5219,14 @@ function bankRow(r, fitted) {
     openOnBench(r.id);
     showView("play");
   });
-  el.querySelector(".bi-hear").onclick = () => awaitRender(r.id, () => play(r.id));
+  // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
+  // phrase plays, and pressed again it stops rather than starting over.
+  el.querySelector(".bi-hear").onclick = (e) => {
+    const key = `bank:${r.id}`;
+    if (hearingNow(key)) return void stopAudition();
+    const btn = e.currentTarget;
+    awaitRender(r.id, () => play(r.id, btn, key));
+  };
   el.querySelectorAll(".star").forEach((btn) => {
     btn.onclick = () => {
       // The row you just rated is the one a follow-up 1–5 should correct,
@@ -5042,15 +5263,25 @@ function cutRow(r) {
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
+  let toast = null;
   const commit = setTimeout(() => {
     pendingCuts.delete(r.id);
+    // A toast that waited its turn in the lane outlives this window; its undo
+    // stops offering what can no longer be taken back, as a vote's does.
+    retireToastUndo(toast);
     send({ type: "record_keep", id: r.id, kept: false });
   }, UNDO_WINDOW_MS);
   pendingCuts.set(r.id, commit);
-  note(`Cut ${r.name} #${r.id}.`, {
+  // A cut teaches as a pick does, so PICKS counts it now, as it counts a pick.
+  aheadAdd(aheadKey({ kind: "keep", id: r.id }));
+  toast = note(`Cut ${r.name} #${r.id}.`, {
     undo: () => {
+      // Only what is still waiting: a sent cut uncounted here would be a
+      // PICKS lower than the log it is counting.
+      if (!pendingCuts.has(r.id)) return;
       clearTimeout(pendingCuts.get(r.id));
       pendingCuts.delete(r.id);
+      aheadDrop(aheadKey({ kind: "keep", id: r.id }));
       cutIds.delete(r.id);
       renderBank();
       scheduleSave();
@@ -5304,6 +5535,8 @@ function rateRow(rating, explicitId) {
   const prev = starsById.get(id) || 0;
   starsById.set(id, rating);
   send({ type: "record_stars", id, rating, prev });
+  // Counted now: behind a generation, the reply can be tens of seconds away.
+  aheadAdd(aheadKey({ kind: "stars", id }));
   renderBank();
   note(`${nameOf(id)} rated ${rating}★`);
 }
@@ -5444,7 +5677,8 @@ const TOUR = [
       `Press <b>EVOLVE POOL</b> and it breeds: it takes the patches it thinks you ` +
       `like best and makes mutated children of them. Children that score better ` +
       `than the worst patch in the pool get in. That round is a <b>generation</b>. ` +
-      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow.`,
+      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow ` +
+      `and say <b>new</b>.`,
   },
   {
     bank: "pool",
@@ -11158,7 +11392,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
 function startEvolveFrom(id) {
   $("rack-evolve").disabled = true;
   $("wm-lamp").classList.add("thinking");
-  note("⚡ evolving around the locked controls…");
+  note("⚡ evolving around the locked controls…", { replace: "evolve-from" });
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
   // that is on screen on the way out.
@@ -13228,7 +13462,7 @@ function renderSpecDock() {
     `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
     `<div class="sd-body"><p class="sp-blurb">${esc(m.blurb)}</p>` +
     `<div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
-    `<span class="sp-heard"><b>heard as</b> ${esc(m.heard)}</span></div></div>` +
+    `<span class="sp-heard"><b>heard</b> ${esc(m.heard)}</span></div></div>` +
     `<div class="sd-model mono">${p.belief}</div>`;
 }
 
@@ -15894,7 +16128,7 @@ const TRUST_MIN_N = 20;
 function renderEmptyState(tab) {
   const holder = $("crt-empty");
   if (!holder) return;
-  const n = status.observations;
+  const n = picksTaught();
   const cn = engineCalib ? engineCalib.n : 0;
   const skel = (rows, cls = "") =>
     `<div class="ce-skel ${cls}" aria-hidden="true">${"<i></i>".repeat(rows)}</div>`;
@@ -16101,6 +16335,9 @@ function drawTrustTab(ctx, w, h, dpr) {
 function drawMapTab(ctx, w, h, dpr) {
   const map = views && views.map;
   const pts = map.points;
+  // Size carries the model's *uncertainty*, spread over this map's own range
+  // of it — see taste-geom.js for why, and for the numbers the legend shows.
+  const unsureOf = mapUnsureScale(pts.filter((p) => p.id != null).map((p) => p.utility_std));
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const pad = 34 * dpr;
   const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
@@ -16124,12 +16361,8 @@ function drawMapTab(ctx, w, h, dpr) {
       ctx.shadowBlur = 3 + glow * 16;
       ctx.globalAlpha = 0.35 + 0.65 * glow;
       ctx.fillStyle = color;
-      // Size carries the model's *uncertainty*: "I don't know this region"
-      // is the most useful thing an interactive-ML view can say, and the
-      // posterior spread was already being computed and discarded.
-      const base = p.origin === "edited" ? 5.5 : p.origin === "refined" ? 4.8 : 4;
-      const unsure = p.utility_std != null ? Math.min(1, p.utility_std) : 0;
-      const r = (base + unsure * 3.5) * dpr;
+      // Size is uncertainty and nothing else; origin no longer nudges it.
+      const r = mapDotRadius(unsureOf(p.utility_std)) * dpr;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
@@ -16250,21 +16483,24 @@ function drawDirectionsTab(ctx, w, h, dpr) {
       });
   }
   const names = [...chosen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([n]) => n);
-  const maxAbs = Math.max(
-    0.12,
-    ...styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name)).map((r) => Math.abs(r.mean)))
-  );
   const cx = w * 0.60, usable = w * 0.30;
   const rowH = h / (names.length + 1);
+  // Bars and whiskers on one scale, fitted so the widest interval reaches the
+  // half-width (taste-geom.js). The whisker used to be capped at 0.3 of it
+  // while a bar could take 0.7, so an interval crossing zero was drawn
+  // stopping short of the centre line — a guess drawn as settled.
+  const scale = directionsScale(
+    styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name))),
+    usable,
+  );
 
   ctx.strokeStyle = "rgba(255,180,84,0.28)";
   ctx.beginPath(); ctx.moveTo(cx, rowH * 0.4); ctx.lineTo(cx, h - rowH * 0.4); ctx.stroke();
 
-  // A bar is at most 0.7 of the half-width and its ±σ whisker at most 0.3,
-  // so neither can reach the label column: a long negative bar plus its
-  // whisker used to strike through "filtering" and "shimmer". The clip is the
-  // belt to that pair of braces.
-  const barMax = usable * 0.7;
+  // Nothing is drawn past the half-width — a cut whisker ends in an arrowhead
+  // at the edge — so neither reaches the label column: a long negative bar
+  // plus its whisker used to strike through "filtering" and "shimmer". The
+  // clip is the belt to that pair of braces.
   names.forEach((name, i) => {
     const y = rowH * (i + 1);
     ctx.fillStyle = INK.amberDim;
@@ -16280,22 +16516,33 @@ function drawDirectionsTab(ctx, w, h, dpr) {
       const r = s.theta.find((t) => t.name === name);
       if (!r) return;
       const yy = y + (si - (styles.length - 1) / 2) * lane;
-      const len = (r.mean / maxAbs) * barMax;
-      const wl = Math.min((r.std / maxAbs) * barMax, usable * 0.3);
+      const bar = directionsBar(r, scale, usable);
       const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
       ctx.fillStyle = color;
       ctx.shadowColor = color;
       ctx.shadowBlur = 6;
-      ctx.fillRect(Math.min(cx, cx + len), yy - 2 * dpr, Math.abs(len), 4 * dpr);
+      ctx.fillRect(Math.min(cx, cx + bar.len), yy - 2 * dpr, Math.abs(bar.len), 4 * dpr);
       ctx.shadowBlur = 0;
       // Silk, not a fourth amber: the whisker is a reading about the bar,
       // and has to show over it.
       ctx.strokeStyle = "rgba(217,212,200,0.55)";
+      ctx.fillStyle = "rgba(217,212,200,0.75)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(cx + len - wl, yy);
-      ctx.lineTo(cx + len + wl, yy);
+      ctx.moveTo(cx + bar.lo, yy);
+      ctx.lineTo(cx + bar.hi, yy);
       ctx.stroke();
+      // Cut at the edge, and said to be: an arrowhead, not a shorter line.
+      const head = (x, dir) => {
+        ctx.beginPath();
+        ctx.moveTo(x, yy);
+        ctx.lineTo(x - dir * 4 * dpr, yy - 2.5 * dpr);
+        ctx.lineTo(x - dir * 4 * dpr, yy + 2.5 * dpr);
+        ctx.closePath();
+        ctx.fill();
+      };
+      if (bar.clipLo) head(cx + bar.lo, -1);
+      if (bar.clipHi) head(cx + bar.hi, 1);
     });
     ctx.restore();
   });
@@ -16551,7 +16798,7 @@ $("import-input").onchange = async (e) => {
   e.target.value = "";
   if (!file) return;
   const json = await file.text();
-  const n = status.observations || 0;
+  const n = picksTaught();
   if (n === 0) {
     send({ type: "import", json });
     return;
@@ -17743,6 +17990,8 @@ function closeWarmStart(mark = true) {
   warmPreviewCancel();
   $("warmstart").classList.add("hidden");
   if (mark) localStorage.setItem("auracle-warmed", "1");
+  // The film note waited for the warm start; now it can speak.
+  pointFilmChip();
 }
 
 $("warm-skip").onclick = () => {
@@ -17752,9 +18001,9 @@ $("warm-skip").onclick = () => {
   // A skip DEFERS the warm start rather than destroying it — it is the
   // highest-value-per-second elicitation in the product, so it is re-offered
   // once after a few duels and stays reachable from the ⋯ menu.
-  closeWarmStart(false);
   localStorage.setItem("auracle-warm-deferred", "1");
   localStorage.setItem("auracle-helped", "1");
+  closeWarmStart(false);
   note("Press a key to hear it. The ⋯ menu has the full keyboard map.");
 };
 
@@ -17786,7 +18035,10 @@ $("warm-go").onclick = () => {
   // it should be playing it. PATCH is the densest view in the app and it was
   // where a newcomer landed.
   showView("perform");
-  note("Loading those in and teaching the model what you picked…");
+  // The result replaces this when it lands (`replace`): it used to wait out
+  // this toast's window, so PICKS read 18 beside "Loading those in…" for
+  // seconds, and the result surfaced about fifteen seconds in.
+  note("Loading those in and teaching the model what you picked…", { replace: "warm" });
 };
 
 // The warm start's first pick, inserted, while its other eight are still
@@ -17819,7 +18071,9 @@ function warmStartDone(m) {
   send({ type: "fit" });
   fitting = true;
   $("wm-lamp").classList.add("thinking");
-  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
+  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`, {
+    replace: "warm",
+  });
 }
 
 // ---------- overflow menu ----------
@@ -17875,15 +18129,123 @@ const VIEW_FILMS = {
   evolve: { page: "evolve", film: "view-evolve", name: "EVOLVE" },
   taste: { page: "taste", film: "view-taste", name: "TASTE" },
 };
+const viewFilmHref = (v) => `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
+const TOUR_HREF = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
 function pointHelpFilm() {
   const v = VIEW_FILMS[currentView] || VIEW_FILMS.perform;
   const a = $("help-film");
-  a.href = `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
+  a.href = viewFilmHref(v);
   a.lastChild.textContent = ` watch ${v.name} in depth`;
 }
 $("films-link").href = `${FILMS_DOCS}films.html`;
-$("warm-tour").href = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
+$("warm-tour").href = TOUR_HREF;
 pointHelpFilm();
+
+// The film of the view you are in, in the menu bar. The first time you open a
+// view it says so in words ("new to PATCH? watch it in depth · 5:40"), and
+// the very first time of all, the tour; then it folds to a quiet ▶ film that
+// links the same view's film, with its length on hover. Once per view, never
+// again: a note that comes back every visit is a note people learn to close
+// without reading.
+//
+// publish.py lists the published films and their lengths in data-films, so a
+// view whose film is not out shows nothing and nothing asks the site. Quiet
+// in a film's own recording (?film, where it would be on camera) and in booth
+// mode (a link out of the instrument is a visitor walking away from it), and
+// it waits while the warm start is up rather than competing with it.
+const filmChip = $("film-chip");
+const FILM_LENGTHS = (() => {
+  try {
+    return JSON.parse(filmChip?.dataset.films || "{}");
+  } catch {
+    return {};
+  }
+})();
+const FILM_NOTED = "auracle-film-notes";
+function filmNoted() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(FILM_NOTED) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function noteFilmSeen(key) {
+  try {
+    const seen = filmNoted();
+    seen.add(key);
+    localStorage.setItem(FILM_NOTED, JSON.stringify([...seen]));
+  } catch { /* storage can throw (private windows); the note just returns */ }
+}
+const hasFilm = (f) => Object.prototype.hasOwnProperty.call(FILM_LENGTHS, f);
+// Until the warm start is answered or skipped, the chip keeps quiet. For a
+// newcomer the instrument is on screen for a moment before the warm start
+// comes up over it (it waits for the pool), and a note spoken then is gone
+// behind the dialog before anyone reads it.
+function warmUnresolved() {
+  if (!$("warmstart").classList.contains("hidden")) return true;
+  try {
+    return !localStorage.getItem("auracle-warmed") && !localStorage.getItem("auracle-warm-deferred");
+  } catch {
+    return false;
+  }
+}
+// The tour is for someone new: offered once to a player whose first session
+// this is, never as "new here?" to someone who has been playing for weeks.
+const filmNewcomer = warmUnresolved();
+let filmSaying = null; // what the open note is about: "tour", a view, or null
+let filmSaidAt = 0;
+let filmFoldTimer = null;
+function foldFilmChip() {
+  clearTimeout(filmFoldTimer);
+  filmSaying = null;
+  filmChip.classList.remove("open");
+  const v = VIEW_FILMS[currentView];
+  if (!v) return;
+  $("fc-link").href = viewFilmHref(v);
+  $("fc-text").textContent = "film";
+}
+function pointFilmChip() {
+  if (!filmChip) return;
+  const v = VIEW_FILMS[currentView];
+  if (!v || !hasFilm(v.film) || new URLSearchParams(location.search).has("film") || booth?.on) {
+    clearTimeout(filmFoldTimer);
+    filmChip.classList.add("hidden");
+    filmChip.classList.remove("open");
+    return;
+  }
+  filmChip.classList.remove("hidden");
+  $("fc-link").title = `Watch ${v.name} in depth · ${FILM_LENGTHS[v.film]} (opens in the guide)`;
+  // The tour's note is about the whole instrument, so it outlasts the switch
+  // to PERFORM that follows the warm start, and gives way only to a view the
+  // player chose; a view's note is about that view.
+  if (filmSaying === "tour" && filmChip.classList.contains("open") && viewChosenAt < filmSaidAt) return;
+  const seen = filmNoted();
+  // The lead ("new here?") is the first words to go when the bar is narrow.
+  const say = warmUnresolved() ? null
+    : filmNewcomer && hasFilm("tour") && !seen.has("tour")
+      ? { key: "tour", href: TOUR_HREF, lead: "new here?", text: `take the tour · ${FILM_LENGTHS.tour}` }
+      : !seen.has(currentView)
+        ? { key: currentView, href: viewFilmHref(v), lead: `new to ${v.name}?`, text: `watch ${v.name} in depth · ${FILM_LENGTHS[v.film]}` }
+        : null;
+  if (!say) {
+    foldFilmChip();
+    return;
+  }
+  noteFilmSeen(say.key);
+  filmSaying = say.key;
+  filmSaidAt = performance.now();
+  $("fc-link").href = say.href;
+  const lead = document.createElement("span");
+  lead.className = "fc-lead";
+  lead.textContent = `${say.lead} `;
+  $("fc-text").replaceChildren(lead, say.text);
+  filmChip.classList.add("open");
+  clearTimeout(filmFoldTimer);
+  filmFoldTimer = setTimeout(foldFilmChip, 15_000);
+}
+$("fc-close").onclick = foldFilmChip;
+// Opened in a new tab: the note has done its job here.
+$("fc-link").addEventListener("click", () => setTimeout(foldFilmChip, 0));
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {

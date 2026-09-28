@@ -562,9 +562,10 @@ async function shotEvolve(page) {
     !document.querySelector("#play-a.pending, #play-b.pending") &&
     ["a", "b"].every((s) => !/^(#|candidate)/.test((document.getElementById(`name-${s}`).childNodes[0]?.textContent || "#").trim())),
   null, "a named, heard pair", 300_000);
-  // The meter's probe note, which the teaching figure shows (see "reload").
-  await until(page, () => !!document.querySelector("#duel-pred.check"), null, "the probe note", 15_000)
-    .catch(() => log("    !! the pair is not marked as an unbiased probe; the meter shows without its note"));
+  // The meter's line saying how the pair was dealt, which the teaching figure
+  // shows. It is drawn on the first deal and holds from then on.
+  await until(page, () => !!document.getElementById("duel-rule")?.textContent, null, "the dealing rule", 15_000)
+    .catch(() => log("    !! the meter does not say how the pair was dealt; the figure shows without it"));
   await settle(page);
   await measure(page, "evolve", { meter: "#duel-mid", lineage: ".lineage-strip" });
   await shoot(page, "evolve");
@@ -708,9 +709,7 @@ try {
   const taught = await timed("teach", () => teach(page));
   // The shots are taken from a fresh load of the saved session — what the
   // person sees coming back to it. That clears the last vote's forecast and
-  // its toasts, and it is the state in which EVOLVE marks the pair as an
-  // unbiased probe: under the default random acquisition every duel is one,
-  // and the badge only shows while the last six deals have not all been.
+  // its toasts, so the meter shows its count and how the pair was dealt.
   if (taught) await timed("reload", async () => {
     await page.waitForTimeout(5000); // the app's 2.5 s save debounce, and the worker's reply
     await page.reload();

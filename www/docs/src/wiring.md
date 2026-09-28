@@ -56,7 +56,7 @@ Five things:
    measured* / *not fitted* / *too few examples* / *here is the belief, with
    its interval*. The card above shows an interval straddling zero, which means
    the model has looked and found nothing.
-5. **heard as**: what the feature extractor can and cannot pick up about this
+5. **heard**: what the feature extractor can and cannot pick up about this
    module. Chorus's card says outright that the model will never learn it,
    because the feature vector has no stereo-width coordinate.
 
