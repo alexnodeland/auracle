@@ -3719,8 +3719,15 @@ html:not(.engineer) .dn-sig { display: none; }
 }
 .wi-play:hover { color: var(--phos-a); border-color: var(--phos-a-dim); }
 .wi-play.playing { color: var(--phos-a); box-shadow: inset 0 0 10px rgba(142,240,177,0.3); }
-/* Waiting on the engine, which on a cold boot is genuinely busy. */
-.wi-play.loading { color: var(--phos-b-dim); border-color: var(--phos-b-deep); }
+/* Waiting on the engine, which on a cold boot is genuinely busy. It breathes,
+   so a ▶ that has been heard reads as waiting rather than as a dead click — a
+   first render can take a few seconds on a busy machine. */
+.wi-play.loading {
+  color: var(--phos-b);
+  border-color: var(--phos-b-dim);
+  animation: listen 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .wi-play.loading { animation: none; } }
 @media (pointer: coarse) { .wi-play { width: 34px; height: 34px; } }
 .warm-foot { display: flex; justify-content: center; gap: var(--s3); margin-top: var(--s5); align-items: center; }
 .warm-tour { margin-right: auto; color: var(--phos-a); font-size: var(--t-body); text-decoration: none; }
@@ -4805,9 +4812,14 @@ g.performed .knob-value { fill: var(--phos-b); }
 .pf-step.done { color: var(--silk-dim); }
 .pf-step.done.all { color: var(--phos-a); }
 
-/* A preset row whose load is on its way: said at once, where the eye is. */
-.preset-item.loading { border-color: var(--phos-a-deep); }
-.preset-item.loading .bi-name::after {
+/* A preset row whose load is on its way: said at once, where the eye is. A
+   bank row whose bench open is on its way says the same, until the rack is
+   the patch it names (a bench open is a render, and on a busy engine a row
+   used to sit outlined for seconds over the old rack with nothing said). */
+.preset-item.loading,
+.bank-item.opening { border-color: var(--phos-a-deep); }
+.preset-item.loading .bi-name::after,
+.bank-item.opening .bi-name::after {
   content: "opening…";
   margin-left: var(--s2);
   font-family: var(--font-mono);
@@ -4816,6 +4828,10 @@ g.performed .knob-value { fill: var(--phos-b); }
   animation: pf-breathe 1.2s ease-in-out infinite;
 }
 @keyframes pf-breathe { 50% { opacity: 0.45; } }
+/* PERFORM while the patch the player picked is on its way: the title still
+   names what the keys play (it is true), dimmed, and the status line names
+   what is coming. */
+.pf-name.pending { opacity: 0.55; }
 
 /* ---------- PERFORM on a shorter screen ----------
    Everything PERFORM needs mid-phrase has to be on screen without scrolling.

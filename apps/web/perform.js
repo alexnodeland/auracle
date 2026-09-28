@@ -711,6 +711,9 @@ export function createPerform(host) {
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
     if (state.heldWire && !host.opening?.()) releaseHeld();
+    // An open began or ended somewhere else in the app: say so here.
+    const incoming = host.opening?.() ? host.openingName?.() || null : null;
+    if (state.visible && incoming !== (state.incoming || null)) renderStatus();
     if (state.deferredWire && performance.now() - state.lastTouch >= 1500) {
       const d = state.deferredWire;
       state.deferredWire = null;
@@ -1385,7 +1388,15 @@ export function createPerform(host) {
   function renderStatus(msg) {
     const z = wanderZone(state.wander);
     const parts = [];
+    // Another patch is on its way to the player's hands. The title still
+    // names what the keys play — that is true until it lands — dimmed, and
+    // this line names what is coming, so the patch being left can never read
+    // as the one that was picked.
+    const incoming = host.opening?.() ? host.openingName?.() : null;
+    state.incoming = incoming || null;
+    nameEl.classList.toggle("pending", !!incoming);
     if (msg) parts.push(msg);
+    else if (incoming) parts.push(`opening ${incoming}…`);
     else if (state.heldWire === "measure") parts.push("opening the patch you picked…");
     else if (state.measuring) parts.push("measuring how this patch moves…");
     else if (state.wire) {

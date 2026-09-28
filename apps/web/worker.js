@@ -1667,7 +1667,12 @@ async function dispatch(m) {
       break;
     }
     case "load_preset": {
-      const id = Number(engine.load_preset(m.index));
+      // A preview is about to be played: `load_preset_heard` keeps the audio
+      // of the one render the insert costs, so the `render` that follows is a
+      // memo hit rather than the same phrase rendered twice. (Absent on a
+      // stale binary: the plain load, and the second render, as before.)
+      const heard = m.preview && typeof engine.load_preset_heard === "function";
+      const id = Number(heard ? engine.load_preset_heard(m.index) : engine.load_preset(m.index));
       // Pin *here*, not in a follow-up message. The warm start posts nine
       // loads in one burst, so by the time a `set_pinned` reply could be sent
       // and re-queued, the whole burst has already run and the early picks
@@ -1704,6 +1709,13 @@ async function dispatch(m) {
         if (id > 0) {
           engine.set_pinned(id, true);
           ids[i] = id;
+          // The first pick is what the player is waiting to play, and the
+          // rest of this turn is eight more inserts. Posted now, it reaches
+          // the voices (and PERFORM) seconds before `warm_done` does; the
+          // bench follows when main's open is served.
+          if (i === m.picked[0]) {
+            post({ type: "warm_first", id, index: i, json: engine.tree_json_of(id), makeup: engine.makeup_of(id) });
+          }
         }
       }
       let n = 0;
