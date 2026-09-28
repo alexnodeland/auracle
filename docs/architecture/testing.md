@@ -60,7 +60,7 @@ this table.
 
 - **Optimized profile for Rust tests**
   ([ADR-005](../decisions/005-tests-run-optimized.md)).
-- **One browser at a time, own port for a worktree**
+- **Browser jobs take a ticket (tests two at a time), own port for a worktree**
   ([ADR-010](../decisions/010-tests-share-the-browser-recordings-do-not.md)).
 - **Gate tests over mocks.** Extend the gate that covers a behaviour.
 - **A green browser test against a stale `pkg/` proves nothing** about Rust
