@@ -65,6 +65,7 @@ CHAPTER_NAMES = {
     "taste": {"hook": "Choosing, not describing", "hears": "What it listens for", "evidence": "A pick is evidence", "posterior": "Every taste that still fits", "lenses": "More than one taste", "forecast": "Forecasts, scored", "search": "The search", "reading": "Reading what it learned", "playing": "Learning while you play", "outro": "In the open"},
     "tour": {"title": "A tour of Auracle", "views": "The four views", "bank": "The bank", "dock": "The dock", "header": "Up top", "first": "Your first visit", "next": "Where to go next"},
     "view-evolve": {"title": "EVOLVE", "turn1": "The duel", "turn2": "Play it yourself", "turn3": "Point it", "turn4": "What a pick does", "turn5": "Fair questions", "turn6": "A generation", "turn7": "Stars, save, cut", "turn8": "A working rhythm", "outro": "Next: TASTE"},
+    "view-perform": {"open": "PERFORM", "turn-play": "Play it", "turn-named": "Named for what you hear", "turn-honest": "Honest controls", "turn-xy": "The XY pad", "turn-offer": "Offers", "turn-wander": "Wander, Keep and Back", "turn-dock": "The dock", "turn-midi": "MIDI", "turn-together": "All of it at once", "outro": "Next: PATCH"},
     "engine": {"intro": "Five crates", "genome": "The genome", "compile": "Compiling to DSP", "audition": "The audition", "features": "Features", "utility": "Utility", "calibration": "Calibration", "search": "Search", "perform": "PERFORM's wiring", "runtime": "The runtime", "outro": "Read it, run it"},
 }
 
