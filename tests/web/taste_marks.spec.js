@@ -34,6 +34,9 @@ const init = ({ warmed = true } = {}) => `(() => {
       if (!d || typeof d.type !== "string") return;
       last[d.type] = d;
       counts[d.type] = (counts[d.type] || 0) + 1;
+      // A pinned fit (injectTwoPulls) outlives the real refits behind it:
+      // every listener sees this same data object, and this one runs first.
+      if (d.views && window.__pwPinStyles) d.views.styles = JSON.parse(JSON.stringify(window.__pwPinStyles));
       // The views main.js last adopted come with any of several replies.
       if (d.views) window.__pwViews = d.views;
       if (d.status && typeof d.status === "object") window.__pwStatus = d.status;
@@ -75,7 +78,10 @@ async function tasteTab(page, tab) {
 }
 
 /** Hand main.js a fit whose leading style has exactly two coefficients: a
- *  settled one on `sure` and a guess on `unsure`. Every other style is idle. */
+ *  settled one on `sure` and a guess on `unsure`. Every other style is idle.
+ *  The styles stay pinned: a real refit or generation that lands later (a
+ *  slow runner finishes the warm start's background work after this) keeps
+ *  them instead of replacing the injected pulls. */
 async function injectTwoPulls(page, sure, unsure) {
   await page.evaluate(([a, b]) => {
     const v = JSON.parse(JSON.stringify(window.__pwViews));
@@ -84,6 +90,7 @@ async function injectTwoPulls(page, sure, unsure) {
         ? { ...s, share: 1, theta: [{ name: a, mean: 0.5, std: 0.1 }, { name: b, mean: 0.4, std: 0.6 }] }
         : { ...s, share: 0 },
     );
+    window.__pwPinStyles = v.styles;
     const data = { type: "fitted", views: v, status: window.__pwStatus };
     window.__pwEngine().dispatchEvent(new MessageEvent("message", { data }));
   }, [sure, unsure]);
