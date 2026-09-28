@@ -166,12 +166,10 @@ blur, and a skip that is clicked on camera is followed by one.
   - `fair3:pick`: a pick, and its forecast;
   - `fair5:skip`: skip, a new pair, and nothing recorded.
 - **The truth it tells.** Under the default pairing every pair is random, so
-  every pick is a fair test of the forecast (TASTE › TRUST). This build shows
-  its "◇ unbiased probe" mark only on the first deals after a page load, and
-  its tooltip says one duel in ten. That is reported, and a fix that states
-  the rule steadily is on its way. The film does not show the mark; re-point
-  the first callout at the new element when it lands.
-- **Callouts:** "A and B: dealt at random" (amber) on the pair; "its forecast,
+  every pick is a fair test of the forecast (TASTE › TRUST). The app says so
+  on a steady line under the forecast, `#duel-rule`: "◇ random pair — a fair
+  test".
+- **Callouts:** "every pair: dealt at random" (amber) on `#duel-rule`; "its forecast,
   checked against you"; "TASTE › TRUST" on the TASTE tab; "skip · nothing
   recorded".
 
@@ -241,9 +239,8 @@ Putting it together.
   the app a generation shows as ⚡ rows, the *Gen N* toast and the lineage
   lines, and that is what the film shows (reported).
 - **Check duels** are not "some pairs": under the default pairing every pair
-  is random, so the film says "by default, every pair is dealt at random".
-  The probe mark is shown after a skip early in the page load, which is the
-  only time the app shows it (reported).
+  is random, so the film says "by default, every pair is dealt at random",
+  over the app's own line saying the same.
 - **The forecast** is one sentence (meter3), as asked.
 - **Generations and EVOLVE POOL** are one chapter (06). A second generation
   runs in the working rhythm (08).
