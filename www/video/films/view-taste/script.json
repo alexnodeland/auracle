@@ -1,31 +1,343 @@
 {
- "film": "view-taste",
- "title": "probe",
- "description": "probe",
- "fps": 30,
- "voice": {
-  "voice": "af_heart",
-  "speed": 0.9
- },
- "music": {
-  "bed": "study",
-  "bpm": 84,
-  "meter": 4
- },
- "snap": "beat",
- "beats": [
-  {
-   "id": "probe",
-   "music": "loop_a",
-   "lead": 0.5,
-   "tail": 0.5,
-   "lines": [
+  "film": "view-taste",
+  "title": "TASTE: what it learned about you",
+  "description": "For musicians: reading what Auracle has learned about your ear. The map, your styles, what pulls you, whether to trust it, how to set it right, and how to keep it.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
     {
-     "id": "probe1",
-     "text": "Probe.",
-     "post": 0.2
+      "id": "open",
+      "music": "loop_a",
+      "bed_db": -60,
+      "lead": 14.2,
+      "tail": 0.0,
+      "snap": "bar",
+      "lines": []
+    },
+    {
+      "id": "title",
+      "bed_db": 0,
+      "lead": 1.2,
+      "tail": 0.4,
+      "snap": "bar",
+      "lines": [
+        {
+          "id": "title1",
+          "text": "This is TASTE: what Auracle has learned about your ear, from every pick.",
+          "post": 0.6
+        },
+        {
+          "id": "title2",
+          "text": "Nothing here changes the model. It's the model, reporting on itself.",
+          "post": 0.6
+        }
+      ]
+    },
+    {
+      "id": "tabs",
+      "bed_db": 0,
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "tabs1",
+          "text": "After a few dozen picks, there's more to read, across four tabs.",
+          "post": 0.3
+        },
+        {
+          "id": "tabs2",
+          "text": "The map shows where your sounds sit. Styles are the separate tastes it has found.",
+          "post": 0.3
+        },
+        {
+          "id": "tabs3",
+          "text": "Directions show what pulls you. Trust shows whether to believe any of it.",
+          "post": 0.6
+        }
+      ]
+    },
+    {
+      "id": "map",
+      "bed_db": 0,
+      "lead": 0.3,
+      "tail": 0.2,
+      "lines": [
+        {
+          "id": "map1",
+          "text": "The map places every patch you've heard by how it sounds and how it's built.",
+          "post": 0.3
+        },
+        {
+          "id": "map2",
+          "text": "Nearby dots tend to sound alike. It's a flat picture of many measurements, so treat distance as a hint.",
+          "post": 0.4
+        },
+        {
+          "id": "map3",
+          "text": "Glow is how much it thinks you'll like a sound. The bank beside it is sorted by the same guess.",
+          "post": 0.4
+        },
+        {
+          "id": "map4",
+          "text": "Size is how unsure it is. So a small, bright dot is a firm yes.",
+          "post": 0.6
+        },
+        {
+          "id": "map5",
+          "text": "A big, bright dot is a maybe. It could be great, and it doesn't know yet.",
+          "post": 0.5
+        }
+      ]
+    },
+    {
+      "id": "hear",
+      "bed_db": -60,
+      "lead": 0.2,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "hear1",
+          "text": "Click a dot, and that sound is under your fingers.",
+          "post": 4.4
+        },
+        {
+          "id": "hear2",
+          "text": "The maybes are where to explore.",
+          "post": 4.4
+        },
+        {
+          "id": "hear3",
+          "text": "And a dim dot is one it thinks you'd skip.",
+          "post": 3.4
+        }
+      ]
+    },
+    {
+      "id": "styles",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "styles1",
+          "text": "Your taste doesn't have to be one thing.",
+          "post": 0.3
+        },
+        {
+          "id": "styles2",
+          "text": "You might love dark drones and bright plucks. One direction would average them into neither.",
+          "post": 0.3
+        },
+        {
+          "id": "styles3",
+          "text": "So it keeps separate styles, and a sound only has to please one.",
+          "post": 0.4
+        },
+        {
+          "id": "styles4",
+          "text": "Each chip plays its style's best example.",
+          "post": 5.8
+        },
+        {
+          "id": "styles5",
+          "text": "Name a style for what you hear. The name sticks, everywhere it appears.",
+          "post": 1.4
+        }
+      ]
+    },
+    {
+      "id": "directions",
+      "bed_db": 0,
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "dir1",
+          "text": "Directions shows what each style listens for, in words for what you hear.",
+          "post": 0.3
+        },
+        {
+          "id": "dir2",
+          "text": "A bar to the right pulls you toward more of that. To the left, away.",
+          "post": 0.4
+        },
+        {
+          "id": "dir3",
+          "text": "Here, every style pulls away from grit.",
+          "post": 0.5
+        },
+        {
+          "id": "dir4",
+          "text": "Some rows share names with PERFORM's controls, like body, grit and space. They're the same measurements.",
+          "post": 0.5
+        },
+        {
+          "id": "dir5",
+          "text": "Read the whisker, not the bar. If a whisker crosses the centre line, it's still a guess.",
+          "post": 0.4
+        },
+        {
+          "id": "dir6",
+          "text": "A short bar with a tight whisker is a small pull it's sure of.",
+          "post": 0.7
+        }
+      ],
+      "music": "loop_b",
+      "snap": "bar"
+    },
+    {
+      "id": "trust",
+      "bed_db": 0,
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "trust1",
+          "text": "So should you believe it?",
+          "post": 0.3
+        },
+        {
+          "id": "trust2",
+          "text": "Before every duel, it forecasts your answer. Then you pick, and it keeps score.",
+          "post": 0.4
+        },
+        {
+          "id": "trust3",
+          "text": "On the diagonal, its confidence is honest. The whiskers show how little each dot stands on.",
+          "post": 0.4
+        },
+        {
+          "id": "trust4",
+          "text": "The number to trust is its score on duels dealt at random. Here, twenty percent sharper than chance.",
+          "post": 0.4
+        },
+        {
+          "id": "trust5",
+          "text": "Early on, not beating a coin flip is the honest answer. Keep picking.",
+          "post": 0.7
+        }
+      ]
+    },
+    {
+      "id": "wrong",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "wrong1",
+          "text": "When it's wrong about you, tell it.",
+          "post": 0.3
+        },
+        {
+          "id": "wrong2",
+          "text": "It thinks you'll like this one.",
+          "post": 2.6
+        },
+        {
+          "id": "wrong3",
+          "text": "You don't. Give it one star.",
+          "post": 0.6
+        },
+        {
+          "id": "wrong4",
+          "text": "When it comes up in a duel, pick the other one.",
+          "post": 0.5
+        },
+        {
+          "id": "wrong5",
+          "text": "A surprise teaches it the most. See what changed.",
+          "post": 1.3
+        },
+        {
+          "id": "wrong6",
+          "text": "At the refit, that sound has dimmed, and the map stays the way round you left it.",
+          "post": 0.8
+        }
+      ]
+    },
+    {
+      "id": "profile",
+      "bed_db": 0,
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "profile1",
+          "text": "Everything it learns stays in your browser.",
+          "post": 0.3
+        },
+        {
+          "id": "profile2",
+          "text": "To take it to another machine, save your taste profile, then load it there.",
+          "post": 0.4
+        },
+        {
+          "id": "profile3",
+          "text": "Loading asks before it replaces anything, and downloads yours first.",
+          "post": 0.6
+        },
+        {
+          "id": "profile4",
+          "text": "Reset forgets everything, but only after it asks.",
+          "post": 0.8
+        }
+      ]
+    },
+    {
+      "id": "together",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 0.3,
+      "lines": [
+        {
+          "id": "together1",
+          "text": "Put together, it's a loop.",
+          "post": 0.3
+        },
+        {
+          "id": "together2",
+          "text": "After a round of picks, open the map, walk it with the arrow keys, and play what glows.",
+          "post": 4.6
+        },
+        {
+          "id": "together3",
+          "text": "Try a maybe. Star the ones you love. Then go back and pick.",
+          "post": 3.4
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "bed_db": 0,
+      "lead": 0.4,
+      "tail": 3.2,
+      "lines": [
+        {
+          "id": "outro1",
+          "text": "That's TASTE, the last of the four views.",
+          "post": 0.4
+        },
+        {
+          "id": "outro2",
+          "text": "Now go play, and keep picking in EVOLVE. Every pick teaches it more about you.",
+          "post": 0.4
+        },
+        {
+          "id": "outro3",
+          "text": "The TASTE page in the guide has the rest.",
+          "post": 0.3
+        }
+      ]
     }
-   ]
-  }
- ]
+  ]
 }

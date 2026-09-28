@@ -1,0 +1,406 @@
+{
+  "film": "view-evolve",
+  "title": "EVOLVE: breeding sounds you like",
+  "description": "The EVOLVE view in depth: hear two sounds and pick one, point it with the warm start, what each pick teaches, why pairs are random, breeding a generation, and stars, save and cut.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
+    {
+      "id": "open",
+      "lead": 11.3,
+      "tail": 0.0,
+      "bed_db": -60,
+      "lines": []
+    },
+    {
+      "id": "title",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.2,
+      "tail": 2.54,
+      "lines": [
+        {
+          "id": "title1",
+          "text": "This is EVOLVE, where new sounds grow from your taste.",
+          "post": 0.5
+        },
+        {
+          "id": "title2",
+          "text": "It plays you two. You pick the one you'd reach for. Then it breeds new sounds toward your picks.",
+          "post": 0.6
+        }
+      ],
+      "music": "loop_a"
+    },
+    {
+      "id": "turn1",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": []
+    },
+    {
+      "id": "duel",
+      "bed_db": -60,
+      "lead": 0.4,
+      "tail": 1.48,
+      "lines": [
+        {
+          "id": "duel1",
+          "text": "Every duel is two sounds, A and B.",
+          "post": 0.3
+        },
+        {
+          "id": "duel2",
+          "text": "Press one to hear A.",
+          "post": 3.7
+        },
+        {
+          "id": "duel3",
+          "text": "Press two to hear B.",
+          "post": 3.9
+        },
+        {
+          "id": "duel4",
+          "text": "Both play the same phrase: a held note, a high stab, two notes together, and a low note that rings out.",
+          "post": 0.4
+        },
+        {
+          "id": "duel5",
+          "text": "So you're judging the sound itself, not its name.",
+          "post": 0.4
+        },
+        {
+          "id": "duel6",
+          "text": "Pick with the arrow keys: left for A, right for B.",
+          "post": 0.5
+        },
+        {
+          "id": "duel7",
+          "text": "The next pair slides straight in.",
+          "post": 0.8
+        }
+      ]
+    },
+    {
+      "id": "turn2",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": [],
+      "music": "loop_b"
+    },
+    {
+      "id": "play",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 2.62,
+      "lines": [
+        {
+          "id": "play1",
+          "text": "For a closer listen, click a card.",
+          "post": 0.3
+        },
+        {
+          "id": "play2",
+          "text": "That sound is now on your keyboard.",
+          "post": 3.9
+        },
+        {
+          "id": "play3",
+          "text": "Click the other card, and play the same thing.",
+          "post": 3.6
+        },
+        {
+          "id": "play4",
+          "text": "It's often the quickest way to hear two close sounds apart.",
+          "post": 0.4
+        },
+        {
+          "id": "play5",
+          "text": "Then don't deliberate. A quick answer is worth as much as a careful one.",
+          "post": 0.8
+        }
+      ]
+    },
+    {
+      "id": "turn3",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": []
+    },
+    {
+      "id": "point",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 0.69,
+      "lines": [
+        {
+          "id": "point1",
+          "text": "On your first visit, it asks for three favourites out of nine.",
+          "post": 0.4
+        },
+        {
+          "id": "point2",
+          "text": "Play them, then pick the three closest to the sound you're after.",
+          "post": 2.2
+        },
+        {
+          "id": "point3",
+          "text": "Each pick beats the six you passed.",
+          "post": 0.4
+        },
+        {
+          "id": "point4",
+          "text": "So it starts out with eighteen answers, before your first duel.",
+          "post": 0.9
+        }
+      ]
+    },
+    {
+      "id": "turn4",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": [],
+      "music": "loop_a"
+    },
+    {
+      "id": "meter",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 1.57,
+      "lines": [
+        {
+          "id": "meter1",
+          "text": "Each pick lights a dot on the teaching meter.",
+          "post": 0.8
+        },
+        {
+          "id": "meter2",
+          "text": "It learns from each one straight away.",
+          "post": 1.2
+        },
+        {
+          "id": "meter3",
+          "text": "It also forecasts every duel before you answer, and shows you that forecast once you've picked.",
+          "post": 0.8
+        },
+        {
+          "id": "meter4",
+          "text": "On the sixth pick, it redraws your whole taste from everything you've told it.",
+          "post": 1.0
+        }
+      ]
+    },
+    {
+      "id": "turn5",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": []
+    },
+    {
+      "id": "fair",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 1.86,
+      "lines": [
+        {
+          "id": "fair1",
+          "text": "Why these two? By default, every pair is dealt at random.",
+          "post": 0.4
+        },
+        {
+          "id": "fair2",
+          "text": "That's deliberate. A pair it chose for itself would only test its own choices.",
+          "post": 0.4
+        },
+        {
+          "id": "fair3",
+          "text": "A random pair is a fair test, so every pick also scores how honest its forecasts are.",
+          "post": 0.5
+        },
+        {
+          "id": "fair4",
+          "text": "You can read that score in TASTE, under TRUST.",
+          "post": 0.5
+        },
+        {
+          "id": "fair5",
+          "text": "And if you can't choose, press skip. You get a new pair, and nothing is recorded.",
+          "post": 0.8
+        }
+      ]
+    },
+    {
+      "id": "turn6",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": [],
+      "music": "loop_b"
+    },
+    {
+      "id": "breed",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 1.73,
+      "lines": [
+        {
+          "id": "breed1",
+          "text": "After a dozen picks or so, press Evolve Pool.",
+          "post": 0.5
+        },
+        {
+          "id": "breed2",
+          "text": "It breeds from the ten sounds it rates highest, one child from each.",
+          "post": 0.5
+        },
+        {
+          "id": "breed3",
+          "text": "The children join the pool, marked with a lightning bolt.",
+          "post": 0.4
+        },
+        {
+          "id": "breed4",
+          "text": "To make room, it retires the sounds it likes least. A sound you saved is never retired.",
+          "post": 0.4
+        },
+        {
+          "id": "breed5",
+          "text": "The strip below says what each child changed: which knobs moved, and which modules came or went.",
+          "post": 0.4
+        },
+        {
+          "id": "breed6",
+          "text": "Each child is a variation on its parent, so the pool moves rather than starting over.",
+          "post": 0.4
+        },
+        {
+          "id": "breed7",
+          "text": "Then listen to them.",
+          "post": 4.4
+        }
+      ]
+    },
+    {
+      "id": "turn7",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": []
+    },
+    {
+      "id": "keep",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 1.49,
+      "lines": [
+        {
+          "id": "keep1",
+          "text": "Every sound in the bank has three more controls: stars, save and cut.",
+          "post": 0.5
+        },
+        {
+          "id": "keep2",
+          "text": "Stars are your opinion, and they teach it. Rate low as well as high.",
+          "post": 0.5
+        },
+        {
+          "id": "keep3",
+          "text": "Save keeps a sound for good. It teaches nothing.",
+          "post": 0.5
+        },
+        {
+          "id": "keep4",
+          "text": "Cut says not this one. That teaches it, and you have seven seconds to take it back.",
+          "post": 0.5
+        },
+        {
+          "id": "keep5",
+          "text": "So if you like a sound, save it. Stars alone won't keep it in the pool.",
+          "post": 0.8
+        }
+      ]
+    },
+    {
+      "id": "turn8",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 2.74,
+      "tail": 0.0,
+      "lines": [],
+      "music": "loop_a"
+    },
+    {
+      "id": "rhythm",
+      "bed_db": -60,
+      "lead": 0.3,
+      "tail": 2.45,
+      "lines": [
+        {
+          "id": "rhythm1",
+          "text": "Put together, a session has a rhythm.",
+          "post": 0.3
+        },
+        {
+          "id": "rhythm2",
+          "text": "A dozen quick duels.",
+          "post": 6.0
+        },
+        {
+          "id": "rhythm3",
+          "text": "Evolve the pool.",
+          "post": 1.0
+        },
+        {
+          "id": "rhythm4",
+          "text": "Play the new children, and save the ones you'd use.",
+          "post": 6.0
+        },
+        {
+          "id": "rhythm5",
+          "text": "Then back to the duels. Each round moves the pool toward what you pick.",
+          "post": 0.8
+        }
+      ]
+    },
+    {
+      "id": "outro",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 1.0,
+      "tail": 2.5,
+      "lines": [
+        {
+          "id": "outro1",
+          "text": "Next, see what it has learned about you, in TASTE.",
+          "post": 0.5
+        },
+        {
+          "id": "outro2",
+          "text": "Every control is also in the guide, on the EVOLVE page.",
+          "post": 0.8
+        }
+      ]
+    }
+  ]
+}

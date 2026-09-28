@@ -1,0 +1,241 @@
+{
+  "film": "tour",
+  "title": "A tour of Auracle",
+  "description": "Where everything is and roughly what it does, for your first time: the four views, the bank, the dock, the counters and menus up top, and the three-pick warm start.",
+  "fps": 30,
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.9
+  },
+  "music": {
+    "bed": "study",
+    "bpm": 84,
+    "meter": 4
+  },
+  "snap": "beat",
+  "beats": [
+    {
+      "id": "open",
+      "snap": "bar",
+      "bed_db": -60,
+      "lead": 14.28,
+      "tail": 0.0,
+      "lines": []
+    },
+    {
+      "id": "title",
+      "music": "loop_a",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 1.0,
+      "tail": 1.2,
+      "lines": [
+        {
+          "id": "title1",
+          "text": "This is Auracle, a synthesizer that learns what you like.",
+          "post": 0.6
+        },
+        {
+          "id": "title2",
+          "text": "Here's a quick map: where everything is, and what it's for.",
+          "post": 0.4
+        }
+      ]
+    },
+    {
+      "id": "views",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.6,
+      "tail": 1.0,
+      "lines": [
+        {
+          "id": "views1",
+          "text": "Across the top are four views.",
+          "post": 0.4
+        },
+        {
+          "id": "views2",
+          "text": "PERFORM is where you play the sound.",
+          "post": 0.5
+        },
+        {
+          "id": "views3",
+          "text": "PATCH takes you inside it, to every module, cable and knob.",
+          "post": 0.5
+        },
+        {
+          "id": "views4",
+          "text": "EVOLVE plays you two sounds. Pick the one you like, and it breeds more like it.",
+          "post": 0.5
+        },
+        {
+          "id": "views5",
+          "text": "TASTE shows what it learned about you.",
+          "post": 0.5
+        }
+      ]
+    },
+    {
+      "id": "bank",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.6,
+      "tail": 1.05,
+      "lines": [
+        {
+          "id": "bank1",
+          "text": "On the left is the bank, where your sounds live.",
+          "post": 0.4
+        },
+        {
+          "id": "bank2",
+          "text": "Presets came with the instrument.",
+          "post": 0.4
+        },
+        {
+          "id": "bank3",
+          "text": "Evolution is the pool it breeds from, each with a guess at how much you'll like it.",
+          "post": 0.4
+        },
+        {
+          "id": "bank4",
+          "text": "My patches holds the ones you save.",
+          "post": 0.5
+        },
+        {
+          "id": "bank5",
+          "text": "Press play to hear one. Click it, and it's yours to play.",
+          "post": 0.5
+        }
+      ]
+    },
+    {
+      "id": "dock",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.6,
+      "tail": 2.4,
+      "lines": [
+        {
+          "id": "dock1",
+          "text": "Along the bottom is the dock, the same in every view.",
+          "post": 0.4
+        },
+        {
+          "id": "dock2",
+          "text": "Play the keys on screen, your computer keys, or a MIDI keyboard.",
+          "post": 0.5
+        },
+        {
+          "id": "dock3",
+          "text": "Hold latches a chord, and the arpeggiator plays it in time.",
+          "post": 0.5
+        },
+        {
+          "id": "dock4",
+          "text": "On the right, glide slides each note into the next.",
+          "post": 0.5
+        },
+        {
+          "id": "dock5",
+          "text": "Record saves what you play, next to MIDI and the volume.",
+          "post": 0.5
+        }
+      ]
+    },
+    {
+      "id": "header",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 0.6,
+      "tail": 1.0,
+      "lines": [
+        {
+          "id": "header1",
+          "text": "Up top, PICKS counts what you've taught it. The number beside it counts generations bred toward your taste.",
+          "post": 0.5
+        },
+        {
+          "id": "header2",
+          "text": "The question mark opens the keyboard map.",
+          "post": 0.5
+        },
+        {
+          "id": "header3",
+          "text": "The three dots hold your files, your taste profile, and these films.",
+          "post": 0.5
+        }
+      ]
+    },
+    {
+      "id": "first",
+      "snap": "beat",
+      "bed_db": -60,
+      "lead": 0.6,
+      "tail": 3.2,
+      "lines": [
+        {
+          "id": "first1",
+          "text": "The first time you open it, it asks which three sounds you like.",
+          "post": 0.4
+        },
+        {
+          "id": "first2",
+          "text": "Play them, pick three, and press teach it.",
+          "post": 0.6
+        },
+        {
+          "id": "first3",
+          "text": "That's eighteen picks in one go, so it starts out pointed at you.",
+          "post": 0.4
+        },
+        {
+          "id": "first4",
+          "text": "Your three are saved, and PERFORM opens, ready to play.",
+          "post": 0.5
+        }
+      ]
+    },
+    {
+      "id": "next",
+      "music": "loop_b",
+      "snap": "bar",
+      "bed_db": 0,
+      "lead": 0.8,
+      "tail": 3.2,
+      "lines": [
+        {
+          "id": "next1",
+          "text": "To go deeper, each view has a film of its own.",
+          "post": 0.5
+        },
+        {
+          "id": "next2",
+          "text": "PERFORM: playing the sound.",
+          "post": 0.4
+        },
+        {
+          "id": "next3",
+          "text": "PATCH: inside the sound.",
+          "post": 0.4
+        },
+        {
+          "id": "next4",
+          "text": "EVOLVE: breeding sounds you like.",
+          "post": 0.4
+        },
+        {
+          "id": "next5",
+          "text": "TASTE: what it learned about you.",
+          "post": 0.7
+        },
+        {
+          "id": "next6",
+          "text": "Now open it, and play.",
+          "post": 0.4
+        }
+      ]
+    }
+  ]
+}
