@@ -1484,7 +1484,7 @@ worker.onmessage = (e) => {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
           note(evolved.text(row ? `${row.name} #${m.subject}` : `patch #${m.subject}`), { replace: "evolve-from" });
-        } else {
+        } else if (!quietBench.delete(m.subject)) {
           note(`${nameOf(m.subject)} on the bench`);
         }
         // First patch on the bench: a one-time walkthrough of the gestures
@@ -18770,10 +18770,16 @@ $("warm-go").onclick = () => {
 
 // The warm start's first pick, inserted, while its other eight are still
 // loading: into the voices now, onto the bench when the worker gets to it.
+// Bench replies that should arrive without their own "X on the bench": the
+// warm start's first pick, whose result toast names it. Said separately it
+// queued behind "Loading those in…" and was still waiting, as "+1", after the
+// result had replaced that toast.
+const quietBench = new Set();
 function warmFirstLanded(m) {
   openExpect = null;
   if (m.id <= 0 || m.id === wb.subjectId || m.id === benchPending) return;
   presetIds.set(m.index, m.id);
+  quietBench.add(m.id);
   openOnBench(m.id);
   if (!live || !m.json || m.json === "null") return;
   livePatchId = m.id;
@@ -18791,14 +18797,22 @@ function warmFirstLanded(m) {
 function warmStartDone(m) {
   for (const [idx, id] of Object.entries(m.ids || {})) presetIds.set(Number(idx), id);
   openExpect = null;
-  if (m.first != null && m.first !== wb.subjectId && m.first !== benchPending) openOnBench(m.first);
+  if (m.first != null && m.first !== wb.subjectId && m.first !== benchPending) {
+    quietBench.add(m.first);
+    openOnBench(m.first);
+  }
   // After the open, never before it: the refit is background work (the
   // worker's `later` lane), and the pick's bench, its sound and its
   // measurement are what the player is waiting for.
   send({ type: "fit" });
   fitting = true;
   $("wm-lamp").classList.add("thinking");
-  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`, {
+  // Named from the bank, or from the warm start's own cards while the bank
+  // has no row for it yet.
+  const firstIdx = [...presetIds].find(([, id]) => id === m.first)?.[0];
+  const firstName = m.first == null ? null
+    : rowOf(m.first)?.name || (warmRows || presetRows || []).find((r) => r.index === firstIdx)?.name;
+  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved${firstName ? `, and ${firstName} is under your fingers` : ""}.`, {
     replace: "warm",
   });
 }
