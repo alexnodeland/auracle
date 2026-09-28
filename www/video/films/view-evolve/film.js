@@ -62,7 +62,7 @@ const WIDE = [1.0, 0.5, 0.5];
 const CARDS = aim(1.1, 1086, 470);
 const CARD_A = aim(1.32, 672, 610);
 const CARD_B = aim(1.32, 1498, 610);
-const BUTTONS = aim(1.3, 1086, 700);
+const BUTTONS = aim(1.2, 1150, 700);
 const METER = aim(1.45, 820, 230);
 const METER_R = aim(1.4, 1180, 230);
 const POOL_BTN = aim(1.55, 1640, 170);
@@ -95,13 +95,13 @@ export async function build(stage) {
         beat: "duel",
         shot: "ve-duel",
         chapter: "01 · the duel",
-        cam: hold([[0, ...WIDE], ["duel2", ...CARD_A], ["duel3", ...CARD_B], ["duel4", ...CARDS], ["duel6", ...BUTTONS], ["duel7", ...CARDS]]),
+        cam: hold([[0, ...WIDE], ["duel2", ...CARD_A], ["duel3", ...CARD_B], ["duel4", ...CARDS], ["duel6", ...BUTTONS]]),
         callouts: [
           { at: "duel2:one", until: T("duel3", -0.9), mark: "playA", side: "top", dx: 30, dy: -80, text: "1 · hear A" },
           { at: "duel3:two", until: T("duel4", -0.9), mark: "playB", side: "top", dx: 30, dy: -80, text: "2 · hear B" },
-          { at: "duel4:phrase", until: "duel5", mark: "scopeA", side: "top", ox: -120, dx: 40, dy: -60, text: "the same five seconds, every time" },
+          { at: "duel4:phrase", until: T("duel6", -0.9), mark: "scopeA", side: "center", ox: -250, dx: 60, dy: -150, text: "the same phrase, every time" },
           { at: "duel6:left", until: "duel6:right", mark: "chooseA", side: "top", dy: -80, text: "← picks A" },
-          { at: "duel6:right", until: T("duel7", -0.9), mark: "chooseB", side: "top", dy: -80, text: "→ picks B" },
+          { at: "duel6:right", until: T("duel7", 1.2), mark: "chooseB", side: "top", dy: -80, text: "→ picks B" },
         ],
       },
       turn("turn2", "ve-play", WIDE),
@@ -111,9 +111,9 @@ export async function build(stage) {
         chapter: "02 · play it yourself",
         cam: hold([[0, ...WIDE], ["play1:click", ...aim(1.12, 900, 560)], ["play3", ...aim(1.12, 1180, 560)], ["play5", ...WIDE]]),
         callouts: [
-          { at: T("play1:click", 0.2), until: T("play2", 0.3), mark: "cardA", side: "top", ox: -200, dx: 40, dy: -40, text: "click a card" },
+          { at: T("play1:click", 0.2), until: T("play2", 0.3), mark: "scopeA", side: "center", dx: 90, dy: -170, text: "click a card" },
           { at: T("play2", 0.4), until: T("play3", -0.9), mark: "keybed", side: "top", ox: -150, dx: -40, dy: -70, text: "now on your keys" },
-          { at: T("play3:Click", 0.2), until: "play4", mark: "cardB", side: "top", ox: 200, dx: -40, dy: -40, text: "the other card" },
+          { at: T("play3:Click", 0.2), until: T("play5", -0.9), mark: "scopeB", side: "center", dx: -90, dy: -170, text: "the other card" },
         ],
       },
       turn("turn3", "ve-point", WARM),
@@ -123,8 +123,8 @@ export async function build(stage) {
         chapter: "03 · point it",
         cam: hold([[0, ...WARM], [T("point4", 0.8), ...METER]]),
         callouts: [
-          { at: "point1:nine", until: "point2", mark: "grid", side: "top", ox: -220, dx: 40, dy: -50, text: "one per family, then filled" },
-          { at: T("point2:Play", 0.2), until: "point2:closest", mark: "padplay", side: "right", dx: 80, dy: -30, text: "▶ hear it" },
+          { at: "point1:nine", until: "point2", mark: "grid", side: "left", dx: -60, dy: -120, text: "one of each family, then filled" },
+          { at: T("point2:Play", 0.2), until: "point2:closest", mark: "padplay", side: "bottom", dx: -40, dy: 60, text: "▶ hear it" },
           { at: "point3:beats", until: T("point4", -0.9), mark: "go", side: "bottom", dy: 80, text: "3 picks × 6 passed = 18" },
           { at: "point4:eighteen", mark: "copy", side: "bottom", ox: -60, dx: 40, dy: 90, text: "eighteen picks in", color: "b" },
         ],
@@ -141,12 +141,12 @@ export async function build(stage) {
           { at: T("meter4:sixth", 0.4), mark: "copy", side: "bottom", ox: -60, dx: 40, dy: 90, text: "it just learned", color: "b" },
         ],
       },
-      turn("turn5", "ve-fair", METER_R),
+      turn("turn5", "ve-fair", CARDS),
       {
         beat: "fair",
         shot: "ve-fair",
         chapter: "05 · fair questions",
-        cam: hold([[0, ...METER_R], ["fair4", ...aim(1.3, 820, 200)], ["fair5", ...METER_R]]),
+        cam: hold([[0, ...CARDS], ["fair4", ...aim(1.3, 700, 200)], ["fair5", ...aim(1.35, 1086, 250)]]),
         callouts: [
           { at: "fair1:random", until: T("fair2", -0.9), mark: "nameA", side: "right", dx: 140, dy: 10, text: "A and B: dealt at random", color: "b" },
           { at: T("fair3:pick", 0.4), until: T("fair4", -0.9), mark: "forecast", side: "bottom", dy: 90, text: "its forecast, checked against you", color: "b" },
@@ -159,25 +159,27 @@ export async function build(stage) {
         beat: "breed",
         shot: "ve-breed",
         chapter: "06 · a generation",
-        cam: hold([[0, ...POOL_BTN], ["breed3", ...RAIL], ["breed5", ...LINEAGE], ["breed7", ...RAIL]]),
+        cam: hold([[0, ...POOL_BTN], ["breed3", ...RAIL], ["breed4", ...WIDE], ["breed5", ...LINEAGE], ["breed7", ...RAIL]]),
         callouts: [
           { at: T("breed1:press", 0.3), until: T("breed3", -0.9), mark: "evolve", side: "bottom", dx: -120, dy: 100, text: "breeds from its ten best" },
-          { at: "breed3:lightning", until: T("breed4", 0.2), mark: "fresh", side: "right", dx: 90, dy: 20, text: "⚡ a new child" },
+          { at: "breed3:lightning", until: T("breed4", -0.9), mark: "fresh", side: "right", dx: 90, dy: 20, text: "⚡ a new child" },
           { at: "breed4:retires", until: T("breed5", -0.9), mark: "toast", side: "top", dx: -60, dy: -70, text: "the ones it liked least, retired" },
           { at: "breed5:changed", until: T("breed7", -0.9), mark: "line1", side: "top", ox: -420, dx: 40, dy: -70, text: "what each child changed", color: "b" },
           { at: T("breed7:listen", 0.2), mark: "fresh", side: "right", dx: 90, dy: 20, text: "▶ hear it" },
         ],
       },
-      turn("turn7", "ve-keep", RAIL),
+      turn("turn7", "ve-keep", WIDE),
       {
         beat: "keep",
         shot: "ve-keep",
         chapter: "07 · stars, save, cut",
-        cam: hold([[0, ...RAIL]]),
+        // Wide: the rows re-sort as the model takes each answer in, so the
+        // callouts point at what stays put: each answer's toast, the budget.
+        cam: hold([[0, ...WIDE], ["keep5", ...RAIL]]),
         callouts: [
-          { at: "keep2:opinion", until: T("keep3", -0.2), mark: "rated", side: "right", oy: 14, dx: 90, dy: 30, text: "a rating teaches", color: "b" },
-          { at: "keep3:keeps", until: T("keep4", -0.2), mark: "saved", side: "right", oy: 14, dx: 90, dy: 30, text: "a save keeps, and teaches nothing" },
-          { at: T("keep4:Cut", 0.4), until: "keep5", mark: "toast3", side: "top", dy: -70, text: "seven seconds to undo" },
+          { at: T("keep2:teach", 0.5), until: T("keep3", -0.2), mark: "toast1", side: "top", dx: -60, dy: -70, text: "a rating teaches", color: "b" },
+          { at: T("keep3:keeps", 0.5), until: T("keep4", -0.2), mark: "toast2", side: "top", dx: -60, dy: -70, text: "a save keeps, and teaches nothing" },
+          { at: T("keep4:Cut", 0.5), until: T("keep5", -0.9), mark: "toast3", side: "top", dx: -60, dy: -70, text: "seven seconds to undo" },
           { at: "keep5:save", mark: "budget", side: "bottom", dx: 40, dy: 80, text: "saved: never retired" },
         ],
       },
@@ -188,8 +190,8 @@ export async function build(stage) {
         chapter: "08 · a working rhythm",
         cam: hold([[0, ...CARDS], ["rhythm3", ...POOL_BTN], ["rhythm4", ...WIDE]]),
         callouts: [
-          { at: T("rhythm4:Play", 0.3), until: "rhythm4:save", mark: "child", side: "top", dx: 30, dy: -60, text: "a new child, on the keys" },
-          { at: T("rhythm4:save", 0.3), until: "rhythm5", mark: "row", side: "right", dx: 90, dy: 20, text: "saved" },
+          { at: T("rhythm4:Play", 0.6), until: T("rhythm5", -0.9), mark: "child", side: "right", dx: 40, dy: 70, text: "a new child, on the keys" },
+          { at: T("rhythm4:children", 6.3), until: T("rhythm5", -0.9), mark: "row", side: "right", dx: 90, dy: 40, text: "saved" },
         ],
       },
       {

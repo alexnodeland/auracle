@@ -1,8 +1,9 @@
 // The cards of EVOLVE: breeding sounds you like, drawn with the kit.
 //
 // - The title, over the bed, right after the cold open: the view's name, what
-//   it is for, and the loop it runs on, drawn as six amber pips that light as
-//   the narrator says "two", "pick" and "breeds" (the teaching meter's pips).
+//   it is for, and the loop it runs on, drawn as the teaching meter's six
+//   amber pips, one lighting on each word of the loop as the narrator says it
+//   ("two", "pick", "reach", "breeds", "toward", "picks").
 // - A chapter card at every turn: one bar of the bed over the chapter's own
 //   footage (the turn beat borrows the chapter's shot, so it is already
 //   running under the card), naming the chapter and the musical question it

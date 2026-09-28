@@ -17,60 +17,22 @@ import sys
 FDIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO = os.path.dirname(os.path.dirname(FDIR))
 sys.path.insert(0, os.path.join(VIDEO, "tools"))
-try:
-    from shotgen import dump  # one step per line, as the other walkthroughs
-except ImportError:  # until tools/shotgen.py lands: the same writer
-    def dump(spec, path):
-        def one(x):
-            return json.dumps(x, ensure_ascii=False)
-        out = ["{", f'  "viewport": {one(spec["viewport"])},', f'  "dpr": {spec["dpr"]},', f'  "query": {one(spec["query"])},', f'  "init": {one(spec["init"])},', '  "setup": [']
-        out.append(",\n".join("    " + one(x) for x in spec["setup"]))
-        out.append("  ],")
-        out.append('  "shots": [')
-        shots = []
-        for sh in spec["shots"]:
-            lines = ["    {"]
-            for k in [k for k in sh if k not in ("setup", "marks", "actions")]:
-                lines.append(f"      {one(k)}: {one(sh[k])},")
-            lines.append('      "setup": [')
-            lines.append(",\n".join("        " + one(x) for x in sh.get("setup", [])))
-            lines.append("      ],")
-            lines.append(f'      "marks": {one(sh.get("marks", {}))},')
-            lines.append('      "actions": [')
-            lines.append(",\n".join("        " + one(x) for x in sh.get("actions", [])))
-            lines.append("      ]")
-            lines.append("    }")
-            shots.append("\n".join(lines))
-        out.append(",\n".join(shots))
-        out.append("  ]")
-        out.append("}")
-        text = "\n".join(out) + "\n"
-        json.loads(text)
-        open(path, "w").write(text)
+sys.dont_write_bytecode = True  # no __pycache__ beside the tools
+from shotgen import INIT, QUIET, taught, dump  # noqa: E402  (the team's shared pieces)
 
 tl = json.load(open(f"{FDIR}/timeline.json"))
 BEAT = {b["id"]: b for b in tl["beats"]}
 BAR = 60 / tl["grid"]["bpm"] * tl["grid"]["meter"]
 PRE = 3.4  # a chapter's shot starts a bar before its beat: its card (cards.js) shows the rack at rest
 
-INIT = "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();"
 SETTLED = "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')"
-QUIET = {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
 SUBJ = "document.getElementById('rack-subject').textContent"
 
 # The film's session: taught by the warm start (its first, fifth and eighth
 # cards), so the model's guess, the spec card's belief and ⚡ all have a fit.
-SETUP = [
-    {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
-    {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
-    {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map(x => x.textContent).join(' | ')"},
-    {"op": "click", "sel": ".warm-item >> nth=0"},
-    {"op": "click", "sel": ".warm-item >> nth=4"},
-    {"op": "click", "sel": ".warm-item >> nth=7"},
-    {"op": "click", "sel": "#warm-go"},
-    {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
-    {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
-]
+# The deal is logged, so a rehearsal shows which cards were picked.
+SETUP = taught(picks=(0, 4, 7))
+SETUP.insert(2, {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map(x => x.textContent).join(' | ')"})
 
 
 def bench(name, *extra):
@@ -153,6 +115,26 @@ def run(beat_id, frm, to, prog=None, pre=PRE, tail_end=False, gap=0.11):
     return out
 
 
+# A knob's box, as footage.mjs measures it (label, dial and value), in px: a
+# path's points are fractions of the box.
+KNOB_H = {"Acid Line": 116.7, "Glass Pad": 86.9}
+
+
+def sweep(sel, h, moves, ms):
+    """One press on a knob, moved by each of `moves` in turn (px; negative is
+    up), then let go: one edit however many turns, so nothing waits in the
+    engine's one-slot edit queue for a second drag to overtake. (A drag on a
+    second knob while the first knob's edit is still queued loses the first
+    knob's move: reported, being fixed; until then, drags on different knobs
+    stay a settle apart.)"""
+    pts = [[0.5, 0.5]]
+    y = 0.0
+    for d in moves:
+        y += d
+        pts.append([0.5, round(0.5 + y / h, 4)])
+    return {"op": "path", "sel": sel, "points": pts, "ms": ms}
+
+
 def mark(name, sel):
     return {"op": "mark", "name": name, "sel": sel}
 
@@ -161,14 +143,21 @@ def log(name, js):
     return {"op": "log", "name": name, "js": js}
 
 
+def val(addr):
+    """A knob's value as it reads (its aria-valuetext)."""
+    return f"document.querySelector(\"#rack-svg [data-addr='{addr}']\")?.getAttribute('aria-valuetext')"
+
+
 RACK_LOG = log("rack", "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')")
 KNOBS_LOG = log("knobs", "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')")
 
 shots = []
 
 # ---- cold: an acid line at 84, its filter swept on the rack --------------
+# The title borrows this shot (film.js), so it runs on to the title's end.
 shots.append({
     "id": "vp-cold", "beat": "cold", "pre": 0.5,
+    "dur": round(BEAT["title"]["t1"] - BEAT["cold"]["t0"] + 0.5 + 0.8, 3),
     "setup": bench("Acid Line",
         TEMPO,
         {"op": "click", "sel": "#hold-btn"},
@@ -186,14 +175,9 @@ shots.append({
     "actions": [
         # Fmaj7 latched: the bed's first chord, so the title lands on it.
         {"at": 0.9, "snap": "beat", "op": "hold", "keys": ["f", "h", "k", ";"], "ms": 260},
-        # Up, then back down, as one hand: the second drag waits for the first
-        # (a drag that outlasts its plan would otherwise collide with the next).
-        {"at": 2.6, "op": "seq", "steps": [
-            {"op": "drag", "sel": "#rack-svg [data-addr='node#cut']", "dy": -64, "ms": 2900},
-            {"op": "wait", "ms": 250},
-            {"op": "drag", "sel": "#rack-svg [data-addr='node#cut']", "dy": 50, "ms": 3000},
-        ]},
-        {"at": 9.5, "op": "log", "name": "cut", "js": "document.querySelector(\"#rack-svg [data-addr='node#cut']\").getAttribute('aria-valuetext')"},
+        # Up over 3 s, then back down over 3 s, in one press.
+        {"at": 2.6, **sweep("#rack-svg [data-addr='node#cut']", KNOB_H["Acid Line"], [-64, 50], 6000)},
+        {"at": 9.5, "op": "log", "name": "cut", "js": val("node#cut")},
         # Unlatched on the title's downbeat, where the bed comes in.
         {"at": 10.9, "snap": "bar", "op": "click", "sel": "#hold-btn"},
     ],
@@ -250,15 +234,12 @@ shots.append({
               "menu": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn", "filter": "#rack-svg g.mod-group[data-key='node/0']"},
     "actions": [
         *run("change", 0, None, tail_end=True),
-        {"at": "change1:knob", "op": "seq", "steps": [
-            {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": 45, "ms": 1300},
-            {"op": "wait", "ms": 200},
-            {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -75, "ms": 1700},
-        ]},
+        {"at": "change1:knob", **sweep("#rack-svg [data-addr='node/0#cut']", KNOB_H["Glass Pad"], [45, -75], 3000)},
         # The bypass, once the knob's edits have landed.
         {"at": "change1:hand+0.2", "op": "seq", "steps": [
             {"op": "wait", "ms": 2500},
             {"op": "until", "js": SETTLED, "ms": 90000, "stamp": "ready2"},
+            log("cut", val("node/0#cut")),
         ]},
         {"at": "change2-0.4", "op": "seq", "steps": [
             {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"},
@@ -383,27 +364,37 @@ shots.append({
 # ---- steps: Loom's filter walks a pattern; draw it; sync it to 84 --------
 shots.append({
     "id": "vp-steps", "beat": "steps", "pre": PRE,
-    "setup": bench("Loom", TEMPO, KNOBS_LOG),
+    "clips": [["steps2:up", "@s1-0.25"]],
+    "setup": bench("Loom", TEMPO, {"op": "click", "sel": "#hold-btn"}, KNOBS_LOG),
     "marks": {"rack": "#rack-scroll", "steps": "#rack-svg g.mod-group[data-kind='steps']", "filter": "#rack-svg g.mod-group[data-key='node/0']",
               "s1": "#rack-svg [data-addr='node/0/m#s1']", "s3": "#rack-svg [data-addr='node/0/m#s3']", "len": "#rack-svg [data-addr='node/0/m#slen']",
               "rate": "#rack-svg [data-addr='node/0/m#srate']", "sync": "#sync-btn", "modwire": "#rack-svg path.wire.mod"},
     "actions": [
-        {"at": PRE - 0.08, "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "until": "steps3:Sync-0.1"},
-        {"at": "steps2:Draw", "op": "seq", "steps": [
-            {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s1']", "dy": 38, "ms": 420},
-            {"op": "wait", "ms": 120},
-            {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s2']", "dy": -40, "ms": 420},
-            {"op": "wait", "ms": 120},
-            {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#slen']", "dy": -60, "ms": 700},
+        # Am, latched by HOLD on the downbeat, so it sounds on through the cut
+        # (a held key's release keyed to a word after the cut would wait for
+        # the cut's stamp before the key even went down).
+        {"at": PRE - 0.08, "snap": "bar", "op": "hold", "keys": AM, "ms": 260},
+        # Two bars, a settle apart (see sweep()); the beat cuts through the
+        # settle (`clips`). A bar is set where it is pressed and dragged to
+        # (its middle is no push, 31 px either way the most), so ±22 px
+        # redraws the second step from +70% to about −70% and the third from
+        # −10% to about +70%.
+        {"at": "steps2:Draw-0.15", "op": "seq", "steps": [
+            {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s1']", "dy": 22, "ms": 450},
+            {"op": "until", "js": SETTLED, "ms": 60000, "stamp": "s1"},
+            {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s2']", "dy": -22, "ms": 450},
             {"op": "wait", "ms": 200},
             mark("lane", "#rack-svg g.mod-group[data-kind='steps']"),
+            {"op": "until", "js": SETTLED, "ms": 60000, "stamp": "s2"},
             KNOBS_LOG,
         ]},
+        # HOLD off (the latched chord stops), SYNC on, and the chord struck
+        # again on the next bar line, where the pattern restarts at 84.
+        {"at": "steps3:Sync-0.1", "op": "click", "sel": "#hold-btn"},
         {"at": "steps3:Sync", "op": "click", "sel": "#sync-btn"},
         {"at": "steps3:Sync+0.5", "op": "seq", "steps": [mark("bpm", "#arp-chip"), mark("rate2", "#rack-svg [data-addr='node/0/m#srate']"),
                                                           log("synced", "document.querySelector(\"#rack-svg [data-addr='node/0/m#srate']\").getAttribute('aria-valuetext') + ' | chip ' + document.getElementById('arp-chip').textContent")]},
-        # Sync restarts the pattern on the next key: on the bar line.
-        {"at": "steps3:Sync+0.2", "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": "end"},
+        {"at": "steps3:Sync+0.2", "snap": "bar", "op": "hold", "keys": AM, "ms": "end"},
     ],
 })
 
@@ -532,8 +523,10 @@ shots.append({
 })
 
 # ---- together: the acid line again, shaped, grown, locked, committed ------
+# The outro borrows this shot (film.js), so it runs on to the film's end.
 shots.append({
     "id": "vp-together", "beat": "together", "pre": PRE,
+    "dur": round(BEAT["outro"]["t1"] - BEAT["together"]["t0"] + PRE + 0.8, 3),
     "setup": bench("Acid Line",
         TEMPO,
         {"op": "click", "sel": "#hold-btn"},
@@ -549,11 +542,9 @@ shots.append({
     "actions": [
         # Am7 latched, on the downbeat.
         {"at": PRE - 0.08, "snap": "bar", "op": "hold", "keys": ["g", "h", "k", ";"], "ms": 260},
-        {"at": "together2:Shape", "op": "seq", "steps": [
-            {"op": "drag", "sel": "#rack-svg [data-addr='node#cut']", "dy": -52, "ms": 2200},
-            {"op": "wait", "ms": 700},
-            {"op": "drag", "sel": "#rack-svg [data-addr='node#res']", "dy": -14, "ms": 900},
-        ]},
+        # Up, then part of the way back, in one press; grit goes in once
+        # this edit has landed (see sweep()).
+        {"at": "together2:Shape", **sweep("#rack-svg [data-addr='node#cut']", KNOB_H["Acid Line"], [-52, 16], 2800)},
         {"at": "together3:Add-0.3", "op": "seq", "steps": [
             {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
             {"op": "key", "key": "/", "ms": 60},
@@ -566,6 +557,8 @@ shots.append({
             {"op": "move", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type", "ms": 400},
             {"op": "wait", "ms": 300},
             log("grit", "document.getElementById('nb-status').textContent"),
+            {"op": "until", "js": SETTLED, "ms": 60000, "stamp": "shaped"},
+            log("cut", val("node#cut")),
             {"op": "click", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type"},
             {"op": "until", "sel": "#rack-svg g.mod-group[data-kind='distortion']", "ms": 30000, "stamp": "grit"},
             {"op": "wait", "ms": 300},

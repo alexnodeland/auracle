@@ -29,9 +29,6 @@
 // - Sync is shown on Loom, the one preset with a step sequencer, so the
 //   dock chapter runs on Loom: on a patch without one, Sync changes nothing
 //   you could hear.
-// - The XY pad's amber axis: the app dims its end words in amber and says
-//   "… doesn't reach this patch"; the guide says the words are struck
-//   through. The film shows and says what the app does.
 // - The PERFORM wiring is measured per session, and the seeded session
 //   decides it. As rehearsed (plain session): Glass Pad reaches Bright both
 //   ways, Snap only toward bloom, Motion only toward restless, Body only
@@ -42,9 +39,10 @@
 //   over the keybed or pushes the deck down; the tour film shows them.
 import { walkthrough, aim } from "../../stage/walk.js";
 
-// Written by the generator (scratchpad vp/gen.py) from timeline.json: where
-// the shot a card beat borrows starts, as that beat's `meta.pre`. Rerun the
-// generator after every timeline change; validate.mjs checks these.
+// Written by gen_shots.py (python3 www/video/films/view-perform/gen_shots.py)
+// from timeline.json: where the shot a card beat borrows starts, as that
+// beat's `meta.pre`. Rerun it after every timeline change; validate.mjs
+// checks these.
 const BORROW = /*borrow*/ { title: 11.929, outro: 23.357 } /*/borrow*/;
 
 /** A narration time moved by d seconds, as one offset ("play2:Z-1.30"). */
@@ -130,7 +128,7 @@ const PLAN = [
       ["named2:ride-0.3", ...aim(1.2, 1086, 420)],
       ["named3:Underneath-0.2", ...aim(1.35, 1000, 520)],
       ["named4:Long-0.3", ...aim(1.3, 900, 330)],
-      ["named5:Every-0.2", ...aim(1.15, 900, 300)],
+      ["named5:Every-0.2", ...aim(1.2, 800, 330)],
       ["named8:Bell-0.3", ...aim(1.2, 1086, 460)],
     ], 0.8),
     callouts: [
@@ -138,7 +136,7 @@ const PLAN = [
       { at: "named3:knobs", until: "named4:Long-1.15", mark: "hood", side: "top", ox: -140, dx: 60, dy: -80, text: "the patch's own knobs" },
       { at: "named4:Long+0.3", until: "named5:Every-1.05", mark: "bright", side: "bottom", dx: 60, dy: 150, text: "long press: hear it" },
       { at: "named6:nudges", until: "named7-0.1", mark: "status", side: "right", dx: 90, dy: 30, text: "PERFORM listens", color: "b" },
-      { at: "named8:folds", until: "named8:name", mark: "bright", side: "bottom", dx: 70, dy: 150, text: "Bright → fold" },
+      { at: "named8:folds", until: "named8:name", mark: "bright", side: "bottom", dx: 70, dy: 150, text: "Bright → wavefolder threshold" },
       { at: "named8:name", mark: "hood", side: "top", ox: -140, dx: 60, dy: -80, text: "different knobs, same name" },
     ],
   },
@@ -170,7 +168,7 @@ const PLAN = [
     cam: settle([
       WIDE,
       ["xy1:two", ...aim(1.55, 740, 700)],
-      ["xy4:dials-0.3", ...aim(1.15, 1000, 520)],
+      ["xy4:dials-0.3", ...aim(1.2, 1086, 480)],
     ]),
     callouts: [
       { at: "xy2:Choose", until: "xy2:tells", mark: "ysel", side: "right", dx: 90, dy: -40, text: "choose the axes" },
@@ -189,7 +187,7 @@ const PLAN = [
     cam: settle([
       WIDE,
       ["offer1:playing", ...aim(1.22, 1086, 470)],
-      ["offer5:Press-0.3", ...aim(1.12, 1180, 600)],
+      ["offer5:Press-0.3", ...aim(1.2, 1180, 550)],
     ]),
     callouts: [
       { at: "offer1:slot", until: "offer3", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "B: a variant of this sound", color: "b" },
@@ -270,8 +268,8 @@ const PLAN = [
     chapter: label("together"),
     cam: settle([
       WIDE,
-      ["together2:Wander-0.3", ...aim(1.12, 1086, 440)],
-      ["together3:take-0.3", ...aim(1.1, 1086, 520)],
+      ["together2:Wander-0.3", ...aim(1.2, 1120, 440)],
+      ["together3:take-0.3", ...aim(1.2, 1180, 550)],
     ]),
     callouts: [
       { at: "together2:Wander", until: "together2:offer", mark: "wander", side: "bottom", dx: -120, dy: 150, text: "Wander: drift" },

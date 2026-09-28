@@ -19,6 +19,7 @@
       "id": "vp-cold",
       "beat": "cold",
       "pre": 0.5,
+      "dur": 21.28,
       "setup": [
         {"op": "preset", "name": "Acid Line"},
         {"op": "view", "v": "play"},
@@ -45,8 +46,8 @@
       "marks": {"rack": "#rack-scroll", "vco": "#rack-svg g.mod-group[data-key='node/0']", "filter": "#rack-svg g.mod-group[data-key='node']", "env": "#rack-svg g.mod-group[data-key='node/m']", "amp": "#rack-svg g.mod-group[data-key='amp']", "cut": "#rack-svg [data-addr='node#cut']", "res": "#rack-svg [data-addr='node#res']"},
       "actions": [
         {"at": 0.9, "snap": "beat", "op": "hold", "keys": ["f", "h", "k", ";"], "ms": 260},
-        {"at": 2.6, "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node#cut']", "dy": -64, "ms": 2900}, {"op": "wait", "ms": 250}, {"op": "drag", "sel": "#rack-svg [data-addr='node#cut']", "dy": 50, "ms": 3000}]},
-        {"at": 9.5, "op": "log", "name": "cut", "js": "document.querySelector(\"#rack-svg [data-addr='node#cut']\").getAttribute('aria-valuetext')"},
+        {"at": 2.6, "op": "path", "sel": "#rack-svg [data-addr='node#cut']", "points": [[0.5, 0.5], [0.5, -0.0484], [0.5, 0.38]], "ms": 6000},
+        {"at": 9.5, "op": "log", "name": "cut", "js": "document.querySelector(\"#rack-svg [data-addr='node#cut']\")?.getAttribute('aria-valuetext')"},
         {"at": 10.9, "snap": "bar", "op": "click", "sel": "#hold-btn"}
       ]
     },
@@ -145,8 +146,8 @@
         {"at": "change1+13.435", "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2747},
         {"at": "change1+16.293", "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2747},
         {"at": "change1+19.150", "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": "end"},
-        {"at": "change1:knob", "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": 45, "ms": 1300}, {"op": "wait", "ms": 200}, {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -75, "ms": 1700}]},
-        {"at": "change1:hand+0.2", "op": "seq", "steps": [{"op": "wait", "ms": 2500}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 90000, "stamp": "ready2"}]},
+        {"at": "change1:knob", "op": "path", "sel": "#rack-svg [data-addr='node/0#cut']", "points": [[0.5, 0.5], [0.5, 1.0178], [0.5, 0.1548]], "ms": 3000},
+        {"at": "change1:hand+0.2", "op": "seq", "steps": [{"op": "wait", "ms": 2500}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 90000, "stamp": "ready2"}, {"op": "log", "name": "cut", "js": "document.querySelector(\"#rack-svg [data-addr='node/0#cut']\")?.getAttribute('aria-valuetext')"}]},
         {"at": "change2-0.4", "op": "seq", "steps": [{"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-menu-btn"}, {"op": "until", "sel": "#ctx-menu .cm-item", "ms": 5000}, {"op": "mark", "name": "ctx", "sel": "#ctx-menu"}, {"op": "wait", "ms": 350}, {"op": "click", "sel": "#ctx-menu .cm-item:has-text('bypass')"}, {"op": "until", "js": "document.querySelectorAll('#tray-items .tray-item').length === 1 && !document.querySelector(\"#rack-svg g.mod-group[data-kind='chorus']\")", "ms": 60000, "stamp": "bypassed"}, {"op": "wait", "ms": 300}, {"op": "mark", "name": "tray", "sel": "#tray"}, {"op": "mark", "name": "held1", "sel": "#tray-items .tray-item"}, {"op": "mark", "name": "filter2", "sel": "#rack-svg g.mod-group[data-key='node']"}, {"op": "mark", "name": "jack", "sel": "#rack-svg .jack[data-childkey='node/0']"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 90000, "stamp": "ready3"}]},
         {"at": "change3-0.9", "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg .jack[data-childkey='node/0'] circle:last-of-type", "dx": -40, "dy": 170, "ms": 800}, {"op": "until", "js": "document.querySelectorAll('#tray-items .tray-item').length === 2", "ms": 60000, "stamp": "pulled"}, {"op": "wait", "ms": 300}, {"op": "mark", "name": "held2", "sel": "#tray-items .tray-item >> nth=1"}, {"op": "mark", "name": "tray2", "sel": "#tray"}, {"op": "mark", "name": "hole", "sel": "#rack-svg g.mod-group[data-key='node/0']"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}, {"op": "log", "name": "toast", "js": "document.getElementById('toasts').innerText"}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 90000, "stamp": "ready4"}]},
         {"at": "change4-0.4", "op": "seq", "steps": [{"op": "hold", "keys": ["Control", "z"], "ms": 150}, {"op": "until", "js": "document.querySelectorAll('#tray-items .tray-item').length === 1", "ms": 60000, "stamp": "undone"}, {"op": "wait", "ms": 300}, {"op": "mark", "name": "saw2", "sel": "#rack-svg g.mod-group[data-kind='supersaw']"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}]},
@@ -218,6 +219,7 @@
       "id": "vp-steps",
       "beat": "steps",
       "pre": 3.4,
+      "clips": [["steps2:up", "@s1-0.25"]],
       "setup": [
         {"op": "preset", "name": "Loom"},
         {"op": "view", "v": "play"},
@@ -228,6 +230,7 @@
         {"op": "key", "key": "a", "ms": 60},
         {"op": "wait", "ms": 1200},
         {"op": "eval", "js": "const b = document.getElementById('bpm'); b.value = '84'; b.dispatchEvent(new Event('change'))"},
+        {"op": "click", "sel": "#hold-btn"},
         {"op": "log", "name": "knobs", "js": "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')"},
         {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
         {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
@@ -236,8 +239,9 @@
       ],
       "marks": {"rack": "#rack-scroll", "steps": "#rack-svg g.mod-group[data-kind='steps']", "filter": "#rack-svg g.mod-group[data-key='node/0']", "s1": "#rack-svg [data-addr='node/0/m#s1']", "s3": "#rack-svg [data-addr='node/0/m#s3']", "len": "#rack-svg [data-addr='node/0/m#slen']", "rate": "#rack-svg [data-addr='node/0/m#srate']", "sync": "#sync-btn", "modwire": "#rack-svg path.wire.mod"},
       "actions": [
-        {"at": 3.32, "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "until": "steps3:Sync-0.1"},
-        {"at": "steps2:Draw", "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s1']", "dy": 38, "ms": 420}, {"op": "wait", "ms": 120}, {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s2']", "dy": -40, "ms": 420}, {"op": "wait", "ms": 120}, {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#slen']", "dy": -60, "ms": 700}, {"op": "wait", "ms": 200}, {"op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-kind='steps']"}, {"op": "log", "name": "knobs", "js": "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')"}]},
+        {"at": 3.32, "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 260},
+        {"at": "steps2:Draw-0.15", "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s1']", "dy": 22, "ms": 450}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 60000, "stamp": "s1"}, {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s2']", "dy": -22, "ms": 450}, {"op": "wait", "ms": 200}, {"op": "mark", "name": "lane", "sel": "#rack-svg g.mod-group[data-kind='steps']"}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 60000, "stamp": "s2"}, {"op": "log", "name": "knobs", "js": "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')"}]},
+        {"at": "steps3:Sync-0.1", "op": "click", "sel": "#hold-btn"},
         {"at": "steps3:Sync", "op": "click", "sel": "#sync-btn"},
         {"at": "steps3:Sync+0.5", "op": "seq", "steps": [{"op": "mark", "name": "bpm", "sel": "#arp-chip"}, {"op": "mark", "name": "rate2", "sel": "#rack-svg [data-addr='node/0/m#srate']"}, {"op": "log", "name": "synced", "js": "document.querySelector(\"#rack-svg [data-addr='node/0/m#srate']\").getAttribute('aria-valuetext') + ' | chip ' + document.getElementById('arp-chip').textContent"}]},
         {"at": "steps3:Sync+0.2", "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": "end"}
@@ -276,7 +280,7 @@
         {"at": "lock3+0.2", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "until": "lock3+0.3", "until_snap": "bar"},
         {"at": "lock3+0.4", "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2747},
         {"at": "lock3+3.3", "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
-        {"at": "lock3+0.6", "op": "seq", "steps": [{"op": "mark", "name": "subject", "sel": "#rack-subject"}, {"op": "mark", "name": "chorus2", "sel": "#rack-svg g.mod-group[data-kind='chorus']"}, {"op": "mark", "name": "toast", "sel": "#toasts .toast"}, {"op": "log", "name": "child", "js": "document.getElementById('rack-subject').textContent + ' | ' + document.getElementById('rack-meta').textContent + ' | ' + [...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}, {"op": "log", "name": "knobs", "js": "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')"}]}
+        {"at": "lock3+0.6", "op": "seq", "steps": [{"op": "mark", "name": "subject", "sel": "#rack-subject"}, {"op": "mark", "name": "chorus2", "sel": "#rack-svg g.mod-group[data-kind='chorus']"}, {"op": "mark", "name": "toast", "sel": "#toasts .toast"}, {"op": "mark", "name": "source", "sel": "#rack-svg g.mod-group[data-key='node/0/0']"}, {"op": "log", "name": "child", "js": "document.getElementById('rack-subject').textContent + ' | ' + document.getElementById('rack-meta').textContent + ' | ' + [...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}, {"op": "log", "name": "knobs", "js": "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')"}]}
       ]
     },
     {
@@ -365,13 +369,14 @@
         {"at": "take2:play+1.5", "snap": "beat", "op": "hold", "keys": ["g"], "ms": 330},
         {"at": "take2:play+2.2", "snap": "beat", "op": "hold", "keys": ["f"], "ms": 600},
         {"at": "take3:EVOLVE-0.45", "op": "view", "v": "evolve"},
-        {"at": "take3:EVOLVE+0.3", "op": "seq", "steps": [{"op": "mark", "name": "lineage", "sel": "#lineage-log"}, {"op": "mark", "name": "strip", "sel": ".lineage-strip"}, {"op": "log", "name": "lineage", "js": "document.getElementById('lineage-log').innerText"}]}
+        {"at": "take3:EVOLVE+0.3", "op": "seq", "steps": [{"op": "mark", "name": "lineage", "sel": "#lineage-log"}, {"op": "mark", "name": "lin1", "sel": "#lineage-log > div >> nth=0"}, {"op": "mark", "name": "strip", "sel": ".lineage-strip"}, {"op": "log", "name": "lineage", "js": "document.getElementById('lineage-log').innerText"}]}
       ]
     },
     {
       "id": "vp-together",
       "beat": "together",
       "pre": 3.4,
+      "dur": 38.486,
       "setup": [
         {"op": "preset", "name": "Acid Line"},
         {"op": "view", "v": "play"},
@@ -397,38 +402,13 @@
       "marks": {"rack": "#rack-scroll", "cut": "#rack-svg [data-addr='node#cut']", "res": "#rack-svg [data-addr='node#res']", "filter": "#rack-svg g.mod-group[data-key='node']", "q": "#nb-q", "dist": ".nb-item[data-kind='distortion']", "green": "#rack-svg .jack[data-childkey='node']", "tick": "#improve-check", "commit": "#rack-commit"},
       "actions": [
         {"at": 3.32, "snap": "bar", "op": "hold", "keys": ["g", "h", "k", ";"], "ms": 260},
-        {"at": "together2:Shape", "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node#cut']", "dy": -52, "ms": 2200}, {"op": "wait", "ms": 150}, {"op": "drag", "sel": "#rack-svg [data-addr='node#res']", "dy": -14, "ms": 900}]},
-        {"at": "together3:Add-0.3", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": "/", "ms": 60}, {"op": "wait", "ms": 150}, {"op": "type", "text": "grit", "ms": 85}, {"op": "wait", "ms": 350}, {"op": "mark", "name": "dist", "sel": ".nb-item[data-kind='distortion']"}, {"op": "click", "sel": ".nb-item[data-kind='distortion']"}, {"op": "wait", "ms": 350}, {"op": "move", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type", "ms": 400}, {"op": "wait", "ms": 300}, {"op": "log", "name": "grit", "js": "document.getElementById('nb-status').textContent"}, {"op": "click", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type"}, {"op": "until", "sel": "#rack-svg g.mod-group[data-kind='distortion']", "ms": 30000, "stamp": "grit"}, {"op": "wait", "ms": 300}, {"op": "mark", "name": "distplate", "sel": "#rack-svg g.mod-group[data-kind='distortion']"}, {"op": "mark", "name": "filter2", "sel": "#rack-svg g.mod-group[data-kind='filter']"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}]},
+        {"at": "together2:Shape", "op": "path", "sel": "#rack-svg [data-addr='node#cut']", "points": [[0.5, 0.5], [0.5, 0.0544], [0.5, 0.1915]], "ms": 2800},
+        {"at": "together3:Add-0.3", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": "/", "ms": 60}, {"op": "wait", "ms": 150}, {"op": "type", "text": "grit", "ms": 85}, {"op": "wait", "ms": 350}, {"op": "mark", "name": "dist", "sel": ".nb-item[data-kind='distortion']"}, {"op": "click", "sel": ".nb-item[data-kind='distortion']"}, {"op": "wait", "ms": 350}, {"op": "move", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type", "ms": 400}, {"op": "wait", "ms": 300}, {"op": "log", "name": "grit", "js": "document.getElementById('nb-status').textContent"}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 60000, "stamp": "shaped"}, {"op": "log", "name": "cut", "js": "document.querySelector(\"#rack-svg [data-addr='node#cut']\")?.getAttribute('aria-valuetext')"}, {"op": "click", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type"}, {"op": "until", "sel": "#rack-svg g.mod-group[data-kind='distortion']", "ms": 30000, "stamp": "grit"}, {"op": "wait", "ms": 300}, {"op": "mark", "name": "distplate", "sel": "#rack-svg g.mod-group[data-kind='distortion']"}, {"op": "mark", "name": "filter2", "sel": "#rack-svg g.mod-group[data-kind='filter']"}, {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}]},
         {"at": "together4:Lock-0.5", "op": "seq", "steps": [{"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 60000}, {"op": "move", "sel": "#rack-svg g.mod-group[data-kind='filter'] .mod-lock", "ms": 400}, {"op": "click", "sel": "#rack-svg g.mod-group[data-kind='filter'] .mod-lock"}, {"op": "mark", "name": "square", "sel": "#rack-svg g.mod-group[data-kind='filter'] .mod-lock"}]},
         {"at": "together4:commit-0.2", "op": "click", "sel": "#improve-check"},
         {"at": "together4:yours", "op": "click", "sel": "#rack-commit"},
         {"at": "together4:yours+1.2", "op": "seq", "steps": [{"op": "mark", "name": "toast", "sel": "#toasts .toast"}, {"op": "log", "name": "claim", "js": "document.getElementById('toasts').innerText"}]},
         {"at": "together4:yours+2.2", "snap": "bar", "op": "click", "sel": "#hold-btn"}
-      ]
-    },
-    {
-      "id": "vp-probe2",
-      "beat": "read",
-      "pre": 0.5,
-      "dur": 40,
-      "setup": [
-        {"op": "preset", "name": "Glass Pad"},
-        {"op": "view", "v": "play"},
-        {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
-        {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
-        {"op": "wait", "ms": 800},
-        {"op": "eval", "js": "const b = document.getElementById('bt-close'); if (b && b.offsetParent) b.click();"},
-        {"op": "key", "key": "a", "ms": 60},
-        {"op": "wait", "ms": 1200},
-        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
-        {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
-        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
-        {"op": "log", "name": "rack", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ') + ' || ' + document.getElementById('belief').textContent"}
-      ],
-      "marks": {"rack": "#rack-scroll"},
-      "actions": [
-        {"at": 0.5, "op": "log", "name": "before", "js": "'cut ' + document.querySelector(\"#rack-svg [data-addr='node/0#cut']\").getAttribute('aria-valuetext') + ' | res ' + document.querySelector(\"#rack-svg [data-addr='node/0#res']\").getAttribute('aria-valuetext') + ' | ' + document.getElementById('belief').textContent.slice(-40)"},
-        {"at": 1.0, "op": "seq", "steps": [{"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -40, "ms": 500}, {"op": "wait", "ms": 150}, {"op": "drag", "sel": "#rack-svg [data-addr='node/0#res']", "dy": -40, "ms": 500}, {"op": "log", "name": "right after", "js": "'cut ' + document.querySelector(\"#rack-svg [data-addr='node/0#cut']\").getAttribute('aria-valuetext') + ' | res ' + document.querySelector(\"#rack-svg [data-addr='node/0#res']\").getAttribute('aria-valuetext') + ' | ' + document.getElementById('belief').textContent.slice(-40)"}, {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 60000, "stamp": "settled"}, {"op": "wait", "ms": 1500}, {"op": "log", "name": "settled", "js": "'cut ' + document.querySelector(\"#rack-svg [data-addr='node/0#cut']\").getAttribute('aria-valuetext') + ' | res ' + document.querySelector(\"#rack-svg [data-addr='node/0#res']\").getAttribute('aria-valuetext') + ' | ' + document.getElementById('belief').textContent.slice(-40)"}, {"op": "snap", "name": "settled"}, {"op": "wait", "ms": 6000}, {"op": "log", "name": "later", "js": "'cut ' + document.querySelector(\"#rack-svg [data-addr='node/0#cut']\").getAttribute('aria-valuetext') + ' | res ' + document.querySelector(\"#rack-svg [data-addr='node/0#res']\").getAttribute('aria-valuetext') + ' | ' + document.getElementById('belief').textContent.slice(-40)"}]}
       ]
     }
   ]

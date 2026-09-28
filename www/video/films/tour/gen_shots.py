@@ -28,6 +28,12 @@ sys.path.insert(0, os.path.join(VIDEO, "tools"))
 from shotgen import INIT, FILLED, QUIET, WIRING, CATS, pick, taught, perform, dump  # noqa: E402
 
 TL = json.load(open(os.path.join(FDIR, "timeline.json")))
+# The first ▶ of a sound that has not been heard yet loads or renders it on
+# the one engine thread first: seconds of silence after the press (the
+# warm-start card's ▶, a bank row's ▶). Until the app answers those presses at
+# once, the shot hears that sound once in set-up, so the ▶ on camera plays as
+# soon as it is pressed. False shows the real first press.
+PREHEAR = True
 BAR = 60 / 84 * 4  # 2.857 s
 C, AM, F, G = ["a", "d", "g"], ["h", "k", ";"], ["f", "h", "k"], ["g", "j", "l"]
 TAB = lambda v: ".viewtab[data-view='%s']" % v  # noqa: E731
@@ -36,9 +42,19 @@ TEACH = taught(picks=("bass", "pad", "texture")) + [MIDI_DEV]
 SETTLED = {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000}
 # The pad among My patches (the warm start saved one of each: bass, pad, texture).
 _PAD = ["#bank-list .bank-item:has(.bi-name:text-is('%s'))" % n for n in CATS["pad"]]
+PAD_ROW = ", ".join(_PAD)
 PAD_HEAR = ", ".join(x + " .bi-hear" for x in _PAD)
 PAD_NAME = ", ".join(x + " .bi-name" for x in _PAD)
+# The named control a swell rides: the first of the six that reaches this
+# patch and can turn up (Bright when it can). Which way each control reaches
+# is measured per session, so it is picked by what it does, not by name.
+UP = ".pf-knob:is([data-i='0'], [data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0"
 TABS_LOG = {"op": "log", "name": "view", "js": "document.querySelector('.viewtab.active')?.dataset.view"}
+
+
+def key_sel(note):
+    """A key on the keybed by MIDI note: white keys are .pkey, black .bkey."""
+    return "%s[data-note='%d']" % (".bkey" if note % 12 in (1, 3, 6, 8, 10) else ".pkey", note)
 
 
 def hold(at, keys, **kw):
@@ -63,10 +79,10 @@ shots.append({
         {"op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 140)"},
         QUIET,
     ],
-    "marks": {"deck": ".pf-deck", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']", "bright": ".pf-knob[data-i='0']", "take": ".pf-pad:has-text('Take')", "name": ".pf-name"},
+    "marks": {"deck": ".pf-deck", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']", "up": UP, "take": ".pf-pad:has-text('Take')", "name": ".pf-name"},
     "actions": [
         hold(0.55, C, until=0.6, until_snap="bar"),
-        {"at": 0.95, "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -60, "ms": 1900},
+        {"at": 0.95, "op": "drag", "sel": UP, "dy": -60, "ms": 1900},
         hold(0.6, AM, snap="bar", ms=2830),
         {"at": 0.5 + BAR + 0.35, "op": "drag", "sel": ".pf-knob[data-i='6']", "dy": -120, "ms": 2600},
         hold(0.6 + BAR, F, snap="bar", ms=2830),
@@ -106,11 +122,11 @@ shots.append({
         WIRING,
         QUIET,
     ],
-    "marks": {"tabs": ".viewtabs", "perform": TAB("perform"), "patch": TAB("play"), "evolve": TAB("evolve"), "taste": TAB("taste"), "deck": ".pf-deck", "bright": ".pf-knob[data-i='0']"},
+    "marks": {"tabs": ".viewtabs", "perform": TAB("perform"), "patch": TAB("play"), "evolve": TAB("evolve"), "taste": TAB("taste"), "deck": ".pf-deck", "up": UP},
     "actions": [
         hold(0.2, C, until="views2:PERFORM-0.05"),
         hold("views2:PERFORM", AM, until="views3:PATCH-0.1"),
-        {"at": "views2:PERFORM+0.25", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -55, "ms": 1000},
+        {"at": "views2:PERFORM+0.25", "op": "drag", "sel": UP, "dy": -55, "ms": 1000},
         {"at": "views3:PATCH-0.25", "op": "click", "sel": TAB("play")},
         hold("views3:PATCH", F, until="views4:EVOLVE-0.3"),
         {"at": "views3:inside", "op": "mark", "name": "rack", "sel": "#rack-scroll"},
@@ -122,6 +138,8 @@ shots.append({
         {"at": "views4:like", "op": "click", "sel": "#choose-b"},
         {"at": "views4:breeds", "op": "log", "name": "picks", "js": "document.getElementById('duel-count').textContent + ' picks · ' + document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
         {"at": "views5:TASTE-0.25", "op": "click", "sel": TAB("taste")},
+        # C over the map, to the end of the beat: the chapter resolves.
+        hold("views5:TASTE+0.3", C, ms="end"),
         {"at": "views5:learned", "op": "mark", "name": "map", "sel": "#taste-crt"},
     ],
 })
@@ -130,17 +148,17 @@ shots.append({
 # Glass Pad under the first four lines; the audition after it.
 shots.append({
     "id": "to-bank", "beat": "bank", "pre": 0.5,
-    "clips": [["bank5:yours-0.3", "@opened-0.35"]],
+    "clips": [["bank5:Click+0.3", "@opened-0.1"]],
     "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
         {"op": "until", "sel": "#belief .bl-u", "ms": 90000},
         SETTLED,
-        {"op": "click", "sel": ".bf[data-f='mine']"},
-        {"op": "wait", "ms": 800},
-        {"op": "click", "sel": PAD_HEAR},
-        {"op": "wait", "ms": 9000},
-        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        *([{"op": "click", "sel": ".bf[data-f='mine']"},
+           {"op": "wait", "ms": 800},
+           {"op": "click", "sel": PAD_HEAR},
+           {"op": "wait", "ms": 9000},
+           {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}] if PREHEAR else []),
         {"op": "click", "sel": ".bf[data-f='pool']"},
         {"op": "eval", "js": "document.getElementById('bank-list').scrollTop = 0"},
         {"op": "wait", "ms": 1200},
@@ -161,15 +179,17 @@ shots.append({
         {"at": "bank4:save", "op": "log", "name": "rows", "js": "[...document.querySelectorAll('#bank-list .bank-item .bi-name')].map((n) => n.textContent).join(', ')"},
         {"at": "bank5:play-0.15", "op": "click", "sel": PAD_HEAR},
         {"at": "bank5:play+0.1", "op": "mark", "name": "hear", "sel": PAD_HEAR},
-        {"at": "bank5:Click-0.35", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": " ", "ms": 80}]},
+        {"at": "bank5:Click-0.25", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": " ", "ms": 60}]},
         {"at": "bank5:Click-0.1", "op": "seq", "steps": [
             {"op": "eval", "js": "window.__subject = document.getElementById('rack-subject').textContent"},
             {"op": "click", "sel": PAD_NAME},
             {"op": "until", "js": "document.getElementById('rack-subject').textContent !== window.__subject", "ms": 90000, "stamp": "opened"},
             {"op": "log", "name": "opened", "js": "document.getElementById('rack-subject').textContent"},
         ]},
-        hold("bank5:yours", AM, ms=1100),
-        hold("bank5:yours+1.15", F, ms="end"),
+        {"at": "bank5:Click+0.4", "op": "mark", "name": "padrow", "sel": PAD_ROW},
+        # The row's own sound, live, the moment it lands (after the cut).
+        hold("bank5:Click+0.45", AM, ms=1300),
+        hold("bank5:Click+1.8", F, ms="end"),
     ],
 })
 
@@ -183,6 +203,10 @@ shots.append({
     ],
     "marks": {"keybar": "footer.keybar", "piano": "#piano", "c3": ".pkey[data-note='48']", "c4": ".pkey[data-note='60']", "hold": "#hold-btn", "arp": "#arp-btn", "glide": "#glide", "rec": "#rec-btn", "midi": "#midi-ind", "vol": "#vol"},
     "actions": [
+        # Under the first line, a bass figure on the keys on screen, in eighths
+        # at 84 (C3 C3 G3 B♭3 G3 …), where the camera is looking.
+        *[{"at": "dock1:bottom%+.2f" % (i * 0.357 - 0.1), "op": "press", "sel": key_sel(n), "fx": 0.5, "fy": 0.8, "ms": 170}
+          for i, n in enumerate([48, 48, 55, 58, 55, 48, 48, 55])],
         {"at": "dock2:screen-0.15", "op": "press", "sel": ".pkey[data-note='48']", "fx": 0.5, "fy": 0.85, "ms": 260},
         {"at": "dock2:screen+0.25", "op": "press", "sel": ".pkey[data-note='55']", "fx": 0.5, "fy": 0.85, "ms": 260},
         hold("dock2:computer-0.1", ["a"], ms=180),
@@ -253,19 +277,21 @@ shots.append({
         FILLED,
         MIDI_DEV,
         QUIET,
-        {"op": "click", "sel": pick("bass", " + .wi-play")},
-        {"op": "until", "sel": ".wi-play.playing", "ms": 120000},
-        {"op": "wait", "ms": 1200},
-        {"op": "click", "sel": pick("bass", " + .wi-play")},
-        {"op": "until", "js": "!document.querySelector('.wi-play.playing')", "ms": 10000},
-        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
-        QUIET,
+        *([{"op": "click", "sel": pick("bass", " + .wi-play")},
+           {"op": "until", "sel": ".wi-play.playing", "ms": 120000},
+           {"op": "wait", "ms": 1200},
+           {"op": "click", "sel": pick("bass", " + .wi-play")},
+           {"op": "until", "js": "!document.querySelector('.wi-play.playing')", "ms": 10000},
+           {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+           QUIET] if PREHEAR else []),
         {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((n) => n.textContent).join(', ')"},
     ],
     "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "bass": pick("bass")},
     "actions": [
-        {"at": "first2:Play-0.15", "op": "click", "sel": pick("bass", " + .wi-play")},
-        {"at": "first2:Play+0.1", "op": "until", "sel": ".wi-play.playing", "ms": 20000, "stamp": "heard"},
+        # ▶ on the bass card as the narrator says "it asks": its five-second
+        # phrase runs under "Play them, pick three…" up to the cut.
+        {"at": "first1:asks-0.1", "op": "click", "sel": pick("bass", " + .wi-play")},
+        {"at": "first1:asks+0.1", "op": "until", "sel": ".wi-play.playing", "ms": 20000, "stamp": "heard"},
         {"at": "first2:pick-0.1", "op": "seq", "steps": [
             {"op": "click", "sel": pick("bass")},
             {"op": "wait", "ms": 220},
@@ -276,14 +302,18 @@ shots.append({
         {"at": "first2:teach-0.1", "op": "click", "sel": "#warm-go"},
         {"at": "first2:teach+0.2", "op": "seq", "steps": [
             {"op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
-            {"op": "eval", "js": "window.__pf0 = document.querySelector('.pf-name')?.textContent || ''"},
             {"op": "until", "js": "/preferences learned/.test(document.getElementById('toasts').textContent)", "ms": 60000, "stamp": "learned"},
-            {"op": "until", "js": "(document.querySelector('.pf-name')?.textContent || '') !== window.__pf0", "ms": 60000, "stamp": "landed"},
+            # PERFORM on the first pick (the bass card), whatever it showed first.
+            {"op": "until", "js": "%s.some((n) => (document.querySelector('.pf-name')?.textContent || '').trim().startsWith(n))" % json.dumps(CATS["bass"]), "ms": 60000, "stamp": "landed"},
         ]},
         {"at": "first3:eighteen", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "first3:eighteen", "op": "mark", "name": "picks", "sel": "#duel-count"},
-        {"at": "first3:eighteen", "op": "mark", "name": "lamp", "sel": "#wm-lamp"},
         {"at": "first3:eighteen", "op": "log", "name": "landed", "js": "document.getElementById('duel-count').textContent + ' picks · lamp ' + (document.getElementById('wm-lamp').classList.contains('thinking') ? 'thinking' : 'idle') + ' · ' + document.getElementById('toasts').textContent.slice(0, 160)"},
+        # PERFORM is open on the first pick: a soft pulse from the MIDI keyboard
+        # (quarters at 84, velocity 64) under the result, before the full
+        # figure on "ready to play".
+        *[{"at": "first3+%.2f" % (0.5 + i * 0.714), "op": "midi", "note": n, "vel": 64, "ms": 300}
+          for i, n in enumerate([48, 48, 55, 57, 48, 48, 55, 53])],
         {"at": "first4:saved", "op": "mark", "name": "mine", "sel": ".bf[data-f='mine']"},
         {"at": "first4:ready-0.1", "op": "log", "name": "perform", "js": "(document.querySelector('.pf-name')?.textContent || '') + ' · ' + (document.querySelector('.pf-status')?.textContent || '')"},
         # A 303 figure on the first pick, in eighths at 84: C C C' C G A C…

@@ -7,16 +7,38 @@
 // locks and ⚡ evolve, commit, files. Then everything at once on the acid line,
 // and the outro, which points on to EVOLVE.
 //
+// Every shot is the same seeded session, taught off camera (the warm start's
+// first, fifth and eighth cards). A card beat borrows a shot and runs it on
+// unbroken under the card: a chapter's turn borrows the chapter's shot, which
+// starts a bar early (`pre` in shots.json); the title borrows the cold open's
+// shot, and the outro the last chapter's (their `dur` covers the card). The
+// turn's plan entry says where that shot starts (`meta.pre`) and keeps its
+// cuts out of the card (`clips: []`); tools/validate.mjs checks both.
+//
 // The camera and the callouts are pinned to the narration's words and to the
 // elements footage.mjs measured (marks). `aim(z, x, y)` centres the camera on
 // a point of the 1920×1080 app. The camera moves only between callouts, and
-// each chapter opens wide before it frames the part being discussed. The lock
-// chapter cuts inside itself (the shot's `clips`): the ⚡ press, then the child
-// it benched tens of seconds later.
+// each chapter opens wide before it frames the part being discussed. Two
+// chapters cut inside themselves (the shot's `clips`): changing it, through
+// the engine's settling after each edit, and ⚡ evolve, from the press to the
+// child it benched tens of seconds later.
 //
 // Under the demos the app is the music: the bed is out (each beat's `bed_db`
 // in script.json), and in under the title, the chapter cards and the outro.
 import { walkthrough, aim } from "../../stage/walk.js";
+
+// One bar of the bed (84 BPM, 4/4): a turn starts on a bar line and its
+// chapter one bar later.
+const BAR = 240 / 84;
+// Each chapter's shot starts this long before its beat (shots.json `pre`).
+const PRE = 3.4;
+const WIDE = [1.0, 0.5, 0.5];
+
+/** A chapter's turn: the chapter's own shot, already running under the card,
+ *  framed as the chapter opens. */
+function turn(beat, shot, cam = WIDE) {
+  return { beat, shot, meta: { pre: +(PRE - BAR).toFixed(6) }, clips: [], cam: [[0, ...cam]] };
+}
 
 export async function build(stage) {
   await walkthrough(stage, {
@@ -28,6 +50,16 @@ export async function build(stage) {
         // as its cutoff opens, then eases back as it closes.
         cam: [[0, 1.02, 0.5, 0.5], [2.3, 1.0, 0.5, 0.5], [5.4, ...aim(1.5, 1005, 390)], [8.2, ...aim(1.5, 1005, 390)], [11.3, ...aim(1.1, 940, 450)]],
       },
+      {
+        // The cold open's shot runs on under the title card (the acid line
+        // stops on the title's downbeat), easing back to the whole rack.
+        beat: "title",
+        shot: "vp-cold",
+        meta: { pre: +(4 * BAR + 0.5).toFixed(6) },
+        clips: [],
+        cam: [[0, ...aim(1.1, 940, 450)], ["title2", ...aim(1.1, 940, 450)], ["title2:apart", ...WIDE]],
+      },
+      turn("t-read", "vp-read"),
       {
         beat: "read",
         shot: "vp-read",
@@ -57,15 +89,16 @@ export async function build(stage) {
           { at: "read6:decibels", mark: "sustain", side: "bottom", dx: -110, dy: 190, text: "decibels" },
         ],
       },
+      turn("t-hear", "vp-hear"),
       {
         beat: "hear",
         shot: "vp-hear",
         chapter: "02 · hearing it properly",
         cam: [
           [0, 1.0, 0.5, 0.5],
-          ["hear1:play", ...aim(1.45, 560, 170)],
-          ["hear2:judge", ...aim(1.45, 560, 170)],
-          ["hear2:play", 1.0, 0.5, 0.5],
+          ["hear1:play-0.25", ...aim(1.45, 560, 170)],
+          ["hear2:play-0.25", ...aim(1.45, 560, 170)],
+          ["hear2:play+0.6", 1.0, 0.5, 0.5],
           ["hear3-0.2", 1.0, 0.5, 0.5],
           ["hear3:model", ...aim(1.45, 620, 180)],
           ["hear4-0.3", ...aim(1.45, 620, 180)],
@@ -78,6 +111,7 @@ export async function build(stage) {
           { at: "hear4:can't", mark: "heard", side: "bottom", dx: 60, dy: 70, text: "what the model can't hear", color: "b" },
         ],
       },
+      turn("t-change", "vp-change"),
       {
         beat: "change",
         shot: "vp-change",
@@ -96,6 +130,7 @@ export async function build(stage) {
           { at: "change4:Command", mark: "saw2", side: "top", dx: 40, dy: -70, text: "⌘Z: back in, and heard" },
         ],
       },
+      turn("t-add", "vp-add"),
       {
         beat: "add",
         shot: "vp-add",
@@ -112,14 +147,17 @@ export async function build(stage) {
         ],
         callouts: [
           { at: "add1:forty", until: "add2-0.45", mark: "count", side: "left", dx: -110, dy: 40, text: "42 modules" },
-          { at: "add1:ordered", until: "add2-0.45", mark: "groups", side: "left", oy: -160, dx: -120, dy: 0, text: "sources → shape → filter → space → …" },
+          // The groups' list runs on below the window (the rail scrolls), so
+          // the leader points at its top-left corner, by the first group.
+          { at: "add1:ordered", until: "add2-0.45", mark: "groups", side: "top", ox: -134, oy: 40, dx: -110, dy: 0, text: "sources → shape → filter → space → …" },
           { at: "add2:lights", until: "add3-0.25", mark: "lit", side: "top", dx: -40, dy: -90, text: "every socket it fits" },
           { at: "add2:says", until: "add3-0.25", mark: "status", side: "top", dx: -60, dy: -70, text: "green: insert delay after filter" },
           { at: "add3:play", until: "add4-0.35", mark: "pv", side: "top", dx: 50, dy: -80, text: "a preview: nothing is placed" },
           { at: "add4:in", until: "add5-0.3", mark: "placed", side: "top", dx: 50, dy: -70, text: "placed, as one undo step" },
-          { at: "add5:amber", mark: "amber", side: "top", dx: -60, dy: -100, text: "amber: replaces the supersaw", color: "b" },
+          { at: "add5:amber", mark: "amber", side: "top", dx: -20, dy: -100, text: "amber: replaces the supersaw", color: "b" },
         ],
       },
+      turn("t-move", "vp-move"),
       {
         beat: "move",
         shot: "vp-move",
@@ -141,6 +179,7 @@ export async function build(stage) {
           { at: "move4:wraps+0.6", mark: "wrapped", side: "bottom", dx: 60, dy: 110, text: "mod env → slew → cutoff", color: "b" },
         ],
       },
+      turn("t-steps", "vp-steps"),
       {
         beat: "steps",
         shot: "vp-steps",
@@ -158,6 +197,7 @@ export async function build(stage) {
           { at: "steps3:84", mark: "bpm", side: "top", dx: 60, dy: -80, text: "on the tempo: 84" },
         ],
       },
+      turn("t-lock", "vp-lock"),
       {
         beat: "lock",
         shot: "vp-lock",
@@ -167,7 +207,10 @@ export async function build(stage) {
           ["lock1:Lock-0.4", ...aim(1.35, 1050, 330)],
           ["lock2-0.35", ...aim(1.35, 1050, 330)],
           ["lock2:press", ...aim(1.5, 1600, 200)],
-          ["lock3", ...aim(1.12, 950, 400)],
+          // Held on ⚡ while its callout is up; eased onto the child just
+          // after the cut, before the first callout on it.
+          ["lock3-0.05", ...aim(1.5, 1600, 200)],
+          ["lock3:Only+0.5", ...aim(1.12, 950, 400)],
         ],
         callouts: [
           { at: "lock1:dot", until: "lock2-0.4", mark: "dot", side: "center", dx: 50, dy: 280, text: "one knob, by its dot" },
@@ -177,6 +220,7 @@ export async function build(stage) {
           { at: "lock3:change", until: "lock3:new", mark: "source", side: "bottom", dx: -40, dy: 150, text: "unlocked: free to change", color: "b" },
         ],
       },
+      turn("t-keep", "vp-keep"),
       {
         beat: "keep",
         shot: "vp-keep",
@@ -198,6 +242,7 @@ export async function build(stage) {
           { at: "keep4:claim", mark: "tick", side: "left", dx: -30, dy: 0, text: "a claim, scored apart from what you heard", color: "b" },
         ],
       },
+      turn("t-take", "vp-take"),
       {
         beat: "take",
         shot: "vp-take",
@@ -217,6 +262,7 @@ export async function build(stage) {
           { at: "take3:changed-0.6", mark: "lin1", side: "top", ox: -240, dx: 30, dy: -40, text: "what changed, in words", color: "b" },
         ],
       },
+      turn("t-together", "vp-together"),
       {
         beat: "together",
         shot: "vp-together",
@@ -236,18 +282,19 @@ export async function build(stage) {
           { at: "together4:commit", mark: "tick", side: "left", dx: -30, dy: 0, text: "my edit is better · commit" },
         ],
       },
+      {
+        // The acid line, committed, runs on under the outro and eases back.
+        beat: "outro",
+        shot: "vp-together",
+        meta: { pre: +(8 * BAR + PRE).toFixed(6) },
+        clips: [],
+        cam: [[0, ...aim(1.3, 1000, 260)], ["outro1:change", ...aim(1.3, 1000, 260)], ["outro2", ...WIDE]],
+      },
     ],
   });
-  // The kit's cards (title, chapter turns, outro) need the real stage; the
-  // scratch validators build this plan against a stub and stop here.
-  if (!stage.tl) return;
-  const defs = {};
-  try {
-    const r = await fetch("shots.json", { cache: "no-store" });
-    if (r.ok) for (const s of (await r.json()).shots || []) defs[s.id] = s;
-  } catch {
-    /* no shots.json: the cards fall back to their default lead-in */
-  }
+  // The cards (the title, the chapter turns, the outro) need the real stage;
+  // validate.mjs and framing.mjs build this plan against a stub and stop here.
+  if (!stage.scene) return;
   const { cards } = await import("./cards.js");
-  cards(stage, defs);
+  cards(stage);
 }

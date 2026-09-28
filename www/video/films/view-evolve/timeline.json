@@ -37,7 +37,7 @@
    "id": "turn2",
    "t0": 60.0,
    "t1": 62.74,
-   "music": "loop_b"
+   "music": null
   },
   {
    "id": "play",
@@ -61,7 +61,7 @@
    "id": "turn4",
    "t0": 108.571,
    "t1": 111.311,
-   "music": "loop_a"
+   "music": null
   },
   {
    "id": "meter",
@@ -73,7 +73,7 @@
    "id": "turn5",
    "t0": 131.429,
    "t1": 134.169,
-   "music": null
+   "music": "loop_b"
   },
   {
    "id": "fair",
@@ -85,7 +85,7 @@
    "id": "turn6",
    "t0": 160.0,
    "t1": 162.74,
-   "music": "loop_b"
+   "music": null
   },
   {
    "id": "breed",
@@ -109,7 +109,7 @@
    "id": "turn8",
    "t0": 228.571,
    "t1": 231.311,
-   "music": "loop_a"
+   "music": null
   },
   {
    "id": "rhythm",

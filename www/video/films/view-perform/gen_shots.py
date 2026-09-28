@@ -2,6 +2,8 @@
 # beat, with the one-bar turn before each demo borrowing that demo's shot.
 #
 #   python3 www/video/films/view-perform/gen_shots.py      (from the repo root)
+#   VP_DIAG=1 python3 www/video/films/view-perform/gen_shots.py   (with the
+#       rehearsal-only diagnostics: see DIAG below)
 #
 # Writes films/view-perform/shots.json, and the /*borrow*/ block in film.js.
 # Rerun it after every timeline change (timeline.py --voice, fill_tails.py),
@@ -75,6 +77,87 @@ def hold(at, keys, ms=None, until=None, snap=None):
 def run(at, keys, step=0.17, ms=150, start=0.0):
     """A run of single notes, one after another from the word `at` + start."""
     return [{"at": f"{at}+{start + i * step:.2f}", "op": "hold", "keys": [k], "ms": ms} for i, k in enumerate(keys)]
+
+
+# Diagnostics, for rehearsals only: `VP_DIAG=1 python3 …/gen_shots.py` puts
+# them in; by default they are left out, because they wrap app functions and
+# a recording must run the app as it is.
+DIAG = os.environ.get("VP_DIAG") == "1"
+_diag_ids = set()
+
+
+def _diag(a):
+    _diag_ids.add(id(a))
+    return a
+
+
+# Diagnostics (rehearsal evidence for the app's authors, harmless on camera):
+# when held notes drop and why, and what the status line did. A page listener
+# records blur, focus, keyup and visibility events; the live engine's
+# noteOff, allOff and setPatch are wrapped to record who called them; the
+# status line's changes are recorded as they happen. `lit` reads the keybed
+# and the page clock, and empties the record, so each log holds only what
+# happened since the one before.
+DIAG_JS = (
+    "(() => { const D = window.__diag = []; const t = () => (performance.now() / 1000).toFixed(2); "
+    "const who = () => (new Error().stack || '').split('\\n').slice(3, 6).map((s) => s.trim().replace(/^at /, '')"
+    ".replace(/https?:\\/\\/[^/]+\\//, '').replace(/\\?v=[^:]*/, '')).join(' < '); "
+    "window.addEventListener('blur', () => D.push('blur@' + t())); "
+    "window.addEventListener('focus', () => D.push('focus@' + t())); "
+    "const el = (n) => n && n.tagName ? n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + (typeof n.className === 'string' && n.className ? '.' + n.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') : String(n); "
+    "window.addEventListener('keydown', (e) => D.push('kd ' + e.key + (e.repeat ? ' (repeat)' : '') + ' on ' + el(e.target) + '@' + t()), true); "
+    "window.addEventListener('keydown', (e) => D.push('kd-end ' + e.key + (e.defaultPrevented ? ' (prevented)' : '')), false); "
+    "document.addEventListener('keyup', (e) => D.push('keyup ' + e.key + '@' + t()), true); "
+    "document.addEventListener('visibilitychange', () => D.push('vis ' + document.visibilityState + '@' + t())); "
+    "const L = window.__aur && window.__aur.getLive(); "
+    "if (L) { const off = L.noteOff.bind(L), all = L.allOff.bind(L), set = L.setPatch.bind(L); "
+    "L.noteOff = (n) => { D.push('off ' + n + '@' + t() + ' ' + who()); return off(n); }; "
+    "L.allOff = () => { D.push('allOff@' + t() + ' ' + who()); return all(); }; "
+    "L.setPatch = (a, b) => { D.push('setPatch@' + t() + ' ' + who()); return set(a, b); }; } "
+    # The engine worker's traffic that PERFORM drives: each perform_* or
+    # edit_* request and its reply, and whether a drift's tree has the kept
+    # tree's structure (perform.js's structureDiffers: Back glides only then).
+    "const shape = (j) => j.replace(/-?\\d+(\\.\\d+)?(e-?\\d+)?/g, '#'); const wp = Worker.prototype.postMessage; const tapped = new WeakSet(); "
+    "Worker.prototype.postMessage = function (m, ...r) { try { if (m && /^(perform_|edit_)/.test(m.type || '')) D.push('>' + m.type + (m.req != null ? '#' + m.req : '') + '@' + t()); } catch (e) {} "
+    "if (!tapped.has(this)) { tapped.add(this); this.addEventListener('message', (e) => { try { const d = e.data, ty = (d && d.type) || ''; "
+    "if (!/^(perform_|edit_rejected)/.test(ty) && !(ty === 'tree_json' && d.edited)) return; "
+    "D.push('<' + ty + (d.req != null ? '#' + d.req : '') + (d.edited ? '(' + d.edited + ')' : '') + (d.error ? ' ERR ' + String(d.error).slice(0, 80) : '') + '@' + t()); "
+    "if (ty === 'perform_applied' && d.json) window.__kept = d.json; "
+    "if (ty === 'perform_drifted' && d.drift && d.drift.tree && window.__kept) { const a = shape(window.__kept), b = shape(JSON.stringify(d.drift.tree)); let i = 0; while (i < a.length && a[i] === b[i]) i++; "
+    "D.push(a === b ? 'drift: same structure as kept' : 'drift: structure DIFFERS from kept at ' + i + ': kept ' + a.slice(Math.max(0, i - 60), i + 40) + ' / drift ' + b.slice(Math.max(0, i - 60), i + 40)); } "
+    "} catch (err) { D.push('tap error ' + err); } }); } return wp.call(this, m, ...r); }; "
+    "const st = document.querySelector('.pf-status'); let last = st.textContent; "
+    "new MutationObserver(() => { const s = st.textContent; if (s !== last) { last = s; D.push('status \"' + s.slice(0, 56) + '\"@' + t()); } })"
+    ".observe(st, { childList: true, subtree: true, characterData: true }); })()"
+)
+DIAG_ON = _diag({"at": 0.1, "op": "eval", "js": DIAG_JS})
+# Every toast as it comes and goes, in shot seconds (the eval runs at 0.1 s),
+# so a confirmation's wait behind the toast before it can be measured.
+TOASTS_ON = _diag({"at": 0.1, "op": "eval", "js": (
+    "(() => { const T = window.__toasts = []; const t0 = performance.now() / 1000 - 0.1; "
+    "const t = () => (performance.now() / 1000 - t0).toFixed(2); "
+    "const toast = (n) => n.classList && n.classList.contains('toast'); "
+    "new MutationObserver((ms) => { for (const m of ms) { "
+    "for (const n of m.addedNodes) if (toast(n)) T.push('+' + t() + ' ' + n.textContent.slice(0, 64)); "
+    "for (const n of m.removedNodes) if (toast(n)) T.push('-' + t() + ' ' + n.textContent.slice(0, 20)); } })"
+    ".observe(document.getElementById('toasts'), { childList: true }); })()"
+)})
+
+
+def toasts(at):
+    return _diag({"at": at, "op": "log", "name": "toasts", "js": "(window.__toasts || []).join(' | ')"})
+LIT = (
+    "'lit ' + [...document.querySelectorAll('#piano .down')].map((k) => k.dataset.note).join(',') "
+    "+ ' | now ' + (performance.now() / 1000).toFixed(2) "
+    "+ ' | focus ' + (document.activeElement ? document.activeElement.tagName.toLowerCase() + (document.activeElement.id ? '#' + document.activeElement.id : '') + (typeof document.activeElement.className === 'string' && document.activeElement.className ? '.' + document.activeElement.className.trim().split(/\\s+/)[0] : '') : 'none') "
+    "+ ' | ' + (window.__diag || []).splice(0).join(' ; ') "
+    "+ ' | ' + document.querySelector('.pf-status').textContent "
+    "+ ' | ' + [...document.querySelectorAll('.pf-knob')].slice(0, 3).map((k) => k.getAttribute('aria-valuetext')).join(', ')"
+)
+
+
+def lit(at, name):
+    return _diag({"at": at, "op": "log", "name": name, "js": LIT})
 
 
 shots = []
@@ -157,7 +240,9 @@ shots.append({
         # offline; the keys still play), on through the cut, then the figure
         # in eighths under the Bright ride.
         *[{"at": f"named6+{0.3 + i * 0.714:.3f}", "op": "hold", "keys": [k], "ms": 600} for i, k in enumerate(["k", "g", ";", "k"])],
-        *[{"at": f"named7+{0.1 + i * 0.714:.3f}", "op": "hold", "keys": [k], "ms": 600} for i, k in enumerate(["l", "g", "k", ";", "l"])],
+        # From 0.65 s after the cut: the cut opens 0.6 s before the wiring
+        # lands, and nothing can be played before that stamp has come.
+        *[{"at": f"named7+{0.65 + i * 0.714:.3f}", "op": "hold", "keys": [k], "ms": 600} for i, k in enumerate(["l", "g", "k", ";"])],
         *[{"at": f"named8:Bright+{i * 0.357:.3f}", "op": "hold", "keys": [k], "ms": 300} for i, k in enumerate(figure)],
         {"at": "named8:Bright+0.2", "op": "drag", "sel": BRIGHT, "dy": -110, "ms": 3200},
         {"at": "named8:knobs", "op": "log", "name": "hood", "js": "[...document.querySelectorAll('.pf-hood-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()).join(' ; ')"},
@@ -171,7 +256,7 @@ shots.append({
 # variant it asked for lands in B (cut if it grows slowly), heard on Peek.
 shots.append({
     "id": "vp-honest", "beat": "honest", "pre": turn_pre("honest", "turn-honest"),
-    "clips": [["honest5:marked", "@offered-0.4"]],
+    "clips": [["honest5:marked", "@offered-0.1"]],
     # Off camera: Space dragged the closed way (the guide says it will not go
     # past the centre), where the dial and the sound end up logged, then
     # double-clicked back to the centre.
@@ -189,10 +274,16 @@ shots.append({
         {"at": "honest2:far-0.2", "op": "drag", "sel": SPACE, "dy": -80, "ms": 800},
         hold("honest2:line-0.3", ["f", "h", "k"], ms=900),
         {"at": "honest2:line", "op": "log", "name": "space", "js": "document.querySelector(\"" + SPACE + "\").getAttribute('aria-valuetext') + ' / ' + document.querySelector(\"" + SPACE + " .pf-k-sub\").textContent"},
-        hold("honest3:amber", ["d", "g", "h", "k"], until="honest6:take+0.6"),
+        # Split at the cut: an `until` past a cut waits for the cut's stamp
+        # before it presses anything, which would silence the Grit turn. The
+        # cut lands 0.1 s before the offer does, and nothing can be played
+        # before that stamp, so the chord is struck again 0.1 s after the cut
+        # (a 0.12 s break in the film, under the cut's own crossfade).
+        hold("honest3:amber", ["d", "g", "h", "k"], until="honest5:marked-0.02"),
+        hold("honest5:marked+0.1", ["d", "g", "h", "k"], until="honest6:take+0.6"),
         {"at": "honest4:Turn", "op": "drag", "sel": GRIT, "dy": -70, "ms": 800},
         {"at": "honest4:Turn+1.0", "op": "until", "sel": ".pf-offer.ready", "ms": 90000, "stamp": "offered"},
-        {"at": "honest5:marked", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
+        {"at": "honest5:marked+0.1", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
         {"at": "honest6:listen", "op": "press", "sel": PAD("Peek"), "ms": 1500},
     ],
 })
@@ -222,12 +313,24 @@ shots.append({
 # that); the next one is heard at the same Blend, then taken.
 shots.append({
     "id": "vp-offer", "beat": "offer", "pre": turn_pre("offer", "turn-offer"), "own_setup": True,
-    "clips": [["offer5:pass+0.9", "@next-0.3"]],
+    "clips": [["offer5:pass+0.9", "@next-0.1"]],
     "setup": taught_perform("Glass Pad"),
     "marks": {"offer-pad": OFFER, "offer": ".pf-offer", "blend": BLEND, "peek": PAD("Peek"), "take": PAD("Take"), "deck": ".pf-deck"},
     "actions": [
-        hold("offer1-0.3", ["f", "h", "k", ";"], ms="end"),
+        # Held through the beat, struck again just after the cut. A hold "to
+        # the end" cannot be used in a shot whose cut waits on a stamp: its
+        # length is only known once the stamp has come, so footage.mjs would
+        # press nothing until then.
+        hold("offer1-0.3", ["f", "h", "k", ";"], until="offer5:pass+0.88"),
+        hold("offer5:pass+1.0", ["f", "h", "k", ";"], until="offer7+5.55"),
+        DIAG_ON,
+        TOASTS_ON,
+        lit("offer1:Press-0.1", "lit before offer"),
         {"at": "offer1:Press", "op": "click", "sel": OFFER},
+        lit("offer2:follows", "lit after offer"),
+        lit("offer3:Peek-0.1", "lit before peek"),
+        lit("offer4:ride-0.1", "lit before blend"),
+        lit("offer5:Press-0.2", "lit before pass"),
         {"at": "offer1:Press+0.2", "op": "until", "sel": ".pf-offer.ready", "ms": 60000, "stamp": "ready"},
         {"at": "offer2:follows", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
         {"at": "offer3:Peek", "op": "press", "sel": PAD("Peek"), "ms": 1600},
@@ -243,6 +346,9 @@ shots.append({
         {"at": "offer6:sound", "op": "click", "sel": PAD("Take")},
         {"at": "offer6:sound+0.5", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "offer6:sound+0.5", "op": "log", "name": "take", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
+        lit("offer6:sound-0.2", "lit before take"),
+        lit("offer7", "lit after take"),
+        toasts("offer7:model"),
     ],
 })
 
@@ -252,12 +358,22 @@ shots.append({
 # and Freeze; Back glides home.
 shots.append({
     "id": "vp-wander", "beat": "wander", "pre": turn_pre("wander", "turn-wander"), "own_setup": True,
-    "clips": [["wander3:ideas+0.3", "@offered-0.3"], ["wander4:knobs", "@drift-0.4"]],
+    "clips": [["wander3:ideas+0.3", "@offered-0.1"], ["wander4:knobs", "@drift-0.1"]],
     "setup": taught_perform("Glass Pad"),
     "marks": {"wander": WANDER, "status": ".pf-status", "offer": ".pf-offer", "hood": ".pf-hood", "freeze": PAD("Freeze"), "keep": PAD("Keep"), "back": PAD("Back"), "deck": ".pf-deck"},
     "actions": [
-        hold("wander1-0.3", ["f", "h", "k", ";"], ms="end"),
+        # Split at the cuts, as in the offer shot.
+        hold("wander1-0.3", ["f", "h", "k", ";"], until="wander3:ideas+0.28"),
+        hold("wander3:ideas+0.4", ["f", "h", "k", ";"], until="wander4:knobs-0.02"),
+        hold("wander4:knobs+0.1", ["f", "h", "k", ";"], until="wander8+5.3"),
+        DIAG_ON,
+        lit("wander1:Keep-0.1", "lit before keep"),
         {"at": "wander1:Keep", "op": "click", "sel": PAD("Keep")},
+        lit("wander2:Wander-0.2", "lit before wander"),
+        lit("wander3:ideas", "lit at idea"),
+        lit("wander4:Further-0.1", "lit before drift"),
+        lit("wander7:Touch-0.1", "lit before touch"),
+        lit("wander8:Back-0.1", "lit before back"),
         {"at": "wander2:Wander-0.1", "op": "drag", "sel": WANDER, "dy": -45, "ms": 450},
         {"at": "wander2:Wander+0.6", "op": "until", "sel": ".pf-offer.ready", "ms": 60000, "stamp": "offered"},
         {"at": "wander4:Further", "op": "seq", "steps": [
@@ -273,6 +389,8 @@ shots.append({
         {"at": "wander7:Freeze", "op": "click", "sel": PAD("Freeze")},
         {"at": "wander7:is+0.3", "op": "log", "name": "held", "js": STATUS + " + ' / ' + document.querySelector(\"" + WANDER + " .pf-k-sub\").textContent"},
         {"at": "wander8:Back", "op": "click", "sel": PAD("Back")},
+        lit("wander8:kept+0.3", "lit after back"),
+        lit("wander8+5.2", "lit at the end"),
         {"at": "wander8:kept+0.4", "op": "log", "name": "home", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.getAttribute('aria-valuetext')).join(' | ') + ' || ' + " + STATUS},
     ],
 })
@@ -287,6 +405,7 @@ shots.append({
     ]),
     "marks": {"hold": "#hold-btn", "uni": "#uni-btn", "glide": "#glide", "arp": "#arp-btn", "sync": "#sync-btn", "rec": "#rec-btn", "keybed": "#piano", "hood": ".pf-hood"},
     "actions": [
+        TOASTS_ON,
         {"at": "dock1:Hold+0.1", "op": "click", "sel": "#hold-btn"},
         hold("dock1:latches", ["a", "d", "g", "j"], ms=500),
         {"at": "dock2:Unison-0.2", "op": "seq", "steps": [{"op": "click", "sel": "#hold-btn"}, {"op": "click", "sel": "#uni-btn"}]},
@@ -316,6 +435,7 @@ shots.append({
         {"at": "dock6:WAV+3.0", "op": "mark", "name": "saved", "sel": "#toasts .toast"},
         {"at": "dock6:WAV+3.0", "op": "log", "name": "saved", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
         {"at": "dock6:WAV+2.6", "op": "click", "sel": "#hold-btn"},
+        toasts("dock6:WAV+3.4"),
     ],
 })
 
@@ -326,6 +446,7 @@ shots.append({
     "marks": {"ind": "#midi-ind", "bright": BRIGHT, "motion": MOTION, "hood": ".pf-hood", "deck": ".pf-deck"},
     "actions": [
         hold("midi1-0.3", ["a", "d", "g"], ms="end"),
+        TOASTS_ON,
         {"at": "midi1:Plug", "op": "click", "sel": "#midi-ind"},
         {"at": "midi1:Plug+0.4", "op": "mark", "name": "panel", "sel": "#midi-panel"},
         {"at": "midi1:Plug+0.4", "op": "mark", "name": "rows", "sel": "#midi-panel .midi-rows"},
@@ -347,14 +468,17 @@ shots.append({
         {"at": "midi5:open", "op": "eval", "js": "(() => { const c = new BroadcastChannel('auracle-midi'); c.postMessage({ type: 'claim', id: 'zzzzzzzzzzzzzz', at: Date.now() + 1e7 }); setTimeout(() => c.close(), 1000); })()"},
         {"at": "midi5:open+0.6", "op": "log", "name": "aside", "js": "document.getElementById('midi-ind').textContent + ' / ' + (document.querySelector('#midi-panel .midi-why')?.textContent || '')"},
         {"at": "midi5:aside", "op": "mark", "name": "why", "sel": "#midi-panel .midi-why"},
+        toasts("midi5:aside+0.5"),
     ],
 })
 
 # ---------------------------------------------------------------- together (taught)
-# Acid Line at 84, 1/16 up·down, latched; Wander up to drift; Offer (the spare
-# lands at once) and Blend ridden past half; Take on the downbeat; the latch
-# lets go a bar later. The shot runs on under the outro, which reuses it: the
-# PATCH tab is clicked on "PATCH" (silent there: bed only).
+# Acid Line at 84, 1/16 up·down, latched on the beat's first downbeat (as the
+# card clears); Wander up to drift; Offer (the spare lands at once) and Blend
+# ridden past half; Take on the downbeat. The latch stays on, so the arpeggio
+# plays the taken sound to the end of the beat, where the bed takes over. The
+# shot runs on under the outro, which reuses it: the PATCH tab is clicked on
+# "PATCH" (silent there: bed only).
 tg = B["together"]
 pre_tg = turn_pre("together", "turn-together")
 shots.append({
@@ -371,8 +495,10 @@ shots.append({
     ]),
     "marks": {"wander": WANDER, "offer": ".pf-offer", "blend": BLEND, "take": PAD("Take"), "hold": "#hold-btn", "arp": "#arp-btn", "status": ".pf-status", "deck": ".pf-deck", "patch": ".viewtab[data-view='play']"},
     "actions": [
-        {"at": "together1-0.5", "op": "move", "sel": "#arp-ctl", "ms": 200},
-        hold("together1-0.6", ["a", "d", "g"], ms=300, snap="bar"),
+        DIAG_ON,
+        TOASTS_ON,
+        hold("together1-0.8", ["a", "d", "g"], ms=300, snap="bar"),
+        {"at": "together1-0.5", "op": "move", "sel": "#arp-btn", "ms": 300},
         {"at": "together2:Wander", "op": "drag", "sel": WANDER, "dy": -125, "ms": 800},
         {"at": "together2:offer", "op": "click", "sel": OFFER},
         {"at": "together2:offer+0.2", "op": "until", "sel": ".pf-offer.ready", "ms": 60000, "stamp": "ready"},
@@ -380,11 +506,18 @@ shots.append({
         {"at": "together3:downbeat", "op": "click", "sel": PAD("Take"), "snap": "bar"},
         {"at": "together3:downbeat+1.2", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "together3:downbeat+1.2", "op": "log", "name": "take", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
-        {"at": "together3:downbeat+5.4", "op": "click", "sel": "#hold-btn", "snap": "bar"},
+        lit("together3:downbeat-0.2", "lit before take"),
+        lit("together3:downbeat+4.0", "lit after take"),
+        lit("outro2:PATCH-0.4", "lit at outro"),
+        toasts("outro2:PATCH-0.3"),
         {"at": "outro2:PATCH-0.2", "op": "click", "sel": ".viewtab[data-view='play']"},
         {"at": "outro2:PATCH+0.8", "op": "log", "name": "patch", "js": "document.getElementById('rack-subject')?.textContent || ''"},
     ],
 })
+
+if not DIAG:
+    for sh in shots:
+        sh["actions"] = [a for a in sh["actions"] if id(a) not in _diag_ids]
 
 spec = {
     "viewport": [1920, 1080], "dpr": 1, "query": "?film", "init": INIT,
@@ -394,6 +527,7 @@ spec = {
 dump(spec, os.path.join(FILM, "shots.json"))
 for s in shots:
     print(f"{s['id']:<12} beat {s['beat']:<9} pre {s['pre']}" + (f" dur {s['dur']}" if "dur" in s else ""))
+print("diagnostics:", "in (VP_DIAG=1)" if DIAG else "out")
 
 # film.js: where the title and the outro's borrowed shots start (their plan
 # entries' meta.pre), between the /*borrow*/ markers.

@@ -29,8 +29,9 @@ played during a turn, because `app_audio.py` places a shot's sound over its
 own beat only. The title borrows the cold open's shot, and the outro borrows
 the `together` shot, in the same way. `validate.mjs` checks all of it.
 
-Only the demo beats carry lines, so publish.py's chapter list holds exactly
-one entry per chapter, plus the title, *together* and the outro.
+Only the demo beats carry lines. publish.py lists a film's chapters from its
+`CHAPTER_NAMES` entry, so each chapter starts at its turn card (the names are
+in the hand-back: the cold open, the title, the nine turns and the outro).
 
 **The session.** Every shot is the same seeded session (`init`) as a
 returning player's: the film's `init` also marks the first-run coach and
@@ -134,9 +135,10 @@ are the offer, drift and roam boundaries.
   is played in quarter notes while it measures (the measurement renders
   offline; the keys still play). The beat cuts (`clips`) at `named7`
   ("Then it wires…") to 0.6 s before the wiring lands. Bell Jar's Bright is
-  its wavefolder's fold, ridden up under a struck figure of eighth notes.
+  its wavefolder's threshold (lower folds more), ridden up under a struck
+  figure of eighth notes.
 - **Callouts:** *Bright: ridden up* · *the patch's own knobs* · *long press:
-  hear it* · *PERFORM listens* (amber, on the status) · *Bright → fold* ·
+  hear it* · *PERFORM listens* (amber, on the status) · *Bright → wavefolder threshold* ·
   *different knobs, same name*.
 
 ## 4. `honest` — **03 · Honest controls** · *What if this patch can't do that?* (shot `vp-honest`)
@@ -171,7 +173,8 @@ are the offer, drift and roam boundaries.
 
 ## 6. `offer` — **05 · Offers** · *How do you try something new without stopping?* (shot `vp-offer`, taught)
 
-- **Actions:** Fmaj7 is held throughout, then:
+- **Actions:** Fmaj7 is held throughout (struck again just after the cut,
+  since a hold cannot run across a cut that waits on a stamp), then:
   - Offer: the spare lands in B at once;
   - Peek is held for 1.6 s, then Blend is ridden past half (B is heard);
   - Offer again is the pass (its toast), and a new variant grows. The beat
@@ -184,7 +187,8 @@ are the offer, drift and roam boundaries.
 
 ## 7. `wander` — **06 · Wander, Keep and Back** · *Can it play along, and bring you home?* (shot `vp-wander`, taught)
 
-- **Actions:** Fmaj7 is held throughout, then:
+- **Actions:** Fmaj7 is held throughout (struck again just after each cut),
+  then:
   - Keep;
   - Wander into the offer zone, and the idea lands in B (the beat cuts to it
     if it is slow);
@@ -243,12 +247,16 @@ pattern, so Sync is heard.
 ## 10. `together` — **all of it at once** · *Putting it together.* (shot `vp-together`, taught, Acid Line at 84)
 
 - **Actions:** HOLD and ARP (up·dn, 1/16) are set off camera. Then:
-  - C on the first downbeat: the arpeggio;
+  - C on the beat's first downbeat, as the card clears: the arpeggio;
   - Wander into drift;
   - Offer: the spare lands at once;
   - Blend past half;
-  - Take on the next bar line;
-  - HOLD off on a later bar line, and the line rings out.
+  - Take on the next bar line.
+  - The latch stays on, so the arpeggio plays the taken sound to the end of
+    the beat. There the app's sound fades over 0.25 s while the bed ramps in
+    over 0.4 s (mix.py), so the outro's downbeat is a hand-over, not a gap.
+- **Camera:** wide (the dock's HOLD and ARP are lit), then 1.2 on Wander,
+  Blend, B and the pads, then 1.2 on Take with room for its toast.
 - **Callouts:** *Wander: drift* · *B: an offer, on the arpeggio* (amber) ·
   *Take, on the downbeat*.
 

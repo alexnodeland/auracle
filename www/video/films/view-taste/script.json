@@ -61,6 +61,11 @@
         {
           "id": "tabs3",
           "text": "Directions show what pulls you. Trust shows whether to believe any of it.",
+          "post": 0.3
+        },
+        {
+          "id": "tabs4",
+          "text": "The chips along the top are your styles, the same in every tab.",
           "post": 0.6
         }
       ]
@@ -107,17 +112,17 @@
         {
           "id": "hear1",
           "text": "Click a dot, and that sound is under your fingers.",
-          "post": 4.4
+          "post": 4.8
         },
         {
           "id": "hear2",
           "text": "The maybes are where to explore.",
-          "post": 4.4
+          "post": 4.8
         },
         {
           "id": "hear3",
-          "text": "And a dim dot is one it thinks you'd skip.",
-          "post": 3.4
+          "text": "And a dim dot is a sound it thinks you'd skip.",
+          "post": 3.8
         }
       ]
     },
@@ -183,11 +188,6 @@
         {
           "id": "dir5",
           "text": "Read the whisker, not the bar. If a whisker crosses the centre line, it's still a guess.",
-          "post": 0.4
-        },
-        {
-          "id": "dir6",
-          "text": "A short bar with a tight whisker is a small pull it's sure of.",
           "post": 0.7
         }
       ],
@@ -307,12 +307,12 @@
         {
           "id": "together2",
           "text": "After a round of picks, open the map, walk it with the arrow keys, and play what glows.",
-          "post": 4.6
+          "post": 5.4
         },
         {
           "id": "together3",
           "text": "Try a maybe. Star the ones you love. Then go back and pick.",
-          "post": 3.4
+          "post": 4.0
         }
       ]
     },

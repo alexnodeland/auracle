@@ -4,7 +4,8 @@ The deep dive into EVOLVE, over the real instrument: one recorded shot per
 chapter (`shots.json` → `tools/footage.mjs`), framed by `stage/walk.js`, with
 the title, the chapter cards and the outro drawn with the kit (`cards.js`).
 Nineteen beats (a cold open, the title, eight chapters of a one-bar turn and a
-demo each, the outro), 46 lines, about 500 words at speed 0.9, 4 min 31 s.
+demo each, the outro) over ten recorded shots, 46 lines, 503 words at speed
+0.9, 4 min 31 s.
 
 **Who it is for.** Musicians who want to grow sounds rather than dial them
 in. They should leave knowing how to judge a duel by ear (1, 2, then ← or →),
@@ -18,9 +19,9 @@ is heard: the five-second phrase each card plays (a held C4, a C5 stab, C4+E4,
 and a low C3 that rings out), the warm start's ▶, a bank row's ▶, and chords
 played on a card. Under the demos the app is the music: the bed is out
 (`bed_db: -60`). The `study` bed comes in under the title, each chapter's
-one-bar turn and the outro (`bed_db: 0`). Its 16-bar loops are placed so
-every bed-on beat sits inside one, and no two copies ever overlap
-(`arrangement.json`). Chords are C, Am, F and G, two beats each at 84 BPM, on
+one-bar turn and the outro (`bed_db: 0`). Its sections are `loop_a` from the
+title and `loop_b` from the fifth turn, each running until the next starts
+(`walkthrough.sh` fits the score to them; the levels do the rest). Chords are C, Am, F and G, two beats each at 84 BPM, on
 the beat grid.
 
 ## The session
@@ -51,6 +52,15 @@ what a click does.
 `meta.pre = 3.4 − one bar`), so the footage runs unbroken under the chapter
 card and into the chapter. The title borrows the cold open's shot the same
 way; `ve-open` has a `dur` that covers the title.
+
+**Generated.** `shots.json` comes from `gen_shots.py` (with the shared
+`tools/shotgen.py`), and the tails, turn leads and bed sections in
+`script.json` from `fit_timing.py`. Re-run both after any change to the
+voice:
+
+    www/video/tools/voice.sh view-evolve
+    python3 www/video/films/view-evolve/fit_timing.py
+    python3 www/video/films/view-evolve/gen_shots.py
 
 **Selectors.**
 - EVOLVE: `#duel-mid` (the meter), `#teach-pips`, `#teach-copy`, `#duel-pred`
@@ -149,17 +159,21 @@ blur, and a skip that is clicked on camera is followed by one.
 ## `turn5` + `fair` — shot `ve-fair` (fair1–5) · 05 · fair questions
 
 - **Card:** *05 · Fair questions · Why these two?*
-- **Set-up:** taught, nothing else. The page has dealt only two pairs, so the
-  app's probe mark can still show (it shows only in the first five deals
-  after a page load; reported).
+- **Set-up:** taught + 4 picks, then a skip after the forecast's hold, so the
+  forecast line starts clear.
 - **Actions:**
-  - `fair1:Why`: skip, which shows the mark: *◇ unbiased probe — picks like
-    this one score the honesty meter*;
   - `1`, then `2`, heard under fair2;
   - `fair3:pick`: a pick, and its forecast;
-  - `fair5:skip`: skip again, and the mark again.
-- **Callouts:** "dealt at random" (amber) on the mark; "its forecast, checked
-  against you"; "TASTE › TRUST" on the TASTE tab; "skip · nothing recorded".
+  - `fair5:skip`: skip, a new pair, and nothing recorded.
+- **The truth it tells.** Under the default pairing every pair is random, so
+  every pick is a fair test of the forecast (TASTE › TRUST). This build shows
+  its "◇ unbiased probe" mark only on the first deals after a page load, and
+  its tooltip says one duel in ten. That is reported, and a fix that states
+  the rule steadily is on its way. The film does not show the mark; re-point
+  the first callout at the new element when it lands.
+- **Callouts:** "A and B: dealt at random" (amber) on the pair; "its forecast,
+  checked against you"; "TASTE › TRUST" on the TASTE tab; "skip · nothing
+  recorded".
 
 ## `turn6` + `breed` — shot `ve-breed` (breed1–7) · 06 · a generation
 
@@ -186,9 +200,14 @@ blur, and a skip that is clicked on camera is followed by one.
   - `keep1:three`: ▶ (heard);
   - `keep2:teach`: four stars ("… rated 4★");
   - `keep3:keeps`: save ("Saved … — it won't be replaced. 4/10 slots used.");
-  - `keep4:Cut`: cut the next unsaved row ("Cut … #id." with undo).
-- **Callouts:** "a rating teaches" (amber); "a save keeps, and teaches
-  nothing"; "seven seconds to undo"; "saved: never retired" on the pin budget.
+  - `keep4:Cut`: hover the next unsaved row (its cut control shows on
+    approach), then cut it ("Cut … #id." with undo).
+- **Camera:** wide, so the rail and the toasts are both in view (the rows
+  re-sort as the model takes each answer in, so the callouts point at what
+  stays put); the rail at 1.4 for the last line.
+- **Callouts:** "a rating teaches" (amber) on the rating's toast; "a save
+  keeps, and teaches nothing" on the save's toast; "seven seconds to undo" on
+  the cut's toast; "saved: never retired" on the pin budget.
 
 ## `turn8` + `rhythm` — shot `ve-rhythm` (rhythm1–5) · 08 · a working rhythm
 
@@ -201,10 +220,10 @@ Putting it together.
   - `rhythm3:Evolve`: EVOLVE POOL.
 - **Cut** (`clips`): from `rhythm4` to `@bred-0.3`.
 - **After the cut:**
-  - the card holding a new child is clicked, and the child plays C, Am, F, G
-    on the keys;
-  - `rhythm4:save`: its row is saved;
-  - `rhythm5:duels`: back to a pick.
+  - `rhythm4:Play`: the first new ⚡ row is clicked, which opens the child on
+    the bench and in PATCH, and the child plays C, Am, F, G on the keys;
+  - after the chords, its row is saved;
+  - `rhythm5:back`: back to EVOLVE; `rhythm5:round`: a pick.
 - **Callouts:** "a new child, on the keys"; "saved".
 
 ## `outro` — shot `ve-outro` (outro1–2; bed in)

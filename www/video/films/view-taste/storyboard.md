@@ -8,32 +8,53 @@ kit over their shots (`film.js`), as `films/launch` draws its cards.
 
 **TASTE is quiet by nature, so the film keeps it moving and audible.** Every
 chapter either plays something (a dot clicked and played on the keys, a
-style's exemplar, a duel) or changes the view on camera (a tab, a rename, a
+style's example, a duel) or changes the view on camera (a tab, a rename, a
 refit). Under the demos the bed is out (`bed_db: -60`) and the app is the
 music; under the title, the chapter turns without app sound and the outro it
-is at 0. Chords are in the bed's F Lydian: Fmaj7 `f h k ;`, Em7 `d g j l`,
-Am7 `g h k ;`, Am `h k ;`, a fifth `a g`.
+is at 0. Chords are in the bed's F Lydian and follow each other without a
+shared key: Fmaj7 `f h k ;`, Em7 `d g j l`, Am7 `g h k ;`, Am `h k ;`, a
+fifth `a g`.
+
+## Making it
+
+    python3 www/video/films/view-taste/gen_shots.py   # shots.json
+    www/video/tools/voice.sh view-taste               # voice, ASR gate, timeline.json
+    www/video/tools/rehearse.sh view-taste            # dry run + summary
+    node www/video/tools/validate.mjs view-taste
+    python3 www/video/tools/framing.py view-taste
+
+`gen_shots.py` writes the shots; `session.py` holds the taught session and
+the page scripts the set-ups run. `arrangement.json` is written by the
+timeline step from each beat's `music` and `bed_db`.
 
 ## The two sessions
 
 Both are seeded (`init`) and built off camera in each shot's set-up, so every
-take is the same session. The listener that answers (`common.py` in the
-generator) holds one taste for the whole session: dark, slow sounds (warm
-pads, washes, drones) and bright, struck ones (glass plucks, bells), over
-anything noisy or gritty. It judges a pool patch by its name, which the app
-reads off the measured sound (`<character> <role>`, naming.rs), so it judges
-the same way every time.
+take is the same session. The listener that answers (`session.py`) holds one
+taste for the whole session: dark, slow sounds (warm pads, washes, drones)
+and bright, struck ones (glass plucks, bells), over anything noisy or gritty,
+the example the TASTE page gives. It judges a pool patch by its name, which
+the app reads off the measured sound (`<character> <role>`, naming.rs), and a
+preset by a table, so it judges the same way every time.
 
-- **FRESH** (open, title): the warm start skipped, five picks, so the meter
-  reads *1 more pick and it redraws your taste map* and the map is its
+- **FRESH** (open, title): the warm start skipped and five picks, so the
+  meter reads *1 more pick and it redraws your taste map* and the map is its
   pre-fit self (*nothing predicted yet · 5 of 6 picks*). Then *skip ↻*
-  (records nothing) re-deals until both sides are sounds the listener likes,
-  so the two auditions on camera are musical.
-- **RICH** (every chapter): the warm start (the listener's three: Sea
-  Change, Coin Toss, Pump Room), thirty duels, five stars (Warm Drone 2,
-  Warm Drone and Coin Toss ★5; Noisy Pad 3 and Gritty Drone ★1), a first
-  note to retire the keybed coach, then duels to the edge of a refit. The
-  header reads about 56 picks, and TRUST has 32 forecasts.
+  (records nothing) re-deals until the pair is two kinds of sound, one the
+  listener likes and neither one it dislikes, so the two auditions on camera
+  are musical.
+- **RICH** (every chapter): the warm start answered by the listener (its
+  three favourite cards), thirty duels, stars from the listener (★5 on the
+  three bank rows it likes most, ★1 on the two it likes least), a first note
+  to retire the keybed coach, then duels to the edge of a refit.
+
+**Nothing is chosen by name.** A new build of the engine deals a different
+pool, so every target is chosen by what it is, from the engine's own taste
+views: the firm yes is the surest of the brightest dots that the listener
+likes, the maybe the least sure of them, the dim dot the dimmest, the
+neighbours the tightest group whose names share a word. The rehearsal's
+sidecars log what each set-up chose (`targets`, `pick`, `rows`, `trust`,
+`pair`, `walk`).
 
 **Finding things on the canvas.** MAP, STYLES, DIRECTIONS and TRUST are drawn
 on one canvas. `init` also carries a passive listener on the engine worker
@@ -44,13 +65,12 @@ a row or a bin, and drops an invisible 2-px marker on it (`#vt-*`). The
 pointer ops and the marks use the markers.
 
 **Selectors.** Taste tabs `.tab[data-tab='map'|'styles'|'dir'|'trust']`;
-chips `#style-chips .style-chip:nth-child(n)` with `.sc-name`, `.sc-play`;
-the canvas `#taste-crt`; legend `#map-legend`; the live label `#live-label`;
-the live bank row `.bank-item.live` with `.star[data-s='1'…'5']`; EVOLVE
-`#play-a`, `#play-b`, `#choose-a`, `#choose-b`, `#duel-pred`,
-`#teach-copy .teach-link` (*see what changed ▸*, live for 3.2 s); ⋯ menu
-`#ovf-btn`, `#export-btn`, the *Load taste profile* label, `#taste-reset-btn`,
-`#alarm`.
+chips `#style-chips .style-chip` with `.sc-name`, `.sc-play`; the canvas
+`#taste-crt`; legend `#map-legend`; the live label `#live-label`; the live
+bank row `.bank-item.live` with `.star[data-s='1'…'5']`; EVOLVE `#play-a`,
+`#play-b`, `#choose-a`, `#choose-b`, `#duel-pred`, `#teach-copy .teach-link`
+(*see what changed ▸*, live for 3.2 s); ⋯ menu `#ovf-btn`, `#export-btn`,
+the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
 
 ---
 
@@ -64,8 +84,8 @@ the live bank row `.bank-item.live` with `.star[data-s='1'…'5']`; EVOLVE
   and clicked; `@best+0.1` Fmaj7 held to the end.
 - **Clips:** `[7.9, "@lit-0.9"]`, a cut from the link to just before the fit
   lands (no cut when it is quick).
-- **Camera:** wide on the pre-fit map; 1.12 on the pair; wide as the map
-  lights; a slow push.
+- **Camera:** wide on the pre-fit map; in on the pair; wide as the map
+  lights; a slow push onto the brightest dot.
 - **Reads without sound:** dim, even dots and *nothing predicted yet*, then
   the whole map lit.
 
@@ -77,78 +97,86 @@ the live bank row `.bank-item.live` with `.star[data-s='1'…'5']`; EVOLVE
   **TASTE** in amber, *what it learned about you*, and the four views with
   TASTE lit.
 
-## 3. `tabs` — shot `vt-tabs` (tabs1–3) — chapter `01 · four ways in`
+## 3. `tabs` — shot `vt-tabs` (tabs1–4) — chapter `01 · four ways in`
 
 - **Set-up:** RICH.
 - **Actions:** each tab clicked on its word: map, styles, directions, trust.
 - **Callouts:** under each tab as it opens: *where your sounds sit*, *the
-  tastes it has found*, *what pulls you*, *whether to believe it*.
+  tastes it has found*, *what pulls you*, *whether to believe it*; then the
+  chips, *your styles, in every tab*.
 
 ## 4. `map` — shot `vt-map` (map1–5) — chapter `02 · the map`
 
-- **Set-up:** RICH; markers on Sea Change (small and bright), Warm Drone 2
-  (big and bright) and four neighbours in the gritty, noisy corner.
+- **Set-up:** RICH; markers on the firm yes, the maybe and the four
+  neighbours (`MAP_TARGETS`).
 - **Actions:** `map2:Nearby` the pointer glides over the four neighbours
-  (their tooltips name them); `map3:Glow` off the dots (the legend); `map4:small`
-  hovers Sea Change (*would like: 81%*); `map5:big` hovers Warm Drone 2
-  (*would like: 93%*).
-- **Camera:** 1.7 on the neighbours; 1.6 on the legend; 1.7 on each dot.
+  (their tooltips name them); `map3:Glow` off the dots, to the legend;
+  `map4:small` hovers the firm yes (*would like: N%*); `map5:big` hovers the
+  maybe.
+- **Camera:** in on the neighbours; wide for the legend and the bank; in on
+  each dot.
 
 ## 5. `hear` — shot `vt-hear` (hear1–3; bed out)
 
 - **Actions:** each dot clicked on its line, and played once the bench has it
-  (the live label, stamped): Sea Change, Fmaj7 then Em7; Warm Drone 2, a
-  fifth then Am; Noisy Bell (dim), Fmaj7.
-- **Camera:** 1.2 with the dot and the keybed both in frame.
+  (the live label, stamped): the firm yes, Fmaj7 then Em7; the maybe, a fifth
+  then Am; the dimmest dot, Fmaj7.
+- **Camera:** 1.2, with the dot and the keybed both in frame.
 
-## 6. `styles` — shot `vt-styles` (styles1–5) — chapter `03 · styles`
+## 6. `styles` — shot `vt-styles` (styles1–5; bed out) — chapter `03 · styles`
 
-- **Actions:** `styles1:taste` STYLES; `styles4:plays` ▶ on the third chip
-  (its exemplar is Warm Drone 2), then ▶ on the second (Coin Toss);
-  `styles5:Name` the third chip renamed *dark drones* (Enter).
+- **Actions:** `styles1:taste` STYLES; `styles4:plays` ▶ on the chip whose
+  example the listener likes best, then ▶ on another style's; `styles5:Name`
+  that first chip renamed (`RENAME` in gen_shots.py, which has to fit its
+  example: the `pick` log says what it is), Enter. No refit follows the
+  rename on camera.
 - **Callouts:** the chips; each ▶; the renamed chip, *yours now*.
 
 ## 7. `directions` — shot `vt-dir` (dir1–5) — chapter `04 · directions`
 
 - **Actions:** `dir1:Directions` DIRECTIONS; markers on the rows the lines
   name (grit, body, space), the longest bars each way, and the longest bar
-  whose whisker crosses the centre line.
-- **Callouts:** *toward*, *away*, *grit: all three pull away*, *body*,
-  *space*, *whisker over the line: a guess*.
+  whose drawn whisker plainly crosses the centre line.
+- **Callouts:** *toward*, *away*, grit, *body*, *space*, *whisker over the
+  line: a guess*.
+- **Check:** dir3 says every style pulls away from grit. The `rows` log has
+  every style's grit bar; rewrite the line if one is not left of centre.
 
 ## 8. `trust` — shot `vt-trust` (trust1–5) — chapter `05 · trust`
 
 - **Actions:** `trust1:believe` TRUST; markers on the diagonal, the axis,
   the largest bucket and the check-duel line.
-- **The numbers:** 32 forecasts · Brier 0.201 · 20% sharper than chance; on
-  32 unbiased check duels the same (every dealt duel is a check under the
-  default random pairing). trust4 says *twenty percent*, which is what the
-  screen says.
+- **Check:** trust4 says the score on duels dealt at random, as the check
+  line prints it. The `trust` log has the numbers; the line follows the
+  screen.
 
-## 9. `wrong` — shot `vt-wrong` (wrong1–6) — chapter `06 · when it's wrong`
+## 9. `wrong` — shot `vt-wrong` (wrong1–6; bed out) — chapter `06 · when it's wrong`
 
-- **Actions:** `wrong2:thinks` hover Noisy Wash (*would like: 80%*);
-  `wrong2:one` click it, Fmaj7 once it is on the bench; `wrong3:one` ★1 on
-  its row; `wrong4` EVOLVE, where the pair dealt is Noisy Bell against Noisy
-  Wash; `wrong4:other` choose against the model (the side the bank rates
-  lower): *⚡ Surprise — it had this backwards*; the link clicked at
-  `@learned+1.0`; the refit lands (stamp `fitted`); Noisy Wash re-marked and
-  hovered (*would like: 46%*).
+- **Set-up:** RICH, then pairs re-dealt with skip (records nothing) until one
+  side is a sound the model rates at 70% or more, the listener dislikes and
+  nobody has starred, against a side it rates lower (`WRONG_PAIR`); its dot
+  marked.
+- **Actions:** `wrong2:thinks` hover it (*would like: N%*); `wrong2:one`
+  click it, Fmaj7 once it is on the bench; `wrong3:one` ★1 on its row;
+  `wrong4` EVOLVE, where that pair is on the table; `wrong4:other` choose the
+  other side, against the model: *⚡ Surprise — it had this backwards*; the
+  link clicked at `@learned+1.0`; the refit lands (stamp `fitted`); the same
+  sound marked again (the axes turn a little at a refit) and hovered, dimmer.
 - **Clips:** `["wrong6-0.3", "@fitted-0.7"]`.
 
-## 10. `profile` — shot `vt-profile` (profile1–3) — chapter `07 · your profile`
+## 10. `profile` — shot `vt-profile` (profile1–4) — chapter `07 · your profile`
 
-- **Actions:** ⋯; *Save taste profile* (a real download, kept in
-  `vt-profile.dl/`); ⋯ again, hover *Load taste profile* (not clicked: it
-  opens the system's file picker); *Reset taste profile…*, whose question
-  appears; *keep it*.
+- **Actions:** ⋯; *Save taste profile* (a real download); ⋯ again, hover
+  *Load taste profile*; a file handed to its input (the system's file picker
+  cannot be filmed), so the app's question appears, and *keep mine*; *Reset
+  taste profile…*, its question, *keep it*.
 
-## 11. `together` — shot `vt-together` (together1–3) — chapter `08 · the loop`
+## 11. `together` — shot `vt-together` (together1–3; bed out) — chapter `08 · the loop`
 
-- **Actions:** `together2:walk` focus the map, → (the leftmost dot, Warm
-  Drone 2), Enter, Fmaj7 to the bar; `together3:maybe` → → (Warm Bell, big
-  and bright), Enter, Em7; `together3:Star` ★5 on its row; `together3:pick`
-  EVOLVE.
+- **Actions:** `together2:walk` the map focused, the arrow keys step the
+  dashed cursor to a bright dot the listener likes, Enter, Fmaj7 to the bar;
+  `together3:maybe` on to a maybe nobody has starred, Enter, Em7 then Am7;
+  `together3:Star` ★5 on its row; `together3:pick` EVOLVE.
 
 ## 12. `outro` — shot `vt-outro` (outro1–3; bed at 0)
 
@@ -165,4 +193,11 @@ the live bank row `.bank-item.live` with `.star[data-s='1'…'5']`; EVOLVE
    Fixed in the app (8340b64: *empty sockets*).
 2. **The map mirrored on a refit** (x and y correlated −0.98 and −0.77 across
    one refit), against the guide's "the orientation is pinned". Fixed in the
-   engine (pkg rebuilt 23:06); the wrong beat re-checks it.
+   engine (11c4a15); the wrong beat re-checks it.
+3. **Size barely varied** on the map, so "a small, bright dot" and "a big,
+   bright dot" were hard to tell apart. With a fix agent.
+4. **A renamed style seemed to move at a refit.** It stays on the style (the
+   exemplar can change); the guide now says so (21a339e).
+5. **DIRECTIONS capped the drawn whisker**, so a wide interval could look as
+   if it did not cross the centre line. With a fix agent; `dirRows()` in
+   `session.py` replays the cap and must follow the fix.

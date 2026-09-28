@@ -2,10 +2,18 @@
 
 The map before the four views' deep dives: where everything is and roughly
 what it does, for someone opening the instrument for the first time. About
-two and a quarter minutes, over the real instrument: one recorded shot per
+2:17, over the real instrument: one recorded shot per
 beat (`shots.json` → `tools/footage.mjs`), framed by `stage/walk.js` (camera,
 callouts, chapter label, captions), with a title card and an end card drawn
-with the kit (`cards.js`). Eight beats, six chapters, 283 words at speed 0.9.
+with the kit (`cards.js`). Eight beats, six chapters, 30 lines at speed 0.9.
+
+**Files.** `script.json` (the words) → `www/video/tools/voice.sh tour` (voice,
+the ASR gate, `timeline.json` and `arrangement.json`) → `gen_shots.py` (writes
+`shots.json` from the timeline) → `film.js` + `cards.js` (the picture).
+`check_audio.py` measures what each rehearsed shot played; `preview_cards.mjs`
+takes stills of the cards before any footage exists. `align_tails.py` sets
+each beat's `tail` so it ends where the next one starts (a snapped start
+would otherwise leave a blank, silent gap at a chapter turn), and re-times.
 
 **Sound.** Every region is shown in use, so the app is the music under almost
 all of it: the bed (`study`, 84 BPM) is out (`bed_db` −60) whenever the
@@ -61,11 +69,12 @@ One chord a bar, on the score's bar lines. The offer is grown in set-up
 > it learned about you.
 
 - *views1*: aim 1.7 at the tabs, callout *four views*; back to wide.
-- PERFORM (Glass Pad): C, then Am with Bright ridden up.
+- PERFORM (Glass Pad): C, then Am with the first control that turns up
+  (Bright, when it can) ridden up.
 - PATCH: F held while the filter's cutoff turns on the rack.
 - EVOLVE: ▶ A, ▶ B, choose B; the next pair slides in (the pair was
   rendered in set-up, so ▶ sounds at once).
-- TASTE: the map.
+- TASTE: the map, over a C chord to the end of the beat.
 - A callout under each tab as it is named, with its deep dive's title.
 
 ## 3. `bank` — 02 · the bank (shot `to-bank`, in PATCH)
@@ -79,8 +88,10 @@ One chord a bar, on the score's bar lines. The offer is grown in set-up
 
 - Am · F · C · G on Glass Pad under the first four lines, one per line.
 - The three lists clicked in turn; callout *its guess* on a row's percentage.
-- ▶ on the first of My patches (the standard phrase); space stops it as the
-  row is clicked, which opens it in PATCH; a short line on it.
+- ▶ on the pad among My patches (its standard phrase, rendered once in
+  set-up); space stops it as the row is clicked, which opens it in PATCH (a
+  cut from the click to the moment it lands, when that takes seconds); Am,
+  then F, on it at once; callout *open, and live* on the row.
 - Camera: aim 1.7 at the rail; out to 1.15 on the rack when the row opens.
 
 ## 4. `dock` — 03 · the dock (shot `to-dock`, Acid Line at 84)
@@ -92,7 +103,8 @@ One chord a bar, on the score's bar lines. The offer is grown in set-up
 > the arpeggiator plays it in time. On the right, glide slides each note into
 > the next. Record saves what you play, next to MIDI and the volume.
 
-- Three ways in: two screen keys, a run on the computer keys, a MIDI figure
+- Under the first line, a bass figure on the keys on screen (C3 C3 G3 B♭3…).
+- Three ways in: a screen key, a run on the computer keys, a MIDI figure
   through the `?film` port (the keys light).
 - HOLD, Am latched, ARP (up·down, 84): the latched chord becomes the
   arpeggio, which runs to the end of the beat.
@@ -105,12 +117,13 @@ One chord a bar, on the score's bar lines. The offer is grown in set-up
 
 *What are the counters and buttons up there?*
 
-> Up top, PICKS counts what you've taught it. GEN counts the generations it
-> has bred. The question mark opens the keyboard map. The three dots hold
-> your files, your taste profile, and these films.
+> Up top, PICKS counts what you've taught it. The number beside it counts
+> generations bred toward your taste. The question mark opens the keyboard
+> map. The three dots hold your files, your taste profile, and these films.
 
 - Nothing plays; the bed is up.
-- Callouts on PICKS (18) and GEN (0) at 1.8×.
+- Callouts on PICKS (18) and the generations count (0) at 1.8×. The
+  narration names the thing, not the label's abbreviation.
 - ? opens the help card (wide), Escape closes it.
 - ⋯ opens the menu; the pointer rests on *Export this patch*, *Save taste
   profile* and *Watch the films* as they are named.
@@ -124,11 +137,15 @@ One chord a bar, on the score's bar lines. The offer is grown in set-up
 > starts out pointed at you. Your three are saved, and PERFORM opens, ready to
 > play.
 
-- The nine cards; ▶ on the bass card; the first bass, pad and texture picked;
-  *teach it* (callout *3 picks × 6 passed = 18*).
-- A cut from the press to just before PERFORM opens (seconds of engine work).
-- Callouts: *18 picks* (PICKS), *the E lights while it learns* (the lamp,
-  amber), *your three* (My patches). A short bass figure on the first pick.
+- The nine cards; ▶ on the bass card as the narrator says "it asks" (heard
+  once in set-up until the warm-start ▶ fix lands), its phrase running up to
+  the cut; the first bass, pad and texture picked; *teach it* (callout
+  *3 picks × 6 passed = 18*).
+- A cut from the press to the "18 preferences learned… Your three are
+  saved." toast (seconds of engine work); PERFORM is open on the first pick.
+- A soft pulse from the MIDI keyboard under the result, then the full 303
+  figure on "ready to play". Callouts: *18 picks* (PICKS), *your three*
+  (My patches).
 
 ## 7. `next` — 06 · where next (shot `to-next`), then the end card
 

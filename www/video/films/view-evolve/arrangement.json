@@ -6,28 +6,13 @@
  "sections": [
   {
    "section": "loop_a",
-   "bars": 17,
+   "bars": 42,
    "t0": 11.429
   },
   {
    "section": "loop_b",
-   "bars": 17,
-   "t0": 60.0
-  },
-  {
-   "section": "loop_a",
-   "bars": 18,
-   "t0": 108.571
-  },
-  {
-   "section": "loop_b",
-   "bars": 24,
-   "t0": 160.0
-  },
-  {
-   "section": "loop_a",
-   "bars": 15,
-   "t0": 228.571
+   "bars": 49,
+   "t0": 131.429
   }
  ],
  "levels": [

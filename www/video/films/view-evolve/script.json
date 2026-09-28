@@ -23,6 +23,7 @@
     },
     {
       "id": "title",
+      "music": "loop_a",
       "snap": "bar",
       "bed_db": 0,
       "lead": 2.2,
@@ -38,8 +39,7 @@
           "text": "It plays you two. You pick the one you'd reach for. Then it breeds new sounds toward your picks.",
           "post": 0.6
         }
-      ],
-      "music": "loop_a"
+      ]
     },
     {
       "id": "turn1",
@@ -98,8 +98,7 @@
       "bed_db": 0,
       "lead": 2.74,
       "tail": 0.0,
-      "lines": [],
-      "music": "loop_b"
+      "lines": []
     },
     {
       "id": "play",
@@ -176,8 +175,7 @@
       "bed_db": 0,
       "lead": 2.74,
       "tail": 0.0,
-      "lines": [],
-      "music": "loop_a"
+      "lines": []
     },
     {
       "id": "meter",
@@ -209,6 +207,7 @@
     },
     {
       "id": "turn5",
+      "music": "loop_b",
       "snap": "bar",
       "bed_db": 0,
       "lead": 2.74,
@@ -254,8 +253,7 @@
       "bed_db": 0,
       "lead": 2.74,
       "tail": 0.0,
-      "lines": [],
-      "music": "loop_b"
+      "lines": []
     },
     {
       "id": "breed",
@@ -347,8 +345,7 @@
       "bed_db": 0,
       "lead": 2.74,
       "tail": 0.0,
-      "lines": [],
-      "music": "loop_a"
+      "lines": []
     },
     {
       "id": "rhythm",

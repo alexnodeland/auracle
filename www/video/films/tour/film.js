@@ -18,8 +18,9 @@
 // Where the film does what the app makes it do:
 // - open: the offer in B is grown in set-up (Offer, then wait for it). A
 //   spare offer grown ahead is handed over at once only while the knobs sit
-//   where it was grown, and the cold open turns Bright first; a fresh offer
-//   is ~10 s of renders.
+//   where it was grown, and the cold open turns a control first (the first
+//   of the six that turns up: Bright, when it can); a fresh offer is ~10 s of
+//   renders.
 // - views: the duel's pair is rendered and heard once in set-up, so ▶ on
 //   camera sounds at once (renders are lazy).
 // - bank: clicking a row opens it and switches to PATCH (the app's own
@@ -33,10 +34,10 @@
 //   camera and pressed again: a real take, and its toast.
 // - first: a fresh session whose set-up stops at the nine cards, and hears
 //   the bass card once (a first ▶ loads the preset, seconds on one engine
-//   thread), so ▶ on camera sounds at once. "teach it" takes seconds: PERFORM
-//   opens on the patch that was on the bench ("opening the patch you
-//   picked…"), then the "18 preferences learned" toast, then the first pick
-//   lands. The beat cuts from the press to that toast (the shot's `clips`).
+//   thread), so ▶ on camera sounds at once. "teach it" takes seconds before
+//   its result shows, so the beat cuts from the press to the "18 preferences
+//   learned… Your three are saved." toast (the shot's `clips`), by when
+//   PERFORM is on the first pick.
 import { walkthrough, aim } from "../../stage/walk.js";
 
 export async function build(stage) {
@@ -66,11 +67,10 @@ export async function build(stage) {
           [0, 1.0, 0.5, 0.5],
           ["views1-0.2", 1.0, 0.5, 0.5],
           ["views1:top", ...aim(1.7, 420, 200)],
-          ["views1:views+0.5", ...aim(1.7, 420, 200)],
-          ["views2:PERFORM-0.1", 1.0, 0.5, 0.5],
+          ["views1:views+0.55", ...aim(1.7, 420, 200)],
+          ["views2:PERFORM", 1.0, 0.5, 0.5],
         ],
         callouts: [
-          { at: "views1:four", until: "views2-0.35", mark: "tabs", side: "bottom", dx: 80, dy: 90, text: "four views" },
           { at: "views2:PERFORM", until: "views3-0.1", mark: "perform", side: "bottom", dx: 60, dy: 130, text: "playing the sound" },
           { at: "views3:PATCH", until: "views4-0.1", mark: "patch", side: "bottom", dx: 60, dy: 130, text: "inside the sound" },
           { at: "views4:EVOLVE", until: "views5-0.1", mark: "evolve", side: "bottom", dx: 60, dy: 130, text: "breeding sounds you like" },
@@ -91,7 +91,7 @@ export async function build(stage) {
         callouts: [
           { at: "bank3:guess", until: "bank4-0.15", mark: "pct", side: "right", dx: 90, dy: 50, text: "its guess" },
           { at: "bank5:hear", until: "bank5:Click-0.2", mark: "hear", side: "right", dx: 110, dy: 40, text: "the same phrase for every sound" },
-          { at: "bank5:yours", mark: "rack", side: "top", ox: -250, dx: 60, dy: -50, text: "open, and live under your keys" },
+          { at: "bank5:yours", mark: "padrow", side: "bottom", dx: 0, dy: 100, text: "open, and live" },
         ],
       },
       {
@@ -102,14 +102,14 @@ export async function build(stage) {
           [0, 1.0, 0.5, 0.5],
           ["dock1-0.2", 1.0, 0.5, 0.5],
           ["dock1:dock", ...aim(1.3, 960, 880)],
-          ["dock3:Hold-0.6", ...aim(1.3, 960, 880)],
-          ["dock3:Hold-0.1", ...aim(1.7, 330, 900)],
+          ["dock3-0.6", ...aim(1.3, 960, 880)],
+          ["dock3:Hold+0.15", ...aim(1.7, 330, 900)],
           ["dock4-0.5", ...aim(1.7, 330, 900)],
           ["dock4:right", ...aim(1.7, 1650, 930)],
         ],
         callouts: [
-          { at: "dock2:computer", until: "dock3-0.3", mark: "c4", side: "top", dx: -40, dy: -110, text: "your computer keys: A to L" },
-          { at: "dock3:Hold", until: "dock3:arpeggiator", mark: "hold", side: "top", dx: 30, dy: -110, text: "hold: latched" },
+          { at: "dock2:computer", until: "dock3-0.65", mark: "c4", side: "top", dx: 40, dy: -110, text: "your computer keys: A to L" },
+          { at: "dock3:Hold+0.2", until: "dock3:arpeggiator", mark: "hold", side: "top", dx: 30, dy: -110, text: "hold: latched" },
           { at: "dock3:time", until: "dock4-0.6", mark: "drawer", side: "top", dx: 60, dy: -70, text: "up and down, at 84" },
           { at: "dock4:glide", until: "dock5-0.2", mark: "glide", side: "top", dx: -60, dy: -110, text: "glide" },
           { at: "dock5:Record", until: "dock5:MIDI-0.1", mark: "rec", side: "top", dx: -90, dy: -110, text: "a take of what you play" },
@@ -132,7 +132,7 @@ export async function build(stage) {
         ],
         callouts: [
           { at: "header1:PICKS", until: "header2-0.3", mark: "picks", side: "bottom", dx: -60, dy: 110, text: "your picks so far" },
-          { at: "header1:number", until: "header2-0.3", mark: "gen", side: "bottom", dx: 30, dy: 190, text: "generations bred" },
+          { at: "header1:number", until: "header2-0.3", mark: "gen", side: "bottom", dx: -30, dy: 200, text: "generations bred" },
           { at: "header3:files", until: "header3:taste-0.1", mark: "export", side: "left", dx: -120, dy: 0, text: "patches, as files" },
           { at: "header3:taste", until: "header3:films-0.1", mark: "profile", side: "left", dx: -120, dy: 0, text: "your taste profile" },
           { at: "header3:films", mark: "films", side: "left", dx: -120, dy: 0, text: "the films" },
@@ -146,13 +146,14 @@ export async function build(stage) {
           [0, 1.0, 0.5, 0.5],
           ["first1-0.2", 1.0, 0.5, 0.5],
           ["first1:open", ...aim(1.5, 960, 540)],
-          ["first3-0.2", ...aim(1.5, 960, 540)],
-          ["first3", 1.0, 0.5, 0.5],
+          // Wide on the cut itself, so the jump in the footage and the camera's
+          // are one edit.
+          ["first3-0.15", ...aim(1.5, 960, 540)],
+          ["first3-0.15", 1.0, 0.5, 0.5],
         ],
         callouts: [
           { at: "first2:teach", until: "first3-0.3", mark: "go", side: "bottom", dx: 60, dy: 90, text: "3 picks × 6 passed = 18" },
           { at: "first3:eighteen", until: "first4-0.2", mark: "picks", side: "bottom", dx: -80, dy: 110, text: "18 picks" },
-          { at: "first3:pointed", until: "first4:ready", mark: "lamp", side: "bottom", dx: 60, dy: 110, text: "the E lights while it learns", color: "b" },
           { at: "first4:saved", mark: "mine", side: "right", dx: 90, dy: 40, text: "your three" },
         ],
       },

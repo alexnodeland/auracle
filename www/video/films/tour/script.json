@@ -28,7 +28,7 @@
       "snap": "bar",
       "bed_db": 0,
       "lead": 1.0,
-      "tail": 1.2,
+      "tail": 1.413,
       "lines": [
         {
           "id": "title1",
@@ -47,7 +47,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 1.0,
+      "tail": 1.135,
       "lines": [
         {
           "id": "views1",
@@ -81,7 +81,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 1.05,
+      "tail": 1.176,
       "lines": [
         {
           "id": "bank1",
@@ -115,7 +115,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 2.4,
+      "tail": 2.528,
       "lines": [
         {
           "id": "dock1",
@@ -149,7 +149,7 @@
       "snap": "bar",
       "bed_db": 0,
       "lead": 0.6,
-      "tail": 1.0,
+      "tail": 1.154,
       "lines": [
         {
           "id": "header1",
@@ -173,7 +173,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 3.2,
+      "tail": 3.327,
       "lines": [
         {
           "id": "first1",

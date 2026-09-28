@@ -1,1824 +1,553 @@
 {
- "viewport": [
-  1920,
-  1080
- ],
- "dpr": 1,
- "query": "?film",
- "init": "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();",
- "setup": [
-  {
-   "op": "until",
-   "sel": "#warmstart:not(.hidden)",
-   "ms": 180000
-  },
-  {
-   "op": "until",
-   "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40",
-   "ms": 300000
-  },
-  {
-   "op": "log",
-   "name": "deal",
-   "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((e) => e.textContent).join(', ')"
-  },
-  {
-   "op": "click",
-   "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four'))"
-  },
-  {
-   "op": "wait",
-   "ms": 250
-  },
-  {
-   "op": "click",
-   "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four')) >> nth=1"
-  },
-  {
-   "op": "wait",
-   "ms": 250
-  },
-  {
-   "op": "click",
-   "sel": ".warm-item:has(.wi-name:text-is('Noise Wash')), .warm-item:has(.wi-name:text-is('Dub Echo')), .warm-item:has(.wi-name:text-is('Static Ocean')), .warm-item:has(.wi-name:text-is('Rotor')), .warm-item:has(.wi-name:text-is('Long Room')), .warm-item:has(.wi-name:text-is('Handheld')), .warm-item:has(.wi-name:text-is('Jet Wash')), .warm-item:has(.wi-name:text-is('Cloud Chamber')), .warm-item:has(.wi-name:text-is('Vox Machina')), .warm-item:has(.wi-name:text-is('Glass Rain')), .warm-item:has(.wi-name:text-is('One Way')), .warm-item:has(.wi-name:text-is('Loom')), .warm-item:has(.wi-name:text-is('Long Way Down'))"
-  },
-  {
-   "op": "click",
-   "sel": "#warm-go"
-  },
-  {
-   "op": "until",
-   "sel": ".viewtab[data-view='perform'][aria-selected='true']",
-   "ms": 180000
-  },
-  {
-   "op": "until",
-   "sel": "#belief .bl-u",
-   "state": "attached",
-   "ms": 180000
-  },
-  {
-   "op": "until",
-   "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-   "ms": 240000
-  },
-  {
-   "op": "view",
-   "v": "evolve"
-  },
-  {
-   "op": "wait",
-   "ms": 800
-  },
-  {
-   "op": "eval",
-   "js": "document.activeElement && document.activeElement.blur()"
-  },
-  {
-   "op": "hold",
-   "keys": [
-    "a"
-   ],
-   "ms": 150
-  },
-  {
-   "op": "wait",
-   "ms": 600
-  }
- ],
- "shots": [
-  {
-   "id": "ve-open",
-   "beat": "open",
-   "pre": 0.5,
-   "dur": 28.1,
-   "setup": [
+  "viewport": [1920, 1080],
+  "dpr": 1,
+  "query": "?film",
+  "init": "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();",
+  "setup": [
+    {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+    {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+    {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((e) => e.textContent).join(', ')"},
+    {"op": "log", "name": "picks", "js": "(() => { const F = {\"pad\": [\"Cathedral\", \"Glass Pad\", \"Detune Dream\", \"Ember\", \"Slow Weather\", \"Morph Pad\", \"Sweep Machine\", \"Sea Change\", \"Pump Room\", \"Tidal\", \"Nine Against Four\"], \"texture\": [\"Noise Wash\", \"Dub Echo\", \"Static Ocean\", \"Rotor\", \"Long Room\", \"Handheld\", \"Jet Wash\", \"Cloud Chamber\", \"Vox Machina\", \"Glass Rain\", \"One Way\", \"Loom\", \"Long Way Down\"], \"weird\": [\"Two Minds\", \"Ceiling\", \"Undertow\", \"Sour Mash\", \"Wrong Number\", \"Inside Out\"]}; const items = [...document.querySelectorAll('.warm-item')]; const name = (e) => e.querySelector('.wi-name').textContent.trim(); const of = (f) => items.filter((e) => F[f].includes(name(e))); const picks = [of('pad')[0], of('texture')[0], of('pad')[1] || of('texture')[1] || of('weird')[0]]; picks.forEach((e, i) => e && (e.dataset.vePick = String(i + 1))); return picks.map((e) => e ? name(e) : '(none)').join(', '); })()"},
+    {"op": "click", "sel": ".warm-item[data-ve-pick='1']"},
+    {"op": "wait", "ms": 250},
+    {"op": "click", "sel": ".warm-item[data-ve-pick='2']"},
+    {"op": "wait", "ms": 250},
+    {"op": "click", "sel": ".warm-item[data-ve-pick='3']"},
+    {"op": "click", "sel": "#warm-go"},
+    {"op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000},
+    {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+    {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+    {"op": "view", "v": "evolve"},
+    {"op": "wait", "ms": 800},
+    {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+    {"op": "hold", "keys": ["a"], "ms": 150},
+    {"op": "wait", "ms": 600}
+  ],
+  "shots": [
     {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
+      "id": "ve-open",
+      "beat": "open",
+      "pre": 0.5,
+      "dur": 28.1,
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "pred": "#duel-pred", "cardA": "#duel-a", "cardB": "#duel-b", "nameA": "#name-a", "nameB": "#name-b", "playA": "#play-a", "playB": "#play-b", "chooseA": "#choose-a", "chooseB": "#choose-b"},
+      "actions": [
+        {"at": 0.8, "op": "key", "key": "1", "ms": 120},
+        {"at": 5.9, "op": "key", "key": "2", "ms": 120},
+        {"at": 10.55, "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": 10.6, "op": "log", "name": "picked", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": 11.2, "op": "mark", "name": "pred", "sel": "#duel-pred"},
+        {"at": 11.6, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ]
     },
     {
-     "op": "wait",
-     "ms": 1200
+      "id": "ve-duel",
+      "beat": "duel",
+      "pre": 3.4,
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "pred": "#duel-pred", "cardA": "#duel-a", "cardB": "#duel-b", "nameA": "#name-a", "nameB": "#name-b", "scopeA": "#scope-a", "scopeB": "#scope-b", "playA": "#play-a", "playB": "#play-b", "chooseA": "#choose-a", "chooseB": "#choose-b"},
+      "actions": [
+        {"at": 3.6, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "duel2:one", "op": "key", "key": "1", "ms": 120},
+        {"at": "duel3:two", "op": "key", "key": "2", "ms": 120},
+        {"at": "duel6:B+0.3", "op": "key", "key": "ArrowRight", "ms": 120},
+        {"at": "duel6:B+0.9", "op": "mark", "name": "pred", "sel": "#duel-pred"},
+        {"at": "duel7", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "duel7:in+0.4", "op": "key", "key": "1", "ms": 100}
+      ]
     },
     {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
+      "id": "ve-play",
+      "beat": "play",
+      "pre": 3.4,
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "pred": "#duel-pred", "cardA": "#duel-a", "cardB": "#duel-b", "nameA": "#name-a", "nameB": "#name-b", "scopeA": "#scope-a", "scopeB": "#scope-b", "chooseA": "#choose-a", "chooseB": "#choose-b", "label": "#live-label", "keybed": "#piano"},
+      "actions": [
+        {"at": 3.6, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "play1:click", "op": "click", "sel": "#duel-a .scope"},
+        {"at": "play1:click+0.1", "op": "until", "js": "document.getElementById('live-label').textContent.trim() === document.getElementById('name-a').firstChild.textContent.trim()", "ms": 30000, "stamp": "liveA"},
+        {"at": "play2:That", "snap": "beat", "op": "hold", "keys": ["a", "d", "g"], "ms": 1300},
+        {"at": "play2:That+1.429", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "ms": 1300},
+        {"at": "play2:That+2.857", "snap": "beat", "op": "hold", "keys": ["f", "h", "k"], "ms": 1300},
+        {"at": "play2:That+4.286", "snap": "beat", "op": "hold", "keys": ["g", "j", "l"], "ms": 1300},
+        {"at": "play3:Click", "op": "click", "sel": "#duel-b .scope"},
+        {"at": "play3:Click+0.1", "op": "until", "js": "document.getElementById('live-label').textContent.trim() === document.getElementById('name-b').firstChild.textContent.trim()", "ms": 30000, "stamp": "liveB"},
+        {"at": "play3:play", "snap": "beat", "op": "hold", "keys": ["a", "d", "g"], "ms": 1300},
+        {"at": "play3:play+1.429", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "ms": 1300},
+        {"at": "play3:play+2.857", "snap": "beat", "op": "hold", "keys": ["f", "h", "k"], "ms": 1300},
+        {"at": "play3:play+4.286", "snap": "beat", "op": "hold", "keys": ["g", "j", "l"], "ms": 1300},
+        {"at": "play5:quick", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "play5:quick+0.6", "op": "mark", "name": "pred", "sel": "#duel-pred"},
+        {"at": "play5:quick+0.8", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ]
     },
     {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
+      "id": "ve-point",
+      "beat": "point",
+      "pre": 3.4,
+      "own_setup": true,
+      "clips": [["point4", "@taught+0.9"]],
+      "setup": [
+        {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
+        {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
+        {"op": "log", "name": "deal", "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((e) => e.textContent).join(', ')"},
+        {"op": "log", "name": "picks", "js": "(() => { const F = {\"pad\": [\"Cathedral\", \"Glass Pad\", \"Detune Dream\", \"Ember\", \"Slow Weather\", \"Morph Pad\", \"Sweep Machine\", \"Sea Change\", \"Pump Room\", \"Tidal\", \"Nine Against Four\"], \"texture\": [\"Noise Wash\", \"Dub Echo\", \"Static Ocean\", \"Rotor\", \"Long Room\", \"Handheld\", \"Jet Wash\", \"Cloud Chamber\", \"Vox Machina\", \"Glass Rain\", \"One Way\", \"Loom\", \"Long Way Down\"], \"weird\": [\"Two Minds\", \"Ceiling\", \"Undertow\", \"Sour Mash\", \"Wrong Number\", \"Inside Out\"]}; const items = [...document.querySelectorAll('.warm-item')]; const name = (e) => e.querySelector('.wi-name').textContent.trim(); const of = (f) => items.filter((e) => F[f].includes(name(e))); const picks = [of('pad')[0], of('texture')[0], of('pad')[1] || of('texture')[1] || of('weird')[0]]; picks.forEach((e, i) => e && (e.dataset.vePick = String(i + 1))); return picks.map((e) => e ? name(e) : '(none)').join(', '); })()"},
+        {"op": "wait", "ms": 1000},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
+      ],
+      "marks": {"card": "#warmstart .warm-card", "grid": "#warm-grid", "go": "#warm-go", "sub": "#warmstart .warm-sub", "pad": ".warm-item[data-ve-pick='1']", "padplay": ".warm-item[data-ve-pick='1'] + .wi-play"},
+      "actions": [
+        {"at": "point2:Play", "op": "click", "sel": ".warm-item[data-ve-pick='1'] + .wi-play"},
+        {"at": "point2:closest", "op": "seq", "steps": [{"op": "click", "sel": ".warm-item[data-ve-pick='1']"}, {"op": "wait", "ms": 300}, {"op": "click", "sel": ".warm-item[data-ve-pick='2']"}, {"op": "wait", "ms": 300}, {"op": "click", "sel": ".warm-item[data-ve-pick='3']"}, {"op": "mark", "name": "go", "sel": "#warm-go"}]},
+        {"at": "point3:passed+0.2", "op": "click", "sel": "#warm-go"},
+        {"at": "point3:passed+0.4", "op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
+        {"at": "@taught+0.2", "op": "view", "v": "evolve"},
+        {"at": "@taught+0.4", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"at": "@taught+0.7", "op": "mark", "name": "copy", "sel": "#teach-copy"},
+        {"at": "@taught+0.7", "op": "mark", "name": "picks", "sel": "#duel-count"},
+        {"at": "@taught+0.8", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ]
     },
     {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
+      "id": "ve-meter",
+      "beat": "meter",
+      "pre": 3.4,
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "wait", "ms": 3500},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "click", "sel": "#skip-duel"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "pips": "#teach-pips", "copy": "#teach-copy", "pred": "#duel-pred", "lamp": "#wm-lamp", "cardA": "#duel-a", "cardB": "#duel-b", "picks": "#duel-count"},
+      "actions": [
+        {"at": 3.6, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": 3.4, "op": "key", "key": "1", "ms": 100},
+        {"at": 4.2, "op": "key", "key": "2", "ms": 100},
+        {"at": "meter1:dot", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "meter1:dot+0.4", "op": "log", "name": "d1", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "meter2", "op": "key", "key": "1", "ms": 100},
+        {"at": "meter2+0.8", "op": "key", "key": "2", "ms": 100},
+        {"at": "meter2:away", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "meter2:away+0.4", "op": "log", "name": "d2", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "meter2:away+0.5", "op": "mark", "name": "pred", "sel": "#duel-pred"},
+        {"at": "meter3:picked", "op": "key", "key": "1", "ms": 100},
+        {"at": "meter3:picked+0.8", "op": "key", "key": "2", "ms": 100},
+        {"at": "meter4:sixth+0.2", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "meter4:sixth+0.6", "op": "log", "name": "d3", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "meter4:sixth+0.5", "op": "until", "js": "document.getElementById('duel-mid').classList.contains('learning')", "ms": 5000, "stamp": "learned"},
+        {"at": "meter4:sixth+0.7", "op": "mark", "name": "copy", "sel": "#teach-copy"},
+        {"at": "meter4:told", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "meter4:told+0.5", "op": "key", "key": "1", "ms": 100}
+      ]
+    },
+    {
+      "id": "ve-fair",
+      "beat": "fair",
+      "pre": 3.4,
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "wait", "ms": 3500},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "click", "sel": "#skip-duel"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "pred": "#duel-pred", "skip": "#skip-duel", "cardA": "#duel-a", "cardB": "#duel-b", "nameA": "#name-a", "nameB": "#name-b", "chooseA": "#choose-a", "chooseB": "#choose-b", "skill": "#skill", "taste": ".viewtab[data-view='taste']"},
+      "actions": [
+        {"at": 3.6, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "fair2+0.2", "op": "key", "key": "1", "ms": 100},
+        {"at": "fair2+2.4", "op": "key", "key": "2", "ms": 100},
+        {"at": "fair3:pick", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "fair3:pick+0.5", "op": "mark", "name": "forecast", "sel": "#duel-pred"},
+        {"at": "fair3:pick+0.6", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "fair5:skip", "op": "seq", "steps": [{"op": "click", "sel": "#skip-duel"}, {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}]},
+        {"at": "fair5:skip+0.5", "op": "mark", "name": "pair2", "sel": "#name-a"},
+        {"at": "fair5:skip+0.6", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "fair5:recorded+0.4", "op": "key", "key": "1", "ms": 100}
+      ]
+    },
+    {
+      "id": "ve-breed",
+      "beat": "breed",
+      "pre": 3.4,
+      "clips": [["breed3", "@bred-0.4"]],
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "eval", "js": "localStorage.setItem('auracle-bank-toured', '1')"},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "evolve": "#evolve-btn", "lineage": "#lineage-log", "rail": "#bank-list", "cardA": "#duel-a", "cardB": "#duel-b"},
+      "actions": [
+        {"at": 3.6, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "breed1:press", "op": "click", "sel": "#evolve-btn"},
+        {"at": "breed1:press+0.3", "op": "until", "sel": "#evolve-btn:not([disabled])", "ms": 900000, "stamp": "bred"},
+        {"at": "breed1:press+0.6", "op": "mark", "name": "evolve", "sel": "#evolve-btn"},
+        {"at": "@bred+0.2", "op": "mark", "name": "fresh", "sel": "#bank-list .bank-item.fresh"},
+        {"at": "@bred+0.2", "op": "mark", "name": "lineage", "sel": "#lineage-log"},
+        {"at": "@bred+0.2", "op": "mark", "name": "line1", "sel": "#lineage-log > div"},
+        {"at": "@bred+0.3", "op": "log", "name": "lineage", "js": "document.getElementById('lineage-log').innerText"},
+        {"at": "@bred+0.3", "op": "log", "name": "fresh", "js": "[...document.querySelectorAll('#bank-list .bank-item.fresh .bi-name')].map((e) => e.textContent).join(', ')"},
+        {"at": "breed4:room", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "breed4:room", "op": "log", "name": "toast", "js": "[...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' || ')"},
+        {"at": "breed7:listen", "op": "click", "sel": "#bank-list .bank-item.fresh .bi-hear"},
+        {"at": "breed7:listen+0.3", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ]
+    },
+    {
+      "id": "ve-keep",
+      "beat": "keep",
+      "pre": 3.4,
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"rail": "#bank-list", "meter": "#duel-mid", "row": "#bank-list .bank-item:not(.saved) >> nth=0", "stars": "#bank-list .bank-item:not(.saved) >> nth=0 >> .stars", "save": "#bank-list .bank-item:not(.saved) >> nth=0 >> .bi-save", "hear": "#bank-list .bank-item:not(.saved) >> nth=0 >> .bi-hear", "budget": "#pin-budget", "chips": ".bank-filters"},
+      "actions": [
+        {"at": 3.6, "op": "log", "name": "rows", "js": "[...document.querySelectorAll('#bank-list .bank-item')].slice(0, 6).map((e) => e.querySelector('.bi-name').textContent + (e.classList.contains('saved') ? ' (saved)' : '')).join(', ')"},
+        {"at": "keep1:three", "op": "click", "sel": "#bank-list .bank-item:not(.saved) >> nth=0 >> .bi-hear"},
+        {"at": "keep2:teach", "op": "click", "sel": "#bank-list .bank-item:not(.saved) >> nth=0 >> .star[data-s='4']"},
+        {"at": "keep2:teach+0.3", "op": "mark", "name": "rated", "sel": "#bank-list .bank-item.kbd"},
+        {"at": "keep2:teach+0.4", "op": "mark", "name": "toast1", "sel": "#toasts .toast"},
+        {"at": "keep3:keeps", "op": "click", "sel": "#bank-list .bank-item.kbd .bi-save"},
+        {"at": "keep3:keeps+0.5", "op": "mark", "name": "saved", "sel": "#bank-list .bank-item.kbd"},
+        {"at": "keep3:nothing", "op": "mark", "name": "toast2", "sel": "#toasts .toast"},
+        {"at": "keep3:nothing", "op": "mark", "name": "budget", "sel": "#pin-budget"},
+        {"at": "keep4:Cut", "op": "seq", "steps": [{"op": "mark", "name": "cutrow", "sel": "#bank-list .bank-item:not(.saved):not(.kbd) >> nth=0"}, {"op": "move", "sel": "#bank-list .bank-item:not(.saved):not(.kbd) >> nth=0", "ox": 40, "ms": 300}, {"op": "wait", "ms": 150}, {"op": "click", "sel": "#bank-list .bank-item:not(.saved):not(.kbd) >> nth=0 >> .bi-kill"}]},
+        {"at": "keep4:back", "op": "mark", "name": "toast3", "sel": "#toasts .toast"},
+        {"at": "keep4:back", "op": "log", "name": "toasts", "js": "[...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' || ')"},
+        {"at": "keep5:pool+0.4", "op": "click", "sel": "#bank-list .bank-item.kbd .bi-hear"}
+      ]
+    },
+    {
+      "id": "ve-rhythm",
+      "beat": "rhythm",
+      "pre": 3.4,
+      "clips": [["rhythm4", "@bred-0.3"]],
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "eval", "js": "localStorage.setItem('auracle-bank-toured', '1')"},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "pips": "#teach-pips", "copy": "#teach-copy", "evolve": "#evolve-btn", "cardA": "#duel-a", "cardB": "#duel-b", "rail": "#bank-list", "label": "#live-label"},
+      "actions": [
+        {"at": 3.4, "op": "key", "key": "1", "ms": 100},
+        {"at": 4.1, "op": "key", "key": "2", "ms": 100},
+        {"at": 4.8, "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": 5.2, "op": "log", "name": "q1", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "rhythm2", "op": "key", "key": "1", "ms": 100},
+        {"at": "rhythm2+0.7", "op": "key", "key": "2", "ms": 100},
+        {"at": "rhythm2+1.4", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "rhythm2+1.8", "op": "log", "name": "q2", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "rhythm2+2.3", "op": "key", "key": "1", "ms": 100},
+        {"at": "rhythm2+3.0", "op": "key", "key": "2", "ms": 100},
+        {"at": "rhythm2+3.7", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "rhythm2+4.1", "op": "log", "name": "q3", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "rhythm2+4.6", "op": "key", "key": "1", "ms": 100},
+        {"at": "rhythm2+5.3", "op": "key", "key": "2", "ms": 100},
+        {"at": "rhythm2+6.0", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "rhythm2+6.4", "op": "log", "name": "q4", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "rhythm3:Evolve", "op": "click", "sel": "#evolve-btn"},
+        {"at": "rhythm3:Evolve+0.3", "op": "until", "sel": "#evolve-btn:not([disabled])", "ms": 900000, "stamp": "bred"},
+        {"at": "@bred+0.3", "op": "log", "name": "after", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "@bred+0.3", "op": "log", "name": "fresh", "js": "[...document.querySelectorAll('#bank-list .bank-item.fresh .bi-name')].map((e) => e.textContent).join(', ')"},
+        {"at": "rhythm4:Play", "op": "seq", "steps": [{"op": "eval", "js": "window.__veChild = document.querySelector('#bank-list .bank-item.fresh .bi-name').textContent.trim()"}, {"op": "click", "sel": "#bank-list .bank-item.fresh >> nth=0 >> .bi-name"}, {"op": "until", "js": "(document.getElementById('rack-subject')?.textContent || '').includes(window.__veChild)", "ms": 60000, "stamp": "child"}, {"op": "mark", "name": "child", "sel": "#rack-subject"}, {"op": "mark", "name": "row", "sel": "#bank-list .bank-item.live"}, {"op": "log", "name": "child", "js": "window.__veChild + ' | live row ' + (document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent || 'none')"}]},
+        {"at": "rhythm4:children+0.3", "snap": "beat", "op": "hold", "keys": ["a", "d", "g"], "ms": 1300},
+        {"at": "rhythm4:children+1.729", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "ms": 1300},
+        {"at": "rhythm4:children+3.157", "snap": "beat", "op": "hold", "keys": ["f", "h", "k"], "ms": 1300},
+        {"at": "rhythm4:children+4.586", "snap": "beat", "op": "hold", "keys": ["g", "j", "l"], "ms": 1300},
+        {"at": "rhythm4:children+6.1", "op": "seq", "steps": [{"op": "until", "js": "(document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent || '').trim() === window.__veChild", "ms": 20000}, {"op": "click", "sel": "#bank-list .bank-item.live .bi-save"}, {"op": "wait", "ms": 400}, {"op": "mark", "name": "row", "sel": "#bank-list .bank-item.live"}, {"op": "mark", "name": "toast", "sel": "#toasts .toast"}]},
+        {"at": "rhythm5:back", "op": "view", "v": "evolve"},
+        {"at": "rhythm5:back+0.3", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"at": "rhythm5:round", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"at": "rhythm5:round+0.4", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ]
+    },
+    {
+      "id": "ve-outro",
+      "beat": "outro",
+      "pre": 0.5,
+      "setup": [
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "eval", "js": "window.__veT = performance.now()"},
+        {"op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},
+        {"op": "wait", "ms": 400},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"},
+        {"op": "wait", "ms": 1100},
+        {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+        {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000},
+        {"op": "until", "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')", "ms": 90000},
+        {"op": "wait", "ms": 1200},
+        {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
+        {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
+        {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+      ],
+      "marks": {"meter": "#duel-mid", "cardA": "#duel-a", "cardB": "#duel-b", "taste": ".viewtab[data-view='taste']", "tabs": ".viewtabs"},
+      "actions": [
+        {"at": 0.7, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": "outro1:TASTE", "op": "move", "sel": ".viewtab[data-view='taste']", "ms": 700}
+      ]
     }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "pred": "#duel-pred",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b",
-    "nameA": "#name-a",
-    "nameB": "#name-b",
-    "playA": "#play-a",
-    "playB": "#play-b",
-    "chooseA": "#choose-a",
-    "chooseB": "#choose-b"
-   },
-   "actions": [
-    {
-     "at": 0.8,
-     "op": "key",
-     "key": "1",
-     "ms": 120
-    },
-    {
-     "at": 5.9,
-     "op": "key",
-     "key": "2",
-     "ms": 120
-    },
-    {
-     "at": 10.55,
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": 10.6,
-     "op": "log",
-     "name": "picked",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": 11.2,
-     "op": "mark",
-     "name": "pred",
-     "sel": "#duel-pred"
-    },
-    {
-     "at": 11.6,
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-duel",
-   "pre": 3.4,
-   "beat": "duel",
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "pred": "#duel-pred",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b",
-    "nameA": "#name-a",
-    "nameB": "#name-b",
-    "scopeA": "#scope-a",
-    "scopeB": "#scope-b",
-    "playA": "#play-a",
-    "playB": "#play-b",
-    "chooseA": "#choose-a",
-    "chooseB": "#choose-b"
-   },
-   "actions": [
-    {
-     "at": 3.6,
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "duel2:one",
-     "op": "key",
-     "key": "1",
-     "ms": 120
-    },
-    {
-     "at": "duel3:two",
-     "op": "key",
-     "key": "2",
-     "ms": 120
-    },
-    {
-     "at": "duel6:B+0.3",
-     "op": "key",
-     "key": "ArrowRight",
-     "ms": 120
-    },
-    {
-     "at": "duel6:B+0.9",
-     "op": "mark",
-     "name": "pred",
-     "sel": "#duel-pred"
-    },
-    {
-     "at": "duel7",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-play",
-   "pre": 3.4,
-   "beat": "play",
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "pred": "#duel-pred",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b",
-    "nameA": "#name-a",
-    "nameB": "#name-b",
-    "chooseA": "#choose-a",
-    "chooseB": "#choose-b",
-    "label": "#live-label",
-    "keybed": "#piano"
-   },
-   "actions": [
-    {
-     "at": 3.6,
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "play1:click",
-     "op": "click",
-     "sel": "#duel-a .scope"
-    },
-    {
-     "at": "play1:click+0.1",
-     "op": "until",
-     "js": "document.getElementById('live-label').textContent.trim() === document.getElementById('name-a').firstChild.textContent.trim()",
-     "ms": 30000,
-     "stamp": "liveA"
-    },
-    {
-     "at": "play2:That",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "a",
-      "d",
-      "g"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play2:That+1.429",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "h",
-      "k",
-      ";"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play2:That+2.857",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "f",
-      "h",
-      "k"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play2:That+4.286",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "g",
-      "j",
-      "l"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play3:Click",
-     "op": "click",
-     "sel": "#duel-b .scope"
-    },
-    {
-     "at": "play3:Click+0.1",
-     "op": "until",
-     "js": "document.getElementById('live-label').textContent.trim() === document.getElementById('name-b').firstChild.textContent.trim()",
-     "ms": 30000,
-     "stamp": "liveB"
-    },
-    {
-     "at": "play3:play",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "a",
-      "d",
-      "g"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play3:play+1.429",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "h",
-      "k",
-      ";"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play3:play+2.857",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "f",
-      "h",
-      "k"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play3:play+4.286",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "g",
-      "j",
-      "l"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "play5:quick",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "play5:quick+0.6",
-     "op": "mark",
-     "name": "pred",
-     "sel": "#duel-pred"
-    },
-    {
-     "at": "play5:quick+0.8",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-point",
-   "pre": 3.4,
-   "beat": "point",
-   "own_setup": true,
-   "setup": [
-    {
-     "op": "until",
-     "sel": "#warmstart:not(.hidden)",
-     "ms": 180000
-    },
-    {
-     "op": "until",
-     "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40",
-     "ms": 300000
-    },
-    {
-     "op": "log",
-     "name": "deal",
-     "js": "[...document.querySelectorAll('.warm-item .wi-name')].map((e) => e.textContent).join(', ')"
-    },
-    {
-     "op": "wait",
-     "ms": 1000
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    }
-   ],
-   "marks": {
-    "card": "#warmstart .warm-card",
-    "grid": "#warm-grid",
-    "go": "#warm-go",
-    "sub": "#warmstart .warm-sub",
-    "pad": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four'))",
-    "padplay": ".warm-item:has(.wi-name:text-is('Cathedral')) + .wi-play, .warm-item:has(.wi-name:text-is('Glass Pad')) + .wi-play, .warm-item:has(.wi-name:text-is('Detune Dream')) + .wi-play, .warm-item:has(.wi-name:text-is('Ember')) + .wi-play, .warm-item:has(.wi-name:text-is('Slow Weather')) + .wi-play, .warm-item:has(.wi-name:text-is('Morph Pad')) + .wi-play, .warm-item:has(.wi-name:text-is('Sweep Machine')) + .wi-play, .warm-item:has(.wi-name:text-is('Sea Change')) + .wi-play, .warm-item:has(.wi-name:text-is('Pump Room')) + .wi-play, .warm-item:has(.wi-name:text-is('Tidal')) + .wi-play, .warm-item:has(.wi-name:text-is('Nine Against Four')) + .wi-play"
-   },
-   "clips": [
-    [
-     "point4",
-     "@taught+0.9"
-    ]
-   ],
-   "actions": [
-    {
-     "at": "point2:Play",
-     "op": "click",
-     "sel": ".warm-item:has(.wi-name:text-is('Cathedral')) + .wi-play, .warm-item:has(.wi-name:text-is('Glass Pad')) + .wi-play, .warm-item:has(.wi-name:text-is('Detune Dream')) + .wi-play, .warm-item:has(.wi-name:text-is('Ember')) + .wi-play, .warm-item:has(.wi-name:text-is('Slow Weather')) + .wi-play, .warm-item:has(.wi-name:text-is('Morph Pad')) + .wi-play, .warm-item:has(.wi-name:text-is('Sweep Machine')) + .wi-play, .warm-item:has(.wi-name:text-is('Sea Change')) + .wi-play, .warm-item:has(.wi-name:text-is('Pump Room')) + .wi-play, .warm-item:has(.wi-name:text-is('Tidal')) + .wi-play, .warm-item:has(.wi-name:text-is('Nine Against Four')) + .wi-play"
-    },
-    {
-     "at": "point2:closest",
-     "op": "seq",
-     "steps": [
-      {
-       "op": "click",
-       "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four'))"
-      },
-      {
-       "op": "wait",
-       "ms": 300
-      },
-      {
-       "op": "click",
-       "sel": ".warm-item:has(.wi-name:text-is('Cathedral')), .warm-item:has(.wi-name:text-is('Glass Pad')), .warm-item:has(.wi-name:text-is('Detune Dream')), .warm-item:has(.wi-name:text-is('Ember')), .warm-item:has(.wi-name:text-is('Slow Weather')), .warm-item:has(.wi-name:text-is('Morph Pad')), .warm-item:has(.wi-name:text-is('Sweep Machine')), .warm-item:has(.wi-name:text-is('Sea Change')), .warm-item:has(.wi-name:text-is('Pump Room')), .warm-item:has(.wi-name:text-is('Tidal')), .warm-item:has(.wi-name:text-is('Nine Against Four')) >> nth=1"
-      },
-      {
-       "op": "wait",
-       "ms": 300
-      },
-      {
-       "op": "click",
-       "sel": ".warm-item:has(.wi-name:text-is('Noise Wash')), .warm-item:has(.wi-name:text-is('Dub Echo')), .warm-item:has(.wi-name:text-is('Static Ocean')), .warm-item:has(.wi-name:text-is('Rotor')), .warm-item:has(.wi-name:text-is('Long Room')), .warm-item:has(.wi-name:text-is('Handheld')), .warm-item:has(.wi-name:text-is('Jet Wash')), .warm-item:has(.wi-name:text-is('Cloud Chamber')), .warm-item:has(.wi-name:text-is('Vox Machina')), .warm-item:has(.wi-name:text-is('Glass Rain')), .warm-item:has(.wi-name:text-is('One Way')), .warm-item:has(.wi-name:text-is('Loom')), .warm-item:has(.wi-name:text-is('Long Way Down'))"
-      },
-      {
-       "op": "mark",
-       "name": "go",
-       "sel": "#warm-go"
-      }
-     ]
-    },
-    {
-     "at": "point3:passed+0.2",
-     "op": "click",
-     "sel": "#warm-go"
-    },
-    {
-     "at": "point3:passed+0.4",
-     "op": "until",
-     "sel": ".viewtab[data-view='perform'][aria-selected='true']",
-     "ms": 180000,
-     "stamp": "taught"
-    },
-    {
-     "at": "@taught+0.2",
-     "op": "view",
-     "v": "evolve"
-    },
-    {
-     "at": "@taught+0.4",
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "at": "@taught+0.7",
-     "op": "mark",
-     "name": "copy",
-     "sel": "#teach-copy"
-    },
-    {
-     "at": "@taught+0.7",
-     "op": "mark",
-     "name": "picks",
-     "sel": "#duel-count"
-    },
-    {
-     "at": "@taught+0.8",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-meter",
-   "pre": 3.4,
-   "beat": "meter",
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "wait",
-     "ms": 3500
-    },
-    {
-     "op": "click",
-     "sel": "#skip-duel"
-    },
-    {
-     "op": "wait",
-     "ms": 800
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "pips": "#teach-pips",
-    "copy": "#teach-copy",
-    "pred": "#duel-pred",
-    "lamp": "#wm-lamp",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b"
-   },
-   "actions": [
-    {
-     "at": 3.6,
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": 3.4,
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": 4.2,
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": "meter1:dot",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "meter1:dot+0.4",
-     "op": "log",
-     "name": "d1",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "meter2",
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": "meter2+0.8",
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": "meter2:away",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "meter2:away+0.4",
-     "op": "log",
-     "name": "d2",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "meter2:away+0.5",
-     "op": "mark",
-     "name": "pred",
-     "sel": "#duel-pred"
-    },
-    {
-     "at": "meter3:picked",
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": "meter3:picked+0.8",
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": "meter4:sixth+0.2",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "meter4:sixth+0.6",
-     "op": "log",
-     "name": "d3",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "meter4:sixth+0.5",
-     "op": "until",
-     "js": "document.getElementById('duel-mid').classList.contains('learning')",
-     "ms": 5000,
-     "stamp": "learned"
-    },
-    {
-     "at": "meter4:sixth+0.7",
-     "op": "mark",
-     "name": "copy",
-     "sel": "#teach-copy"
-    },
-    {
-     "at": "meter4:told",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-fair",
-   "pre": 3.4,
-   "beat": "fair",
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "wait",
-     "ms": 3500
-    },
-    {
-     "op": "click",
-     "sel": "#skip-duel"
-    },
-    {
-     "op": "wait",
-     "ms": 800
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "pred": "#duel-pred",
-    "skip": "#skip-duel",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b",
-    "nameA": "#name-a",
-    "nameB": "#name-b",
-    "chooseA": "#choose-a",
-    "chooseB": "#choose-b",
-    "skill": "#skill",
-    "taste": ".viewtab[data-view='taste']"
-   },
-   "actions": [
-    {
-     "at": 3.6,
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "fair2+0.2",
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": "fair2+2.4",
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": "fair3:pick",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "fair3:pick+0.5",
-     "op": "mark",
-     "name": "forecast",
-     "sel": "#duel-pred"
-    },
-    {
-     "at": "fair3:pick+0.6",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "fair5:skip",
-     "op": "seq",
-     "steps": [
-      {
-       "op": "click",
-       "sel": "#skip-duel"
-      },
-      {
-       "op": "eval",
-       "js": "document.activeElement && document.activeElement.blur()"
-      }
-     ]
-    },
-    {
-     "at": "fair5:skip+0.5",
-     "op": "mark",
-     "name": "pair2",
-     "sel": "#name-a"
-    },
-    {
-     "at": "fair5:skip+0.6",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-breed",
-   "pre": 3.4,
-   "beat": "breed",
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "eval",
-     "js": "localStorage.setItem('auracle-bank-toured', '1')"
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "evolve": "#evolve-btn",
-    "lineage": "#lineage-log",
-    "rail": "#bank-list",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b"
-   },
-   "clips": [
-    [
-     "breed3",
-     "@bred-0.4"
-    ]
-   ],
-   "actions": [
-    {
-     "at": 3.6,
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "breed1:press",
-     "op": "click",
-     "sel": "#evolve-btn"
-    },
-    {
-     "at": "breed1:press+0.6",
-     "op": "mark",
-     "name": "evolve",
-     "sel": "#evolve-btn"
-    },
-    {
-     "at": "breed1:press+0.3",
-     "op": "until",
-     "sel": "#evolve-btn:not([disabled])",
-     "ms": 900000,
-     "stamp": "bred"
-    },
-    {
-     "at": "@bred+0.2",
-     "op": "mark",
-     "name": "fresh",
-     "sel": "#bank-list .bank-item.fresh"
-    },
-    {
-     "at": "@bred+0.2",
-     "op": "mark",
-     "name": "lineage",
-     "sel": "#lineage-log"
-    },
-    {
-     "at": "@bred+0.2",
-     "op": "mark",
-     "name": "line1",
-     "sel": "#lineage-log > div"
-    },
-    {
-     "at": "@bred+0.3",
-     "op": "log",
-     "name": "lineage",
-     "js": "document.getElementById('lineage-log').innerText"
-    },
-    {
-     "at": "@bred+0.3",
-     "op": "log",
-     "name": "fresh",
-     "js": "[...document.querySelectorAll('#bank-list .bank-item.fresh .bi-name')].map((e) => e.textContent).join(', ')"
-    },
-    {
-     "at": "breed4:room",
-     "op": "mark",
-     "name": "toast",
-     "sel": "#toasts .toast"
-    },
-    {
-     "at": "breed4:room",
-     "op": "log",
-     "name": "toast",
-     "js": "[...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' || ')"
-    },
-    {
-     "at": "breed7:listen",
-     "op": "click",
-     "sel": "#bank-list .bank-item.fresh .bi-hear"
-    },
-    {
-     "at": "breed7:listen+0.3",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-keep",
-   "pre": 3.4,
-   "beat": "keep",
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "rail": "#bank-list",
-    "meter": "#duel-mid",
-    "row": "#bank-list .bank-item:not(.saved) >> nth=0",
-    "stars": "#bank-list .bank-item:not(.saved) >> nth=0 >> .stars",
-    "save": "#bank-list .bank-item:not(.saved) >> nth=0 >> .bi-save",
-    "hear": "#bank-list .bank-item:not(.saved) >> nth=0 >> .bi-hear",
-    "budget": "#pin-budget",
-    "chips": ".bank-filters"
-   },
-   "actions": [
-    {
-     "at": 3.6,
-     "op": "log",
-     "name": "rows",
-     "js": "[...document.querySelectorAll('#bank-list .bank-item')].slice(0, 6).map((e) => e.querySelector('.bi-name').textContent + (e.classList.contains('saved') ? ' (saved)' : '')).join(', ')"
-    },
-    {
-     "at": "keep1:three",
-     "op": "click",
-     "sel": "#bank-list .bank-item:not(.saved) >> nth=0 >> .bi-hear"
-    },
-    {
-     "at": "keep2:teach",
-     "op": "click",
-     "sel": "#bank-list .bank-item:not(.saved) >> nth=0 >> .star[data-s='4']"
-    },
-    {
-     "at": "keep2:teach+0.3",
-     "op": "mark",
-     "name": "rated",
-     "sel": "#bank-list .bank-item.kbd"
-    },
-    {
-     "at": "keep2:teach+0.4",
-     "op": "mark",
-     "name": "toast1",
-     "sel": "#toasts .toast"
-    },
-    {
-     "at": "keep3:keeps",
-     "op": "click",
-     "sel": "#bank-list .bank-item.kbd .bi-save"
-    },
-    {
-     "at": "keep3:keeps+0.5",
-     "op": "mark",
-     "name": "saved",
-     "sel": "#bank-list .bank-item.kbd"
-    },
-    {
-     "at": "keep3:nothing",
-     "op": "mark",
-     "name": "toast2",
-     "sel": "#toasts .toast"
-    },
-    {
-     "at": "keep3:nothing",
-     "op": "mark",
-     "name": "budget",
-     "sel": "#pin-budget"
-    },
-    {
-     "at": "keep4:Cut",
-     "op": "seq",
-     "steps": [
-      {
-       "op": "mark",
-       "name": "cutrow",
-       "sel": "#bank-list .bank-item:not(.saved):not(.kbd) >> nth=0"
-      },
-      {
-       "op": "move",
-       "sel": "#bank-list .bank-item:not(.saved):not(.kbd) >> nth=0",
-       "ox": 40,
-       "ms": 300
-      },
-      {
-       "op": "wait",
-       "ms": 150
-      },
-      {
-       "op": "click",
-       "sel": "#bank-list .bank-item:not(.saved):not(.kbd) >> nth=0 >> .bi-kill"
-      }
-     ]
-    },
-    {
-     "at": "keep4:back",
-     "op": "mark",
-     "name": "toast3",
-     "sel": "#toasts .toast"
-    },
-    {
-     "at": "keep4:back",
-     "op": "log",
-     "name": "toasts",
-     "js": "[...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' || ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-rhythm",
-   "pre": 3.4,
-   "beat": "rhythm",
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "eval",
-     "js": "localStorage.setItem('auracle-bank-toured', '1')"
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "pips": "#teach-pips",
-    "copy": "#teach-copy",
-    "evolve": "#evolve-btn",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b",
-    "rail": "#bank-list",
-    "label": "#live-label",
-    "subject": "#rack-subject"
-   },
-   "clips": [
-    [
-     "rhythm4",
-     "@bred-0.3"
-    ]
-   ],
-   "actions": [
-    {
-     "at": 3.4,
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": 4.1,
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": 4.8,
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": 5.2,
-     "op": "log",
-     "name": "q1",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "rhythm2",
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": "rhythm2+0.7",
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": "rhythm2+1.4",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "rhythm2+1.8",
-     "op": "log",
-     "name": "q2",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "rhythm2+2.3",
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": "rhythm2+3.0",
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": "rhythm2+3.7",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "rhythm2+4.1",
-     "op": "log",
-     "name": "q3",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "rhythm2+4.6",
-     "op": "key",
-     "key": "1",
-     "ms": 100
-    },
-    {
-     "at": "rhythm2+5.3",
-     "op": "key",
-     "key": "2",
-     "ms": 100
-    },
-    {
-     "at": "rhythm2+6.0",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "rhythm2+6.4",
-     "op": "log",
-     "name": "q4",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "rhythm3:Evolve",
-     "op": "click",
-     "sel": "#evolve-btn"
-    },
-    {
-     "at": "rhythm3:Evolve+0.3",
-     "op": "until",
-     "sel": "#evolve-btn:not([disabled])",
-     "ms": 900000,
-     "stamp": "bred"
-    },
-    {
-     "at": "@bred+0.3",
-     "op": "log",
-     "name": "after",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "@bred+0.3",
-     "op": "log",
-     "name": "fresh",
-     "js": "[...document.querySelectorAll('#bank-list .bank-item.fresh .bi-name')].map((e) => e.textContent).join(', ')"
-    },
-    {
-     "at": "rhythm4:Play",
-     "op": "seq",
-     "steps": [
-      {
-       "op": "eval",
-       "js": "window.__veChild = document.querySelector('#bank-list .bank-item.fresh .bi-name').textContent.trim()"
-      },
-      {
-       "op": "click",
-       "sel": "#bank-list .bank-item.fresh >> nth=0 >> .bi-name"
-      },
-      {
-       "op": "until",
-       "js": "(document.getElementById('rack-subject')?.textContent || '').includes(window.__veChild)",
-       "ms": 60000,
-       "stamp": "child"
-      },
-      {
-       "op": "mark",
-       "name": "child",
-       "sel": "#rack-subject"
-      },
-      {
-       "op": "mark",
-       "name": "row",
-       "sel": "#bank-list .bank-item.live"
-      },
-      {
-       "op": "log",
-       "name": "child",
-       "js": "window.__veChild + ' | live row ' + (document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent || 'none')"
-      }
-     ]
-    },
-    {
-     "at": "rhythm4:children+0.3",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "a",
-      "d",
-      "g"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "rhythm4:children+1.729",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "h",
-      "k",
-      ";"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "rhythm4:children+3.157",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "f",
-      "h",
-      "k"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "rhythm4:children+4.586",
-     "snap": "beat",
-     "op": "hold",
-     "keys": [
-      "g",
-      "j",
-      "l"
-     ],
-     "ms": 1300
-    },
-    {
-     "at": "rhythm4:children+6.1",
-     "op": "seq",
-     "steps": [
-      {
-       "op": "until",
-       "js": "(document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent || '').trim() === window.__veChild",
-       "ms": 20000
-      },
-      {
-       "op": "click",
-       "sel": "#bank-list .bank-item.live .bi-save"
-      },
-      {
-       "op": "wait",
-       "ms": 400
-      },
-      {
-       "op": "mark",
-       "name": "row",
-       "sel": "#bank-list .bank-item.live"
-      },
-      {
-       "op": "mark",
-       "name": "toast",
-       "sel": "#toasts .toast"
-      }
-     ]
-    },
-    {
-     "at": "rhythm5:back",
-     "op": "view",
-     "v": "evolve"
-    },
-    {
-     "at": "rhythm5:back+0.3",
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "at": "rhythm5:round",
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "at": "rhythm5:round+0.4",
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ]
-  },
-  {
-   "id": "ve-outro",
-   "beat": "outro",
-   "pre": 0.5,
-   "setup": [
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "eval",
-     "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"
-    },
-    {
-     "op": "wait",
-     "ms": 1500
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('wm-lamp').classList.contains('thinking')",
-     "ms": 240000
-    },
-    {
-     "op": "until",
-     "js": "!document.getElementById('play-a').classList.contains('pending') && !document.getElementById('play-b').classList.contains('pending')",
-     "ms": 90000
-    },
-    {
-     "op": "wait",
-     "ms": 1200
-    },
-    {
-     "op": "until",
-     "js": "!document.querySelector('#toasts .toast')",
-     "ms": 60000
-    },
-    {
-     "op": "eval",
-     "js": "document.activeElement && document.activeElement.blur()"
-    },
-    {
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    }
-   ],
-   "marks": {
-    "meter": "#duel-mid",
-    "cardA": "#duel-a",
-    "cardB": "#duel-b",
-    "taste": ".viewtab[data-view='taste']",
-    "tabs": ".viewtabs"
-   },
-   "actions": [
-    {
-     "at": 3.6,
-     "op": "log",
-     "name": "state",
-     "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"
-    },
-    {
-     "at": "outro1:TASTE",
-     "op": "move",
-     "sel": ".viewtab[data-view='taste']",
-     "ms": 700
-    }
-   ]
-  }
- ]
+  ]
 }

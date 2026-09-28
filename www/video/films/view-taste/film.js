@@ -8,11 +8,12 @@
 // 1920×1080 app. The title and the outro are drawn with the kit over their
 // shots, the way films/launch draws its cards.
 //
-// The sessions (shots.json, built off camera in each shot's set-up):
+// The sessions (gen_shots.py and session.py write shots.json; each shot builds
+// its session off camera):
 // - FRESH, for the cold open and the title: the warm start skipped, five
-//   picks, and a pair of sounds the listener likes on the table (re-dealt
-//   with skip, which records nothing). The sixth pick, on camera, is the
-//   model's first fit: the map goes from "nothing predicted yet" to lit.
+//   picks, and a musical pair on the table (re-dealt with skip, which
+//   records nothing). The sixth pick, on camera, is the model's first fit:
+//   the map goes from "nothing predicted yet" to lit.
 // - RICH, for every chapter: the warm start, thirty duels and five stars from
 //   one consistent listener (dark, slow sounds and bright, struck ones over
 //   anything noisy), then duels to the edge of a refit.
@@ -24,47 +25,52 @@
 // - The map only changes at a refit, and refits follow duels (EVOLVE), not
 //   stars. So "picks land" is shown the way the app designs it: a pick, then
 //   "● it just learned — see what changed ▸", then the map.
-// - The wrong beat re-marks the corrected dot after the refit: until the
-//   engine's axis fix lands, a refit can mirror the map (reported), so the dot
-//   may be somewhere else when it has dimmed.
+// - The wrong beat marks the corrected dot again after the refit: the axes
+//   turn a little at every refit (the map no longer mirrors), so the dot has
+//   moved by the time it has dimmed.
 // - The cold open cuts from the link to just before the fit lands, and the
 //   wrong beat from its link to the refit (the shots' `clips`; no cut when
 //   they are quick).
+// - profile: the system's file picker cannot be filmed, so the load is shown
+//   from the moment a file is chosen, which is when the app asks its question.
 import { walkthrough, aim } from "../../stage/walk.js";
 
 const PLAN = [
   {
     beat: "open",
     shot: "vt-open",
-    cam: [[0, 1.0, 0.5, 0.5], [1.5, 1.0, 0.5, 0.5], [2.0, ...aim(1.12, 1086, 560)], [6.8, 1.0, 0.5, 0.5], [9.0, ...aim(1.08, 1000, 400)]],
+    cam: [[0, 1.0, 0.5, 0.5], [1.5, 1.0, 0.5, 0.5], [1.9, ...aim(1.1, 1086, 480)], [6.8, 1.0, 0.5, 0.5], [9.2, ...aim(1.12, 900, 640)], [10.4, ...aim(1.3, 700, 700)]],
   },
   {
     beat: "title",
     shot: "vt-title",
-    cam: [[0, ...aim(1.08, 1000, 400)], ["title2", ...aim(1.14, 1040, 380)]],
+    cam: [[0, ...aim(1.1, 900, 640)], ["title2", ...aim(1.16, 850, 660)]],
   },
   {
     beat: "tabs",
     shot: "vt-tabs",
     chapter: "01 · four ways in",
-    cam: [[0, 1.0, 0.5, 0.5], ["tabs1:four", ...aim(1.2, 900, 420)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["tabs1:four", ...aim(1.2, 900, 420)], ["tabs4-0.2", ...aim(1.35, 760, 300)]],
     callouts: [
       { at: "tabs2:map", until: "tabs2:Styles", mark: "tab-map", side: "bottom", dx: 40, dy: 90, text: "where your sounds sit" },
       { at: "tabs2:Styles", until: "tabs3:Directions", mark: "tab-styles", side: "bottom", dx: 40, dy: 90, text: "the tastes it has found" },
       { at: "tabs3:Directions", until: "tabs3:Trust", mark: "tab-dir", side: "bottom", dx: 40, dy: 90, text: "what pulls you" },
-      { at: "tabs3:Trust", mark: "tab-trust", side: "bottom", dx: 40, dy: 90, text: "whether to believe it" },
+      { at: "tabs3:Trust", until: "tabs4", mark: "tab-trust", side: "bottom", dx: 40, dy: 90, text: "whether to believe it" },
+      { at: "tabs4:chips", mark: "chips", side: "bottom", ox: 120, dx: 60, dy: 90, text: "your styles, in every tab" },
     ],
   },
   {
     beat: "map",
     shot: "vt-map",
     chapter: "02 · the map",
-    cam: [[0, 1.0, 0.5, 0.5], ["map1:heard", ...aim(1.1, 1000, 420)], ["map2:Nearby-0.3", ...aim(1.7, 1100, 250)], ["map2:flat", ...aim(1.1, 1000, 420)],
-      ["map3:Glow-0.2", ...aim(1.6, 1640, 800)], ["map4-0.2", ...aim(1.7, 1180, 356)], ["map5-0.2", ...aim(1.6, 520, 360)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["map1:heard", ...aim(1.08, 1000, 600)], ["map2:Nearby-0.3", ...aim(1.8, 1100, 800)], ["map2:flat", ...aim(1.08, 1000, 600)],
+      ["map3:Glow-0.2", 1.0, 0.5, 0.5], ["map4-0.2", ...aim(1.8, 1179, 734)], ["map5-0.2", ...aim(1.7, 420, 700)]],
     callouts: [
-      { at: "map2:Nearby+0.2", until: "map2:flat", mark: "n3", side: "top", dx: 60, dy: -80, text: "gritty, noisy sounds, together" },
-      { at: "map4:small", until: "map5", mark: "yes", side: "left", ox: -8, dx: -120, dy: 60, text: "small and bright: a firm yes" },
-      { at: "map5:big", mark: "maybe", side: "right", ox: 8, dx: 110, dy: 70, text: "big and bright: a maybe" },
+      { at: "map2:Nearby+0.4", until: "map2:flat", mark: "n1", side: "top", dx: -60, dy: -90, text: "gritty, noisy sounds, together" },
+      { at: "map3:Glow", until: "map3:bank", mark: "legend", side: "top", ox: -40, dx: -60, dy: -70, text: "dim to bright: would like" },
+      { at: "map3:bank", until: "map4", mark: "row0", side: "right", dx: 80, dy: 10, text: "its best guesses first" },
+      { at: "map4:small", until: "map5", mark: "yes", side: "left", ox: -8, dx: -120, dy: -70, text: "small and bright: a firm yes" },
+      { at: "map5:big", mark: "maybe", side: "right", ox: 8, dx: 110, dy: -80, text: "big and bright: a maybe" },
     ],
   },
   {
@@ -73,7 +79,8 @@ const PLAN = [
     cam: [[0, ...aim(1.2, 1100, 640)], ["hear2-0.3", ...aim(1.2, 700, 640)], ["hear3-0.3", ...aim(1.2, 1500, 640)]],
     callouts: [
       { at: "hear1:fingers", until: "hear2", mark: "keys", side: "top", ox: 60, dx: 60, dy: -80, text: "your keys play it" },
-      { at: "hear3:dim", mark: "dim", side: "top", dx: -60, dy: -80, text: "dim: it thinks you'd skip it" },
+      { at: "hear2:maybes", until: "hear3", mark: "maybe", side: "top", dx: 60, dy: -90, text: "a maybe" },
+      { at: "hear3:dim", mark: "dim", side: "top", dx: -60, dy: -90, text: "dim: it thinks you'd skip it" },
     ],
   },
   {
@@ -83,8 +90,8 @@ const PLAN = [
     cam: [[0, 1.0, 0.5, 0.5], ["styles2", ...aim(1.12, 1000, 480)], ["styles4-0.3", ...aim(1.6, 760, 260)], ["styles5:sticks", ...aim(1.25, 900, 360)]],
     callouts: [
       { at: "styles3:separate", until: "styles4", mark: "chips", side: "bottom", ox: 200, dx: 60, dy: 90, text: "three styles here, each with its share" },
-      { at: "styles4:plays", until: "styles4:plays+2.9", mark: "play2", side: "bottom", dx: 40, dy: 110, text: "▶ its best example" },
-      { at: "styles4:plays+2.9", until: "styles5", mark: "play1", side: "bottom", dx: 40, dy: 110, text: "▶ another style" },
+      { at: "styles4:plays", until: "styles4:plays+2.9", mark: "play-first", side: "bottom", dx: 40, dy: 110, text: "its best example" },
+      { at: "styles4:plays+2.9", until: "styles5", mark: "play-second", side: "bottom", dx: 40, dy: 110, text: "another style's" },
       { at: "styles5:sticks", mark: "named", side: "bottom", dx: 60, dy: 100, text: "yours now" },
     ],
   },
@@ -92,14 +99,14 @@ const PLAN = [
     beat: "directions",
     shot: "vt-dir",
     chapter: "04 · directions",
-    cam: [[0, 1.0, 0.5, 0.5], ["dir1:listens", ...aim(1.1, 1080, 520)], ["dir3-0.2", ...aim(1.6, 1000, 600)], ["dir4:body", ...aim(1.15, 1080, 520)], ["dir5-0.2", ...aim(1.5, 1150, 600)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["dir1:listens", ...aim(1.1, 1080, 520)], ["dir3-0.2", ...aim(1.6, 1000, 632)], ["dir4:body", ...aim(1.15, 1080, 600)], ["dir5-0.2", ...aim(1.5, 1150, 520)]],
     callouts: [
       { at: "dir2:right", until: "dir2:left", mark: "right", side: "right", dx: 70, dy: -40, text: "toward" },
       { at: "dir2:left", until: "dir3", mark: "left", side: "left", dx: -70, dy: -40, text: "away" },
       { at: "dir3:grit", until: "dir4", mark: "grit", side: "left", dx: -90, dy: -50, text: "grit: all three pull away" },
       { at: "dir4:body", until: "dir5", mark: "body", side: "left", dx: -90, dy: -40, text: "body" },
       { at: "dir4:space", until: "dir5", mark: "space", side: "left", dx: -90, dy: 40, text: "space" },
-      { at: "dir5:crosses", mark: "guess", side: "left", dx: -80, dy: -60, text: "whisker over the line: a guess" },
+      { at: "dir5:crosses", mark: "guess", side: "right", dx: 90, dy: -60, text: "whisker over the line: a guess" },
     ],
   },
   {
@@ -118,7 +125,7 @@ const PLAN = [
     beat: "wrong",
     shot: "vt-wrong",
     chapter: "06 · when it's wrong",
-    cam: [[0, 1.0, 0.5, 0.5], ["wrong2-0.2", ...aim(1.5, 1100, 420)], ["wrong3:star-0.3", ...aim(1.4, 700, 600)], ["wrong4:duel", 1.0, 0.5, 0.5], ["wrong6", 1.0, 0.5, 0.5]],
+    cam: [[0, 1.0, 0.5, 0.5], ["wrong2-0.2", ...aim(1.5, 1100, 700)], ["wrong3:star-0.3", ...aim(1.3, 600, 600)], ["wrong4:duel", 1.0, 0.5, 0.5], ["wrong6", 1.0, 0.5, 0.5]],
     callouts: [
       { at: "wrong2:thinks+0.5", until: "wrong3", mark: "wrong", side: "right", ox: 8, dx: 110, dy: -80, text: "it's sure you'll like this" },
       { at: "wrong3:star", until: "wrong4", mark: "star1", side: "right", dx: 90, dy: -40, text: "one star" },
@@ -133,18 +140,18 @@ const PLAN = [
     cam: [[0, 1.0, 0.5, 0.5], ["profile1:stays-0.2", ...aim(1.6, 1700, 300)]],
     callouts: [
       { at: "profile2:save", until: "profile2:load", mark: "save", side: "left", dx: -90, dy: 20, text: "a file you keep" },
-      { at: "profile2:load+0.2", until: "profile3", mark: "load", side: "left", dx: -90, dy: 20, text: "on the other machine" },
-      { at: "profile3:asks", mark: "alarm", side: "bottom", dx: 40, dy: 60, text: "it asks first" },
+      { at: "profile3:Loading+0.3", until: "profile4", mark: "alarm-load", side: "bottom", dx: 40, dy: 60, text: "it asks, and saves yours first" },
+      { at: "profile4:asks", mark: "alarm", side: "bottom", dx: 40, dy: 60, text: "it asks first" },
     ],
   },
   {
     beat: "together",
     shot: "vt-together",
     chapter: "08 · the loop",
-    cam: [[0, 1.0, 0.5, 0.5], ["together2:walk-0.3", ...aim(1.25, 700, 520)], ["together3:Star-0.3", ...aim(1.2, 600, 540)], ["together3:pick", 1.0, 0.5, 0.5]],
+    cam: [[0, 1.0, 0.5, 0.5], ["together2:walk-0.3", ...aim(1.2, 700, 640)], ["together3:pick+0.4", 1.0, 0.5, 0.5]],
     callouts: [
-      { at: "together2:arrow", until: "together3", mark: "t1", side: "right", ox: 8, dx: 90, dy: -60, text: "→ steps, Enter opens" },
-      { at: "together3:maybe", until: "together3:Star", mark: "t2", side: "right", ox: 8, dx: 90, dy: -60, text: "a maybe" },
+      { at: "together2:arrow", until: "together3", mark: "t1", side: "top", dx: 90, dy: -80, text: "arrows step, Enter opens" },
+      { at: "together3:maybe", until: "together3:Star", mark: "t2", side: "top", dx: 90, dy: -80, text: "a maybe" },
       { at: "together3:Star", until: "together3:pick", mark: "star5", side: "right", dx: 90, dy: -40, text: "five stars" },
     ],
   },
