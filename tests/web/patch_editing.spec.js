@@ -251,6 +251,38 @@ test("a second drag of the same knob starts from where the first one left it", a
   expect(errors).toEqual([]);
 });
 
+test("a knob's element survives the redraw of a knob edit, and is never rebuilt under a held pointer", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Acid Line");
+  const [a, b] = await knobs(page);
+  // Something that found the second knob before the first one's reply
+  // landed must still be holding a knob after it.
+  await page.evaluate((addr) => {
+    window.__pwKnob = document.querySelector(`#rack-svg g[data-addr="${CSS.escape(addr)}"]`);
+  }, b.addr);
+  await slow(page, { edit_param: 1200 });
+  await dragKnob(page, a, 20, 4);
+  await settled(page);
+  expect(await page.evaluate(() => window.__pwKnob.isConnected)).toBe(true);
+  // A pointer held down on a knob while a reply lands: the element under it
+  // stays the one it pressed.
+  await page.evaluate((addr) => {
+    window.__pwHeld = document.querySelector(`#rack-svg g[data-addr="${CSS.escape(addr)}"]`);
+  }, a.addr);
+  const box = await page.locator(`#rack-svg g[data-addr="${a.addr}"] > .knob-hit`).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await dragKnob(page, b, 20, 4); // a write goes out, its reply lands below
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 6);
+  await page.waitForTimeout(2500); // the reply to b lands while a is held
+  expect(await page.evaluate(() => window.__pwHeld.isConnected)).toBe(true);
+  await page.mouse.up();
+  await settled(page);
+  await slow(page, {});
+  expect(errors).toEqual([]);
+});
+
 test("⌘Z right after letting go of a knob undoes the turn, whatever was still on its way", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Glass Pad");

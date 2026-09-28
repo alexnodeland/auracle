@@ -6698,7 +6698,7 @@ function applyGrid() {
     });
   }
   camHold = !stranded; // a re-seed *should* move the camera; a snap should not
-  renderRack();
+  renderRack(true);
   if (stranded) fitAll(true);
   scheduleSave();
   note(stranded
@@ -6727,7 +6727,7 @@ function resetPositions() {
   // is somewhere useless, so this is the one relayout that must move it.
   camHold = false;
   viewUserSet = false;
-  renderRack();
+  renderRack(true);
   fitAll(true);
   scheduleSave();
   note(n
@@ -7159,7 +7159,115 @@ function midOf(m) {
   return m && m.uid ? `u${m.uid}` : `k${m ? m.key : "?"}`;
 }
 
-function renderRack() {
+// What the rack on screen was built from: the rack object its handlers hold,
+// and everything about it that decides what the DOM *is* (`rackShapeOf`).
+let rackBuilt = null;
+
+/** Everything `buildRack` turns into elements, and nothing it only paints.
+ *  A continuous knob's value is paint, and so is the step lane's `active`
+ *  count, which `paintLaneLength` keeps. Enum values stay in: they choose a
+ *  plate's variant and its chips' text. */
+function rackShapeOf(rack, build) {
+  const sorted = (s) => (s ? [...s].sort() : null);
+  return JSON.stringify(
+    [
+      rack,
+      sorted(build.locks),
+      sorted(build.placeholders),
+      build.compact,
+      layoutMode,
+      build.places ? [...build.places].sort((a, b) => (a[0] < b[0] ? -1 : 1)) : null,
+      !!beliefOverlay,
+      portTrace.mid ?? null,
+    ],
+    (key, v) => {
+      if (key === "active") return undefined;
+      if (v && typeof v === "object" && typeof v.addr === "string" && v.kind && v.kind.t === "continuous") {
+        return { ...v, value: undefined };
+      }
+      return v;
+    },
+  );
+}
+
+/** A redraw that changes values only. The reply's rack is carried into the
+ *  objects the rack on screen was built from — its knobs' handlers hold
+ *  those, and a drag reads its start from them — and then painted where it
+ *  stands: knobs, step bars, the cables' reach and their breathing. Same
+ *  shape means same modules, same knobs, in the same order. */
+function repaintRackInPlace(fresh) {
+  const built = rackBuilt.rack;
+  if (fresh !== built) {
+    fresh.modules.forEach((m, i) => {
+      const o = built.modules[i];
+      m.knobs.forEach((k, j) => Object.assign(o.knobs[j], k));
+      const { knobs: _k, ...rest } = m;
+      Object.assign(o, rest);
+    });
+    const { modules: _m, ...top } = fresh;
+    Object.assign(built, top);
+    wb.rack = built;
+    lockIndex = null;
+  }
+  const svg = $("rack-svg");
+  for (const m of built.modules) {
+    for (const k of m.knobs) {
+      if (k.kind.t !== "continuous") continue;
+      const kg = svg.querySelector(`[data-addr="${CSS.escape(k.addr)}"]`);
+      if (kg) paintKnobKept(kg, k);
+    }
+  }
+  if (rackFrame) {
+    rackFrame.flow = wireLevels(built);
+    for (const it of rackFrame.wires) {
+      if (it.w.kind === "mod") {
+        it.inkEl.style.animationDuration = `${modBreath(rackFrame.mods.get(it.w.from)).toFixed(2)}s`;
+      } else {
+        paintWireLevel(it.inkEl, rackFrame.flow.get(it.w.from) ?? 1);
+      }
+    }
+  }
+  markQueuedPlates();
+}
+
+/** `paintKnob`, for a redraw rather than a hand: a knob PERFORM is playing
+ *  keeps its readout on the value sounding (`paintPerformedKnobs` owns that)
+ *  and has its kept value filed behind it, and the tooltip is re-said. */
+function paintKnobKept(kg, k) {
+  const val = kg.querySelector(".knob-value");
+  const performed = !!val && kg.classList.contains("performed") && val.dataset.kept != null;
+  const sounding = performed ? val.textContent : null;
+  paintKnob(kg, k);
+  if (performed) {
+    val.dataset.kept = val.textContent;
+    val.textContent = sounding;
+  }
+  const tt = kg.querySelector(".knob-hit > title");
+  if (tt) tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, kg.dataset.kind, kg.dataset.variant || null, true)} — drag up/down`;
+}
+
+/** How fast a modulation cable breathes: roughly its modulator's own rate. */
+function modBreath(src) {
+  let dur = 1.6;
+  if (!src) return dur;
+  const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
+  // A step sequence has a real rate in steps per second, so its cable can
+  // breathe once a step rather than on the LFO's approximation.
+  const srate = src.knobs.find((k) => k.addr.endsWith("#srate"));
+  if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
+  else if (srate) dur = Math.min(2.2, Math.max(0.25, 1 / stepRateHz(srate.value)));
+  else {
+    const att = src.knobs.find((k) => k.addr.endsWith("#att"));
+    const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
+    if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
+  }
+  return dur;
+}
+
+/** `rebuild` is for the callers that need the camera re-aimed even when no
+ *  element would change — the view coming back into sight, a resize, a
+ *  layout reset — and so must not be answered with a repaint in place. */
+function renderRack(rebuild = false) {
   const svg = $("rack-svg");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
   // The engine's rack, with the player's newest values over it (see
@@ -7206,6 +7314,7 @@ function renderRack() {
     svg.innerHTML = "";
     rackBoxes = new Map();
     rackFrame = null;
+    rackBuilt = null;
     cancelRackMotion();
     rackContent = { w: frameSize().w, h: frameSize().h };
     syncFitHint(); // nothing drawn is not a stranded layout
@@ -7214,12 +7323,7 @@ function renderRack() {
     return;
   }
 
-  // Measured before the teardown, because after it there is nothing left to
-  // measure: where every plate was, and where the keyboard was standing.
-  const before = captureRackMotion();
-  const focusMark = markRackFocus();
-
-  buildRack(svg, wb.rack, {
+  const build = {
     interactive: true,
     locks: lockedAddrs(),
     compact: effectiveLod() === "compact",
@@ -7230,7 +7334,34 @@ function renderRack() {
     // and it has to draw through the freeform path so the first drop does not
     // switch arrangements underneath the plate being dropped.
     places: layoutMode === "freeform" ? (ffPlaces() || new Map()) : null,
-  });
+  };
+  // Most redraws change values and nothing else — a knob reply, a release, a
+  // ⌘Z of a knob turn. Those are painted into the knobs already on screen
+  // (`repaintRackInPlace`) rather than rebuilt: a rebuild replaces every
+  // element in the rack, and a knob replaced between the moment something
+  // found it and the moment it pressed on it is a knob that was not there —
+  // the PATCH film's second drag, straight after a first one's reply,
+  // failed on exactly that. It is also most of the cost of a reply.
+  const shape = rackShapeOf(wb.rack, build);
+  // Not while the probe or the belief overlay is up: both draw from state
+  // that moves without the rack's shape moving (a trace landing, the pool's
+  // support), and they are redrawn by rebuilding.
+  if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn && !beliefOverlay) {
+    repaintRackInPlace(wb.rack);
+    return;
+  }
+  // A new shape is new DOM, and new DOM is never built under a hand that is
+  // holding a knob: that would take the knob out from under the pointer
+  // mid-turn. Every drag redraws when it lets go, and that redraw builds it.
+  if (knobDragging) return;
+
+  // Measured before the teardown, because after it there is nothing left to
+  // measure: where every plate was, and where the keyboard was standing.
+  const before = captureRackMotion();
+  const focusMark = markRackFocus();
+
+  buildRack(svg, wb.rack, build);
+  rackBuilt = { rack: wb.rack, shape };
   // Then play the difference. This has to happen before the camera is aimed,
   // because whether anything is moving is what decides whether the camera
   // travels on the motion curve or on its own.
@@ -7496,22 +7627,8 @@ function buildRack(svg, rack, opts) {
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
-      // patch looks alive where it sounds alive.
-      const src = modByKey.get(w.from);
-      let dur = 1.6;
-      if (src) {
-        const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
-        // A step sequence has a real rate in steps per second, so its cable
-        // can breathe once a step rather than on the LFO's approximation.
-        const srate = src.knobs.find((k) => k.addr.endsWith("#srate"));
-        if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
-        else if (srate) dur = Math.min(2.2, Math.max(0.25, 1 / stepRateHz(srate.value)));
-        else {
-          const att = src.knobs.find((k) => k.addr.endsWith("#att"));
-          const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
-          if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
-        }
-      }
+      // patch looks alive where it sounds alive (`modBreath`).
+      const dur = modBreath(modByKey.get(w.from));
       // Only the ink breathes. A casing that pulsed would read as the cable
       // itself thinning and thickening, which is not what modulation does.
       wireEl.classList.add("pulse");
@@ -7955,12 +8072,15 @@ function buildRack(svg, rack, opts) {
         }
         kg.appendChild(ticks);
         kg.appendChild(svgEl("path", { d: arcPath(KNOB_R + 3, 0, 1) }, "knob-track"));
-        if (k.value > 0.004) {
-          kg.appendChild(
-            svgEl("path", { d: arcPath(KNOB_R + 3, 0, k.value) },
-              `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`)
-          );
-        }
+        // Always drawn, and hidden at zero the way `paintKnob` hides it. It
+        // used to be left out below 0.004, so a knob turned up from zero had
+        // no arc until the rack was rebuilt — and a knob at zero was a
+        // different element tree from the same knob anywhere else, which a
+        // redraw of values alone cannot paint over (`rackShapeOf`).
+        const arc = svgEl("path", { d: arcPath(KNOB_R + 3, 0, Math.max(0.004, k.value)) },
+          `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`);
+        if (!(k.value > 0.004)) arc.style.opacity = "0";
+        kg.appendChild(arc);
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
         kg.appendChild(body);
         // The pointer starts at 45% radius: a full-radius spoke reads as a pie
@@ -18019,7 +18139,7 @@ function refitRack() {
   refitPending = true;
   requestAnimationFrame(() => {
     refitPending = false;
-    if (!knobDragging) renderRack();
+    if (!knobDragging) renderRack(true);
   });
 }
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitRack);
@@ -18363,7 +18483,7 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(() => {
     drawTaste();
     drawLineage();
-    if (!knobDragging) renderRack();
+    if (!knobDragging) renderRack(true);
     if (currentDuel) {
       onRenderArrived(currentDuel[0]);
       onRenderArrived(currentDuel[1]);
