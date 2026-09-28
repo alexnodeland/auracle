@@ -2155,6 +2155,29 @@ impl Engine {
         self.walk_with(rng, seed, locked, steps, fitness)
     }
 
+    /// The same locked walk on a fitness the caller built: PERFORM's aimed
+    /// offer ([`Engine::offer_toward`]) hands it a
+    /// [`crate::perform::TiltedFitness`] around the target
+    /// [`Self::refine_walk`] would choose.
+    pub(crate) fn walk_fitness<R, F>(
+        &self,
+        rng: &mut R,
+        seed: &PatchTree,
+        locked: &HashSet<String>,
+        steps: usize,
+        fitness: F,
+    ) -> Result<PatchTree, RefineOutcome>
+    where
+        R: Rng,
+        F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.walk_with(rng, seed, locked, steps, fitness)
+    }
+
     /// A **local** Metropolis walk over the knobs in `free` for the
     /// performance drift: each step picks one free knob uniformly, proposes
     /// `v + σ·N(0, 1)` reflected into the knob domain, and accepts on the
