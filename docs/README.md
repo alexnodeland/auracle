@@ -61,6 +61,7 @@ plugins work on it.
 | --- | --- | --- |
 | [001](proposals/001-evolve-pool-parallel-walks.md) | accepted | Breed a generation in seconds: walks in parallel on the render farm |
 | [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
+| [003](proposals/003-one-instrument-contracts.md) | in-review | One instrument: shared words, colours, states, undo, messages and keys |
 
 ## Plans
 
