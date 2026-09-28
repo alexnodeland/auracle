@@ -111,7 +111,8 @@ The bank is a **single tab stop**. Reach it with <kbd>Tab</kbd>, then:
 | <kbd>m</kbd> | Save |
 
 In **presets**, <kbd>Enter</kbd> opens the preset under the cursor and
-<kbd>p</kbd> plays it.
+<kbd>p</kbd> plays it. <kbd>p</kbd> is also a note (D♯), but not while the
+presets list has focus: there it only plays the preset.
 
 The save key is <kbd>m</kbd> rather than <kbd>s</kbd> because <kbd>s</kbd> is a
 note in the computer keymap, and note letters get through even when a control

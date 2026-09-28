@@ -62,6 +62,10 @@ changelog that edits its own past is not a record.
   two" and that a pick is answered between seeds as if at once. The node
   bank's "nothing called that" no longer says Auracle has no sequencer: steps
   and euclid are sequencers that play the sound, not the notes.
+- **Keys a list or the rack uses are not also notes.** *p* in the presets list
+  plays the preset without also playing a D♯, *L* in the rack locks without
+  playing a D, and *1* / *2* during PATCH's keep-as-new comparison play a side
+  without also rating the bank's row (`keys_are_not_notes.spec.js`).
 
 ### Added — the films
 

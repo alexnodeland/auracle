@@ -22,7 +22,9 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 Note letters are blocked only while a text field (or a drop-down) has focus, so
 typing a name does not play a melody. Everywhere else they play, even with a
 button or knob focused. This is also why the save key is <kbd>m</kbd> rather
-than <kbd>s</kbd>.
+than <kbd>s</kbd>. Two letters are the exception, where something focused
+uses them itself: <kbd>p</kbd> in the presets list plays the preset, and
+<kbd>L</kbd> in the rack locks; neither also plays its note.
 ```
 
 ## Global

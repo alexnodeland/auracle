@@ -5766,7 +5766,11 @@ function presetKeydown(e) {
     e.preventDefault();
     rows[Math.max(0, presetCursor)]?.click();
   } else if (e.key.toLowerCase() === "p") {
+    // `p` is also a note (D♯ on the computer keybed), and the global handler
+    // lets note letters through a focused control: stopped here, or hearing a
+    // preset also played a D♯ over it.
     e.preventDefault();
+    e.stopPropagation();
     rows[Math.max(0, presetCursor)]?.querySelector(".bi-hear")?.click();
   }
 }
@@ -12087,7 +12091,9 @@ $("rack-svg").addEventListener("keydown", (e) => {
       if (mod && mod.kind !== "amp" && !mod.is_mod) armFromRack("insert", key);
       else armFromRack("insert", "node");
     } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
+      // `l` is a note too (D, an octave up): the lock must not also play it.
       e.preventDefault();
+      e.stopPropagation();
       const on = isModuleLocked(mod);
       for (const a of moduleLockAddrs(mod)) setLock(a, !on);
       nbAnnounce(on ? `${mod.title} unlocked` : `${mod.title} locked`);
@@ -12136,6 +12142,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     sendEdit(knob.addr, knob.value, true);
   } else if (e.key.toLowerCase() === "l") {
     e.preventDefault();
+    e.stopPropagation(); // …as on a plate: a lock, not a note
     setLock(knob.addr, !isLockedAddr(knob.addr));
     renderRack();
     focusRackControl(i);
@@ -12323,12 +12330,15 @@ $("cd-skip").onclick = () => {
 window.addEventListener("keydown", (e) => {
   if (!commitDuel) return;
   const k = e.key;
-  if (k === "Escape") { e.preventDefault(); cdCancel(); }
-  else if (k === "1") { e.preventDefault(); cdPlay("a"); }
+  if (k === "Escape") { e.preventDefault(); cdCancel(); return; }
+  // Every other key stops here, the handled ones included: 1 and 2 went on to
+  // the global handler, which rated the bank's row 1★ or 2★ while they played
+  // a side of this comparison.
+  e.stopPropagation();
+  if (k === "1") { e.preventDefault(); cdPlay("a"); }
   else if (k === "2") { e.preventDefault(); cdPlay("b"); }
   else if (k === "ArrowLeft") { e.preventDefault(); cdPick("a"); }
   else if (k === "ArrowRight") { e.preventDefault(); cdPick("b"); }
-  else e.stopPropagation();
 }, true);
 
 $("rack-play").onclick = () => playBench();
