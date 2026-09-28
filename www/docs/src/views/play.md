@@ -43,7 +43,9 @@ drive & fold −0.08   under your style 2 lens
 That is a prediction (how likely you are to prefer it in a duel), the three
 coordinates contributing most, and which style lens is currently judging it.
 When the model has no basis for a claim, this row says so instead of printing a
-number. See [Reading what it learned](../reading-the-model.md).
+number, and when nothing reaches the output (the patch's only source socket is
+[empty](../rack.md#empty-sockets)) it says *no guess while nothing reaches the
+output*. See [Reading what it learned](../reading-the-model.md).
 
 Beside it, the **budget**: the ceilings evolution searches within, `24
 modules · 6 depth · 3 mod depth`. It speaks up only when one is close
@@ -63,7 +65,7 @@ pointing at, in the catalogue or in the patch.
 
 **HELD.** The staging tray. Anything you unplug, delete or bypass lands here
 instead of vanishing, and stays across a reload. Drag it back onto any lit ○ to
-put it in.
+put it in. The socket an unplug leaves reads EMPTY and makes no sound.
 
 **The quick-pick strip.** <kbd>TEACH</kbd> plus the current duel pair, so you
 can vote without leaving PATCH.

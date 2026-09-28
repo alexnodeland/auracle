@@ -164,6 +164,10 @@ const wb = {
   rack: null,
   buffer: null,      // phrase render of the bench state
   vetOk: true,
+  // The vet failed because the patch is *silent* (no source reaches the
+  // output: its only source socket is unplugged), not because it can run
+  // away. Only meaningful while `vetOk` is false.
+  vetSilent: false,
   dirty: false,
   // Locked sites, keyed by **node identity** rather than by trace address —
   // `41#cut`, not `node/0#cut`. See the lock section below for why the whole
@@ -1426,6 +1430,7 @@ worker.onmessage = (e) => {
       // from, and this is the only place a rack is ever replaced.
       lockIndex = null;
       wb.vetOk = m.vetOk;
+      wb.vetSilent = !m.vetOk && !!m.vetSilent;
       if (m.subject !== undefined) {
         // Benching anything that is NOT the auditioned candidate ends the
         // audition detour — otherwise the header keeps naming a candidate
@@ -1570,6 +1575,9 @@ worker.onmessage = (e) => {
       } else {
         wb.buffer = null;
       }
+      // Whether the voices were holding the bench's tree before this reply —
+      // read before the reply overwrites it (see the knob-write branch below).
+      const voicesHadBench = liveTreeJson !== null && liveTreeJson === benchTreeJson;
       if (m.treeJson && m.treeJson !== "null") {
         wb.tree = JSON.parse(m.treeJson);
         benchTreeJson = m.treeJson;
@@ -1607,6 +1615,15 @@ worker.onmessage = (e) => {
         // A knob write landed. Settled before anything is drawn, so the
         // overlay below draws only what the engine still has not heard.
         settleParam(m.token);
+        // A live knob's write reached the voices as a parameter, not a new
+        // tree, so the voices now hold this reply's tree in all but name.
+        // Say so, and let PERFORM's tree text follow: its first measurement,
+        // Keep and offers are all built from that text, and the old one put
+        // the knob's previous value back.
+        if (!paramNonLive && voicesHadBench && m.treeJson && m.treeJson !== "null") {
+          liveTreeJson = m.treeJson;
+          if (perform && perform.followTree) perform.followTree(m.treeJson);
+        }
       }
       // Structural edits already reached the voices from the worker's early
       // `tree_json` post. Swapping the identical tree in again would buy a
@@ -1640,7 +1657,12 @@ worker.onmessage = (e) => {
       // was pinned there: the first patch landing on the bench at boot
       // cleared the quarantine alert `restore_failed` had raised a moment
       // before, and any later bench reply cleared a crash or a refused save.
-      if (!wb.vetOk) {
+      //
+      // A *silent* failure is not a hazard and gets no alarm: it is what an
+      // unplugged socket sounds like when it was the patch's only source. The
+      // runaway sentence over it was untrue, and the EMPTY plate, the caption
+      // ("silent") and the model's line already say what is going on.
+      if (!wb.vetOk && !wb.vetSilent) {
         alarm(
           "Muted — this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
           { label: "undo", run: doUndo }
@@ -3380,13 +3402,21 @@ paintEngineer();
 // amber pointer at the value actually sounding: open the circuit mid-phrase
 // and you watch the controls and the taste walk turn real knobs. Keep writes
 // them in and the ghosts fold into the pointers.
+//
+// Only where PERFORM has actually moved the knob (`perform.movedOn`: a control
+// or expression offset on it, a glide, or a drift not yet kept). It used to be
+// wherever PERFORM's copy of the knob disagreed with the rack, and PERFORM's
+// copy only followed structural edits — so a knob turned here was redrawn a
+// tenth of a second later at its *old* value, in amber, with a ghost claiming
+// PERFORM was playing it. A disagreement is not a performance.
 function paintPerformedKnobs() {
   if (currentView !== "play" || !perform || !perform.performedKnobs) return;
   const svg = $("rack-svg");
   if (!svg) return;
   const playing = perform.performedKnobs();
   for (const kg of svg.querySelectorAll("g[data-addr][aria-valuenow]")) {
-    const v = playing ? playing.get(kg.dataset.addr) : null;
+    const moved = playing && perform.movedOn ? perform.movedOn(kg.dataset.addr) : null;
+    const v = moved ? playing.get(kg.dataset.addr) : null;
     const kept = Number(kg.getAttribute("aria-valuenow"));
     let ghost = kg.querySelector(".knob-ghost");
     const val = kg.querySelector(".knob-value");
@@ -3415,8 +3445,7 @@ function paintPerformedKnobs() {
     ghost.setAttribute("y1", (-Math.cos(ang) * KNOB_R * 0.2).toFixed(2));
     ghost.setAttribute("x2", (Math.sin(ang) * (KNOB_R + 4)).toFixed(2));
     ghost.setAttribute("y2", (-Math.cos(ang) * (KNOB_R + 4)).toFixed(2));
-    const by = perform.controlsOn(kg.dataset.addr);
-    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM${by.length ? ` (${by.join(", ")})` : " (Wander)"} — Keep writes it in`;
+    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")}) — Keep writes it in`;
     kg.classList.add("performed");
   }
 }
@@ -4809,7 +4838,11 @@ function renderBelief() {
     // on a bench reply, and it claimed a fit that was not running.
     const n = picksTaught();
     const fitted = !!(views && views.styles && views.styles.length);
-    const why = fitting
+    // A silent bench has no φ to score, whatever the model knows: say that,
+    // not "not yet", which would promise a number the next pick cannot give.
+    const why = !wb.vetOk && wb.vetSilent
+      ? "no guess while nothing reaches the output"
+      : fitting
       ? `fitting to your ${n} pick${n === 1 ? "" : "s"}…`
       : n === 0 || !fitted
         ? "not yet — it needs a few picks first"
@@ -6076,6 +6109,7 @@ function syncCommitBtn() {
     wrap.title = !b.disabled ? ""
       : !hasRack ? "Pick a patch from the bank first"
       : !edited ? "Nothing to commit — turn a knob first"
+      : wb.vetSilent ? "Nothing reaches the output — plug a source into the empty socket first"
       : "This patch failed the safety vet";
   }
   b.title = b.disabled ? ""
@@ -6098,6 +6132,10 @@ function sendEdit(addr, value, isIndex, id) {
   const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
   if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
   else if (live) live.param(lockAddrOf(who) || addr, value);
+  // …and PERFORM plays from it. Its base for this knob was the tree it last
+  // measured, so without this PATCH drew the old value back over the knob in
+  // PERFORM's amber, and PERFORM's next move wrote it back into the voices.
+  if (!isIndex && perform && perform.knobSet) perform.knobSet(lockAddrOf(who) || addr, value);
   // The readout above the rack describes the tree before this write until the
   // bench answers with the new φ. Say so rather than leave a stale number
   // looking current.
@@ -6106,7 +6144,7 @@ function sendEdit(addr, value, isIndex, id) {
   // Genome second: the worker validates, re-renders the phrase, updates φ —
   // in its turn, behind whatever the player did before this.
   const seq = ++laneSeq;
-  pendingKnobs.set(who, { value, seq, live: !isIndex || liveIndex });
+  pendingKnobs.set(who, { value, seq, live: !isIndex || liveIndex, index: !!isIndex });
   const held = knobDragging;
   const tail = benchLane[benchLane.length - 1];
   if (tail && tail.t === "param" && tail.id === who) {
@@ -6166,7 +6204,10 @@ function livePending() {
   for (const [id, p] of pendingKnobs) {
     if (!p.live) continue;
     const addr = lockAddrOf(id);
-    if (addr) live.param(addr, p.value);
+    if (!addr) continue;
+    live.param(addr, p.value);
+    // PERFORM was handed the same tree, without the same writes.
+    if (!p.index && perform && perform.knobSet) perform.knobSet(addr, p.value);
   }
 }
 
@@ -6174,7 +6215,8 @@ function playBench() {
   if (wb.buffer) {
     markHeard();
     playBuffer(wb.buffer, $("rack-play"));
-  } else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
+  } else if (!wb.vetOk && wb.vetSilent) note("nothing to play — no source reaches the output");
+  else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
 }
 
 // Layout constants.
@@ -6223,13 +6265,16 @@ function plateStep(mod) {
   return MOD_BY_KIND[mod.kind]?.ins === 2 ? Math.max(1, step) : step;
 }
 
-/** Is this rack module standing in for an empty socket? One predicate, asked
- *  by the renderer, the layout and the bank, so the three cannot disagree
- *  about what is and is not there. `placeholders` is a set of **uids** (see
- *  `placeholderUids`); the amp is not a node and modulators are never holes. */
+/** Is this rack module an empty socket? One predicate, asked by the renderer,
+ *  the layout and the bank, so the three cannot disagree about what is and is
+ *  not there. A `silence` module is one by its kind, on any rack (a duel mini
+ *  included: it is silent there too). `placeholders` is a set of **uids** (see
+ *  `placeholderUids`) for the stand-ins older saves recorded; the amp is not a
+ *  node and modulators are never holes. */
 function isEmptySocket(mod, placeholders) {
-  return !!mod && !mod.is_mod && mod.kind !== "amp"
-    && !!mod.uid && !!placeholders && placeholders.has(mod.uid);
+  if (!mod || mod.is_mod || mod.kind === "amp") return false;
+  if (mod.kind === "silence") return true;
+  return !!mod.uid && !!placeholders && placeholders.has(mod.uid);
 }
 
 /** Plate geometry for one module: width, height, and its knob grid.
@@ -7762,7 +7807,7 @@ function renderSubject() {
     engineerMode ? `#${wb.subjectId}` : "",
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
-    wb.vetOk ? "" : "⚠ muted",
+    wb.vetOk ? "" : wb.vetSilent ? "silent — nothing reaches the output" : "⚠ muted",
     laneWaitingText(),
   ]
     .filter(Boolean)
@@ -8245,7 +8290,8 @@ function buildRack(svg, rack, opts) {
       nbSocketClick(j);
       return true;
     };
-    const isSource = SOURCE_KINDS.includes(m.kind);
+    // A `silence` leaf is a source with nothing in it: no input socket.
+    const isSource = SOURCE_KINDS.includes(m.kind) || m.kind === "silence";
     if (m.is_mod) {
       // A modulator's output is a cable source too, but only the one sitting
       // *in* the slot: the deeper links of a CV chain are the chain's own
@@ -10676,10 +10722,9 @@ function applyTreeRewrite(fn, tag) {
   // because the node had no name of its own.
   const refusal = fn(tree, marks);
   if (typeof refusal === "string") { note(refusal); return false; }
-  // Only the holes this rewrite *made* need saying — one of them is a bare
-  // `SEED_VCO()` with no identity yet, and the engine mints it on the way in.
-  // The keys are the handle until then; `settlePlaceholders` trades them for
-  // uids against the tree that comes back.
+  // Where the holes ended up, as keys. A new hole is a `Silence` leaf and is
+  // one by its kind; `settlePlaceholders` only keeps a uid mark for a
+  // stand-in an older save recorded, read back against the tree that returns.
   placeholderPending = keysOfNodes(tree, marks);
 
   queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) }, null, tag);
@@ -10687,70 +10732,47 @@ function applyTreeRewrite(fn, tag) {
 }
 
 // ---------- empty sockets ----------
-// An unplugged socket has to look empty. The grammar cannot express that: the
-// term is total and every input is filled. So the engine keeps its substitute
-// node and the UI knows which one it is: a plate drawn as a hole, and the
-// first place the next module wants to go.
+// An unplugged socket has to look empty *and be silent*. For a long time it
+// was only the first: the grammar's term is total, every input is filled, and
+// the app stood a saw VCO (`SEED_VCO()`) in the socket and drew a dashed EMPTY
+// plate over it. The plate said "drop a source here" while the saw played
+// under a held chord — the films caught it on the scope — and the model scored
+// and learned from a patch with a source in it the player believed was gone.
 //
-// WS-1 §7 deferred a real `Silence` production to phase 3, to be batched with
-// the φ_struct arrangement columns so that one evolution revalidation would
-// pay for both. Phase 3 ran that revalidation (two columns shipped, two were
-// cut by it) and **did not ship `Silence`**, for two reasons that are not
-// about the labour:
+// The grammar has a production for exactly this: `Silence`, a source with no
+// parameters that compiles to a VCA with nothing in its input. It has prior
+// weight (small, never zero, so a hand-made hole never makes a patch
+// un-evolvable), φ counts it (`n_silence`), and the rack describes it as kind
+// `silence`, title "empty". What was missing was a way for an edit to *name*
+// it, and `NodeKind::Silence` is that. So `placeholderNode()` is a `Silence`
+// leaf now, and the hole is what it looks like: the engine renders zero there,
+// a patch whose only source is unplugged is silent (and fails the vet as
+// silent, which the caption and the model's line say in those words), and one
+// side of a mix unplugged mutes that side and nothing else.
 //
-// - **There is no prior weight that is right.** A production the prior can
-//   draw is a production evolution will *propose*: give `Silence` mass and ⚡
-//   starts offering patches with deliberately dead branches, and manufactures
-//   its own quarantines every time a draw bottoms out in one. Give it none and
-//   every patch containing one sits outside the prior's support, which is
-//   risk R2 exactly — `refine_from` mutates the user's hole away and the
-//   structure they built evaporates on the button they press most.
-// - **Batching it would have cost the measurement its meaning.** A seventh
-//   source changes the source categorical, so it moves the *prior*, which
-//   moves pool composition, which moves every search-health number. Run in the
-//   same wave as a feature-space change, a regression could not have been
-//   attributed to either. The whole point of the pre/post run is attribution.
-//
-// An empty socket is an editing state — a hole you are about to fill — not a
-// musical idea, and the substitute plus a `.placeholder` plate says that
-// honestly. What is genuinely still wrong is that the hole *makes a sound*.
-// The fix that does not touch the prior is a compile-time one (a substitute
-// the compiler renders at zero gain), and it belongs with the liveness work,
-// not here.
+// A `silence` module is a hole by its kind, whether or not this session made
+// it — a reload, a patch the prior drew with one, a tree imported from a file
+// — so `isEmptySocket` and `isPlaceholderKey` ask the kind first. The uid set
+// below is still kept, for the holes older saves recorded over a stand-in VCO:
+// those still draw EMPTY (and still sound, until the socket is filled), because
+// they were saved before a hole could be silent.
 //
 // ---- what a hole is *named by* ----
 //
-// It was named by its trace key, which is a position, and that made it survive
-// exactly as long as the positions did: the client-side rewrite path carried
-// holes across by object identity, and every `StructOp` — insert, delete,
-// replace, set_mod, swap_mix, at any key in the patch — forgot them. The
-// symptom was a lie told one gesture late. Unplug: a correct dashed EMPTY
-// plate. Insert anything, anywhere, even at a key that does not move the hole:
-// the plate silently becomes a full vco with knobs, the bank lists "vco", and
-// the accessibility tree says "vco module". The player is then editing a patch
-// that contains a source they believe is silent, and the model is taught on it.
+// A `Silence` leaf names itself: its kind *is* the fact, it travels inside the
+// JSON a rewrite moves, and every `StructOp` carries it like any other node.
+// Nothing below is needed for one.
 //
-// So a hole is named by the **uid of the node standing in the socket** — the
-// same identity locks are keyed by, for the same reason and with the same
-// consequences (see `lockStore`). `apply_struct_op` works on a clone and
-// splices in place, so every node that lives through an edit carries its uid
-// across inside the `memmove` that carried its knobs. A hole therefore survives
-// every op for free, and stops surviving at exactly the moment it should: when
-// the node standing in the socket is replaced (`Replace` with a source mints a
-// fresh node, so the mark prunes itself) or deleted.
-//
-// Two seams the identity does not cross by itself:
-//
-//  - **A hole this session just made has no uid yet.** `placeholderNode()` is
-//    a bare `SEED_VCO()`; the engine mints on `ensure_uids` at the end of
-//    `edit_set_tree_apply`. So the rewrite path files its new holes as *keys*
-//    in `placeholderPending`, and `settlePlaceholders` reads the uid back out
-//    of the tree the engine returns — the structure it returns is the
-//    structure we sent, so the key is exact.
-//  - **A reload has no session.** `holeStore` is the same shape as `lockStore`
-//    and rides in the same `ui` blob, keyed by subject, so a socket you
-//    emptied is still empty tomorrow. Persisting it is only honest for the
-//    same reason persisting a lock is: it names a node, not a slot.
+// A stand-in could not: it was a vco like any other. Its mark was first a
+// trace key, which forgot it on the next op anywhere in the patch (the plate
+// turned back into a full vco one gesture later), and then the **uid of the
+// node standing in the socket** — the identity locks are keyed by, which
+// survives every op for free and stops surviving when the node is replaced or
+// deleted. That set (`placeholderUids`) and its store (`holeStore`, in the
+// same `ui` blob as `lockStore`, keyed by subject) are kept so a save that
+// recorded stand-ins still draws them EMPTY after a reload. No new mark is
+// filed: `settlePlaceholders` only reads back uids for a rewrite that moved
+// a stand-in, and prunes marks whose node is gone.
 const HOLE_KEEP = 60; // as the lock store; the bank holds 40
 // The bank chip's glyph for a hole (p4). Every other chip's glyph is a
 // waveform or a curve — a picture of what the module does to a signal — so the
@@ -10762,7 +10784,17 @@ let placeholderUids = new Set();
 let placeholderPending = null;      // Set<trace key>, awaiting the minted uids
 const holeStore = new Map();        // subject key → Set<uid>
 
-function placeholderNode() { return SEED_VCO(); }
+/** The node an unplugged socket holds: the grammar's `Silence` leaf, in the
+ *  externally tagged form every tree node takes on the wire. No `uid` field —
+ *  the engine mints one on the way in (see above). */
+function placeholderNode() { return { Silence: {} }; }
+
+/** Is this *tree JSON* node a hole? By kind for a `Silence` leaf, by the uid
+ *  set for a stand-in an older save recorded. */
+function isHoleJSON(n) {
+  if (!n || typeof n === "string") return false;
+  return nodeTag(n) === "Silence" || (placeholderUids.size > 0 && placeholderUids.has(uidOfJSON(n)));
+}
 
 /** The uid on a *tree JSON* node, or 0 for one the engine has not settled.
  *  `Uid` is `#[serde(transparent)]`, so it is a bare number in the wire tree,
@@ -10778,15 +10810,18 @@ function uidOfJSON(n) {
  *  that has to tell the truth about absence — the plate, the bank chip, the
  *  aria-label, the structure menu, the connect verbs, the pick chip. */
 function isPlaceholderKey(key) {
-  if (!placeholderUids.size) return false;
-  const uid = wb.rack?.modules.find((m) => m.key === key)?.uid;
-  return !!uid && placeholderUids.has(uid);
+  const mod = wb.rack?.modules.find((m) => m.key === key);
+  if (!mod || mod.is_mod) return false;
+  if (mod.kind === "silence") return true;
+  return !!mod.uid && placeholderUids.has(mod.uid);
 }
 
-/** The hole set as the renderer and the layout want it: uids, passed as an
- *  argument rather than read from module scope, so that the one caller drawing
- *  a *different* patch (a duel mini) gets full plates by simply not passing it.
- *  `settlePlaceholders` is what keeps the set true of the current rack. */
+/** The stand-in holes as the renderer and the layout want them: uids, passed
+ *  as an argument rather than read from module scope, so that the one caller
+ *  drawing a *different* patch (a duel mini) does not borrow this bench's
+ *  marks by simply not passing it. (A `Silence` leaf needs no mark: it is a
+ *  hole by its kind on any rack — see `isEmptySocket`.) `settlePlaceholders`
+ *  is what keeps the set true of the current rack. */
 function placeholderSet() {
   return placeholderUids;
 }
@@ -10796,9 +10831,8 @@ function placeholderSet() {
  *  staged to HELD when it is only a hole. */
 function holeNodesIn(tree) {
   const out = [];
-  if (!placeholderUids.size) return out;
   walkTreeKeys(tree, (n) => {
-    if (placeholderUids.has(uidOfJSON(n))) out.push(n);
+    if (isHoleJSON(n)) out.push(n);
   });
   return out;
 }
@@ -10854,7 +10888,11 @@ function settlePlaceholders() {
     // the tree we posted addresses the same node in the tree that came back —
     // this is only reading off the identity it minted on the way through.
     for (const k of placeholderPending) {
-      const uid = uidOfJSON(nodeAtIn(wb.tree, k));
+      const n = nodeAtIn(wb.tree, k);
+      // A `Silence` leaf is a hole by its kind and needs no mark; only a
+      // stand-in (a hole an older save recorded, moved by this rewrite) does.
+      if (!n || nodeTag(n) === "Silence") continue;
+      const uid = uidOfJSON(n);
       if (uid) placeholderUids.add(uid);
     }
     placeholderPending = null;
@@ -11002,7 +11040,7 @@ function openStructMenu(mod, x, y) {
     run: (ev) => deleteModule(key, ev.clientX || x, ev.clientY || y),
   });
   showMenu(x, y, {
-    glyph: spec?.glyph,
+    glyph: isPlaceholderKey(key) ? EMPTY_GLYPH : spec?.glyph,
     title: isPlaceholderKey(key) ? "empty" : mod.title || kindName(mod.kind),
     sub: `${mod.knobs?.length || 0} knobs · ${subtreeSize(node || {})} modules from here down`,
   }, rows);
@@ -13845,17 +13883,19 @@ function nbRenderInPatch() {
   const sec = $("nb-inpatch");
   const list = $("nb-inpatch-list");
   const mods = (wb.rack && wb.rack.modules) || [];
-  const real = mods.filter((m) => MOD_BY_KIND[m.kind]);
+  const holes = placeholderSet();
+  // A hole is listed too, as "empty": a `silence` module has no palette entry
+  // (nobody shops for one), and filtering by the palette alone dropped it.
+  const real = mods.filter((m) => MOD_BY_KIND[m.kind] || isEmptySocket(m, holes));
   sec.classList.toggle("hidden", real.length === 0);
   if (real.length === 0) { list.innerHTML = ""; return; }
   $("nb-inpatch-n").textContent = String(real.length);
   // The same three columns the catalogue chip has, including the belief cell:
   // the model was speaking loudest about modules you were merely shopping for
   // and going silent about the ones you had actually built with (WS-2 §7).
-  const holes = placeholderSet();
   list.innerHTML = real
     .map((m) => {
-      const d = MOD_BY_KIND[m.kind];
+      const d = MOD_BY_KIND[m.kind] || { name: "empty", sort: "source", glyph: EMPTY_GLYPH };
       // p4: the canvas draws a dashed EMPTY plate and this list was printing
       // "vco" beside it — the *same* substitute node, named two ways, one of
       // them a lie about a destructive act the player had just performed. The
@@ -15230,9 +15270,9 @@ function connectBranch(srcKey, targetKey) {
 }
 
 /** A cable pulled out of an input and dropped on nothing. The socket is left
- *  visibly empty. The engine still needs a node there — the term is total —
- *  but the plate says "empty" and the next module goes there by default,
- *  instead of a fresh vco quietly pretending the unplug did nothing. */
+ *  empty, audibly and visibly: the term is total, so the engine gets a
+ *  `Silence` leaf there (it renders nothing), the plate says "empty", and the
+ *  next module goes there by default. */
 function unplugCable(childKey) {
   if (!nodeAtKey(childKey)) return note("that cable is no longer there");
   if (holdRewrite([childKey], unplugCable, "unplug")) return;

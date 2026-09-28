@@ -107,7 +107,7 @@ The search matches by **sound as well as by name**: *grit*, *vowel*,
 | Drag a knob | Change it; you hear it immediately |
 | Click an enum plate | Cycle it (`saw`, `square`, `−2 oct`) |
 | Drag from an **out** jack | Pull a cable; every legal input lights up |
-| Drag a wired **in** jack off its socket | Unplug. The chain goes to **HELD** |
+| Drag a wired **in** jack off its socket | Unplug. The chain goes to **HELD** and the socket goes quiet |
 | Drag from **HELD** onto a lit ○ | Put it back |
 | Click **⋯** on a plate | replace with…, insert before…, insert after…, duplicate, extract to HELD, bypass, modulate → *destination*, probe this output, swap the two inputs, delete |
 | Click **▢** on a plate | Lock the module so evolution cannot touch it |

@@ -178,7 +178,8 @@ to that module in the rack.
 ## The HELD tray
 
 Anything you unplug, delete or bypass goes here, and **stays across a reload**.
-Drag it back onto any lit ○ to put it in.
+Drag it back onto any lit ○ to put it in. The socket it came out of is left
+[empty and silent](./rack.md#empty-sockets).
 
 Collapsed, the rail keeps its name and the count of what is held below it, so
 staged work is never hidden silently. The rail's width, its collapsed state,

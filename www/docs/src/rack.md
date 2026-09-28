@@ -73,7 +73,9 @@ engine can still be working on the last one when you make the next: a bypass
 right after a knob turn, a cable pulled right after ⌘Z. The new one waits its
 turn and then happens. Its plate is outlined while it waits and the caption
 under the patch name says *1 edit waiting*. A knob always shows the value you
-last set, never an older one the engine is still catching up on.
+last set, never an older one the engine is still catching up on, and never
+PERFORM's older copy of it: once you turn it here, PERFORM plays from your
+value too ([the circuit](./views/perform.md#opening-the-circuit)).
 
 Edits are staged. The toolbar's **commit** inserts the result as a new
 candidate, leaving the original intact. <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> undo and
@@ -157,7 +159,7 @@ Per module:
 | **insert before…** | A new module between this one's input and it. Greyed on a source, which has no input |
 | **insert after…** | A new module between this one and what it feeds |
 | **duplicate** | A second one in series, with the same settings. Greyed on a source |
-| **extract to HELD** | Leaves the socket empty; drag it back any time |
+| **extract to HELD** | Leaves the socket [empty and silent](#empty-sockets); drag it back any time |
 | **bypass** | The input passes straight through. Greyed on a source |
 | **modulate → *destination*** | Arms the node bank at the modulators, for this module's mod slot. Only on a module that has one |
 | **probe this output** | A little scope on the out ○: the patch rendered as if it ended here |
@@ -171,6 +173,23 @@ with…** and **unplug this modulator**.
 
 Anything you bypass or delete goes to the **HELD** tray rather than
 disappearing, and stays there across a reload.
+
+## Empty sockets
+
+Unplug a cable, extract a module or move a source into another socket, and the
+socket it leaves is **empty**: a small dashed plate titled *empty*, listed as
+*empty* under IN THIS PATCH, and **silent**. Nothing plays there. On one side
+of a mix, only that side goes quiet. Under a module you insert after it, that
+module has nothing to process.
+
+If the empty socket was the patch's only source, the whole patch is silent.
+The caption under its name says *silent — nothing reaches the output*, ▶ and
+**commit** wait for a source, and the model's line says it has no guess. Arm
+any source and the empty socket is the one already picked; place it, or press
+<kbd>⌘Z</kbd>, and you hear the patch again.
+
+The model sees an empty socket as one too: *empty sockets* is one of the
+structural coordinates it weighs.
 
 ## Exporting a patch
 

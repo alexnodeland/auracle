@@ -175,11 +175,17 @@ it.
 
 Everything PERFORM does lands on real knobs, and PATCH shows it while it
 happens. A knob PERFORM is playing away from its kept value, because a control
-turned it or Wander moved it, carries a second **amber pointer** at the value
-actually sounding, and its readout shows that value in amber. The green
-pointer is the kept value. **Keep** writes the amber into the patch, and the
-two pointers become one. Hover the amber pointer to see which control is
-turning it.
+turned it or Wander or Back is moving it, carries a second **amber pointer** at
+the value actually sounding, and its readout shows that value in amber. The
+green pointer is the kept value. **Keep** writes the amber into the patch, and
+the two pointers become one. Hover the amber pointer to see what is moving it:
+the controls by name, *Wander* or *Back* while a glide runs, or *moved since
+the last Keep* after one.
+
+It works the other way too. A knob you turn in PATCH is the kept value from
+that moment: PERFORM plays from it (a control already turned on it adds its
+turn to the new value), and Back glides home to it. Turning a knob in PATCH
+never gives it an amber pointer by itself.
 
 ## The XY pad
 

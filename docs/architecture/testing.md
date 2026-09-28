@@ -45,6 +45,7 @@ this table.
 | `perform_instant.spec.js` | Cached wirings play at once; a spare offer lands at once |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
 | `perform_circuit.spec.js` | A knob turned in PERFORM is drawn performed in PATCH |
+| `patch_truth.spec.js` | An unplugged socket goes quiet and reads EMPTY; a knob turned in PATCH keeps its value with no ghost, and PERFORM plays from it |
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |

@@ -77,6 +77,14 @@ is measured ("re-checking"), and compares trees by text to tell a new
 structure from new knob values. That comparison is why trees must serialize in
 one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
 
+A continuous knob turned in PATCH reaches the voices as a parameter, never as
+a new tree, so PERFORM hears it separately: `sendEdit` calls
+`perform.knobSet` (PERFORM's base and home take the value at once), and the
+edit's reply calls `perform.followTree` (its tree text follows, so a first
+measurement, Keep and offers start from the edited patch). PATCH draws an
+amber "performed" pointer only where `perform.movedOn` names a reason: a
+control or expression offset, a Wander or Back glide, or a drift not yet kept.
+
 ## Audio
 
 `live-audio.js` builds the worklet as a blob with the wasm-bindgen glue

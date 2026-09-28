@@ -529,6 +529,9 @@ mod tests {
             NodeKind::Duck,
             NodeKind::Gate,
             NodeKind::Vocoder,
+            // The unplug: every node replaced by a hole must still compile,
+            // describe and round-trip, wherever the hole lands.
+            NodeKind::Silence,
         ];
         for i in 0..30 {
             let (tree, _) = draw(&prior, &mut rng);
@@ -597,6 +600,158 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The loudest sample of `tree` over half a second of a held C4.
+    fn held_peak_dbfs(tree: &PatchTree) -> f64 {
+        let mut v = compile(tree, SR).expect("compiles");
+        v.pitch.set(0.0);
+        v.gate.set(5.0);
+        let mut peak = 0.0f64;
+        for _ in 0..(SR as usize / 2) {
+            let (l, r) = v.patch.tick();
+            peak = peak.max(l.abs()).max(r.abs());
+        }
+        if peak > 0.0 {
+            20.0 * peak.log10()
+        } else {
+            f64::NEG_INFINITY
+        }
+    }
+
+    /// An unplugged socket is silent, and plugging a source back in sounds.
+    ///
+    /// The app used to unplug a socket by standing a saw VCO in it and drawing
+    /// an EMPTY plate over the top: the plate said nothing was there while a
+    /// saw played under a held chord, and the model scored the saw. The socket
+    /// holds `Silence` now, reached through the edit vocabulary as
+    /// [`NodeKind::Silence`], so this pins the three things that make that
+    /// true: the unplugged patch renders nothing, a refill with a source is
+    /// heard again, and both survive the JSON the app posts and reads back —
+    /// including the bare `{"Silence":{}}` it writes for a hole it just made.
+    #[test]
+    fn an_unplugged_socket_is_silent_and_filling_it_sounds() {
+        use mutate::{NodeKind, StructOp};
+        // First Bass: a ladder over one saw, so the saw's socket is the only
+        // thing the patch can hear.
+        let (_, seed) = presets::presets()
+            .into_iter()
+            .find(|(n, _)| *n == "First Bass")
+            .expect("First Bass is in the library");
+        assert!(
+            held_peak_dbfs(&seed) > -40.0,
+            "the preset itself must sound"
+        );
+
+        let unplugged = mutate::apply_struct_op(
+            &seed,
+            &StructOp::Replace {
+                key: "node/0".into(),
+                kind: NodeKind::Silence,
+            },
+        )
+        .expect("a source can be replaced by a hole");
+        assert!(
+            matches!(
+                &unplugged.root,
+                term::AudioNode::Filter { input, .. }
+                    if matches!(**input, term::AudioNode::Silence { .. })
+            ),
+            "the filter's input is the hole: {}",
+            unplugged.to_sexpr()
+        );
+        let quiet = held_peak_dbfs(&unplugged);
+        assert!(
+            quiet < -90.0,
+            "an unplugged socket plays at {quiet:.1} dBFS"
+        );
+        // The rack names it as a hole, so the plate and the patch agree.
+        let rack = describe::describe(&unplugged);
+        let hole = rack
+            .modules
+            .iter()
+            .find(|m| m.key == "node/0")
+            .expect("a module at node/0");
+        assert_eq!(hole.kind, "silence");
+
+        // The form the app writes for a hole it has just made: no uid yet.
+        let json = serde_json::to_string(&unplugged).expect("serializes");
+        let bare = json.replacen(
+            &serde_json::to_string(&unplugged.root.children()[0]).unwrap(),
+            r#"{"Silence":{}}"#,
+            1,
+        );
+        assert!(
+            bare != json && bare.contains(r#"{"Silence":{}}"#),
+            "the hole was not found in its own tree's JSON: {json}"
+        );
+        let back: PatchTree = serde_json::from_str(&bare).expect("a bare hole parses");
+        assert_eq!(back, unplugged, "JSON round trip of the unplugged tree");
+        assert!(held_peak_dbfs(&back) < -90.0);
+
+        // Filling the hole with a source sounds again, and round-trips.
+        let filled = mutate::apply_struct_op(
+            &back,
+            &StructOp::Replace {
+                key: "node/0".into(),
+                kind: NodeKind::Vco,
+            },
+        )
+        .expect("a hole can be refilled");
+        let loud = held_peak_dbfs(&filled);
+        assert!(loud > -40.0, "the refilled socket plays at {loud:.1} dBFS");
+        let json = serde_json::to_string(&filled).unwrap();
+        let again: PatchTree = serde_json::from_str(&json).unwrap();
+        assert_eq!(again, filled);
+        assert_eq!(
+            serde_json::to_string(&again).unwrap(),
+            json,
+            "one text for one tree"
+        );
+
+        // A hole beside a live branch mutes only its side of the mix.
+        let mix = mutate::apply_struct_op(
+            &seed,
+            &StructOp::Insert {
+                key: "node/0".into(),
+                kind: NodeKind::Mix,
+            },
+        )
+        .expect("a mix over the saw");
+        let one_side = mutate::apply_struct_op(
+            &mix,
+            &StructOp::Replace {
+                key: "node/0/1".into(),
+                kind: NodeKind::Silence,
+            },
+        )
+        .expect("one side of the mix unplugged");
+        assert!(
+            held_peak_dbfs(&one_side) > -40.0,
+            "the other side still plays"
+        );
+        // A hole cannot be spliced into a wire: it is a source.
+        assert!(mutate::apply_struct_op(
+            &seed,
+            &StructOp::Insert {
+                key: "node/0".into(),
+                kind: NodeKind::Silence,
+            },
+        )
+        .is_err());
+    }
+
+    /// `NodeKind::Silence` is spelled `silence` on the wire, which is also
+    /// the `kind` the rack reports for a hole.
+    #[test]
+    fn the_silence_kind_round_trips_as_silence() {
+        use mutate::NodeKind;
+        let s = serde_json::to_string(&NodeKind::Silence).unwrap();
+        assert_eq!(s, "\"silence\"");
+        let back: NodeKind = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, NodeKind::Silence);
+        assert!(NodeKind::Silence.is_source());
+        assert!(NodeKind::ALL.contains(&NodeKind::Silence));
     }
 
     /// The log-prior of `tree` under `prior`, scored the way the engine scores

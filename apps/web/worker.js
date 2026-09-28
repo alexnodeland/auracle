@@ -715,6 +715,10 @@ function postBench(extra) {
       type: "bench",
       rack: JSON.parse(engine.edit_describe()),
       vetOk: engine.edit_vet_ok(),
+      // Failed for being *silent* — nothing reaches the output, as when the
+      // only source socket is unplugged — rather than for running away. The
+      // two need different words on screen.
+      vetSilent: typeof engine.edit_vet_silent === "function" ? engine.edit_vet_silent() : false,
       sampleRate: engine.sample_rate(),
       buffer: arr,
       treeJson: engine.edit_tree_json(),

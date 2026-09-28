@@ -94,6 +94,10 @@ export function createPerform(host) {
     intent: null, // {i, dir, at}: a turn waiting on its graft to be measured
     c: [0, 0, 0, 0, 0, 0],
     sent: new Map(), // addr -> value last written to the voices
+    // addr -> value a hand wrote in PATCH since this tree arrived (see
+    // `knobSet`). Read only where a knob's base is taken from a measurement
+    // that may predate the write; cleared with every new tree.
+    hand: new Map(),
     wander: 0,
     hold: false,
     blend: 0,
@@ -398,7 +402,12 @@ export function createPerform(host) {
 
   function overrides() {
     if (!state.cur) return [];
-    return [...state.cur.knobs.keys()].map((a) => [a, liveValue(a)]);
+    const out = [...state.cur.knobs.keys()].map((a) => [a, liveValue(a)]);
+    // A knob turned in PATCH that this wiring does not hold is still part of
+    // the sound: Keep, an offer or a drift built without it would put the
+    // tree's old value back.
+    for (const [a, v] of state.hand) if (!state.cur.knobs.has(a)) out.push([a, v]);
+    return out;
   }
 
   // Write every knob whose sounding value changed. Only continuous knobs are
@@ -421,6 +430,87 @@ export function createPerform(host) {
         }
       }
     }
+  }
+
+  // A knob turned in PATCH. The hand wrote `v` into the voices already; this
+  // makes it PERFORM's base too, so the sound PERFORM describes and plays
+  // from is the one the player just set. Without it the base stayed at the
+  // tree PERFORM last measured, until a structural edit re-sent the tree:
+  // PATCH drew the old value as "performed" (an amber readout and pointer
+  // over the knob the player had just turned), and the first PERFORM control
+  // moved after it wrote the old value back into the voices, silently
+  // undoing the edit. Home follows as well, because the edit is to the patch
+  // itself: Back must not glide it away.
+  function knobSet(addr, v) {
+    if (!state.cur || !Number.isFinite(v)) return;
+    v = clamp(v, 0, KNOB_MAX);
+    state.hand.set(addr, v);
+    // The player's hands are on the patch: a drift grown from before this
+    // turn is dropped, and a glide in progress stops where it is.
+    touch();
+    if (!state.cur.knobs.has(addr)) return;
+    state.cur.knobs.set(addr, v);
+    if (state.home && state.home.knobs && state.home.knobs.has(addr)) state.home.knobs.set(addr, v);
+    const g = state.glide;
+    if (g) {
+      if (g.from.has(addr)) g.from.set(addr, v);
+      if (g.to.has(addr)) g.to.set(addr, v);
+    }
+    state.sent.set(addr, v);
+    // With a control turned on this knob, what sounds is the new base plus
+    // the control's offset — PATCH wrote the bare base, so put it back on.
+    const lv = liveValue(addr);
+    const live = host.live();
+    if (live && lv != null && Math.abs(lv - v) > 1e-5) {
+      live.param(addr, lv);
+      state.sent.set(addr, lv);
+    }
+    const ti = state.touch.sites.findIndex(([ta]) => ta === addr);
+    if (ti >= 0 && lv != null) {
+      state.touch.sites[ti][2] = lv;
+      if (live && live.touchBase) live.touchBase(ti, lv);
+    }
+    paintHoodSoon();
+  }
+
+  // PATCH's knob writes landed on the bench: the same structure with new
+  // values, already in the voices knob by knob (`knobSet`). The tree text
+  // follows, so a first measurement, Keep and an offer all start from the
+  // patch as edited rather than as it arrived.
+  function followTree(json) {
+    if (!state.cur || !json || state.cur.json === json) return;
+    if (structureDiffers(state.cur.json, json)) return;
+    state.cur.json = json;
+    if (state.home && state.home.json && !structureDiffers(state.home.json, json)) state.home.json = json;
+  }
+
+  // Why PERFORM is playing `addr` away from the patch, or null when it is
+  // not. The same terms `liveValue` adds (a named control or expression with
+  // a non-zero offset on a wire that reaches this knob, search controls
+  // skipped), plus a glide under way, plus a base PERFORM itself carried away
+  // from home (a finished drift, or controls folded into the centre by a
+  // re-measurement) and has not kept. A base that merely disagrees with the
+  // bench is none of these, and is not a performance.
+  function movedOn(addr) {
+    if (!state.cur) return null;
+    const base = state.cur.knobs.get(addr);
+    if (base == null) return null;
+    const why = [];
+    (state.wire || []).forEach((w, i) => {
+      if (!w || w.search) return;
+      let p = 0;
+      for (const x of state.expr.values()) if (x.i === i) p += x.v;
+      if (!(state.c[i] + p)) return;
+      if (w.knobs.some(([a, g]) => a === addr && g)) why.push(w.name);
+    });
+    const g = state.glide;
+    if (g && g.from.has(addr) && Math.abs((g.to.has(addr) ? g.to.get(addr) : g.from.get(addr)) - g.from.get(addr)) > 1e-4) {
+      why.push(g.why || "a glide");
+    } else {
+      const h = state.home && state.home.knobs ? state.home.knobs.get(addr) : null;
+      if (h != null && Math.abs(base - h) > 0.004) why.push("moved since the last Keep");
+    }
+    return why.length ? why : null;
   }
 
   // Send the touch wiring: the chosen control's knobs, their gains and where
@@ -690,7 +780,10 @@ export function createPerform(host) {
     state.measuring = true;
     renderStatus();
     knobs.forEach(paintKnob);
-    const req = request("perform_wire", { tree: state.cur.json, overrides: overrides() });
+    // A first measurement is of the tree as it stands, because it is cached
+    // under that tree's text; knobs turned in PATCH since are laid over it
+    // when it lands (`applyWired`).
+    const req = request("perform_wire", { tree: state.cur.json, overrides: first ? [] : overrides() });
     if (first) state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev() };
   }
 
@@ -912,7 +1005,11 @@ export function createPerform(host) {
     // replaced. A knob this patch had not been measured on yet takes the
     // value the measurement read.
     const had = state.cur.knobs;
-    const here = new Map(data.addrs.map((a, i) => [a, had.has(a) ? liveValue(a) : data.values[i]]));
+    // …and a knob turned in PATCH since this tree arrived takes the hand's
+    // value: the measurement may have been of the tree before the turn.
+    const here = new Map(
+      data.addrs.map((a, i) => [a, had.has(a) ? liveValue(a) : state.hand.has(a) ? state.hand.get(a) : data.values[i]]),
+    );
     state.cur.knobs = here;
     state.wiredAt = new Map(here);
     state.playableAt = performance.now();
@@ -1023,7 +1120,7 @@ export function createPerform(host) {
         return true;
       }
       const pace = wanderPace(state.wander);
-      startGlide(new Map(m.drift.knobs), JSON.stringify(m.drift.tree), pace.glide);
+      startGlide(new Map(m.drift.knobs), JSON.stringify(m.drift.tree), pace.glide, "Wander");
       renderStatus(m.drift.taste ? "drifting toward your taste" : "drifting through the grammar — no taste yet");
       return true;
     }
@@ -1073,7 +1170,11 @@ export function createPerform(host) {
   function patchChanged(json, makeup, liveKnobs) {
     nameEl.textContent = host.label();
     if (!json) return;
-    if (state.cur && state.cur.json === json) {
+    // The same text is the same sound — unless a hand has turned knobs in
+    // PATCH since it arrived, in which case this tree (an undo of that turn,
+    // say) was just handed to the voices *without* them, and the base has to
+    // be read from it again.
+    if (state.cur && state.cur.json === json && !state.hand.size) {
       state.keeping = null;
       return;
     }
@@ -1085,6 +1186,8 @@ export function createPerform(host) {
       state.cur.makeup = makeup;
       state.home.json = json;
       state.home.makeup = makeup;
+      // Keep wrote every performed knob in, hand-turned ones included.
+      state.hand.clear();
       wire();
       return;
     }
@@ -1116,6 +1219,7 @@ export function createPerform(host) {
     state.heldWire = null;
     state.cur = { json, makeup, knobs: new Map() };
     state.home = { json, makeup, knobs: null };
+    state.hand.clear();
     // Addresses mean nothing across a patch change until re-measured: a
     // stale touch site could land on a different module's knob.
     state.touch.sites = [];
@@ -1212,7 +1316,7 @@ export function createPerform(host) {
   }
 
   // ---------- glides (drift and back) ----------
-  function startGlide(to, json, seconds) {
+  function startGlide(to, json, seconds, why) {
     const from = new Map();
     for (const a of state.cur.knobs.keys()) from.set(a, liveValue(a));
     // The controls' deltas are part of where the glide starts; fold them into
@@ -1228,7 +1332,7 @@ export function createPerform(host) {
         host.controlMoved?.(k.i);
       }
     });
-    state.glide = { from, to, t0: performance.now(), dur: Math.max(0.2, seconds) * 1000, json };
+    state.glide = { from, to, t0: performance.now(), dur: Math.max(0.2, seconds) * 1000, json, why };
     renderStatus("gliding");
     requestAnimationFrame(stepGlide);
   }
@@ -1387,7 +1491,7 @@ export function createPerform(host) {
       host.commitTree(state.home.json);
       return;
     }
-    startGlide(new Map(state.home.knobs), state.home.json, 1.2);
+    startGlide(new Map(state.home.knobs), state.home.json, 1.2, "Back");
     flash("back");
   }
 
@@ -1856,7 +1960,8 @@ export function createPerform(host) {
     },
     // What PERFORM is playing right now, knob by knob — the kept values plus
     // every control, glide and Wander move on top — for PATCH to draw beside
-    // the kept ones. Null before a patch is under PERFORM's hands.
+    // the kept ones. Null before a patch is under PERFORM's hands. PATCH draws
+    // a knob as performed only where `movedOn` names a reason.
     performedKnobs() {
       if (!state.cur) return null;
       const out = new Map();
@@ -1866,12 +1971,12 @@ export function createPerform(host) {
       }
       return out;
     },
-    // The named controls that turn `addr` on this patch.
-    controlsOn(addr) {
-      return (state.wire || [])
-        .filter((w) => !w.search && w.knobs.some(([a]) => a === addr))
-        .map((w) => w.name);
-    },
+    // Why PERFORM is playing a knob away from the patch (the controls on it,
+    // "Wander", "Back"…), or null: what PATCH draws a ghost for, and says.
+    movedOn,
+    // PATCH turned a knob; PATCH's knob writes landed on the bench.
+    knobSet,
+    followTree,
     setQuiet(on) {
       state.quiet = !!on;
       // Whatever attract blended in was heard by nobody in particular: an

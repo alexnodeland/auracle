@@ -123,6 +123,26 @@ was fixed, not the words.
   out with its fields in a different order and read as a new patch. Keep after
   a drift, and PERFORM's memory of measured patches, had the same fault
   (`perform_replies_write_trees_in_their_own_key_order`).
+- **An empty socket is silent.** Unplugging a source, extracting a module or
+  moving a cable left a dashed EMPTY plate, but under it the app had put a saw
+  oscillator that went on playing: the film's scope showed a clean saw under a
+  held chord, and the model scored and learned from a sound you never built.
+  The socket now holds the grammar's own silent source, so nothing plays
+  there; one side of a mix unplugged mutes only that side. When the socket was
+  the patch's only source the whole patch is silent, and it says so in those
+  words ("silent — nothing reaches the output", and "no guess" from the model)
+  instead of the runaway-feedback warning. A patch saved with an empty socket
+  before this change still has the saw behind its EMPTY plate until you fill
+  it (`patch_truth.spec.js`,
+  `an_unplugged_socket_is_silent_and_filling_it_sounds`).
+- **A knob you turn in PATCH shows the value you turned it to.** Once PERFORM
+  had measured a patch, PATCH redrew a knob you had just turned at its old
+  value, in amber, with a pointer claiming PERFORM was playing it: CUTOFF set
+  to 7.83 kHz read 1.78 kHz. PERFORM's own copy of the knob never heard the
+  turn, so the next PERFORM control you moved also put the old value back into
+  the sound. PERFORM now plays from what you set, and PATCH draws an amber
+  pointer only where a PERFORM control, Wander or Back is actually moving the
+  knob (`patch_truth.spec.js`).
 
 ### Fixed — the player first
 

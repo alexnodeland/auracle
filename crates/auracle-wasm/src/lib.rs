@@ -44,7 +44,9 @@ pub use live::LivePoly;
 
 use std::sync::Arc;
 
-use auracle_features::{featurize_memo, Audition, CachedFeatures, Features, PhraseSpec};
+use auracle_features::{
+    featurize_memo, Audition, CachedFeatures, Features, FeaturizeError, PhraseSpec, VetFailure,
+};
 use auracle_grammar::{
     apply_struct_op, describe, presets, set_param, validate_tree, ParamValue, PatchGrammarPrior,
     PatchTree, StructOp,
@@ -362,6 +364,12 @@ pub struct WasmEngine {
     bench_render: Option<Arc<Audition>>,
     bench_original: Option<u64>,
     bench_vet_ok: bool,
+    /// Whether the bench's last vet failed because the render was *silent*
+    /// (rather than running away). A patch whose only source socket is
+    /// unplugged is a `Silence`-fed chain now, and it fails the vet for being
+    /// quiet, which is the truth about it: the app must say "nothing reaches
+    /// the output", not the runaway warning it gives every other failure.
+    bench_vet_silent: bool,
     /// The live makeup of the bench's last featurization.
     bench_makeup: f64,
     /// Raw φ of the tree on the bench, and of the tree that was on it before
@@ -425,6 +433,12 @@ fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
     Some(tree)
 }
 
+/// Did a featurize fail because the render was silent? The one vet failure
+/// that is not a hazard: an unplugged socket, not a runaway.
+fn is_silent(e: &FeaturizeError) -> bool {
+    matches!(e, FeaturizeError::Quarantined(VetFailure::Silent { .. }))
+}
+
 /// A JSON array of memo keys as a set; empty for anything else.
 fn key_set(json: &str) -> std::collections::HashSet<String> {
     serde_json::from_str::<Vec<String>>(json)
@@ -466,6 +480,7 @@ impl WasmEngine {
             bench_render: None,
             bench_original: None,
             bench_vet_ok: false,
+            bench_vet_silent: false,
             bench_makeup: 1.0,
             bench_phi: None,
             bench_phi_prev: None,
@@ -1541,6 +1556,7 @@ impl WasmEngine {
                 // playback. Take it from whether a buffer actually exists,
                 // not from the fact that this id is in the pool.
                 self.bench_vet_ok = self.bench_render.is_some();
+                self.bench_vet_silent = false;
                 true
             }
             None => false,
@@ -1574,13 +1590,15 @@ impl WasmEngine {
                         self.bench_makeup = live_makeup(&cf.features);
                         self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
                         self.bench_vet_ok = true;
+                        self.bench_vet_silent = false;
                         self.set_bench_phi(Some(cf.features.phi()));
                     }
-                    Err(_) => {
+                    Err(e) => {
                         // Keep the edit (the user asked for it) but flag it:
                         // the buffer is withheld, never played unvetted.
                         self.bench_render = None;
                         self.bench_vet_ok = false;
+                        self.bench_vet_silent = is_silent(&e);
                         self.set_bench_phi(None);
                     }
                 }
@@ -1678,11 +1696,13 @@ impl WasmEngine {
                 self.bench_makeup = live_makeup(&cf.features);
                 self.bench_render = bench_audio(&tree, &phrase, &cf.features, audio);
                 self.bench_vet_ok = true;
+                self.bench_vet_silent = false;
                 self.set_bench_phi(Some(cf.features.phi()));
             }
-            Err(_) => {
+            Err(e) => {
                 self.bench_render = None;
                 self.bench_vet_ok = false;
+                self.bench_vet_silent = is_silent(&e);
                 self.set_bench_phi(None);
             }
         }
@@ -1733,6 +1753,13 @@ impl WasmEngine {
     /// Whether the current workbench state passed vetting.
     pub fn edit_vet_ok(&self) -> bool {
         self.bench_vet_ok
+    }
+
+    /// Whether the current workbench state failed vetting for being silent —
+    /// nothing reaches the output, typically because the only source socket
+    /// is unplugged. False whenever [`Self::edit_vet_ok`] is true.
+    pub fn edit_vet_silent(&self) -> bool {
+        !self.bench_vet_ok && self.bench_vet_silent
     }
 
     /// Render the **first `seconds`** of the bench tree with `op` applied,
@@ -1955,6 +1982,7 @@ impl WasmEngine {
         self.bench_render = None;
         self.bench_original = None;
         self.bench_vet_ok = false;
+        self.bench_vet_silent = false;
         self.bench_phi = None;
         self.bench_phi_prev = None;
     }
@@ -2200,6 +2228,8 @@ mod tests {
             (NodeKind::Duck, "duck"),
             (NodeKind::Gate, "gate"),
             (NodeKind::Vocoder, "vocoder"),
+            // The empty socket, which `describe` reports as `silence`.
+            (NodeKind::Silence, "silence"),
         ] {
             assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{want}\""));
         }
@@ -2250,6 +2280,7 @@ mod tests {
             NodeKind::Duck,
             NodeKind::Gate,
             NodeKind::Vocoder,
+            NodeKind::Silence,
         ] {
             let tree = auracle_grammar::apply_struct_op(
                 &auracle_grammar::presets()[0].1,
@@ -2768,6 +2799,34 @@ mod tests {
             u0["u"], u1["u"],
             "the readout kept describing the patch that was edited away"
         );
+    }
+
+    /// A bench with nothing reaching the output fails the vet as *silent*,
+    /// and says so: the app tells an unplugged patch apart from a runaway one
+    /// by this flag, and a runaway warning over a silent patch is untrue.
+    #[test]
+    fn a_bench_with_its_only_source_unplugged_fails_the_vet_as_silent() {
+        let mut engine = WasmEngine::new(0x5117, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        assert!(engine.edit_vet_ok());
+        assert!(!engine.edit_vet_silent());
+        let before = engine.edit_tree_json();
+        assert_eq!(
+            engine.edit_structure(r#"{"op":"replace","key":"node","kind":"silence"}"#),
+            ""
+        );
+        assert!(!engine.edit_vet_ok(), "a patch of nothing passed the vet");
+        assert!(
+            engine.edit_vet_silent(),
+            "an empty patch failed as something other than silent"
+        );
+        assert_eq!(engine.edit_set_tree(&before), ""); // ⌘Z
+        assert!(engine.edit_vet_ok());
+        assert!(!engine.edit_vet_silent());
     }
 
     /// The implicit stream: a revert has to arrive with φ on *both* sides of
