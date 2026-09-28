@@ -1497,13 +1497,20 @@ export function createPerform(host) {
       host.note("Not counted — B was a variant of the patch before, so it can't come back.", { replace: "pf-offer" });
       return;
     }
+    // What B holds now, and any offer still growing, wait as the Offer pad's
+    // spare — except an aimed one: it answered a turn of a search control,
+    // and handed out later by the pad it would be a directed walk presented
+    // as an undirected one. A growing aimed offer is withdrawn instead.
     const cur = state.offer;
-    if (cur && cur.src && !state.spare) state.spare = { offer: cur.src, at: cur.at };
-    for (const q of state.pending.values()) {
-      if (q.kind !== "perform_offer" || q.gen !== state.gen) continue;
+    if (cur && cur.src && !cur.aim && !state.spare) state.spare = { offer: cur.src, at: cur.at };
+    for (const [req, q] of state.pending) {
+      if (q.kind !== "perform_offer" || q.gen !== state.gen || q.superseded) continue;
       q.again = false;
       q.promote = false;
-      if (!q.spare) q.spare = { at: knobsNow() };
+      if (q.aim) {
+        q.superseded = true;
+        host.send({ type: "retire", reqs: [req] });
+      } else if (!q.spare) q.spare = { at: knobsNow() };
     }
     state.offerWhy = o.why;
     presentOffer(o.src, o.at, true);
