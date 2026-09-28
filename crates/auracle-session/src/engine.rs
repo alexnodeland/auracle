@@ -2407,20 +2407,15 @@ impl Engine {
                     sx.cmp(&sy).then(ux.total_cmp(&uy))
                 })
                 .map(|(i, _)| i);
-            match worst {
-                Some(worst_idx) => {
-                    let gone = self.pool[worst_idx].id;
-                    self.pool.swap_remove(worst_idx);
-                    // The exposure tallies are about candidates that can still
-                    // be dealt; an evicted id can never be, and keeping its
-                    // rows made both maps grow with every eviction for the life
-                    // of the session.
-                    self.shown_pairs
-                        .retain(|(a, b), _| *a != gone && *b != gone);
-                    self.shown_candidates.remove(&gone);
-                }
-                None => return None,
-            }
+            let worst_idx = worst?;
+            let gone = self.pool[worst_idx].id;
+            self.pool.swap_remove(worst_idx);
+            // The exposure tallies are about candidates that can still be
+            // dealt; an evicted id can never be, and keeping its rows made both
+            // maps grow with every eviction for the life of the session.
+            self.shown_pairs
+                .retain(|(a, b), _| *a != gone && *b != gone);
+            self.shown_candidates.remove(&gone);
         }
         let id = self.alloc_id();
         let render = self.admitted_render(&tree, &cf.features, fresh);
