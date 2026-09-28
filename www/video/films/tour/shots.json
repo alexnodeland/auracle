@@ -23,12 +23,14 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "!/re-checking/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "wait", "ms": 1500},
         {"op": "click", "sel": ".pf-pad.primary"},
         {"op": "until", "sel": ".pf-offer.ready", "ms": 120000},
         {"op": "wait", "ms": 1500},
         {"op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 140)"},
+        {"op": "log", "name": "offer pad", "js": "document.querySelector('.pf-pad.primary').textContent + ' · ' + (document.querySelector('.pf-pad.primary').dataset.sub || '')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
       "marks": {"deck": ".pf-deck", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']", "up": ".pf-knob:is([data-i='0'], [data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0", "take": ".pf-pad:has-text('Take')", "name": ".pf-name"},
@@ -41,7 +43,7 @@
         {"at": 6.314285714285714, "op": "hold", "keys": ["g", "j", "l"], "snap": "bar", "ms": 2830},
         {"at": 9.52142857142857, "op": "click", "sel": ".pf-pad:has-text('Take')"},
         {"at": 10.371428571428572, "op": "mark", "name": "toast", "sel": "#toasts .toast"},
-        {"at": 10.371428571428572, "op": "log", "name": "after take", "js": "document.querySelector('.pf-name').textContent + ' | ' + document.querySelector('.pf-offer').textContent.trim().slice(0, 100) + ' | ' + document.getElementById('toasts').textContent.slice(0, 160)"},
+        {"at": 10.371428571428572, "op": "log", "name": "after take", "js": "document.querySelector('.pf-name').textContent + ' | ' + document.querySelector('.pf-pad.primary').textContent + ' | ' + document.querySelector('.pf-offer').textContent.trim().slice(0, 100) + ' | ' + document.querySelector('.pf-status').textContent + ' | ' + document.getElementById('toasts').textContent.slice(0, 160)"},
         {"at": 9.17142857142857, "op": "hold", "keys": ["a", "d", "g"], "snap": "bar", "ms": "end"},
         {"at": 15.28, "op": "rec", "on": false}
       ]
@@ -54,6 +56,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "!/re-checking/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -79,6 +82,7 @@
         {"op": "log", "name": "duel", "js": "document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "!/re-checking/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -95,8 +99,10 @@
         {"at": "views4:plays", "op": "click", "sel": "#play-a"},
         {"at": "views4:plays+0.1", "op": "mark", "name": "cards", "sel": ".duel-row"},
         {"at": "views4:sounds+0.3", "op": "click", "sel": "#play-b"},
+        {"at": "views4:like-0.2", "op": "log", "name": "pair", "js": "document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
         {"at": "views4:like", "op": "click", "sel": "#choose-b"},
-        {"at": "views4:breeds", "op": "log", "name": "picks", "js": "document.getElementById('duel-count').textContent + ' picks · ' + document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
+        {"at": "views4:like+0.4", "op": "log", "name": "next pair", "js": "document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
+        {"at": "views4:breeds", "op": "log", "name": "picks", "js": "document.getElementById('duel-count').textContent + ' picks · ' + document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent + ' · ' + (document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent)"},
         {"at": "views5:TASTE-0.25", "op": "click", "sel": ".viewtab[data-view='taste']"},
         {"at": "views5:TASTE+0.3", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
         {"at": "views5:learned", "op": "mark", "name": "map", "sel": "#taste-crt"},
@@ -107,7 +113,6 @@
       "id": "to-bank",
       "beat": "bank",
       "pre": 0.5,
-      "clips": [["bank5:Click+0.3", "@opened-0.1"]],
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -136,8 +141,8 @@
         {"at": "bank5:Click-0.25", "op": "seq", "steps": [{"op": "eval", "js": "document.activeElement && document.activeElement.blur()"}, {"op": "key", "key": " ", "ms": 60}]},
         {"at": "bank5:Click-0.1", "op": "seq", "steps": [{"op": "eval", "js": "window.__subject = document.getElementById('rack-subject').textContent"}, {"op": "click", "sel": "#bank-list .bank-item:has(.bi-name:text-is('Cathedral')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Glass Pad')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Detune Dream')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Ember')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Slow Weather')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Morph Pad')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Sweep Machine')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Sea Change')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Pump Room')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Tidal')) .bi-name, #bank-list .bank-item:has(.bi-name:text-is('Nine Against Four')) .bi-name"}, {"op": "until", "js": "document.getElementById('rack-subject').textContent !== window.__subject", "ms": 90000, "stamp": "opened"}, {"op": "log", "name": "opened", "js": "document.getElementById('rack-subject').textContent"}]},
         {"at": "bank5:Click+0.4", "op": "mark", "name": "padrow", "sel": "#bank-list .bank-item:has(.bi-name:text-is('Cathedral')), #bank-list .bank-item:has(.bi-name:text-is('Glass Pad')), #bank-list .bank-item:has(.bi-name:text-is('Detune Dream')), #bank-list .bank-item:has(.bi-name:text-is('Ember')), #bank-list .bank-item:has(.bi-name:text-is('Slow Weather')), #bank-list .bank-item:has(.bi-name:text-is('Morph Pad')), #bank-list .bank-item:has(.bi-name:text-is('Sweep Machine')), #bank-list .bank-item:has(.bi-name:text-is('Sea Change')), #bank-list .bank-item:has(.bi-name:text-is('Pump Room')), #bank-list .bank-item:has(.bi-name:text-is('Tidal')), #bank-list .bank-item:has(.bi-name:text-is('Nine Against Four'))"},
-        {"at": "bank5:Click+0.45", "op": "hold", "keys": ["h", "k", ";"], "ms": 1300},
-        {"at": "bank5:Click+1.8", "op": "hold", "keys": ["f", "h", "k"], "ms": "end"},
+        {"at": "@opened+0.35", "op": "hold", "keys": ["h", "k", ";"], "ms": 1300},
+        {"at": "@opened+1.7", "op": "hold", "keys": ["f", "h", "k"], "ms": "end"},
         {"at": "bank5+5.51", "op": "rec", "on": false}
       ]
     },
@@ -149,6 +154,7 @@
         {"op": "preset", "name": "Acid Line"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Acid Line"},
+        {"op": "until", "js": "!/re-checking/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
@@ -194,11 +200,18 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "evolve"},
         {"op": "wait", "ms": 1500},
-        {"op": "log", "name": "counters", "js": "document.getElementById('duel-count').textContent + ' picks, gen ' + document.getElementById('gen-count').textContent"},
+        {"op": "click", "sel": "#evolve-btn"},
+        {"op": "move", "sel": ".duel-row", "ms": 300},
+        {"op": "until", "js": "/breeding [1-9][0-9]*\\/[0-9]+/.test(document.getElementById('job-text').textContent)", "ms": 300000},
+        {"op": "log", "name": "counters", "js": "document.getElementById('duel-count').textContent + ' picks, gen ' + document.getElementById('gen-count').textContent + ' · ' + (document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent) + ' · EVOLVE POOL: ' + document.getElementById('evolve-btn').textContent"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
-      "marks": {"picks": "#duel-count", "gen": "#gen-count", "top": ".menubar-right", "help": "#help-open", "ovf": "#ovf-btn", "lamp": "#wm-lamp"},
+      "marks": {"picks": "#duel-count", "gen": "#gen-count", "slot": "#job-slot", "evolve": "#evolve-wrap", "top": ".menubar-right", "help": "#help-open", "ovf": "#ovf-btn", "lamp": "#wm-lamp"},
       "actions": [
+        {"at": "header1:PICKS-0.1", "op": "mark", "name": "picks", "sel": "#duel-count"},
+        {"at": "header1:number-0.1", "op": "mark", "name": "gen", "sel": "#gen-count"},
+        {"at": "header1b:slot-0.1", "op": "mark", "name": "slot", "sel": "#job-slot"},
+        {"at": "header1b:slot", "op": "log", "name": "slot", "js": "(document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent) + ' · EVOLVE POOL: ' + document.getElementById('evolve-btn').textContent + ' · gen ' + document.getElementById('gen-count').textContent"},
         {"at": "header2:question-0.2", "op": "click", "sel": "#help-open"},
         {"at": "header2:question+0.3", "op": "mark", "name": "card", "sel": "#help .help-card"},
         {"at": "header3-0.4", "op": "key", "key": "Escape", "ms": 80},
@@ -206,7 +219,8 @@
         {"at": "header3:files-0.1", "op": "move", "sel": "#patch-export-btn", "ms": 300},
         {"at": "header3:taste-0.1", "op": "move", "sel": "#export-btn", "ms": 300},
         {"at": "header3:films-0.1", "op": "move", "sel": "#films-link", "ms": 300},
-        {"at": "header3+6.12", "op": "rec", "on": false}
+        {"at": "header3:films+0.5", "op": "log", "name": "slot at the end", "js": "(document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent) + ' · gen ' + document.getElementById('gen-count').textContent"},
+        {"at": "header3+5.62", "op": "rec", "on": false}
       ]
     },
     {
@@ -231,7 +245,8 @@
         {"at": "first2:teach+0.2", "op": "seq", "steps": [{"op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"}, {"op": "until", "js": "/preferences learned/.test(document.getElementById('toasts').textContent)", "ms": 60000, "stamp": "learned"}, {"op": "until", "js": "[\"First Bass\", \"Sub & Sparkle\", \"Acid Line\", \"Reese\", \"Anvil\", \"Iron Bass\", \"Held Under\"].some((n) => (document.querySelector('.pf-name')?.textContent || '').trim().startsWith(n))", "ms": 60000, "stamp": "landed"}]},
         {"at": "first3:eighteen", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "first3:eighteen", "op": "mark", "name": "picks", "sel": "#duel-count"},
-        {"at": "first3:eighteen", "op": "log", "name": "landed", "js": "document.getElementById('duel-count').textContent + ' picks · lamp ' + (document.getElementById('wm-lamp').classList.contains('thinking') ? 'thinking' : 'idle') + ' · ' + document.getElementById('toasts').textContent.slice(0, 160)"},
+        {"at": "first3:eighteen", "op": "log", "name": "landed", "js": "document.getElementById('duel-count').textContent + ' picks · ' + (document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent) + ' · PICKS at x ' + Math.round(document.getElementById('duel-count').getBoundingClientRect().x) + ' · ' + document.getElementById('toasts').textContent.slice(0, 160)"},
+        {"at": "first4-0.25", "op": "log", "name": "picks moved?", "js": "'PICKS at x ' + Math.round(document.getElementById('duel-count').getBoundingClientRect().x) + ' · ' + (document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent)"},
         {"at": "first3+0.50", "op": "midi", "note": 48, "vel": 64, "ms": 300},
         {"at": "first3+1.21", "op": "midi", "note": 48, "vel": 64, "ms": 300},
         {"at": "first3+1.93", "op": "midi", "note": 55, "vel": 64, "ms": 300},
@@ -242,6 +257,7 @@
         {"at": "first3+5.50", "op": "midi", "note": 53, "vel": 64, "ms": 300},
         {"at": "first4:saved", "op": "mark", "name": "mine", "sel": ".bf[data-f='mine']"},
         {"at": "first4:ready-0.1", "op": "log", "name": "perform", "js": "(document.querySelector('.pf-name')?.textContent || '') + ' · ' + (document.querySelector('.pf-status')?.textContent || '')"},
+        {"at": "first4:ready-0.1", "op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"at": "first4:ready+0.00", "op": "hold", "keys": ["a"], "ms": 230},
         {"at": "first4:ready+0.36", "op": "hold", "keys": ["a"], "ms": 230},
         {"at": "first4:ready+0.71", "op": "hold", "keys": ["k"], "ms": 230},
@@ -250,8 +266,9 @@
         {"at": "first4:ready+1.78", "op": "hold", "keys": ["h"], "ms": 230},
         {"at": "first4:ready+2.14", "op": "hold", "keys": ["a"], "ms": 230},
         {"at": "first4:ready+2.50", "op": "hold", "keys": ["k"], "ms": 230},
+        {"at": "first4:ready+0.6", "op": "drag", "sel": ".pf-knob:is([data-i='0'], [data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0", "dy": -50, "ms": 1600},
         {"at": "first4:ready+2.86", "op": "hold", "keys": ["a"], "ms": "end"},
-        {"at": "first4+7.65", "op": "rec", "on": false}
+        {"at": "first4+6.22", "op": "rec", "on": false}
       ]
     },
     {
@@ -262,6 +279,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "!/re-checking/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "view", "v": "taste"},
         {"op": "wait", "ms": 1200},

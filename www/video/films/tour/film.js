@@ -20,22 +20,27 @@
 //   spare offer grown ahead is handed over at once only while the knobs sit
 //   where it was grown, and the cold open turns a control first (the first
 //   of the six that turns up: Bright, when it can); a fresh offer is ~10 s of
-//   renders.
+//   renders. While B holds it, the Offer pad reads NEXT (passes on B); Take
+//   empties B and it reads Offer again.
 // - views: the duel's pair is rendered and heard once in set-up, so ▶ on
 //   camera sounds at once (renders are lazy).
 // - bank: clicking a row opens it and switches to PATCH (the app's own
 //   behaviour), so the bank beat plays out in PATCH. The row played and
 //   opened is the pad the warm start saved. Space stops its phrase as the row
-//   is clicked; if opening takes seconds, the beat cuts from the click to the
-//   moment it lands (the shot's `clips`; no cut when it is quick).
+//   is clicked; the row opens as it is clicked, and its chords wait for it to
+//   land (no cut).
 // - dock: HOLD latches the chord before ARP opens its drawer (a HOLD click
 //   folds the drawer); the pointer rests on the drawer. ● rec is pressed on
 //   camera and pressed again: a real take, and its toast.
+// - header: a generation is breeding (pressed in set-up; it takes minutes),
+//   so the job slot beside the counters shows how far along it is. The
+//   counters are measured again as they are named: the slot sits beside them.
 // - first: a fresh session whose set-up stops at the nine cards; the ▶ on
 //   camera is the real first press. "teach it" can take seconds before
 //   its result shows, so the beat cuts from the press to the "18 preferences
-//   learned… Your three are saved." toast (the shot's `clips`), by when
-//   PERFORM is on the first pick.
+//   learned… Your three are saved." toast (the shot's `clips`; no cut when it
+//   is quick), by when PERFORM is on the first pick, its controls live (its
+//   wiring came with it): one is turned under the figure on "ready to play".
 import { walkthrough, aim } from "../../stage/walk.js";
 
 export async function build(stage) {
@@ -129,8 +134,9 @@ export async function build(stage) {
           ["header3:dots+0.1", ...aim(1.5, 1600, 280)],
         ],
         callouts: [
-          { at: "header1:PICKS", until: "header2-0.3", mark: "picks", side: "bottom", dx: -60, dy: 110, text: "your picks so far" },
-          { at: "header1:number", until: "header2-0.3", mark: "gen", side: "bottom", dx: -30, dy: 200, text: "generations bred" },
+          { at: "header1:PICKS", until: "header1b-0.1", mark: "picks", side: "bottom", dx: -60, dy: 110, text: "your picks so far" },
+          { at: "header1:number", until: "header1b-0.1", mark: "gen", side: "bottom", dx: -30, dy: 200, text: "generations bred" },
+          { at: "header1b:slot", until: "header2-0.3", mark: "slot", side: "bottom", dx: 30, dy: 130, text: "a generation, breeding" },
           { at: "header3:files", until: "header3:taste-0.1", mark: "export", side: "left", dx: -120, dy: 0, text: "patches, as files" },
           { at: "header3:taste", until: "header3:films-0.1", mark: "profile", side: "left", dx: -120, dy: 0, text: "your taste profile" },
           { at: "header3:films", mark: "films", side: "left", dx: -120, dy: 0, text: "the films" },

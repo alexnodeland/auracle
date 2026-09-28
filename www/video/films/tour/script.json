@@ -149,11 +149,16 @@
       "snap": "bar",
       "bed_db": 0,
       "lead": 0.6,
-      "tail": 1.154,
+      "tail": 0.657,
       "lines": [
         {
           "id": "header1",
           "text": "Up top, PICKS counts what you've taught it. The number beside it counts generations bred toward your taste.",
+          "post": 0.4
+        },
+        {
+          "id": "header1b",
+          "text": "While a generation breeds, the slot beside them shows how far along it is.",
           "post": 0.5
         },
         {
@@ -173,7 +178,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 3.327,
+      "tail": 1.898,
       "lines": [
         {
           "id": "first1",
