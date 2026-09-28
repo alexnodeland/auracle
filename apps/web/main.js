@@ -114,10 +114,13 @@ let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
 let engineCalib = null;    // authoritative calibration, incl. unbiased check-duel skill
 let duelsSinceFit = 0;
-const FIT_EVERY = 6;   // pacing floor between refits, not the trigger — see settleFit()
+const FIT_EVERY = 6;   // every sixth pick refits — see settleFit()
 let fitDue = false;    // armed by a vote, enqueued once the next pair is on screen
 let fitting = false;
 let playingSrc = null;
+// ⚡'s child, waiting for the bench to hold it before it is announced:
+// {id, text(name)} — see `evolved_from` and the `bench` reply.
+let evolvedAnnounce = null;
 
 let views = null;          // {map, styles, lineage, ranked} from the worker
 let tasteTab = "map";
@@ -1199,6 +1202,9 @@ worker.onmessage = (e) => {
       break;
     }
     case "status": {
+      // Taken or refused, the log has answered for this one: from here the
+      // engine's count is the whole truth about it (see `taughtAhead`).
+      if (m.vote) aheadDrop(aheadKey(m.vote));
       applyStatus(m.status);
       send({ type: "calibration" });
       // The engine took nothing: the patch left the pool between the gesture
@@ -1232,6 +1238,10 @@ worker.onmessage = (e) => {
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       refreshInstruments();
       scheduleSave();
+      // A sixth pick made while this fit ran was told a redraw was coming;
+      // it goes out now rather than waiting for a seventh. Mid-deal, the
+      // deal's own `settleFit` sends it, behind the pair's audio.
+      if (fitDue && !dealing) settleFit();
       break;
     }
     case "refine_progress": {
@@ -2037,9 +2047,49 @@ worker.onmessageerror = () => {
 let status = { observations: 0, generation: 0 };
 let hasPlayed = !!localStorage.getItem("auracle-played");
 
+// ---------- what PICKS counts ----------
+// What you have taught it, from the moment you teach it. `status.observations`
+// is the engine's log, and the log sees a pick only once its undo window has
+// closed and the worker has answered — so PICKS read 18 for seven seconds
+// after the nineteenth pick, read 22 after 23 picks made two seconds apart,
+// and disagreed with the pips beside it, which light at the click. Picks the
+// log has not answered for yet are counted here, keyed by the request they
+// are or will become, so the worker's reply settles exactly the one it
+// answers (a refused vote settles too, and so is uncounted) and a reply to
+// anyone else's request settles nothing. An undo takes its key back.
+const taughtAhead = new Map(); // "duel:a:b" | "keep:id" | "stars:id" -> n
+
+function aheadKey(v) {
+  return v.kind === "duel" ? `duel:${v.a}:${v.b}` : `${v.kind}:${v.id}`;
+}
+function aheadAdd(key) {
+  taughtAhead.set(key, (taughtAhead.get(key) || 0) + 1);
+  renderPicks();
+}
+/** Settle or take back one taught-ahead pick; false when none was waiting. */
+function aheadDrop(key) {
+  const n = taughtAhead.get(key) || 0;
+  if (n === 0) return false;
+  if (n === 1) taughtAhead.delete(key);
+  else taughtAhead.set(key, n - 1);
+  renderPicks();
+  return true;
+}
+/** PICKS: the log, plus what it has not answered for yet. */
+function picksTaught() {
+  let n = status.observations || 0;
+  for (const k of taughtAhead.values()) n += k;
+  return n;
+}
+function renderPicks() {
+  $("duel-count").textContent = picksTaught();
+  renderTeach();
+  renderNextStep();
+}
+
 function applyStatus(st) {
   status = st;
-  $("duel-count").textContent = st.observations;
+  $("duel-count").textContent = picksTaught();
   $("gen-count").textContent = st.generation;
   renderTeach();
   renderNextStep();
@@ -2072,11 +2122,13 @@ function renderTeach() {
   const pips = $("teach-pips");
   const copy = $("teach-copy");
   if (!pips || !copy) return;
-  // Wraps rather than saturates: `duelsSinceFit` can now run past FIT_EVERY,
-  // because a refit the engine says it doesn't need is skipped and re-armed
-  // on the next vote (see settleFit). The countdown restarting is the right
-  // reading of that — the next pick is a candidate for the refit again.
-  const into = duelsSinceFit % FIT_EVERY;
+  // The sixth pip lights on the sixth pick and the row stays full while the
+  // refit it counted down to is armed (behind a fit already running, at
+  // most) or being announced; the first pick after that starts the next row.
+  // It used to empty on the sixth pick itself — "23 picks in", six dark pips
+  // — before anything had been redrawn.
+  const full = fitDue || (teachTakeover && duelsSinceFit === 0);
+  const into = full ? FIT_EVERY : duelsSinceFit % FIT_EVERY;
   const dots = Array.from(
     { length: FIT_EVERY },
     (_, i) => `<i class="${i < into ? "lit" : ""}"></i>`
@@ -2088,14 +2140,18 @@ function renderTeach() {
   if (teachTakeover) return;
   // Single-line copy: the duel bar is a grid now, and the sentence that
   // teaches the whole product should land whole. Name the payoff, not the
-  // refit schedule.
-  if (status.observations === 0) {
+  // refit schedule. The count is PICKS's own (`picksTaught`), so the line
+  // and the menubar move on the same click.
+  const n = picksTaught();
+  if (n === 0) {
     copy.innerHTML = "Play both. Keep the one you’d reach for.";
   } else {
     const left = FIT_EVERY - into;
-    copy.innerHTML = left === FIT_EVERY
-      ? `<b>${status.observations}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
-      : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
+    copy.innerHTML = left === 0
+      ? `<b>${n}</b> picks in — redrawing your taste map…`
+      : left === FIT_EVERY
+        ? `<b>${n}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
+        : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
   }
 }
 
@@ -2123,7 +2179,7 @@ function teachLearned() {
 function renderNextStep() {
   const el = $("nextstep");
   if (!el) return;
-  const n = status.observations;
+  const n = picksTaught();
   let label, act;
   // Every state of this chip is now actionable. The previous "go play" branch
   // was inert *and* outranked the teaching guidance for votes 1–5, so the one
@@ -2226,6 +2282,16 @@ const UNDO_WINDOW_MS = 7000;
 // about, and under a burst it never surfaced at all — it carries no action, so
 // the staleness drop and the backlog trim both cut exactly it. So `urgent`
 // jumps the queue, displaces what is on screen, and is exempt from both cuts.
+//
+// Rule 5, from the films: A LATER WORD ON THE SAME THING SUPERSEDES THE
+// EARLIER ONE. First-in-first-out is right for different news and wrong for
+// news about one thing that has moved on. Voting every two seconds, the lane
+// still named the first pick six seconds after the third, beside a ⌘Z that
+// would undo the third; the warm start's result ("18 preferences learned")
+// waited out the "Loading those in…" it answered while PICKS already read 18.
+// A toast given `replace: key` takes the place of any earlier toast with the
+// same key, on screen or queued: on screen it takes the floor at once with
+// its own full window, queued it takes the earlier one's place in line.
 const toastQueue = [];
 let toastLive = null;
 /** A queued remark about a patch state that has moved on is worse than
@@ -2260,10 +2326,48 @@ function note(text, opts = {}) {
   stack.className = "toast-stack mono hidden";
   el.appendChild(stack);
   if (opts.urgent) preemptToast(entry);
-  else toastQueue.push(entry);
+  else if (!(opts.replace && supersedeToast(entry))) toastQueue.push(entry);
   trimToastQueue();
   toastPump();
   return el;
+}
+
+/** Rule 5: put `entry` where the last toast with its `replace` key is. False
+ *  when there is none, and the caller queues it as usual. */
+function supersedeToast(entry) {
+  const key = entry.opts.replace;
+  const same = (t) => t.opts.replace === key;
+  const held = toastLive && same(toastLive) ? toastLive : null;
+  const at = toastQueue.findIndex(same);
+  // Every earlier word on it goes; only the newest is ever said.
+  for (let i = toastQueue.length - 1; i >= 0; i--) {
+    if (!same(toastQueue[i])) continue;
+    toastQueue[i].el.remove();
+    toastQueue.splice(i, 1);
+  }
+  if (held) {
+    // On screen, even mid-fade: the floor passes straight to the newer word.
+    // The old toast's timer goes with it, so it cannot dismiss its successor.
+    clearTimeout(held.timer);
+    held.el.remove();
+    toastLive = null;
+    toastQueue.unshift(entry);
+    return true;
+  }
+  if (at < 0) return false;
+  toastQueue.splice(at, 0, entry);
+  return true;
+}
+
+/** Take a toast off the lane now, whether it is on screen or still waiting —
+ *  for a toast whose claim stopped being true before its window ran out. */
+function dropToast(el) {
+  if (!el) return;
+  if (toastLive && toastLive.el === el) return dismissToast(toastLive, true);
+  const i = toastQueue.findIndex((t) => t.el === el);
+  if (i >= 0) toastQueue.splice(i, 1);
+  el.remove();
+  renderToastStack();
 }
 
 /** Put a refusal at the head of the lane and take the floor for it. Whatever
@@ -2550,6 +2654,7 @@ function applyViews(next) {
     if (t !== undefined) {
       clearTimeout(t);
       pendingCuts.delete(id);
+      aheadDrop(aheadKey({ kind: "keep", id })); // never sent, so never taught
     }
   }
   // A pair that just lost a side to the pool is a question about a patch that
@@ -2939,11 +3044,9 @@ async function bootPerform() {
     // A PERFORM offer answer joined the log: it paces refits like any pick.
     voteLanded: () => {
       duelsSinceFit += 1;
+      if (duelsSinceFit >= FIT_EVERY) fitDue = true;
       renderTeach();
-      if (duelsSinceFit >= FIT_EVERY) {
-        fitDue = true;
-        settleFit();
-      }
+      settleFit();
     },
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
     // The under-the-hood strip: a knob's module, label and value in its own
@@ -4411,7 +4514,7 @@ function renderBelief() {
     // Say what is actually missing. "Fitting to your 2 picks…" stayed up
     // through twenty more picks and a generation: it was only re-rendered
     // on a bench reply, and it claimed a fit that was not running.
-    const n = status.observations;
+    const n = picksTaught();
     const fitted = !!(views && views.styles && views.styles.length);
     const why = fitting
       ? `fitting to your ${n} pick${n === 1 ? "" : "s"}…`
@@ -4609,14 +4712,19 @@ function commitPendingVote() {
 function retractVote() {
   if (!pendingVote) return false;
   clearTimeout(pendingVote.timer);
-  const pair = pendingVote.pair;
+  const { pair, key, toast } = pendingVote;
   pendingVote = null;
   // The next deal was requested at vote time; if it hasn't landed yet it
   // must not overwrite the pair we are restoring.
   if (dealing) ignoreNextDeal = true;
   duelsSinceFit = Math.max(0, duelsSinceFit - 1);
   fitDue = duelsSinceFit >= FIT_EVERY;
-  renderTeach();
+  // Uncounted everywhere it was counted: PICKS, the meter's copy, the pips
+  // (`aheadDrop` re-renders all three). And the toast goes: ⌘Z does not pass
+  // through its button, and "Picked X over Y." left standing over a pick
+  // that was just taken back is the lane saying something untrue.
+  aheadDrop(key);
+  dropToast(toast);
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
   dealing = false;
@@ -4659,16 +4767,26 @@ function choose(side) {
   pendingVote = {
     timer,
     pair: [a, b],
+    // The `record_duel` it becomes, so its reply settles this count.
+    key: aheadKey({ kind: "duel", a, b }),
     commit: () => send({ type: "record_duel", a, b, choseA }),
   };
   const win = choseA ? a : b;
   const lose = choseA ? b : a;
+  // `replace`: only one vote is ever undoable (this one commits the last), so
+  // the lane names this one, not whichever pick's toast was first in line.
   pendingVote.toast = note(`Picked ${nameOf(win)} over ${nameOf(lose)}.`, {
     undo: () => retractVote(),
     undoLabel: "not what I meant",
+    replace: "vote",
   });
   duelsSinceFit += 1;
-  renderTeach();
+  // The refit is *armed* here and enqueued in `settleFit`, once the new pair
+  // has actually landed. See that function for why it is not sent from here.
+  // Armed before the meter draws, so the sixth pip lights on the sixth pick.
+  if (duelsSinceFit >= FIT_EVERY) fitDue = true;
+  // Counted now, not when the log hears of it seven seconds on.
+  aheadAdd(pendingVote.key);
 
   // Ask for the next pair BEFORE the refit. The worker is one thread and
   // processes in order, so queueing a ~2.7 s posterior fit ahead of the deal
@@ -4682,37 +4800,28 @@ function choose(side) {
   dealing = true;
   setDuelControlsEnabled(false);
   send({ type: "duel" });
-
-  // The refit is *armed* here and enqueued in `settleFit`, once the new pair
-  // has actually landed. See that function for why it is not sent from here.
-  if (duelsSinceFit >= FIT_EVERY) fitDue = true;
 }
 
-// A refit is armed. Two things have to be true before it goes out.
+// A refit is armed by the sixth pick, and it goes out once the pair is
+// audible. The worker is one thread and processes in order, so a fit queued
+// ahead of the pair's buffers hands the user two cards they cannot hear for
+// the whole fit. The renders jump the settle delay and go in front of it; that
+// delay exists to protect the *next deal* from a render nobody is looking at,
+// which is the opposite situation to this one.
 //
-// 1. **The engine has to want it.** `status.needs_refit` is the engine's own
-//    answer — the importance weights have collapsed since the last fit, or the
-//    log holds evidence no posterior has seen. It has been shipped in
-//    `status()` all along with nobody reading it, while the app spent 3–13 s on
-//    a fixed every-sixth-vote fit whether or not the posterior had gone stale.
-//    `FIT_EVERY` stays, but as a *floor*: pacing, so a fast voter is never
-//    interrupted more often than every sixth pick. `needs_refit` decides above
-//    it. `duelsSinceFit` is therefore reset only when a fit actually goes out,
-//    so a skipped one re-arms on the very next vote instead of waiting out
-//    another six.
-//    An engine too old to report the flag leaves it `undefined`, and only an
-//    explicit `false` suppresses the fit — a stale binary must not be able to
-//    turn refitting off altogether.
-//
-// 2. **The pair has to be audible first.** The worker is one thread and
-//    processes in order, so a fit queued ahead of the pair's buffers hands the
-//    user two cards they cannot hear for the whole fit. The renders jump the
-//    settle delay and go in front of it; that delay exists to protect the
-//    *next deal* from a render nobody is looking at, which is the opposite
-//    situation to this one.
+// The sixth pick always refits: the meter promises it ("1 more pick and it
+// redraws your taste map"), and a promise kept only sometimes teaches the
+// player the meter is noise. It used to be gated on the engine's own
+// `status.needs_refit` as well — the importance weights collapsing since the
+// last fit — to save the seconds of a fit whose posterior had not gone
+// stale. Which picks those were depended on how surprising they had been, so
+// a run of agreeable picks ended with the pips wrapping to zero and the copy
+// reading "23 picks in" with no "● it just learned", no redrawn map and no
+// lamp: the meter counting down to something it then did not do. A fit costs
+// a few seconds off the audio thread, at most once every sixth pick — the
+// pacing `FIT_EVERY` has always set — and the pair is audible through it.
 function settleFit() {
   if (!fitDue || fitting) return;
-  if (status.needs_refit === false) return;
   fitDue = false;
   duelsSinceFit = 0;
   // A vote still inside its undo window belongs in the log the fit reads.
@@ -5010,15 +5119,25 @@ function cutRow(r) {
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
+  let toast = null;
   const commit = setTimeout(() => {
     pendingCuts.delete(r.id);
+    // A toast that waited its turn in the lane outlives this window; its undo
+    // stops offering what can no longer be taken back, as a vote's does.
+    retireToastUndo(toast);
     send({ type: "record_keep", id: r.id, kept: false });
   }, UNDO_WINDOW_MS);
   pendingCuts.set(r.id, commit);
-  note(`Cut ${r.name} #${r.id}.`, {
+  // A cut teaches as a pick does, so PICKS counts it now, as it counts a pick.
+  aheadAdd(aheadKey({ kind: "keep", id: r.id }));
+  toast = note(`Cut ${r.name} #${r.id}.`, {
     undo: () => {
+      // Only what is still waiting: a sent cut uncounted here would be a
+      // PICKS lower than the log it is counting.
+      if (!pendingCuts.has(r.id)) return;
       clearTimeout(pendingCuts.get(r.id));
       pendingCuts.delete(r.id);
+      aheadDrop(aheadKey({ kind: "keep", id: r.id }));
       cutIds.delete(r.id);
       renderBank();
       scheduleSave();
@@ -5272,6 +5391,8 @@ function rateRow(rating, explicitId) {
   const prev = starsById.get(id) || 0;
   starsById.set(id, rating);
   send({ type: "record_stars", id, rating, prev });
+  // Counted now: behind a generation, the reply can be tens of seconds away.
+  aheadAdd(aheadKey({ kind: "stars", id }));
   renderBank();
   note(`${nameOf(id)} rated ${rating}★`);
 }
@@ -15829,7 +15950,7 @@ const TRUST_MIN_N = 20;
 function renderEmptyState(tab) {
   const holder = $("crt-empty");
   if (!holder) return;
-  const n = status.observations;
+  const n = picksTaught();
   const cn = engineCalib ? engineCalib.n : 0;
   const skel = (rows, cls = "") =>
     `<div class="ce-skel ${cls}" aria-hidden="true">${"<i></i>".repeat(rows)}</div>`;
@@ -16484,7 +16605,7 @@ $("import-input").onchange = async (e) => {
   e.target.value = "";
   if (!file) return;
   const json = await file.text();
-  const n = status.observations || 0;
+  const n = picksTaught();
   if (n === 0) {
     send({ type: "import", json });
     return;
@@ -17672,7 +17793,10 @@ $("warm-go").onclick = () => {
     rest: warmRows.map((r) => r.index).filter((i) => !warmPicked.has(i)),
   });
   closeWarmStart();
-  note("Loading those in and teaching the model what you picked…");
+  // The result replaces this when it lands (`replace`): it used to wait out
+  // this toast's window, so PICKS read 18 beside "Loading those in…" for
+  // seconds, and the result surfaced about fifteen seconds in.
+  note("Loading those in and teaching the model what you picked…", { replace: "warm" });
 };
 
 function warmStartDone(m) {
@@ -17680,7 +17804,9 @@ function warmStartDone(m) {
   send({ type: "fit" });
   fitting = true;
   $("wm-lamp").classList.add("thinking");
-  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
+  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`, {
+    replace: "warm",
+  });
   if (m.first != null) openOnBench(m.first);
   // Straight to the instrument, not the rack: the first thing after teaching
   // it should be playing it. PATCH is the densest view in the app and it was
