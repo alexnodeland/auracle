@@ -741,7 +741,7 @@ function commitStagedUndo() {
 //    refit claims it.
 function landedOver(step) {
   if (!step || !step.toasts) return;
-  for (const el of step.toasts) retireToastUndo(el, "⌘Z to undo");
+  for (const el of step.toasts) retireToastUndo(el, "not the last edit");
 }
 function landedUndone(step) {
   if (!step || !step.toasts) return;
