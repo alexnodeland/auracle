@@ -1,7 +1,7 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
 last_updated: 2026-09-28
-related_adrs: [1, 2]
+related_adrs: [1, 2, 7]
 ---
 
 # The web runtime: threads, lanes and the bench
@@ -21,7 +21,8 @@ history of each choice.
    │
    ├── postMessage ──► engine worker (worker.js + WasmEngine)
    │                      lanes: now │ soon │ later ; long jobs breathe
-   │                      └── farm workers (farm.js): stateless pool renders
+   │                      └── farm workers (farm.js): boot's renders, and
+   │                          walks (a generation, ⚡) on a crew raised on demand
    │
    └── AudioWorklet (live-audio.js + LivePoly)
           N compiled voices of the current patch, the arpeggiator, the limiter
@@ -33,7 +34,9 @@ history of each choice.
   (renders, MCMC), and wasm cannot be interrupted.
 - **Farm workers** render pool draws in parallel from the indexed draw stream,
   and the worker folds them in stream order, so the pool matches the serial
-  path's.
+  path's. Boot's crew is reaped when boot ends. A generation's walks and ⚡
+  evolve from this run on a crew raised on demand (see
+  [The farm on demand](#the-farm-on-demand)).
 - **AudioWorklet** plays the patch under the player's hands: `LivePoly`, a
   voice per note, allocation-free per quantum, no clock.
 
@@ -50,12 +53,68 @@ served within a lane (`laneOf` in `worker.js`):
   offers, Wander's drift, booth pre-warms).
 
 Queueing cannot help a request that arrives while a long call is *running*,
-so long jobs are cut into pieces (`measure`, `breed`) and `breathe` between
-pieces, answering every `now` request that arrived meanwhile. One long job
-holds the floor at a time. A hidden PERFORM's measurement drops to `later`.
+so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
+answering every `now` request that arrived meanwhile. One long job holds the
+floor at a time. A hidden PERFORM's measurement drops to `later`.
+
+A generation (`refine`) and ⚡ (`refine_from`) are **walk jobs**: they run on
+the farm and never hold the floor, so every lane is served while they run.
+Two things wait for a walk job instead of for the floor (`blocked` in
+`worker.js`): a refit and another generation wait for the running
+generation, and a second ⚡ waits for the first. Neither starts before boot's
+crew is gone.
 
 **Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
 or the main thread's in-flight queue deadlocks.
+
+## The breed job
+
+EVOLVE POOL is ten walks (`refine_seeds`), each a pure function of the
+generation's shared context and its own job
+([ADR-007](../decisions/007-generations-breed-in-parallel.md)). `breedOpen`
+calls `refine_jobs`, stringifies the context **once** (about 2 MB, mostly the
+posterior's draws) and hands every job to the crew; each farm worker gets the
+context once per generation (`walk_context`), and `farm_walk` keeps the
+parsed context keyed by that exact text. Results that land early are held
+until their turn and absorbed **in job order** with `refine_absorb`, one per
+turn (`genStep`), so the pool is the serial path's whichever worker finished
+first.
+
+- **Children as they land.** Each absorbed job is posted as `refine_child`
+  with the ranked rows and `refine_retiring`; the bank shows the child at
+  once in a "new · gen N" group at the top of the pool, without re-sorting
+  the ranked rows. Nothing is retired until the finish.
+- **Progress.** `refine_progress` carries the jobs absorbed, the total and an
+  estimate (`eta`, ms) from this session's own walk times.
+- **Stop** (`refine_stop`, answered on arrival) calls `refine_finish`: the
+  children absorbed so far stay, the lowest unpinned members are retired, and
+  walks still running are dropped (the crew is reaped at once if nothing else
+  is walking, which gives the cores back).
+- **Fallback.** With no crew (width 0, a spawn that failed, every worker
+  lost) or for a walk a worker could not run (`farm_walk` answered `""`, or a
+  five-minute watchdog), the job is walked in the engine worker with
+  `refine_seed`, which runs the engine's own copy of the same job: the same
+  child. Each such walk is a `soon` piece (`breed_step`), and a deal waits for
+  the walk in progress, which the cards say.
+
+⚡ evolve from this is one walk over the same path: `refine_from_job`, a farm
+walk (at the front of the queue), `refine_from_absorb`. Stop
+(`refine_from_stop`) answers at once and drops the walk's result. With no
+crew it is the single `refine_from` call, which cannot be stopped; both draw
+the walk's seed the same way.
+
+## The farm on demand
+
+The engine worker asks main for a crew (`farm_want`); main spawns the workers
+from the `WebAssembly.Module` it compiled at boot (an instantiation per worker,
+not a compile) and answers with their ports (`farm_ports`), or with none,
+and the worker then walks the jobs itself. Width is `walkWidth()` in
+`main.js`: boot's rule (leave the UI and audio threads a core each, at most
+6, at most 2 on a small-memory device), but at least one worker where there
+are two cores, because one worker already takes the walk off the engine
+worker. `?farm=N` sets both widths; `?farm=0` is the serial path. The crew is
+reaped after 60 s with nothing to walk (`farm_done` with its crew id; main
+terminates those workers), so N × ~15 MB is not kept resident.
 
 ## The bench lane
 
@@ -139,6 +198,15 @@ inlined behind a TextDecoder polyfill, and transfers raw wasm bytes for a
 synchronous compile inside the worklet. A patch swap compiles one voice per
 quantum while that node is muted. Levels follow one policy
 (`auracle-wasm/src/level.rs`) for auditions and live play.
+
+## The job slot
+
+Long work has one home, in the menu bar beside GENERATIONS: "⚡ breeding
+3/10 · about 40 s", "⚡ evolving Glass Pad", "refitting your taste map…",
+with **stop** where the job can be stopped. It shows only while such a job
+runs, and the wordmark's E is lit exactly while it shows: both are drawn from
+`lampJobs` (`lampOn`/`lampOff`, one count per job kind) in `renderJobSlot`.
+EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 
 ## Toasts
 

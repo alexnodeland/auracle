@@ -95,6 +95,16 @@
       <!-- Named in full: "gen" beside "picks" said what it counted only in
            its tooltip. -->
       <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
+      <!-- The job slot: long work, only while it runs — a generation, ⚡
+           evolve from this, a refit — with stop where it can be stopped. The
+           wordmark's E is lit exactly while this is showing (main.js,
+           renderJobSlot). -->
+      <!-- Not a live region: its estimate changes every second. -->
+      <div class="job-slot hidden" id="job-slot">
+        <span class="job-fill" id="job-fill" aria-hidden="true"></span>
+        <span class="job-text mono" id="job-text"></span>
+        <button class="job-stop hidden" id="job-stop" type="button">stop</button>
+      </div>
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
       <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
@@ -576,7 +586,13 @@
               <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
             </div>
           </div>
-          <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste">evolve pool</button>
+          <!-- While it breeds, EVOLVE POOL is its own progress bar, with stop
+               beside it. Hovering it marks the rows a generation may replace
+               (the wrapper hears the pointer while the button is disabled). -->
+          <span class="evolve-wrap" id="evolve-wrap">
+            <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste. The rows it may replace are marked while you hover; save one to keep it.">evolve pool</button>
+            <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding. The children bred so far stay.">stop</button>
+          </span>
         </div>
         <div class="duel-row">
           <section class="duel-card" id="duel-a">

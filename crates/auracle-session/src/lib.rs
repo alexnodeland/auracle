@@ -33,6 +33,7 @@ pub mod migrate;
 pub mod naming;
 pub mod perform;
 pub mod surrogate;
+pub mod walk;
 
 pub use calib::{calibration, Calibration, Forecast, ProvenanceScore, ReliabilityBin};
 pub use engine::{
@@ -45,6 +46,7 @@ pub use farm::{draw_seed, Draw, PreFeaturized};
 pub use map::{MapPoint, TasteMap};
 pub use naming::{claim_name, NameScale};
 pub use surrogate::{SurrogateFitness, QUARANTINE_FITNESS};
+pub use walk::{run_walk, walk_seed, WalkContext, WalkJob, WalkResult, LOCK_SCALE_CAP};
 
 #[cfg(test)]
 mod tests {
@@ -1058,8 +1060,382 @@ mod tests {
     /// Gates below the observed values with real margin: 13 improved (gate 10),
     /// median +1.481 (gate +0.5). Re-derive them by running this test with
     /// `-- --nocapture` and reading the per-seed lines.
+    ///
+    /// ## Re-measured when walks got their own seeds (RFC-001)
+    ///
+    /// Each walk now draws from a seed of its own rather than from one stream
+    /// shared across the generation, and the tilted prior is computed once
+    /// per generation, so every seed here breeds a different generation than
+    /// the table above. The same 16 seeds then read median +1.757, mean
+    /// +1.511, **16/16 improved**, and no seed's best member fell. The two
+    /// catastrophic seeds were draws, not fixtures: the mechanism described
+    /// above is real and can recur on any seed, so the gates stay where they
+    /// were.
     const MEDIAN_GAIN_GATE: f64 = 0.5;
     const IMPROVED_GATE: usize = 10;
+
+    // ---- a generation as jobs (RFC-001, ADR-007) ----
+
+    /// A taught engine for the generation tests: a full pool of 16, 30 duels
+    /// from the synthetic user, one fit, and a budget small enough to run
+    /// four of these at once. Deterministic in `seed`: two calls build two
+    /// engines with the same pool, ids, log and posterior.
+    fn taught(seed: u64) -> Engine {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let user = ground_truth();
+        let cfg = SessionConfig {
+            pool_size: 16,
+            refine_steps: 12,
+            refine_seeds: 5,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        for _ in 0..30 {
+            let (a, b) = engine.next_duel(&mut rng).unwrap();
+            let chose_a = user.duel(&mut rng, &engine.pool[a].phi_std, &engine.pool[b].phi_std);
+            engine.record_duel(a, b, chose_a);
+        }
+        engine.fit_posterior(&mut rng);
+        engine
+    }
+
+    /// `n` engines built by [`taught`] from one seed, concurrently.
+    fn taught_n(seed: u64, n: usize) -> Vec<Engine> {
+        std::thread::scope(|s| {
+            let hs: Vec<_> = (0..n).map(|_| s.spawn(move || taught(seed))).collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        })
+    }
+
+    /// Every job of a generation walked the way the render farm walks it:
+    /// each on its own thread with its own cold memo, started in `order`.
+    /// Returned in **completion** order as `order` lists it.
+    fn farm_walks(ctx: &WalkContext, jobs: &[walk::WalkJob], order: &[usize]) -> Vec<WalkResult> {
+        std::thread::scope(|s| {
+            let hs: Vec<_> = order
+                .iter()
+                .map(|&i| {
+                    let job = &jobs[i];
+                    s.spawn(move || run_walk(ctx, job, &auracle_features::RenderMemo::default()))
+                })
+                .collect();
+            hs.into_iter().map(|h| h.join().unwrap()).collect()
+        })
+    }
+
+    /// The pool as a comparable value: ids, terms (node identities aside —
+    /// they come from a process-wide mint), origins and pins, in pool order.
+    fn pool_of(e: &Engine) -> Vec<(u64, auracle_grammar::PatchTree, Origin, bool)> {
+        e.pool
+            .iter()
+            .map(|c| (c.id, c.tree.clone(), c.origin, c.pinned))
+            .collect()
+    }
+
+    fn lineage_of(e: &Engine) -> String {
+        serde_json::to_string(&e.lineage).unwrap()
+    }
+
+    /// **A generation is a function of its seed, not of its schedule.** The
+    /// same taught engine, bred four ways from the same `refine` stream:
+    ///
+    /// - `serial`: [`Engine::refine`], every walk in the engine, one memo;
+    /// - `stepped`: `refine_begin` + `refine_seed` per parent (the worker's
+    ///   serial driver today);
+    /// - `farmed`: the jobs walked concurrently on cold memos, finishing in a
+    ///   shuffled order, and offered to the engine **as they finish** — an
+    ///   early result is refused as stale and changes nothing, and is offered
+    ///   again once its turn comes;
+    /// - `per_child`: the farmed results absorbed in order, but with an
+    ///   eviction pass after every child — the rule before evictions moved to
+    ///   the end of the generation.
+    ///
+    /// The first three must be the same pool, in the same order, with the
+    /// same lineage. The fourth must hold the same patches under the same ids
+    /// with the same lineage: deferring eviction changes *when* a member
+    /// leaves, never *which*.
+    #[test]
+    fn a_generation_absorbed_in_any_completion_order_is_the_serial_one() {
+        use rand::seq::SliceRandom;
+        let mut engines = taught_n(0x6E4E, 4);
+        let mut per_child = engines.pop().unwrap();
+        let mut farmed = engines.pop().unwrap();
+        let mut stepped = engines.pop().unwrap();
+        let mut serial = engines.pop().unwrap();
+        let stream = || StdRng::seed_from_u64(0xB4EED);
+        let before: std::collections::HashSet<u64> = serial.pool.iter().map(|c| c.id).collect();
+        let gen = serial.generation + 1;
+
+        serial.refine(&mut stream());
+
+        let parents = stepped.refine_begin(&mut stream());
+        assert_eq!(stepped.refine_progress(), Some((0, parents.len())));
+        for p in parents {
+            stepped.refine_seed(p);
+        }
+        assert_eq!(stepped.refine_progress(), None, "the last seed finishes");
+
+        let (ctx, jobs) = farmed.refine_jobs(&mut stream()).expect("taught");
+        let mut order: Vec<usize> = (0..jobs.len()).collect();
+        order.shuffle(&mut StdRng::seed_from_u64(9));
+        if order[0] == 0 {
+            order.swap(0, 1); // the first arrival must be early for the test to bite
+        }
+        let results = farm_walks(&ctx, &jobs, &order);
+        let mut held = std::collections::BTreeMap::new();
+        let mut next = 0;
+        for r in results.iter().cloned() {
+            if r.index != next {
+                let (pool, lineage) = (pool_of(&farmed), lineage_of(&farmed));
+                assert_eq!(farmed.refine_absorb(r.clone()), None);
+                assert_eq!(farmed.last_refine(), RefineOutcome::Stale);
+                assert_eq!(pool_of(&farmed), pool, "a stale result moved the pool");
+                assert_eq!(lineage_of(&farmed), lineage);
+                held.insert(r.index, r);
+                continue;
+            }
+            farmed.refine_absorb(r);
+            next += 1;
+            while let Some(h) = held.remove(&next) {
+                farmed.refine_absorb(h);
+                next += 1;
+            }
+        }
+        assert_eq!(next, jobs.len());
+
+        let (_, per_child_jobs) = per_child.refine_jobs(&mut stream()).unwrap();
+        assert_eq!(
+            per_child_jobs, jobs,
+            "the same engine and stream deal the same jobs"
+        );
+        let mut in_order = results.clone();
+        in_order.sort_by_key(|r| r.index);
+        for r in in_order {
+            per_child.refine_absorb(r);
+            per_child.evict_to_size(&std::collections::HashSet::new());
+        }
+
+        let born = serial
+            .lineage
+            .iter()
+            .filter(|ev| ev.generation == gen)
+            .count();
+        let after: std::collections::HashSet<u64> = serial.pool.iter().map(|c| c.id).collect();
+        let retired = before.difference(&after).count();
+        let mut named: Vec<u64> = serial.retired().to_vec();
+        named.sort_unstable();
+        let mut left: Vec<u64> = before.difference(&after).copied().collect();
+        left.sort_unstable();
+        assert_eq!(named, left, "retired() names what left the pool");
+        println!(
+            "generation {gen}: {} jobs, {born} children, {retired} retired",
+            jobs.len()
+        );
+        assert!(
+            born > 0,
+            "the fixture bred nothing, so nothing was compared"
+        );
+        assert!(
+            retired > 0,
+            "the fixture retired nothing, so eviction was not compared"
+        );
+
+        for (name, other) in [("stepped", &stepped), ("farmed", &farmed)] {
+            assert_eq!(pool_of(other), pool_of(&serial), "{name} pool differs");
+            assert_eq!(
+                lineage_of(other),
+                lineage_of(&serial),
+                "{name} lineage differs"
+            );
+            assert_eq!(other.generation, serial.generation);
+        }
+        let by_id = |e: &Engine| {
+            let mut v = pool_of(e);
+            v.sort_by_key(|row| row.0);
+            v
+        };
+        assert_eq!(
+            by_id(&per_child),
+            by_id(&serial),
+            "eviction at the end chose differently"
+        );
+        assert_eq!(lineage_of(&per_child), lineage_of(&serial));
+        for e in [&serial, &stepped, &farmed, &per_child] {
+            assert_eq!(e.pool.len(), e.cfg.pool_size);
+        }
+    }
+
+    /// A walk is a pure function of its context and job: the same job on a
+    /// cold memo, on a warm one, and after its context and job have been
+    /// through JSON (the farm's wire) gives the same result, byte for byte.
+    #[test]
+    fn a_walk_is_a_function_of_its_job() {
+        let mut engine = taught(0xA1C);
+        let (ctx, jobs) = engine
+            .refine_jobs(&mut StdRng::seed_from_u64(3))
+            .expect("taught");
+        let text = |r: &WalkResult| serde_json::to_string(r).unwrap();
+        let wire_ctx: WalkContext =
+            serde_json::from_str(&serde_json::to_string(&ctx).unwrap()).unwrap();
+        let mut moved = 0;
+        for job in jobs.iter().take(3) {
+            let cold = run_walk(&ctx, job, &auracle_features::RenderMemo::default());
+            let warm = run_walk(&ctx, job, engine.memo());
+            let wire_job: walk::WalkJob =
+                serde_json::from_str(&serde_json::to_string(job).unwrap()).unwrap();
+            assert_eq!(&wire_job, job);
+            let wired = run_walk(
+                &wire_ctx,
+                &wire_job,
+                &auracle_features::RenderMemo::default(),
+            );
+            assert_eq!(
+                text(&cold),
+                text(&warm),
+                "job {}: the memo moved a walk",
+                job.index
+            );
+            assert_eq!(
+                text(&cold),
+                text(&wired),
+                "job {}: the wire moved a walk",
+                job.index
+            );
+            if let Some(child) = &cold.child {
+                moved += 1;
+                let cached = cold.cached.as_ref().expect("a child carries its features");
+                assert_eq!(cached.key, auracle_features::render_key(child, &ctx.phrase));
+            }
+        }
+        assert!(moved > 0, "no walk moved, so no child was compared");
+    }
+
+    /// **Stop keeps what was bred.** A generation stopped after its first
+    /// children leaves a consistent pool: back to size, holding every child
+    /// that earned its place, with a lineage event for each child absorbed
+    /// and none for the jobs never absorbed. The results still in flight are
+    /// refused, and the next generation opens as usual.
+    #[test]
+    fn a_stopped_generation_keeps_what_it_bred() {
+        let mut engine = taught(0x5709);
+        let before: std::collections::HashSet<u64> = engine.pool.iter().map(|c| c.id).collect();
+        let (ctx, jobs) = engine
+            .refine_jobs(&mut StdRng::seed_from_u64(0x5709))
+            .expect("taught");
+        let gen = engine.generation;
+        let order: Vec<usize> = (0..jobs.len()).collect();
+        let results = farm_walks(&ctx, &jobs, &order);
+        let mut children = Vec::new();
+        let mut absorbed = 0;
+        for r in &results {
+            absorbed += 1;
+            if let Some(id) = engine.refine_absorb(r.clone()) {
+                children.push(id);
+                break;
+            }
+        }
+        assert!(
+            !children.is_empty(),
+            "the fixture bred nothing before its last job"
+        );
+        assert!(absorbed < jobs.len(), "the fixture stopped nowhere");
+        assert_eq!(engine.refine_progress(), Some((absorbed, jobs.len())));
+
+        let retired = engine.refine_finish();
+        assert_eq!(engine.refine_progress(), None);
+        assert_eq!(
+            engine.pool.len(),
+            engine.cfg.pool_size,
+            "stop leaves the pool at size"
+        );
+        let now: std::collections::HashSet<u64> = engine.pool.iter().map(|c| c.id).collect();
+        let mut was: std::collections::HashSet<u64> = before.clone();
+        was.extend(children.iter().copied());
+        let gone: std::collections::HashSet<u64> = retired.iter().copied().collect();
+        assert!(gone.is_disjoint(&now), "a retired id is still in the pool");
+        assert_eq!(
+            now.union(&gone)
+                .copied()
+                .collect::<std::collections::HashSet<_>>(),
+            was,
+            "every member is still here or was retired, and nothing else"
+        );
+        let events: Vec<u64> = engine
+            .lineage
+            .iter()
+            .filter(|ev| ev.generation == gen)
+            .map(|ev| ev.child_id)
+            .collect();
+        assert_eq!(
+            events, children,
+            "one lineage event per child absorbed, none after"
+        );
+        for c in engine.pool.iter().filter(|c| c.origin == Origin::Refined) {
+            assert!(engine.lineage.iter().any(|ev| ev.child_id == c.id));
+        }
+
+        let (pool, lineage) = (pool_of(&engine), lineage_of(&engine));
+        for r in &results[absorbed..] {
+            assert_eq!(engine.refine_absorb(r.clone()), None);
+            assert_eq!(engine.last_refine(), RefineOutcome::Stale);
+        }
+        assert_eq!(
+            pool_of(&engine),
+            pool,
+            "a result after the stop moved the pool"
+        );
+        assert_eq!(lineage_of(&engine), lineage);
+        assert!(engine.refine_finish().is_empty(), "finish is idempotent");
+        assert_eq!(
+            engine.retired(),
+            &retired[..],
+            "the stop's retirees are remembered"
+        );
+        let (_, next) = engine
+            .refine_jobs(&mut StdRng::seed_from_u64(1))
+            .expect("the next generation opens");
+        assert_eq!(next[0].generation, gen + 1);
+    }
+
+    /// **A save made while a generation runs protects its patch.** The member
+    /// the first admitted child displaced stays in the pool until the
+    /// generation ends — under per-child eviction it was gone on the spot, and
+    /// pinning it failed as an unknown id — so pinning it mid-run keeps it
+    /// through the finish, and the finish retires the next-lowest instead.
+    #[test]
+    fn a_save_made_mid_generation_is_never_retired() {
+        let mut engine = taught(0x5A7E);
+        let (ctx, jobs) = engine
+            .refine_jobs(&mut StdRng::seed_from_u64(0x5A7E))
+            .expect("taught");
+        let order: Vec<usize> = (0..jobs.len()).collect();
+        let results = farm_walks(&ctx, &jobs, &order);
+        let mut rest = results.into_iter();
+        let mut doomed = None;
+        for r in rest.by_ref() {
+            engine.refine_absorb(r);
+            if let Some(&id) = engine.retiring().first() {
+                doomed = Some(id);
+                break;
+            }
+        }
+        let doomed = doomed.expect("no child was admitted over a full pool");
+        assert!(
+            engine.find(doomed).is_some(),
+            "the displaced member left before the generation ended"
+        );
+        assert!(engine.set_pinned(doomed, true), "the save was refused");
+        assert!(!engine.retiring().contains(&doomed));
+        for r in rest {
+            engine.refine_absorb(r);
+        }
+        engine.refine_finish();
+        assert_eq!(engine.pool.len(), engine.cfg.pool_size);
+        let i = engine.find(doomed).expect("a saved patch was retired");
+        assert!(engine.pool[i].pinned);
+    }
 
     /// Locked refinement never touches a locked address: run `refine_from`
     /// with every continuous amp-envelope site locked and assert the child's

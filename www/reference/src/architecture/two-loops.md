@@ -48,8 +48,10 @@ Machine-paced. No human in it.
    and run `refine_steps` Metropolis–Hastings steps from each. Defaults are
    **10 seeds × 40 steps**, both scaled from the palette's operator count so a
    palette change does not silently change the search's character.
-3. **Inject.** Each surviving child displaces the pool's lowest-utility member.
-   Pinned candidates are exempt.
+3. **Inject.** Each surviving child is admitted if it beats the pool's
+   lowest-utility member; at the end of the generation the lowest-utility
+   members are retired to bring the pool back to size. Pinned candidates are
+   exempt, including ones pinned while the generation runs.
 
 The 10 × 40 split is
 [measured](../search/refinement.md#the-split-is-measured); moving in either

@@ -130,8 +130,10 @@ const renderFailures = new Map(); // id -> reason|null
 // spinner: the render deadline below stops while it is set, because during a
 // stopped queue a live render and a lost one look identical from here.
 let engineBusy = false;
-// Stateless render workers, alive only for boot. Their MessagePorts went into
-// the engine worker; main holds the handles solely to reap them on `farm_done`.
+// Stateless render workers: a crew for boot, and a crew raised on demand for a
+// generation's walks and ⚡ (the engine worker asks, `farm_want`). Their
+// MessagePorts go into the engine worker; main holds the handles solely to
+// reap them on `farm_done`. `{w, crew}`.
 const farmWorkers = [];
 let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
@@ -147,10 +149,19 @@ let meterFitting = false;
 // `fitted` answered the meter's refit: "● it just learned" stands until the
 // next pick, not for a timer's 3.2 s (which fired when the fit was *sent*).
 let learnedShown = false;
-// Long work holding the engine that a deal or a refit waits behind:
-// EVOLVE POOL ({done, total} as its seeds go) and ⚡ evolve from this.
+// The long jobs the job slot shows. EVOLVE POOL: `{generation, done, total,
+// eta, etaAt, farm, stopping, retiring}` — `done` is jobs absorbed, `eta` the
+// worker's estimate (ms, from this session's walk times) as of `etaAt`, and
+// `farm` whether its walks run on the farm (the engine answers everything
+// meanwhile) or in the engine worker (a deal waits for the walk in progress).
+// ⚡ evolve from this: `{id, name, stoppable}`. A refit waits for a
+// generation, never for ⚡ on the farm.
 let breeding = null;
-let evolvingFrom = false;
+let evolvingFrom = null;
+// The generation whose children the bank's "new" group holds (`lastBorn`).
+let bornGen = 0;
+// Children that landed since the last bank render: they glow once.
+const landedNow = new Set();
 let playingSrc = null;
 // ⚡'s child, waiting for the bench to hold it before it is announced:
 // {id, text(name)} — see `evolved_from` and the `bench` reply.
@@ -577,6 +588,7 @@ function uiState() {
     // able to prevent it.
     bank: bankFilter,
     born: [...lastBorn],
+    bornGen,
     // What you pulled out of a patch and have not put back. "Removed" is
     // supposed to mean "recoverable"; before this it meant "recoverable until
     // you refresh", which is not a promise worth making.
@@ -1158,10 +1170,19 @@ worker.onmessage = (e) => {
     // only for boot, and N × ~15 MB of linear memory is not something to keep
     // resident behind a running instrument.
     case "farm_done": {
-      for (const w of farmWorkers) {
-        try { w.terminate(); } catch (_) {}
+      for (let k = farmWorkers.length - 1; k >= 0; k--) {
+        const f = farmWorkers[k];
+        if (m.crew != null && f.crew !== m.crew) continue;
+        try { f.w.terminate(); } catch (_) {}
+        farmWorkers.splice(k, 1);
       }
-      farmWorkers.length = 0;
+      break;
+    }
+    // The engine worker wants a crew for walks (a generation, ⚡). Spawned from
+    // the module compiled at boot — an instantiation per worker, not a compile
+    // — and handed straight back; an empty answer means "walk them yourself".
+    case "farm_want": {
+      raiseCrew(m.crew);
       break;
     }
     // Boot threw inside the engine worker, so neither `playable` nor `filled`
@@ -1436,26 +1457,69 @@ worker.onmessage = (e) => {
       break;
     }
     case "refine_progress": {
-      const btn = $("evolve-btn");
-      btn.textContent = m.done >= m.total ? "placing in the pool…" : `breeding ${m.done + 1}/${m.total}…`;
-      breeding = { done: m.done, total: m.total };
-      sayDealing(); // a deal waiting on this generation names the seed it waits on
+      breedingFrom(m);
+      renderEvolveBtn();
+      renderJobSlot();
+      sayDealing(); // a deal waiting on a walk here names the seed it waits on
+      break;
+    }
+    // One job of the generation absorbed, in job order: its child (if it
+    // bred one) goes into the bank's "new · gen N" group at once, playable,
+    // without re-sorting the ranked rows. Nothing leaves the bank until the
+    // generation ends.
+    case "refine_child": {
+      breedingFrom(m);
+      if (breeding) breeding.retiring = m.retiring || [];
+      if (m.child > 0) {
+        if (bornGen !== m.generation) {
+          lastBorn.clear();
+          bornGen = m.generation;
+        }
+        lastBorn.add(m.child);
+        landedNow.add(m.child);
+      }
+      applyViews({ ...(views || {}), ranked: m.ranked, ...(m.lineage ? { lineage: m.lineage } : {}) });
+      renderBank();
+      renderPlayDuel();
+      drawLineage();
+      renderEvolveBtn();
+      renderJobSlot();
+      if (mayGoShown) markMayGo(true);
+      scheduleSave();
       break;
     }
     case "refined": {
       lampOff("refine");
+      const wasStopped = !!m.stopped;
       breeding = null;
       renderTeach(); // a refit waiting for the generation is on its way now
-      $("evolve-btn").disabled = false;
-      $("evolve-btn").textContent = "evolve pool";
-      // The pool is fixed-size: every accepted child evicts the patch the
-      // model predicts you like least. Say so — silent eviction is how a
-      // user loses something they liked and stops trusting the bank.
-      const evicted = applyViews(m.views);
-      if (m.born && m.born.length > 0) {
+      renderEvolveBtn();
+      renderJobSlot();
+      // The pool is fixed-size: every accepted child displaces the patch the
+      // model predicts you like least, at the end of the generation. Say so —
+      // silent eviction is how a user loses something they liked and stops
+      // trusting the bank.
+      const diffed = applyViews(m.views);
+      // What the generation retired, by the engine's own list: absorbing the
+      // last job finishes the generation inside the engine, so the rows it
+      // retired have already gone from the last child's ranked rows, and the
+      // diff above would name none of them.
+      const evicted = Array.isArray(m.retired) && m.retired.length ? m.retired : diffed;
+      // A child can be retired too: one bred early can end below children
+      // bred after it. It was bred but not kept, and it replaced nothing.
+      const bred = m.born || [];
+      const kept = bred.filter((id) => !evicted.includes(id));
+      const replaced = evicted.filter((id) => !bred.includes(id));
+      const dropped = bred.length - kept.length;
+      for (const id of bred) if (!kept.includes(id)) lastBorn.delete(id);
+      if (m.born && m.born.length > 0 && bornGen !== m.status.generation) {
+        // A generation whose children were not posted as they landed (an
+        // older worker): the group is its children, in birth order.
         lastBorn.clear();
-        for (const id of m.born) lastBorn.add(id);
+        for (const id of kept) lastBorn.add(id);
+        bornGen = m.status.generation;
       }
+      if (mayGoShown) markMayGo(true);
       applyStatus(m.status);
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       refreshInstruments();
@@ -1466,6 +1530,8 @@ worker.onmessage = (e) => {
       // engine did not produce.
       if (m.untaught) {
         note("Nothing to breed toward yet — make a few picks first, then evolve.");
+      } else if (wasStopped && m.born && m.born.length === 0) {
+        note(`Gen ${m.status.generation} stopped before it bred anything — the bank is as it was.${madeRoom(evicted)}`);
       } else if (m.born && m.born.length === 0) {
         // When every seed the model picked has zero mass under the prior, the
         // advice is different: more teaching will not move a walk that never
@@ -1478,11 +1544,20 @@ worker.onmessage = (e) => {
         } else {
           note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
         }
+      } else if (m.born && kept.length === 0) {
+        note(`Gen ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} bred, but none ranked above the patches already in the bank, so the bank is as it was.`);
       } else if (m.born) {
-        const made = evicted.length
-          ? madeRoom(evicted)
+        const made = madeRoom(replaced);
+        const n = kept.length;
+        const below = dropped
+          ? ` ${dropped} more ${dropped === 1 ? "was" : "were"} bred but ranked below the rest, and ${dropped === 1 ? "was" : "were"} not kept.`
           : "";
-        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`, bankTourOffer());
+        note(
+          wasStopped
+            ? `Gen ${m.status.generation} stopped: ${n} new patch${n > 1 ? "es" : ""} kept, at the top of the bank.${made}${below}`
+            : `Gen ${m.status.generation}: ${n} new patch${n > 1 ? "es" : ""} in the bank.${made}${below}`,
+          bankTourOffer(),
+        );
       } else {
         note(`Generation ${m.status.generation} bred.`);
       }
@@ -2000,24 +2075,33 @@ worker.onmessage = (e) => {
       scheduleSave();
       break;
     }
+    // ⚡'s walk is out: on the farm it can be stopped, and the slot says so.
+    case "evolve_started": {
+      if (evolvingFrom && evolvingFrom.id === m.seedId) {
+        evolvingFrom.stoppable = !!m.stoppable;
+        renderJobSlot();
+      }
+      break;
+    }
     case "evolved_from": {
-      $("rack-evolve").disabled = false;
       lampOff("refine_from");
-      evolvingFrom = false;
+      evolvingFrom = null;
+      renderEvolveFrom();
       renderTeach();
       const evolveEvicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
-      if (m.childId > 0) {
-        // ⚡ is one engine call of about 20 s (23 s measured on a quiet
-        // machine), and the worker answers nothing while it runs: knobs still
-        // sound, because a turn goes straight to the voices, but every other
-        // edit — bypass, place, unplug — waits in the lane until it is done.
-        // If the player went on editing, the child used to be opened over
-        // those edits regardless — gone without a word, and every write still
-        // in the lane then landed on the child at addresses read off the
-        // patch it replaced. The bench is the player's: the child waits in
-        // the bank, one click away.
+      if (m.reason === "stopped") {
+        note("⚡ stopped — nothing was added to the bank.", { replace: "evolve-from" });
+      } else if (m.childId > 0) {
+        // ⚡ is a walk of about 20 s (23 s measured on a quiet machine; more
+        // with many locks). It runs on the farm, and the player goes on
+        // playing and editing meanwhile — knobs, bypass, place, unplug. If
+        // they did edit, the child used to be opened over those edits
+        // regardless — gone without a word, and every write still in the
+        // lane then landed on the child at addresses read off the patch it
+        // replaced. The bench is the player's: the child waits in the bank,
+        // one click away.
         const editedSince = wb.dirty || editPending || !laneFree();
         if (editedSince) {
           note(
@@ -2207,7 +2291,7 @@ worker.onmessage = (e) => {
           fitDue = false;
           duelsSinceFit = 0;
           fitting = true;
-          $("wm-lamp").classList.add("thinking");
+          lampOn("fit");
           send({ type: "fit" });
         }
         note(n > 0
@@ -2283,21 +2367,24 @@ function releaseRequest(request, id) {
       });
       break;
     case "refine":
-      lampOff("refine");
+      // A generation that died still bred what it bred; the bank shows what
+      // the engine holds when the next views arrive.
+      if (breeding) lampOff("refine");
       breeding = null;
       renderTeach();
-      $("evolve-btn").disabled = false;
-      $("evolve-btn").textContent = "evolve pool";
+      renderEvolveBtn();
+      renderJobSlot();
+      renderNextStep();
       break;
     case "warm_start":
       // The first pick is not on its way: PERFORM stops saying so.
       openExpect = null;
       break;
     case "refine_from":
-      lampOff("refine_from");
-      evolvingFrom = false;
+      if (evolvingFrom) lampOff("refine_from");
+      evolvingFrom = null;
       renderTeach();
-      $("rack-evolve").disabled = false;
+      renderEvolveFrom();
       pendingEvolve = false;
       break;
     case "edit_commit":
@@ -2473,7 +2560,9 @@ function renderTeach() {
   mid.classList.toggle("learned", !learning && learnedShown);
   $("play-duel")?.classList.toggle("learning", learning);
   if (learning) {
-    copy.textContent = breeding || evolvingFrom
+    // A refit waits for a generation; for ⚡ only when ⚡ is walked in the
+    // engine worker itself.
+    copy.textContent = breeding || (evolvingFrom && !evolvingFrom.stoppable)
       ? `● it will learn from these ${FIT_EVERY} when breeding finishes`
       : `● learning from your last ${FIT_EVERY} picks…`;
     return;
@@ -2508,23 +2597,114 @@ function showTasteMap() {
   showView("taste");
 }
 
-// ---------- the wordmark's lamp ----------
-// The E of the wordmark lights while the engine does long work: a refit, a
-// generation, ⚡ evolve from this. Each job used to switch it on and its own
-// reply switch it off, so the first reply cleared the lamp of another job
-// still running — a refit landing mid-generation put it out for the rest of
-// the generation. Counted per job now, and dark only when every job is done.
+// ---------- the job slot, and the wordmark's lamp ----------
+// Long work has one home: the slot in the menu bar, beside GENERATIONS. It
+// shows only while something long runs — "⚡ breeding 3/10 · about 40 s",
+// "⚡ evolving Glass Pad", "refitting your taste map…" — with **stop** where
+// the job can be stopped, and the E of the wordmark is lit exactly while the
+// slot is not empty: both are drawn from `lampJobs`, one count per job kind.
+// Each job used to switch the lamp on and its own reply switch it off, so the
+// first reply cleared the lamp of another job still running; and the lamp was
+// the only sign a three-minute generation was running at all.
 const lampJobs = new Map(); // job -> requests in flight
 function lampOn(job) {
   lampJobs.set(job, (lampJobs.get(job) || 0) + 1);
-  $("wm-lamp").classList.add("thinking");
+  renderJobSlot();
 }
 function lampOff(job) {
   const n = (lampJobs.get(job) || 0) - 1;
   if (n > 0) lampJobs.set(job, n);
   else lampJobs.delete(job);
-  $("wm-lamp").classList.toggle("thinking", lampJobs.size > 0);
+  renderJobSlot();
 }
+
+/** "about 40 s" for a remaining time in ms; "" when there is no estimate. */
+function aboutLeft(ms) {
+  if (ms == null || !Number.isFinite(ms)) return "";
+  const s = ms / 1000;
+  if (s < 3) return "almost done";
+  if (s < 60) return `about ${Math.max(5, Math.round(s / 5) * 5)} s`;
+  return `about ${Math.round(s / 60)} min`;
+}
+
+/** What the generation still owes, counted down from the worker's last
+ *  estimate. */
+function breedLeft() {
+  if (!breeding || breeding.eta == null) return null;
+  return Math.max(0, breeding.eta - (performance.now() - breeding.etaAt));
+}
+
+/** The job the slot shows, most important first, or null. */
+function slotJob() {
+  if (lampJobs.has("refine")) {
+    const b = breeding || {};
+    const total = b.total || 0;
+    if (b.stopping) return { kind: "refine", text: "⚡ stopping — keeping what's bred", fill: total ? b.done / total : 0 };
+    const count = total ? ` ${b.done}/${total}` : "…";
+    const left = total && b.done < total ? aboutLeft(breedLeft()) : "";
+    return {
+      kind: "refine",
+      text: `⚡ breeding${count}${left ? ` · ${left}` : ""}`,
+      fill: total ? b.done / total : 0,
+      stop: total > 0,
+      title: "EVOLVE POOL is breeding a generation. Keep playing — it runs beside you. Stop keeps the children bred so far.",
+    };
+  }
+  if (lampJobs.has("refine_from")) {
+    const e = evolvingFrom || {};
+    return {
+      kind: "refine_from",
+      text: `⚡ evolving ${e.name || "this patch"}`,
+      stop: !!e.stoppable,
+      title: e.stoppable
+        ? "⚡ evolve from this is walking from the patch on the bench. Stop drops the walk; nothing is added."
+        : "⚡ evolve from this is walking from the patch on the bench. On this machine it runs in the engine and cannot be stopped.",
+    };
+  }
+  if (lampJobs.has("fit")) {
+    return { kind: "fit", text: "refitting your taste map…", title: "Redrawing the taste model from every pick so far." };
+  }
+  return null;
+}
+
+let slotTicker = null;
+function renderJobSlot() {
+  const job = slotJob();
+  $("wm-lamp").classList.toggle("thinking", !!job);
+  $("wm-lamp").title = job ? job.text : "";
+  const slot = $("job-slot");
+  if (!slot) return;
+  slot.classList.toggle("hidden", !job);
+  if (!job) {
+    if (slotTicker) clearInterval(slotTicker);
+    slotTicker = null;
+    return;
+  }
+  slot.dataset.job = job.kind;
+  slot.title = job.title || "";
+  $("job-text").textContent = job.text;
+  const fill = $("job-fill");
+  fill.style.width = job.fill != null ? `${Math.round(job.fill * 100)}%` : "0";
+  $("job-stop").classList.toggle("hidden", !job.stop);
+  // The estimate counts down between the worker's updates.
+  const ticking = job.kind === "refine" && breeding && breeding.eta != null;
+  if (ticking && !slotTicker) {
+    slotTicker = setInterval(() => {
+      if (!breeding) return;
+      renderJobSlot();
+    }, 1000);
+  } else if (!ticking && slotTicker) {
+    clearInterval(slotTicker);
+    slotTicker = null;
+  }
+}
+
+$("job-stop").onclick = () => {
+  const job = slotJob();
+  if (!job) return;
+  if (job.kind === "refine") stopBreeding();
+  else if (job.kind === "refine_from") stopEvolveFrom();
+};
 
 // ---------- next step ----------
 // Nothing in the app ever answered "what should I do now?". This chip always
@@ -2557,15 +2737,29 @@ function renderNextStep() {
     label = `${FIT_EVERY - n} more pick${FIT_EVERY - n > 1 ? "s" : ""} and it refits ▸`;
     act = () => showView("evolve");
   } else if (status.generation === 0) {
-    label = "It’s learned something. Breed a generation ▸";
-    act = () => { showView("evolve"); $("evolve-btn").click(); };
+    // It starts the generation where the player is: the job slot shows it
+    // from any view, and the children land at the top of the bank.
+    label = breeding ? "Breeding — keep playing ▸" : "It’s learned something. Breed a generation ▸";
+    act = breeding ? null : () => $("evolve-btn").click();
+  } else if (lastBorn.size > 0) {
+    label = `Gen ${bornGen || status.generation} bred new patches — they're at the top of the bank ▸`;
+    act = showNewGroup;
   } else {
-    label = `Gen ${status.generation} bred new patches — hear them ▸`;
+    label = `Gen ${status.generation} bred — see what it thinks of your taste ▸`;
     act = () => showView("taste");
   }
   el.textContent = label;
   el.classList.toggle("inert", !act);
   el.onclick = act || null;
+}
+
+/** The bank's "new · gen N" group, in view and flashed once. */
+function showNewGroup() {
+  if (bankFilter !== "pool") selectBank("pool");
+  const head = document.querySelector("#bank-list .bank-group");
+  if (!head) return;
+  head.scrollIntoView({ block: "start", behavior: "smooth" });
+  pulseOnce(head);
 }
 
 function pulseOnce(el) {
@@ -3408,14 +3602,21 @@ const RENDER_WAIT_MS = 12_000;
 const RENDER_POLL_MS = 100;
 
 function awaitRender(id, onReady, opts = {}) {
-  if (renders.has(id)) return onReady();
+  if (renders.has(id)) {
+    if (opts.settled) opts.settled();
+    return onReady();
+  }
   // A previous failure must not silently answer a fresh request: the term may
   // render fine now (the bench re-vetted it, the pool re-admitted it).
   renderFailures.delete(id);
   send({ type: "render", id });
   let waited = 0;
   let last = performance.now();
-  const stop = (fn) => { clearInterval(wait); if (fn) fn(); };
+  const stop = (fn) => {
+    clearInterval(wait);
+    if (opts.settled) opts.settled();
+    if (fn) fn();
+  };
   const wait = setInterval(() => {
     const now = performance.now();
     const dt = now - last;
@@ -5261,16 +5462,18 @@ function requestDeal() {
 const DEAL_SAY_MS = 300;
 let dealSayTimer = null;
 
-/** What the deal is waiting behind, as far as main can know it. */
+/** What the deal is waiting behind, as far as main can know it. A generation
+ *  or ⚡ on the farm holds nothing up; walked in the engine worker (no farm on
+ *  this machine), a deal waits for the walk in progress. */
 function dealingWhy() {
-  if (breeding) {
+  if (breeding && !breeding.farm) {
     if (!breeding.total) return "dealing — the engine is breeding";
     const seed = Math.min(breeding.done + 1, breeding.total);
     return breeding.done >= breeding.total
       ? "dealing — the engine is placing a bred generation in the pool"
       : `dealing — the engine is breeding (seed ${seed}/${breeding.total})`;
   }
-  if (evolvingFrom) return "dealing — the engine is ⚡ evolving a patch";
+  if (evolvingFrom && !evolvingFrom.stoppable) return "dealing — the engine is ⚡ evolving a patch";
   if (meterFitting && engineBusy) return "dealing — the engine is redrawing your taste map";
   return "dealing…";
 }
@@ -5640,13 +5843,108 @@ $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
 $("skip-duel").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 $("evolve-btn").onclick = () => {
-  $("evolve-btn").disabled = true;
+  if (breeding) return;
   lampOn("refine");
-  breeding = { done: 0, total: 0 };
+  breeding = { generation: 0, done: 0, total: 0, eta: null, etaAt: 0, farm: true, stopping: false, retiring: [] };
   renderTeach(); // a refit armed now waits for the generation, and says so
-  note("breeding a generation toward your taste…");
+  renderEvolveBtn();
+  renderNextStep();
   send({ type: "refine" });
 };
+$("evolve-stop").onclick = () => stopBreeding();
+
+// A `refine_progress` or `refine_child`: where the generation is.
+function breedingFrom(m) {
+  if (!breeding) return;
+  if (m.generation) breeding.generation = m.generation;
+  if (m.total != null) breeding.total = m.total;
+  if (m.done != null) breeding.done = m.done;
+  if (m.farm != null) breeding.farm = !!m.farm;
+  if (m.eta !== undefined) {
+    breeding.eta = m.eta;
+    breeding.etaAt = performance.now();
+  }
+}
+
+// Stop keeps what has been bred: the worker finishes the generation with the
+// children absorbed so far, and the replaced patches leave then.
+function stopBreeding() {
+  if (!breeding || breeding.stopping || !breeding.total) return;
+  breeding.stopping = true;
+  send({ type: "refine_stop" });
+  renderEvolveBtn();
+  renderJobSlot();
+}
+
+// EVOLVE POOL is its own progress bar while it breeds: an amber fill for the
+// jobs absorbed, "breeding 3/10", and a stop beside it. At rest it is the
+// button it always was.
+function renderEvolveBtn() {
+  const btn = $("evolve-btn");
+  const stop = $("evolve-stop");
+  const b = breeding;
+  btn.classList.toggle("breeding", !!b);
+  btn.disabled = !!b;
+  stop.classList.toggle("hidden", !b || !b.total || b.stopping);
+  if (!b) {
+    btn.textContent = "evolve pool";
+    btn.removeAttribute("aria-valuenow");
+    btn.removeAttribute("role");
+    return;
+  }
+  const label = !b.total
+    ? "breeding…"
+    : b.stopping
+      ? "stopping…"
+      : b.done >= b.total
+        ? "placing in the pool…"
+        : `breeding ${b.done}/${b.total}`;
+  const pct = b.total ? Math.round((100 * b.done) / b.total) : 0;
+  btn.innerHTML = `<span class="eb-fill" style="width:${pct}%"></span><span class="eb-text">${label}</span>`;
+  btn.setAttribute("aria-label", `EVOLVE POOL: ${label}`);
+}
+
+// ---------- what a generation may replace ----------
+// Hovering (or focusing) EVOLVE POOL marks the rows a generation could
+// replace, so a save can come first. At rest: the unsaved rows the model
+// likes least, as many as a generation has walks — a generation retires the
+// lowest unsaved members at its end, and a child only displaces a member
+// below it, so nothing outside these can go. While one runs: the rows its end
+// would retire if it ended now (the engine's own `refine_retiring`).
+const GEN_WALKS = 10; // `refine_seeds`, until a generation has said its size
+let mayGoShown = false;
+let mayGo = new Set();
+// Hovered and focused are kept apart: pressing EVOLVE POOL disables it, which
+// takes its focus away while the pointer is still on it.
+const mayGoBy = { hover: false, focus: false };
+function mayGoIds() {
+  if (breeding && breeding.retiring && breeding.retiring.length) return breeding.retiring;
+  if (!views || !views.styles || !views.ranked) return [];
+  const n = (breeding && breeding.total) || GEN_WALKS;
+  return views.ranked
+    .filter((r) => !r.pinned && !cutIds.has(r.id))
+    .sort((a, b) => a.mean - b.mean)
+    .slice(0, n)
+    .map((r) => r.id);
+}
+function markMayGo(on) {
+  mayGoShown = on;
+  mayGo = new Set(on ? mayGoIds() : []);
+  for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) {
+    el.classList.toggle("may-go", mayGo.has(Number(el.dataset.id)));
+  }
+}
+{
+  const wrap = $("evolve-wrap");
+  const set = (by, on) => {
+    mayGoBy[by] = on;
+    markMayGo(mayGoBy.hover || mayGoBy.focus);
+  };
+  wrap.addEventListener("pointerenter", () => set("hover", true));
+  wrap.addEventListener("pointerleave", () => set("hover", false));
+  wrap.addEventListener("focusin", () => set("focus", true));
+  wrap.addEventListener("focusout", () => set("focus", false));
+}
 
 // ---------- patch bank ----------
 let bankScrollTo = null;
@@ -5768,7 +6066,14 @@ function renderBank() {
     return;
   }
 
-  const rows = bankSource();
+  // The pool leads with the latest generation's children, in the order they
+  // were bred, under their own heading; the rest keep their ranked order. So
+  // a child lands where the player is looking, and nothing below it moves.
+  const source = bankSource();
+  const fresh = bankFilter === "pool"
+    ? [...lastBorn].map((id) => source.find((r) => r.id === id)).filter(Boolean)
+    : [];
+  const rows = fresh.length ? [...fresh, ...source.filter((r) => !lastBorn.has(r.id))] : source;
   bankRows = rows; // assigned before ANY return: [ ] and 1–5 step THIS list
   list.innerHTML = "";
   if (rows.length === 0) {
@@ -5786,7 +6091,18 @@ function renderBank() {
 
   const fitted = !!(views && views.styles);
   const frag = document.createDocumentFragment();
-  for (const r of rows) frag.appendChild(bankRow(r, fitted));
+  rows.forEach((r, i) => {
+    if (fresh.length && i === 0) {
+      frag.appendChild(bankGroup(bornGen ? `new · gen ${bornGen}` : "new",
+        "Bred in the latest generation, in the order they were bred"));
+    }
+    if (fresh.length && i === fresh.length) {
+      frag.appendChild(bankGroup(fitted ? "ranked by the model" : "the rest",
+        fitted ? "The rest of the pool, the patches the model thinks you'd like most first" : ""));
+    }
+    frag.appendChild(bankRow(r, fitted));
+  });
+  landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
   syncBankCursor();
@@ -5806,6 +6122,15 @@ function renderBank() {
   }
 }
 
+function bankGroup(text, title) {
+  const h = document.createElement("div");
+  h.className = "bank-group";
+  h.setAttribute("role", "presentation");
+  h.textContent = text;
+  if (title) h.title = title;
+  return h;
+}
+
 function bankRow(r, fitted) {
   const el = document.createElement("div");
   el.dataset.id = String(r.id);
@@ -5819,6 +6144,8 @@ function bankRow(r, fitted) {
     + (r.id === kbdRowId ? " kbd" : "")
     + (r.pinned ? " saved" : "")
     + (lastBorn.has(r.id) ? " fresh" : "")
+    + (landedNow.has(r.id) ? " landed" : "")
+    + (mayGo.has(r.id) ? " may-go" : "")
     // Its bench open is on its way (see `openOnBench`).
     + (r.id === benchPending && r.id !== wb.subjectId ? " opening" : "");
   const frac = fitted ? sq(r.mean) : 0;
@@ -5858,7 +6185,7 @@ function bankRow(r, fitted) {
       <span class="bi-id">#${r.id}</span>
     </div>
     <div class="bi-row">
-      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}" data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
+      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
       ${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ — teaches the model, ${s > 3 ? "does not" : "does not"} keep the patch">★</button>`)
@@ -5882,11 +6209,15 @@ function bankRow(r, fitted) {
   });
   // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
   // phrase plays, and pressed again it stops rather than starting over.
+  // Its buffer may take a moment (a render in the engine): the ▶ says it is
+  // on its way at once, and the row keeps saying so if the bank redraws.
   el.querySelector(".bi-hear").onclick = (e) => {
     const key = `bank:${r.id}`;
     if (hearingNow(key)) return void stopAudition();
     const btn = e.currentTarget;
-    awaitRender(r.id, () => play(r.id, btn, key));
+    const hear = () => document.querySelector(`#bank-list .bi-hear[data-hear="${key}"]`) || btn;
+    if (!renders.has(r.id)) bankHearPending(r.id, true);
+    awaitRender(r.id, () => play(r.id, hear(), key), { settled: () => bankHearPending(r.id, false) });
   };
   el.querySelectorAll(".star").forEach((btn) => {
     btn.onclick = () => {
@@ -6079,7 +6410,20 @@ let pinBudget = [0, 0]; // [used, cap], owned by the engine and echoed here
 let renamingId = null; // a rename in flight; see `syncBankCursor`
 let presetCursor = -1;  // the preset bank's own row cursor (presets have no id)
 let bankRenderPending = false; // a render deferred while a rename is open
-const lastBorn = new Set(); // ids born in the latest bred generation
+const lastBorn = new Set(); // ids born in the latest bred generation, in birth order
+
+// Bank ▶s whose buffer is on its way (EV-16): lit as pending until it plays
+// or fails, across bank redraws.
+const hearPending = new Set();
+function bankHearPending(id, on) {
+  if (on) hearPending.add(id);
+  else hearPending.delete(id);
+  const btn = document.querySelector(`#bank-list .bi-hear[data-hear="bank:${id}"]`);
+  if (!btn) return;
+  btn.classList.toggle("pending", on);
+  if (on) btn.setAttribute("aria-busy", "true");
+  else btn.removeAttribute("aria-busy");
+}
 
 function selectBank(which) {
   if (!BANKS.includes(which)) return;
@@ -8119,7 +8463,7 @@ function renderRack(rebuild = false) {
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
   syncCommitBtn();
-  enable("rack-evolve", hasRack);
+  enable("rack-evolve", hasRack && !evolvingFrom);
   enable("lock-knobs", hasRack);
   enable("lock-structure", hasRack);
   enable("lock-clear", hasRack && wb.locks.size > 0);
@@ -8130,7 +8474,7 @@ function renderRack(rebuild = false) {
     if (wrap) wrap.title = $(id).disabled ? text : "";
   };
   reason("rack-play", !hasRack ? "Pick a patch from the bank first" : "This patch failed the safety vet and is muted");
-  reason("rack-evolve", "Pick a patch from the bank first");
+  reason("rack-evolve", evolvingFrom ? "⚡ is evolving this patch — the job slot in the menu bar shows it, with stop" : "Pick a patch from the bank first");
   reason("lock-knobs", "Pick a patch from the bank first");
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
@@ -12554,17 +12898,34 @@ $("rack-svg").addEventListener("keydown", (e) => {
 });
 
 function startEvolveFrom(id) {
-  $("rack-evolve").disabled = true;
+  // Said in the job slot (and on the button), not a toast: a toast carries
+  // the result of a gesture, and this one's result comes when the walk lands.
+  evolvingFrom = { id, name: nameOf(id), stoppable: false };
   lampOn("refine_from");
-  evolvingFrom = true;
+  renderEvolveFrom();
   renderTeach();
-  note("⚡ evolving around the locked controls…", { replace: "evolve-from" });
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
   // that is on screen on the way out.
   const locks = [...lockedAddrs()];
   logImplicit("evolve_from", { locks: locks.length }, { id });
   send({ type: "refine_from", id, locks });
+}
+
+// ⚡ is disabled and says what it is doing while its walk runs; the rack stays
+// live, and so does everything else, because the walk is on the farm.
+function renderEvolveFrom() {
+  const btn = $("rack-evolve");
+  if (!btn) return;
+  btn.textContent = evolvingFrom ? "⚡ evolving…" : "⚡ evolve from this";
+  btn.classList.toggle("evolving", !!evolvingFrom);
+  if (evolvingFrom) btn.disabled = true;
+  else btn.disabled = !(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
+}
+
+function stopEvolveFrom() {
+  if (!evolvingFrom || !evolvingFrom.stoppable) return;
+  send({ type: "refine_from_stop" });
 }
 
 // ---------- commit deals a real duel (WS-8 §1) ----------
@@ -19898,6 +20259,15 @@ window.addEventListener("resize", () => {
 // harder on small-memory devices where N × ~15 MB is the binding constraint.
 // Below 2 there is nothing to gain over the serial path, so take it.
 function farmWidth() {
+  const override = farmOverride();
+  if (override != null) return override;
+  let n = Math.min(6, Math.max(0, (navigator.hardwareConcurrency || 2) - 2));
+  if (navigator.deviceMemory && navigator.deviceMemory <= 4) n = Math.min(n, 2);
+  return n < 2 ? 0 : n;
+}
+
+/** `?farm=N` (or the `auracle-renderers` setting), 0–8, or null. */
+function farmOverride() {
   const override =
     new URLSearchParams(location.search).get("farm") ??
     localStorage.getItem("auracle-renderers");
@@ -19905,9 +20275,17 @@ function farmWidth() {
     const n = Number(override);
     if (Number.isFinite(n)) return Math.max(0, Math.min(8, Math.floor(n)));
   }
-  let n = Math.min(6, Math.max(0, (navigator.hardwareConcurrency || 2) - 2));
-  if (navigator.deviceMemory && navigator.deviceMemory <= 4) n = Math.min(n, 2);
-  return n < 2 ? 0 : n;
+  return null;
+}
+
+// The width of a walk crew (a generation's walks, ⚡). The same rule as boot's,
+// except that one worker is worth having here: it takes the walk off the
+// engine worker, which then answers the player while it runs.
+function walkWidth() {
+  const override = farmOverride();
+  if (override != null) return override;
+  if ((navigator.hardwareConcurrency || 2) < 2) return 0;
+  return Math.max(1, farmWidth());
 }
 
 // Can this browser structured-clone a compiled module to a worker? Chrome 55 /
@@ -19926,40 +20304,52 @@ function canShareModule(mod) {
   }
 }
 
-async function spawnFarm() {
-  const n = farmWidth();
-  if (n === 0) return { ports: [], module: null };
-
-  let mod = null;
+// The compiled binary, kept for every crew after boot's: a walk crew is then
+// N instantiations, never N compiles. Null where it cannot be shared.
+let wasmModule;
+async function sharedModule() {
+  if (wasmModule !== undefined) return wasmModule;
   try {
-    mod = await WebAssembly.compileStreaming(fetch(`./pkg/auracle_wasm_bg.wasm?v=${BUILD}`));
-    if (!canShareModule(mod)) mod = null;
+    const mod = await WebAssembly.compileStreaming(fetch(`./pkg/auracle_wasm_bg.wasm?v=${BUILD}`));
+    wasmModule = canShareModule(mod) ? mod : null;
   } catch (err) {
     // No shared module: the workers fetch it themselves. Slower start, and
     // nothing else changes.
     console.warn("[auracle] shared wasm module unavailable:", err);
-    mod = null;
+    wasmModule = null;
   }
+  return wasmModule;
+}
 
-  // Width 0 — the serial path — is a fully supported, gated configuration, so
-  // *nothing* in here may escape: farm setup must never be the reason the app
-  // fails to boot. The whole per-worker block is guarded, not just the
-  // `new Worker`, because `new MessageChannel()` can throw and, more to the
-  // point, `postMessage` can reject the structured clone of the compiled
-  // module — `canShareModule` probes a MessagePort, and a Worker is a
-  // different receiving agent, which is precisely where the engines that
-  // restrict module cloning differ. Bailing returns `module: null` as well as
-  // no ports, so the `init` send below cannot then hit the same clone.
+async function spawnFarm() {
+  const n = farmWidth();
+  if (n === 0) return { ports: [], module: null };
+  const mod = await sharedModule();
+  const ports = spawnCrew(n, mod, 0);
+  return { ports, module: ports.length ? mod : null };
+}
+
+// Width 0 — the serial path — is a fully supported, gated configuration, so
+// *nothing* in here may escape: farm setup must never be the reason the app
+// fails to boot, or a generation fails to run. The whole per-worker block is
+// guarded, not just the `new Worker`, because `new MessageChannel()` can throw
+// and, more to the point, `postMessage` can reject the structured clone of the
+// compiled module — `canShareModule` probes a MessagePort, and a Worker is a
+// different receiving agent, which is precisely where the engines that
+// restrict module cloning differ. Bailing returns no ports, so boot's `init`
+// send does not then hit the same clone.
+function spawnCrew(n, mod, crew) {
   const ports = [];
+  const mine = [];
   try {
     for (let k = 0; k < n; k++) {
       const w = new Worker(`./farm.js?v=${BUILD}`, { type: "module" });
       const ch = new MessageChannel();
       // A worker that dies is reported to the *engine*, which re-issues the
-      // job it was holding by index. Main only carries the news.
+      // job it was holding. Main only carries the news.
       const index = k;
       w.onerror = (e) => {
-        try { send({ type: "farm_lost", index, reason: String(e.message || e) }); } catch (_) {}
+        try { send({ type: "farm_lost", index, crew, reason: String(e.message || e) }); } catch (_) {}
       };
       w.postMessage(
         {
@@ -19972,21 +20362,35 @@ async function spawnFarm() {
         },
         [ch.port2]
       );
-      farmWorkers.push(w);
+      mine.push({ w, crew });
       ports.push(ch.port1);
     }
   } catch (err) {
-    console.warn("[auracle] farm setup failed; filling serially:", err);
-    for (const w of farmWorkers) {
-      try { w.terminate(); } catch (_) {}
+    console.warn("[auracle] farm setup failed; working serially:", err);
+    for (const f of mine) {
+      try { f.w.terminate(); } catch (_) {}
     }
-    farmWorkers.length = 0;
     for (const p of ports) {
       try { p.close(); } catch (_) {}
     }
-    return { ports: [], module: null };
+    return [];
   }
-  return { ports, module: mod };
+  farmWorkers.push(...mine);
+  return ports;
+}
+
+// `farm_want`: a walk crew, answered with its ports — none at width 0 or on a
+// failure, and the engine worker then walks the jobs itself.
+async function raiseCrew(crew) {
+  let ports = [];
+  try {
+    const n = walkWidth();
+    if (n > 0) ports = spawnCrew(n, await sharedModule(), crew);
+  } catch (err) {
+    console.warn("[auracle] walk crew unavailable:", err);
+    ports = [];
+  }
+  send({ type: "farm_ports", crew, ports }, ports);
 }
 
 // ---------- boot ----------
@@ -20046,6 +20450,7 @@ bootMidi();
     if (saved.ui.oct != null) { octShift = Math.max(OCT_MIN, Math.min(OCT_MAX, saved.ui.oct | 0)); buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
+    bornGen = saved.ui.bornGen | 0;
     restoreTray(saved.ui.held);
     restorePositions(saved.ui.positions);
     restoreBookmarks(saved.ui.marks);

@@ -36,7 +36,7 @@ this table.
 
 | Spec | Pins |
 | --- | --- |
-| `smoke.spec.js` | Clean boot, worklet registered, engine playable |
+| `smoke.spec.js` | Clean boot, worklet registered, engine playable; the binary exports the walk surface `worker.js` calls |
 | `failure_flows.spec.js` | Bad save, engine error, refused vote, profile import are contained |
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off |
 | `bank_row.spec.js` | A bank row's controls appear on approach and work |
@@ -46,8 +46,9 @@ this table.
 | `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |
 | `narrow_gate.spec.js` | The narrow-window notice at any pointer under 1000 px, not over the handheld gate or "look around anyway" |
 | `keys_are_not_notes.spec.js` | A letter or digit a list, the rack or a dialog handles is not also a note or a rating |
-| `evolve_truth.spec.js` | ⌘Z outside PATCH changes nothing unseen; the sixth pick is undoable; "it just learned" follows `fitted`; with no pair waiting, a skip or a slow deal is inert and says why; a cut patch is not dealt; opens are quiet unless slow; tab click then → picks; keys a list uses are not notes |
+| `evolve_truth.spec.js` | ⌘Z outside PATCH changes nothing unseen; the sixth pick is undoable; "it just learned" follows `fitted`; with no pair waiting, a skip or a slow deal is inert and says why; a cut patch is not dealt; opens are quiet unless slow; tab click then → picks; keys a list uses are not notes; with no farm (`?farm=0`) a deal during a generation names the seed it waits on |
 | `evolve_ahead.spec.js` | A pick or ↻ puts the pair dealt ahead up at once, sounds and all; a taken-back pick restores its pair and keeps the other as the next; a patch cut while its pair waits ahead is never put up |
+| `evolve_breeds_beside_you.spec.js` | EVOLVE POOL completes on the farm with children landing in job order at the top of the bank; a pick mid-generation deals within 1 s; PERFORM measures and a pressed Offer starts during a generation; stop keeps what's bred; ⚡ leaves the engine free and its stop drops it; the E and the job slot agree |
 | `budgets.spec.js` | The response-time budget: the timing marks exist; a preset's controls live ≤ 1 s from its click; a warm-start pick's ≤ 1 s from *teach it*; pick → next pair ≤ 0.3 s; duel ▶ ≤ 0.15 s |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |
 | `perform_instant.spec.js` | With the shipped file blocked, the player's cache: a revisit wired ≤ 0.5 s, ≤ 1.5 s after a reload; a spare offer lands at once |

@@ -19,7 +19,7 @@ the architecture more than any design preference did.</p>
 |---|---|---|
 | **Main** | UI, Web Audio graph | `main.js` — never in the audio or render data path |
 | **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js` — pool fill, fits, refinement, workbench |
-| **Render workers** ×N | A wasm instance, nothing else | `farm.js` — stateless `(term, phrase) → φ` |
+| **Render workers** ×N | A wasm instance, nothing else | `farm.js` — stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation's walks and ⚡ |
 | **AudioWorklet** | `LivePoly` | The instrument. Real-time |
 
 Main compiles the wasm binary **once**, spawns the render workers, and
@@ -121,6 +121,31 @@ parallelism costs time and never content.
 
 The one loud exception: a job retired after two attempts logs a console
 warning. That degradation is meant to be visible.
+
+### Walks on the farm
+
+A generation is `refine_seeds` walks, and each is a pure function of the
+generation's shared context and its own job
+([refinement](./search/refinement.md)). So after boot the farm comes back for
+them: the engine worker asks main for a crew when a generation or ⚡ evolve
+from this starts, main spawns it from the module compiled at boot (an
+instantiation per worker, not a compile), and the crew is reaped after a
+minute with nothing to walk. Its width is boot's rule with a floor of one
+worker wherever there are two cores, because even one worker takes the walk
+off the engine worker, which then answers everything else.
+
+The context (the tilted prior, the posterior's draws, the standardizer, the
+phrase: about 2.2 MB of JSON) goes to each worker once per generation, as one
+string, and `farm_walk` keeps its parse keyed by that exact text. Results are
+absorbed **in job order**, one per turn, whatever order they finished in, so
+the pool is the serial path's at every width; natively
+`farm_walks_breed_the_serial_generation`. A walk a worker cannot run, or a
+crew that never comes up, is walked in the engine worker from the engine's own
+copy of the same job.
+
+Replacement waits for the end: children join the pool as they are absorbed,
+and `refine_finish` retires the weakest unpinned members once, when the last
+job lands or the player stops the generation.
 
 ## Worker replies are load-bearing
 

@@ -63,8 +63,10 @@ descriptors of the standard render, twenty-six structural counts of the term.
 ### Generation
 
 One round of breeding. Takes the pool's best patches, walks each a short
-distance uphill on the current model, and injects the children, replacing the
-patches it likes least to make room (the toast names them).
+distance uphill on the current model, and injects the children as they are
+bred; when it ends (or you stop it) it replaces the patches it likes least to
+make room (the toast names them). The walks run in parallel on the render farm,
+so the rest of the instrument keeps answering while it breeds.
 
 ### Genome / term
 
@@ -75,6 +77,13 @@ list. The rack you see is compiled from it.
 
 The staging tray under the rack. Anything you unplug, delete or bypass goes
 here rather than vanishing, and stays across a reload.
+
+### Job slot
+
+The place in the menu bar, beside **generations**, where long work shows while
+it runs: a generation (*⚡ breeding 3/10 · about 40 s*), ⚡ evolve from this, a
+refit. It has **stop** where the job can be stopped. The wordmark's **E** is lit
+exactly while it shows.
 
 ### Lens
 
