@@ -27,7 +27,8 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
         wasm wasm-stamp serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
-        site-tools brand-rasters docs-serve reference-serve
+        site-tools brand-rasters docs-serve reference-serve \
+        film-sounds film-voice film film-rehearse film-record film-publish
 
 all: check
 
@@ -333,6 +334,31 @@ brand-rasters:
 	@printf '  lockup.png and og.png set the LOGOTYPE, so they cannot come from\n'
 	@printf '  an SVG renderer with no Jost. Serve the repo and screenshot the\n'
 	@printf '  #banner and #og elements of www/brand/render.html instead.\n\n'
+
+## film-sounds: render the films' shared scores (signal, study, stingers), once
+film-sounds:
+	www/video/tools/sounds.sh
+
+## film-voice: voice a film's script and time it to the words (FILM=name)
+film-voice:
+	www/video/tools/voice.sh $(FILM)
+
+## film: render an illustrated film, voice to encode (FILM=name POSTER=seconds)
+film:
+	www/video/tools/illustrated.sh $(FILM) $(POSTER)
+
+## film-rehearse: check and dry-run a walkthrough's shots, then summarise (FILM=name)
+film-rehearse:
+	node www/video/tools/validate.mjs $(FILM)
+	www/video/tools/rehearse.sh $(FILM)
+
+## film-record: record a walkthrough on a quiet machine and render it (FILM=name POSTER=seconds)
+film-record:
+	www/video/tools/walkthrough.sh $(FILM) $(POSTER)
+
+## film-publish: put finished films on the site, guide, reference and README (FILMS="a b")
+film-publish:
+	python3 www/video/tools/publish.py $(FILMS)
 
 ## site-tools: install the pinned doc toolchain
 site-tools:

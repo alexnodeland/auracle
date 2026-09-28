@@ -555,9 +555,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
   visibility: hidden;
   transition: opacity 120ms ease;
 }
-.bank-item:hover .bi-kill,
-.bank-item:focus-within .bi-kill,
-.bank-item.kbd .bi-kill { opacity: 1; visibility: visible; }
+/* As specific as the rule they undo: at `.bank-item:hover .bi-kill` they
+   lost to the hiding rule above, and cut could never appear or be clicked,
+   on hover, on the keyboard cursor or on touch. */
+.bank-item:hover .bi-row button.bi-kill,
+.bank-item:focus-within .bi-row button.bi-kill,
+.bank-item.kbd .bi-row button.bi-kill { opacity: 1; visibility: visible; }
 .bank-item .bi-row button.bi-kill:hover { color: var(--led-red); }
 /* 200 identical dead stars said nothing. Unrated rows read as names; the
    stars appear on approach or once they carry a rating. But five stars at 28%
@@ -3060,7 +3063,7 @@ kbd { font-family: var(--font-mono); }
      is the third one and it is NOT here: `.lock-dot` is re-declared further
      down this file, and a later rule of equal specificity wins no matter
      what a media query wraps it in. It sits with its own kin instead. */
-  .bank-item .stars, .bank-item .bi-kill { opacity: 1; visibility: visible; }
+  .bank-item .stars, .bank-item .bi-row button.bi-kill { opacity: 1; visibility: visible; }
   .bank-item .bi-kill { color: var(--silk-dim); }
 
   /* Law 2 — gesture ownership.
@@ -4711,8 +4714,13 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 .pf-xy-r { right: 8px; top: 50%; transform: translateY(-50%); }
 .pf-xy-t { top: 6px; left: 50%; transform: translateX(-50%); }
 .pf-xy-b { bottom: 6px; left: 50%; transform: translateX(-50%); }
+/* An axis the patch can't move says so in its end words, struck through as
+   the guide promises: dimmed alone, they read as merely unselected. */
 .pf-xy-field.dead-x .pf-xy-l, .pf-xy-field.dead-x .pf-xy-r,
-.pf-xy-field.dead-y .pf-xy-t, .pf-xy-field.dead-y .pf-xy-b { color: var(--phos-b-dim); opacity: 0.55; }
+.pf-xy-field.dead-y .pf-xy-t, .pf-xy-field.dead-y .pf-xy-b {
+  color: var(--phos-b-dim); opacity: 0.55;
+  text-decoration: line-through; text-decoration-thickness: 1px;
+}
 .pf-xy-note {
   position: absolute; left: 0; right: 0; bottom: 26px;
   text-align: center; font-size: var(--t-micro); color: var(--phos-b);

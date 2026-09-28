@@ -1,0 +1,498 @@
+{
+ "film": "view-evolve",
+ "fps": 30,
+ "duration": 271.429,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": false,
+ "beats": [
+  {
+   "id": "open",
+   "t0": 0.0,
+   "t1": 11.3,
+   "music": null
+  },
+  {
+   "id": "title",
+   "t0": 11.429,
+   "t1": 25.591,
+   "music": "loop_a"
+  },
+  {
+   "id": "turn1",
+   "t0": 25.714,
+   "t1": 28.454,
+   "music": null
+  },
+  {
+   "id": "duel",
+   "t0": 28.571,
+   "t1": 59.881,
+   "music": null
+  },
+  {
+   "id": "turn2",
+   "t0": 60.0,
+   "t1": 62.74,
+   "music": "loop_b"
+  },
+  {
+   "id": "play",
+   "t0": 62.857,
+   "t1": 88.452,
+   "music": null
+  },
+  {
+   "id": "turn3",
+   "t0": 88.571,
+   "t1": 91.311,
+   "music": null
+  },
+  {
+   "id": "point",
+   "t0": 91.429,
+   "t1": 108.446,
+   "music": null
+  },
+  {
+   "id": "turn4",
+   "t0": 108.571,
+   "t1": 111.311,
+   "music": "loop_a"
+  },
+  {
+   "id": "meter",
+   "t0": 111.429,
+   "t1": 131.306,
+   "music": null
+  },
+  {
+   "id": "turn5",
+   "t0": 131.429,
+   "t1": 134.169,
+   "music": null
+  },
+  {
+   "id": "fair",
+   "t0": 134.286,
+   "t1": 159.883,
+   "music": null
+  },
+  {
+   "id": "turn6",
+   "t0": 160.0,
+   "t1": 162.74,
+   "music": "loop_b"
+  },
+  {
+   "id": "breed",
+   "t0": 162.857,
+   "t1": 199.877,
+   "music": null
+  },
+  {
+   "id": "turn7",
+   "t0": 200.0,
+   "t1": 202.74,
+   "music": null
+  },
+  {
+   "id": "keep",
+   "t0": 202.857,
+   "t1": 228.45,
+   "music": null
+  },
+  {
+   "id": "turn8",
+   "t0": 228.571,
+   "t1": 231.311,
+   "music": "loop_a"
+  },
+  {
+   "id": "rhythm",
+   "t0": 231.429,
+   "t1": 259.884,
+   "music": null
+  },
+  {
+   "id": "outro",
+   "t0": 260.0,
+   "t1": 271.429,
+   "music": null
+  }
+ ],
+ "lines": [
+  {
+   "id": "title1",
+   "text": "This is EVOLVE, where new sounds grow from your taste.",
+   "beat": "title",
+   "t0": 13.629,
+   "t1": 16.611,
+   "words": [13.667, 13.849, 14.029, 14.729, 14.909, 15.109, 15.429, 15.709, 15.929, 16.049]
+  },
+  {
+   "id": "title2",
+   "text": "It plays you two. You pick the one you'd reach for. Then it breeds new sounds toward your picks.",
+   "beat": "title",
+   "t0": 17.111,
+   "t1": 22.451,
+   "words": [17.151, 17.291, 17.531, 17.771, 18.551, 18.651, 18.811, 19.011, 19.151, 19.371, 19.551, 20.291, 20.431, 20.591, 20.831, 21.091, 21.491, 21.751, 21.951]
+  },
+  {
+   "id": "duel1",
+   "text": "Every duel is two sounds, A and B.",
+   "beat": "duel",
+   "t0": 28.971,
+   "t1": 31.459,
+   "words": [29.011, 29.331, 29.551, 29.751, 29.951, 30.683, 30.891, 31.051]
+  },
+  {
+   "id": "duel2",
+   "text": "Press one to hear A.",
+   "beat": "duel",
+   "t0": 31.759,
+   "t1": 33.109,
+   "words": [31.799, 31.999, 32.259, 32.419, 32.599]
+  },
+  {
+   "id": "duel3",
+   "text": "Press two to hear B.",
+   "beat": "duel",
+   "t0": 36.809,
+   "t1": 38.316,
+   "words": [36.848, 37.049, 37.389, 37.669, 37.829]
+  },
+  {
+   "id": "duel4",
+   "text": "Both play the same phrase: a held note, a high stab, two notes together, and a low note that rings out.",
+   "beat": "duel",
+   "t0": 42.216,
+   "t1": 48.624,
+   "words": [42.257, 42.516, 42.756, 42.896, 43.096, 44.113, 44.256, 44.476, 45.036, 45.116, 45.356, 46.056, 46.176, 46.416, 47.076, 47.136, 47.296, 47.476, 47.776, 47.956, 48.136]
+  },
+  {
+   "id": "duel5",
+   "text": "So you're judging the sound itself, not its name.",
+   "beat": "duel",
+   "t0": 49.024,
+   "t1": 51.679,
+   "words": [49.062, 49.224, 49.444, 49.664, 49.864, 50.084, 50.804, 50.984, 51.184]
+  },
+  {
+   "id": "duel6",
+   "text": "Pick with the arrow keys: left for A, right for B.",
+   "beat": "duel",
+   "t0": 52.079,
+   "t1": 55.331,
+   "words": [52.117, 52.299, 52.459, 52.619, 52.799, 53.739, 53.899, 54.099, 54.619, 54.679, 54.919]
+  },
+  {
+   "id": "duel7",
+   "text": "The next pair slides straight in.",
+   "beat": "duel",
+   "t0": 55.831,
+   "t1": 57.601,
+   "words": [55.869, 55.991, 56.211, 56.451, 56.851, 57.171]
+  },
+  {
+   "id": "play1",
+   "text": "For a closer listen, click a card.",
+   "beat": "play",
+   "t0": 63.157,
+   "t1": 65.232,
+   "words": [63.197, 63.337, 63.497, 63.717, 64.517, 64.597, 64.757]
+  },
+  {
+   "id": "play2",
+   "text": "That sound is now on your keyboard.",
+   "beat": "play",
+   "t0": 65.532,
+   "t1": 67.432,
+   "words": [65.572, 65.792, 66.092, 66.272, 66.512, 66.712, 66.852]
+  },
+  {
+   "id": "play3",
+   "text": "Click the other card, and play the same thing.",
+   "beat": "play",
+   "t0": 71.332,
+   "t1": 73.672,
+   "words": [71.37, 71.532, 71.712, 71.872, 72.489, 72.652, 72.852, 73.012, 73.212]
+  },
+  {
+   "id": "play4",
+   "text": "It's often the quickest way to hear two close sounds apart.",
+   "beat": "play",
+   "t0": 77.272,
+   "t1": 80.402,
+   "words": [77.311, 77.472, 77.732, 77.892, 78.132, 78.632, 78.812, 78.952, 79.232, 79.512, 79.812]
+  },
+  {
+   "id": "play5",
+   "text": "Then don't deliberate. A quick answer is worth as much as a careful one.",
+   "beat": "play",
+   "t0": 80.802,
+   "t1": 85.032,
+   "words": [80.841, 81.042, 81.402, 82.402, 82.542, 82.702, 83.102, 83.342, 83.542, 83.782, 84.002, 84.162, 84.282, 84.562]
+  },
+  {
+   "id": "point1",
+   "text": "On your first visit, it asks for three favourites out of nine.",
+   "beat": "point",
+   "t0": 91.729,
+   "t1": 95.229,
+   "words": [91.768, 91.889, 92.009, 92.289, 93.049, 93.129, 93.409, 93.669, 93.949, 94.349, 94.649, 94.769]
+  },
+  {
+   "id": "point2",
+   "text": "Play them, then pick the three closest to the sound you're after.",
+   "beat": "point",
+   "t0": 95.629,
+   "t1": 98.896,
+   "words": [95.668, 95.869, 96.389, 96.569, 96.789, 96.989, 97.249, 97.649, 97.889, 97.989, 98.229, 98.429]
+  },
+  {
+   "id": "point3",
+   "text": "Each pick beats the six you passed.",
+   "beat": "point",
+   "t0": 101.096,
+   "t1": 102.969,
+   "words": [101.127, 101.396, 101.616, 101.856, 102.076, 102.216, 102.396]
+  },
+  {
+   "id": "point4",
+   "text": "So it starts out with eighteen answers, before your first duel.",
+   "beat": "point",
+   "t0": 103.369,
+   "t1": 106.856,
+   "words": [103.409, 103.569, 103.689, 103.929, 104.189, 104.349, 104.789, 105.636, 105.969, 106.149, 106.389]
+  },
+  {
+   "id": "meter1",
+   "text": "Each pick lights a dot on the teaching meter.",
+   "beat": "meter",
+   "t0": 111.729,
+   "t1": 113.969,
+   "words": [111.767, 112.009, 112.249, 112.469, 112.649, 112.849, 113.029, 113.129, 113.429]
+  },
+  {
+   "id": "meter2",
+   "text": "It learns from each one straight away.",
+   "beat": "meter",
+   "t0": 114.769,
+   "t1": 116.724,
+   "words": [114.808, 114.989, 115.209, 115.469, 115.669, 115.929, 116.189]
+  },
+  {
+   "id": "meter3",
+   "text": "It also forecasts every duel before you answer, and shows you that forecast once you've picked.",
+   "beat": "meter",
+   "t0": 117.924,
+   "t1": 123.714,
+   "words": [117.964, 118.064, 118.404, 119.173, 119.564, 119.804, 120.184, 120.384, 121.204, 121.524, 121.724, 121.964, 122.144, 122.604, 122.964, 123.244]
+  },
+  {
+   "id": "meter4",
+   "text": "On the sixth pick, it redraws your whole taste from everything you've told it.",
+   "beat": "meter",
+   "t0": 124.514,
+   "t1": 128.736,
+   "words": [124.552, 124.674, 124.794, 125.074, 125.914, 125.974, 126.474, 126.594, 126.854, 127.194, 127.474, 127.874, 128.194, 128.394]
+  },
+  {
+   "id": "fair1",
+   "text": "Why these two? By default, every pair is dealt at random.",
+   "beat": "fair",
+   "t0": 134.586,
+   "t1": 138.133,
+   "words": [134.626, 134.826, 135.066, 135.726, 135.906, 136.566, 136.746, 137.006, 137.206, 137.386, 137.566]
+  },
+  {
+   "id": "fair2",
+   "text": "That's deliberate. A pair it chose for itself would only test its own choices.",
+   "beat": "fair",
+   "t0": 138.533,
+   "t1": 143.083,
+   "words": [138.571, 138.953, 139.953, 140.013, 140.193, 140.333, 140.553, 140.813, 141.173, 141.373, 141.633, 141.933, 142.113, 142.333]
+  },
+  {
+   "id": "fair3",
+   "text": "A random pair is a fair test, so every pick also scores how honest its forecasts are.",
+   "beat": "fair",
+   "t0": 143.483,
+   "t1": 149.053,
+   "words": [143.522, 143.663, 143.943, 144.303, 144.523, 144.663, 144.823, 145.643, 145.923, 146.283, 146.503, 146.883, 147.263, 147.583, 147.903, 148.103, 148.716]
+  },
+  {
+   "id": "fair4",
+   "text": "You can read that score in TASTE, under TRUST.",
+   "beat": "fair",
+   "t0": 149.553,
+   "t1": 152.293,
+   "words": [149.592, 149.713, 149.893, 150.053, 150.293, 150.573, 150.793, 151.513, 151.713]
+  },
+  {
+   "id": "fair5",
+   "text": "And if you can't choose, press skip. You get a new pair, and nothing is recorded.",
+   "beat": "fair",
+   "t0": 152.793,
+   "t1": 157.223,
+   "words": [152.833, 152.953, 153.053, 153.173, 153.493, 153.973, 154.153, 154.993, 155.073, 155.193, 155.313, 155.453, 155.915, 156.033, 156.293, 156.533]
+  },
+  {
+   "id": "breed1",
+   "text": "After a dozen picks or so, press Evolve Pool.",
+   "beat": "breed",
+   "t0": 163.157,
+   "t1": 166.035,
+   "words": [163.197, 163.457, 163.637, 163.817, 164.137, 164.317, 164.842, 165.117, 165.417]
+  },
+  {
+   "id": "breed2",
+   "text": "It breeds from the ten sounds it rates highest, one child from each.",
+   "beat": "breed",
+   "t0": 166.535,
+   "t1": 170.452,
+   "words": [166.574, 166.695, 166.975, 167.215, 167.335, 167.555, 167.895, 168.075, 168.255, 169.235, 169.395, 169.695, 169.955]
+  },
+  {
+   "id": "breed3",
+   "text": "The children join the pool, marked with a lightning bolt.",
+   "beat": "breed",
+   "t0": 170.952,
+   "t1": 174.085,
+   "words": [170.991, 171.092, 171.412, 171.792, 171.952, 172.592, 172.872, 173.092, 173.212, 173.472]
+  },
+  {
+   "id": "breed4",
+   "text": "To make room, it retires the sounds it likes least. A sound you saved is never retired.",
+   "beat": "breed",
+   "t0": 174.485,
+   "t1": 180.175,
+   "words": [174.524, 174.625, 174.825, 175.485, 175.625, 176.105, 176.325, 176.625, 176.765, 176.965, 177.985, 178.105, 178.385, 178.565, 178.925, 179.165, 179.405]
+  },
+  {
+   "id": "breed5",
+   "text": "The strip below says what each child changed: which knobs moved, and which modules came or went.",
+   "beat": "breed",
+   "t0": 180.575,
+   "t1": 186.475,
+   "words": [180.606, 180.715, 180.975, 181.315, 181.595, 181.815, 182.035, 182.315, 183.455, 183.615, 183.995, 184.755, 184.895, 185.055, 185.455, 185.775, 186.015]
+  },
+  {
+   "id": "breed6",
+   "text": "Each child is a variation on its parent, so the pool moves rather than starting over.",
+   "beat": "breed",
+   "t0": 186.875,
+   "t1": 192.1,
+   "words": [186.914, 187.115, 187.495, 187.735, 187.855, 188.417, 188.595, 188.735, 189.475, 189.735, 189.875, 190.115, 190.635, 190.875, 191.215, 191.535]
+  },
+  {
+   "id": "breed7",
+   "text": "Then listen to them.",
+   "beat": "breed",
+   "t0": 192.5,
+   "t1": 193.747,
+   "words": [192.54, 192.76, 193.1, 193.34]
+  },
+  {
+   "id": "keep1",
+   "text": "Every sound in the bank has three more controls: stars, save and cut.",
+   "beat": "keep",
+   "t0": 203.157,
+   "t1": 207.962,
+   "words": [203.195, 203.457, 203.717, 203.897, 203.977, 204.197, 204.437, 204.737, 204.977, 206.027, 206.902, 207.457, 207.517]
+  },
+  {
+   "id": "keep2",
+   "text": "Stars are your opinion, and they teach it. Rate low as well as high.",
+   "beat": "keep",
+   "t0": 208.462,
+   "t1": 212.58,
+   "words": [208.501, 208.822, 209.022, 209.142, 209.707, 209.862, 210.002, 210.222, 210.907, 211.182, 211.482, 211.742, 211.922, 212.122]
+  },
+  {
+   "id": "keep3",
+   "text": "Save keeps a sound for good. It teaches nothing.",
+   "beat": "keep",
+   "t0": 213.08,
+   "t1": 216.017,
+   "words": [213.119, 213.44, 213.7, 213.9, 214.08, 214.28, 214.96, 215.06, 215.3]
+  },
+  {
+   "id": "keep4",
+   "text": "Cut says not this one. That teaches it, and you have seven seconds to take it back.",
+   "beat": "keep",
+   "t0": 216.517,
+   "t1": 221.507,
+   "words": [216.557, 216.797, 217.057, 217.277, 217.517, 218.237, 218.517, 218.797, 219.357, 219.517, 219.617, 219.797, 220.177, 220.537, 220.757, 220.917, 221.057]
+  },
+  {
+   "id": "keep5",
+   "text": "So if you like a sound, save it. Stars alone won't keep it in the pool.",
+   "beat": "keep",
+   "t0": 222.007,
+   "t1": 226.16,
+   "words": [222.047, 222.207, 222.307, 222.427, 222.547, 222.707, 223.267, 223.447, 224.169, 224.487, 224.847, 225.207, 225.367, 225.507, 225.587, 225.687]
+  },
+  {
+   "id": "rhythm1",
+   "text": "Put together, a session has a rhythm.",
+   "beat": "rhythm",
+   "t0": 231.729,
+   "t1": 233.911,
+   "words": [231.767, 231.929, 232.709, 232.769, 233.029, 233.309, 233.449]
+  },
+  {
+   "id": "rhythm2",
+   "text": "A dozen quick duels.",
+   "beat": "rhythm",
+   "t0": 234.211,
+   "t1": 235.644,
+   "words": [234.25, 234.451, 234.711, 234.991]
+  },
+  {
+   "id": "rhythm3",
+   "text": "Evolve the pool.",
+   "beat": "rhythm",
+   "t0": 241.644,
+   "t1": 242.739,
+   "words": [241.684, 242.024, 242.204]
+  },
+  {
+   "id": "rhythm4",
+   "text": "Play the new children, and save the ones you'd use.",
+   "beat": "rhythm",
+   "t0": 243.739,
+   "t1": 246.579,
+   "words": [243.778, 243.959, 244.119, 244.259, 245.042, 245.199, 245.459, 245.639, 245.839, 246.099]
+  },
+  {
+   "id": "rhythm5",
+   "text": "Then back to the duels. Each round moves the pool toward what you pick.",
+   "beat": "rhythm",
+   "t0": 252.579,
+   "t1": 256.634,
+   "words": [252.619, 252.779, 253.019, 253.199, 253.299, 254.259, 254.399, 254.779, 255.079, 255.279, 255.519, 255.799, 255.999, 256.139]
+  },
+  {
+   "id": "outro1",
+   "text": "Next, see what it has learned about you, in TASTE.",
+   "beat": "outro",
+   "t0": 261.0,
+   "t1": 263.765,
+   "words": [261.038, 261.62, 261.72, 261.84, 261.92, 262.06, 262.24, 262.5, 263.042, 263.2]
+  },
+  {
+   "id": "outro2",
+   "text": "Every control is also in the guide, on the EVOLVE page.",
+   "beat": "outro",
+   "t0": 264.265,
+   "t1": 267.647,
+   "words": [264.305, 264.565, 264.945, 265.165, 265.465, 265.605, 265.725, 266.465, 266.565, 266.705, 267.065]
+  }
+ ],
+ "cues": {}
+}

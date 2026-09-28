@@ -1,150 +1,150 @@
 {
  "film": "view-patch",
  "fps": 30,
- "duration": 340.0,
+ "duration": 302.857,
  "grid": {
   "bpm": 84,
   "meter": 4,
   "t0": 0.0
  },
- "estimated": true,
+ "estimated": false,
  "beats": [
   {
    "id": "cold",
    "t0": 0.0,
-   "t1": 11.2,
+   "t1": 11.409,
    "music": null
   },
   {
    "id": "title",
    "t0": 11.429,
-   "t1": 20.934,
+   "t1": 19.98,
    "music": "loop_a"
   },
   {
    "id": "t-read",
-   "t0": 22.857,
-   "t1": 25.607,
+   "t0": 20.0,
+   "t1": 22.837,
    "music": null
   },
   {
    "id": "read",
-   "t0": 25.714,
-   "t1": 57.449,
+   "t0": 22.857,
+   "t1": 54.266,
    "music": null
   },
   {
    "id": "t-hear",
-   "t0": 60.0,
-   "t1": 62.75,
+   "t0": 54.286,
+   "t1": 57.123,
    "music": null
   },
   {
    "id": "hear",
-   "t0": 62.857,
-   "t1": 102.052,
+   "t0": 57.143,
+   "t1": 91.409,
    "music": null
   },
   {
    "id": "t-change",
-   "t0": 102.857,
-   "t1": 105.607,
+   "t0": 91.429,
+   "t1": 94.266,
    "music": null
   },
   {
    "id": "change",
-   "t0": 105.714,
-   "t1": 131.2,
+   "t0": 94.286,
+   "t1": 117.123,
    "music": null
   },
   {
    "id": "t-add",
-   "t0": 131.429,
-   "t1": 134.179,
+   "t0": 117.143,
+   "t1": 119.98,
    "music": null
   },
   {
    "id": "add",
-   "t0": 134.286,
-   "t1": 167.238,
+   "t0": 120.0,
+   "t1": 148.551,
    "music": null
   },
   {
    "id": "t-move",
-   "t0": 168.571,
-   "t1": 171.321,
+   "t0": 148.571,
+   "t1": 151.409,
    "music": null
   },
   {
    "id": "move",
-   "t0": 171.429,
-   "t1": 196.03,
+   "t0": 151.429,
+   "t1": 174.266,
    "music": null
   },
   {
    "id": "t-steps",
-   "t0": 197.143,
-   "t1": 199.893,
+   "t0": 174.286,
+   "t1": 177.123,
    "music": null
   },
   {
    "id": "steps",
-   "t0": 200.0,
-   "t1": 218.78,
+   "t0": 177.143,
+   "t1": 197.123,
    "music": null
   },
   {
    "id": "t-lock",
-   "t0": 220.0,
-   "t1": 222.75,
+   "t0": 197.143,
+   "t1": 199.98,
    "music": "loop_b"
   },
   {
    "id": "lock",
-   "t0": 222.857,
-   "t1": 243.099,
+   "t0": 200.0,
+   "t1": 217.123,
    "music": null
   },
   {
    "id": "t-keep",
-   "t0": 245.714,
-   "t1": 248.464,
+   "t0": 217.143,
+   "t1": 219.98,
    "music": null
   },
   {
    "id": "keep",
-   "t0": 248.571,
-   "t1": 271.293,
+   "t0": 220.0,
+   "t1": 242.837,
    "music": null
   },
   {
    "id": "t-take",
-   "t0": 271.429,
-   "t1": 274.179,
+   "t0": 242.857,
+   "t1": 245.694,
    "music": null
   },
   {
    "id": "take",
-   "t0": 274.286,
-   "t1": 295.858,
+   "t0": 245.714,
+   "t1": 265.694,
    "music": null
   },
   {
    "id": "t-together",
-   "t0": 297.143,
-   "t1": 299.893,
+   "t0": 265.714,
+   "t1": 268.551,
    "music": null
   },
   {
    "id": "together",
-   "t0": 300.0,
-   "t1": 324.315,
+   "t0": 268.571,
+   "t1": 291.409,
    "music": null
   },
   {
    "id": "outro",
-   "t0": 325.714,
-   "t1": 340.0,
+   "t0": 291.429,
+   "t1": 302.857,
    "music": null
   }
  ],
@@ -154,315 +154,360 @@
    "text": "PATCH is the inside of the sound.",
    "beat": "title",
    "t0": 12.629,
-   "t1": 15.174
+   "t1": 14.509,
+   "words": [12.668, 12.909, 13.129, 13.269, 13.609, 13.849, 13.949]
   },
   {
    "id": "title2",
    "text": "One patch, in full, and playable while you take it apart.",
    "beat": "title",
-   "t0": 15.674,
-   "t1": 20.034
+   "t0": 15.009,
+   "t1": 18.399,
+   "words": [15.049, 15.269, 15.709, 16.009, 16.634, 16.809, 17.129, 17.449, 17.589, 17.729, 17.849]
   },
   {
    "id": "read1",
    "text": "This is a whole patch: real modules, joined by cables.",
    "beat": "read",
-   "t0": 26.714,
-   "t1": 30.831
+   "t0": 23.857,
+   "t1": 27.21,
+   "words": [23.895, 24.057, 24.197, 24.317, 24.497, 25.282, 25.517, 26.017, 26.337, 26.577]
   },
   {
    "id": "read2",
    "text": "Sound flows left to right along the green ones.",
    "beat": "read",
-   "t0": 31.331,
-   "t1": 34.603
+   "t0": 27.71,
+   "t1": 30.38,
+   "words": [27.75, 28.05, 28.37, 28.69, 28.99, 29.17, 29.43, 29.61, 29.83]
   },
   {
    "id": "read3",
    "text": "A stack of saws makes the tone, a filter softens it, and a chorus widens it.",
    "beat": "read",
-   "t0": 35.003,
-   "t1": 41.182
+   "t0": 30.78,
+   "t1": 35.667,
+   "words": [30.82, 30.96, 31.16, 31.32, 31.74, 31.86, 32.12, 32.96, 33.04, 33.4, 33.98, 34.38, 34.5, 34.66, 34.88, 35.32]
   },
   {
    "id": "read4",
    "text": "The last plate is always the envelope and the output.",
    "beat": "read",
-   "t0": 41.582,
-   "t1": 45.218
+   "t0": 36.067,
+   "t1": 39.24,
+   "words": [36.098, 36.247, 36.507, 36.767, 36.987, 37.327, 37.527, 38.266, 38.467, 38.567]
   },
   {
    "id": "read5",
    "text": "Amber cables carry movement. This one is a slow LFO, sweeping the filter.",
    "beat": "read",
-   "t0": 45.818,
-   "t1": 51.025
+   "t0": 39.84,
+   "t1": 44.967,
+   "words": [39.88, 40.18, 40.6, 40.9, 41.902, 42.14, 42.34, 42.52, 42.7, 42.98, 43.877, 44.18, 44.44]
   },
   {
    "id": "read6",
    "text": "Every knob sits where it really is, in hertz, milliseconds and decibels.",
    "beat": "read",
-   "t0": 51.625,
-   "t1": 56.349
+   "t0": 45.567,
+   "t1": 50.335,
+   "words": [45.606, 45.887, 46.127, 46.427, 46.687, 46.807, 46.987, 47.807, 48.027, 48.867, 49.502, 49.687]
   },
   {
    "id": "hear1",
    "text": "The play button plays the standard sample: five seconds, the same for every patch.",
    "beat": "hear",
-   "t0": 63.457,
-   "t1": 69.028
+   "t0": 57.743,
+   "t1": 62.995,
+   "words": [57.782, 57.923, 58.223, 58.523, 58.823, 59.043, 59.343, 60.403, 60.703, 61.463, 61.583, 61.823, 62.063, 62.383]
   },
   {
    "id": "hear2",
    "text": "That makes patches fair to compare. To judge a sound, play it.",
    "beat": "hear",
-   "t0": 74.028,
-   "t1": 78.872
+   "t0": 68.495,
+   "t1": 72.18,
+   "words": [68.534, 68.735, 69.015, 69.375, 69.655, 69.835, 70.795, 70.875, 71.075, 71.275, 71.715, 71.855]
   },
   {
    "id": "hear3",
    "text": "Above the rack, the model guesses how likely you are to prefer this patch, and says why.",
    "beat": "hear",
-   "t0": 82.872,
-   "t1": 89.414
+   "t0": 76.18,
+   "t1": 81.298,
+   "words": [76.219, 76.44, 76.62, 77.26, 77.42, 77.7, 78.04, 78.36, 78.64, 78.92, 79.04, 79.18, 79.48, 79.74, 80.5, 80.62, 80.82]
   },
   {
    "id": "hear4",
    "text": "Point at a module, and the strip below says what it does, and what the model can't hear.",
    "beat": "hear",
-   "t0": 90.014,
-   "t1": 96.919
+   "t0": 81.898,
+   "t1": 86.755,
+   "words": [81.937, 82.138, 82.298, 82.398, 83.118, 83.278, 83.378, 83.618, 83.938, 84.218, 84.438, 84.558, 85.298, 85.458, 85.598, 85.718, 86.018, 86.418]
   },
   {
    "id": "hear5",
-   "text": "A chorus's width, for one, is invisible to it.",
+   "text": "The width of a chorus, for one, is invisible to it.",
    "beat": "hear",
-   "t0": 97.319,
-   "t1": 100.952
+   "t0": 87.155,
+   "t1": 90.063,
+   "words": [87.195, 87.315, 87.535, 87.675, 87.775, 88.195, 88.275, 88.775, 88.975, 89.575, 89.735]
   },
   {
    "id": "change1",
    "text": "Turn any knob while you play, and the sound follows your hand.",
    "beat": "change",
-   "t0": 106.514,
-   "t1": 111.058
+   "t0": 95.086,
+   "t1": 98.568,
+   "words": [95.126, 95.346, 95.606, 95.886, 96.126, 96.286, 96.946, 97.106, 97.226, 97.466, 97.886, 98.086]
   },
   {
    "id": "change2",
    "text": "Bypass a module, and it steps out of the sound.",
    "beat": "change",
-   "t0": 113.558,
-   "t1": 117.374
+   "t0": 101.068,
+   "t1": 103.898,
+   "words": [101.108, 101.568, 101.728, 102.488, 102.608, 102.708, 102.928, 103.128, 103.248, 103.328]
   },
   {
    "id": "change3",
-   "text": "Pull a cable, and the socket goes quiet. What it carried waits in HELD.",
+   "text": "Pull a cable, and the socket goes quiet. What it carried waits below, in HELD.",
    "beat": "change",
-   "t0": 119.874,
-   "t1": 125.445
+   "t0": 106.398,
+   "t1": 111.186,
+   "words": [106.438, 106.618, 106.738, 107.231, 107.378, 107.498, 107.778, 108.078, 109.098, 109.218, 109.338, 109.598, 109.918, 110.358, 110.678]
   },
   {
    "id": "change4",
    "text": "Command-Z puts it back.",
    "beat": "change",
-   "t0": 126.945,
-   "t1": 128.4
+   "t0": 112.686,
+   "t1": 114.188,
+   "words": [112.724, 113.286, 113.486, 113.666]
   },
   {
    "id": "add1",
-   "text": "The node bank holds forty-two modules, in the order sound flows through them.",
+   "text": "The node bank holds forty-two modules, ordered the way sound flows through them.",
    "beat": "add",
-   "t0": 134.886,
-   "t1": 139.793
+   "t0": 120.6,
+   "t1": 125.177,
+   "words": [120.64, 120.74, 121.02, 121.26, 121.6, 122.08, 123.08, 123.36, 123.58, 123.76, 124.16, 124.48, 124.82]
   },
   {
    "id": "add2",
    "text": "Click one, and it's in your hand. Every socket it fits lights up, and says what it would do.",
    "beat": "add",
-   "t0": 140.293,
-   "t1": 147.862
+   "t0": 125.677,
+   "t1": 131.072,
+   "words": [125.716, 125.897, 126.197, 126.477, 126.657, 126.777, 126.917, 127.938, 128.157, 128.517, 128.757, 128.998, 129.278, 129.845, 129.977, 130.157, 130.357, 130.477, 130.618]
   },
   {
    "id": "add3",
    "text": "Rest on a socket and press play, to hear it before anything changes.",
    "beat": "add",
-   "t0": 148.462,
-   "t1": 153.369
+   "t0": 131.672,
+   "t1": 135.677,
+   "words": [131.712, 131.972, 132.132, 132.272, 132.572, 132.832, 133.052, 133.734, 133.892, 134.092, 134.272, 134.552, 134.912]
   },
   {
    "id": "add4",
    "text": "Click the socket, and it's in.",
    "beat": "add",
-   "t0": 155.869,
-   "t1": 158.231
+   "t0": 138.177,
+   "t1": 139.952,
+   "words": [138.217, 138.397, 138.577, 139.12, 139.257, 139.437]
   },
   {
    "id": "add5",
    "text": "A new sound source lights amber instead, because it would replace what's there.",
    "beat": "add",
-   "t0": 161.231,
-   "t1": 166.138
+   "t0": 142.952,
+   "t1": 147.315,
+   "words": [142.99, 143.092, 143.352, 143.632, 144.032, 144.372, 144.772, 145.732, 145.992, 146.092, 146.212, 146.552, 146.912]
   },
   {
    "id": "move1",
    "text": "Movement can come from a chain.",
    "beat": "move",
-   "t0": 172.029,
-   "t1": 174.21
+   "t0": 152.029,
+   "t1": 153.839,
+   "words": [152.069, 152.429, 152.769, 153.009, 153.189, 153.309]
   },
   {
    "id": "move2",
    "text": "A sample and hold picks random values, a quantizer snaps them to A minor, and a slew glides between them.",
    "beat": "move",
-   "t0": 174.61,
-   "t1": 182.243
+   "t0": 154.239,
+   "t1": 161.156,
+   "words": [154.278, 154.439, 154.719, 154.939, 155.299, 155.619, 156.019, 157.159, 157.219, 157.799, 158.179, 158.459, 158.599, 158.699, 159.319, 159.559, 159.679, 159.979, 160.479, 160.779]
   },
   {
    "id": "move3",
    "text": "Hold one key, and you get a melody.",
    "beat": "move",
-   "t0": 182.643,
-   "t1": 185.732
+   "t0": 161.556,
+   "t1": 163.756,
+   "words": [161.594, 161.836, 162.096, 162.676, 162.836, 162.936, 163.056, 163.156]
   },
   {
    "id": "move4",
    "text": "Drop a shaper on a busy slot, and it wraps what's there instead of replacing it.",
    "beat": "move",
-   "t0": 188.732,
-   "t1": 194.73
+   "t0": 166.756,
+   "t1": 171.351,
+   "words": [166.796, 167.036, 167.216, 167.556, 167.796, 167.896, 168.076, 168.996, 169.136, 169.236, 169.476, 169.836, 170.036, 170.396, 170.556, 171.053]
   },
   {
    "id": "steps1",
-   "text": "Steps is a sequencer for timbre.",
+   "text": "Steps is a sequencer for timbre. Here it plays the filter.",
    "beat": "steps",
-   "t0": 200.6,
-   "t1": 202.782
+   "t0": 177.743,
+   "t1": 181.22,
+   "words": [177.782, 178.063, 178.263, 178.423, 178.843, 179.083, 179.923, 180.103, 180.243, 180.463, 180.663]
   },
   {
    "id": "steps2",
-   "text": "Put it on a filter and draw up to eight bars. The tone plays them as a pattern.",
+   "text": "Draw its bars, up to eight, and the tone follows the pattern.",
    "beat": "steps",
-   "t0": 203.182,
-   "t1": 210.027
+   "t0": 181.62,
+   "t1": 185.12,
+   "words": [181.66, 181.9, 182.1, 182.42, 182.7, 182.86, 183.44, 183.6, 183.7, 183.92, 184.36, 184.58]
   },
   {
    "id": "steps3",
-   "text": "Sync locks the pattern to the tempo, here 84.",
+   "text": "Sync locks it to the tempo, here 84.",
    "beat": "steps",
-   "t0": 212.027,
-   "t1": 215.48
+   "t0": 188.12,
+   "t1": 190.788,
+   "words": [188.158, 188.48, 188.72, 188.92, 189.02, 189.12, 189.763, 189.98]
   },
   {
    "id": "lock1",
    "text": "Love part of a sound? Lock it: a knob by its dot, or a whole module by its square.",
    "beat": "lock",
-   "t0": 223.457,
-   "t1": 231.146
+   "t0": 200.6,
+   "t1": 205.87,
+   "words": [200.639, 200.92, 201.14, 201.24, 201.36, 202.048, 202.3, 203.0, 203.08, 203.3, 203.52, 203.7, 204.135, 204.26, 204.38, 204.6, 204.94, 205.16, 205.32]
   },
   {
    "id": "lock2",
    "text": "Then press Evolve from this.",
    "beat": "lock",
-   "t0": 231.746,
-   "t1": 233.564
+   "t0": 206.47,
+   "t1": 208.11,
+   "words": [206.508, 206.71, 207.03, 207.39, 207.65]
   },
   {
    "id": "lock3",
    "text": "Only what you left unlocked can change, and the new patch lands on the bench.",
    "beat": "lock",
-   "t0": 234.164,
-   "t1": 239.799
+   "t0": 208.71,
+   "t1": 213.002,
+   "words": [208.75, 208.97, 209.17, 209.35, 209.57, 209.99, 210.31, 211.11, 211.33, 211.43, 211.61, 211.91, 212.21, 212.41, 212.51]
   },
   {
    "id": "keep1",
-   "text": "Your edits wait until you commit.",
+   "text": "Your changes join the bank only when you commit.",
    "beat": "keep",
-   "t0": 249.171,
-   "t1": 251.353
+   "t0": 220.6,
+   "t1": 223.118,
+   "words": [220.639, 220.78, 221.298, 221.56, 221.72, 221.96, 222.28, 222.5, 222.6]
   },
   {
    "id": "keep2",
    "text": "Commit plays the original and your edit, in random order, and asks which is better.",
    "beat": "keep",
-   "t0": 251.753,
-   "t1": 257.568
+   "t0": 223.517,
+   "t1": 228.687,
+   "words": [223.555, 223.797, 224.137, 224.357, 224.955, 225.117, 225.237, 225.957, 226.057, 226.417, 227.257, 227.417, 227.777, 228.017, 228.217]
   },
   {
    "id": "keep3",
    "text": "Either answer teaches the model.",
    "beat": "keep",
-   "t0": 262.568,
-   "t1": 264.386
+   "t0": 233.687,
+   "t1": 235.48,
+   "words": [233.723, 233.967, 234.347, 234.747, 234.987]
   },
   {
    "id": "keep4",
    "text": "Already sure? Tick my edit is better, and it's filed as a claim.",
    "beat": "keep",
-   "t0": 264.986,
-   "t1": 270.193
+   "t0": 236.08,
+   "t1": 240.007,
+   "words": [236.118, 236.48, 237.44, 237.56, 237.78, 237.96, 238.2, 238.668, 238.78, 238.98, 239.2, 239.4, 239.5]
   },
   {
    "id": "take1",
    "text": "Export a patch as a file, or as a picture of the rack.",
    "beat": "take",
-   "t0": 274.886,
-   "t1": 279.793
+   "t0": 246.314,
+   "t1": 249.639,
+   "words": [246.354, 246.734, 246.914, 247.134, 247.354, 247.494, 248.229, 248.374, 248.534, 248.634, 248.854, 249.074, 249.174]
   },
   {
    "id": "take2",
    "text": "The picture carries the patch inside. Drop either onto Auracle, and it opens, ready to play.",
    "beat": "take",
-   "t0": 280.393,
-   "t1": 286.871
+   "t0": 250.239,
+   "t1": 256.207,
+   "words": [250.279, 250.379, 250.659, 251.079, 251.279, 251.499, 252.621, 252.959, 253.199, 253.659, 254.421, 254.579, 254.679, 255.139, 255.459, 255.719]
   },
   {
    "id": "take3",
    "text": "And EVOLVE's lineage keeps the history: each edit, each evolution, and what changed.",
    "beat": "take",
-   "t0": 289.371,
-   "t1": 294.758
+   "t0": 258.707,
+   "t1": 263.887,
+   "words": [258.746, 258.907, 259.367, 259.647, 259.967, 260.167, 261.147, 261.347, 262.047, 262.167, 262.927, 263.007, 263.187]
   },
   {
    "id": "together1",
    "text": "All of it at once, at 84.",
    "beat": "together",
-   "t0": 301.5,
-   "t1": 304.225
+   "t0": 270.071,
+   "t1": 271.961,
+   "words": [270.111, 270.371, 270.471, 270.531, 270.631, 270.971, 271.211]
   },
   {
    "id": "together2",
    "text": "Shape the filter as it plays.",
    "beat": "together",
-   "t0": 306.725,
-   "t1": 308.907
+   "t0": 274.461,
+   "t1": 276.121,
+   "words": [274.5, 274.741, 274.921, 275.201, 275.421, 275.561]
   },
   {
    "id": "together3",
    "text": "Add some grit after it.",
    "beat": "together",
-   "t0": 311.907,
-   "t1": 313.725
+   "t0": 279.121,
+   "t1": 280.651,
+   "words": [279.16, 279.461, 279.661, 279.901, 280.221]
   },
   {
    "id": "together4",
    "text": "Lock the filter, and commit it as yours.",
    "beat": "together",
-   "t0": 317.725,
-   "t1": 320.815
+   "t0": 284.651,
+   "t1": 287.006,
+   "words": [284.664, 284.971, 285.151, 285.794, 285.931, 286.171, 286.291, 286.431]
   },
   {
    "id": "outro1",
    "text": "Read it, change it, grow it, protect it, and keep what's yours.",
    "beat": "outro",
-   "t0": 326.514,
-   "t1": 331.598
+   "t0": 292.229,
+   "t1": 295.679,
+   "words": [292.269, 292.509, 292.909, 293.029, 293.557, 293.789, 294.069, 294.289, 294.649, 294.729, 294.889, 295.209]
   },
   {
    "id": "outro2",
    "text": "Next, EVOLVE: breeding sounds you like.",
    "beat": "outro",
-   "t0": 332.298,
-   "t1": 334.96
+   "t0": 296.379,
+   "t1": 298.731,
+   "words": [296.416, 296.779, 297.476, 297.859, 298.099, 298.279]
   }
  ],
  "cues": {}

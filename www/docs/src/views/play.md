@@ -19,8 +19,10 @@ here is live while you edit it.</figcaption>
 
 From the top:
 
-**The subject block.** The patch's name, its id, and a short structural summary
-(`wsqr·mix·cho`). The **▶** plays the standard sample.
+**The subject block.** The patch's name, *(edited)* once you have changed it,
+and a caption for what you did to it (*2 locked*). The **▶** plays the standard
+sample. Its id and a short structural summary (`#30 · wsqr·mix·cho`) are the
+engine's bookkeeping, shown only with **⋯ › Show measurements**.
 
 **The toolbar.** The edit controls (*commit*, *my edit is better*), the layout
 and view controls (*freeform / chain*, *snap*, *reset*, *detail*, *belief*,
@@ -43,9 +45,12 @@ coordinates contributing most, and which style lens is currently judging it.
 When the model has no basis for a claim, this row says so instead of printing a
 number. See [Reading what it learned](../reading-the-model.md).
 
-Beside it, the **budget**: `8/24 modules · 4/6 depth · 1/3 mod depth`. These
-are the ceilings evolution searches within. A hand-built patch past them is
-refused, and one *at* them has no room left to grow.
+Beside it, the **budget**: the ceilings evolution searches within, `24
+modules · 6 depth · 3 mod depth`. It speaks up only when one is close
+(`5/6 depth`, amber) or reached (red), because a patch *at* a ceiling has no
+room left to grow and a hand-built patch past one is refused. With **⋯ › Show
+measurements** it shows all three all the time (`8/24 modules · 4/6 depth ·
+1/3 mod depth`).
 
 **The rack.** The patch itself. See [the rack chapter](../rack.md).
 

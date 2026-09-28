@@ -1,0 +1,304 @@
+{
+ "film": "tour",
+ "fps": 30,
+ "duration": 137.143,
+ "grid": {
+  "bpm": 84,
+  "meter": 4,
+  "t0": 0.0
+ },
+ "estimated": false,
+ "beats": [
+  {
+   "id": "open",
+   "t0": 0.0,
+   "t1": 14.28,
+   "music": null
+  },
+  {
+   "id": "title",
+   "t0": 14.286,
+   "t1": 24.053,
+   "music": "loop_a"
+  },
+  {
+   "id": "views",
+   "t0": 24.286,
+   "t1": 41.988,
+   "music": null
+  },
+  {
+   "id": "bank",
+   "t0": 42.143,
+   "t1": 60.568,
+   "music": null
+  },
+  {
+   "id": "dock",
+   "t0": 60.714,
+   "t1": 82.709,
+   "music": null
+  },
+  {
+   "id": "header",
+   "t0": 82.857,
+   "t1": 98.397,
+   "music": null
+  },
+  {
+   "id": "first",
+   "t0": 98.571,
+   "t1": 116.996,
+   "music": null
+  },
+  {
+   "id": "next",
+   "t0": 117.143,
+   "t1": 137.143,
+   "music": "loop_b"
+  }
+ ],
+ "lines": [
+  {
+   "id": "title1",
+   "text": "This is Auracle, a synthesizer that learns what you like.",
+   "beat": "title",
+   "t0": 15.286,
+   "t1": 18.681,
+   "words": [15.325, 15.506, 15.706, 16.546, 16.686, 17.366, 17.566, 17.786, 18.046, 18.206]
+  },
+  {
+   "id": "title2",
+   "text": "Here's a quick map: where everything is, and what it's for.",
+   "beat": "title",
+   "t0": 19.281,
+   "t1": 22.453,
+   "words": [19.321, 19.641, 19.701, 19.861, 20.501, 20.701, 21.226, 21.481, 21.701, 21.841, 22.061]
+  },
+  {
+   "id": "views1",
+   "text": "Across the top are four views.",
+   "beat": "views",
+   "t0": 24.886,
+   "t1": 26.661,
+   "words": [24.926, 25.206, 25.406, 25.626, 25.826, 26.066]
+  },
+  {
+   "id": "views2",
+   "text": "PERFORM is where you play the sound.",
+   "beat": "views",
+   "t0": 27.061,
+   "t1": 29.031,
+   "words": [27.101, 27.698, 27.841, 28.001, 28.161, 28.341, 28.481]
+  },
+  {
+   "id": "views3",
+   "text": "PATCH takes you inside it, to every module, cable and knob.",
+   "beat": "views",
+   "t0": 29.531,
+   "t1": 33.046,
+   "words": [29.57, 29.811, 30.051, 30.251, 30.551, 31.006, 31.151, 31.431, 32.131, 32.551, 32.571]
+  },
+  {
+   "id": "views4",
+   "text": "EVOLVE plays you two sounds. Pick the one you like, and it breeds more like it.",
+   "beat": "views",
+   "t0": 33.546,
+   "t1": 38.033,
+   "words": [33.586, 33.986, 34.226, 34.466, 34.666, 35.706, 35.826, 36.006, 36.106, 36.266, 36.68, 36.806, 36.946, 37.186, 37.446, 37.686]
+  },
+  {
+   "id": "views5",
+   "text": "TASTE shows what it learned about you.",
+   "beat": "views",
+   "t0": 38.533,
+   "t1": 40.488,
+   "words": [38.572, 39.008, 39.293, 39.513, 39.613, 39.813, 40.053]
+  },
+  {
+   "id": "bank1",
+   "text": "On the left is the bank, where your sounds live.",
+   "beat": "bank",
+   "t0": 42.743,
+   "t1": 45.41,
+   "words": [42.783, 43.003, 43.143, 43.363, 43.603, 43.723, 44.283, 44.423, 44.543, 44.803]
+  },
+  {
+   "id": "bank2",
+   "text": "Presets came with the instrument.",
+   "beat": "bank",
+   "t0": 45.81,
+   "t1": 47.533,
+   "words": [45.849, 46.33, 46.55, 46.77, 46.87]
+  },
+  {
+   "id": "bank3",
+   "text": "Evolution is the pool it breeds from, each with a guess at how much you'll like it.",
+   "beat": "bank",
+   "t0": 47.933,
+   "t1": 52.66,
+   "words": [47.973, 48.67, 48.833, 49.033, 49.253, 49.433, 49.693, 50.393, 50.673, 50.873, 51.013, 51.253, 51.533, 51.753, 51.933, 52.173, 52.333]
+  },
+  {
+   "id": "bank4",
+   "text": "My patches holds the ones you save.",
+   "beat": "bank",
+   "t0": 53.06,
+   "t1": 55.185,
+   "words": [53.1, 53.3, 53.74, 54.12, 54.32, 54.44, 54.62]
+  },
+  {
+   "id": "bank5",
+   "text": "Press play to hear one. Click it, and it's yours to play.",
+   "beat": "bank",
+   "t0": 55.685,
+   "t1": 59.018,
+   "words": [55.723, 55.925, 56.185, 56.345, 56.485, 57.185, 57.425, 57.845, 57.905, 58.125, 58.245, 58.505]
+  },
+  {
+   "id": "dock1",
+   "text": "Along the bottom is the dock, the same in every view.",
+   "beat": "dock",
+   "t0": 61.314,
+   "t1": 64.472,
+   "words": [61.353, 61.654, 61.814, 62.074, 62.334, 62.474, 63.094, 63.254, 63.474, 63.674, 63.974]
+  },
+  {
+   "id": "dock2",
+   "text": "Play the keys on screen, your computer keys, or a MIDI keyboard.",
+   "beat": "dock",
+   "t0": 64.872,
+   "t1": 68.514,
+   "words": [64.911, 65.072, 65.212, 65.372, 65.592, 66.412, 66.492, 66.812, 67.532, 67.592, 67.712, 67.792]
+  },
+  {
+   "id": "dock3",
+   "text": "Hold latches a chord, and the arpeggiator plays it in time.",
+   "beat": "dock",
+   "t0": 69.014,
+   "t1": 72.597,
+   "words": [69.054, 69.394, 69.834, 69.954, 70.674, 70.794, 70.874, 71.434, 71.734, 71.934, 72.074]
+  },
+  {
+   "id": "dock4",
+   "text": "On the right, glide slides each note into the next.",
+   "beat": "dock",
+   "t0": 73.097,
+   "t1": 75.982,
+   "words": [73.137, 73.297, 73.417, 73.879, 74.277, 74.517, 74.837, 75.117, 75.317, 75.457]
+  },
+  {
+   "id": "dock5",
+   "text": "Record saves what you play, next to MIDI and the volume.",
+   "beat": "dock",
+   "t0": 76.482,
+   "t1": 79.809,
+   "words": [76.521, 76.862, 77.162, 77.422, 77.562, 78.28, 78.542, 78.682, 78.822, 79.102, 79.202]
+  },
+  {
+   "id": "header1",
+   "text": "Up top, PICKS counts what you've taught it. The number beside it counts generations bred toward your taste.",
+   "beat": "header",
+   "t0": 83.457,
+   "t1": 89.42,
+   "words": [83.497, 83.657, 84.134, 84.437, 84.697, 84.897, 85.097, 85.277, 86.037, 86.177, 86.357, 86.777, 86.997, 87.297, 88.097, 88.397, 88.657, 88.857]
+  },
+  {
+   "id": "header2",
+   "text": "The question mark opens the keyboard map.",
+   "beat": "header",
+   "t0": 89.92,
+   "t1": 92.432,
+   "words": [89.944, 90.1, 90.42, 90.78, 91.34, 91.58, 91.88]
+  },
+  {
+   "id": "header3",
+   "text": "The three dots hold your files, your taste profile, and these films.",
+   "beat": "header",
+   "t0": 92.932,
+   "t1": 96.897,
+   "words": [92.97, 93.092, 93.332, 93.592, 93.852, 94.032, 94.912, 95.012, 95.252, 96.072, 96.112, 96.292]
+  },
+  {
+   "id": "first1",
+   "text": "The first time you open it, it asks which three sounds you like.",
+   "beat": "first",
+   "t0": 99.171,
+   "t1": 102.654,
+   "words": [99.207, 99.351, 99.591, 99.811, 99.951, 100.211, 100.691, 100.871, 101.191, 101.451, 101.751, 102.011, 102.231]
+  },
+  {
+   "id": "first2",
+   "text": "Play them, pick three, and press teach it.",
+   "beat": "first",
+   "t0": 103.054,
+   "t1": 105.244,
+   "words": [103.093, 103.294, 103.734, 103.834, 104.334, 104.434, 104.694, 104.874]
+  },
+  {
+   "id": "first3",
+   "text": "That's eighteen picks in one go, so it starts out pointed at you.",
+   "beat": "first",
+   "t0": 105.844,
+   "t1": 109.571,
+   "words": [105.883, 106.244, 106.604, 106.904, 107.104, 107.304, 107.864, 108.104, 108.224, 108.424, 108.684, 108.964, 109.244]
+  },
+  {
+   "id": "first4",
+   "text": "Your three are saved, and PERFORM opens, ready to play.",
+   "beat": "first",
+   "t0": 109.971,
+   "t1": 113.296,
+   "words": [110.01, 110.171, 110.411, 110.591, 111.302, 111.491, 111.831, 112.402, 112.611, 112.831]
+  },
+  {
+   "id": "next1",
+   "text": "To go deeper, each view has a film of its own.",
+   "beat": "next",
+   "t0": 117.943,
+   "t1": 120.73,
+   "words": [117.947, 118.083, 118.263, 119.023, 119.163, 119.443, 119.663, 119.823, 120.003, 120.143, 120.263]
+  },
+  {
+   "id": "next2",
+   "text": "PERFORM: playing the sound.",
+   "beat": "next",
+   "t0": 121.23,
+   "t1": 122.888,
+   "words": [121.269, 121.69, 122.15, 122.35]
+  },
+  {
+   "id": "next3",
+   "text": "PATCH: inside the sound.",
+   "beat": "next",
+   "t0": 123.288,
+   "t1": 124.91,
+   "words": [123.328, 123.648, 124.148, 124.368]
+  },
+  {
+   "id": "next4",
+   "text": "EVOLVE: breeding sounds you like.",
+   "beat": "next",
+   "t0": 125.31,
+   "t1": 127.243,
+   "words": [125.348, 125.85, 126.27, 126.61, 126.79]
+  },
+  {
+   "id": "next5",
+   "text": "TASTE: what it learned about you.",
+   "beat": "next",
+   "t0": 127.643,
+   "t1": 129.455,
+   "words": [127.683, 128.257, 128.423, 128.543, 128.683, 128.943]
+  },
+  {
+   "id": "next6",
+   "text": "Now open it, and play.",
+   "beat": "next",
+   "t0": 130.155,
+   "t1": 131.708,
+   "words": [130.194, 130.435, 130.735, 130.915, 131.095]
+  }
+ ],
+ "cues": {}
+}

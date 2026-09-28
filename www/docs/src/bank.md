@@ -77,8 +77,12 @@ candidates. The head shows your pin budget when you are near it.
 ## Presets
 
 Sixty-two hand-made patches across seven families — bass, lead, keys, pad,
-texture, perc, weird — browsed in place: clicking one loads it on the workbench
-without adding it to the pool.
+texture, perc, weird — browsed in place: clicking one opens it on the
+workbench. The engine can only play what it holds, so a preset you open or ▶
+joins the evolution pool and takes the place of the patch the model likes
+least; the toast names what was retired, saved patches are never among them,
+and the row reads **in bank** from then on, so a second click opens the same
+copy instead of loading another.
 
 They are worth playing through early even if you intend to evolve everything.
 They are what the [warm start](./teaching.md#the-warm-start) samples from, and

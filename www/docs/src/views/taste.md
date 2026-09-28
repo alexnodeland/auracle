@@ -12,7 +12,12 @@ model reporting on itself.
 The **style chips** across the top are shared by all four tabs. Each carries a
 generated name, its share of the bank, and a **▸** that auditions that style's
 exemplar. Click a chip's name to rename it. The name persists and is used
-everywhere the style is mentioned.
+everywhere the style is mentioned, and a refit keeps it on the style it named:
+each new fit's styles are matched to the last fit's by what they listen for.
+What can change is the style's exemplar. It is the patch in the bank that best
+fits the style today, so as the model learns, and as the bank changes, a
+different patch can become its best example, and a favourite that pleases
+more than one style can turn up as another's.
 
 ## MAP
 

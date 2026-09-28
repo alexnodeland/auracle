@@ -746,7 +746,12 @@ fn describe_node(n: &AudioNode, key: &str, column: usize, out: &mut RackDescript
                 "fold",
                 "wavefolder",
                 vec![
-                    knob_c(key, "thresh", "fold", *threshold),
+                    // The fold *threshold*: turning it up folds less. It was
+                    // labelled "fold", so the knob a player turned up for more
+                    // fold did the opposite, and a brighter, more folded sound
+                    // read as "fold" going down. Its modulation destination
+                    // was already called threshold.
+                    knob_c(key, "thresh", "threshold", *threshold),
                     knob_c(key, "mdepth", "mod depth", *mod_depth),
                 ],
                 leaf_op,

@@ -273,11 +273,64 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
     }
 }
 
+/// The engine's randomness, one stream per consumer.
+///
+/// It used to be one generator for everything, and anything that drew from it
+/// moved every later draw. PERFORM grows a spare offer in the background, and
+/// when that finishes depends on the machine, so two identical sessions dealt
+/// different duels and fitted different posteriors: the same patch read 0.39 in
+/// one and 0.43 in the other. Now fills, duels, evolution and PERFORM each
+/// advance only their own stream, so timing in one can't move another. A fit
+/// is seeded from the seed and the number of observations, so the same
+/// evidence always fits the same posterior. The streams are derived from the
+/// session seed (splitmix64), so a seeded session still reproduces exactly.
+struct Streams {
+    seed: u64,
+    /// Pool fills (the draw stream's base seed and the serial fill path).
+    fill: StdRng,
+    /// Duel pairing.
+    duel: StdRng,
+    /// Evolution: EVOLVE POOL's walks and ⚡ evolve from this.
+    refine: StdRng,
+    /// PERFORM: offers (including the spare grown in the background) and
+    /// Wander's drift.
+    perform: StdRng,
+}
+
+impl Streams {
+    fn new(seed: u64) -> Self {
+        let stream = |tag: u64| StdRng::seed_from_u64(mix_seed(seed, tag));
+        Streams {
+            seed,
+            fill: stream(1),
+            duel: stream(2),
+            refine: stream(3),
+            perform: stream(4),
+        }
+    }
+
+    /// A fit's generator: a function of the session seed and how many
+    /// observations it is fitted on, and of nothing that happened in between.
+    fn fit(&self, observations: usize) -> StdRng {
+        StdRng::seed_from_u64(mix_seed(mix_seed(self.seed, 5), observations as u64))
+    }
+}
+
+/// Two words into one well-mixed seed (splitmix64's finalizer over their
+/// combination), so streams tagged 1, 2, 3… share no structure.
+fn mix_seed(a: u64, b: u64) -> u64 {
+    let mut z = a ^ b.wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17);
+    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
 /// The session engine, wasm-side.
 #[wasm_bindgen]
 pub struct WasmEngine {
     engine: Engine,
-    rng: StdRng,
+    rng: Streams,
     bench_tree: Option<PatchTree>,
     bench_render: Option<Arc<Audition>>,
     bench_original: Option<u64>,
@@ -381,7 +434,7 @@ impl WasmEngine {
         engine.begin_session();
         WasmEngine {
             engine,
-            rng: StdRng::seed_from_u64(seed),
+            rng: Streams::new(seed),
             bench_tree: None,
             bench_render: None,
             bench_original: None,
@@ -415,7 +468,7 @@ impl WasmEngine {
     /// folds the same indexed draw stream `fill_draw`/`fill_absorb` fold, so
     /// the pool it builds is the pool the farm builds.
     pub fn fill_step(&mut self, max_new: usize) -> usize {
-        self.engine.fill_pool_step(&mut self.rng, max_new)
+        self.engine.fill_pool_step(&mut self.rng.fill, max_new)
     }
 
     // ------------------------------------------------------------------
@@ -446,7 +499,7 @@ impl WasmEngine {
     /// signal only in combination with nothing outstanding; see
     /// `Engine::fill_draw`.
     pub fn fill_draw(&mut self, n: usize) -> String {
-        self.engine.ensure_fill_seed(&mut self.rng);
+        self.engine.ensure_fill_seed(&mut self.rng.fill);
         serde_json::to_string(&self.engine.fill_draw(n)).unwrap_or_else(|_| "[]".into())
     }
 
@@ -623,7 +676,7 @@ impl WasmEngine {
     pub fn next_duel(&mut self) -> String {
         let pair = self
             .engine
-            .next_duel(&mut self.rng)
+            .next_duel(&mut self.rng.duel)
             .map(|(a, b)| [self.engine.pool[a].id, self.engine.pool[b].id]);
         serde_json::to_string(&pair).unwrap()
     }
@@ -649,7 +702,7 @@ impl WasmEngine {
             random_check: bool,
             method: &'static str,
         }
-        match self.engine.next_duel_full(&mut self.rng) {
+        match self.engine.next_duel_full(&mut self.rng.duel) {
             Some(d) => serde_json::to_string(&Row {
                 a: self.engine.pool[d.a].id,
                 b: self.engine.pool[d.b].id,
@@ -789,12 +842,13 @@ impl WasmEngine {
 
     /// Re-fit the taste posterior from the log (seconds of MCMC — worker!).
     pub fn fit(&mut self) {
-        self.engine.fit_posterior(&mut self.rng);
+        let mut rng = self.rng.fit(self.engine.log.len());
+        self.engine.fit_posterior(&mut rng);
     }
 
     /// One round of taste-guided refinement (renders — worker!).
     pub fn refine(&mut self) {
-        self.engine.refine(&mut self.rng);
+        self.engine.refine(&mut self.rng.refine);
     }
 
     /// Open a generation; returns the parent ids to refine from as a JSON
@@ -812,7 +866,7 @@ impl WasmEngine {
     /// the walk was rejected or landed on a patch already in the pool.
     pub fn refine_seed(&mut self, parent_id: u32) -> u32 {
         self.engine
-            .refine_seed(&mut self.rng, parent_id as u64)
+            .refine_seed(&mut self.rng.refine, parent_id as u64)
             .unwrap_or(0) as u32
     }
 
@@ -823,7 +877,7 @@ impl WasmEngine {
         let id = id as u64;
         let locked: Vec<String> = serde_json::from_str(locked_json).unwrap_or_default();
         self.engine
-            .refine_from(&mut self.rng, id, &locked)
+            .refine_from(&mut self.rng.refine, id, &locked)
             .unwrap_or(0) as u32
     }
 
@@ -1028,10 +1082,13 @@ impl WasmEngine {
             return "null".into();
         };
         let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
-        match self
-            .engine
-            .drift(&mut self.rng, &tree, &locks, steps.max(1) as usize, sigma)
-        {
+        match self.engine.drift(
+            &mut self.rng.perform,
+            &tree,
+            &locks,
+            steps.max(1) as usize,
+            sigma,
+        ) {
             Ok(t) => {
                 let knobs =
                     auracle_session::perform::live_knobs(&t, self.engine.cfg.phrase.sample_rate);
@@ -1059,7 +1116,7 @@ impl WasmEngine {
         let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
         let t = match self
             .engine
-            .offer(&mut self.rng, &tree, &locks, steps.max(1) as usize)
+            .offer(&mut self.rng.perform, &tree, &locks, steps.max(1) as usize)
         {
             Ok(t) => t,
             Err(why) => return serde_json::json!({ "reason": why.as_str() }).to_string(),
@@ -1697,9 +1754,15 @@ impl WasmEngine {
         // thing in the preview. 12 ms of cosine is below the threshold where a
         // release sounds shortened and well above the one where an edge is
         // audible.
+        //
+        // The ramp ends exactly at zero: t runs over 0..=1, so the last sample
+        // is multiplied by cos(π) + 1 = 0. It used to stop one step short, at
+        // (fade−1)/fade, and left about 9e-6 of a loud patch's last sample,
+        // the very edge the fade exists to remove.
         let fade = ((0.012 * a.sample_rate) as usize).min(out.len());
+        let span = fade.saturating_sub(1).max(1) as f32;
         for i in 0..fade {
-            let t = i as f32 / fade as f32;
+            let t = i as f32 / span;
             let k = out.len() - fade + i;
             out[k] *= 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
         }
@@ -1989,6 +2052,40 @@ impl WasmEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::RngCore;
+
+    /// A draw on one stream never moves another: a spare offer grown in the
+    /// background, however early or late it lands, leaves the duels and the
+    /// fills where they were. And a fit's generator is a function of the seed
+    /// and the evidence count alone.
+    #[test]
+    fn a_consumer_draws_only_from_its_own_stream() {
+        let mut quiet = Streams::new(20260927);
+        let mut busy = Streams::new(20260927);
+        for _ in 0..1000 {
+            busy.perform.next_u64();
+            busy.refine.next_u64();
+        }
+        for _ in 0..8 {
+            assert_eq!(quiet.duel.next_u64(), busy.duel.next_u64());
+            assert_eq!(quiet.fill.next_u64(), busy.fill.next_u64());
+        }
+        assert_eq!(quiet.fit(55).next_u64(), busy.fit(55).next_u64());
+        assert_ne!(quiet.fit(55).next_u64(), quiet.fit(56).next_u64());
+        // Distinct streams, not one stream under four names.
+        let mut s = Streams::new(7);
+        let firsts = [
+            s.fill.next_u64(),
+            s.duel.next_u64(),
+            s.refine.next_u64(),
+            s.perform.next_u64(),
+        ];
+        for i in 0..firsts.len() {
+            for j in i + 1..firsts.len() {
+                assert_ne!(firsts[i], firsts[j]);
+            }
+        }
+    }
 
     /// The structural-edit vocabulary is a **wire format**: `main.js` builds
     /// these payloads by hand and posts them at `apply_struct_op`, and the
@@ -2185,7 +2282,11 @@ mod tests {
     #[test]
     fn render_of_plays_the_audition_at_its_level_and_stores_it_untouched() {
         use auracle_features::{integrated_lufs, TARGET_LUFS};
-        let mut engine = WasmEngine::new(1, 8);
+        // A seed whose eight-patch pool holds at least two auditions more than
+        // 3 dB short of the target: the fixture is chosen for them. (Seed 1
+        // held two until the engine's randomness was split into one stream
+        // per consumer, which moved every seeded pool.)
+        let mut engine = WasmEngine::new(3, 8);
         farm_fill(&mut engine, true);
         let lufs = |x: &[f32]| {
             let x: Vec<f64> = x.iter().map(|s| f64::from(*s)).collect();
@@ -2640,7 +2741,10 @@ mod tests {
     /// be an edit, and the player would be undoing sounds they only looked at.
     #[test]
     fn a_preview_renders_the_proposal_and_leaves_the_bench_alone() {
-        let mut engine = WasmEngine::new(0x9A1, 6);
+        // A seed whose top-ranked patch can take a distortion at its root, the
+        // splice this test previews (with one RNG stream per consumer, 0x9A1's
+        // pool no longer can; the property is the fixture, not the seed).
+        let mut engine = WasmEngine::new(0x9A2, 6);
         while engine.fill_step(3) > 0 {}
         let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
             .as_u64()
