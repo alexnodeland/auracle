@@ -40,7 +40,7 @@ this table.
 | `first_run.spec.js` | The warm start keeps all 18 preferences; PERFORM's first steps tick off |
 | `bank_row.spec.js` | A bank row's controls appear on approach and work |
 | `evolve_feedback.spec.js` | PICKS counts at once, vote toasts replace, the dealing rule, the sixth-pick redraw, bank ▶ |
-| `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts |
+| `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts; COMMIT's blind card (Esc cancels), the one-shot *my edit is better*, a commit retiring the edits' receipts |
 | `taste_marks.spec.js` | A guess drawn hollow with a ? in DIRECTIONS, STYLES and the node bank; TASTE's early states count what is left |
 | `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |

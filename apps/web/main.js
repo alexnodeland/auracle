@@ -815,6 +815,14 @@ function settleLanded(step) {
   if (step) (step.toasts = step.toasts || []).push(el);
 }
 let editReceipts = [];
+/** A landed commit takes the edits it committed with it: their receipts are
+ *  about a bench that is now a saved patch, and their buttons would undo into
+ *  it. The commit's own receipt used to wait behind them — "distortion
+ *  patched into the wire. TAKE IT OUT +1", 1.3 s after COMMIT. */
+function retireEditReceipts() {
+  for (const old of editReceipts) retireToast(old);
+  editReceipts = [];
+}
 /** …and take it all back when the engine refuses: nothing was announced,
  *  and nothing left the shelf. */
 function forgetLanded() {
@@ -834,7 +842,15 @@ function bindLanded(landed) {
  *  the engine validates these too (the ceilings), so they can be refused, and
  *  a refused one must not have announced itself. */
 function noteOnLanding(text, opts) {
-  if (!structInFlight) return note(text, opts); // nothing is pending to wait on
+  if (!structInFlight) {
+    // Nothing is pending to wait on: said now, and filed as the newest edit
+    // receipt, as `settleLanded` files one — so the next edit's receipt, or a
+    // commit, retires it too.
+    for (const old of editReceipts) retireToast(old);
+    const el = note(text, opts);
+    editReceipts = [el];
+    return el;
+  }
   landedNote = { text, opts: opts || {} };
 }
 
@@ -1887,24 +1903,33 @@ worker.onmessage = (e) => {
         // Say what was taught, from what actually happened rather than from
         // the state of a checkbox: three of these four sentences were
         // unsayable before the outcome had a direction.
+        // The comparison was blind, so its receipt names the side that was
+        // the edit (`cdPick`).
+        const was = commitReveal ? ` · ${commitReveal} was your edit` : "";
         const taught =
-          m.outcome === "heard_edited" ? " · taught: your edit won the comparison"
-          : m.outcome === "heard_original" ? " · taught: the original won — the model learns most from that"
+          m.outcome === "heard_edited" ? `${was} · taught: your edit won the comparison`
+          : m.outcome === "heard_original" ? `${was} · taught: the original won — the model learns most from that`
           : m.outcome === "self_edited" ? " · taught: you say your edit is better"
           : "";
-        note(`committed as patch #${m.id}${taught}.${madeRoom(evicted)}`);
+        // A landed commit is the latest word on the bench: the receipts of the
+        // edits it took in ("… TAKE IT OUT") are stale news about a patch that
+        // is now committed, and this receipt used to queue behind them.
+        retireEditReceipts();
+        note(`committed as patch #${m.id}${taught}.${madeRoom(evicted)}`, { replace: "commit" });
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
         }
+        commitReveal = null;
       } else {
+        commitReveal = null;
         // A patch the bank already holds is not a new candidate — but if the
         // player answered a comparison on the way in, the engine scored it
         // against the twin rather than dropping it, and saying "failed" about
         // a vote that was recorded is the wrong sentence.
         note(m.outcome && m.outcome !== "none"
           ? "that patch is already in the bank — nothing new to add, but your pick was recorded."
-          : "commit failed (duplicate or unvetted state)");
+          : "commit failed (duplicate or unvetted state)", { replace: "commit" });
         // …and the generation still runs. ⚡ on an edited patch commits *and
         // then* evolves; a commit the bank had no room for is a reason to
         // evolve from the seed instead of a reason to swallow the gesture.
@@ -12143,6 +12168,9 @@ function startEvolveFrom(id) {
 // instead of averaged. Which of them is better calibrated is a question this
 // build can now answer and previously could not even ask.
 let commitDuel = null; // {orig, edit, origSide, then}
+// Which side of the blind comparison was the edit ("A" / "B"), from the pick
+// to the commit's reply, so the receipt can say it.
+let commitReveal = null;
 
 /** The bench is the bank's patch again. `wb.dirty` is the panel's own belief
  *  about whether anything has changed and it can only ever be an upper bound —
@@ -12176,7 +12204,10 @@ function commitBench(opts = {}) {
     return;
   }
   if ($("improve-check").checked) {
-    // The express path: asserted, not heard, and tagged as such.
+    // The express path: asserted, not heard, and tagged as such. One-shot:
+    // the tick used to stay, so every later COMMIT and every ⚡ on an edited
+    // patch became a claim with no comparison, and nothing said so.
+    $("improve-check").checked = false;
     return sendCommit("self_edited", opts);
   }
   if (!wb.dirty || !wb.vetOk) return sendCommit("none", opts);
@@ -12222,9 +12253,12 @@ function openCommitDuel(m, then) {
   // `clientWidth`, which is 0 while the overlay is `display:none`, and a
   // waveform drawn into a 0-wide canvas is a blank card.
   $("cduel").classList.remove("hidden");
+  // Blind: A and B, nothing more, until the pick. The sides were titled "your
+  // edit" and "the original", which answered the question before it was
+  // asked; the receipt says which was which (`cdPick`).
   for (const side of ["a", "b"]) {
     const isOrig = side === commitDuel.origSide;
-    $(`cd-name-${side}`).textContent = isOrig ? "the original" : "your edit";
+    $(`cd-name-${side}`).textContent = "";
     drawWave($(`cd-scope-${side}`), (isOrig ? orig : wb.buffer).getChannelData(0));
   }
   $(`cd-play-${commitDuel.origSide === "a" ? "a" : "b"}`).focus();
@@ -12245,22 +12279,40 @@ function cdPlay(side) {
 function cdPick(side) {
   if (!commitDuel) return;
   const editWon = side !== commitDuel.origSide;
+  const editSide = commitDuel.origSide === "a" ? "B" : "A";
   const then = commitDuel.then;
+  commitReveal = editSide;
   closeCommitDuel();
   stopAudition();
   sendCommit(editWon ? "heard_edited" : "heard_original", { evolving: then === "evolve" });
+  // The reveal: the card was blind, so the receipt says which side was which.
   note(editWon
-    ? "taught: you heard both and your edit won."
-    : "taught: you heard both and the original won — that is the more useful half.");
+    ? `${editSide} was your edit — taught: you heard both and your edit won.`
+    : `${editSide} was your edit — taught: you heard both and the original won, the more useful half.`,
+  { replace: "commit" });
+}
+
+/** Close the card and commit nothing: the edit stays on the bench, and a ⚡
+ *  that was waiting behind the question does not run. Esc used to commit
+ *  ("esc skip" sent `sendCommit("none")`), the one place in the app where Esc
+ *  was not "never mind". */
+function cdCancel() {
+  if (!commitDuel) return;
+  closeCommitDuel();
+  stopAudition();
+  pendingEvolve = false;
 }
 
 $("cd-play-a").onclick = () => cdPlay("a");
 $("cd-play-b").onclick = () => cdPlay("b");
 $("cd-pick-a").onclick = () => cdPick("a");
 $("cd-pick-b").onclick = () => cdPick("b");
+$("cd-cancel").onclick = () => cdCancel();
+// Commit without comparing: the edit goes in, and the model is taught nothing.
 $("cd-skip").onclick = () => {
   const then = commitDuel && commitDuel.then;
   closeCommitDuel();
+  stopAudition();
   sendCommit("none", { evolving: then === "evolve" });
 };
 // The overlay owns the keyboard while it is up — the keys underneath it play
@@ -12268,7 +12320,7 @@ $("cd-skip").onclick = () => {
 window.addEventListener("keydown", (e) => {
   if (!commitDuel) return;
   const k = e.key;
-  if (k === "Escape") { e.preventDefault(); $("cd-skip").click(); }
+  if (k === "Escape") { e.preventDefault(); cdCancel(); }
   else if (k === "1") { e.preventDefault(); cdPlay("a"); }
   else if (k === "2") { e.preventDefault(); cdPlay("b"); }
   else if (k === "ArrowLeft") { e.preventDefault(); cdPick("a"); }

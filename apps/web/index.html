@@ -322,8 +322,11 @@
               <!-- The express path. Commit normally plays both versions and asks;
                    tick this when you already know, and it commits straight away.
                    The two answers are logged distinguishably, because an
-                   assertion and a heard comparison are not the same evidence. -->
-              <label class="toggle seg-item" title="Skip the comparison: commit and tell the model your edit is better without hearing them back to back">
+                   assertion and a heard comparison are not the same evidence.
+                   One-shot: it unticks after the commit it skipped, because a
+                   tick that stayed turned every later commit (and every ⚡ on an
+                   edited patch) into a claim, without a word. -->
+              <label class="toggle seg-item" title="Skip the comparison once: the next commit tells the model your edit is better without hearing them back to back, and this unticks itself">
                 <input type="checkbox" id="improve-check"><span>my edit is better</span>
               </label>
               <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn seg-item" id="rack-commit" disabled>commit</button></span>
@@ -742,13 +745,19 @@
      better". So a commit that actually changed something asks, plays both,
      and records what was heard in whichever direction it went. The express
      checkbox survives for people who are sure; its answers are tagged so the
-     two can be scored against each other rather than averaged. -->
+     two can be scored against each other rather than averaged.
+     Blind until the pick: the sides are A and B in a random order, and the
+     receipt says which was the edit. They used to be titled "your edit" and
+     "the original", which told the player the answer to the question. Esc
+     cancels (it used to commit), and committing without the comparison is a
+     button of its own. -->
 <section id="cduel" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="cd-title">
   <div class="warm-card panel cduel-card">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="boot-title" id="cd-title">WHICH ONE IS BETTER?</div>
-    <p class="warm-sub">You changed this patch. Play them both and pick — it teaches the model
-      either way, and “the original won” teaches it the most.</p>
+    <p class="warm-sub">You changed this patch. One of these is your edit, the other the
+      original — play both and pick the better one. It teaches the model either way,
+      and picking the original teaches it the most. You'll see which was which after.</p>
     <div class="cduel-grid">
       <div class="cduel-cell">
         <div class="cd-head"><span class="cd-letter">A</span><span class="cd-name" id="cd-name-a"></span></div>
@@ -768,8 +777,9 @@
       </div>
     </div>
     <div class="warm-foot">
-      <button class="util-btn" id="cd-skip" title="Commit the edit without teaching the model anything">commit without teaching</button>
-      <span class="cd-hint silk-dim mono">1 / 2 play · ← → pick · esc skip</span>
+      <button class="util-btn" id="cd-cancel" title="Close this and commit nothing — your edit stays on the bench">cancel</button>
+      <button class="util-btn" id="cd-skip" title="Commit the edit without comparing — it teaches the model nothing">commit without comparing</button>
+      <span class="cd-hint silk-dim mono">1 / 2 play · ← → pick · esc cancel</span>
     </div>
   </div>
 </section>
@@ -808,7 +818,7 @@
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module — quantize, slew, rectify, hold — on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill / replace / shape it is about to do.</p>
         <p>Drag a wired <b>in</b> jack off its socket to unplug — the chain is <b>held</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
+        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut patches in the bank. Commit an edit and it plays your edit against the original and asks which is better (tick “my edit is better” to skip that, once). Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>evolution</b> is the live pool of 40:
         each bred patch replaces the one the model thinks you like <i>least</i>.
         <b>presets</b> is the hand-made library that came with the instrument.

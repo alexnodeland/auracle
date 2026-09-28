@@ -39,6 +39,18 @@ changelog that edits its own past is not a record.
   ("Downloaded auracle-profile.json — 58 picks."), and a loaded profile
   redraws the taste map at once instead of waiting for six more picks
   (`taste_profile.spec.js`).
+- **COMMIT's comparison is blind, and Esc cancels it.** The two sides are A
+  and B until you pick, and the receipt says which was yours ("B was your
+  edit"); they used to be titled "your edit" and "the original". Esc, or
+  **cancel**, closes the card and commits nothing (it used to commit);
+  **commit without comparing** is its own button. **my edit is better** skips
+  the comparison for one commit and unticks itself: it used to stay ticked
+  and silently turn every later commit into an unheard claim
+  (`patch_editing.spec.js`).
+- **A commit's receipt is said next, not behind the edits it committed.** The
+  lane still showed a placement's "TAKE IT OUT" 1.3 s after COMMIT, offering
+  to undo into a patch already saved; a landed commit now takes the edits'
+  receipts down (`patch_editing.spec.js`).
 
 ### Added — the films
 

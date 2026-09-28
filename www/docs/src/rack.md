@@ -84,17 +84,25 @@ finished it yet. Each structural edit's message replaces the last one's, and
 undoing an edit takes down the message that announced it.
 
 **Commit asks first.** If the edit really changed the patch, a card opens:
-**WHICH ONE IS BETTER?** It holds *the original* and *your edit* as A and B, in
-a random order, each with **▶ play** and **this one**. Either answer teaches
-the model; picking the original teaches it the most. <kbd>1</kbd> /
-<kbd>2</kbd> play, <kbd>←</kbd> / <kbd>→</kbd> pick, and <kbd>Esc</kbd> (or
-**commit without teaching**) commits and teaches nothing. **⚡ evolve from
-this** on an edited patch asks the same question before it breeds.
+**WHICH ONE IS BETTER?** It holds the original and your edit as **A** and
+**B**, in a random order and unlabelled, each with **▶ play** and **this one**.
+Either answer teaches the model; picking the original teaches it the most. The
+receipt says which side was yours: *"committed as patch #51 · B was your edit ·
+taught: your edit won the comparison."* <kbd>1</kbd> / <kbd>2</kbd> play,
+<kbd>←</kbd> / <kbd>→</kbd> pick. <kbd>Esc</kbd> or **cancel** closes the card
+and commits nothing: your edit stays on the bench. **commit without
+comparing** commits and teaches nothing. **⚡ evolve from this** on an edited
+patch asks the same question before it breeds, and cancelling it cancels the
+generation too.
 
-**my edit is better** is the shortcut past the card. Tick it and commit files a
-claim that your edit won, without hearing the two back to back. The
+**my edit is better** is the shortcut past the card, for one commit. Tick it
+and the next commit files a claim that your edit won, without hearing the two
+back to back; then it unticks itself. The
 [TRUST tab scores the two apart](./views/taste.md#trust--is-its-confidence-honest):
 answers you heard, and claims you filed.
+
+A commit's receipt takes the place of the edits' receipts it follows: once the
+edit is committed, their *take it out* buttons are gone.
 
 ```admonish tip title="Hit targets are bigger than they look"
 A knob's whole face is grabbable, including under its ticks and value arc, and a

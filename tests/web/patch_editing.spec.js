@@ -582,3 +582,98 @@ test("step bars and LENGTH drawn in quick succession under a slow engine all lan
   expect(committed[addrs[1]]).toBeCloseTo(want[1], 2);
   expect(errors).toEqual([]);
 });
+
+// ---- the keep-as-new comparison (COMMIT's card) ----
+// Esc on the card committed ("esc skip" sent the commit with no answer); its
+// sides were titled "your edit" and "the original", which answered the
+// question it asked; and "my edit is better", once ticked, stayed ticked, so
+// every later commit skipped the comparison without a word. These need no
+// slow engine: they are about what the card and the checkbox do.
+
+/** Turn the first low knob up a little and wait for the lane to settle. */
+async function editAKnob(page, nth = 0) {
+  const k = (await knobs(page)).filter((x) => x.value < 0.55)[nth];
+  await dragKnob(page, k, 30);
+  await settled(page);
+}
+
+test("Esc on the comparison card commits nothing, and its sides are A and B until the pick", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await editAKnob(page);
+  const commits = () => page.evaluate(() => window.__pwIO.posted.edit_commit || 0);
+  const before = await commits();
+
+  await page.locator("#rack-commit").click();
+  await expect(page.locator("#cduel")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
+  // Blind: a letter each, no name for either side.
+  await expect(page.locator("#cd-name-a")).toHaveText("");
+  await expect(page.locator("#cd-name-b")).toHaveText("");
+  for (const cell of await page.locator("#cduel .cduel-cell").all()) {
+    await expect(cell).not.toContainText(/your edit|the original/);
+  }
+  await expect(page.locator("#cduel .cd-hint")).toContainText("esc cancel");
+  await expect(page.locator("#cd-skip")).toHaveText("commit without comparing");
+
+  // Esc: the card goes, nothing is committed, the edit is still on the bench.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#cduel")).toHaveClass(/\bhidden\b/);
+  await page.waitForTimeout(2_000);
+  expect(await commits()).toBe(before);
+  await expect(page.locator("#rack-commit")).toBeEnabled();
+  expect(await page.evaluate(() => window.__aur.wb.dirty)).toBe(true);
+
+  // Asked again and answered: the receipt says which side was the edit.
+  await page.locator("#rack-commit").click();
+  await expect(page.locator("#cduel")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(commits, { timeout: 30_000 }).toBe(before + 1);
+  await expect(page.locator("#toasts .toast-msg").first()).toHaveText(
+    /^committed as patch #\d+ · [AB] was your edit · taught: (your edit won the comparison|the original won — the model learns most from that)\./,
+    { timeout: 30_000 },
+  );
+  expect(errors).toEqual([]);
+});
+
+test("“my edit is better” skips the comparison once, then unticks itself", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await editAKnob(page);
+  await page.locator("#improve-check").check();
+  const before = await page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null));
+  await page.locator("#rack-commit").click();
+  await expect
+    .poll(() => page.evaluate(() => (window.__pwLast.committed ? window.__pwLast.committed.id : null)), { timeout: 60_000 })
+    .not.toBe(before);
+  expect(await page.evaluate(() => window.__pwLast.committed.outcome)).toBe("self_edited");
+  await expect(page.locator("#cduel")).toHaveClass(/\bhidden\b/);
+  await expect(page.locator("#improve-check")).not.toBeChecked();
+
+  // The next commit asks again.
+  await editAKnob(page, 1);
+  await page.locator("#rack-commit").click();
+  await expect(page.locator("#cduel")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
+  await page.keyboard.press("Escape");
+  expect(errors).toEqual([]);
+});
+
+test("a landed commit takes the edits' receipts down, and its own is said next", async ({ page }) => {
+  // The film's vp-together: 1.3 s after COMMIT the lane still showed the
+  // placement's "… TAKE IT OUT +1", the commit's receipt the "+1" behind it.
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  const p = await plateWith(page, "bypass");
+  expect(p).not.toBeNull();
+  await menuVerb(page, p.key, "bypass");
+  await settled(page);
+  await expect(page.locator("#toasts .toast", { hasText: "bypassed" })).toBeVisible({ timeout: 20_000 });
+  await page.locator("#improve-check").check();
+  await page.locator("#rack-commit").click();
+  await expect(page.locator("#toasts .toast-msg").first()).toHaveText(/^committed as patch #\d+/, { timeout: 30_000 });
+  await expect(page.locator("#toasts .toast", { hasText: "bypassed" })).toHaveCount(0);
+  const seen = await page.evaluate(() => window.__pwToasts.length);
+  await page.waitForTimeout(3_000);
+  const after = await page.evaluate((n) => window.__pwToasts.slice(n), seen);
+  expect(after.filter((t) => /bypassed/.test(t))).toEqual([]);
+  expect(errors).toEqual([]);
+});
