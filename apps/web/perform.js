@@ -1844,6 +1844,14 @@ export function createPerform(host) {
     },
     show() {
       state.visible = true;
+      // Back in sight: a first measurement of this patch that `hide` let drop
+      // into the engine's background lane is the player's again. (A re-check
+      // is background by nature, and stays there.)
+      for (const [req, p] of state.pending) {
+        if (p.kind === "perform_wire" && p.gen === state.gen && !(p.cacheAs && p.cacheAs.quiet)) {
+          host.send({ type: "promote", kind: "perform_wire", req });
+        }
+      }
       nameEl.textContent = host.label();
       const t = host.liveTree();
       if (t && t.json && (!state.cur || state.cur.json !== t.json)) patchChanged(t.json, t.makeup);
@@ -1862,6 +1870,17 @@ export function createPerform(host) {
       state.visible = false;
       const live = host.live();
       if (live && state.offer) live.bMix(0);
+      // Out of sight, a measurement is nobody's to wait on. It still
+      // finishes, and is cached for coming back, but in the engine's
+      // background lane, where the player's own long work elsewhere — ⚡, a
+      // generation — goes first. The films caught the cost of not doing this:
+      // a preset opened while PERFORM was still showing started a measurement
+      // that ran on after the view changed to PATCH, and the first knob edit
+      // there waited 16 s behind it.
+      const measuring = [...state.pending.entries()]
+        .filter(([, p]) => p.kind === "perform_wire" && p.gen === state.gen)
+        .map(([req]) => req);
+      if (measuring.length) host.send({ type: "retire", reqs: measuring });
     },
     ensureWired,
     patchChanged,

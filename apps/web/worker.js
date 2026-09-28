@@ -1023,20 +1023,26 @@ self.onmessage = (e) => {
     runMessage(m);
     return;
   }
-  // The player pressed Offer while a spare offer for the same sound was still
-  // waiting in `later`: it is theirs now, and it waits in `soon`.
+  // Background work became the player's: Offer claimed a spare still waiting
+  // in `later`, or PERFORM came back into sight with its measurement demoted
+  // (see `retire`). It waits in `soon` now, and a running one stops giving way.
   if (m.type === "promote") {
+    if (floor && floor.m && floor.m.req === m.req && floor.m.type === m.kind) floor.m.bg = false;
     const i = lanes[LATER].findIndex((q) => q.req === m.req && q.type === m.kind);
-    if (i >= 0) lanes[SOON].push(...lanes[LATER].splice(i, 1));
+    if (i >= 0) {
+      const [q] = lanes[LATER].splice(i, 1);
+      q.bg = false;
+      lanes[SOON].push(q);
+    }
     if (runnable()) schedulePump();
     return;
   }
-  // PERFORM moved on to another patch. Its measurement of the one it left is
-  // still worth finishing — it is cached, and flicking back is the common case
-  // — but nobody is waiting on it now, so it drops to `later`, where the
-  // measurement of the patch in the player's hands can overtake it (a running
-  // one gives way at its next breath). Offers and drifts grown from the patch
-  // it left are worth nothing, so any still queued are answered empty here:
+  // PERFORM moved on to another patch, or out of sight. Its measurement is
+  // still worth finishing — it is cached, and coming back is the common case —
+  // but nobody is waiting on it now, so it drops to `later`, where long work
+  // the player asks for can overtake it (a running one gives way at its next
+  // breath). Offers and drifts grown from a patch it left are worth nothing,
+  // so any of those named here that are still queued are answered empty:
   // PERFORM holds every request open until its reply lands.
   if (m.type === "retire") {
     const reqs = new Set(m.reqs || []);
