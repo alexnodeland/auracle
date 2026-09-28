@@ -300,7 +300,9 @@ test("the warm start's result replaces its loading toast when it lands", async (
   const cards = page.locator(".warm-cell .warm-item");
   for (const i of [0, 3, 6]) await cards.nth(i).click();
   await page.locator("#warm-go").click();
-  await expect(page.locator("#toasts .toast-msg")).toContainText("Loading those in", { timeout: 5_000 });
+  // The loading toast, or already the result in its place: on a quick
+  // machine the teaching lands before this line looks.
+  await expect(page.locator("#toasts .toast-msg")).toContainText(/Loading those in|preferences learned/, { timeout: 5_000 });
   await page.waitForFunction(() => window.__pwLast.warm_done, null, { timeout: 180_000 });
   // On screen within a beat of the reply, in the loading toast's place.
   const lane = page.locator("#toasts .toast-msg");
