@@ -671,7 +671,9 @@ export function createPerform(host) {
   function revalidate() {
     state.revalidating = true;
     renderStatus();
-    const req = request("perform_wire", { tree: state.cur.json, overrides: [] });
+    // Background (`bg`): the patch is already playable from its last
+    // measurement, so this waits behind anything the player asks for.
+    const req = request("perform_wire", { tree: state.cur.json, overrides: [], bg: true });
     state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
   }
 
@@ -775,7 +777,9 @@ export function createPerform(host) {
     if (host.opening?.()) return;
     if (now - (state.changedAt || 0) < SPARE_STEADY_MS || now - state.playableAt < SPARE_PLAYABLE_MS) return;
     if (now - state.lastTouch < 2000) return;
-    const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20 });
+    // Nobody has asked for it yet, so it waits behind anything that is asked
+    // for (`bg`), and is promoted the moment Offer claims it.
+    const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20, bg: true });
     state.pending.get(req).spare = { at: new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)])) };
   }
 
@@ -825,7 +829,11 @@ export function createPerform(host) {
   function requestOffer(why) {
     if (!state.cur) return;
     if (state.offer) passOffer();
-    const growing = [...state.pending.values()].find((q) => q.kind === "perform_offer" && q.gen === state.gen);
+    const growingAt = [...state.pending.entries()].find(([, q]) => q.kind === "perform_offer" && q.gen === state.gen);
+    const growing = growingAt ? growingAt[1] : null;
+    // A claim makes a background offer (a spare, Wander's) the player's: if it
+    // is still waiting in the engine's background lane, it moves up.
+    if (growing && why !== "wander" && why !== "attract") host.send({ type: "promote", kind: "perform_offer", req: growingAt[0] });
     if (growing && !growing.spare) {
       // One is already on its way: this press is a claim on it, and if it
       // comes back empty it is asked for once more. It used to be dropped
@@ -858,7 +866,10 @@ export function createPerform(host) {
     // short enough to still be the same moment in a performance. Roam asks
     // for a longer walk and so a farther offer.
     const steps = wanderZone(state.wander) === "roam" ? 40 : 20;
-    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps });
+    // Wander's and attract's offers are nobody's request (`bg`); a pressed
+    // Offer is the player's, and goes ahead of background work.
+    const bg = why === "wander" || why === "attract";
+    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps, bg });
     renderOffer("growing an offer…");
   }
 
@@ -1025,7 +1036,7 @@ export function createPerform(host) {
 
   // A new tree reached the voices from anywhere in the app. It becomes home,
   // and the controls are re-measured around it.
-  function patchChanged(json, makeup) {
+  function patchChanged(json, makeup, liveKnobs) {
     nameEl.textContent = host.label();
     if (!json) return;
     if (state.cur && state.cur.json === json) {
@@ -1044,6 +1055,29 @@ export function createPerform(host) {
       return;
     }
     state.keeping = null;
+    // A Take coming back from the bench, with the taken tree's live knobs: the
+    // controls keep the wiring they had instead of reading "measuring…" for
+    // the whole re-measurement — 14 s on a busy laptop, mid-phrase. Only the
+    // knobs the taken tree still has are kept (addresses are positional, and
+    // an offer can change structure), centred on the taken tree's values; the
+    // offer's own measurement replaces it the moment it lands. This is the
+    // stale-while-revalidate a remeasured patch already gets (see `wire`),
+    // with the wiring borrowed from the sound the offer grew out of.
+    const taking = state.taking;
+    state.taking = null;
+    const carried =
+      taking && state.wire && Array.isArray(liveKnobs) && liveKnobs.length &&
+      performance.now() - taking.at < 15_000 && wireKey(json) === taking.key
+        ? carryWiring(state.wire, liveKnobs)
+        : null;
+    // The patch being left: a measurement of it is still worth finishing
+    // (cached, for flicking back) but nobody is waiting on it, so it drops to
+    // the engine's background lane; offers and drifts grown from it are worth
+    // nothing, and are withdrawn if they have not started.
+    const leaving = [...state.pending.entries()]
+      .filter(([, p]) => p.gen === state.gen && /^perform_(wire|offer|drift)$/.test(p.kind))
+      .map(([req]) => req);
+    if (leaving.length) host.send({ type: "retire", reqs: leaving });
     state.gen++;
     state.applyThen.clear();
     state.measuring = false;
@@ -1690,7 +1724,7 @@ export function createPerform(host) {
       const hit = wireCache.get(wireKey(json));
       if (hit) return Promise.resolve(reachOfWiring(hit.data.wiring));
       return new Promise((resolve) => {
-        const req = request("perform_wire", { tree: json, overrides: [] });
+        const req = request("perform_wire", { tree: json, overrides: [], bg: true });
         const p = state.pending.get(req);
         p.gen = -1;
         p.cacheAs = { json, rev: tasteRev() };
