@@ -796,8 +796,11 @@ export function createPerform(host) {
     state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
   }
 
-  // A patch on its way out is not measured. A measurement is one engine call
-  // of 10-30 s on the one worker, and it cannot be interrupted once started:
+  // A patch on its way out is not measured. A measurement is thirty-odd
+  // renders on the one worker (11-16 s measured), made one at a time with the
+  // player's requests answered between them (`measure` in worker.js), but a
+  // started one holds the worker's floor until it is done, and the next
+  // measurement waits behind it:
   // PERFORM opened in the second between a preset click and its bench reply
   // used to start measuring the patch being left, and the patch the player
   // had picked queued behind it — half a minute of "measuring…" for a sound

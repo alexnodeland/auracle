@@ -23,16 +23,21 @@
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css?b=70">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
-     under ~1000px with a coarse pointer there is no honest way to show it, so
-     we say so instead of shipping a broken one. This runs before anything
-     else because the point is to NOT boot the engine on a phone: main.js is
-     injected below only when the gate lets us through. -->
+     on a coarse pointer whose shorter side is under 620px (a phone) there is
+     no honest way to show it, so we say so instead of shipping a broken one.
+     This runs before anything else because the point is to NOT boot the
+     engine on a phone: main.js is injected below only when the gate lets us
+     through. Anything else under 1000px wide — a desktop window, or a tablet
+     in portrait — gets the narrow gate below instead, which is CSS only. -->
 <script>
 (function () {
   var forced = false;
   try { forced = sessionStorage.getItem("auracle-anyway") === "1"; } catch (e) {}
   var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
   var handheld = !forced && coarse && Math.min(window.innerWidth, window.innerHeight) < 620;
+  // "Look around anyway" is a choice to see it at any size: the narrow gate
+  // must not stand in for the handheld one it just dismissed.
+  if (forced) document.documentElement.className += " anyway";
   if (handheld) {
     document.documentElement.className += " handheld";
     // Rotating a phone to landscape doesn't earn you the instrument, but an
@@ -50,15 +55,17 @@
 </script>
 </head>
 <body>
-<!-- A desktop window narrower than the instrument's layout. The handheld gate
-     is for coarse pointers and never loads the app; this one is CSS-only and
-     disappears the moment the window is wide enough, so nothing is lost by
-     narrowing it for a moment. -->
+<!-- A window narrower than the instrument's layout, whatever the pointer: a
+     desktop window, or a tablet in portrait (768 × 1024 slipped between the
+     two gates: too big for the handheld one, and the narrow one asked for a
+     fine pointer). The handheld gate never loads the app; this one is CSS-only
+     and disappears the moment the window is wide enough, so nothing is lost by
+     narrowing it — or turning the tablet — for a moment. -->
 <div id="narrow-gate" class="narrow-gate" role="status" aria-live="polite">
   <div class="ng-card">
     <div class="ng-title">A little wider</div>
     <p>Auracle's rack, controls and keybed need about 1000 px side by side.
-      Widen the window and everything is where you left it.</p>
+      Turn your tablet sideways, or widen the window — everything is where you left it.</p>
   </div>
 </div>
 <div class="app">
@@ -512,7 +519,7 @@
                 <div class="nb-chips" id="nb-inpatch-list"></div>
               </section>
               <div id="nb-groups"></div>
-              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler and no sequencer — it is one voice you play.</p>
+              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler, and its sequencers (steps, euclid) play the sound, not the notes — it is one voice you play.</p>
               <div class="nb-legend">
                 <span class="lg-row"><i class="lg-swatch"></i>audio</span>
                 <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>

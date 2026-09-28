@@ -51,6 +51,17 @@ changelog that edits its own past is not a record.
   lane still showed a placement's "TAKE IT OUT" 1.3 s after COMMIT, offering
   to undo into a patch already saved; a landed commit now takes the edits'
   receipts down (`patch_editing.spec.js`).
+- **A tablet in portrait gets the narrow-window notice.** The notice needed a
+  mouse and the phone gate a small screen, so a 768 × 1024 tablet got neither
+  and a layout with PERFORM's pads under the keybar. It now shows at 999 px or
+  less with any pointer: "Turn your tablet sideways, or widen the window."
+  (`narrow_gate.spec.js`)
+- **The EVOLVE guide gives today's timing.** A generation takes about two to
+  three minutes in the browser, and after a pick the next pair can wait for
+  the seed being bred, up to about 20 seconds; the guide said "a minute or
+  two" and that a pick is answered between seeds as if at once. The node
+  bank's "nothing called that" no longer says Auracle has no sequencer: steps
+  and euclid are sequencers that play the sound, not the notes.
 
 ### Added — the films
 
@@ -482,9 +493,9 @@ A walkthrough of the first-run flow, played the way a visitor would, found:
 * The warm start is a real dialog (role, `aria-modal`, focus on the first ▶);
   the menubar's forecast count no longer runs one behind TRUST; style names
   are no longer clipped.
-* **A narrow desktop window** (under ~860 px, fine pointer) says to widen it,
-  instead of overprinting the controls into "BRIGSNAPTIOBODY". CSS only: it
-  disappears as the window widens, and nothing underneath is reset.
+* **A narrow window** (999 px or less, any pointer but a phone's) says to
+  widen it, instead of overprinting the controls into "BRIGSNAPTIOBODY". CSS
+  only: it disappears as the window widens, and nothing underneath is reset.
 * **PERFORM's pads.** The Hold pad is **Freeze** (the dock's **hold** latches
   notes — two buttons named the same doing different jobs); Take and Peek are
   disabled until there is an offer; Offer reads as the primary.

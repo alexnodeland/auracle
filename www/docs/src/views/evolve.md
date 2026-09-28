@@ -102,11 +102,12 @@ and a generation moves the pool rather than replacing it. The
 Nothing happens if there is no fitted model yet; there is no direction to climb
 in. Answer some duels first.
 
-A generation is a walk of a few dozen renders from each of ten seeds, a minute
-or two on a laptop. The rest of the instrument stays playable while it runs:
-a ▶, a bench open or a pick is answered between one seed and the next, and the
-button counts the seeds as they go. A refit waits for the generation to
-finish.
+A generation is a walk of a few dozen renders from each of ten seeds, about
+two to three minutes in the browser. The keys stay playable while it runs,
+and the button counts the seeds as they go. A ▶, a bench open or a pick is
+answered between one seed and the next, so it can wait for the seed being
+bred, up to about 20 seconds: after a pick, the next pair can take that long
+to arrive. A refit waits for the generation to finish.
 
 ## The EVOLUTION strip
 

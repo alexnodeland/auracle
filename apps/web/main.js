@@ -1958,12 +1958,15 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       refreshInstruments();
       if (m.childId > 0) {
-        // A generation takes seconds, and the rack stays live while it
-        // breeds. If the player went on editing, the child used to be opened
-        // over those edits regardless — gone without a word, and every write
-        // still in the lane then landed on the child at addresses read off
-        // the patch it replaced. The bench is the player's: the child waits
-        // in the bank, one click away.
+        // ⚡ is one engine call of about 20 s (23 s measured on a quiet
+        // machine), and the worker answers nothing while it runs: knobs still
+        // sound, because a turn goes straight to the voices, but every other
+        // edit — bypass, place, unplug — waits in the lane until it is done.
+        // If the player went on editing, the child used to be opened over
+        // those edits regardless — gone without a word, and every write still
+        // in the lane then landed on the child at addresses read off the
+        // patch it replaced. The bench is the player's: the child waits in
+        // the bank, one click away.
         const editedSince = wb.dirty || editPending || !laneFree();
         if (editedSince) {
           note(

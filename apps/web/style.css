@@ -320,10 +320,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* The bar is one row of things that do not shrink — the wordmark, four tabs,
    the counters, ? and ⋯ — and they did not fit the windows the app opens in.
-   Measured with a full skill line: at 1000px, the narrowest desktop window it
+   Measured with a full skill line: at 1000px, the narrowest window it
    allows, ⋯ sat past the right edge; on a tablet in portrait (768px, which
-   loads the app with no gate) so did ? and the skill line; on a phone that
-   chose "open anyway" (390px) the counters and two of the tabs too. So:
+   loaded the app with no gate until the narrow gate took any pointer) so did
+   ? and the skill line; on a phone that chose "open anyway" (390px) the
+   counters and two of the tabs too. So:
    tighter first, then, where one row cannot hold them, two rows with the
    tabs on the second. The counters keep their words, "picks" and
    "generations", at every width; what gives way is the skill line (TASTE →
@@ -4859,9 +4860,12 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 /* At 999px and under, not 860: between the two (880×720) the rack was a
    114px thumbnail, PERFORM's pads were half under the keybar with XY off the
    bottom, and "0/10 saved" printed over the bank's own "?". The copy in
-   index.html says the same number, as does the handheld gate's comment there. */
-@media (max-width: 999px) and (pointer: fine) {
-  html:not(.handheld) .narrow-gate {
+   index.html says the same number, as does the handheld gate's comment there.
+   Any pointer: it asked for a fine one, so a tablet in portrait (coarse, and
+   too big for the handheld gate) got neither gate and that same layout. Not
+   over the handheld gate, and not after "look around anyway" (html.anyway). */
+@media (max-width: 999px) {
+  html:not(.handheld):not(.anyway) .narrow-gate {
     display: flex;
     position: fixed; inset: 0; z-index: 90;
     align-items: center; justify-content: center;
