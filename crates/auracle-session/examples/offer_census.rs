@@ -307,8 +307,8 @@ fn main() {
         }
         trials.extend(c.trials);
         reach.extend(c.reach);
-        for k in 0..6 {
-            searched[k] += c.searched[k];
+        for (all, n) in searched.iter_mut().zip(c.searched) {
+            *all += n;
         }
     }
 

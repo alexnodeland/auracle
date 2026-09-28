@@ -1184,8 +1184,8 @@ impl Engine {
     }
 
     /// A search control's offer: [`Self::offer`]'s walk on the target tilted
-    /// along named control `control` ([`CONTROLS`] order), turned up (`sign`
-    /// > 0) or down, at [`AIM_GAMMA`]. A walk that has not yet moved the asked
+    /// along named control `control` ([`CONTROLS`] order), turned up (a
+    /// positive `sign`) or down, at [`AIM_GAMMA`]. A walk that has not yet moved the asked
     /// way by [`REACH_FLOOR`] keeps walking from where it stopped, up to
     /// [`AIM_WALKS`] walks of `steps`. The Offer button and Wander stay on
     /// [`Self::offer`].
