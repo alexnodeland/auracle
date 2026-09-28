@@ -117,8 +117,10 @@ them restart together with the first key you press, on the same beat the arp
 starts. MIDI start restarts them too, and from then until a MIDI stop the
 clock pulls them back onto its beat once a beat. A five-step pattern still cycles against
 the bar; that is the point of it. Turning a sequencer's rate knob with sync on
-moves it between divisions rather than off the grid. Sync changes only what you
-hear live: the model still auditions every patch free-running.
+moves it between divisions rather than off the grid, and the knob reads the
+rate it plays (`2.1 Hz sync`); its tooltip gives the free-running rate. Sync
+changes only what you hear live: the model still auditions every patch
+free-running.
 
 ## Recording
 

@@ -3085,7 +3085,9 @@ async function bootPerform() {
           ? (fk.kind.options[Math.round(fk.value)] || "").replace(/^svf /, "svf-")
           : null;
         // With sync on, a sequencer plays the division its rate snaps to, not
-        // the rate on the knob: say what is heard.
+        // the rate on the knob: say what is heard — the same words the rack
+        // uses (`heardUnit`), with the room the strip has.
+        let text = knobUnit(addr, v, m.kind, variant);
         if (perf.sync && addr.endsWith("#srate")) text = `${fmtHz(syncedStepHz(v, perf.bpm))} · sync`;
         return { module: m.title, label: k.label, text };
       }
@@ -3193,7 +3195,7 @@ function paintPerformedKnobs() {
     // The readout says what is sounding; the kept value is the green pointer.
     if (val) {
       if (val.dataset.kept == null) val.dataset.kept = val.textContent;
-      val.textContent = knobUnit(kg.dataset.addr, v, kg.dataset.kind, kg.dataset.variant || null);
+      val.textContent = heardUnit(kg.dataset.addr, v, kg.dataset.kind, kg.dataset.variant || null);
     }
     if (!ghost) {
       ghost = svgEl("line", {}, "knob-ghost");
@@ -3856,6 +3858,30 @@ function sendArp() {
     if (!open) setArpDrawer(false);
   }
   renderArpChip();
+  // Every route that moves SYNC or the tempo comes through here — the
+  // buttons, the tempo field and MIDI clock, which can do it every beat — so
+  // the sequencer readouts are repainted in place rather than the rack
+  // rebuilt.
+  repaintSyncedRates();
+}
+
+/** The RATE readout of every sequencer on the bench, re-said for the SYNC
+ *  state and tempo now (see `heardUnit`). */
+function repaintSyncedRates() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  for (const kg of svg.querySelectorAll('g[data-addr$="#srate"]')) {
+    const knob = knobByAddr(kg.dataset.addr);
+    if (!knob) continue;
+    const val = kg.querySelector(".knob-value");
+    if (val && !kg.classList.contains("performed")) {
+      val.textContent = heardUnit(knob.addr, knob.value, kg.dataset.kind, kg.dataset.variant || null);
+    }
+    const long = heardUnit(knob.addr, knob.value, kg.dataset.kind, kg.dataset.variant || null, true);
+    kg.setAttribute("aria-valuetext", long);
+    const tt = kg.querySelector(".knob-hit > title");
+    if (tt) tt.textContent = `${knob.label}: ${long} — drag up/down`;
+  }
 }
 
 // The drawer is a popover now, and the chip is what stays. Pinned open for as
@@ -7963,7 +7989,7 @@ function buildRack(svg, rack, opts) {
           // it so the dot still wins its own corner.
           const hit = svgEl("circle", { r: KNOB_R + 7 }, "knob-hit");
           const tt = svgEl("title", {});
-          tt.textContent = `${k.label}: ${knobUnit(k.addr, k.value, m.kind, variant)} — drag up/down`;
+          tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, m.kind, variant, true)} — drag up/down`;
           hit.appendChild(tt);
           kg.appendChild(hit);
           attachKnobDrag(hit, m, k);
@@ -8036,7 +8062,7 @@ function buildRack(svg, rack, opts) {
         kg.dataset.kind = m.kind;
         if (variant) kg.dataset.variant = variant;
         if (k.kind.t === "continuous") {
-          kg.setAttribute("aria-valuetext", knobUnit(k.addr, k.value, m.kind, variant));
+          kg.setAttribute("aria-valuetext", heardUnit(k.addr, k.value, m.kind, variant, true));
           kg.setAttribute("aria-valuenow", k.value.toFixed(3));
           kg.setAttribute("aria-valuemin", "0");
           kg.setAttribute("aria-valuemax", "1");
@@ -8052,7 +8078,9 @@ function buildRack(svg, rack, opts) {
       kg.appendChild(lbl);
       if (k.kind.t === "continuous") {
         const val = svgEl("text", { y: KNOB_R + 25 }, "knob-value");
-        val.textContent = knobUnit(k.addr, k.value, m.kind, variant);
+        val.textContent = interactive
+          ? heardUnit(k.addr, k.value, m.kind, variant)
+          : knobUnit(k.addr, k.value, m.kind, variant);
         // Still inside its window: this readout changed a moment ago and the
         // teardown must not be what ends the flash.
         const until = knobFlash.get(k.addr);
@@ -11222,6 +11250,22 @@ function knobUnit(addr, value, kind, variant) {
   return f ? f(value) : pct(value);
 }
 
+/** A bench knob's readout: what the voices do with the value, which is the
+ *  knob's own unit everywhere but one place. With SYNC on, a step sequencer
+ *  plays the division of the tempo its rate snaps to (`syncedStepHz`, the
+ *  same rule as `live.rs`), so its RATE read "2.0 Hz" while the pattern ran
+ *  at 2.1 — PERFORM's hood strip already said the heard rate, and the rack
+ *  under it contradicted the hood. Only the bench's rack: a duel mini or a
+ *  lineage diff describes a patch as the model renders it, free-running.
+ *  `long` is for the tooltip and the screen reader, which have room for why;
+ *  the plate's readout has one knob's width. */
+function heardUnit(addr, value, kind, variant, long) {
+  const text = knobUnit(addr, value, kind, variant);
+  if (!perf.sync || !addr.endsWith("#srate") || text === OUT_OF_RANGE) return text;
+  const heard = fmtHz(syncedStepHz(value, perf.bpm));
+  return long ? `${heard} · synced to ${perf.bpm} BPM (free, ${text})` : `${heard} sync`;
+}
+
 function enumDisplay(k) {
   if (k.kind.t === "octave") {
     const v = Math.round(k.value) - 2;
@@ -11256,7 +11300,7 @@ function paintKnob(kg, knob) {
   const kind = kg.dataset.kind;
   const variant = kg.dataset.variant;
   if (valText) {
-    const next = knobUnit(knob.addr, v, kind, variant);
+    const next = heardUnit(knob.addr, v, kind, variant);
     // Only on a *change*. A drag emits a move per pixel and the readout
     // quantises to two significant figures, so most frames say the same
     // thing — and a flash retriggered sixty times a second is a steady glow,
@@ -11270,7 +11314,7 @@ function paintKnob(kg, knob) {
     }
   }
   kg.setAttribute("aria-valuenow", v.toFixed(3));
-  kg.setAttribute("aria-valuetext", knobUnit(knob.addr, v, kind, variant));
+  kg.setAttribute("aria-valuetext", heardUnit(knob.addr, v, kind, variant, true));
 }
 
 function attachKnobDrag(el, mod, knob) {

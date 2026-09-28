@@ -466,6 +466,21 @@ test("HOLD, the octave buttons and notes leave the arp drawer open", async ({ pa
   expect(errors).toEqual([]);
 });
 
+test("with SYNC on, a sequencer's RATE reads the division it plays", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Loom");
+  const rate = page.locator('#rack-svg g[data-addr$="#srate"]').first();
+  await expect(rate).toHaveCount(1);
+  const free = await rate.locator(".knob-value").textContent();
+  expect(free).toMatch(/Hz$/);
+  await page.locator("#sync-btn").click();
+  await expect(rate.locator(".knob-value")).toHaveText(/Hz sync$/);
+  await expect(rate).toHaveAttribute("aria-valuetext", /synced to \d+ BPM/);
+  await page.locator("#sync-btn").click();
+  await expect(rate.locator(".knob-value")).toHaveText(free);
+  expect(errors).toEqual([]);
+});
+
 test("step bars and LENGTH drawn in quick succession under a slow engine all land (Loom)", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Loom");
