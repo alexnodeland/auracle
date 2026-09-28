@@ -278,7 +278,7 @@ shots.append({
             {"op": "click", "sel": ".tab[data-tab='dir']"},
             {"op": "wait", "ms": 400},
             {"op": "log", "name": "rows", "js": DIR_MARKS},
-            *marks(("shimmer", "#vt-shimmer"), ("brightness", "#vt-brightness"), ("reverbs", "#vt-reverbs"),
+            *marks(("shimmer", "#vt-shimmer"), ("brightness", "#vt-brightness"), ("supersaws", "#vt-supersaws"),
                    ("agree", "#vt-agree"), ("right", "#vt-right"), ("left", "#vt-left"), ("guess", "#vt-guess")),
         ]},
     ],

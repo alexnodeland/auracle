@@ -372,7 +372,7 @@ return marker('vt-best', d) + ' (brightest: ' + ds[0].name + ' ' + ds[0].glow.to
 DIR_MARKS = js(r"""
 const rows = dirRows();
 const base = (n) => String(n).split(':')[0];
-const NAMED = { centroid_std: 'shimmer', centroid_mean: 'brightness', n_reverb: 'reverbs' };
+const NAMED = { centroid_std: 'shimmer', centroid_mean: 'brightness', n_supersaw: 'supersaws' };
 // A row this session does not show gets its marker in the canvas's corner,
 // named "absent", so every mark resolves and the log says which are real.
 const { r: box } = crt();

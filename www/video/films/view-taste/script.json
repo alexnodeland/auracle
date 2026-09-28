@@ -182,12 +182,12 @@
         },
         {
           "id": "dir4",
-          "text": "Some rows are what you hear, like shimmer and brightness. Others are what the patch is built from, like reverbs.",
+          "text": "Some rows are what you hear, like shimmer and brightness. Others are what the patch is built from, like supersaws.",
           "post": 0.5
         },
         {
           "id": "dir5",
-          "text": "Read the whisker, not the bar. A whisker across the centre line is still a guess, and here most are.",
+          "text": "A solid bar is sure. A hollow bar is still a guess, its whisker across the centre line, and here most are.",
           "post": 0.7
         }
       ],
@@ -217,7 +217,7 @@
         },
         {
           "id": "trust4",
-          "text": "The number to trust is its score on duels dealt at random. Here, twenty-seven percent sharper than chance.",
+          "text": "The number to trust is its score on duels dealt at random. Here, twenty-six percent sharper than chance.",
           "post": 0.4
         },
         {
@@ -288,7 +288,7 @@
         },
         {
           "id": "profile4",
-          "text": "Reset forgets everything, but only after it asks.",
+          "text": "Reset asks first. It keeps your saved patches, and downloads a copy before it forgets the rest.",
           "post": 0.8
         }
       ]

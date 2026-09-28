@@ -39,7 +39,8 @@ preset by a table, so it judges the same way every time.
 
 - **FRESH** (open, title): the warm start skipped and five picks, so the
   meter reads *1 more pick and it redraws your taste map* and the map is its
-  pre-fit self (*nothing predicted yet · 5 of 6 picks*). Then *skip ↻*
+  pre-fit self (*nothing predicted yet*, *1 more pick and it redraws your
+  taste map*, and a **1 MORE PICK →** button). Then *skip ↻*
   (records nothing) re-deals until the pair is two kinds of sound, one the
   listener likes and neither one it dislikes, so the two auditions on camera
   are musical.
@@ -71,7 +72,8 @@ chips `#style-chips .style-chip` with `.sc-name`, `.sc-play`; the canvas
 `#taste-crt`; legend `#map-legend`; the live label `#live-label`; the live
 bank row `.bank-item.live` with `.star[data-s='1'…'5']`; EVOLVE `#play-a`,
 `#play-b`, `#choose-a`, `#choose-b`, `#duel-pred`, `#teach-copy .teach-link`
-(*see what changed ▸*, live for 3.2 s); ⋯ menu `#ovf-btn`, `#export-btn`,
+(*see what changed ▸*: it appears when the refit lands, which waits out the
+sixth pick's seven-second undo window, and stays until the next pick); ⋯ menu `#ovf-btn`, `#export-btn`,
 the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
 
 ---
@@ -142,22 +144,33 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
 - **Actions:** `dir1:Directions` DIRECTIONS; markers (from the app's own
   `taste-geom.js`) on the rows dir4 names (shimmer, brightness, reverbs), the
   row every style pulls the same way, the longest bars each way, and the
-  longest bar whose drawn whisker plainly crosses the centre line.
+  longest bar whose drawn whisker plainly crosses the centre line (a guess:
+  drawn hollow, its label ending in *?*).
 - **Callouts:** *toward*, *away*, *noise srcs: all three lean away*, *what
-  you hear* (shimmer, brightness), *what it's built from* (reverbs),
-  *whisker over the line: a guess*.
+  you hear* (shimmer, brightness), *what it's built from* (supersaws),
+  *hollow, with a ?: still a guess*.
+- The app draws a sure bar solid and a guess hollow, with the caption
+  *Where each style leans. Solid = it's sure. Hollow = still a guess — the
+  thin line is how far it could be off.* dir5 says the same: "A solid bar is
+  sure. A hollow bar is still a guess, its whisker across the centre line,
+  and here most are." (It said "Read the whisker, not the bar", from before
+  the bars said it themselves.)
 - **Check:** the `rows` log has every row with each style's bar (`x`: the
-  interval crosses zero; `>`: a whisker cut at the edge). This session shows
-  no PERFORM word (snap, body, grit, space) among its twelve rows, every
-  style leans away from *noise srcs*, and all but one whisker cross the
-  line; dir3–dir5 say exactly that. Rewrite them if the session changes.
+  interval crosses zero; `>`: a whisker cut at the edge). The rehearsal of
+  28 September (after the Wave 0 fixes) shows twelve rows: brightness,
+  chorus & sweeps, noise srcs, shimmer, snap, density, grit, slow attack,
+  supersaws, stepped mods, treble reach, amp sustain. Every style leans away
+  from *noise srcs* (−0.13, −0.12, −0.17), and 32 of the 36 bars are guesses
+  (only snap, grit, slow attack and amp sustain have a sure bar); there is
+  no reverbs row any more, so dir4 names supersaws. dir3–dir5 say exactly
+  that. Rewrite them if the session changes.
 
 ## 8. `trust` — shot `vt-trust` (trust1–5) — chapter `05 · trust`
 
 - **Actions:** `trust1:believe` TRUST; markers on the diagonal, the axis,
   the largest bucket and the check-duel line.
 - **Check:** trust4 says the score on duels dealt at random, as the check
-  line prints it: 35 forecasts, Brier 0.182, 27% sharper than chance, all 35
+  line prints it: 35 forecasts, Brier 0.185, 26% sharper than chance, all 35
   of them check duels (every deal under the default random rule). The
   `trust` log has the numbers; the line follows the screen.
 
@@ -175,7 +188,12 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
   sound marked again (the axes turn a little at a refit) and hovered. It is
   Noisy Pluck 2, 81% before and 78% after: one pick moves it a little, and
   wrong6 says so.
-- **Clips:** `["wrong6-0.3", "@fitted-0.7"]`.
+- **Clips:** `["wrong6-0.3", "@fitted-0.7"]`. The pick is the sixth since
+  the last fit, and its refit now waits out the pick's seven-second undo
+  window: under wrong5 the meter reads *● learning from your last 6 picks…*,
+  and *see what changed ▸* appears when the fit lands (stamp `learned`, about
+  8 s after the pick; `fitted` follows at once). The cut skips that wait, so
+  the link is on screen when the film resumes and is clicked 0.5 s later.
 
 ## 10. `profile` — shot `vt-profile` (profile1–4) — chapter `07 · your profile`
 
@@ -183,6 +201,15 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
   *Load taste profile*; a file handed to its input (the system's file picker
   cannot be filmed), so the app's question appears, and *keep mine*; *Reset
   taste profile…*, its question, *keep it*.
+- **The questions** (rehearsal log): Load, *Replace your taste profile with
+  auracle-profile.json? Your 58 picks, stars and cuts are replaced by the
+  file's. Your current profile is downloaded first, so nothing is lost.*
+  Reset, *Reset your taste profile? Your 58 picks, stars, cuts and 0
+  generations are forgotten, with every patch you haven't saved. Your 3 saved
+  patches stay. A copy of the profile downloads first.* profile4 says what
+  the second one says ("Reset asks first. It keeps your saved patches, and
+  downloads a copy before it forgets the rest."); it used to say "Reset
+  forgets everything", from when Reset also deleted the saved patches.
 
 ## 11. `together` — shot `vt-together` (together1–3; bed out) — chapter `08 · the loop`
 

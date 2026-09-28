@@ -111,8 +111,8 @@ const PLAN = [
       { at: "dir3:every", until: "dir4", mark: "agree", side: "left", dx: -90, dy: -50, text: "noise srcs: all three lean away" },
       { at: "dir4:shimmer", until: "dir4:Others", mark: "shimmer", side: "left", dx: -90, dy: -40, text: "what you hear" },
       { at: "dir4:brightness", until: "dir4:Others", mark: "brightness", side: "left", dx: -90, dy: -40, text: "what you hear" },
-      { at: "dir4:reverbs", until: "dir5", mark: "reverbs", side: "left", dx: -90, dy: 40, text: "what it's built from" },
-      { at: "dir5:across", mark: "guess", side: "right", dx: 50, dy: -70, text: "over the line: a guess" },
+      { at: "dir4:supersaws", until: "dir5", mark: "supersaws", side: "left", dx: -90, dy: 40, text: "what it's built from" },
+      { at: "dir5:across", mark: "guess", side: "right", dx: 50, dy: -70, text: "hollow, with a ?: still a guess" },
     ],
   },
   {
@@ -147,7 +147,7 @@ const PLAN = [
     callouts: [
       { at: "profile2:save", until: "profile2:load", mark: "save", side: "left", dx: -90, dy: 20, text: "a file you keep" },
       { at: "profile3:Loading+0.3", until: "profile4", mark: "alarm-load", side: "bottom", dx: 40, dy: 60, text: "it asks, and saves yours first" },
-      { at: "profile4:asks", mark: "alarm", side: "bottom", dx: 40, dy: 60, text: "it asks first" },
+      { at: "profile4:asks", mark: "alarm", side: "bottom", dx: 40, dy: 60, text: "it asks first: saved patches stay" },
     ],
   },
   {
