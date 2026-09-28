@@ -1086,7 +1086,7 @@ export function createPerform(host) {
     // stale-while-revalidate a remeasured patch already gets (see `wire`),
     // with the wiring borrowed from the sound the offer grew out of.
     const taking = state.taking;
-    const taken = !!taking && performance.now() - taking.at < 15_000 && wireKey(json) === taking.key;
+    const taken = !!taking && performance.now() - taking.at < 15_000 && treeShape(json) === taking.key;
     if (taken || (taking && performance.now() - taking.at >= 15_000)) state.taking = null;
     const carried =
       taken && Array.isArray(liveKnobs) && liveKnobs.length ? carryWiring(taking.wire, liveKnobs) : null;
@@ -1146,6 +1146,25 @@ export function createPerform(host) {
     } else if (state.visible) wire();
     knobs.forEach(paintKnob);
     renderHood();
+  }
+
+  // A tree as its content alone — keys sorted, node uids dropped — so the
+  // offer that was taken and the tree the bench echoes back compare equal
+  // however either was serialized: the bench mints uids for the offer's
+  // nodes, and a reply is free to order a tree's keys its own way.
+  function treeShape(json) {
+    const canon = (v) => {
+      if (Array.isArray(v)) return v.map(canon);
+      if (!v || typeof v !== "object") return v;
+      const out = {};
+      for (const k of Object.keys(v).sort()) if (k !== "uid") out[k] = canon(v[k]);
+      return out;
+    };
+    try {
+      return JSON.stringify(canon(JSON.parse(json)));
+    } catch {
+      return json;
+    }
   }
 
   // The wiring `wire` had, kept for the tree whose live knobs are `list`: each
@@ -1393,7 +1412,7 @@ export function createPerform(host) {
     // bench refuses must not lend its wiring to whatever patch comes next. The
     // wiring is the one under the hands now, kept here because an edit still
     // in flight can land first and clear it.
-    if (state.wire) state.taking = { at: performance.now(), key: wireKey(json), wire: state.wire };
+    if (state.wire) state.taking = { at: performance.now(), key: treeShape(json), wire: state.wire };
     renderOffer();
     knobs.forEach(paintKnob);
     host.commitTree(json, "taken offer");
