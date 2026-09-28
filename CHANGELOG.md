@@ -189,30 +189,11 @@ page's hero:
   experts*.
 - **The sound engine** (2:49), in *The standard phrase* and *The web runtime*.
 
-And five films of the instrument itself, recorded in the real app in a
-seeded session, so every name and number on screen is one you would see:
-
-- **A tour of Auracle** (2:17): the four views, the bank, the dock and a
-  first visit. The warm start's "▶ new here? take the tour" opens it, and so does the
-  menu-bar film link on a first visit.
-- **PERFORM** (5:20), **PATCH** (5:06), **EVOLVE** (4:31) and **TASTE**
-  (4:17): each view in depth, in its own tab on the landing page (a silent
-  loop in the view's pane) and at the top of its guide page.
-
-They were recorded after the fixes below, so what they show is what the app
-does now.
-
 Captions are on by default, and the guide's Films page lists every film with
 its chapters and full transcript. The README carries the launch film's poster,
 each crate's API docs link the films about it, and the app's ⋯ menu gains
 **Watch the films**. Everything you hear is Auracle: the scores are played by
 its own engine. The narration is synthetic (Kokoro-82M, offline).
-
-In the app, **▶ film** in the menu bar opens the film of the view you are in,
-with its length on hover. The first time you open a view it says so ("new to
-PATCH? watch PATCH in depth"), and a newcomer's first note is the tour; after
-that it folds away. It stays out of booth mode and out of the films
-themselves (`film_chip.spec.js`).
 
 ### Fixed — what the films found
 
