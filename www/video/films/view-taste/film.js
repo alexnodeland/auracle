@@ -102,7 +102,7 @@ const PLAN = [
     beat: "directions",
     shot: "vt-dir",
     chapter: "04 · directions",
-    cam: [[0, 1.0, 0.5, 0.5], ["dir1:listens", ...aim(1.1, 1080, 520)], ["dir3-0.2", ...aim(1.6, 1000, 300)], ["dir4", ...aim(1.1, 1080, 560)], ["dir5-0.2", ...aim(1.6, 1000, 300)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["dir1:listens", ...aim(1.1, 1080, 520)], ["dir3-0.2", ...aim(1.45, 820, 330)], ["dir4", ...aim(1.1, 1080, 560)], ["dir5-0.2", ...aim(1.4, 1250, 330)]],
     callouts: [
       { at: "dir2:right", until: "dir2:left", mark: "right", side: "right", dx: 70, dy: -40, text: "toward" },
       { at: "dir2:left", until: "dir3", mark: "left", side: "left", dx: -70, dy: 40, text: "away" },
@@ -110,7 +110,7 @@ const PLAN = [
       { at: "dir4:shimmer", until: "dir4:Others", mark: "shimmer", side: "left", dx: -90, dy: -40, text: "what you hear" },
       { at: "dir4:brightness", until: "dir4:Others", mark: "brightness", side: "left", dx: -90, dy: -40, text: "what you hear" },
       { at: "dir4:reverbs", until: "dir5", mark: "reverbs", side: "left", dx: -90, dy: 40, text: "what it's built from" },
-      { at: "dir5:across", mark: "guess", side: "right", dx: 90, dy: -60, text: "whisker over the line: a guess" },
+      { at: "dir5:across", mark: "guess", side: "right", dx: 50, dy: -70, text: "over the line: a guess" },
     ],
   },
   {

@@ -214,6 +214,7 @@ const PLAN = [
       { at: "wander4:drift", until: "wander5", mark: "status", side: "right", dx: 90, dy: 30, text: "drifting toward your taste", color: "b" },
       { at: "wander5:way", until: "wander6:new", mark: "wander", side: "bottom", dx: -120, dy: 150, text: "roam" },
       { at: "wander6:module", until: "wander7:Touch", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "new modules arrive only in B", color: "b" },
+      { at: "wander7:Touch+0.4", until: "wander7:Freeze-0.1", mark: "status", side: "right", dx: 90, dy: 30, text: "paused: your hands are on it", color: "b" },
       { at: "wander7:Freeze", until: "wander8:Back", mark: "freeze", side: "top", dx: -60, dy: -100, text: "Freeze: held" },
       { at: "wander8:home", mark: "hood", side: "top", ox: -160, dx: 50, dy: -80, text: "back to the ticks: home" },
     ],

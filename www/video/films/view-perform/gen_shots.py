@@ -274,16 +274,10 @@ shots.append({
         {"at": "honest2:far-0.2", "op": "drag", "sel": SPACE, "dy": -80, "ms": 800},
         hold("honest2:line-0.3", ["f", "h", "k"], ms=900),
         {"at": "honest2:line", "op": "log", "name": "space", "js": "document.querySelector(\"" + SPACE + "\").getAttribute('aria-valuetext') + ' / ' + document.querySelector(\"" + SPACE + " .pf-k-sub\").textContent"},
-        # Split at the cut: an `until` past a cut waits for the cut's stamp
-        # before it presses anything, which would silence the Grit turn. The
-        # chord is struck again 0.02 s after the cut point (a 40 ms break,
-        # under the pad's own envelope; when the offer lands after the cut
-        # point the cut skips the wait and the re-strike sits on the splice).
-        hold("honest3:amber", ["d", "g", "h", "k"], until="honest5:marked-0.02"),
-        hold("honest5:marked+0.02", ["d", "g", "h", "k"], until="honest6:take+0.6"),
+        hold("honest3:amber", ["d", "g", "h", "k"], until="honest6:take+0.6"),
         {"at": "honest4:Turn", "op": "drag", "sel": GRIT, "dy": -70, "ms": 800},
         {"at": "honest4:Turn+1.0", "op": "until", "sel": ".pf-offer.ready", "ms": 90000, "stamp": "offered"},
-        {"at": "honest5:marked+0.02", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
+        {"at": "honest5:marked", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
         {"at": "honest6:listen", "op": "press", "sel": PAD("Peek"), "ms": 1500},
     ],
 })
@@ -379,6 +373,7 @@ shots.append({
         {"at": "wander5:roams+0.2", "op": "log", "name": "roam", "js": STATUS + " + ' / ' + document.querySelector(\"" + WANDER + " .pf-k-sub\").textContent"},
         {"at": "wander7:Touch", "op": "drag", "sel": BRIGHT, "dy": -25, "ms": 500},
         {"at": "wander7:waits", "op": "log", "name": "waits", "js": STATUS},
+        {"at": "wander7:waits", "op": "mark", "name": "paused", "sel": ".pf-status"},
         {"at": "wander7:Freeze", "op": "click", "sel": PAD("Freeze")},
         {"at": "wander7:is+0.3", "op": "log", "name": "held", "js": STATUS + " + ' / ' + document.querySelector(\"" + WANDER + " .pf-k-sub\").textContent"},
         {"at": "wander8:Back", "op": "click", "sel": PAD("Back")},

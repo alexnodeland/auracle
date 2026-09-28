@@ -202,7 +202,8 @@ are the offer, drift and roam boundaries.
   pads, B and the hood.
 - **Callouts:** *Keep: this is home* · *Wander* · *an idea, in B* ·
   *drifting toward your taste* · *roam* · *new modules arrive only in B* ·
-  *Freeze: held* · *back to the ticks: home*.
+  *paused: your hands are on it* (amber, on the status line, for the 3.5 s
+  hands-off window) · *Freeze: held* · *back to the ticks: home*.
 
 ## 8. `dock` — **07 · The dock** · *How do you hold, stack and arpeggiate it?* (shot `vp-dock`, Loom at 84)
 

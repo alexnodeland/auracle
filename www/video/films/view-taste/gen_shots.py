@@ -424,6 +424,9 @@ shots.append({
         hold("@t2+1.9", AM7, ms=2300),
         {"at": "together3:Star+0.2", "op": "seq", "steps": [
             {"op": "until", "js": BENCHED("vt-t2"), "ms": 30000},
+            # Measured again here: the bank scrolls its row into view after the bench has it.
+            {"op": "log", "name": "row-top", "js": "Math.round(document.querySelector('.bank-item.live').getBoundingClientRect().top) + ' in list from ' + Math.round(document.getElementById('bank-list').getBoundingClientRect().top)"},
+            {"op": "mark", "name": "star5", "sel": ".bank-item.live .star[data-s='5']"},
             {"op": "click", "sel": ".bank-item.live .star[data-s='5']"},
         ]},
         {"at": "together3:back", "op": "view", "v": "evolve"},

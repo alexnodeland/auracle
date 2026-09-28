@@ -145,11 +145,10 @@
         {"at": "honest2:far-0.2", "op": "drag", "sel": ".pf-knob[data-i='5']", "dy": -80, "ms": 800},
         {"at": "honest2:line-0.3", "op": "hold", "keys": ["f", "h", "k"], "ms": 900},
         {"at": "honest2:line", "op": "log", "name": "space", "js": "document.querySelector(\".pf-knob[data-i='5']\").getAttribute('aria-valuetext') + ' / ' + document.querySelector(\".pf-knob[data-i='5'] .pf-k-sub\").textContent"},
-        {"at": "honest3:amber", "op": "hold", "keys": ["d", "g", "h", "k"], "until": "honest5:marked-0.02"},
-        {"at": "honest5:marked+0.02", "op": "hold", "keys": ["d", "g", "h", "k"], "until": "honest6:take+0.6"},
+        {"at": "honest3:amber", "op": "hold", "keys": ["d", "g", "h", "k"], "until": "honest6:take+0.6"},
         {"at": "honest4:Turn", "op": "drag", "sel": ".pf-knob[data-i='4']", "dy": -70, "ms": 800},
         {"at": "honest4:Turn+1.0", "op": "until", "sel": ".pf-offer.ready", "ms": 90000, "stamp": "offered"},
-        {"at": "honest5:marked+0.02", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
+        {"at": "honest5:marked", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
         {"at": "honest6:listen", "op": "press", "sel": ".pf-pad:has-text('Peek')", "ms": 1500}
       ]
     },
@@ -250,6 +249,7 @@
         {"at": "wander5:roams+0.2", "op": "log", "name": "roam", "js": "document.querySelector('.pf-status').textContent + ' / ' + document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"},
         {"at": "wander7:Touch", "op": "drag", "sel": ".pf-knob[data-i='0']", "dy": -25, "ms": 500},
         {"at": "wander7:waits", "op": "log", "name": "waits", "js": "document.querySelector('.pf-status').textContent"},
+        {"at": "wander7:waits", "op": "mark", "name": "paused", "sel": ".pf-status"},
         {"at": "wander7:Freeze", "op": "click", "sel": ".pf-pad:has-text('Freeze')"},
         {"at": "wander7:is+0.3", "op": "log", "name": "held", "js": "document.querySelector('.pf-status').textContent + ' / ' + document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"},
         {"at": "wander8:Back", "op": "click", "sel": ".pf-pad:has-text('Back')"},
