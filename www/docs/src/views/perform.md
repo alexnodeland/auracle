@@ -53,7 +53,8 @@ The line under a control names at most two knobs, then how many more
 **Six pads.** **Keep · Back · Offer · Take · Peek · Freeze**, below.
 
 **The B strip.** One line, labelled **B**, that says whether an offer is
-waiting and where it came from.
+waiting and where it came from, and, for an offer a search control asked for,
+how far it went the way you turned.
 
 **Under the hood.** The patch's own knobs that the controls (and Wander) are
 turning right now, each as a bar with its value in its own units and a tick
@@ -203,19 +204,39 @@ that already has an EQ does not get a second one.
 did not reach it):
 
 1. The control springs back to the centre. No knob moved.
-2. An **offer** is grown from the current sound and arrives in **B**, with a
-   note saying what you asked for.
+2. An **offer** is grown from the current sound, **aimed the way you turned**,
+   and arrives in **B**. The toast says what it is growing (*Grit: no knobs
+   here make it rough — growing a grittier offer instead*), and B counts the
+   seconds while it grows.
 
 Grit has no graft because of how it is measured. Grit is spectral flatness, or
 noisiness. A drive adds harmonics, and harmonics read as Bright. A bitcrusher
 is transparent only at 16 bits, where turning it changes nothing measurable.
 
-```admonish warning title="What the offer is and is not"
+```admonish info title="How the offer is aimed"
 The offer is a variant grown from where you are, on the same walk evolution
-uses. It is **not yet aimed** at the direction you turned. It is a structural
-variant (it may add or change a module), so it can contain the drive or the
-reverb the patch lacked, but nothing steers it there. Listen before you take
-it.
+uses, with the walk pulled the way you turned. Every variant it tries is
+measured, and one that is grittier (or smoother, or farther: whatever you
+asked for) counts for more. Your taste still counts too, so it does not trade
+everything you like for the one thing you asked for. It is a structural
+variant (it may add or change a module), so it can bring in the noise or the
+release the patch lacked. If the first walk has not moved that way, it keeps
+walking from where it stopped, up to three walks, which is why an aimed offer
+can take longer than one from the **Offer** pad.
+
+When it arrives, B says how far it went, in amber, after what changed:
+*grittier by 1.8σ*. σ is the spread of the patches in your session, the same unit the controls'
+reach is measured in, so *by 1σ* is about as far as a working control moves
+the sound at a full turn. When the walk did not get there, B says so instead
+of presenting the offer as the answer: *not grittier: this walk found no way
+there — turn it again to try another*.
+
+Measured over sixteen presets, Grit turned up came out grittier in about two
+offers of three before any picks, and in about half once the model had learned
+a taste that dislikes noise; an offer from the **Offer** pad did one time in
+seven or fewer. It cannot go where there is nowhere to go: a patch with no
+noise at all cannot get smoother, and one with no tail cannot get closer. The
+**Offer** pad and Wander's offers are not aimed at anything.
 ```
 
 ## Opening the circuit

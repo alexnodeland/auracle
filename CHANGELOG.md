@@ -143,6 +143,22 @@ changelog that edits its own past is not a record.
   a generation ▸* starts the generation without leaving the view you are in,
   and afterwards the chip points at the new children at the top of the bank
   instead of opening TASTE.
+- **Turning a search control grows an offer that goes the way you turned it,
+  and B says how far it went.** Turn Grit up past its notch on a patch with
+  nothing rough in it and the toast says *growing a grittier offer instead*;
+  B counts the seconds while it grows, then reads *grittier by 1.8σ* (in
+  amber: it is the model's measurement, σ being the spread of the patches in
+  your session), or *not grittier: this walk found no way there — turn it
+  again to try another*. The offer used to be the Offer pad's walk with the
+  direction only as a label, so it was grittier by accident: over sixteen
+  presets, one Grit offer in seven or fewer moved that way. Now the walk
+  counts a variant for more the further it goes the way you asked, and keeps
+  walking from where it stopped (up to three walks) until it has, so Grit
+  turned up comes out grittier in about two offers of three before any picks
+  and about half once a taste that dislikes noise has been learned. That can
+  take longer than an Offer does. The Offer pad and Wander are not aimed
+  (`perform_aimed.spec.js`, `an_aimed_offer_moves_the_way_it_was_turned`,
+  `make offer-census`).
 
 ### Fixed — true today
 

@@ -120,7 +120,9 @@ and does nothing. See [PERFORM](./views/perform.md#the-named-controls).
 A variant grown from the sound you are playing, held in a second voice set
 called **B** that plays every note you play. You hear it by crossfading with
 **Blend** or holding **Peek**, at matched loudness, and it replaces your sound
-only if you press **Take**. An offer may change structure. The only other
+only if you press **Take**. An offer from the **Offer** pad or Wander is grown
+toward your taste; one a search control asks for is also aimed the way it was
+turned. An offer may change structure. The only other
 thing in PERFORM that can is a **search control** that grafts a tone EQ on (see
 below); Wander never does. See [Blend, Peek and the B
 slot](./views/perform.md#blend-peek-and-the-b-slot).
@@ -182,7 +184,10 @@ to turn: a flat tone EQ grafted onto the patch. So can **Space** turned up: a
 longer release. The graft
 goes in as one undo step, the patch is measured again, and the control is set
 where your hand left it (*Bright now turns …*). Otherwise, or when the graft
-does not reach, the control springs back and asks for an offer in B. See
+does not reach, the control springs back and asks for an offer in B, aimed the
+way you turned it: the walk that grows it counts a variant for more the further
+it goes that way, and B says how far it went (*grittier by 1.8σ*), or that it
+did not get there. See
 [search controls](./views/perform.md#amber-dashed-search-controls).
 
 ### Standardizer

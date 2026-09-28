@@ -458,9 +458,101 @@ convex. A touch stops the glide where it is.
 `Engine::offer` is the same walk with only the player's locks, so structural
 moves are allowed: it may add, remove or replace a module. It is also
 non-inserting. The instrument asks for 20 steps (40 in *roam*) and plays the
-result in the B slot, never as a jump. A [search
-control](#wiring-ridge-support-re-solve) released more than $0.3$ from its
-centre asks for one, and springs back without moving a knob.
+result in the B slot, never as a jump. The Offer pad and Wander ask for this
+walk. A [search control](#wiring-ridge-support-re-solve) released more than
+$0.3$ from its centre asks for an aimed one (below), and springs back without
+moving a knob.
+
+### A search control's offer is aimed
+
+`Engine::offer_toward` walks the same kernel on the target tilted along the
+control's direction $\hat e$, turned up ($s = +1$) or down ($s = -1$):
+
+$$
+\pi_{\gamma}(x) \;\propto\; p_{\text{grammar}}(x)\,
+\exp\!\Big(\beta\,\big(f(x) + \gamma\, s\, \hat e^\top z(x)\big)\Big),
+$$
+
+where $f$ is the taste surrogate $\E[u_\theta(\varphi(x))]$, or
+`VetOnlyFitness` before any fit, and $\gamma$ is `AIM_GAMMA` $= 1$. At
+$\beta = 2$, a proposal one σ further the asked way gains as much log-weight as
+one unit more of expected utility. `TiltedFitness` reads $z$ from the memo
+entry the inner fitness has just written, so the tilt costs no render, and a
+proposal that does not vet keeps its quarantine score untilted.
+
+Twenty single-site steps rarely propose the one module that makes a patch
+rough (a noise source, a crusher), and the tilt cannot make a proposal the
+kernel never draws. So a walk that has not moved at least `REACH_FLOOR` the
+asked way,
+
+$$
+s\,\hat e^\top\big(z(x_{\text{end}}) - z(x_0)\big) \;<\; 0.15,
+$$
+
+keeps walking from the state it stopped in, up to `AIM_WALKS` $= 3$ walks of
+the asked steps. It is one longer chain that stops as soon as it has arrived,
+not a filter: nothing grown is thrown away, which is what the rejected
+alternative (grow several undirected offers and keep the one that moved most)
+would have done.
+
+The reply carries `moved` $= \hat e^\top\big(z(\text{offer}) - z(\text{home})\big)$
+(`Engine::moved_along`), and B's strip prints $s \cdot$ `moved` in amber:
+*grittier by 1.8σ*, or, below half of `REACH_FLOOR` (the line a verified half
+must clear to be said to turn that way), *not grittier: this walk found no way
+there — turn it again to try another*.
+
+**The census.** $\gamma$ and the walk count were chosen by
+`make offer-census` (`offer_census`): 16 presets (every third in the bank),
+every control PERFORM draws as a search control on each (verified, as the app
+wires them: Grit on 14, Body on 14, Space on 12, and a few of the rest), turned
+both ways, two seeded offers of 20 steps a walk per arm, the same seeds in
+every arm so the arms are paired and $0{\times}1$ is the Offer pad's walk
+itself. The session is a filled pool (its standardizer) with a taste taught by
+the synthetic listener `search_health` climbs toward, which dislikes noise; the
+prior rows are the same session before any fit. A move counts when it is at
+least `REACH_FLOOR` the asked way; $R^\ast = 0.95$σ is the median verified
+reach of a control that does reach, on the same presets.
+
+| $\gamma \times$ walks | ≥ floor, taught | ≥ $R^\ast$, taught | median $\Delta\E[u]$, taught | ≥ floor, prior | Grit up ≥ floor, taught / prior |
+|---|---|---|---|---|---|
+| $0 \times 1$ (Offer pad) | 22% | 13% | +0.92 | 23% | 7% / 14% |
+| $0.5 \times 1$ | 26% | 16% | +0.84 | 31% | 14% / 35% |
+| $1 \times 1$ | 34% | 23% | +0.74 | 35% | 17% / 35% |
+| $2 \times 1$ | 39% | 22% | +0.63 | 36% | 25% / 32% |
+| $4 \times 1$ | 40% | 23% | +0.62 | 38% | 32% / 32% |
+| $0 \times 3$ | 32% | 18% | +1.72 | 41% | 17% / 32% |
+| **$1 \times 3$ (shipped)** | **46%** | **28%** | **+1.33** | **53%** | **46% / 64%** |
+| $2 \times 3$ | 48% | 28% | +1.18 | 54% | 50% / 71% |
+
+(192 offers per arm. $\Delta\E[u]$ is the offer's expected utility less the
+patch it grew from; the pool's spread of $\E[u]$ is 0.72.)
+
+Reading it: the tilt buys most of what it can by $\gamma = 1$. Past that,
+more aim buys a few points of the floor, none of $R^\ast$, and a lower
+$\E[u]$, so 1 is the smallest $\gamma$ at which the curve has flattened. The walks do more than the tilt for
+the control that needs them most. Grit turned up went from 7% (Offer pad) to
+17% with the tilt alone and 46% with three walks, after a taste that dislikes
+noise, and from 14% to 64% before any fit. Continuing without the tilt
+($0 \times 3$) does less than continuing with it (32% and 41% of all asks,
+against 46% and 53%). The taste cost is bounded: every arm's median offer
+still climbs $\E[u]$.
+
+Some asks have nowhere to go, and no $\gamma$ changes that: **Grit down** and
+**Space down** moved in none of 28 and 24 trials, because a patch with no
+noise sits at the floor of flatness and one with no tail at the floor of
+`tail_ratio`. B says *not smoother* then, which is the truth. **Space up**
+reaches 29–45%; the instrument asks for it only when the release graft did
+not reach.
+
+**What it costs in time.** The tilt costs no render; the extra walks do.
+Timed natively on a shared four-core machine (`offer_census --timed`, each
+offer from a fresh memo holding only the patch it grew from, as in the app),
+one tilted walk took 5.1 s on average against 5.1 s for the untilted one, and
+the shipped offer, which walks again only when it has not arrived, 15.6 s
+against 6.0 s for the Offer pad's. The instrument counts the seconds in B
+while it grows. Growing it on the render farm, and starting both ways at
+pointer-down, would take the wait off the player's hands; that belongs to
+the farm's walk path and is not built here.
 
 ## Before any evidence: `VetOnlyFitness`
 
@@ -524,12 +616,13 @@ re-normalizing it.
 
 ## What is not done
 
-- **Named controls are not directed search.** A search control asks for an
-  untargeted offer: the walk still targets $\pi_\beta$, not $\pi_\beta$ tilted
-  toward $\hat e$. Adding $\gamma\,\hat e^\top z(x)$ to the log-target would
-  aim it, and is the same substitution as
-  [target-directed search](../design/directions.md#2-target-directed-search-make-it-sound-like-this).
-  It is not built, so the offer may not move the way the control was turned.
+- **An aimed offer is aimed at a direction, not at a sound.** A search
+  control's offer tilts the target along $\hat e$ (above); it does not aim at a
+  reference sound, which is
+  [target-directed search](../design/directions.md#2-target-directed-search-make-it-sound-like-this)
+  and is not built. Nor is the aim itself tuned per patch or per player:
+  repeated turns the same way do not ask harder, and Wander's offers are not
+  aimed at the last control turned (RFC-002's open questions).
 - **The directions are fixed, not personal.** The six are the same for every
   player. A control along a fitted style lens $\theta_k$ is [a different and
   more interesting

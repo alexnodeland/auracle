@@ -87,7 +87,9 @@ Snap, Motion, Body, Grit, Space). Each is wired to the knobs whose change moves
 that direction in φ, measured on the patch's own renders (a Jacobian), and the
 wiring is verified on real renders before it is trusted. A control that no
 knob reaches becomes a **search control**: turning it asks for an offer, a
-nearby patch grown toward that direction (`Engine::offer`). Wander drifts the
+nearby patch grown on the taste walk tilted toward that direction
+(`Engine::offer_toward`, ADR-008), whose reply says how far it moved that way.
+The Offer pad's offers are the untilted walk (`Engine::offer`). Wander drifts the
 knobs (`Engine::drift`) or grows offers on its own. Measurement is the
 expensive part, which is why the web app caches wirings and measures in pieces.
 

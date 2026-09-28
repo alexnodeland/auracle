@@ -29,6 +29,7 @@ the one that replaced it.
 | [First frontend](../runtime.md) | Web / WASM | Both deps ship WASM; fastest UX iteration; shareable |
 | [Session UX](./milestones.md) | All three modes, built duels → grid → radio | Same observation stream; sequenced by signal quality |
 | [Safety](../safety.md) | Vetting gate: audition = pre-rendered vetted buffers, never live unvetted patches | One render serves health-check, features, and playback; quarantine + fitness shaping teach evolution to avoid pathology |
+| [A search control's offer](../search/perform.md#a-search-controls-offer-is-aimed) | The taste walk tilted along the control's direction (`AIM_GAMMA` = 1), continued up to `AIM_WALKS` = 3 walks until it has moved that way; the reply says how far it did | Growing undirected offers and keeping the one that moved most spends renders on offers thrown away, and yields nothing when no walk heads that way; a graft needs a transparent module, and Grit has none. γ and the walk count are the census's (a flattened curve, bounded taste cost) |
 
 ## What is not in this table
 
