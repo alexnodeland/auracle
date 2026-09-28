@@ -1,0 +1,850 @@
+<title>Auracle Interaction Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Jost:wght@300;400;500;600;700&family=Newsreader:ital,opsz,wght@1,6..72,300;1,6..72,400&display=swap">
+<style>
+/* Auracle's own world: the instrument is dark, so this page is too, on purpose.
+   Tokens are the app's (apps/web/style.css), so every swatch here is the real one. */
+:root {
+  color-scheme: dark;
+  --rack: #0c0d10; --panel: #171a1f; --panel-hi: #1d2127; --bezel: #07080a; --hairline: #292e36;
+  --silk: #d9d4c8; --silk-dim: #9a958a; --silk-mute: #6f6c63;
+  --phos-a: #8ef0b1; --phos-a-dim: #63a97c; --phos-a-deep: #3d6a4d;
+  --phos-b: #ffb454; --phos-b-dim: #b8823c; --phos-b-deep: #7a5526;
+  --led-red: #ff5747; --red-deep: #5a211c;
+  --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px;
+  --measure: 68ch;
+}
+* { box-sizing: border-box; }
+html { background: var(--rack); }
+body {
+  background: var(--rack); color: var(--silk); margin: 0;
+  font: 400 16px/1.6 var(--font-silk);
+  padding-inline: max(16px, env(safe-area-inset-left, 0px));
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--phos-a); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { color: var(--silk); }
+:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; border-radius: 2px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+code { color: var(--silk); background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+kbd {
+  font-family: var(--font-mono); font-size: 0.8em; color: var(--silk);
+  background: linear-gradient(180deg, #2a2f37, #1a1d23); border: 1px solid #0a0b0d;
+  border-radius: 4px; padding: 1px 6px; box-shadow: inset 1px 1px 0 rgba(255,255,255,.08), 0 1px 0 #0a0b0d;
+  white-space: nowrap;
+}
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+h2 { font: 600 30px/1.2 var(--font-silk); letter-spacing: .01em; }
+h3 { font: 600 19px/1.3 var(--font-silk); letter-spacing: .02em; }
+h4 { font: 600 12px/1.3 var(--font-silk); letter-spacing: .14em; text-transform: uppercase; color: var(--silk-dim); }
+p { margin: 0; max-width: var(--measure); }
+ul, ol { margin: 0; padding-left: 1.2em; max-width: var(--measure); }
+li + li { margin-top: var(--s2); }
+.voice { font-family: var(--font-voice); font-style: italic; font-weight: 300; }
+.dim { color: var(--silk-dim); }
+.amber { color: var(--phos-b); }
+.green { color: var(--phos-a); }
+.red { color: var(--led-red); }
+.num { font-variant-numeric: tabular-nums; }
+.eyebrow { font: 600 11px/1 var(--font-silk); letter-spacing: .18em; text-transform: uppercase; color: var(--silk-dim); }
+.ids { font: 400 12px/1.5 var(--font-mono); color: var(--silk-mute); }
+.ids a { color: var(--silk-dim); text-decoration: none; border-bottom: 1px dotted var(--silk-mute); }
+.ids a:hover { color: var(--silk); }
+
+/* ---------- frame ---------- */
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--s7); padding-block: var(--s7) var(--s8); }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--s5)); align-self: start; display: grid; gap: var(--s1); font-size: 13px; }
+nav.toc a { color: var(--silk-dim); text-decoration: none; padding: 3px 0 3px 12px; border-left: 1px solid var(--hairline); }
+nav.toc a:hover { color: var(--silk); border-left-color: var(--silk-mute); }
+nav.toc .eyebrow { margin-bottom: var(--s2); }
+main { display: grid; gap: var(--s8); min-width: 0; }
+section { display: grid; gap: var(--s5); scroll-margin-top: var(--s5); min-width: 0; }
+section > header { display: grid; gap: var(--s2); padding-top: var(--s4); border-top: 1px solid var(--hairline); }
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: 1fr; gap: var(--s5); padding-block: var(--s5) var(--s7); }
+  nav.toc { position: static; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+
+/* ---------- hero ---------- */
+.hero { display: grid; gap: var(--s5); }
+.hero h1 { font: 500 clamp(34px, 5.4vw, 56px)/1.05 var(--font-silk); letter-spacing: -.005em; }
+.hero h1 .voice { color: var(--phos-b); font-weight: 300; }
+.hero .lede { font: 300 20px/1.55 var(--font-silk); color: var(--silk); max-width: 62ch; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; }
+.stat { background: var(--panel); padding: var(--s4); display: grid; gap: var(--s1); }
+.stat b { font: 500 30px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--silk-dim); line-height: 1.35; }
+
+/* ---------- causes ---------- */
+.causes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s4); }
+.cause { background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: var(--s5); display: grid; gap: var(--s3); align-content: start; }
+.cause .n { font: 600 12px/1 var(--font-mono); color: var(--silk-mute); }
+.cause h3 { font-size: 18px; }
+.cause .evidence { font-size: 14px; color: var(--silk-dim); }
+.cause .evidence b { color: var(--silk); font-weight: 500; }
+
+/* ---------- principles ---------- */
+.principles { counter-reset: p; display: grid; gap: 0; border-top: 1px solid var(--hairline); }
+.principle { display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(0, 0.9fr); gap: var(--s5); padding-block: var(--s5); border-bottom: 1px solid var(--hairline); align-items: start; }
+.principle::before { counter-increment: p; content: counter(p); font: 300 34px/1 var(--font-mono); color: var(--silk-mute); }
+.principle h3 { margin-bottom: var(--s2); }
+.principle p { font-size: 15px; color: var(--silk-dim); }
+.principle .test { font-size: 14px; border-left: 2px solid var(--hairline); padding-left: var(--s3); color: var(--silk-dim); }
+.principle .test b { display: block; font: 600 11px/1.6 var(--font-silk); letter-spacing: .14em; text-transform: uppercase; color: var(--silk-mute); }
+@media (max-width: 760px) { .principle { grid-template-columns: 40px minmax(0, 1fr); } .principle .test { grid-column: 2; } }
+
+/* ---------- chart ---------- */
+.chart-wrap { background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: var(--s5); overflow-x: auto; }
+.chart-wrap svg { display: block; min-width: 680px; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: var(--s4) var(--s5); font-size: 13px; color: var(--silk-dim); }
+.legend i { display: inline-block; width: 18px; height: 8px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+
+/* ---------- tables ---------- */
+.table { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
+th { font: 600 11px/1.3 var(--font-silk); letter-spacing: .14em; text-transform: uppercase; color: var(--silk-dim); background: var(--panel); position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.word { font-weight: 600; white-space: nowrap; }
+td .old { color: var(--silk-mute); text-decoration: line-through; text-decoration-color: var(--silk-mute); }
+.verdict { font: 600 11px/1 var(--font-mono); letter-spacing: .06em; padding: 3px 6px; border-radius: 3px; white-space: nowrap; }
+.verdict.ok { color: var(--silk); border: 1px solid var(--silk-mute); }
+.verdict.miss { color: var(--phos-b); border: 1px dashed var(--phos-b-dim); }
+.verdict.fail { color: var(--led-red); border: 1px solid var(--led-red); }
+
+/* ---------- colour contract ---------- */
+.swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s4); }
+.swatch { border: 1px solid var(--hairline); border-radius: 6px; overflow: hidden; background: var(--panel); display: grid; }
+.swatch .chip { height: 64px; display: flex; align-items: end; padding: var(--s3); font: 600 12px/1 var(--font-mono); color: var(--rack); }
+.swatch .body { padding: var(--s4); display: grid; gap: var(--s2); font-size: 14px; }
+.swatch .body h3 { font-size: 16px; }
+.swatch .body .stop { color: var(--silk-mute); font-size: 13px; }
+
+/* ---------- mocks (the app, drawn in its own tokens) ---------- */
+.mock { background: var(--rack); border: 1px solid var(--hairline); border-radius: 8px; padding: var(--s5); display: grid; gap: var(--s4); box-shadow: inset 0 0 0 1px #000; }
+.mock-cap { font-size: 13px; color: var(--silk-dim); max-width: var(--measure); }
+.knobs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s4); }
+.knob { display: grid; justify-items: center; gap: var(--s2); text-align: center; }
+.knob .name { font: 600 13px/1 var(--font-silk); letter-spacing: .14em; text-transform: uppercase; }
+.knob .sub { font: 400 12px/1.35 var(--font-mono); color: var(--silk-dim); min-height: 2.7em; }
+.knob .what { font-size: 12px; color: var(--silk-mute); }
+.menubar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4) var(--s5); background: linear-gradient(180deg, #1d2127, #171a1f); border: 1px solid var(--hairline); border-radius: 6px; padding: 10px 14px; font: 600 12px/1 var(--font-silk); letter-spacing: .14em; text-transform: uppercase; color: var(--silk-dim); }
+.menubar .wm { font: 600 20px/1 var(--font-silk); letter-spacing: .3em; color: var(--silk); }
+.menubar .wm .e { color: var(--phos-b); text-shadow: 0 0 10px rgba(255,180,84,.6); }
+.menubar b { color: var(--silk); font: 500 14px/1 var(--font-mono); letter-spacing: 0; margin-left: 6px; }
+.job { display: inline-flex; align-items: center; gap: 10px; text-transform: none; letter-spacing: 0; font: 400 13px/1 var(--font-mono); color: var(--phos-b); border: 1px solid var(--phos-b-deep); border-radius: 999px; padding: 6px 6px 6px 12px; position: relative; overflow: hidden; }
+.job .fill { position: absolute; inset: 0 auto 0 0; width: 30%; background: rgba(255,180,84,.12); }
+.job > * { position: relative; }
+.job button { font: 600 11px/1 var(--font-silk); letter-spacing: .12em; text-transform: uppercase; color: var(--silk); background: linear-gradient(180deg, #2a2f37, #1a1d23); border: 1px solid #0a0b0d; border-radius: 999px; padding: 5px 9px; cursor: pointer; }
+.receipt { display: grid; gap: var(--s3); background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: var(--s4); }
+.receipt .line { font-size: 16px; }
+.receipt .line .voice { color: var(--phos-b); font-size: 17px; }
+.pips { display: flex; gap: 10px; align-items: center; }
+.pip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--silk-mute); display: grid; place-items: center; font: 600 9px/1 var(--font-mono); color: var(--rack); }
+.pip.hit { background: var(--phos-b); border-color: var(--phos-b); }
+.pip.surprise { background: transparent; border: 2px solid var(--phos-b); color: var(--phos-b); }
+.pip.coin { background: var(--phos-b-deep); border-color: var(--phos-b-deep); }
+.bars { display: grid; gap: 10px; }
+.brow { display: grid; grid-template-columns: 130px 1fr 110px; gap: var(--s3); align-items: center; font: 400 13px/1 var(--font-mono); }
+.brow .lab { color: var(--silk-dim); text-align: right; }
+.brow .note { color: var(--silk-mute); font-size: 12px; }
+.brow svg { width: 100%; height: 18px; display: block; }
+.gen { display: grid; gap: var(--s3); }
+.genbtn { justify-self: start; position: relative; overflow: hidden; font: 600 12px/1 var(--font-silk); letter-spacing: .14em; text-transform: uppercase; color: var(--rack); background: var(--phos-b-deep); border-radius: 4px; padding: 10px 14px; }
+.genbtn .fill { position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--phos-b); }
+.genbtn span { position: relative; }
+.slots { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+.slot { height: 44px; border: 1px dashed var(--hairline); border-radius: 4px; display: grid; place-items: center; font: 400 11px/1.2 var(--font-mono); color: var(--silk-mute); padding: 2px; text-align: center; overflow: hidden; }
+.slot.done { border: 1px solid var(--phos-b-deep); color: var(--silk); background: rgba(255,180,84,.06); }
+.slot.now { border: 1px solid var(--phos-b); color: var(--phos-b); }
+@media (max-width: 600px) { .slots { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+
+.twocol { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--s5); align-items: start; }
+.decisions { display: grid; gap: var(--s4); }
+.decision { display: grid; gap: var(--s2); padding-left: var(--s4); border-left: 2px solid var(--hairline); }
+.decision h4 { color: var(--silk); letter-spacing: .1em; }
+.decision p { font-size: 15px; color: var(--silk-dim); }
+.decision p b { color: var(--silk); font-weight: 500; }
+.view-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3) var(--s4); }
+.view-head h3 { font: 600 22px/1 var(--font-silk); letter-spacing: .22em; }
+
+/* ---------- waves ---------- */
+.waves { display: grid; gap: var(--s4); }
+.wave { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--s5); background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: var(--s5); }
+.wave .tag { display: grid; gap: var(--s2); align-content: start; }
+.wave .tag b { font: 300 40px/1 var(--font-mono); }
+.wave .tag span { font-size: 13px; color: var(--silk-dim); }
+.wave .content { display: grid; gap: var(--s3); }
+.wave .content p { font-size: 15px; color: var(--silk-dim); }
+.wave .film { font-size: 14px; color: var(--silk-dim); border-top: 1px solid var(--hairline); padding-top: var(--s3); }
+.wave .film b { color: var(--silk); font-weight: 500; }
+@media (max-width: 640px) { .wave { grid-template-columns: 1fr; } }
+.ask { background: linear-gradient(180deg, rgba(255,180,84,.08), rgba(255,180,84,.02)); border: 1px solid var(--phos-b-deep); border-radius: 6px; padding: var(--s5); display: grid; gap: var(--s3); }
+.ask h3 { color: var(--phos-b); }
+.ask ol li { color: var(--silk-dim); }
+.ask ol li b { color: var(--silk); font-weight: 500; }
+
+/* ---------- index ---------- */
+.filters { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--hairline); border-radius: 5px; overflow: hidden; }
+.seg button { font: 600 11px/1 var(--font-silk); letter-spacing: .1em; text-transform: uppercase; color: var(--silk-dim); background: var(--panel); border: 0; border-right: 1px solid var(--hairline); padding: 8px 10px; cursor: pointer; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { color: var(--silk); background: var(--panel-hi); box-shadow: inset 0 -2px 0 var(--silk); }
+input[type=search] { font: 400 14px/1 var(--font-silk); color: var(--silk); background: var(--panel); border: 1px solid var(--hairline); border-radius: 5px; padding: 8px 10px; min-width: 0; width: 220px; max-width: 100%; }
+.sev { font: 600 11px/1 var(--font-mono); padding: 2px 5px; border-radius: 3px; }
+.sev.P0 { color: var(--rack); background: var(--led-red); }
+.sev.P1 { color: var(--led-red); border: 1px solid var(--led-red); }
+.sev.P2 { color: var(--silk-dim); border: 1px solid var(--silk-mute); }
+.sev.P3 { color: var(--silk-mute); border: 1px dotted var(--silk-mute); }
+#count { font-size: 13px; color: var(--silk-dim); }
+footer { color: var(--silk-mute); font-size: 13px; border-top: 1px solid var(--hairline); padding-top: var(--s4); display: grid; gap: var(--s2); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <div class="eyebrow">Contents</div>
+  <a href="#causes">What's wrong</a>
+  <a href="#principles">Eight rules</a>
+  <a href="#budget">Time budget</a>
+  <a href="#words">Words</a>
+  <a href="#colour">Colour</a>
+  <a href="#states">States</a>
+  <a href="#undo">Undo</a>
+  <a href="#channels">Messages</a>
+  <a href="#keys">Keys</a>
+  <a href="#views">The four views</a>
+  <a href="#engine">Engine work</a>
+  <a href="#waves">Order of work</a>
+  <a href="#hold">Holding the line</a>
+  <a href="#keep">What we keep</a>
+  <a href="#index">All 119 findings</a>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Auracle · interaction design · 28 September 2026</div>
+  <h1>An instrument answers the hand. <span class="voice">Everything else can wait.</span></h1>
+  <p class="lede">Six reviewers walked every view of Auracle against the evidence we already had: the stills and timing logs of five rehearsed films, the films themselves, and the code. They found 119 things. Most of them come from four causes. This page names the causes, sets the rules that remove them, fixes the shared language, and orders the work.</p>
+  <div class="stats">
+    <div class="stat"><b class="num">119</b><span>findings, each with evidence (a still, a timing, a line of code)</span></div>
+    <div class="stat"><b class="num red">8</b><span>P0: the app is broken or says something false</span></div>
+    <div class="stat"><b class="num">42</b><span>P1: costly friction a player meets often</span></div>
+    <div class="stat"><b class="num">27</b><span>gesture classes timed; 6 fail, 5 miss</span></div>
+    <div class="stat"><b class="num">191&nbsp;s</b><span>the longest wait: one generation, with the rest of the instrument parked</span></div>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<section id="causes">
+  <header><div class="eyebrow">Diagnosis</div><h2>Four causes behind most of what's wrong</h2></header>
+  <p class="dim">Sound itself is fast: a knob reaches the voices on the same frame, a duel's ▶ sounds in 30–40 ms, ⌘Z lands in 0.29 s. The trouble starts wherever the app has to think, speak, or name something.</p>
+  <div class="causes">
+    <article class="cause">
+      <div class="n">1</div>
+      <h3>One engine thread does everything, and some of its calls take minutes</h3>
+      <p class="evidence">A generation holds the engine for <b>103–193 s</b>. ⚡ evolve from this is one <b>23 s</b> call. A new patch's controls stay dead for <b>11–16 s</b>. The second Offer takes <b>10.9 s</b> where the first took 0.01. While a generation runs, a pick waits up to a whole seed (about 19 s) for its next pair, and PERFORM's measurements, offers and drifts wait for all of it.</p>
+      <p class="ids"><a href="#f-RT1">RT1</a> <a href="#f-RT2">RT2</a> <a href="#f-RT5">RT5</a> <a href="#f-EV-01">EV-01</a> <a href="#f-PA-07">PA-07</a> <a href="#f-PF-06">PF-06</a> <a href="#f-PF-07">PF-07</a> <a href="#f-PF-13">PF-13</a></p>
+    </article>
+    <article class="cause">
+      <div class="n">2</div>
+      <h3>It says things before they are true, or after they stop being true</h3>
+      <p class="evidence">A turned knob's readout goes back to the <b>old value</b>. A socket marked EMPTY <b>plays a saw</b>. "● it just learned" appears when the refit is <b>sent</b>, minutes early during a generation. A half-closed control's caption contradicts its own dot. "Not measured yet" looks like "can't". Guesses are drawn as settled bars under a caption that says "longer bar = stronger pull".</p>
+      <p class="ids"><a href="#f-PA-01">PA-01</a> <a href="#f-PA-02">PA-02</a> <a href="#f-EV-03">EV-03</a> <a href="#f-PF-02">PF-02</a> <a href="#f-PF-04">PF-04</a> <a href="#f-TA2">TA2</a> <a href="#f-TA3">TA3</a> <a href="#f-SH5">SH5</a> <a href="#f-RT7">RT7</a></p>
+    </article>
+    <article class="cause">
+      <div class="n">3</div>
+      <h3>One idea wears many names, colours and keys</h3>
+      <p class="evidence">The act that teaches the model is a <b>pick, vote, choice, preference and keep</b>. Amber, "the model's colour", also means <b>on, active tab, renamed, alarm, locked, destructive</b> and "went up". Undo has <b>four labels and three time windows</b>, and ⌘Z undoes a pick in one view and an unseen knob edit in the next. ▶ has seven forms; two of them do something else.</p>
+      <p class="ids"><a href="#f-CO1">CO1</a> <a href="#f-CO2">CO2</a> <a href="#f-CO3">CO3</a> <a href="#f-CO4">CO4</a> <a href="#f-PA-08">PA-08</a> <a href="#f-TA9">TA9</a> <a href="#f-EV-12">EV-12</a></p>
+    </article>
+    <article class="cause">
+      <div class="n">4</div>
+      <h3>Things move under the hands</h3>
+      <p class="evidence">A bank row click <b>jumps to PATCH</b> from any view. Rows <b>re-sort under the pointer</b> after a star. The rack <b>re-zooms</b> after every structural edit. Dials <b>snap to centre</b> on every drift and a MIDI pot lets go. After a refit the map <b>jumps</b> and every style is renamed. After clicking a tab, → changes the view instead of picking.</p>
+      <p class="ids"><a href="#f-SH1">SH1</a> <a href="#f-EV-06">EV-06</a> <a href="#f-PA-13">PA-13</a> <a href="#f-PF-11">PF-11</a> <a href="#f-TA1">TA1</a> <a href="#f-TA5">TA5</a> <a href="#f-SH2">SH2</a> <a href="#f-SH6">SH6</a></p>
+    </article>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="principles">
+  <header><div class="eyebrow">Principles</div><h2>Eight rules, each with a test</h2>
+  <p class="dim">A rule we can't check drifts. Each one below says how we'll know it holds, and most of the tests become browser specs.</p></header>
+  <div class="principles">
+    <div class="principle">
+      <div><h3>The hands are never blocked</h3><p>A gesture is acknowledged on the thing touched within 100 ms, and gives a first result within 1 s when the work is local. Background work never delays a gesture by more than 250 ms.</p></div>
+      <p class="test"><b>Test</b>No single engine-worker call runs longer than 250 ms. A pick, a ▶ and a bank open are each answered within 1 s during a fit, an offer, ⚡ and a generation.</p>
+    </div>
+    <div class="principle">
+      <div><h3>Say it when it's true</h3><p>Status appears when the state holds, not when it is requested, and goes away when the state ends. A readout shows what is sounding.</p></div>
+      <p class="test"><b>Test</b>"it just learned" follows <code>fitted</code>. A knob readout equals its <code>aria-valuetext</code> 2 s after a turn. An empty socket's peak is below −60 dBFS.</p>
+    </div>
+    <div class="principle">
+      <div><h3>Nothing moves under the hands</h3><p>Rows, plates, dials, pots and views stay where the player left them. A change the player didn't make is animated so it can be followed, or it waits until the pointer leaves.</p></div>
+      <p class="test"><b>Test</b>Bank order is frozen while the pointer is in the list. A structural edit keeps the edited plate's neighbour on screen within 4 px.</p>
+    </div>
+    <div class="principle">
+      <div><h3>One idea, one word, one look, one key</h3><p>The glossary below is the vocabulary. The colour contract has no exceptions. A key does the same thing in every view where it works.</p></div>
+      <p class="test"><b>Test</b><code>www/checknames.py</code> extends to a banned-words list for UI copy (vote, bench, lens, retired, HELD).</p>
+    </div>
+    <div class="principle">
+      <div><h3>A guess looks like a guess</h3><p>Anything the model is unsure of is drawn and worded as unsure: hollow, whiskered, "a hunch". Nothing the model says is drawn more certain than it is.</p></div>
+      <p class="test"><b>Test</b>No bar whose interval crosses zero is drawn solid. Map size uses an absolute floor, so six picks can't look as sure as sixty.</p>
+    </div>
+    <div class="principle">
+      <div><h3>Every teaching act can be taken back</h3><p>A pick, a take, a pass, a star, a cut and a save each get the same 7 s undo, starting when its receipt appears, through the same ⌘Z. An undo says what it undid.</p></div>
+      <p class="test"><b>Test</b>⌘Z never changes a patch the player can't see. The sixth pick is undoable.</p>
+    </div>
+    <div class="principle">
+      <div><h3>Long work has one home</h3><p>Anything over 3 s appears in one place in the menu bar, with progress, time left and stop. It never takes the player to another view.</p></div>
+      <p class="test"><b>Test</b>Every long job posts progress at least once a second and honours stop at its next boundary.</p>
+    </div>
+    <div class="principle">
+      <div><h3>Every view ends in an action</h3><p>A report invites the next move: hear a maybe, firm it up, hear the children. Every claim about sound can be heard.</p></div>
+      <p class="test"><b>Test</b>Each view's empty state and each result names one next step, and it works.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="budget">
+  <header><div class="eyebrow">Responsiveness</div><h2>The time budget, and where we are today</h2>
+  <p class="dim">Measured from the rehearsal timing logs on a quiet machine, on a log scale. The tick is the target for a first result. Bars that pass are drawn in silk, misses in amber, failures in red. That follows the colour contract: red means failure.</p></header>
+  <div class="chart-wrap"><svg id="chart" viewBox="0 0 900 640" role="img" aria-label="Measured response times against targets, log scale"></svg></div>
+  <div class="legend">
+    <span><i style="background:var(--silk-dim)"></i>within target</span>
+    <span><i style="background:var(--phos-b)"></i>up to 3× over</span>
+    <span><i style="background:var(--led-red)"></i>more than 3× over</span>
+    <span><i style="background:none;border-left:2px solid var(--silk);height:12px;width:0"></i>target</span>
+  </div>
+  <div class="table"><table>
+    <thead><tr><th>Gesture class</th><th>Acknowledged</th><th>First result</th><th>Done</th></tr></thead>
+    <tbody>
+      <tr><td>A note, a knob turn, XY</td><td class="num">≤ 16 ms (same frame)</td><td>sound in ≤ 30 ms</td><td>—</td></tr>
+      <tr><td>▶ hear a patch or a side</td><td class="num">≤ 100 ms (lit, or pending)</td><td class="num">≤ 150 ms to sound</td><td>—</td></tr>
+      <tr><td>A pick, a skip, a star, a cut, a save</td><td class="num">≤ 100 ms (receipt)</td><td class="num">next pair ≤ 300 ms</td><td>—</td></tr>
+      <tr><td>Open a patch (row, dot, preset)</td><td class="num">≤ 100 ms ("opening…")</td><td class="num">sound ≤ 150 ms</td><td class="num">rack ≤ 500 ms</td></tr>
+      <tr><td>Structural edit (insert, bypass, unplug)</td><td class="num">≤ 100 ms (plate dims, verb shown)</td><td class="num">sound ≤ 150 ms</td><td class="num">guess ≤ 1 s</td></tr>
+      <tr><td>New patch in PERFORM</td><td class="num">≤ 100 ms</td><td class="num">≤ 1 s preset, ≤ 3 s new</td><td>all controls ≤ 5 s</td></tr>
+      <tr><td>Offer, search control, Wander</td><td class="num">≤ 100 ms</td><td class="num">≤ 300 ms (spare), else progress</td><td class="num">≤ 3 s</td></tr>
+      <tr><td>⚡ evolve from this</td><td class="num">≤ 100 ms (job slot)</td><td>progress every second</td><td class="num">≤ 10 s, nothing else blocked</td></tr>
+      <tr><td>EVOLVE POOL</td><td class="num">≤ 100 ms (job slot)</td><td class="num">first child ≤ 10 s</td><td class="num">≤ 30 s, nothing else blocked</td></tr>
+      <tr><td>Boot</td><td>bar at once</td><td class="num">playable ≤ 5 s warm, ≤ 10 s cold</td><td class="num">pool full ≤ 20 s</td></tr>
+    </tbody>
+  </table></div>
+  <p class="ids">Sources: <a href="#f-RT1">RT</a> §2 and §8 (every row cites a sidecar), PF, PA, EV, TA response-time tables.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="words">
+  <header><div class="eyebrow">Contract 1</div><h2>One word for each idea</h2>
+  <p class="dim">The words a player reads, in every view, the guide and the films. Where the reviewers disagreed, the choice and the reason are given.</p></header>
+  <div class="table"><table>
+    <thead><tr><th>Say</th><th>Means</th><th>Stop saying</th></tr></thead>
+    <tbody>
+      <tr><td class="word">pick</td><td>Any choice between two sounds: an EVOLVE pair, the PATCH strip, the warm start, a PERFORM Take or Next, the keep-as-new comparison.</td><td><span class="old">vote</span>, <span class="old">choose</span>, <span class="old">preference</span>, <span class="old">keep the one</span>, "this one"</td></tr>
+      <tr><td class="word">TAUGHT 58</td><td>The menu-bar counter: everything the model learned from. Its tooltip splits it: "52 picks · 4 stars · 2 cuts". The EVOLVE meter keeps counting picks only, and its sentence uses the pick count.</td><td>PICKS for a count that includes stars and cuts</td></tr>
+      <tr><td class="word">fair-test picks</td><td>Pairs dealt at random, the ones TRUST grades on.</td><td><span class="old">check duels</span>, <span class="old">check picks</span>, <span class="old">unbiased check duels</span></td></tr>
+      <tr><td class="word">save / saved</td><td>Put in MY PATCHES, safe from replacement. The row says SAVED on approach, as CUT does.</td><td>"saved" for a download, "keep" for a save</td></tr>
+      <tr><td class="word">download / open</td><td>Files: "Download taste profile", "Open a patch…", "Downloaded auracle-Acid_Line.wav · 3.1 s".</td><td><span class="old">save taste profile</span>, <span class="old">export</span>, <span class="old">saved 3.1s take</span></td></tr>
+      <tr><td class="word">keep</td><td>PERFORM's Keep pad only: make the performed state home.</td><td>every other "keep"</td></tr>
+      <tr><td class="word">keep as new</td><td>PATCH: your edit becomes a new saved patch named after its parent ("Glass Pad ✎"), and the original stays.</td><td><span class="old">commit</span></td></tr>
+      <tr><td class="word">pool</td><td>The patches the model is weighing and breeds from (the first bank tab).</td><td>"evolution" for the tab, "bank" for the pool, "IN BANK" on a preset</td></tr>
+      <tr><td class="word">bank</td><td>The rail on the left, with its three tabs.</td><td>—</td></tr>
+      <tr><td class="word">replaced</td><td>What happens to the pool's lowest unsaved patches when new ones arrive. Always named.</td><td><span class="old">retired</span>, <span class="old">evicted</span>, <span class="old">made room</span>, "gone"</td></tr>
+      <tr><td class="word">the patch you're playing</td><td>In help and tooltips. Toasts use only its name.</td><td><span class="old">bench</span>, <span class="old">workbench</span>, "current patch", "under your fingers", #ids</td></tr>
+      <tr><td class="word">another pair</td><td>Deal a new pair without picking. <em>Skip</em> stays only for onboarding.</td><td><span class="old">skip ↻</span> in a duel</td></tr>
+      <tr><td class="word">listening…</td><td>PERFORM learning how a patch moves. PATCH's guess just dims while it updates.</td><td><span class="old">measuring…</span>, <span class="old">re-measuring…</span></td></tr>
+      <tr><td class="word">ideas</td><td>Wander's middle zone, where variants appear in B.</td><td>"offer" as a zone name (it's the pad's word)</td></tr>
+      <tr><td class="word">style</td><td>A cluster of your taste, named from settled pulls or "like Warm Wash".</td><td><span class="old">lens</span>, "1st style"</td></tr>
+      <tr><td class="word">set aside</td><td>Modules unplugged or deleted, waiting to go back in.</td><td><span class="old">HELD</span> (it sits above HOLD)</td></tr>
+      <tr><td class="word">a hunch · leaning · fairly sure</td><td>How sure the model is, in words, beside any prediction.</td><td>a bare "93%"</td></tr>
+      <tr><td class="word">59%</td><td>A prediction, everywhere.</td><td>"MODEL'S GUESS 0.59"</td></tr>
+    </tbody>
+  </table></div>
+  <p class="ids"><a href="#f-CO1">CO1</a> <a href="#f-CO5">CO5</a> <a href="#f-CO6">CO6</a> <a href="#f-CO7">CO7</a> <a href="#f-TA9">TA9</a> <a href="#f-EV-12">EV-12</a> <a href="#f-PA-04">PA-04</a> <a href="#f-PA-05">PA-05</a> <a href="#f-PF-12">PF-12</a> <a href="#f-PA-10">PA-10</a></p>
+</section>
+
+<!-- ============================================================ -->
+<section id="colour">
+  <header><div class="eyebrow">Contract 2</div><h2>Four colours, four meanings, no exceptions</h2>
+  <p class="dim">The stylesheet's law was "green is sound, amber is the model". In the app amber also carried about twenty other jobs. This is the law, completed, with what has to move.</p></header>
+  <div class="swatches">
+    <div class="swatch"><div class="chip" style="background:var(--phos-a)">#8ef0b1 · phos-a</div>
+      <div class="body"><h3 class="green">Green is sound</h3><p>Traces, pressed keys, the live row, a playing ▶, dock toggles that change the sound (a lit LED), and the focus ring, always outside the element.</p>
+      <p class="stop">Moves off green: the keyboard cursor row (to silk), a forecast hit (to a word).</p></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--phos-b)">#ffb454 · phos-b</div>
+      <div class="body"><h3 class="amber">Amber is the model</h3><p>Predictions, belief, forecasts, styles, the picked state (it's what the model hears), search controls (ask the model), and each view's one breed act, ⚡ and EVOLVE POOL, both filled.</p>
+      <p class="stop">Moves off amber: HOLD/UNI/ARP when on, active bank tabs, your own names, locks, alarms, "replaces" sockets, "not measured yet".</p></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--led-red)">#ff5747 · led-red</div>
+      <div class="body"><h3 class="red">Red is danger and failure</h3><p>Destructive on approach (cut, delete, a socket that replaces modules), alarms (a crash, a failed save), recording, below-par.</p>
+      <p class="stop">Gains: the alarm bar, which today is filled amber and looks like an invitation.</p></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--silk)">#d9d4c8 · silk</div>
+      <div class="body"><h3>Silk is you, and neutral</h3><p>Saved (filled floppy, rail, the word), your names, your locks (a pin with a hatched halo), the cursor, every active tab.</p>
+      <p class="stop">Up, down, hit and miss become words or glyphs (✓ ✗ ▲ ▼), never colour alone. That is also the colour-blind rule.</p></div></div>
+  </div>
+  <p class="ids"><a href="#f-CO3">CO3</a> <a href="#f-CO10">CO10</a> <a href="#f-PA-08">PA-08</a> <a href="#f-TA6">TA6</a> <a href="#f-EV-07">EV-07</a> <a href="#f-SH8">SH8</a></p>
+</section>
+
+<!-- ============================================================ -->
+<section id="states">
+  <header><div class="eyebrow">Contract 3</div><h2>Every state visible, and never mistaken for another</h2>
+  <p class="dim">Two families of state cause most of the confusion: work that takes time, and claims the model is unsure of.</p></header>
+  <div class="twocol">
+    <div class="decisions">
+      <h4>Work that takes time</h4>
+      <div class="decision"><h4>Acknowledged · ≤ 100 ms</h4><p>On the thing touched: the plate dims and names the verb ("unplugging…"), the row shows "opening…", the ▶ gets a dotted ring. <b>Never a toast.</b></p></div>
+      <div class="decision"><h4>Working · after 1 s</h4><p>Progress where the player is looking, as a count ("12 / 30"). After 3 s the job also appears in the menu-bar job slot with time left and <b>stop</b>.</p></div>
+      <div class="decision"><h4>Done · when it is</h4><p>Said on arrival, not on request. A toast only if it is the result of the player's own gesture.</p></div>
+      <div class="decision"><h4>Failed</h4><p>Says what went wrong and what to do, in red, and stays until handled.</p></div>
+      <div class="decision"><h4>Waiting behind something</h4><p>If a gesture waits more than 300 ms behind engine work, its control says so: "after the refit…", "waiting for ⚡ (about 15 s)".</p></div>
+    </div>
+    <div class="decisions">
+      <h4>What the model claims</h4>
+      <div class="decision"><h4>Settled</h4><p>The interval clears zero. <b>Solid</b> bar with its whisker. Words: "fairly sure".</p></div>
+      <div class="decision"><h4>A guess</h4><p>The interval crosses zero. <b>Hollow</b> bar, full-strength whisker, the label ends in "?". Words: "a hunch", "leaning".</p></div>
+      <div class="decision"><h4>No idea yet</h4><p>Before the first fit, or too few picks. Says how many picks until it will know: "1 more pick →", "14 to go".</p></div>
+      <div class="decision"><h4>Your verdict beside its guess</h4><p>Your stars and cuts drawn on the map; "you: ★1 · it still guesses 78% — keep telling it".</p></div>
+    </div>
+  </div>
+  <div class="mock">
+    <div class="eyebrow">Mock · one mark for a pull, in STYLES, DIRECTIONS and PATCH alike</div>
+    <div class="bars" id="bars"></div>
+    <p class="mock-cap">Caption under DIRECTIONS: "Where each style leans. Solid = it's sure. Hollow = still a guess — the thin line is how far it could be off." Above the rows: "12 rows · 1 settled · least settled: loudness — picks between dense and sparse sounds would teach it most."</p>
+  </div>
+  <p class="ids"><a href="#f-TA2">TA2</a> <a href="#f-TA3">TA3</a> <a href="#f-TA4">TA4</a> <a href="#f-RT5">RT5</a> <a href="#f-RT9">RT9</a> <a href="#f-PA-14">PA-14</a> <a href="#f-EV-16">EV-16</a></p>
+</section>
+
+<!-- ============================================================ -->
+<section id="undo">
+  <header><div class="eyebrow">Contract 4</div><h2>One undo</h2></header>
+  <div class="twocol">
+    <ol>
+      <li><b>⌘Z first takes back the newest teaching act</b> still inside its window, in any view: a pick, a take, a pass, a star, a cut or a save. It is the one whose receipt is on screen.</li>
+      <li><b>Every teaching act gets 7 s</b>, counted from when its receipt becomes visible, not from the press. The observation is held back, not logged and then compensated (keep this).</li>
+      <li><b>The sixth pick is undoable too.</b> The refit is sent when its window closes, or when the next pick commits it, and the meter says "● learning from your last 6…" meanwhile.</li>
+      <li><b>Edit undo belongs to PATCH.</b> Elsewhere ⌘Z with nothing to take back says "nothing to undo here — PATCH edits undo in PATCH" and changes nothing.</li>
+      <li><b>One label: UNDO.</b> Structural edits keep their specific verbs (PUT IT BACK, PLUG IT BACK IN), which say more. When a window closes the button goes away, instead of a dead "IN THE LOG".</li>
+    </ol>
+    <div class="table"><table>
+      <thead><tr><th>Act</th><th>Today</th><th>Then</th></tr></thead>
+      <tbody>
+        <tr><td>EVOLVE pick</td><td>7 s, not the 6th</td><td>7 s, every pick</td></tr>
+        <tr><td>PATCH strip pick</td><td>toast only; ⌘Z undoes a knob</td><td>7 s, ⌘Z</td></tr>
+        <tr><td>PERFORM Take</td><td>8 s, button only</td><td>7 s, ⌘Z</td></tr>
+        <tr><td>PERFORM pass</td><td>none</td><td>7 s, ⌘Z, B comes back</td></tr>
+        <tr><td>Star</td><td>none</td><td>7 s, ⌘Z</td></tr>
+        <tr><td>Cut</td><td>7 s, button only</td><td>7 s, ⌘Z</td></tr>
+        <tr><td>Save</td><td>click again</td><td>click again, or ⌘Z</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <p class="ids"><a href="#f-CO2">CO2</a> <a href="#f-EV-02">EV-02</a> <a href="#f-PF-07">PF-07</a> <a href="#f-PF-18">PF-18</a></p>
+</section>
+
+<!-- ============================================================ -->
+<section id="channels">
+  <header><div class="eyebrow">Contract 5</div><h2>Where each kind of message goes</h2>
+  <p class="dim">Fourteen channels carry messages today, with no rule for which says what. Five carry them from now on.</p></header>
+  <div class="table"><table>
+    <thead><tr><th>Channel</th><th>Carries</th><th>Never carries</th></tr></thead>
+    <tbody>
+      <tr><td class="word">The thing touched</td><td>Acknowledgement within 100 ms: pending, the verb, a count.</td><td>—</td></tr>
+      <tr><td class="word">Toast</td><td>The result of the player's own gesture, with UNDO if it taught; refusals (urgent). Sentence case, the patch's name, never an id.</td><td>Job starts, "X on the bench", onboarding nudges</td></tr>
+      <tr><td class="word">Status line</td><td>What this view is doing now, one per view: "opening Bell Jar…", "listening to this patch…".</td><td>Wander's state (it moves to Wander's caption)</td></tr>
+      <tr><td class="word">Job slot</td><td>Long work: "⚡ breeding 3/10 · about 40 s · stop". The wordmark's E lights exactly while it is non-empty.</td><td>Anything under 3 s</td></tr>
+      <tr><td class="word">Alarm</td><td>A condition that persists until handled. Red.</td><td>Successes</td></tr>
+      <tr><td class="word">Onboarding</td><td>One surface per view at a time. The keybed coach hides while PERFORM's first steps show.</td><td>Repeats of the same instruction</td></tr>
+    </tbody>
+  </table></div>
+  <div class="mock">
+    <div class="eyebrow">Mock · the menu bar with a job running</div>
+    <div class="menubar">
+      <span class="wm">AURA<span class="e">C</span>LE</span>
+      <span>Taught<b>58</b></span>
+      <span>Generations<b>3</b></span>
+      <span class="job" id="job"><span class="fill" id="jobfill"></span><span id="jobtext">⚡ breeding 3/10 · about 40 s</span><button type="button" id="jobstop">stop</button></span>
+      <span style="margin-left:auto">27% better than chance</span>
+    </div>
+    <p class="mock-cap">Stop keeps the children already bred. The same slot shows "⚡ evolving Glass Pad · 60 %", "refitting your taste map…" and "listening to Bell Jar · 12/30".</p>
+  </div>
+  <p class="ids"><a href="#f-CO9">CO9</a> <a href="#f-SH3">SH3</a> <a href="#f-RT9">RT9</a> <a href="#f-SH5">SH5</a> <a href="#f-TA11">TA11</a> <a href="#f-PF-05">PF-05</a></p>
+</section>
+
+<!-- ============================================================ -->
+<section id="keys">
+  <header><div class="eyebrow">Contract 6</div><h2>One keymap</h2>
+  <p class="dim">The note letters (<kbd>a</kbd>–<kbd>'</kbd> and <kbd>w e t y u o p</kbd>), <kbd>z</kbd>/<kbd>x</kbd> for octave and <kbd>m</kbd> for save stay global. The new keys avoid every note letter, and <kbd>N</kbd> means "next" in every view. Keys are printed on the controls they press, as EVOLVE's already are.</p></header>
+  <div class="table"><table>
+    <thead><tr><th>Key</th><th>PERFORM</th><th>PATCH</th><th>EVOLVE</th><th>TASTE</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>⌥1</kbd>–<kbd>⌥4</kbd></td><td colspan="4">Switch view (there is no view key today)</td></tr>
+      <tr><td><kbd>N</kbd></td><td>Offer, then Next (passes on B)</td><td>another pair on the strip</td><td>another pair</td><td>hear the next maybe</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>hold to Peek at B</td><td>the phrase; while placing a module, hear it there</td><td>the live side's phrase</td><td>the cursor dot's phrase</td></tr>
+      <tr><td><kbd>Enter</kbd></td><td>Take</td><td>—</td><td>—</td><td>open the cursor dot</td></tr>
+      <tr><td><kbd>⇧Enter</kbd></td><td>Keep</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td><kbd>B</kbd></td><td>Back</td><td>bypass the focused plate</td><td>—</td><td>—</td></tr>
+      <tr><td><kbd>⇧Space</kbd></td><td>Freeze</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td><kbd>1</kbd> <kbd>2</kbd></td><td colspan="2">rate the patch you're playing (1–5)</td><td>hear A / B</td><td>rate (1–5)</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>turn the focused control</td><td>move between rack controls</td><td>pick A / B, on arrival however you arrived</td><td>move the cursor (spatially)</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>turn the focused control</td><td>walk sockets while placing</td><td>↑ flip sides at the playhead · ↓ another pair</td><td>move the cursor (spatially)</td></tr>
+      <tr><td><kbd>⇧1</kbd>–<kbd>⇧5</kbd></td><td colspan="2">—</td><td>rate the bank's cursor row</td><td>—</td></tr>
+      <tr><td><kbd>⌘Z</kbd></td><td colspan="4">Take back the newest teaching act; in PATCH, then the last edit (see Undo)</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td colspan="4">Cancel. Always cancel: the keep-as-new comparison's Esc stops committing.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="dim">MIDI learn gains rows for Offer/Next, Peek (momentary), Take, Keep, Back and Freeze, and in EVOLVE for pick A, pick B, another pair and flip. A keyboard Peek latches until the next press or Esc, so it can count as heard.</p>
+  <p class="ids"><a href="#f-CO11">CO11</a> <a href="#f-PF-09">PF-09</a> <a href="#f-EV-13">EV-13</a> <a href="#f-SH2">SH2</a> <a href="#f-TA12">TA12</a> <a href="#f-PA-06">PA-06</a> <a href="#f-PF-10">PF-10</a></p>
+</section>
+
+<!-- ============================================================ -->
+<section id="views">
+  <header><div class="eyebrow">The four views</div><h2>What changes where the player is</h2>
+  <p class="dim">The decisions that change how each view behaves. Smaller fixes are in the index at the bottom.</p></header>
+
+  <div class="view-head"><h3>PERFORM</h3><span class="dim">the instrument: named controls, B, Wander</span></div>
+  <div class="mock">
+    <div class="eyebrow">Mock · four control states, each with one look and one meaning</div>
+    <div class="knobs" id="knobs"></div>
+    <p class="mock-cap">Today the half-closed ring is drawn on the closed side (an SVG dash pattern that assumes a circle starts at 12 o'clock; it starts at 3). And a control that simply hasn't been measured wears the search look, so turning it grafts a module.</p>
+  </div>
+  <div class="twocol">
+    <div class="decisions">
+      <div class="decision"><h4>Captions say what you can do</h4><p>"turns toward restless only", not "at the still end", which the amber dot often contradicts. The dot gets a tooltip: where this sound measures, compared with your session.</p></div>
+      <div class="decision"><h4>B's controls in one place, in the order you use them</h4><p>Pads grouped <b>[Keep Back] · [Offer Peek Take] · [Freeze]</b>, Freeze under Wander. Blend leaves the timbre deck and becomes the B strip's crossfader, <b>home ◀━●━▶ B</b>.</p></div>
+      <div class="decision"><h4>The second offer is as fast as the first</h4><p>A spare grows while B is occupied. Offer becomes <b>NEXT · passes on B</b> while B holds one, a pass gets UNDO, and an unheard pass says it wasn't counted. After a pass Blend comes home, as it does after a Take.</p></div>
+    </div>
+    <div class="decisions">
+      <div class="decision"><h4>"Heard" is visible</h4><p>B's tag fills as B is heard and shows <b>B ✓</b> at one second, when a Take or Next starts to count.</p></div>
+      <div class="decision"><h4>Wander answers at once</h4><p>The first move comes 1.5 s after the hand leaves, not 21 s. Wander's caption carries its own state ("drift · next in 9 s", "paused 3 s", "held"), with a countdown arc and zone ticks on the ring.</p></div>
+      <div class="decision"><h4>Controls stay under the hands</h4><p>Re-centring glides over 250 ms with a ghost tick; a MIDI pot re-anchors instead of letting go. Background re-checks never re-centre unless the wiring changed. A graft never turns the control for you 15 s later.</p></div>
+    </div>
+  </div>
+
+  <div class="view-head"><h3>PATCH</h3><span class="dim">the rack</span></div>
+  <div class="twocol">
+    <div class="decisions">
+      <div class="decision"><h4>Readouts tell the truth</h4><p>A turned knob keeps its value. PERFORM's base follows the hand, and a ghost appears only when PERFORM really holds an offset. <b>An empty socket is silent</b>: the grammar's Silence becomes placeable and is what an unplugged source leaves.</p></div>
+      <div class="decision"><h4>Bypass is a latch, in place</h4><p>A <b>BYP</b> button in each plate's well, and <kbd>B</kbd> on a focused plate. The plate stays at 45% with a straight cable drawn across it and the module crossfades out in 10 ms. No restructuring, no moving screen.</p></div>
+      <div class="decision"><h4>SET ASIDE works like the catalogue</h4><p>Click or Enter arms a set-aside module, sockets light, Enter places. It lives at the top of the node-bank rail, so it never takes the rack's height.</p></div>
+    </div>
+    <div class="decisions">
+      <div class="decision"><h4>Keep as new keeps it</h4><p>The edit becomes <b>Glass Pad ✎</b>, saved in MY PATCHES, the original untouched: "Kept as Glass Pad ✎ in MY PATCHES — Glass Pad is unchanged."</p></div>
+      <div class="decision"><h4>The comparison is blind and quick</h4><p>Sides labelled A and B, revealed after the pick. <kbd>Space</kbd> flips at the playhead (about 3 s per comparison, not 10). Esc cancels. "…and mine is better" is a one-shot choice, not a sticky checkbox.</p></div>
+      <div class="decision"><h4>The rack holds still, and says so</h4><p>A structural edit keeps the zoom and the neighbour's place. The plate dims and names the verb within a frame. The model's guess reads <b>39%</b> with its reasons in words; "was" only when the digits change.</p></div>
+    </div>
+  </div>
+
+  <div class="view-head"><h3>EVOLVE</h3><span class="dim">picking, and breeding</span></div>
+  <div class="mock">
+    <div class="eyebrow">Mock · one receipt per pick, and six pips that remember</div>
+    <div class="receipt">
+      <div class="line">You picked <b>Warm Wash</b> over Soft Stab · it guessed 26% — <span class="voice">surprise: it had this backwards</span> · <a href="#undo">UNDO</a></div>
+      <div class="pips" aria-label="last six picks"><span class="pip hit" title="expected">✓</span><span class="pip coin" title="coin flip"></span><span class="pip hit">✓</span><span class="pip surprise" title="surprise">!</span><span class="pip"></span><span class="pip"></span><span class="dim" style="font-size:14px;margin-left:8px">4 of 6 · then it redraws your taste map</span></div>
+    </div>
+    <p class="mock-cap">Today the forecast is a 10 px line naming neither patch, still showing over the next pair, with uneven bands (44% reads "backwards", 56% a "toss-up") and a claim that a toss-up "taught it the most", which isn't true. Bands become symmetric: ≥ 65% expected, ≤ 35% surprise.</p>
+  </div>
+  <div class="mock">
+    <div class="eyebrow">Mock · a generation, from the first second to the last</div>
+    <div class="gen">
+      <div class="genbtn"><span class="fill" id="genfill"></span><span id="gentext">breeding 4/10</span></div>
+      <div class="slots" id="slots"></div>
+      <p class="mock-cap">The button is its own progress bar. Each child appears as it lands, in a "new · gen 3" group at the top of the pool, playable at once. If the first child takes more than 1.5 s, a tray opens with time left and <b>stop after this one</b>. At the end, a single receipt: "Gen 3: 10 new — 7 closer to your taste, 3 exploring · 10 replaced ▸ · hear them ▸". Replaced patches can be brought back.</p>
+    </div>
+  </div>
+  <div class="twocol">
+    <div class="decisions">
+      <div class="decision"><h4>The next pair is already waiting</h4><p>One pair is dealt ahead with both sounds rendered, so a pick or another pair swaps in at 0 ms, even mid-generation. Until then another pair goes inert like a pick does, and says why.</p></div>
+      <div class="decision"><h4>"It just learned" when it has</h4><p>"● learning from your last 6…" while the fit runs; "● it just learned — see what changed ▸" when <code>fitted</code> arrives, staying until the next pick.</p></div>
+    </div>
+    <div class="decisions">
+      <div class="decision"><h4>Listening costs less</h4><p><kbd>↑</kbd> flips sides at the same playhead; a playhead and segment ticks under both scopes; an optional auto-listen that plays A then B on every deal. Target: a considered pick in 6 s.</p></div>
+      <div class="decision"><h4>The pool shows what's safe</h4><p>Saved rows read SAVED; hovering EVOLVE POOL marks the ten that would be replaced. A cut patch is never dealt again. Replacement happens at the end of a generation, so a save made during one protects.</p></div>
+    </div>
+  </div>
+
+  <div class="view-head"><h3>TASTE</h3><span class="dim">what it thinks you like</span></div>
+  <div class="twocol">
+    <div class="decisions">
+      <div class="decision"><h4>Styles hold still</h4><p>Named only from settled pulls, else by ear: "like Warm Wash". A name changes only after a different top pair has held for two refits. New styles are announced once: "A 4th style split off — like Warm Stab ▶".</p></div>
+      <div class="decision"><h4>The chips are the key</h4><p>Five shades of amber can't tell styles apart. Clicking a chip focuses that style in every tab; the map draws one amber with glow as its only gradient.</p></div>
+      <div class="decision"><h4>The map says how sure</h4><p>Size gets an absolute floor, so early maps are mostly big, as the guide says. Each dot's tooltip adds a word and a verdict: "93% · a hunch · maybe — worth a listen".</p></div>
+    </div>
+    <div class="decisions">
+      <div class="decision"><h4>It invites</h4><p><b>Hear a maybe ▸</b> (and <kbd>N</kbd>) opens the brightest unsure dot, cycling. Your stars sit on the map beside its guesses.</p></div>
+      <div class="decision"><h4>A refit you can follow</h4><p>"see what changed" always opens MAP; dots tween by id over 400 ms; the ones that moved 5 points or more are ringed and labelled; one line says what changed.</p></div>
+      <div class="decision"><h4>TRUST in words</h4><p>"Its guesses beat a coin flip by 27%." "When it was about 70% sure, you agreed 8 times in 10." Then <b>Firm it up — 10 more picks ▸</b>. The method stays exactly as it is.</p></div>
+    </div>
+  </div>
+
+  <div class="view-head"><h3>Everywhere</h3><span class="dim">menu bar, bank, dock, first run</span></div>
+  <div class="twocol">
+    <div class="decisions">
+      <div class="decision"><h4>A row click stays in the view</h4><p>It plays the patch where you are. Opening it in PATCH is explicit: "↗ patch" on the hovered row, or a double-click.</p></div>
+      <div class="decision"><h4>The bank holds still</h4><p>Order freezes while the pointer is in the list and for 1.5 s after a click; percentages update in place with ▲/▼; the re-sort animates when you leave. The live row stays in view.</p></div>
+    </div>
+    <div class="decisions">
+      <div class="decision"><h4>A first minute with no dead controls</h4><p>PERFORM is the page's first view, not PATCH behind a dialog. The 62 presets ship pre-measured, so a warm-start pick is playable the moment it lands.</p></div>
+      <div class="decision"><h4>Menus and help by kind</h4><p>⋯ groups Files, Tools, Modes (with ✓), Start over, Help. Help opens on the current view's tab. Booth mode hides the exits behind a staff gesture.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="engine">
+  <header><div class="eyebrow">Engine work</div><h2>The structural fixes behind the budget</h2>
+  <p class="dim">Most of the red in the chart comes from cause 1. These changes remove it. Two already have accepted proposals; the reviews extend both.</p></header>
+  <div class="table"><table>
+    <thead><tr><th>Change</th><th>Removes</th><th>Record</th></tr></thead>
+    <tbody>
+      <tr><td><b>Walks run on the render farm</b>, absorbed in job order. The farm is spawned on demand from the module main already holds, and reaped after 60 s idle. Children are shown as they land; stop keeps what's bred.</td><td>EVOLVE POOL 191 s → about its slowest walk; picks and PERFORM free during it</td><td><a href="#f-RT1">RFC-001</a> + additions</td></tr>
+      <tr><td><b>⚡ evolve from this is a farm walk</b> too, run 2–3 ways in parallel, keeping the best. Stop keeps the best so far.</td><td>23 s of a deaf engine</td><td>RFC-001 consequence</td></tr>
+      <tr><td><b>No engine call over 250 ms.</b> Offers, drifts and fits become steppers (or farm jobs) that breathe between pieces.</td><td>random multi-second stalls on ▶, opens, deals</td><td>new ADR</td></tr>
+      <tr><td><b>Search offers are aimed</b> along the control's direction and report how far they moved ("grittier by 0.8σ"). Both directions pre-start on the farm at pointer-down.</td><td>offers that don't do what the control's name says</td><td><a href="#f-RT4">RFC-002</a> + pre-start</td></tr>
+      <tr><td><b>Pre-measured wirings for all 62 presets</b> ship with the app; measurement renders on the farm and applies per control as each is verified.</td><td>11–16 s of dead controls on a new patch</td><td>plan item</td></tr>
+      <tr><td><b>Background work stays in the background lane</b>: re-checks after Keep and after a glide; a spare offer ahead even while B is occupied; the first drift after hands-off.</td><td>Offer queued behind a re-check; 10.9 s "again"; 21 s silent drift</td><td>plan item</td></tr>
+      <tr><td><b>Replacement at the end of a generation</b>; cut patches never dealt; Silence placeable; bypass as a per-module flag in the compile.</td><td>saves that lose to a walk; cut sounds dealt again; the saw in an empty socket; bypass that restructures</td><td>engine tasks</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="waves">
+  <header><div class="eyebrow">Order of work</div><h2>Four waves</h2>
+  <p class="dim">Ordered by what a player loses first: the truth, then the hands, then the language, then the finish. Each wave ships on its own, with its tests and its guide pages.</p></header>
+  <div class="waves">
+    <div class="wave"><div class="tag"><b>0</b><span>True today</span><span class="num">29 findings</span></div>
+      <div class="content"><p>Everything that is false or broken now, most of it small: knob readouts, the silent empty socket, the half-closed ring and caption, "not measured" vs "can't", ⌘Z's scope, "it just learned" on arrival, the bench toasts, tab focus eating EVOLVE's arrows, selects eating the notes, background lanes for re-checks, cut patches dealt again, Blend after a pass, Reset keeping your saved patches.</p>
+      <p class="film"><b>Films:</b> changes what PERFORM, PATCH and the tour show and say. Those three get re-recorded after this wave (a line of PERFORM's script changes).</p></div></div>
+    <div class="wave"><div class="tag"><b>1</b><span>The hands first</span><span class="num">22 findings</span></div>
+      <div class="content"><p>The engine work above: RFC-001 with the on-demand farm and children as they land, ⚡ on the farm, the 250 ms rule, pre-measured presets, the spare ahead, the first drift, deal-ahead, the job slot, timing marks and budget specs. Then RFC-002, aimed offers.</p>
+      <p class="film"><b>Films:</b> the EVOLVE film's generation (cut today) becomes something to show rather than hide.</p></div></div>
+    <div class="wave"><div class="tag"><b>2</b><span>One instrument</span><span class="num">25 findings</span></div>
+      <div class="content"><p>The six contracts: the words, the colours, one undo, the message channels, the keymap with MIDI rows, and stability (the bank, row clicks that stay, the rack's camera).</p>
+      <p class="film"><b>Films:</b> touches every film's picture and several lines. The natural point to record the whole set once more.</p></div></div>
+    <div class="wave"><div class="tag"><b>3</b><span>Each view, finished</span><span class="num">43 findings</span></div>
+      <div class="content"><p>PERFORM's B group and Blend strip; PATCH's bypass latch, set aside, keep as new and blind comparison; EVOLVE's receipt, generation tray and cheaper listening; TASTE's stable styles, chip focus, maybe-finder and TRUST in words; the menus, help and booth.</p></div></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="hold">
+  <header><div class="eyebrow">Holding the line</div><h2>Measured, so it stays fixed</h2></header>
+  <ul>
+    <li><b>Timing marks in the app</b> (<code>performance.mark</code>) at boot start, veil down, first sound, pool full, PERFORM wired, patch opened. The film recorder writes them into every rehearsal sidecar, so each film rehearsal is also a performance run.</li>
+    <li><b>Budget specs</b> on the CI machine: playable ≤ 5 s with a warm cache; a revisited patch wired ≤ 0.5 s (≤ 1.5 s after reload; today's spec allows 5 s and 8 s); a pick deals ≤ 0.3 s; duel ▶ ≤ 0.15 s; a gesture during any long job answered ≤ 1 s.</li>
+    <li><b>Truth specs</b> for each Wave 0 fix: knob readout equals its value; an empty socket is silent; "it just learned" never precedes <code>fitted</code>; ⌘Z never changes an unseen patch.</li>
+    <li><b>A banned-words check</b> in <code>make dev-check</code> for UI copy and the guide: vote, bench, workbench, lens, retired, evicted, HELD, check duel.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="keep">
+  <header><div class="eyebrow">Keep</div><h2>What already works, and must survive the fixes</h2></header>
+  <div class="twocol">
+    <ul>
+      <li><b>Sound first.</b> Knobs write to the voices before the engine hears of it; swaps are click-free; the ordered bench lane with coalescing.</li>
+      <li><b>Instant where it's cached:</b> spare offers (0.01 s), revisited wirings (0.12 s), the deal before the fit (17 ms), prefetched duel renders (30–40 ms).</li>
+      <li><b>The held vote:</b> an undo window that holds the observation back rather than logging and compensating.</li>
+      <li><b>The toast lane's rules</b>: one lane, replace keys, urgent refusals, windows that start when visible.</li>
+      <li><b>Hands on always wins</b> over Wander, and nothing in PERFORM is modal.</li>
+    </ul>
+    <ul>
+      <li><b>The rack reads as hardware</b>: units on every knob, green audio and amber modulation cables, arm-and-place with named sockets, wrap-onto-occupied.</li>
+      <li><b>TRUST's method</b>: out-of-sample forecasts, the separate fair-test line, Wilson whiskers. Change its words, never its maths.</li>
+      <li><b>Honest refusals</b>: "Nothing to breed toward yet", disabled pads that say what they wait for, search controls that say they're asking.</li>
+      <li><b>The map keeps its orientation</b>, and <code>taste-geom.js</code> stays pure and tested.</li>
+      <li><b>Gates that destroy nothing</b>, the MIDI indicator's four states, the film chip's once-per-view rule.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="index">
+  <header><div class="eyebrow">Index</div><h2>All 119 findings</h2>
+  <p class="dim">Each finding's evidence, the player's experience and the full recommendation are in the six review reports, committed with this spec under <code>docs/notes/interaction-2026-09/</code>.</p></header>
+  <div class="filters">
+    <div class="seg" role="group" aria-label="Area" id="f-view"></div>
+    <div class="seg" role="group" aria-label="Severity" id="f-sev"></div>
+    <div class="seg" role="group" aria-label="Wave" id="f-wave"></div>
+    <input type="search" id="q" placeholder="Search findings" aria-label="Search findings">
+    <span id="count" aria-live="polite"></span>
+  </div>
+  <div class="table"><table>
+    <thead><tr><th>ID</th><th>Area</th><th>Sev</th><th>Wave</th><th>Finding</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+</section>
+
+<footer>
+  <p>Evidence: rehearsal stills and timing sidecars in <code>www/video/out/*/dry/</code>, the films tour, view-perform and view-patch, and the code at commit <code>0117519</code>. Timings are from a quiet machine; engine-bound times varied 1.5–1.9× between runs of the same shot, so each figure is quoted with its source.</p>
+  <p>Reviews: PERFORM (PF), PATCH (PA), EVOLVE (EV), TASTE (TA), shell and consistency (SH, CO), responsiveness (RT).</p>
+</footer>
+</main>
+</div>
+
+<script>
+const FINDINGS = [{"id": "PF-01", "view": "PERFORM", "sev": "P0", "title": "The half-closed ring is drawn on the closed side, in near-invisible grey", "wave": 0}, {"id": "PF-02", "view": "PERFORM", "sev": "P0", "title": "The half-closed caption asserts a position that the amber dot contradicts", "wave": 0}, {"id": "PF-03", "view": "PERFORM", "sev": "P1", "title": "First steps point newcomers at the controls that cannot turn", "wave": 0}, {"id": "PF-04", "view": "PERFORM", "sev": "P1", "title": "\"Not measured yet\" wears the search-control look, and turning such a control acts on it", "wave": 0}, {"id": "PF-05", "view": "PERFORM", "sev": "P1", "title": "The status line carries too many jobs, in the least-read place on the screen", "wave": 2}, {"id": "PF-06", "view": "PERFORM", "sev": "P1", "title": "A new patch leaves every control dead for 11–16 s with no progress shown", "wave": 1}, {"id": "PF-07", "view": "PERFORM", "sev": "P1", "title": "Offer-as-pass: a hidden verdict with no undo, an unheard B silently discarded, and a 10.9 s wait for the next one", "wave": 1}, {"id": "PF-08", "view": "PERFORM", "sev": "P1", "title": "B's controls are spread over three rows, in the wrong order, and Blend looks like a timbre control", "wave": 3}, {"id": "PF-09", "view": "PERFORM", "sev": "P1", "title": "Pads have no keyboard or MIDI binding, and a keyboard Peek can never count as heard", "wave": 2}, {"id": "PF-10", "view": "PERFORM", "sev": "P1", "title": "The XY axis and touch <select>s swallow the note keys, and a letter changes the select", "wave": 0}, {"id": "PF-11", "view": "PERFORM", "sev": "P1", "title": "Dials re-centre under the player, and a MIDI pot goes dead after each re-centre", "wave": 3}, {"id": "PF-12", "view": "PERFORM", "sev": "P1", "title": "Wander: a long silent first move, \"paused\" as you turn it, unmarked zones, and \"offer\" used twice", "wave": 1}, {"id": "PF-13", "view": "PERFORM", "sev": "P1", "title": "Re-checks after Keep and after a glide hold the engine for 10–16 s in a foreground lane", "wave": 0}, {"id": "PF-14", "view": "PERFORM", "sev": "P2", "title": "A graft rebuilds the patch mid-phrase, kills the controls, then moves the sound up to 30 s later", "wave": 1}, {"id": "PF-15", "view": "PERFORM", "sev": "P2", "title": "Whether B has been \"heard\", and so whether an answer counts, is invisible", "wave": 3}, {"id": "PF-16", "view": "PERFORM", "sev": "P2", "title": "After a pass, Blend stays past half over an empty B, and the next offer arrives at that level", "wave": 0}, {"id": "PF-17", "view": "PERFORM", "sev": "P2", "title": "A search control has a silent dead zone below 30%", "wave": 0}, {"id": "PF-18", "view": "PERFORM", "sev": "P2", "title": "PERFORM's toasts ignore the lane's rules, and the Take window can close while its button is still showing", "wave": 0}, {"id": "PF-19", "view": "PERFORM", "sev": "P2", "title": "Pressure and the mod wheel move the sound but not the dial", "wave": 3}, {"id": "PF-20", "view": "PERFORM", "sev": "P2", "title": "Hood rows look like meters but are full-width links out of PERFORM", "wave": 3}, {"id": "PF-21", "view": "PERFORM", "sev": "P3", "title": "Words and labels that disagree with the app", "wave": 0}, {"id": "PA-01", "view": "PATCH", "sev": "P0", "title": "A turned knob's readout reverts to the old value, in amber", "wave": 0}, {"id": "PA-02", "view": "PATCH", "sev": "P0", "title": "An \"EMPTY\" socket plays a sawtooth", "wave": 0}, {"id": "PA-03", "view": "PATCH", "sev": "P1", "title": "\"Bypass\" takes the module out instead of switching it off in place", "wave": 3}, {"id": "PA-04", "view": "PATCH", "sev": "P1", "title": "HELD: the word, the gesture and the place", "wave": 3}, {"id": "PA-05", "view": "PATCH", "sev": "P1", "title": "Commit doesn't keep your version: it renames it and files it where it can be evicted", "wave": 3}, {"id": "PA-06", "view": "PATCH", "sev": "P1", "title": "The commit duel: Esc commits, the \"blind\" test is labelled, and one tick silently changes every later commit", "wave": 0}, {"id": "PA-07", "view": "PATCH", "sev": "P1", "title": "⚡ evolve from this: 23 s with no progress or cancel, and the engine is deaf meanwhile", "wave": 1}, {"id": "PA-08", "view": "PATCH", "sev": "P1", "title": "Amber means five things", "wave": 2}, {"id": "PA-09", "view": "PATCH", "sev": "P2", "title": "The header offers two \"breed\" actions in amber, and ⚡'s ceiling is 1,500 px away", "wave": 3}, {"id": "PA-10", "view": "PATCH", "sev": "P2", "title": "The model's guess mixes scales and flickers on every turn", "wave": 2}, {"id": "PA-11", "view": "PATCH", "sev": "P2", "title": "Placement says one thing three times, in statistics", "wave": 3}, {"id": "PA-12", "view": "PATCH", "sev": "P2", "title": "The placement preview is hard to find and heard away from the hands", "wave": 3}, {"id": "PA-13", "view": "PATCH", "sev": "P2", "title": "The camera re-fits after every structural edit", "wave": 3}, {"id": "PA-14", "view": "PATCH", "sev": "P2", "title": "Structural edits have no ≤100 ms acknowledgement", "wave": 1}, {"id": "PA-15", "view": "PATCH", "sev": "P2", "title": "At 1280 wide, knob names disappear", "wave": 3}, {"id": "PA-16", "view": "PATCH", "sev": "P2", "title": "Steps: no playhead, colliding readouts, tiny bars", "wave": 3}, {"id": "PA-17", "view": "PATCH", "sev": "P2", "title": "The spec strip is a permanent instruction row", "wave": 3}, {"id": "PA-18", "view": "PATCH", "sev": "P2", "title": "Locks are invisible until hovered, and counted in addresses", "wave": 3}, {"id": "PA-19", "view": "PATCH", "sev": "P2", "title": "Commit's receipt queues behind stale edit news", "wave": 0}, {"id": "PA-20", "view": "PATCH", "sev": "P3", "title": "Knob gestures missing: reset, wheel, MIDI", "wave": 3}, {"id": "PA-21", "view": "PATCH", "sev": "P3", "title": "The IN THIS PATCH chips don't point at their plate", "wave": 3}, {"id": "PA-22", "view": "PATCH", "sev": "P3", "title": "The toolbar has a hidden 100 px gap, and its layout button names the state", "wave": 3}, {"id": "EV-01", "view": "EVOLVE", "sev": "P0", "title": "During a generation the duel stops being dealt, and a skip leaves a pair whose buttons do nothing", "wave": 0}, {"id": "EV-02", "view": "EVOLVE", "sev": "P0", "title": "⌘Z in EVOLVE undoes an invisible PATCH edit whenever no vote is pending, and the sixth pick is never undoable", "wave": 0}, {"id": "EV-03", "view": "EVOLVE", "sev": "P1", "title": "\"● it just learned\" is shown when the refit is sent; during a generation that is minutes before it happens", "wave": 0}, {"id": "EV-04", "view": "EVOLVE", "sev": "P1", "title": "The forecast, the payoff of every pick, is 10 px, unnamed, on the wrong pair, and its bands are uneven", "wave": 3}, {"id": "EV-05", "view": "EVOLVE", "sev": "P1", "title": "The generation wait is unshaped: a 4 s toast, then a dim 10-seed counter for minutes; no ETA, no cancel, no children until the end", "wave": 1}, {"id": "EV-06", "view": "EVOLVE", "sev": "P1", "title": "Bank rows re-sort under the pointer after a star or a save", "wave": 2}, {"id": "EV-07", "view": "EVOLVE", "sev": "P1", "title": "What is protected and what may be replaced is not visible, and losses are counted but never named or reversible", "wave": 2}, {"id": "EV-08", "view": "EVOLVE", "sev": "P1", "title": "Clicking a card silently changes what is on the keys and the bench, and a pick never gives it back; row click and ⌖ BENCH leave EVOLVE", "wave": 2}, {"id": "EV-09", "view": "EVOLVE", "sev": "P1", "title": "The listening cost of a duel is 10 s of serial audio, with no instant A/B, no skip key and no hands-free mode", "wave": 1}, {"id": "EV-10", "view": "EVOLVE", "sev": "P1", "title": "After a generation, \"hear the children\" has no path in EVOLVE", "wave": 3}, {"id": "EV-11", "view": "EVOLVE", "sev": "P2", "title": "The lineage strip speaks ids, shows 3 of 10 children, and its sparkline is not what the guide says", "wave": 0}, {"id": "EV-12", "view": "EVOLVE", "sev": "P2", "title": "\"Pick\" means two things, and one concept has three names", "wave": 2}, {"id": "EV-13", "view": "EVOLVE", "sev": "P2", "title": "Keyboard and MIDI parity in EVOLVE", "wave": 2}, {"id": "EV-14", "view": "EVOLVE", "sev": "P2", "title": "A cut hides the row but leaves the patch in the pool, where it can be dealt again; the cut toast shows an id", "wave": 0}, {"id": "EV-15", "view": "EVOLVE", "sev": "P2", "title": "The toast lane sits on B's waveform tail", "wave": 3}, {"id": "EV-16", "view": "EVOLVE", "sev": "P2", "title": "The bank ▶ gives no sign while it waits", "wave": 1}, {"id": "EV-17", "view": "EVOLVE", "sev": "P2", "title": "A rating's effect is unexplained, and can look backwards", "wave": 3}, {"id": "EV-18", "view": "EVOLVE", "sev": "P3", "title": "Style badges on the cards are unexplained and rename themselves on the same patch", "wave": 3}, {"id": "EV-19", "view": "EVOLVE", "sev": "P3", "title": "Hierarchy: the scopes take ≈ 60% of the view while the teaching surface is 10 px", "wave": 3}, {"id": "EV-20", "view": "EVOLVE", "sev": "P3", "title": "EVOLVE POOL looks ready before it can do anything", "wave": 3}, {"id": "TA1", "view": "TASTE", "sev": "P1", "title": "Styles and their auto-names churn at every refit", "wave": 3}, {"id": "TA2", "view": "TASTE", "sev": "P1", "title": "Guesses are drawn as settled pulls, and the app contradicts its guide", "wave": 0}, {"id": "TA3", "view": "TASTE", "sev": "P1", "title": "Map size is relative, and the tooltip hides uncertainty", "wave": 3}, {"id": "TA4", "view": "TASTE", "sev": "P1", "title": "The map reports but does not invite; \"maybe\" exists only in the film", "wave": 3}, {"id": "TA5", "view": "TASTE", "sev": "P1", "title": "\"see what changed ▸\" lands on an unchanged map, then it jumps without explanation", "wave": 3}, {"id": "TA6", "view": "TASTE", "sev": "P1", "title": "Five shades of amber cannot tell styles apart", "wave": 3}, {"id": "TA7", "view": "TASTE", "sev": "P2", "title": "The style chips don't behave like the rest of the app's controls", "wave": 3}, {"id": "TA8", "view": "TASTE", "sev": "P2", "title": "TRUST speaks statistics, not music", "wave": 3}, {"id": "TA9", "view": "TASTE", "sev": "P2", "title": "One concept has many words", "wave": 2}, {"id": "TA10", "view": "TASTE", "sev": "P2", "title": "Early and empty states count the wrong thing", "wave": 0}, {"id": "TA11", "view": "TASTE", "sev": "P2", "title": "Opening a dot gives a premature toast, then a second one, and they go stale", "wave": 0}, {"id": "TA12", "view": "TASTE", "sev": "P2", "title": "The keyboard walk is one-dimensional and silent", "wave": 3}, {"id": "TA13", "view": "TASTE", "sev": "P2", "title": "Hearing works differently on each surface, and DIRECTIONS has no ear", "wave": 3}, {"id": "TA14", "view": "TASTE", "sev": "P2", "title": "Reset is less safe than Load, and Save is silent", "wave": 0}, {"id": "TA15", "view": "TASTE", "sev": "P2", "title": "The map footer and caption are jargon, and the guide's claim about them is off", "wave": 0}, {"id": "TA16", "view": "TASTE", "sev": "P2", "title": "STYLES is sparse and inert", "wave": 3}, {"id": "TA17", "view": "TASTE", "sev": "P2", "title": "The idle threshold differs in each place", "wave": 2}, {"id": "TA18", "view": "TASTE", "sev": "P3", "title": "The menubar trust readout points to TRUST but is not a control", "wave": 3}, {"id": "TA19", "view": "TASTE", "sev": "P3", "title": "History ghosts look like sure-and-disliked dots", "wave": 3}, {"id": "TA20", "view": "TASTE", "sev": "P3", "title": "Canvas text is too small for its job", "wave": 3}, {"id": "CO1", "view": "Shell", "sev": "P1", "title": "\"pick\" has five names, and PICKS counts things the meter doesn't", "wave": 2}, {"id": "SH1", "view": "Shell", "sev": "P1", "title": "Clicking a bank row always switches to PATCH", "wave": 2}, {"id": "CO2", "view": "Shell", "sev": "P1", "title": "⌘Z does a different thing in every view, and sometimes something invisible", "wave": 2}, {"id": "SH2", "view": "Shell", "sev": "P1", "title": "After clicking a view tab, EVOLVE's ←/→ changes the view instead of voting", "wave": 0}, {"id": "SH3", "view": "Shell", "sev": "P1", "title": "Long jobs have no home in the shell, and the one lamp means three things", "wave": 1}, {"id": "CO3", "view": "Shell", "sev": "P1", "title": "Amber and green carry more meanings than the colour law allows", "wave": 2}, {"id": "SH4", "view": "Shell", "sev": "P2", "title": "First run: PATCH flashes first, the keys play behind the modal, and PERFORM measures for ~10 s", "wave": 1}, {"id": "CO4", "view": "Shell", "sev": "P2", "title": "\"Hear this patch\" has seven forms, and two of them do something else", "wave": 2}, {"id": "CO5", "view": "Shell", "sev": "P2", "title": "Save, keep, commit, take and export overlap", "wave": 2}, {"id": "SH5", "view": "Shell", "sev": "P2", "title": "\"X on the bench\" toasts on every open, including right after the warm start's result", "wave": 0}, {"id": "SH6", "view": "Shell", "sev": "P2", "title": "The bank re-sorts under the player, and the live row scrolls away", "wave": 2}, {"id": "CO6", "view": "Shell", "sev": "P2", "title": "\"The patch in your hands\" has many names, ids leak, and one prediction has two formats", "wave": 2}, {"id": "CO7", "view": "Shell", "sev": "P2", "title": "Bank, pool and evolution are one concept with three names, and eviction has five verbs", "wave": 2}, {"id": "CO8", "view": "Shell", "sev": "P2", "title": "Button families and toggles don't follow a rule", "wave": 2}, {"id": "CO9", "view": "Shell", "sev": "P2", "title": "Fourteen message channels, with no rule for which carries what", "wave": 2}, {"id": "CO10", "view": "Shell", "sev": "P2", "title": "Focus, cursor, live and picked share one green, and the picked state has two colours", "wave": 2}, {"id": "CO11", "view": "Shell", "sev": "P2", "title": "Keyboard: conflicts, dead keys and gaps, discoverable only in help", "wave": 2}, {"id": "SH7", "view": "Shell", "sev": "P2", "title": "Booth mode leaves the visitor every exit it hides elsewhere", "wave": 3}, {"id": "SH8", "view": "Shell", "sev": "P2", "title": "A bank row doesn't say \"saved\" at a glance, and \"?\" means two things", "wave": 2}, {"id": "SH9", "view": "Shell", "sev": "P2", "title": "Tablets in portrait slip between the two gates", "wave": 0}, {"id": "SH10", "view": "Shell", "sev": "P3", "title": "The ⋯ menu mixes four kinds of item and hides state in its labels", "wave": 3}, {"id": "SH11", "view": "Shell", "sev": "P3", "title": "The help card is one long PATCH-heavy page under three names", "wave": 3}, {"id": "SH12", "view": "Shell", "sev": "P3", "title": "Dock details that move or mislead", "wave": 3}, {"id": "RT1", "view": "Speed", "sev": "P0", "title": "EVOLVE POOL parks the rest of the instrument for 2–3 minutes, contrary to the guide", "wave": 1}, {"id": "RT2", "view": "Speed", "sev": "P0", "title": "⚡ evolve from this is one 23 s uninterruptible call that blocks everything", "wave": 1}, {"id": "RT3", "view": "Speed", "sev": "P1", "title": "PERFORM's first measurement: 11–16 s of six dead controls, including a newcomer's first minute", "wave": 1}, {"id": "RT4", "view": "Speed", "sev": "P1", "title": "Offer on demand takes 4–11 s, and \"again\" always pays in full", "wave": 1}, {"id": "RT5", "view": "Speed", "sev": "P1", "title": "Six uninterruptible engine calls block now; the queued gesture is never told why", "wave": 1}, {"id": "RT6", "view": "Speed", "sev": "P1", "title": "Wander's drift does nothing for 21 s after you turn into it", "wave": 1}, {"id": "RT7", "view": "Speed", "sev": "P1", "title": "After a drift or roam, PERFORM says \"measuring…\" for ≥ 10 s while the dials work, and the re-measure jumps the queue", "wave": 0}, {"id": "RT8", "view": "Speed", "sev": "P2", "title": "Structural edits redraw the rack only after a phrase render (0.4–1.0 s), and the guess after 1–2 s", "wave": 1}, {"id": "RT9", "view": "Speed", "sev": "P2", "title": "Long work has no shared progress, ETA or cancel, and the lamp means three different things", "wave": 1}, {"id": "RT10", "view": "Speed", "sev": "P2", "title": "The sixth-pick refit blocks the worker 0.6–2.4 s now, about 4 s when mature", "wave": 1}, {"id": "RT11", "view": "Speed", "sev": "P2", "title": "TASTE map and bank opens: 0.3–1.1 s to sound, because opening is a render", "wave": 1}, {"id": "RT12", "view": "Speed", "sev": "P2", "title": "Boot time is not measured anywhere, and the tests' time budgets are too loose to hold the promises", "wave": 1}, {"id": "RT13", "view": "Speed", "sev": "P3", "title": "Stale words about timing mislead both players and engineers", "wave": 0}];
+
+/* ---------- time budget chart ---------- */
+const TIMES = [
+  ["Knob turn → sound", 0.016, 0.03, "same frame"],
+  ["Duel ▶ → sound", 0.035, 0.1, "30–40 ms"],
+  ["Pick → next pair", 0.02, 0.3, "17 ms (code), ≤ 0.41 s probed"],
+  ["⌘Z → restored", 0.29, 0.3, "0.29 s"],
+  ["Bank row → open", 0.34, 0.5, "0.34 s, but it leaves the view"],
+  ["Structural edit → rack", 0.7, 0.1, "0.46–1.0 s"],
+  ["Warm-start ▶ → sound", 0.83, 0.3, "0.83 s"],
+  ["Map dot → sound", 1.13, 0.15, "0.32–1.13 s"],
+  ["Refit (58 picks)", 2.3, 3, "2.1–2.4 s"],
+  ["Search control → offer", 4.3, 3, "4.3 s"],
+  ["Offer again (no spare)", 10.9, 0.3, "10.9 s; first offer 0.01 s"],
+  ["New patch → controls", 11.8, 3, "11.8 s (16.3 under load)"],
+  ["Pick mid-generation → pair", 19, 0.3, "up to one seed, ≈19 s"],
+  ["Wander → first drift", 21.6, 6, "20.5–22.2 s"],
+  ["⚡ evolve from this", 23, 10, "22.9 s, engine blocked"],
+  ["EVOLVE POOL", 191, 30, "103–193 s over five runs"],
+];
+function drawChart() {
+  const svg = document.getElementById("chart");
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 900, L = 210, R = 150, T = 36, row = 36;
+  const H = T + TIMES.length * row + 10;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const lo = Math.log10(0.01), hi = Math.log10(300);
+  const x = s => L + (Math.log10(s) - lo) / (hi - lo) * (W - L - R);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const el = (tag, attrs, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; svg.appendChild(e); return e; };
+  [[0.01,"10 ms"],[0.1,"100 ms"],[1,"1 s"],[10,"10 s"],[100,"100 s"]].forEach(([s, lab]) => {
+    el("line", { x1: x(s), x2: x(s), y1: T - 8, y2: H - 6, stroke: css("--hairline"), "stroke-width": 1 });
+    el("text", { x: x(s), y: T - 16, fill: css("--silk-mute"), "font-family": "IBM Plex Mono, monospace", "font-size": 12, "text-anchor": "middle" }, lab);
+  });
+  TIMES.forEach(([name, m, target, note], i) => {
+    const y = T + i * row + 8;
+    const ratio = m / target;
+    const col = ratio <= 1 ? css("--silk-dim") : ratio <= 3 ? css("--phos-b") : css("--led-red");
+    el("text", { x: L - 12, y: y + 12, fill: css("--silk"), "font-family": "Jost, sans-serif", "font-size": 14, "text-anchor": "end" }, name);
+    el("rect", { x: L, y: y + 2, width: Math.max(2, x(m) - L), height: 14, rx: 2, fill: col, opacity: ratio <= 1 ? 0.7 : 1 });
+    el("line", { x1: x(target), x2: x(target), y1: y - 3, y2: y + 21, stroke: css("--silk"), "stroke-width": 2 });
+    el("text", { x: x(m) + 8, y: y + 13, fill: css("--silk-dim"), "font-family": "IBM Plex Mono, monospace", "font-size": 12 }, note);
+  });
+}
+
+/* ---------- knob mocks ---------- */
+function arcPath(cx, cy, r, a0, a1) {
+  const p = a => [cx + r * Math.sin(a * Math.PI / 180), cy - r * Math.cos(a * Math.PI / 180)];
+  const [x0, y0] = p(a0), [x1, y1] = p(a1);
+  return `M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 ${Math.abs(a1 - a0) > 180 ? 1 : 0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+}
+function knobSVG(kind, value) {
+  const c = 60, r = 44, silk = "var(--silk)", mute = "var(--silk-mute)", amber = "var(--phos-b)";
+  let rings = "";
+  if (kind === "open") rings = `<path d="${arcPath(c,c,r,-135,135)}" stroke="${mute}" stroke-width="3" fill="none"/>`;
+  if (kind === "half") rings = `<path d="${arcPath(c,c,r,-135,0)}" stroke="${mute}" stroke-width="1" stroke-dasharray="1 4" fill="none"/><path d="${arcPath(c,c,r,0,135)}" stroke="${silk}" stroke-width="3" fill="none"/><line x1="${c}" y1="${c-r-5}" x2="${c}" y2="${c-r+5}" stroke="${silk}" stroke-width="2"/>`;
+  if (kind === "search") rings = `<path d="${arcPath(c,c,r,-135,135)}" stroke="${amber}" stroke-width="2" stroke-dasharray="5 5" fill="none"/>`;
+  if (kind === "listening") rings = `<path d="${arcPath(c,c,r,-135,135)}" stroke="${mute}" stroke-width="1" fill="none" opacity=".6"/>`;
+  const a = value * 135;
+  const px = c + 30 * Math.sin(a * Math.PI / 180), py = c - 30 * Math.cos(a * Math.PI / 180);
+  const pointer = kind === "listening" ? mute : silk;
+  const dot = kind === "half" ? `<circle cx="${(c + r * Math.sin(40*Math.PI/180)).toFixed(1)}" cy="${(c - r * Math.cos(40*Math.PI/180)).toFixed(1)}" r="3.5" fill="${amber}"/>` : "";
+  const val = kind === "open" && value ? `<path d="${arcPath(c,c,r,0,a)}" stroke="var(--phos-a)" stroke-width="3" fill="none"/>` : "";
+  return `<svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">${rings}${val}${dot}<circle cx="${c}" cy="${c}" r="34" fill="#22262d" stroke="#0a0b0d"/><line x1="${c}" y1="${c}" x2="${px.toFixed(1)}" y2="${py.toFixed(1)}" stroke="${pointer}" stroke-width="3" stroke-linecap="round"/></svg>`;
+}
+function drawKnobs() {
+  const K = [
+    ["open", 0.35, "Bright", "cutoff · drive", "Turns both ways. Green is how far you've moved it."],
+    ["half", 0, "Motion", "turns toward restless only", "One side can't move this patch. The ring, the stop tick and the caption agree."],
+    ["search", 0, "Grit", "turn to ask for it", "No knob here makes it rough. Turning asks for an offer. Amber: the model."],
+    ["listening", 0, "Space", "listening…", "Not measured yet. Does nothing, looks like nothing. Never amber."],
+  ];
+  document.getElementById("knobs").innerHTML = K.map(([k, v, n, s, w]) =>
+    `<div class="knob">${knobSVG(k, v)}<div class="name" style="color:${k === "search" ? "var(--phos-b)" : k === "listening" ? "var(--silk-mute)" : "var(--silk)"}">${n}</div><div class="sub">${s}</div><div class="what">${w}</div></div>`).join("");
+}
+
+/* ---------- three-state bars ---------- */
+function drawBars() {
+  const rows = [
+    ["brightness", 0.42, 0.14, "settled"],
+    ["chorus & sweeps?", 0.16, 0.23, "a guess"],
+    ["loudness?", -0.05, 0.31, "a guess"],
+    ["noise", -0.28, 0.12, "settled"],
+  ];
+  const w = 300, mid = w / 2, s = 250;
+  document.getElementById("bars").innerHTML = rows.map(([lab, m, sd, kind]) => {
+    const x0 = mid + Math.min(0, m) * s, bw = Math.abs(m) * s;
+    const settled = kind === "settled";
+    const bar = settled
+      ? `<rect x="${x0}" y="5" width="${bw}" height="8" rx="1" fill="var(--phos-b)"/>`
+      : `<rect x="${x0 + .5}" y="5.5" width="${Math.max(1, bw - 1)}" height="7" rx="1" fill="none" stroke="var(--phos-b)" stroke-opacity=".55"/>`;
+    const lo = Math.max(2, mid + (m - 1.96 * sd) * s), hi = Math.min(w - 2, mid + (m + 1.96 * sd) * s);
+    return `<div class="brow"><span class="lab">${lab}</span><svg viewBox="0 0 ${w} 18" preserveAspectRatio="none" aria-hidden="true"><line x1="${mid}" x2="${mid}" y1="0" y2="18" stroke="var(--hairline)"/>${bar}<line x1="${lo}" x2="${hi}" y1="9" y2="9" stroke="var(--silk)" stroke-width="1"/><line x1="${lo}" x2="${lo}" y1="5" y2="13" stroke="var(--silk)"/><line x1="${hi}" x2="${hi}" y1="5" y2="13" stroke="var(--silk)"/></svg><span class="note">${kind}</span></div>`;
+  }).join("");
+}
+
+/* ---------- generation mock + job slot ---------- */
+function drawGen() {
+  const names = ["Warm Drone 2", "Soft Pad ✎", "Glass Rain 3", "Pump Room 2"];
+  const slots = document.getElementById("slots");
+  slots.innerHTML = Array.from({ length: 10 }, (_, i) =>
+    i < 4 ? `<div class="slot done">${names[i]}</div>` : i === 4 ? `<div class="slot now">growing…</div>` : `<div class="slot">${i + 1}</div>`).join("");
+  let stopped = false;
+  const btn = document.getElementById("jobstop");
+  btn.addEventListener("click", () => {
+    stopped = !stopped;
+    document.getElementById("jobtext").textContent = stopped ? "⚡ stopping after this one · 3 kept" : "⚡ breeding 3/10 · about 40 s";
+    btn.textContent = stopped ? "resume" : "stop";
+    document.getElementById("jobfill").style.width = stopped ? "40%" : "30%";
+  });
+}
+
+/* ---------- index ---------- */
+function drawIndex() {
+  const state = { view: "all", sev: "all", wave: "all", q: "" };
+  const views = ["all", "PERFORM", "PATCH", "EVOLVE", "TASTE", "Shell", "Speed"];
+  const sevs = ["all", "P0", "P1", "P2", "P3"];
+  const waves = ["all", "0", "1", "2", "3"];
+  const seg = (id, key, opts, label) => {
+    const g = document.getElementById(id);
+    g.innerHTML = opts.map(o => `<button type="button" data-v="${o}" aria-pressed="${o === "all"}">${o === "all" ? label : (key === "wave" ? "wave " + o : o)}</button>`).join("");
+    g.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      state[key] = b.dataset.v;
+      g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      render();
+    });
+  };
+  seg("f-view", "view", views, "every area");
+  seg("f-sev", "sev", sevs, "any severity");
+  seg("f-wave", "wave", waves, "any wave");
+  const q = document.getElementById("q");
+  q.addEventListener("input", () => { state.q = q.value.trim().toLowerCase(); render(); });
+  const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function render() {
+    const rows = FINDINGS.filter(f =>
+      (state.view === "all" || f.view === state.view) &&
+      (state.sev === "all" || f.sev === state.sev) &&
+      (state.wave === "all" || String(f.wave) === state.wave) &&
+      (!state.q || (f.id + " " + f.title).toLowerCase().includes(state.q)));
+    document.getElementById("rows").innerHTML = rows.map(f =>
+      `<tr id="f-${f.id}"><td class="mono">${f.id}</td><td>${f.view}</td><td><span class="sev ${f.sev}">${f.sev}</span></td><td class="num">${f.wave}</td><td>${esc(f.title)}</td></tr>`).join("");
+    document.getElementById("count").textContent = `${rows.length} of ${FINDINGS.length}`;
+  }
+  render();
+  // a link to #f-XX should always land, whatever the filters say
+  document.addEventListener("click", e => {
+    const a = e.target.closest('a[href^="#f-"]'); if (!a) return;
+    state.view = state.sev = state.wave = "all"; state.q = ""; q.value = "";
+    document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === "all"));
+    render();
+    const row = document.getElementById(a.getAttribute("href").slice(1));
+    if (row) { e.preventDefault(); row.scrollIntoView({ block: "center" }); row.style.background = "var(--panel-hi)"; setTimeout(() => row.style.background = "", 1600); }
+  });
+}
+
+drawChart(); drawKnobs(); drawBars(); drawGen(); drawIndex();
+</script>

@@ -75,6 +75,9 @@ plugins work on it.
   design review that set the direction for PERFORM and the four views
 - [`ui-hierarchy.md`](notes/ui-hierarchy.md): the working spec for the layout
   pass that added PERFORM
+- [`interaction-2026-09/`](notes/interaction-2026-09/README.md): six
+  interaction reviews (119 findings, measured) and the spec that combines them:
+  rules, time budget, contracts for words, colour, undo, messages and keys
 - [`plugin-lab/`](notes/plugin-lab/README.md): named controls measured on a
   third-party synth, a feasibility study for a plugin
 
