@@ -8,7 +8,7 @@ name: Browser suite
 # PATCH editing, PERFORM's controls and offers, the engine answering the player
 # first, booth mode, the film chip (docs/architecture/testing.md lists what
 # each pins). Together they take about twenty minutes in one job, so they run
-# here, split across three runners, rather than in the required `CI` check:
+# here, split across five runners, rather than in the required `CI` check:
 #
 # - on a PR that touches the app, its tests or the engine, as a report that
 #   does not block merging (make it a required check in the ruleset once it
@@ -37,15 +37,16 @@ concurrency:
 
 jobs:
   browser:
-    # Three runners, each a third of the specs: about seven minutes instead of
-    # twenty for the whole suite in one job.
+    # Five runners, each a fifth of the tests (split by test, not by file:
+    # `fullyParallel` in playwright.config.js), so no runner draws all the
+    # slow PERFORM specs.
     name: Every browser spec (${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/3", "2/3", "3/3"]
+        shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
     steps:
       - uses: actions/checkout@v7
 
@@ -53,9 +54,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # The nightly run on main saves the engine's build; every PR run starts
+      # from it instead of compiling the crates from scratch.
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: false
+          save-if: ${{ github.ref == 'refs/heads/main' && strategy.job-index == 0 }}
 
       - uses: taiki-e/install-action@wasm-pack
 
