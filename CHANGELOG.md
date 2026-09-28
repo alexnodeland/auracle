@@ -20,8 +20,11 @@ changelog that edits its own past is not a record.
   background (*re-checking*) and the controls keep working meanwhile. While
   the warm start is open, its nine cards are measured against your session
   too, once the pool has filled. `make perform-wirings` regenerates the file,
-  and `make test` fails when a preset changes without it
-  (`shipped_preset_wirings_are_current`, `budgets.spec.js`).
+  and `make test` fails when it is stale: a preset changed, or what the
+  measurement is made of (the phrase, φ, loudness, the DSP, the standard
+  pool, PERFORM itself), re-measured on a sample of the file
+  (`shipped_preset_wirings_are_current`,
+  `shipped_preset_wirings_measure_the_same_today`, `budgets.spec.js`).
 - **A preset clicked in the bank opens with one render instead of two.** Its
   insert used to throw its audio away and the bench then rendered the same
   phrase again; the insert now keeps it, as the warm start's ▶ already did,

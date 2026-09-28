@@ -25,7 +25,11 @@ Every candidate is rendered on one fixed phrase and measured. The measurement,
   1. runs `make revalidate` before and after, and diffs the tables;
   2. bumps the stimulus tag or migrates (`auracle-session/src/migrate.rs`),
      because old logs hold raw φ from the old definition;
-  3. updates the reference pages that quote the feature list.
+  3. updates the reference pages that quote the feature list;
+  4. runs `make perform-wirings` and commits `apps/web/perform-wirings.json`:
+     the preset wirings the app ships are measured in φ, and
+     `shipped_preset_wirings_measure_the_same_today` fails until they are
+     re-measured.
 - **Normalization is for φ; playback has its own level.** What the player
   hears is `auracle-wasm/src/level.rs`. Do not fix a loud patch by touching φ's
   normalization.

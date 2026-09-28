@@ -25,7 +25,7 @@ git diff --stat HEAD
 | --- | --- |
 | `crates/<crate>/**` | `cargo test -p <crate> --profile test-fast`, then `make lint` |
 | Rust used by the app (`auracle-wasm`, or anything it calls) | also `make wasm-check`, then `make wasm` before any browser test |
-| φ: phrase, features, normalization, vetting | `make revalidate` on both sides of the change, and diff the tables |
+| φ: phrase, features, normalization, vetting | `make revalidate` on both sides of the change, and diff the tables; then `make perform-wirings` and commit the file |
 | Search or refinement | `make search-check` (or `make climb` for a quick read) |
 | Taste model or MCMC budget | `make fit-bench`, `make closed-loop` |
 | `apps/web/*.js`, `style.css`, `index.html` | `make web-check`, then the browser specs for the behaviour (the `browser-test` skill) |

@@ -149,7 +149,9 @@ clippy: lint
 # So they live here, and the standing rule is: **anything that touches φ, the
 # grammar prior, the audition stimulus, the surrogate or the MH kernel runs
 # `make revalidate` on both sides of the change, and the paired table goes in
-# the PR.** These targets exist so that is a command rather than a memory.
+# the PR.** These targets exist so that is a command rather than a memory. A φ
+# change also re-measures the preset wirings the app ships
+# (`make perform-wirings`); `make test` fails until it has.
 #
 # `refinement_improves_pool` and `closed_loop_learns_synthetic_taste` are the
 # always-on floors under all of this and they DO run in `make check`. Floors,
@@ -191,7 +193,8 @@ closed-loop:
 
 ## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
 revalidate: phi-stats norm-peak climb search-check
-	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n\n'
+	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n'
+	@printf '  a φ change also owes `make perform-wirings` (the shipped preset wirings)\n\n'
 
 ## wasm: build the web app's engine into apps/web/pkg, and stamp the build
 wasm:
@@ -214,7 +217,9 @@ wasm-stamp:
 
 ## perform-wirings: measure PERFORM's wiring of every preset natively, the way
 ## the worker does, into apps/web/perform-wirings.json (a few minutes; commit
-## the file). `make test` fails while it is stale. THREADS=n to use n cores.
+## the file). `make test` fails while it is stale: a preset or a named input
+## changed, or a re-measured sample (φ, the standard pool, a wiring) differs.
+## Owed by every φ change. THREADS=n to use n cores.
 perform-wirings:
 	nice -n 10 $(CARGO) run -p auracle-wasm --example preset_wirings --release -- $(or $(THREADS),2) apps/web/perform-wirings.json
 

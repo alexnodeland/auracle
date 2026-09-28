@@ -15,8 +15,9 @@
 //! against the session's own model (stale-while-revalidate, `perform.js`).
 //!
 //! "The way the worker does" means through the same surface: a `WasmEngine`
-//! booted as the page boots one (a 40-patch pool, filled, then re-standardized
-//! as the worker does after its fill), the preset inserted with `load_preset`,
+//! booted as the page boots one (`shipped::boot`: a 40-patch pool, filled,
+//! then re-standardized as the worker does after its fill), the preset
+//! inserted with `load_preset`,
 //! its tree read back with `tree_json_of` — the text the app keys its cache
 //! by — and measured by `perform_wire` with no knob overrides, which is what
 //! the worker's planned measurement finishes as (pinned by
@@ -26,32 +27,18 @@
 //! own engine from that seed and so measures under the same standardizer: the
 //! thread count changes the time, never the numbers.
 //!
-//! The file records, per preset, a fingerprint of what it was measured from
-//! (`auracle_wasm::shipped`), and `tests/shipped_wirings.rs` fails when a
-//! preset or the measurement's inputs change without this being re-run.
+//! The file records, per preset, a fingerprint of what it was measured from,
+//! and in its header the fingerprint of the measurement's named inputs and the
+//! audio standardizer the engine booted with (`auracle_wasm::shipped`).
+//! `tests/shipped_wirings.rs` fails when a preset or those inputs change, and
+//! when a re-measured sample of the file (the standardizer, some presets' `z`,
+//! two presets' whole wiring) no longer comes out the same.
 
 use std::sync::Mutex;
 
 use auracle_features::PhraseSpec;
 use auracle_grammar::preset_bank;
-use auracle_wasm::shipped::{measurement_fingerprint, preset_source};
-use auracle_wasm::WasmEngine;
-
-const SEED: u64 = 20_260_928;
-const POOL: usize = 40;
-
-fn boot() -> WasmEngine {
-    let mut e = WasmEngine::new(SEED, POOL);
-    // The worker's serial fill, two draws a step, until the pool is full or the
-    // draw budget is spent.
-    for _ in 0..400 {
-        if e.fill_step(2) == 0 {
-            break;
-        }
-    }
-    e.restandardize_if_untaught();
-    e
-}
+use auracle_wasm::shipped::{self, measurement_fingerprint, preset_source};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -68,11 +55,15 @@ fn main() {
     let n = bank.len();
     let rows: Mutex<Vec<Option<String>>> = Mutex::new(vec![None; n]);
     let t0 = std::time::Instant::now();
+    let standardizer = Mutex::new(None);
     std::thread::scope(|s| {
         for t in 0..threads {
-            let (bank, rows) = (&bank, &rows);
+            let (bank, rows, standardizer) = (&bank, &rows, &standardizer);
             s.spawn(move || {
-                let mut e = boot();
+                let mut e = shipped::boot(1);
+                // Every thread boots the same engine; any one of them says
+                // what the wirings were measured under.
+                *standardizer.lock().unwrap() = shipped::audio_standardizer(&e);
                 for i in (t..n).step_by(threads) {
                     let p = &bank[i];
                     let id = e.load_preset(i);
@@ -114,6 +105,10 @@ fn main() {
         "about": "PERFORM's wiring of every preset, measured natively by `make perform-wirings` (crates/auracle-wasm/examples/preset_wirings.rs). Generated: do not edit. The app plays a preset from this at once and re-measures it in the background.",
         "rev": 0,
         "fingerprint": measurement_fingerprint(&PhraseSpec::default()),
+        "standardizer": standardizer
+            .into_inner()
+            .unwrap()
+            .map(|(mean, std)| serde_json::json!({ "mean": mean, "std": std })),
     });
     let head = head.to_string();
     let text = format!(

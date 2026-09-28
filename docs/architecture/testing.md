@@ -22,14 +22,14 @@ this table.
 | Web units | `make web-check` | Syntax, plus the pure modules' unit tests (`apps/web/tests/`) | Any JS |
 | wasm32 | `make wasm-check` | The engine compiles for the browser target | Rust in session or wasm |
 | Crate tests | `cargo test -p <crate> --profile test-fast` | That crate's gates | The crate you changed |
-| All tests | `make test` | The workspace, optimized; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets) | Before a commit that touches Rust or a preset |
-| Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ's names or PERFORM's controls changed (`make test` says so) |
+| All tests | `make test` | The workspace, optimized; includes `shipped_preset_wirings_are_current` (the shipped preset wirings match today's presets and named inputs) and `shipped_preset_wirings_measure_the_same_today` (a sample of them re-measures the same: standardizer, φ, wiring) | Before a commit that touches Rust or a preset |
+| Preset wirings | `make perform-wirings` | Regenerates `apps/web/perform-wirings.json` (minutes, natively) | A preset, the phrase, φ (features, normalization, vetting, DSP), the grammar prior or PERFORM changed (`make test` says so) |
 | Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
 | Browser suite | `tests/web` specs (see its `AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; CI's *Browser suite* workflow runs it on PRs touching the app, nightly and on demand (not required) |
 | Site | `make site && make site-check` | The site builds; every link, asset and anchor resolves | Any `www/` change, public API docs |
 | Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
-| φ | `make revalidate` (both sides, diff) | What the model can hear did not silently change | Any φ, phrase, vetting or normalization change |
+| φ | `make revalidate` (both sides, diff), then `make perform-wirings` | What the model can hear did not silently change; the shipped preset wirings are measured in the new φ | Any φ, phrase, vetting or normalization change |
 | Model | `make fit-bench`, `make closed-loop` | The posterior still recovers a synthetic user | Model or budget changes |
 
 ## What each browser spec pins
