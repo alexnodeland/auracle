@@ -24,9 +24,9 @@ typing a name does not play a melody. Everywhere else they play, even with a
 button or knob focused. This is also why the save key is <kbd>m</kbd> rather
 than <kbd>s</kbd>. Two letters are the exception, where something focused
 uses them itself: <kbd>p</kbd> in the presets list plays the preset, and
-<kbd>L</kbd> in the rack locks; neither also plays its note. PERFORM's drop-downs (the XY pad's axes and what touch
-plays) hand the keys back as soon as you choose, unless you are stepping
-through them with the arrow keys.
+<kbd>L</kbd> in the rack locks; neither also plays its note. PERFORM's
+drop-downs (the XY pad's axes and what touch plays) hand the keys back as soon
+as you choose, unless you are stepping through them with the arrow keys.
 ```
 
 ## Global
