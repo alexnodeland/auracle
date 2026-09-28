@@ -11,6 +11,7 @@ const V = new URL(self.location.href).searchParams.get("v") || Date.now();
 
 let engine = null;
 let WasmEngine = null;
+let glue = null; // the wasm-bindgen module: its free functions (`farm_walk`)
 
 const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 
@@ -40,11 +41,11 @@ const logNote = (text, detail) =>
 
 // ---------- long-op signalling ----------
 //
-// `engine.fit()` and the refine loop are *synchronous* wasm calls that run for
-// seconds to minutes (a generation is 3 seeds x up to 48 MH steps x ~0.5 s of
-// rendering). For their whole duration this worker services no messages at
-// all: a `render` asked for the instant the user pressed ▶ sits in the queue
-// behind them.
+// `engine.fit()`, PERFORM's offers and drifts, and a walk run here (a
+// generation's or ⚡'s, when there is no farm to walk it) are *synchronous*
+// wasm calls that run for seconds. For their whole duration this worker
+// services no messages at all: a `render` asked for the instant the user
+// pressed ▶ sits in the queue behind them.
 //
 // That is a latency problem, not a correctness one — but main can only tell a
 // slow render from a lost one by the clock, and on that clock a live render
@@ -186,6 +187,7 @@ function farmDrop(f, reason) {
   f.alive = false;
   console.warn(`[auracle] farm worker ${f.index} out: ${reason || "unknown"}`);
   if (farmSink) farmSink.lost(f);
+  walkLost(f);
 }
 
 function onFarmMessage(f, m) {
@@ -193,6 +195,7 @@ function onFarmMessage(f, m) {
     case "ready":
       f.ready = true;
       if (farmSink) farmSink.wake();
+      walkPump();
       return;
     case "failed":
     case "refused":
@@ -201,16 +204,23 @@ function onFarmMessage(f, m) {
       farmDrop(f, m.reason || m.type);
       return;
     case "cannot":
-      // It had the job and could not do it. Not the draw's fault.
+      // It had the job and could not do it. Not the draw's fault — and not
+      // the walk's: a walk it could not run is run by this worker instead.
+      if (m.walk) walkCannot(f, m);
       farmDrop(f, m.reason || "declined a job");
       return;
     case "done":
       if (farmSink) farmSink.done(f, m);
       return;
+    case "walked":
+      walkDone(f, m);
+      return;
   }
 }
 
-function farmLost(index, reason) {
+function farmLost(index, reason, crew) {
+  // A worker of a crew already reaped: nothing of it is in `farm` now.
+  if (crew != null && crew !== farmCrew_) return;
   if (!farm[index]) {
     // Died before we were ready to hear about it.
     farmPreDead.add(index);
@@ -264,7 +274,8 @@ function farmSay(msg) {
 }
 
 // Idempotent: boot's `finally` calls it on every exit, abnormal ones included,
-// and the happy path has already called it by then.
+// and the happy path has already called it by then. Also how a walk crew is
+// reaped (`crewReap`); `crew` tells main which workers to terminate.
 let farmClosed = false;
 function farmShutdown() {
   if (farmClosed) return;
@@ -272,7 +283,228 @@ function farmShutdown() {
   farmSay({ type: "bye" });
   for (const f of farm) f.alive = false;
   farmSink = null;
-  post({ type: "farm_done" });
+  post({ type: "farm_done", crew: farmCrew_ });
+}
+
+// ---------- the farm on demand ----------
+//
+// Boot's crew is reaped when boot ends. A generation and ⚡ evolve from this
+// are walks, each a pure function of (context, job) (`farm_walk`), so they go
+// to a crew of their own, raised when one is wanted: this worker asks main
+// (`farm_want`), main spawns the workers from the `WebAssembly.Module` it
+// compiled at boot — an instantiation, not a compile — and hands the ports
+// back (`farm_ports`). The crew is reaped after a minute with nothing to do,
+// and at once when a stop leaves it walking for nobody. Width is main's call
+// (`walkWidth`).
+const CREW_SPAWN_MS = 10000;
+const CREW_IDLE_MS = 60000;
+let farmCrew_ = 0;       // the crew `farm` holds; 0 is boot's
+let crewSeq = 0;         // every crew ever asked for gets its own id
+let crewWaiting = null;  // {id, resolve} while main spawns a crew
+let crewRaising = null;  // the promise of a crew being raised
+let crewIdleTimer = null;
+let booted = false;      // boot's crew is gone; walk crews may be raised
+
+const crewReady = () => !farmClosed && farmUsable();
+
+/** A crew able to walk: the one standing, or a new one. False when none can
+ *  be had (width 0, spawn refused, no worker reported ready in time) — the
+ *  caller then walks in this worker. */
+function crewUp() {
+  crewKeep();
+  if (crewReady()) return Promise.resolve(true);
+  if (crewRaising) return crewRaising;
+  crewRaising = (async () => {
+    const id = ++crewSeq;
+    const ports = await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        crewWaiting = null;
+        resolve(null);
+      }, CREW_SPAWN_MS);
+      crewWaiting = {
+        id,
+        resolve: (p) => {
+          clearTimeout(timer);
+          crewWaiting = null;
+          resolve(p);
+        },
+      };
+      post({ type: "farm_want", crew: id });
+    });
+    if (!ports || ports.length === 0) return false;
+    // The last crew (boot's, or a reaped one) is gone: start clean.
+    farmShutdown();
+    farm.length = 0;
+    farmPreDead.clear();
+    farmCrew_ = id;
+    farmClosed = false;
+    farmSetup(ports);
+    const ok = await farmHandshake(FARM_HANDSHAKE_MS);
+    if (!ok) farmShutdown();
+    return ok;
+  })();
+  const p = crewRaising;
+  p.finally(() => {
+    if (crewRaising === p) crewRaising = null;
+  });
+  return p;
+}
+
+/** Main's answer to `farm_want`. Ports for a crew nobody is waiting on any
+ *  more (it answered after the window closed) are closed, and main reaps the
+ *  workers behind them. */
+function crewArrived(m) {
+  if (crewWaiting && crewWaiting.id === m.crew) {
+    crewWaiting.resolve(m.ports || []);
+    return;
+  }
+  for (const p of m.ports || []) {
+    try { p.postMessage({ type: "bye" }); p.close(); } catch (_) { /* gone */ }
+  }
+  post({ type: "farm_done", crew: m.crew });
+}
+
+function crewKeep() {
+  if (crewIdleTimer) clearTimeout(crewIdleTimer);
+  crewIdleTimer = null;
+}
+
+/** Nothing is walking: reap the crew after `CREW_IDLE_MS`, unless work comes
+ *  back first. */
+function crewIdle() {
+  if (walkBusy() || farmClosed) return;
+  crewKeep();
+  crewIdleTimer = setTimeout(() => {
+    crewIdleTimer = null;
+    if (!walkBusy()) crewReap();
+  }, CREW_IDLE_MS);
+}
+
+/** Reap the crew now. Its walks in flight are for nobody (a stop), and
+ *  terminating the workers is what gives their cores back. */
+function crewReap() {
+  crewKeep();
+  for (const s of walkInflight.values()) clearTimeout(s.timer);
+  walkInflight.clear();
+  farmShutdown();
+}
+
+// ---------- walks on the crew ----------
+//
+// A walk task is `{ctx, job, start(), done(result, ms), fail(reason)}`: the
+// context and the job as the exact text the engine gave (the context is the
+// same string for every job of a generation, and `farm_walk` keeps its parse
+// by that text), and what to do with the result. Tasks are handed out in the
+// order they were queued, one per idle worker; the owner (a generation, ⚡)
+// decides what order to *absorb* in. A worker that dies gives its task back to
+// the queue; a task no worker can run fails, and its owner runs it here.
+const WALK_TIMEOUT_MS = 300000;
+const walkQueue = [];
+const walkInflight = new Map(); // task id -> {task, f, timer}
+let walkSeq = 0;
+// This session's walk times (ms), newest last: the job slot's estimate.
+const walkTimes = [];
+
+const walkBusy = () => walkQueue.length > 0 || [...walkInflight.values()].some((s) => !s.task.dead);
+
+function walkSubmit(task, first) {
+  task.id = ++walkSeq;
+  if (first) walkQueue.unshift(task);
+  else walkQueue.push(task);
+  walkPump();
+}
+
+function walkPump() {
+  if (walkQueue.length === 0) return;
+  crewKeep();
+  if (!crewReady()) {
+    // The crew is gone (every worker died, or it was reaped) and nothing is
+    // on its way back: whatever waits is walked here.
+    if (!crewRaising && walkInflight.size === 0) {
+      for (const task of walkQueue.splice(0)) if (!task.dead) runOwned(task.request, () => task.fail("no farm"));
+    }
+    return;
+  }
+  for (const f of farm) {
+    if (!walkQueue.length) break;
+    if (!f.alive || !f.ready || f.job !== null) continue;
+    let task = walkQueue.shift();
+    while (task && task.dead) task = walkQueue.shift();
+    if (!task) break;
+    if (f.ctx !== task.ctx) {
+      f.port.postMessage({ type: "walk_context", text: task.ctx });
+      f.ctx = task.ctx;
+    }
+    f.job = task.id;
+    const timer = setTimeout(() => walkTimeout(task.id), WALK_TIMEOUT_MS);
+    walkInflight.set(task.id, { task, f, timer });
+    if (task.start) task.start();
+    f.port.postMessage({ type: "walk", i: task.id, job: task.job });
+  }
+}
+
+function walkSettle(f, i) {
+  if (f && f.job === i) f.job = null;
+  const s = walkInflight.get(i);
+  if (!s) return null;
+  clearTimeout(s.timer);
+  walkInflight.delete(i);
+  return s.task;
+}
+
+function walkDone(f, m) {
+  const task = walkSettle(f, m.i);
+  if (task && !task.dead) {
+    if (Number.isFinite(m.ms)) {
+      walkTimes.push(m.ms);
+      if (walkTimes.length > 30) walkTimes.shift();
+    }
+    runOwned(task.request, () => task.done(m.result, m.ms));
+  }
+  walkPump();
+  if (!walkBusy()) crewIdle();
+}
+
+function walkCannot(f, m) {
+  const task = walkSettle(f, m.i);
+  if (task && !task.dead) runOwned(task.request, () => task.fail(m.reason || "declined"));
+}
+
+// A worker died holding a walk: that says nothing about the walk, so it goes
+// back to the front of the queue for whoever is left.
+function walkLost(f) {
+  if (f.job === null || !walkInflight.has(f.job)) return;
+  const task = walkSettle(f, f.job);
+  if (task && !task.dead) walkQueue.unshift(task);
+  f.job = null;
+  walkPump();
+}
+
+// A watchdog, not a verdict: the walk may be slow (a throttled tab) or hung.
+// Either way its owner runs it here; a late answer from the worker is dropped.
+function walkTimeout(i) {
+  const s = walkInflight.get(i);
+  if (!s) return;
+  walkInflight.delete(i);
+  logNote(`[auracle] walk ${i} timed out on the farm; walking it here`, { kind: "walk_timeout", i });
+  if (!s.task.dead) runOwned(s.task.request, () => s.task.fail("timed out"));
+}
+
+/** Drop every task `mine` names: queued ones leave the queue, running ones
+ *  are answered to nobody. */
+function walkAbandon(mine) {
+  for (let k = walkQueue.length - 1; k >= 0; k--) if (mine(walkQueue[k])) walkQueue.splice(k, 1);
+  for (const s of walkInflight.values()) if (mine(s.task)) s.task.dead = true;
+}
+
+// A task's owner runs inside a farm message, outside `dispatch`, so its
+// failures are caught here and reported the way `dispatch` reports them.
+function runOwned(request, fn) {
+  try {
+    fn();
+  } catch (err) {
+    engineError(request || "refine", null, err);
+  }
 }
 
 // Drive a wave of off-engine renders to completion.
@@ -843,43 +1075,426 @@ async function measure(m) {
     JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed))));
 }
 
-// One EVOLVE POOL generation, a seed at a time (see `case "refine"`).
-async function breed() {
-  beginLongOp();
+// ---------- a generation: the breed job ----------
+//
+// EVOLVE POOL is ten walks (`refine_seeds`), each a pure function of the
+// generation's shared context and its own job, so they are walked on the
+// farm, in parallel, and folded back here **in job order** with
+// `refine_absorb` — the order the serial path absorbs in, which is what makes
+// the pool the same whichever worker finished first (ADR-007; natively
+// `farm_walks_breed_the_serial_generation`). A result that lands early is
+// held until its turn.
+//
+// It does not hold the floor. It used to: a generation was ten walks run
+// here, one per turn, and for its two to three minutes PERFORM's measurement
+// of a newly opened patch, a pressed Offer, spares, drifts and refits all
+// waited for the whole of it, and a pick's next pair waited for the walk in
+// progress (up to about 20 s). Now this worker only absorbs, one child per
+// turn, and every lane is served in between. Only two things still wait for
+// the generation to finish: a refit (it is bred under the posterior it
+// started under, whatever votes land meanwhile) and another generation.
+//
+// Each child is posted as it lands (`refine_child`, with the ranked rows, so
+// the bank shows it at once), and the progress carries an estimate from this
+// session's own walk times. **Stop** (`refine_stop`) keeps what has been
+// absorbed: `refine_finish` retires the lowest unpinned members to bring the
+// pool back to size, and walks still running are for nobody.
+//
+// With no farm (width 0, a crew that never came up, every worker lost, a walk
+// a worker could not run) the job is walked here with `refine_seed`, which
+// runs the engine's own copy of the same job: the same child, one walk per
+// turn as a `soon` piece, so the player is still answered between walks.
+const SERIAL = Symbol("serial");
+let gen = null;
+
+function refineRetiring() {
   try {
-    let seeds = [];
+    return JSON.parse(engine.refine_retiring());
+  } catch (_) {
+    return [];
+  }
+}
+
+/** Milliseconds this generation still owes, from this session's walk times,
+ *  or null before any walk has finished. */
+function genEta(g) {
+  if (walkTimes.length === 0) return null;
+  const mean = walkTimes.reduce((a, b) => a + b, 0) / walkTimes.length;
+  const width = g.farmed ? Math.max(1, farm.filter((f) => f.alive && f.ready).length) : 1;
+  const now = performance.now();
+  let owed = 0;
+  for (let i = g.next; i < g.total; i++) {
+    const r = g.results.get(i);
+    if (r !== undefined && r !== SERIAL) continue; // walked, waiting its turn
+    const at = g.started.get(i);
+    owed += at != null ? Math.max(0, mean - (now - at)) : mean;
+  }
+  return Math.round(owed / width);
+}
+
+function genProgress(g) {
+  post({
+    type: "refine_progress",
+    generation: g.generation,
+    done: g.next,
+    total: g.total,
+    walked: g.walked,
+    eta: genEta(g),
+    farm: g.farmed,
+    workers: g.farmed ? farmCrew() : 0,
+  });
+}
+
+// Open a generation. Called from `dispatch`, and returns as soon as the jobs
+// are out: the generation runs from farm messages and `soon` pieces.
+function breedOpen() {
+  let parents;
+  let ctx = null;
+  let jobs = null;
+  if (typeof engine.refine_jobs === "function") {
+    const reply = JSON.parse(engine.refine_jobs());
+    if (reply.context) {
+      // Stringified once: every worker gets this very string.
+      ctx = JSON.stringify(reply.context);
+      jobs = reply.jobs.map((j) => JSON.stringify(j));
+    }
+    parents = reply.jobs.map((j) => j.parent_id);
+  } else {
+    parents = JSON.parse(engine.refine_begin()); // older engine: walked here only
+  }
+  if (parents.length === 0) {
+    // No posterior yet — nothing to refine *toward*. Report it rather than
+    // burning a minute to produce nothing.
+    post({ type: "refined", views: tasteViews(), status: status(), born: [], untaught: true });
+    return;
+  }
+  const g = {
+    generation: status().generation,
+    parents,
+    ctx,
+    jobs,
+    total: parents.length,
+    next: 0,
+    walked: 0,
+    results: new Map(),
+    started: new Map(),
+    born: [],
+    reasons: [],
+    farmed: false,
+    stopped: false,
+    turn: false,
+    serialQueued: false,
+  };
+  gen = g;
+  genProgress(g);
+  breedFarm(g).catch((err) => {
+    engineError("refine", null, err);
+    if (gen === g) genDrop(g);
+  });
+}
+
+async function breedFarm(g) {
+  const farmed = jobsOk(g) && (await crewUp());
+  if (gen !== g || g.stopped) return;
+  if (!farmed) {
+    for (let i = 0; i < g.total; i++) g.results.set(i, SERIAL);
+    genStep(g);
+    return;
+  }
+  g.farmed = true;
+  genProgress(g);
+  for (let i = 0; i < g.total; i++) {
+    walkSubmit({
+      request: "refine",
+      gen: g,
+      ctx: g.ctx,
+      job: g.jobs[i],
+      start: () => g.started.set(i, performance.now()),
+      done: (result) => {
+        if (gen !== g) return;
+        g.results.set(i, result);
+        g.walked++;
+        genProgress(g);
+        genStep(g);
+      },
+      fail: (reason) => {
+        if (gen !== g) return;
+        logNote(`[auracle] walk ${i} of gen ${g.generation} not farmed (${reason}); walking it here`,
+          { kind: "walk_in_worker", i });
+        g.results.set(i, SERIAL);
+        genStep(g);
+      },
+    });
+  }
+}
+
+const jobsOk = (g) => g.ctx != null && Array.isArray(g.jobs) && g.jobs.length === g.total;
+
+// One absorption per turn, so a run of results that were held for their turn
+// is folded in with the player's requests answered between them.
+function genStep(g) {
+  if (g.turn) return;
+  g.turn = true;
+  setTimeout(() => {
+    g.turn = false;
     try {
-      seeds = JSON.parse(engine.refine_begin());
-    } catch (_) {
-      engine.refine(); // older engine: single-shot
-      post({ type: "refined", views: tasteViews(), status: status(), born: null });
-      return;
+      genTurn(g);
+    } catch (err) {
+      genFailed(g, err);
     }
-    if (seeds.length === 0) {
-      // No posterior yet — nothing to refine *toward*. Report it rather
-      // than burning a minute to produce nothing.
-      post({ type: "refined", views: tasteViews(), status: status(), born: [], untaught: true });
-      return;
+  }, 0);
+}
+
+// An absorb or a walk here threw: main is told (it releases EVOLVE POOL), and
+// the generation is forgotten rather than left open with nothing driving it.
+function genFailed(g, err) {
+  engineError("refine", null, err);
+  if (gen === g) genDrop(g);
+}
+
+function genTurn(g) {
+  if (gen !== g) return;
+  if (g.stopped) return genFinish(g);
+  if (g.next >= g.total) return genFinish(g);
+  const r = g.results.get(g.next);
+  if (r === undefined) return; // its walk is still out
+  if (r === SERIAL) {
+    // Walked here, as a `soon` piece: whatever the player asked for first
+    // goes first.
+    if (!g.serialQueued) {
+      g.serialQueued = true;
+      lanes[SOON].push({ type: "breed_step" });
+      schedulePump();
     }
-    const born = [];
-    // Why each seed that produced nothing produced nothing — see
-    // `refineReason`. All of them, so main can say "every seed" when it is
-    // true rather than the first one's story.
-    const reasons = [];
-    for (let i = 0; i < seeds.length; i++) {
-      post({ type: "refine_progress", done: i, total: seeds.length });
-      const childId = Number(engine.refine_seed(seeds[i]));
-      if (childId > 0) born.push(childId);
-      else reasons.push(refineReason());
-      await breathe(SOON);
-    }
-    // The last seed is bred; what is left is placing the children and
-    // re-drawing the views. Said, or the button sits on "10/10…".
-    post({ type: "refine_progress", done: seeds.length, total: seeds.length });
-    post({ type: "refined", views: tasteViews(), status: status(), born, reasons, bench: benchBelief() });
+    return;
+  }
+  g.results.delete(g.next);
+  // A result that does not parse would leave the engine waiting for this job
+  // while the count here moved on; it is walked here instead.
+  try {
+    JSON.parse(r);
+  } catch (_) {
+    g.results.set(g.next, SERIAL);
+    return genStep(g);
+  }
+  const child = Number(engine.refine_absorb(r));
+  if (!genLanded(g, child)) return;
+  genStep(g);
+}
+
+// The serial piece (see `genTurn`): one walk of the open generation here.
+function breedStep() {
+  const g = gen;
+  if (!g) return;
+  g.serialQueued = false;
+  if (g.stopped || g.next >= g.total) return genStep(g);
+  if (g.results.get(g.next) !== SERIAL) return genStep(g);
+  g.results.delete(g.next);
+  const t0 = performance.now();
+  beginLongOp();
+  let child;
+  try {
+    child = Number(engine.refine_seed(g.parents[g.next]));
+  } catch (err) {
+    return genFailed(g, err);
   } finally {
     endLongOp();
   }
+  walkTimes.push(performance.now() - t0);
+  if (walkTimes.length > 30) walkTimes.shift();
+  if (!genLanded(g, child)) return;
+  genStep(g);
+}
+
+// Record one absorbed job and post its child. False when the engine no longer
+// has this generation open (a profile import or a reset replaced it), which
+// ends it here too.
+function genLanded(g, child) {
+  let reason = null;
+  if (!(child > 0)) {
+    reason = refineReason();
+    if (reason === "stale" || reason === "unknown_seed") {
+      logNote(`[auracle] gen ${g.generation} closed under it (${reason}); ending`, { kind: "gen_closed" });
+      g.stopped = true;
+      genFinish(g);
+      return false;
+    }
+    g.reasons.push(reason);
+  } else {
+    g.born.push(child);
+  }
+  g.next++;
+  post({
+    type: "refine_child",
+    generation: g.generation,
+    index: g.next - 1,
+    child: child > 0 ? child : 0,
+    reason,
+    done: g.next,
+    total: g.total,
+    ranked: JSON.parse(engine.ranked()),
+    // The strip says what each child was bred from as it lands, not only at
+    // the end.
+    lineage: JSON.parse(engine.lineage()),
+    retiring: refineRetiring(),
+    eta: genEta(g),
+  });
+  return true;
+}
+
+// The generation is over: every job absorbed, or stopped. The last absorb
+// already finished it in the engine; a stop finishes it here. Either way the
+// replaced patches leave now, and only now.
+function genFinish(g) {
+  if (gen !== g) return;
+  let retired = [];
+  try {
+    retired = JSON.parse(g.stopped || g.next < g.total ? engine.refine_finish() : engine.refine_retired());
+  } catch (_) {
+    retired = []; // an older engine: each walk replaced as it went
+  }
+  genDrop(g);
+  post({ type: "refine_progress", generation: g.generation, done: g.next, total: g.total, eta: 0, farm: g.farmed });
+  post({
+    type: "refined",
+    views: tasteViews(),
+    status: status(),
+    born: g.born,
+    reasons: g.reasons,
+    retired,
+    stopped: g.stopped && g.next < g.total,
+    bench: benchBelief(),
+  });
+}
+
+// Forget a generation: its walks still out are for nobody. If nothing else is
+// walking, the crew goes at once on a stop (terminating is what gives the
+// cores back), and after a minute's idle otherwise.
+function genDrop(g) {
+  if (gen === g) gen = null;
+  walkAbandon((t) => t.gen === g);
+  if (!walkBusy()) {
+    if (g.stopped && walkInflight.size > 0) crewReap();
+    else crewIdle();
+  }
+  schedulePump(); // a refit or a generation waiting for this one
+}
+
+// `refine_stop`: keep what has been bred. A walk running *here* (the serial
+// path) cannot be interrupted; the stop lands when it returns.
+function breedStop() {
+  const g = gen;
+  if (!g || g.stopped) return;
+  g.stopped = true;
+  walkAbandon((t) => t.gen === g);
+  genStep(g);
+}
+
+// ---------- ⚡ evolve from this, on the farm ----------
+//
+// One walk from the patch on the bench, with its locks: `refine_from_job`
+// makes the job, a farm worker walks it, `refine_from_absorb` folds it in. For
+// the walk's whole length (about 20 s, up to four times that with many locks)
+// this worker answers everything; it used to be one call that answered
+// nothing. It goes to the front of the walk queue: the player asked for this
+// one patch, and a generation's walks can wait one walk.
+//
+// Stop answers "stopped" at once and drops the walk's result when it lands.
+// With no farm it is the old single call, `refine_from`, which cannot be
+// stopped: the same child, because both draw the walk's seed the same way.
+let evolving = null;
+
+async function evolveFrom(m) {
+  const locks = JSON.stringify(m.locks || []);
+  // Held from the start, so a second ⚡ waits for this one (see `blocked`).
+  const ev = { id: m.id, dead: false };
+  evolving = ev;
+  const farmed = typeof engine.refine_from_job === "function" && (await crewUp());
+  if (ev.dead) return; // stopped while the crew came up; already answered
+  if (!farmed) {
+    post({ type: "evolve_started", seedId: m.id, stoppable: false });
+    beginLongOp();
+    try {
+      evolvedFrom(m.id, Number(engine.refine_from(m.id, locks)));
+    } finally {
+      endLongOp();
+      evolving = null;
+      schedulePump();
+    }
+    return;
+  }
+  const reply = JSON.parse(engine.refine_from_job(m.id, locks));
+  if (!reply.job) {
+    evolving = null;
+    post({ type: "evolved_from", seedId: m.id, childId: 0, reason: reply.reason || refineReason(), views: tasteViews(), status: status() });
+    schedulePump();
+    return;
+  }
+  const ctx = JSON.stringify(reply.context);
+  const job = JSON.stringify(reply.job);
+  post({ type: "evolve_started", seedId: m.id, stoppable: true });
+  const land = (result) => {
+    if (ev.dead) return;
+    evolving = null;
+    evolvedFrom(m.id, Number(engine.refine_from_absorb(m.id, result)));
+    schedulePump();
+  };
+  walkSubmit(
+    {
+      request: "refine_from",
+      evolve: ev,
+      ctx,
+      job,
+      done: (result) => land(result),
+      // A worker that could not walk it: walked here, the same job.
+      fail: () => {
+        if (ev.dead) return;
+        beginLongOp();
+        let result = "";
+        try {
+          result = glue.farm_walk(ctx, job);
+        } finally {
+          endLongOp();
+        }
+        if (result) land(result);
+        else {
+          // The engine's own context and job did not parse: a fault, said
+          // as one, and main releases the ⚡ it was holding.
+          evolving = null;
+          schedulePump();
+          throw new Error("⚡'s walk did not parse");
+        }
+      },
+    },
+    true
+  );
+}
+
+function evolvedFrom(seedId, childId) {
+  post({
+    type: "evolved_from",
+    seedId,
+    childId,
+    reason: childId > 0 ? null : refineReason(),
+    views: tasteViews(),
+    status: status(),
+  });
+}
+
+// `refine_from_stop`: answered at once; the walk's result, when it lands, is
+// for nobody.
+function evolveStop() {
+  const ev = evolving;
+  if (!ev) return;
+  ev.dead = true;
+  evolving = null;
+  walkAbandon((t) => t.evolve === ev);
+  post({ type: "evolved_from", seedId: ev.id, childId: 0, reason: "stopped", views: tasteViews(), status: status() });
+  if (!walkBusy()) {
+    if (walkInflight.size > 0) crewReap();
+    else crewIdle();
+  }
+  schedulePump();
 }
 
 // ---------- the queue: the player first ----------
@@ -915,12 +1530,13 @@ async function breed() {
 //
 // Queueing alone cannot help a request that arrives while a long call is
 // already *running* — wasm cannot be interrupted. That half is chunking: a
-// long job that can be cut into renders (`measure`, `breed`) runs one piece
-// per turn and calls `breathe` in between, which answers every `now` request
-// that arrived meanwhile before the next piece starts. One long job holds the
-// floor at a time — two interleaved would each take twice as long, and the
-// generation's order of work is its own — and a background job gives the floor
-// up entirely when the player asks for long work of their own.
+// long job that can be cut into renders (`measure`) runs one piece per turn
+// and calls `breathe` in between, which answers every `now` request that
+// arrived meanwhile before the next piece starts. One long job holds the floor
+// at a time — two interleaved would each take twice as long — and a background
+// job gives the floor up entirely when the player asks for long work of its
+// own. A generation and ⚡ are not on this floor at all: their walks run on the
+// farm (see `breedOpen`, `evolveFrom`), and what waits for them is `blocked`.
 const NOW = 0;
 const SOON = 1;
 const LATER = 2;
@@ -956,15 +1572,45 @@ function schedulePump() {
   setTimeout(pump, 0);
 }
 
-// Is there anything the pump may start now? Work waiting behind a held floor
-// is not: the floor's release schedules the pump, and re-arming it meanwhile
-// would spin a timer every few milliseconds for as long as a generation runs.
-const runnable = () => lanes[NOW].length > 0 || (!floor && (lanes[SOON].length > 0 || lanes[LATER].length > 0));
+// What waits for a walk job rather than for the floor. A generation does not
+// hold the floor (see `breedOpen`), but a refit waits for it — the generation
+// is bred under the posterior it started under — and so does the next
+// generation. A second ⚡ waits for the first. Neither generations nor ⚡ start
+// before boot's crew is gone: the farm has one crew at a time.
+function blocked(m) {
+  switch (m.type) {
+    case "fit":
+      return gen != null;
+    case "refine":
+      return gen != null || !booted;
+    case "refine_from":
+      return evolving != null || !booted;
+    default:
+      return false;
+  }
+}
+
+// The first request in `soon`, then `later`, that may start now.
+function nextLong() {
+  if (floor) return null;
+  for (const lane of [SOON, LATER]) {
+    const i = lanes[lane].findIndex((q) => !blocked(q));
+    if (i >= 0) return lanes[lane].splice(i, 1)[0];
+  }
+  return null;
+}
+
+// Is there anything the pump may start now? Work waiting behind a held floor,
+// or blocked behind a walk job, is not: the floor's release and the job's end
+// schedule the pump, and re-arming it meanwhile would spin a timer every few
+// milliseconds for as long as they run.
+const runnable = () =>
+  lanes[NOW].length > 0 || (!floor && [SOON, LATER].some((l) => lanes[l].some((q) => !blocked(q))));
 
 async function pump() {
   pumpQueued = false;
   while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
-  const m = floor ? null : lanes[SOON].shift() || lanes[LATER].shift();
+  const m = nextLong();
   if (m) await runMessage(m);
   if (runnable()) schedulePump();
 }
@@ -987,7 +1633,7 @@ async function runMessage(m) {
 async function breathe(lane) {
   await yieldToQueue();
   while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
-  return lane === LATER && lanes[SOON].length > 0;
+  return lane === LATER && lanes[SOON].some((q) => !blocked(q));
 }
 
 // Run `job` for message `m` holding the floor; the floor is released however
@@ -1025,6 +1671,20 @@ self.onmessage = (e) => {
   // it is running, not after.
   if (m.type === "init" || m.type === "farm_lost") {
     runMessage(m);
+    return;
+  }
+  // Main's answer to `farm_want`: the ports of a walk crew.
+  if (m.type === "farm_ports") {
+    crewArrived(m);
+    return;
+  }
+  // Stops are answered on arrival, not queued behind what they stop.
+  if (m.type === "refine_stop") {
+    breedStop();
+    return;
+  }
+  if (m.type === "refine_from_stop") {
+    evolveStop();
     return;
   }
   // Background work became the player's: Offer claimed a spare still waiting
@@ -1112,6 +1772,7 @@ async function dispatch(m) {
           module_or_path:
             m.module || new URL(`./pkg/auracle_wasm_bg.wasm?v=${V}`, self.location.href),
         });
+        glue = mod;
         WasmEngine = mod.WasmEngine;
         engine = new WasmEngine(BigInt(m.seed >>> 0), m.poolSize);
         // The structural ceilings a hand-built patch must respect, from the
@@ -1308,6 +1969,9 @@ async function dispatch(m) {
         post({ type: "boot_failed", error: String((err && err.message) || err) });
       } finally {
         farmShutdown();
+        // From here a generation or ⚡ may raise a crew of its own.
+        booted = true;
+        schedulePump();
       }
       break;
     }
@@ -1315,7 +1979,7 @@ async function dispatch(m) {
     // and re-issue whatever it was holding, by index — the tree is recoverable
     // from `(fill_seed, i)`, so nothing was lost but the render.
     case "farm_lost": {
-      farmLost(m.index, m.reason);
+      farmLost(m.index, m.reason, m.crew);
       break;
     }
     case "duel": {
@@ -1463,18 +2127,14 @@ async function dispatch(m) {
       break;
     }
     case "refine": {
-      // Driven one seed at a time so the UI can show progress and say what
-      // actually happened. A generation is tens of seconds of render-bound
-      // work; as one opaque call it reads as a hang.
-      //
-      // And it breathes between seeds (see `breathe`): a generation is a
-      // couple of minutes on a laptop, and for all of it a ▶ on a bank row, a
-      // bench open or a vote used to wait for the last seed. Each seed is
-      // still one call, so the player waits at most one seed's walk, not ten.
-      // What is served between seeds is only the player's own requests — a
-      // refit waits for the generation, which is therefore bred under the
-      // posterior it started under, whatever votes land meanwhile.
-      await holdFloor(m, breed);
+      // The breed job (see `breedOpen`): open the generation, hand its walks
+      // to the farm, and return. It is absorbed from farm messages, a child
+      // per turn, and nothing else waits for it but a refit.
+      breedOpen();
+      break;
+    }
+    case "breed_step": {
+      breedStep();
       break;
     }
     // ---- workbench (the interactive rack) ----
@@ -1578,20 +2238,13 @@ async function dispatch(m) {
       break;
     }
     case "refine_from": {
-      beginLongOp();
-      try {
-        const childId = Number(engine.refine_from(m.id, JSON.stringify(m.locks)));
-        post({
-          type: "evolved_from",
-          seedId: m.id,
-          childId,
-          reason: childId > 0 ? null : refineReason(),
-          views: tasteViews(),
-          status: status(),
-        });
-      } finally {
-        endLongOp();
-      }
+      // On the farm (see `evolveFrom`): this returns once the walk is out,
+      // and the pump goes on serving everything else while it runs.
+      evolveFrom(m).catch((err) => {
+        evolving = null;
+        engineError("refine_from", m.id, err);
+        schedulePump();
+      });
       break;
     }
     // ---- performance surface (PERFORM) ----

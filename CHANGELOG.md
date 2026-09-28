@@ -77,6 +77,56 @@ changelog that edits its own past is not a record.
   pick, a duel ▶ sounding within 0.15 s, and a patch revisited in PERFORM
   wired within 0.5 s (1.5 s after a reload), where the spec used to allow
   5 s and 8 s (`budgets.spec.js`, `perform_instant.spec.js`).
+- **A generation breeds beside you.** EVOLVE POOL's ten walks run in
+  parallel on the render farm, and the engine only folds their children in,
+  in the order the walks were dealt, so a seeded session breeds the same
+  children at any number of workers. It used to walk them one after another
+  in the engine itself: for two to three minutes a pick's next pair waited up
+  to twenty seconds for the walk in progress, and a patch opened in PERFORM, a
+  pressed Offer and every refit waited for all of it. Now a pick deals its
+  next pair in a few hundredths of a second, a ▶ plays, PERFORM measures and
+  an Offer starts while it breeds; only a refit still waits, so the generation
+  is bred under the model it started with. On a busy four-core machine a
+  generation still takes two to three and a half minutes (157–173 s with four
+  workers, 208–230 s walked one at a time), because it lasts as long as its
+  slowest walk (`evolve_breeds_beside_you.spec.js`,
+  `evolve_generation_timing.spec.js`,
+  `farm_walks_breed_the_serial_generation`).
+- **Children land as they are bred, at the top of the bank.** Each child
+  appears the moment it is bred in a **new · gen N** group leading the
+  evolution bank, in the order they were bred, playable at once; the ranked
+  rows below it do not move. Nothing leaves the bank until the generation
+  ends, so a patch you save while it breeds is safe, and hovering EVOLVE POOL
+  marks the rows it may replace. The ten children used to arrive at once at
+  the end, scattered through the ranked list, and patches were replaced as the
+  walks went (`evolve_breeds_beside_you.spec.js`).
+- **EVOLVE POOL is its own progress bar, and a generation can be stopped.**
+  While it breeds the button fills in amber and reads *breeding 3/10*, with
+  **stop** beside it; stop keeps the children bred so far and replaces only
+  as many patches as they need. It used to be a dimmed "BREEDING 1/10…" that
+  could not be stopped (`evolve_breeds_beside_you.spec.js`).
+- **⚡ evolve from this walks on the render farm.** Its walk (about twenty
+  seconds, longer with many locks) no longer stops the engine: a deal, a ▶, a
+  bank open and an edit are answered while it runs, and **stop** drops it. It
+  used to be one call during which nothing but the knobs answered, with a
+  toast as its only sign (`evolve_breeds_beside_you.spec.js`).
+- **Long work has one home: the job slot in the menu bar.** Beside
+  GENERATIONS it shows *⚡ breeding 3/10 · about 40 s*, *⚡ evolving Glass
+  Pad* or *refitting your taste map…* while one runs, with **stop** where the
+  job can be stopped, in every view; the estimate comes from this session's
+  own walk times. The wordmark's E is lit exactly while the slot shows. The E
+  used to be the only sign, and it meant three different things
+  (`evolve_breeds_beside_you.spec.js`).
+- **The render farm comes back when it is needed, and leaves again.** Boot's
+  workers are reaped when boot ends, as before; a generation or ⚡ raises a
+  crew from the engine binary already compiled, and it is reaped after a
+  minute with nothing to do, so its memory is not kept behind the instrument.
+- **A bank ▶ says it heard you.** A ▶ whose sample has to be rendered first
+  shows a dotted amber ring until it plays.
+- **The next-step chip breeds where you are.** *It's learned something. Breed
+  a generation ▸* starts the generation without leaving the view you are in,
+  and afterwards the chip points at the new children at the top of the bank
+  instead of opening TASTE.
 
 ### Fixed — true today
 
@@ -126,10 +176,9 @@ changelog that edits its own past is not a record.
   and a layout with PERFORM's pads under the keybar. It now shows at 999 px or
   less with any pointer: "Turn your tablet sideways, or widen the window."
   (`narrow_gate.spec.js`)
-- **The EVOLVE guide gives today's timing.** A generation takes about two to
-  three minutes in the browser, and after a pick the next pair can wait for
-  the seed being bred, up to about 20 seconds; the guide said "a minute or
-  two" and that a pick is answered between seeds as if at once. The node
+- **The EVOLVE guide gives true timing.** It said a generation takes "a
+  minute or two" and that a pick is answered between seeds as if at once;
+  what a generation costs now is under *Changed — the hands first*. The node
   bank's "nothing called that" no longer says Auracle has no sequencer: steps
   and euclid are sequencers that play the sound, not the notes.
 - **⌘Z outside PATCH never undoes a PATCH edit.** It takes back your newest
