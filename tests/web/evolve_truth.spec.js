@@ -285,10 +285,13 @@ test("a cut patch is not dealt again, and its toast names it without an id", asy
     { timeout: 15_000 }).toBeTruthy();
   expect(said).toMatch(/^Cut .+ — it won't be dealt again$/);
   expect(said).not.toMatch(/#\d/);
-  // The pair it was on is put away; no deal from here on includes it.
+  // The pair it was on is put away; no deal from here on includes it. The
+  // pair dealt ahead goes up at once (re-checked against the cut), and the
+  // next deal is asked for once its sounds are in, so the latest request is
+  // waited for rather than read the instant the cards come back.
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
   for (let i = 0; i < 8; i++) {
-    expect(await page.evaluate(() => window.__pwSent.duel.exclude)).toContain(cut);
+    await expect.poll(() => page.evaluate(() => window.__pwSent.duel.exclude), { timeout: 10_000 }).toContain(cut);
     expect(await cardIds(page)).not.toContain(cut);
     await page.locator("#skip-duel").click();
     await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
