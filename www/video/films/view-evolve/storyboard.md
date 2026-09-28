@@ -4,8 +4,8 @@ The deep dive into EVOLVE, over the real instrument: one recorded shot per
 chapter (`shots.json` → `tools/footage.mjs`), framed by `stage/walk.js`, with
 the title, the chapter cards and the outro drawn with the kit (`cards.js`).
 Nineteen beats (a cold open, the title, eight chapters of a one-bar turn and a
-demo each, the outro) over ten recorded shots, 46 lines, 503 words at speed
-0.9, 4 min 31 s.
+demo each, the outro) over ten recorded shots, 47 lines, 536 words at speed
+0.9, 4 min 40 s.
 
 **Who it is for.** Musicians who want to grow sounds rather than dial them
 in. They should leave knowing how to judge a duel by ear (1, 2, then ← or →),
@@ -178,24 +178,42 @@ blur, and a skip that is clicked on camera is followed by one.
   checked against you"; "TASTE › TRUST" on the TASTE tab; "skip · nothing
   recorded".
 
-## `turn6` + `breed` — shot `ve-breed` (breed1–7) · 06 · a generation
+## `turn6` + `breed` — shot `ve-breed` (breed1–8) · 06 · a generation
 
 - **Card:** *06 · A generation · How does it grow new sounds?*
 - **Set-up:** taught + 9 picks (one refit), and the bank tour marked as seen,
   so the generation's own toast is the one that shows.
+- **The truth it tells.** A generation breeds on the render farm, beside the
+  player: its ten walks run in parallel and the engine folds their children
+  in, in the order they were dealt. The whole instrument keeps answering; only
+  a refit waits for it. On a busy four-core machine it takes about two to
+  three and a half minutes, and the first child lands after roughly 40–75 s
+  (plan 001, task 6). The film cuts on those two states and never sits
+  through them.
 - **Actions:**
-  - `breed1:press`: EVOLVE POOL ("breeding 1/10…").
-- **Cut** (`clips`): from `breed3` to `@bred-0.4`. A generation takes about
-  two minutes.
-- **After the cut:** ⚡ rows glow in the bank; the toast reads *Gen 1: N new
-  patches in the bank. The N it liked least were replaced: A, B, C +N more*
-  (by name); the lineage lines say what changed, in real units, with names
-  and *liked +0.06*. `breed7:listen`
+  - `breed1:press`: EVOLVE POOL. The button becomes its own amber progress
+    bar, *breeding…* then *breeding 0/10*, with **stop** beside it; the menu
+    bar's job slot reads *⚡ breeding 0/10* and the wordmark's E lights. The
+    pointer moves off the button (hovering it marks the rows it may replace).
+  - `breed3:picking` and `breed3:once`: two picks while it breeds. Each must
+    put the next pair up within 1.5 s (stamps `next1`, `next2`; the app's
+    own budget is 0.3 s, measured 8–37 ms), or the shot fails: that is the
+    line's claim, and a failure is an app finding, not a timing to write
+    around.
+- **Cut 1** (`clips`): from `breed4` to `@landed-0.4`: the first child is in
+  the bank, at the top under **new · gen 1**, glowing once as it lands; the
+  button reads *breeding N/10*.
+- **Cut 2** (`clips`): from `breed5` to `@bred-0.4`: the button is EVOLVE
+  POOL again; the toast reads *Gen 1: N new patches in the bank. The N it
+  liked least were replaced: A, B, C +N more* (by name); the lineage lines say
+  what changed, in real units, with names and *liked +0.06*. `breed8:listen`
   plays ▶ on the first new row, whose phrase is heard.
-- **Callouts:** "breeds from its ten best"; "⚡ a new child"; "the ones it
-  liked least, replaced, by name"; "what each child changed" (amber); "▶ hear
-  it". The line says *replaces*, the app's word ("it won't be replaced" on a
-  save, "were replaced" on a generation); it said *retires* before.
+- **Callouts:** "breeds from its ten best"; "the menu bar says so too"
+  (amber, on the job slot); "the next pair, at once"; "still breeding"
+  (amber); "new · as they're bred" (amber, on the group); "⚡ a new child";
+  "the ones it liked least, replaced, by name"; "what each child changed"
+  (amber); "▶ hear it". The line says *replaces*, the app's word ("it won't
+  be replaced" on a save, "were replaced" on a generation).
 
 ## `turn7` + `keep` — shot `ve-keep` (keep1–5) · 07 · stars, save, cut
 
@@ -224,15 +242,21 @@ Putting it together.
 - **Set-up:** taught + 3 picks; the bank tour marked as seen.
 - **Actions:**
   - four quick duels, each heard (the third is the sixth pick: a refit);
-  - `rhythm3:Evolve`: EVOLVE POOL.
-- **Cut** (`clips`): from `rhythm4` to `@bred-0.3`.
+  - `rhythm3:Evolve`: EVOLVE POOL (the pointer moves off it).
+- **Cut** (`clips`): from `rhythm4` to `@landed-0.3`, the first child in the
+  bank. The generation goes on breeding through the rest of the chapter, and
+  the shot ends before it does.
 - **After the cut:**
-  - `rhythm4:Play+0.35` (the cut lands 0.3 s before the `bred` stamp): the
+  - `rhythm4:Play+0.35` (the cut lands 0.3 s before the `landed` stamp): the
     first new ⚡ row is clicked, which opens the child on
     the bench and in PATCH, and the child plays C, Am, F, G on the keys;
-  - after the chords, its row is saved;
-  - `rhythm5:back`: back to EVOLVE; `rhythm5:round`: a pick.
-- **Callouts:** "a new child, on the keys"; "saved".
+  - after the chords, its row is saved (safe: a generation replaces patches
+    only when it ends, and never a saved one);
+  - `rhythm5:back`: back to EVOLVE; `rhythm5:round`: a pick, still while it
+    breeds, whose next pair must be up within 1.5 s (stamp `next`).
+- **Callouts:** "a new child, on the keys"; "saved while it breeds: safe".
+- **Watch in the take:** the chords are played while ten walks load every
+  core; `takes.py` must show the app's sound clean here.
 
 ## `outro` — shot `ve-outro` (outro1–2; bed in)
 
@@ -246,8 +270,9 @@ Putting it together.
 ## Where this departs from VIEWS.md's outline
 
 - **"New · built for you"** is the landing page's hero demo, not the app. In
-  the app a generation shows as ⚡ rows, the *Gen N* toast and the lineage
-  lines, and that is what the film shows (reported).
+  the app a generation shows as the **new · gen N** group of ⚡ rows at the
+  top of the bank, the *Gen N* toast and the lineage lines, and that is what
+  the film shows (reported).
 - **Check duels** are not "some pairs": under the default pairing every pair
   is random, so the film says "by default, every pair is dealt at random",
   over the app's own line saying the same.
