@@ -43,6 +43,6 @@ each crate's own `AGENTS.md` has its rules.
 ## Diagnostics worth knowing
 
 `make climb`, `make search-check`, `make islands`, `make phi-stats`,
-`make norm-peak`, `make fit-bench`, `make closed-loop`: each is a measurement
-with a table, documented in the `Makefile`. `make revalidate` runs the ones a
-φ change owes.
+`make norm-peak`, `make fit-bench`, `make closed-loop`, `make walk-payload`:
+each is a measurement with a table, documented in the `Makefile`.
+`make revalidate` runs the ones a φ change owes.

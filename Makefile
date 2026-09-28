@@ -23,7 +23,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 .PHONY: web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
-        closed-loop revalidate \
+        closed-loop walk-payload revalidate \
         wasm wasm-stamp perform-wirings serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
@@ -188,6 +188,10 @@ fit-bench:
 ## closed-loop: the taste-loop gate swept over seeds (the noisy instrument)
 closed-loop:
 	$(CARGO) run -p auracle-session --example closed_loop_sweep --release
+
+## walk-payload: what a generation's walks cost to ship to the render farm (RFC-001)
+walk-payload:
+	$(CARGO) run -p auracle-session --example walk_payload --release
 
 ## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
 revalidate: phi-stats norm-peak climb search-check
