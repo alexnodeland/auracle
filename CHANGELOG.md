@@ -28,16 +28,47 @@ each crate's API docs link the films about it, and the app's ⋯ menu gains
 **Watch the films**. Everything you hear is Auracle: the scores are played by
 its own engine. The narration is synthetic (Kokoro-82M, offline).
 
-### Fixed — the TASTE map stays the way round you left it
+### Fixed — what the films found
 
-A refit could mirror the map: in a taught session, one refit sent "Warm Drone
-2" from the far left to the far right and "Round Lead" from the bottom to the
-top, though the guide says the orientation is pinned. The rule that set each
-axis's sign (its largest loading positive) changes its answer as the axis
-turns, and with φ's near-equal brightness loadings that was routine. Each map
-now faces the way the last one was drawn, and the session saves it, so a
-reload does not mirror the map either (`a_redraw_never_mirrors_the_map`,
-`taste_map_keeps_its_orientation_across_redraws_and_reloads`).
+Rehearsing a film of each view meant doing everything the guide says, on
+camera, in a seeded session. Wherever the app fell short of the guide, the app
+was fixed, not the words.
+
+- **The TASTE map stays the way round you left it.** A refit could mirror it:
+  in a taught session one refit sent "Warm Drone 2" from the far left to the
+  far right, though the guide says the orientation is pinned. The rule that set
+  each axis's sign (its largest loading positive) changes its answer as the
+  axis turns, and with φ's near-equal brightness loadings that was routine.
+  Each map now faces the way the last one was drawn, and the session saves it,
+  so a reload does not mirror it either (`a_redraw_never_mirrors_the_map`,
+  `taste_map_keeps_its_orientation_across_redraws_and_reloads`).
+- **A seeded session is the same session every time.** Fills, duels, fits,
+  evolution and PERFORM's offers drew from one random stream, so a spare offer
+  that finished early or late moved every duel and fit after it: the same patch
+  read 0.39 in one session and 0.43 in its twin. Each now has its own stream,
+  and a fit is seeded from the evidence it is fitted on
+  (`a_consumer_draws_only_from_its_own_stream`).
+- **Keys work after a click.** A focused button swallowed every key that
+  doesn't play a note, so one click on HOLD or ▶ turned off `[`/`]`, `m`, 1–5
+  and EVOLVE's ←/→ until you clicked elsewhere. A button now keeps only Space
+  and Enter.
+- **A half-closed PERFORM control stops at the centre** on the side it can't
+  reach, with the mouse, the arrow keys, a MIDI pot or a long-press, as the
+  guide says; the dial used to turn on past it while the sound stayed put. An
+  XY axis the patch can't move now strikes its end words through
+  (`perform_controls.spec.js`).
+- **Knobs read in their units.** A slew's rise and fall read "52.84 s" for a
+  53 ms glide, and a granular grain "10.00 s" for 10 ms.
+- **The wavefolder's knob is called threshold.** It is the fold threshold, so
+  turning "fold" up folded less, and PERFORM's hood showed "fold" falling as
+  Bright folded harder.
+- **A bank row's cut appears on approach again.** Its reveal rules were less
+  specific than the rule that hides it, so cut could never be seen or pressed
+  (`bank_row.spec.js`).
+- **The spec strip no longer says "heard as as".** Its label is "heard", which
+  every module's line was written to follow.
+- **A node-bank preview ends at silence.** Its fade stopped one step short of
+  zero and left a sliver of a loud patch's last sample.
 
 ### Fixed — every patch at one level, and none that blasts
 

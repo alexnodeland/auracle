@@ -155,7 +155,7 @@ perceptual descriptors of a standard render plus twenty-six structural counts.
 convey it.** The clearest case is stereo width: the feature vector has no
 coordinate for it, so the model will never learn that you like chorus for its
 width. The chorus module's [spec card](./wiring.md#the-spec-card) says so in
-its **heard as** line.
+its **heard** line.
 
 Preferences about *performance* are largely invisible too — how a patch
 responds to velocity, how it behaves in a fast run — because the audition
@@ -163,7 +163,7 @@ phrase is fixed and modest. What the phrase does and does not reveal is
 [spelled out in the reference](../reference/audition/phrase.html).
 
 ```admonish tip title="How to check"
-Before spending a session teaching a preference, read the **heard as** line on the
+Before spending a session teaching a preference, read the **heard** line on the
 modules involved. If it says the model cannot pick it up, believe it, and use
 **save** and your own naming instead.
 ```
