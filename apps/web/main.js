@@ -1269,6 +1269,7 @@ worker.onmessage = (e) => {
     case "bench_missing": {
       // Not on its way any more, either (PERFORM holds a measurement for it),
       // and the bench is still the patch the lane's edits were aimed at.
+      if (earlyOpen && earlyOpen.id === m.id) unvoiceEarly();
       if (benchPending === m.id) {
         benchPending = null;
         pumpLane();
@@ -1361,6 +1362,12 @@ worker.onmessage = (e) => {
     }
     case "tree_json": {
       if (!(m.json && m.json !== "null" && live)) break;
+      // An edit to the rack being left, while the voices already play the
+      // patch on its way (`voiceEarly`): it is not what the player hears.
+      if (m.edited !== undefined && earlyOpen) {
+        benchDirtyWhy = m.why || null;
+        break;
+      }
       live.setPatch(m.json, m.makeup);
       if (m.edited !== undefined) benchDirtyWhy = m.why || null;
       setLivePatchJson(m.json, m.makeup, m.knobs);
@@ -1376,6 +1383,18 @@ worker.onmessage = (e) => {
         livePatchId = m.id;
         setLiveLabel(benchName(m.id));
       }
+      break;
+    }
+    case "bench_opening": {
+      // An open speaking before its render (a preset's insert, or the bench
+      // open; see `voiceEarly`): the voices take the patch now, and PERFORM
+      // with them. A preset's is remembered, for opening it again without
+      // the engine. Only the open the player is still waiting on is voiced;
+      // a later click has superseded an earlier one.
+      if (m.index != null) rememberPresetVoiced(m.index, m.json, m.makeup);
+      if (m.id !== benchPending || m.id === wb.subjectId || !m.json || m.json === "null") break;
+      if (earlyOpen && earlyOpen.id === m.id) break; // voiced from memory already
+      voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }
     case "calibration": {
@@ -1762,15 +1781,40 @@ worker.onmessage = (e) => {
       // second fade-out, rebuild and re-attack for no change in sound; all
       // that is left to reconcile is the makeup gain, which the early post
       // could not know because measuring it *is* the expensive half.
-      const spokeEarly = liveOptimisticJson !== null && liveOptimisticJson === m.treeJson;
+      //
+      // An open the voices took early (`voiceEarly`) is the same: its tree
+      // is already playing (read as a sound, since a remembered preset
+      // carries the uids of the session it was remembered in), and its text
+      // is brought up to the bench's.
+      const early = subjectLoad && earlyOpen && earlyOpen.id === m.subject ? earlyOpen : null;
+      // …or the voices already play an open made after this one: the bench
+      // takes this patch, and the voices keep the one the player asked for
+      // last, which is on its way.
+      const voicesLater = subjectLoad && !!earlyOpen && !early;
+      if (early) earlyOpen = null;
+      const openedEarly =
+        !!early && !!liveTreeJson && !!m.treeJson && treeSound(liveTreeJson) === treeSound(m.treeJson);
+      const spokeEarly = openedEarly || (liveOptimisticJson !== null && liveOptimisticJson === m.treeJson);
       liveOptimisticJson = null;
+      if (openedEarly && liveTreeJson !== m.treeJson) {
+        liveTreeJson = m.treeJson;
+        if (perform && perform.followTree) perform.followTree(m.treeJson);
+      }
+      if (openedEarly) {
+        livePatchId = wb.subjectId;
+        setLiveLabel(benchName(wb.subjectId));
+      }
+      // A Keep or Take made on the early patch goes to its bench now (it is
+      // sent below, once this reply has been taken in).
+      const keptEarly = early ? earlyCommit : null;
+      if (early) earlyCommit = null;
       if (spokeEarly) {
         if (live && m.makeup != null) live.setMakeup(m.makeup);
         liveMakeup = m.makeup;
         livePending();
       } else if (
-        m.treeJson && m.treeJson !== "null" && live &&
-        (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
+        m.treeJson && m.treeJson !== "null" && live && !voicesLater &&
+        (subjectLoad || (wb.vetOk && !earlyOpen && (structural || paramNonLive)))
       ) {
         live.setPatch(m.treeJson, m.makeup);
         setLivePatchJson(m.treeJson, m.makeup);
@@ -1781,8 +1825,11 @@ worker.onmessage = (e) => {
       // Optimism's other half: the sound arrived before the verdict. A patch
       // that fails vetting can self-oscillate, and it is already in the
       // voices, so the mute has to be real. Any vet that passes lifts it.
-      if (wb.vetOk) setLiveMuted(false);
-      else if (spokeEarly) setLiveMuted(true);
+      // (Unless the voices play a patch other than the rack's, taken early:
+      // this vet is not about what they play.)
+      const vetIsVoices = !voicesLater && !(earlyOpen && !subjectLoad);
+      if (vetIsVoices && wb.vetOk) setLiveMuted(false);
+      else if (vetIsVoices && spokeEarly) setLiveMuted(true);
       // The strip is one slot (see `alarm`), and this owns it only while the
       // condition it reports — a runaway the vet muted — is its own. It used
       // to call `alarm(null)` on every clean vet, which wiped whatever else
@@ -1824,6 +1871,10 @@ worker.onmessage = (e) => {
       // bench change while the map is up must repaint it — clicking a dot
       // used to leave the ring on the old patch.
       if (currentView === "taste") drawTaste();
+      if (keptEarly && openedEarly && perform) {
+        const json = withUidsOf(keptEarly.json, m.treeJson);
+        queueStruct({ type: "edit_set_tree", json, ...(keptEarly.why ? { why: keptEarly.why } : {}) }, null, { op: "perform" });
+      }
       // Whatever is next in the lane goes now — and if nothing is, a COMMIT
       // that was waiting on this edit goes instead (see `pumpLane`).
       pumpLane();
@@ -2214,11 +2265,18 @@ worker.onmessage = (e) => {
         // Only the warm-start preview path used to record this, so a plain
         // click re-loaded the same preset forever and never marked it.
         if (m.index !== undefined) presetIds.set(m.index, m.id);
+        const early = earlyOpen && earlyOpen.id == null && earlyOpen.index === m.index ? earlyOpen : null;
         if (clickedAt !== undefined && clickedAt !== benchSeq) {
           // The player opened something else while this was loading: it is in
           // the bank now, and the patch in their hands stays there.
+          if (early) unvoiceEarly();
           note(`${nameOf(m.id)} is in the bank now — you had moved on, so it was not opened.${madeRoom(evicted)}`);
         } else {
+          // Voiced from memory at the click: now it has an id.
+          if (early) {
+            early.id = m.id;
+            livePatchId = m.id;
+          }
           quietBench.add(m.id); // "Preset loaded as …" names it
           openOnBench(m.id);
           note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
@@ -2229,6 +2287,7 @@ worker.onmessage = (e) => {
         // branch did not exist: the click closed the menu and did nothing at
         // all, with no message. The bank is still filling at that moment, so
         // this is the most likely moment for a new user to press it.
+        if (earlyOpen && earlyOpen.id == null && earlyOpen.index === m.index) unvoiceEarly();
         note("The bank is still warming up — try that preset again in a moment.");
       }
       break;
@@ -2331,6 +2390,8 @@ function releaseRequest(request, id) {
     case "edit_begin":
       // An open that failed is not on its way either — and the edits the lane
       // was holding for it are about the patch still on the bench, so they go.
+      // Voices that took it early go back to that patch.
+      if (earlyOpen) unvoiceEarly();
       benchPending = null;
       renderSubject();
       renderBank();
@@ -2339,6 +2400,7 @@ function releaseRequest(request, id) {
     case "load_preset":
       // A load that failed is not still on its way: its row stops saying
       // "opening…", and the first-arrival open is no longer held for it.
+      if (earlyOpen && earlyOpen.id == null) unvoiceEarly();
       presetClicks.clear();
       warmPreviewCancel(); // a ▶ waiting on it is not going to play
       document.querySelectorAll(".preset-item.loading").forEach((r) => {
@@ -3753,6 +3815,12 @@ async function bootPerform() {
     // `why` names a tree that is not a hand edit ("taken offer"), so the
     // labels say what it is (see `benchDirtyWhy`).
     commitTree: (json, why) => {
+      // PERFORM already plays a patch still on its way to the bench (see
+      // `voiceEarly`): what it keeps is for that patch, so it waits for it.
+      if (earlyOpen) {
+        earlyCommit = { json, why };
+        return;
+      }
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
       queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
     },
@@ -3942,11 +4010,14 @@ async function bootBooth() {
       const p = (presetRows || []).find((r) => r.name === name);
       if (!p) return;
       const id = presetIds.get(p.index);
-      if (id != null && rowOf(id)) openOnBench(id, { auto: true });
-      else {
+      if (id != null && rowOf(id)) {
+        openOnBench(id, { auto: true });
+        voicePresetEarly(p, id);
+      } else {
         presetClicks.set(p.index, benchSeq);
         openAskedAt = performance.now();
         send({ type: "load_preset", index: p.index, open: true });
+        voicePresetEarly(p);
       }
     },
     resetVisitor: () => boothResetVisitor(),
@@ -4937,10 +5008,14 @@ $("pd-skip").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 let renderWanted = null;
 const RENDER_SETTLE_MS = 180;
 
+// In the background (`bg`): the worker serves them after any gesture waiting
+// in its `now` lane, a render at a time, so a preset clicked while the
+// table's sounds render is opened next. ▶ on a side still waiting asks again,
+// as the player's own request (`awaitRender`).
 function requestPairRendersNow() {
   clearTimeout(renderWanted);
   if (!currentDuel) return;
-  for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id });
+  for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id, bg: true });
 }
 
 function requestPairRenders() {
@@ -5544,10 +5619,10 @@ function placePair(pair, meta) {
 // dealt at random, and under bald/thompson it is chosen against the current
 // posterior, which the model already lets lag its log by up to six picks.
 //
-// Asked for only once the table's own two sounds are here: the worker renders
-// a dealt pair's sounds in the same turn, and an ahead deal sent with the
-// table's renders still queued would make the pair in front of the player
-// wait behind the next one's.
+// Asked for only once the table's own two sounds are here, so the pair in
+// front of the player never waits behind the next one's. The next pair's
+// sounds are fetched in the background (`bg`): the worker renders them
+// behind every gesture waiting on it.
 //
 // The worker answers deals in the order they were asked for, and `onDealt`
 // takes each answer on its own terms rather than by which request asked for
@@ -5609,7 +5684,9 @@ function onDealt(pair, meta) {
     return;
   }
   ahead = { pair, meta };
-  for (const id of pair) if (!renders.has(id)) send({ type: "render", id });
+  // In the background (`bg`, see `requestPairRendersNow`): nobody hears
+  // these until the next pick, and a gesture must not wait behind them.
+  for (const id of pair) if (!renders.has(id)) send({ type: "render", id, bg: true });
 }
 
 /** Swap the pair dealt ahead onto the table; false when there is none that
@@ -6415,8 +6492,11 @@ function renderPresetBank(list) {
     if (presetClicks.has(p.index)) el.classList.add("loading");
     el.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
-      if (inBank) { openOnBench(loadedId); showView("play"); }
-      else {
+      if (inBank) {
+        openOnBench(loadedId);
+        voicePresetEarly(p, loadedId);
+        showView("play");
+      } else {
         // Said at once: the engine may be busy for seconds, and a click
         // that shows nothing gets clicked again, or given up on.
         presetClicks.set(p.index, benchSeq);
@@ -6424,6 +6504,8 @@ function renderPresetBank(list) {
         el.classList.add("loading");
         el.setAttribute("aria-busy", "true");
         send({ type: "load_preset", index: p.index, open: true });
+        // Heard before: it plays now, while the engine inserts it.
+        voicePresetEarly(p);
       }
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
@@ -6866,8 +6948,147 @@ const OPEN_SAID_MS = 1000;
 // An open promised before there is an id to open: "teach it" names its first
 // pick before the engine has inserted it. {name, at}, or null.
 let openExpect = null;
+
+// ---------- an open reaches the voices before the bench ----------
+// Opening a patch is a render on the engine's one thread (the bench's buffer),
+// and it waits behind whatever render is already running there. Just after a
+// boot that is always something (the first patch, the table's pair), so a
+// preset clicked then reached the voices, and PERFORM, late: PERFORM showed
+// it wired 0.3-0.9 s after its tab was opened (0.8 s after the click) on a
+// quiet four-core machine, 4.7 s on one core and 9.3 s on a CI runner, for a
+// patch it had measured and could have played at once.
+//
+// The voices need only the tree and its makeup gain, and both are known
+// before the render: the engine sends them first (`bench_opening`, from a
+// preset's insert or a bench open), and a preset opened before is remembered
+// here (`presetVoiced`), so opening it again, after a reload too, does not
+// wait on the engine at all. The rack stays the patch it was until the bench
+// reply lands; meanwhile its knobs do not write into voices that are playing
+// something else (`voicesAheadOfRack`), and edits still landing on it do not
+// take the voices back. The reply vets the patch, and mutes it if it fails.
+let earlyOpen = null; // {json, id, index, prev, tick}: the voices took this open early
+// Counts opens, the app's own included, so an early open can tell whether the
+// open still pending on the bench was asked for before it or after.
+let openTick = 0;
+let benchPendingTick = 0;
+let earlyCommit = null; // {json, why}: a Keep or Take PERFORM made meanwhile
+const VOICED_STORE = "auracle-voiced-presets";
+const VOICED_MAX = 64;
+// Preset name -> {json, makeup} as this build's engine gave them. Keyed by the
+// build, since a new build may change a preset (its tree, or φ and so its
+// makeup): the first open after an update asks the engine again.
+const presetVoicedMap = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(VOICED_STORE) || "null");
+    return new Map(raw && raw.build === BUILD && Array.isArray(raw.presets) ? raw.presets : []);
+  } catch {
+    return new Map();
+  }
+})();
+let voicedSaveTimer = null;
+function rememberPresetVoiced(index, json, makeup) {
+  const p = [...(presetRows || []), ...(warmRows || [])].find((r) => r.index === index);
+  if (!p || !json || json === "null" || !Number.isFinite(makeup)) return;
+  presetVoicedMap.delete(p.name);
+  while (presetVoicedMap.size >= VOICED_MAX) presetVoicedMap.delete(presetVoicedMap.keys().next().value);
+  presetVoicedMap.set(p.name, { json, makeup });
+  clearTimeout(voicedSaveTimer);
+  voicedSaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(VOICED_STORE, JSON.stringify({ build: BUILD, presets: [...presetVoicedMap] }));
+    } catch {
+      // Quota or a private window: a convenience, never load-bearing.
+    }
+  }, 1500);
+}
+const presetVoiced = (name) => presetVoicedMap.get(name) || null;
+// A tree as a sound: its text without the node uids, which the pool mints
+// per session (the same rule as PERFORM's `wireKey`).
+function treeSound(json) {
+  try {
+    return JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
+  } catch {
+    return json;
+  }
+}
+/** `json` with the node identities of `from` wherever the two have the same
+ *  shape: a tree PERFORM built on a remembered preset (another session's
+ *  uids), made the bench's own before it is sent there. */
+function withUidsOf(json, from) {
+  try {
+    const a = JSON.parse(json);
+    const walk = (x, y) => {
+      if (!x || !y || typeof x !== "object" || typeof y !== "object") return;
+      if (Array.isArray(x)) return void x.forEach((v, i) => walk(v, Array.isArray(y) ? y[i] : undefined));
+      for (const k of Object.keys(x)) {
+        if (k === "uid") {
+          if (y.uid !== undefined) x.uid = y.uid;
+        } else walk(x[k], y[k]);
+      }
+    };
+    walk(a, JSON.parse(from));
+    return JSON.stringify(a);
+  } catch {
+    return json;
+  }
+}
+/** Hand the voices (and PERFORM) the patch being opened, ahead of its bench
+ *  reply. `id` is null for a preset whose insert has not answered yet. */
+function voiceEarly(json, makeup, { id = null, index = null, label }) {
+  if (!live || !json || json === "null") return;
+  const prev = earlyOpen
+    ? earlyOpen.prev
+    : { json: liveTreeJson, makeup: liveMakeup, id: livePatchId, label: liveLabelText };
+  earlyOpen = { json, id, index, prev, tick: ++openTick };
+  livePatchId = id;
+  if (!(liveTreeJson && treeSound(liveTreeJson) === treeSound(json))) {
+    live.setPatch(json, makeup);
+    setLivePatchJson(json, makeup);
+  }
+  setLiveLabel(label);
+}
+/** An early open that is not going to land (its insert failed, the patch
+ *  left the bank, the player moved on): the voices go back to what they had. */
+function unvoiceEarly() {
+  const e = earlyOpen;
+  earlyOpen = null;
+  earlyCommit = null;
+  if (!e || !live) return;
+  const back = benchTreeJson && benchTreeJson !== "null"
+    ? { json: benchTreeJson, makeup: benchMakeup, id: wb.dirty ? null : wb.subjectId, label: null }
+    : e.prev;
+  if (!back || !back.json) return;
+  livePatchId = back.id;
+  live.setPatch(back.json, back.makeup);
+  setLivePatchJson(back.json, back.makeup);
+  setLiveLabel(back.label || (wb.subjectId != null ? `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}` : "no patch"));
+}
+/** A preset the voices have played before, opened from the library: into
+ *  the voices now, from memory. */
+function voicePresetEarly(p, id = null) {
+  const v = presetVoiced(p.name);
+  if (v) voiceEarly(v.json, v.makeup, { id, index: p.index, label: p.name });
+}
+/** The voices play the patch on its way to the bench, while the rack on
+ *  screen is still the one it replaces. */
+function voicesAheadOfRack() {
+  if (earlyOpen) return true;
+  return benchPending != null && livePatchId === benchPending && wb.subjectId !== benchPending;
+}
+/** The early open is the one the player is waiting on (no later open since). */
+function earlyIsCurrent() {
+  const e = earlyOpen;
+  if (!e) return false;
+  if (e.id != null) return e.id === benchPending && presetClicks.size === 0;
+  // A preset still being inserted: current if it is the only click waiting
+  // and nothing was opened after it (an open from before it, the first patch
+  // after boot say, is one it replaces).
+  return presetClicks.size === 1 && presetClicks.has(e.index) && (benchPending == null || benchPendingTick < e.tick);
+}
 function openingNow() {
   if (openExpect && performance.now() - openExpect.at < 60_000) return true;
+  // The patch on its way is already in the voices (see `voiceEarly`).
+  if (earlyIsCurrent()) return false;
   if (benchPending == null && presetClicks.size === 0) return false;
   // The patch on its way is already the one the voices play (the warm start
   // hands its first pick to the voices ahead of the bench): nothing is being
@@ -6895,6 +7116,7 @@ function openingName() {
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
+  benchPendingTick = ++openTick;
   openAskedAt = performance.now();
   openAsk = { id, at: openAskedAt, auto };
   // A COMMIT still waiting on the last patch's edit is about that patch; it
@@ -6980,12 +7202,17 @@ function sendEdit(addr, value, isIndex, id) {
   // write straight into the running voices. At the address the knob has *on
   // the bench*, which a structural reply that landed mid-drag may have moved.
   const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
+  // Unless the voices have already moved on to a patch on its way to the
+  // bench (`bench_opening`): this address is the leaving rack's, and there it
+  // could name a different knob. The write itself is dropped when the new
+  // patch lands, as every edit aimed at the rack it replaces is (`dropLane`).
+  const voicesAhead = voicesAheadOfRack();
   if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
-  else if (live) live.param(lockAddrOf(who) || addr, value);
+  else if (live && !voicesAhead) live.param(lockAddrOf(who) || addr, value);
   // …and PERFORM plays from it. Its base for this knob was the tree it last
   // measured, so without this PATCH drew the old value back over the knob in
   // PERFORM's amber, and PERFORM's next move wrote it back into the voices.
-  if (!isIndex && perform && perform.knobSet) perform.knobSet(lockAddrOf(who) || addr, value);
+  if (!isIndex && !voicesAhead && perform && perform.knobSet) perform.knobSet(lockAddrOf(who) || addr, value);
   // The readout above the rack describes the tree before this write until the
   // bench answers with the new φ. Say so rather than leave a stale number
   // looking current.
@@ -20033,6 +20260,7 @@ $("warm-go").onclick = () => {
 const quietBench = new Set();
 function warmFirstLanded(m) {
   openExpect = null;
+  if (m.id > 0) rememberPresetVoiced(m.index, m.json, m.makeup);
   if (m.id <= 0 || m.id === wb.subjectId || m.id === benchPending) return;
   presetIds.set(m.index, m.id);
   quietBench.add(m.id);

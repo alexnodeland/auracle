@@ -27,6 +27,18 @@ changelog that edits its own past is not a record.
   pool, PERFORM itself), re-measured on a sample of the file
   (`shipped_preset_wirings_are_current`,
   `shipped_preset_wirings_measure_the_same_today`, `budgets.spec.js`).
+- **A preset you have opened before plays the moment you click it, even
+  right after a reload.** The page remembers each preset's patch and level,
+  so the keys and PERFORM's controls have it at once while the engine catches
+  up; PATCH shows the new rack when the engine has rendered it. Any other
+  patch reaches the keys as soon as the engine turns to it, before that
+  render. Opening used to wait behind whatever the engine was already
+  rendering, and just after a reload that is always something (the first
+  patch, the sounds of the pair on the table and of the next one): PERFORM
+  showed a reloaded preset's controls working 9.3 s after its tab was opened
+  on a CI runner and 4.7 s on one core. The sounds of a dealt pair now wait
+  behind anything you ask for, instead of the other way round
+  (`perform_instant.spec.js`).
 - **A preset clicked in the bank opens with one render instead of two.** Its
   insert used to throw its audio away and the bench then rendered the same
   phrase again; the insert now keeps it, as the warm start's ▶ already did,

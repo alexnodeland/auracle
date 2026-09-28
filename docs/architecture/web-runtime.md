@@ -46,7 +46,11 @@ Requests are served in three lanes, most urgent first and first come, first
 served within a lane (`laneOf` in `worker.js`):
 
 - **now**: the player's gestures and everything that must stay in order with
-  them (edits, votes, opens, auditions, saves, logs).
+  them (edits, votes, opens, auditions, saves, logs). A render main asks for
+  in the background (`render` with `bg`: the sounds of a pair just dealt)
+  waits here behind every gesture, and before one starts the worker lets in
+  anything that arrived during the last call (`serveNow`). A `now` render of
+  the same id supersedes it.
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
@@ -128,6 +132,22 @@ through one ordered lane in `main.js`:
   held pointer (`knobDragging`);
 - an undo retires the toast of what it undid.
 
+An open reaches the voices before the bench. Opening is a render (the bench's
+buffer) on the engine's one thread, behind whatever render is running there,
+but the voices need only the tree and its makeup: the worker posts them first
+(`bench_opening`, from a clicked preset's insert and from `edit_begin`), and
+`main.js` remembers each preset's (`auracle-voiced-presets` in localStorage,
+keyed by the build), so a preset opened before goes into the voices, and
+PERFORM, from the click, without the engine (`voiceEarly`). Until the bench
+reply lands, `earlyOpen` holds that state: the old rack's knobs do not write
+into the voices (`voicesAheadOfRack`), edits still landing on the old rack do
+not take the voices back, a subject reply for an earlier open leaves them
+alone, and a Keep or Take PERFORM makes meanwhile waits for the bench
+(`earlyCommit`, given the bench's uids with `withUidsOf`). The reply is
+matched by sound (`treeSound`, uids aside), vets the patch and mutes it if it
+fails; an open that does not land (a failed insert, a patch gone from the
+bank, the player moved on) puts the voices back (`unvoiceEarly`).
+
 ## PERFORM on the main thread
 
 `perform.js` asks the worker to measure the patch (`perform_wire`), caches
@@ -182,7 +202,10 @@ and `tests/web/budgets.spec.js` holds the budgets they measure.
 
 While a pair is on the table, `main.js` deals the next one (`duel` with
 `ahead: true`, echoed in the reply) once the table's own two sounds are
-resident, and fetches the new pair's renders. A pick or ↻ swaps it in
+resident, and fetches the new pair's renders in the background (`bg`, as the
+table's own are). The worker does not render a pair in the deal's turn: it
+used to (`prefetch_render`), and a preset clicked just after a reload waited
+out four renders before it opened. A pick or ↻ swaps it in
 synchronously (`placePair`); the pair is re-checked at that moment against
 cuts and replacements made since, and against the pair just put away
 (`aheadUsable`). Only with nothing waiting does a pick wait for a deal, and a

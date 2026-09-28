@@ -40,7 +40,9 @@ where you can see them.
 
 The next pair is already waiting. While a pair is on the table the engine
 deals the one after it and renders both its sounds, so a pick or a skip puts
-it up at once, sounds and all, and the pair after that is dealt behind it. It
+it up at once, sounds and all, and the pair after that is dealt behind it.
+Those renders, like the ones for the pair on the table, wait behind anything
+you ask for: a patch you open, a ▶ you press. It
 is chosen before your pick is known, which changes nothing: the pick is held
 in its seven seconds anyway, and pairs are dealt at random (see below). A
 patch you cut meanwhile is never put up: that pair is dropped and dealt again.
