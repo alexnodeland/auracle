@@ -16809,7 +16809,17 @@ function renderStyleChips() {
     input.addEventListener("input", fit);
     input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
     input.addEventListener("keyup", (e) => e.stopPropagation());
-    input.onblur = () => send({ type: "set_style_name", k, name: input.value });
+    input.onblur = () => {
+      const name = input.value.trim();
+      if ((s.name || "") === name) return;
+      s.name = name;
+      send({ type: "set_style_name", k, name });
+      scheduleSave();
+      // Everywhere the style is mentioned says the new name at once: the
+      // chips, the map's titles, DIRECTIONS and the rack's family belief.
+      renderStyleChips();
+      if (currentView === "taste") drawTaste();
+    };
     // A lens the model has learned but has no exemplar for yet cannot be
     // auditioned. Saying so on the control beats a ▶ that silently returns.
     const ex = s.exemplars && s.exemplars[0];

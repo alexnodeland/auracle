@@ -1676,8 +1676,12 @@ async function dispatch(m) {
       break;
     }
     case "set_style_name": {
+      // The name, and nothing else. Posting fresh views here was the first
+      // post since the last fit, so a rename also showed every reweighting
+      // the votes and stars had made since: the other styles changed their
+      // generated names and shares at the moment the player named one. The
+      // page updates its own copy; the next fit's views carry the name.
       engine.set_style_name(m.k, m.name);
-      post({ type: "taste_views", views: tasteViews() });
       break;
     }
     case "log_event": {
