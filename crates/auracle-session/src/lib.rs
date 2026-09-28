@@ -1437,6 +1437,75 @@ mod tests {
         assert!(engine.pool[i].pinned);
     }
 
+    /// **A ⚡ seed is not replaced while its walk is out.** The patch the
+    /// model likes least is the one every insert evicts first, so it is the
+    /// seed most at risk: in the control twin a run of preset loads retires
+    /// it. With a ⚡ job drawn from it, the same loads, a whole generation and
+    /// its finish all pass it over, and the walk, when it lands, is absorbed
+    /// against its seed instead of being thrown away as `unknown_seed`. Once
+    /// absorbed (or cancelled) the seed is an ordinary member again.
+    #[test]
+    fn a_seed_evolving_is_never_evicted_until_its_walk_lands() {
+        let mut twins = taught_n(0xE70F, 2);
+        let mut evolving = twins.pop().unwrap();
+        let mut control = twins.pop().unwrap();
+        let worst = control.ranked().last().expect("a ranked pool").0;
+        let doomed = control.pool[worst].id;
+        let load = |e: &mut Engine| {
+            for (name, tree) in auracle_grammar::presets().into_iter().take(6) {
+                e.insert_preset(tree, name);
+            }
+        };
+        load(&mut control);
+        assert!(
+            control.find(doomed).is_none(),
+            "the fixture never evicted the member it likes least"
+        );
+
+        let (ctx, job) = evolving
+            .refine_from_job(&mut StdRng::seed_from_u64(1), doomed, &[])
+            .expect("taught, and the seed is in the pool");
+        assert_eq!(evolving.refine_from_inflight(), vec![doomed]);
+        load(&mut evolving);
+        assert_eq!(evolving.pool.len(), evolving.cfg.pool_size);
+        assert!(
+            evolving.find(doomed).is_some(),
+            "a preset load evicted the seed of a ⚡ in flight"
+        );
+        let (gctx, jobs) = evolving
+            .refine_jobs(&mut StdRng::seed_from_u64(2))
+            .expect("taught");
+        let order: Vec<usize> = (0..jobs.len()).collect();
+        for r in farm_walks(&gctx, &jobs, &order) {
+            evolving.refine_absorb(r);
+        }
+        evolving.refine_finish();
+        assert!(
+            evolving.find(doomed).is_some(),
+            "a generation's end retired the seed of a ⚡ in flight"
+        );
+
+        let result = run_walk(&ctx, &job, &auracle_features::RenderMemo::default());
+        evolving.refine_from_absorb(doomed, result);
+        assert_ne!(evolving.last_refine(), RefineOutcome::UnknownSeed);
+        assert_ne!(evolving.last_refine(), RefineOutcome::Stale);
+        assert!(evolving.refine_from_inflight().is_empty());
+        assert!(
+            !evolving.refine_from_cancel(doomed),
+            "absorbed is not in flight"
+        );
+        assert_eq!(evolving.refine_from_walk(doomed), None);
+        assert_eq!(evolving.last_refine(), RefineOutcome::UnknownSeed);
+
+        // A cancelled job protects nothing.
+        let id = evolving.pool[evolving.ranked().last().unwrap().0].id;
+        evolving
+            .refine_from_job(&mut StdRng::seed_from_u64(3), id, &[])
+            .expect("in the pool");
+        assert!(evolving.refine_from_cancel(id));
+        assert!(evolving.refine_from_inflight().is_empty());
+    }
+
     /// Locked refinement never touches a locked address: run `refine_from`
     /// with every continuous amp-envelope site locked and assert the child's
     /// amp env is bit-identical to the seed's while *something* else moved.

@@ -1161,6 +1161,24 @@ impl WasmEngine {
         serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"reason":"no_taste"}"#.into())
     }
 
+    /// Walk the job [`WasmEngine::refine_from_job`] dealt for seed `id` here,
+    /// in this worker, and absorb it: the child a farm worker would breed from
+    /// that job. The worker draws the job before it knows whether a crew will
+    /// come up, so a request that arrives meanwhile cannot draw first; this is
+    /// how the job is walked when none does. Returns the child id, or 0 with
+    /// the reason in [`WasmEngine::last_refine_reason`] (`"unknown_seed"`
+    /// when no job for `id` is in flight).
+    pub fn refine_from_walk(&mut self, id: u32) -> u32 {
+        self.engine.refine_from_walk(id as u64).unwrap_or(0) as u32
+    }
+
+    /// Drop the ⚡ job in flight for seed `id` (a stop): its seed may be
+    /// replaced again. Until its result is absorbed or it is dropped, the seed
+    /// of a ⚡ walk is never evicted. Returns whether one was in flight.
+    pub fn refine_from_cancel(&mut self, id: u32) -> bool {
+        self.engine.refine_from_cancel(id as u64)
+    }
+
     /// Absorb the walk of a [`WasmEngine::refine_from_job`] for seed `id`.
     /// Returns the child id, or 0 with the reason in
     /// [`WasmEngine::last_refine_reason`] (a result that does not parse
@@ -2520,11 +2538,14 @@ mod tests {
         );
     }
 
-    /// ⚡ as one farm job lands the same child as ⚡ in the engine, and an
-    /// unknown seed says so instead of producing a job.
+    /// ⚡ as one farm job lands the same child as ⚡ in the engine, and so
+    /// does the job drawn first and walked here afterwards (`refine_from_walk`,
+    /// the worker's path when no crew comes up). An unknown seed says so
+    /// instead of producing a job, and a walk with no job drawn is refused.
     #[test]
     fn evolve_from_this_on_the_farm_is_evolve_from_this() {
         let (mut serial, mut farmed) = twins(0x1F7);
+        let mut walked = taught_wasm(0x1F7);
         let ranked: Vec<serde_json::Value> = serde_json::from_str(&serial.ranked()).unwrap();
         let mut landed = 0;
         for row in ranked.iter().take(4) {
@@ -2539,11 +2560,29 @@ mod tests {
             let there = farmed.refine_from_absorb(id, &result);
             assert_eq!(here, there, "seed {id}: the farm's ⚡ landed elsewhere");
             assert_eq!(serial.last_refine_reason(), farmed.last_refine_reason());
+            let drawn: serde_json::Value =
+                serde_json::from_str(&walked.refine_from_job(id, "[]")).unwrap();
+            // The draw, not the whole job: a tree's node identities come from
+            // a process-wide mint and differ between twins.
+            assert_eq!(
+                drawn["job"]["rng_seed"], reply["job"]["rng_seed"],
+                "seed {id}: another job was drawn"
+            );
+            let later = walked.refine_from_walk(id);
+            assert_eq!(
+                here, later,
+                "seed {id}: the job walked here landed elsewhere"
+            );
+            assert_eq!(serial.last_refine_reason(), walked.last_refine_reason());
             landed += (here > 0) as usize;
         }
         assert!(landed > 0, "no ⚡ landed, so no child was compared");
         assert_eq!(farmed.ranked(), serial.ranked());
+        assert_eq!(walked.ranked(), serial.ranked());
         assert_eq!(serial.status(), farmed.status());
+        assert_eq!(walked.refine_from_walk(0xDEAD), 0);
+        assert_eq!(walked.last_refine_reason(), "unknown_seed");
+        assert!(!walked.refine_from_cancel(0xDEAD));
         assert_eq!(
             farmed.refine_from_job(0xDEAD, "[]"),
             r#"{"reason":"unknown_seed"}"#

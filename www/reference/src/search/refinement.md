@@ -93,7 +93,9 @@ generations, because `insert_candidate` admits and evicts by the model. Turning
 **`refine_from(seed_id, locked)`** is the same thing from an explicit seed with
 an explicit [lock set](./locks.md), the `⚡ evolve from this` path: a single job
 over the same walk and the same absorption, with the seed never displaced by
-its own child.
+its own child, nor by anything else while its walk is out: from
+`refine_from_job` until `refine_from_absorb` (or `refine_from_cancel`, a stop)
+the seed is exempt from eviction like a pinned patch.
 
 ### Who leaves, and when
 

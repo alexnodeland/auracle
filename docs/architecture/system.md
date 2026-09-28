@@ -65,7 +65,8 @@ Two loops share one pool of patches.
    never retired. `refine` is that loop run serially, and `refine_begin` +
    `refine_seed` the same loop one walk per call. ⚡ *evolve from this* is one
    job over the same path (`refine_from`, or `refine_from_job` +
-   `refine_from_absorb`), with locks.
+   `refine_from_absorb` / `refine_from_walk`), with locks; its seed is
+   exempt from eviction while the job is out.
 
 ## Key abstractions
 

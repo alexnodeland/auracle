@@ -1176,6 +1176,14 @@ pub struct Engine {
     last_refine: RefineOutcome,
     /// The generation being absorbed, if one is open. See [`OpenGeneration`].
     open: Option<OpenGeneration>,
+    /// `⚡ evolve from this` walks drawn and not yet absorbed or cancelled,
+    /// by seed id: the context and job [`Engine::refine_from_job`] dealt, so
+    /// [`Engine::refine_from_walk`] can walk that very job here. A seed in
+    /// this table is never evicted (an edit's insert, a preset, a trim): a
+    /// walk from a patch that left the pool meanwhile would be thrown away
+    /// as `unknown_seed`. Not persisted: a walk in flight does not survive
+    /// a reload.
+    evolving: HashMap<u64, (WalkContext, WalkJob)>,
     /// What the last generation to finish retired ([`Engine::retired`]). Not
     /// persisted: it describes a call, like `last_refine`.
     retired: Vec<u64>,
@@ -1220,6 +1228,7 @@ impl Engine {
             dropped_observations: 0,
             last_refine: RefineOutcome::Idle,
             open: None,
+            evolving: HashMap::new(),
             retired: Vec::new(),
             map_axes: std::sync::Mutex::new(None),
         }
@@ -2370,7 +2379,7 @@ impl Engine {
 
     /// Insert a hand-made candidate — an edit or a preset — evicting the worst
     /// member at once if the pool is full (never `protect`, never a pinned
-    /// one). It always lands when anything is evictable: the player asked for
+    /// one, never the seed of a ⚡ walk in flight). It always lands when anything is evictable: the player asked for
     /// it. Refined children do not come here; they must earn their slot and
     /// wait for the generation's end ([`Engine::admit_refined`]).
     fn insert_candidate(
@@ -2400,7 +2409,9 @@ impl Engine {
                 .pool
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| Some(c.id) != protect && !c.pinned)
+                .filter(|(_, c)| {
+                    Some(c.id) != protect && !c.pinned && !self.evolving.contains_key(&c.id)
+                })
                 .min_by(|(_, x), (_, y)| {
                     let (sx, ux) = rank(x);
                     let (sy, uy) = rank(y);
@@ -2444,7 +2455,9 @@ impl Engine {
             .pool
             .iter()
             .enumerate()
-            .filter(|(_, c)| !c.pinned && !protect.contains(&c.id))
+            .filter(|(_, c)| {
+                !c.pinned && !protect.contains(&c.id) && !self.evolving.contains_key(&c.id)
+            })
             .map(|(i, c)| (i, !c.phi_std.is_empty(), self.utility_of(&c.phi_std)))
             .collect();
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.total_cmp(&b.2)));
@@ -2749,23 +2762,58 @@ impl Engine {
     /// *except* the locked addresses. Returns the injected child id, or `None`
     /// with the reason in [`Engine::last_refine`].
     ///
-    /// One job over the generation's path: [`Engine::refine_from_job`], the
-    /// pure walk here with this engine's memo, [`Engine::refine_from_absorb`].
+    /// One job over the generation's path: [`Engine::refine_from_job`], then
+    /// [`Engine::refine_from_walk`] (the pure walk here with this engine's
+    /// memo, absorbed).
     pub fn refine_from<R: Rng>(
         &mut self,
         rng: &mut R,
         seed_id: u64,
         locked: &[String],
     ) -> Option<u64> {
-        let (ctx, job) = self.refine_from_job(rng, seed_id, locked).ok()?;
+        self.refine_from_job(rng, seed_id, locked).ok()?;
+        self.refine_from_walk(seed_id)
+    }
+
+    /// Walk the ⚡ job [`Engine::refine_from_job`] dealt for `seed_id` here,
+    /// with this engine's memo, and absorb it: the child a farm worker would
+    /// have bred from the same job. The frontend draws the job first and
+    /// only then decides where to walk it, so the `refine` stream is drawn
+    /// in the order the requests came, however long a crew takes to come
+    /// up. `None` with [`RefineOutcome::UnknownSeed`] when no job for that
+    /// seed is in flight.
+    pub fn refine_from_walk(&mut self, seed_id: u64) -> Option<u64> {
+        let Some((ctx, job)) = self.evolving.get(&seed_id).cloned() else {
+            self.last_refine = RefineOutcome::UnknownSeed;
+            return None;
+        };
         let result = run_walk(&ctx, &job, &self.memo);
         self.refine_from_absorb(seed_id, result)
+    }
+
+    /// Drop the ⚡ job in flight for `seed_id` (a stop): its seed may be
+    /// evicted again, and its result, if it is offered anyway, is absorbed
+    /// as any other would be. Returns whether one was in flight.
+    pub fn refine_from_cancel(&mut self, seed_id: u64) -> bool {
+        self.evolving.remove(&seed_id).is_some()
+    }
+
+    /// The seeds of the ⚡ walks in flight, ascending.
+    pub fn refine_from_inflight(&self) -> Vec<u64> {
+        let mut ids: Vec<u64> = self.evolving.keys().copied().collect();
+        ids.sort_unstable();
+        ids
     }
 
     /// `⚡ evolve from this` as data: the context and the single job, for a
     /// farm worker to walk while this engine keeps answering. Draws one `u64`
     /// from `rng`. Fails, with the reason also in [`Engine::last_refine`],
     /// when the seed is not in the pool or there is no taste yet.
+    ///
+    /// The job is kept until [`Engine::refine_from_absorb`] (or
+    /// [`Engine::refine_from_walk`]) takes its result or
+    /// [`Engine::refine_from_cancel`] drops it, and until then its seed is
+    /// never evicted.
     pub fn refine_from_job<R: Rng>(
         &mut self,
         rng: &mut R,
@@ -2789,6 +2837,7 @@ impl Engine {
             steps: self.cfg.refine_steps,
             rng_seed: walk_seed(rng.gen(), 0),
         };
+        self.evolving.insert(seed_id, (ctx.clone(), job.clone()));
         Ok((ctx, job))
     }
 
@@ -2803,6 +2852,7 @@ impl Engine {
     /// is open the child joins it — stamped with its number, the seed spared
     /// by its finish, and nothing retired before then.
     pub fn refine_from_absorb(&mut self, seed_id: u64, result: WalkResult) -> Option<u64> {
+        self.evolving.remove(&seed_id);
         let (child, outcome) = self.absorb_from(seed_id, result);
         self.last_refine = outcome;
         child
@@ -3743,8 +3793,10 @@ impl Engine {
             self.repaired_cells +=
                 crate::migrate::repair_phi_pair(&mut e.phi_before, &mut e.phi_after, &names);
         }
-        // A generation open over the old bank has nothing left to absorb into.
+        // A generation open over the old bank has nothing left to absorb into,
+        // and neither has a ⚡ walk from it.
         self.open = None;
+        self.evolving.clear();
         self.pool.clear();
         self.audio_lru.clear();
         self.shown_pairs.clear();
