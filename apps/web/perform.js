@@ -974,7 +974,7 @@ export function createPerform(host) {
         request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: k.i });
       } else {
         const aim = aimAt(k.i, up ? 1 : -1);
-        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing ${aim ? `a ${aim.word}` : "an"} offer instead`, { replace: "pf-offer" });
+        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing ${aim ? `a ${aim.word}` : "an"} offer instead`, { replace: "pf-offer", urgent: true });
         requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`, aim);
       }
     }
@@ -1720,7 +1720,7 @@ export function createPerform(host) {
         paintKnob(k);
         host.note(`${w.name} now turns ${w.knobs.map(([a]) => knobWord(a, true)).join(" and ")}`, { replace: `pf-graft:${w.name}` });
       } else if (w) {
-        host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} did not reach it here — growing an offer instead`, { replace: `pf-graft:${w.name}` });
+        host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} did not reach it here — growing an offer instead`, { replace: `pf-graft:${w.name}`, urgent: true });
         requestOffer(`${w.name.toLowerCase()} ${it.dir > 0 ? "up" : "down"}`, aimAt(it.i, it.dir));
       }
     }
@@ -1879,7 +1879,7 @@ export function createPerform(host) {
         state.intent = null;
         const w = state.wire && state.wire[i];
         if (w) {
-          host.note(`${w.name}: nothing to add here — growing an offer instead`, { replace: `pf-graft:${w.name}` });
+          host.note(`${w.name}: nothing to add here — growing an offer instead`, { replace: `pf-graft:${w.name}`, urgent: true });
           requestOffer(`${w.name.toLowerCase()} ${dir > 0 ? "up" : "down"}`, aimAt(i, dir));
         }
         return true;

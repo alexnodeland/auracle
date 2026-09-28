@@ -276,10 +276,9 @@ test("a search control springs back when let go, and says what letting go will d
   await drag(page, grit, -90, { hold: async () => { during = await sub.textContent(); } });
   expect(during).toBe("let go to ask for rough");
   await expect(grit).toHaveAttribute("aria-valuenow", "0.00");
-  // Said in the toast lane, which may still be saying the preset's arrival:
-  // the preset's controls work at once now, so this turn comes seconds
-  // sooner than it used to after opening it.
-  await expect(page.locator("#toasts")).toContainText("growing a grittier offer instead", { timeout: 15_000 });
+  // A refusal answering the turn: it takes the lane at once, ahead of the
+  // preset's own arrival toasts still queued.
+  await expect(page.locator("#toasts")).toContainText("growing a grittier offer instead", { timeout: 5_000 });
   expect(errs).toEqual([]);
 });
 
