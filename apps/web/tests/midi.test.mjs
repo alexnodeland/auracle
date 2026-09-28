@@ -39,6 +39,53 @@ test("pickup ignores a pot until it passes the control's value", () => {
   assert.equal(p.offer(0.7, 0.2), false, "a drifted control has to be picked up again");
 });
 
+test("a re-centred control keeps an engaged pot, anchored where it is", () => {
+  const p = new Pickup(0.04);
+  assert.equal(p.offer(0.5, 0.5), true, "picked up at the control");
+  assert.equal(p.value(0.8), 0.8, "and follows the pot");
+  p.offer(0.8, 0.8);
+  p.reanchor(0.5); // PERFORM folded the sound into the centre
+  assert.equal(p.offer(0.5, 0.85), true, "still engaged: the pot is not dead");
+  assert.ok(Math.abs(p.value(0.85) - 0.625) < 1e-9, "moves from the new centre, scaled to the room above");
+  assert.ok(Math.abs(p.value(0.4) - 0.25) < 1e-9, "and below");
+  assert.equal(p.value(0), 0, "the bottom of the pot is the bottom of the control");
+  assert.equal(p.value(1), 1, "the top of the pot is the top of the control");
+  assert.equal(p.value(0.9), 0.9, "where they met, the anchor fell away");
+  p.release();
+  assert.equal(p.offer(0.5, 0.9), false, "set by the mouse: picked up again");
+  p.reanchor(0.5);
+  assert.equal(p.anchor, null, "a pot not engaged is not anchored");
+});
+
+test("a pot on a re-centred PERFORM control keeps working from where it is", async () => {
+  const { createMidi } = await import("../midi.js");
+  const ctl = [0.5];
+  const sets = [];
+  const pf = {
+    getControl: (i) => ctl[i] ?? 0.5,
+    setControl: (i, v) => {
+      ctl[i] = v;
+      sets.push(v);
+    },
+  };
+  const host = new Proxy({ perform: () => pf, controlNames: () => ["Bright"] }, { get: (t, k) => (k in t ? t[k] : () => {}) });
+  const midi = createMidi(host);
+  // The first knob turned claims Bright, is picked up at the centre and follows.
+  for (const v of [60, 62, 64, 70, 80, 90, 102]) midi.feed([0xb0, 21, v]);
+  assert.ok(Math.abs(ctl[0] - 102 / 127) < 1e-9, `Bright follows the pot: ${ctl[0]}`);
+  // PERFORM re-centres Bright (a Keep, a glide): the pot is not let go.
+  ctl[0] = 0.5;
+  midi.controlMovedElsewhere(0, { recentre: true, to: 0.5 });
+  const n = sets.length;
+  midi.feed([0xb0, 21, 105]);
+  assert.equal(sets.length, n + 1, "the next movement moves the control");
+  assert.ok(ctl[0] > 0.5 && ctl[0] < 0.6, `from its new centre: ${ctl[0]}`);
+  // The mouse sets it: now the pot has to pick it up again.
+  midi.controlMovedElsewhere(0);
+  midi.feed([0xb0, 21, 110]);
+  assert.equal(sets.length, n + 1, "a pot let go does nothing until it passes the control");
+});
+
 test("clock tempo is read by least squares and resists a late tick", () => {
   const c = new ClockTempo();
   const ms = 60000 / (120 * 24);

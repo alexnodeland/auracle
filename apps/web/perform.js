@@ -222,6 +222,8 @@ export function createPerform(host) {
       pointer,
       where,
     );
+    // Where a re-centred control was, fading (see `recentre`).
+    if (spec.kind === "named") s.insertBefore(svg("path", { d: "" }, "pf-k-ghost"), s.querySelector(".pf-k-body"));
     if (spec.kind === "wander") {
       // Where the zones begin (ideas, drift, roam): three short ticks just
       // outside the ring, and inside it a thin arc that fills toward
@@ -284,7 +286,9 @@ export function createPerform(host) {
     if (k.spec.kind === "named" && typeof paintXY === "function" && (k.i === XY.x || k.i === XY.y)) queueMicrotask(paintXY);
     const bipolar = k.spec.kind === "named" || k.spec.kind === "blend-bipolar";
     const v = k.value;
-    const a = angleOf(v, bipolar);
+    // Where the pointer is drawn: the value, or on its way there while a
+    // re-centre glides (`recentre`).
+    const a = angleOf(k.drawn != null ? k.drawn : v, bipolar);
     k.svg.querySelector(".pf-k-ptr").setAttribute("transform", `rotate(${a})`);
     k.svg.querySelector(".pf-k-arc").setAttribute("d", arcPath(bipolar ? 0 : -135, a));
     k.wrap.setAttribute("aria-valuenow", v.toFixed(2));
@@ -420,6 +424,7 @@ export function createPerform(host) {
     const lo = () => (k.spec.kind === "named" ? -1 : 0);
     const set = (v, fine) => {
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      k.drawn = null;
       const [sLo, sHi] = spanOf(k);
       k.value = clamp(v, sLo, sHi);
       // A half-closed control's stop at the centre is felt, not only seen.
@@ -439,6 +444,7 @@ export function createPerform(host) {
     k.wrap.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      k.drawn = null;
       k.atStop = false;
       k.wrap.focus({ preventScroll: true });
       k.wrap.setPointerCapture(e.pointerId);
@@ -873,6 +879,49 @@ export function createPerform(host) {
     paintKnob(k);
   }
 
+  // ---------- re-centring ----------
+  // The controls return to zero whenever the sound they were turned on is
+  // folded into the centre: a new measurement, a Keep, a Take, a glide. The
+  // sound does not move, but the dial used to jump to 12 o'clock under the
+  // player's eyes ("I set Bright to 70% and now it says 0"), and a MIDI pot on
+  // it went dead until swept back through the middle. Now the pointer glides
+  // home over RECENTRE_MS while a ghost tick marks where it was and fades
+  // (none of it under reduced motion), and a pot bound to it keeps working
+  // from where it is (midi.js re-anchors instead of letting go).
+  const RECENTRE_MS = 250;
+  const stillMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  function recentre(k) {
+    if (k.tween) cancelAnimationFrame(k.tween);
+    k.tween = null;
+    const from = k.drawn != null ? k.drawn : k.value;
+    k.value = 0;
+    k.drawn = null;
+    host.controlMoved?.(k.i, { recentre: true, to: 0.5 });
+    if (Math.abs(from) < 0.005 || stillMotion()) return paintKnob(k);
+    const ghost = k.svg.querySelector(".pf-k-ghost");
+    if (ghost) {
+      ghost.setAttribute("d", radial(angleOf(from, true), 38, 49));
+      ghost.classList.remove("fade");
+      void ghost.getBoundingClientRect();
+      ghost.classList.add("fade");
+    }
+    const t0 = performance.now();
+    const step = () => {
+      const u = clamp((performance.now() - t0) / RECENTRE_MS, 0, 1);
+      k.drawn = u >= 1 ? null : from * (1 - u * u * (3 - 2 * u));
+      paintKnob(k);
+      k.tween = u < 1 ? requestAnimationFrame(step) : null;
+    };
+    k.drawn = from;
+    paintKnob(k);
+    k.tween = requestAnimationFrame(step);
+  }
+  function recentreAll() {
+    knobs.forEach((k) => {
+      if (k.spec.kind === "named") recentre(k);
+    });
+  }
+
   function onRelease(k) {
     if (k.spec.kind === "wander") return wanderLetGo();
     if (k.spec.kind !== "named") return;
@@ -1189,7 +1238,7 @@ export function createPerform(host) {
     if (state.deferredWire && performance.now() - state.lastTouch >= 1500) {
       const d = state.deferredWire;
       state.deferredWire = null;
-      applyWired(d);
+      applyRechecked(d);
       knobs.forEach(paintKnob);
       renderHood();
     }
@@ -1437,7 +1486,7 @@ export function createPerform(host) {
     if (!k) return;
     if (k.tween) cancelAnimationFrame(k.tween);
     k.tween = null;
-    host.controlMoved?.(k.i);
+    host.controlMoved?.(k.i, { recentre: true, to: 0 });
     const v0 = k.value;
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!v0 || still) {
@@ -1525,12 +1574,7 @@ export function createPerform(host) {
     state.wiredAt = new Map(here);
     state.playableAt = performance.now();
     state.c = state.c.map(() => 0);
-    knobs.forEach((k) => {
-      if (k.spec.kind === "named") {
-        k.value = 0;
-        host.controlMoved?.(k.i);
-      }
-    });
+    recentreAll();
     state.wire = data.wiring;
     if (state.home && !state.home.knobs) state.home.knobs = new Map(state.cur.knobs);
     // Touch follows the player's choice if this patch can play it, and
@@ -1568,6 +1612,53 @@ export function createPerform(host) {
     }
   }
 
+  // A background re-check landed on a patch already playing on a wiring. If
+  // every control still turns the same knobs, the fresh numbers are taken in
+  // place: nothing re-centres, and the sound does not move — each knob's base
+  // absorbs the difference between the old gains and the new at the
+  // control's current position. A control whose half the re-check closed
+  // under it stops at the centre on that side, as a drag would. Only a
+  // wiring that turns different knobs re-centres (`applyWired`).
+  const wiredKnobs = (w) => (w && !w.search && !w.pending ? w.knobs.map(([a]) => a).sort().join("|") : w && w.search ? "search" : "");
+  function sameKnobs(a, b) {
+    return !!a && !!b && a.length === b.length && a.every((w, i) => wiredKnobs(w) === wiredKnobs(b[i]));
+  }
+  function applyRechecked(data) {
+    const old = state.wire;
+    const addrs = state.cur ? [...state.cur.knobs.keys()].sort().join("|") : "";
+    if (!state.cur || state.carried || !sameKnobs(old, data.wiring) || [...data.addrs].sort().join("|") !== addrs) {
+      applyWired(data);
+      return;
+    }
+    const cl = (w, c) => {
+      const [lo, hi] = rangeOf(w);
+      return clamp(c, lo, hi);
+    };
+    const base = new Map(state.cur.knobs);
+    old.forEach((w, i) => {
+      const nw = data.wiring[i];
+      if (!turns(w) || !state.c[i]) return;
+      const cOld = cl(w, state.c[i]);
+      const cNew = cl(nw, state.c[i]);
+      for (const [a, g] of w.knobs) if (base.has(a)) base.set(a, base.get(a) + cOld * g);
+      for (const [a, g] of nw.knobs) if (base.has(a)) base.set(a, base.get(a) - cNew * g);
+      if (cNew !== state.c[i]) {
+        state.c[i] = cNew;
+        const k = knobs[i];
+        if (k) k.value = cNew;
+      }
+    });
+    for (const [a, v] of base) base.set(a, clamp(v, 0, KNOB_MAX));
+    state.cur.knobs = base;
+    state.wiredAt = new Map(data.addrs.map((a, i) => [a, data.values[i]]));
+    state.wire = data.wiring;
+    state.carried = false;
+    state.measuring = false;
+    push();
+    sendTouch();
+    renderStatus();
+  }
+
   function onWorker(m) {
     const p = state.pending.get(m.req);
     if (!p) return false;
@@ -1600,7 +1691,7 @@ export function createPerform(host) {
         state.revalidating = false;
         if (m.data) {
           if (performance.now() - state.lastTouch < 1500) state.deferredWire = m.data;
-          else applyWired(m.data);
+          else applyRechecked(m.data);
         } else if (p.cacheAs.carried) {
           // A wiring borrowed from another sound is not this patch's: with no
           // measurement to replace it, it goes rather than lingering.
@@ -1778,12 +1869,7 @@ export function createPerform(host) {
       // The offer was grown from the performed sound, controls and all, so
       // the taken tree already contains their deltas: they read zero on it.
       state.c = state.c.map(() => 0);
-      knobs.forEach((k) => {
-        if (k.spec.kind === "named") {
-          k.value = 0;
-          host.controlMoved?.(k.i);
-        }
-      });
+      recentreAll();
       sendTouch();
       state.revalidating = true;
       const req = request("perform_wire", { tree: json, overrides: [] });
@@ -1860,13 +1946,7 @@ export function createPerform(host) {
     // reading its fixed starting point from `from`.
     state.cur.knobs = new Map(from);
     state.c = state.c.map(() => 0);
-    knobs.forEach((k) => {
-      if (k.spec.kind === "named") {
-        k.value = 0;
-        paintKnob(k);
-        host.controlMoved?.(k.i);
-      }
-    });
+    recentreAll();
     state.glide = { from, to, t0: performance.now(), dur: Math.max(0.2, seconds) * 1000, json, why };
     renderWander();
     requestAnimationFrame(stepGlide);
@@ -2005,13 +2085,7 @@ export function createPerform(host) {
       // wiring is refreshed around the new centre in the background.
       state.cur.knobs = here;
       state.c = state.c.map(() => 0);
-      knobs.forEach((k) => {
-        if (k.spec.kind === "named") {
-          k.value = 0;
-          paintKnob(k);
-          host.controlMoved?.(k.i);
-        }
-      });
+      recentreAll();
       state.home = { json, makeup: state.cur.makeup, knobs: new Map(here) };
       state.keeping = json;
       host.commitTree(json);

@@ -98,12 +98,24 @@ export function detectRelative(values) {
  * Soft takeover for an absolute pot. The pot does nothing until it passes
  * through the control's current value (within `tol`), then follows it. Without
  * this a pot left at 3 o'clock snaps a control the patch drifted to 9 o'clock.
+ *
+ * A control that is *re-centred* — PERFORM folding the sound into a new centre
+ * after a measurement, a Keep, a Take or a glide, where the sound does not
+ * move — is different: the player's hand is still on the pot, and releasing
+ * it left the pot dead until swept back through the middle, again and again
+ * in roam. So a re-centre re-anchors an engaged pot instead (`reanchor`): the
+ * pot's position now means the control's new value, and the pot's next
+ * movement moves the control from there, scaled so each end of the pot still
+ * reaches the same end of the control. Once pot and control agree again the
+ * anchor falls away. Only a control set by something else (the mouse, the
+ * keys, the XY pad) lets the pot go (`release`).
  */
 export class Pickup {
   constructor(tol = 0.04) {
     this.tol = tol;
     this.engaged = false;
     this.last = null;
+    this.anchor = null; // {pot, ctl}: the pot at `pot` means the control at `ctl`
   }
   /** Returns true when `incoming` (0..1) should drive a control now at `current`. */
   offer(current, incoming) {
@@ -118,9 +130,29 @@ export class Pickup {
     if (crossed) this.engaged = true;
     return this.engaged;
   }
-  /** The control moved without the pot (drift, mouse): pick up again. */
+  /** The control value an engaged pot at `incoming` sets: the pot's own
+   *  position, or, after a re-anchor, the anchor's value moved by the pot's
+   *  travel, scaled to the room left on that side. */
+  value(incoming) {
+    const a = this.anchor;
+    if (!a) return incoming;
+    let v;
+    if (incoming >= a.pot) v = a.pot >= 1 ? a.ctl : a.ctl + ((incoming - a.pot) * (1 - a.ctl)) / (1 - a.pot);
+    else v = a.pot <= 0 ? a.ctl : a.ctl - ((a.pot - incoming) * a.ctl) / a.pot;
+    v = Math.min(1, Math.max(0, v));
+    if (Math.abs(v - incoming) <= this.tol / 2) this.anchor = null;
+    return v;
+  }
+  /** The control was re-centred to `current` under an engaged pot: keep it,
+   *  anchored there. A pot not engaged stays waiting to be picked up. */
+  reanchor(current) {
+    if (!this.engaged || this.last == null) return;
+    this.anchor = Math.abs(this.last - current) <= this.tol / 2 ? null : { pot: this.last, ctl: current };
+  }
+  /** The control was set by something else (mouse, keys, XY): pick up again. */
   release() {
     this.engaged = false;
+    this.anchor = null;
   }
 }
 
@@ -292,6 +324,7 @@ export function createMidi(host) {
         state.pickups.set(key, p);
       }
       if (!p.offer(pf.getControl(slot), v01)) return;
+      v01 = p.value(v01);
     }
     pf.setControl(slot, v01);
   }
@@ -367,10 +400,21 @@ export function createMidi(host) {
     }
   }
 
-  // Drift or a mouse moved a control: every pot bound to it has to pick up
-  // again before it takes over.
-  function controlMovedElsewhere(slot) {
-    for (const [k, m] of state.map) if (m.slot === slot) state.pickups.get(k)?.release();
+  // The mouse, the keys or the XY pad moved a control: every pot bound to it
+  // has to pick up again before it takes over. A re-centre (`recentre`: the
+  // sound folded into a new centre, the control back at 12 o'clock with
+  // nothing heard moving) keeps an engaged pot working from where it is
+  // instead (`Pickup.reanchor`).
+  // `to` is where the control is going (0..1), when it is not there yet.
+  function controlMovedElsewhere(slot, { recentre = false, to = null } = {}) {
+    const now = recentre ? (to ?? host.perform()?.getControl(slot)) : null;
+    for (const [k, m] of state.map) {
+      if (m.slot !== slot) continue;
+      const p = state.pickups.get(k);
+      if (!p) continue;
+      if (recentre && now != null) p.reanchor(now);
+      else p.release();
+    }
   }
 
   // ---------- the panel ----------
