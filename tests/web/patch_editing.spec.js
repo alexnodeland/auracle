@@ -442,6 +442,30 @@ test("▶ plays the socket the preview was rendering, after the pointer has left
   expect(errors).toEqual([]);
 });
 
+test("HOLD, the octave buttons and notes leave the arp drawer open", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await page.locator("#arp-btn").click();
+  const drawer = page.locator("#arp-ctl");
+  await expect(drawer).toHaveClass(/\bopen\b/);
+  await page.locator("#hold-btn").click();
+  await expect(drawer).toHaveClass(/\bopen\b/);
+  await page.locator("#oct-up").click();
+  await page.locator("#oct-down").click();
+  await expect(drawer).toHaveClass(/\bopen\b/);
+  // A chord, from the computer keys, and a note from the keybed.
+  await page.keyboard.press("a");
+  await page.keyboard.press("d");
+  const pb = await page.locator("#piano").boundingBox();
+  await page.mouse.click(pb.x + pb.width / 2, pb.y + pb.height - 8);
+  await expect(drawer).toHaveClass(/\bopen\b/);
+  await expect(page.locator("#hold-btn")).toHaveAttribute("aria-pressed", "true");
+  // Outside the dock, it folds.
+  await page.locator("#rack-subject").click();
+  await expect(drawer).not.toHaveClass(/\bopen\b/);
+  expect(errors).toEqual([]);
+});
+
 test("step bars and LENGTH drawn in quick succession under a slow engine all land (Loom)", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Loom");

@@ -3382,7 +3382,6 @@ async function bootLiveAudio() {
 
 function liveNoteOn(note_, vel = 1.0) {
   if (!live) return;
-  foldArpDrawerOnPlay();
   sustainedNotes.delete(note_);
   ensureAudio();
   live.noteOn(note_, vel);
@@ -3863,9 +3862,17 @@ function sendArp() {
 // long as ARP or SYNC ran, it covered the bank's last row and the corner of
 // the XY pad for a whole performance. It opens when either is switched on —
 // the moment its settings are wanted — and from the chip; it folds on a click
-// elsewhere, on Escape, and on the next note played with the pointer
-// elsewhere, leaving "arp 1/8 · 120" under the ARP button: what the arp is
-// doing, one click from changing it, and the keybed never moves.
+// outside the dock and on Escape, leaving "arp 1/8 · 120" under the ARP
+// button: what the arp is doing, one click from changing it, and the keybed
+// never moves.
+//
+// Not on the dock's own controls, and not on notes. It used to fold on any
+// press outside the drawer and on the next note played with the pointer
+// elsewhere, which is exactly how an arpeggio is set up: latch HOLD, play the
+// chord, then set the rate against it — and HOLD folded the drawer, and so did
+// the chord. The keybed, HOLD, the octave buttons and the rest of the dock are
+// the instrument the drawer's settings are heard through; the bank and the XY
+// pad it floats over are outside the dock, and reaching for them folds it.
 function renderArpChip() {
   const chip = $("arp-chip");
   if (!chip) return;
@@ -3883,16 +3890,11 @@ function setArpDrawer(open) {
   chip.setAttribute("aria-expanded", String(show));
 }
 const arpDrawerOpen = () => $("arp-ctl").classList.contains("open");
-// A note is the performance starting: the drawer gets out of its way, unless
-// the pointer or the focus is in it (someone setting the rate against a
-// held chord).
-function foldArpDrawerOnPlay() {
-  const d = $("arp-ctl");
-  if (d.classList.contains("open") && !d.matches(":hover") && !d.contains(document.activeElement)) setArpDrawer(false);
-}
 $("arp-chip").onclick = () => setArpDrawer(!arpDrawerOpen());
 document.addEventListener("pointerdown", (e) => {
-  if (arpDrawerOpen() && !e.target.closest("#arp-ctl, #arp-chip, #arp-btn, #sync-btn")) setArpDrawer(false);
+  // The MIDI panel opens up out of the dock but is a dialog of its own, over
+  // the rack: a press in it is not a press on the instrument.
+  if (arpDrawerOpen() && (!e.target.closest(".keybar") || e.target.closest("#midi-panel"))) setArpDrawer(false);
 }, true);
 function sendSync() {
   if (live && live.sync) live.sync(perf.sync);

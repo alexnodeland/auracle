@@ -4621,8 +4621,9 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
    recessed-but-present, which read as six controls that did nothing — and then
    pinned open for as long as it ran, which covered the bank's last row and the
    XY pad for a whole performance. Now a drawer: open when ARP or SYNC is
-   switched on and from the chip below, folded on the next click elsewhere or
-   note played (main.js `setArpDrawer`). */
+   switched on and from the chip below, folded by a click outside the dock or
+   Escape — never by HOLD, the dock's other controls or a note, which are how
+   an arpeggio is set up (main.js `setArpDrawer`). */
 #arp-ctl:not(.open) { display: none; }
 /* What stays while it runs: the drawer folded to one machined chip under the
    ARP and SYNC buttons, in the three grid cells the width selector leaves
