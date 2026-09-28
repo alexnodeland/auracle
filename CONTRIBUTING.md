@@ -102,8 +102,9 @@ Every change must pass `make check`:
 3. `node --check` on every `apps/web` script, and the pure modules' unit tests
    (`make web-check`)
 4. The tooling's own checks (`make dev-check`): the agent docs' links and
-   frontmatter, the Claude Code hooks against the inputs they must block and
-   pass, and the syntax of every film tool
+   frontmatter, every constant the books quote by name still existing in the
+   code (`www/checknames.py`), the Claude Code hooks against the inputs they
+   must block and pass, and the syntax of every film tool
 5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
    (`make wasm-check`; needs `rustup target add wasm32-unknown-unknown`)
 6. `cargo test --workspace --profile test-fast` — release-grade codegen
