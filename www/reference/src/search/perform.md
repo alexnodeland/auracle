@@ -478,8 +478,9 @@ patches, to any precision that matters. The proposal distribution is the plain
 grammar prior too, since the [taste tilt](./proposals.md) needs a posterior.
 
 Every drift and offer reply carries whether it was taste-directed
-(`Engine::has_taste`), and the instrument says which: *drifting through the
-grammar — no taste yet*, or *drifting toward your taste*. Wiring the named
+(`Engine::has_taste`), and the instrument says which: the line under Wander
+reads *drift · gliding · no taste yet* while a grammar-drawn drift glides, and
+*drift · gliding* once there is a taste to walk toward. Wiring the named
 controls needs no taste at all, only a standardizer.
 
 ## The B slot
