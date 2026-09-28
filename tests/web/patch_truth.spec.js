@@ -163,7 +163,7 @@ test("an unplugged socket goes quiet under a held note, and its plate still read
   // The plate says so, and so does the patch under it.
   const mod = await page.evaluate((k) => window.__aur.wb.rack.modules.find((m) => m.key === k), key);
   expect(mod.kind).toBe("silence");
-  await expect(page.locator(`#rack-svg g.mod-group[data-key="${key}"] .mod-title`)).toHaveText(/^empty$/i);
+  await expect(page.locator(`#rack-svg g[data-key="${key}"] .mod-title`)).toHaveText(/^empty$/i);
   await expect(page.locator(`#nb-inpatch-list .nb-chip[data-key="${key}"]`)).toHaveAttribute("data-empty", "1");
   // Nothing reaches the output, and the words say that — not a runaway.
   await expect(page.locator("#rack-meta")).toContainText("silent");
