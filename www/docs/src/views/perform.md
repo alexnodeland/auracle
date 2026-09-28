@@ -297,7 +297,7 @@ it is. The dial reads *held*. Tap again to release.
 |---|---|
 | **Keep** | Make the sound you hear home (*Kept — this is home now. Back returns here.*). The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it. The sound has not moved, so nothing is re-measured unless the knobs have travelled far from where they were measured, and then in the background |
 | **Back** | Glide back to home, the last sound you kept or loaded |
-| **Offer** | Grow a variant from here into B. With an offer already in B, this passes on it: B empties and Blend glides home |
+| **Offer** | Grow a variant from here into B. The first is usually there at once: PERFORM grows one ahead in the background once the patch has been steady for a few seconds and your hands have been off it for two. While B holds an offer the pad reads **NEXT** · *passes on B*: pressing it passes on B (B empties, Blend glides home) and brings the next one, which has been growing meanwhile, so it too is usually at once |
 | **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep or commit it, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is. A control whose knobs the taken sound no longer has reads *listening…* until then |
 | **Peek** | Hold to hear the offer alone |
 | **Freeze** | Freeze Wander. Same as tapping the Wander dial (not the dock's **hold**, which latches notes) |
@@ -340,14 +340,18 @@ counts:
 | You | It records |
 |---|---|
 | **Take** it | B over what you had |
-| Press **Offer** again | What you had over B |
+| Press **NEXT** | What you had over B |
 
 "Heard" means Peek held, or Blend past half, for at least a second while notes
 were sounding. An offer you take or pass on without hearing it teaches
 nothing. A Take's toast has a **don't count it** button, and the Take counts
 only when that button goes: taking a sound to hear it in place is not always a
-verdict. Its window starts when the toast appears, not when you press Take, so
-the button always works while you can see it.
+verdict. A pass is the same: *Passed on B — that counts as a pick for what you
+had.* carries **undo** for seven seconds, which brings B back and records
+nothing. A pass on a B you had not heard says so, *B skipped — not counted,
+you hadn't heard it*, and its **undo** brings B back too. Each window starts
+when its toast appears, not when you press the pad, so the button always works
+while you can see it.
 
 Both directions count, deliberately. A log that only recorded takes would be
 the model hearing its own proposals agreed with. The answers enter the model

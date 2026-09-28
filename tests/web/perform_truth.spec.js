@@ -281,8 +281,10 @@ test("after a pass, Blend comes home", async ({ page }) => {
   const blend = page.locator('.pf-knob[data-i="6"]');
   await drag(page, blend, -120);
   expect(Number(await blend.getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
-  // Offer again is a pass: B empties, and Blend glides home.
-  await page.locator(".pf-pad", { hasText: "Offer" }).click();
+  // NEXT (Offer, while B holds one) is a pass: B empties, and Blend glides
+  // home.
+  await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
+  await page.locator(".pf-pad", { hasText: "Next" }).click();
   await expect(blend).toHaveAttribute("aria-valuenow", "0.00", { timeout: 2_000 });
   await expect(blend.locator(".pf-k-sub")).toHaveText(/^(no offer yet|0% offer)$/);
   expect(errs).toEqual([]);
