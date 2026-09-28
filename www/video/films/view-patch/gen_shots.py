@@ -466,6 +466,7 @@ shots.append({
 # ---- take: a file, a picture, a drop; the lineage ------------------------
 shots.append({
     "id": "vp-take", "beat": "take", "pre": PRE,
+    "clips": [["take2:opens-0.5", "@opened-0.3"]],
     "setup": bench("Glass Pad",
         {"op": "drag", "sel": "#rack-svg [data-addr='node/0#cut']", "dy": -50, "ms": 700},
         {"op": "wait", "ms": 2500},
@@ -503,7 +504,9 @@ shots.append({
         {"at": "take2:inside", "op": "click", "sel": "#ix-go"},
         {"at": "take2:Drop-0.45", "op": "key", "key": "Escape", "ms": 100},
         {"at": "take2:Drop", "op": "drop", "file": "fixtures/First_Bass.svg", "ms": 1300},
-        {"at": "take2:Drop+1.4", "op": "until", "js": SUBJ + ".includes('First Bass')", "ms": 60000, "stamp": "opened"},
+        # Opened once First Bass is on the rack (its mod env), not when the
+        # subject first says "opening First Bass…"; the beat cuts to it.
+        {"at": "take2:Drop+0.2", "op": "until", "js": "[...document.querySelectorAll('#rack-svg g.mod-group')].some(g => g.dataset.kind === 'modenv')", "ms": 90000, "stamp": "opened"},
         {"at": "take2:opens", "op": "seq", "steps": [mark("subject2", "#rack-subject"), mark("toast", "#toasts .toast"), RACK_LOG]},
         # A bass figure on First Bass, on the beat.
         {"at": "take2:play+0.1", "snap": "beat", "op": "hold", "keys": ["a"], "ms": 330},
