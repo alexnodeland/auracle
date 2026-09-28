@@ -62,6 +62,56 @@ changelog that edits its own past is not a record.
   two" and that a pick is answered between seeds as if at once. The node
   bank's "nothing called that" no longer says Auracle has no sequencer: steps
   and euclid are sequencers that play the sound, not the notes.
+- **⌘Z outside PATCH never undoes a PATCH edit.** It takes back your newest
+  pick or cut still inside its seven seconds, in any view; with none left it
+  says *nothing to undo here — PATCH edits undo in PATCH* and changes nothing.
+  In EVOLVE it used to fall through to the edit undo and silently revert a
+  knob turned minutes earlier on a patch you could not see. In PATCH, a pick
+  from the pick strip is now taken back before any edit (`evolve_truth.spec.js`).
+- **The sixth pick can be taken back like the other five.** Its refit waits
+  for the pick's seven seconds (or goes out when you pick again), and the
+  meter says *● learning from your last 6 picks…* meanwhile. The sixth pick
+  used to go into the log the moment the next pair landed, and its toast
+  showed a dead **IN THE LOG** button; a closed undo window now simply removes
+  the button (`evolve_truth.spec.js`).
+- **"● it just learned" appears when the model has learned.** It used to be
+  shown when the refit was *sent* and taken down 3.2 s later, so during a
+  generation it announced a map that would not be redrawn for minutes. It now
+  appears when the refit lands and stays until your next pick; during a
+  generation the meter says *● it will learn from these 6 when breeding
+  finishes*. *see what changed* always opens TASTE's map, and the wordmark's
+  **E** stays lit until every job it stands for is done, rather than going
+  dark when the first of them replies (`evolve_truth.spec.js`,
+  `evolve_feedback.spec.js`).
+- **skip ↻ puts the pair away like a pick does.** The cards dim and their
+  buttons stop until the next pair is dealt, and a deal slower than 300 ms says
+  why on the cards, for example *dealing — the engine is breeding (seed
+  4/10)*. A skip used to leave the old pair up with buttons that looked live
+  and did nothing, which during a generation could last twenty seconds
+  (`evolve_truth.spec.js`).
+- **A cut patch is never dealt again.** A cut hid the row, but the patch stayed
+  in the pool and could come back minutes later as a duel side. The toast now
+  reads *Cut Soft Wash — it won't be dealt again*, without the id, and ⌘Z
+  takes a cut back too (`a_cut_patch_is_never_dealt_again`,
+  `evolve_truth.spec.js`).
+- **What a generation or a loaded preset replaced is named.** The toast used
+  to count ("the 10 patches it liked least were retired to make room"); it now
+  names them: *The 10 it liked least were replaced: Soft Wash, Noisy Pad, Glass
+  Rain +7 more.*
+- **The EVOLUTION strip speaks names.** A step reads *Soft Pad → Warm Drone 2 ·
+  … · liked +0.06* where it read *#51 → #52 · … · Δtaste +0.06*; with nothing
+  bred yet it says *no move was accepted*, as the generation's toast does. The
+  guide now says what the sparkline plots: each step's child as the model
+  scored it then, not the pool's utility over generations.
+- **Opening a patch is not announced unless it kept you waiting.** Every open
+  used to toast "X on the bench", and a click on the TASTE map toasted "…
+  selected — it's on the workbench and under your fingers" before the patch
+  had arrived, then the bench toast after it. Now the dot shows a dotted ring
+  while it opens, and only an open slower than a second says *Opened Acid
+  Line* when it lands (`evolve_truth.spec.js`).
+- **Clicking a view's tab puts the keyboard in that view,** so EVOLVE's ←/→
+  pick on arrival and Tab continues inside it; keyboard users on the tabs still
+  move between them with the arrows (`evolve_truth.spec.js`).
 - **Keys a list or the rack uses are not also notes.** *p* in the presets list
   plays the preset without also playing a D♯, *L* in the rack locks without
   playing a D, and *1* / *2* during PATCH's keep-as-new comparison play a side

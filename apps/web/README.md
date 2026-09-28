@@ -97,7 +97,9 @@ Playing: on-screen keys (mouse/touch with glissando), computer keys
 **MIDI keyboard** (velocity, pitch bend, sustain pedal). HOLD latches,
 ◼ panics; the dock also has an **arpeggiator** (pattern / division / BPM /
 gate / swing), **unison**, **glide**, and **● rec** (bounces your playing to a
-WAV). ⌘Z / ⇧⌘Z undo and redo workbench edits. Press `?` in-app for the full map.
+WAV). ⌘Z first takes back a pick or cut still inside its seven seconds, in any
+view; after that, ⌘Z / ⇧⌘Z undo and redo workbench edits in PATCH only.
+Press `?` in-app for the full map.
 
 **Keyboard and screen readers.** Tab reaches the bank as a single stop (arrows
 to move, Enter to open, `1`–`5` to rate, `m` to save) and the rack as a single

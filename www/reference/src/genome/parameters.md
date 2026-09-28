@@ -166,6 +166,6 @@ Separately from domains, the search is bounded in size:
 
 Shown in the app as `8/24 modules · 4/6 depth · 1/3 mod depth`. A hand-built
 patch past a ceiling is refused, and one *at* a ceiling has no room to grow,
-which is a common reason a generation reports "no proposal beat its parent".
+which is a common reason a generation reports "no move was accepted".
 See [the validity gate](edits.md#the-validity-gate) for why the two depth
 ceilings are derived from the prior rather than set above it.

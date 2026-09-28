@@ -63,7 +63,10 @@ uncertainty to draw, and every dot is the same middling size.
 
 The caption says the same in short: *"Brighter: it thinks you'd like it more.
 Bigger: it's less sure. Click a dot to open it."* Click any dot to open that
-patch on the workbench; ▶ there plays it.
+patch on the workbench. A dotted ring marks the dot while it opens, and a
+solid one the patch you are playing. Opening says nothing unless it keeps you
+waiting more than a second; then a toast says *Opened* and the patch's name
+when it arrives.
 
 ## STYLES
 

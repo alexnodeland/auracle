@@ -63,8 +63,8 @@ descriptors of the standard render, twenty-six structural counts of the term.
 ### Generation
 
 One round of breeding. Takes the pool's best patches, walks each a short
-distance uphill on the current model, and injects the children, evicting the
-weakest to make room.
+distance uphill on the current model, and injects the children, replacing the
+patches it likes least to make room (the toast names them).
 
 ### Genome / term
 
@@ -83,7 +83,8 @@ See **style**.
 ### Lineage
 
 The record of what produced a patch: which parent, which step, what changed,
-and how much the model's estimate moved. Shown in the EVOLUTION strip.
+and how much more the model expected you to like the child than its parent
+(*liked +0.06*). Shown in the EVOLUTION strip, by name.
 
 ### Lock
 
@@ -148,7 +149,10 @@ scored so badly that the search learns to avoid that region.
 
 Full inference over the whole observation log: seconds of work, off the audio
 thread. Between refits, votes are folded in by the cheaper **reweighting**
-path. The wordmark's **E** lights while a refit runs.
+path. The wordmark's **E** lights while a refit runs. The sixth pick's refit
+goes out when that pick's seven-second undo window closes; the teaching meter
+says *● learning from your last 6 picks…* until it lands, then *● it just
+learned*.
 
 ### Sample
 

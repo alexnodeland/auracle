@@ -117,9 +117,12 @@ whether they were worth it. The **EVOLUTION** strip below reports what each
 step did, in plain terms:
 
 ```text
-gen 1 ⚡ evolution on #43 → #57 · release 100 ms → 251 ms,
-cutoff 1.78 kHz → 20 kHz, delay → chorus, +lfo · Δtaste +0.62
+gen 1 ⚡ evolution on Soft Pad → Warm Drone 2 · release 100 ms → 251 ms,
+cutoff 1.78 kHz → 20 kHz, delay → chorus, +lfo · liked +0.62
 ```
+
+*liked* is how much more the model expects you to like the child than its
+parent.
 
 The bank marks the new generation's children ⚡ **new**.
 

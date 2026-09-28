@@ -1298,7 +1298,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
     linear-gradient(180deg, var(--panel-hi), var(--panel) 60%);
   transition: border-color 200ms ease, box-shadow 200ms ease;
 }
-.duel-mid.learning {
+/* "● it just learned": the refit has landed. The glow is the arrival, so it
+   belongs to `fitted`, not to the fit being sent (`.learning`, below). */
+.duel-mid.learned {
   border-color: var(--phos-b);
   box-shadow: 0 0 24px rgba(255,180,84,0.22), inset 0 0 18px rgba(255,180,84,0.07);
 }
@@ -3219,6 +3221,9 @@ kbd { font-family: var(--font-mono); }
   outline: 2px solid var(--phos-a);
   outline-offset: 2px;
 }
+/* A view takes focus when its tab is clicked, so its keys work on arrival
+   (see the view tabs in main.js). It is a landmark, not a control: no ring. */
+.view[tabindex="-1"]:focus { outline: none; }
 .util-btn:focus-visible,
 .viewtab:focus-visible,
 .tab:focus-visible,
@@ -3674,7 +3679,19 @@ html:not(.engineer) .dn-sig { display: none; }
   .teach-copy { min-width: 0; white-space: nowrap; font-size: var(--t-title); }
 }
 #evolve-btn { justify-self: end; }
-.duel-mid.learning .teach-copy { color: var(--phos-b); }
+.duel-mid.learning .teach-copy,
+.duel-mid.learned .teach-copy { color: var(--phos-b); }
+/* "● learning from your last 6 picks…": the full row breathes while the refit
+   is on its way or running, and stops when it lands. */
+.duel-mid.learning .teach-pips i.lit,
+.play-duel.learning .teach-pips i.lit { animation: pip-learning 1.4s ease-in-out infinite; }
+@keyframes pip-learning {
+  50% { background: var(--phos-b-deep); box-shadow: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .duel-mid.learning .teach-pips i.lit,
+  .play-duel.learning .teach-pips i.lit { animation: none; }
+}
 .duel-pred { text-align: center; }
 .duel-centre { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 
@@ -4084,8 +4101,22 @@ input[type="range"]::-moz-range-thumb {
 .knob-arc { filter: none; }
 
 /* A duel that is settling must not look live. */
-.duel-card.dealing { opacity: 0.55; }
+.duel-card { position: relative; }
+.duel-card.dealing > :not(.deal-why) { opacity: 0.55; }
 .duel-card.dealing .duel-controls { pointer-events: none; }
+.play-duel.dealing .pd-side { opacity: 0.55; }
+/* …and one that is slow to settle says why, over the dimmed scope, at full
+   strength: the reason is the one thing on the card that is current. */
+.deal-why {
+  display: none;
+  position: absolute;
+  left: var(--s3); right: var(--s3); top: 45%;
+  text-align: center;
+  font-size: var(--t-body);
+  color: var(--silk);
+  pointer-events: none;
+}
+.duel-card.dealing-slow .deal-why { display: block; }
 
 /* The play-view teaching strip carries the same state as EVOLVE's — a
    stripped-down copy of the core interaction teaches the user there is

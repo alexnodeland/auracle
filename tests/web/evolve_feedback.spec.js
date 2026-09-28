@@ -197,17 +197,22 @@ test("the sixth pick always redraws the taste map, even after agreeable picks", 
         await expect(page.locator("#teach-copy")).toContainText(`${left} more pick${left > 1 ? "s" : ""}`);
       }
     }
-    // The meter keeps its word: a fit goes out and the learning beat plays.
+    // The meter keeps its word: it says the refit is coming, a fit goes out
+    // once the sixth pick's undo window closes, and "it just learned" plays
+    // when the fit has landed (evolve_truth.spec.js pins the order).
+    await expect(mid).toHaveClass(/\blearning\b/);
+    await expect(page.locator("#teach-copy")).toContainText("learning from your last 6 picks");
     await expect.poll(() => count(page, "sent:fit"), { timeout: 20_000 }).toBeGreaterThan(fits);
-    await expect(mid).toHaveClass(/\blearning\b/, { timeout: 5_000 });
-    await expect(page.locator("#teach-copy")).toContainText("it just learned");
     const refit = await page.evaluate((k) => window.__pwLog.slice(k).filter((e) => e.type === "status").map((e) => e.needs_refit), logFrom);
     test.info().annotations.push({ type: `cycle ${cycle} needs_refit before the fit`, description: JSON.stringify(refit) });
     console.log(`cycle ${cycle}: needs_refit as each pick landed ${JSON.stringify(refit)}`);
     // Wait for it to land before the next cycle, so the next six start clean.
     await expect.poll(() => count(page, "fitted"), { timeout: 120_000 }).toBeGreaterThanOrEqual(cycle);
-    await expect(mid).not.toHaveClass(/\blearning\b/, { timeout: 10_000 });
-    await expect(page.locator("#teach-pips i.lit")).toHaveCount(0);
+    await expect(page.locator("#teach-copy")).toContainText("it just learned", { timeout: 5_000 });
+    await expect(mid).not.toHaveClass(/\blearning\b/);
+    // The row stays full beside "it just learned" until the next pick starts
+    // the next one.
+    await expect(page.locator("#teach-pips i.lit")).toHaveCount(6);
   }
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });

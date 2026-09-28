@@ -120,8 +120,19 @@ let duelMeta = null;       // why the engine chose this pair (acquisition, info 
 let engineCalib = null;    // authoritative calibration, incl. unbiased check-duel skill
 let duelsSinceFit = 0;
 const FIT_EVERY = 6;   // every sixth pick refits — see settleFit()
-let fitDue = false;    // armed by a vote, enqueued once the next pair is on screen
+let fitDue = false;    // armed by the sixth pick, sent once that pick is in the log
 let fitting = false;
+// The meter's refit, from the moment it is sent until `fitted` answers it —
+// the only span in which "● learning from your last 6 picks…" is true, and
+// what lets `fitted` say "● it just learned" for the meter's own fit only.
+let meterFitting = false;
+// `fitted` answered the meter's refit: "● it just learned" stands until the
+// next pick, not for a timer's 3.2 s (which fired when the fit was *sent*).
+let learnedShown = false;
+// Long work holding the engine that a deal or a refit waits behind:
+// EVOLVE POOL ({done, total} as its seeds go) and ⚡ evolve from this.
+let breeding = null;
+let evolvingFrom = false;
 let playingSrc = null;
 // ⚡'s child, waiting for the bench to hold it before it is announced:
 // {id, text(name)} — see `evolved_from` and the `bench` reply.
@@ -1104,7 +1115,7 @@ worker.onmessage = (e) => {
       // unconditionally; `choose()`'s early return on it is inert here because
       // there is no pair on the table yet.
       dealing = true;
-      send({ type: "duel" });
+      requestDeal();
       send({ type: "taste_views" });
       // A session restored with no picks in it — the saved patches a reset
       // kept — is not "your taste restored": there is none yet, and the warm
@@ -1164,7 +1175,7 @@ worker.onmessage = (e) => {
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
       send({ type: "taste_views" });
-      if (!currentDuel && !dealing) send({ type: "duel" });
+      if (!currentDuel && !dealing) requestDeal();
       renderFillHint();
       break;
     }
@@ -1222,8 +1233,9 @@ worker.onmessage = (e) => {
         pumpLane();
       }
       renderSubject(); // the rack stops saying "opening…"
+      if (currentView === "taste") drawTaste(); // …and the map's dot stops waiting
       if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
-      note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
+      note(`${nameOrKnown(m.id) || "That patch"} isn't in the bank any more — a bred generation replaced it.`);
       send({ type: "taste_views" });
       break;
     }
@@ -1237,6 +1249,7 @@ worker.onmessage = (e) => {
         // Filed under the id it landed as, *before* benching it, so the first
         // render already draws the arrangement the sender chose.
         const placed = adoptLayout(m.id, layout);
+        quietBench.add(m.id); // the import's own toast names it
         openOnBench(m.id);
         note(`patch imported as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
         scheduleSave();
@@ -1254,6 +1267,7 @@ worker.onmessage = (e) => {
         // is not a reason to move plates they placed by hand.
         if (!ffLayouts.has(String(m.duplicate))) adoptLayout(m.duplicate, layout);
         note(`${nameOf(m.duplicate)} is already in the bank — opening it.`);
+        quietBench.add(m.duplicate);
         openOnBench(m.duplicate);
         scheduleSave();
       } else {
@@ -1387,7 +1401,14 @@ worker.onmessage = (e) => {
     }
     case "fitted": {
       fitting = false;
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("fit");
+      // The meter's refit has landed: now, and not when it was sent, it has
+      // learned. Said until the next pick (see `renderTeach`).
+      if (meterFitting) {
+        meterFitting = false;
+        learnedShown = true;
+        try { performance.mark("auracle:fitted"); } catch { /* ignore */ }
+      }
       applyViews(m.views);
       applyStatus(m.status);
       // The bench's guess under the model just fitted ("was" is the old one).
@@ -1403,10 +1424,14 @@ worker.onmessage = (e) => {
     case "refine_progress": {
       const btn = $("evolve-btn");
       btn.textContent = m.done >= m.total ? "placing in the pool…" : `breeding ${m.done + 1}/${m.total}…`;
+      breeding = { done: m.done, total: m.total };
+      sayDealing(); // a deal waiting on this generation names the seed it waits on
       break;
     }
     case "refined": {
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine");
+      breeding = null;
+      renderTeach(); // a refit waiting for the generation is on its way now
       $("evolve-btn").disabled = false;
       $("evolve-btn").textContent = "evolve pool";
       // The pool is fixed-size: every accepted child evicts the patch the
@@ -1512,12 +1537,21 @@ worker.onmessage = (e) => {
         // `replace` lets it take over from "⚡ evolving around…" if that is
         // still up, rather than queue behind it.
         const evolved = evolvedAnnounce && evolvedAnnounce.id === m.subject ? evolvedAnnounce : null;
+        const asked = openAsk && openAsk.id === m.subject ? openAsk : null;
+        openAsk = null;
         if (evolved) {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
           note(evolved.text(row ? `${row.name} #${m.subject}` : `patch #${m.subject}`), { replace: "evolve-from" });
-        } else if (!quietBench.delete(m.subject)) {
-          note(`${nameOf(m.subject)} on the bench`);
+        } else if (!quietBench.delete(m.subject) && asked && !asked.auto &&
+                   performance.now() - asked.at > OPEN_SAID_MS) {
+          // No toast for an open: the header, the dock and the live row
+          // already name the patch, and "X on the bench" after every one —
+          // right after the warm start's own result, in PERFORM, where
+          // nothing is called a bench — was noise in a word the player never
+          // meets. Only an open the player asked for that kept them waiting
+          // is news, and it is said once, in place of any earlier one.
+          note(`Opened ${nameOf(m.subject)}`, { replace: "open" });
         }
         // First patch on the bench: a one-time walkthrough of the gestures
         // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
@@ -1953,7 +1987,9 @@ worker.onmessage = (e) => {
     }
     case "evolved_from": {
       $("rack-evolve").disabled = false;
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine_from");
+      evolvingFrom = false;
+      renderTeach();
       const evolveEvicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
@@ -2039,7 +2075,7 @@ worker.onmessage = (e) => {
         if (rowOf(m.id)) {
           note(`That would pass your limit of ${pinBudget[1]} saved patches. Release one first.`);
         } else {
-          note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
+          note(`${nameOrKnown(m.id) || "That patch"} isn't in the bank any more — a bred generation replaced it.`);
         }
       } else if (m.pinned) {
         note(`Saved ${nameOf(m.id)} — it won't be replaced. ${pinBudget[0]}/${pinBudget[1]} slots used.`);
@@ -2104,6 +2140,7 @@ worker.onmessage = (e) => {
           // the bank now, and the patch in their hands stays there.
           note(`${nameOf(m.id)} is in the bank now — you had moved on, so it was not opened.${madeRoom(evicted)}`);
         } else {
+          quietBench.add(m.id); // "Preset loaded as …" names it
           openOnBench(m.id);
           note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
         }
@@ -2208,7 +2245,9 @@ function releaseRequest(request, id) {
       break;
     case "fit":
       fitting = false;
-      $("wm-lamp").classList.remove("thinking");
+      meterFitting = false;
+      lampOff("fit");
+      renderTeach();
       break;
     case "edit_begin":
       // An open that failed is not on its way either — and the edits the lane
@@ -2229,7 +2268,9 @@ function releaseRequest(request, id) {
       });
       break;
     case "refine":
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine");
+      breeding = null;
+      renderTeach();
       $("evolve-btn").disabled = false;
       $("evolve-btn").textContent = "evolve pool";
       break;
@@ -2238,7 +2279,9 @@ function releaseRequest(request, id) {
       openExpect = null;
       break;
     case "refine_from":
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine_from");
+      evolvingFrom = false;
+      renderTeach();
       $("rack-evolve").disabled = false;
       pendingEvolve = false;
       break;
@@ -2379,19 +2422,27 @@ function applyStatus(st) {
 // the only "it just learned" signal was an 8px LED that flashed for a fraction
 // of a second in a corner 1200px from where anyone was looking. This is the
 // surface that makes the loop legible: it is never blank, it counts down to
-// the refit, and it takes over the column when the refit happens.
-let teachTakeover = false;
-
+// the refit, and it says what the refit is doing while it happens.
+//
+// Two phases, each said only while it is true. From the sixth pick until
+// `fitted` answers: "● learning from your last 6 picks…" (the pick's undo
+// window, then the fit on its way or running), or, while a generation holds
+// the engine, "● it will learn from these 6 when breeding finishes" — a refit
+// waits for the generation. From `fitted` until the next pick: "● it just
+// learned — see what changed ▸". It used to say "it just learned" when the
+// fit was *sent* and take it down on a 3.2 s timer, so during a generation it
+// announced a map that would not be redrawn for minutes, and the link opened
+// the old one.
 function renderTeach() {
   const pips = $("teach-pips");
   const copy = $("teach-copy");
   if (!pips || !copy) return;
   // The sixth pip lights on the sixth pick and the row stays full while the
-  // refit it counted down to is armed (behind a fit already running, at
-  // most) or being announced; the first pick after that starts the next row.
-  // It used to empty on the sixth pick itself — "23 picks in", six dark pips
-  // — before anything had been redrawn.
-  const full = fitDue || (teachTakeover && duelsSinceFit === 0);
+  // refit it counted down to is armed, running or just answered; the first
+  // pick after that starts the next row. It used to empty on the sixth pick
+  // itself — "23 picks in", six dark pips — before anything had been redrawn.
+  const learning = fitDue || meterFitting;
+  const full = fitDue || ((meterFitting || learnedShown) && duelsSinceFit === 0);
   const into = full ? FIT_EVERY : duelsSinceFit % FIT_EVERY;
   const dots = Array.from(
     { length: FIT_EVERY },
@@ -2401,7 +2452,23 @@ function renderTeach() {
   // The play-view strip runs the same loop, so it shows the same state.
   const pdPips = $("pd-pips");
   if (pdPips) pdPips.innerHTML = dots;
-  if (teachTakeover) return;
+  const mid = $("duel-mid");
+  mid.classList.toggle("learning", learning);
+  mid.classList.toggle("learned", !learning && learnedShown);
+  $("play-duel")?.classList.toggle("learning", learning);
+  if (learning) {
+    copy.textContent = breeding || evolvingFrom
+      ? `● it will learn from these ${FIT_EVERY} when breeding finishes`
+      : `● learning from your last ${FIT_EVERY} picks…`;
+    return;
+  }
+  if (learnedShown) {
+    copy.innerHTML = `● it just learned — <b class="teach-link" role="link" tabindex="0">see what changed ▸</b>`;
+    const link = copy.querySelector(".teach-link");
+    link.onclick = showTasteMap;
+    link.onkeydown = (e) => { if (e.key === "Enter") showTasteMap(); };
+    return;
+  }
   // Single-line copy: the duel bar is a grid now, and the sentence that
   // teaches the whole product should land whole. Name the payoff, not the
   // refit schedule. The count is PICKS's own (`picksTaught`), so the line
@@ -2411,30 +2478,36 @@ function renderTeach() {
     copy.innerHTML = "Play both. Keep the one you’d reach for.";
   } else {
     const left = FIT_EVERY - into;
-    copy.innerHTML = left === 0
-      ? `<b>${n}</b> picks in — redrawing your taste map…`
-      : left === FIT_EVERY
-        ? `<b>${n}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
-        : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
+    copy.innerHTML = left === FIT_EVERY
+      ? `<b>${n}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
+      : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
   }
 }
 
-// The learning moment, given its own beat instead of a blinked LED — and a
-// link to the evidence: the map it just redrew.
-function teachLearned() {
-  const copy = $("teach-copy");
-  if (!copy) return;
-  teachTakeover = true;
-  $("duel-mid").classList.add("learning");
+/** "see what changed" is the map: TASTE opens on its MAP tab, whichever tab
+ *  it was last left on. */
+function showTasteMap() {
+  const tab = document.querySelector('.tab[data-tab="map"]');
+  if (tab && tasteTab !== "map") tab.click();
+  showView("taste");
+}
+
+// ---------- the wordmark's lamp ----------
+// The E of the wordmark lights while the engine does long work: a refit, a
+// generation, ⚡ evolve from this. Each job used to switch it on and its own
+// reply switch it off, so the first reply cleared the lamp of another job
+// still running — a refit landing mid-generation put it out for the rest of
+// the generation. Counted per job now, and dark only when every job is done.
+const lampJobs = new Map(); // job -> requests in flight
+function lampOn(job) {
+  lampJobs.set(job, (lampJobs.get(job) || 0) + 1);
   $("wm-lamp").classList.add("thinking");
-  copy.innerHTML = `● it just learned — <b class="teach-link">see what changed ▸</b>`;
-  const link = copy.querySelector(".teach-link");
-  if (link) link.onclick = () => showView("taste");
-  setTimeout(() => {
-    teachTakeover = false;
-    $("duel-mid").classList.remove("learning");
-    renderTeach();
-  }, 3200);
+}
+function lampOff(job) {
+  const n = (lampJobs.get(job) || 0) - 1;
+  if (n > 0) lampJobs.set(job, n);
+  else lampJobs.delete(job);
+  $("wm-lamp").classList.toggle("thinking", lampJobs.size > 0);
 }
 
 // ---------- next step ----------
@@ -2589,8 +2662,13 @@ function note(text, opts = {}) {
   const stack = document.createElement("span");
   stack.className = "toast-stack mono hidden";
   el.appendChild(stack);
-  if (opts.urgent) preemptToast(entry);
-  else if (!(opts.replace && supersedeToast(entry))) toastQueue.push(entry);
+  if (opts.urgent) {
+    // Rule 5 holds for refusals too: the same refusal said again (⌘Z pressed
+    // twice where there is nothing to undo) takes the earlier one's place
+    // rather than queueing a second copy behind it.
+    if (opts.replace) dropReplaced(opts.replace);
+    preemptToast(entry);
+  } else if (!(opts.replace && supersedeToast(entry))) toastQueue.push(entry);
   trimToastQueue();
   toastPump();
   return el;
@@ -2621,6 +2699,21 @@ function supersedeToast(entry) {
   if (at < 0) return false;
   toastQueue.splice(at, 0, entry);
   return true;
+}
+
+/** Every toast with this `replace` key goes, on screen or queued, with no
+ *  successor put in its place (the caller is about to say it again). */
+function dropReplaced(key) {
+  for (let i = toastQueue.length - 1; i >= 0; i--) {
+    if (toastQueue[i].opts.replace !== key) continue;
+    toastQueue[i].el.remove();
+    toastQueue.splice(i, 1);
+  }
+  if (toastLive && toastLive.opts.replace === key) {
+    clearTimeout(toastLive.timer);
+    toastLive.el.remove();
+    toastLive = null;
+  }
 }
 
 /** Take a toast off the lane now, whether it is on screen or still waiting —
@@ -2792,14 +2885,21 @@ window.addEventListener("resize", positionToastLane);
   }
 }
 
-// A toast whose undo can no longer fire must say so — see commitPendingVote,
-// which retires a vote's undo early when a refit claims it.
+// A toast whose undo can no longer fire must not offer it. When the window has
+// closed (a pick or a cut is in the log) the button simply goes: it used to
+// stay as a dead "IN THE LOG", which still looked like a button. With a
+// `label` it stays, disabled, saying why — an edit's undo that another edit
+// has landed on top of ("not the last edit").
 function retireToastUndo(el, label) {
   const b = el?.querySelector?.(".toast-undo");
   if (!b) return;
+  if (!label) {
+    b.remove();
+    return;
+  }
   b.disabled = true;
   b.style.pointerEvents = "none";
-  b.textContent = label || "in the log";
+  b.textContent = label;
 }
 
 /** Take a toast down because what it says stopped being true — the edit it
@@ -2908,6 +3008,10 @@ function esc(s) {
 function applyViews(next) {
   const prevIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const prevNames = new Map(((views && views.ranked) || []).map((r) => [r.id, r.name]));
+  // Every name a row has had, last one wins: what was replaced is named by the
+  // name it had when it went, and the lineage names parents long gone.
+  for (const [id, name] of prevNames) knownNames.set(id, name);
+  for (const r of (next && next.ranked) || []) knownNames.set(r.id, r.name);
   views = next;
   const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
@@ -2940,7 +3044,7 @@ function applyViews(next) {
   if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
     dealing = true;
     setDuelControlsEnabled(false);
-    send({ type: "duel" });
+    requestDeal();
   }
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
@@ -2952,9 +3056,9 @@ function applyViews(next) {
   // apologise for.
   const lost = evicted.filter((id) => (starsById.get(id) || 0) >= 4);
   if (lost.length > 0) {
-    const names = lost.map((id) => prevNames.get(id) || `#${id}`).join(", ");
+    const names = lost.map((id) => prevNames.get(id) || "a patch").join(", ");
     alarm(
-      `Made room by dropping ${names}, which you rated highly. Stars tell the model what you like; ` +
+      `Replaced ${names}, which you rated highly, to make room. Stars tell the model what you like; ` +
         `saving is what stops a patch being replaced.`,
       { label: "ok", run: () => alarm(null) }
     );
@@ -2963,10 +3067,28 @@ function applyViews(next) {
 }
 
 // The clause every insertion path appends to its own message, so the exchange
-// is reported as an exchange rather than as a gift.
+// is reported as an exchange rather than as a gift — and by name. It used to
+// count ("The 10 patches it liked least were retired to make room."), which
+// told the player something was lost and nothing about what.
+const REPLACED_NAMED = 3;
 function madeRoom(evicted) {
   if (!evicted || evicted.length === 0) return "";
-  return ` ${evicted.length === 1 ? "The patch it liked least was" : `The ${evicted.length} patches it liked least were`} retired to make room.`;
+  const names = evicted.slice(0, REPLACED_NAMED).map((id) => knownNames.get(id) || "a patch");
+  const more = evicted.length - names.length;
+  const list = more > 0
+    ? `${names.join(", ")} +${more} more`
+    : names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  return evicted.length === 1
+    ? ` The patch it liked least was replaced: ${list}.`
+    : ` The ${evicted.length} it liked least were replaced: ${list}.`;
+}
+
+// id -> the last name its bank row had. Filled by `applyViews`; never pruned
+// (a name is a few bytes, and a session holds a few hundred ids at most).
+const knownNames = new Map();
+/** A patch's name, including one no longer in the pool. */
+function nameOrKnown(id) {
+  return rowOf(id)?.name || knownNames.get(id) || null;
 }
 
 function rowOf(id) {
@@ -3071,9 +3193,20 @@ function showView(name) {
 // not to the app changing view on its own.
 let viewChosenAt = 0;
 document.querySelectorAll(".viewtab").forEach((t) => {
-  t.onclick = () => {
+  t.onclick = (e) => {
     viewChosenAt = performance.now();
     showView(t.dataset.view);
+    // Clicked with a pointer, the view itself takes focus, so its own keys
+    // (EVOLVE's ←/→) work on arrival and Tab continues inside it. The tab
+    // keeps focus only for a keyboard user walking the tablist (a click
+    // synthesised by the arrows has `detail` 0), whose arrows move tabs.
+    if (e && e.detail > 0) {
+      const view = $(`view-${t.dataset.view}`);
+      if (view) {
+        view.tabIndex = -1;
+        view.focus({ preventScroll: true });
+      }
+    }
   };
 });
 
@@ -3361,6 +3494,7 @@ async function bootPerform() {
     openingName: () => openingName(),
     // A PERFORM offer answer joined the log: it paces refits like any pick.
     voteLanded: () => {
+      learnedShown = false; // a pick, so "● it just learned" has had its turn
       duelsSinceFit += 1;
       if (duelsSinceFit >= FIT_EVERY) fitDue = true;
       renderTeach();
@@ -3912,12 +4046,24 @@ function attachPianoPointers(piano) {
 // Computer keys play notes everywhere (no text inputs in the app).
 const downComputerKeys = new Map(); // event.key -> midi
 document.addEventListener("keydown", (e) => {
-  // Undo/redo for workbench edits (knobs, wiring, structure).
+  // ⌘Z: first the newest teaching act still inside its undo window, in any
+  // view; then, in PATCH only, the edit undo.
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
-    // In EVOLVE, ⌘Z takes back the vote still inside its undo window;
-    // everywhere else it is the workbench edit undo.
-    if (!e.shiftKey && currentView === "evolve" && retractVote()) return;
+    if (!e.shiftKey && takeBackNewest()) return;
+    // Edit undo belongs to PATCH, where the rack it changes is on screen. It
+    // used to be what ⌘Z fell through to everywhere: in EVOLVE, pressed a
+    // moment after a pick's window had closed, it silently reverted a knob
+    // turned minutes earlier on a patch the player could not see.
+    if (currentView !== "play") {
+      note(
+        e.shiftKey
+          ? "nothing to redo here — PATCH edits redo in PATCH"
+          : "nothing to undo here — PATCH edits undo in PATCH",
+        { urgent: true, replace: "undo-here" },
+      );
+      return;
+    }
     // Unconditional: a restore already in flight is a reason to *queue* the
     // press, not to discard it — which is what this gate did, silently, to
     // nine presses out of ten in a burst. `requestRestore` owns the waiting.
@@ -4079,7 +4225,7 @@ window.addEventListener("blur", () => {
 // is the belt to that brace. The vote is committed first so the save that
 // follows it through the worker's serial queue contains it.
 function saveOnLeave() {
-  commitPendingVote();
+  commitAndSettle();
   saveNow();
 }
 window.addEventListener("pagehide", saveOnLeave);
@@ -4573,10 +4719,7 @@ $("pd-a").onclick = () => selectDuelSide("a");
 $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
 $("pd-pick-b").onclick = () => choose("b");
-$("pd-skip").onclick = () => {
-  currentDuel = null;
-  send({ type: "duel" });
-};
+$("pd-skip").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 // Renders are ~0.6 s of engine work each and the worker is one thread, so a
 // render requested for a pair the user has already voted past sits at the head
 // of the queue and delays the *next* deal behind it. That is what made rapid
@@ -5079,6 +5222,58 @@ $("pd-back").onclick = () => {
 // away. Normal deal latency is ~30 ms, so nobody feels the lockout.
 let dealing = false;
 
+/** Ask the engine for the next pair. The patches the player has cut go with
+ *  the request, their undo windows included: a cut patch is never dealt
+ *  again (the engine skips them, `next_duel_ex`). It stays in the pool until a
+ *  generation replaces it, and dealing used to ignore the cut, so a sound the
+ *  player had thrown out came back minutes later as a question. */
+function requestDeal() {
+  send({ type: "duel", exclude: [...cutIds] });
+}
+
+// A deal that takes longer than this says why on the dimmed cards. Most deals
+// land in ~30 ms and say nothing; during a generation a deal waits for the
+// seed being bred, up to twenty seconds, and inert cards with no reason read
+// as a frozen app.
+const DEAL_SAY_MS = 300;
+let dealSayTimer = null;
+
+/** What the deal is waiting behind, as far as main can know it. */
+function dealingWhy() {
+  if (breeding) {
+    if (!breeding.total) return "dealing — the engine is breeding";
+    const seed = Math.min(breeding.done + 1, breeding.total);
+    return breeding.done >= breeding.total
+      ? "dealing — the engine is placing a bred generation in the pool"
+      : `dealing — the engine is breeding (seed ${seed}/${breeding.total})`;
+  }
+  if (evolvingFrom) return "dealing — the engine is ⚡ evolving a patch";
+  if (meterFitting && engineBusy) return "dealing — the engine is redrawing your taste map";
+  return "dealing…";
+}
+
+/** Write (or clear) the reason on the dimmed cards. Called with no argument
+ *  it refreshes a reason already showing — a generation's seed count moves. */
+function sayDealing(text) {
+  const showing = $("duel-a").classList.contains("dealing-slow");
+  if (text === undefined) {
+    if (!showing || !dealing) return;
+    text = dealingWhy();
+  }
+  for (const s of ["a", "b"]) {
+    const card = $(`duel-${s}`);
+    let el = card.querySelector(".deal-why");
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "deal-why mono";
+      el.setAttribute("role", "status");
+      card.appendChild(el);
+    }
+    el.textContent = text || "";
+    card.classList.toggle("dealing-slow", !!text);
+  }
+}
+
 function setDuelControlsEnabled(on) {
   for (const id of ["choose-a", "choose-b", "skip-duel", "pd-pick-a", "pd-pick-b", "pd-skip"]) {
     const el = $(id);
@@ -5086,13 +5281,54 @@ function setDuelControlsEnabled(on) {
   }
   $("duel-a").classList.toggle("dealing", !on);
   $("duel-b").classList.toggle("dealing", !on);
+  $("play-duel")?.classList.toggle("dealing", !on);
+  clearTimeout(dealSayTimer);
+  if (on) sayDealing(null);
+  else dealSayTimer = setTimeout(() => { if (dealing) sayDealing(dealingWhy()); }, DEAL_SAY_MS);
+}
+
+/** Put the pair on the table away and deal another: a pick does this, and so
+ *  does "another pair" (↻), which used to leave the old pair up with buttons
+ *  that looked live and did nothing until the deal landed. */
+function dealAnother() {
+  currentDuel = null;
+  dealing = true;
+  setDuelControlsEnabled(false);
+  requestDeal();
+}
+
+// ---------- taking back a teaching act ----------
+// ⌘Z takes back the newest teaching act still inside its undo window — a pick
+// from EVOLVE's cards or PATCH's strip, or a cut — in any view. Each act
+// registers how to take itself back when its receipt goes up, and leaves when
+// its window closes or it is taken back, so ⌘Z reaches the act whose toast is
+// on screen and never one already in the log. Only with none of these left
+// does ⌘Z mean edit undo, and only in PATCH (see the key handler).
+const takeBacks = [];
+function holdTakeBack(run) {
+  const t = { run };
+  takeBacks.push(t);
+  return t;
+}
+function releaseTakeBack(t) {
+  const i = takeBacks.indexOf(t);
+  if (i >= 0) takeBacks.splice(i, 1);
+}
+/** Take back the newest teaching act still undoable; false when none is. */
+function takeBackNewest() {
+  // An act that has quietly gone (a cut patch replaced by a generation inside
+  // its window) answers false, and the next one down is tried.
+  while (takeBacks.length) {
+    if (takeBacks.pop().run() !== false) return true;
+  }
+  return false;
 }
 
 // One vote at a time may sit behind the undo window — the only irreversible
 // action in an app that gives a *cut* seven seconds of grace was the vote.
 // The observation is held, not logged-and-compensated: a taste log containing
 // "picked it, then unpicked it" records the user's mouse, not their taste.
-let pendingVote = null; // { timer, commit, pair }
+let pendingVote = null; // { timer, commit, pair, key, toast, back, armsFit }
 
 let ignoreNextDeal = false;
 
@@ -5101,15 +5337,25 @@ function commitPendingVote() {
   clearTimeout(pendingVote.timer);
   const v = pendingVote;
   pendingVote = null;
+  releaseTakeBack(v.back);
   retireToastUndo(v.toast);
   v.commit();
+}
+
+/** A pick's window closed (or the tab is being left): into the log, and if it
+ *  was the sixth, the refit it armed goes out behind it. */
+function commitAndSettle() {
+  commitPendingVote();
+  // Mid-deal, the deal's own `settleFit` sends it, behind the pair's audio.
+  if (!dealing) settleFit();
 }
 
 function retractVote() {
   if (!pendingVote) return false;
   clearTimeout(pendingVote.timer);
-  const { pair, key, toast } = pendingVote;
+  const { pair, key, toast, back } = pendingVote;
   pendingVote = null;
+  releaseTakeBack(back);
   // The next deal was requested at vote time; if it hasn't landed yet it
   // must not overwrite the pair we are restoring.
   if (dealing) ignoreNextDeal = true;
@@ -5146,8 +5392,11 @@ function choose(side) {
   }
   if (!currentDuel) return;
   // A second vote inside the first one's window commits it — one pending
-  // vote at a time keeps the log ordered.
+  // vote at a time keeps the log ordered. If that was the sixth, its refit
+  // goes out once this pick's pair is dealt (the `duel` reply's `settleFit`).
   commitPendingVote();
+  // "● it just learned" stands until the next pick, and this is it.
+  learnedShown = false;
   benchBeforeAudition = null; // the vote closes the audition detour
   const [a, b] = currentDuel;
   const choseA = side === "a";
@@ -5159,7 +5408,7 @@ function choose(side) {
     setTimeout(() => nameEl.classList.remove("chosen"), 400);
   }
   send({ type: "duel_pred", a, b, choseA });
-  const timer = setTimeout(commitPendingVote, UNDO_WINDOW_MS);
+  const timer = setTimeout(commitAndSettle, UNDO_WINDOW_MS);
   pendingVote = {
     timer,
     pair: [a, b],
@@ -5167,6 +5416,7 @@ function choose(side) {
     key: aheadKey({ kind: "duel", a, b }),
     commit: () => send({ type: "record_duel", a, b, choseA }),
   };
+  pendingVote.back = holdTakeBack(() => retractVote());
   const win = choseA ? a : b;
   const lose = choseA ? b : a;
   // `replace`: only one vote is ever undoable (this one commits the last), so
@@ -5177,10 +5427,13 @@ function choose(side) {
     replace: "vote",
   });
   duelsSinceFit += 1;
-  // The refit is *armed* here and enqueued in `settleFit`, once the new pair
-  // has actually landed. See that function for why it is not sent from here.
+  // The refit is *armed* here and sent in `settleFit` once this pick is in
+  // the log, so the sixth pick keeps its undo window like every other.
   // Armed before the meter draws, so the sixth pip lights on the sixth pick.
-  if (duelsSinceFit >= FIT_EVERY) fitDue = true;
+  if (duelsSinceFit >= FIT_EVERY && !fitDue) {
+    fitDue = true;
+    pendingVote.armsFit = true;
+  }
   // Counted now, not when the log hears of it seven seconds on.
   aheadAdd(pendingVote.key);
 
@@ -5192,18 +5445,21 @@ function choose(side) {
   // immediately, so it was precisely the wrong thing to put behind a fit.
   // The pair is chosen against the pre-fit posterior, which is fine: the model
   // already tolerates a posterior that lags its log by up to FIT_EVERY votes.
-  currentDuel = null;
-  dealing = true;
-  setDuelControlsEnabled(false);
-  send({ type: "duel" });
+  dealAnother();
 }
 
-// A refit is armed by the sixth pick, and it goes out once the pair is
-// audible. The worker is one thread and processes in order, so a fit queued
-// ahead of the pair's buffers hands the user two cards they cannot hear for
-// the whole fit. The renders jump the settle delay and go in front of it; that
-// delay exists to protect the *next deal* from a render nobody is looking at,
-// which is the opposite situation to this one.
+// A refit is armed by the sixth pick and sent once that pick is in the log:
+// when its seven-second undo window closes, or when the next pick commits it
+// (whichever is first). It used to be sent as soon as the next pair landed,
+// committing the sixth pick at once — the one pick of every six that ⌘Z and
+// "not what I meant" could not take back, whatever the guide promised.
+//
+// It goes out once the pair is audible, too. The worker is one thread and
+// processes in order, so a fit queued ahead of the pair's buffers hands the
+// user two cards they cannot hear for the whole fit. The renders jump the
+// settle delay and go in front of it; that delay exists to protect the *next
+// deal* from a render nobody is looking at, which is the opposite situation
+// to this one.
 //
 // The sixth pick always refits: the meter promises it ("1 more pick and it
 // redraws your taste map"), and a promise kept only sometimes teaches the
@@ -5218,15 +5474,18 @@ function choose(side) {
 // pacing `FIT_EVERY` has always set — and the pair is audible through it.
 function settleFit() {
   if (!fitDue || fitting) return;
+  // The sixth pick is still inside its undo window: the fit waits for it.
+  if (pendingVote && pendingVote.armsFit) return;
   fitDue = false;
-  duelsSinceFit = 0;
-  // A vote still inside its undo window belongs in the log the fit reads.
-  // Committing here trades the tail of one undo window for a fit that has
-  // actually seen all six picks.
-  commitPendingVote();
+  // Picks made since the sixth (behind a fit already running) start the
+  // next row rather than vanishing from it.
+  duelsSinceFit = Math.max(0, duelsSinceFit - FIT_EVERY);
   requestPairRendersNow();
   fitting = true;
-  teachLearned();
+  meterFitting = true;
+  learnedShown = false;
+  lampOn("fit");
+  renderTeach();
   send({ type: "fit" });
 }
 
@@ -5256,13 +5515,12 @@ $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
 $("play-b").onclick = () => auditionDuelSide(1, $("play-b"));
 $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
-$("skip-duel").onclick = () => {
-  currentDuel = null;
-  send({ type: "duel" });
-};
+$("skip-duel").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 $("evolve-btn").onclick = () => {
   $("evolve-btn").disabled = true;
-  $("wm-lamp").classList.add("thinking");
+  lampOn("refine");
+  breeding = { done: 0, total: 0 };
+  renderTeach(); // a refit armed now waits for the generation, and says so
   note("breeding a generation toward your taste…");
   send({ type: "refine" });
 };
@@ -5543,9 +5801,15 @@ function cutRow(r) {
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
+  // A cut patch is never dealt again (`requestDeal` sends the cut ids), and
+  // that includes the pair on the table: a side the player just threw out is
+  // not a question worth asking, so another pair is dealt the way ↻ deals one.
+  if (currentDuel && currentDuel.includes(r.id) && !dealing) dealAnother();
   let toast = null;
+  let back = null;
   const commit = setTimeout(() => {
     pendingCuts.delete(r.id);
+    releaseTakeBack(back);
     // A toast that waited its turn in the lane outlives this window; its undo
     // stops offering what can no longer be taken back, as a vote's does.
     retireToastUndo(toast);
@@ -5554,19 +5818,28 @@ function cutRow(r) {
   pendingCuts.set(r.id, commit);
   // A cut teaches as a pick does, so PICKS counts it now, as it counts a pick.
   aheadAdd(aheadKey({ kind: "keep", id: r.id }));
-  toast = note(`Cut ${r.name} #${r.id}.`, {
-    undo: () => {
-      // Only what is still waiting: a sent cut uncounted here would be a
-      // PICKS lower than the log it is counting.
-      if (!pendingCuts.has(r.id)) return;
-      clearTimeout(pendingCuts.get(r.id));
-      pendingCuts.delete(r.id);
-      aheadDrop(aheadKey({ kind: "keep", id: r.id }));
-      cutIds.delete(r.id);
-      renderBank();
-      scheduleSave();
-    },
+  const undo = () => {
+    // Only what is still waiting: a sent cut uncounted here would be a
+    // PICKS lower than the log it is counting.
+    if (!pendingCuts.has(r.id)) return;
+    clearTimeout(pendingCuts.get(r.id));
+    pendingCuts.delete(r.id);
+    releaseTakeBack(back);
+    aheadDrop(aheadKey({ kind: "keep", id: r.id }));
+    cutIds.delete(r.id);
+    renderBank();
+    scheduleSave();
+  };
+  // ⌘Z reaches it too, like a pick's: the newest teaching act first.
+  back = holdTakeBack(() => {
+    if (!pendingCuts.has(r.id)) return false;
+    undo();
+    dropToast(toast);
+    return true;
   });
+  // By name, never "#9": ids are hidden everywhere else. And it says what the
+  // cut does, which is now true: the patch is not dealt again.
+  toast = note(`Cut ${r.name} — it won't be dealt again`, { undo });
 }
 
 function wireRename(nameEl, r) {
@@ -6086,6 +6359,11 @@ const presetClicks = new Map(); // library index -> benchSeq at the click
 // costs PERFORM's hold (see `heldForOpen` in perform.js), never its
 // measurement.
 let openAskedAt = 0;
+// The open on its way, for the bench reply to judge whether it is news:
+// {id, at, auto}. An open slower than this is announced when it lands
+// ("Opened Acid Line"); a quicker one is seen, not said.
+let openAsk = null;
+const OPEN_SAID_MS = 1000;
 // An open promised before there is an id to open: "teach it" names its first
 // pick before the engine has inserted it. {name, at}, or null.
 let openExpect = null;
@@ -6119,6 +6397,7 @@ function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
   openAskedAt = performance.now();
+  openAsk = { id, at: openAskedAt, auto };
   // A COMMIT still waiting on the last patch's edit is about that patch; it
   // must not land on this one when the edit settles.
   commitOnSettle = null;
@@ -12151,7 +12430,9 @@ $("rack-svg").addEventListener("keydown", (e) => {
 
 function startEvolveFrom(id) {
   $("rack-evolve").disabled = true;
-  $("wm-lamp").classList.add("thinking");
+  lampOn("refine_from");
+  evolvingFrom = true;
+  renderTeach();
   note("⚡ evolving around the locked controls…", { replace: "evolve-from" });
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
@@ -17321,6 +17602,19 @@ function drawMapTab(ctx, w, h, dpr) {
         ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
         ctx.stroke();
       }
+      if (p.id === benchPending && p.id !== wb.subjectId) {
+        // Asked for and on its way: a dotted silk ring until the patch is
+        // the one being played, when the solid ring above takes over.
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = INK.silk;
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.setLineDash([1.5 * dpr, 2.5 * dpr]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       mapHits.push({ x: cx, y: cy, id: p.id, u01: fitted ? glow : null });
       if (p.id === mapCursorId) {
         // Keyboard cursor: dashed ring, distinct from the solid subject ring.
@@ -17588,8 +17882,12 @@ $("taste-crt").addEventListener("click", (ev) => {
     if (d < bestD) { bestD = d; best = hit; }
   }
   if (best) {
+    // No toast at the click: it claimed the patch was "on the workbench and
+    // under your fingers" before the engine had opened it, and a second toast
+    // followed when it had. The dot shows the open pending (a dotted ring),
+    // and a slow one is announced when it lands (the bench reply).
     openOnBench(best.id);
-    note(`${nameOf(best.id)} selected — it's on the workbench and under your fingers`);
+    drawTaste();
     bankScrollTo = best.id;
     bankScrollAt = performance.now();
   }
@@ -17643,7 +17941,7 @@ $("taste-crt").addEventListener("pointermove", (ev) => {
   }
   const r = rowOf(best.id);
   mapTipEl.innerHTML =
-    `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to open on the bench</div>`;
+    `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to play it</div>`;
   mapTipEl.children[0].textContent = r ? r.name : `#${best.id}`;
   // The signature is engine bookkeeping: on request (⋯ › Show measurements).
   mapTipEl.children[1].textContent = r && engineerMode ? r.sig || r.signature || "" : "";
@@ -17671,7 +17969,7 @@ $("taste-crt").addEventListener("keydown", (e) => {
       bankScrollTo = mapCursorId;
       bankScrollAt = performance.now();
       openOnBench(mapCursorId);
-      note(`${nameOf(mapCursorId)} selected — it's on the workbench and under your fingers`);
+      drawTaste(); // the dot's pending ring, as for a click
     }
     return;
   }
@@ -17687,6 +17985,13 @@ $("taste-crt").addEventListener("keydown", (e) => {
 });
 
 // ---------- lineage ----------
+// The strip speaks names, not ids: "Soft Pad → Warm Drone 2", where it used
+// to print "#51 → #52", which named nothing a player could find — ids are
+// hidden everywhere else. A parent replaced since is named by the name it had.
+function lineageName(id) {
+  return nameOrKnown(id) || "an earlier patch";
+}
+
 function drawLineage() {
   if (currentView !== "evolve") return;
   const lineage = (views && views.lineage) || [];
@@ -17698,6 +18003,10 @@ function drawLineage() {
   ctx.clearRect(0, 0, w, h);
   drawGraticule(ctx, w, h, "rgba(255,180,84,0.05)");
 
+  // One point per step, oldest to newest: the child's predicted score as the
+  // model saw it when the step was made (amber bred, green your edit). The
+  // guide says exactly this; it used to say "the pool's utility over
+  // generations", which this never plotted.
   if (lineage.length > 0) {
     const us = lineage.map((ev) => ev.child_utility);
     const [u0, u1] = [Math.min(...us, 0), Math.max(...us, 0.001)];
@@ -17718,13 +18027,18 @@ function drawLineage() {
       ctx.fill();
     });
   }
+  canvas.title = lineage.length
+    ? "Each step's child as the model scored it when it was made, oldest to newest — amber bred, green your edits."
+    : "";
 
   const log = $("lineage-log");
   if (lineage.length === 0) {
     // Don't keep telling the user to press a button they have already pressed.
+    // The toast of a generation that bred nothing says "no move was
+    // accepted"; this says the same thing in the same words.
     log.innerHTML =
       status.generation > 0
-        ? `<span class="silk-dim">Generation ${status.generation} ran, but no proposal beat its parent — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
+        ? `<span class="silk-dim">Generation ${status.generation} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
         : '<span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span>';
     return;
   }
@@ -17736,15 +18050,15 @@ function drawLineage() {
       const sign = du >= 0 ? "+" : "−";
       // The walk samples the taste posterior rather than climbing it, so
       // some children land below their parent on purpose. Printed bare, a
-      // column of negative Δtaste read as "it bred worse patches"; said
+      // column of negative scores read as "it bred worse patches"; said
       // plainly, it is the search looking around.
       const explore = ev.kind !== "edit" && du < -0.05;
       const tag = explore
         ? ` <span class="lin-explore" title="Evolution samples your taste rather than only climbing it: some steps go sideways or down so it does not get stuck. Your picks decide whether they were worth it.">exploring</span>`
         : "";
       return `<div><span class="gen-tag">gen ${ev.generation}</span>` +
-        `${ev.kind === "edit" ? "✎ your edit" : "⚡ evolution"} on #${ev.parent_id} → <b>#${ev.child_id}</b> · ` +
-        `${humanizeDiff(ev.diff)} · Δtaste ${sign}${Math.abs(du).toFixed(2)}${tag}</div>`;
+        `${ev.kind === "edit" ? "✎ your edit" : "⚡ evolution"} on ${esc(lineageName(ev.parent_id))} → <b>${esc(lineageName(ev.child_id))}</b> · ` +
+        `${humanizeDiff(ev.diff)} · <span title="How much more (or less) the model expects you to like the child than its parent">liked ${sign}${Math.abs(du).toFixed(2)}</span>${tag}</div>`;
     })
     .join("");
 }
@@ -19132,7 +19446,9 @@ $("warm-go").onclick = () => {
   // one they have not is handed to the voices by the worker the moment it is
   // inserted (`warm_first`), and until then PERFORM names it.
   const known = presetIds.get(picked[0]);
-  if (known != null && rowOf(known)) openOnBench(known);
+  // Quiet: the warm start's result toast names it ("…and Acid Line is
+  // under your fingers"), and a second word about it followed that result.
+  if (known != null && rowOf(known)) { quietBench.add(known); openOnBench(known); }
   else openExpect = { name: first ? first.name : "the patch you picked", at: performance.now() };
   // Every chosen ≻ every unchosen, logged as a duel: same likelihood, same
   // log format, no new inference path. One worker turn does the inserts and
@@ -19156,10 +19472,11 @@ $("warm-go").onclick = () => {
 
 // The warm start's first pick, inserted, while its other eight are still
 // loading: into the voices now, onto the bench when the worker gets to it.
-// Bench replies that should arrive without their own "X on the bench": the
-// warm start's first pick, whose result toast names it. Said separately it
-// queued behind "Loading those in…" and was still waiting, as "+1", after the
-// result had replaced that toast.
+// Opens that must not be announced even when slow ("Opened X", see the bench
+// reply), because a message of their own already names them: the warm
+// start's first pick (said separately it queued behind "Loading those in…"
+// and was still waiting, as "+1", after the result had replaced that toast),
+// a loaded preset, an imported patch.
 const quietBench = new Set();
 function warmFirstLanded(m) {
   openExpect = null;
@@ -19192,7 +19509,7 @@ function warmStartDone(m) {
   // measurement are what the player is waiting for.
   send({ type: "fit" });
   fitting = true;
-  $("wm-lamp").classList.add("thinking");
+  lampOn("fit");
   // Named from the bank, or from the warm start's own cards while the bank
   // has no row for it yet.
   const firstIdx = [...presetIds].find(([, id]) => id === m.first)?.[0];

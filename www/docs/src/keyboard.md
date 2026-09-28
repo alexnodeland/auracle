@@ -35,7 +35,8 @@ uses them itself: <kbd>p</kbd> in the presets list plays the preset, and
 | <kbd>[</kbd> / <kbd>]</kbd> | Step through the bank |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate the patch you are on |
 | <kbd>m</kbd> | Save the patch you are on |
-| <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> | Undo / redo a workbench edit |
+| <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *nothing to undo here — PATCH edits undo in PATCH* |
+| <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | Key map and gestures |
 | <kbd>Esc</kbd> | Close a dialog, or put down an armed module |
 
@@ -44,8 +45,12 @@ uses them itself: <kbd>p</kbd> in the presets list plays the preset, and
 | | |
 |---|---|
 | <kbd>1</kbd> / <kbd>2</kbd> | Audition A / B |
-| <kbd>←</kbd> / <kbd>→</kbd> | Vote A / B |
-| <kbd>⌘Z</kbd> | Take back a vote |
+| <kbd>←</kbd> / <kbd>→</kbd> | Vote A / B, from the moment you click the EVOLVE tab |
+| <kbd>⌘Z</kbd> | Take back your last pick, the sixth included, within seven seconds |
+
+Clicking a view's tab puts the keyboard in that view. A keyboard user who
+reaches the tabs with <kbd>Tab</kbd> still moves between them with
+<kbd>←</kbd> / <kbd>→</kbd>.
 
 ## The rack canvas
 

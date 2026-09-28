@@ -110,9 +110,15 @@ its mind, discover a new style lens, or re-fit the star cutpoints.
 
 **Every sixth pick refits.** The teaching meter counts down to it in six pips
 (*3 more picks and it redraws your taste map*). A pick is a duel answered in
-EVOLVE or in PATCH's pick strip, or an offer answered in PERFORM. On the sixth,
-the meter reads **● it just learned — see what changed ▸**, the TASTE map is
-redrawn, and the wordmark's **E** lights while the fit runs.
+EVOLVE or in PATCH's pick strip, or an offer answered in PERFORM. On the sixth
+the row fills and the meter reads **● learning from your last 6 picks…**: the
+sixth pick keeps its seven seconds to be taken back like any other, and the
+refit goes out when they are up (or at once, if you pick again first). While a
+generation is breeding it reads **● it will learn from these 6 when breeding
+finishes**, because a refit waits for the generation. The wordmark's **E**
+lights while the fit runs. When it lands, the TASTE map is redrawn and the
+meter reads **● it just learned — see what changed ▸** until your next pick;
+the link opens the map.
 
 Reweighting alone would wear thin: as the weights concentrate on fewer and
 fewer draws, the model starts claiming more certainty than it has. Refitting on

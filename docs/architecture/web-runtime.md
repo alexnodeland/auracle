@@ -97,8 +97,18 @@ quantum while that node is muted. Levels follow one policy
 
 One lane, bottom right, one visible toast with a counter. A later toast with
 the same `replace` key takes the earlier one's place; a refusal (`urgent`)
-jumps the queue; an undo keeps its full window. Read the comment above
+jumps the queue (and honours `replace` too); an undo keeps its full window,
+and when the window closes its button is removed. Read the comment above
 `note()` before adding a toast.
+
+## ⌘Z
+
+A teaching act with an undo window (a pick from EVOLVE or PATCH's strip, a
+cut) registers how to take itself back (`holdTakeBack` in `main.js`) and
+leaves when its window closes. ⌘Z takes back the newest one in any view; only
+with none left does it reach the bench's edit undo, and only in PATCH.
+Elsewhere it changes nothing and says so. The sixth pick's refit is sent when
+that pick commits (`settleFit`), so it keeps its window too.
 
 ## Modes
 

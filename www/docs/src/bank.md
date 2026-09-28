@@ -45,8 +45,11 @@ Everything else on it is described below.</figcaption>
 - **★★★★★** rates it. This is an observation and it teaches the model.
 - **💾** saves it. This is storage and it teaches nothing.
 - **cut** teaches the model "not this one" and takes the row out of the bank.
-  The message *Cut Name #id.* offers an undo for seven seconds, and nothing is
-  recorded until they are up. It shows when you hover the row or put the
+  A cut patch is never dealt to you in a duel again; if it was on the cards,
+  a new pair is dealt. The message *Cut Soft Wash — it won't be dealt again*
+  offers an **undo** for seven seconds (<kbd>⌘Z</kbd> does the same), and
+  nothing is recorded until they are up. The patch stays in the pool until a
+  generation replaces it. The cut shows when you hover the row or put the
   cursor on it, and always on a touch screen.
 
 ## Stars are not saves
@@ -91,7 +94,7 @@ Sixty-two hand-made patches across seven families — bass, lead, keys, pad,
 texture, perc, weird — browsed in place: clicking one opens it on the
 workbench. The engine can only play what it holds, so a preset you open or ▶
 joins the evolution pool and takes the place of the patch the model likes
-least; the toast names what was retired, saved patches are never among them,
+least; the toast names what it replaced, saved patches are never among them,
 and the row reads **in bank** from then on, so a second click opens the same
 copy instead of loading another.
 

@@ -45,6 +45,7 @@ this table.
 | `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |
 | `narrow_gate.spec.js` | The narrow-window notice at any pointer under 1000 px, not over the handheld gate or "look around anyway" |
 | `keys_are_not_notes.spec.js` | A letter or digit a list, the rack or a dialog handles is not also a note or a rating |
+| `evolve_truth.spec.js` | ⌘Z outside PATCH changes nothing unseen; the sixth pick is undoable; "it just learned" follows `fitted`; a skip or a slow deal is inert and says why; a cut patch is not dealt; opens are quiet unless slow; tab click then → picks; keys a list uses are not notes |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |
 | `perform_instant.spec.js` | Cached wirings play at once; a spare offer lands at once |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
