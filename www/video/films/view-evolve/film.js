@@ -141,14 +141,14 @@ export async function build(stage) {
           { at: T("meter4:sixth", 0.4), mark: "copy", side: "bottom", ox: -60, dx: 40, dy: 90, text: "it just learned", color: "b" },
         ],
       },
-      turn("turn5", "ve-fair", CARDS),
+      turn("turn5", "ve-fair", aim(1.35, 1086, 250)),
       {
         beat: "fair",
         shot: "ve-fair",
         chapter: "05 · fair questions",
-        cam: hold([[0, ...CARDS], ["fair4", ...aim(1.3, 700, 200)], ["fair5", ...aim(1.35, 1086, 250)]]),
+        cam: hold([[0, ...aim(1.35, 1086, 250)], ["fair2", ...CARDS], ["fair4", ...aim(1.3, 700, 200)], ["fair5", ...aim(1.35, 1086, 250)]]),
         callouts: [
-          { at: "fair1:random", until: T("fair2", -0.9), mark: "nameA", side: "right", dx: 140, dy: 10, text: "A and B: dealt at random", color: "b" },
+          { at: "fair1:random", until: T("fair2", -0.9), mark: "rule", side: "bottom", dy: 90, text: "every pair: dealt at random", color: "b" },
           { at: T("fair3:pick", 0.4), until: T("fair4", -0.9), mark: "forecast", side: "bottom", dy: 90, text: "its forecast, checked against you", color: "b" },
           { at: "fair4:TASTE", until: T("fair5", -0.9), mark: "taste", side: "bottom", dy: 90, text: "TASTE › TRUST" },
           { at: T("fair5:skip", 0.2), mark: "skip", side: "bottom", dy: 90, text: "skip · nothing recorded" },

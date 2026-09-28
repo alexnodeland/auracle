@@ -47,17 +47,12 @@ the first-visit aids away (the bench tour's banner by its *got it*; the
 keybed's hint by one note), and waits for the engine to settle (`#belief` not
 re-measuring, the wordmark's lamp not thinking) and the toasts to clear.
 
-**Edits a settle apart.** Every edit re-renders the patch on the one engine
-worker, and the edit queue holds one edit: a second knob's edit sent while the
-first is still queued replaces it, and the first knob's move is lost (the
-rehearsal's probe: cutoff 1.78 → 13 kHz, resonance moved 150 ms later, cutoff
-back at 1.78 kHz once settled; reported, being fixed). Until that fix merges,
-edits to two different knobs wait for the engine to settle between them
-(Steps' two bars; the grit after the filter's move), and a gesture that turns
-one knob both ways is one press (the cold open's, *changing it*'s and
-*together*'s cutoff: `path` in shots.json, one edit on release). A bypass or
-an unplug is refused while another structural edit is in flight, so chapter
-03 waits (stamped) for each step to land, and the beat cuts through the wait.
+**Edits.** Every bench edit goes through one ordered lane, so knobs can be
+turned back to back. A gesture that turns one knob both ways is one press
+(the cold open's, *changing it*'s and *together*'s cutoff: `path` in
+shots.json). A bypass or an unplug is refused while another structural edit
+is in flight, so chapter 03 waits (stamped) for each step to land, and the
+beat cuts through the wait; on a quiet machine the cuts skip nothing.
 
 **Keys.** `a` = C4. Chords: **C** `a d g` · **Am** `h k ;` · **F** `f h k` ·
 **G** `g j l`; Fmaj7 `f h k ;`; Am7 `g h k ;`.
@@ -177,16 +172,13 @@ chapter 01's card.
   held"; "already moved by a mod env" (amber); "mod env → slew → cutoff"
   (amber).
 
-## 7. `steps` — shot `vp-steps` (steps1–3) · Loom · **cut**
+## 7. `steps` — shot `vp-steps` (steps1–3) · Loom
 
 - **Actions:** Am latched by HOLD on the downbeat; Loom's Steps walks its
-  ladder filter. steps2: two bars redrawn, the second step down to about −70%
-  and the third up to about +70% (a bar is set where it is pressed and dragged
-  to), a settle apart; the beat cuts through the settle
-  (`clips: [["steps2:up", "@s1-0.25"]]`), which on a busy machine took 9–16 s
-  after one bar (a PERFORM measurement of Loom ran first). The latched chord
-  sounds on through the cut. steps3: HOLD off, SYNC on (the RATE knob reads
-  *· sync*), and the chord struck again on the next bar line, where the
+  ladder filter. steps2: two bars redrawn back to back, the second step down
+  to about −70% and the third up to about +70% (a bar is set where it is
+  pressed and dragged to). steps3: HOLD off, SYNC on (the RATE knob reads its
+  division), and the chord struck again on the next bar line, where the
   pattern restarts at 84.
 - **Callouts:** "steps → the ladder's cutoff" (amber); "one bar per step, up to
   eight"; "SYNC"; "on the tempo: 84".
@@ -227,9 +219,9 @@ chapter 01's card.
 ## 11. `together` — shot `vp-together` (together1–4) · Acid Line
 
 - **Actions:** Am7 latched on the downbeat (arp up, 1/16, 84). together2: the
-  cutoff opened, then brought part of the way back. together3: `/`, "grit"
-  typed, `distortion` armed and, once the filter's edit has landed, placed
-  after the filter. together4: the filter's ▢, *my edit is better*, COMMIT.
+  cutoff opened and brought part of the way back, then the resonance nudged.
+  together3: `/`, "grit" typed, `distortion` armed and placed after the
+  filter. together4: the filter's ▢, *my edit is better*, COMMIT.
   HOLD off on the bar line after "yours".
 - **Callouts:** "search by sound"; "locked"; "my edit is better · commit".
 

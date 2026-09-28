@@ -285,9 +285,10 @@
         {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
         {"op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
       ],
-      "marks": {"meter": "#duel-mid", "pred": "#duel-pred", "skip": "#skip-duel", "cardA": "#duel-a", "cardB": "#duel-b", "nameA": "#name-a", "nameB": "#name-b", "chooseA": "#choose-a", "chooseB": "#choose-b", "skill": "#skill", "taste": ".viewtab[data-view='taste']"},
+      "marks": {"meter": "#duel-mid", "pred": "#duel-pred", "rule": "#duel-rule", "skip": "#skip-duel", "cardA": "#duel-a", "cardB": "#duel-b", "nameA": "#name-a", "nameB": "#name-b", "chooseA": "#choose-a", "chooseB": "#choose-b", "skill": "#skill", "taste": ".viewtab[data-view='taste']"},
       "actions": [
         {"at": 3.6, "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
+        {"at": 3.7, "op": "log", "name": "rule", "js": "document.getElementById('duel-rule').textContent + ' | ' + document.getElementById('duel-rule').title"},
         {"at": "fair2+0.2", "op": "key", "key": "1", "ms": 100},
         {"at": "fair2+2.4", "op": "key", "key": "2", "ms": 100},
         {"at": "fair3:pick", "op": "eval", "js": "(() => { const n = (s) => document.getElementById('name-' + s).firstChild.textContent.trim(); const pad = /Swell|Wash|Pad|Drone|Bloom/; const a = pad.test(n('a')), b = pad.test(n('b')); window.__veFlip = !window.__veFlip; const side = a && !b ? 'a' : b && !a ? 'b' : (window.__veFlip ? 'a' : 'b'); document.getElementById('choose-' + side).click(); return side + ': ' + n(side); })()"},

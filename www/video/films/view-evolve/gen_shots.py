@@ -155,7 +155,7 @@ MARKS = {
     "cardA": "#duel-a", "cardB": "#duel-b", "nameA": "#name-a", "nameB": "#name-b",
     "scopeA": "#scope-a", "scopeB": "#scope-b",
     "playA": "#play-a", "playB": "#play-b", "chooseA": "#choose-a", "chooseB": "#choose-b",
-    "lineage": "#lineage-log", "rail": "#bank-list", "lamp": "#wm-lamp", "picks": "#duel-count",
+    "lineage": "#lineage-log", "rail": "#bank-list", "lamp": "#wm-lamp", "picks": "#duel-count", "rule": "#duel-rule",
 }
 
 
@@ -291,9 +291,10 @@ shots.append({
 shots.append({
     "id": "ve-fair", "beat": "fair", "pre": PRE,
     "setup": ready(votes(4) + SKIP_CLEAR),
-    "marks": M("meter", "pred", "skip", "cardA", "cardB", "nameA", "nameB", "chooseA", "chooseB", skill="#skill", taste=".viewtab[data-view='taste']"),
+    "marks": M("meter", "pred", "rule", "skip", "cardA", "cardB", "nameA", "nameB", "chooseA", "chooseB", skill="#skill", taste=".viewtab[data-view='taste']"),
     "actions": [
         state(B(0.2)),
+        {"at": B(0.3), "op": "log", "name": "rule", "js": "document.getElementById('duel-rule').textContent + ' | ' + document.getElementById('duel-rule').title"},
         # Heard, then picked: the forecast is scored against the answer.
         {"at": "fair2+0.2", "op": "key", "key": "1", "ms": 100},
         {"at": "fair2+2.4", "op": "key", "key": "2", "ms": 100},

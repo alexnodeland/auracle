@@ -313,16 +313,11 @@ shots.append({
 # that); the next one is heard at the same Blend, then taken.
 shots.append({
     "id": "vp-offer", "beat": "offer", "pre": turn_pre("offer", "turn-offer"), "own_setup": True,
-    "clips": [["offer5:pass+0.9", "@next-0.1"]],
+    "clips": [["offer5:pass+0.9", "@next-0.3"]],
     "setup": taught_perform("Glass Pad"),
     "marks": {"offer-pad": OFFER, "offer": ".pf-offer", "blend": BLEND, "peek": PAD("Peek"), "take": PAD("Take"), "deck": ".pf-deck"},
     "actions": [
-        # Held through the beat, struck again just after the cut. A hold "to
-        # the end" cannot be used in a shot whose cut waits on a stamp: its
-        # length is only known once the stamp has come, so footage.mjs would
-        # press nothing until then.
-        hold("offer1-0.3", ["f", "h", "k", ";"], until="offer5:pass+0.88"),
-        hold("offer5:pass+1.0", ["f", "h", "k", ";"], until="offer7+5.55"),
+        hold("offer1-0.3", ["f", "h", "k", ";"], ms="end"),
         DIAG_ON,
         TOASTS_ON,
         lit("offer1:Press-0.1", "lit before offer"),
@@ -346,6 +341,7 @@ shots.append({
         {"at": "offer6:sound", "op": "click", "sel": PAD("Take")},
         {"at": "offer6:sound+0.5", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "offer6:sound+0.5", "op": "log", "name": "take", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
+        {"at": "offer7:model", "op": "log", "name": "after take", "js": STATUS + " + ' / ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-sub').textContent).join(' | ')"},
         lit("offer6:sound-0.2", "lit before take"),
         lit("offer7", "lit after take"),
         toasts("offer7:model"),
@@ -358,14 +354,11 @@ shots.append({
 # and Freeze; Back glides home.
 shots.append({
     "id": "vp-wander", "beat": "wander", "pre": turn_pre("wander", "turn-wander"), "own_setup": True,
-    "clips": [["wander3:ideas+0.3", "@offered-0.1"], ["wander4:knobs", "@drift-0.1"]],
+    "clips": [["wander3:ideas+0.3", "@offered-0.3"], ["wander4:knobs", "@drift-0.4"]],
     "setup": taught_perform("Glass Pad"),
     "marks": {"wander": WANDER, "status": ".pf-status", "offer": ".pf-offer", "hood": ".pf-hood", "freeze": PAD("Freeze"), "keep": PAD("Keep"), "back": PAD("Back"), "deck": ".pf-deck"},
     "actions": [
-        # Split at the cuts, as in the offer shot.
-        hold("wander1-0.3", ["f", "h", "k", ";"], until="wander3:ideas+0.28"),
-        hold("wander3:ideas+0.4", ["f", "h", "k", ";"], until="wander4:knobs-0.02"),
-        hold("wander4:knobs+0.1", ["f", "h", "k", ";"], until="wander8+5.3"),
+        hold("wander1-0.3", ["f", "h", "k", ";"], ms="end"),
         DIAG_ON,
         lit("wander1:Keep-0.1", "lit before keep"),
         {"at": "wander1:Keep", "op": "click", "sel": PAD("Keep")},
@@ -432,8 +425,8 @@ shots.append({
         {"at": "dock6:like", "op": "click", "sel": "#rec-btn"},
         {"at": "dock6:like+0.3", "op": "mark", "name": "recording", "sel": "#toasts .toast"},
         {"at": "dock6:WAV", "op": "click", "sel": "#rec-btn"},
-        {"at": "dock6:WAV+3.0", "op": "mark", "name": "saved", "sel": "#toasts .toast"},
-        {"at": "dock6:WAV+3.0", "op": "log", "name": "saved", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
+        {"at": "dock6:WAV+0.8", "op": "mark", "name": "saved", "sel": "#toasts .toast"},
+        {"at": "dock6:WAV+0.8", "op": "log", "name": "saved", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
         {"at": "dock6:WAV+2.6", "op": "click", "sel": "#hold-btn"},
         toasts("dock6:WAV+3.4"),
     ],
@@ -506,6 +499,7 @@ shots.append({
         {"at": "together3:downbeat", "op": "click", "sel": PAD("Take"), "snap": "bar"},
         {"at": "together3:downbeat+1.2", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "together3:downbeat+1.2", "op": "log", "name": "take", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
+        {"at": "together3:downbeat+4.0", "op": "log", "name": "after take", "js": STATUS + " + ' / ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-sub').textContent).join(' | ')"},
         lit("together3:downbeat-0.2", "lit before take"),
         lit("together3:downbeat+4.0", "lit after take"),
         lit("outro2:PATCH-0.4", "lit at outro"),

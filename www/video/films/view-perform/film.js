@@ -33,7 +33,7 @@
 //   decides it. As rehearsed (plain session): Glass Pad reaches Bright both
 //   ways, Snap only toward bloom, Motion only toward restless, Body only
 //   toward full and Space only toward far; Grit is a search control. Bell
-//   Jar's Bright turns its wavefolder's fold. Each shot logs its wiring.
+//   Jar's Bright turns its wavefolder's threshold. Each shot logs its wiring.
 // - Every shot's session is a returning player's (the film's `init` marks
 //   the first-run coach and PERFORM's first steps as done), so neither sits
 //   over the keybed or pushes the deck down; the tour film shows them.
@@ -237,8 +237,8 @@ const PLAN = [
       { at: "dock3:slides", until: "dock4:arpeggiator-1.25", mark: "glide", side: "top", dx: -60, dy: -110, text: "glide" },
       { at: "dock4:tempo", until: "dock5", mark: "tempo", side: "right", dx: 80, dy: -60, text: "up · down, at 84" },
       { at: "dock5:Sync", until: "dock6:like-1.25", mark: "sync", side: "top", dx: 40, dy: -110, text: "sync: Loom's steps on the beat" },
-      { at: "dock6:REC", until: "dock6:WAV+1.6", mark: "rec", side: "top", dx: -60, dy: -110, text: "● rec" },
-      { at: "dock6:WAV+3.0", mark: "saved", side: "top", dx: -160, dy: -90, text: "a WAV of what you played" },
+      { at: "dock6:REC", until: "dock6:WAV+0.5", mark: "rec", side: "top", dx: -60, dy: -110, text: "● rec" },
+      { at: "dock6:WAV+0.8", mark: "saved", side: "top", dx: -160, dy: -90, text: "a WAV of what you played" },
     ],
   },
 

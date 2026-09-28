@@ -88,8 +88,7 @@ One chord a bar, on the score's bar lines. The offer is grown in set-up
 
 - Am · F · C · G on Glass Pad under the first four lines, one per line.
 - The three lists clicked in turn; callout *its guess* on a row's percentage.
-- ▶ on the pad among My patches (its standard phrase, rendered once in
-  set-up); space stops it as the row is clicked, which opens it in PATCH (a
+- ▶ on the pad among My patches (its standard phrase); space stops it as the row is clicked, which opens it in PATCH (a
   cut from the click to the moment it lands, when that takes seconds); Am,
   then F, on it at once; callout *open, and live* on the row.
 - Camera: aim 1.7 at the rail; out to 1.15 on the rack when the row opens.
@@ -137,8 +136,8 @@ One chord a bar, on the score's bar lines. The offer is grown in set-up
 > starts out pointed at you. Your three are saved, and PERFORM opens, ready to
 > play.
 
-- The nine cards; ▶ on the bass card as the narrator says "it asks" (heard
-  once in set-up until the warm-start ▶ fix lands), its phrase running up to
+- The nine cards; ▶ on the bass card as the narrator says "it asks" (the real
+  first press), its phrase running up to
   the cut; the first bass, pad and texture picked; *teach it* (callout
   *3 picks × 6 passed = 18*).
 - A cut from the press to the "18 preferences learned… Your three are

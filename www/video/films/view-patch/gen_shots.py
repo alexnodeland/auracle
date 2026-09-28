@@ -122,11 +122,8 @@ KNOB_H = {"Acid Line": 116.7, "Glass Pad": 86.9}
 
 def sweep(sel, h, moves, ms):
     """One press on a knob, moved by each of `moves` in turn (px; negative is
-    up), then let go: one edit however many turns, so nothing waits in the
-    engine's one-slot edit queue for a second drag to overtake. (A drag on a
-    second knob while the first knob's edit is still queued loses the first
-    knob's move: reported, being fixed; until then, drags on different knobs
-    stay a settle apart.)"""
+    up), then let go: a turn one way and back as a hand makes it, and one
+    edit on release."""
     pts = [[0.5, 0.5]]
     y = 0.0
     for d in moves:
@@ -237,7 +234,7 @@ shots.append({
         {"at": "change1:knob", **sweep("#rack-svg [data-addr='node/0#cut']", KNOB_H["Glass Pad"], [45, -75], 3000)},
         # The bypass, once the knob's edits have landed.
         {"at": "change1:hand+0.2", "op": "seq", "steps": [
-            {"op": "wait", "ms": 2500},
+            {"op": "wait", "ms": 1500},
             {"op": "until", "js": SETTLED, "ms": 90000, "stamp": "ready2"},
             log("cut", val("node/0#cut")),
         ]},
@@ -364,24 +361,20 @@ shots.append({
 # ---- steps: Loom's filter walks a pattern; draw it; sync it to 84 --------
 shots.append({
     "id": "vp-steps", "beat": "steps", "pre": PRE,
-    "clips": [["steps2:up", "@s1-0.25"]],
     "setup": bench("Loom", TEMPO, {"op": "click", "sel": "#hold-btn"}, KNOBS_LOG),
     "marks": {"rack": "#rack-scroll", "steps": "#rack-svg g.mod-group[data-kind='steps']", "filter": "#rack-svg g.mod-group[data-key='node/0']",
               "s1": "#rack-svg [data-addr='node/0/m#s1']", "s3": "#rack-svg [data-addr='node/0/m#s3']", "len": "#rack-svg [data-addr='node/0/m#slen']",
               "rate": "#rack-svg [data-addr='node/0/m#srate']", "sync": "#sync-btn", "modwire": "#rack-svg path.wire.mod"},
     "actions": [
-        # Am, latched by HOLD on the downbeat, so it sounds on through the cut
-        # (a held key's release keyed to a word after the cut would wait for
-        # the cut's stamp before the key even went down).
+        # Am, latched by HOLD on the downbeat.
         {"at": PRE - 0.08, "snap": "bar", "op": "hold", "keys": AM, "ms": 260},
-        # Two bars, a settle apart (see sweep()); the beat cuts through the
-        # settle (`clips`). A bar is set where it is pressed and dragged to
+        # Two bars, back to back. A bar is set where it is pressed and dragged to
         # (its middle is no push, 31 px either way the most), so ±22 px
         # redraws the second step from +70% to about −70% and the third from
         # −10% to about +70%.
         {"at": "steps2:Draw-0.15", "op": "seq", "steps": [
             {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s1']", "dy": 22, "ms": 450},
-            {"op": "until", "js": SETTLED, "ms": 60000, "stamp": "s1"},
+            {"op": "wait", "ms": 200},
             {"op": "drag", "sel": "#rack-svg [data-addr='node/0/m#s2']", "dy": -22, "ms": 450},
             {"op": "wait", "ms": 200},
             mark("lane", "#rack-svg g.mod-group[data-kind='steps']"),
@@ -542,9 +535,13 @@ shots.append({
     "actions": [
         # Am7 latched, on the downbeat.
         {"at": PRE - 0.08, "snap": "bar", "op": "hold", "keys": ["g", "h", "k", ";"], "ms": 260},
-        # Up, then part of the way back, in one press; grit goes in once
-        # this edit has landed (see sweep()).
-        {"at": "together2:Shape", **sweep("#rack-svg [data-addr='node#cut']", KNOB_H["Acid Line"], [-52, 16], 2800)},
+        # The cutoff up, then part of the way back, in one press; then the
+        # resonance nudged.
+        {"at": "together2:Shape", "op": "seq", "steps": [
+            sweep("#rack-svg [data-addr='node#cut']", KNOB_H["Acid Line"], [-52, 16], 2600),
+            {"op": "wait", "ms": 250},
+            {"op": "drag", "sel": "#rack-svg [data-addr='node#res']", "dy": -14, "ms": 900},
+        ]},
         {"at": "together3:Add-0.3", "op": "seq", "steps": [
             {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
             {"op": "key", "key": "/", "ms": 60},
@@ -557,8 +554,7 @@ shots.append({
             {"op": "move", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type", "ms": 400},
             {"op": "wait", "ms": 300},
             log("grit", "document.getElementById('nb-status').textContent"),
-            {"op": "until", "js": SETTLED, "ms": 60000, "stamp": "shaped"},
-            log("cut", val("node#cut")),
+            log("shaped", val("node#cut") + " + ' | ' + " + val("node#res")),
             {"op": "click", "sel": "#rack-svg .jack[data-childkey='node'] circle:last-of-type"},
             {"op": "until", "sel": "#rack-svg g.mod-group[data-kind='distortion']", "ms": 30000, "stamp": "grit"},
             {"op": "wait", "ms": 300},

@@ -25,16 +25,14 @@
 //   camera sounds at once (renders are lazy).
 // - bank: clicking a row opens it and switches to PATCH (the app's own
 //   behaviour), so the bank beat plays out in PATCH. The row played and
-//   opened is the pad the warm start saved; its phrase is rendered once in
-//   set-up so ▶ sounds at once. Space stops the phrase as the row is clicked,
-//   and opening a patch takes the one engine thread seconds, so the beat
-//   cuts from the click to the moment it lands (the shot's `clips`).
+//   opened is the pad the warm start saved. Space stops its phrase as the row
+//   is clicked; if opening takes seconds, the beat cuts from the click to the
+//   moment it lands (the shot's `clips`; no cut when it is quick).
 // - dock: HOLD latches the chord before ARP opens its drawer (a HOLD click
 //   folds the drawer); the pointer rests on the drawer. ● rec is pressed on
 //   camera and pressed again: a real take, and its toast.
-// - first: a fresh session whose set-up stops at the nine cards, and hears
-//   the bass card once (a first ▶ loads the preset, seconds on one engine
-//   thread), so ▶ on camera sounds at once. "teach it" takes seconds before
+// - first: a fresh session whose set-up stops at the nine cards; the ▶ on
+//   camera is the real first press. "teach it" can take seconds before
 //   its result shows, so the beat cuts from the press to the "18 preferences
 //   learned… Your three are saved." toast (the shot's `clips`), by when
 //   PERFORM is on the first pick.

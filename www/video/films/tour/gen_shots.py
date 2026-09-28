@@ -33,7 +33,7 @@ TL = json.load(open(os.path.join(FDIR, "timeline.json")))
 # warm-start card's ▶, a bank row's ▶). Until the app answers those presses at
 # once, the shot hears that sound once in set-up, so the ▶ on camera plays as
 # soon as it is pressed. False shows the real first press.
-PREHEAR = True
+PREHEAR = False
 BAR = 60 / 84 * 4  # 2.857 s
 C, AM, F, G = ["a", "d", "g"], ["h", "k", ";"], ["f", "h", "k"], ["g", "j", "l"]
 TAB = lambda v: ".viewtab[data-view='%s']" % v  # noqa: E731

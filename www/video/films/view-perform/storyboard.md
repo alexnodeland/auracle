@@ -51,7 +51,7 @@ PERFORM's first steps as done. The tour film shows both. Two set-ups:
   Body only toward full (*at the thin end*), Space only toward far (*at the
   close end*). Grit is a search control. 5 of 6 reach.
 - Plain, other patches:
-  - Bell Jar: Bright turns the wavefolder's *fold*.
+  - Bell Jar: Bright turns the wavefolder's *threshold*.
   - Loom: Bright both ways; Motion and Body up only.
   - Tine: Bright both ways; Snap down only.
 - Taught, Glass Pad: as plain, but Body is a search control (4 of 6).
@@ -173,8 +173,7 @@ are the offer, drift and roam boundaries.
 
 ## 6. `offer` — **05 · Offers** · *How do you try something new without stopping?* (shot `vp-offer`, taught)
 
-- **Actions:** Fmaj7 is held throughout (struck again just after the cut,
-  since a hold cannot run across a cut that waits on a stamp), then:
+- **Actions:** Fmaj7 is held throughout, then:
   - Offer: the spare lands in B at once;
   - Peek is held for 1.6 s, then Blend is ridden past half (B is heard);
   - Offer again is the pass (its toast), and a new variant grows. The beat
@@ -187,8 +186,7 @@ are the offer, drift and roam boundaries.
 
 ## 7. `wander` — **06 · Wander, Keep and Back** · *Can it play along, and bring you home?* (shot `vp-wander`, taught)
 
-- **Actions:** Fmaj7 is held throughout (struck again just after each cut),
-  then:
+- **Actions:** Fmaj7 is held throughout, then:
   - Keep;
   - Wander into the offer zone, and the idea lands in B (the beat cuts to it
     if it is slow);
@@ -216,9 +214,8 @@ pattern, so Sync is heard.
   - UNI off, and a clean C chord;
   - HOLD, ARP (up·dn), SYNC, then Cmaj7 on the beat: the arpeggio and
     Loom's steps start together;
-  - ● rec, a bar, ● rec again. The *saved … take* toast follows the
-    *recording…* one about 4 s later, since toasts show one at a time, so
-    dock6 holds a long pause;
+  - ● rec, a bar, ● rec again: the *saved … take* toast replaces
+    *recording…* at once, and the callout points at it;
   - HOLD off.
 - **Callouts:** *hold: latched* · *unison: four voices, one note* · *glide* ·
   *up · down, at 84* · *sync: Loom's steps on the beat* · *● rec* · *a WAV of
@@ -241,8 +238,7 @@ pattern, so Sync is heard.
 - **Callouts:** *the first eight claim the eight* · *learn: CC 20 → Space*
   (on the panel's Space row) · *pressure → Bright* · *mod wheel → Motion* ·
   *the tempo follows the clock* · *midi ○: another tab has it*.
-- The learn callout points at the panel row, not the toast. Toasts show one
-  at a time, so the learn toast waits behind the three *mapped* toasts.
+- The learn callout points at the panel row, where the mapping stays.
 
 ## 10. `together` — **all of it at once** · *Putting it together.* (shot `vp-together`, taught, Acid Line at 84)
 
