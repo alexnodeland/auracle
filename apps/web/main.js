@@ -1408,11 +1408,10 @@ worker.onmessage = (e) => {
           note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
         }
       } else if (m.born) {
-        offerBankTourAfterFirstGeneration();
         const made = evicted.length
           ? madeRoom(evicted)
           : "";
-        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`);
+        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`, bankTourOffer());
       } else {
         note(`Generation ${m.status.generation} bred.`);
       }
@@ -5919,18 +5918,20 @@ $("tour-skip").onclick = endBankTour;
 // The one moment the eviction rule stops being trivia: the first time a
 // generation actually lands. Offer the explanation then rather than at boot,
 // where it would be one more thing to dismiss before making a sound.
-function offerBankTourAfterFirstGeneration() {
-  if (localStorage.getItem("auracle-bank-toured")) return;
+//
+// It rides on the generation's own toast, as that toast's button: a toast of
+// its own came first and held "Gen 1: 10 new patches" back for its whole
+// window, so the result of the press arrived seven seconds after it happened.
+// Returns the toast options to add, or nothing after the first time.
+function bankTourOffer() {
+  if (localStorage.getItem("auracle-bank-toured")) return {};
   localStorage.setItem("auracle-bank-toured", "1");
   // `note` takes `undo`/`undoLabel`, not `label`/`run` — that is `alarm`'s
   // shape. Passing the wrong one rendered a bare toast with no button, so the
   // single designed entry point to the walkthrough was consumed silently and
   // never offered again. The action here is not an undo, but the toast's one
   // action slot is what it is; the label carries the meaning.
-  note("The bank just bred a generation — some patches were replaced.", {
-    undoLabel: "what happened?",
-    undo: () => startBankTour(2),
-  });
+  return { undoLabel: "what happened?", undo: () => startBankTour(2) };
 }
 
 // ---------- presets ----------
