@@ -3763,7 +3763,7 @@ async function bootBooth() {
       else {
         presetClicks.set(p.index, benchSeq);
         openAskedAt = performance.now();
-        send({ type: "load_preset", index: p.index });
+        send({ type: "load_preset", index: p.index, open: true });
       }
     },
     resetVisitor: () => boothResetVisitor(),
@@ -6061,7 +6061,7 @@ function renderPresetBank(list) {
         openAskedAt = performance.now();
         el.classList.add("loading");
         el.setAttribute("aria-busy", "true");
-        send({ type: "load_preset", index: p.index });
+        send({ type: "load_preset", index: p.index, open: true });
       }
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });

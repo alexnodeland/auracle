@@ -22,6 +22,10 @@ changelog that edits its own past is not a record.
   too, once the pool has filled. `make perform-wirings` regenerates the file,
   and `make test` fails when a preset changes without it
   (`shipped_preset_wirings_are_current`, `budgets.spec.js`).
+- **A preset clicked in the bank opens with one render instead of two.** Its
+  insert used to throw its audio away and the bench then rendered the same
+  phrase again; the insert now keeps it, as the warm start's ▶ already did,
+  and so does the warm start's first pick (`budgets.spec.js`).
 - **The second offer comes as fast as the first, and NEXT says it passes on
   B.** PERFORM now grows the next offer in the background while B still holds
   one, so offer, hear it, pass, offer is instant every time; the second offer
