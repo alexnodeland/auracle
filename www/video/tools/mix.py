@@ -332,26 +332,36 @@ def main():
     open(os.path.join(odir, f"{args.film}.vtt"), "w").write("\n".join(vtt))
 
     if args.encode:
-        pic = os.path.join(odir, "picture.mkv")
+        pic = picture_input(odir)
         ff = ffmpeg()
         mp4 = os.path.join(odir, f"{args.film}.mp4")
         webm = os.path.join(odir, f"{args.film}.webm")
         wav = os.path.join(odir, "mix.wav")
-        subprocess.run([ff, "-y", "-loglevel", "error", "-i", pic, "-i", wav, "-map", "0:v", "-map", "1:a",
+        subprocess.run([ff, "-y", "-loglevel", "error", *pic, "-i", wav, "-map", "0:v", "-map", "1:a",
                         "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-tune", "animation", "-pix_fmt", "yuv420p",
                         "-profile:v", "high", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "192k", "-shortest", mp4], check=True)
-        subprocess.run([ff, "-y", "-loglevel", "error", "-i", pic, "-i", wav, "-map", "0:v", "-map", "1:a",
+        subprocess.run([ff, "-y", "-loglevel", "error", *pic, "-i", wav, "-map", "0:v", "-map", "1:a",
                         "-c:v", "libvpx-vp9", "-crf", "34", "-b:v", "0", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2",
                         "-pix_fmt", "yuv420p", "-c:a", "libopus", "-b:a", "128k", "-shortest", webm], check=True)
         for p in (mp4, webm):
             print(f"{p}: {os.path.getsize(p) / 1e6:.1f} MB")
     if args.poster is not None:
         ff = ffmpeg()
-        pic = os.path.join(odir, "picture.mkv")
+        pic = picture_input(odir)
         jpg = os.path.join(odir, f"{args.film}.jpg")
-        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), "-i", pic, "-frames:v", "1", "-q:v", "3", jpg], check=True)
-        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), "-i", pic, "-frames:v", "1", "-c:v", "libwebp", "-quality", "82", os.path.join(odir, f"{args.film}.webp")], check=True)
+        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-q:v", "3", jpg], check=True)
+        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-c:v", "libwebp", "-quality", "82", os.path.join(odir, f"{args.film}.webp")], check=True)
         print(jpg)
+
+
+def picture_input(odir):
+    """ffmpeg input arguments for the rendered picture: the parts render.mjs
+    left, through their ffconcat list, or one picture.mkv (an --out render,
+    or an older one)."""
+    lst = os.path.join(odir, "picture.ffconcat")
+    if os.path.exists(lst):
+        return ["-f", "concat", "-safe", "0", "-i", lst]
+    return ["-i", os.path.join(odir, "picture.mkv")]
 
 
 def fmt(t):
