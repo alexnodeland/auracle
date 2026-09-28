@@ -75,6 +75,15 @@
       <button class="viewtab" data-view="taste" role="tab" aria-selected="false" aria-controls="view-taste">taste</button>
     </nav>
     <div class="menubar-right">
+      <!-- The film of the view you are in (main.js, pointFilmChip). The first
+           time you open a view it says so in words, then it folds to a small
+           ▶ film. publish.py writes the published films' lengths into
+           data-films and un-hides it; until a view's film is out, that view
+           shows nothing, and nothing asks the site whether it exists. -->
+      <div class="film-chip hidden" id="film-chip" data-films="{}">
+        <a class="fc-link" id="fc-link" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener"><span class="fc-play" aria-hidden="true">▶</span> <span class="fc-text" id="fc-text">film</span></a>
+        <button class="fc-close" id="fc-close" type="button" title="Fold this away" aria-label="Fold the film note away">×</button>
+      </div>
       <span class="counter" title="A/B picks you've made — this is what the model learns from"><span class="counter-label">picks</span> <span id="duel-count">0</span></span>
       <span class="counter" title="Generations bred toward your taste"><span class="counter-label">gen</span> <span id="gen-count">0</span></span>
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>

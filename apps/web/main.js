@@ -2676,6 +2676,7 @@ function showView(name) {
   // The lane is anchored to the rack frame, which only exists in PLAY, and it
   // has to clear whichever teaching strip this view puts up.
   positionToastLane();
+  pointFilmChip();
   if (name === "taste") drawTaste();
   if (name === "evolve") {
     drawLineage();
@@ -2686,8 +2687,15 @@ function showView(name) {
   }
 }
 
+// When the player last chose a view themselves (a click, or the tab list's
+// arrow keys, which click): the film chip's tour note gives way to that, and
+// not to the app changing view on its own.
+let viewChosenAt = 0;
 document.querySelectorAll(".viewtab").forEach((t) => {
-  t.onclick = () => showView(t.dataset.view);
+  t.onclick = () => {
+    viewChosenAt = performance.now();
+    showView(t.dataset.view);
+  };
 });
 
 // role=tablist / role=menu promise arrow keys; deliver them. One wiring for
@@ -3202,6 +3210,7 @@ async function bootBooth() {
     $("booth-btn").setAttribute("aria-checked", String(booth.on));
     $("booth-btn").textContent = booth.on ? "Booth mode: on" : "Booth mode";
     $("booth-reset-btn").classList.toggle("hidden", !booth.on);
+    pointFilmChip();
   };
   $("booth-btn").onclick = () => {
     booth.setOn(!booth.on);
@@ -13165,7 +13174,7 @@ function renderSpecDock() {
     `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
     `<div class="sd-body"><p class="sp-blurb">${esc(m.blurb)}</p>` +
     `<div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
-    `<span class="sp-heard"><b>heard as</b> ${esc(m.heard)}</span></div></div>` +
+    `<span class="sp-heard"><b>heard</b> ${esc(m.heard)}</span></div></div>` +
     `<div class="sd-model mono">${p.belief}</div>`;
 }
 
@@ -17649,6 +17658,8 @@ function warmPreviewLoaded(id, evicted) {
 function closeWarmStart(mark = true) {
   $("warmstart").classList.add("hidden");
   if (mark) localStorage.setItem("auracle-warmed", "1");
+  // The film note waited for the warm start; now it can speak.
+  pointFilmChip();
 }
 
 $("warm-skip").onclick = () => {
@@ -17658,9 +17669,9 @@ $("warm-skip").onclick = () => {
   // A skip DEFERS the warm start rather than destroying it — it is the
   // highest-value-per-second elicitation in the product, so it is re-offered
   // once after a few duels and stays reachable from the ⋯ menu.
-  closeWarmStart(false);
   localStorage.setItem("auracle-warm-deferred", "1");
   localStorage.setItem("auracle-helped", "1");
+  closeWarmStart(false);
   note("Press a key to hear it. The ⋯ menu has the full keyboard map.");
 };
 
@@ -17745,15 +17756,123 @@ const VIEW_FILMS = {
   evolve: { page: "evolve", film: "view-evolve", name: "EVOLVE" },
   taste: { page: "taste", film: "view-taste", name: "TASTE" },
 };
+const viewFilmHref = (v) => `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
+const TOUR_HREF = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
 function pointHelpFilm() {
   const v = VIEW_FILMS[currentView] || VIEW_FILMS.perform;
   const a = $("help-film");
-  a.href = `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
+  a.href = viewFilmHref(v);
   a.lastChild.textContent = ` watch ${v.name} in depth`;
 }
 $("films-link").href = `${FILMS_DOCS}films.html`;
-$("warm-tour").href = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
+$("warm-tour").href = TOUR_HREF;
 pointHelpFilm();
+
+// The film of the view you are in, in the menu bar. The first time you open a
+// view it says so in words ("new to PATCH? watch it in depth · 5:40"), and
+// the very first time of all, the tour; then it folds to a quiet ▶ film that
+// links the same view's film, with its length on hover. Once per view, never
+// again: a note that comes back every visit is a note people learn to close
+// without reading.
+//
+// publish.py lists the published films and their lengths in data-films, so a
+// view whose film is not out shows nothing and nothing asks the site. Quiet
+// in a film's own recording (?film, where it would be on camera) and in booth
+// mode (a link out of the instrument is a visitor walking away from it), and
+// it waits while the warm start is up rather than competing with it.
+const filmChip = $("film-chip");
+const FILM_LENGTHS = (() => {
+  try {
+    return JSON.parse(filmChip?.dataset.films || "{}");
+  } catch {
+    return {};
+  }
+})();
+const FILM_NOTED = "auracle-film-notes";
+function filmNoted() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(FILM_NOTED) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function noteFilmSeen(key) {
+  try {
+    const seen = filmNoted();
+    seen.add(key);
+    localStorage.setItem(FILM_NOTED, JSON.stringify([...seen]));
+  } catch { /* storage can throw (private windows); the note just returns */ }
+}
+const hasFilm = (f) => Object.prototype.hasOwnProperty.call(FILM_LENGTHS, f);
+// Until the warm start is answered or skipped, the chip keeps quiet. For a
+// newcomer the instrument is on screen for a moment before the warm start
+// comes up over it (it waits for the pool), and a note spoken then is gone
+// behind the dialog before anyone reads it.
+function warmUnresolved() {
+  if (!$("warmstart").classList.contains("hidden")) return true;
+  try {
+    return !localStorage.getItem("auracle-warmed") && !localStorage.getItem("auracle-warm-deferred");
+  } catch {
+    return false;
+  }
+}
+// The tour is for someone new: offered once to a player whose first session
+// this is, never as "new here?" to someone who has been playing for weeks.
+const filmNewcomer = warmUnresolved();
+let filmSaying = null; // what the open note is about: "tour", a view, or null
+let filmSaidAt = 0;
+let filmFoldTimer = null;
+function foldFilmChip() {
+  clearTimeout(filmFoldTimer);
+  filmSaying = null;
+  filmChip.classList.remove("open");
+  const v = VIEW_FILMS[currentView];
+  if (!v) return;
+  $("fc-link").href = viewFilmHref(v);
+  $("fc-text").textContent = "film";
+}
+function pointFilmChip() {
+  if (!filmChip) return;
+  const v = VIEW_FILMS[currentView];
+  if (!v || !hasFilm(v.film) || new URLSearchParams(location.search).has("film") || booth?.on) {
+    clearTimeout(filmFoldTimer);
+    filmChip.classList.add("hidden");
+    filmChip.classList.remove("open");
+    return;
+  }
+  filmChip.classList.remove("hidden");
+  $("fc-link").title = `Watch ${v.name} in depth · ${FILM_LENGTHS[v.film]} (opens in the guide)`;
+  // The tour's note is about the whole instrument, so it outlasts the switch
+  // to PERFORM that follows the warm start, and gives way only to a view the
+  // player chose; a view's note is about that view.
+  if (filmSaying === "tour" && filmChip.classList.contains("open") && viewChosenAt < filmSaidAt) return;
+  const seen = filmNoted();
+  // The lead ("new here?") is the first words to go when the bar is narrow.
+  const say = warmUnresolved() ? null
+    : filmNewcomer && hasFilm("tour") && !seen.has("tour")
+      ? { key: "tour", href: TOUR_HREF, lead: "new here?", text: `take the tour · ${FILM_LENGTHS.tour}` }
+      : !seen.has(currentView)
+        ? { key: currentView, href: viewFilmHref(v), lead: `new to ${v.name}?`, text: `watch ${v.name} in depth · ${FILM_LENGTHS[v.film]}` }
+        : null;
+  if (!say) {
+    foldFilmChip();
+    return;
+  }
+  noteFilmSeen(say.key);
+  filmSaying = say.key;
+  filmSaidAt = performance.now();
+  $("fc-link").href = say.href;
+  const lead = document.createElement("span");
+  lead.className = "fc-lead";
+  lead.textContent = `${say.lead} `;
+  $("fc-text").replaceChildren(lead, say.text);
+  filmChip.classList.add("open");
+  clearTimeout(filmFoldTimer);
+  filmFoldTimer = setTimeout(foldFilmChip, 15_000);
+}
+$("fc-close").onclick = foldFilmChip;
+// Opened in a new tab: the note has done its job here.
+$("fc-link").addEventListener("click", () => setTimeout(foldFilmChip, 0));
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {

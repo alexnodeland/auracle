@@ -31,6 +31,7 @@ and no picture — build with `make site` to see them play.)
 It refuses a film whose picture and mix disagree about its length by more
 than a frame, or whose captions are missing.
 """
+import html
 import json
 import os
 import re
@@ -136,12 +137,16 @@ def main():
     fill_landing(reg)
     fill_readme(reg)
     unhide_app_links(reg)
+    fill_film_chip(reg)
 
 
 def write_docs_page(reg):
     # Say what the films on the page are, not what the set will be: the
-    # walkthroughs' clause only once one is published.
-    walks = any(f in reg for f in dict(GROUPS)["Playing it"])
+    # walkthroughs' clause only once one is published (the tour and the
+    # views' films are recordings of the app too), and the app's film chip
+    # only once a view has its film.
+    walks = any(f in reg for f in dict(GROUPS)["Playing it"] + CHIP_FILMS)
+    views = any(f in reg for f in CHIP_FILMS if f != "tour")
     out = [
         "# Films",
         "",
@@ -155,6 +160,12 @@ def write_docs_page(reg):
         "The narration is synthetic (Kokoro-82M, offline).",
         "",
     ]
+    if views:
+        out += [
+            "In the app, **▶ film** in the menu bar opens the film of the view you are",
+            "in. The first time you open a view, it says so.",
+            "",
+        ]
     for group, films in GROUPS:
         present = [f for f in films if f in reg]
         if not present:
@@ -430,6 +441,31 @@ def unhide_app_links(reg):
     if new != text:
         open(APP, "w").write(new)
         print(f"  {os.path.relpath(APP, ROOT)}: film links shown")
+
+
+# The menu bar's film chip (main.js, pointFilmChip): the tour on a first
+# visit, then each view's own film. It reads which are published, and how
+# long each runs, from data-films, so it never links a film that isn't out.
+CHIP_FILMS = ["tour", "view-perform", "view-patch", "view-evolve", "view-taste"]
+
+
+def fill_film_chip(reg):
+    """Write the published chip films' lengths into the app's film chip and
+    un-hide it once any view has its film."""
+    if not os.path.exists(APP):
+        return
+    text = open(APP).read()
+    m = re.search(r'<div class="([^"]*)" id="film-chip" data-films="[^"]*"', text)
+    if not m:
+        return
+    lengths = {f: fmt(reg[f]["duration"]) for f in CHIP_FILMS if f in reg}
+    shown = any(f != "tour" for f in lengths)
+    cls = " ".join(w for w in m.group(1).split() if not (shown and w == "hidden"))
+    attr = html.escape(json.dumps(lengths, separators=(",", ":")), quote=True)
+    new = text[: m.start()] + f'<div class="{cls}" id="film-chip" data-films="{attr}"' + text[m.end():]
+    if new != text:
+        open(APP, "w").write(new)
+        print(f"  {os.path.relpath(APP, ROOT)}: film chip lists {', '.join(lengths) or 'nothing'}")
 
 
 if __name__ == "__main__":
