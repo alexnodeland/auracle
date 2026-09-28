@@ -102,7 +102,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 1.113,
+      "tail": 1.814,
       "lines": [
         {
           "id": "named1",
@@ -141,6 +141,11 @@
         },
         {
           "id": "named8",
+          "text": "A preset comes wired already, so it plays at once while PERFORM checks it.",
+          "post": 0.6
+        },
+        {
+          "id": "named9",
           "text": "On Bell Jar, Bright folds the wave instead. The name stays, and the knobs change.",
           "post": 1.0
         }
@@ -243,7 +248,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 1.134,
+      "tail": 2.971,
       "lines": [
         {
           "id": "offer1",
@@ -267,7 +272,7 @@
         },
         {
           "id": "offer5",
-          "text": "Press Offer again, and that's a pass.",
+          "text": "Now the pad reads Next. Press it, and that's a pass.",
           "post": 0.8
         },
         {

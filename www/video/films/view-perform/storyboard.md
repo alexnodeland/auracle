@@ -38,8 +38,13 @@ returning player's: the film's `init` also marks the first-run coach and
 PERFORM's first steps as done. The tour film shows both. Two set-ups:
 
 - **plain**: `#warm-skip`, a pool of at least 40, a MIDI keyboard plugged in
-  through the `?film` port, then `preset` → `view perform` → `measured` → the
-  wiring logged → no toast on screen.
+  through the `?film` port, then `preset` → `view perform` → `measured` →
+  re-checked → the wiring logged → no toast on screen. Every preset ships
+  wired (`apps/web/perform-wirings.json`), so `measured` comes at once, with
+  *re-checking* on the status line while PERFORM measures it again under
+  this session's pool; the set-up waits that out (`RECHECKED`), so a shot
+  starts on the session's own wiring and nothing re-wires under its first
+  gesture.
 - **taught**: the three-pick warm start (`nth=0, 4, 7`), then the fit, then as
   above. It adds `wait 9000`, so a spare offer has grown for Offer to hand
   over at once.
@@ -75,13 +80,18 @@ build 06fee64, whose per-consumer random streams dealt a new session):
   - the XY pad: `.pf-xy-field`, with its axis selects in `.pf-xy-head select`;
   - the touch row: `.pf-touch` (`#pf-touch-sel`);
   - the hood: `.pf-hood`;
-  - the status line: `.pf-status`.
+  - the status line: `.pf-status` (the patch only: *4 of 6 controls reach
+    this patch*, *· re-checking*);
+  - Wander's own line, under its dial: `.pf-knob[data-i='7'] .pf-k-sub`
+    (*ideas · one in B*, *drift · next in 9 s*, *drift · walking…*,
+    *drift · gliding*, *paused 3 s*, *held*, *staying — nothing better
+    nearby*).
 - The dock: `#hold-btn #uni-btn #arp-btn #sync-btn #glide #rec-btn
   #arp-ctl #arp-mode #arp-div #bpm #midi-ind #midi-panel`.
 
 A named-control drag of 180 px is the whole range: `dy −45` is a quarter
 turn up. A Wander drag is relative to where the dial is: 0.15, 0.40 and 0.75
-are the offer, drift and roam boundaries.
+are the ideas, drift and roam boundaries (three ticks on Wander's ring).
 
 ---
 
@@ -135,15 +145,20 @@ are the offer, drift and roam boundaries.
   - a long press on Bright sweeps it low, high and back, under the chord.
 - **Bell Jar:** on "wiring" it is opened from the bank. A preset not yet in
   the bank loads and stays in PERFORM; one already in the bank would switch
-  to PATCH. The status reads *listening to this patch…*, and the bell
-  is played in quarter notes while it measures (the measurement renders
-  offline; the keys still play). The beat cuts (`clips`) at `named7`
-  ("Then it wires…") to 0.6 s before the wiring lands. Bell Jar's Bright is
-  its wavefolder's threshold (lower folds more), ridden up under a struck
-  figure of eighth notes.
+  to PATCH. It ships wired, so its controls work at once (stamp `wired`) and
+  the status reads *2 of 6 controls reach this patch · re-checking* while
+  PERFORM nudges each knob and listens again under this session's pool
+  (stamp `rechecked`; both wirings are logged). The bell is played in
+  quarter notes from `named6` to the figure, through the re-check. No cut:
+  there is no wait left to skip (the old film cut about 11 s of *listening
+  to this patch…*). named8 says it: "A preset comes wired already, so it
+  plays at once while PERFORM checks it." Bell Jar's Bright is its
+  wavefolder's threshold (lower folds more), ridden up under a struck figure
+  of eighth notes (`named9`).
 - **Callouts:** *Bright: ridden up* · *the patch's own knobs* · *long press:
-  hear it* · *PERFORM listens* (amber, on the status) · *Bright → wavefolder threshold* ·
-  *different knobs, same name*.
+  hear it* · *re-checking: PERFORM listens* (amber, on the status) ·
+  *shipped wired: it plays at once* (on the status) · *Bright → wavefolder
+  threshold* · *different knobs, same name*.
 
 ## 4. `honest` — **03 · Honest controls** · *What if this patch can't do that?* (shot `vp-honest`)
 
@@ -184,35 +199,45 @@ are the offer, drift and roam boundaries.
 - **Actions:** Fmaj7 is held throughout, then:
   - Offer: the spare lands in B at once;
   - Peek is held for 1.6 s, then Blend is ridden past half (B is heard);
-  - Offer again is the pass (its toast): Blend glides home, since B is
-    empty, and a new variant grows. The beat cuts (`clips`) to just before
-    it lands;
+  - with B full the pad reads *NEXT* · *passes on B*; pressing it is the
+    pass (its toast, *Passed on B — that counts as a pick for what you
+    had.*, with **undo** for 7 s): Blend glides home, and the next variant
+    lands at once, because a spare grew while B was held. No cut (the old
+    film cut about 10 s of growing); the `next` stamp should come within a
+    fraction of a second of the press;
   - Peek is held on it for 1.35 s, then it is taken (its toast, with *don't
     count it*). A Take counts only for an offer heard for a second (Peek, or
     Blend past half, with notes held); taken at Blend home it would be
     unheard, with no toast and no pick.
 - **Callouts:** *B: a variant of this sound* (amber) · *held: B alone* ·
-  *Blend, at matched loudness* · *a pass is a pick for A* (amber) · *held:
-  hear the next one first* · *a take is a pick for B* (amber).
+  *Blend, at matched loudness* · *NEXT · passes on B* (on the pad) · *a pass
+  is a pick for A, with undo* (amber) · *held: hear the next one first* ·
+  *a take is a pick for B* (amber).
 
 ## 7. `wander` — **06 · Wander, Keep and Back** · *Can it play along, and bring you home?* (shot `vp-wander`, taught)
 
 - **Actions:** Fmaj7 is held throughout, then:
   - Keep;
-  - Wander into the offer zone, and the idea lands in B (the beat cuts to it
-    if it is slow);
-  - Wander into drift. The beat cuts (`clips`) to just before the first
-    glide, whose status reads *drifting toward your taste*, and the hood's
-    bars move;
+  - Wander into *ideas*: let go in a new zone, it asks 1.5 s later, and the
+    spare grown ahead lands in B at once (no cut; the old film cut a wait
+    here). The line under Wander reads *ideas · one in B*;
+  - Wander into drift: its first move is asked for 1.5 s after letting go
+    (*drift · next in 1 s*), then the walk renders a step at a time
+    (*drift · walking…*). The beat cuts (`clips`) from "knobs" to just
+    before the glide (stamp `drift`: the line reads *drift · gliding*), and
+    the hood's bars move. If rehearsal shows the walk is quick, the cut
+    starts where the footage reached and skips nothing;
   - Wander to roam;
-  - a touch on Bright (it waits), then Freeze (*held*);
+  - a touch on Bright: the line under Wander reads *paused 3 s*, then Freeze
+    (*held*);
   - Back glides home, and the bars return to their home ticks.
-- **Camera:** one framing (1.3) that holds the status line, the deck, the
+- **Camera:** one framing (1.3) that holds the deck with Wander's line, the
   pads, B and the hood.
-- **Callouts:** *Keep: this is home* · *Wander* · *an idea, in B* ·
-  *drifting toward your taste* · *roam* · *new modules arrive only in B* ·
-  *paused: your hands are on it* (amber, on the status line, for the 3.5 s
-  hands-off window) · *Freeze: held* · *back to the ticks: home*.
+- **Callouts:** *Keep: this is home* · *Wander: ideas* · *an idea, in B* ·
+  *drift · gliding, toward your taste* (amber, on Wander) · *roam* · *new
+  modules arrive only in B* · *paused: your hands are on it* (amber, on
+  Wander's line, for the 3.5 s hands-off window) · *Freeze: held* · *back to
+  the ticks: home*.
 
 ## 8. `dock` — **07 · The dock** · *How do you hold, stack and arpeggiate it?* (shot `vp-dock`, Loom at 84)
 
@@ -256,7 +281,9 @@ pattern, so Sync is heard.
 
 - **Actions:** HOLD and ARP (up·dn, 1/16) are set off camera. Then:
   - C on the beat's first downbeat, as the card clears: the arpeggio;
-  - Wander into drift;
+  - Wander into drift (its first move is asked for 1.5 s after letting go,
+    but the Offer, Blend and Take that follow are hands on, so it moves only
+    after the Take);
   - Offer: the spare lands at once;
   - Blend past half;
   - Take on the next bar line.

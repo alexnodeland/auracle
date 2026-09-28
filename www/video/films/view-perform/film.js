@@ -34,6 +34,13 @@
 //   ways, Snap only toward bloom, Motion only toward restless and Space only
 //   toward far; Body and Grit are search controls. Bell
 //   Jar's Bright turns its wavefolder's threshold. Each shot logs its wiring.
+// - Presets ship wired, so Bell Jar plays the moment it is opened and the
+//   status line reads "re-checking" while PERFORM measures it again; the
+//   named chapter says so (named8) and has no cut. Off camera, every set-up
+//   waits for that re-check, so a shot starts on the session's own wiring.
+// - Wander's state is on the line under its dial ("ideas · one in B",
+//   "drift · gliding", "paused 3 s", "held"), so its callouts point at the
+//   dial, not the status line, which speaks only about the patch.
 // - Every shot's session is a returning player's (the film's `init` marks
 //   the first-run coach and PERFORM's first steps as done), so neither sits
 //   over the keybed or pushes the deck down; the tour film shows them.
@@ -43,7 +50,7 @@ import { walkthrough, aim } from "../../stage/walk.js";
 // from timeline.json: where the shot a card beat borrows starts, as that
 // beat's `meta.pre`. Rerun it after every timeline change; validate.mjs
 // checks these.
-const BORROW = /*borrow*/ { title: 11.929, outro: 23.357 } /*/borrow*/;
+const BORROW = /*borrow*/ { title: 11.929, outro: 23.358 } /*/borrow*/;
 
 /** A narration time moved by d seconds, as one offset ("play2:Z-1.30"). */
 function shift(at, d) {
@@ -129,15 +136,16 @@ const PLAN = [
       ["named3:Underneath-0.2", ...aim(1.35, 1000, 520)],
       ["named4:Long-0.3", ...aim(1.3, 900, 330)],
       ["named5:Every-0.2", ...aim(1.2, 800, 330)],
-      ["named8:Bell-0.3", ...aim(1.2, 1086, 460)],
+      ["named9:Bell-0.3", ...aim(1.2, 1086, 460)],
     ], 0.8),
     callouts: [
       { at: "named2:ride", until: "named3:Underneath-1.15", mark: "bright", side: "bottom", dx: -60, dy: 150, text: "Bright: ridden up" },
       { at: "named3:knobs", until: "named4:Long-1.15", mark: "hood", side: "top", ox: -140, dx: 60, dy: -80, text: "the patch's own knobs" },
       { at: "named4:Long+0.3", until: "named5:Every-1.05", mark: "bright", side: "bottom", dx: 60, dy: 150, text: "long press: hear it" },
-      { at: "named6:nudges", until: "named7-0.1", mark: "status", side: "right", dx: 90, dy: 30, text: "PERFORM listens", color: "b" },
-      { at: "named8:folds", until: "named8:name", mark: "bright", side: "bottom", dx: 70, dy: 150, text: "Bright → wavefolder threshold" },
-      { at: "named8:name", mark: "hood", side: "top", ox: -140, dx: 60, dy: -80, text: "different knobs, same name" },
+      { at: "named6:nudges", until: "named7-0.1", mark: "status", side: "right", dx: 90, dy: 30, text: "re-checking: PERFORM listens", color: "b" },
+      { at: "named8:wired", until: "named9:Bell-1.15", mark: "status", side: "right", dx: 90, dy: 30, text: "shipped wired: it plays at once" },
+      { at: "named9:folds", until: "named9:name", mark: "bright", side: "bottom", dx: 70, dy: 150, text: "Bright → wavefolder threshold" },
+      { at: "named9:name", mark: "hood", side: "top", ox: -140, dx: 60, dy: -80, text: "different knobs, same name" },
     ],
   },
 
@@ -187,13 +195,14 @@ const PLAN = [
     cam: settle([
       WIDE,
       ["offer1:playing", ...aim(1.22, 1086, 470)],
-      ["offer5:Press-0.3", ...aim(1.2, 1180, 550)],
+      ["offer5-0.1", ...aim(1.2, 1180, 550)],
     ]),
     callouts: [
       { at: "offer1:slot", until: "offer3", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "B: a variant of this sound", color: "b" },
       { at: "offer3:Peek", until: "offer4:ride", mark: "peek", side: "top", dx: 40, dy: -100, text: "held: B alone" },
-      { at: "offer4:matched", until: "offer5:Press-1.25", mark: "blend", side: "bottom", dx: 80, dy: 150, text: "Blend, at matched loudness" },
-      { at: "offer5:pass", until: "offer6", mark: "passed", side: "top", dx: -160, dy: -90, text: "a pass is a pick for A", color: "b" },
+      { at: "offer4:matched", until: "offer5-1.05", mark: "blend", side: "bottom", dx: 80, dy: 150, text: "Blend, at matched loudness" },
+      { at: "offer5:pad", until: "offer5:pass", mark: "offer-pad", side: "top", dx: 40, dy: -100, text: "NEXT · passes on B" },
+      { at: "offer5:pass", until: "offer6", mark: "passed", side: "top", dx: -160, dy: -90, text: "a pass is a pick for A, with undo", color: "b" },
       { at: "offer6+0.1", until: "offer6:sound", mark: "peek", side: "top", dx: 40, dy: -100, text: "held: hear the next one first" },
       { at: "offer6:sound+0.4", mark: "toast", side: "top", dx: -160, dy: -90, text: "a take is a pick for B", color: "b" },
     ],
@@ -210,12 +219,12 @@ const PLAN = [
     ]),
     callouts: [
       { at: "wander1:hear", until: "wander2:Wander-0.2", mark: "keep", side: "top", dx: 40, dy: -110, text: "Keep: this is home" },
-      { at: "wander2:Wander", until: "wander3", mark: "wander", side: "bottom", dx: -120, dy: 150, text: "Wander" },
+      { at: "wander2:model-0.3", until: "wander3", mark: "wander", side: "bottom", dx: -120, dy: 150, text: "Wander: ideas" },
       { at: "wander3:ideas", until: "wander4:Further", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "an idea, in B", color: "b" },
-      { at: "wander4:drift", until: "wander5", mark: "status", side: "right", dx: 90, dy: 30, text: "drifting toward your taste", color: "b" },
+      { at: "wander4:drift", until: "wander5", mark: "wander", side: "bottom", dx: -120, dy: 150, text: "drift · gliding, toward your taste", color: "b" },
       { at: "wander5:way", until: "wander6:new", mark: "wander", side: "bottom", dx: -120, dy: 150, text: "roam" },
       { at: "wander6:module", until: "wander7:Touch", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "new modules arrive only in B", color: "b" },
-      { at: "wander7:Touch+0.4", until: "wander7:Freeze-0.1", mark: "status", side: "right", dx: 90, dy: 30, text: "paused: your hands are on it", color: "b" },
+      { at: "wander7:Touch+0.4", until: "wander7:Freeze-0.1", mark: "wander", side: "bottom", dx: -120, dy: 150, text: "paused: your hands are on it", color: "b" },
       { at: "wander7:Freeze", until: "wander8:Back", mark: "freeze", side: "top", dx: -60, dy: -100, text: "Freeze: held" },
       { at: "wander8:home", mark: "hood", side: "top", ox: -160, dx: 50, dy: -80, text: "back to the ticks: home" },
     ],

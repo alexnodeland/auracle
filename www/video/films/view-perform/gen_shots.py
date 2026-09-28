@@ -41,10 +41,19 @@ INIT = (
 DEV = {"op": "midi", "device": "MIDI keyboard"}
 WIRING = {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"}
 STATUS = "document.querySelector('.pf-status').textContent"
+# Wander's own state ("drift · next in 9 s", "drift · gliding", "paused 3 s",
+# "held") is on the line under its dial; the status line keeps to the patch.
+WSUB = "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"
+# Every preset ships wired (apps/web/perform-wirings.json), so `measured`
+# returns at once with "… controls reach this patch · re-checking" while
+# PERFORM measures it again under this session's own pool. Off camera, a shot
+# waits that out: its wiring is the session's, as rehearsed, and nothing
+# re-wires under the first gesture.
+RECHECKED = {"op": "until", "js": "(() => { const s = " + STATUS + " || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000}
 
 
 def perform(name, extra=()):
-    return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, WIRING, *extra, QUIET]
+    return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, RECHECKED, WIRING, *extra, QUIET]
 
 
 def taught_perform(name, extra=()):
@@ -54,6 +63,19 @@ def taught_perform(name, extra=()):
 def turn_pre(demo, turn):
     """A demo shot's pre when its turn beat reuses it (starts 0.5 s before the turn)."""
     return round(B[demo]["t0"] - B[turn]["t0"] + 0.5, 3)
+
+
+L = {l["id"]: l for l in tl["lines"]}
+
+
+def word_t(line, word=None):
+    """Film time of a word in a line (as footage.mjs resolves "line:word"), or the line's start."""
+    l = L[line]
+    if not word:
+        return l["t0"]
+    words = l["text"].split()
+    k = next(i for i, w in enumerate(words) if re.sub(r"[^\w']", "", w.lower()).startswith(word.lower()))
+    return l["words"][k]
 
 
 # Knob selectors.
@@ -128,7 +150,11 @@ DIAG_JS = (
     "} catch (err) { D.push('tap error ' + err); } }); } return wp.call(this, m, ...r); }; "
     "const st = document.querySelector('.pf-status'); let last = st.textContent; "
     "new MutationObserver(() => { const s = st.textContent; if (s !== last) { last = s; D.push('status \"' + s.slice(0, 56) + '\"@' + t()); } })"
-    ".observe(st, { childList: true, subtree: true, characterData: true }); })()"
+    ".observe(st, { childList: true, subtree: true, characterData: true }); "
+    # Wander's own line: its state changes, but not every second of a countdown.
+    "const ws = document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\"); let lastW = ws.textContent.replace(/\\d+ s/, '# s'); "
+    "new MutationObserver(() => { const s = ws.textContent.replace(/\\d+ s/, '# s'); if (s !== lastW) { lastW = s; D.push('wander \"' + ws.textContent + '\"@' + t()); } })"
+    ".observe(ws, { childList: true, subtree: true, characterData: true }); })()"
 )
 DIAG_ON = _diag({"at": 0.1, "op": "eval", "js": DIAG_JS})
 # Every toast as it comes and goes, in shot seconds (the eval runs at 0.1 s),
@@ -152,6 +178,7 @@ LIT = (
     "+ ' | focus ' + (document.activeElement ? document.activeElement.tagName.toLowerCase() + (document.activeElement.id ? '#' + document.activeElement.id : '') + (typeof document.activeElement.className === 'string' && document.activeElement.className ? '.' + document.activeElement.className.trim().split(/\\s+/)[0] : '') : 'none') "
     "+ ' | ' + (window.__diag || []).splice(0).join(' ; ') "
     "+ ' | ' + document.querySelector('.pf-status').textContent "
+    "+ ' | wander ' + " + WSUB + " "
     "+ ' | ' + [...document.querySelectorAll('.pf-knob')].slice(0, 3).map((k) => k.getAttribute('aria-valuetext')).join(', ')"
 )
 
@@ -214,13 +241,23 @@ shots.append({
 
 # ---------------------------------------------------------------- named controls
 # Glass Pad under a held Fmaj7: Bright ridden up, then down with the hood in
-# frame, then a long press on Bright; then Bell Jar is opened from the bank
-# (the cut skips most of its measurement) and Bright, on that patch a
-# wavefolder's fold, is ridden under a struck figure.
+# frame, then a long press on Bright; then Bell Jar is opened from the bank.
+# It ships wired, so it plays at once (no cut: there is no wait to skip)
+# while the status line says "re-checking" as PERFORM measures it again under
+# this session's pool; then Bright, on that patch a wavefolder's fold, is
+# ridden under a struck figure.
 figure = ["k", "g", ";", "k", "l", "g", "k", ";", "k", "g", ";", "l"]
+BELL = "/Bell Jar/.test(document.querySelector('.pf-name')?.textContent || '')"
+BELL_WIRING = "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ' [' + k.querySelector('.pf-k-sub').textContent + ']').join(' | ') + ' || ' + " + STATUS
+# Bell Jar in quarter notes from named6 until the figure: the bell's
+# figure, one beat at 84 BPM apart, each let go before the next.
+bell = ["k", "g", ";", "k", "l", "g", "k", ";"]
+t6, t9 = word_t("named6"), word_t("named9", "Bright")
+quarters = []
+while t6 + 0.3 + len(quarters) * 0.714 + 0.6 <= t9 - 0.05:
+    quarters.append(len(quarters))
 shots.append({
     "id": "vp-named", "beat": "named", "pre": turn_pre("named", "turn-named"),
-    "clips": [["named7", "@wired-0.6"]],
     "setup": perform("Glass Pad"),
     "marks": {"deck": ".pf-deck", "bright": BRIGHT, "hood": ".pf-hood", "status": ".pf-status", "name": ".pf-name"},
     "actions": [
@@ -231,21 +268,20 @@ shots.append({
         {"at": "named5:wiring", "op": "seq", "steps": [
             {"op": "click", "sel": ".bank-item.preset-item:has(.bi-name:text-is('Bell Jar'))"},
             {"op": "mark", "name": "row", "sel": ".bank-item.preset-item:has(.bi-name:text-is('Bell Jar'))"},
-            {"op": "until", "js": "/Bell Jar/.test(document.querySelector('.pf-name')?.textContent || '') && /listening to this patch/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 90000, "stamp": "measuring"},
-            {"op": "log", "name": "measuring", "js": STATUS},
-            {"op": "until", "js": "/Bell Jar/.test(document.querySelector('.pf-name')?.textContent || '') && /controls reach/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000, "stamp": "wired"},
-            {"op": "log", "name": "bell wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ' [' + k.querySelector('.pf-k-sub').textContent + ']').join(' | ') + ' || ' + " + STATUS},
+            # Wired from the file the app ships: at once, and re-checking.
+            {"op": "until", "js": BELL + " && /controls reach/.test(" + STATUS + " || '')", "ms": 30000, "stamp": "wired"},
+            {"op": "log", "name": "bell wiring (shipped)", "js": BELL_WIRING},
+            {"op": "until", "js": BELL + " && /controls reach/.test(" + STATUS + " || '') && !/re-checking/.test(" + STATUS + " || '')", "ms": 120000, "stamp": "rechecked"},
+            {"op": "log", "name": "bell wiring (re-checked)", "js": BELL_WIRING},
         ]},
-        # Bell Jar, heard while PERFORM measures it (the measurement renders
-        # offline; the keys still play), on through the cut, then the figure
-        # in eighths under the Bright ride.
-        *[{"at": f"named6+{0.3 + i * 0.714:.3f}", "op": "hold", "keys": [k], "ms": 600} for i, k in enumerate(["k", "g", ";", "k"])],
-        # From 0.65 s after the cut: the cut opens 0.6 s before the wiring
-        # lands, and nothing can be played before that stamp has come.
-        *[{"at": f"named7+{0.65 + i * 0.714:.3f}", "op": "hold", "keys": [k], "ms": 600} for i, k in enumerate(["l", "g", "k", ";"])],
-        *[{"at": f"named8:Bright+{i * 0.357:.3f}", "op": "hold", "keys": [k], "ms": 300} for i, k in enumerate(figure)],
-        {"at": "named8:Bright+0.2", "op": "drag", "sel": BRIGHT, "dy": -110, "ms": 3200},
-        {"at": "named8:knobs", "op": "log", "name": "hood", "js": "[...document.querySelectorAll('.pf-hood-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()).join(' ; ')"},
+        # Bell Jar, heard at once and all through its re-check, then the
+        # figure in eighths under the Bright ride.
+        *[{"at": f"named6+{0.3 + i * 0.714:.3f}", "op": "hold", "keys": [bell[i % len(bell)]], "ms": 600} for i in quarters],
+        {"at": "named6:nudges", "op": "log", "name": "status at nudges", "js": STATUS},
+        {"at": "named8:wired", "op": "log", "name": "status at wired", "js": STATUS},
+        *[{"at": f"named9:Bright+{i * 0.357:.3f}", "op": "hold", "keys": [k], "ms": 300} for i, k in enumerate(figure)],
+        {"at": "named9:Bright+0.2", "op": "drag", "sel": BRIGHT, "dy": -110, "ms": 3200},
+        {"at": "named9:knobs", "op": "log", "name": "hood", "js": "[...document.querySelectorAll('.pf-hood-row')].map((r) => r.textContent.replace(/\\s+/g, ' ').trim()).join(' ; ') + ' || ' + " + STATUS},
     ],
 })
 
@@ -301,13 +337,14 @@ shots.append({
 
 # ---------------------------------------------------------------- offers (taught)
 # A spare grown ahead lands at once on Offer; Peek, then Blend past half, so
-# B is heard; Offer again is the pass (Blend glides home, and a new one grows:
-# the cut skips most of that); the next one is heard on Peek, then taken. A
-# Take counts only for an offer heard for a second (Peek or Blend past half),
-# so the new one is peeked before Take, not taken unheard.
+# B is heard. While B holds an offer the pad reads NEXT · passes on B, and
+# pressing it is the pass (its toast, with undo; Blend glides home). The next
+# one has been growing as a spare while B was held, so it too lands at once:
+# no cut (the old one skipped ~10 s of growing). It is heard on Peek, then
+# taken. A Take counts only for an offer heard for a second (Peek or Blend
+# past half), so the new one is peeked before Take, not taken unheard.
 shots.append({
     "id": "vp-offer", "beat": "offer", "pre": turn_pre("offer", "turn-offer"), "own_setup": True,
-    "clips": [["offer5:pass+0.9", "@next-0.3"]],
     "setup": taught_perform("Glass Pad"),
     "marks": {"offer-pad": OFFER, "offer": ".pf-offer", "blend": BLEND, "peek": PAD("Peek"), "take": PAD("Take"), "deck": ".pf-deck"},
     "actions": [
@@ -324,7 +361,8 @@ shots.append({
         {"at": "offer2:follows", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
         {"at": "offer3:Peek", "op": "press", "sel": PAD("Peek"), "ms": 1600},
         {"at": "offer4:ride", "op": "drag", "sel": BLEND, "dy": -120, "ms": 1900},
-        {"at": "offer5:again", "op": "seq", "steps": [
+        {"at": "offer5:reads", "op": "log", "name": "pad", "js": "(() => { const p = document.querySelector('" + OFFER + "'); return p.textContent + ' · ' + (p.dataset.sub || ''); })()"},
+        {"at": "offer5:Press", "op": "seq", "steps": [
             {"op": "click", "sel": OFFER},
             {"op": "wait", "ms": 300},
             {"op": "mark", "name": "passed", "sel": "#toasts .toast"},
@@ -345,14 +383,18 @@ shots.append({
 })
 
 # ---------------------------------------------------------------- wander, keep, back (taught)
-# Keep marks home; Wander a little (the spare grown ahead lands in B), then
-# into drift (the cut skips the wait for its first glide), then roam; a touch
-# and Freeze; Back glides home.
+# Keep marks home; Wander a little into ideas: let go in a new zone, it asks
+# 1.5 s later, and the spare grown ahead lands in B at once (no cut: there is
+# no wait left to skip). Then into drift: its first move is asked for 1.5 s
+# after letting go, but the walk itself renders a step at a time ("drift ·
+# walking…" under the dial), so the cut skips from "knobs" to just before the
+# glide ("drift · gliding"). Then roam; a touch (the line under Wander reads
+# "paused 3 s") and Freeze ("held"); Back glides home.
 shots.append({
     "id": "vp-wander", "beat": "wander", "pre": turn_pre("wander", "turn-wander"), "own_setup": True,
-    "clips": [["wander3:ideas+0.3", "@offered-0.3"], ["wander4:knobs", "@drift-0.4"]],
+    "clips": [["wander4:knobs", "@drift-0.4"]],
     "setup": taught_perform("Glass Pad"),
-    "marks": {"wander": WANDER, "status": ".pf-status", "offer": ".pf-offer", "hood": ".pf-hood", "freeze": PAD("Freeze"), "keep": PAD("Keep"), "back": PAD("Back"), "deck": ".pf-deck"},
+    "marks": {"wander": WANDER, "offer": ".pf-offer", "hood": ".pf-hood", "freeze": PAD("Freeze"), "keep": PAD("Keep"), "back": PAD("Back"), "deck": ".pf-deck"},
     "actions": [
         hold("wander1-0.3", ["f", "h", "k", ";"], ms="end"),
         DIAG_ON,
@@ -365,19 +407,20 @@ shots.append({
         lit("wander8:Back-0.1", "lit before back"),
         {"at": "wander2:Wander-0.1", "op": "drag", "sel": WANDER, "dy": -45, "ms": 450},
         {"at": "wander2:Wander+0.6", "op": "until", "sel": ".pf-offer.ready", "ms": 60000, "stamp": "offered"},
+        {"at": "wander3:ideas", "op": "log", "name": "ideas", "js": WSUB},
         {"at": "wander4:Further", "op": "seq", "steps": [
             {"op": "drag", "sel": WANDER, "dy": -85, "ms": 700},
             {"op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
-            {"op": "until", "js": "/drifting toward/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000, "stamp": "drift"},
-            {"op": "log", "name": "drift", "js": STATUS},
+            {"op": "log", "name": "let go in drift", "js": WSUB},
+            {"op": "until", "js": "/^drift · gliding/.test(" + WSUB + ")", "ms": 120000, "stamp": "drift"},
+            {"op": "log", "name": "drift", "js": WSUB + " + ' || ' + " + STATUS},
         ]},
         {"at": "wander5:way", "op": "drag", "sel": WANDER, "dy": -50, "ms": 600},
-        {"at": "wander5:roams+0.2", "op": "log", "name": "roam", "js": STATUS + " + ' / ' + document.querySelector(\"" + WANDER + " .pf-k-sub\").textContent"},
+        {"at": "wander5:roams+0.2", "op": "log", "name": "roam", "js": WSUB + " + ' || ' + " + STATUS},
         {"at": "wander7:Touch", "op": "drag", "sel": BRIGHT, "dy": -25, "ms": 500},
-        {"at": "wander7:waits", "op": "log", "name": "waits", "js": STATUS},
-        {"at": "wander7:waits", "op": "mark", "name": "paused", "sel": ".pf-status"},
+        {"at": "wander7:waits", "op": "log", "name": "waits", "js": WSUB + " + ' || ' + " + STATUS},
         {"at": "wander7:Freeze", "op": "click", "sel": PAD("Freeze")},
-        {"at": "wander7:is+0.3", "op": "log", "name": "held", "js": STATUS + " + ' / ' + document.querySelector(\"" + WANDER + " .pf-k-sub\").textContent"},
+        {"at": "wander7:is+0.3", "op": "log", "name": "held", "js": WSUB + " + ' || ' + " + STATUS},
         {"at": "wander8:Back", "op": "click", "sel": PAD("Back")},
         lit("wander8:kept+0.3", "lit after back"),
         lit("wander8+5.2", "lit at the end"),
@@ -465,7 +508,10 @@ shots.append({
 # ---------------------------------------------------------------- together (taught)
 # Acid Line at 84, 1/16 up·down, latched on the beat's first downbeat (as the
 # card clears); Wander up to drift; Offer (the spare lands at once) and Blend
-# ridden past half; Take on the downbeat. The latch stays on, so the arpeggio
+# ridden past half; Take on the downbeat. Wander in drift asks for its first
+# move 1.5 s after it is let go, but the Offer, Blend and Take that follow are
+# hands on, so it waits ("paused N s" under the dial) and moves only after the
+# Take; the logs say when. The latch stays on, so the arpeggio
 # plays the taken sound to the end of the beat, where the bed takes over. The
 # shot runs on under the outro, which reuses it: the PATCH tab is clicked on
 # "PATCH" (silent there: bed only).
@@ -496,7 +542,7 @@ shots.append({
         {"at": "together3:downbeat", "op": "click", "sel": PAD("Take"), "snap": "bar"},
         {"at": "together3:downbeat+1.2", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "together3:downbeat+1.2", "op": "log", "name": "take", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
-        {"at": "together3:downbeat+4.0", "op": "log", "name": "after take", "js": STATUS + " + ' / ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-sub').textContent).join(' | ')"},
+        {"at": "together3:downbeat+4.0", "op": "log", "name": "after take", "js": STATUS + " + ' / ' + [...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-sub').textContent).join(' | ') + ' / wander ' + " + WSUB},
         lit("together3:downbeat-0.2", "lit before take"),
         lit("together3:downbeat+4.0", "lit after take"),
         lit("outro2:PATCH-0.4", "lit at outro"),
