@@ -1086,12 +1086,10 @@ export function createPerform(host) {
     // stale-while-revalidate a remeasured patch already gets (see `wire`),
     // with the wiring borrowed from the sound the offer grew out of.
     const taking = state.taking;
-    state.taking = null;
+    const taken = !!taking && performance.now() - taking.at < 15_000 && wireKey(json) === taking.key;
+    if (taken || (taking && performance.now() - taking.at >= 15_000)) state.taking = null;
     const carried =
-      taking && state.wire && Array.isArray(liveKnobs) && liveKnobs.length &&
-      performance.now() - taking.at < 15_000 && wireKey(json) === taking.key
-        ? carryWiring(state.wire, liveKnobs)
-        : null;
+      taken && Array.isArray(liveKnobs) && liveKnobs.length ? carryWiring(taking.wire, liveKnobs) : null;
     // The patch being left: a measurement of it is still worth finishing
     // (cached, for flicking back) but nobody is waiting on it, so it drops to
     // the engine's background lane; offers and drifts grown from it are worth
@@ -1392,8 +1390,10 @@ export function createPerform(host) {
     // `patchChanged`): the wiring measured on the sound being left carries
     // over to the one taken until the offer's own measurement lands.
     // Keyed by the taken tree itself (uids aside, see `wireKey`): a Take the
-    // bench refuses must not lend its wiring to whatever patch comes next.
-    if (state.wire) state.taking = { at: performance.now(), key: wireKey(json) };
+    // bench refuses must not lend its wiring to whatever patch comes next. The
+    // wiring is the one under the hands now, kept here because an edit still
+    // in flight can land first and clear it.
+    if (state.wire) state.taking = { at: performance.now(), key: wireKey(json), wire: state.wire };
     renderOffer();
     knobs.forEach(paintKnob);
     host.commitTree(json, "taken offer");
