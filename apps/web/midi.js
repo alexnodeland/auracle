@@ -231,7 +231,10 @@ export function createMidi(host) {
     state.map.set(key, { slot, mode: "abs" });
     state.pickups.delete(key);
     save();
-    host.note(`${why}: CC ${key.split(":")[1]} → ${slotName(slot)}`);
+    // The latest mapping replaces the last one's toast: turning four knobs,
+    // or learning one after three were mapped, used to queue a toast each, and
+    // the one about the knob in your hand arrived last.
+    host.note(`${why}: CC ${key.split(":")[1]} → ${slotName(slot)}`, { replace: "midi-map" });
     renderPanel();
   }
 
