@@ -41,6 +41,7 @@
 use fugue::{addr, sample, Bernoulli, Categorical, Model, ModelExt, Uniform};
 use fugue_evo::inference::prior::GenomePrior;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 use crate::term::{
     AmpEnv, AudioNode, DriveMode, FilterKind, ModNode, ModOp, NoiseColor, PairOp, PatchTree,
@@ -156,7 +157,11 @@ pub const PRIOR_MAX_DEPTH: usize = 5;
 pub const PRIOR_MAX_MOD_DEPTH: usize = 2;
 
 /// The typed PCFG over patch terms.
-#[derive(Clone, Debug)]
+///
+/// Serializable because a refinement walk can run away from the engine that
+/// tilted it: a generation's biased prior travels to the render farm inside
+/// `auracle_session::WalkContext`, once per worker per generation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PatchGrammarPrior {
     /// Probability that a node (below max depth) is a source leaf.
     pub source_prob: f64,

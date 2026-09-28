@@ -9,7 +9,8 @@ loop (observe, refit). Rules shared by all crates are in
 
 | File | Holds |
 | --- | --- |
-| `engine.rs` | `Engine`: pool, fills, duel choice (`next_duel_full`), `fit_posterior`, refinement (`refine`, `refine_seed`, `refine_from`), PERFORM's `offer`/`drift`, persistence |
+| `engine.rs` | `Engine`: pool, fills, duel choice (`next_duel_full`), `fit_posterior`, refinement (`refine_jobs` → `refine_absorb` → `refine_finish`, and the serial `refine`, `refine_seed`, `refine_from`), PERFORM's `offer`/`drift`, persistence |
+| `walk.rs` | A generation's walks as data: `WalkContext`, `WalkJob`, `WalkResult`, and `run_walk`, the walk as a pure function the farm runs ([ADR-007](../../docs/decisions/007-generations-breed-in-parallel.md)) |
 | `farm.rs` | The indexed draw stream the render farm fills from, so the pool the farm builds equals the serial one |
 | `perform.rs` | PERFORM: named controls wired through the patch's Jacobian, verification, grafts |
 | `map.rs` | The TASTE map: 2D embedding with a pinned orientation across refits |
@@ -29,6 +30,11 @@ loop (observe, refit). Rules shared by all crates are in
   this; do not let the model choose what it is scored on.
 - **The map never mirrors.** Axis signs are pinned to the last drawn map and
   saved with the session.
+- **A generation absorbs in job order and retires at its end.** Walks may run
+  anywhere and finish in any order; `refine_absorb` takes them in job order
+  only, and nothing leaves the pool until `refine_finish`, so a save made
+  mid-generation protects. Each walk's RNG comes from its job, never from a
+  generator another walk advanced.
 - **Evolution samples, it does not climb.** Some children land below their
   parent on purpose; the app labels them "exploring".
 - **A refit keeps style identities** by aligning to the previous fit's lenses.

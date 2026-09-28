@@ -914,15 +914,14 @@ impl WasmEngine {
     /// generation one seed at a time and show progress. A generation is tens
     /// of seconds of render-bound work; as a single call it looks like a hang.
     pub fn refine_begin(&mut self) -> String {
-        serde_json::to_string(&self.engine.refine_begin()).unwrap_or_else(|_| "[]".into())
+        serde_json::to_string(&self.engine.refine_begin(&mut self.rng.refine))
+            .unwrap_or_else(|_| "[]".into())
     }
 
     /// Refine one seed of the open generation. Returns the child id, or 0 if
     /// the walk was rejected or landed on a patch already in the pool.
     pub fn refine_seed(&mut self, parent_id: u32) -> u32 {
-        self.engine
-            .refine_seed(&mut self.rng.refine, parent_id as u64)
-            .unwrap_or(0) as u32
+        self.engine.refine_seed(parent_id as u64).unwrap_or(0) as u32
     }
 
     /// Locked refinement from candidate `id`: evolve everything except the

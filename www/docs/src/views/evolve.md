@@ -120,10 +120,12 @@ Breeds a generation.
 The engine takes the ten highest-scoring patches in the pool and runs a short
 Metropolis–Hastings walk from each, mutating structure and parameters with the
 proposal distribution tilted by what your taste model has learned, then injects
-the children. The patches it likes least are replaced to make room, and the
-generation's toast names them (the first three, then *+N more*); anything you
-have **saved** is exempt. A patch you cut is never dealt to you again, though
-it stays in the pool until a generation replaces it.
+the children. The patches it likes least are replaced to make room when the
+generation ends, and the generation's toast names them (the first three, then
+*+N more*); anything you have **saved** by then is exempt, including a patch
+you save while the generation is still running. A patch you cut is never
+dealt to you again, though it stays in the pool until a generation replaces
+it.
 
 It is *local hill-climbing* on what the model believes, not a draw from the
 target distribution. In practice that means children resemble their parents,
