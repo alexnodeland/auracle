@@ -77,6 +77,18 @@ is measured ("re-checking"), and compares trees by text to tell a new
 structure from new knob values. That comparison is why trees must serialize in
 one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
 
+Every preset's wiring ships with the app in `apps/web/perform-wirings.json`,
+measured natively through the same `WasmEngine` surface the worker uses
+(`make perform-wirings`, the `preset_wirings` example) and keyed at load by the
+same `wireKey`. The player's own cache is asked first, then the file. A shipped
+wiring is always re-measured in the background (it was taken under a native
+standardizer, not the session's). The file carries fingerprints of what it
+was measured from, and `shipped_preset_wirings_are_current` fails `make test`
+when a preset or the measurement's inputs change without regenerating it.
+While the warm start is open, `main.js` pre-warms its nine cards
+(`perform.prewarm(tree, {fresh: true})`, trees from the file, no pool
+inserts), one at a time in `later`, once the pool is full.
+
 A continuous knob turned in PATCH reaches the voices as a parameter, never as
 a new tree, so PERFORM hears it separately: `sendEdit` calls
 `perform.knobSet` (PERFORM's base and home take the value at once), and the
@@ -84,6 +96,25 @@ edit's reply calls `perform.followTree` (its tree text follows, so a first
 measurement, Keep and offers start from the edited patch). PATCH draws an
 amber "performed" pointer only where `perform.movedOn` names a reason: a
 control or expression offset, a Wander or Back glide, or a drift not yet kept.
+
+## Timing marks
+
+The app marks its own moments with `performance.mark("auracle:<name>")`:
+`boot-start`, `veil-down`, `first-sound`, `pool-full`, `perform-wired` (with
+how: shipped, cached or measured), `patch-opened`, `pair-dealt` and `fitted`.
+`window.__aur.marks()` lists them in the page's clock. The film recorder
+(`www/video/tools/footage.mjs`) writes them into every rehearsal sidecar as a
+`perf` block beside `stamps` (`at0` is the page's clock at the shot's t = 0),
+and `tests/web/budgets.spec.js` holds the budgets they measure.
+
+## EVOLVE's next pair
+
+While a pair is on the table, `main.js` deals the next one (`duel` with
+`ahead: true`, echoed in the reply) once the table's own two sounds are
+resident, and fetches the new pair's renders. A pick or ↻ swaps it in
+synchronously (`placePair`); the pair is re-checked at that moment against
+cuts and replacements made since (`aheadUsable`). Only with nothing waiting
+does a pick wait for a deal.
 
 ## Audio
 

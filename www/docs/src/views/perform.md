@@ -25,9 +25,8 @@ line says what PERFORM is doing: *listening to this patch…* (a new patch,
 whose controls wait for it), *4 of 6 controls reach this patch*, with
 *re-checking* after it while the controls keep working on their last
 measurement (after a Take, or once Wander or your turns and a Keep have moved
-the sound a long way; the re-check waits behind anything you ask for),
-*wander: drift*, and *paused — your hands are on it* for a few seconds after
-you touch anything.
+the sound a long way; the re-check waits behind anything you ask for). It
+speaks only about the patch; what Wander is doing is said under Wander.
 While a patch you opened is on its way it names it, *opening Acid Line…*, and
 the name above stays the patch your keys still play, dimmed, until the new one
 lands.
@@ -110,6 +109,15 @@ the result, so a large patch takes a moment. Meanwhile every control reads
 throughout. Until the session's pool has warmed up there is nothing to measure
 against, and the status line says so.
 
+The presets never wait. Every one of them was measured when the app was built,
+so a preset's controls work the moment it lands: from the preset bank, from
+the warm start, or in booth mode. That measurement was taken against a
+standard pool rather than yours, so PERFORM measures the preset again in the
+background, with *re-checking* on the status line meanwhile. While the warm
+start is open, its nine cards are measured this way too, once the pool has
+filled. A patch you have played before is just as quick, from its last
+measurement, even after a reload.
+
 ### Turning them
 
 | | |
@@ -122,6 +130,15 @@ against, and the status line says so.
 
 Turning a control changes knob values only. The voices take them without a
 recompile, so a held chord keeps sounding through the turn.
+
+**The controls re-centre without moving the sound.** After a Keep, a Take, a
+fresh measurement or a Wander glide, what the controls were doing is folded
+into the patch and they return to 12 o'clock. The pointer glides home over a
+quarter of a second while a faint tick marks where it was and fades (no glide
+and no tick with reduced motion). A re-check in the background leaves the
+controls where you left them, unless it finds the control now turns different
+knobs. A MIDI pot on a re-centred control keeps working from where it is (see
+[soft takeover](../keyboard.md#soft-takeover)).
 
 ### Long-press to hear it
 
@@ -262,22 +279,35 @@ regions, left to right:
 | Region | What happens |
 |---|---|
 | **still** | Nothing moves unless you move it |
-| **offer** | Every 24 seconds or so, if B is empty, an offer is grown into it |
+| **ideas** | Every 24 seconds or so, if B is empty, an offer is grown into it |
 | **drift** | The knobs glide to a nearby setting the walk prefers: one move every 36 seconds at the left of the region, every 14 at the right, each glide taking 6 to 4 seconds |
 | **roam** | The same, with longer walks and so bigger moves: one every 12 to 7 seconds, gliding in 3 to 2 |
 
-Wander only runs while PERFORM is on screen. When the walk finds nothing it
-prefers nearby, the status line says *nothing nearby it likes better — staying*
-and the sound stays put.
+Three short ticks outside Wander's ring mark where *ideas*, *drift* and
+*roam* begin. **Let go of Wander in a new region and it answers in a second
+and a half**: the first move (an offer, or a drift) is asked for then, and the
+region's pace governs the moves after it. It used to wait out a whole period
+first, over twenty seconds at the left of *drift*.
+
+The line under Wander says what it is doing, in its own words: *drift · next
+in 9 s* while it waits, with a thin amber arc inside the ring filling toward
+that move; *drift · walking…* while the walk looks for the next setting;
+*drift · gliding* while the knobs glide (*· no taste yet* before the model has
+been fitted); *ideas · one in B* while B holds an offer; *paused 3 s* while
+your hands are on other controls; *held*; and *staying — nothing better
+nearby* when the walk finds nothing it prefers, and the sound stays put.
+Wander only runs while PERFORM is on screen.
 
 **Structure never changes on its own.** Drift and roam move knob values only,
 and they respect the locks you set in PATCH. A new module only ever arrives as
 an offer in B, and only becomes your sound if you take it.
 
-**Hands on, it waits.** Touching any control or pad, or moving one from MIDI,
-pauses Wander for three and a half seconds. A touch in the middle of a glide
-stops the glide where it is, and the sound stays there. It never snaps back
-and never finishes the move behind you.
+**Hands on, it waits.** Touching any other control or pad, or moving one from
+MIDI, pauses Wander for three and a half seconds, and the line under it counts
+them down. A touch in the middle of a glide stops the glide where it is, and
+the sound stays there. It never snaps back and never finishes the move behind
+you. Turning Wander itself is not a touch: it waits while you turn it, and
+answers once you let go.
 
 **Tap to hold.** A short tap on Wander (or the **Freeze** pad) freezes it where
 it is. The dial reads *held*. Tap again to release.
@@ -288,7 +318,7 @@ it is. The dial reads *held*. Tap again to release.
 |---|---|
 | **Keep** | Make the sound you hear home (*Kept — this is home now. Back returns here.*). The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it. The sound has not moved, so nothing is re-measured unless the knobs have travelled far from where they were measured, and then in the background |
 | **Back** | Glide back to home, the last sound you kept or loaded |
-| **Offer** | Grow a variant from here into B. With an offer already in B, this passes on it: B empties and Blend glides home |
+| **Offer** | Grow a variant from here into B. The first is usually there at once: PERFORM grows one ahead in the background once the patch has been steady for a few seconds and your hands have been off it for two. While B holds an offer the pad reads **NEXT** · *passes on B*: pressing it passes on B (B empties, Blend glides home) and brings the next one, which has been growing meanwhile, so it too is usually at once |
 | **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep or commit it, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is. A control whose knobs the taken sound no longer has reads *listening…* until then |
 | **Peek** | Hold to hear the offer alone |
 | **Freeze** | Freeze Wander. Same as tapping the Wander dial (not the dock's **hold**, which latches notes) |
@@ -314,12 +344,13 @@ land on patches that pass the [vetting gate](../glossary.md#vetting). PERFORM
 says which you are hearing:
 
 ```text
-drifting through the grammar — no taste yet
-an offer is waiting, drawn from the grammar — it has not learned your taste yet
+drift · gliding · no taste yet
+drawn from the grammar — it has not learned your taste yet
 ```
 
-Once a model has been fitted, the same lines read *drifting toward your taste*
-and *grown toward your taste*.
+The first is the line under Wander while it glides, the second the B strip.
+Once a model has been fitted, the first loses *· no taste yet* and the second
+reads *grown toward your taste*.
 
 ## What PERFORM teaches the model
 
@@ -331,14 +362,18 @@ counts:
 | You | It records |
 |---|---|
 | **Take** it | B over what you had |
-| Press **Offer** again | What you had over B |
+| Press **NEXT** | What you had over B |
 
 "Heard" means Peek held, or Blend past half, for at least a second while notes
 were sounding. An offer you take or pass on without hearing it teaches
 nothing. A Take's toast has a **don't count it** button, and the Take counts
 only when that button goes: taking a sound to hear it in place is not always a
-verdict. Its window starts when the toast appears, not when you press Take, so
-the button always works while you can see it.
+verdict. A pass is the same: *Passed on B — that counts as a pick for what you
+had.* carries **undo** for seven seconds, which brings B back and records
+nothing. A pass on a B you had not heard says so, *B skipped — not counted,
+you hadn't heard it*, and its **undo** brings B back too. Each window starts
+when its toast appears, not when you press the pad, so the button always works
+while you can see it.
 
 Both directions count, deliberately. A log that only recorded takes would be
 the model hearing its own proposals agreed with. The answers enter the model

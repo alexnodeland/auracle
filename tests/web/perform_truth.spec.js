@@ -42,9 +42,13 @@ const INIT = `(() => {
   window.Worker = Wrapped;
 })();`;
 
-async function boot(page) {
+// `shipped: false` blocks the presets' shipped wirings, so a preset is
+// measured as a patch never seen before is: the only way to watch a
+// measurement in progress on a known patch.
+async function boot(page, { shipped = true } = {}) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -157,7 +161,7 @@ test("a half-closed control draws its ring on the side it turns toward, and says
 
 test("a control still being listened to does nothing, and never looks or acts like a search control", async ({ page }) => {
   test.setTimeout(300_000);
-  const errs = await boot(page);
+  const errs = await boot(page, { shipped: false });
   await openOnPerform(page, "Glass Pad");
   // A fresh profile has no wiring cached: the first measurement takes seconds.
   await expect(page.locator(".pf-status")).toContainText("listening to this patch", { timeout: 30_000 });
@@ -267,7 +271,10 @@ test("a search control springs back when let go, and says what letting go will d
   await drag(page, grit, -90, { hold: async () => { during = await sub.textContent(); } });
   expect(during).toBe("let go to ask for rough");
   await expect(grit).toHaveAttribute("aria-valuenow", "0.00");
-  await expect(page.locator("#toasts")).toContainText("growing an offer instead", { timeout: 5_000 });
+  // Said in the toast lane, which may still be saying the preset's arrival:
+  // the preset's controls work at once now, so this turn comes seconds
+  // sooner than it used to after opening it.
+  await expect(page.locator("#toasts")).toContainText("growing an offer instead", { timeout: 15_000 });
   expect(errs).toEqual([]);
 });
 
@@ -281,8 +288,10 @@ test("after a pass, Blend comes home", async ({ page }) => {
   const blend = page.locator('.pf-knob[data-i="6"]');
   await drag(page, blend, -120);
   expect(Number(await blend.getAttribute("aria-valuenow"))).toBeGreaterThan(0.5);
-  // Offer again is a pass: B empties, and Blend glides home.
-  await page.locator(".pf-pad", { hasText: "Offer" }).click();
+  // NEXT (Offer, while B holds one) is a pass: B empties, and Blend glides
+  // home.
+  await expect(page.locator(".pf-pad.primary")).toHaveText("Next");
+  await page.locator(".pf-pad", { hasText: "Next" }).click();
   await expect(blend).toHaveAttribute("aria-valuenow", "0.00", { timeout: 2_000 });
   await expect(blend.locator(".pf-k-sub")).toHaveText(/^(no offer yet|0% offer)$/);
   expect(errs).toEqual([]);
@@ -298,16 +307,20 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
     const s = document.querySelector(".pf-status");
     window.__statuses = [s.textContent];
     new MutationObserver(() => window.__statuses.push(s.textContent)).observe(s, { childList: true, characterData: true, subtree: true });
+    // Wander says what it is doing under its own name.
+    const w = document.querySelector('.pf-knob[data-i="7"] .pf-k-sub');
+    window.__wander = [w.textContent];
+    new MutationObserver(() => window.__wander.push(w.textContent)).observe(w, { childList: true, characterData: true, subtree: true });
   });
   const from = await page.evaluate(() => performance.now());
   // Wander all the way to roam, from the keyboard.
   const wander = page.locator('.pf-knob[data-i="7"]');
   await wander.focus();
   for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowUp");
-  await expect(wander.locator(".pf-k-sub")).toHaveText("roam");
+  await expect(wander.locator(".pf-k-sub")).toHaveText(/^roam/);
   await page.locator(".pf-xy-field").focus(); // off the dial, hands off
   // A drift arrives and glides.
-  await page.waitForFunction(() => window.__statuses.some((t) => /drifting/.test(t)), null, { timeout: 150_000 });
+  await page.waitForFunction(() => window.__wander.some((t) => /gliding/.test(t)), null, { timeout: 150_000 });
   // …and finishes: give the glide (3 s at most in roam) time to land.
   await page.waitForTimeout(4000);
   const seen = await page.evaluate(() => window.__statuses);

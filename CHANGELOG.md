@@ -8,6 +8,76 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — the hands first
+
+- **A preset's controls work the moment it lands.** Every one of the 62
+  presets now ships with PERFORM's measurement of it, so the named controls
+  of a preset opened from the bank, a warm-start pick or a booth demo turn at
+  once. They used to read *listening…* for 11–16 s on every patch not visited
+  before, which is where the warm start leaves a newcomer: 8.8 s after
+  *teach it* the controls were still dead. The shipped measurement was taken
+  against a standard pool, not yours, so PERFORM re-measures in the
+  background (*re-checking*) and the controls keep working meanwhile. While
+  the warm start is open, its nine cards are measured against your session
+  too, once the pool has filled. `make perform-wirings` regenerates the file,
+  and `make test` fails when a preset changes without it
+  (`shipped_preset_wirings_are_current`, `budgets.spec.js`).
+- **A preset clicked in the bank opens with one render instead of two.** Its
+  insert used to throw its audio away and the bench then rendered the same
+  phrase again; the insert now keeps it, as the warm start's ▶ already did,
+  and so does the warm start's first pick (`budgets.spec.js`).
+- **The second offer comes as fast as the first, and NEXT says it passes on
+  B.** PERFORM now grows the next offer in the background while B still holds
+  one, so offer, hear it, pass, offer is instant every time; the second offer
+  used to be grown on demand and took 10.9 s where the first took 0.01 s.
+  While B holds an offer the Offer pad reads **NEXT** with *passes on B*
+  under it: pressing it was a verdict on B that the pad never mentioned. A
+  pass now carries **undo** for seven seconds (B comes back and nothing is
+  recorded), as a Take carries *don't count it*, and a B you pass on without
+  hearing it says *B skipped — not counted, you hadn't heard it* instead of
+  vanishing without a word (`perform_next.spec.js`).
+- **Wander answers at once, and says what it is doing on itself.** Let go of
+  Wander in a new region and its first move (an offer, or a drift) is asked
+  for a second and a half later; the region's pace sets the moves after that.
+  Turning it into *drift* used to leave 21 s of nothing, because the first
+  move waited out a whole period, and turning Wander counted as a hand on the
+  sound, so the status line said *paused — your hands are on it* while it was
+  being turned up. Wander's own drag no longer pauses it. Three ticks on its
+  ring mark where *ideas*, *drift* and *roam* begin, and the middle region is
+  called **ideas** (it was *offer*, the Offer pad's word and Blend's). The
+  line under Wander carries its state (*drift · next in 9 s*, *paused 3 s*,
+  *held*, *staying — nothing better nearby*) with a thin arc filling toward
+  the next move, and PERFORM's status line keeps to the patch
+  (`perform_wander.spec.js`).
+- **PERFORM's controls stay under your hands.** When the controls re-centre
+  (after a Keep, a Take, a fresh measurement or a Wander glide, where the
+  sound does not move), the pointer glides home over a quarter of a second
+  and a faint tick marks where it was, instead of jumping to 12 o'clock in
+  one frame. A re-check in the background no longer re-centres anything
+  unless it wired a control to different knobs: it used to take a turn away
+  seconds after the hand had let go. A MIDI pot on a re-centred control keeps
+  working from where it is, scaled so each end of the pot still reaches the
+  control's end; it used to go dead until swept back through the middle,
+  every few seconds in *roam* (`perform_recentre.spec.js`, `midi.test.mjs`).
+- **The next pair is already waiting in EVOLVE.** While a pair is on the
+  table the engine deals the next one and renders both its sounds, so a pick
+  or a skip puts it up at once and its ▶ plays at once; the pair after is
+  dealt behind it. A pick used to put the table away and wait for the deal,
+  and during a generation that wait was a whole seed's walk, up to about
+  20 s of dimmed cards, with the new pair's sounds rendered after it. Taking
+  a pick back puts its pair back and keeps the other as the next, and a
+  patch cut meanwhile is never dealt: its pair is dropped and dealt again
+  (`evolve_ahead.spec.js`, `budgets.spec.js`).
+- **What the instrument promises about time is measured.** The app marks
+  its own moments (boot start, the veil lifting, the first sound, a full
+  pool, PERFORM's controls wired, a patch opened, a pair dealt), every film
+  rehearsal records them beside its stamps, and new budget specs hold them:
+  a preset's controls live within a second of its click, a warm-start
+  pick's within a second of *teach it*, the next pair within 0.3 s of a
+  pick, a duel ▶ sounding within 0.15 s, and a patch revisited in PERFORM
+  wired within 0.5 s (1.5 s after a reload), where the spec used to allow
+  5 s and 8 s (`budgets.spec.js`, `perform_instant.spec.js`).
+
 ### Fixed — true today
 
 - **A guess looks like a guess in TASTE, and in PATCH's node bank.** A pull

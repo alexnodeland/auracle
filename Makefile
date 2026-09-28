@@ -24,7 +24,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
         js-check wasm-check smoke smoke-tools \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop revalidate \
-        wasm wasm-stamp serve doc bundle clean \
+        wasm wasm-stamp perform-wirings serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
@@ -77,11 +77,14 @@ WEB_JS := $(wildcard apps/web/*.js)
 ## js-check: every app script parses. This is the only gate that catches a
 ## backtick inside live-audio.js's PROCESSOR template literal — the failure
 ## mode there is a worklet blob that silently never registers, not an error at
-## the edit site (CONTRIBUTING § Sharp edges).
+## the edit site (CONTRIBUTING § Sharp edges). Parsed as the ES modules they
+## are: `node --check file.js` reads a .js as CommonJS first and let a name
+## declared twice inside a function (a SyntaxError the browser refuses the
+## whole module for) pass as "parse OK".
 js-check:
 	@command -v node >/dev/null || { \
 		printf '  node not found — the web app is checked with `node --check`; install Node 18+\n'; exit 1; }
-	@for f in $(WEB_JS); do node --check $$f || exit 1; done
+	@for f in $(WEB_JS); do node --check --input-type=module < $$f || { printf '  in %s\n' $$f; exit 1; }; done
 	@printf '  %s: parse OK\n' $(WEB_JS)
 
 ## wasm-check: the engine compiles for wasm32, which the native build does not
@@ -204,10 +207,16 @@ wasm:
 # Every app script, not a list: a module main.js imports with `?v=` (perform.js,
 # midi.js) that was left out would keep its old URL when it changed and be
 # served from cache.
-WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS)
+WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS) apps/web/perform-wirings.json
 wasm-stamp:
 	@python3 -c 'import hashlib, json, sys; h = hashlib.sha256(); [h.update(open(f, "rb").read()) for f in sys.argv[1:]]; json.dump({"build": h.hexdigest()[:16]}, open("apps/web/pkg/build.json", "w"))' $(WEB_STAMPED)
 	@printf '  apps/web/pkg/build.json: %s\n' "$$(cat apps/web/pkg/build.json)"
+
+## perform-wirings: measure PERFORM's wiring of every preset natively, the way
+## the worker does, into apps/web/perform-wirings.json (a few minutes; commit
+## the file). `make test` fails while it is stale. THREADS=n to use n cores.
+perform-wirings:
+	nice -n 10 $(CARGO) run -p auracle-wasm --example preset_wirings --release -- $(or $(THREADS),2) apps/web/perform-wirings.json
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:

@@ -8,9 +8,9 @@
 //   window. It used to be committed the moment the next pair landed.
 // - "● it just learned" appears only once `fitted` has answered, and stays
 //   until the next pick. It used to appear when the refit was *sent*.
-// - "another pair" (↻) puts the pair away like a pick does: inert buttons,
-//   and after 300 ms a reason on the cards. It used to leave the old pair up
-//   with buttons that looked live and did nothing.
+// - "another pair" (↻) with no pair dealt ahead puts the pair away like a
+//   pick does: inert buttons, and after 300 ms a reason on the cards. It used
+//   to leave the old pair up with buttons that looked live and did nothing.
 // - A cut patch is never dealt again, and its toast names it without an id.
 // - After clicking the EVOLVE tab, → picks.
 // - An open is not announced unless it kept the player waiting.
@@ -22,7 +22,8 @@ const { test, expect } = require("@playwright/test");
 
 const SEED = `(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
-const init = ({ warmed = true } = {}) => `(() => {
+const init = ({ warmed = true, holdAhead = false } = {}) => `(() => {
+  if (${holdAhead}) window.__pwHold = { "duel:ahead": 1e9 };
   const Orig = window.Worker;
   const workers = (window.__pwWorkers = []);
   const last = (window.__pwLast = {});
@@ -49,7 +50,10 @@ const init = ({ warmed = true } = {}) => `(() => {
         log.push({ type: "sent:" + m.type, at: performance.now() });
         // A request held back on request (a deal, an open): the stand-in for
         // an engine busy with a generation, which is when they wait seconds.
-        const ms = (window.__pwHold || {})[m.type];
+        // A deal asked for ahead of the pick (main.js requestAhead) is held
+        // as "duel:ahead", so a spec can have no pair waiting.
+        const key = m.type === "duel" && m.ahead ? "duel:ahead" : m.type;
+        const ms = (window.__pwHold || {})[key];
         if (ms > 0) {
           setTimeout(() => post(m, t), ms);
           return;
@@ -221,7 +225,9 @@ test("the sixth pick can be taken back, and it just learned only once fitted has
 });
 
 test("another pair leaves no live-looking buttons while it deals, and says why when slow", async ({ page }) => {
-  const pageErrors = await boot(page);
+  // No pair dealt ahead (it would go up at once; see evolve_ahead.spec.js):
+  // this is the deal a pick or ↻ waits for when none is waiting.
+  const pageErrors = await boot(page, { holdAhead: true });
   await toEvolve(page);
   const n0 = await picks(page);
   const [a0, b0] = await cardIds(page);

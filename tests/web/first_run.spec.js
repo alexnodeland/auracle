@@ -89,3 +89,43 @@ test("PERFORM's first steps tick off as they happen; measurements are one menu i
   expect(t).toContain("purity");
   expect(errs).toEqual([]);
 });
+
+// While the warm start is open, PERFORM measures its cards in the background
+// against this session's model, one at a time, once the pool has filled (so
+// the fill is not slowed), without putting any of them into the pool: the
+// pick the player lands on is then measured already, not only shipped.
+test("the warm start measures its cards in the background while it is open", async ({ page }) => {
+  test.setTimeout(300_000);
+  const errs = []; page.on("pageerror", (e) => errs.push(e.message));
+  await page.addInitScript(`(() => {
+    const Orig = window.Worker;
+    const posts = (window.__posts = []);
+    function Wrapped(url, opts) {
+      const w = new Orig(url, opts);
+      if (/worker\\.js/.test(String(url))) {
+        const post = w.postMessage.bind(w);
+        w.postMessage = (m, t) => {
+          if (m && m.type) posts.push({ type: m.type, bg: !!m.bg, t: performance.now() });
+          return post(m, t);
+        };
+      }
+      return w;
+    }
+    Wrapped.prototype = Orig.prototype;
+    window.Worker = Wrapped;
+  })();`);
+  await page.goto("/");
+  await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
+  await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
+  // Nothing is measured before the pool is full…
+  await page.waitForFunction(() => window.__aur.marks().some((m) => m.name === "pool-full"), null, { timeout: 200_000 });
+  const full = await page.evaluate(() => window.__aur.marks().find((m) => m.name === "pool-full").t);
+  const early = await page.evaluate((t) => window.__posts.filter((p) => p.type === "perform_wire" && p.bg && p.t < t).length, full);
+  expect(early, "a card was measured while the pool was still filling").toBe(0);
+  // …then the cards are, in the background, while the card is still open.
+  await page.waitForFunction(() => window.__posts.filter((p) => p.type === "perform_wire" && p.bg).length >= 2, null, { timeout: 120_000 });
+  await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/);
+  const loads = await page.evaluate(() => window.__posts.filter((p) => p.type === "load_preset").length);
+  expect(loads, "measuring a card inserted it into the pool").toBe(0);
+  expect(errs).toEqual([]);
+});

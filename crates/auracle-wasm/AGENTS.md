@@ -13,6 +13,8 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 | `level.rs` | One level policy for everything the player hears (live makeup) |
 | `examples/score.rs` | Renders a film score (`www/video/sound/*.json`) with the engine's own voices |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |
+| `examples/preset_wirings.rs` | Measures PERFORM's wiring of every preset through this surface and writes `apps/web/perform-wirings.json` (`make perform-wirings`) |
+| `shipped.rs` | Fingerprints of what that file was measured from; `tests/shipped_wirings.rs` fails when a preset changes without regenerating it (native only) |
 
 ## Rules
 

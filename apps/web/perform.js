@@ -21,12 +21,19 @@
 
 const NS = "http://www.w3.org/2000/svg";
 const KNOB_MAX = 1 - 1e-6;
-// Wander landmarks on the dial's 0..1 travel.
-const WANDER_OFFER = 0.15;
+// Wander landmarks on the dial's 0..1 travel: still, then ideas (variants
+// appear in B), drift and roam. The middle zone was called "offer", the Offer
+// pad's word and Blend's; it is "ideas", as the films say.
+const WANDER_IDEAS = 0.15;
 const WANDER_DRIFT = 0.4;
 const WANDER_ROAM = 0.75;
 // Hands on, it waits: no autonomous move within this long of a touch.
 const HANDS_OFF_MS = 3500;
+// Let go of Wander in a new zone and its first move comes this long after:
+// the zone's pace governs the repeats, not the first answer. It used to wait
+// a whole period, 36 s at the left of drift (21 s measured), and a player
+// concluded it did not work.
+const WANDER_FIRST_MS = 1500;
 // The wiring is a linear model measured with 0.08 knob steps
 // (perform::JACOBIAN_STEP). It is re-measured only once some knob has moved
 // farther than this from where it was measured — a gentle drift stays inside
@@ -69,8 +76,8 @@ const svg = (tag, attrs, cls) => {
 };
 
 function wanderZone(w) {
-  if (w < WANDER_OFFER) return "still";
-  if (w < WANDER_DRIFT) return "offer";
+  if (w < WANDER_IDEAS) return "still";
+  if (w < WANDER_DRIFT) return "ideas";
   if (w < WANDER_ROAM) return "drift";
   return "roam";
 }
@@ -109,6 +116,7 @@ export function createPerform(host) {
     // that may predate the write; cleared with every new tree.
     hand: new Map(),
     wander: 0,
+    wanderSettled: "still", // Wander's zone where it was last let go
     hold: false,
     blend: 0,
     offer: null, // {json, makeup}
@@ -214,6 +222,17 @@ export function createPerform(host) {
       pointer,
       where,
     );
+    // Where a re-centred control was, fading (see `recentre`).
+    if (spec.kind === "named") s.insertBefore(svg("path", { d: "" }, "pf-k-ghost"), s.querySelector(".pf-k-body"));
+    if (spec.kind === "wander") {
+      // Where the zones begin (ideas, drift, roam): three short ticks just
+      // outside the ring, and inside it a thin arc that fills toward
+      // Wander's next move.
+      const at = (v) => -135 + v * 270;
+      const ticks = [WANDER_IDEAS, WANDER_DRIFT, WANDER_ROAM].map((v) => radial(at(v), 45, 49)).join(" ");
+      s.insertBefore(svg("path", { d: ticks }, "pf-k-zone"), s.querySelector(".pf-k-body"));
+      s.insertBefore(svg("path", { d: "" }, "pf-k-count"), s.querySelector(".pf-k-body"));
+    }
     const name = el("div", "pf-k-name", spec.name);
     const ends = el("div", "pf-k-ends mono", `${spec.low} · ${spec.high}`);
     const sub = el("div", "pf-k-sub mono", "");
@@ -243,6 +262,19 @@ export function createPerform(host) {
     const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
     return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${ARC_R} ${ARC_R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   }
+  // An arc like arcPath's at another radius (Wander's countdown sits inside
+  // the ring).
+  function arcAt(a0, a1, R) {
+    if (Math.abs(a1 - a0) < 0.5) return "";
+    const p = (deg) => {
+      const r = (deg - 90) * (Math.PI / 180);
+      return [R * Math.cos(r), R * Math.sin(r)];
+    };
+    const [x0, y0] = p(Math.min(a0, a1));
+    const [x1, y1] = p(Math.max(a0, a1));
+    const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
+    return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+  }
   // A short radial tick at `deg`, from radius r0 out to r1.
   function radial(deg, r0, r1) {
     const r = (deg - 90) * (Math.PI / 180);
@@ -254,7 +286,9 @@ export function createPerform(host) {
     if (k.spec.kind === "named" && typeof paintXY === "function" && (k.i === XY.x || k.i === XY.y)) queueMicrotask(paintXY);
     const bipolar = k.spec.kind === "named" || k.spec.kind === "blend-bipolar";
     const v = k.value;
-    const a = angleOf(v, bipolar);
+    // Where the pointer is drawn: the value, or on its way there while a
+    // re-centre glides (`recentre`).
+    const a = angleOf(k.drawn != null ? k.drawn : v, bipolar);
     k.svg.querySelector(".pf-k-ptr").setAttribute("transform", `rotate(${a})`);
     k.svg.querySelector(".pf-k-arc").setAttribute("d", arcPath(bipolar ? 0 : -135, a));
     k.wrap.setAttribute("aria-valuenow", v.toFixed(2));
@@ -328,10 +362,15 @@ export function createPerform(host) {
       k.wrap.setAttribute("aria-valuetext", Math.abs(v) < 0.005 ? "centre" : `${v > 0 ? k.spec.high : k.spec.low} ${Math.round(Math.abs(v) * 100)}%`);
     } else if (k.spec.kind === "wander") {
       where.style.display = "none";
-      const z = wanderZone(v);
-      k.sub.textContent = state.hold ? "held" : z;
+      const [words, left] = wanderState();
+      k.sub.textContent = words;
       k.wrap.classList.toggle("held", state.hold);
-      k.wrap.setAttribute("aria-valuetext", state.hold ? "held" : z);
+      k.wrap.setAttribute("aria-valuetext", words);
+      k.wrap.title = wanderTitle();
+      // The wait for the next move, as a thin arc filling clockwise from the
+      // dial's start: drawn only while Wander is counting down to one.
+      const count = k.svg.querySelector(".pf-k-count");
+      if (count) count.setAttribute("d", left == null ? "" : arcAt(-135, -135 + 270 * (1 - left), 39));
     } else if (k.spec.kind === "blend") {
       where.style.display = "none";
       k.sub.textContent = state.offer ? `${Math.round(v * 100)}% offer` : "no offer yet";
@@ -385,6 +424,7 @@ export function createPerform(host) {
     const lo = () => (k.spec.kind === "named" ? -1 : 0);
     const set = (v, fine) => {
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      k.drawn = null;
       const [sLo, sHi] = spanOf(k);
       k.value = clamp(v, sLo, sHi);
       // A half-closed control's stop at the centre is felt, not only seen.
@@ -404,6 +444,7 @@ export function createPerform(host) {
     k.wrap.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      k.drawn = null;
       k.atStop = false;
       k.wrap.focus({ preventScroll: true });
       k.wrap.setPointerCapture(e.pointerId);
@@ -411,7 +452,14 @@ export function createPerform(host) {
       startV = k.value;
       pressT = performance.now();
       moved = false;
-      touch();
+      // Turning Wander is not a hand on the sound: it must not pause Wander
+      // itself ("paused — your hands are on it" as you turned it up). A key
+      // gesture still settling hands over to the pointer: it must not let
+      // go of Wander under the pointer 450 ms in.
+      if (k.spec.kind === "wander") {
+        clearTimeout(k.keyTimer);
+        wanderGrab();
+      } else touch();
       if (k.spec.kind === "named") {
         hearTimer = setTimeout(() => {
           if (!moved) hearIt(k);
@@ -424,7 +472,7 @@ export function createPerform(host) {
       if (Math.abs(dy) > 3) moved = true;
       const span = e.shiftKey ? 900 : 180;
       set(startV + (dy / span) * (1 - lo()), e.shiftKey);
-      touch();
+      if (k.spec.kind !== "wander") touch();
     });
     const end = (e) => {
       clearTimeout(hearTimer);
@@ -432,6 +480,7 @@ export function createPerform(host) {
       if (held) k.wrap.releasePointerCapture(e.pointerId);
       if (moved) onRelease(k);
       else if (performance.now() - pressT < 300 && k.spec.kind === "wander") toggleHold();
+      if (!moved && k.spec.kind === "wander") wanderLetGo();
       // A nudge too small to count as a turn still lets go of a control that
       // has nothing to turn: it springs back rather than sitting off-centre.
       else if (held && k.spec.kind === "named" && !turns(state.wire?.[k.i])) springBack(k);
@@ -451,7 +500,8 @@ export function createPerform(host) {
       else return;
       e.preventDefault();
       e.stopPropagation();
-      touch();
+      if (k.spec.kind === "wander") wanderGrab();
+      else touch();
       // A run of arrow presses is one gesture: logged, and a search control
       // asked, once the keys go quiet.
       clearTimeout(k.keyTimer);
@@ -459,20 +509,87 @@ export function createPerform(host) {
     });
   }
 
-  // Wander waits HANDS_OFF_MS after any touch; the status line says so for
-  // that long, and says Wander's zone again when it resumes. Only a glide
-  // interrupted mid-way used to say "paused", so a touch between moves left
-  // the line reading "wander: roam" while nothing moved.
-  let pausedTimer = null;
+  // Wander waits HANDS_OFF_MS after any touch, and says so for that long
+  // ("paused 3 s"). That is Wander's own state, and it is said on Wander,
+  // under its name, with a thin arc counting down to the next move (see
+  // `wanderState`). The status line keeps to the patch: it used to carry
+  // "wander: drift" and "paused — your hands are on it" beside the
+  // measurement, in the least-read place on the screen.
   function touch() {
-    const was = handsOn();
     state.lastTouch = performance.now();
-    if (!was && wanderZone(state.wander) !== "still" && !state.hold) renderStatus();
-    clearTimeout(pausedTimer);
-    pausedTimer = setTimeout(() => renderStatus(), HANDS_OFF_MS + 20);
+    renderWander();
   }
   function handsOn() {
     return performance.now() - state.lastTouch < HANDS_OFF_MS;
+  }
+
+  // Wander in the hand: autonomous moves wait while it is being turned, but
+  // it is not a touch. Let go in a new zone and the first move comes
+  // WANDER_FIRST_MS after (and after any other hand has been off for
+  // HANDS_OFF_MS); the zone's period governs the moves after that.
+  // "A new zone" is one other than where Wander was last let go
+  // (`wanderSettled`), so a gesture that starts on the keys and ends on the
+  // pointer still counts once, at its end.
+  function wanderGrab() {
+    state.wanderGrab = true;
+    renderWander();
+  }
+  function wanderLetGo() {
+    state.wanderGrab = false;
+    const z = wanderZone(state.wander);
+    if (z !== state.wanderSettled && z !== "still") {
+      const now = performance.now();
+      state.moveFrom = now;
+      state.moveAt = now + WANDER_FIRST_MS;
+      state.wanderStay = 0;
+      setTimeout(wanderTick, WANDER_FIRST_MS + 20);
+    }
+    state.wanderSettled = z;
+    renderWander();
+  }
+
+  // When Wander moves next, as [from, at] in performance.now() time: a first
+  // move scheduled by a let-go, else a period after the last move. Hands on
+  // push it back to HANDS_OFF_MS after the last touch.
+  function wanderDue() {
+    const pace = wanderPace(state.wander);
+    let from = state.lastMove;
+    let at = state.lastMove + pace.period * 1000;
+    if (state.moveAt != null) [from, at] = [state.moveFrom, state.moveAt];
+    const off = state.lastTouch + HANDS_OFF_MS;
+    return [from, Math.max(at, off)];
+  }
+
+  // What Wander is doing, in a few words for the line under it, and how much
+  // of the wait for its next move is left (0..1), or null when it is not
+  // counting down to one.
+  function wanderState() {
+    const z = wanderZone(state.wander);
+    if (state.hold) return ["held", null];
+    if (z === "still") return ["still", null];
+    if (state.wanderGrab) return [z, null];
+    const now = performance.now();
+    if (handsOn()) return [`paused ${Math.max(1, Math.ceil((state.lastTouch + HANDS_OFF_MS - now) / 1000))} s`, null];
+    if (state.glide && state.glide.why === "Wander") return [`${z} · gliding${state.wanderTaste === false ? " · no taste yet" : ""}`, null];
+    if (inFlight("perform_drift")) return [`${z} · walking…`, null];
+    if (z === "ideas") {
+      if (state.offer) return ["ideas · one in B", null];
+      if (inFlight("perform_offer")) return ["ideas · growing…", null];
+    }
+    if (!state.cur || !state.wire) return [z, null];
+    if (state.wanderStay && now - state.wanderStay < 6000) return ["staying — nothing better nearby", null];
+    const [from, at] = wanderDue();
+    const left = Math.max(0, at - now);
+    const span = Math.max(1, at - from);
+    return [`${z} · next in ${Math.max(1, Math.ceil(left / 1000))} s`, Math.min(1, left / span)];
+  }
+  function wanderTitle() {
+    const base = "Wander: how alive the patch is — still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to hold it.";
+    return state.wanderWhy ? `${base}\nLast move: ${state.wanderWhy}.` : base;
+  }
+  function renderWander() {
+    const k = knobs.find((x) => x.spec.kind === "wander");
+    if (k) paintKnob(k);
   }
 
   // ---------- the sound ----------
@@ -739,7 +856,7 @@ export function createPerform(host) {
       if (live && state.offer) live.bMix(state.blend);
     } else if (k.spec.kind === "wander") {
       state.wander = k.value;
-      renderStatus();
+      renderWander();
     }
   }
 
@@ -762,7 +879,51 @@ export function createPerform(host) {
     paintKnob(k);
   }
 
+  // ---------- re-centring ----------
+  // The controls return to zero whenever the sound they were turned on is
+  // folded into the centre: a new measurement, a Keep, a Take, a glide. The
+  // sound does not move, but the dial used to jump to 12 o'clock under the
+  // player's eyes ("I set Bright to 70% and now it says 0"), and a MIDI pot on
+  // it went dead until swept back through the middle. Now the pointer glides
+  // home over RECENTRE_MS while a ghost tick marks where it was and fades
+  // (none of it under reduced motion), and a pot bound to it keeps working
+  // from where it is (midi.js re-anchors instead of letting go).
+  const RECENTRE_MS = 250;
+  const stillMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  function recentre(k) {
+    if (k.tween) cancelAnimationFrame(k.tween);
+    k.tween = null;
+    const from = k.drawn != null ? k.drawn : k.value;
+    k.value = 0;
+    k.drawn = null;
+    host.controlMoved?.(k.i, { recentre: true, to: 0.5 });
+    if (Math.abs(from) < 0.005 || stillMotion()) return paintKnob(k);
+    const ghost = k.svg.querySelector(".pf-k-ghost");
+    if (ghost) {
+      ghost.setAttribute("d", radial(angleOf(from, true), 38, 49));
+      ghost.classList.remove("fade");
+      void ghost.getBoundingClientRect();
+      ghost.classList.add("fade");
+    }
+    const t0 = performance.now();
+    const step = () => {
+      const u = clamp((performance.now() - t0) / RECENTRE_MS, 0, 1);
+      k.drawn = u >= 1 ? null : from * (1 - u * u * (3 - 2 * u));
+      paintKnob(k);
+      k.tween = u < 1 ? requestAnimationFrame(step) : null;
+    };
+    k.drawn = from;
+    paintKnob(k);
+    k.tween = requestAnimationFrame(step);
+  }
+  function recentreAll() {
+    knobs.forEach((k) => {
+      if (k.spec.kind === "named") recentre(k);
+    });
+  }
+
   function onRelease(k) {
+    if (k.spec.kind === "wander") return wanderLetGo();
     if (k.spec.kind !== "named") return;
     const w = state.wire && state.wire[k.i];
     const was = k.value;
@@ -893,6 +1054,47 @@ export function createPerform(host) {
       return new Map();
     }
   })();
+  // Every preset, measured ahead of time and shipped with the app
+  // (`perform-wirings.json`, written natively by `make perform-wirings`,
+  // keyed here by the same `wireKey`). A preset is what a newcomer meets
+  // first — the warm start's cards, the preset bank, booth mode's demo set —
+  // and its first measurement cost eleven-odd seconds of "listening…" on
+  // every control. A shipped wiring is played at once and always re-measured
+  // in the background: it was taken under a standardizer fitted natively,
+  // not this session's, so it is right about which knobs a control turns and
+  // only roughly right about how far. The player's own cache is asked first.
+  const shipped = new Map(); // wireKey -> {data, rev, shipped: true, tree}
+  const shippedByName = new Map(); // preset name -> its tree text
+  let shippedLoaded = false;
+  const shippedReady = (async () => {
+    try {
+      // The app's own version stamp (`?v=`) rides on this module's URL, so
+      // the file is refetched exactly when a build changed it.
+      const url = new URL(`./perform-wirings.json${new URL(import.meta.url).search}`, import.meta.url);
+      const r = await fetch(url);
+      const f = r.ok ? await r.json() : null;
+      for (const p of (f && f.presets) || []) {
+        if (!p || typeof p.tree !== "string" || !p.data) continue;
+        shipped.set(wireKey(p.tree), { data: p.data, rev: f.rev ?? 0, shipped: true });
+        shippedByName.set(p.name, p.tree);
+      }
+    } catch {
+      // No file (an old bundle, a blocked fetch): presets are measured like
+      // any other patch.
+    }
+    shippedLoaded = true;
+  })();
+  // A measured wiring for this key: the player's cache first, then the file.
+  const knownWiring = (key) => wireCache.get(key) || shipped.get(key) || null;
+  // The first wiring of the patch under the hands is here: a timing mark the
+  // film recorder and the budget specs read (`window.__aur.marks`).
+  function markWired(how) {
+    try {
+      performance.mark("auracle:perform-wired", { detail: { how, name: host.label() } });
+    } catch {
+      /* marks are evidence, never load-bearing */
+    }
+  }
   let wireSaveTimer = null;
   function rememberWiring(json, data, rev) {
     const key = wireKey(json);
@@ -917,17 +1119,35 @@ export function createPerform(host) {
     if (!state.cur) return;
     const first = state.cur.knobs.size === 0;
     const key = first ? wireKey(state.cur.json) : null;
-    const hit = first ? wireCache.get(key) : null;
+    const hit = first ? knownWiring(key) : null;
+    if (first && !hit && !shippedLoaded) {
+      // The shipped file is a local fetch of a few milliseconds, begun when
+      // PERFORM was built; a patch asked about before it lands waits for it
+      // rather than starting eleven seconds of renders it may not need.
+      const gen = state.gen;
+      state.measuring = true;
+      renderStatus();
+      knobs.forEach(paintKnob);
+      shippedReady.then(() => {
+        if (state.gen !== gen || state.wire || !state.measuring || inFlight("perform_wire")) return;
+        state.measuring = false;
+        wire();
+      });
+      return;
+    }
     if (hit) {
       // A hit is a use: it moves to the young end, so the patches played
       // most — a booth's demo set, round every few minutes — are the last
       // ones the cache lets go.
-      wireCache.delete(key);
-      wireCache.set(key, hit);
+      if (!hit.shipped) {
+        wireCache.delete(key);
+        wireCache.set(key, hit);
+      }
       applyWired(structuredClone(hit.data));
+      markWired(hit.shipped ? "shipped" : "cached");
       knobs.forEach(paintKnob);
       renderHood();
-      if (hit.rev === tasteRev()) return;
+      if (!hit.shipped && hit.rev === tasteRev()) return;
       // Playable now; the fresh measurement lands when it lands.
       if (!heldForOpen("revalidate")) revalidate();
       return;
@@ -1010,7 +1230,7 @@ export function createPerform(host) {
   const HEARD_MS = 1000;
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
-    watchTake();
+    watchAnswer();
     if (state.heldWire && !host.opening?.()) releaseHeld();
     // An open began or ended somewhere else in the app: say so here.
     const incoming = host.opening?.() ? host.openingName?.() || null : null;
@@ -1018,33 +1238,40 @@ export function createPerform(host) {
     if (state.deferredWire && performance.now() - state.lastTouch >= 1500) {
       const d = state.deferredWire;
       state.deferredWire = null;
-      applyWired(d);
+      applyRechecked(d);
       knobs.forEach(paintKnob);
       renderHood();
     }
+    // Wander's line counts down ("drift · next in 9 s", "paused 3 s").
+    if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
     if (!o || !state.visible) return;
     if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) o.heardMs = (o.heardMs || 0) + 250;
   }, 250);
 
-  function answerOffer(took) {
+  // An answer waits out a short window before it is sent, counted from when
+  // its toast is on screen (the lane can hold a toast back behind another):
+  // taking something to hear it in place is not always a verdict, and neither
+  // is a Next pressed to move on. A Take's toast offers "don't count it"; a
+  // pass's offers UNDO, which brings B back as well. One answer waits at a
+  // time, which keeps the log in order: a new one commits the one before, as
+  // a second EVOLVE pick does.
+  const PASS_WINDOW_MS = 7000;
+  function holdAnswer(took) {
     const o = state.offer;
-    if (state.quiet || !o || !state.cur || (o.heardMs || 0) < HEARD_MS) return;
-    // One answer waiting at a time keeps the log in order: a new one commits
-    // the Take still inside its window, as a second EVOLVE pick does.
-    commitTake();
+    if (state.quiet || !o || !state.cur || (o.heardMs || 0) < HEARD_MS) return null;
+    commitAnswer();
     const pick = { tree: state.cur.json, overrides: overrides(), offer: o.json, took };
-    if (!took) {
-      sendAnswer(pick);
-      host.note("Passed on B — that counts as a pick for what you had.", { replace: "pf-offer" });
-      return;
-    }
-    // A take waits out a short window: taking something to hear it in place
-    // is not always a verdict, and the toast says how to say so. The window
-    // is counted from when the toast is on screen, not from the press: the
-    // lane can hold a toast back behind another, and its "don't count it"
-    // used to appear after the pick had already been sent, and do nothing.
-    const pt = { pick, sent: false, dropped: false, at: performance.now(), shownAt: 0, timer: null, toast: null };
+    const pt = { pick, sent: false, dropped: false, at: performance.now(), shownAt: 0, timer: null, toast: null, windowMs: took ? TAKE_SETTLE_MS : PASS_WINDOW_MS };
+    return pt;
+  }
+  function waitAnswer(pt) {
+    state.answerWait = pt;
+    watchAnswer();
+  }
+  function answerOffer(took) {
+    const pt = holdAnswer(took);
+    if (!pt) return;
     pt.toast = host.note("Took B — that counts as a pick over what you had.", {
       undo: () => {
         if (pt.sent) {
@@ -1053,37 +1280,36 @@ export function createPerform(host) {
         }
         pt.dropped = true;
         clearTimeout(pt.timer);
-        if (state.takeWait === pt) state.takeWait = null;
+        if (state.answerWait === pt) state.answerWait = null;
       },
       undoLabel: "don't count it",
       replace: "pf-offer",
     });
-    state.takeWait = pt;
-    watchTake();
+    waitAnswer(pt);
   }
 
-  // The Take waiting out its window (see answerOffer): its clock starts when
+  // The answer waiting out its window (see holdAnswer): its clock starts when
   // its toast reaches the screen, and it is counted when the window ends or
   // when the toast leaves the screen early (a later word on the offer took
   // its place, so its undo is gone). A toast that never gets on screen at all
   // is counted after a generous wait rather than held for ever.
-  function watchTake() {
-    const pt = state.takeWait;
+  function watchAnswer() {
+    const pt = state.answerWait;
     if (!pt || pt.sent || pt.dropped) return;
     const onScreen = !!(pt.toast && pt.toast.isConnected);
     if (!pt.shownAt) {
       if (onScreen) {
         pt.shownAt = performance.now();
-        pt.timer = setTimeout(commitTake, TAKE_SETTLE_MS);
-      } else if (performance.now() - pt.at > 30_000) commitTake();
+        pt.timer = setTimeout(commitAnswer, pt.windowMs);
+      } else if (performance.now() - pt.at > 30_000) commitAnswer();
       return;
     }
-    if (!onScreen) commitTake();
+    if (!onScreen) commitAnswer();
   }
-  function commitTake() {
-    const pt = state.takeWait;
+  function commitAnswer() {
+    const pt = state.answerWait;
     if (!pt) return;
-    state.takeWait = null;
+    state.answerWait = null;
     clearTimeout(pt.timer);
     if (pt.sent || pt.dropped) return;
     pt.sent = true;
@@ -1117,9 +1343,17 @@ export function createPerform(host) {
     }
     return true;
   }
+  // …and while B holds an offer too. The spare belongs to the sound in your
+  // hands, not to B, and the moment a player is exploring fastest — offer,
+  // pass, offer — is the moment it is needed: the second Offer, grown on
+  // demand, took 10.9 s where the first took 0.01 s. It still waits for hands
+  // off (two seconds), and for the engine to have nothing else asked of it.
+  function knobsNow() {
+    return new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)]));
+  }
   function growSpare() {
     const now = performance.now();
-    if (!state.visible || !state.cur || !state.wire || state.spare || state.offer) return;
+    if (!state.visible || !state.cur || !state.wire || state.spare) return;
     if (state.pending.size > 0 || state.glide) return;
     // No spare for a patch on its way out, either (see `heldForOpen`).
     if (host.opening?.()) return;
@@ -1128,15 +1362,20 @@ export function createPerform(host) {
     // Nobody has asked for it yet, so it waits behind anything that is asked
     // for (`bg`), and is promoted the moment Offer claims it.
     const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps: 20, bg: true });
-    state.pending.get(req).spare = { at: new Map([...state.cur.knobs.keys()].map((a) => [a, liveValue(a)])) };
+    state.pending.get(req).spare = { at: knobsNow() };
   }
 
-  function presentOffer(offer) {
+  // `at`: the knobs the offer grew from (for handing it back as a spare, see
+  // `restoreOffer`); `again`: an offer brought back by an undo, not news.
+  function presentOffer(offer, at, again) {
     state.offer = {
       json: JSON.stringify(offer.tree),
       makeup: offer.makeup,
       taste: !!offer.taste,
       changes: host.describeDiff && offer.diff ? host.describeDiff(offer.diff) : "",
+      src: offer,
+      at: at || knobsNow(),
+      why: state.offerWhy || "",
     };
     const live = host.live();
     if (live) {
@@ -1145,13 +1384,14 @@ export function createPerform(host) {
     }
     renderOffer();
     knobs.forEach(paintKnob);
-    logImplicit("perform_offer", { why: state.offerWhy || "" });
+    if (!again) logImplicit("perform_offer", { why: state.offerWhy || "" });
   }
 
   function requestDrift() {
     if (!state.cur || state.glide || inFlight("perform_drift")) return;
     const pace = wanderPace(state.wander);
     state.lastMove = performance.now();
+    state.moveAt = null;
     request("perform_drift", {
       tree: state.cur.json,
       overrides: overrides(),
@@ -1159,7 +1399,7 @@ export function createPerform(host) {
       steps: pace.steps,
       sigma: pace.sigma,
     });
-    renderStatus("walking…");
+    renderWander();
   }
 
   // Asking for another offer is passing on the one in B, and the offer passed
@@ -1167,8 +1407,17 @@ export function createPerform(host) {
   // while the next one grew: a player could Take the very sound they had just
   // passed on, and a Take landing just after the next offer arrived was
   // counted as an unheard answer to *that* one.
+  //
+  // A pass is a verdict only once B has been heard, and it is said either way:
+  // a heard pass counts as a pick for what you had, after a window with UNDO
+  // (B comes back, and nothing is recorded); an unheard one says it was not
+  // counted, with UNDO too. B used to vanish unheard with no word and no way
+  // back, and a heard pass was recorded at once with no undo, while a Take
+  // had eight seconds of "don't count it".
   function passOffer() {
-    answerOffer(false);
+    const o = state.offer;
+    const gen = state.gen;
+    const pt = holdAnswer(false);
     state.offer = null;
     const live = host.live();
     if (live) live.bClear();
@@ -1178,6 +1427,53 @@ export function createPerform(host) {
     blendHome();
     renderOffer();
     knobs.forEach(paintKnob);
+    if (!o || state.quiet) return;
+    if (!pt) {
+      host.note("B skipped — not counted, you hadn't heard it.", {
+        undo: () => restoreOffer(o, gen),
+        undoLabel: "undo",
+        replace: "pf-offer",
+      });
+      return;
+    }
+    pt.toast = host.note("Passed on B — that counts as a pick for what you had.", {
+      undo: () => {
+        if (pt.sent) {
+          host.note("Already counted — that pass's window had closed.", { urgent: true });
+          return;
+        }
+        pt.dropped = true;
+        clearTimeout(pt.timer);
+        if (state.answerWait === pt) state.answerWait = null;
+        restoreOffer(o, gen);
+      },
+      undoLabel: "undo",
+      replace: "pf-offer",
+    });
+    waitAnswer(pt);
+  }
+
+  // An undone pass: B comes back as it was, heard as far as it had been. The
+  // offer that took its place goes back to being the spare, and one still
+  // growing stops being claimed (it lands as the spare), so the next Next is
+  // as quick as this one was. Across a patch change B cannot come back: it
+  // was a variant of the sound before.
+  function restoreOffer(o, gen) {
+    if (gen !== state.gen || !state.cur) {
+      host.note("Not counted — B was a variant of the patch before, so it can't come back.", { replace: "pf-offer" });
+      return;
+    }
+    const cur = state.offer;
+    if (cur && cur.src && !state.spare) state.spare = { offer: cur.src, at: cur.at };
+    for (const q of state.pending.values()) {
+      if (q.kind !== "perform_offer" || q.gen !== state.gen) continue;
+      q.again = false;
+      q.promote = false;
+      if (!q.spare) q.spare = { at: knobsNow() };
+    }
+    state.offerWhy = o.why;
+    presentOffer(o.src, o.at, true);
+    state.offer.heardMs = o.heardMs || 0;
   }
 
   // Blend back to *home*: at once for the sound (B is empty or emptying), and
@@ -1190,7 +1486,7 @@ export function createPerform(host) {
     if (!k) return;
     if (k.tween) cancelAnimationFrame(k.tween);
     k.tween = null;
-    host.controlMoved?.(k.i);
+    host.controlMoved?.(k.i, { recentre: true, to: 0 });
     const v0 = k.value;
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!v0 || still) {
@@ -1229,6 +1525,7 @@ export function createPerform(host) {
       return;
     }
     state.lastMove = performance.now();
+    state.moveAt = null;
     state.offerWhy = why || "";
     if (why !== "wander" && why !== "attract") stepDone("offer");
     // A spare grown ahead from this sound is handed over at once; one still
@@ -1236,7 +1533,7 @@ export function createPerform(host) {
     if (state.spare && spareFresh(state.spare)) {
       const sp = state.spare;
       state.spare = null;
-      presentOffer(sp.offer);
+      presentOffer(sp.offer, sp.at);
       return;
     }
     state.spare = null;
@@ -1252,7 +1549,8 @@ export function createPerform(host) {
     // Wander's and attract's offers are nobody's request (`bg`); a pressed
     // Offer is the player's, and goes ahead of background work.
     const bg = why === "wander" || why === "attract";
-    request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps, bg });
+    const req = request("perform_offer", { tree: state.cur.json, overrides: overrides(), locks: host.locks(), steps, bg });
+    state.pending.get(req).from = knobsNow();
     renderOffer("growing an offer…");
   }
 
@@ -1276,12 +1574,7 @@ export function createPerform(host) {
     state.wiredAt = new Map(here);
     state.playableAt = performance.now();
     state.c = state.c.map(() => 0);
-    knobs.forEach((k) => {
-      if (k.spec.kind === "named") {
-        k.value = 0;
-        host.controlMoved?.(k.i);
-      }
-    });
+    recentreAll();
     state.wire = data.wiring;
     if (state.home && !state.home.knobs) state.home.knobs = new Map(state.cur.knobs);
     // Touch follows the player's choice if this patch can play it, and
@@ -1319,6 +1612,53 @@ export function createPerform(host) {
     }
   }
 
+  // A background re-check landed on a patch already playing on a wiring. If
+  // every control still turns the same knobs, the fresh numbers are taken in
+  // place: nothing re-centres, and the sound does not move — each knob's base
+  // absorbs the difference between the old gains and the new at the
+  // control's current position. A control whose half the re-check closed
+  // under it stops at the centre on that side, as a drag would. Only a
+  // wiring that turns different knobs re-centres (`applyWired`).
+  const wiredKnobs = (w) => (w && !w.search && !w.pending ? w.knobs.map(([a]) => a).sort().join("|") : w && w.search ? "search" : "");
+  function sameKnobs(a, b) {
+    return !!a && !!b && a.length === b.length && a.every((w, i) => wiredKnobs(w) === wiredKnobs(b[i]));
+  }
+  function applyRechecked(data) {
+    const old = state.wire;
+    const addrs = state.cur ? [...state.cur.knobs.keys()].sort().join("|") : "";
+    if (!state.cur || state.carried || !sameKnobs(old, data.wiring) || [...data.addrs].sort().join("|") !== addrs) {
+      applyWired(data);
+      return;
+    }
+    const cl = (w, c) => {
+      const [lo, hi] = rangeOf(w);
+      return clamp(c, lo, hi);
+    };
+    const base = new Map(state.cur.knobs);
+    old.forEach((w, i) => {
+      const nw = data.wiring[i];
+      if (!turns(w) || !state.c[i]) return;
+      const cOld = cl(w, state.c[i]);
+      const cNew = cl(nw, state.c[i]);
+      for (const [a, g] of w.knobs) if (base.has(a)) base.set(a, base.get(a) + cOld * g);
+      for (const [a, g] of nw.knobs) if (base.has(a)) base.set(a, base.get(a) - cNew * g);
+      if (cNew !== state.c[i]) {
+        state.c[i] = cNew;
+        const k = knobs[i];
+        if (k) k.value = cNew;
+      }
+    });
+    for (const [a, v] of base) base.set(a, clamp(v, 0, KNOB_MAX));
+    state.cur.knobs = base;
+    state.wiredAt = new Map(data.addrs.map((a, i) => [a, data.values[i]]));
+    state.wire = data.wiring;
+    state.carried = false;
+    state.measuring = false;
+    push();
+    sendTouch();
+    renderStatus();
+  }
+
   function onWorker(m) {
     const p = state.pending.get(m.req);
     if (!p) return false;
@@ -1351,7 +1691,7 @@ export function createPerform(host) {
         state.revalidating = false;
         if (m.data) {
           if (performance.now() - state.lastTouch < 1500) state.deferredWire = m.data;
-          else applyWired(m.data);
+          else applyRechecked(m.data);
         } else if (p.cacheAs.carried) {
           // A wiring borrowed from another sound is not this patch's: with no
           // measurement to replace it, it goes rather than lingering.
@@ -1370,6 +1710,7 @@ export function createPerform(host) {
         renderStatus(m.error ? "could not measure this patch" : "the taste model has not seen enough patches to measure against yet");
       } else {
         applyWired(m.data);
+        markWired("measured");
       }
       knobs.forEach(paintKnob);
       renderHood();
@@ -1378,14 +1719,22 @@ export function createPerform(host) {
     if (m.type === "perform_drifted") {
       // Hands came on while the walk ran: the player's sound wins, and the
       // proposal (made from where the knobs were) is dropped.
-      if (state.lastTouch > p.at) return true;
+      if (state.lastTouch > p.at) {
+        renderWander();
+        return true;
+      }
       if (!m.drift || !m.drift.tree) {
-        renderStatus(whyNot(m, m.drift, "nothing nearby it likes better — staying"));
+        // Staying is Wander's news, said on Wander; a walk that cannot start
+        // from this patch at all is the patch's, and goes on the status line.
+        if (m.error || (m.drift && m.drift.reason === "outside_support")) renderStatus(whyNot(m, m.drift, ""));
+        else state.wanderStay = performance.now();
+        renderWander();
         return true;
       }
       const pace = wanderPace(state.wander);
+      state.wanderTaste = !!m.drift.taste;
+      state.wanderWhy = m.drift.taste ? "toward your taste" : "through the grammar, before it has learned your taste";
       startGlide(new Map(m.drift.knobs), JSON.stringify(m.drift.tree), pace.glide, "Wander");
-      renderStatus(m.drift.taste ? "drifting toward your taste" : "drifting through the grammar — no taste yet");
       return true;
     }
     if (m.type === "perform_offered") {
@@ -1402,7 +1751,7 @@ export function createPerform(host) {
         renderOffer(whyNot(m, m.offer, "no offer beat this patch — try again, or loosen a lock"));
         return true;
       }
-      presentOffer(m.offer);
+      presentOffer(m.offer, p.from || (p.spare && p.spare.at));
       return true;
     }
     if (m.type === "perform_grafted") {
@@ -1520,12 +1869,7 @@ export function createPerform(host) {
       // The offer was grown from the performed sound, controls and all, so
       // the taken tree already contains their deltas: they read zero on it.
       state.c = state.c.map(() => 0);
-      knobs.forEach((k) => {
-        if (k.spec.kind === "named") {
-          k.value = 0;
-          host.controlMoved?.(k.i);
-        }
-      });
+      recentreAll();
       sendTouch();
       state.revalidating = true;
       const req = request("perform_wire", { tree: json, overrides: [] });
@@ -1602,15 +1946,9 @@ export function createPerform(host) {
     // reading its fixed starting point from `from`.
     state.cur.knobs = new Map(from);
     state.c = state.c.map(() => 0);
-    knobs.forEach((k) => {
-      if (k.spec.kind === "named") {
-        k.value = 0;
-        paintKnob(k);
-        host.controlMoved?.(k.i);
-      }
-    });
+    recentreAll();
     state.glide = { from, to, t0: performance.now(), dur: Math.max(0.2, seconds) * 1000, json, why };
-    renderStatus("gliding");
+    renderWander();
     requestAnimationFrame(stepGlide);
   }
 
@@ -1621,7 +1959,7 @@ export function createPerform(host) {
     // sound stays there. It never snaps back or finishes on its own.
     if (performance.now() - state.lastTouch < 60 && performance.now() - g.t0 > 60) {
       state.glide = null;
-      renderStatus("paused — your hands are on it");
+      renderWander();
       if (outsideTrust()) recheck();
       return;
     }
@@ -1636,6 +1974,7 @@ export function createPerform(host) {
       if (g.json) state.cur.json = g.json;
       state.glide = null;
       state.lastMove = performance.now();
+      renderWander();
       if (outsideTrust()) recheck();
       else renderStatus();
       return;
@@ -1746,13 +2085,7 @@ export function createPerform(host) {
       // wiring is refreshed around the new centre in the background.
       state.cur.knobs = here;
       state.c = state.c.map(() => 0);
-      knobs.forEach((k) => {
-        if (k.spec.kind === "named") {
-          k.value = 0;
-          paintKnob(k);
-          host.controlMoved?.(k.i);
-        }
-      });
+      recentreAll();
       state.home = { json, makeup: state.cur.makeup, knobs: new Map(here) };
       state.keeping = json;
       host.commitTree(json);
@@ -1820,7 +2153,6 @@ export function createPerform(host) {
     padEls.hold.classList.toggle("lit", state.hold);
     padEls.hold.setAttribute("aria-pressed", String(state.hold));
     knobs.forEach(paintKnob);
-    renderStatus();
   }
 
   const padEls = {};
@@ -1859,8 +2191,10 @@ export function createPerform(host) {
   }
 
   // ---------- panels ----------
+  // What PERFORM is doing with the patch: opening it, listening to it, how
+  // many controls reach it, re-checking it. Wander's own state is said on
+  // Wander (`wanderState`).
   function renderStatus(msg) {
-    const z = wanderZone(state.wander);
     const parts = [];
     // Another patch is on its way to the player's hands. The title still
     // names what the keys play — that is true until it lands — dimmed, and
@@ -1882,9 +2216,6 @@ export function createPerform(host) {
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
       if (state.revalidating || state.measuring) parts.push("re-checking");
     }
-    if (state.hold) parts.push("wander held");
-    else if (z !== "still" && handsOn() && !/^paused/.test(msg || "")) parts.push("paused — your hands are on it");
-    else if (z !== "still") parts.push(`wander: ${z}`);
     statusEl.textContent = parts.join(" · ");
   }
 
@@ -1911,6 +2242,14 @@ export function createPerform(host) {
       padEls[k].disabled = !state.offer;
       padEls[k].dataset.wait = state.offer ? "" : "needs an offer";
     }
+    // While B holds an offer, pressing Offer passes on it: the pad says so
+    // before it is pressed, not in a toast after.
+    const op = padEls.offer;
+    if (op) {
+      op.textContent = state.offer ? "Next" : "Offer";
+      op.dataset.sub = state.offer ? "passes on B" : "";
+      op.title = state.offer ? "Pass on the offer in B and hear the next one" : "Grow a variant from here into B";
+    }
   }
 
   why.innerHTML = "";
@@ -1921,7 +2260,7 @@ export function createPerform(host) {
     "<p>Each control is a direction in what the instrument can hear — <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a patch loads, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
     "<p>The amber dot on a control's ring is where this sound measures on it, compared with the patches in your session. A control that turns only one way on this patch says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the centre on the other. One that reads <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>" +
     "<p>A control drawn in amber cannot be reached by this patch's knobs (a patch with no drive cannot get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, which arrives in <b>B</b>; short of the notch it springs back and asks nothing.</p>" +
-    "<p><b>Wander</b> sets how alive the patch is: <b>still</b>, <b>offer</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Structure never changes on its own. Tap Wander to hold it; touching any control pauses it.</p>";
+    "<p><b>Wander</b> sets how alive the patch is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to hold it; touching any other control pauses it for a few seconds.</p>";
   whyBtn.onclick = () => {
     whyBody.classList.toggle("hidden");
     whyBtn.setAttribute("aria-expanded", String(!whyBody.classList.contains("hidden")));
@@ -2158,16 +2497,20 @@ export function createPerform(host) {
   renderTouch();
 
   // ---------- the wander clock ----------
+  function wanderTick() {
+    if (!state.visible || state.hold || !state.cur || !state.wire || state.wanderGrab) return;
+    const now = performance.now();
+    if (now < wanderDue()[1]) return;
+    const z = wanderZone(state.wander);
+    if (z === "ideas" && !state.offer && !inFlight("perform_offer")) requestOffer("wander");
+    else if ((z === "drift" || z === "roam") && !state.glide) requestDrift();
+    else return;
+    state.moveAt = null;
+    renderWander();
+  }
   setInterval(() => {
     growSpare();
-    if (!state.visible || state.hold || !state.cur || !state.wire) return;
-    const now = performance.now();
-    if (now - state.lastTouch < HANDS_OFF_MS) return;
-    const z = wanderZone(state.wander);
-    const pace = wanderPace(state.wander);
-    if (now - state.lastMove < pace.period * 1000) return;
-    if (z === "offer" && !state.offer) requestOffer("wander");
-    else if (z === "drift" || z === "roam") requestDrift();
+    wanderTick();
   }, 1000);
 
   // ---------- scope ----------
@@ -2233,18 +2576,27 @@ export function createPerform(host) {
     // Which named controls reach the patch `json`, from its cached wiring:
     // null when it has never been measured.
     reachOf(json) {
-      const hit = json ? wireCache.get(wireKey(json)) : null;
+      const hit = json ? knownWiring(wireKey(json)) : null;
       return hit ? reachOfWiring(hit.data.wiring) : null;
     },
+    // A preset's tree as the pool holds it (uids aside), from the shipped
+    // file: what the warm start pre-warms its cards from without inserting
+    // them. Null before the file lands, or for a name it does not have.
+    shippedTree: (name) => shippedByName.get(name) || null,
     // Measure a patch that is *not* playing, for the cache alone (booth
     // mode's pre-warm, booth.js), and answer with the named controls that
     // reach it — at once when it was measured before. The request is an
     // ordinary `perform_wire` whose reply belongs to no patch (`gen` −1), so
     // it is cached and never applied: the sound under a player's hands is
     // not disturbed by a measurement of something else.
-    prewarm(json) {
-      const hit = wireCache.get(wireKey(json));
-      if (hit) return Promise.resolve(reachOfWiring(hit.data.wiring));
+    //
+    // `fresh`: a shipped wiring, or one measured before the model's last
+    // refit, is not enough — measure it under this session's model (the warm
+    // start's cards, while the player is choosing).
+    prewarm(json, { fresh = false } = {}) {
+      const key = wireKey(json);
+      const hit = fresh ? wireCache.get(key) : knownWiring(key);
+      if (hit && (!fresh || hit.rev === tasteRev())) return Promise.resolve(reachOfWiring(hit.data.wiring));
       return new Promise((resolve) => {
         const req = request("perform_wire", { tree: json, overrides: [], bg: true });
         const p = state.pending.get(req);
@@ -2339,7 +2691,8 @@ export function createPerform(host) {
     setControl(i, v01) {
       const k = knobs[i];
       if (!k) return;
-      touch();
+      if (k.spec.kind === "wander") wanderGrab();
+      else touch();
       ensureWired();
       k.value = clamp(k.spec.kind === "named" ? v01 * 2 - 1 : v01, ...spanOf(k));
       paintKnob(k);

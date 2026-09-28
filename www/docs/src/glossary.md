@@ -215,10 +215,12 @@ screaming resonance and silent duds; this is why you never hear them.
 
 ### Wander
 
-PERFORM's dial for how alive the patch is on its own: **still**, **offer**
+PERFORM's dial for how alive the patch is on its own: **still**, **ideas**
 (variants appear in B), **drift** (the knobs glide through nearby settings the
-search prefers), **roam** (bigger and faster). It never changes structure, it
-pauses while your hands are on the controls, and a tap holds it. See
+search prefers), **roam** (bigger and faster). It answers a second and a half
+after you let go of it in a new region, the line under it says what it is
+doing and when it moves next, it never changes structure, it pauses while
+your hands are on the other controls, and a tap holds it. See
 [Wander](./views/perform.md#wander).
 
 ### Warm start

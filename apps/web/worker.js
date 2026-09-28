@@ -1341,7 +1341,10 @@ async function dispatch(m) {
       } catch (_) {
         pair = JSON.parse(engine.next_duel());
       }
-      post({ type: "duel", pair, meta });
+      // `ahead`: main asked for the pair after this one, dealt while this one
+      // is on the table (see `requestAhead` in main.js); it rides back so the
+      // reply is not taken for the table's.
+      post({ type: "duel", pair, meta, ahead: !!m.ahead });
       // Renders are lazy now (`RenderPolicy::Lazy`): the pool holds φ for
       // everything and audio for only the last dozen auditions, so the pair
       // just dealt is very likely cold. Materialize both sides *here*, after
@@ -1721,11 +1724,14 @@ async function dispatch(m) {
       break;
     }
     case "load_preset": {
-      // A preview is about to be played: `load_preset_heard` keeps the audio
-      // of the one render the insert costs, so the `render` that follows is a
-      // memo hit rather than the same phrase rendered twice. (Absent on a
-      // stale binary: the plain load, and the second render, as before.)
-      const heard = m.preview && typeof engine.load_preset_heard === "function";
+      // A preview is about to be played, or an open (`open`: a preset
+      // clicked in the bank) about to put it on the bench: `load_preset_heard`
+      // keeps the audio of the one render the insert costs, so the `render`
+      // or the bench's `render_of` that follows is a memo hit rather than
+      // the same phrase rendered twice — about half a clicked preset's wait
+      // before PERFORM has it. (Absent on a stale binary: the plain load, and
+      // the second render, as before.)
+      const heard = (m.preview || m.open) && typeof engine.load_preset_heard === "function";
       const id = Number(heard ? engine.load_preset_heard(m.index) : engine.load_preset(m.index));
       // Pin *here*, not in a follow-up message. The warm start posts nine
       // loads in one burst, so by the time a `set_pinned` reply could be sent
@@ -1759,7 +1765,10 @@ async function dispatch(m) {
     case "warm_start": {
       const ids = {};
       for (const i of m.picked) {
-        const id = Number(engine.load_preset(i));
+        // The first pick goes onto the bench next: its insert keeps its audio
+        // (see `load_preset`), so the bench open is not a second render.
+        const heard = i === m.picked[0] && typeof engine.load_preset_heard === "function";
+        const id = Number(heard ? engine.load_preset_heard(i) : engine.load_preset(i));
         if (id > 0) {
           engine.set_pinned(id, true);
           ids[i] = id;

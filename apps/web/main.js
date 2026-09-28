@@ -67,6 +67,24 @@ function inkHsl(hex) {
 // fetched with `no-cache` (revalidate, not bypass) so a new build is noticed.
 // A module script may await at top level; nothing above this line needs the
 // worker.
+// ---------- timing marks ----------
+// What the instrument promises about time is measured where it happens:
+// `performance.mark("auracle:<name>")` at boot start, veil down, first sound,
+// pool full, PERFORM wired (perform.js), a patch opened, a pair dealt and a
+// refit landed. `window.__aur.marks()` lists them; the film recorder writes
+// them into every rehearsal's sidecar, and the budget specs read them.
+const marksOnce = new Set();
+function mark(name, detail, { once = false } = {}) {
+  if (once && marksOnce.has(name)) return;
+  marksOnce.add(name);
+  try {
+    performance.mark(`auracle:${name}`, detail ? { detail } : undefined);
+  } catch {
+    /* evidence, never load-bearing */
+  }
+}
+mark("boot-start");
+
 const BUILD = await (async () => {
   try {
     const r = await fetch("./pkg/build.json", { cache: "no-cache" });
@@ -1167,6 +1185,7 @@ worker.onmessage = (e) => {
       bootPct = 100;
       $("boot-fill").style.width = "100%";
       dropBootVeil();
+      mark("pool-full", { pool: m.status && m.status.pool }, { once: true });
       applyStatus(m.status);
       fillPool = m.status.pool;
       fillTarget = m.status.pool_target;
@@ -1177,6 +1196,7 @@ worker.onmessage = (e) => {
       send({ type: "taste_views" });
       if (!currentDuel && !dealing) requestDeal();
       renderFillHint();
+      warmPrewarmPump();
       break;
     }
     case "saved": {
@@ -1281,6 +1301,21 @@ worker.onmessage = (e) => {
       break;
     }
     case "duel": {
+      // The pair after the one on the table (see `requestAhead`): kept, with
+      // its sounds fetched, for the next pick to swap in.
+      if (m.ahead) {
+        aheadAsked = false;
+        if (!m.pair || ahead) break;
+        if (!aheadUsable(m.pair)) {
+          // The engine may deal the very pair on the table again (a small
+          // pool early in a session does, often): ask again, a few times.
+          if (aheadRetries++ < 3) requestAhead();
+          break;
+        }
+        ahead = { pair: m.pair, meta: m.meta || null };
+        for (const id of m.pair) if (!renders.has(id)) send({ type: "render", id });
+        break;
+      }
       // A retract restored the previous pair while this deal was in flight —
       // the restored question stands; this pair is dropped like a skip.
       if (ignoreNextDeal) {
@@ -1289,29 +1324,7 @@ worker.onmessage = (e) => {
         setDuelControlsEnabled(true);
         break;
       }
-      currentDuel = m.pair;
-      // Randomise the presented side: the engine's first pick was always A,
-      // always left, always ←. `duel_pred` is computed at record time from
-      // the order we submit, so a swapped pair stays consistent end-to-end.
-      if (currentDuel && Math.random() < 0.5) currentDuel = [currentDuel[1], currentDuel[0]];
-      duelMeta = m.meta || null;
-      dealing = false;
-      setDuelControlsEnabled(true);
-      retireForecast();
-      renderDealRule();
-      if (currentDuel) {
-        setFlip("a", false);
-        setFlip("b", false);
-        loadSide("a", currentDuel[0]);
-        loadSide("b", currentDuel[1]);
-        benchBeforeAudition = null; // a fresh pair closes any audition detour
-        setDuelSelection(null);
-        dealCards();
-      }
-      renderPlayDuel();
-      // The pair is on the table; a refit armed by the last vote can now be
-      // enqueued *behind* this pair's audio rather than in front of it.
-      settleFit();
+      placePair(m.pair, m.meta);
       break;
     }
     // The worker announces the start and end of every call that blocks its
@@ -1342,6 +1355,7 @@ worker.onmessage = (e) => {
       buf.copyToChannel(m.buffer, 0);
       renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
       onRenderArrived(m.id);
+      requestAhead();
       break;
     }
     case "tree_json": {
@@ -1407,7 +1421,7 @@ worker.onmessage = (e) => {
       if (meterFitting) {
         meterFitting = false;
         learnedShown = true;
-        try { performance.mark("auracle:fitted"); } catch { /* ignore */ }
+        mark("fitted");
       }
       applyViews(m.views);
       applyStatus(m.status);
@@ -1539,6 +1553,7 @@ worker.onmessage = (e) => {
         const evolved = evolvedAnnounce && evolvedAnnounce.id === m.subject ? evolvedAnnounce : null;
         const asked = openAsk && openAsk.id === m.subject ? openAsk : null;
         openAsk = null;
+        mark("patch-opened", { name: rowOf(m.subject)?.name || null, waited: asked ? Math.round(performance.now() - asked.at) : null });
         if (evolved) {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
@@ -2292,6 +2307,7 @@ function releaseRequest(request, id) {
     case "duel":
       dealing = false;
       ignoreNextDeal = false;
+      aheadAsked = false;
       setDuelControlsEnabled(true);
       break;
     case "render":
@@ -2571,6 +2587,7 @@ function showCoach() {
 }
 
 function firstNotePlayed() {
+  mark("first-sound", { via: "a key" }, { once: true });
   if (coachEl) {
     coachEl.remove();
     coachEl = null;
@@ -3028,6 +3045,7 @@ function applyViews(next) {
     renderAnnounced.delete(id);
     starsById.delete(id);
     cutIds.delete(id);
+    goneIds.add(id);
     const t = pendingCuts.get(id);
     if (t !== undefined) {
       clearTimeout(t);
@@ -3046,6 +3064,7 @@ function applyViews(next) {
     setDuelControlsEnabled(false);
     requestDeal();
   }
+  checkAhead();
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
   // many pins a restored session came back with.
@@ -3356,7 +3375,9 @@ function stepBank(d) {
 
 function play(id, btn, key = null) {
   const r = renders.get(id);
-  if (r) playBuffer(r.buffer, btn, key);
+  if (!r) return;
+  mark("first-sound", { via: "a phrase" }, { once: true });
+  playBuffer(r.buffer, btn, key);
 }
 
 // Every "hear this thing that isn't loaded yet" path in the app used to be its
@@ -3500,7 +3521,9 @@ async function bootPerform() {
       renderTeach();
       settleFit();
     },
-    controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
+    // A control moved without its pot: set by the mouse, the keys or the XY
+    // pad (the pot lets go), or re-centred (the pot keeps working, anchored).
+    controlMoved: (i, how) => midi && midi.controlMovedElsewhere(i, how),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
     knobInfo: (addr, v) => {
@@ -3740,7 +3763,7 @@ async function bootBooth() {
       else {
         presetClicks.set(p.index, benchSeq);
         openAskedAt = performance.now();
-        send({ type: "load_preset", index: p.index });
+        send({ type: "load_preset", index: p.index, open: true });
       }
     },
     resetVisitor: () => boothResetVisitor(),
@@ -5287,11 +5310,106 @@ function setDuelControlsEnabled(on) {
   else dealSayTimer = setTimeout(() => { if (dealing) sayDealing(dealingWhy()); }, DEAL_SAY_MS);
 }
 
+/** Put a dealt pair on the table: a deal's reply, or the pair dealt ahead. */
+function placePair(pair, meta) {
+  currentDuel = pair;
+  // Randomise the presented side: the engine's first pick was always A,
+  // always left, always ←. `duel_pred` is computed at record time from
+  // the order we submit, so a swapped pair stays consistent end-to-end.
+  if (currentDuel && Math.random() < 0.5) currentDuel = [currentDuel[1], currentDuel[0]];
+  duelMeta = meta || null;
+  dealing = false;
+  setDuelControlsEnabled(true);
+  retireForecast();
+  renderDealRule();
+  if (currentDuel) {
+    setFlip("a", false);
+    setFlip("b", false);
+    loadSide("a", currentDuel[0]);
+    loadSide("b", currentDuel[1]);
+    benchBeforeAudition = null; // a fresh pair closes any audition detour
+    setDuelSelection(null);
+    dealCards();
+    mark("pair-dealt");
+  }
+  renderPlayDuel();
+  // The pair is on the table; a refit armed by the last vote can now be
+  // enqueued *behind* this pair's audio rather than in front of it.
+  settleFit();
+  aheadRetries = 0;
+  requestAhead();
+}
+
+// ---------- the next pair, dealt ahead ----------
+// A pick used to put the table away and wait for the engine to deal: ~30 ms
+// on a quiet engine, but a whole seed's walk (up to about 20 s) while a
+// generation ran, and the new pair's sounds then rendered after it. So while
+// a pair is on the table the next one is dealt and both its sounds fetched,
+// and a pick or "another pair" swaps it in at once; the one after is dealt
+// in the background. The pair is chosen before the pick is known, which is
+// what already happened (the pick is held in its undo window, and the deal
+// used to go out before it was logged): under the default rule every pair is
+// dealt at random, and under bald/thompson it is chosen against the current
+// posterior, which the model already lets lag its log by up to six picks.
+//
+// Asked for only once the table's own two sounds are here: the worker renders
+// a dealt pair's sounds in the same turn, and an ahead deal sent with the
+// table's renders still queued would make the pair in front of the player
+// wait behind the next one's.
+let ahead = null; // {pair, meta}: dealt, sounds fetched or on their way
+let aheadAsked = false;
+let aheadRetries = 0; // deals ahead refused since the table last changed
+const goneIds = new Set(); // ids that have left the pool, as views said so
+
+function aheadUsable(pair) {
+  if (!pair || pair.length !== 2) return false;
+  // A patch cut since (its undo window included) is never dealt: the deal
+  // excluded the cuts made before it, and this re-checks the ones made since.
+  if (pair.some((id) => cutIds.has(id))) return false;
+  // Replaced since (a generation, a preset load or an import can replace a
+  // patch while the pair waits): `applyViews` drops the pair when one of
+  // its ids leaves the pool. The bank's rows can lag the pool while it
+  // fills, so a missing row is not taken for a replaced patch.
+  if (pair.some((id) => goneIds.has(id))) return false;
+  // Not the question on the table, or the one being held in an undo window.
+  const same = (p) => p && p.includes(pair[0]) && p.includes(pair[1]);
+  return !same(currentDuel) && !same(pendingVote && pendingVote.pair);
+}
+
+function requestAhead() {
+  if (ahead || aheadAsked || !currentDuel || dealing) return;
+  const heard = (id) => renders.has(id) || renderFailures.has(id);
+  if (!currentDuel.every(heard)) return;
+  aheadAsked = true;
+  send({ type: "duel", exclude: [...cutIds], ahead: true });
+}
+
+/** Swap the pair dealt ahead onto the table; false when there is none that
+ *  may still be dealt. */
+function takeAhead() {
+  const a = ahead;
+  ahead = null;
+  if (!a || !aheadUsable(a.pair)) return false;
+  placePair(a.pair, a.meta);
+  return true;
+}
+
+/** A pair that may no longer be dealt (cut, or replaced) is dropped, and the
+ *  next is asked for. */
+function checkAhead() {
+  if (ahead && !aheadUsable(ahead.pair)) {
+    ahead = null;
+    requestAhead();
+  }
+}
+
 /** Put the pair on the table away and deal another: a pick does this, and so
  *  does "another pair" (↻), which used to leave the old pair up with buttons
- *  that looked live and did nothing until the deal landed. */
+ *  that looked live and did nothing until the deal landed. The pair dealt
+ *  ahead goes up at once when there is one. */
 function dealAnother() {
   currentDuel = null;
+  if (takeAhead()) return;
   dealing = true;
   setDuelControlsEnabled(false);
   requestDeal();
@@ -5367,8 +5485,12 @@ function retractVote() {
   // that was just taken back is the lane saying something untrue.
   aheadDrop(key);
   dropToast(toast);
+  // The pair that replaced it waits as the next one, sounds and all: the
+  // player has seen it, so it comes before any pair dealt behind it.
+  const displaced = currentDuel;
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
+  if (displaced && aheadUsable(displaced)) ahead = { pair: displaced, meta: duelMeta };
   dealing = false;
   setDuelControlsEnabled(true);
   setFlip("a", false);
@@ -5804,6 +5926,8 @@ function cutRow(r) {
   // A cut patch is never dealt again (`requestDeal` sends the cut ids), and
   // that includes the pair on the table: a side the player just threw out is
   // not a question worth asking, so another pair is dealt the way ↻ deals one.
+  // …and so does the pair dealt ahead: it is dropped, and dealt again.
+  checkAhead();
   if (currentDuel && currentDuel.includes(r.id) && !dealing) dealAnother();
   let toast = null;
   let back = null;
@@ -5937,7 +6061,7 @@ function renderPresetBank(list) {
         openAskedAt = performance.now();
         el.classList.add("loading");
         el.setAttribute("aria-busy", "true");
-        send({ type: "load_preset", index: p.index });
+        send({ type: "load_preset", index: p.index, open: true });
       }
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
@@ -19199,6 +19323,7 @@ let poolSettled = false;
 function dropBootVeil() {
   if (booted) return;
   booted = true;
+  mark("veil-down");
   $("boot").classList.add("done");
   setTimeout(() => $("boot").classList.add("hidden"), 460);
 }
@@ -19259,6 +19384,35 @@ function bootField(pool, target) {
 // model is already pointed somewhere before the user casts a single vote.
 let warmRows = null;
 const warmPicked = new Set();
+
+// While the warm start is open, PERFORM's wiring of its nine cards is measured
+// in the background, under this session's model, so the pick the player lands
+// on after "teach it" is not playing from the shipped wiring alone (which was
+// measured natively, and is re-checked the moment it is used). One card at a
+// time, in the engine's background lane, and only once the pool is full: a
+// measurement is thirty-odd renders on the engine's one thread, and during the
+// fill they would slow the bank's arrival. Picked cards first, then the ones
+// the player has heard, then the rest. It stops when the card closes; a
+// measurement already running finishes and is kept.
+const warmHeard = new Set(); // preset indices ▶'d on the warm start
+let warmPrewarm = null; // {done: Set<index>, busy} while the card is open
+function warmPrewarmPump() {
+  const w = warmPrewarm;
+  if (!w || w.busy || !perform || !poolSettled || !warmRows) return;
+  if ($("warmstart").classList.contains("hidden")) return;
+  const order = [...warmPicked, ...warmHeard, ...warmRows.map((r) => r.index)];
+  const next = order.find((i) => !w.done.has(i));
+  if (next == null) return;
+  w.done.add(next);
+  const row = warmRows.find((r) => r.index === next);
+  const tree = row && perform.shippedTree ? perform.shippedTree(row.name) : null;
+  if (!tree) return warmPrewarmPump();
+  w.busy = true;
+  perform.prewarm(tree, { fresh: true }).finally(() => {
+    w.busy = false;
+    warmPrewarmPump();
+  });
+}
 
 function openWarmStart() {
   send({ type: "presets" });
@@ -19334,6 +19488,7 @@ function renderWarmStart(all) {
       else if (warmPicked.size < 3) warmPicked.add(r.index);
       b.classList.toggle("picked", warmPicked.has(r.index));
       b.setAttribute("aria-pressed", String(warmPicked.has(r.index)));
+      warmPrewarmPump();
       $("warm-go").disabled = warmPicked.size !== 3;
       $("warm-go").textContent =
         warmPicked.size === 3 ? "teach it"
@@ -19346,6 +19501,9 @@ function renderWarmStart(all) {
   $("warm-go").disabled = true;
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
+  warmHeard.clear();
+  warmPrewarm = { done: new Set(), busy: false };
+  warmPrewarmPump();
   // A modal that leaves focus on <body> cannot be reached from the keyboard.
   // Land on the first ▶: hearing comes before choosing.
   grid.querySelector(".wi-play")?.focus();
@@ -19393,6 +19551,8 @@ function previewPreset(row, btn) {
   warmPreviewCancel();
   const req = { index: row.index, btn };
   warmPreview = req;
+  warmHeard.add(row.index);
+  warmPrewarmPump();
   btn.classList.add("loading");
   btn.setAttribute("aria-busy", "true");
   const known = presetIds.get(row.index);
@@ -19415,6 +19575,7 @@ function warmPreviewLoaded(index, id, evicted) {
 
 function closeWarmStart(mark = true) {
   warmPreviewCancel();
+  warmPrewarm = null;
   $("warmstart").classList.add("hidden");
   if (mark) localStorage.setItem("auracle-warmed", "1");
   // The film note waited for the warm start; now it can speak.
@@ -19920,7 +20081,14 @@ bootMidi();
 // `note` rides along because the toast lane's guarantee — that nothing
 // transient ever lands on PICK A / PICK B — is only testable by forcing a
 // toast at a moment the app would not normally produce one.
-window.__aur = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note };
+window.__aur = {
+  audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note,
+  // The timing marks (see `mark`), in the page's clock: ms since it loaded.
+  marks: () =>
+    performance.getEntriesByType("mark")
+      .filter((e) => e.name.startsWith("auracle:"))
+      .map((e) => ({ name: e.name.slice(8), t: Math.round(e.startTime), ...(e.detail ? { detail: e.detail } : {}) })),
+};
 // The probe was `window.__ric` for as long as the app was called Ricercar, and
 // hand-written browser checks in the notes still reach for it. Aliased rather
 // than dropped: an alias costs one line, and a probe that silently became

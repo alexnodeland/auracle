@@ -4579,6 +4579,15 @@ html.handheld .handheld-gate {
 @keyframes pf-bump-lo { 50% { transform: rotate(-3deg); } }
 @keyframes pf-bump-hi { 50% { transform: rotate(3deg); } }
 .pf-k-arc { fill: none; stroke: var(--phos-a); stroke-width: 3.5; stroke-linecap: round; }
+/* Wander: where its zones begin (ideas, drift, roam), and a thin arc inside
+   the ring filling toward its next move — the model's, so amber. */
+.pf-k-zone { stroke: var(--silk-dim); stroke-width: 1.5; stroke-linecap: round; }
+.pf-k-count { fill: none; stroke: var(--phos-b-deep); stroke-width: 1.5; stroke-linecap: round; }
+/* Where a re-centred control was: a tick that fades over a second while the
+   pointer glides home (perform.js recentre). None under reduced motion. */
+.pf-k-ghost { stroke: var(--silk-dim); stroke-width: 2; stroke-linecap: round; opacity: 0; }
+.pf-k-ghost.fade { animation: pf-ghost 1000ms ease-out forwards; }
+@keyframes pf-ghost { from { opacity: 0.85; } to { opacity: 0; } }
 .pf-k-body { fill: var(--knob-body); stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
 .pf-k-ptr { stroke: var(--silk); stroke-width: 3; stroke-linecap: round; }
 .pf-k-where { fill: var(--phos-b); }
@@ -4673,8 +4682,12 @@ html.handheld .handheld-gate {
   background: linear-gradient(180deg, #1d2127, #15171c);
   color: var(--silk-dim);
 }
-.pf-pad:disabled[data-wait]:not([data-wait=""])::after {
-  content: attr(data-wait);
+/* …and a pad whose press does more than its name says (Offer, while B holds
+   an offer, passes on it: NEXT · passes on B) says so the same way. */
+.pf-pad[data-sub]:not([data-sub=""])::after { content: attr(data-sub); }
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after { content: attr(data-wait); }
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after,
+.pf-pad[data-sub]:not([data-sub=""])::after {
   display: block;
   margin-top: 3px;
   font-family: var(--font-mono);
@@ -4753,6 +4766,7 @@ html.handheld .handheld-gate {
 }
 @media (prefers-reduced-motion: reduce) {
   .pf-pad.flash { animation: none; }
+  .pf-k-ghost.fade { animation: none; }
   .pf-knob.bump-lo .pf-k-turn, .pf-knob.bump-hi .pf-k-turn { animation: none; }
 }
 

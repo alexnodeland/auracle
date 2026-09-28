@@ -739,7 +739,15 @@ async function shoot(browser, port, shot) {
   if (snap) await snap("end");
 
   const clips = clock.cuts.map((c, i) => (c.rate === 1 ? [c.spec, clock.start(i)] : [c.spec, clock.start(i), c.rate]));
-  const base = { id: shot.id, beat: shot.beat, pre: shot.pre || 0, dur: +end.toFixed(3), rects, stamps: clock.stamps, clips: clips.length ? clips : undefined, errors, logs: logs.length ? logs : undefined };
+  // The app's own timing marks (window.__aur.marks: boot start, veil down,
+  // first sound, pool full, PERFORM wired, patch opened…), so every rehearsal
+  // is also a performance run. `t` is the page's clock (ms since it loaded);
+  // `at0` is that clock at this shot's t = 0, to read them beside the stamps.
+  const perf = await page
+    .evaluate(() => (window.__aur && window.__aur.marks ? { marks: window.__aur.marks(), now: performance.now() } : null))
+    .then((p) => (p ? { at0: Math.round(p.now - now() * 1000), marks: p.marks } : undefined))
+    .catch(() => undefined);
+  const base = { id: shot.id, beat: shot.beat, pre: shot.pre || 0, dur: +end.toFixed(3), rects, stamps: clock.stamps, perf, clips: clips.length ? clips : undefined, errors, logs: logs.length ? logs : undefined };
 
   // Downloads the shot started (exports), kept beside it.
   const saveMid = async (list) => {
