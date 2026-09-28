@@ -40,14 +40,16 @@ const PLAN = [
     beat: "open",
     shot: "vt-open",
     // Wide on the map before any fit; in on the pair; wide as the map
-    // lights; then a slow push onto the dot that is played.
+    // lights; then a slow, centred push. Centred, not onto the dot that is
+    // played: this session's first deal can differ between takes (it is dealt
+    // while the pool fills), and with it which dot that is.
     cam: [[0, 1.0, 0.5, 0.5], [1.4, 1.0, 0.5, 0.5], [2.0, ...aim(1.12, 960, 470)], [6.1, ...aim(1.12, 960, 470)],
-      [6.9, 1.0, 0.5, 0.5], [8.2, 1.0, 0.5, 0.5], [9.8, ...aim(1.35, 520, 420)], [14.2, ...aim(1.45, 480, 400)]],
+      [6.9, 1.0, 0.5, 0.5], [8.4, 1.0, 0.5, 0.5], [14.2, ...aim(1.08, 1080, 540)]],
   },
   {
     beat: "title",
     shot: "vt-title",
-    cam: [[0, ...aim(1.1, 1100, 560)], ["title2", ...aim(1.16, 1150, 560)]],
+    cam: [[0, ...aim(1.08, 1080, 540)], ["title2", ...aim(1.12, 1100, 540)]],
   },
   {
     beat: "tabs",
