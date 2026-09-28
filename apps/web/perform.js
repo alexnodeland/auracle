@@ -893,6 +893,47 @@ export function createPerform(host) {
       return new Map();
     }
   })();
+  // Every preset, measured ahead of time and shipped with the app
+  // (`perform-wirings.json`, written natively by `make perform-wirings`,
+  // keyed here by the same `wireKey`). A preset is what a newcomer meets
+  // first — the warm start's cards, the preset bank, booth mode's demo set —
+  // and its first measurement cost eleven-odd seconds of "listening…" on
+  // every control. A shipped wiring is played at once and always re-measured
+  // in the background: it was taken under a standardizer fitted natively,
+  // not this session's, so it is right about which knobs a control turns and
+  // only roughly right about how far. The player's own cache is asked first.
+  const shipped = new Map(); // wireKey -> {data, rev, shipped: true, tree}
+  const shippedByName = new Map(); // preset name -> its tree text
+  let shippedLoaded = false;
+  const shippedReady = (async () => {
+    try {
+      // The app's own version stamp (`?v=`) rides on this module's URL, so
+      // the file is refetched exactly when a build changed it.
+      const url = new URL(`./perform-wirings.json${new URL(import.meta.url).search}`, import.meta.url);
+      const r = await fetch(url);
+      const f = r.ok ? await r.json() : null;
+      for (const p of (f && f.presets) || []) {
+        if (!p || typeof p.tree !== "string" || !p.data) continue;
+        shipped.set(wireKey(p.tree), { data: p.data, rev: f.rev ?? 0, shipped: true });
+        shippedByName.set(p.name, p.tree);
+      }
+    } catch {
+      // No file (an old bundle, a blocked fetch): presets are measured like
+      // any other patch.
+    }
+    shippedLoaded = true;
+  })();
+  // A measured wiring for this key: the player's cache first, then the file.
+  const knownWiring = (key) => wireCache.get(key) || shipped.get(key) || null;
+  // The first wiring of the patch under the hands is here: a timing mark the
+  // film recorder and the budget specs read (`window.__aur.marks`).
+  function markWired(how) {
+    try {
+      performance.mark("auracle:perform-wired", { detail: { how, name: host.label() } });
+    } catch {
+      /* marks are evidence, never load-bearing */
+    }
+  }
   let wireSaveTimer = null;
   function rememberWiring(json, data, rev) {
     const key = wireKey(json);
@@ -917,17 +958,35 @@ export function createPerform(host) {
     if (!state.cur) return;
     const first = state.cur.knobs.size === 0;
     const key = first ? wireKey(state.cur.json) : null;
-    const hit = first ? wireCache.get(key) : null;
+    const hit = first ? knownWiring(key) : null;
+    if (first && !hit && !shippedLoaded) {
+      // The shipped file is a local fetch of a few milliseconds, begun when
+      // PERFORM was built; a patch asked about before it lands waits for it
+      // rather than starting eleven seconds of renders it may not need.
+      const gen = state.gen;
+      state.measuring = true;
+      renderStatus();
+      knobs.forEach(paintKnob);
+      shippedReady.then(() => {
+        if (state.gen !== gen || state.wire || !state.measuring || inFlight("perform_wire")) return;
+        state.measuring = false;
+        wire();
+      });
+      return;
+    }
     if (hit) {
       // A hit is a use: it moves to the young end, so the patches played
       // most — a booth's demo set, round every few minutes — are the last
       // ones the cache lets go.
-      wireCache.delete(key);
-      wireCache.set(key, hit);
+      if (!hit.shipped) {
+        wireCache.delete(key);
+        wireCache.set(key, hit);
+      }
       applyWired(structuredClone(hit.data));
+      markWired(hit.shipped ? "shipped" : "cached");
       knobs.forEach(paintKnob);
       renderHood();
-      if (hit.rev === tasteRev()) return;
+      if (!hit.shipped && hit.rev === tasteRev()) return;
       // Playable now; the fresh measurement lands when it lands.
       if (!heldForOpen("revalidate")) revalidate();
       return;
@@ -1370,6 +1429,7 @@ export function createPerform(host) {
         renderStatus(m.error ? "could not measure this patch" : "the taste model has not seen enough patches to measure against yet");
       } else {
         applyWired(m.data);
+        markWired("measured");
       }
       knobs.forEach(paintKnob);
       renderHood();
@@ -2233,18 +2293,27 @@ export function createPerform(host) {
     // Which named controls reach the patch `json`, from its cached wiring:
     // null when it has never been measured.
     reachOf(json) {
-      const hit = json ? wireCache.get(wireKey(json)) : null;
+      const hit = json ? knownWiring(wireKey(json)) : null;
       return hit ? reachOfWiring(hit.data.wiring) : null;
     },
+    // A preset's tree as the pool holds it (uids aside), from the shipped
+    // file: what the warm start pre-warms its cards from without inserting
+    // them. Null before the file lands, or for a name it does not have.
+    shippedTree: (name) => shippedByName.get(name) || null,
     // Measure a patch that is *not* playing, for the cache alone (booth
     // mode's pre-warm, booth.js), and answer with the named controls that
     // reach it — at once when it was measured before. The request is an
     // ordinary `perform_wire` whose reply belongs to no patch (`gen` −1), so
     // it is cached and never applied: the sound under a player's hands is
     // not disturbed by a measurement of something else.
-    prewarm(json) {
-      const hit = wireCache.get(wireKey(json));
-      if (hit) return Promise.resolve(reachOfWiring(hit.data.wiring));
+    //
+    // `fresh`: a shipped wiring, or one measured before the model's last
+    // refit, is not enough — measure it under this session's model (the warm
+    // start's cards, while the player is choosing).
+    prewarm(json, { fresh = false } = {}) {
+      const key = wireKey(json);
+      const hit = fresh ? wireCache.get(key) : knownWiring(key);
+      if (hit && (!fresh || hit.rev === tasteRev())) return Promise.resolve(reachOfWiring(hit.data.wiring));
       return new Promise((resolve) => {
         const req = request("perform_wire", { tree: json, overrides: [], bg: true });
         const p = state.pending.get(req);

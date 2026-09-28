@@ -8,6 +8,21 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — the hands first
+
+- **A preset's controls work the moment it lands.** Every one of the 62
+  presets now ships with PERFORM's measurement of it, so the named controls
+  of a preset opened from the bank, a warm-start pick or a booth demo turn at
+  once. They used to read *listening…* for 11–16 s on every patch not visited
+  before, which is where the warm start leaves a newcomer: 8.8 s after
+  *teach it* the controls were still dead. The shipped measurement was taken
+  against a standard pool, not yours, so PERFORM re-measures in the
+  background (*re-checking*) and the controls keep working meanwhile. While
+  the warm start is open, its nine cards are measured against your session
+  too, once the pool has filled. `make perform-wirings` regenerates the file,
+  and `make test` fails when a preset changes without it
+  (`shipped_preset_wirings_are_current`, `budgets.spec.js`).
+
 ### Fixed — true today
 
 - **A guess looks like a guess in TASTE, and in PATCH's node bank.** A pull

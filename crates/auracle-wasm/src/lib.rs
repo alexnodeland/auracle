@@ -41,6 +41,10 @@
 mod level;
 mod live;
 pub use live::LivePoly;
+// PERFORM's shipped preset wirings: what they were measured from (native
+// only — the generator and its currency test use it; the app does not).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod shipped;
 
 use std::sync::Arc;
 
