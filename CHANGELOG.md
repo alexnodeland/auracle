@@ -64,6 +64,15 @@ changelog that edits its own past is not a record.
   a pick back puts its pair back and keeps the other as the next, and a
   patch cut meanwhile is never dealt: its pair is dropped and dealt again
   (`evolve_ahead.spec.js`, `budgets.spec.js`).
+- **What the instrument promises about time is measured.** The app marks
+  its own moments (boot start, the veil lifting, the first sound, a full
+  pool, PERFORM's controls wired, a patch opened, a pair dealt), every film
+  rehearsal records them beside its stamps, and new budget specs hold them:
+  a preset's controls live within a second of its click, a warm-start
+  pick's within a second of *teach it*, the next pair within 0.3 s of a
+  pick, a duel ▶ sounding within 0.15 s, and a patch revisited in PERFORM
+  wired within 0.5 s (1.5 s after a reload), where the spec used to allow
+  5 s and 8 s (`budgets.spec.js`, `perform_instant.spec.js`).
 
 ### Fixed — true today
 
