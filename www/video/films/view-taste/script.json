@@ -182,7 +182,7 @@
         },
         {
           "id": "dir4",
-          "text": "Some rows are what you hear, like shimmer and brightness. Others are what the patch is built from, like supersaws.",
+          "text": "Some rows name what you hear. Others name what the patch is built from.",
           "post": 0.5
         },
         {
@@ -217,7 +217,7 @@
         },
         {
           "id": "trust4",
-          "text": "The number to trust is its score on duels dealt at random. Here, twenty-six percent sharper than chance.",
+          "text": "The number to trust is its score on duels dealt at random: how much sharper than chance it is.",
           "post": 0.4
         },
         {

@@ -14,6 +14,12 @@ Two seeded sessions, each built off camera in a shot's set-up (session.py):
   of a refit ("1 more pick and it redraws your taste map"), so a chapter can
   land the refit on camera.
 
+Both skip twice once the pool is full (session.REDEAL): the app deals the
+next pair ahead while one is on the table, so the first two pairs can both
+come from the filling pool. And every answer waits for the pair behind it to
+be dealt (session.settle), so the pairs come up in the same order in every
+take.
+
 Everything a shot points at on the canvas is found from the engine's own
 taste views and marked with an invisible marker, so a pointer op or a
 callout lands on it wherever the seeded session puts it.
@@ -278,7 +284,7 @@ shots.append({
             {"op": "click", "sel": ".tab[data-tab='dir']"},
             {"op": "wait", "ms": 400},
             {"op": "log", "name": "rows", "js": DIR_MARKS},
-            *marks(("shimmer", "#vt-shimmer"), ("brightness", "#vt-brightness"), ("supersaws", "#vt-supersaws"),
+            *marks(("heard", "#vt-heard"), ("built", "#vt-built"),
                    ("agree", "#vt-agree"), ("right", "#vt-right"), ("left", "#vt-left"), ("guess", "#vt-guess")),
         ]},
     ],

@@ -71,7 +71,7 @@ const PLAN = [
     cam: [[0, 1.0, 0.5, 0.5], ["map1:heard", ...aim(1.08, 1000, 600)], ["map2:Nearby-0.3", ...aim(1.8, 840, 720)], ["map2:flat", ...aim(1.08, 1000, 600)],
       ["map3:Glow-0.2", 1.0, 0.5, 0.5], ["map4-0.2", ...aim(1.8, 1278, 600)], ["map5-0.2", ...aim(1.7, 1090, 300)]],
     callouts: [
-      { at: "map2:Nearby+0.4", until: "map2:flat", mark: "n1", side: "top", dx: -60, dy: -90, text: "noisy sounds, side by side" },
+      { at: "map2:Nearby+0.4", until: "map2:flat", mark: "n1", side: "top", dx: -60, dy: -90, text: "side by side, and named alike" },
       { at: "map3:Glow", until: "map3:bank", mark: "legend", side: "top", ox: -40, dx: -60, dy: -70, text: "dim to bright: would like" },
       { at: "map3:bank", until: "map4", mark: "row0", side: "right", dx: 80, dy: 10, text: "its best guesses first" },
       { at: "map4:small", until: "map5", mark: "yes", side: "left", ox: -8, dx: -120, dy: -70, text: "small and bright: a firm yes" },
@@ -94,7 +94,7 @@ const PLAN = [
     chapter: "03 · styles",
     cam: [[0, 1.0, 0.5, 0.5], ["styles2", ...aim(1.12, 1000, 480)], ["styles4-0.3", ...aim(1.6, 600, 300)], ["styles5:sticks", ...aim(1.25, 700, 360)]],
     callouts: [
-      { at: "styles3:separate", until: "styles4", mark: "chips", side: "bottom", ox: -440, dx: 60, dy: 90, text: "three styles here, each with its share" },
+      { at: "styles3:separate", until: "styles4", mark: "chips", side: "bottom", ox: -440, dx: 60, dy: 90, text: "your styles, each with its share" },
       { at: "styles4:plays", until: "styles4:plays+2.9", mark: "play-first", side: "bottom", dx: 40, dy: 110, text: "its best example" },
       { at: "styles4:plays+2.9", until: "styles5", mark: "play-second", side: "bottom", dx: 40, dy: 110, text: "another style's" },
       { at: "styles5:sticks", mark: "named", side: "bottom", dx: 60, dy: 100, text: "yours now" },
@@ -108,10 +108,9 @@ const PLAN = [
     callouts: [
       { at: "dir2:right", until: "dir2:left", mark: "right", side: "right", dx: 70, dy: -40, text: "toward" },
       { at: "dir2:left", until: "dir3", mark: "left", side: "left", dx: -70, dy: 40, text: "away" },
-      { at: "dir3:every", until: "dir4", mark: "agree", side: "left", dx: -90, dy: -50, text: "noise srcs: all three lean away" },
-      { at: "dir4:shimmer", until: "dir4:Others", mark: "shimmer", side: "left", dx: -90, dy: -40, text: "what you hear" },
-      { at: "dir4:brightness", until: "dir4:Others", mark: "brightness", side: "left", dx: -90, dy: -40, text: "what you hear" },
-      { at: "dir4:supersaws", until: "dir5", mark: "supersaws", side: "left", dx: -90, dy: 40, text: "what it's built from" },
+      { at: "dir3:every", until: "dir4", mark: "agree", side: "left", dx: -90, dy: -50, text: "noise srcs: every style leans away" },
+      { at: "dir4:hear", until: "dir4:Others", mark: "heard", side: "left", dx: -90, dy: -40, text: "what you hear" },
+      { at: "dir4:built", until: "dir5", mark: "built", side: "left", dx: -90, dy: 40, text: "what it's built from" },
       { at: "dir5:across", mark: "guess", side: "right", dx: 50, dy: -70, text: "hollow, with a ?: still a guess" },
     ],
   },
@@ -133,10 +132,10 @@ const PLAN = [
     chapter: "06 · when it's wrong",
     cam: [[0, 1.0, 0.5, 0.5], ["wrong2-0.2", ...aim(1.5, 1250, 560)], ["wrong3:star-0.3", ...aim(1.3, 300, 800)], ["wrong4", 1.0, 0.5, 0.5], ["wrong6", ...aim(1.5, 1330, 540)]],
     callouts: [
-      { at: "wrong2:thinks+0.5", until: "wrong3", mark: "wrong", side: "right", ox: 8, dx: 110, dy: -80, text: "it's sure you'll like this: 81%" },
+      { at: "wrong2:thinks+0.5", until: "wrong3", mark: "wrong", side: "right", ox: 8, dx: 110, dy: -80, text: "it's sure you'll like this" },
       { at: "wrong3:star", until: "wrong4", mark: "star1", side: "right", dx: 90, dy: -40, text: "one star" },
       { at: "wrong4:other+0.3", until: "wrong5:See", mark: "pred", side: "bottom", dx: 60, dy: 70, text: "it had this backwards", color: "b" },
-      { at: "wrong6:lower", mark: "wrong2", side: "right", ox: 8, dx: 110, dy: -80, text: "a little lower: 78%" },
+      { at: "wrong6:lower", mark: "wrong2", side: "right", ox: 8, dx: 110, dy: -80, text: "a little lower" },
     ],
   },
   {
