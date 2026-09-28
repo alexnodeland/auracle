@@ -13,7 +13,9 @@
 //
 // Picture: Chromium's screencast, JPEG q92, every frame the page paints, with
 // its own timestamp; resampled to a constant 30 fps by time, not by count, so
-// a dropped paint repeats a frame instead of shortening the clip. Sound: the
+// a dropped paint repeats a frame instead of shortening the clip. The paints
+// are kept as JPEG files (out/FILM/shots/ID/NNNNN.jpg) with an index
+// (ID.frames.json); nothing is encoded, so the next shot starts at once. Sound: the
 // app's master bus, tapped through the ?film capture hook (main.js), so the
 // voices and every audition are in it (▶ on a bank row, the duels, the node
 // bank's preview, space), and no toast lands in the shot. Both are stamped in
@@ -121,7 +123,6 @@
 //                                       here (quietly; to show a take, press ● rec on camera)
 //   eval {js}                           run js in the page
 import { createRequire } from "node:module";
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
@@ -153,15 +154,6 @@ const FPS = 30;
 const KEEP_S = 6;
 const MIME = { ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json", ".wav": "audio/wav" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
-
-function ffmpegPath() {
-  const r = spawn("python3", ["-c", "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())"]);
-  return new Promise((res) => {
-    let s = "";
-    r.stdout.on("data", (d) => (s += d));
-    r.on("close", () => res(s.trim()));
-  });
-}
 
 // The app's own dev-server rules: no-store, so a rebuilt pkg/ is never stale.
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".wasm": "application/wasm", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp" };
@@ -583,7 +575,7 @@ async function step(page, s, ctx = {}) {
 
 const describe = (s) => [s.op, s.sel || s.name || s.v || s.key || (s.keys && s.keys.join("+")) || s.text || s.file || ""].join(" ").trim();
 
-async function shoot(browser, port, shot, ff) {
+async function shoot(browser, port, shot) {
   const beat = timeline.beats.find((b) => b.id === shot.beat);
   const errors = [];
   const [W, H] = spec.viewport || [1920, 1080];
@@ -789,25 +781,39 @@ async function shoot(browser, port, shot, ff) {
   await ctx.close();
   if (errors.length) console.warn(`  [${shot.id}] ${errors.join(" | ")}`);
 
-  // Resample the paints to a constant frame rate, by timestamp.
+  // Resample the paints to a constant frame rate, by timestamp. The picture
+  // is kept as the screencast's own JPEGs, one file per paint shown, with an
+  // index from each constant-rate frame to its paint (ID.frames.json): the
+  // stage draws them directly. Encoding a clip here (VP9, since Playwright's
+  // Chromium has no H.264) held the browser for about as long again as the
+  // shot itself, only for the renderer to decode it frame by frame.
   frames.sort((a, b) => a.t - b.t);
   const start = t0;
   const n = Math.round(end * FPS);
-  // WebM/VP9: Playwright's Chromium has no H.264, and the stage seeks this
-  // clip frame by frame, so a keyframe every half second keeps seeks cheap.
-  const out = path.join(odir, `${shot.id}.webm`);
-  const enc = spawn(ff, ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(FPS), "-c:v", "mjpeg", "-i", "-", "-c:v", "libvpx-vp9", "-crf", "16", "-b:v", "0", "-g", "15", "-deadline", "good", "-cpu-used", "4", "-row-mt", "1", "-pix_fmt", "yuv420p", out], { stdio: ["pipe", "inherit", "inherit"] });
+  const fdir = path.join(odir, shot.id);
+  fs.rmSync(fdir, { recursive: true, force: true });
+  fs.mkdirSync(fdir, { recursive: true });
+  const fileOf = new Map(); // paint index → file number
+  const runs = []; // [file, count] over the n constant-rate frames
   let j = 0;
   for (let i = 0; i < n; i++) {
     const tt = start + i / FPS;
     while (j + 1 < frames.length && frames[j + 1].t <= tt) j++;
-    const buf = Buffer.from(frames[j].data, "base64");
-    if (!enc.stdin.write(buf)) await new Promise((r) => enc.stdin.once("drain", r));
+    let k = fileOf.get(j);
+    if (k == null) {
+      k = fileOf.size;
+      fileOf.set(j, k);
+      fs.writeFileSync(path.join(fdir, `${String(k).padStart(5, "0")}.jpg`), Buffer.from(frames[j].data, "base64"));
+    }
+    if (runs.length && runs[runs.length - 1][0] === k) runs[runs.length - 1][1]++;
+    else runs.push([k, 1]);
   }
-  enc.stdin.end();
-  await new Promise((r) => enc.on("close", r));
-  const paints = frames.filter((f) => f.t >= start && f.t <= start + end).length;
-  const meta = { ...base, fps: FPS, audio_offset: recAt - start, audio_until: captureStop ? captureStop.t : undefined, paints_per_s: paints / end, downloads: downloads.filter((x) => x !== take).map(({ t, name }) => ({ t, name })) };
+  // Every paint's time in the clip, for takes.py's frame-rate check.
+  const paintTimes = frames.filter((f) => f.t >= start && f.t <= start + end).map((f) => +(f.t - start).toFixed(4));
+  fs.writeFileSync(path.join(odir, `${shot.id}.frames.json`), JSON.stringify({ fps: FPS, n, runs, paints: paintTimes }));
+  fs.rmSync(path.join(odir, `${shot.id}.webm`), { force: true });
+  const paints = paintTimes.length;
+  const meta = { ...base, fps: FPS, picture: "frames", audio_offset: recAt - start, audio_until: captureStop ? captureStop.t : undefined, paints_per_s: paints / end, downloads: downloads.filter((x) => x !== take).map(({ t, name }) => ({ t, name })) };
   write(meta);
   console.log(`  ${shot.id}: ${end.toFixed(1)}s, ${meta.paints_per_s.toFixed(1)} paints/s, audio offset ${meta.audio_offset.toFixed(3)} s`);
   return errors.length === 0;
@@ -816,13 +822,12 @@ async function shoot(browser, port, shot, ff) {
 (async () => {
   const srv = await serve();
   const port = srv.address().port;
-  const ff = DRY ? null : await ffmpegPath();
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--force-color-profile=srgb"] });
   const failed = [];
   try {
     for (const shot of spec.shots) {
       if (only && !only.has(shot.id)) continue;
-      if (!(await shoot(browser, port, shot, ff))) failed.push(shot.id);
+      if (!(await shoot(browser, port, shot))) failed.push(shot.id);
     }
   } finally {
     await browser.close();

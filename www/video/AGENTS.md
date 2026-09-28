@@ -38,7 +38,9 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
 - **One browser at a time.** Every rehearsal and recording goes through
   `tools/one_browser.sh` (first come, first served); `rehearse.sh` and
   `walkthrough.sh` already do. Record on a quiet machine: no builds, suites or
-  renders at the same time.
+  renders at the same time. Only recording needs it: `record_films.sh` logs
+  "quiet window over" once every take is in, and the renders and encodes
+  after that can share the machine.
 - **Wait on the app, not the clock.** A shot waits for a state (`until`, a
   stamp) rather than sleeping, and a cut (`clips`) removes a wait the viewer
   should not sit through. A hold that ends at a stamp still presses at its
@@ -65,8 +67,8 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
 | Shared sounds, once | `make film-sounds` |
 | Voice a script | `make film-voice FILM=<name>` |
 | Rehearse a walkthrough | `make film-rehearse FILM=<name>` |
-| Record and render a walkthrough | `make film-record FILM=<name> POSTER=<seconds>` |
-| Several, in turn, with previews | `make film-record-all FILMS="<name> <poster> <name> <poster>"` |
+| Record and render a walkthrough | `make film-record FILM=<name> POSTER=<seconds>` (`SHOTS=a,b` re-records only those; `DRAFT=1` for a fast review encode) |
+| Several: record all, then finish each, with previews | `make film-record-all FILMS="<name> <poster> <name> <poster>"` (`DRAFT=1`) |
 | A 720p preview to send for review | `make film-preview FILM=<name>` |
 | Render an illustrated film | `make film FILM=<name> POSTER=<seconds>` |
 | Publish | `make film-publish FILMS="<a> <b>"` |

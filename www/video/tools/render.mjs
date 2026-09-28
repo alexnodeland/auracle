@@ -137,9 +137,19 @@ async function main() {
           : ["-c:v", "mjpeg", "-i", "-", "-c:v", "copy"];
         const enc = spawn(ff, ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(fps), ...encArgs, part], { stdio: ["pipe", "inherit", "inherit"] });
         const page = await openPage(browser, port);
+        // The capture straight from DevTools: Playwright's screenshot() waits
+        // on fonts and stability checks the stage has already settled, and
+        // optimizeForSpeed picks Chromium's fast JPEG encoder.
+        const cdp = await page.context().newCDPSession(page);
+        const grab = async () => {
+          const r = await cdp.send("Page.captureScreenshot", lossless
+            ? { format: "png", fromSurface: true }
+            : { format: "jpeg", quality: 95, fromSurface: true, optimizeForSpeed: true });
+          return Buffer.from(r.data, "base64");
+        };
         for (let i = a; i < b; i++) {
           await page.evaluate((t) => window.__stage.seek(t), i / fps);
-          const shot = lossless ? await page.screenshot({ type: "png" }) : await page.screenshot({ type: "jpeg", quality: 95 });
+          const shot = await grab();
           if (!enc.stdin.write(shot)) await new Promise((r) => enc.stdin.once("drain", r));
           done++;
           if (done % 60 === 0) {

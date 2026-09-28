@@ -41,7 +41,8 @@ score:   fit_score.py sound/study.json → the engine plays it (examples/score.r
 cues:    render.mjs --cues (the picture's envelopes, for the mix)
 mix:     mix.py voice + music + stingers + app sound, ducked, −16 LUFS, captions (.vtt)
 render:  render.mjs → part-*.mkv + picture.ffconcat (frames, in parallel)
-encode:  mix.py --encode --poster T → <film>.mp4, .webm, .jpg, .webp
+encode:  mix.py --encode [--draft] --preview --poster T → <film>.mp4, .webm, -preview.mp4, .jpg, .webp
+         (side by side; --draft: a fast MP4 and the preview only)
 publish: publish.py → www/landing/assets/film/, guide markers, Films page, README, app chip
 ```
 
@@ -69,7 +70,10 @@ A walkthrough is ready to record when:
    ([ADR-004](../decisions/004-descriptions-stay-true.md)).
 
 Record on a quiet machine, one film at a time
-([ADR-003](../decisions/003-one-browser-at-a-time.md)). After encoding, review
+([ADR-003](../decisions/003-one-browser-at-a-time.md)). Only the recording
+needs quiet: `record_films.sh` records every film first and logs "quiet
+window over", then finishes them. Re-record only what changed
+(`--shot a,b`), and review a `--draft` encode before the full one. After encoding, review
 before publishing: `takes.py` clean, a contact sheet of frames, integrated
 loudness about −16 LUFS, the poster.
 
@@ -77,7 +81,9 @@ loudness about −16 LUFS, the poster.
 
 Frames dominate: roughly 0.8 GB per minute of film at 1080p in parts. The
 render keeps parts and an ffconcat list rather than joining them, so the peak
-is one copy. Delete a film's parts once its MP4 and WebM exist; they
+is one copy. A take's own frames (one JPEG per paint in
+`out/<film>/shots/<shot>/`) are smaller, a few hundred MB a film, and are kept:
+they are what a re-render reads. Delete a film's parts once its MP4 and WebM exist; they
 re-render deterministically.
 
 ## Sending a film for review

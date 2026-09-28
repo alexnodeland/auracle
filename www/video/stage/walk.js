@@ -115,6 +115,13 @@ export async function walkthrough(stage, { plan, shots = "shots", captions = tru
       try {
         const r = await fetch(`../../out/${stage.tl.film}/${shots}/${id}.json`, { cache: "no-store" });
         if (r.ok) metas[id] = await r.json();
+        // The picture as the screencast's own frames (footage.mjs), when the
+        // sidecar says the take has them; an older take is a .webm. Asked
+        // only then: a 404 is a page error, and the renderer stops on those.
+        if (metas[id]?.picture === "frames") {
+          const fr = await fetch(`../../out/${stage.tl.film}/${shots}/${id}.frames.json`, { cache: "no-store" });
+          if (fr.ok) metas[id].framesIndex = { ...(await fr.json()), base: `../../out/${stage.tl.film}/${shots}/${id}` };
+        }
       } catch {
         /* a shot not recorded yet draws its callouts where they were typed */
       }
@@ -135,7 +142,7 @@ export async function walkthrough(stage, { plan, shots = "shots", captions = tru
       fout: 0.25,
       build(layer) {
         const F = p.frame || { x: 120, y: 70, w: 1680, h: 945 };
-        const clip = footage(layer, { src: `../../out/${stage.tl.film}/${shots}/${p.shot}.webm`, ...F });
+        const clip = footage(layer, { src: `../../out/${stage.tl.film}/${shots}/${p.shot}.webm`, frames: meta.framesIndex || null, ...F });
         const s = F.w / 1920;
         const svg = svgLayer(layer);
         // A callout pinned to a mark its shot has not measured (not recorded

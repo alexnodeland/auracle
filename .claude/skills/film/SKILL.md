@@ -34,13 +34,16 @@ order of work.
    `truth-pass` skill). When the app falls short, fix or report the app.
 7. **Record and render** on a quiet machine:
    `make film-record FILM=<name> POSTER=<seconds>`. One film at a time; watch
-   disk (`docs/runbooks/disk-full.md`).
+   disk (`docs/runbooks/disk-full.md`). After an app change, re-record only
+   the shots it touches (`SHOTS=a,b`), and review a `DRAFT=1` encode (fast
+   MP4 and preview) before the full one.
 8. **Review** before publishing: `python3 www/video/tools/takes.py <name>`
    clean; a contact sheet of frames; integrated loudness about −16 LUFS; the
    poster. Send the 720p preview for human review (`make film-preview
    FILM=<name>`; uploads stop at 30 MB). Several films in turn:
-   `make film-record-all FILMS="<name> <poster> …"` records, encodes, clears
-   frames and makes previews.
+   `make film-record-all FILMS="<name> <poster> …"` records them all first
+   (the quiet part, ending "quiet window over" in the log), then encodes,
+   clears frame parts and makes previews.
 9. **Publish**: add chapter names (`CHAPTER_NAMES`) and the silent loop
    (`VIEW_LOOPS`) to `www/video/tools/publish.py`, then
    `make film-publish FILMS="<name>"`, then `make site && make site-check`.

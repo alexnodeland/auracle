@@ -139,13 +139,30 @@ for any other); timings measured under load don't predict a recording.
 
     www/video/tools/walkthrough.sh <film> <poster seconds>
 
-On a quiet machine. It records every shot (picture at 30 fps from Chromium's
-screencast, sound from the app's master bus through the `?film` capture hook,
-so every audition is in it), then checks the takes (`tools/takes.py`: errors,
-paint rate, sound). After that it fits and plays the study score, lays the
+On a quiet machine. It records every shot (picture from Chromium's
+screencast, kept as the JPEG it sends for each paint plus an index of which
+paint each 30 fps frame shows, so nothing is encoded between shots; sound from
+the app's master bus through the `?film` capture hook, so every audition is in
+it), then checks the takes (`tools/takes.py`: errors, the paint rate while the
+page moves, sound). After that it fits and plays the study score, lays the
 app's sound under each shot's stretch of film (`tools/app_audio.py`, which
-follows the cuts), mixes, renders the frames, and encodes. `--no-record`
-re-mixes existing takes; `--shot a,b` re-records a few.
+follows the cuts), mixes, renders the frames on every core, and encodes the
+MP4, the WebM and the 720p preview side by side.
+
+- `--shot a,b` re-records only those shots and reuses the other takes.
+- `--record-only` stops after the takes; `--no-record` finishes from takes
+  already on disk. Only recording needs the quiet machine.
+- `--draft` encodes a fast MP4 and the preview, no WebM: for review. Finish
+  with `--no-record` (no `--draft`) before publishing.
+
+`tools/record_films.sh [--draft] <film> <poster> …` records every film first
+and logs "quiet window over", then finishes each in turn.
+
+Where the time goes, for a 4½-minute film (EVOLVE): the shots themselves take
+about 11 minutes and their set-ups about 7; the render about 10 at four pages;
+the draft encode about 3, the full encode about 12. Encoding each shot to VP9
+used to hold the browser another 19 minutes, and the final MP4 and WebM ran
+one after the other.
 
 ## Publishing
 
@@ -164,7 +181,8 @@ opens exists. `make site` then places the one copy wherever it is embedded.
 
 The steps above are also `make` targets: `make film-sounds`, `make
 film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=…`,
-`make film-record FILM=… POSTER=…`, `make film-record-all FILMS="name poster …"`,
+`make film-record FILM=… POSTER=… [DRAFT=1] [SHOTS=a,b]`,
+`make film-record-all FILMS="name poster …" [DRAFT=1]`,
 `make film-preview FILM=…` and `make film-publish FILMS="…"`.
 
 | Tool | What it does |
@@ -187,7 +205,7 @@ film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=
 | `tools/poster.mjs` | A poster frame on its own |
 | `tools/illustrated.sh` | An illustrated film, voice to encode |
 | `tools/walkthrough.sh` | A walkthrough, recording to encode |
-| `tools/record_films.sh` | Several walkthroughs in turn: record, encode, clear the frames, make a preview; stops at the first failure |
+| `tools/record_films.sh` | Several walkthroughs: records them all (the quiet part), then finishes each (encode, preview, clear the frame parts); `--draft` for review; stops at the first failure |
 | `tools/preview.sh` | A 720p MP4 of a finished film, small enough to send for review |
 | `tools/publish.py` | A finished film onto the site, guide, reference, README and app |
 

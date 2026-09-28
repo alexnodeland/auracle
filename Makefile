@@ -378,14 +378,16 @@ film-rehearse:
 	node www/video/tools/validate.mjs $(FILM)
 	www/video/tools/rehearse.sh $(FILM)
 
-## film-record: record a walkthrough on a quiet machine and render it (FILM=name POSTER=seconds)
+## film-record: record a walkthrough on a quiet machine and render it
+## (FILM=name POSTER=seconds [DRAFT=1: fast MP4 + preview, no WebM] [SHOTS=a,b: re-record only these])
 film-record:
-	www/video/tools/walkthrough.sh $(FILM) $(POSTER)
+	www/video/tools/walkthrough.sh $(FILM) $(POSTER) $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS))
 
-## film-record-all: several walkthroughs in turn, each encoded, cleared of its
-## frames and previewed (FILMS="name poster name poster …")
+## film-record-all: record several walkthroughs (the quiet part), then finish
+## each: encoded, previewed, cleared of its frame parts
+## (FILMS="name poster name poster …" [DRAFT=1] [SHOTS=a,b])
 film-record-all:
-	www/video/tools/record_films.sh $(FILMS)
+	www/video/tools/record_films.sh $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS)) $(FILMS)
 
 ## film-preview: a 720p MP4 of a finished film, for review (FILM=name)
 film-preview:
