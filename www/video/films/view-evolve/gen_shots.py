@@ -246,7 +246,11 @@ shots.append({
     "id": "ve-point", "beat": "point", "pre": PRE, "own_setup": True,
     "setup": WARM + [LOG_DEAL, TAG, {"op": "wait", "ms": 1000}, QUIET],
     "marks": {**point_marks, "pad": CARD[0], "padplay": PAD_PLAY},
-    "clips": [["point4", "@taught+0.9"]],
+    # The cut lands once PICKS reads 18: "teach it" switches to PERFORM
+    # first (stamp taught) and the eighteen picks land a few seconds later
+    # (the rehearsal of 28 September read "picks 0 · Loading those in…" at
+    # taught+0.8, under "eighteen answers").
+    "clips": [["point4", "@learned-0.3"]],
     "actions": [
         {"at": "point2:Play", "op": "click", "sel": PAD_PLAY},
         {"at": "point2:closest", "op": "seq", "steps": [
@@ -259,9 +263,10 @@ shots.append({
         {"at": "point3:passed+0.4", "op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
         {"at": "@taught+0.2", "op": "view", "v": "evolve"},
         {"at": "@taught+0.4", "op": "eval", "js": BLUR["js"]},
-        {"at": "@taught+0.7", "op": "mark", "name": "copy", "sel": "#teach-copy"},
-        {"at": "@taught+0.7", "op": "mark", "name": "picks", "sel": "#duel-count"},
-        {"at": "@taught+0.8", "op": "log", "name": "state", "js": STATE_JS},
+        {"at": "@taught+0.5", "op": "until", "js": "document.getElementById('duel-count').textContent.trim() === '18' && /18 picks in/.test(document.getElementById('teach-copy').textContent)", "ms": 120000, "stamp": "learned"},
+        {"at": "@learned+0.1", "op": "mark", "name": "copy", "sel": "#teach-copy"},
+        {"at": "@learned+0.1", "op": "mark", "name": "picks", "sel": "#duel-count"},
+        {"at": "@learned+0.2", "op": "log", "name": "state", "js": STATE_JS},
     ],
 })
 
@@ -379,7 +384,9 @@ shots.append({
         {"at": "rhythm3:Evolve+0.3", "op": "until", "sel": "#evolve-btn:not([disabled])", "ms": 900000, "stamp": "bred"},
         {"at": "@bred+0.3", "op": "log", "name": "after", "js": STATE_JS},
         {"at": "@bred+0.3", "op": "log", "name": "fresh", "js": FRESH_JS},
-        {"at": "rhythm4:Play", "op": "seq", "steps": [
+        # 0.35 s after "Play": the cut lands 0.3 s before the bred stamp, and
+        # "Play" is 0.04 s into the line, so at the word the stamp is not in.
+        {"at": "rhythm4:Play+0.35", "op": "seq", "steps": [
             {"op": "eval", "js": "window.__veChild = document.querySelector('#bank-list .bank-item.fresh .bi-name').textContent.trim()"},
             {"op": "click", "sel": "#bank-list .bank-item.fresh >> nth=0 >> .bi-name"},
             {"op": "until", "js": "(document.getElementById('rack-subject')?.textContent || '').includes(window.__veChild)", "ms": 60000, "stamp": "child"},

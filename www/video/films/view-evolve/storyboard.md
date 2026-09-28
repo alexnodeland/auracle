@@ -135,9 +135,11 @@ blur, and a skip that is clicked on camera is followed by one.
   - `point2:Play`: ▶ on the first pad card (its phrase is heard);
   - `point2:closest`: the two pads and the texture;
   - `point3:passed+0.2`: **teach it**.
-- **Cut** (`clips`): from `point4` to `@taught+0.9`. The teach takes seconds
-  and then switches to PERFORM; the shot goes to EVOLVE, which reads
-  *18 picks in*.
+- **Cut** (`clips`): from `point4` to `@learned-0.3`. The teach switches to
+  PERFORM first (stamp `taught`), where the shot goes to EVOLVE; the eighteen
+  picks land about three seconds later (stamp `learned`: PICKS reads 18 and
+  the meter *18 picks in*). The cut used to land at `@taught+0.9`, on "picks
+  0 · Loading those in…", under "eighteen answers".
 - **Callouts:**
   - "one per family, then filled" on the grid;
   - "▶ hear it";
@@ -151,10 +153,13 @@ blur, and a skip that is clicked on camera is followed by one.
   forecast's hold, so the forecast line is clear.
 - **Actions:** three quick duels (1, 2, pick), each heard. The picks land on
   `meter1:dot` and `meter2:away`. The third, on `meter4:sixth`, is the sixth
-  since the last fit, and the refit takes the meter over: "● it just learned
-  — see what changed ▸".
+  since the last fit: the sixth pip lights and the meter reads "● learning
+  from your last 6 picks…". The refit waits out the pick's seven-second undo
+  window, so "● it just learned — see what changed ▸" arrives after the
+  chapter, when the fit lands (it stays until the next pick).
 - **Callouts** (all amber): "one dot per pick" on the pips; "its forecast,
-  made before you picked" on the forecast; "it just learned" on the copy.
+  made before you picked" on the forecast; "learning from your last six" on
+  the copy.
 
 ## `turn5` + `fair` — shot `ve-fair` (fair1–5) · 05 · fair questions
 
@@ -183,11 +188,14 @@ blur, and a skip that is clicked on camera is followed by one.
 - **Cut** (`clips`): from `breed3` to `@bred-0.4`. A generation takes about
   two minutes.
 - **After the cut:** ⚡ rows glow in the bank; the toast reads *Gen 1: N new
-  patches in the bank. The N patches it liked least were retired to make
-  room*; the lineage lines say what changed, in real units. `breed7:listen`
+  patches in the bank. The N it liked least were replaced: A, B, C +N more*
+  (by name); the lineage lines say what changed, in real units, with names
+  and *liked +0.06*. `breed7:listen`
   plays ▶ on the first new row, whose phrase is heard.
 - **Callouts:** "breeds from its ten best"; "⚡ a new child"; "the ones it
-  liked least, retired"; "what each child changed" (amber); "▶ hear it".
+  liked least, replaced, by name"; "what each child changed" (amber); "▶ hear
+  it". The line says *replaces*, the app's word ("it won't be replaced" on a
+  save, "were replaced" on a generation); it said *retires* before.
 
 ## `turn7` + `keep` — shot `ve-keep` (keep1–5) · 07 · stars, save, cut
 
@@ -199,13 +207,14 @@ blur, and a skip that is clicked on camera is followed by one.
   - `keep2:teach`: four stars ("… rated 4★");
   - `keep3:keeps`: save ("Saved … — it won't be replaced. 4/10 slots used.");
   - `keep4:Cut`: hover the next unsaved row (its cut control shows on
-    approach), then cut it ("Cut … #id." with undo).
+    approach), then cut it ("Cut … — it won't be dealt again", with undo).
 - **Camera:** wide, so the rail and the toasts are both in view (the rows
   re-sort as the model takes each answer in, so the callouts point at what
   stays put); the rail at 1.4 for the last line.
 - **Callouts:** "a rating teaches" (amber) on the rating's toast; "a save
-  keeps, and teaches nothing" on the save's toast; "seven seconds to undo" on
-  the cut's toast; "saved: never retired" on the pin budget.
+  keeps, and teaches nothing" on the save's toast; "never dealt again; seven
+  seconds to undo" on the cut's toast; "saved: never replaced" on the pin
+  budget.
 
 ## `turn8` + `rhythm` — shot `ve-rhythm` (rhythm1–5) · 08 · a working rhythm
 
@@ -218,7 +227,8 @@ Putting it together.
   - `rhythm3:Evolve`: EVOLVE POOL.
 - **Cut** (`clips`): from `rhythm4` to `@bred-0.3`.
 - **After the cut:**
-  - `rhythm4:Play`: the first new ⚡ row is clicked, which opens the child on
+  - `rhythm4:Play+0.35` (the cut lands 0.3 s before the `bred` stamp): the
+    first new ⚡ row is clicked, which opens the child on
     the bench and in PATCH, and the child plays C, Am, F, G on the keys;
   - after the chords, its row is saved;
   - `rhythm5:back`: back to EVOLVE; `rhythm5:round`: a pick.

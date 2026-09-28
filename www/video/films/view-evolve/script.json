@@ -259,7 +259,7 @@
       "id": "breed",
       "bed_db": -60,
       "lead": 0.3,
-      "tail": 1.73,
+      "tail": 1.62,
       "lines": [
         {
           "id": "breed1",
@@ -278,7 +278,7 @@
         },
         {
           "id": "breed4",
-          "text": "To make room, it retires the sounds it likes least. A sound you saved is never retired.",
+          "text": "To make room, it replaces the sounds it likes least. A sound you saved is never replaced.",
           "post": 0.4
         },
         {

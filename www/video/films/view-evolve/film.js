@@ -138,7 +138,7 @@ export async function build(stage) {
         callouts: [
           { at: "meter1:dot", until: T("meter3", -0.9), mark: "pips", side: "bottom", dx: 30, dy: 90, text: "one dot per pick", color: "b" },
           { at: "meter3:forecasts", until: T("meter4", -0.9), mark: "pred", side: "bottom", dy: 90, text: "its forecast, made before you picked", color: "b" },
-          { at: T("meter4:sixth", 0.4), mark: "copy", side: "bottom", ox: -60, dx: 40, dy: 90, text: "it just learned", color: "b" },
+          { at: T("meter4:sixth", 0.4), mark: "copy", side: "bottom", ox: -60, dx: 40, dy: 90, text: "learning from your last six", color: "b" },
         ],
       },
       turn("turn5", "ve-fair", aim(1.35, 1086, 250)),
@@ -163,7 +163,7 @@ export async function build(stage) {
         callouts: [
           { at: T("breed1:press", 0.3), until: T("breed3", -0.9), mark: "evolve", side: "bottom", dx: -120, dy: 100, text: "breeds from its ten best" },
           { at: "breed3:lightning", until: T("breed4", -0.9), mark: "fresh", side: "right", dx: 90, dy: 20, text: "⚡ a new child" },
-          { at: "breed4:retires", until: T("breed5", -0.9), mark: "toast", side: "top", dx: -60, dy: -70, text: "the ones it liked least, retired" },
+          { at: "breed4:replaces", until: T("breed5", -0.9), mark: "toast", side: "top", dx: -60, dy: -70, text: "the ones it liked least, replaced, by name" },
           { at: "breed5:changed", until: T("breed7", -0.9), mark: "line1", side: "top", ox: -420, dx: 40, dy: -70, text: "what each child changed", color: "b" },
           { at: T("breed7:listen", 0.2), mark: "fresh", side: "right", dx: 90, dy: 20, text: "▶ hear it" },
         ],
@@ -179,8 +179,8 @@ export async function build(stage) {
         callouts: [
           { at: T("keep2:teach", 0.5), until: T("keep3", -0.2), mark: "toast1", side: "top", dx: -60, dy: -70, text: "a rating teaches", color: "b" },
           { at: T("keep3:keeps", 0.5), until: T("keep4", -0.2), mark: "toast2", side: "top", dx: -60, dy: -70, text: "a save keeps, and teaches nothing" },
-          { at: T("keep4:Cut", 0.5), until: T("keep5", -0.9), mark: "toast3", side: "top", dx: -60, dy: -70, text: "seven seconds to undo" },
-          { at: "keep5:save", mark: "budget", side: "bottom", dx: 40, dy: 80, text: "saved: never retired" },
+          { at: T("keep4:Cut", 0.5), until: T("keep5", -0.9), mark: "toast3", side: "top", dx: -60, dy: -70, text: "never dealt again; seven seconds to undo" },
+          { at: "keep5:save", mark: "budget", side: "bottom", dx: 40, dy: 80, text: "saved: never replaced" },
         ],
       },
       turn("turn8", "ve-rhythm", CARDS),

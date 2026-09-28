@@ -149,7 +149,7 @@
       "beat": "point",
       "pre": 3.4,
       "own_setup": true,
-      "clips": [["point4", "@taught+0.9"]],
+      "clips": [["point4", "@learned-0.3"]],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -166,9 +166,10 @@
         {"at": "point3:passed+0.4", "op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000, "stamp": "taught"},
         {"at": "@taught+0.2", "op": "view", "v": "evolve"},
         {"at": "@taught+0.4", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
-        {"at": "@taught+0.7", "op": "mark", "name": "copy", "sel": "#teach-copy"},
-        {"at": "@taught+0.7", "op": "mark", "name": "picks", "sel": "#duel-count"},
-        {"at": "@taught+0.8", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
+        {"at": "@taught+0.5", "op": "until", "js": "document.getElementById('duel-count').textContent.trim() === '18' && /18 picks in/.test(document.getElementById('teach-copy').textContent)", "ms": 120000, "stamp": "learned"},
+        {"at": "@learned+0.1", "op": "mark", "name": "copy", "sel": "#teach-copy"},
+        {"at": "@learned+0.1", "op": "mark", "name": "picks", "sel": "#duel-count"},
+        {"at": "@learned+0.2", "op": "log", "name": "state", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"}
       ]
     },
     {
@@ -511,7 +512,7 @@
         {"at": "rhythm3:Evolve+0.3", "op": "until", "sel": "#evolve-btn:not([disabled])", "ms": 900000, "stamp": "bred"},
         {"at": "@bred+0.3", "op": "log", "name": "after", "js": "[document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim(), 'picks ' + document.getElementById('duel-count').textContent, 'pips ' + document.querySelectorAll('#teach-pips i.lit').length, document.getElementById('teach-copy').textContent, 'pred: ' + document.getElementById('duel-pred').textContent].join(' · ')"},
         {"at": "@bred+0.3", "op": "log", "name": "fresh", "js": "[...document.querySelectorAll('#bank-list .bank-item.fresh .bi-name')].map((e) => e.textContent).join(', ')"},
-        {"at": "rhythm4:Play", "op": "seq", "steps": [{"op": "eval", "js": "window.__veChild = document.querySelector('#bank-list .bank-item.fresh .bi-name').textContent.trim()"}, {"op": "click", "sel": "#bank-list .bank-item.fresh >> nth=0 >> .bi-name"}, {"op": "until", "js": "(document.getElementById('rack-subject')?.textContent || '').includes(window.__veChild)", "ms": 60000, "stamp": "child"}, {"op": "mark", "name": "child", "sel": "#rack-subject"}, {"op": "mark", "name": "row", "sel": "#bank-list .bank-item.live"}, {"op": "log", "name": "child", "js": "window.__veChild + ' | live row ' + (document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent || 'none')"}]},
+        {"at": "rhythm4:Play+0.35", "op": "seq", "steps": [{"op": "eval", "js": "window.__veChild = document.querySelector('#bank-list .bank-item.fresh .bi-name').textContent.trim()"}, {"op": "click", "sel": "#bank-list .bank-item.fresh >> nth=0 >> .bi-name"}, {"op": "until", "js": "(document.getElementById('rack-subject')?.textContent || '').includes(window.__veChild)", "ms": 60000, "stamp": "child"}, {"op": "mark", "name": "child", "sel": "#rack-subject"}, {"op": "mark", "name": "row", "sel": "#bank-list .bank-item.live"}, {"op": "log", "name": "child", "js": "window.__veChild + ' | live row ' + (document.querySelector('#bank-list .bank-item.live .bi-name')?.textContent || 'none')"}]},
         {"at": "rhythm4:children+0.3", "snap": "beat", "op": "hold", "keys": ["a", "d", "g"], "ms": 1300},
         {"at": "rhythm4:children+1.729", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "ms": 1300},
         {"at": "rhythm4:children+3.157", "snap": "beat", "op": "hold", "keys": ["f", "h", "k"], "ms": 1300},
