@@ -1496,11 +1496,15 @@ export function createPerform(host) {
     if (msg) parts.push(msg);
     else if (incoming) parts.push(`opening ${incoming}…`);
     else if (state.heldWire === "measure") parts.push("opening the patch you picked…");
-    else if (state.measuring) parts.push("measuring how this patch moves…");
+    // A re-measure with a wiring in hand (after a glide past TRUST, say)
+    // keeps the dials working on the old one, so it reads as a re-check, as
+    // after a Take. "measuring how this patch moves…" is for a patch with no
+    // wiring yet, whose dials really are waiting.
+    else if (state.measuring && !state.wire) parts.push("measuring how this patch moves…");
     else if (state.wire) {
       const n = state.wire.filter((w) => !w.search).length;
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
-      if (state.revalidating) parts.push("re-checking");
+      if (state.revalidating || state.measuring) parts.push("re-checking");
     }
     if (state.hold) parts.push("wander held");
     else if (z !== "still" && handsOn() && !/^paused/.test(msg || "")) parts.push("paused — your hands are on it");

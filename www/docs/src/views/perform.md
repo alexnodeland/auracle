@@ -21,8 +21,12 @@ shares.
 From the top:
 
 **The header.** The patch's name, a status line, and a small scope. The status
-line says what PERFORM is doing: *measuring how this patch moves…*, *4 of 6
-controls reach this patch*, *wander: drift*, *paused — your hands are on it*.
+line says what PERFORM is doing: *measuring how this patch moves…* (a new
+patch, whose controls wait for it), *4 of 6 controls reach this patch*, with
+*re-checking* after it while the controls keep working on their last
+measurement (after a Take, or once Wander has moved the sound a long way),
+*wander: drift*, and *paused — your hands are on it* for a few seconds after
+you touch anything.
 While a patch you opened is on its way it names it, *opening Acid Line…*, and
 the name above stays the patch your keys still play, dimmed, until the new one
 lands.
