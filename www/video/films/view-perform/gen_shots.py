@@ -276,14 +276,14 @@ shots.append({
         {"at": "honest2:line", "op": "log", "name": "space", "js": "document.querySelector(\"" + SPACE + "\").getAttribute('aria-valuetext') + ' / ' + document.querySelector(\"" + SPACE + " .pf-k-sub\").textContent"},
         # Split at the cut: an `until` past a cut waits for the cut's stamp
         # before it presses anything, which would silence the Grit turn. The
-        # cut lands 0.1 s before the offer does, and nothing can be played
-        # before that stamp, so the chord is struck again 0.1 s after the cut
-        # (a 0.12 s break in the film, under the cut's own crossfade).
+        # chord is struck again 0.02 s after the cut point (a 40 ms break,
+        # under the pad's own envelope; when the offer lands after the cut
+        # point the cut skips the wait and the re-strike sits on the splice).
         hold("honest3:amber", ["d", "g", "h", "k"], until="honest5:marked-0.02"),
-        hold("honest5:marked+0.1", ["d", "g", "h", "k"], until="honest6:take+0.6"),
+        hold("honest5:marked+0.02", ["d", "g", "h", "k"], until="honest6:take+0.6"),
         {"at": "honest4:Turn", "op": "drag", "sel": GRIT, "dy": -70, "ms": 800},
         {"at": "honest4:Turn+1.0", "op": "until", "sel": ".pf-offer.ready", "ms": 90000, "stamp": "offered"},
-        {"at": "honest5:marked+0.1", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
+        {"at": "honest5:marked+0.02", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
         {"at": "honest6:listen", "op": "press", "sel": PAD("Peek"), "ms": 1500},
     ],
 })
