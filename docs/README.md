@@ -70,6 +70,7 @@ plugins work on it.
 | --- | --- | --- |
 | [001](plans/001-evolve-pool-parallel-walks.md) | active | RFC-001, ADR-007 |
 | [002](plans/002-directed-search-offers.md) | active | RFC-002, ADR-008 |
+| [003](plans/003-one-instrument-contracts.md) | active | RFC-003, ADR-009 (Wave 2) |
 
 ## Notes
 
