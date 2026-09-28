@@ -3125,6 +3125,7 @@ function stepBank(d) {
   const next = rows[idx];
   if (!next || next.id === wb.subjectId) return;
   bankScrollTo = next.id;
+  bankScrollAt = performance.now();
   // Stepping is what "the highlighted row" means to someone who just pressed
   // [ or ] — so the step moves the keyboard cursor too, and 1–5 rates what
   // they just stepped to rather than nothing.
@@ -4948,6 +4949,7 @@ function selectDuelSide(side) {
   if (benchBeforeAudition == null) benchBeforeAudition = wb.subjectId;
   setDuelSelection(side);
   bankScrollTo = id;
+  bankScrollAt = performance.now();
   openOnBench(id);
 }
 
@@ -4957,6 +4959,7 @@ $("pd-back").onclick = () => {
   setDuelSelection(null);
   if (back != null) {
     bankScrollTo = back;
+    bankScrollAt = performance.now();
     openOnBench(back);
   }
 };
@@ -5165,6 +5168,7 @@ $("evolve-btn").onclick = () => {
 
 // ---------- patch bank ----------
 let bankScrollTo = null;
+let bankScrollAt = 0;
 
 // The three banks the chips switch between.
 //
@@ -5304,15 +5308,25 @@ function renderBank() {
   list.innerHTML = "";
   list.appendChild(frag);
   syncBankCursor();
+  // Scrolled to the row asked for, by id, and not to whichever row is live
+  // now: opening from the TASTE map asks before the bench has moved, so the
+  // render that saw the request used to scroll to the patch being left and
+  // spend it. The request waits for its row (a few seconds at most, so a
+  // stale one can never move the list later).
   if (bankScrollTo != null) {
-    const target = list.querySelector(".bank-item.live");
-    if (target) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    bankScrollTo = null;
+    const target = list.querySelector(`.bank-item[data-id="${bankScrollTo}"]`);
+    if (target) {
+      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      bankScrollTo = null;
+    } else if (performance.now() - bankScrollAt > 5000) {
+      bankScrollTo = null;
+    }
   }
 }
 
 function bankRow(r, fitted) {
   const el = document.createElement("div");
+  el.dataset.id = String(r.id);
   el.className = "bank-item"
     + (r.id === wb.subjectId ? " live" : "")
     // The keyboard cursor is state, so it is carried by *id* and re-applied
@@ -5762,6 +5776,7 @@ $("bank-list").addEventListener("keydown", (e) => {
     e.preventDefault();
     const id = kbdRowId ?? bankRows[0].id;
     bankScrollTo = id;
+    bankScrollAt = performance.now();
     openOnBench(id);
   } else if (e.key.toLowerCase() === "m") {
     // Save from the keyboard, since the row's buttons are deliberately out of
@@ -17304,6 +17319,7 @@ $("taste-crt").addEventListener("click", (ev) => {
     openOnBench(best.id);
     note(`${nameOf(best.id)} selected — it's on the workbench and under your fingers`);
     bankScrollTo = best.id;
+    bankScrollAt = performance.now();
   }
 });
 
@@ -17381,6 +17397,7 @@ $("taste-crt").addEventListener("keydown", (e) => {
     if (mapCursorId != null) {
       e.preventDefault();
       bankScrollTo = mapCursorId;
+      bankScrollAt = performance.now();
       openOnBench(mapCursorId);
       note(`${nameOf(mapCursorId)} selected — it's on the workbench and under your fingers`);
     }
