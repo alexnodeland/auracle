@@ -102,7 +102,10 @@ test("Wander answers a second and a half after it is let go, and says what it is
   // After the move, it counts down to the next one, with its arc.
   await expect(sub).toHaveText(/^(drift · next in \d+ s|staying — nothing better nearby)$/, { timeout: 120_000 });
   await expect(sub).toHaveText(/^drift · next in \d+ s$/, { timeout: 30_000 });
-  expect(await wander.locator(".pf-k-count").getAttribute("d")).toMatch(/^M /);
+  // The arc starts empty (the wait has barely begun) and fills as the
+  // countdown repaints, so it is waited for rather than read the instant the
+  // caption appears.
+  await expect(wander.locator(".pf-k-count")).toHaveAttribute("d", /^M /, { timeout: 5_000 });
 
   // Hands on another control: Wander says it is paused, and for how long.
   const bright = page.locator('.pf-knob[data-i="0"]');
