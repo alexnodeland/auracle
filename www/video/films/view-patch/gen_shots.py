@@ -392,14 +392,20 @@ shots.append({
 })
 
 # ---- lock: a knob's dot, a module's square, ⚡; cut to the child -----------
+# ⚡'s walk runs on the render farm, beside the player (about 20 s): the
+# button reads "⚡ evolving…", the menu bar's job slot "⚡ evolving Glass Pad"
+# (with stop, on the farm) and the rack stays live, so the chords play on
+# through "Only what you left unlocked can change"; the beat cuts on "and"
+# to the moment the child is on the bench.
+LOCK_CUT = "lock3:and-0.3"
 shots.append({
     "id": "vp-lock", "beat": "lock", "pre": PRE,
-    "clips": [["lock3", "@benched-0.6"]],
+    "clips": [[LOCK_CUT, "@benched-0.6"]],
     "setup": bench("Glass Pad"),
     "marks": {"rack": "#rack-scroll", "cut": "#rack-svg [data-addr='node/0#cut']", "chorus": "#rack-svg g.mod-group[data-key='node']",
               "square": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "evolve": "#rack-evolve", "subject": "#rack-subject"},
     "actions": [
-        *run("lock", 0, "lock2:Evolve+0.5", prog=[AM, F, C, G]),
+        *run("lock", 0, LOCK_CUT + "-0.05", prog=[AM, F, C, G]),
         {"at": "lock1:dot-0.7", "op": "seq", "steps": [
             {"op": "move", "sel": "#rack-svg [data-addr='node/0#cut']", "ms": 450},
             {"op": "wait", "until": "lock1:dot-0.05"},
@@ -418,10 +424,18 @@ shots.append({
         {"at": "lock2:Evolve-0.1", "op": "eval", "js": "window.__subject = " + SUBJ},
         {"at": "lock2:Evolve", "op": "click", "sel": "#rack-evolve"},
         {"at": "lock2:Evolve+0.2", "op": "until", "js": SUBJ + " !== window.__subject", "ms": 300000, "stamp": "benched"},
-        {"at": "lock3+0.2", "snap": "beat", "op": "hold", "keys": AM, "until": "lock3+0.3", "until_snap": "bar"},
-        {"at": "lock3+0.4", "snap": "bar", "op": "hold", "keys": F, "ms": round(BAR * 1000 - 110)},
-        {"at": "lock3+3.3", "snap": "bar", "op": "hold", "keys": C, "ms": "end"},
-        {"at": "lock3+0.6", "op": "seq", "steps": [
+        # The job slot, once the walk is out (on the farm it says so, and
+        # offers stop).
+        {"at": "lock2:Evolve+0.3", "op": "seq", "steps": [
+            {"op": "until", "sel": "#job-slot:not(.hidden)", "ms": 10000, "stamp": "slot"},
+            {"op": "wait", "ms": 500},
+            mark("slot", "#job-slot"),
+            log("slot", "document.getElementById('job-text').textContent + ' | stop ' + (document.getElementById('job-stop').classList.contains('hidden') ? 'hidden' : 'shown')"
+                + " + ' | button ' + document.getElementById('rack-evolve').textContent + ' | lamp ' + document.getElementById('wm-lamp').classList.contains('thinking')"),
+        ]},
+        # On the child, from the cut.
+        *run("lock", "lock3:and+0.05", None, prog=[AM, F, C], tail_end=True),
+        {"at": "lock3:new+0.1", "op": "seq", "steps": [
             mark("subject", "#rack-subject"), mark("chorus2", "#rack-svg g.mod-group[data-kind='chorus']"), mark("toast", "#toasts .toast"),
             mark("source", "#rack-svg g.mod-group[data-key='node/0/0']"),
             log("child", SUBJ + " + ' | ' + document.getElementById('rack-meta').textContent + ' | ' + [...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"),

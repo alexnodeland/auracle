@@ -250,7 +250,7 @@
       "id": "vp-lock",
       "beat": "lock",
       "pre": 3.4,
-      "clips": [["lock3", "@benched-0.6"]],
+      "clips": [["lock3:and-0.3", "@benched-0.6"]],
       "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -269,17 +269,18 @@
       "actions": [
         {"at": "lock1-0.650", "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2747},
         {"at": "lock1+2.207", "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2747},
-        {"at": "lock1+5.064", "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": 1766},
+        {"at": "lock1+5.064", "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": 2747},
+        {"at": "lock1+7.921", "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": 2119},
         {"at": "lock1:dot-0.7", "op": "seq", "steps": [{"op": "move", "sel": "#rack-svg [data-addr='node/0#cut']", "ms": 450}, {"op": "wait", "until": "lock1:dot-0.05"}, {"op": "click", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"}, {"op": "wait", "ms": 200}, {"op": "mark", "name": "dot", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"}]},
         {"at": "lock1:square-0.6", "op": "seq", "steps": [{"op": "move", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "ms": 450}, {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"}, {"op": "wait", "ms": 200}, {"op": "mark", "name": "square", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"}, {"op": "log", "name": "locks", "js": "document.querySelectorAll('#rack-svg .locked, #rack-svg .lock-dot.on').length + ' locked marks'"}]},
         {"at": "lock2:Evolve-0.5", "op": "move", "sel": "#rack-evolve", "ms": 400},
         {"at": "lock2:Evolve-0.1", "op": "eval", "js": "window.__subject = document.getElementById('rack-subject').textContent"},
         {"at": "lock2:Evolve", "op": "click", "sel": "#rack-evolve"},
         {"at": "lock2:Evolve+0.2", "op": "until", "js": "document.getElementById('rack-subject').textContent !== window.__subject", "ms": 300000, "stamp": "benched"},
-        {"at": "lock3+0.2", "snap": "beat", "op": "hold", "keys": ["h", "k", ";"], "until": "lock3+0.3", "until_snap": "bar"},
-        {"at": "lock3+0.4", "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2747},
-        {"at": "lock3+3.3", "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": "end"},
-        {"at": "lock3+0.6", "op": "seq", "steps": [{"op": "mark", "name": "subject", "sel": "#rack-subject"}, {"op": "mark", "name": "chorus2", "sel": "#rack-svg g.mod-group[data-kind='chorus']"}, {"op": "mark", "name": "toast", "sel": "#toasts .toast"}, {"op": "mark", "name": "source", "sel": "#rack-svg g.mod-group[data-key='node/0/0']"}, {"op": "log", "name": "child", "js": "document.getElementById('rack-subject').textContent + ' | ' + document.getElementById('rack-meta').textContent + ' | ' + [...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}, {"op": "log", "name": "knobs", "js": "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')"}]}
+        {"at": "lock2:Evolve+0.3", "op": "seq", "steps": [{"op": "until", "sel": "#job-slot:not(.hidden)", "ms": 10000, "stamp": "slot"}, {"op": "wait", "ms": 500}, {"op": "mark", "name": "slot", "sel": "#job-slot"}, {"op": "log", "name": "slot", "js": "document.getElementById('job-text').textContent + ' | stop ' + (document.getElementById('job-stop').classList.contains('hidden') ? 'hidden' : 'shown') + ' | button ' + document.getElementById('rack-evolve').textContent + ' | lamp ' + document.getElementById('wm-lamp').classList.contains('thinking')"}]},
+        {"at": "lock1+10.779", "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2747},
+        {"at": "lock1+13.636", "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": "end"},
+        {"at": "lock3:new+0.1", "op": "seq", "steps": [{"op": "mark", "name": "subject", "sel": "#rack-subject"}, {"op": "mark", "name": "chorus2", "sel": "#rack-svg g.mod-group[data-kind='chorus']"}, {"op": "mark", "name": "toast", "sel": "#toasts .toast"}, {"op": "mark", "name": "source", "sel": "#rack-svg g.mod-group[data-key='node/0/0']"}, {"op": "log", "name": "child", "js": "document.getElementById('rack-subject').textContent + ' | ' + document.getElementById('rack-meta').textContent + ' | ' + [...document.querySelectorAll('#rack-svg g.mod-group')].map(g => g.dataset.key + ':' + g.dataset.kind).join(' ')"}, {"op": "log", "name": "knobs", "js": "[...document.querySelectorAll('#rack-svg [data-addr]')].map(k => k.dataset.addr + '=' + (k.getAttribute('aria-valuetext') || '')).join(' | ')"}]}
       ]
     },
     {

@@ -20,8 +20,9 @@
 // a point of the 1920×1080 app. The camera moves only between callouts, and
 // each chapter opens wide before it frames the part being discussed. Two
 // chapters cut inside themselves (the shot's `clips`): changing it, through
-// the engine's settling after each edit, and ⚡ evolve, from the press to the
-// child it benched tens of seconds later.
+// the engine's settling after each edit, and ⚡ evolve, from its walk (on the
+// render farm, shown in the menu bar's job slot while the chords play on) to
+// the child it benched about twenty seconds later.
 //
 // Under the demos the app is the music: the bed is out (each beat's `bed_db`
 // in script.json), and in under the title, the chapter cards and the outro.
@@ -206,18 +207,20 @@ export async function build(stage) {
           [0, 1.0, 0.5, 0.5],
           ["lock1:Lock-0.4", ...aim(1.35, 1050, 330)],
           ["lock2-0.35", ...aim(1.35, 1050, 330)],
+          // ⚡ and the menu bar's job slot, both in frame while the walk
+          // runs (the chords play on); eased onto the child just after the
+          // cut (shots.json: on "and"), before the first callout on it.
           ["lock2:press", ...aim(1.5, 1600, 200)],
-          // Held on ⚡ while its callout is up; eased onto the child just
-          // after the cut, before the first callout on it.
-          ["lock3-0.05", ...aim(1.5, 1600, 200)],
-          ["lock3:Only+0.5", ...aim(1.12, 950, 400)],
+          ["lock3:and-0.3", ...aim(1.5, 1600, 200)],
+          ["lock3:new", ...aim(1.12, 950, 400)],
         ],
         callouts: [
           { at: "lock1:dot", until: "lock2-0.4", mark: "dot", side: "center", dx: 50, dy: 280, text: "one knob, by its dot" },
           { at: "lock1:square", until: "lock2-0.4", mark: "square", side: "right", dx: 80, dy: -60, text: "a whole module, by its ▢" },
-          { at: "lock2:Evolve", until: "lock3-0.1", mark: "evolve", side: "bottom", dx: -80, dy: 110, text: "⚡ evolve from this" },
-          { at: "lock3:unlocked", until: "lock3:new", mark: "chorus2", side: "bottom", dx: 60, dy: 130, text: "locked: unchanged" },
-          { at: "lock3:change", until: "lock3:new", mark: "source", side: "bottom", dx: -40, dy: 150, text: "unlocked: free to change", color: "b" },
+          { at: "lock2:Evolve", until: "lock2:Evolve+1.1", mark: "evolve", side: "bottom", dx: -80, dy: 110, text: "⚡ evolve from this" },
+          { at: "lock2:Evolve+1.1", until: "lock3:and-0.35", mark: "slot", side: "bottom", dx: -160, dy: 120, text: "the menu bar says so too", color: "b" },
+          { at: "lock3:new+0.2", mark: "chorus2", side: "bottom", dx: 60, dy: 130, text: "locked: unchanged" },
+          { at: "lock3:bench", mark: "source", side: "bottom", dx: -40, dy: 150, text: "unlocked: free to change", color: "b" },
         ],
       },
       turn("t-keep", "vp-keep"),
