@@ -37,7 +37,10 @@ order of work.
    disk (`docs/runbooks/disk-full.md`).
 8. **Review** before publishing: `python3 www/video/tools/takes.py <name>`
    clean; a contact sheet of frames; integrated loudness about −16 LUFS; the
-   poster. Send a 720p MP4 preview for human review (uploads stop at 30 MB).
+   poster. Send the 720p preview for human review (`make film-preview
+   FILM=<name>`; uploads stop at 30 MB). Several films in turn:
+   `make film-record-all FILMS="<name> <poster> …"` records, encodes, clears
+   frames and makes previews.
 9. **Publish**: add chapter names (`CHAPTER_NAMES`) and the silent loop
    (`VIEW_LOOPS`) to `www/video/tools/publish.py`, then
    `make film-publish FILMS="<name>"`, then `make site && make site-check`.

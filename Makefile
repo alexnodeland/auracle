@@ -28,13 +28,31 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
-        film-sounds film-voice film film-rehearse film-record film-publish
+        film-sounds film-voice film film-rehearse film-record film-publish \
+        film-record-all film-preview dev-check help
 
 all: check
 
 ## check: everything CI runs — format, lints as errors, the app's syntax and
-## its pure-logic unit tests, the wasm target, full test suite
-check: fmt-check lint web-check wasm-check test
+## its pure-logic unit tests, the tooling's own checks, the wasm target, full
+## test suite
+check: fmt-check lint web-check dev-check wasm-check test
+
+## help: every target with a description, in the order this file defines them
+help:
+	@awk '/^## [a-z][a-z0-9-]*:/ { sub(/^## /, ""); split($$0, a, ":"); \
+		printf "  %-18s%s\n", a[1], substr($$0, length(a[1]) + 2) }' $(MAKEFILE_LIST)
+
+## dev-check: the tooling around the code stays sound — the agent docs'
+## links, anchors and frontmatter, the Claude Code hooks against inputs they
+## must block and pass, and the syntax of every film tool
+dev-check:
+	@python3 .claude/checks/check_docs.py
+	@bash .claude/checks/test_hooks.sh
+	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
+	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
+	@for f in www/video/tools/*.sh .claude/hooks/*.sh; do bash -n $$f || exit 1; done
+	@printf '  film tools and hooks: syntax OK\n'
 
 ## web-check: every web module parses (js-check), and the pure-logic modules'
 ## unit tests pass
@@ -355,6 +373,15 @@ film-rehearse:
 ## film-record: record a walkthrough on a quiet machine and render it (FILM=name POSTER=seconds)
 film-record:
 	www/video/tools/walkthrough.sh $(FILM) $(POSTER)
+
+## film-record-all: several walkthroughs in turn, each encoded, cleared of its
+## frames and previewed (FILMS="name poster name poster …")
+film-record-all:
+	www/video/tools/record_films.sh $(FILMS)
+
+## film-preview: a 720p MP4 of a finished film, for review (FILM=name)
+film-preview:
+	www/video/tools/preview.sh $(FILM)
 
 ## film-publish: put finished films on the site, guide, reference and README (FILMS="a b")
 film-publish:

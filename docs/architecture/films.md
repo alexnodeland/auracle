@@ -82,8 +82,9 @@ re-render deterministically.
 
 ## Sending a film for review
 
-Uploads stop at 30 MB and an iPhone does not play WebM. Send a 720p MP4
-preview (`-vf scale=1280:-2 -crf 26`), which is about 13 MB for five minutes.
+Uploads stop at 30 MB and an iPhone does not play WebM. Send the 720p MP4
+preview (`make film-preview FILM=<name>`), about 13 MB for five minutes.
+`make film-record-all` makes one for each film it records.
 
 ## References
 

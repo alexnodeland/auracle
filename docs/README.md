@@ -15,6 +15,7 @@ plugins work on it.
 | [`proposals/`](proposals/) | RFCs: a change worth deciding before building | `draft → in-review → accepted / rejected / superseded` |
 | [`plans/`](plans/) | How an accepted proposal gets built, decomposed into tasks | `active → complete / abandoned` |
 | [`runbooks/`](runbooks/) | What to do when a known thing breaks | Living |
+| [`notes/`](notes/) | Design reviews, working specs and measurements that informed decisions | A record: dated, not kept current |
 
 ## Which record gets what
 
@@ -58,6 +59,15 @@ plugins work on it.
 | --- | --- | --- |
 | [001](proposals/001-evolve-pool-parallel-walks.md) | draft | Breed a generation in seconds: walks in parallel on the render farm |
 | [002](proposals/002-directed-search-offers.md) | draft | Aim PERFORM's search-control offers along the control's direction |
+
+## Notes
+
+- [`musical-instrument-review.md`](notes/musical-instrument-review.md): the
+  design review that set the direction for PERFORM and the four views
+- [`ui-hierarchy.md`](notes/ui-hierarchy.md): the working spec for the layout
+  pass that added PERFORM
+- [`plugin-lab/`](notes/plugin-lab/README.md): named controls measured on a
+  third-party synth, a feasibility study for a plugin
 
 ## Runbooks
 

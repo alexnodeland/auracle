@@ -164,7 +164,8 @@ opens exists. `make site` then places the one copy wherever it is embedded.
 
 The steps above are also `make` targets: `make film-sounds`, `make
 film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=…`,
-`make film-record FILM=… POSTER=…` and `make film-publish FILMS="…"`.
+`make film-record FILM=… POSTER=…`, `make film-record-all FILMS="name poster …"`,
+`make film-preview FILM=…` and `make film-publish FILMS="…"`.
 
 | Tool | What it does |
 |---|---|
@@ -178,14 +179,16 @@ film-voice FILM=…`, `make film FILM=… POSTER=…`, `make film-rehearse FILM=
 | `tools/validate.mjs` | Check a walkthrough's words, marks and beats resolve |
 | `tools/rehearse.sh` | One-browser dry run, then `tools/rehearsal.py`'s summary |
 | `tools/framing.py` | Contact sheets of camera crops and callouts from a rehearsal |
-| `tools/one_browser.sh` | Run a command once no other footage browser is running |
+| `tools/one_browser.sh` | Run a command when it is its turn for the browser (a first-come, first-served queue) |
 | `tools/takes.py` | Check recorded takes before spending a render on them |
 | `tools/app_audio.py` | The recorded app sound under the picture, through the cuts |
-| `tools/render.mjs` | The frames (or `--cues`, or `--at` stills), exactly |
+| `tools/render.mjs` | The frames (or `--cues`, or `--at` stills), exactly; kept as parts listed in `picture.ffconcat` |
 | `tools/mix.py` | Voice, bed, effects and app sound mixed and encoded, with captions and poster |
 | `tools/poster.mjs` | A poster frame on its own |
 | `tools/illustrated.sh` | An illustrated film, voice to encode |
 | `tools/walkthrough.sh` | A walkthrough, recording to encode |
+| `tools/record_films.sh` | Several walkthroughs in turn: record, encode, clear the frames, make a preview; stops at the first failure |
+| `tools/preview.sh` | A 720p MP4 of a finished film, small enough to send for review |
 | `tools/publish.py` | A finished film onto the site, guide, reference, README and app |
 
 Renders land in `www/video/out/` (ignored by git). A finished film is copied to

@@ -79,7 +79,9 @@ jobs:
           # The site embeds the wasm engine and rustdoc for every crate, so a
           # Rust change is also a site change. The browser smoke test runs in
           # the site job, so its own sources count as site changes too.
-          if [ "$rust" = true ] || echo "$files" | grep -qE '^(www/|apps/web/|tests/web/)'; then
+          # The agent docs, the Claude Code setup and the engineering record
+          # are checked in the web job (make dev-check), so they count too.
+          if [ "$rust" = true ] || echo "$files" | grep -qE '^(www/|apps/web/|tests/web/|docs/|\.claude/)|(^|/)(AGENTS|CLAUDE)\.md$'; then
             site=true
           else
             site=false
@@ -129,6 +131,7 @@ jobs:
         with:
           node-version: 22
       - run: make web-check
+      - run: make dev-check
 
   # The test suite, split across two runners.
   #

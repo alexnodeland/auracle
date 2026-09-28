@@ -66,5 +66,7 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
 | Voice a script | `make film-voice FILM=<name>` |
 | Rehearse a walkthrough | `make film-rehearse FILM=<name>` |
 | Record and render a walkthrough | `make film-record FILM=<name> POSTER=<seconds>` |
+| Several, in turn, with previews | `make film-record-all FILMS="<name> <poster> <name> <poster>"` |
+| A 720p preview to send for review | `make film-preview FILM=<name>` |
 | Render an illustrated film | `make film FILM=<name> POSTER=<seconds>` |
 | Publish | `make film-publish FILMS="<a> <b>"` |
