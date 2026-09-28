@@ -234,6 +234,12 @@ pot's next movement moves the control from there, scaled so that each end of
 the pot still reaches the same end of the control. Once the pot and the
 control agree again, the pot simply follows.
 
+Blend is different. When B empties (you pass on an offer, or take it), Blend
+returns home, and a pot on Blend is let go: it does nothing until you bring it
+back down to home, and then it follows again. Otherwise a pot left near the top
+would reach the whole of Blend in its last few steps, and the next nudge would
+pour the next offer over the sound you just chose.
+
 The mod wheel and channel pressure are not picked up, because they do not set
 a control's position. Unless you learn CC 1 onto a control, each one adds to
 the control it drives, on top of wherever that control sits: the wheel pushes

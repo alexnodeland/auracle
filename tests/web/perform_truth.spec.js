@@ -16,6 +16,8 @@
 // - A search control springs back whenever it is let go, and says while it is
 //   turned what letting go would do.
 // - After a pass, Blend comes home.
+// - A stalled fetch of the shipped wirings does not hold a patch on
+//   "listening…": after a few seconds it is measured as any other patch is.
 // - A drift is not a new patch: the status never says "listening", and the
 //   re-measure after it waits in the engine's background lane.
 //
@@ -45,10 +47,13 @@ const INIT = `(() => {
 // `shipped: false` blocks the presets' shipped wirings, so a preset is
 // measured as a patch never seen before is: the only way to watch a
 // measurement in progress on a known patch.
-async function boot(page, { shipped = true } = {}) {
+// `stalled: true` holds the file's fetch open for good, as a stuck connection
+// does.
+async function boot(page, { shipped = true, stalled = false } = {}) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
   if (!shipped) await page.route("**/perform-wirings.json*", (r) => r.abort());
+  if (stalled) await page.route("**/perform-wirings.json*", () => {});
   await page.addInitScript(INIT);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
@@ -339,5 +344,18 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
   await page.waitForTimeout(1500);
   const afterKeep = await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_wire" && p.t > t && !p.bg), k0);
   expect(afterKeep, "Keep never re-measures in front of the player").toEqual([]);
+  expect(errs).toEqual([]);
+});
+
+test("a shipped-wirings fetch that never answers does not hold a patch on listening", async ({ page }) => {
+  test.setTimeout(300_000);
+  const errs = await boot(page, { stalled: true });
+  const t0 = Date.now();
+  await openOnPerform(page, "Glass Pad");
+  await wired(page);
+  console.log(`Glass Pad wired with the file stalled: ${((Date.now() - t0) / 1000).toFixed(1)} s after its click`);
+  const how = await page.evaluate(() => window.__aur.marks().filter((m) => m.name === "perform-wired").map((m) => m.detail && m.detail.how));
+  expect(how).toContain("measured");
+  expect(await page.evaluate(() => window.__pfPosts.some((p) => p.type === "perform_wire"))).toBe(true);
   expect(errs).toEqual([]);
 });

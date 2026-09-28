@@ -139,7 +139,10 @@ one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.m
 Every preset's wiring ships with the app in `apps/web/perform-wirings.json`,
 measured natively through the same `WasmEngine` surface the worker uses
 (`make perform-wirings`, the `preset_wirings` example) and keyed at load by the
-same `wireKey`. The player's own cache is asked first, then the file. A shipped
+same `wireKey`. The player's own cache is asked first, then the file. A first
+measurement waits for the file at most `SHIPPED_WAIT_MS` (3 s), so a stalled
+fetch cannot hold a patch on *listening…*; a file that lands later still
+serves the presets opened after it. A shipped
 wiring is always re-measured in the background (it was taken under a native
 standardizer, not the session's). A stale file wires controls to the wrong
 knobs until that re-check lands, and the re-check then re-centres them, so
@@ -181,8 +184,19 @@ While a pair is on the table, `main.js` deals the next one (`duel` with
 `ahead: true`, echoed in the reply) once the table's own two sounds are
 resident, and fetches the new pair's renders. A pick or ↻ swaps it in
 synchronously (`placePair`); the pair is re-checked at that moment against
-cuts and replacements made since (`aheadUsable`). Only with nothing waiting
-does a pick wait for a deal.
+cuts and replacements made since, and against the pair just put away
+(`aheadUsable`). Only with nothing waiting does a pick wait for a deal, and a
+deal already out (asked for ahead) is the one it waits for: no second deal
+is asked for.
+
+Every deal's reply goes through `onDealt`, whichever request asked for it:
+the first to land while the table waits goes up, any other waits as the next
+pair. The worker answers deals in the order they were asked, so pairs go up
+in the order they were dealt whatever the timing (a seeded session shows the
+same pairs, [ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
+`dealsOut` counts deals not yet answered; a taken-back pick leaves a deal
+still out to become the next pair. `placePair` is the one place a pair goes
+up: anything owed to a pair being shown belongs there.
 
 The worker deals with `deal_duel_ex`, which does not count the pair as shown;
 `placePair` tells it which pair went up (`duel_shown`). So a deal thrown away

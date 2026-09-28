@@ -19,7 +19,9 @@ changelog that edits its own past is not a record.
   against a standard pool, not yours, so PERFORM re-measures in the
   background (*re-checking*) and the controls keep working meanwhile. While
   the warm start is open, its nine cards are measured against your session
-  too, once the pool has filled. `make perform-wirings` regenerates the file,
+  too, once the pool has filled. A first measurement waits at most three
+  seconds for the file, so a stalled download cannot leave a preset on
+  *listening…*. `make perform-wirings` regenerates the file,
   and `make test` fails when it is stale: a preset changed, or what the
   measurement is made of (the phrase, φ, loudness, the DSP, the standard
   pool, PERFORM itself), re-measured on a sample of the file
@@ -61,7 +63,10 @@ changelog that edits its own past is not a record.
   seconds after the hand had let go. A MIDI pot on a re-centred control keeps
   working from where it is, scaled so each end of the pot still reaches the
   control's end; it used to go dead until swept back through the middle,
-  every few seconds in *roam* (`perform_recentre.spec.js`, `midi.test.mjs`).
+  every few seconds in *roam*. Blend is the exception: when it comes home
+  after a pass or a Take, a pot on it is let go until brought back down to
+  home, so a pot left near the top cannot pour the next offer in with one
+  nudge (`perform_recentre.spec.js`, `midi.test.mjs`).
 - **The next pair is already waiting in EVOLVE.** While a pair is on the
   table the engine deals the next one and renders both its sounds, so a pick
   or a skip puts it up at once and its ▶ plays at once; the pair after is
@@ -69,12 +74,16 @@ changelog that edits its own past is not a record.
   and during a generation that wait was a whole seed's walk, up to about
   20 s of dimmed cards, with the new pair's sounds rendered after it. Taking
   a pick back puts its pair back and keeps the other as the next, and a
-  patch cut meanwhile is never dealt: its pair is dropped and dealt again
-  (`evolve_ahead.spec.js`, `budgets.spec.js`). A pair dropped unseen does not
-  count as asked: under an information-seeking pairing rule the unbiased
-  probes TRUST scores on are one in ten of the pairs you were shown, and a
-  probe dealt ahead and dropped used to take its turn and leave the sample
-  smaller (`discarded_deals_do_not_advance_the_check_cadence`).
+  patch cut meanwhile is never dealt: its pair is dropped and dealt again.
+  Pairs go up in the order they were dealt: a pick made while the next deal
+  is still out (a generation holds it) waits for that deal instead of asking
+  for a second, so a seeded session shows the same pairs in the same order
+  however long each deal took (`evolve_ahead.spec.js`, `budgets.spec.js`). A
+  pair dropped unseen does not count as asked: under an information-seeking
+  pairing rule the unbiased probes TRUST scores on are one in ten of the
+  pairs you were shown, and a probe dealt ahead and dropped used to take its
+  turn and leave the sample smaller
+  (`discarded_deals_do_not_advance_the_check_cadence`).
 - **What the instrument promises about time is measured.** The app marks
   its own moments (boot start, the veil lifting, the first sound, a full
   pool, PERFORM's controls wired, a patch opened, a pair dealt), every film

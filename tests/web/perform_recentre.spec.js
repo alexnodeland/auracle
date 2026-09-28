@@ -8,11 +8,28 @@
 // over about 250 ms with a ghost tick fading where it was, and a background
 // re-check leaves the controls where they are unless it wired them to
 // different knobs.
+//
+// Blend is the exception for a MIDI pot. When B empties (a pass, a Take),
+// Blend comes home and a pot on it is let go: it has to come back down through
+// home before it drives Blend again. It used to be re-anchored at home like a
+// re-centred control, so a pot left at 0.9 spread the whole blend over its
+// last tenth of travel, and the next nudge poured the next offer in.
+//
+// A MIDI device is stood in for by replacing navigator.requestMIDIAccess
+// before the app runs, with one input the spec sends control changes from.
 const { test, expect } = require("@playwright/test");
 
-async function boot(page) {
+const FAKE_MIDI = `(() => {
+  const input = { id: "pw", name: "Test pot", manufacturer: "", state: "connected", onmidimessage: null };
+  const access = { inputs: new Map([["pw", input]]), outputs: new Map(), onstatechange: null, sysexEnabled: false };
+  Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: () => Promise.resolve(access) });
+  window.__cc = (cc, v) => input.onmidimessage && input.onmidimessage({ data: new Uint8Array([0xb0, cc, v]), timeStamp: performance.now() });
+})();`;
+
+async function boot(page, { midi = false } = {}) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
+  if (midi) await page.addInitScript(FAKE_MIDI);
   await page.goto("/");
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await page.locator("#warm-skip").click();
@@ -83,5 +100,42 @@ test("a re-centred control glides home with a fading ghost, and a background re-
   if ((await bright.locator(".pf-k-sub").textContent()) === caption) {
     await expect(bright, "same knobs: the control stays where the hand left it").toHaveAttribute("aria-valuenow", set);
   }
+  expect(errs).toEqual([]);
+});
+
+test("a pot on Blend is let go when Blend comes home, and takes it again from home", async ({ page }) => {
+  test.setTimeout(420_000);
+  const errs = await boot(page, { midi: true });
+  await openOnPerform(page, "Glass Pad");
+  await page.locator(".pf-pad", { hasText: "Offer" }).click();
+  await page.waitForSelector(".pf-offer.ready", { timeout: 120_000 });
+  // CC 20 learned onto Blend (the seventh row of the MIDI panel).
+  await page.locator("#midi-ind").click();
+  await page.locator("#midi-panel .midi-row").nth(6).locator("button", { hasText: "learn" }).click();
+  await page.evaluate(() => window.__cc(20, 0));
+  await expect(page.locator("#midi-panel .midi-row").nth(6)).toContainText("CC 20");
+  await page.locator("#midi-ind").click();
+  const blend = page.locator('.pf-knob[data-i="6"]');
+  const at = async () => Number(await blend.getAttribute("aria-valuenow"));
+  // The pot picks Blend up at home and turns it most of the way to the offer.
+  for (const v of [2, 20, 45, 70, 95, 115]) await page.evaluate((v) => window.__cc(20, v), v);
+  expect(await at()).toBeCloseTo(115 / 127, 2);
+  // Next passes on B: B empties and Blend comes home.
+  await page.locator(".pf-pad", { hasText: "Next" }).click();
+  await expect(blend).toHaveAttribute("aria-valuenow", "0.00", { timeout: 2_000 });
+  // The pot, still near the top, is let go: nudging it on does nothing.
+  const up = [];
+  for (const v of [117, 120, 124, 127]) {
+    await page.evaluate((v) => window.__cc(20, v), v);
+    up.push(await at());
+  }
+  console.log(`Blend under the pot's last steps after coming home: ${up.join(", ")}`);
+  expect(up).toEqual([0, 0, 0, 0]);
+  // Brought back down through home, it takes Blend again and follows.
+  for (const v of [90, 50, 10]) await page.evaluate((v) => window.__cc(20, v), v);
+  expect(await at()).toBe(0);
+  await page.evaluate(() => window.__cc(20, 2));
+  await page.evaluate(() => window.__cc(20, 40));
+  expect(await at()).toBeCloseTo(40 / 127, 2);
   expect(errs).toEqual([]);
 });

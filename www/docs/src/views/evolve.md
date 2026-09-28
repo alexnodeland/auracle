@@ -44,8 +44,15 @@ it up at once, sounds and all, and the pair after that is dealt behind it. It
 is chosen before your pick is known, which changes nothing: the pick is held
 in its seven seconds anyway, and pairs are dealt at random (see below). A
 patch you cut meanwhile is never put up: that pair is dropped and dealt again.
-Taking a pick back puts its pair back on the table, and the pair it had
-brought up waits as the next.
+Nor is a pair that lost a patch to the pool (a generation replaced it): the
+waiting pair goes up in its place. Taking a pick back puts its pair back on
+the table, and the pair it had brought up, or the one still being dealt,
+waits as the next.
+
+Pairs go up in the order they were dealt. A pick made while the next pair is
+still being dealt waits for that pair rather than asking for another, so a
+seeded session shows the same pairs in the same order however long each deal
+took.
 
 Only when no pair is waiting (right after a cut, say) do the cards dim and
 their buttons do nothing until the next pair is dealt, usually a few
