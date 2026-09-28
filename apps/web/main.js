@@ -77,6 +77,11 @@ const BUILD = await (async () => {
   } catch (_) { /* no build, or no server: fall through to the clock */ }
   return String(Date.now());
 })();
+// The TASTE view's lengths — dot sizes, bars, whiskers — pure, so they are
+// unit-tested (taste-geom.js, tests/taste-geom.test.mjs). Awaited before the
+// worker exists, so no reply can arrive while it loads.
+const { mapUnsureScale, mapDotRadius, directionsScale, directionsBar } =
+  await import(`./taste-geom.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -16251,6 +16256,9 @@ function drawTrustTab(ctx, w, h, dpr) {
 function drawMapTab(ctx, w, h, dpr) {
   const map = views && views.map;
   const pts = map.points;
+  // Size carries the model's *uncertainty*, spread over this map's own range
+  // of it — see taste-geom.js for why, and for the numbers the legend shows.
+  const unsureOf = mapUnsureScale(pts.filter((p) => p.id != null).map((p) => p.utility_std));
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const pad = 34 * dpr;
   const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
@@ -16274,12 +16282,8 @@ function drawMapTab(ctx, w, h, dpr) {
       ctx.shadowBlur = 3 + glow * 16;
       ctx.globalAlpha = 0.35 + 0.65 * glow;
       ctx.fillStyle = color;
-      // Size carries the model's *uncertainty*: "I don't know this region"
-      // is the most useful thing an interactive-ML view can say, and the
-      // posterior spread was already being computed and discarded.
-      const base = p.origin === "edited" ? 5.5 : p.origin === "refined" ? 4.8 : 4;
-      const unsure = p.utility_std != null ? Math.min(1, p.utility_std) : 0;
-      const r = (base + unsure * 3.5) * dpr;
+      // Size is uncertainty and nothing else; origin no longer nudges it.
+      const r = mapDotRadius(unsureOf(p.utility_std)) * dpr;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
@@ -16400,21 +16404,24 @@ function drawDirectionsTab(ctx, w, h, dpr) {
       });
   }
   const names = [...chosen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([n]) => n);
-  const maxAbs = Math.max(
-    0.12,
-    ...styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name)).map((r) => Math.abs(r.mean)))
-  );
   const cx = w * 0.60, usable = w * 0.30;
   const rowH = h / (names.length + 1);
+  // Bars and whiskers on one scale, fitted so the widest interval reaches the
+  // half-width (taste-geom.js). The whisker used to be capped at 0.3 of it
+  // while a bar could take 0.7, so an interval crossing zero was drawn
+  // stopping short of the centre line — a guess drawn as settled.
+  const scale = directionsScale(
+    styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name))),
+    usable,
+  );
 
   ctx.strokeStyle = "rgba(255,180,84,0.28)";
   ctx.beginPath(); ctx.moveTo(cx, rowH * 0.4); ctx.lineTo(cx, h - rowH * 0.4); ctx.stroke();
 
-  // A bar is at most 0.7 of the half-width and its ±σ whisker at most 0.3,
-  // so neither can reach the label column: a long negative bar plus its
-  // whisker used to strike through "filtering" and "shimmer". The clip is the
-  // belt to that pair of braces.
-  const barMax = usable * 0.7;
+  // Nothing is drawn past the half-width — a cut whisker ends in an arrowhead
+  // at the edge — so neither reaches the label column: a long negative bar
+  // plus its whisker used to strike through "filtering" and "shimmer". The
+  // clip is the belt to that pair of braces.
   names.forEach((name, i) => {
     const y = rowH * (i + 1);
     ctx.fillStyle = INK.amberDim;
@@ -16430,22 +16437,33 @@ function drawDirectionsTab(ctx, w, h, dpr) {
       const r = s.theta.find((t) => t.name === name);
       if (!r) return;
       const yy = y + (si - (styles.length - 1) / 2) * lane;
-      const len = (r.mean / maxAbs) * barMax;
-      const wl = Math.min((r.std / maxAbs) * barMax, usable * 0.3);
+      const bar = directionsBar(r, scale, usable);
       const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
       ctx.fillStyle = color;
       ctx.shadowColor = color;
       ctx.shadowBlur = 6;
-      ctx.fillRect(Math.min(cx, cx + len), yy - 2 * dpr, Math.abs(len), 4 * dpr);
+      ctx.fillRect(Math.min(cx, cx + bar.len), yy - 2 * dpr, Math.abs(bar.len), 4 * dpr);
       ctx.shadowBlur = 0;
       // Silk, not a fourth amber: the whisker is a reading about the bar,
       // and has to show over it.
       ctx.strokeStyle = "rgba(217,212,200,0.55)";
+      ctx.fillStyle = "rgba(217,212,200,0.75)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(cx + len - wl, yy);
-      ctx.lineTo(cx + len + wl, yy);
+      ctx.moveTo(cx + bar.lo, yy);
+      ctx.lineTo(cx + bar.hi, yy);
       ctx.stroke();
+      // Cut at the edge, and said to be: an arrowhead, not a shorter line.
+      const head = (x, dir) => {
+        ctx.beginPath();
+        ctx.moveTo(x, yy);
+        ctx.lineTo(x - dir * 4 * dpr, yy - 2.5 * dpr);
+        ctx.lineTo(x - dir * 4 * dpr, yy + 2.5 * dpr);
+        ctx.closePath();
+        ctx.fill();
+      };
+      if (bar.clipLo) head(cx + bar.lo, -1);
+      if (bar.clipHi) head(cx + bar.hi, 1);
     });
     ctx.restore();
   });

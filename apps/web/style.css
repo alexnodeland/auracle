@@ -4223,8 +4223,10 @@ input[type="range"]::-moz-range-thumb {
 .map-legend .ml-ramp-wrap { display: inline-flex; align-items: center; gap: 5px; }
 .map-legend .ml-ring { display: inline-flex; align-items: center; gap: 4px; }
 .map-legend .ml-ring i { display: inline-block; border: 1px solid var(--phos-b-dim); border-radius: 50%; }
-.map-legend .ml-ring .sm { width: 7px; height: 7px; }
-.map-legend .ml-ring .lg { width: 13px; height: 13px; }
+/* The map's smallest and largest dots, to the pixel: 2 × MAP_R_SURE and
+   2 × MAP_R_UNSURE in main.js. */
+.map-legend .ml-ring .sm { width: 5px; height: 5px; }
+.map-legend .ml-ring .lg { width: 18px; height: 18px; }
 
 /* ===================== handheld gate =====================
    Shown only when the early script in index.html sets html.handheld, which
