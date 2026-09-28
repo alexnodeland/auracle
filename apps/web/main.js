@@ -67,6 +67,24 @@ function inkHsl(hex) {
 // fetched with `no-cache` (revalidate, not bypass) so a new build is noticed.
 // A module script may await at top level; nothing above this line needs the
 // worker.
+// ---------- timing marks ----------
+// What the instrument promises about time is measured where it happens:
+// `performance.mark("auracle:<name>")` at boot start, veil down, first sound,
+// pool full, PERFORM wired (perform.js), a patch opened, a pair dealt and a
+// refit landed. `window.__aur.marks()` lists them; the film recorder writes
+// them into every rehearsal's sidecar, and the budget specs read them.
+const marksOnce = new Set();
+function mark(name, detail, { once = false } = {}) {
+  if (once && marksOnce.has(name)) return;
+  marksOnce.add(name);
+  try {
+    performance.mark(`auracle:${name}`, detail ? { detail } : undefined);
+  } catch {
+    /* evidence, never load-bearing */
+  }
+}
+mark("boot-start");
+
 const BUILD = await (async () => {
   try {
     const r = await fetch("./pkg/build.json", { cache: "no-cache" });
@@ -1167,6 +1185,7 @@ worker.onmessage = (e) => {
       bootPct = 100;
       $("boot-fill").style.width = "100%";
       dropBootVeil();
+      mark("pool-full", { pool: m.status && m.status.pool }, { once: true });
       applyStatus(m.status);
       fillPool = m.status.pool;
       fillTarget = m.status.pool_target;
@@ -1402,7 +1421,7 @@ worker.onmessage = (e) => {
       if (meterFitting) {
         meterFitting = false;
         learnedShown = true;
-        try { performance.mark("auracle:fitted"); } catch { /* ignore */ }
+        mark("fitted");
       }
       applyViews(m.views);
       applyStatus(m.status);
@@ -1534,6 +1553,7 @@ worker.onmessage = (e) => {
         const evolved = evolvedAnnounce && evolvedAnnounce.id === m.subject ? evolvedAnnounce : null;
         const asked = openAsk && openAsk.id === m.subject ? openAsk : null;
         openAsk = null;
+        mark("patch-opened", { name: rowOf(m.subject)?.name || null, waited: asked ? Math.round(performance.now() - asked.at) : null });
         if (evolved) {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
@@ -2567,6 +2587,7 @@ function showCoach() {
 }
 
 function firstNotePlayed() {
+  mark("first-sound", { via: "a key" }, { once: true });
   if (coachEl) {
     coachEl.remove();
     coachEl = null;
@@ -3354,7 +3375,9 @@ function stepBank(d) {
 
 function play(id, btn, key = null) {
   const r = renders.get(id);
-  if (r) playBuffer(r.buffer, btn, key);
+  if (!r) return;
+  mark("first-sound", { via: "a phrase" }, { once: true });
+  playBuffer(r.buffer, btn, key);
 }
 
 // Every "hear this thing that isn't loaded yet" path in the app used to be its
@@ -5307,6 +5330,7 @@ function placePair(pair, meta) {
     benchBeforeAudition = null; // a fresh pair closes any audition detour
     setDuelSelection(null);
     dealCards();
+    mark("pair-dealt");
   }
   renderPlayDuel();
   // The pair is on the table; a refit armed by the last vote can now be
@@ -19299,6 +19323,7 @@ let poolSettled = false;
 function dropBootVeil() {
   if (booted) return;
   booted = true;
+  mark("veil-down");
   $("boot").classList.add("done");
   setTimeout(() => $("boot").classList.add("hidden"), 460);
 }
@@ -20056,7 +20081,14 @@ bootMidi();
 // `note` rides along because the toast lane's guarantee — that nothing
 // transient ever lands on PICK A / PICK B — is only testable by forcing a
 // toast at a moment the app would not normally produce one.
-window.__aur = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note };
+window.__aur = {
+  audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note,
+  // The timing marks (see `mark`), in the page's clock: ms since it loaded.
+  marks: () =>
+    performance.getEntriesByType("mark")
+      .filter((e) => e.name.startsWith("auracle:"))
+      .map((e) => ({ name: e.name.slice(8), t: Math.round(e.startTime), ...(e.detail ? { detail: e.detail } : {}) })),
+};
 // The probe was `window.__ric` for as long as the app was called Ricercar, and
 // hand-written browser checks in the notes still reach for it. Aliased rather
 // than dropped: an alias costs one line, and a probe that silently became

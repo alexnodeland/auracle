@@ -97,6 +97,25 @@ measurement, Keep and offers start from the edited patch). PATCH draws an
 amber "performed" pointer only where `perform.movedOn` names a reason: a
 control or expression offset, a Wander or Back glide, or a drift not yet kept.
 
+## Timing marks
+
+The app marks its own moments with `performance.mark("auracle:<name>")`:
+`boot-start`, `veil-down`, `first-sound`, `pool-full`, `perform-wired` (with
+how: shipped, cached or measured), `patch-opened`, `pair-dealt` and `fitted`.
+`window.__aur.marks()` lists them in the page's clock. The film recorder
+(`www/video/tools/footage.mjs`) writes them into every rehearsal sidecar as a
+`perf` block beside `stamps` (`at0` is the page's clock at the shot's t = 0),
+and `tests/web/budgets.spec.js` holds the budgets they measure.
+
+## EVOLVE's next pair
+
+While a pair is on the table, `main.js` deals the next one (`duel` with
+`ahead: true`, echoed in the reply) once the table's own two sounds are
+resident, and fetches the new pair's renders. A pick or ↻ swaps it in
+synchronously (`placePair`); the pair is re-checked at that moment against
+cuts and replacements made since (`aheadUsable`). Only with nothing waiting
+does a pick wait for a deal.
+
 ## Audio
 
 `live-audio.js` builds the worklet as a blob with the wasm-bindgen glue
