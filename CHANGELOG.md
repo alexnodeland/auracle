@@ -32,6 +32,19 @@ changelog that edits its own past is not a record.
   recorded), as a Take carries *don't count it*, and a B you pass on without
   hearing it says *B skipped — not counted, you hadn't heard it* instead of
   vanishing without a word (`perform_next.spec.js`).
+- **Wander answers at once, and says what it is doing on itself.** Let go of
+  Wander in a new region and its first move (an offer, or a drift) is asked
+  for a second and a half later; the region's pace sets the moves after that.
+  Turning it into *drift* used to leave 21 s of nothing, because the first
+  move waited out a whole period, and turning Wander counted as a hand on the
+  sound, so the status line said *paused — your hands are on it* while it was
+  being turned up. Wander's own drag no longer pauses it. Three ticks on its
+  ring mark where *ideas*, *drift* and *roam* begin, and the middle region is
+  called **ideas** (it was *offer*, the Offer pad's word and Blend's). The
+  line under Wander carries its state (*drift · next in 9 s*, *paused 3 s*,
+  *held*, *staying — nothing better nearby*) with a thin arc filling toward
+  the next move, and PERFORM's status line keeps to the patch
+  (`perform_wander.spec.js`).
 
 ### Fixed — true today
 

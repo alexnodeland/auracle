@@ -21,12 +21,19 @@
 
 const NS = "http://www.w3.org/2000/svg";
 const KNOB_MAX = 1 - 1e-6;
-// Wander landmarks on the dial's 0..1 travel.
-const WANDER_OFFER = 0.15;
+// Wander landmarks on the dial's 0..1 travel: still, then ideas (variants
+// appear in B), drift and roam. The middle zone was called "offer", the Offer
+// pad's word and Blend's; it is "ideas", as the films say.
+const WANDER_IDEAS = 0.15;
 const WANDER_DRIFT = 0.4;
 const WANDER_ROAM = 0.75;
 // Hands on, it waits: no autonomous move within this long of a touch.
 const HANDS_OFF_MS = 3500;
+// Let go of Wander in a new zone and its first move comes this long after:
+// the zone's pace governs the repeats, not the first answer. It used to wait
+// a whole period, 36 s at the left of drift (21 s measured), and a player
+// concluded it did not work.
+const WANDER_FIRST_MS = 1500;
 // The wiring is a linear model measured with 0.08 knob steps
 // (perform::JACOBIAN_STEP). It is re-measured only once some knob has moved
 // farther than this from where it was measured — a gentle drift stays inside
@@ -69,8 +76,8 @@ const svg = (tag, attrs, cls) => {
 };
 
 function wanderZone(w) {
-  if (w < WANDER_OFFER) return "still";
-  if (w < WANDER_DRIFT) return "offer";
+  if (w < WANDER_IDEAS) return "still";
+  if (w < WANDER_DRIFT) return "ideas";
   if (w < WANDER_ROAM) return "drift";
   return "roam";
 }
@@ -109,6 +116,7 @@ export function createPerform(host) {
     // that may predate the write; cleared with every new tree.
     hand: new Map(),
     wander: 0,
+    wanderSettled: "still", // Wander's zone where it was last let go
     hold: false,
     blend: 0,
     offer: null, // {json, makeup}
@@ -214,6 +222,15 @@ export function createPerform(host) {
       pointer,
       where,
     );
+    if (spec.kind === "wander") {
+      // Where the zones begin (ideas, drift, roam): three short ticks just
+      // outside the ring, and inside it a thin arc that fills toward
+      // Wander's next move.
+      const at = (v) => -135 + v * 270;
+      const ticks = [WANDER_IDEAS, WANDER_DRIFT, WANDER_ROAM].map((v) => radial(at(v), 45, 49)).join(" ");
+      s.insertBefore(svg("path", { d: ticks }, "pf-k-zone"), s.querySelector(".pf-k-body"));
+      s.insertBefore(svg("path", { d: "" }, "pf-k-count"), s.querySelector(".pf-k-body"));
+    }
     const name = el("div", "pf-k-name", spec.name);
     const ends = el("div", "pf-k-ends mono", `${spec.low} · ${spec.high}`);
     const sub = el("div", "pf-k-sub mono", "");
@@ -242,6 +259,19 @@ export function createPerform(host) {
     const [x1, y1] = polar(Math.max(a0, a1));
     const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
     return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${ARC_R} ${ARC_R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+  }
+  // An arc like arcPath's at another radius (Wander's countdown sits inside
+  // the ring).
+  function arcAt(a0, a1, R) {
+    if (Math.abs(a1 - a0) < 0.5) return "";
+    const p = (deg) => {
+      const r = (deg - 90) * (Math.PI / 180);
+      return [R * Math.cos(r), R * Math.sin(r)];
+    };
+    const [x0, y0] = p(Math.min(a0, a1));
+    const [x1, y1] = p(Math.max(a0, a1));
+    const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
+    return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   }
   // A short radial tick at `deg`, from radius r0 out to r1.
   function radial(deg, r0, r1) {
@@ -328,10 +358,15 @@ export function createPerform(host) {
       k.wrap.setAttribute("aria-valuetext", Math.abs(v) < 0.005 ? "centre" : `${v > 0 ? k.spec.high : k.spec.low} ${Math.round(Math.abs(v) * 100)}%`);
     } else if (k.spec.kind === "wander") {
       where.style.display = "none";
-      const z = wanderZone(v);
-      k.sub.textContent = state.hold ? "held" : z;
+      const [words, left] = wanderState();
+      k.sub.textContent = words;
       k.wrap.classList.toggle("held", state.hold);
-      k.wrap.setAttribute("aria-valuetext", state.hold ? "held" : z);
+      k.wrap.setAttribute("aria-valuetext", words);
+      k.wrap.title = wanderTitle();
+      // The wait for the next move, as a thin arc filling clockwise from the
+      // dial's start: drawn only while Wander is counting down to one.
+      const count = k.svg.querySelector(".pf-k-count");
+      if (count) count.setAttribute("d", left == null ? "" : arcAt(-135, -135 + 270 * (1 - left), 39));
     } else if (k.spec.kind === "blend") {
       where.style.display = "none";
       k.sub.textContent = state.offer ? `${Math.round(v * 100)}% offer` : "no offer yet";
@@ -411,7 +446,14 @@ export function createPerform(host) {
       startV = k.value;
       pressT = performance.now();
       moved = false;
-      touch();
+      // Turning Wander is not a hand on the sound: it must not pause Wander
+      // itself ("paused — your hands are on it" as you turned it up). A key
+      // gesture still settling hands over to the pointer: it must not let
+      // go of Wander under the pointer 450 ms in.
+      if (k.spec.kind === "wander") {
+        clearTimeout(k.keyTimer);
+        wanderGrab();
+      } else touch();
       if (k.spec.kind === "named") {
         hearTimer = setTimeout(() => {
           if (!moved) hearIt(k);
@@ -424,7 +466,7 @@ export function createPerform(host) {
       if (Math.abs(dy) > 3) moved = true;
       const span = e.shiftKey ? 900 : 180;
       set(startV + (dy / span) * (1 - lo()), e.shiftKey);
-      touch();
+      if (k.spec.kind !== "wander") touch();
     });
     const end = (e) => {
       clearTimeout(hearTimer);
@@ -432,6 +474,7 @@ export function createPerform(host) {
       if (held) k.wrap.releasePointerCapture(e.pointerId);
       if (moved) onRelease(k);
       else if (performance.now() - pressT < 300 && k.spec.kind === "wander") toggleHold();
+      if (!moved && k.spec.kind === "wander") wanderLetGo();
       // A nudge too small to count as a turn still lets go of a control that
       // has nothing to turn: it springs back rather than sitting off-centre.
       else if (held && k.spec.kind === "named" && !turns(state.wire?.[k.i])) springBack(k);
@@ -451,7 +494,8 @@ export function createPerform(host) {
       else return;
       e.preventDefault();
       e.stopPropagation();
-      touch();
+      if (k.spec.kind === "wander") wanderGrab();
+      else touch();
       // A run of arrow presses is one gesture: logged, and a search control
       // asked, once the keys go quiet.
       clearTimeout(k.keyTimer);
@@ -459,20 +503,87 @@ export function createPerform(host) {
     });
   }
 
-  // Wander waits HANDS_OFF_MS after any touch; the status line says so for
-  // that long, and says Wander's zone again when it resumes. Only a glide
-  // interrupted mid-way used to say "paused", so a touch between moves left
-  // the line reading "wander: roam" while nothing moved.
-  let pausedTimer = null;
+  // Wander waits HANDS_OFF_MS after any touch, and says so for that long
+  // ("paused 3 s"). That is Wander's own state, and it is said on Wander,
+  // under its name, with a thin arc counting down to the next move (see
+  // `wanderState`). The status line keeps to the patch: it used to carry
+  // "wander: drift" and "paused — your hands are on it" beside the
+  // measurement, in the least-read place on the screen.
   function touch() {
-    const was = handsOn();
     state.lastTouch = performance.now();
-    if (!was && wanderZone(state.wander) !== "still" && !state.hold) renderStatus();
-    clearTimeout(pausedTimer);
-    pausedTimer = setTimeout(() => renderStatus(), HANDS_OFF_MS + 20);
+    renderWander();
   }
   function handsOn() {
     return performance.now() - state.lastTouch < HANDS_OFF_MS;
+  }
+
+  // Wander in the hand: autonomous moves wait while it is being turned, but
+  // it is not a touch. Let go in a new zone and the first move comes
+  // WANDER_FIRST_MS after (and after any other hand has been off for
+  // HANDS_OFF_MS); the zone's period governs the moves after that.
+  // "A new zone" is one other than where Wander was last let go
+  // (`wanderSettled`), so a gesture that starts on the keys and ends on the
+  // pointer still counts once, at its end.
+  function wanderGrab() {
+    state.wanderGrab = true;
+    renderWander();
+  }
+  function wanderLetGo() {
+    state.wanderGrab = false;
+    const z = wanderZone(state.wander);
+    if (z !== state.wanderSettled && z !== "still") {
+      const now = performance.now();
+      state.moveFrom = now;
+      state.moveAt = now + WANDER_FIRST_MS;
+      state.wanderStay = 0;
+      setTimeout(wanderTick, WANDER_FIRST_MS + 20);
+    }
+    state.wanderSettled = z;
+    renderWander();
+  }
+
+  // When Wander moves next, as [from, at] in performance.now() time: a first
+  // move scheduled by a let-go, else a period after the last move. Hands on
+  // push it back to HANDS_OFF_MS after the last touch.
+  function wanderDue() {
+    const pace = wanderPace(state.wander);
+    let from = state.lastMove;
+    let at = state.lastMove + pace.period * 1000;
+    if (state.moveAt != null) [from, at] = [state.moveFrom, state.moveAt];
+    const off = state.lastTouch + HANDS_OFF_MS;
+    return [from, Math.max(at, off)];
+  }
+
+  // What Wander is doing, in a few words for the line under it, and how much
+  // of the wait for its next move is left (0..1), or null when it is not
+  // counting down to one.
+  function wanderState() {
+    const z = wanderZone(state.wander);
+    if (state.hold) return ["held", null];
+    if (z === "still") return ["still", null];
+    if (state.wanderGrab) return [z, null];
+    const now = performance.now();
+    if (handsOn()) return [`paused ${Math.max(1, Math.ceil((state.lastTouch + HANDS_OFF_MS - now) / 1000))} s`, null];
+    if (state.glide && state.glide.why === "Wander") return [`${z} · gliding${state.wanderTaste === false ? " · no taste yet" : ""}`, null];
+    if (inFlight("perform_drift")) return [`${z} · walking…`, null];
+    if (z === "ideas") {
+      if (state.offer) return ["ideas · one in B", null];
+      if (inFlight("perform_offer")) return ["ideas · growing…", null];
+    }
+    if (!state.cur || !state.wire) return [z, null];
+    if (state.wanderStay && now - state.wanderStay < 6000) return ["staying — nothing better nearby", null];
+    const [from, at] = wanderDue();
+    const left = Math.max(0, at - now);
+    const span = Math.max(1, at - from);
+    return [`${z} · next in ${Math.max(1, Math.ceil(left / 1000))} s`, Math.min(1, left / span)];
+  }
+  function wanderTitle() {
+    const base = "Wander: how alive the patch is — still, ideas (variants appear in B), drift (small steps toward your taste, glided), roam (bigger, faster). Tap to hold it.";
+    return state.wanderWhy ? `${base}\nLast move: ${state.wanderWhy}.` : base;
+  }
+  function renderWander() {
+    const k = knobs.find((x) => x.spec.kind === "wander");
+    if (k) paintKnob(k);
   }
 
   // ---------- the sound ----------
@@ -739,7 +850,7 @@ export function createPerform(host) {
       if (live && state.offer) live.bMix(state.blend);
     } else if (k.spec.kind === "wander") {
       state.wander = k.value;
-      renderStatus();
+      renderWander();
     }
   }
 
@@ -763,6 +874,7 @@ export function createPerform(host) {
   }
 
   function onRelease(k) {
+    if (k.spec.kind === "wander") return wanderLetGo();
     if (k.spec.kind !== "named") return;
     const w = state.wire && state.wire[k.i];
     const was = k.value;
@@ -1081,6 +1193,8 @@ export function createPerform(host) {
       knobs.forEach(paintKnob);
       renderHood();
     }
+    // Wander's line counts down ("drift · next in 9 s", "paused 3 s").
+    if (state.visible && (state.hold || wanderZone(state.wander) !== "still")) renderWander();
     const o = state.offer;
     if (!o || !state.visible) return;
     if ((state.peeking || state.blend >= 0.5) && host.heldCount() > 0) o.heardMs = (o.heardMs || 0) + 250;
@@ -1228,6 +1342,7 @@ export function createPerform(host) {
     if (!state.cur || state.glide || inFlight("perform_drift")) return;
     const pace = wanderPace(state.wander);
     state.lastMove = performance.now();
+    state.moveAt = null;
     request("perform_drift", {
       tree: state.cur.json,
       overrides: overrides(),
@@ -1235,7 +1350,7 @@ export function createPerform(host) {
       steps: pace.steps,
       sigma: pace.sigma,
     });
-    renderStatus("walking…");
+    renderWander();
   }
 
   // Asking for another offer is passing on the one in B, and the offer passed
@@ -1361,6 +1476,7 @@ export function createPerform(host) {
       return;
     }
     state.lastMove = performance.now();
+    state.moveAt = null;
     state.offerWhy = why || "";
     if (why !== "wander" && why !== "attract") stepDone("offer");
     // A spare grown ahead from this sound is handed over at once; one still
@@ -1512,14 +1628,22 @@ export function createPerform(host) {
     if (m.type === "perform_drifted") {
       // Hands came on while the walk ran: the player's sound wins, and the
       // proposal (made from where the knobs were) is dropped.
-      if (state.lastTouch > p.at) return true;
+      if (state.lastTouch > p.at) {
+        renderWander();
+        return true;
+      }
       if (!m.drift || !m.drift.tree) {
-        renderStatus(whyNot(m, m.drift, "nothing nearby it likes better — staying"));
+        // Staying is Wander's news, said on Wander; a walk that cannot start
+        // from this patch at all is the patch's, and goes on the status line.
+        if (m.error || (m.drift && m.drift.reason === "outside_support")) renderStatus(whyNot(m, m.drift, ""));
+        else state.wanderStay = performance.now();
+        renderWander();
         return true;
       }
       const pace = wanderPace(state.wander);
+      state.wanderTaste = !!m.drift.taste;
+      state.wanderWhy = m.drift.taste ? "toward your taste" : "through the grammar, before it has learned your taste";
       startGlide(new Map(m.drift.knobs), JSON.stringify(m.drift.tree), pace.glide, "Wander");
-      renderStatus(m.drift.taste ? "drifting toward your taste" : "drifting through the grammar — no taste yet");
       return true;
     }
     if (m.type === "perform_offered") {
@@ -1744,7 +1868,7 @@ export function createPerform(host) {
       }
     });
     state.glide = { from, to, t0: performance.now(), dur: Math.max(0.2, seconds) * 1000, json, why };
-    renderStatus("gliding");
+    renderWander();
     requestAnimationFrame(stepGlide);
   }
 
@@ -1755,7 +1879,7 @@ export function createPerform(host) {
     // sound stays there. It never snaps back or finishes on its own.
     if (performance.now() - state.lastTouch < 60 && performance.now() - g.t0 > 60) {
       state.glide = null;
-      renderStatus("paused — your hands are on it");
+      renderWander();
       if (outsideTrust()) recheck();
       return;
     }
@@ -1770,6 +1894,7 @@ export function createPerform(host) {
       if (g.json) state.cur.json = g.json;
       state.glide = null;
       state.lastMove = performance.now();
+      renderWander();
       if (outsideTrust()) recheck();
       else renderStatus();
       return;
@@ -1954,7 +2079,6 @@ export function createPerform(host) {
     padEls.hold.classList.toggle("lit", state.hold);
     padEls.hold.setAttribute("aria-pressed", String(state.hold));
     knobs.forEach(paintKnob);
-    renderStatus();
   }
 
   const padEls = {};
@@ -1993,8 +2117,10 @@ export function createPerform(host) {
   }
 
   // ---------- panels ----------
+  // What PERFORM is doing with the patch: opening it, listening to it, how
+  // many controls reach it, re-checking it. Wander's own state is said on
+  // Wander (`wanderState`).
   function renderStatus(msg) {
-    const z = wanderZone(state.wander);
     const parts = [];
     // Another patch is on its way to the player's hands. The title still
     // names what the keys play — that is true until it lands — dimmed, and
@@ -2016,9 +2142,6 @@ export function createPerform(host) {
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
       if (state.revalidating || state.measuring) parts.push("re-checking");
     }
-    if (state.hold) parts.push("wander held");
-    else if (z !== "still" && handsOn() && !/^paused/.test(msg || "")) parts.push("paused — your hands are on it");
-    else if (z !== "still") parts.push(`wander: ${z}`);
     statusEl.textContent = parts.join(" · ");
   }
 
@@ -2063,7 +2186,7 @@ export function createPerform(host) {
     "<p>Each control is a direction in what the instrument can hear — <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a patch loads, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
     "<p>The amber dot on a control's ring is where this sound measures on it, compared with the patches in your session. A control that turns only one way on this patch says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the centre on the other. One that reads <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>" +
     "<p>A control drawn in amber cannot be reached by this patch's knobs (a patch with no drive cannot get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, which arrives in <b>B</b>; short of the notch it springs back and asks nothing.</p>" +
-    "<p><b>Wander</b> sets how alive the patch is: <b>still</b>, <b>offer</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Structure never changes on its own. Tap Wander to hold it; touching any control pauses it.</p>";
+    "<p><b>Wander</b> sets how alive the patch is: <b>still</b>, <b>ideas</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Its ticks mark where each begins. Let go of it in a new zone and it answers in a second and a half; the line under it says what it is doing and when it moves next, and the thin arc inside its ring fills toward that move. Structure never changes on its own. Tap Wander to hold it; touching any other control pauses it for a few seconds.</p>";
   whyBtn.onclick = () => {
     whyBody.classList.toggle("hidden");
     whyBtn.setAttribute("aria-expanded", String(!whyBody.classList.contains("hidden")));
@@ -2300,16 +2423,20 @@ export function createPerform(host) {
   renderTouch();
 
   // ---------- the wander clock ----------
+  function wanderTick() {
+    if (!state.visible || state.hold || !state.cur || !state.wire || state.wanderGrab) return;
+    const now = performance.now();
+    if (now < wanderDue()[1]) return;
+    const z = wanderZone(state.wander);
+    if (z === "ideas" && !state.offer && !inFlight("perform_offer")) requestOffer("wander");
+    else if ((z === "drift" || z === "roam") && !state.glide) requestDrift();
+    else return;
+    state.moveAt = null;
+    renderWander();
+  }
   setInterval(() => {
     growSpare();
-    if (!state.visible || state.hold || !state.cur || !state.wire) return;
-    const now = performance.now();
-    if (now - state.lastTouch < HANDS_OFF_MS) return;
-    const z = wanderZone(state.wander);
-    const pace = wanderPace(state.wander);
-    if (now - state.lastMove < pace.period * 1000) return;
-    if (z === "offer" && !state.offer) requestOffer("wander");
-    else if (z === "drift" || z === "roam") requestDrift();
+    wanderTick();
   }, 1000);
 
   // ---------- scope ----------
@@ -2490,7 +2617,8 @@ export function createPerform(host) {
     setControl(i, v01) {
       const k = knobs[i];
       if (!k) return;
-      touch();
+      if (k.spec.kind === "wander") wanderGrab();
+      else touch();
       ensureWired();
       k.value = clamp(k.spec.kind === "named" ? v01 * 2 - 1 : v01, ...spanOf(k));
       paintKnob(k);

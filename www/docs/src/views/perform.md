@@ -25,9 +25,8 @@ line says what PERFORM is doing: *listening to this patch…* (a new patch,
 whose controls wait for it), *4 of 6 controls reach this patch*, with
 *re-checking* after it while the controls keep working on their last
 measurement (after a Take, or once Wander or your turns and a Keep have moved
-the sound a long way; the re-check waits behind anything you ask for),
-*wander: drift*, and *paused — your hands are on it* for a few seconds after
-you touch anything.
+the sound a long way; the re-check waits behind anything you ask for). It
+speaks only about the patch; what Wander is doing is said under Wander.
 While a patch you opened is on its way it names it, *opening Acid Line…*, and
 the name above stays the patch your keys still play, dimmed, until the new one
 lands.
@@ -271,22 +270,35 @@ regions, left to right:
 | Region | What happens |
 |---|---|
 | **still** | Nothing moves unless you move it |
-| **offer** | Every 24 seconds or so, if B is empty, an offer is grown into it |
+| **ideas** | Every 24 seconds or so, if B is empty, an offer is grown into it |
 | **drift** | The knobs glide to a nearby setting the walk prefers: one move every 36 seconds at the left of the region, every 14 at the right, each glide taking 6 to 4 seconds |
 | **roam** | The same, with longer walks and so bigger moves: one every 12 to 7 seconds, gliding in 3 to 2 |
 
-Wander only runs while PERFORM is on screen. When the walk finds nothing it
-prefers nearby, the status line says *nothing nearby it likes better — staying*
-and the sound stays put.
+Three short ticks outside Wander's ring mark where *ideas*, *drift* and
+*roam* begin. **Let go of Wander in a new region and it answers in a second
+and a half**: the first move (an offer, or a drift) is asked for then, and the
+region's pace governs the moves after it. It used to wait out a whole period
+first, over twenty seconds at the left of *drift*.
+
+The line under Wander says what it is doing, in its own words: *drift · next
+in 9 s* while it waits, with a thin amber arc inside the ring filling toward
+that move; *drift · walking…* while the walk looks for the next setting;
+*drift · gliding* while the knobs glide (*· no taste yet* before the model has
+been fitted); *ideas · one in B* while B holds an offer; *paused 3 s* while
+your hands are on other controls; *held*; and *staying — nothing better
+nearby* when the walk finds nothing it prefers, and the sound stays put.
+Wander only runs while PERFORM is on screen.
 
 **Structure never changes on its own.** Drift and roam move knob values only,
 and they respect the locks you set in PATCH. A new module only ever arrives as
 an offer in B, and only becomes your sound if you take it.
 
-**Hands on, it waits.** Touching any control or pad, or moving one from MIDI,
-pauses Wander for three and a half seconds. A touch in the middle of a glide
-stops the glide where it is, and the sound stays there. It never snaps back
-and never finishes the move behind you.
+**Hands on, it waits.** Touching any other control or pad, or moving one from
+MIDI, pauses Wander for three and a half seconds, and the line under it counts
+them down. A touch in the middle of a glide stops the glide where it is, and
+the sound stays there. It never snaps back and never finishes the move behind
+you. Turning Wander itself is not a touch: it waits while you turn it, and
+answers once you let go.
 
 **Tap to hold.** A short tap on Wander (or the **Freeze** pad) freezes it where
 it is. The dial reads *held*. Tap again to release.
@@ -323,12 +335,13 @@ land on patches that pass the [vetting gate](../glossary.md#vetting). PERFORM
 says which you are hearing:
 
 ```text
-drifting through the grammar — no taste yet
-an offer is waiting, drawn from the grammar — it has not learned your taste yet
+drift · gliding · no taste yet
+drawn from the grammar — it has not learned your taste yet
 ```
 
-Once a model has been fitted, the same lines read *drifting toward your taste*
-and *grown toward your taste*.
+The first is the line under Wander while it glides, the second the B strip.
+Once a model has been fitted, the first loses *· no taste yet* and the second
+reads *grown toward your taste*.
 
 ## What PERFORM teaches the model
 

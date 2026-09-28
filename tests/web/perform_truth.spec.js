@@ -300,16 +300,20 @@ test("a drift is not a new patch: the status never says listening, and its re-ch
     const s = document.querySelector(".pf-status");
     window.__statuses = [s.textContent];
     new MutationObserver(() => window.__statuses.push(s.textContent)).observe(s, { childList: true, characterData: true, subtree: true });
+    // Wander says what it is doing under its own name.
+    const w = document.querySelector('.pf-knob[data-i="7"] .pf-k-sub');
+    window.__wander = [w.textContent];
+    new MutationObserver(() => window.__wander.push(w.textContent)).observe(w, { childList: true, characterData: true, subtree: true });
   });
   const from = await page.evaluate(() => performance.now());
   // Wander all the way to roam, from the keyboard.
   const wander = page.locator('.pf-knob[data-i="7"]');
   await wander.focus();
   for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowUp");
-  await expect(wander.locator(".pf-k-sub")).toHaveText("roam");
+  await expect(wander.locator(".pf-k-sub")).toHaveText(/^roam/);
   await page.locator(".pf-xy-field").focus(); // off the dial, hands off
   // A drift arrives and glides.
-  await page.waitForFunction(() => window.__statuses.some((t) => /drifting/.test(t)), null, { timeout: 150_000 });
+  await page.waitForFunction(() => window.__wander.some((t) => /gliding/.test(t)), null, { timeout: 150_000 });
   // …and finishes: give the glide (3 s at most in roam) time to land.
   await page.waitForTimeout(4000);
   const seen = await page.evaluate(() => window.__statuses);

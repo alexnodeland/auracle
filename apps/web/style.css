@@ -4579,6 +4579,10 @@ html.handheld .handheld-gate {
 @keyframes pf-bump-lo { 50% { transform: rotate(-3deg); } }
 @keyframes pf-bump-hi { 50% { transform: rotate(3deg); } }
 .pf-k-arc { fill: none; stroke: var(--phos-a); stroke-width: 3.5; stroke-linecap: round; }
+/* Wander: where its zones begin (ideas, drift, roam), and a thin arc inside
+   the ring filling toward its next move — the model's, so amber. */
+.pf-k-zone { stroke: var(--silk-dim); stroke-width: 1.5; stroke-linecap: round; }
+.pf-k-count { fill: none; stroke: var(--phos-b-deep); stroke-width: 1.5; stroke-linecap: round; }
 .pf-k-body { fill: var(--knob-body); stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
 .pf-k-ptr { stroke: var(--silk); stroke-width: 3; stroke-linecap: round; }
 .pf-k-where { fill: var(--phos-b); }
