@@ -76,7 +76,10 @@ test("a film's own recording never shows the chip", async ({ page }) => {
   test.setTimeout(180_000);
   await withFilms(page);
   await boot(page, "?film");
-  if (await page.locator("#warm-skip").isVisible()) await page.locator("#warm-skip").click();
+  // A fresh visitor gets the warm start 500 ms after the veil drops, film or
+  // not: wait for it rather than checking once, or it opens over the tabs.
+  await expect(page.locator("#warmstart")).toBeVisible({ timeout: 60_000 });
+  await page.locator("#warm-skip").click();
   await page.locator('.viewtab[data-view="taste"]').click();
   await expect(page.locator("#film-chip")).toBeHidden();
 });
