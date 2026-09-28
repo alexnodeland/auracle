@@ -8,6 +8,27 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — true today
+
+- **A guess looks like a guess in TASTE, and in PATCH's node bank.** A pull
+  the model is sure of (its interval clears zero) is a solid bar with its
+  whisker; one it is still guessing at is a faint hollow bar with the whisker
+  drawn at full strength, and its label ends in **?**. DIRECTIONS used to draw
+  every coefficient as the same glowing bar under "Longer bar = stronger
+  pull", when at 58 picks 35 of its 36 intervals crossed zero; STYLES drew
+  them with no interval at all; the node bank called the same numbers "no
+  lean either way" and capped their whiskers at 16 px. DIRECTIONS' caption
+  now reads "Where each style leans. Solid = it's sure. Hollow = still a guess
+  — the thin line is how far it could be off." (`taste_marks.spec.js`,
+  `taste-geom.test.mjs`)
+- **TASTE's early states count from where you are.** MAP offers "1 more pick
+  →" at five picks, not "Start 6 quick picks →"; STYLES says "Your first style
+  appears at pick 6; more split off as you teach it."; TRUST counts its own
+  twenty guesses ("14 to go →") instead of borrowing the six-pick button. The
+  map's footer is in words ("A flat view of 40 patches — close dots usually
+  sound alike (it shows 29% of how they differ)"), and its caption says what a
+  click does: it opens the patch (`taste_marks.spec.js`).
+
 ### Added — the films
 
 Five films, each on the page it explains, with the launch film as the landing

@@ -1,8 +1,10 @@
-// The TASTE view's geometry: how big a MAP dot is, and how long a DIRECTIONS
-// bar and its whisker are. Both are claims about uncertainty, and both were
-// drawn so that the uncertainty could not be seen — nothing on screen looked
-// broken, which is why they live here, pure, with unit tests beside them
-// (tests/taste-geom.test.mjs). main.js draws; this decides the lengths.
+// The TASTE view's geometry: how big a MAP dot is, how long a DIRECTIONS
+// bar and its whisker are, and whether a pull is drawn settled or as a guess
+// (in STYLES, DIRECTIONS and PATCH's node bank alike). All are claims about
+// uncertainty, and all were drawn so that the uncertainty could not be seen —
+// nothing on screen looked broken, which is why they live here, pure, with
+// unit tests beside them (tests/taste-geom.test.mjs). main.js draws; this
+// decides the lengths and the marks.
 
 // ---------- MAP: size is how unsure it is ----------
 // It was `base + min(1, sd) · 3.5` px. In a taught session (56 picks) sd ran
@@ -95,4 +97,63 @@ export function directionsBar(r, scale, usable) {
   const clipLo = lo < -usable;
   const clipHi = hi > usable;
   return { len, lo: Math.max(lo, -usable), hi: Math.min(hi, usable), clipLo, clipHi, crossesZero };
+}
+
+// ---------- one mark for a pull: settled, or a guess ----------
+// DIRECTIONS drew every coefficient as the same glowing bar, and at 58 picks
+// 35 of its 36 intervals crossed zero, so almost everything on screen was a
+// guess drawn as a settled pull; STYLES drew the same numbers with no
+// interval at all, and PATCH's node bank called them "no lean" and drew a dot.
+// One concept, three looks. Now all three draw one mark, decided here:
+//
+//   settled — the ±σ interval clears zero: a solid bar with its whisker;
+//   a guess — the interval crosses zero: a hollow 1 px outline at GUESS_ALPHA,
+//             the whisker at full strength, and the label ends in "?".
+//
+// The whisker is the reading that matters for a guess, so it is the thing
+// drawn strongest; the bar is only where the guess happens to point.
+
+/** How strongly a guess's hollow bar is drawn, 0–1. */
+export const GUESS_ALPHA = 0.45;
+/** How strongly a whisker is drawn: behind a settled bar, and on a guess. */
+export const WHISKER_ALPHA_SETTLED = 0.55;
+export const WHISKER_ALPHA_GUESS = 1;
+
+/** True when a coefficient `{mean, std}` has not been established: its ±σ
+ *  interval includes zero (strictly — an end exactly on zero has cleared it,
+ *  the same boundary as `directionsBar`'s `crossesZero`). */
+export function isGuess(r) {
+  const s = Math.max(0, r.std || 0);
+  return r.mean - s < 0 && r.mean + s > 0;
+}
+
+/** One pull's mark: `directionsBar`'s geometry plus how to draw it. */
+export function pullMark(r, scale, usable) {
+  const bar = directionsBar(r, scale, usable);
+  const guess = bar.crossesZero;
+  return {
+    ...bar,
+    guess,
+    hollow: guess,
+    barAlpha: guess ? GUESS_ALPHA : 1,
+    whiskerAlpha: guess ? WHISKER_ALPHA_GUESS : WHISKER_ALPHA_SETTLED,
+  };
+}
+
+/** A row's label: a guess says so with a trailing "?". `guess` is one pull's
+ *  state, or — for a DIRECTIONS row that draws one bar per style — whether
+ *  every bar on the row is a guess (no style is sure of it). */
+export function pullLabel(name, guess) {
+  return guess ? `${name}?` : name;
+}
+
+/** Counts for a caption or a screen reader: how many marks are settled. */
+export function countPulls(marks) {
+  let settled = 0;
+  let guesses = 0;
+  for (const m of marks) {
+    if (m.guess) guesses += 1;
+    else settled += 1;
+  }
+  return { settled, guesses };
 }

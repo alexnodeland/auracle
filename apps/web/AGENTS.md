@@ -18,7 +18,7 @@ the long-form notes are this directory's `README.md`.
 | `live-audio.js` | AudioWorklet | Builds the worklet blob around `LivePoly`; the arpeggiator |
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
-| `taste-geom.js` | main thread | Pure geometry for TASTE (map dot sizes, DIRECTIONS bars); unit-tested in `tests/` |
+| `taste-geom.js` | main thread | Pure geometry for TASTE (map dot sizes, DIRECTIONS bars, the settled/guess mark PATCH's θ cell shares); unit-tested in `tests/` |
 | `style.css` | page | Tokens on `:root`, then per-view sections |
 
 ## Rules

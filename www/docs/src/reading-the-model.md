@@ -27,13 +27,14 @@ module's spec card in the node bank says them in these words:
 | *Not a coordinate the taste model measures on its own.* | The feature vector has no coordinate for this. It never will |
 | *The model hasn't been fitted yet — make a few picks.* | No posterior yet. Answer some duels |
 | *In 3 of 40 patches — too few for the model to have an opinion yet.* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
-| *The model has looked and has no lean either way — θ 0.05 ± 0.17, an interval that straddles zero.* | Enough patches use it, and the model has found nothing either way |
+| *In 6 of 40 patches. Still a guess: it could lean either way — θ 0.05 ± 0.17, an interval that crosses zero.* | Enough patches use it, and the model has looked, but it cannot yet tell which way you lean |
 | *In 12 of 40 patches. in drive & fold + chorus (60% of your bank) you lean toward it — θ +0.62 ± 0.20* | Here is the belief, and here is how much to trust it |
 
-A dash is not zero. "The model is indifferent to this" and "the model has never
-had a chance to form a view" are different statements, and one grey bar cannot
-say both. On the node bank's θ bars, *no lean* is a dot on the zero line; the
-three silences before it are a dash.
+A dash is not zero. "The model is not sure yet" and "the model has never had a
+chance to form a view" are different statements, and one grey bar cannot say
+both. On the node bank's θ bars, *still a guess* is a hollow bar whose whisker
+crosses the zero line, the belief is a solid bar, and the three silences
+before them are a dash. TASTE's STYLES and DIRECTIONS draw the same two marks.
 
 ## Read the interval, not the bar
 
@@ -42,7 +43,9 @@ The single most useful habit.
 In [DIRECTIONS](./views/taste.md#directions), every coefficient is drawn with a
 credible interval behind it. **If the interval crosses the centre line, the
 model has not established that coordinate**: the bar is a guess that happens to
-point somewhere, and it will likely point elsewhere after ten more duels.
+point somewhere, and it will likely point elsewhere after ten more duels. The
+app draws such a bar hollow, with its whisker at full strength, and ends the
+row's label with **?**; only an interval clear of zero gets a solid bar.
 
 A short bar with a tight interval is worth more than a long bar with a wide
 one. The former is a small preference the model is sure of; the latter is noise
@@ -52,7 +55,8 @@ with confidence.
 <figcaption><strong>Drag the evidence slider.</strong> Early on every interval
 straddles zero, and the individual bars mean nothing even though they point
 somewhere. As observations accumulate the intervals narrow and coefficients
-start clearing zero one at a time. Red whiskers are the ones that have not.
+start clearing zero one at a time. Hollow bars, labelled with a **?**, are the
+ones that have not, drawn as the app draws them.
 </figcaption>
 </figure>
 
@@ -75,10 +79,10 @@ size.
 Early in a session everything is big. That is what a cold start looks like, and
 it is why the first generation you breed is not very targeted.
 
-Also read the variance footer: the two axes typically capture around half the
-variation in the feature space, so two dots close together are *probably*
-similar and two far apart are *probably* different. It is a projection, not a
-map of the territory.
+Also read the footer (*"it shows 29% of how they differ"*): the two axes
+often capture a third or less of the variation in the feature space, so two
+dots close together *usually* sound alike and two far apart are *probably*
+different. It is a projection, not a map of the territory.
 
 ## Styles are lenses, not genres
 

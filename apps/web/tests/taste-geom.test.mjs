@@ -9,6 +9,12 @@ import {
   mapDotRadius,
   directionsScale,
   directionsBar,
+  GUESS_ALPHA,
+  WHISKER_ALPHA_GUESS,
+  isGuess,
+  pullMark,
+  pullLabel,
+  countPulls,
 } from "../taste-geom.js";
 
 test("map: a taught pool's sd spreads its dots from smallest to largest", () => {
@@ -99,4 +105,69 @@ test("directions: one very unsure coefficient is cut at the edge, not allowed to
 test("directions: a lens that has learned little draws short bars", () => {
   const scale = directionsScale([{ mean: 0.01, std: 0.01 }], 400);
   assert.ok(directionsBar({ mean: 0.01, std: 0.01 }, scale, 400).len < 40);
+});
+
+// ---------- one mark for a pull ----------
+
+test("pull: an interval that crosses zero is a guess, drawn hollow with a full whisker and a ?", () => {
+  // From the TASTE film's rows log: 35 of 36 intervals crossed zero, for
+  // instance noisiness −0.188 ± 0.19, and every one was drawn as a solid bar.
+  const noise = { mean: -0.188, std: 0.19 };
+  const usable = 432;
+  const scale = directionsScale([noise, { mean: 0.34, std: 0.09 }], usable);
+  const m = pullMark(noise, scale, usable);
+  assert.equal(m.guess, true);
+  assert.equal(m.hollow, true, "a guess is not a filled bar");
+  assert.ok(m.barAlpha >= 0.35 && m.barAlpha <= 0.55, `the outline is faint (${m.barAlpha})`);
+  assert.equal(m.barAlpha, GUESS_ALPHA);
+  assert.equal(m.whiskerAlpha, WHISKER_ALPHA_GUESS);
+  assert.ok(m.whiskerAlpha > m.barAlpha, "the whisker is drawn stronger than the bar it qualifies");
+  assert.ok(m.lo < 0 && m.hi > 0, "and it crosses the centre line");
+  assert.equal(pullLabel("noisiness", m.guess), "noisiness?");
+});
+
+test("pull: an interval clear of zero is settled, a solid bar under a quieter whisker", () => {
+  const body = { mean: 0.34, std: 0.09 };
+  const scale = directionsScale([body], 400);
+  const m = pullMark(body, scale, 400);
+  assert.equal(m.guess, false);
+  assert.equal(m.hollow, false);
+  assert.equal(m.barAlpha, 1);
+  assert.ok(m.whiskerAlpha < 1);
+  assert.equal(pullLabel("body", m.guess), "body");
+  // …negative ones too.
+  assert.equal(pullMark({ mean: -0.4, std: 0.1 }, scale, 400).guess, false);
+});
+
+test("pull: the boundary — an end exactly on zero has cleared it, as the node bank has always counted", () => {
+  // The node bank's `beliefState` calls |mean| ≥ std resolved; the mark agrees.
+  assert.equal(isGuess({ mean: 0.2, std: 0.2 }), false);
+  assert.equal(isGuess({ mean: -0.2, std: 0.2 }), false);
+  assert.equal(isGuess({ mean: 0.2, std: 0.2001 }), true);
+  assert.equal(isGuess({ mean: 0, std: 0.1 }), true);
+  for (const r of [{ mean: 0.2, std: 0.2 }, { mean: 0.19, std: 0.2 }, { mean: -0.5, std: 0.6 }]) {
+    assert.equal(pullMark(r, directionsScale([r], 100), 100).guess, isGuess(r));
+  }
+});
+
+test("pull: a small cell draws the same mark on its own width (the node bank's 16 px and 11 px)", () => {
+  // The θ chip's whisker used to be capped at 16 px and drawn from zero, not
+  // around the mean; on the shared geometry it is the interval, cut and
+  // marked at the edge.
+  const rows = [{ mean: 0.3, std: 0.05 }, { mean: 0.05, std: 0.9 }];
+  for (const usable of [16, 11]) {
+    const scale = directionsScale(rows, usable);
+    const wide = pullMark(rows[1], scale, usable);
+    assert.equal(wide.guess, true);
+    assert.ok(wide.lo < 0 && wide.hi > 0);
+    assert.ok(wide.lo >= -usable && wide.hi <= usable, "never past the cell");
+    assert.ok(wide.clipLo || wide.clipHi, "and the cut is said");
+    const sure = pullMark(rows[0], scale, usable);
+    assert.ok(sure.lo > 0, "a settled whisker sits around its mean, clear of zero");
+  }
+});
+
+test("pull: counts for a caption", () => {
+  assert.deepEqual(countPulls([{ guess: true }, { guess: false }, { guess: true }]), { settled: 1, guesses: 2 });
+  assert.deepEqual(countPulls([]), { settled: 0, guesses: 0 });
 });

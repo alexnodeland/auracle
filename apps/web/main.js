@@ -80,7 +80,7 @@ const BUILD = await (async () => {
 // The TASTE view's lengths — dot sizes, bars, whiskers — pure, so they are
 // unit-tested (taste-geom.js, tests/taste-geom.test.mjs). Awaited before the
 // worker exists, so no reply can arrive while it loads.
-const { mapUnsureScale, mapDotRadius, directionsScale, directionsBar } =
+const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, countPulls } =
   await import(`./taste-geom.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -9379,9 +9379,10 @@ syncBeliefBtn();
 
 /** What the posterior has resolved about this module's family, or null — which
  *  is the answer for anything the taste model does not measure, has not been
- *  fitted for, has too few patches carrying, or has looked at and found no
- *  lean in. Nothing at all is drawn for any of those, the same law
- *  `nbPaintTheta` runs under: a tint without evidence is a lie with a colour. */
+ *  fitted for, has too few patches carrying, or has only a guess about (an
+ *  interval that crosses zero). No tint is drawn for any of those: a tint
+ *  cannot be hollow, and a tint without evidence is a lie with a colour. The
+ *  node bank's θ cell, which can, draws a guess hollow (`nbPaintTheta`). */
 function beliefResolved(m, sup) {
   const spec = MOD_BY_KIND[m.kind];
   if (!spec || !spec.phi) return null;
@@ -13761,40 +13762,64 @@ function chipBlockedWhy(m, { hasRack, hasModSocket, mismatch }) {
 }
 
 /** The belief cell. A bar without evidence is a lie with a shape, so anything
- *  short of a resolved coefficient draws a mark that is not a bar.
- *  Shared by the catalogue chips and the in-patch chips: the model must not
- *  speak loudest about the modules you are merely browsing and go silent about
- *  the ones you actually built with (WS-2 §7). */
+ *  short of a fitted coefficient with enough patches behind it draws a dash,
+ *  not a bar. Shared by the catalogue chips and the in-patch chips: the model
+ *  must not speak loudest about the modules you are merely browsing and go
+ *  silent about the ones you actually built with (WS-2 §7).
+ *
+ *  A coefficient it has looked at is drawn with TASTE's one mark for a pull
+ *  (taste-geom `pullMark`): settled, a solid bar with its ±σ whisker; a guess
+ *  (the interval crosses zero), a hollow bar with the whisker at full
+ *  strength. A guess used to be a dot on zero captioned "no lean either way"
+ *  — the same number DIRECTIONS drew as a bar — and a settled bar's whisker
+ *  was capped at 16 px and drawn from zero rather than around the mean, so
+ *  the interval it stood for could not be read. Now the whisker is the
+ *  interval, on one scale for the whole rail, and an end past the cell's
+ *  edge is cut there and marked, never drawn shorter. */
 function nbPaintTheta(cell, m, byPhi, total) {
   if (!cell) return;
   const t = nbTheta(m.kind);
   const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
   const state = m.phi ? beliefState(t, sup) : "unmeasured";
-  if (state !== "resolved") {
-    cell.className = "ni-theta " + (state === "flat" ? "flat" : "thin");
+  if (state !== "resolved" && state !== "flat") {
+    cell.className = "ni-theta thin";
     cell.innerHTML = "";
     cell.title =
       state === "unmeasured" ? "Not something the taste model measures directly."
       : state === "unfitted" ? unfittedWhy()
-      : state === "thin" ? `Too little to go on — ${sup} of ${total} patches carry this.`
-      : `The model has looked and has no lean either way (θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}).`;
+      : `Too little to go on — ${sup} of ${total} patches carry this.`;
     return;
   }
-  // 16px of travel each side of the zero rule (see .ni-theta), so the
-  // clamps are the geometry rather than a number that overflows it.
-  const scale = 14; // px per unit θ
-  const len = Math.max(2, Math.min(15, Math.abs(t.mean) * scale));
-  const whisk = Math.min(16, (Math.abs(t.mean) + t.std) * scale);
+  // The catalogue cell is 34 px with the zero rule at 17; the in-patch pill's
+  // is 24 px with it at 12 (style.css, .ni-theta).
+  const inPatch = !!cell.closest(".nb-chips");
+  const zero = inPatch ? 12 : 17;
+  const usable = inPatch ? 11 : 16;
+  const mark = pullMark(t, nbThetaScale(usable), usable);
   const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
-  cell.className = "ni-theta" + (t.mean >= 0 ? " pos" : " neg");
+  const barL = zero + Math.min(0, mark.len);
+  const barW = Math.max(mark.guess ? 2 : 1, Math.abs(mark.len));
+  cell.className = "ni-theta" + (mark.guess ? " guess" : "") + (t.mean >= 0 ? " pos" : " neg");
   cell.innerHTML =
-    `<i class="tb-whisk" style="width:${whisk}px"></i>` +
-    `<i class="tb-bar" style="width:${len}px;background:${color}"></i>`;
-  cell.title =
-    `In ${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank) ` +
-    `you lean ${t.mean >= 0 ? "toward" : "away from"} this ` +
-    `— θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
-    `from ${sup} of ${total} patches.`;
+    `<i class="tb-whisk${mark.clipLo ? " cut-lo" : ""}${mark.clipHi ? " cut-hi" : ""}" ` +
+      `style="left:${(zero + mark.lo).toFixed(1)}px;width:${Math.max(1, mark.hi - mark.lo).toFixed(1)}px"></i>` +
+    `<i class="tb-bar" style="left:${barL.toFixed(1)}px;width:${barW.toFixed(1)}px;` +
+      `${mark.guess ? `border-color:${color}` : `background:${color}`}"></i>`;
+  const lens = `${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank)`;
+  const fig = `θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}`;
+  cell.title = mark.guess
+    ? `Still a guess: in ${lens} it leans ${t.mean >= 0 ? "toward" : "away from"} this, but it could be ` +
+      `either way — ${fig}, an interval that crosses zero, from ${sup} of ${total} patches.`
+    : `In ${lens} you lean ${t.mean >= 0 ? "toward" : "away from"} this — ${fig}, from ${sup} of ${total} patches.`;
+}
+
+/** Pixels per unit θ in a belief cell of `usable` px each side of zero: one
+ *  scale for the whole rail, fitted over the dominant style's coefficients
+ *  the way DIRECTIONS fits its rows (taste-geom `directionsScale`). */
+function nbThetaScale(usable) {
+  const styles = activeStyles();
+  const s = styles[0];
+  return directionsScale((s && s.theta) || [], usable);
 }
 
 // ---- render: filter, availability, and the model's belief ----
@@ -14036,14 +14061,13 @@ function specParts(m) {
          m.modTarget ? `mod → ${m.modTarget}` : null]
           .filter(Boolean).join(" · ");
 
-  // Four different silences, and they are not the same sentence: this is not
-  // measured / the model has not been fitted / too few examples / here is what
-  // it thinks. Collapsing any of them into "no data" is how a HITL surface
-  // starts implying more than it knows.
-  // Five distinct silences, and they are not the same sentence: this is not
+  // Five distinct states, and they are not the same sentence: this is not
   // measured / the model has not been fitted / too few examples / it looked and
-  // found no lean / here is what it thinks. Collapsing any of them into "no
-  // data" is how a human-in-the-loop surface starts implying more than it knows.
+  // has only a guess / here is what it is sure of. Collapsing any of them into
+  // "no data" is how a human-in-the-loop surface starts implying more than it
+  // knows. The guess is worded as TASTE draws it (a hollow bar, "still a
+  // guess"): it used to read "no lean either way", while DIRECTIONS drew the
+  // same number as a bar pointing one way.
   const state = m.phi ? beliefState(t, sup) : "unmeasured";
   let belief;
   if (state === "unmeasured") {
@@ -14054,8 +14078,8 @@ function specParts(m) {
     belief = `<span class="sp-dim">In ${sup} of ${total} patches — too few for the model to have an opinion yet.</span>`;
   } else if (state === "flat") {
     belief =
-      `<span class="sp-dim">In ${sup} of ${total} patches. The model has looked and has no lean either way ` +
-      `— θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}, an interval that straddles zero.</span>`;
+      `<span class="sp-dim">In ${sup} of ${total} patches. Still a guess: it could lean either way ` +
+      `— θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}, an interval that crosses zero.</span>`;
   } else {
     const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
     belief =
@@ -14297,8 +14321,8 @@ function priceWhatNotWhere(p) {
  *  plate, which sits between two modules and carries the rest as a tooltip.
  *
  *  The figure itself is printed in every state where one exists, including
- *  "no lean" — a number the model is not confident about is still the number,
- *  and hiding it would make "no lean" indistinguishable from "no answer". */
+ *  a guess — a number the model is not confident about is still the number,
+ *  and hiding it would make "a guess" indistinguishable from "no answer". */
 function priceHTML(p, long) {
   if (!p) return "";
   const fig = `${PRICE_SIGN(p.du)} ± ${p.sd.toFixed(2)}`;
@@ -14319,10 +14343,10 @@ function priceHTML(p, long) {
       }</span>`;
     case "flat":
       return long
-        ? `<span class="pr pr-flat">the model has no lean here</span>` +
-            ` <span class="pr-dim">(${fig}, straddling zero)</span>` +
+        ? `<span class="pr pr-flat">still a guess — it could go either way</span>` +
+            ` <span class="pr-dim">(${fig}, crossing zero)</span>` +
             ` <span class="pr-note">what, not where</span>`
-        : `<span class="pr pr-flat">no lean</span> <span class="pr-dim">${fig}</span>`;
+        : `<span class="pr pr-flat">a guess</span> <span class="pr-dim">${fig}</span>`;
     default:
       return long
         ? `<span class="pr ${p.du >= 0 ? "up" : "down"}">${fig}</span>` +
@@ -14849,9 +14873,10 @@ const NB_TOUR = [
     title: "what the model thinks",
     body:
       `The bar on the right of a row is the model's opinion of that module, with ` +
-      `its uncertainty. It stays <b>blank until there is evidence for it</b>, and ` +
-      `shows a dot on zero when the model has looked and found no lean either ` +
-      `way. A short bar and "I do not know" must not look alike.`,
+      `its uncertainty. It is <b>a dash until there is evidence for it</b>, ` +
+      `<b>hollow while it is still a guess</b> (the thin line, how far it could ` +
+      `be off, crosses zero), and solid once it is sure. A short bar and ` +
+      `"I do not know" must not look alike.`,
   },
 ];
 
@@ -16889,60 +16914,88 @@ function renderStyleChips() {
     holder.appendChild(chip);
   });
 }
+// Each caption says what the tab draws, in the player's words. MAP's said
+// "islands are styles", which nothing on it shows, and "Click a dot to open
+// it" is what a click does (it opens the patch on the bench; it does not play
+// the phrase). DIRECTIONS said "Longer bar = stronger pull" over bars that
+// were almost all guesses; it now says how a guess is drawn.
 const CAPTIONS = {
-  map: "Every patch you’ve heard, mapped by sound & structure. Glow is how much the model thinks you’d like it, size is how sure it is — islands are styles. Click a dot to open it.",
-  styles: "Your taste as separate styles — new lenses appear as you give the model more to work with (up to 5). Dim lenses are idle.",
-  dir: "What each style listens for — learned directions in sound, not settings. Longer bar = stronger pull.",
+  map: "Brighter: it thinks you’d like it more. Bigger: it’s less sure. Click a dot to open it.",
+  styles: "Your taste as separate styles (up to 5), each with the five qualities it leans on hardest. Solid = it's sure; hollow, with a ?, = still a guess. Dim styles are idle.",
+  dir: "Where each style leans. Solid = it's sure. Hollow = still a guess — the thin line is how far it could be off.",
   trust: "Should you believe it? Each dot is a bucket of forecasts: how confident it was, against how often it was right. On the line = honest.",
 };
 // While a chart is empty, the caption must describe the state on screen —
-// "longer bar = stronger pull" over a void promises a chart that isn't there.
+// a caption about bars over a void promises a chart that isn't there.
 const EMPTY_CAPTIONS = {
-  map: "Your patches will map here by sound & structure — a few picks and it lights up.",
+  map: "Every patch you hear, placed by sound & structure. The dots light up when it first redraws your taste map.",
   styles: "Your taste as separate styles. None on record yet.",
   dir: "The sound qualities that pull you — brightness, roughness, attack. Nothing learned yet.",
-  trust: "Whether to believe the model. It forecasts every duel before your vote; the first 20 land here.",
+  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you'll choose; after 20 guesses it grades itself here.",
 };
 
 const TRUST_MIN_N = 20;
 
 // Empty states are HTML, not canvas paint: selectable, with a real CTA, and
 // no two tabs identical.
+//
+// Every count and every CTA here is computed from what is left, in the words
+// EVOLVE's meter uses ("redraws your taste map"). They were fixed: "Start 6
+// quick picks →" at five picks of six, TRUST's twenty guesses behind the same
+// six-pick button, and STYLES promising "after a dozen picks" under "n of 6".
+/** Picks until the next refit redraws the taste map, as the EVOLVE meter
+ *  counts them (`renderTeach`), or 0 when one is armed or running. */
+function picksToRefit() {
+  if (fitDue || fitting) return 0;
+  return FIT_EVERY - (duelsSinceFit % FIT_EVERY);
+}
 function renderEmptyState(tab) {
   const holder = $("crt-empty");
   if (!holder) return;
   const n = picksTaught();
   const cn = engineCalib ? engineCalib.n : 0;
+  const left = picksToRefit();
   const skel = (rows, cls = "") =>
     `<div class="ce-skel ${cls}" aria-hidden="true">${"<i></i>".repeat(rows)}</div>`;
-  const cta = `<button class="hw-btn small" id="ce-cta">Start ${FIT_EVERY} quick picks →</button>`;
+  const more = (k) => `${k} more pick${k === 1 ? "" : "s"}`;
+  const pickCta = left > 0
+    ? `<button class="hw-btn small" id="ce-cta">${more(left)} →</button>`
+    : `<button class="hw-btn small" id="ce-cta" disabled>redrawing your taste map…</button>`;
+  const count = left > 0
+    ? `<div class="ce-count">${more(left)} and it redraws your taste map</div>`
+    : `<div class="ce-count">redrawing your taste map…</div>`;
+  const toGo = Math.max(0, TRUST_MIN_N - cn);
   const content = {
     map: `
       <div class="ce-title">nothing predicted yet</div>
-      <div class="ce-copy">Every patch you hear lands on this map. After your first
-      ${FIT_EVERY} picks the model fits, and the dots glow by how much it thinks
+      <div class="ce-copy">Every patch you hear lands on this map. ${left > 0 ? `In ${more(left)} it` : "It is"}
+      ${left > 0 ? "redraws" : "redrawing"} your taste map, and the dots glow by how much it thinks
       you'd like them.</div>
-      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+      ${count}${pickCta}`,
     styles: `${skel(3)}
-      <div class="ce-title">one lens, waiting</div>
-      <div class="ce-copy">Your taste gets up to five lenses as it splits — after a
-      dozen picks it can separate ambient-you from acid-you, and you can name
-      each one.</div>
-      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+      <div class="ce-title">no style yet</div>
+      <div class="ce-copy">${left > 0
+        ? `Your first style appears at pick ${n + left}; more split off as you teach it.`
+        : "Your first style is on its way; more split off as you teach it."}
+      You can name each one.</div>
+      ${count}${pickCta}`,
     dir: `${skel(4, "dir")}
       <div class="ce-title">nothing learned yet</div>
       <div class="ce-copy">This shows which <i>qualities</i> pull you — brightness,
-      roughness, attack — not which knobs. Longer bar, stronger pull.</div>
-      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+      roughness, attack — not which knobs, and how sure it is of each: solid
+      when it's sure, hollow while it's still a guess.</div>
+      ${count}${pickCta}`,
     trust: `<div class="ce-trust-skel" aria-hidden="true"></div>
-      <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} forecasts</div>
-      <div class="ce-copy">Before every vote the model forecasts your pick. Dots land
-      here: forecast against outcome, and on the line means honest. Dots inside
-      their whisker are indistinguishable from honest.</div>${cta}`,
+      <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} guesses</div>
+      <div class="ce-copy">${views && views.styles
+        ? "Before each pick it guesses which you'll choose."
+        : `From pick ${n + left} on, it guesses before each pick which you'll choose.`} After
+      ${TRUST_MIN_N} guesses it grades itself here.</div>
+      <button class="hw-btn small" id="ce-cta">${toGo} to go →</button>`,
   }[tab];
   holder.innerHTML = content || "";
   const btn = holder.querySelector("#ce-cta");
-  if (btn) btn.onclick = () => showView("evolve");
+  if (btn && !btn.disabled) btn.onclick = () => showView("evolve");
 }
 
 let mapHits = [];
@@ -16975,6 +17028,9 @@ function drawTaste() {
   $("crt-empty").classList.toggle("hidden", !empty && !mapPrefit);
   $("crt-empty").classList.toggle("translucent", mapPrefit);
   $("map-legend").classList.toggle("hidden", tasteTab !== "map" || empty || noTaste);
+  // The map's label says how to walk it; STYLES and DIRECTIONS write their
+  // own as they draw (`describeTasteCanvas`).
+  if (tasteTab === "map" || tasteTab === "trust" || empty) describeTasteCanvas(null);
   if (empty) return renderEmptyState(tasteTab);
   if (mapPrefit) renderEmptyState("map");
 
@@ -17189,8 +17245,13 @@ function drawMapTab(ctx, w, h, dpr) {
 
   ctx.fillStyle = INK.amberDim;
   ctx.textAlign = "left";
+  // In words, not "axes = sound-space PCA · 29% of variance": the two axes
+  // are the directions the patches differ most, and the share is how much of
+  // their difference a flat picture can hold — 29–32% in the sessions the
+  // films measured, so "close" is a hint, not a promise.
   ctx.fillText(
-    `axes = sound-space PCA · ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of variance · ${pts.filter((p) => p.id != null).length} patches`,
+    `A flat view of ${pts.filter((p) => p.id != null).length} patches — close dots usually sound alike ` +
+      `(it shows ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of how they differ).`,
     10 * dpr, h - 8 * dpr
   );
 }
@@ -17205,6 +17266,14 @@ function activeStyles() {
 function drawStylesTab(ctx, w, h, dpr) {
   const styles = activeStyles();
   const blockH = h / styles.length;
+  // Each style's five strongest coordinates, drawn with DIRECTIONS' mark and
+  // on one scale across the tab: it drew them with no interval at all, each
+  // style stretched to its own longest bar, so a guess (chorus & sweeps,
+  // 0.159 ± 0.227) came out the longest, surest-looking bar of its style.
+  const top = (s) => [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
+  const cx = w * 0.6, usable = w * 0.3;
+  const scale = directionsScale(styles.flatMap(top), usable);
+  const said = [];
   styles.forEach((s, row) => {
     const y0 = row * blockH;
     const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
@@ -17222,19 +17291,27 @@ function drawStylesTab(ctx, w, h, dpr) {
     ctx.textAlign = "left";
     ctx.fillText(`${styleName(s, s.k)} — claims ${Math.round(s.share * 100)}% of the bank`, 30 * dpr, y0 + 24 * dpr);
 
-    const rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
-    const maxAbs = Math.max(0.12, ...rows.map((r) => Math.abs(r.mean)));
-    const cx = w * 0.6, usable = w * 0.3;
-    rows.forEach((r, i) => {
+    // The centre line a guess's whisker crosses, as in DIRECTIONS.
+    const rowsFit = Math.max(0, Math.min(5, Math.floor((blockH / dpr - 8 - 42) / 18) + 1));
+    if (rowsFit > 0) {
+      ctx.strokeStyle = "rgba(255,180,84,0.28)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, y0 + 34 * dpr);
+      ctx.lineTo(cx, y0 + (42 + (rowsFit - 1) * 18 + 8) * dpr);
+      ctx.stroke();
+    }
+    top(s).forEach((r, i) => {
       const y = y0 + (42 + i * 18) * dpr;
       if (y > y0 + blockH - 8 * dpr) return;
+      const mark = pullMark(r, scale, usable);
+      const label = pullLabel(niceName(r.name), mark.guess);
+      said.push({ label: `${styleName(s, s.k)}: ${label}`, guess: mark.guess });
       ctx.fillStyle = INK.amberDim;
       ctx.textAlign = "right";
-      ctx.fillText(niceName(r.name), cx - usable - 10 * dpr, y + 3 * dpr);
+      ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
       ctx.textAlign = "left";
-      const len = (r.mean / maxAbs) * usable;
-      ctx.fillStyle = color;
-      ctx.fillRect(Math.min(cx, cx + len), y - 2.5 * dpr, Math.abs(len), 5 * dpr);
+      drawPull(ctx, cx, y, mark, color, dpr, 5 * dpr);
     });
     ctx.globalAlpha = 1;
     if (row > 0) {
@@ -17245,6 +17322,7 @@ function drawStylesTab(ctx, w, h, dpr) {
       ctx.stroke();
     }
   });
+  describeTasteCanvas("Styles", said);
 }
 
 function drawDirectionsTab(ctx, w, h, dpr) {
@@ -17253,6 +17331,7 @@ function drawDirectionsTab(ctx, w, h, dpr) {
     // Fitted, but every lens is idle — show the pre-state, not a void.
     $("taste-caption").textContent = EMPTY_CAPTIONS.dir;
     $("crt-empty").classList.remove("hidden");
+    describeTasteCanvas(null);
     return renderEmptyState("dir");
   }
   const chosen = new Map();
@@ -17284,51 +17363,99 @@ function drawDirectionsTab(ctx, w, h, dpr) {
   // at the edge — so neither reaches the label column: a long negative bar
   // plus its whisker used to strike through "filtering" and "shimmer". The
   // clip is the belt to that pair of braces.
+  const said = [];
   names.forEach((name, i) => {
     const y = rowH * (i + 1);
+    const lane = 7 * dpr;
+    const pulls = [];
+    styles.forEach((s, si) => {
+      const r = s.theta.find((t) => t.name === name);
+      if (r) pulls.push({ s, si, mark: pullMark(r, scale, usable) });
+    });
+    // A row is a guess when no style is sure of it; its label says so.
+    const rowGuess = pulls.length > 0 && pulls.every((p) => p.mark.guess);
+    const label = pullLabel(niceName(name), rowGuess);
+    said.push({ label, guess: rowGuess });
     ctx.fillStyle = INK.amberDim;
     ctx.textAlign = "right";
-    ctx.fillText(niceName(name), cx - usable - 10 * dpr, y + 3 * dpr);
+    ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
     ctx.textAlign = "left";
-    const lane = 7 * dpr;
     ctx.save();
     ctx.beginPath();
     ctx.rect(cx - usable - 2 * dpr, 0, 2 * usable + 4 * dpr, h);
     ctx.clip();
-    styles.forEach((s, si) => {
-      const r = s.theta.find((t) => t.name === name);
-      if (!r) return;
+    for (const { s, si, mark } of pulls) {
       const yy = y + (si - (styles.length - 1) / 2) * lane;
-      const bar = directionsBar(r, scale, usable);
-      const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 6;
-      ctx.fillRect(Math.min(cx, cx + bar.len), yy - 2 * dpr, Math.abs(bar.len), 4 * dpr);
-      ctx.shadowBlur = 0;
-      // Silk, not a fourth amber: the whisker is a reading about the bar,
-      // and has to show over it.
-      ctx.strokeStyle = "rgba(217,212,200,0.55)";
-      ctx.fillStyle = "rgba(217,212,200,0.75)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx + bar.lo, yy);
-      ctx.lineTo(cx + bar.hi, yy);
-      ctx.stroke();
-      // Cut at the edge, and said to be: an arrowhead, not a shorter line.
-      const head = (x, dir) => {
-        ctx.beginPath();
-        ctx.moveTo(x, yy);
-        ctx.lineTo(x - dir * 4 * dpr, yy - 2.5 * dpr);
-        ctx.lineTo(x - dir * 4 * dpr, yy + 2.5 * dpr);
-        ctx.closePath();
-        ctx.fill();
-      };
-      if (bar.clipLo) head(cx + bar.lo, -1);
-      if (bar.clipHi) head(cx + bar.hi, 1);
-    });
+      drawPull(ctx, cx, yy, mark, STYLE_COLORS[s.k % STYLE_COLORS.length], dpr, 4 * dpr);
+    }
     ctx.restore();
   });
+  describeTasteCanvas("Directions", said);
+}
+
+/** One pull, the same mark in STYLES and DIRECTIONS (taste-geom `pullMark`):
+ *  settled is a solid bar with its whisker; a guess is a hollow 1 px outline
+ *  at GUESS_ALPHA with its whisker at full strength, because for a guess the
+ *  whisker is the reading and the bar is only where it happens to point. */
+function drawPull(ctx, cx, yy, mark, color, dpr, thick) {
+  const x = Math.min(cx, cx + mark.len);
+  const w = Math.abs(mark.len);
+  ctx.save();
+  if (mark.hollow) {
+    ctx.globalAlpha *= mark.barAlpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = dpr;
+    ctx.strokeRect(x + dpr / 2, yy - thick / 2 + dpr / 2, Math.max(0, w - dpr), thick - dpr);
+  } else {
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(x, yy - thick / 2, w, thick);
+  }
+  ctx.restore();
+  // Silk, not a fourth amber: the whisker is a reading about the bar, and has
+  // to show over it.
+  ctx.save();
+  ctx.globalAlpha *= mark.whiskerAlpha;
+  ctx.strokeStyle = INK.silk;
+  ctx.fillStyle = INK.silk;
+  ctx.lineWidth = Math.max(1, dpr * 0.75);
+  ctx.beginPath();
+  ctx.moveTo(cx + mark.lo, yy);
+  ctx.lineTo(cx + mark.hi, yy);
+  ctx.stroke();
+  // Cut at the edge, and said to be: an arrowhead, not a shorter line.
+  const head = (hx, dir) => {
+    ctx.beginPath();
+    ctx.moveTo(hx, yy);
+    ctx.lineTo(hx - dir * 4 * dpr, yy - 2.5 * dpr);
+    ctx.lineTo(hx - dir * 4 * dpr, yy + 2.5 * dpr);
+    ctx.closePath();
+    ctx.fill();
+  };
+  if (mark.clipLo) head(cx + mark.lo, -1);
+  if (mark.clipHi) head(cx + mark.hi, 1);
+  ctx.restore();
+}
+
+/** The canvas's words for what it draws, for anyone who cannot see it: which
+ *  pulls are settled and which are guesses, in the labels on screen. The map
+ *  keeps its own label, which says how to walk it with the keys. */
+const TASTE_CANVAS_MAP_LABEL = "Taste map — arrow keys step between patches, Enter opens one on the bench";
+function describeTasteCanvas(what, rows) {
+  const canvas = $("taste-crt");
+  if (!canvas) return;
+  if (!what) {
+    canvas.setAttribute("role", "application");
+    canvas.setAttribute("aria-label", TASTE_CANVAS_MAP_LABEL);
+    return;
+  }
+  const { settled, guesses } = countPulls(rows);
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute(
+    "aria-label",
+    `${what}: ${settled} settled, ${guesses} still a guess (marked ?). ` + rows.map((r) => r.label).join(", "),
+  );
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {

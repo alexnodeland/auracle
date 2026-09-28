@@ -1371,28 +1371,35 @@
         const est = c.truth + (c.truth === 0.05 ? 0.34 : 0.5) * Math.exp(-n / 22) * (i % 2 ? 1 : -1);
         const y = T + i * rowH + rowH / 2;
 
-        const lab = el('text', { x: L - 10, y: y + 3, 'text-anchor': 'end', class: 'v-axis' });
-        lab.textContent = c.name;
-        g.appendChild(lab);
-
         const clears = Math.abs(est) > sd;
         if (clears) claims++;
 
-        // The bar.
-        g.appendChild(el('rect', {
+        // The app's mark (taste-geom `pullMark`): a guess ends its label in
+        // "?", draws its bar hollow and its whisker at full strength.
+        const lab = el('text', { x: L - 10, y: y + 3, 'text-anchor': 'end', class: 'v-axis' });
+        lab.textContent = clears ? c.name : `${c.name}?`;
+        g.appendChild(lab);
+
+        // The bar: solid once settled, a faint outline while a guess.
+        g.appendChild(el('rect', clears ? {
           x: est >= 0 ? mid : mid + est * scale, y: y - 6,
           width: Math.abs(est) * scale, height: 12,
-          fill: clears ? 'var(--phos-b)' : 'var(--silk-mute)', opacity: clears ? 0.85 : 0.45,
+          fill: 'var(--phos-b)', opacity: 0.85,
+        } : {
+          x: (est >= 0 ? mid : mid + est * scale) + 0.5, y: y - 5.5,
+          width: Math.max(0, Math.abs(est) * scale - 1), height: 11,
+          fill: 'none', stroke: 'var(--phos-b)', 'stroke-width': 1, opacity: 0.45,
         }));
         // The whisker — the thing to actually read.
+        const ink = clears ? 'var(--phos-b-deep)' : 'var(--silk)';
         g.appendChild(el('line', {
           x1: mid + (est - sd) * scale, y1: y, x2: mid + (est + sd) * scale, y2: y,
-          stroke: clears ? 'var(--phos-b-deep)' : 'var(--led-red)', 'stroke-width': 2,
+          stroke: ink, 'stroke-width': 2,
         }));
         for (const e of [est - sd, est + sd]) {
           g.appendChild(el('line', {
             x1: mid + e * scale, y1: y - 5, x2: mid + e * scale, y2: y + 5,
-            stroke: clears ? 'var(--phos-b-deep)' : 'var(--led-red)', 'stroke-width': 2,
+            stroke: ink, 'stroke-width': 2,
           }));
         }
         const val = el('text', { x: W - R + 8, y: y + 3, class: clears ? 'v-num-b' : 'v-axis' });
@@ -1402,7 +1409,7 @@
 
       readout.innerHTML =
         `After <b>${n}</b> observations, <b>${claims}</b> of ${COEF.length} coefficients have an interval ` +
-        `that clears zero. The others have a bar — they are pointing somewhere — but the bar is a guess. ` +
+        `that clears zero. The others, hollow and marked ?, are pointing somewhere, but the bar is a guess. ` +
         `<i>A short bar with a tight whisker is worth more than a long bar with a wide one.</i>`;
     }
 

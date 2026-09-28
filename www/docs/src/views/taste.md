@@ -9,6 +9,12 @@ believed.</p>
 TASTE is full-screen and read-only. Nothing here changes the model; it is the
 model reporting on itself.
 
+Before the first fit each tab says how far away it is, counted from where you
+are: *"1 more pick →"*, *"Your first style appears at pick 6; more split off as
+you teach it."* TRUST counts guesses instead of picks: before each pick the
+model guesses which you will choose, and after 20 guesses it grades itself
+(*"14 to go →"*). Each button takes you to EVOLVE to make them.
+
 The **style chips** across the top are shared by all four tabs. Each carries a
 generated name, its share of the bank, and a **▸** that auditions that style's
 exemplar. Click a chip's name to rename it. The name persists and is used
@@ -29,9 +35,11 @@ it is.</figcaption>
 </figure>
 
 Every patch you have heard, placed by sound and structure. It is a 2D
-projection (principal components of the feature space), and the footer tells
-you how much of the variance those two axes capture, typically around half.
-Worth knowing before you read too much into a distance.
+projection (principal components of the feature space), and the footer says
+how much of the difference between the patches those two axes can show: *"A
+flat view of 40 patches — close dots usually sound alike (it shows 29% of how
+they differ)."* In practice that is often a third or less (29–32% in the
+sessions we measured), so read a distance as a hint, not a measurement.
 
 The orientation is pinned, so the map does not mirror itself between one
 recompute and the next — somewhere you recognise stays where you left it. The
@@ -53,7 +61,9 @@ sure of every patch as of any other, the dots come out about the same size
 rather than a contrast drawn from noise. Before the first refit there is no
 uncertainty to draw, and every dot is the same middling size.
 
-Click any dot to open that patch on the workbench.
+The caption says the same in short: *"Brighter: it thinks you'd like it more.
+Bigger: it's less sure. Click a dot to open it."* Click any dot to open that
+patch on the workbench; ▶ there plays it.
 
 ## STYLES
 
@@ -64,7 +74,9 @@ claims and the five coordinates it weights hardest. A lens at ≈0% is idle.</fi
 </figure>
 
 Your taste as separate lenses. Each shows its name, the share of the bank it
-claims, and its strongest coordinates.
+claims, and the five coordinates it leans on hardest, drawn with the same mark
+as [DIRECTIONS](#directions): a solid bar when the model is sure, a hollow one,
+its label ending in **?**, while it is still a guess.
 
 This exists because **taste is not one direction.** You are allowed to like
 dark drones *and* bright plucks, and a single linear model would average them
@@ -86,17 +98,26 @@ interval. A long bar whose whisker crosses the centre line is a guess, and the
 display says so.</figcaption>
 </figure>
 
-What each lens listens for, coordinate by coordinate. Bar length is the weight;
-the thin whisker across its end is the credible interval, ±1σ, drawn on the
-same scale as the bar. The widest interval reaches the edge of the panel; a
-whisker that would run past it is cut there and ends in an arrowhead, rather
-than being drawn shorter than it is.
+What each lens listens for, coordinate by coordinate. The caption reads
+*"Where each style leans. Solid = it's sure. Hollow = still a guess — the thin
+line is how far it could be off."* Bar length is the weight; the thin whisker
+across its end is the credible interval, ±1σ, drawn on the same scale as the
+bar. The widest interval reaches the edge of the panel; a whisker that would
+run past it is cut there and ends in an arrowhead, rather than being drawn
+shorter than it is.
 
-**Read the whiskers, not the bars.** A long bar with a whisker that crosses the
-centre line is a coefficient the model has not established: a guess that
-happens to be pointing somewhere. A short bar with a tight whisker is a real,
-small preference. Both are shown, because hiding the uncertainty is how a model
-starts sounding more certain than it is.
+Every bar is one of two marks:
+
+- **Solid**: the interval clears the centre line. The model is sure which way
+  this style leans, however short the bar.
+- **Hollow**, a faint outline with the whisker drawn at full strength: the
+  interval crosses the centre line, so the lean could be either way. When no
+  style is sure of a row, its label ends in **?** (*grit?*).
+
+**Read the whiskers, not the bars.** A long hollow bar is a guess that happens
+to be pointing somewhere. A short solid bar is a real, small preference. Early
+on nearly every bar is hollow; that is the model being honest about a few
+dozen picks. The node bank in PATCH draws its θ bars with the same two marks.
 
 The coordinates are named in perceptual and structural terms: *chorus &
 sweeps*, *drive & fold*, *body*, *amp attack*, *mod density*. Where a

@@ -25,7 +25,9 @@ Every entry carries four things at rest:
 - A **port signature** in both phosphors: what it takes and what it gives.
 - A **θ bar with a ±σ whisker**: what the model thinks of this module. It
   appears only once the model has been fitted **and** at least five patches in
-  the pool use it. Below that it draws a dash.
+  the pool use it. Below that it draws a dash. The bar is solid when the
+  whisker clears zero and hollow while it crosses it (still a guess), the same
+  two marks as TASTE's DIRECTIONS.
 
 That threshold matters. "The model barely likes this" and "the model has never
 seen this" are completely different statements and should not look alike.
@@ -53,9 +55,10 @@ Five things:
 2. The port map.
 3. The parameters it will arrive with.
 4. **What the model believes**, in one of five states: *not measured*, *not
-   fitted*, *too few examples*, *looked and has no lean*, or *here is the
-   belief, with its interval*. The card above is the fourth: *the model has
-   looked and has no lean either way*, with an interval that straddles zero.
+   fitted*, *too few examples*, *still a guess*, or *here is the belief, with
+   its interval*. The card above is the fourth: *still a guess: it could lean
+   either way*, with an interval that crosses zero. (The screenshot shows the
+   older wording, *has no lean either way*.)
    [Reading what it learned](./reading-the-model.md#five-states-and-what-each-means)
    quotes all five.
 5. **heard**: what the feature extractor can and cannot pick up about this

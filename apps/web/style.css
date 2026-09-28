@@ -2164,7 +2164,7 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .ni-theta { display: none; }
 .has-belief .ni-theta { position: relative; width: 34px; height: 9px; display: block; }
 /* The zero line, drawn only where there is a bar to be left or right OF it. */
-.has-belief .ni-theta:not(.thin):not(.flat)::before {
+.has-belief .ni-theta:not(.thin)::before {
   content: "";
   position: absolute;
   left: 17px; top: 0; bottom: 0;
@@ -2172,8 +2172,9 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   background: var(--silk-mute);
   opacity: 0.55;
 }
-/* No support: a dash. Never a short bar — "the model barely likes this" and
-   "the model has never seen this" must not look alike. */
+/* No evidence (not measured, not fitted, too few patches): a dash. Never a
+   short bar — "the model barely likes this" and "the model has never seen
+   this" must not look alike. */
 .has-belief .ni-theta.thin::after {
   content: "";
   position: absolute;
@@ -2182,43 +2183,47 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
   background: var(--silk-mute);
   opacity: 0.45;
 }
-/* "Looked, and found no lean" is a *third* mark: a dot sitting on zero. It has
-   to be distinguishable from both the dash (no evidence) and the shortest bar
-   the geometry can draw, or the honesty the ladder buys is spent again here. */
-.has-belief .ni-theta.flat::after {
-  content: "";
-  position: absolute;
-  /* Centred on the zero rule at 17px, so "no lean" sits exactly where a bar
-     of length zero would start. */
-  left: 15.5px; top: 3px;
-  width: 3px; height: 3px;
-  border-radius: 50%;
-  background: var(--silk-mute);
-}
+/* Bar and whisker are placed inline, in px from the cell's left edge, by
+   `nbPaintTheta` (taste-geom `pullMark`): the whisker spans the ±σ interval
+   around the mean, not from zero, so a guess's whisker crosses the rule. */
 .ni-theta .tb-bar, .ni-theta .tb-whisk {
   position: absolute;
   top: 3px;
   height: 3px;
   border-radius: 1px;
 }
+/* A guess: the same bar, hollow — a 1px outline at the guess alpha. Its
+   colour is the style's, written inline as the border. */
+.ni-theta.guess .tb-bar {
+  top: 2px; height: 5px;
+  box-sizing: border-box;
+  border: 1px solid var(--phos-b);
+  background: none;
+  opacity: 0.45;
+}
 /* The whisker is the uncertainty, so it has to be readable — it was drawn in
    the stroke tier at 1px, which is the least visible thing in the rail
-   carrying the most important qualification in it. */
+   carrying the most important qualification in it. On a guess it is the
+   reading that matters, so it is drawn at full strength. */
 .ni-theta .tb-whisk {
   top: 4px;
   height: 1px;
   background: var(--phos-b-dim);
 }
-.ni-theta .tb-whisk::after {
+.ni-theta.guess .tb-whisk { background: var(--silk); }
+/* An end cut at the cell's edge is marked as cut, never drawn shorter. */
+.ni-theta .tb-whisk.cut-lo::before,
+.ni-theta .tb-whisk.cut-hi::after {
   content: "";
   position: absolute;
-  top: -2px; width: 1px; height: 5px;
-  background: var(--phos-b-dim);
+  top: -2px;
+  border-top: 2.5px solid transparent;
+  border-bottom: 2.5px solid transparent;
 }
-.ni-theta.pos .tb-bar, .ni-theta.pos .tb-whisk { left: 18px; }
-.ni-theta.pos .tb-whisk::after { right: 0; }
-.ni-theta.neg .tb-bar, .ni-theta.neg .tb-whisk { right: 17px; }
-.ni-theta.neg .tb-whisk::after { left: 0; }
+.ni-theta .tb-whisk.cut-lo::before { left: -1px; border-right: 3px solid currentColor; }
+.ni-theta .tb-whisk.cut-hi::after { right: -1px; border-left: 3px solid currentColor; }
+.ni-theta .tb-whisk { color: var(--phos-b-dim); }
+.ni-theta.guess .tb-whisk { color: var(--silk); }
 
 /* ---- states: the palette was the only clickable hardware with no travel ---- */
 .nb-item:hover { border-color: var(--phos-a-dim); }
@@ -2345,15 +2350,11 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
    is a pill in a wrapping row rather than a full-width catalogue row, but the
    same three marks and the same refusal to draw a bar without evidence. */
 .nb-chips.has-belief .ni-theta { width: 24px; margin-left: 2px; }
-.nb-chips.has-belief .ni-theta:not(.thin):not(.flat)::before { left: 12px; }
+.nb-chips.has-belief .ni-theta:not(.thin)::before { left: 12px; }
 .nb-chips.has-belief .ni-theta.thin::after { left: 8px; right: 8px; }
-.nb-chips.has-belief .ni-theta.flat::after { left: 10.5px; }
-.nb-chips.has-belief .ni-theta.pos .tb-bar, .nb-chips.has-belief .ni-theta.pos .tb-whisk { left: 13px; }
-.nb-chips.has-belief .ni-theta.neg .tb-bar, .nb-chips.has-belief .ni-theta.neg .tb-whisk { right: 12px; }
-/* The bar's length is written inline in px against 16 units of travel; in the
-   narrower cell it is clamped rather than rescaled, so a long bar reads as
-   "off the end", never as a shorter belief than the catalogue is showing. */
-.nb-chips.has-belief .ni-theta .tb-bar, .nb-chips.has-belief .ni-theta .tb-whisk { max-width: 11px; }
+/* The bar and whisker are placed inline against this cell's own 11 px each
+   side of zero, on the rail's one scale (`nbPaintTheta`), with an end past
+   the edge cut and marked there — never clamped into a shorter belief. */
 .nb-chip:hover { border-color: var(--phos-a-dim); color: var(--phos-a); }
 .nb-chip.mod:hover { border-color: var(--phos-b-dim); color: var(--phos-b); }
 
