@@ -2617,6 +2617,10 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .jack.hot circle:nth-of-type(1) { fill: rgba(142,240,177,0.16); }
 .jack.hot circle { stroke-width: 2; animation: none; }
 .jack.legal.replaces.hot circle:nth-of-type(1) { fill: rgba(255,180,84,0.16); }
+/* The socket the audition strip is about while the pointer is elsewhere —
+   usually on its way to the strip's ▶. The strip names it in words; this is
+   where it is. Dashed, so it cannot be mistaken for the keyboard's cursor. */
+.jack.previewed circle { stroke-width: 2; stroke-dasharray: 3 2; animation: none; }
 /* Something is in your hand: the whole canvas says so. */
 .rack-scroll.placing { cursor: crosshair; }
 .rack-scroll.placing #rack-svg { cursor: crosshair; }

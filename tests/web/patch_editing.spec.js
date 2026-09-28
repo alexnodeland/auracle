@@ -409,6 +409,39 @@ test("⌘Z retires the toast that described the edit it undid", async ({ page })
   expect(errors).toEqual([]);
 });
 
+test("▶ plays the socket the preview was rendering, after the pointer has left it", async ({ page }) => {
+  const errors = await boot(page);
+  await openPreset(page, "Glass Pad");
+  await page.locator('.nb-item[data-kind="distortion"]').click();
+  const jacks = page.locator("#rack-svg .jack.legal[data-childkey]");
+  const n = await jacks.count();
+  expect(n).toBeGreaterThan(1);
+  // Not the socket the arming pre-selects, nor the first: those are the
+  // fallbacks a stray ▶ used to land on.
+  let j = null;
+  for (let i = n - 1; i > 0; i--) {
+    if (!(await jacks.nth(i).evaluate((el) => el.classList.contains("hot")))) { j = jacks.nth(i); break; }
+  }
+  expect(j).not.toBeNull();
+  const key = await j.getAttribute("data-childkey");
+  await slow(page, { preview_render: 2500 });
+  const box = await j.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect.poll(() => page.evaluate(() => window.__pwIO.previews.length), { timeout: 5_000 }).toBe(1);
+  // The render is still at the worker; the pointer goes to ▶.
+  const play = page.locator("#pv-play");
+  await play.hover();
+  await expect(page.locator(".pv-label")).toContainText(/rendering (after|in)/);
+  await expect(j).toHaveClass(/\bpreviewed\b/);
+  await play.click();
+  await expect(page.locator(".pv-label")).toContainText(/hear it (after|in)/, { timeout: 30_000 });
+  // One render, for the socket the pointer rested on — ▶ did not ask for
+  // another one somewhere else.
+  expect(await page.evaluate(() => window.__pwIO.previews)).toEqual([key]);
+  await slow(page, {});
+  expect(errors).toEqual([]);
+});
+
 test("step bars and LENGTH drawn in quick succession under a slow engine all land (Loom)", async ({ page }) => {
   const errors = await boot(page);
   await openPreset(page, "Loom");

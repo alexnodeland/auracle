@@ -13830,6 +13830,7 @@ const PREVIEW_SECONDS = 2.0;   // the phrase's first held note, whole
 const preview = {
   token: 0,          // monotonic; a reply with an older one is stale
   inflight: false,
+  asked: null,       // {kind, key, mode} the render at the worker is *for*
   pending: null,     // the request that arrived while one was out
   want: null,        // {kind, key, mode} the strip is currently about
   have: null,        // {kind, key, mode, buffer} the last good render
@@ -13859,13 +13860,22 @@ function previewTarget() {
   if (!armed || !armedSockets.length) return null;
   const at = (k) =>
     k && armedSockets.find((j) => (j.getAttribute("data-childkey") || j.getAttribute("data-modkey")) === k);
+  const mine = (t) => (t && t.kind === armed.kind ? t.key : null);
   const jack =
     at(pickHoverKey) ||
     // Leaving the 6px nut is not leaving the decision. A render already paid
     // for stays on the strip until the player points at a different socket or
     // puts the module down — otherwise the waveform vanishes at the exact
     // moment the pointer travels to the ▶ that plays it.
-    at(preview.have && preview.have.kind === armed.kind ? preview.have.key : null) ||
+    //
+    // …and so does a render already *asked for*, newest first. Only the
+    // finished one used to count: a dwell's render still at the worker when
+    // the pointer left for ▶ fell through to the pre-selected socket, so ▶
+    // asked for a different socket, and what played was not what the strip
+    // had been rendering. The socket a render is for is the socket ▶ plays.
+    at(mine(preview.pending)) ||
+    at(preview.inflight ? mine(preview.asked) : null) ||
+    at(mine(preview.have)) ||
     (armedIdx >= 0 ? armedSockets[armedIdx] : null) ||
     armedSockets[0];
   const key = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
@@ -13881,6 +13891,7 @@ function previewInvalidate() {
   preview.dwellTimer = null;
   preview.token++;
   preview.inflight = false;
+  preview.asked = null;
   preview.pending = null;
   preview.have = null;
   preview.failed = null;
@@ -13904,6 +13915,14 @@ function requestPreview(target, play) {
   }
   if (sameTarget(preview.failed, target)) return; // it already said no
   preview.want = target;
+  if (preview.inflight && sameTarget(preview.asked, target)) {
+    // Already rendering exactly this: ▶ waits for it rather than asking for
+    // it a second time, and a newer request elsewhere is superseded by it.
+    preview.pending = null;
+    if (play) preview.playOnArrive = true;
+    renderSpecDock();
+    return;
+  }
   preview.playOnArrive = !!play;
   if (preview.inflight) {
     // Supersede rather than queue: the answer in flight is about a socket the
@@ -13914,6 +13933,7 @@ function requestPreview(target, play) {
   }
   preview.inflight = true;
   preview.token += 1;
+  preview.asked = target;
   send({
     type: "preview_render",
     token: preview.token,
@@ -13929,7 +13949,14 @@ function requestPreview(target, play) {
 function onPreviewArrived(m) {
   if (m.token !== preview.token) return;   // stale: the cancellation
   preview.inflight = false;
-  const target = { kind: m.kind, key: m.key, mode: preview.want ? preview.want.mode : "insert" };
+  // Filed under the socket it was asked for — never the one the strip has
+  // since moved on to (its mode used to be read off `want`, which is exactly
+  // that).
+  const asked = preview.asked;
+  preview.asked = null;
+  const target = asked && asked.key === m.key && asked.kind === m.kind
+    ? asked
+    : { kind: m.kind, key: m.key, mode: asked ? asked.mode : "insert" };
   if (m.buffer && m.buffer.length > 0) {
     const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
     buf.copyToChannel(m.buffer, 0);
@@ -13972,12 +13999,19 @@ function previewStripHTML(target) {
   const ready = sameTarget(preview.have, target);
   const dead = sameTarget(preview.failed, target);
   const busy = preview.inflight || !!preview.pending;
+  // "Here" is the socket under the pointer. Once the pointer has left it —
+  // on its way to this ▶, usually — the strip names the socket it is about,
+  // so a render that lands after the pointer has gone reads as that socket's
+  // and nobody else's. The socket itself is marked on the canvas too
+  // (`markPreviewSocket`).
+  const away = target && pickHoverKey !== target.key;
+  const where = away ? ` ${socketWhere(target.key)}` : "";
   const label = dead
-    ? "can't audition that here"
+    ? `can't audition that${away ? where : " here"}`
     : ready
-      ? "hear it here"
+      ? `hear it${away ? where : " here"}`
       : busy
-        ? "rendering…"
+        ? `rendering${where}…`
         : "hold a socket, or ▶";
   return (
     `<span class="pv${busy ? " busy" : ""}${dead ? " dead" : ""}">` +
@@ -13989,9 +14023,32 @@ function previewStripHTML(target) {
   );
 }
 
+/** Where a socket is, in the words of the plate it belongs to — "after the
+ *  filter", "on the vco's mod", "in the empty socket". Short, because it
+ *  rides a strip that already names the module in hand. */
+function socketWhere(key) {
+  if (!key) return "";
+  if (isPlaceholderKey(key)) return "in the empty socket";
+  if (armed && armed.sort === "mod") return `on the ${kindName(rackKindAt(key)) || "module"}`;
+  const title = plateTitle(key);
+  return armed && armed.sort === "source" ? `in place of the ${title}` : `after the ${title}`;
+}
+
+/** The socket the strip is about, marked on the canvas while the pointer is
+ *  somewhere else — the other half of naming it on the strip. */
+function markPreviewSocket(target) {
+  for (const j of armedSockets) {
+    const k = j.getAttribute("data-childkey") || j.getAttribute("data-modkey");
+    const on = !!target && k === target.key && pickHoverKey !== k &&
+      (preview.inflight || !!preview.pending || sameTarget(preview.have, target));
+    j.classList.toggle("previewed", on);
+  }
+}
+
 /** Paint whatever the strip is currently holding. Called after the dock is in
  *  the DOM, because the canvas has to exist to be drawn on. */
 function paintPreviewScope(target) {
+  markPreviewSocket(target);
   const c = $("pv-scope");
   if (!c) return;
   const dpr = window.devicePixelRatio || 1;
@@ -14187,7 +14244,7 @@ function disarm() {
   if (armPriced) { logPriceOutcome(armPriced, false, null); armPriced = null; }
   const chip = $("nb-groups").querySelector(".nb-item.armed");
   if (chip) chip.classList.remove("armed");
-  for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot");
+  for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot", "previewed");
   armedSockets = [];
   armedIdx = -1;
   armed = null;
@@ -14197,6 +14254,11 @@ function disarm() {
   preview.failed = null;
   preview.pending = null;
   preview.playOnArrive = false;
+  // A render still at the worker is for a module no longer in hand. Its reply
+  // must not come back as the preview of the next one's socket.
+  preview.token++;
+  preview.inflight = false;
+  preview.asked = null;
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
