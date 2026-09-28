@@ -956,6 +956,24 @@ export function createPerform(host) {
     state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true };
   }
 
+  // The sound has moved a long way from where its wiring was measured (a
+  // glide past TRUST, or a Keep of controls turned far), but the wiring in
+  // hand still works: re-measure around where the knobs are now, in the
+  // background, and keep playing on the old wiring meanwhile ("re-checking").
+  // This used to be a full `wire()` in the engine's `soon` lane, which held
+  // the floor for 10-16 s: a pressed Offer with no spare waited behind a
+  // measurement nobody had asked for, and in roam the engine re-measured
+  // after nearly every glide. Not cached: it measures the tree with the
+  // knobs where they are, not the tree's text as it stands.
+  function recheck() {
+    if (!state.cur || !state.wire) return wire();
+    if (state.revalidating && inFlight("perform_wire")) return renderStatus();
+    state.revalidating = true;
+    renderStatus();
+    const req = request("perform_wire", { tree: state.cur.json, overrides: overrides(), bg: true });
+    state.pending.get(req).cacheAs = { json: state.cur.json, rev: tasteRev(), quiet: true, nocache: true };
+  }
+
   // A patch on its way out is not measured. A measurement is thirty-odd
   // renders on the one worker (11-16 s measured), made one at a time with the
   // player's requests answered between them (`measure` in worker.js), but a
@@ -1309,7 +1327,7 @@ export function createPerform(host) {
     state.applyThen.delete(m.req);
     // A measurement is kept even when the player has already moved on: it
     // is still true of that patch, and flicking back is the common case.
-    if (p.cacheAs && m.type === "perform_wired" && m.data) rememberWiring(p.cacheAs.json, m.data, p.cacheAs.rev);
+    if (p.cacheAs && !p.cacheAs.nocache && m.type === "perform_wired" && m.data) rememberWiring(p.cacheAs.json, m.data, p.cacheAs.rev);
     // A pre-warm (see `prewarm` below) was for the cache alone: it answers its
     // caller and goes no further, whatever is sounding when it lands.
     if (p.prewarm) {
@@ -1434,7 +1452,11 @@ export function createPerform(host) {
       state.home.makeup = makeup;
       // Keep wrote every performed knob in, hand-turned ones included.
       state.hand.clear();
-      wire();
+      // The sound did not move, so neither did its wiring: it is re-measured
+      // only if the knobs have left the neighbourhood it was measured in, and
+      // then in the background (see `recheck`).
+      if (outsideTrust()) recheck();
+      else renderStatus();
       return;
     }
     state.keeping = null;
@@ -1600,7 +1622,7 @@ export function createPerform(host) {
     if (performance.now() - state.lastTouch < 60 && performance.now() - g.t0 > 60) {
       state.glide = null;
       renderStatus("paused — your hands are on it");
-      if (outsideTrust()) wire();
+      if (outsideTrust()) recheck();
       return;
     }
     const u = clamp((performance.now() - g.t0) / g.dur, 0, 1);
@@ -1614,7 +1636,7 @@ export function createPerform(host) {
       if (g.json) state.cur.json = g.json;
       state.glide = null;
       state.lastMove = performance.now();
-      if (outsideTrust()) wire();
+      if (outsideTrust()) recheck();
       else renderStatus();
       return;
     }

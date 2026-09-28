@@ -24,7 +24,8 @@ From the top:
 line says what PERFORM is doing: *listening to this patch…* (a new patch,
 whose controls wait for it), *4 of 6 controls reach this patch*, with
 *re-checking* after it while the controls keep working on their last
-measurement (after a Take, or once Wander has moved the sound a long way),
+measurement (after a Take, or once Wander or your turns and a Keep have moved
+the sound a long way; the re-check waits behind anything you ask for),
 *wander: drift*, and *paused — your hands are on it* for a few seconds after
 you touch anything.
 While a patch you opened is on its way it names it, *opening Acid Line…*, and
@@ -285,7 +286,7 @@ it is. The dial reads *held*. Tap again to release.
 
 | Pad | |
 |---|---|
-| **Keep** | Make the sound you hear home (*Kept — this is home now. Back returns here.*). The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it |
+| **Keep** | Make the sound you hear home (*Kept — this is home now. Back returns here.*). The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it. The sound has not moved, so nothing is re-measured unless the knobs have travelled far from where they were measured, and then in the background |
 | **Back** | Glide back to home, the last sound you kept or loaded |
 | **Offer** | Grow a variant from here into B. With an offer already in B, this passes on it: B empties and Blend glides home |
 | **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep or commit it, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is. A control whose knobs the taken sound no longer has reads *listening…* until then |

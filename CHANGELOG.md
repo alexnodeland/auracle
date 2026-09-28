@@ -154,6 +154,12 @@ changelog that edits its own past is not a record.
   left Blend at, say, 67% over an empty B, and the next offer arrived at that
   level over what you were playing. It now glides home, as it does after a
   Take (`perform_truth.spec.js`).
+- **Re-checks after a Keep or a Wander glide wait behind what you ask for.**
+  They ran in the engine's foreground lane for 10–16 s, so an Offer pressed
+  after a Keep or during roam waited behind a measurement nobody had asked
+  for. Keep no longer re-measures at all unless the knobs have travelled far
+  from where they were measured; either way the controls keep working and the
+  status says *re-checking* (`perform_truth.spec.js`).
 - **PERFORM's toasts follow the lane's rules, and a Take's *don't count it*
   always works while you can see it.** A later word about the offer replaces
   the earlier one instead of queueing behind it; refusals such as *Nothing

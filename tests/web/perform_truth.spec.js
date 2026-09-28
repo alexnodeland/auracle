@@ -16,6 +16,8 @@
 // - A search control springs back whenever it is let go, and says while it is
 //   turned what letting go would do.
 // - After a pass, Blend comes home.
+// - A drift is not a new patch: the status never says "listening", and the
+//   re-measure after it waits in the engine's background lane.
 //
 // A spec reaches the engine only by wrapping `Worker` before `main.js` runs:
 // here, to record what PERFORM asks it for.
@@ -283,5 +285,46 @@ test("after a pass, Blend comes home", async ({ page }) => {
   await page.locator(".pf-pad", { hasText: "Offer" }).click();
   await expect(blend).toHaveAttribute("aria-valuenow", "0.00", { timeout: 2_000 });
   await expect(blend.locator(".pf-k-sub")).toHaveText(/^(no offer yet|0% offer)$/);
+  expect(errs).toEqual([]);
+});
+
+test("a drift is not a new patch: the status never says listening, and its re-check waits in the background", async ({ page }) => {
+  test.setTimeout(360_000);
+  const errs = await boot(page);
+  await openOnPerform(page, "Glass Pad");
+  await wired(page);
+  // Every status line from here on.
+  await page.evaluate(() => {
+    const s = document.querySelector(".pf-status");
+    window.__statuses = [s.textContent];
+    new MutationObserver(() => window.__statuses.push(s.textContent)).observe(s, { childList: true, characterData: true, subtree: true });
+  });
+  const from = await page.evaluate(() => performance.now());
+  // Wander all the way to roam, from the keyboard.
+  const wander = page.locator('.pf-knob[data-i="7"]');
+  await wander.focus();
+  for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowUp");
+  await expect(wander.locator(".pf-k-sub")).toHaveText("roam");
+  await page.locator(".pf-xy-field").focus(); // off the dial, hands off
+  // A drift arrives and glides.
+  await page.waitForFunction(() => window.__statuses.some((t) => /drifting/.test(t)), null, { timeout: 150_000 });
+  // …and finishes: give the glide (3 s at most in roam) time to land.
+  await page.waitForTimeout(4000);
+  const seen = await page.evaluate(() => window.__statuses);
+  expect(seen.filter((t) => /listening|measuring/.test(t)), "the dials never went back to waiting").toEqual([]);
+  expect(await page.locator(".pf-name").textContent(), "the drift did not arrive as a new patch").toBe("Glass Pad");
+  const wires = await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_wire" && p.t > t), from);
+  for (const w of wires) expect(w.bg, "a re-check after a drift is background work").toBe(true);
+  if (wires.length) expect(seen.some((t) => /re-checking/.test(t)), "a re-check says so").toBe(true);
+  // Keep: the sound did not move, so there is nothing to measure in front of
+  // the player's next request.
+  const k0 = await page.evaluate(() => performance.now());
+  await wander.focus();
+  await page.keyboard.press("Home"); // Wander still
+  await page.locator(".pf-pad", { hasText: "Keep" }).click();
+  await expect(page.locator("#toasts")).toContainText("Kept — this is home now. Back returns here.", { timeout: 10_000 });
+  await page.waitForTimeout(1500);
+  const afterKeep = await page.evaluate((t) => window.__pfPosts.filter((p) => p.type === "perform_wire" && p.t > t && !p.bg), k0);
+  expect(afterKeep, "Keep never re-measures in front of the player").toEqual([]);
   expect(errs).toEqual([]);
 });

@@ -50,7 +50,7 @@ this table.
 | `perform_instant.spec.js` | Cached wirings play at once; a spare offer lands at once |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |
 | `perform_circuit.spec.js` | A knob turned in PERFORM is drawn performed in PATCH |
-| `perform_truth.spec.js` | Half-closed rings on the open side and their captions; *listening…* is never the search look and never grafts; first steps name a control that turns; choosing an XY axis gives the keys back; search controls spring back; Blend home after a pass |
+| `perform_truth.spec.js` | Half-closed rings on the open side and their captions; *listening…* is never the search look and never grafts; first steps name a control that turns; choosing an XY axis gives the keys back; search controls spring back; Blend home after a pass; a drift's re-check is background |
 | `patch_truth.spec.js` | An unplugged socket goes quiet and reads EMPTY; a knob turned in PATCH keeps its value with no ghost, and PERFORM plays from it |
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
