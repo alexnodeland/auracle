@@ -169,10 +169,14 @@ are the ideas, drift and roam boundaries (three ticks on Wander's ring).
     then a short chord again, so the longer tail is heard;
   - under a held Am7, Grit (amber, dashed) is turned up. It springs back,
     and a variant grows in B, marked *(grit up)*. If it grows slowly, the
-    beat cuts to it (`clips`);
+    beat cuts to it (`clips`). If a spare grown ahead is still fresh (the
+    knobs have not moved more than TRUST since), the ask is answered with it
+    at once, marked *(grit up)* but grown before the ask, so the callout
+    says *marked*, not *grown because you asked*; the `offered` stamp says
+    which happened;
   - Peek plays B alone.
 - **Callouts:** *turns toward far only: a stop at the centre* · *amber, dashed: out of
-  reach* (amber) · *B: grown because you asked* (amber) · *Peek: hear it
+  reach* (amber) · *B: marked (grit up)* (amber) · *Peek: hear it
   first*.
 - The film says what the control does ("On this pad, Space stops at the
   centre toward close. It only turns toward far, and the line under it says
