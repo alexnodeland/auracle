@@ -478,12 +478,16 @@ export function createPerform(host) {
       clearTimeout(hearTimer);
       const held = k.wrap.hasPointerCapture(e.pointerId);
       if (held) k.wrap.releasePointerCapture(e.pointerId);
+      // One of three: a turn is let go (`onRelease`, which springs back a
+      // control with nothing to turn); Wander pressed without turning is let
+      // go, a tap also holding or releasing it; a nudge too small to count as
+      // a turn still lets go of a control that has nothing to turn, which
+      // springs back rather than sitting off-centre.
       if (moved) onRelease(k);
-      else if (performance.now() - pressT < 300 && k.spec.kind === "wander") toggleHold();
-      if (!moved && k.spec.kind === "wander") wanderLetGo();
-      // A nudge too small to count as a turn still lets go of a control that
-      // has nothing to turn: it springs back rather than sitting off-centre.
-      else if (held && k.spec.kind === "named" && !turns(state.wire?.[k.i])) springBack(k);
+      else if (k.spec.kind === "wander") {
+        if (performance.now() - pressT < 300) toggleHold();
+        wanderLetGo();
+      } else if (held && k.spec.kind === "named" && !turns(state.wire?.[k.i])) springBack(k);
     };
     k.wrap.addEventListener("pointerup", end);
     k.wrap.addEventListener("pointercancel", end);
@@ -1063,6 +1067,7 @@ export function createPerform(host) {
   // in the background: it was taken under a standardizer fitted natively,
   // not this session's, so it is right about which knobs a control turns and
   // only roughly right about how far. The player's own cache is asked first.
+  const SHIPPED_WAIT_MS = 3000;
   const shipped = new Map(); // wireKey -> {data, rev, shipped: true, tree}
   const shippedByName = new Map(); // preset name -> its tree text
   let shippedLoaded = false;
@@ -1071,13 +1076,21 @@ export function createPerform(host) {
       // The app's own version stamp (`?v=`) rides on this module's URL, so
       // the file is refetched exactly when a build changed it.
       const url = new URL(`./perform-wirings.json${new URL(import.meta.url).search}`, import.meta.url);
-      const r = await fetch(url);
-      const f = r.ok ? await r.json() : null;
-      for (const p of (f && f.presets) || []) {
-        if (!p || typeof p.tree !== "string" || !p.data) continue;
-        shipped.set(wireKey(p.tree), { data: p.data, rev: f.rev ?? 0, shipped: true });
-        shippedByName.set(p.name, p.tree);
-      }
+      const load = (async () => {
+        const r = await fetch(url);
+        const f = r.ok ? await r.json() : null;
+        for (const p of (f && f.presets) || []) {
+          if (!p || typeof p.tree !== "string" || !p.data) continue;
+          shipped.set(wireKey(p.tree), { data: p.data, rev: f.rev ?? 0, shipped: true });
+          shippedByName.set(p.name, p.tree);
+        }
+      })();
+      load.catch(() => {}); // failing after the wait gave up on it: nothing to say
+      // A fetch that stalls (a flaky connection, a proxy holding it) must not
+      // hold a patch on "listening…": past SHIPPED_WAIT_MS nothing waits for
+      // it, and the patch in the hands is measured as any other is. The file
+      // still fills in if it lands later, for the presets opened after.
+      await Promise.race([load, new Promise((ok) => setTimeout(ok, SHIPPED_WAIT_MS))]);
     } catch {
       // No file (an old bundle, a blocked fetch): presets are measured like
       // any other patch.
@@ -1123,7 +1136,8 @@ export function createPerform(host) {
     if (first && !hit && !shippedLoaded) {
       // The shipped file is a local fetch of a few milliseconds, begun when
       // PERFORM was built; a patch asked about before it lands waits for it
-      // rather than starting eleven seconds of renders it may not need.
+      // (up to SHIPPED_WAIT_MS) rather than starting eleven seconds of
+      // renders it may not need.
       const gen = state.gen;
       state.measuring = true;
       renderStatus();
@@ -1476,9 +1490,17 @@ export function createPerform(host) {
     state.offer.heardMs = o.heardMs || 0;
   }
 
-  // Blend back to *home*: at once for the sound (B is empty or emptying), and
-  // over BLEND_HOME_MS for the dial, so the eye sees where it went. A hand on
+  // Blend back to *home*: at once for the sound and the control's value (B
+  // is empty or emptying), and over BLEND_HOME_MS for the pointer, drawn
+  // (`k.drawn`) as a re-centre is, so the eye sees where it went. A hand on
   // Blend stops the glide (bindDrag).
+  //
+  // A MIDI pot on Blend is let go, not re-anchored as a re-centred control's
+  // is: the pot has to come back down through home before it drives Blend
+  // again. Re-anchored at home, a pot left near the top spread the whole
+  // blend over the little travel it had left (from 0.9, all of it in about
+  // thirteen steps), so the next nudge poured the next offer in over what the
+  // player had just chosen, which is what bringing Blend home is for.
   const BLEND_HOME_MS = 300;
   function blendHome() {
     const k = knobs.find((x) => x.spec.kind === "blend");
@@ -1486,22 +1508,21 @@ export function createPerform(host) {
     if (!k) return;
     if (k.tween) cancelAnimationFrame(k.tween);
     k.tween = null;
-    host.controlMoved?.(k.i, { recentre: true, to: 0 });
-    const v0 = k.value;
+    const v0 = k.drawn != null ? k.drawn : k.value;
+    k.value = 0;
+    k.drawn = null;
+    host.controlMoved?.(k.i);
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!v0 || still) {
-      k.value = 0;
-      paintKnob(k);
-      return;
-    }
+    if (!v0 || still) return paintKnob(k);
     const t0 = performance.now();
     const step = () => {
       const u = clamp((performance.now() - t0) / BLEND_HOME_MS, 0, 1);
-      k.value = v0 * (1 - u * u * (3 - 2 * u));
-      if (u >= 1) k.value = 0;
+      k.drawn = u >= 1 ? null : v0 * (1 - u * u * (3 - 2 * u));
       paintKnob(k);
       k.tween = u < 1 ? requestAnimationFrame(step) : null;
     };
+    k.drawn = v0;
+    paintKnob(k);
     k.tween = requestAnimationFrame(step);
   }
 
@@ -2694,6 +2715,9 @@ export function createPerform(host) {
       if (k.spec.kind === "wander") wanderGrab();
       else touch();
       ensureWired();
+      // A pot takes the pointer from a glide home, as a hand does.
+      if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      k.drawn = null;
       k.value = clamp(k.spec.kind === "named" ? v01 * 2 - 1 : v01, ...spanOf(k));
       paintKnob(k);
       onKnob(k, true);

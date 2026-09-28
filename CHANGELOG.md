@@ -19,7 +19,9 @@ changelog that edits its own past is not a record.
   against a standard pool, not yours, so PERFORM re-measures in the
   background (*re-checking*) and the controls keep working meanwhile. While
   the warm start is open, its nine cards are measured against your session
-  too, once the pool has filled. `make perform-wirings` regenerates the file,
+  too, once the pool has filled. A first measurement waits at most three
+  seconds for the file, so a stalled download cannot leave a preset on
+  *listening…*. `make perform-wirings` regenerates the file,
   and `make test` fails when a preset changes without it
   (`shipped_preset_wirings_are_current`, `budgets.spec.js`).
 - **A preset clicked in the bank opens with one render instead of two.** Its
@@ -58,7 +60,10 @@ changelog that edits its own past is not a record.
   seconds after the hand had let go. A MIDI pot on a re-centred control keeps
   working from where it is, scaled so each end of the pot still reaches the
   control's end; it used to go dead until swept back through the middle,
-  every few seconds in *roam* (`perform_recentre.spec.js`, `midi.test.mjs`).
+  every few seconds in *roam*. Blend is the exception: when it comes home
+  after a pass or a Take, a pot on it is let go until brought back down to
+  home, so a pot left near the top cannot pour the next offer in with one
+  nudge (`perform_recentre.spec.js`, `midi.test.mjs`).
 - **The next pair is already waiting in EVOLVE.** While a pair is on the
   table the engine deals the next one and renders both its sounds, so a pick
   or a skip puts it up at once and its ▶ plays at once; the pair after is

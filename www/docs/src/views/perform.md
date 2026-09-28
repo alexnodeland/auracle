@@ -116,7 +116,9 @@ standard pool rather than yours, so PERFORM measures the preset again in the
 background, with *re-checking* on the status line meanwhile. While the warm
 start is open, its nine cards are measured this way too, once the pool has
 filled. A patch you have played before is just as quick, from its last
-measurement, even after a reload.
+measurement, even after a reload. The measurements arrive as one file with the
+app; if it has not arrived within three seconds (a stalled connection), a
+preset is measured the way any other patch is.
 
 ### Turning them
 

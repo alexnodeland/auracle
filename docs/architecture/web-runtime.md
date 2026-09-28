@@ -80,7 +80,10 @@ one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.m
 Every preset's wiring ships with the app in `apps/web/perform-wirings.json`,
 measured natively through the same `WasmEngine` surface the worker uses
 (`make perform-wirings`, the `preset_wirings` example) and keyed at load by the
-same `wireKey`. The player's own cache is asked first, then the file. A shipped
+same `wireKey`. The player's own cache is asked first, then the file. A first
+measurement waits for the file at most `SHIPPED_WAIT_MS` (3 s), so a stalled
+fetch cannot hold a patch on *listening…*; a file that lands later still
+serves the presets opened after it. A shipped
 wiring is always re-measured in the background (it was taken under a native
 standardizer, not the session's). The file carries fingerprints of what it
 was measured from, and `shipped_preset_wirings_are_current` fails `make test`
