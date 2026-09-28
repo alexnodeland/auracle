@@ -76,6 +76,12 @@ what you think it is teaching.
 
 Press-dragging from an entry also works, and a missed drop tells you so.
 
+To hear a placement before you make it, rest the pointer on a lit ○ for a
+moment, or press **▶** on the strip under the rack: it renders two seconds of
+this patch with the module spliced in, and places nothing. Once the pointer has
+left the socket, the strip names the one it is about ("hear it after the
+filter") and that socket is ringed, so ▶ always plays what the strip shows.
+
 Every placement is **one undo step**, and the confirmation toast offers **take
 it out**.
 

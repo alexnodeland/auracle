@@ -170,9 +170,26 @@ const wb = {
   // point of this phase hangs off that one substitution.
   locks: new Set(),
 };
-let editInFlight = false;
-let editQueue = null;
-let auditionOnSettle = false;
+// The bench lane: every edit waiting its turn at the worker, in the order the
+// player made them. See `pumpLane` for what an entry is and why there is one
+// lane rather than the two there used to be.
+let editInFlight = false;  // an `edit_param` is at the worker (`paramAtWorker`)
+const benchLane = [];
+// Declared here rather than beside `queueStruct`: the lane reads it from the
+// top of the file down.
+let structInFlight = false;
+// Stamps every knob write. The worker echoes it back as the bench reply's
+// `token`, which is how a reply is matched to the write it answers.
+let laneSeq = 0;
+let paramAtWorker = null;
+// What the player has set and the engine has not yet confirmed, by knob
+// identity (`lockIdOf`): `{value, seq, live}`. Drawn over every rack the
+// engine sends (`overlayPending`), so a reply for an older write can never
+// repaint a knob behind the hand that is turning it.
+const pendingKnobs = new Map();
+// True while `pumpLane` is running the entry at the head: that entry owns
+// the worker, so what it posts goes out instead of queueing behind itself.
+let laneDraining = false;
 let pendingEvolve = false;
 let knobDragging = false;
 
@@ -647,9 +664,31 @@ function benchStep(trays) {
     trays: trays || [],
   };
 }
+/** One undo step for a knob gesture, which is "the bench before it".
+ *
+ *  Taken at the gesture only when nothing is still on its way to the engine.
+ *  Otherwise `wb.tree` is the bench from the last reply, not the bench this
+ *  gesture starts from — a second knob turned while the first one's write was
+ *  queued snapshotted a tree without that write, so its ⌘Z took both turns
+ *  back at once and the next ⌘Z was a dead keystroke. A `mark` in the lane
+ *  takes the step when its turn comes, which is exactly when everything
+ *  before it has landed and the bench is the one this gesture began on. */
 function pushUndo() {
   if (!wb.tree) return;
-  undoStack.push(benchStep());
+  // Any gesture's step ends a run of arrow-key nudges: the next press is a
+  // turn of its own (the keyboard branch sets it again after this).
+  nudge = null;
+  if (!laneFree()) {
+    benchLane.push({ t: "mark" });
+    return;
+  }
+  takeUndoStep();
+}
+function takeUndoStep() {
+  if (!wb.tree) return;
+  const step = benchStep();
+  landedOver(undoStack[undoStack.length - 1]);
+  undoStack.push(step);
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
 }
@@ -682,8 +721,10 @@ function stageUndo() {
   stagingBound = openEdit;
   return openEdit;
 }
+/** Returns the step it pushed, so the sentence the edit earned can be filed
+ *  under it (`settleLanded`). */
 function commitStagedUndo() {
-  if (!openEdit) return;
+  if (!openEdit) return null;
   // Uids while the edit is open, because that is all `stageFragment` can hand
   // back and a rejection has to be able to unstage by one. Records at commit,
   // because from here the step may have to put them *back* on the shelf, and a
@@ -693,10 +734,37 @@ function commitStagedUndo() {
   openEdit.snap.trays = openEdit.trays
     .map((uid) => tray.find((t) => t.uid === uid))
     .filter(Boolean);
+  landedOver(undoStack[undoStack.length - 1]);
   undoStack.push(openEdit.snap);
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
+  const step = openEdit.snap;
   openEdit = null;
+  return step;
+}
+
+// A confirmation toast is a sentence about one edit, and most of them carry
+// that edit's undo ("PLUG IT BACK IN"). Both go stale on the stack's schedule,
+// not the toast lane's, so each toast is filed under the undo step of the edit
+// it describes:
+//
+//  - When that step is *undone*, by ⌘Z or by any other button, the toast goes.
+//    It used to stay for its whole seven seconds: pull a cable, press ⌘Z, and
+//    the supersaw was back in the patch and HELD was empty while the toast
+//    still said the supersaw was held below — and its button, pressed then,
+//    undid the edit *before* the unplug, which the player never asked for.
+//  - When another edit lands *on top of* it, the sentence is still true but
+//    the button is not: undo is a stack, and the button would now take back
+//    the newer edit. It retires, the same way a vote's undo retires when a
+//    refit claims it.
+function landedOver(step) {
+  if (!step || !step.toasts) return;
+  for (const el of step.toasts) retireToastUndo(el, "not the last edit");
+}
+function landedUndone(step) {
+  if (!step || !step.toasts) return;
+  for (const el of step.toasts) retireToast(el);
+  step.toasts = null;
 }
 function discardStagedUndo() {
   if (!openEdit) return;
@@ -723,14 +791,26 @@ function discardStagedUndo() {
 // twice.
 let landedNote = null;
 let landedDrops = [];
-/** Pay what the edit that just landed owes. */
-function settleLanded() {
+/** Pay what the edit that just landed owes. `step` is the undo step that edit
+ *  pushed, if any: the sentence is filed under it (see `landedOver`). */
+function settleLanded(step) {
   const l = landedNote;
   landedNote = null;
   for (const uid of landedDrops) unstage(uid);
   landedDrops = [];
-  if (l) note(l.text, l.opts);
+  if (!l) return;
+  // The newest edit's receipt replaces the last one's rather than queueing
+  // behind it. A receipt carries an undo, so the lane holds it for its whole
+  // seven seconds: pull a cable just after a bypass and the bypass's receipt
+  // stayed up over the empty socket, the unplug's waiting "+1" behind it
+  // until after the player had already undone the unplug. Its button was
+  // retired anyway the moment this edit landed on top of it (`landedOver`).
+  for (const old of editReceipts) retireToast(old);
+  const el = note(l.text, l.opts);
+  editReceipts = [el];
+  if (step) (step.toasts = step.toasts || []).push(el);
 }
+let editReceipts = [];
 /** …and take it all back when the engine refuses: nothing was announced,
  *  and nothing left the shelf. */
 function forgetLanded() {
@@ -776,7 +856,13 @@ let restorePending = null; // {kind: "undo"|"redo", cur: <the step being left>}
 // whatever landed in between. Each drain re-reads the live stack and sends the
 // step the player would get if they pressed it right then. Undo and redo
 // requests cancel each other, because that is what they mean.
-let restoreBacklog = 0; // >0 undos owed, <0 redos owed
+//
+// The count is a `restore` entry in the bench lane, behind everything the
+// player did before pressing. It used to be a counter beside the lane that
+// waited only for *structural* edits — so a knob write still queued when ⌘Z
+// was pressed went out after the undo and landed on top of it, and the knob
+// came back to the value the player had just undone. "Undo" means the last
+// thing I did, whatever the engine has or has not heard about yet.
 const RESTORE_BACKLOG_MAX = 60; // the depth of the stack itself
 
 function doUndo() { requestRestore("undo"); }
@@ -784,13 +870,17 @@ function doRedo() { requestRestore("redo"); }
 
 function requestRestore(kind) {
   const step = kind === "undo" ? 1 : -1;
-  // A restore is a whole tree, so it also waits behind ops that are still
-  // queued — those are aimed at the tree it would replace.
-  if (structInFlight || structQueue.length) {
-    restoreBacklog = clamp(restoreBacklog + step, -RESTORE_BACKLOG_MAX, RESTORE_BACKLOG_MAX);
-    return;
+  nudge = null; // a nudge after ⌘Z is a new turn, with a step of its own
+  if (laneFree()) return performRestore(kind);
+  // Presses in a row are one entry, so a burst stays one place in the order.
+  const tail = benchLane[benchLane.length - 1];
+  if (tail && tail.t === "restore") {
+    tail.n = clamp(tail.n + step, -RESTORE_BACKLOG_MAX, RESTORE_BACKLOG_MAX);
+    if (tail.n === 0) benchLane.pop();
+  } else {
+    benchLane.push({ t: "restore", n: step });
   }
-  performRestore(kind);
+  lanePaint();
 }
 
 // ---------- the implicit stream (WS-8 §3) ----------
@@ -850,12 +940,13 @@ function noteRevertIfAudible() {
   logImplicit("revert", { op: e.op, dwell_ms: dwell }, { value: dwell, withPhi: true });
 }
 
-function performRestore(kind) {
+/** `burst` is the lane entry this press came from, when it came from one. */
+function performRestore(kind, burst) {
   const stack = kind === "undo" ? undoStack : redoStack;
   if (stack.length === 0 || !wb.tree) {
     // Nothing left to land on, so the rest of the burst has nothing to do
     // either — said once rather than once per press.
-    restoreBacklog = 0;
+    if (burst && benchLane[0] === burst) benchLane.shift();
     return note(kind === "undo" ? "nothing to undo" : "nothing to redo");
   }
   // The other side of the step, captured before the engine moves: the state a
@@ -888,17 +979,27 @@ function settleRestore() {
   const to = undoing ? redoStack : undoStack;
   const step = from.pop();
   const cur = restorePending.cur;
+  const toggles = restorePending.toggles || [];
   restorePending = null;
   // Only reachable if the stack emptied between the request and the reply,
   // which nothing does today — but a step that is not there cannot be the
   // state to go back to, and inventing one would put a phantom on the far
   // stack.
   if (!step) return;
+  // Whatever was said about the edit this undoes is no longer true.
+  if (undoing) landedUndone(step);
   cur.trays = step.trays;
   to.push(cur);
   // The tree is already back — the engine sent it. These are the parts of the
-  // step the engine has never heard of.
+  // step the engine has never heard of…
   wb.locks = new Set(step.locks);
+  // …plus the locks the player toggled while it was on its way, which are
+  // newer than either step (see `setLock`). The prune after this drops any
+  // whose module the restore took away.
+  for (const [id, on] of toggles) {
+    if (on) wb.locks.add(id);
+    else wb.locks.delete(id);
+  }
   // `settlePlaceholders` runs after this on the same reply and prunes whatever
   // the restored tree no longer contains, so this only has to be the set as it
   // stood — it does not have to be right about the tree.
@@ -1082,8 +1183,12 @@ worker.onmessage = (e) => {
     // app stating something untrue about its own state. Say what happened,
     // and pull fresh views so the row that can't be opened stops being listed.
     case "bench_missing": {
-      // Not on its way any more, either (PERFORM holds a measurement for it).
-      if (benchPending === m.id) benchPending = null;
+      // Not on its way any more, either (PERFORM holds a measurement for it),
+      // and the bench is still the patch the lane's edits were aimed at.
+      if (benchPending === m.id) {
+        benchPending = null;
+        pumpLane();
+      }
       renderSubject(); // the rack stops saying "opening…"
       if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
       note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
@@ -1336,6 +1441,9 @@ worker.onmessage = (e) => {
         }
         wb.subjectId = m.subject;
         benchPending = null;
+        // Whatever was done to the last patch while this one was on its way
+        // was aimed at a rack that is gone now (see `pumpLane`).
+        dropLane();
         wb.dirty = false;
         benchDirtyWhy = null;
         // A new subject: whatever the spec strip was describing belonged to
@@ -1495,8 +1603,11 @@ worker.onmessage = (e) => {
         // It landed, so the step it displaced is now history worth keeping —
         // and only now is the sentence about it a true one, and only now is
         // the shelf entry it came from really spent.
-        commitStagedUndo();
-        settleLanded();
+        settleLanded(commitStagedUndo());
+      } else if (m.edited !== undefined) {
+        // A knob write landed. Settled before anything is drawn, so the
+        // overlay below draws only what the engine still has not heard.
+        settleParam(m.token);
       }
       // Structural edits already reached the voices from the worker's early
       // `tree_json` post. Swapping the identical tree in again would buy a
@@ -1508,6 +1619,7 @@ worker.onmessage = (e) => {
       if (spokeEarly) {
         if (live && m.makeup != null) live.setMakeup(m.makeup);
         liveMakeup = m.makeup;
+        livePending();
       } else if (
         m.treeJson && m.treeJson !== "null" && live &&
         (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
@@ -1516,6 +1628,7 @@ worker.onmessage = (e) => {
         setLivePatchJson(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
         setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)}${dirtySuffix()}` : benchName(wb.subjectId));
+        livePending();
       }
       // Optimism's other half: the sound arrived before the verdict. A patch
       // that fails vetting can self-oscillate, and it is already in the
@@ -1558,16 +1671,9 @@ worker.onmessage = (e) => {
       // bench change while the map is up must repaint it — clicking a dot
       // used to leave the ring on the old patch.
       if (currentView === "taste") drawTaste();
-      editInFlight = false;
-      if (editQueue) {
-        const q = editQueue;
-        editQueue = null;
-        sendEdit(q.addr, q.value, q.isIndex);
-      } else if (auditionOnSettle) {
-        auditionOnSettle = false;
-      }
-      settleCommit();
-      drainStruct();
+      // Whatever is next in the lane goes now — and if nothing is, a COMMIT
+      // that was waiting on this edit goes instead (see `pumpLane`).
+      pumpLane();
       break;
     }
     // A request that arrived before the engine finished booting. The worker
@@ -1646,11 +1752,15 @@ worker.onmessage = (e) => {
           `${label} isn't on this patch any more — that change did not land.`,
           { urgent: true },
         );
+        // Settled first, so the overlay does not paint the refused value
+        // straight back over the snap.
+        settleParam(null);
         if (wb.rack) renderRack();
       }
       editInFlight = false;
-      // Nothing landed, so COMMIT goes back to what the bench actually says.
-      editPending = false;
+      // Nothing landed, so COMMIT goes back to what the bench actually says —
+      // unless another knob write is still on its way.
+      editPending = pendingKnobs.size > 0;
       syncCommitBtn();
       // A rejected op never reached the tree, so nothing was posted early and
       // nothing is in flight; the next one may go. `restoreInFlight` matters
@@ -1668,14 +1778,8 @@ worker.onmessage = (e) => {
       // A refused restore means ⌘Z is aimed at a route the engine is turning
       // down; replaying the rest of the burst would say the same thing ten
       // times over. The stacks are untouched, so nothing is lost by stopping.
-      if (refusedRestore) restoreBacklog = 0;
-      if (editQueue) {
-        const q = editQueue;
-        editQueue = null;
-        sendEdit(q.addr, q.value, q.isIndex);
-      }
-      settleCommit();
-      drainStruct();
+      if (refusedRestore && benchLane[0] && benchLane[0].t === "restore") benchLane.shift();
+      pumpLane();
       break;
     }
     // The answer to "is there a duel to deal here, and what does the other
@@ -1796,16 +1900,30 @@ worker.onmessage = (e) => {
       applyStatus(m.status);
       refreshInstruments();
       if (m.childId > 0) {
-        // Said when it is true. The child exists now, but the bench swaps
-        // only when `edit_begin` has rendered and vetted it, 1–3 s on — and
-        // "now on the bench, play it" said here was played on the parent.
-        // The `bench` reply for this id says it instead of "X on the bench".
-        evolvedAnnounce = {
-          id: m.childId,
-          text: (name) =>
-            `⚡ gen ${m.status.generation}: evolution proposed ${name} — it's on the bench, play it.${madeRoom(evolveEvicted)}`,
-        };
-        send({ type: "edit_begin", id: m.childId });
+        // A generation takes seconds, and the rack stays live while it
+        // breeds. If the player went on editing, the child used to be opened
+        // over those edits regardless — gone without a word, and every write
+        // still in the lane then landed on the child at addresses read off
+        // the patch it replaced. The bench is the player's: the child waits
+        // in the bank, one click away.
+        const editedSince = wb.dirty || editPending || !laneFree();
+        if (editedSince) {
+          note(
+            `⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — it is in the bank, and your edits are still on the bench.${madeRoom(evolveEvicted)}`,
+            { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from" },
+          );
+        } else {
+          // Said when it is true. The child exists now, but the bench swaps
+          // only when `edit_begin` has rendered and vetted it, 1–3 s on — and
+          // "now on the bench, play it" said here was played on the parent.
+          // The `bench` reply for this id says it instead of "X on the bench".
+          evolvedAnnounce = {
+            id: m.childId,
+            text: (name) =>
+              `⚡ gen ${m.status.generation}: evolution proposed ${name} — it's on the bench, play it.${madeRoom(evolveEvicted)}`,
+          };
+          openOnBench(m.childId, { auto: true });
+        }
         scheduleSave();
       } else {
         note(
@@ -1978,33 +2096,40 @@ function releaseRequest(request, id) {
   engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
   switch (request) {
     case "edit_param":
-      editInFlight = false;
-      editQueue = null; // the knob is already where the player left it
+      // That write did not land. The ones queued behind it are gestures of
+      // their own and still go; the next reply draws what the engine holds.
+      settleParam(null);
       // The edit did not land, so neither the guess that lit COMMIT nor a
       // commit waiting on it stands.
-      editPending = false;
+      editPending = pendingKnobs.size > 0;
       commitOnSettle = null;
       syncCommitBtn();
-      drainStruct();
+      pumpLane();
       break;
     case "edit_structure":
     case "edit_set_tree":
       structInFlight = false;
       restoreInFlight = false;
       placeholderPending = null; // the tree it described never happened
-      restoreBacklog = 0;
+      // Nothing happened, so nothing is owed to history and a restore that
+      // died consumed no step — the same accounting as a refusal.
+      discardStagedUndo();
+      restorePending = null;
+      if (benchLane[0] && benchLane[0].t === "restore") benchLane.shift();
       forgetLanded();
-      drainStruct();
+      pumpLane();
       break;
     case "fit":
       fitting = false;
       $("wm-lamp").classList.remove("thinking");
       break;
     case "edit_begin":
-      // An open that failed is not on its way either.
+      // An open that failed is not on its way either — and the edits the lane
+      // was holding for it are about the patch still on the bench, so they go.
       benchPending = null;
       renderSubject();
       renderBank();
+      pumpLane();
       break;
     case "load_preset":
       // A load that failed is not still on its way: its row stops saying
@@ -2582,12 +2707,22 @@ window.addEventListener("resize", positionToastLane);
 
 // A toast whose undo can no longer fire must say so — see commitPendingVote,
 // which retires a vote's undo early when a refit claims it.
-function retireToastUndo(el) {
+function retireToastUndo(el, label) {
   const b = el?.querySelector?.(".toast-undo");
   if (!b) return;
   b.disabled = true;
   b.style.pointerEvents = "none";
-  b.textContent = "in the log";
+  b.textContent = label || "in the log";
+}
+
+/** Take a toast down because what it says stopped being true — the edit it
+ *  confirmed was undone. Wherever it is: on screen, or still waiting its
+ *  turn in the lane, where it must not surface later as news. */
+function retireToast(el) {
+  if (!el) return;
+  const t = toastLive && toastLive.el === el ? toastLive : toastQueue.find((x) => x.el === el);
+  if (t) dismissToast(t);
+  else el.remove();
 }
 
 // One number, one source. The menubar readout and the TRUST tab must not
@@ -3094,6 +3229,8 @@ function healParamMiss(addr) {
   live.setPatch(benchTreeJson, benchMakeup);
   setLivePatchJson(benchTreeJson, benchMakeup);
   healedRev = liveRev;
+  // The bench tree has none of the writes still waiting in the lane.
+  livePending();
 }
 
 // ---------- PERFORM ----------
@@ -3152,9 +3289,10 @@ async function bootPerform() {
         const variant = fk && fk.kind.t === "enum"
           ? (fk.kind.options[Math.round(fk.value)] || "").replace(/^svf /, "svf-")
           : null;
-        let text = knobUnit(addr, v, m.kind, variant);
         // With sync on, a sequencer plays the division its rate snaps to, not
-        // the rate on the knob: say what is heard.
+        // the rate on the knob: say what is heard — the same words the rack
+        // uses (`heardUnit`), with the room the strip has.
+        let text = knobUnit(addr, v, m.kind, variant);
         if (perf.sync && addr.endsWith("#srate")) text = `${fmtHz(syncedStepHz(v, perf.bpm))} · sync`;
         return { module: m.title, label: k.label, text };
       }
@@ -3264,7 +3402,7 @@ function paintPerformedKnobs() {
     // The readout says what is sounding; the kept value is the green pointer.
     if (val) {
       if (val.dataset.kept == null) val.dataset.kept = val.textContent;
-      val.textContent = knobUnit(kg.dataset.addr, v, kg.dataset.kind, kg.dataset.variant || null);
+      val.textContent = heardUnit(kg.dataset.addr, v, kg.dataset.kind, kg.dataset.variant || null);
     }
     if (!ghost) {
       ghost = svgEl("line", {}, "knob-ghost");
@@ -3454,7 +3592,6 @@ async function bootLiveAudio() {
 
 function liveNoteOn(note_, vel = 1.0) {
   if (!live) return;
-  foldArpDrawerOnPlay();
   sustainedNotes.delete(note_);
   ensureAudio();
   live.noteOn(note_, vel);
@@ -3929,15 +4066,47 @@ function sendArp() {
     if (!open) setArpDrawer(false);
   }
   renderArpChip();
+  // Every route that moves SYNC or the tempo comes through here — the
+  // buttons, the tempo field and MIDI clock, which can do it every beat — so
+  // the sequencer readouts are repainted in place rather than the rack
+  // rebuilt.
+  repaintSyncedRates();
+}
+
+/** The RATE readout of every sequencer on the bench, re-said for the SYNC
+ *  state and tempo now (see `heardUnit`). */
+function repaintSyncedRates() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  for (const kg of svg.querySelectorAll('g[data-addr$="#srate"]')) {
+    const knob = knobByAddr(kg.dataset.addr);
+    if (!knob) continue;
+    const val = kg.querySelector(".knob-value");
+    if (val && !kg.classList.contains("performed")) {
+      val.textContent = heardUnit(knob.addr, knob.value, kg.dataset.kind, kg.dataset.variant || null);
+    }
+    const long = heardUnit(knob.addr, knob.value, kg.dataset.kind, kg.dataset.variant || null, true);
+    kg.setAttribute("aria-valuetext", long);
+    const tt = kg.querySelector(".knob-hit > title");
+    if (tt) tt.textContent = `${knob.label}: ${long} — drag up/down`;
+  }
 }
 
 // The drawer is a popover now, and the chip is what stays. Pinned open for as
 // long as ARP or SYNC ran, it covered the bank's last row and the corner of
 // the XY pad for a whole performance. It opens when either is switched on —
 // the moment its settings are wanted — and from the chip; it folds on a click
-// elsewhere, on Escape, and on the next note played with the pointer
-// elsewhere, leaving "arp 1/8 · 120" under the ARP button: what the arp is
-// doing, one click from changing it, and the keybed never moves.
+// outside the dock and on Escape, leaving "arp 1/8 · 120" under the ARP
+// button: what the arp is doing, one click from changing it, and the keybed
+// never moves.
+//
+// Not on the dock's own controls, and not on notes. It used to fold on any
+// press outside the drawer and on the next note played with the pointer
+// elsewhere, which is exactly how an arpeggio is set up: latch HOLD, play the
+// chord, then set the rate against it — and HOLD folded the drawer, and so did
+// the chord. The keybed, HOLD, the octave buttons and the rest of the dock are
+// the instrument the drawer's settings are heard through; the bank and the XY
+// pad it floats over are outside the dock, and reaching for them folds it.
 function renderArpChip() {
   const chip = $("arp-chip");
   if (!chip) return;
@@ -3955,16 +4124,11 @@ function setArpDrawer(open) {
   chip.setAttribute("aria-expanded", String(show));
 }
 const arpDrawerOpen = () => $("arp-ctl").classList.contains("open");
-// A note is the performance starting: the drawer gets out of its way, unless
-// the pointer or the focus is in it (someone setting the rate against a
-// held chord).
-function foldArpDrawerOnPlay() {
-  const d = $("arp-ctl");
-  if (d.classList.contains("open") && !d.matches(":hover") && !d.contains(document.activeElement)) setArpDrawer(false);
-}
 $("arp-chip").onclick = () => setArpDrawer(!arpDrawerOpen());
 document.addEventListener("pointerdown", (e) => {
-  if (arpDrawerOpen() && !e.target.closest("#arp-ctl, #arp-chip, #arp-btn, #sync-btn")) setArpDrawer(false);
+  // The MIDI panel opens up out of the dock but is a dialog of its own, over
+  // the rack: a press in it is not a press on the instrument.
+  if (arpDrawerOpen() && (!e.target.closest(".keybar") || e.target.closest("#midi-panel"))) setArpDrawer(false);
 }, true);
 function sendSync() {
   if (live && live.sync) live.sync(perf.sync);
@@ -5837,6 +6001,10 @@ function openOnBench(id, { auto = false } = {}) {
   // A COMMIT still waiting on the last patch's edit is about that patch; it
   // must not land on this one when the edit settles.
   commitOnSettle = null;
+  // …and so is everything still waiting in the lane. Sent after this, each
+  // entry would land on the patch being opened, at an address that names
+  // something else there.
+  dropLane();
   // No separate `explain` request any more: the bench reply carries the
   // decomposition of the tree it is describing, so the readout can never name
   // a patch other than the one on screen. See `renderBelief`.
@@ -5898,28 +6066,92 @@ function syncCommitBtn() {
     : "Plays your version against the original and asks which you prefer (with “my edit is better” ticked, it takes your word for it). Either answer teaches the model, and “the original” teaches it most.";
 }
 
-function sendEdit(addr, value, isIndex) {
+/** A knob write. `id` is the knob's identity as the gesture saw it (a drag
+ *  reads it once, at the press, off the rack under the hand); without one it
+ *  is read off the bench now, which is the rack on screen whenever no drag is
+ *  holding the redraw back. */
+function sendEdit(addr, value, isIndex, id) {
   if (!wb.dirty && !editPending) {
     editPending = true;
     syncCommitBtn();
   }
+  const who = id || lockIdOf(addr);
   // Sound first: continuous knobs — and the two live categorical sites —
-  // write straight into the running voices.
+  // write straight into the running voices. At the address the knob has *on
+  // the bench*, which a structural reply that landed mid-drag may have moved.
   const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
   if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
-  else if (live) live.param(addr, value);
+  else if (live) live.param(lockAddrOf(who) || addr, value);
   // The readout above the rack describes the tree before this write until the
   // bench answers with the new φ. Say so rather than leave a stale number
   // looking current.
   beliefStale();
   pendingEditTag = { op: "param", addr };
-  // Genome second: the worker validates, re-renders the phrase, updates φ.
-  if (editInFlight) {
-    editQueue = { addr, value, isIndex };
-    return;
+  // Genome second: the worker validates, re-renders the phrase, updates φ —
+  // in its turn, behind whatever the player did before this.
+  const seq = ++laneSeq;
+  pendingKnobs.set(who, { value, seq, live: !isIndex || liveIndex });
+  const held = knobDragging;
+  const tail = benchLane[benchLane.length - 1];
+  if (tail && tail.t === "param" && tail.id === who) {
+    // The same knob, still waiting: the new value supersedes the old one
+    // outright. Nothing in between wanted the old value landed first.
+    Object.assign(tail, { addr, value, isIndex, seq, held });
+  } else {
+    benchLane.push({ t: "param", id: who, addr, value, isIndex, seq, held });
   }
-  editInFlight = true;
-  send({ type: "edit_param", addr, value, isIndex });
+  pumpLane();
+}
+
+/** The hand came off the knob: what it settled on may go to the engine. */
+function releaseHeldEdits() {
+  for (const q of benchLane) if (q.t === "param") q.held = false;
+  pumpLane();
+}
+
+/** A knob write's reply landed (or was refused, or died): the engine holds
+ *  that value now, or never will. Either way the overlay stops drawing it —
+ *  unless a newer write to the same knob is still on its way. */
+function settleParam(token) {
+  const q = paramAtWorker;
+  paramAtWorker = null;
+  editInFlight = false;
+  if (!q) return;
+  // A token that answers some other write is a reply this lane did not send
+  // (nothing does that today); drawing the overlay a little longer is safe.
+  if (token != null && token !== q.seq) return;
+  const p = pendingKnobs.get(q.id);
+  if (p && p.seq === q.seq) pendingKnobs.delete(q.id);
+}
+
+/** Draw every unconfirmed write over the rack the engine last described.
+ *  Called by `renderRack`, so no reply — for an older write, for a
+ *  structural edit that landed under a drag, for a ⌘Z the player has
+ *  already turned the knob after — can repaint a knob behind the value the
+ *  player last set. That flash was a drag's first reply: the rack redrew at
+ *  the value from the write before, and jumped when the next reply caught
+ *  up. It also cost keyboard nudges outright: the next ↑ read its base off
+ *  the stale redraw, and the presses in between were lost. */
+function overlayPending() {
+  if (!wb.rack || pendingKnobs.size === 0) return;
+  for (const [id, p] of pendingKnobs) {
+    const addr = lockAddrOf(id);
+    const k = addr && knobByAddr(addr);
+    if (k) k.value = p.value;
+  }
+}
+
+/** The voices were just handed a tree that has none of the writes still in
+ *  the lane (they are sent after it). Give them back, or the sound sits at
+ *  the old value under a knob drawn at the new one until something else
+ *  swaps the patch — a continuous write's own reply never does. */
+function livePending() {
+  if (!live || pendingKnobs.size === 0) return;
+  for (const [id, p] of pendingKnobs) {
+    if (!p.live) continue;
+    const addr = lockAddrOf(id);
+    if (addr) live.param(addr, p.value);
+  }
 }
 
 function playBench() {
@@ -6131,6 +6363,9 @@ function attachStepDrag(el, kg, knob) {
     el.setPointerCapture(ev.pointerId);
     pushUndo();
     knobDragging = true;
+    // Read off the rack under the hand, now: a reply that lands mid-drag
+    // replaces `wb.rack`, and the address this bar had may name another.
+    const id = lockIdOf(knob.addr);
     kg.classList.add("dragging");
     const track = kg.querySelector(".step-track");
     const at = (e) => {
@@ -6140,7 +6375,7 @@ function attachStepDrag(el, kg, knob) {
       if (v === knob.value) return;
       knob.value = v;
       paintStepBar(kg, knob);
-      sendEdit(knob.addr, v, false);
+      sendEdit(knob.addr, v, false, id);
     };
     at(ev);
     const onMove = (mv) => at(mv);
@@ -6150,6 +6385,7 @@ function attachStepDrag(el, kg, knob) {
       el.removeEventListener("pointercancel", onUp);
       knobDragging = false;
       kg.classList.remove("dragging");
+      releaseHeldEdits();
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
@@ -6766,7 +7002,7 @@ function applyGrid() {
     });
   }
   camHold = !stranded; // a re-seed *should* move the camera; a snap should not
-  renderRack();
+  renderRack(true);
   if (stranded) fitAll(true);
   scheduleSave();
   note(stranded
@@ -6795,7 +7031,7 @@ function resetPositions() {
   // is somewhere useless, so this is the one relayout that must move it.
   camHold = false;
   viewUserSet = false;
-  renderRack();
+  renderRack(true);
   fitAll(true);
   scheduleSave();
   note(n
@@ -7227,9 +7463,121 @@ function midOf(m) {
   return m && m.uid ? `u${m.uid}` : `k${m ? m.key : "?"}`;
 }
 
-function renderRack() {
+// What the rack on screen was built from: the rack object its handlers hold,
+// and everything about it that decides what the DOM *is* (`rackShapeOf`).
+let rackBuilt = null;
+
+/** Everything `buildRack` turns into elements, and nothing it only paints.
+ *  A continuous knob's value is paint, and so is the step lane's `active`
+ *  count, which `paintLaneLength` keeps. Enum values stay in: they choose a
+ *  plate's variant and its chips' text. */
+function rackShapeOf(rack, build) {
+  const sorted = (s) => (s ? [...s].sort() : null);
+  return JSON.stringify(
+    [
+      rack,
+      sorted(build.locks),
+      sorted(build.placeholders),
+      build.compact,
+      layoutMode,
+      build.places ? [...build.places].sort((a, b) => (a[0] < b[0] ? -1 : 1)) : null,
+      !!beliefOverlay,
+      portTrace.mid ?? null,
+    ],
+    (key, v) => {
+      if (key === "active") return undefined;
+      if (v && typeof v === "object" && typeof v.addr === "string" && v.kind && v.kind.t === "continuous") {
+        return { ...v, value: undefined };
+      }
+      return v;
+    },
+  );
+}
+
+/** A redraw that changes values only. The reply's rack is carried into the
+ *  objects the rack on screen was built from — its knobs' handlers hold
+ *  those, and a drag reads its start from them — and then painted where it
+ *  stands: knobs, step bars, the cables' reach and their breathing. Same
+ *  shape means same modules, same knobs, in the same order. */
+function repaintRackInPlace(fresh) {
+  const built = rackBuilt.rack;
+  if (fresh !== built) {
+    fresh.modules.forEach((m, i) => {
+      const o = built.modules[i];
+      m.knobs.forEach((k, j) => Object.assign(o.knobs[j], k));
+      const { knobs: _k, ...rest } = m;
+      Object.assign(o, rest);
+    });
+    const { modules: _m, ...top } = fresh;
+    Object.assign(built, top);
+    wb.rack = built;
+    lockIndex = null;
+  }
+  const svg = $("rack-svg");
+  for (const m of built.modules) {
+    for (const k of m.knobs) {
+      if (k.kind.t !== "continuous") continue;
+      const kg = svg.querySelector(`[data-addr="${CSS.escape(k.addr)}"]`);
+      if (kg) paintKnobKept(kg, k);
+    }
+  }
+  if (rackFrame) {
+    rackFrame.flow = wireLevels(built);
+    for (const it of rackFrame.wires) {
+      if (it.w.kind === "mod") {
+        it.inkEl.style.animationDuration = `${modBreath(rackFrame.mods.get(it.w.from)).toFixed(2)}s`;
+      } else {
+        paintWireLevel(it.inkEl, rackFrame.flow.get(it.w.from) ?? 1);
+      }
+    }
+  }
+  markQueuedPlates();
+}
+
+/** `paintKnob`, for a redraw rather than a hand: a knob PERFORM is playing
+ *  keeps its readout on the value sounding (`paintPerformedKnobs` owns that)
+ *  and has its kept value filed behind it, and the tooltip is re-said. */
+function paintKnobKept(kg, k) {
+  const val = kg.querySelector(".knob-value");
+  const performed = !!val && kg.classList.contains("performed") && val.dataset.kept != null;
+  const sounding = performed ? val.textContent : null;
+  paintKnob(kg, k);
+  if (performed) {
+    val.dataset.kept = val.textContent;
+    val.textContent = sounding;
+  }
+  const tt = kg.querySelector(".knob-hit > title");
+  if (tt) tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, kg.dataset.kind, kg.dataset.variant || null, true)} — drag up/down`;
+}
+
+/** How fast a modulation cable breathes: roughly its modulator's own rate. */
+function modBreath(src) {
+  let dur = 1.6;
+  if (!src) return dur;
+  const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
+  // A step sequence has a real rate in steps per second, so its cable can
+  // breathe once a step rather than on the LFO's approximation.
+  const srate = src.knobs.find((k) => k.addr.endsWith("#srate"));
+  if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
+  else if (srate) dur = Math.min(2.2, Math.max(0.25, 1 / stepRateHz(srate.value)));
+  else {
+    const att = src.knobs.find((k) => k.addr.endsWith("#att"));
+    const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
+    if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
+  }
+  return dur;
+}
+
+/** `rebuild` is for the callers that need the camera re-aimed even when no
+ *  element would change — the view coming back into sight, a resize, a
+ *  layout reset — and so must not be answered with a repaint in place. */
+function renderRack(rebuild = false) {
   const svg = $("rack-svg");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  // The engine's rack, with the player's newest values over it (see
+  // `overlayPending`). Here rather than in the reply handler, because a drag
+  // keeps writing after the last reply and it is the redraw that must agree.
+  overlayPending();
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
@@ -7270,6 +7618,7 @@ function renderRack() {
     svg.innerHTML = "";
     rackBoxes = new Map();
     rackFrame = null;
+    rackBuilt = null;
     cancelRackMotion();
     rackContent = { w: frameSize().w, h: frameSize().h };
     syncFitHint(); // nothing drawn is not a stranded layout
@@ -7278,12 +7627,7 @@ function renderRack() {
     return;
   }
 
-  // Measured before the teardown, because after it there is nothing left to
-  // measure: where every plate was, and where the keyboard was standing.
-  const before = captureRackMotion();
-  const focusMark = markRackFocus();
-
-  buildRack(svg, wb.rack, {
+  const build = {
     interactive: true,
     locks: lockedAddrs(),
     compact: effectiveLod() === "compact",
@@ -7294,7 +7638,34 @@ function renderRack() {
     // and it has to draw through the freeform path so the first drop does not
     // switch arrangements underneath the plate being dropped.
     places: layoutMode === "freeform" ? (ffPlaces() || new Map()) : null,
-  });
+  };
+  // Most redraws change values and nothing else — a knob reply, a release, a
+  // ⌘Z of a knob turn. Those are painted into the knobs already on screen
+  // (`repaintRackInPlace`) rather than rebuilt: a rebuild replaces every
+  // element in the rack, and a knob replaced between the moment something
+  // found it and the moment it pressed on it is a knob that was not there —
+  // the PATCH film's second drag, straight after a first one's reply,
+  // failed on exactly that. It is also most of the cost of a reply.
+  const shape = rackShapeOf(wb.rack, build);
+  // Not while the probe or the belief overlay is up: both draw from state
+  // that moves without the rack's shape moving (a trace landing, the pool's
+  // support), and they are redrawn by rebuilding.
+  if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn && !beliefOverlay) {
+    repaintRackInPlace(wb.rack);
+    return;
+  }
+  // A new shape is new DOM, and new DOM is never built under a hand that is
+  // holding a knob: that would take the knob out from under the pointer
+  // mid-turn. Every drag redraws when it lets go, and that redraw builds it.
+  if (knobDragging) return;
+
+  // Measured before the teardown, because after it there is nothing left to
+  // measure: where every plate was, and where the keyboard was standing.
+  const before = captureRackMotion();
+  const focusMark = markRackFocus();
+
+  buildRack(svg, wb.rack, build);
+  rackBuilt = { rack: wb.rack, shape };
   // Then play the difference. This has to happen before the camera is aimed,
   // because whether anything is moving is what decides whether the camera
   // travels on the motion curve or on its own.
@@ -7324,6 +7695,8 @@ function renderRack() {
   // pick mode draws — all of it lives in the DOM the build just replaced.
   connectSync();
   pickFeedback();
+  // …and for the plates a waiting gesture is aimed at.
+  markQueuedPlates();
 
   // Cache the amp faceplate for the per-note flash (see flashAmp).
   // Match the module *kind*, not its silkscreen: the title renders as
@@ -7374,6 +7747,7 @@ function renderSubject() {
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
     wb.vetOk ? "" : "⚠ muted",
+    laneWaitingText(),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -7561,22 +7935,8 @@ function buildRack(svg, rack, opts) {
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
-      // patch looks alive where it sounds alive.
-      const src = modByKey.get(w.from);
-      let dur = 1.6;
-      if (src) {
-        const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
-        // A step sequence has a real rate in steps per second, so its cable
-        // can breathe once a step rather than on the LFO's approximation.
-        const srate = src.knobs.find((k) => k.addr.endsWith("#srate"));
-        if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
-        else if (srate) dur = Math.min(2.2, Math.max(0.25, 1 / stepRateHz(srate.value)));
-        else {
-          const att = src.knobs.find((k) => k.addr.endsWith("#att"));
-          const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
-          if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
-        }
-      }
+      // patch looks alive where it sounds alive (`modBreath`).
+      const dur = modBreath(modByKey.get(w.from));
       // Only the ink breathes. A casing that pulsed would read as the cable
       // itself thinning and thickening, which is not what modulation does.
       wireEl.classList.add("pulse");
@@ -8020,12 +8380,15 @@ function buildRack(svg, rack, opts) {
         }
         kg.appendChild(ticks);
         kg.appendChild(svgEl("path", { d: arcPath(KNOB_R + 3, 0, 1) }, "knob-track"));
-        if (k.value > 0.004) {
-          kg.appendChild(
-            svgEl("path", { d: arcPath(KNOB_R + 3, 0, k.value) },
-              `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`)
-          );
-        }
+        // Always drawn, and hidden at zero the way `paintKnob` hides it. It
+        // used to be left out below 0.004, so a knob turned up from zero had
+        // no arc until the rack was rebuilt — and a knob at zero was a
+        // different element tree from the same knob anywhere else, which a
+        // redraw of values alone cannot paint over (`rackShapeOf`).
+        const arc = svgEl("path", { d: arcPath(KNOB_R + 3, 0, Math.max(0.004, k.value)) },
+          `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`);
+        if (!(k.value > 0.004)) arc.style.opacity = "0";
+        kg.appendChild(arc);
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
         kg.appendChild(body);
         // The pointer starts at 45% radius: a full-radius spoke reads as a pie
@@ -8054,7 +8417,7 @@ function buildRack(svg, rack, opts) {
           // it so the dot still wins its own corner.
           const hit = svgEl("circle", { r: KNOB_R + 7 }, "knob-hit");
           const tt = svgEl("title", {});
-          tt.textContent = `${k.label}: ${knobUnit(k.addr, k.value, m.kind, variant)} — drag up/down`;
+          tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, m.kind, variant, true)} — drag up/down`;
           hit.appendChild(tt);
           kg.appendChild(hit);
           attachKnobDrag(hit, m, k);
@@ -8127,7 +8490,7 @@ function buildRack(svg, rack, opts) {
         kg.dataset.kind = m.kind;
         if (variant) kg.dataset.variant = variant;
         if (k.kind.t === "continuous") {
-          kg.setAttribute("aria-valuetext", knobUnit(k.addr, k.value, m.kind, variant));
+          kg.setAttribute("aria-valuetext", heardUnit(k.addr, k.value, m.kind, variant, true));
           kg.setAttribute("aria-valuenow", k.value.toFixed(3));
           kg.setAttribute("aria-valuemin", "0");
           kg.setAttribute("aria-valuemax", "1");
@@ -8143,7 +8506,9 @@ function buildRack(svg, rack, opts) {
       kg.appendChild(lbl);
       if (k.kind.t === "continuous") {
         const val = svgEl("text", { y: KNOB_R + 25 }, "knob-value");
-        val.textContent = knobUnit(k.addr, k.value, m.kind, variant);
+        val.textContent = interactive
+          ? heardUnit(k.addr, k.value, m.kind, variant)
+          : knobUnit(k.addr, k.value, m.kind, variant);
         // Still inside its window: this readout changed a moment ago and the
         // teardown must not be what ends the flash.
         const until = knobFlash.get(k.addr);
@@ -9782,9 +10147,12 @@ new ResizeObserver(() => {
 // `recursive use of an object detected … at WasmEngine.edit_structure`, which
 // is what overlapping calls into one wasm object look like from the outside.
 // Queue rather than drop: the ops came from deliberate gestures, and each is
-// re-sent only once the tree it will land on is the tree it was aimed at.
-let structInFlight = false;
-const structQueue = [];
+// sent only once everything the player did before it has landed.
+//
+// Every edit shares this one lane now — knob writes, ops, whole-tree
+// rewrites and ⌘Z — see `pumpLane`. `structInFlight` (declared at the top)
+// is the lane's structural half: an op, a rewrite or a restore is at the
+// worker.
 /** Post a structural op. `landed` is what it earns *if the engine accepts it* —
  *  `{text, opts}` for the confirmation, `{drop}` for a HELD entry that is only
  *  really gone once the module is really in the patch. See `landedNote`;
@@ -9792,21 +10160,28 @@ const structQueue = [];
 function sendStruct(op, landed) {
   queueStruct({ type: "edit_structure", op }, landed || null);
 }
+// Deliberately shallow. This is a hand at a menu, not a stream; a backlog of
+// structural gestures deeper than this means the worker is wedged, and
+// replaying a minute of stale intent into a tree that has moved on is worse
+// than saying so. Knob writes and ⌘Z do not count: they coalesce.
+const LANE_STRUCT_MAX = 8;
+function laneStructCount() {
+  let n = 0;
+  for (const q of benchLane) if (q.t === "struct" || q.t === "rewrite") n += 1;
+  return n;
+}
+const LANE_FULL =
+  `${LANE_STRUCT_MAX} edits are already waiting on the engine, so this one was not queued — ` +
+  "it is busy (a breed, or a heavy render); try again when they land.";
 function queueStruct(msg, landed, tag, waiting) {
-  if (structInFlight) {
-    // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
-    // deeper than a rapid double-click means the worker is wedged, and
-    // replaying a minute of stale intent into a tree that has moved on is
-    // worse than saying so.
-    if (structQueue.length >= 8) {
-      return note("still applying the last edit — give it a moment");
-    }
+  if (!laneFree()) {
+    if (laneStructCount() >= LANE_STRUCT_MAX) return note(LANE_FULL, { urgent: true });
     // The confirmation travels with the op rather than being said now, for the
     // same reason it waits on the reply: nothing has happened yet. It cannot
     // ride *on* `msg`, which is structured-cloned to the worker and would
     // choke on the undo closure.
     const held = { trays: waiting ? [...waiting] : [] };
-    structQueue.push({ msg, landed: landed || null, tag, staged: held.trays });
+    benchLane.push({ t: "struct", msg, landed: landed || null, tag, staged: held.trays });
     // Waiting its turn is still in flight as far as the shelf is concerned.
     if (landed && landed.drop != null) setTrayPending(landed.drop, true);
     // Nothing went out, so nothing may be charged to the edit that *is* out —
@@ -9817,6 +10192,7 @@ function queueStruct(msg, landed, tag, waiting) {
     // step to hand them to. Untracked, they were the one route left by which a
     // ⌘Z could restore the tree and leave a duplicate on HELD.
     stagingBound = held;
+    lanePaint();
     return;
   }
   structInFlight = true;
@@ -9835,6 +10211,207 @@ function queueStruct(msg, landed, tag, waiting) {
   pendingEditTag = editTagOf(msg, tag);
   logImplicit("edit", pendingEditTag);
   send(msg);
+}
+
+// ---------- the bench lane ----------
+// Every edit to the bench goes through one lane, one request at the worker at
+// a time, in the order the player made them.
+//
+// There used to be two lanes and a side channel. Knob writes had a one-deep
+// queue of their own, ops had theirs, and ⌘Z waited only for the ops — so a
+// ⌘Z pressed while a drag's last write was still queued went out ahead of
+// it, the undo landed, and then the write landed on top of it: the knob came
+// back to the value the player had just undone. Two lanes cannot agree on an
+// order, and one queue has nothing to disagree about. The worker is serial
+// anyway, so the cost is one message hop between requests, not a render.
+//
+// An entry is a *gesture*, never a tree computed from a bench that has since
+// moved:
+//
+//  - `param` — a knob write, named by the knob's identity (`lockIdOf`, the
+//    same name a lock uses) and aimed at an address only when it is sent,
+//    because an op ahead of it may have moved every address below it. Writes
+//    to one knob in a row coalesce, and a knob still under the hand is
+//    *held*: the voices hear every value the pointer passes through
+//    (`live.param`) and the engine renders the one it settles on. A drag used
+//    to keep the worker rendering values already superseded by the time they
+//    landed, and a bypass after it waited out that whole backlog.
+//  - `struct` — an op, exactly as `queueStruct` always queued it. Its key is
+//    the one the player aimed at; ops are not re-aimed yet.
+//  - `rewrite` — a whole-tree gesture (bypass, unplug, a cable moved…), re-run
+//    against the tree it lands on with its sockets re-aimed by node identity
+//    (`holdRewrite`).
+//  - `restore` — ⌘Z / ⌘⇧Z owed, `n` of them, read off the live stack when
+//    their turn comes (see `requestRestore`).
+//  - `mark` — the undo step of a knob gesture begun while the lane was busy
+//    (see `pushUndo`).
+
+/** Nothing is at the worker and nothing is waiting — or the entry being run
+ *  is the one asking, which owns the worker by being at the head. */
+function laneFree() {
+  return !editInFlight && !structInFlight && (laneDraining || benchLane.length === 0);
+}
+
+/** Send whatever is next, for as long as nothing is at the worker. Called on
+ *  every reply, refusal and failure, and whenever something joins the lane. */
+function pumpLane() {
+  while (!editInFlight && !structInFlight && benchLane.length) {
+    // Another patch is on its way to the bench. Anything sent now would land
+    // on *it* — at addresses read off the rack still on screen, which is the
+    // one leaving — so the lane holds until it lands, and the bench reply
+    // then drops what was aimed at the patch it replaced (`dropLane`).
+    if (benchPending != null) break;
+    const q = benchLane[0];
+    // A knob still under the hand holds everything behind it too: a ⌘Z
+    // pressed mid-drag is about the turn the drag is making.
+    if (q.t === "param" && q.held) break;
+    laneDraining = true;
+    try {
+      if (q.t === "restore") {
+        const kind = q.n > 0 ? "undo" : "redo";
+        q.n += q.n > 0 ? -1 : 1;
+        if (q.n === 0) benchLane.shift();
+        performRestore(kind, q);
+        continue;
+      }
+      benchLane.shift();
+      if (q.t === "mark") takeUndoStep();
+      else if (q.t === "param") postParam(q);
+      else if (q.t === "struct") queueStruct(q.msg, q.landed, q.tag, q.staged);
+      else if (q.t === "rewrite") runRewrite(q);
+    } finally {
+      laneDraining = false;
+    }
+  }
+  lanePaint();
+  // Everything the player did has landed: a COMMIT or ⚡ waiting on it goes.
+  if (laneFree()) settleCommit();
+}
+
+/** Send one knob write, at the address its knob has on the bench now. */
+function postParam(q) {
+  const addr = lockAddrOf(q.id);
+  if (!addr || !knobByAddr(addr)) {
+    // The module left the patch in an edit that landed ahead of this turn.
+    const p = pendingKnobs.get(q.id);
+    if (p && p.seq === q.seq) pendingKnobs.delete(q.id);
+    note("that knob's module left the patch before the turn could land — nothing changed.", { urgent: true });
+    return;
+  }
+  editInFlight = true;
+  paramAtWorker = q;
+  send({ type: "edit_param", addr, value: q.value, isIndex: q.isIndex, token: q.seq });
+}
+
+/** The bench is being replaced: everything still waiting was aimed at the
+ *  patch that is leaving. What each entry promised is taken back — a drop
+ *  from HELD stays on the shelf, and what a queued op staged comes off it,
+ *  because that op will never run. (The request already at the worker lands
+ *  on the old patch, ahead of the new one, which is harmless.) */
+function dropLane() {
+  for (const q of benchLane) {
+    if (q.t !== "struct") continue;
+    if (q.landed && q.landed.drop != null) setTrayPending(q.landed.drop, false);
+    for (const uid of q.staged || []) unstage(uid);
+  }
+  benchLane.length = 0;
+  pendingKnobs.clear();
+  lanePaint();
+}
+
+// ---- whole-tree gestures, held until their turn ----
+// A rewrite computes a whole tree from the bench on screen, and posting that
+// tree behind another edit would silently discard the edit in front of it —
+// which is why `applyTreeRewrite` used to refuse outright while anything was
+// in flight: "still applying the last edit — give it a moment". On a loaded
+// machine that was most of the time, and a bypass pressed right after a knob
+// turn, or right after ⌘Z, simply did not happen.
+//
+// So the *gesture* waits instead of the tree: it is run again when its turn
+// comes, against the tree the engine has then, with each socket it was aimed
+// at re-found by the identity of the module in it. If that module is gone —
+// the edit ahead of it removed it — the gesture is refused then, and says
+// why. That is the one case where waiting cannot be made safe.
+
+/** A socket as a gesture aims at it: the module in it (or, for `…/m`, the
+ *  module whose modulation slot it is) by identity. The amp is not a node and
+ *  never moves, so its keys stand for themselves. */
+function aimOfKey(key) {
+  const mod = key.endsWith("/m") ? key.slice(0, -2) : key;
+  const m = wb.rack?.modules.find((x) => x.key === mod);
+  return m && m.uid ? { uid: m.uid, suffix: key.slice(mod.length) } : { key };
+}
+/** …and back, against the rack the engine sent last. Null if it is gone. */
+function keyOfAim(a) {
+  if (a.key !== undefined) return a.key;
+  const m = wb.rack?.modules.find((x) => x.uid === a.uid);
+  return m ? m.key + a.suffix : null;
+}
+
+/** Hold a whole-tree gesture until everything in front of it has landed.
+ *  `keys` are the sockets it is aimed at, `rerun(...keys)` runs it again
+ *  with them re-aimed. True when it was held — the caller stops there, and
+ *  says nothing yet: nothing has happened. */
+function holdRewrite(keys, rerun, what) {
+  if (laneFree()) return false;
+  if (laneStructCount() >= LANE_STRUCT_MAX) {
+    note(LANE_FULL, { urgent: true });
+    return true;
+  }
+  benchLane.push({ t: "rewrite", aims: keys.map(aimOfKey), rerun, what });
+  lanePaint();
+  nbAnnounce(`${what} waits for the edit in front of it, then happens.`);
+  return true;
+}
+function runRewrite(q) {
+  const keys = q.aims.map(keyOfAim);
+  if (keys.some((k) => k == null)) {
+    note(`the ${q.what} did not happen — the module it was for left the patch in the edit before it.`, { urgent: true });
+    return;
+  }
+  q.rerun(...keys);
+}
+
+/** Visible pending feedback: the plates a waiting gesture is aimed at, and a
+ *  count in the rack's caption. Called on every knob write (a drag is one per
+ *  pointer move), so it touches the DOM only when what it says has changed;
+ *  `renderRack` re-marks the plates it rebuilds on its own. */
+let laneSaid = "";
+function lanePaint() {
+  let rewrites = 0;
+  for (const q of benchLane) if (q.t === "rewrite") rewrites += 1;
+  const said = `${laneWaitingText()}|${rewrites}`;
+  if (said === laneSaid) return;
+  laneSaid = said;
+  markQueuedPlates();
+  renderSubject();
+}
+function markQueuedPlates() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  svg.querySelectorAll("g.mod-group.queued").forEach((g) => g.classList.remove("queued"));
+  for (const q of benchLane) {
+    if (q.t !== "rewrite") continue;
+    for (const a of q.aims) {
+      const k = keyOfAim(a);
+      if (!k) continue;
+      const g = svg.querySelector(`g.mod-group[data-key="${cssKey(k.replace(/\/m$/, ""))}"]`);
+      if (g) g.classList.add("queued");
+    }
+  }
+}
+function laneWaitingText() {
+  let edits = 0;
+  let undos = 0;
+  for (const q of benchLane) {
+    if (q.t === "struct" || q.t === "rewrite") edits += 1;
+    else if (q.t === "restore") undos += q.n;
+  }
+  const parts = [];
+  if (edits) parts.push(`${edits} edit${edits > 1 ? "s" : ""} waiting`);
+  if (undos > 0) parts.push(undos > 1 ? `${undos} undos waiting` : "undo waiting");
+  else if (undos < 0) parts.push(undos < -1 ? `${-undos} redos waiting` : "redo waiting");
+  return parts.join(" · ");
 }
 
 /** `{op, kind, key}` for a structural message, from the payload the engine is
@@ -10003,6 +10580,11 @@ function setLock(addr, on) {
   const id = lockIdOf(addr);
   if (on) wb.locks.add(id);
   else wb.locks.delete(id);
+  // A ⌘Z on its way puts back the lock set of the step it restores, which
+  // was read before this toggle — so the toggle rides along and is applied
+  // over it (`settleRestore`), rather than silently undone by a reply that
+  // was already in flight when the player made it.
+  if (restorePending) (restorePending.toggles = restorePending.toggles || []).push([id, on]);
   locksRemember();
 }
 
@@ -10031,21 +10613,6 @@ function pruneLocks() {
   return dropped;
 }
 
-function drainStruct() {
-  if (structInFlight) return;
-  if (structQueue.length) {
-    const q = structQueue.shift();
-    queueStruct(q.msg, q.landed, q.tag, q.staged);
-    return;
-  }
-  // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
-  // step — one per reply, each read off the stack as it stands now.
-  if (restoreBacklog === 0) return;
-  const kind = restoreBacklog > 0 ? "undo" : "redo";
-  restoreBacklog -= restoreBacklog > 0 ? 1 : -1;
-  performRestore(kind);
-}
-
 // ---------- client-side tree rewrites ----------
 // `StructOp` has no `Move`, and most of the connection grammar is moves:
 // reconnect an output into another socket, promote a branch over its parent,
@@ -10068,12 +10635,15 @@ function drainStruct() {
 // bypass, reconnect, unplug — is exactly what a later model would want.
 function applyTreeRewrite(fn, tag) {
   if (!wb.tree) { note("no patch on the bench"); return false; }
-  // Deliberately NOT queued, unlike an op. An op is a description of an edit
-  // and is re-aimed at whatever tree it lands on; a whole-tree replace *is* a
-  // tree, computed from the one on screen. Held until the tree has moved on,
-  // it would post a patch that silently discards the edit in front of it.
-  if (structInFlight) {
-    note("still applying the last edit — give it a moment");
+  // Never queued as a tree. An op is a description of an edit; a whole-tree
+  // replace *is* a tree, computed from the one on screen, and held until the
+  // tree has moved on it would post a patch that silently discards the edit
+  // in front of it. The gestures that call this wait in the lane as
+  // gestures (`holdRewrite`) and only get here with the lane clear — so
+  // arriving with anything in front is a caller that skipped that, and
+  // posting would be exactly the silent discard.
+  if (!laneFree()) {
+    note("that edit could not wait its turn safely, so it was not made — try it again.", { urgent: true });
     return false;
   }
   const tree = JSON.parse(JSON.stringify(wb.tree));
@@ -10476,6 +11046,7 @@ function duplicateModule(key) {
   const here = nodeAtKey(key);
   if (!here) return note("that module has moved");
   const name = kindName(rackKindAt(key)) || fragLabel(here, false);
+  if (holdRewrite([key], duplicateModule, `duplicate of the ${name}`)) return;
   const ok = applyTreeRewrite((tree) => {
     const node = nodeAtIn(tree, key);
     if (!node) return "that module has moved — try again";
@@ -10497,6 +11068,9 @@ function duplicateModule(key) {
 function extractModule(key) {
   const here = nodeAtKey(key);
   if (!here) return note("that module has moved");
+  // Held as a gesture while anything is in front of it (see `holdRewrite`);
+  // everything below runs when its turn comes, against the tree then.
+  if (holdRewrite([key], extractModule, `unplug of the ${plateTitle(key)}`)) return;
   // Named before the rewrite goes out, off the rack the player is looking at.
   const what = chainTitle(key);
   let doomed = null;
@@ -10532,6 +11106,7 @@ function bypassModule(key) {
   const name = kindName(rackKindAt(key)) || fragLabel(here, false);
   const f = childFields(MOD_BY_TAG[nodeTag(here)] || {});
   if (f.length === 0) return note(`${name} generates the signal — there is nothing to pass through it.`);
+  if (holdRewrite([key], bypassModule, `bypass of the ${name}`)) return;
   const lost = f.length === 2 ? subtreeSize(here[nodeTag(here)][f[1]] || {}) : 0;
   let head = null;
   const ok = applyTreeRewrite((tree) => {
@@ -10609,8 +11184,18 @@ function deleteModule(key, x, y) {
     return sendStruct({ op: "delete", key });
   }
 
-  // The plain case — one module out of a chain, what it feeds moves up. No
-  // confirm: the loss is one module and the toast's undo is right there.
+  return deletePlain(key);
+}
+
+/** The plain case — one module out of a chain, what it feeds moves up. No
+ *  confirm: the loss is one module and the toast's undo is right there. Its
+ *  own function so a delete that has to wait its turn is re-run as exactly
+ *  this, not as the menu's whole decision again. */
+function deletePlain(key) {
+  const node = nodeAtKey(key);
+  if (!node) return note("that module has moved");
+  const name = kindName(rackKindAt(key)) || fragLabel(node, false);
+  if (holdRewrite([key], deletePlain, `delete of the ${name}`)) return;
   let head = null;
   const ok = applyTreeRewrite((tree) => {
     const n = nodeAtIn(tree, key);
@@ -10631,6 +11216,7 @@ function deleteModule(key, x, y) {
 /** Collapse the binary at `key` onto child `keep`; the other branch goes to
  *  HELD whole, so "discards 3 modules" is a statement about where they went. */
 function deleteKeeping(key, keep, name) {
+  if (holdRewrite([key], (k) => deleteKeeping(k, keep, name), `delete of the ${name}`)) return;
   // Named while it is still in the rack, and by its plate: this sentence is
   // the receipt for a branch the player just agreed to lose.
   const droppedName = chainTitle(`${key}/${1 - keep}`);
@@ -11092,6 +11678,22 @@ function knobUnit(addr, value, kind, variant) {
   return f ? f(value) : pct(value);
 }
 
+/** A bench knob's readout: what the voices do with the value, which is the
+ *  knob's own unit everywhere but one place. With SYNC on, a step sequencer
+ *  plays the division of the tempo its rate snaps to (`syncedStepHz`, the
+ *  same rule as `live.rs`), so its RATE read "2.0 Hz" while the pattern ran
+ *  at 2.1 — PERFORM's hood strip already said the heard rate, and the rack
+ *  under it contradicted the hood. Only the bench's rack: a duel mini or a
+ *  lineage diff describes a patch as the model renders it, free-running.
+ *  `long` is for the tooltip and the screen reader, which have room for why;
+ *  the plate's readout has one knob's width. */
+function heardUnit(addr, value, kind, variant, long) {
+  const text = knobUnit(addr, value, kind, variant);
+  if (!perf.sync || !addr.endsWith("#srate") || text === OUT_OF_RANGE) return text;
+  const heard = fmtHz(syncedStepHz(value, perf.bpm));
+  return long ? `${heard} · synced to ${perf.bpm} BPM (free, ${text})` : `${heard} sync`;
+}
+
 function enumDisplay(k) {
   if (k.kind.t === "octave") {
     const v = Math.round(k.value) - 2;
@@ -11126,7 +11728,7 @@ function paintKnob(kg, knob) {
   const kind = kg.dataset.kind;
   const variant = kg.dataset.variant;
   if (valText) {
-    const next = knobUnit(knob.addr, v, kind, variant);
+    const next = heardUnit(knob.addr, v, kind, variant);
     // Only on a *change*. A drag emits a move per pixel and the readout
     // quantises to two significant figures, so most frames say the same
     // thing — and a flash retriggered sixty times a second is a steady glow,
@@ -11140,7 +11742,7 @@ function paintKnob(kg, knob) {
     }
   }
   kg.setAttribute("aria-valuenow", v.toFixed(3));
-  kg.setAttribute("aria-valuetext", knobUnit(knob.addr, v, kind, variant));
+  kg.setAttribute("aria-valuetext", heardUnit(knob.addr, v, kind, variant, true));
 }
 
 function attachKnobDrag(el, mod, knob) {
@@ -11150,6 +11752,10 @@ function attachKnobDrag(el, mod, knob) {
     el.setPointerCapture(ev.pointerId);
     pushUndo(); // one undo step per knob gesture
     knobDragging = true;
+    // Who this knob is, read off the rack under the hand while it is still the
+    // bench's: a reply that lands mid-drag replaces `wb.rack`, and after a
+    // structural one the address below may name a different knob.
+    const id = lockIdOf(knob.addr);
     const startY = ev.clientY;
     const startV = knob.value;
     const kg = el.parentNode;
@@ -11162,7 +11768,9 @@ function attachKnobDrag(el, mod, knob) {
       const v = Math.min(1, Math.max(0, startV + (startY - mv.clientY) / travel));
       knob.value = v;
       paintKnob(kg, knob);
-      sendEdit(knob.addr, v, false);
+      // Held in the lane until the hand lets go (`releaseHeldEdits`): the
+      // voices hear every value on the way, the engine renders the last one.
+      sendEdit(knob.addr, v, false, id);
     };
     const onUp = () => {
       el.removeEventListener("pointermove", onMove);
@@ -11170,6 +11778,7 @@ function attachKnobDrag(el, mod, knob) {
       el.removeEventListener("pointercancel", onUp);
       knobDragging = false;
       kg.classList.remove("dragging");
+      releaseHeldEdits();
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
@@ -11206,8 +11815,11 @@ function attachEnumSweep(el, txt, knob) {
     const n = knob.kind.t === "octave" ? 5 : knob.kind.options.length;
     const startY = ev.clientY;
     const startV = Math.round(knob.value);
+    // Identity off the rack under the hand, as `attachKnobDrag` reads it.
+    const id = lockIdOf(knob.addr);
     let moved = false;
     let last = startV;
+    let swept = false;
     const onMove = (mv) => {
       const travel = mv.shiftKey ? 104 : 26;
       const next = Math.min(n - 1, Math.max(0,
@@ -11215,15 +11827,18 @@ function attachEnumSweep(el, txt, knob) {
       if (Math.abs(mv.clientY - startY) > 3) moved = true;
       if (next === last) return;
       // One undo step for the whole sweep, taken at the first real step so a
-      // drag that never leaves its starting value costs nothing.
-      if (last === startV) {
+      // drag that never leaves its starting value costs nothing. (Not keyed
+      // on `last === startV`: a sweep that comes back through its start is
+      // still the same sweep.)
+      if (!swept) {
+        swept = true;
         pushUndo();
         knobDragging = true;
       }
       last = next;
       knob.value = next;
       txt.textContent = enumDisplay(knob);
-      sendEdit(knob.addr, next, true);
+      sendEdit(knob.addr, next, true, id);
     };
     const onUp = () => {
       el.removeEventListener("pointermove", onMove);
@@ -11235,8 +11850,9 @@ function attachEnumSweep(el, txt, knob) {
       // `menuOpenedAt` is one: a pointerdown that never produces a click must
       // not leave a suppressor behind to eat the *next* one.
       if (moved) enumSweptAt = Date.now();
-      if (!knobDragging) return;
+      if (!swept) return;
       knobDragging = false;
+      releaseHeldEdits();
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
@@ -11309,6 +11925,11 @@ function focusPlate(el, say) {
   }
 }
 
+// The keyboard's knob gesture: presses on one knob less than this far apart
+// are one turn (see the ↑/↓ branch below).
+const NUDGE_GAP_MS = 700;
+let nudge = null; // {id, at} — the last knob nudged, and when
+
 $("rack-svg").addEventListener("keydown", (e) => {
   const plate = e.target.closest?.("g.mod-group");
   if (plate && !e.target.closest?.("[data-addr]")) {
@@ -11372,10 +11993,17 @@ $("rack-svg").addEventListener("keydown", (e) => {
   } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
     e.preventDefault();
     if (knob.kind.t !== "continuous") return;
-    pushUndo();
+    // A run of presses on one knob is one gesture, the way a drag is: one
+    // undo step, and one write that the next press supersedes while it
+    // waits. A step per press made a held arrow key thirty undo steps a
+    // second, each a separate trip through the engine.
+    const now = performance.now();
+    const id = lockIdOf(knob.addr);
+    if (!nudge || nudge.id !== id || now - nudge.at > NUDGE_GAP_MS) pushUndo();
+    nudge = { id, at: now };
     knob.value = Math.min(1, Math.max(0, knob.value + (e.key === "ArrowUp" ? step : -step)));
     paintKnob(kg, knob);
-    sendEdit(knob.addr, knob.value, false);
+    sendEdit(knob.addr, knob.value, false, id);
   } else if (e.key === "Enter" || e.key === " ") {
     if (knob.kind.t === "continuous") return;
     e.preventDefault();
@@ -11444,10 +12072,11 @@ function clearBenchDirty() {
  *  and the player has not already told us the answer. */
 function commitBench(opts = {}) {
   if (wb.subjectId == null) return;
-  // Pressed while the knob edit that lit it is still on its way: wait for it,
-  // or the duel would compare the tree from before the edit (and a bench not
-  // yet marked dirty would commit "none").
-  if (editInFlight || editQueue) {
+  // Pressed while an edit is still on its way — the knob write that lit it,
+  // or anything else in the lane: wait for all of it, or the duel would
+  // compare the tree from before the edit (and a bench not yet marked dirty
+  // would commit "none"). What is committed is what the player sees.
+  if (!laneFree() || benchLane.some((q) => q.held)) {
     commitOnSettle = opts;
     return;
   }
@@ -11467,10 +12096,17 @@ function commitBench(opts = {}) {
  *  refused or the vet may have muted it — and silently otherwise: COMMIT then
  *  says why it is disabled. */
 function settleCommit() {
-  if (!commitOnSettle || editInFlight || editQueue) return;
+  if (!commitOnSettle || !laneFree()) return;
   const opts = commitOnSettle;
   commitOnSettle = null;
   if (wb.dirty && wb.vetOk) commitBench(opts);
+  else if (opts.evolving && pendingEvolve && wb.subjectId != null) {
+    // ⚡ waited for an edit that turned out to change nothing (refused, or a
+    // knob put back where it was): there is nothing to commit, but the
+    // generation is still what was asked for.
+    pendingEvolve = false;
+    startEvolveFrom(wb.subjectId);
+  }
 }
 
 function sendCommit(outcome, opts = {}) {
@@ -11549,7 +12185,10 @@ $("rack-play").onclick = () => playBench();
 $("rack-commit").onclick = () => commitBench();
 $("rack-evolve").onclick = () => {
   if (wb.subjectId == null) return;
-  if (wb.dirty) {
+  // An edit still on its way counts: `wb.dirty` is only set by its reply, and
+  // ⚡ pressed a moment after a knob turn used to breed from the bank's patch
+  // as if the turn had never happened. `commitBench` waits for the lane.
+  if (wb.dirty || editPending || !laneFree()) {
     // The edit is about to become the seed of a whole generation. If there was
     // ever a moment to ask which of the two it should breed from, this is it —
     // so the same duel runs, and the evolve waits behind the answer.
@@ -11570,6 +12209,11 @@ $("lock-structure").onclick = () => {
   renderRack();
 };
 $("lock-clear").onclick = () => {
+  // Through the same record `setLock` keeps, so a ⌘Z already on its way does
+  // not put them all back when it lands.
+  if (restorePending) {
+    for (const id of wb.locks) (restorePending.toggles = restorePending.toggles || []).push([id, false]);
+  }
   wb.locks.clear();
   locksRemember(); // clearing is a decision too, and it has to survive a reload
   renderRack();
@@ -13660,6 +14304,7 @@ const PREVIEW_SECONDS = 2.0;   // the phrase's first held note, whole
 const preview = {
   token: 0,          // monotonic; a reply with an older one is stale
   inflight: false,
+  asked: null,       // {kind, key, mode} the render at the worker is *for*
   pending: null,     // the request that arrived while one was out
   want: null,        // {kind, key, mode} the strip is currently about
   have: null,        // {kind, key, mode, buffer} the last good render
@@ -13689,13 +14334,22 @@ function previewTarget() {
   if (!armed || !armedSockets.length) return null;
   const at = (k) =>
     k && armedSockets.find((j) => (j.getAttribute("data-childkey") || j.getAttribute("data-modkey")) === k);
+  const mine = (t) => (t && t.kind === armed.kind ? t.key : null);
   const jack =
     at(pickHoverKey) ||
     // Leaving the 6px nut is not leaving the decision. A render already paid
     // for stays on the strip until the player points at a different socket or
     // puts the module down — otherwise the waveform vanishes at the exact
     // moment the pointer travels to the ▶ that plays it.
-    at(preview.have && preview.have.kind === armed.kind ? preview.have.key : null) ||
+    //
+    // …and so does a render already *asked for*, newest first. Only the
+    // finished one used to count: a dwell's render still at the worker when
+    // the pointer left for ▶ fell through to the pre-selected socket, so ▶
+    // asked for a different socket, and what played was not what the strip
+    // had been rendering. The socket a render is for is the socket ▶ plays.
+    at(mine(preview.pending)) ||
+    at(preview.inflight ? mine(preview.asked) : null) ||
+    at(mine(preview.have)) ||
     (armedIdx >= 0 ? armedSockets[armedIdx] : null) ||
     armedSockets[0];
   const key = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
@@ -13711,6 +14365,7 @@ function previewInvalidate() {
   preview.dwellTimer = null;
   preview.token++;
   preview.inflight = false;
+  preview.asked = null;
   preview.pending = null;
   preview.have = null;
   preview.failed = null;
@@ -13734,6 +14389,14 @@ function requestPreview(target, play) {
   }
   if (sameTarget(preview.failed, target)) return; // it already said no
   preview.want = target;
+  if (preview.inflight && sameTarget(preview.asked, target)) {
+    // Already rendering exactly this: ▶ waits for it rather than asking for
+    // it a second time, and a newer request elsewhere is superseded by it.
+    preview.pending = null;
+    if (play) preview.playOnArrive = true;
+    renderSpecDock();
+    return;
+  }
   preview.playOnArrive = !!play;
   if (preview.inflight) {
     // Supersede rather than queue: the answer in flight is about a socket the
@@ -13744,6 +14407,7 @@ function requestPreview(target, play) {
   }
   preview.inflight = true;
   preview.token += 1;
+  preview.asked = target;
   send({
     type: "preview_render",
     token: preview.token,
@@ -13759,7 +14423,14 @@ function requestPreview(target, play) {
 function onPreviewArrived(m) {
   if (m.token !== preview.token) return;   // stale: the cancellation
   preview.inflight = false;
-  const target = { kind: m.kind, key: m.key, mode: preview.want ? preview.want.mode : "insert" };
+  // Filed under the socket it was asked for — never the one the strip has
+  // since moved on to (its mode used to be read off `want`, which is exactly
+  // that).
+  const asked = preview.asked;
+  preview.asked = null;
+  const target = asked && asked.key === m.key && asked.kind === m.kind
+    ? asked
+    : { kind: m.kind, key: m.key, mode: asked ? asked.mode : "insert" };
   if (m.buffer && m.buffer.length > 0) {
     const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
     buf.copyToChannel(m.buffer, 0);
@@ -13802,12 +14473,19 @@ function previewStripHTML(target) {
   const ready = sameTarget(preview.have, target);
   const dead = sameTarget(preview.failed, target);
   const busy = preview.inflight || !!preview.pending;
+  // "Here" is the socket under the pointer. Once the pointer has left it —
+  // on its way to this ▶, usually — the strip names the socket it is about,
+  // so a render that lands after the pointer has gone reads as that socket's
+  // and nobody else's. The socket itself is marked on the canvas too
+  // (`markPreviewSocket`).
+  const away = target && pickHoverKey !== target.key;
+  const where = away ? ` ${socketWhere(target.key)}` : "";
   const label = dead
-    ? "can't audition that here"
+    ? `can't audition that${away ? where : " here"}`
     : ready
-      ? "hear it here"
+      ? `hear it${away ? where : " here"}`
       : busy
-        ? "rendering…"
+        ? `rendering${where}…`
         : "hold a socket, or ▶";
   return (
     `<span class="pv${busy ? " busy" : ""}${dead ? " dead" : ""}">` +
@@ -13819,9 +14497,32 @@ function previewStripHTML(target) {
   );
 }
 
+/** Where a socket is, in the words of the plate it belongs to — "after the
+ *  filter", "on the vco's mod", "in the empty socket". Short, because it
+ *  rides a strip that already names the module in hand. */
+function socketWhere(key) {
+  if (!key) return "";
+  if (isPlaceholderKey(key)) return "in the empty socket";
+  if (armed && armed.sort === "mod") return `on the ${kindName(rackKindAt(key)) || "module"}`;
+  const title = plateTitle(key);
+  return armed && armed.sort === "source" ? `in place of the ${title}` : `after the ${title}`;
+}
+
+/** The socket the strip is about, marked on the canvas while the pointer is
+ *  somewhere else — the other half of naming it on the strip. */
+function markPreviewSocket(target) {
+  for (const j of armedSockets) {
+    const k = j.getAttribute("data-childkey") || j.getAttribute("data-modkey");
+    const on = !!target && k === target.key && pickHoverKey !== k &&
+      (preview.inflight || !!preview.pending || sameTarget(preview.have, target));
+    j.classList.toggle("previewed", on);
+  }
+}
+
 /** Paint whatever the strip is currently holding. Called after the dock is in
  *  the DOM, because the canvas has to exist to be drawn on. */
 function paintPreviewScope(target) {
+  markPreviewSocket(target);
   const c = $("pv-scope");
   if (!c) return;
   const dpr = window.devicePixelRatio || 1;
@@ -14017,7 +14718,7 @@ function disarm() {
   if (armPriced) { logPriceOutcome(armPriced, false, null); armPriced = null; }
   const chip = $("nb-groups").querySelector(".nb-item.armed");
   if (chip) chip.classList.remove("armed");
-  for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot");
+  for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot", "previewed");
   armedSockets = [];
   armedIdx = -1;
   armed = null;
@@ -14027,6 +14728,11 @@ function disarm() {
   preview.failed = null;
   preview.pending = null;
   preview.playOnArrive = false;
+  // A render still at the worker is for a module no longer in hand. Its reply
+  // must not come back as the preview of the next one's socket.
+  preview.token++;
+  preview.inflight = false;
+  preview.asked = null;
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
@@ -14445,6 +15151,7 @@ function openChooser(x, y, head, rows) {
  *  one undo step: the vacated socket becomes a hole and whatever was in the
  *  target is held below. */
 function connectMove(srcKey, targetKey) {
+  if (holdRewrite([srcKey, targetKey], connectMove, "cable move")) return;
   const srcName = kindName(rackKindAt(srcKey)) || "that";
   const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
   const hereChain = chainTitle(targetKey); // named before the tree moves
@@ -14483,6 +15190,7 @@ function connectMove(srcKey, targetKey) {
  *  — the term cannot share a node, and the toast says "a copy" for the same
  *  reason the socket labels say "replaces". */
 function connectBranch(srcKey, targetKey) {
+  if (holdRewrite([srcKey, targetKey], connectBranch, "branch")) return;
   const srcName = kindName(rackKindAt(srcKey)) || "that";
   const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
   const hereName = plateTitle(targetKey); // the plate it will mix with
@@ -14505,10 +15213,39 @@ function connectBranch(srcKey, targetKey) {
   noteOnLanding(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
 }
 
+/** A cable pulled out of an input and dropped on nothing. The socket is left
+ *  visibly empty. The engine still needs a node there — the term is total —
+ *  but the plate says "empty" and the next module goes there by default,
+ *  instead of a fresh vco quietly pretending the unplug did nothing. */
+function unplugCable(childKey) {
+  if (!nodeAtKey(childKey)) return note("that cable is no longer there");
+  if (holdRewrite([childKey], unplugCable, "unplug")) return;
+  const pulled = chainTitle(childKey); // while it is still in the rack
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    const old2 = nodeAtIn(tree, childKey);
+    if (!old2) return "that cable is no longer there";
+    const hole = placeholderNode();
+    if (!setNodeAtIn(tree, childKey, hole)) return "that cable is no longer there";
+    if (!marks.includes(old2)) doomed = old2;
+    marks.push(hole);
+    return null;
+  }, { op: "unplug", key: childKey, kind: rackKindAt(childKey) });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  noteOnLanding(
+    doomed
+      ? `unplugged — the ${pulled} is held below and the socket is empty.`
+      : "unplugged — the socket is empty.",
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
+  );
+}
+
 /** Modulation has one slot per module, so its only verb is move. */
 function connectMoveMod(srcKey, targetKey) {
   const srcMod = modAtKey(srcKey.replace(/\/m$/, ""));
   if (!srcMod) return note("that modulator has moved — try the cable again");
+  if (holdRewrite([srcKey, targetKey], connectMoveMod, "modulation move")) return;
   const from = srcKey.replace(/\/m$/, "");
   const dest = kindModTarget(rackKindAt(targetKey)) || "mod";
   let doomed = null;
@@ -15249,29 +15986,7 @@ function onWireUp(ev) {
       }
       return;
     }
-    // The socket is left visibly empty. The engine still needs a node there —
-    // the term is total — but the plate says "empty" and the next module goes
-    // there by default, instead of a fresh vco quietly pretending the unplug
-    // did nothing.
-    const pulled = chainTitle(w.childKey); // while it is still in the rack
-    let doomed = null;
-    const ok = applyTreeRewrite((tree, marks) => {
-      const old2 = nodeAtIn(tree, w.childKey);
-      if (!old2) return "that cable is no longer there";
-      const hole = placeholderNode();
-      if (!setNodeAtIn(tree, w.childKey, hole)) return "that cable is no longer there";
-      if (!marks.includes(old2)) doomed = old2;
-      marks.push(hole);
-      return null;
-    }, { op: "unplug", key: w.childKey, kind: rackKindAt(w.childKey) });
-    if (!ok) return;
-    const uid = doomed ? stageFragment(doomed, false) : null;
-    noteOnLanding(
-      doomed
-        ? `unplugged — the ${pulled} is held below and the socket is empty.`
-        : "unplugged — the socket is empty.",
-      { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
-    );
+    unplugCable(w.childKey);
   } else if (w.mode === "unplug-mod") {
     if (jack) {
       const to = jack.getAttribute("data-modkey");
@@ -17745,7 +18460,7 @@ function refitRack() {
   refitPending = true;
   requestAnimationFrame(() => {
     refitPending = false;
-    if (!knobDragging) renderRack();
+    if (!knobDragging) renderRack(true);
   });
 }
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitRack);
@@ -18271,7 +18986,7 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(() => {
     drawTaste();
     drawLineage();
-    if (!knobDragging) renderRack();
+    if (!knobDragging) renderRack(true);
     if (currentDuel) {
       onRenderArrived(currentDuel[0]);
       onRenderArrived(currentDuel[1]);

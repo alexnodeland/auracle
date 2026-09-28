@@ -104,6 +104,12 @@ It is **sample-accurate**: it runs inside the audio engine rather than on a
 page timer, so it does not drift and it does not stutter when the interface is
 busy.
 
+The settings open in a drawer above the dock when you switch ARP or SYNC on,
+and fold to a chip under the buttons (`arp 1/8 · 120`) when you click outside
+the dock or press <kbd>Esc</kbd>; the chip opens it again. Playing, HOLD and
+the dock's other controls leave it open, so you can latch a chord and set the
+rate against it.
+
 **SYNC** (next to ARP) puts a patch's step sequencers on the same tempo. Each
 one plays the musical division nearest the speed it was evolved at, so a
 pattern that ran at 3.7 steps a second becomes 8ths at 120 BPM, and all of
@@ -111,8 +117,10 @@ them restart together with the first key you press, on the same beat the arp
 starts. MIDI start restarts them too, and from then until a MIDI stop the
 clock pulls them back onto its beat once a beat. A five-step pattern still cycles against
 the bar; that is the point of it. Turning a sequencer's rate knob with sync on
-moves it between divisions rather than off the grid. Sync changes only what you
-hear live: the model still auditions every patch free-running.
+moves it between divisions rather than off the grid, and the knob reads the
+rate it plays (`2.1 Hz sync`); its tooltip gives the free-running rate. Sync
+changes only what you hear live: the model still auditions every patch
+free-running.
 
 ## Recording
 

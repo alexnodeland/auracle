@@ -969,6 +969,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mod-plate { fill: url(#plateGrad); stroke: #2c313a; stroke-width: 1; }
 .mod-plate.modside { stroke: #57431f; }
 .mod-plate.locked { stroke: var(--phos-b); stroke-dasharray: 4 3; }
+/* A gesture waiting its turn in the bench lane — a bypass pressed while a
+   knob turn was still landing — is aimed at this plate. It will happen, in
+   order; the rack's caption counts what is waiting (main.js `lanePaint`). */
+.mod-group.queued .mod-plate { stroke: var(--phos-a-dim); stroke-dasharray: 2 3; }
 /* The opt-in belief tint. A stroke rather than a fill, and inset rather than
    on the plate's own edge, so it can never be confused with the dashed amber
    `locked` outline — one says "the model leans this way about this family",
@@ -2714,6 +2718,10 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .jack.hot circle:nth-of-type(1) { fill: rgba(142,240,177,0.16); }
 .jack.hot circle { stroke-width: 2; animation: none; }
 .jack.legal.replaces.hot circle:nth-of-type(1) { fill: rgba(255,180,84,0.16); }
+/* The socket the audition strip is about while the pointer is elsewhere —
+   usually on its way to the strip's ▶. The strip names it in words; this is
+   where it is. Dashed, so it cannot be mistaken for the keyboard's cursor. */
+.jack.previewed circle { stroke-width: 2; stroke-dasharray: 3 2; animation: none; }
 /* Something is in your hand: the whole canvas says so. */
 .rack-scroll.placing { cursor: crosshair; }
 .rack-scroll.placing #rack-svg { cursor: crosshair; }
@@ -4736,8 +4744,9 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
    recessed-but-present, which read as six controls that did nothing — and then
    pinned open for as long as it ran, which covered the bank's last row and the
    XY pad for a whole performance. Now a drawer: open when ARP or SYNC is
-   switched on and from the chip below, folded on the next click elsewhere or
-   note played (main.js `setArpDrawer`). */
+   switched on and from the chip below, folded by a click outside the dock or
+   Escape — never by HOLD, the dock's other controls or a note, which are how
+   an arpeggio is set up (main.js `setArpDrawer`). */
 #arp-ctl:not(.open) { display: none; }
 /* What stays while it runs: the drawer folded to one machined chip under the
    ARP and SYNC buttons, in the three grid cells the width selector leaves
