@@ -1575,19 +1575,27 @@ function schedulePump() {
 // What waits for a walk job rather than for the floor. A generation does not
 // hold the floor (see `breedOpen`), but a refit waits for it — the generation
 // is bred under the posterior it started under — and so does the next
-// generation. A second ⚡ waits for the first. Neither generations nor ⚡ start
-// before boot's crew is gone: the farm has one crew at a time.
+// generation. A second ⚡ waits for the first. And while boot's own crew is
+// still rendering the bank, a generation or ⚡ waits for it to be reaped: the
+// farm has one crew at a time. (With no boot crew — `?farm=0`, a small machine
+// — they run during the fill, between its batches, as they always did.)
+const bootCrewLive = () => !booted && farmCrew_ === 0 && !farmClosed && farm.some((f) => f.alive);
 function blocked(m) {
   switch (m.type) {
     case "fit":
       return gen != null;
     case "refine":
-      return gen != null || !booted;
+      return gen != null || bootCrewLive();
     case "refine_from":
-      return evolving != null || !booted;
+      return evolving != null || bootCrewLive();
     default:
       return false;
   }
+}
+
+// Boot reaps its own crew, never a walk crew raised while it was filling.
+function bootCrewDone() {
+  if (farmCrew_ === 0) farmShutdown();
 }
 
 // The first request in `soon`, then `later`, that may start now.
@@ -1802,7 +1810,7 @@ async function dispatch(m) {
         }
         if (!farmed && farm.length) {
           console.warn("[auracle] no farm worker reported ready; filling serially");
-          farmShutdown();
+          bootCrewDone();
         }
 
         // Boot is staged, and every `fill_progress` says which stage it is in.
@@ -1940,9 +1948,10 @@ async function dispatch(m) {
         // posterior exists — see `Engine::restandardize_if_untaught`.
         tryEngine("restandardize_if_untaught");
         st = status();
-        // Boot is over: the farm exists only for it. N × ~15 MB of linear memory
-        // is not something to keep resident behind a running instrument.
-        farmShutdown();
+        // Boot is over, and so is its crew. N × ~15 MB of linear memory is not
+        // something to keep resident behind a running instrument; walks raise
+        // a crew of their own when they want one.
+        bootCrewDone();
         post({ type: "filled", status: st, restored });
         // Taste continuity: re-fit from the restored log so the map and
         // styles come back with the bank.
@@ -1968,7 +1977,7 @@ async function dispatch(m) {
         console.error("[auracle] boot failed:", err);
         post({ type: "boot_failed", error: String((err && err.message) || err) });
       } finally {
-        farmShutdown();
+        bootCrewDone();
         // From here a generation or ⚡ may raise a crew of its own.
         booted = true;
         schedulePump();
