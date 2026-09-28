@@ -1090,13 +1090,19 @@ worker.onmessage = (e) => {
       dealing = true;
       send({ type: "duel" });
       send({ type: "taste_views" });
-      if (m.restored > 0) {
+      // A session restored with no picks in it — the saved patches a reset
+      // kept — is not "your taste restored": there is none yet, and the warm
+      // start the reset owes comes first.
+      const taughtBefore = (m.status && m.status.observations) || 0;
+      if (m.restored > 0 && taughtBefore > 0) {
         note(`Welcome back — ${m.restored} patches and your taste restored.`);
       } else if (
         !localStorage.getItem("auracle-warmed") &&
         !localStorage.getItem("auracle-warm-deferred")
       ) {
         setTimeout(openWarmStart, 500);
+      } else if (m.restored > 0) {
+        note(`Welcome back — ${m.restored} patch${m.restored === 1 ? "" : "es"} restored.`);
       } else if (fillTarget > fillPool) {
         note(`Start picking — ${fillTarget - fillPool} more patches are still arriving.`);
       }
@@ -1147,6 +1153,12 @@ worker.onmessage = (e) => {
       break;
     }
     case "saved": {
+      // A reset writes its own record, from the save that follows its copy.
+      if (resetting === "saving") {
+        finishReset(m.json);
+        break;
+      }
+      if (resetting) break;
       persistState({ v: STATE_VERSION, session: m.json, ui: uiState() });
       break;
     }
@@ -2081,23 +2093,49 @@ worker.onmessage = (e) => {
       const blob = new Blob([m.json], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      // The safety copy taken before a profile import is named for what it
-      // is, so it cannot be mistaken for the one the player asked for.
+      // The safety copies taken before an import or a reset are named for
+      // what they are, so neither can be mistaken for one the player asked for.
       a.download = m.reason === "before-import"
         ? "auracle-profile-before-import.json"
-        : "auracle-profile.json";
+        : m.reason === "before-reset"
+          ? "auracle-profile-before-reset.json"
+          : "auracle-profile.json";
       a.click();
       URL.revokeObjectURL(a.href);
+      if (m.reason === "before-reset" && resetting === "exporting") resetting = "saving";
+      // A save the player asked for said nothing: the file landed in the
+      // downloads bar, and the app itself was silent. Counted from the file,
+      // so the number is what it holds.
+      if (!m.reason) {
+        let n = null;
+        try { n = JSON.parse(m.json).log.observations.length; } catch (_) { /* counted below */ }
+        n = n == null ? picksTaught() : n;
+        note(`Downloaded ${a.download} — ${n} pick${n === 1 ? "" : "s"}.`, { replace: "profile" });
+      }
       break;
     }
     case "imported": {
       if (m.ok) {
         applyStatus(m.status);
-        note("profile loaded — its standardizer and history are now active");
         send({ type: "taste_views" });
+        // An import clears the fitted model (the engine refits from the log),
+        // and nothing asked for a fit: TASTE sat on "nothing predicted yet"
+        // over a profile of 58 picks until six more had been made. It refits
+        // now, and says so in the player's words.
+        const n = m.status.observations || 0;
+        if (n > 0) {
+          fitDue = false;
+          duelsSinceFit = 0;
+          fitting = true;
+          $("wm-lamp").classList.add("thinking");
+          send({ type: "fit" });
+        }
+        note(n > 0
+          ? `Profile loaded — ${n} pick${n === 1 ? "" : "s"}. Redrawing your taste map…`
+          : "Profile loaded — it has no picks yet.", { replace: "profile" });
         scheduleSave();
       } else {
-        note("could not read that profile file");
+        note("Could not read that profile file — nothing was changed.", { urgent: true });
       }
       break;
     }
@@ -3488,9 +3526,11 @@ function boothPrewarmLanded(m) {
 }
 
 /** Forget this visitor: the taste profile goes, booth mode and the measured
- *  PERFORM wirings stay, and the next person gets the warm start. The same as
+ *  PERFORM wirings stay, and the next person gets the warm start. Like
  *  "Reset taste profile…" without the question — at a booth, staff press it
- *  between visitors, and a confirmation is a step they will learn to skip. */
+ *  between visitors, and a confirmation is a step they will learn to skip —
+ *  and unlike it, the visitor's saved patches go too, and no copy is
+ *  downloaded: the next visitor must not inherit the last one's bank. */
 async function boothResetVisitor() {
   clearTimeout(saveTimer);
   await idbDel("state");
@@ -17722,6 +17762,7 @@ $("import-input").onchange = async (e) => {
       label: "replace it",
       run: () => {
         alarm(null);
+        commitPendingVote(); // counted in the question, so kept in the copy
         send({ type: "export", reason: "before-import" });
         send({ type: "import", json });
       },
@@ -17737,23 +17778,118 @@ $("import-input").onchange = async (e) => {
 // The warm start stays reachable after a skip, and the profile can start
 // over — previously the only reset was clearing site data by hand.
 $("warm-rerun-btn").onclick = () => openWarmStart();
+// Reset forgets the taste, and keeps what is yours. It used to delete the whole
+// saved record and reload, which also took every saved patch (MY PATCHES),
+// the modules set aside, the dock settings and the pins — none of which the
+// question named, and all of which the guide said a reset leaves alone — and
+// it kept no copy, where Load downloads one first. Now it asks with the
+// counts, downloads the profile first, and writes a record that keeps the
+// saved patches (with their pins, holes, positions and bookmarks), the set-
+// aside modules and the dock, and nothing learned: no picks, stars, cuts,
+// forecasts, style names or generations, and none of the unsaved pool, which
+// is filled afresh on the reload.
+let resetting = null; // null | "exporting" | "saving"
+function resetQuestion() {
+  const n = picksTaught();
+  const g = status.generation || 0;
+  const saved = ((views && views.ranked) || []).filter((r) => r.pinned).length;
+  const plural = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const forgotten = `Your ${plural(n, "pick", "picks")}, stars, cuts and ${plural(g, "generation", "generations")} are forgotten`;
+  return saved > 0
+    ? `Reset your taste profile? ${forgotten}, with every patch you haven't saved. ` +
+        `Your ${plural(saved, "saved patch stays", "saved patches stay")}. A copy of the profile downloads first.`
+    : `Reset your taste profile? ${forgotten}, and the bank starts afresh. A copy of the profile downloads first.`;
+}
 $("taste-reset-btn").onclick = () => {
-  alarm("Reset the taste profile? Every pick, star and generation is forgotten.", {
-    label: "reset it",
-    run: async () => {
-      clearTimeout(saveTimer); // a pending autosave would rewrite the record
-      await idbDel("state");
-      for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-perform-steps"])
-        localStorage.removeItem(k);
-      location.reload();
-    },
-  });
+  if (saveBlocked === "crashed") {
+    // No engine to export from or to ask for the bank: say what that costs.
+    alarm("Reset your taste profile? The engine has stopped, so no copy can be downloaded and nothing can " +
+      "be kept: every pick, star, saved patch and generation is forgotten.", {
+      label: "reset everything",
+      run: async () => {
+        clearTimeout(saveTimer);
+        await idbDel("state");
+        clearFirstRunMarks();
+        location.reload();
+      },
+    });
+  } else {
+    alarm(resetQuestion(), {
+      label: "download & reset",
+      run: () => {
+        alarm(null);
+        clearTimeout(saveTimer); // a pending autosave would rewrite the record
+        // A pick still inside its undo window is one of the picks the question
+        // counted: it goes into the log, so the copy holds it too.
+        commitPendingVote();
+        // In this order on the one worker: the copy downloads, then the
+        // session it was taken from comes back to be cut down (`finishReset`).
+        // A save already on its way lands before the copy and is ignored
+        // (`resetting` is still "exporting"), so the reload can never
+        // overtake the download.
+        resetting = "exporting";
+        note("Downloading a copy of your profile, then resetting…", { replace: "profile" });
+        send({ type: "export", reason: "before-reset" });
+        send({ type: "save" });
+      },
+    });
+  }
   const keep = document.createElement("button");
   keep.className = "toast-undo";
   keep.textContent = "keep it";
   keep.onclick = () => alarm(null);
   $("alarm").appendChild(keep);
 };
+
+function clearFirstRunMarks() {
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-perform-steps"]) {
+    try { localStorage.removeItem(k); } catch (_) { /* private window */ }
+  }
+}
+
+/** The second half of Reset, with the session as the engine holds it now. */
+async function finishReset(json) {
+  saveBlocked = "resetting"; // nothing autosaves over this record before the reload
+  let session = null;
+  try { session = JSON.parse(json); } catch (_) { /* nothing to keep */ }
+  const kept = session && Array.isArray(session.bank) ? session.bank.filter((e) => e && e.pinned) : [];
+  if (kept.length > 0) {
+    const ids = new Set(kept.map((e) => Number(e.id)));
+    const theirs = (list) => (Array.isArray(list) ? list.filter(([id]) => ids.has(Number(id))) : []);
+    const ui = uiState();
+    await idbPut("state", {
+      v: STATE_VERSION,
+      // A `SessionState` with nothing learned in it: an empty log and no
+      // standardizer (the reload fits one to the refilled pool), no lineage,
+      // forecasts, events, style names or shares, generation 0, and the bank
+      // cut to the saved patches. The boot tops the pool back up.
+      session: JSON.stringify({
+        profile: { log: { observations: [] }, standardizer: null },
+        bank: kept,
+        lineage: [],
+        generation: 0,
+        style_names: [],
+        events: [],
+        forecasts: [],
+        style_shares: [],
+      }),
+      ui: {
+        vol: ui.vol,
+        oct: ui.oct,
+        perf: ui.perf,
+        held: ui.held,
+        positions: theirs(ui.positions),
+        locks: theirs(ui.locks),
+        holes: theirs(ui.holes),
+        marks: theirs(ui.marks),
+      },
+    });
+  } else {
+    await idbDel("state");
+  }
+  clearFirstRunMarks();
+  location.reload();
+}
 
 // ---------- patch share (single-patch files) ----------
 /** The share payload, for every file the app can write.

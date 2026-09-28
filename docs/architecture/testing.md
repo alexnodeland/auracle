@@ -42,6 +42,7 @@ this table.
 | `evolve_feedback.spec.js` | PICKS counts at once, vote toasts replace, the dealing rule, the sixth-pick redraw, bank ▶ |
 | `patch_editing.spec.js` | The bench lane: edits in order, no lost edit, knobs survive redraws, receipts |
 | `taste_marks.spec.js` | A guess drawn hollow with a ? in DIRECTIONS, STYLES and the node bank; TASTE's early states count what is left |
+| `taste_profile.spec.js` | Reset asks with counts, downloads first and keeps saved patches; Save says what it downloaded |
 | `perform_controls.spec.js` | Half-closed controls stop at centre, XY axes, the status line |
 | `perform_instant.spec.js` | Cached wirings play at once; a spare offer lands at once |
 | `perform_teaches.spec.js` | An offer heard and answered is a pick; unheard, it is not |

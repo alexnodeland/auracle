@@ -133,8 +133,9 @@ than your impression. Then:
   at random, which by default is every duel EVOLVE and PATCH deal. Overall
   skill also counts comparisons you chose (edits, PERFORM offers).
 
-If it has learned something wrong, **⋯** → *Reset taste profile…* clears the
-log and the model, and leaves your saved patches alone.
+If it has learned something wrong, **⋯** → *Reset taste profile…* downloads a
+copy of the profile, clears the log and the model, and leaves your saved
+patches alone.
 
 ## Everything is broken / the engine crashed
 

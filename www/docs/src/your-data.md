@@ -50,8 +50,14 @@ to the scaling that produced them, so a log without its standardizer has lost
 its units. The log is the source of truth; the fitted posterior can be
 recomputed from it.
 
+The app confirms the download: *"Downloaded auracle-profile.json — 58
+picks."* The count is the observations in the file.
+
 **Load taste profile** brings one back. This is how you move a taught model to
-another machine or another browser.
+another machine or another browser. If you have picks of your own it asks
+first, and downloads your current profile before replacing it. Once loaded it
+redraws your taste map from the file: *"Profile loaded — 58 picks. Redrawing
+your taste map…"*
 
 ### Individual patches
 
@@ -80,12 +86,18 @@ file and nothing about it is Auracle-specific.
 ## Resetting
 
 **⋯** → *Reset taste profile…* clears the observation log and the fitted model.
-It asks first.
+It asks first, with the counts: *"Reset your taste profile? Your 58 picks,
+stars, cuts and 4 generations are forgotten, with every patch you haven't
+saved. Your 3 saved patches stay. A copy of the profile downloads first."*
+**download & reset** saves `auracle-profile-before-reset.json` and then resets;
+**keep it** leaves everything as it was.
 
 This is the right move when you have been teaching it something it cannot see,
 or when you want to start a different taste from the same pool. It does **not**
 clear **my patches**; saved patches are storage, not evidence, and they survive
-a taste reset.
+a taste reset, with their pins and layout. So do the modules you set aside and
+the dock's settings. Everything else in the bank is replaced by a fresh one,
+and the three-pick warm start runs again.
 
 To clear everything, clear the site's data in your browser.
 

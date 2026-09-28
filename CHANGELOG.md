@@ -28,6 +28,17 @@ changelog that edits its own past is not a record.
   map's footer is in words ("A flat view of 40 patches — close dots usually
   sound alike (it shows 29% of how they differ)"), and its caption says what a
   click does: it opens the patch (`taste_marks.spec.js`).
+- **Reset taste profile keeps your saved patches, and downloads a copy
+  first.** It used to delete the whole saved session: every saved patch, the
+  modules set aside and the dock's settings went with the picks, although the
+  question named none of them and the guide said saved patches survive. It
+  now asks with the counts ("Your 2 picks, stars, cuts and 0 generations are
+  forgotten, with every patch you haven't saved. Your 1 saved patch stays."),
+  saves `auracle-profile-before-reset.json`, and keeps the saved patches with
+  their pins and layout. **Save taste profile** now says what it wrote
+  ("Downloaded auracle-profile.json — 58 picks."), and a loaded profile
+  redraws the taste map at once instead of waiting for six more picks
+  (`taste_profile.spec.js`).
 
 ### Added — the films
 
