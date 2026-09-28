@@ -76,7 +76,9 @@
     </nav>
     <div class="menubar-right">
       <span class="counter" title="A/B picks you've made — this is what the model learns from"><span class="counter-label">picks</span> <span id="duel-count">0</span></span>
-      <span class="counter" title="Generations bred toward your taste"><span class="counter-label">gen</span> <span id="gen-count">0</span></span>
+      <!-- Named in full: "gen" beside "picks" said what it counted only in
+           its tooltip. -->
+      <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
       <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
