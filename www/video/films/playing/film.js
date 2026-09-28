@@ -27,10 +27,17 @@
 // - dock: HOLD latches before ARP opens its drawer (a click on HOLD folds the
 //   drawer), the pointer rests on the drawer so the chord does not fold it,
 //   and the chord lands on the score's beat (`snap`).
-// - wander: Wander enters the offer zone on "Wander"; after 3.5 s of hands
-//   off it asks for an idea, which takes seconds to grow, so the beat cuts
-//   from "ideas" to just before it lands in B (the shot's `clips`; no cut
-//   when it is quick). "More" then turns Wander on past the offer zone.
+// - wander: Wander enters its ideas zone on "Wander"; let go in a new zone,
+//   it asks 1.5 s later, and the spare grown ahead lands in B at once (no
+//   cut). "More" turns it on into drift: the first move is asked for 1.5 s
+//   after letting go, and the walk renders for a few seconds ("drift ·
+//   walking…" under the dial), so the beat cuts from "taste" to just before
+//   the glide ("drift · gliding"; the shot's `clips`, no cut when it is
+//   quick). Wander's state is on the line under its dial, so its callouts
+//   point there; the status line speaks only about the patch.
+// - Every preset ships wired, and PERFORM re-checks it in the background
+//   ("re-checking"): off camera, each set-up waits for that, so a shot
+//   starts on the session's own wiring.
 // - outro: the first chord sounds from the start to the first bar line, then
 //   one chord a bar, on the score's bar lines.
 import { walkthrough, aim } from "../../stage/walk.js";
@@ -98,7 +105,7 @@ export async function build(stage) {
         callouts: [
           { at: "wander1:Wander", until: "wander2:More", mark: "wander", side: "bottom", dx: -120, dy: 140, text: "Wander" },
           { at: "wander2:ideas", until: "wander3", mark: "offer", side: "top", ox: -420, dx: 40, dy: -60, text: "B: ideas" },
-          { at: "wander2:taste", until: "wander4", mark: "status", side: "right", dx: 90, dy: 24, text: "drifting toward your taste", color: "b" },
+          { at: "wander2:taste+0.3", until: "wander3", mark: "wander", side: "bottom", dx: -120, dy: 140, text: "drift · gliding, toward your taste", color: "b" },
           { at: "wander4:Freeze", mark: "freeze", side: "top", dx: -60, dy: -90, text: "Freeze: held" },
         ],
       },

@@ -17,6 +17,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -42,6 +43,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -79,6 +81,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -98,6 +101,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -118,6 +122,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -132,7 +137,7 @@
       "beat": "wander",
       "pre": 0.5,
       "own_setup": true,
-      "clips": [["wander2:ideas+0.5", "@offered-0.3"]],
+      "clips": [["wander2:taste+0.2", "@drift-0.3"]],
       "setup": [
         {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
         {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -146,6 +151,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "wait", "ms": 9000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
@@ -155,11 +161,17 @@
         {"at": 0.2, "op": "hold", "keys": ["f", "h", "k"], "ms": "end"},
         {"at": "wander1:Wander-0.15", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -30, "ms": 450},
         {"at": "wander1:Wander+0.8", "op": "until", "sel": ".pf-offer.ready", "ms": 30000, "stamp": "offered"},
+        {"at": "wander2:ideas", "op": "log", "name": "ideas", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"},
         {"at": "wander2:More-0.1", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"},
         {"at": "wander2:More", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -45, "ms": 800},
+        {"at": "wander2:More+1.0", "op": "until", "js": "/^drift · gliding/.test(document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent)", "ms": 120000, "stamp": "drift"},
+        {"at": "@drift+0.3", "op": "log", "name": "drift", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent + ' || ' + document.querySelector('.pf-status').textContent"},
         {"at": "wander3:way", "op": "drag", "sel": ".pf-knob[data-i='7']", "dy": -75, "ms": 900},
         {"at": "wander4:waits", "op": "drag", "sel": ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired) >> nth=0", "dy": 20, "ms": 500},
         {"at": "wander4:Freeze", "op": "click", "sel": ".pf-pad:has-text('Freeze')"},
+        {"at": "wander3:roams+0.2", "op": "log", "name": "roam", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"},
+        {"at": "wander4:waits+0.4", "op": "log", "name": "waits", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"},
+        {"at": "wander4:Freeze+0.6", "op": "log", "name": "held", "js": "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"},
         {"at": "wander4:Freeze+0.6", "op": "log", "name": "B at the end", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"}
       ]
     },
@@ -181,6 +193,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "wait", "ms": 9000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
@@ -204,6 +217,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -221,6 +235,7 @@
         {"op": "preset", "name": "Acid Line"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Acid Line"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
@@ -252,6 +267,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
       ],
@@ -309,6 +325,7 @@
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
+        {"op": "until", "js": "(() => { const s = document.querySelector('.pf-status').textContent || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000},
         {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"},
         {"op": "wait", "ms": 9000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000}
