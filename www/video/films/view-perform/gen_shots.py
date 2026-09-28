@@ -301,8 +301,10 @@ shots.append({
 
 # ---------------------------------------------------------------- offers (taught)
 # A spare grown ahead lands at once on Offer; Peek, then Blend past half, so
-# B is heard; Offer again is the pass (a new one grows: the cut skips most of
-# that); the next one is heard at the same Blend, then taken.
+# B is heard; Offer again is the pass (Blend glides home, and a new one grows:
+# the cut skips most of that); the next one is heard on Peek, then taken. A
+# Take counts only for an offer heard for a second (Peek or Blend past half),
+# so the new one is peeked before Take, not taken unheard.
 shots.append({
     "id": "vp-offer", "beat": "offer", "pre": turn_pre("offer", "turn-offer"), "own_setup": True,
     "clips": [["offer5:pass+0.9", "@next-0.3"]],
@@ -330,6 +332,8 @@ shots.append({
             {"op": "until", "sel": ".pf-offer.ready", "ms": 120000, "stamp": "next"},
             {"op": "log", "name": "B2", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
         ]},
+        {"at": "offer6", "op": "press", "sel": PAD("Peek"), "ms": 1350},
+        {"at": "offer6+0.3", "op": "log", "name": "blend after pass", "js": "document.querySelector(\"" + BLEND + "\").getAttribute('aria-valuetext')"},
         {"at": "offer6:sound", "op": "click", "sel": PAD("Take")},
         {"at": "offer6:sound+0.5", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "offer6:sound+0.5", "op": "log", "name": "take", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},

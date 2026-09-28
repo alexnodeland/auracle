@@ -184,13 +184,16 @@ are the offer, drift and roam boundaries.
 - **Actions:** Fmaj7 is held throughout, then:
   - Offer: the spare lands in B at once;
   - Peek is held for 1.6 s, then Blend is ridden past half (B is heard);
-  - Offer again is the pass (its toast), and a new variant grows. The beat
-    cuts (`clips`) to just before it lands;
-  - it is heard at the same Blend, then taken (its toast, with *don't count
-    it*).
+  - Offer again is the pass (its toast): Blend glides home, since B is
+    empty, and a new variant grows. The beat cuts (`clips`) to just before
+    it lands;
+  - Peek is held on it for 1.35 s, then it is taken (its toast, with *don't
+    count it*). A Take counts only for an offer heard for a second (Peek, or
+    Blend past half, with notes held); taken at Blend home it would be
+    unheard, with no toast and no pick.
 - **Callouts:** *B: a variant of this sound* (amber) · *held: B alone* ·
-  *Blend, at matched loudness* · *a pass is a pick for A* (amber) · *a take is
-  a pick for B* (amber).
+  *Blend, at matched loudness* · *a pass is a pick for A* (amber) · *held:
+  hear the next one first* · *a take is a pick for B* (amber).
 
 ## 7. `wander` — **06 · Wander, Keep and Back** · *Can it play along, and bring you home?* (shot `vp-wander`, taught)
 
@@ -219,7 +222,7 @@ pattern, so Sync is heard.
 - **Actions:**
   - HOLD, and Cmaj7 latches;
   - HOLD off, UNI, and a C4 held (four voices on one note);
-  - glide at about 200 ms, and a legato line of C, G and C;
+  - glide at about 60 ms (the `glide` log), and a legato line of C, G and C;
   - UNI off, and a clean C chord;
   - HOLD, ARP (up·dn), SYNC, then Cmaj7 on the beat: the arpeggio and
     Loom's steps start together;

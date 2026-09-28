@@ -153,7 +153,7 @@ const PLAN = [
       ["honest5:variant-0.3", ...aim(1.25, 1086, 480)],
     ]),
     callouts: [
-      { at: "honest2:close", until: "honest3:amber-1.35", mark: "space", side: "bottom", dx: 70, dy: 150, text: "turns toward far only: a stop at the centre" },
+      { at: "honest2:close", until: "honest3:amber-1.35", mark: "space", side: "bottom", dx: -70, dy: 150, text: "turns toward far only: a stop at the centre" },
       { at: "honest3:amber", until: "honest5:variant-1.25", mark: "grit", side: "bottom", dx: -90, dy: 150, text: "amber, dashed: out of reach", color: "b" },
       { at: "honest5:marked", until: "honest6:listen", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "B: grown because you asked", color: "b" },
       { at: "honest6:listen", mark: "peek", side: "top", dx: 40, dy: -100, text: "Peek: hear it first" },
@@ -194,6 +194,7 @@ const PLAN = [
       { at: "offer3:Peek", until: "offer4:ride", mark: "peek", side: "top", dx: 40, dy: -100, text: "held: B alone" },
       { at: "offer4:matched", until: "offer5:Press-1.25", mark: "blend", side: "bottom", dx: 80, dy: 150, text: "Blend, at matched loudness" },
       { at: "offer5:pass", until: "offer6", mark: "passed", side: "top", dx: -160, dy: -90, text: "a pass is a pick for A", color: "b" },
+      { at: "offer6+0.1", until: "offer6:sound", mark: "peek", side: "top", dx: 40, dy: -100, text: "held: hear the next one first" },
       { at: "offer6:sound+0.4", mark: "toast", side: "top", dx: -160, dy: -90, text: "a take is a pick for B", color: "b" },
     ],
   },

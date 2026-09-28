@@ -207,6 +207,8 @@
         {"at": "offer3:Peek", "op": "press", "sel": ".pf-pad:has-text('Peek')", "ms": 1600},
         {"at": "offer4:ride", "op": "drag", "sel": ".pf-knob[data-i='6']", "dy": -120, "ms": 1900},
         {"at": "offer5:again", "op": "seq", "steps": [{"op": "click", "sel": ".pf-pad.primary"}, {"op": "wait", "ms": 300}, {"op": "mark", "name": "passed", "sel": "#toasts .toast"}, {"op": "log", "name": "pass", "js": "document.querySelector('#toasts .toast')?.textContent || ''"}, {"op": "until", "sel": ".pf-offer.ready", "ms": 120000, "stamp": "next"}, {"op": "log", "name": "B2", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"}]},
+        {"at": "offer6", "op": "press", "sel": ".pf-pad:has-text('Peek')", "ms": 1350},
+        {"at": "offer6+0.3", "op": "log", "name": "blend after pass", "js": "document.querySelector(\".pf-knob[data-i='6']\").getAttribute('aria-valuetext')"},
         {"at": "offer6:sound", "op": "click", "sel": ".pf-pad:has-text('Take')"},
         {"at": "offer6:sound+0.5", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "offer6:sound+0.5", "op": "log", "name": "take", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
