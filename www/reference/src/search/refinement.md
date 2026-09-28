@@ -54,7 +54,8 @@ and records the lineage. A result offered out of turn changes nothing.
 
 **`refine_finish`** closes the generation, and it is where patches leave (see
 [who leaves, and when](#who-leaves-and-when)). Stopping a generation early is
-the same call: the children already absorbed stay.
+the same call: it ends the generation with the children already absorbed,
+which are then ranked with everyone else when the pool is trimmed.
 
 ### Which state of the walk gets injected
 
@@ -104,6 +105,15 @@ trimmed back to `pool_size` by retiring its lowest-utility unpinned members,
 so the patches that leave are exactly the ones evicting one child at a time
 would have removed, but a patch saved (pinned) at any point before the end is
 never among them. Pinned candidates are always exempt.
+
+Both the bar a child must beat and the trim at the end are judged under the
+posterior the generation **opened** with, the one in its context and the one
+its walks climbed. A pick made while the generation runs reweights the
+engine's posterior at once, so the next pair responds to it, but not the
+generation's: which children are kept and which members leave do not depend
+on when picks landed between absorptions (natively,
+`picks_during_a_generation_do_not_change_which_children_are_kept`). The picks
+count from the next refit, which waits for the generation to end.
 
 ## The split is measured
 
