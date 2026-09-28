@@ -103,7 +103,8 @@ One of PERFORM's six controls: **Bright, Snap, Motion, Body, Grit, Space**. Each
 is a fixed direction in what the instrument can hear, with the same name and
 the same two end words on every patch. What it turns is measured per patch: at
 most four of that patch's knobs, chosen because they move the sound most purely
-in that direction. See [PERFORM](./views/perform.md#the-named-controls).
+in that direction. Until it has been measured on a patch it reads *listening…*
+and does nothing. See [PERFORM](./views/perform.md#the-named-controls).
 
 ### Offer / B slot
 
@@ -165,8 +166,9 @@ the keyboard to judge it.
 
 A named control drawn in amber with a dashed ring: this patch's knobs cannot
 honestly make the change it names (no drive to make it rougher, no reverb to
-make it farther). Turn it about a third of the way to either end and let go,
-and it does one of two things. **Bright** and **Body** can be given something
+make it farther). It always springs back when let go. Turn it past the notch
+(three tenths of the way to either end) and let go, and it does one of two
+things. **Bright** and **Body** can be given something
 to turn: a flat tone EQ grafted onto the patch. So can **Space** turned up: a
 longer release. The graft
 goes in as one undo step, the patch is measured again, and the control is set

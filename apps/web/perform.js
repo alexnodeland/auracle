@@ -1,5 +1,5 @@
 // PERFORM — the instrument as something you play rather than something you
-// edit. Eight controls with fixed names, a Wander dial, and six pads.
+// edit. Six controls named for what you hear, Blend and Wander, and six pads.
 //
 // The named controls are directions in the audio half of φ (Bright is
 // +centroid +rolloff, Snap is −attack +crest, …), wired onto *this* patch's
@@ -38,13 +38,23 @@ const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 // renders did not confirm is closed. REACH_FLOOR / 2 in σ.
 const HALF_OPEN = 0.075;
 function rangeOf(w) {
-  if (!w || w.search) return [0, 0];
+  if (!w || w.search || w.pending) return [0, 0];
   const ok = (m) => m == null || m >= HALF_OPEN;
   return [ok(w.down) ? -1 : 0, ok(w.up) ? 1 : 0];
 }
+// Does this control turn knobs on this patch? Not when it is a search control
+// (the patch can't), and not while it is *pending*: a control a Take carried
+// over with none of its knobs left in the taken tree, which is waiting for the
+// taken patch's own measurement. Pending is "not measured yet", never "can't",
+// so it wears neither the amber search look nor its gesture.
+const turns = (w) => !!(w && !w.search && !w.pending);
 // The named controls a wiring reaches: the ones `reaches(i)` says yes to.
 const reachOfWiring = (wiring) =>
-  (wiring || []).map((w, i) => (w && !w.search ? i : -1)).filter((i) => i >= 0);
+  (wiring || []).map((w, i) => (turns(w) ? i : -1)).filter((i) => i >= 0);
+// How far a search control has to be turned before letting go asks for
+// something (a graft or an offer). Short of it, it springs back and asks
+// nothing; the dial draws a notch there while it is being turned.
+const ASK_AT = 0.3;
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -183,12 +193,26 @@ export function createPerform(host) {
     const wrap = el("div", "pf-knob");
     wrap.dataset.i = String(i);
     const s = svg("svg", { viewBox: "-50 -50 100 100", width: 96, height: 96 });
+    // The travel is drawn as its two halves, low (7:30 → 12 o'clock) and high
+    // (12 → 4:30), so a half the patch's renders closed can be drawn closed
+    // and the half you can turn toward drawn open. It used to be one circle
+    // with a dash pattern, which assumed a circle's stroke starts at 12
+    // o'clock; it starts at 3, so the ring was drawn on the closed side.
+    const pointer = svg("g", {}, "pf-k-turn");
+    pointer.append(svg("line", { x1: 0, y1: -12, x2: 0, y2: -30 }, "pf-k-ptr"));
+    const where = svg("circle", { r: 3.2, cx: 0, cy: -44 }, "pf-k-where");
+    where.append(svg("title"));
     s.append(
-      svg("circle", { r: 44 }, "pf-k-ring"),
+      svg("path", { d: arcPath(-135, 0) }, "pf-k-half pf-k-lo"),
+      svg("path", { d: arcPath(0, 135) }, "pf-k-half pf-k-hi"),
+      // The stop at the centre of a half-closed control.
+      svg("line", { x1: 0, y1: -49.5, x2: 0, y2: -38.5 }, "pf-k-stop"),
       svg("path", { d: "" }, "pf-k-arc"),
+      // Where letting go of a search control starts to ask (±ASK_AT).
+      svg("path", { d: `${radial(-ASK_AT * 135, 39, 49)} ${radial(ASK_AT * 135, 39, 49)}` }, "pf-k-notch"),
       svg("circle", { r: 34 }, "pf-k-body"),
-      svg("line", { x1: 0, y1: -12, x2: 0, y2: -30 }, "pf-k-ptr"),
-      svg("circle", { r: 3.2, cx: 0, cy: -44 }, "pf-k-where"),
+      pointer,
+      where,
     );
     const name = el("div", "pf-k-name", spec.name);
     const ends = el("div", "pf-k-ends mono", `${spec.low} · ${spec.high}`);
@@ -219,6 +243,12 @@ export function createPerform(host) {
     const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
     return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${ARC_R} ${ARC_R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   }
+  // A short radial tick at `deg`, from radius r0 out to r1.
+  function radial(deg, r0, r1) {
+    const r = (deg - 90) * (Math.PI / 180);
+    const p = (R) => `${(R * Math.cos(r)).toFixed(2)} ${(R * Math.sin(r)).toFixed(2)}`;
+    return `M ${p(r0)} L ${p(r1)}`;
+  }
 
   function paintKnob(k) {
     if (k.spec.kind === "named" && typeof paintXY === "function" && (k.i === XY.x || k.i === XY.y)) queueMicrotask(paintXY);
@@ -229,12 +259,28 @@ export function createPerform(host) {
     k.svg.querySelector(".pf-k-arc").setAttribute("d", arcPath(bipolar ? 0 : -135, a));
     k.wrap.setAttribute("aria-valuenow", v.toFixed(2));
     const where = k.svg.querySelector(".pf-k-where");
+    const [loHalf, hiHalf] = [k.svg.querySelector(".pf-k-lo"), k.svg.querySelector(".pf-k-hi")];
     if (k.spec.kind === "named") {
       const w = state.wire && state.wire[k.i];
-      const search = !w || w.search;
-      k.wrap.classList.toggle("search", !!(w && w.search));
-      k.wrap.classList.toggle("unwired", !w);
-      if (w) {
+      const search = !!(w && w.search);
+      // Not measured yet: no wiring at all, or a control a Take carried over
+      // with nothing left to turn. One look for it, never the amber of a
+      // control this patch can't reach.
+      const pending = !w || !!w.pending;
+      const listening = w ? !!w.pending : state.measuring;
+      k.wrap.classList.toggle("search", search);
+      k.wrap.classList.toggle("unwired", pending);
+      k.wrap.classList.toggle("pending", pending);
+      const [lo, hi] = rangeOf(w);
+      const halfLo = turns(w) && lo === 0;
+      const halfHi = turns(w) && hi === 0;
+      k.wrap.classList.toggle("half-lo", halfLo);
+      k.wrap.classList.toggle("half-hi", halfHi);
+      loHalf.classList.toggle("closed", halfLo);
+      hiHalf.classList.toggle("closed", halfHi);
+      loHalf.classList.toggle("open", !halfLo);
+      hiHalf.classList.toggle("open", !halfHi);
+      if (w && !pending) {
         // Where the sound measures on this axis: z through a soft squash onto
         // the dial's travel, so "very bright for this bank" sits near the stop.
         const pos = Math.tanh(w.position / 2);
@@ -242,24 +288,30 @@ export function createPerform(host) {
         where.setAttribute("cx", x.toFixed(2));
         where.setAttribute("cy", y.toFixed(2));
         where.style.display = "";
-        const [lo, hi] = rangeOf(w);
-        k.wrap.classList.toggle("half-lo", !search && lo === 0);
-        k.wrap.classList.toggle("half-hi", !search && hi === 0);
-        // Short enough for the cell at 1280 px: a caption cut off with an
-        // ellipsis reads as broken, whatever it was going to say.
+        const dotSays = `The amber dot is where this sound measures on ${w.name}, compared with the patches in your session.`;
+        where.querySelector("title").textContent = dotSays;
+        // What the player can do, not where the app infers the sound sits: a
+        // half closes because the renders did not confirm it, which is not
+        // the same as the sound being at that end, and the dot often said
+        // otherwise. Short enough for the cell at 1280 px: a caption cut off
+        // with an ellipsis reads as broken, whatever it was going to say.
         k.sub.textContent = search
-          ? "turn to ask for it"
-          : lo === 0
-            ? `at the ${w.low} end`
-            : hi === 0
-              ? `at the ${w.high} end`
-              : knobWords(w.knobs.map(([a]) => a));
+          ? k.asking
+            ? askWords(w, v)
+            : "turn to ask for it"
+          : halfLo
+            ? `turns toward ${w.high} only`
+            : halfHi
+              ? `turns toward ${w.low} only`
+              : knobCaption(w.knobs.map(([a]) => a));
         // A sentence a player can read, not the measurement: addresses,
         // purity and σ are the engineer's, and live in the docs and the
         // under-the-hood strip, not on the knob.
+        const toward = halfLo ? ` It only turns toward ${w.high} on this patch.` : halfHi ? ` It only turns toward ${w.low} on this patch.` : "";
         k.wrap.title = search
           ? `${w.name}: nothing in this patch makes it ${w.high} without changing something else. Turn it and it grows a variant that can.`
-          : `${w.name}: ${w.knobs.map(([a, g]) => `${g >= 0 ? "raises" : "lowers"} ${knobWord(a, true)}`).join(", ")} as you turn it toward ${w.high}. Long-press to hear it.`;
+          : `${w.name}: ${w.knobs.map(([a, g]) => `${g >= 0 ? "raises" : "lowers"} ${knobWord(a, true)}`).join(", ")} as you turn it toward ${w.high}.${toward} Long-press to hear it.`;
+        k.wrap.title += `\n${dotSays}`;
         // The engineer's view, on request (⋯ → Show measurements): what the
         // measurement actually said, in its own units.
         if (host.engineer?.()) {
@@ -268,9 +320,12 @@ export function createPerform(host) {
         }
       } else {
         where.style.display = "none";
-        k.sub.textContent = state.measuring ? "measuring…" : "";
+        k.sub.textContent = listening ? "listening…" : "";
+        k.wrap.title = listening
+          ? `${k.spec.name}: listening to how this patch moves. It turns once that is done.`
+          : k.spec.name;
       }
-      k.wrap.setAttribute("aria-valuetext", `${v >= 0 ? k.spec.high : k.spec.low} ${Math.round(Math.abs(v) * 100)}%`);
+      k.wrap.setAttribute("aria-valuetext", Math.abs(v) < 0.005 ? "centre" : `${v > 0 ? k.spec.high : k.spec.low} ${Math.round(Math.abs(v) * 100)}%`);
     } else if (k.spec.kind === "wander") {
       where.style.display = "none";
       const z = wanderZone(v);
@@ -285,18 +340,40 @@ export function createPerform(host) {
     }
   }
 
+  // What letting go of a search control turned to `v` would do, said while it
+  // is being turned: short of ASK_AT nothing (it springs back), past it a
+  // graft or an offer.
+  function askWords(w, v) {
+    if (Math.abs(v) < ASK_AT) return "turn further to ask";
+    const graft = graftFor(w, v > 0);
+    return graft ? `let go to add a ${graft}` : `let go to ask for ${v > 0 ? w.high : w.low}`;
+  }
+
   // Where a control's dial may sit. A named control stops at the centre on a
   // half its wiring closed, as the sound already did (liveValue): the dial
   // used to turn on past it, drawing an arc on the closed side that nothing
   // played, and the next drag then started from a value the sound had never
   // had. A search control turns both ways, because turning it is how you ask,
-  // and so does one whose wiring has not been measured yet.
+  // and so does one whose wiring has not been measured yet (it springs back
+  // when let go).
   function spanOf(k) {
     if (k.spec.kind !== "named") return [0, 1];
     const w = state.wire?.[k.i];
-    if (!w || w.search) return [-1, 1];
+    if (!turns(w)) return [-1, 1];
     const [lo, hi] = rangeOf(w);
     return lo === hi ? [-1, 1] : [lo, hi];
+  }
+
+  // A drag that runs into the stop of a half-closed control: the pointer
+  // gives a small bump toward the closed side and back (120 ms; none under
+  // reduced motion, see style.css). Once per arrival at the stop.
+  function bump(k, dir) {
+    const cls = dir < 0 ? "bump-lo" : "bump-hi";
+    k.wrap.classList.remove("bump-lo", "bump-hi");
+    void k.wrap.getBoundingClientRect();
+    k.wrap.classList.add(cls);
+    clearTimeout(k.bumpTimer);
+    k.bumpTimer = setTimeout(() => k.wrap.classList.remove(cls), 160);
   }
 
   function bindDrag(k) {
@@ -307,15 +384,27 @@ export function createPerform(host) {
     let hearTimer = null;
     const lo = () => (k.spec.kind === "named" ? -1 : 0);
     const set = (v, fine) => {
-      k.value = clamp(v, ...spanOf(k));
+      if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      const [sLo, sHi] = spanOf(k);
+      k.value = clamp(v, sLo, sHi);
+      // A half-closed control's stop at the centre is felt, not only seen.
+      const half = k.spec.kind === "named" && (sLo === 0 || sHi === 0) && sLo !== sHi;
+      const pushed = half ? (v < sLo - 1e-9 ? -1 : v > sHi + 1e-9 ? 1 : 0) : 0;
+      if (pushed && !k.atStop) bump(k, pushed);
+      k.atStop = !!pushed;
       // A light detent at the centre of a bipolar control: home is findable
       // by feel.
       if (k.spec.kind === "named" && !fine && Math.abs(k.value) < 0.03) k.value = 0;
+      // A search control being turned says what letting go would do.
+      k.asking = k.spec.kind === "named" && !!state.wire?.[k.i]?.search;
+      k.wrap.classList.toggle("asking", k.asking);
       paintKnob(k);
       onKnob(k);
     };
     k.wrap.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      if (k.tween) cancelAnimationFrame(k.tween), (k.tween = null);
+      k.atStop = false;
       k.wrap.focus({ preventScroll: true });
       k.wrap.setPointerCapture(e.pointerId);
       startY = e.clientY;
@@ -339,9 +428,13 @@ export function createPerform(host) {
     });
     const end = (e) => {
       clearTimeout(hearTimer);
-      if (k.wrap.hasPointerCapture(e.pointerId)) k.wrap.releasePointerCapture(e.pointerId);
+      const held = k.wrap.hasPointerCapture(e.pointerId);
+      if (held) k.wrap.releasePointerCapture(e.pointerId);
       if (moved) onRelease(k);
       else if (performance.now() - pressT < 300 && k.spec.kind === "wander") toggleHold();
+      // A nudge too small to count as a turn still lets go of a control that
+      // has nothing to turn: it springs back rather than sitting off-centre.
+      else if (held && k.spec.kind === "named" && !turns(state.wire?.[k.i])) springBack(k);
     };
     k.wrap.addEventListener("pointerup", end);
     k.wrap.addEventListener("pointercancel", end);
@@ -391,7 +484,7 @@ export function createPerform(host) {
       state.wire.forEach((w, i) => {
         let p = 0;
         for (const x of state.expr.values()) if (x.i === i) p += x.v;
-        if (w.search || !(state.c[i] + p)) return;
+        if (!turns(w) || !(state.c[i] + p)) return;
         const [lo, hi] = rangeOf(w);
         const c = clamp(state.c[i] + p, lo, hi);
         for (const [a, g] of w.knobs) if (a === addr) v += c * g;
@@ -497,7 +590,7 @@ export function createPerform(host) {
     if (base == null) return null;
     const why = [];
     (state.wire || []).forEach((w, i) => {
-      if (!w || w.search) return;
+      if (!turns(w)) return;
       let p = 0;
       for (const x of state.expr.values()) if (x.i === i) p += x.v;
       if (!(state.c[i] + p)) return;
@@ -521,9 +614,29 @@ export function createPerform(host) {
     const w = state.wire && state.touch.i >= 0 ? state.wire[state.touch.i] : null;
     const [lo, hi] = rangeOf(w);
     state.touch.sites =
-      w && !w.search && lo < 0 && hi > 0 ? w.knobs.map(([a, g]) => [a, g, liveValue(a) ?? 0]) : [];
+      turns(w) && lo < 0 && hi > 0 ? w.knobs.map(([a, g]) => [a, g, liveValue(a) ?? 0]) : [];
     if (live && live.touch) live.touch(state.touch.sites, state.touch.depth);
     renderTouch();
+  }
+
+  // A drop-down swallows the note keys while it has focus (main.js lets text
+  // entry keep every key), and a native select type-aheads: after choosing an
+  // XY axis or what touch plays, the keys went silent, or an `s` jumped the
+  // axis to Snap. So a choice hands the keys back: focus leaves the select
+  // for `target` (the XY field), or for nothing. Only a choice made by
+  // steering the closed select with the arrow keys keeps it there, so a
+  // keyboard player can step through the options.
+  const STEER_KEYS = /^(Arrow(Up|Down|Left|Right)|Page(Up|Down)|Home|End)$/;
+  function steerable(sel) {
+    sel.addEventListener("keydown", (e) => {
+      if (STEER_KEYS.test(e.key)) sel.dataset.steerAt = String(performance.now());
+    });
+  }
+  const steered = (sel) => performance.now() - Number(sel.dataset.steerAt || -1e9) < 400;
+  function giveBackKeys(sel, target) {
+    if (steered(sel)) return;
+    if (document.activeElement === sel) sel.blur();
+    if (target) target.focus({ preventScroll: true });
   }
 
   function renderTouch() {
@@ -542,15 +655,20 @@ export function createPerform(host) {
       const o = document.createElement("option");
       o.value = String(i);
       o.textContent = `${c.name.toLowerCase()} — soft ${c.low}, hard ${c.high}`;
-      o.disabled = !w || w.search || lo === 0 || hi === 0;
+      o.disabled = !turns(w) || lo === 0 || hi === 0;
       if (i === state.touch.i) o.selected = true;
       sel.append(o);
     });
     if (state.touch.i < 0) off.selected = true;
     sel.onchange = () => {
+      const keep = steered(sel);
       state.touch.i = Number(sel.value);
+      // …which rebuilds this row, select and all.
       sendTouch();
+      if (keep) touchRow.querySelector("select")?.focus({ preventScroll: true });
+      else giveBackKeys(sel, null);
     };
+    steerable(sel);
     const depth = document.createElement("input");
     depth.type = "range";
     depth.min = "0";
@@ -597,12 +715,21 @@ export function createPerform(host) {
     return addrs.map((a, i) => (bare.indexOf(bare[i]) !== bare.lastIndexOf(bare[i]) ? knobWord(a, true) : bare[i])).join(" · ");
   }
 
+  // The caption under a control: at most two knobs by name, then how many
+  // more ("mod depth · lfo rate +1"). Three long names were clipped
+  // mid-word by the two-line clamp, which reads as broken; the tooltip and
+  // the under-the-hood strip list them all.
+  function knobCaption(addrs) {
+    if (addrs.length <= 2) return knobWords(addrs);
+    return `${knobWords(addrs).split(" · ").slice(0, 2).join(" · ")} +${addrs.length - 2}`;
+  }
+
   function onKnob(k, fromMidi) {
     if (!fromMidi) host.controlMoved?.(k.i);
     if (k.spec.kind === "named") {
       state.c[k.i] = k.value;
       const w = state.wire && state.wire[k.i];
-      if (w && !w.search) {
+      if (turns(w)) {
         push();
         if (Math.abs(k.value) > 0.2) stepDone("turn");
       }
@@ -616,40 +743,73 @@ export function createPerform(host) {
     }
   }
 
+  // The module a search control would be given, turned `up` or down, or null
+  // when there is none to give (see GRAFTS): once per control per patch, and
+  // not while another graft is on its way.
+  function graftFor(w, up) {
+    const graft = GRAFTS[w.name];
+    if (!graft || (!up && w.name === "Space") || state.grafted.has(w.name) || inFlight("perform_graft")) return null;
+    return graft;
+  }
+
+  // Back to the centre, with nothing asked: a control that has nothing to turn
+  // does not stay where a hand left it.
+  function springBack(k) {
+    k.asking = false;
+    k.wrap.classList.remove("asking");
+    k.value = 0;
+    state.c[k.i] = 0;
+    paintKnob(k);
+  }
+
   function onRelease(k) {
     if (k.spec.kind !== "named") return;
     const w = state.wire && state.wire[k.i];
-    if (w && w.search && Math.abs(k.value) > 0.3) {
+    const was = k.value;
+    if (!turns(w)) {
+      // Nothing under this control to leave turned. A search control always
+      // springs back: short of ASK_AT that is the whole answer, and past it
+      // the gesture asks. A control still being listened to (no wiring yet,
+      // or carried over by a Take with no knobs left) does nothing at all,
+      // and never grafts or grows an offer: "not measured yet" is not
+      // "can't".
+      springBack(k);
+    }
+    if (w && w.search && Math.abs(was) > ASK_AT) {
       // Honest about what happens: this patch cannot make the sound the label
       // names by turning knobs. If one change would give it something to turn
       // (see GRAFTS), that change goes in as one undo step on the bench, and
       // the control is measured again and set where the hand left it.
       // Otherwise the gesture becomes a request for a patch that can: the
       // control springs back and the offer arrives in B.
-      const up = k.value > 0;
-      k.value = 0;
-      state.c[k.i] = 0;
-      paintKnob(k);
-      const graft = GRAFTS[w.name];
-      if (graft && (up || w.name !== "Space") && !state.grafted.has(w.name) && !inFlight("perform_graft")) {
+      const up = was > 0;
+      const graft = graftFor(w, up);
+      if (graft) {
         state.grafted.add(w.name);
         state.intent = { i: k.i, dir: up ? 1 : -1, at: performance.now() };
-        host.note(`${w.name}: giving it a ${graft} to turn…`);
+        host.note(`${w.name}: giving it a ${graft} to turn…`, { replace: `pf-graft:${w.name}` });
         request("perform_graft", { tree: state.cur.json, overrides: overrides(), k: k.i });
       } else {
-        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing an offer instead`);
+        host.note(`${w.name}: no knobs here make it ${up ? w.high : w.low} — growing an offer instead`, { replace: "pf-offer" });
         requestOffer(`${w.name.toLowerCase()} ${up ? "up" : "down"}`);
       }
     }
-    logImplicit("perform_turn", { control: k.spec.name, value: +k.value.toFixed(3) });
+    logImplicit("perform_turn", { control: k.spec.name, value: +was.toFixed(3) });
   }
 
   // Long-press: the control explains itself by ear. A two-second sweep
   // through both ends and back, on a held note if there is none already.
   function hearIt(k) {
     const w = state.wire && state.wire[k.i];
-    if (!w || w.search) {
-      host.note(w ? `${w.name} isn't in this patch's knobs — turn it to ask for a variant` : "still measuring this patch");
+    if (!turns(w)) {
+      host.note(
+        w && w.search
+          ? `${w.name} isn't in this patch's knobs — turn it to ask for a variant`
+          : state.measuring || state.revalidating
+            ? `${k.spec.name}: still listening to this patch — try again in a moment`
+            : `${k.spec.name} hasn't been measured on this patch yet`,
+        { urgent: true },
+      );
       return;
     }
     const start = k.value;
@@ -832,6 +992,7 @@ export function createPerform(host) {
   const HEARD_MS = 1000;
   const TAKE_SETTLE_MS = 8000;
   setInterval(() => {
+    watchTake();
     if (state.heldWire && !host.opening?.()) releaseHeld();
     // An open began or ended somewhere else in the app: say so here.
     const incoming = host.opening?.() ? host.openingName?.() || null : null;
@@ -851,20 +1012,64 @@ export function createPerform(host) {
   function answerOffer(took) {
     const o = state.offer;
     if (state.quiet || !o || !state.cur || (o.heardMs || 0) < HEARD_MS) return;
+    // One answer waiting at a time keeps the log in order: a new one commits
+    // the Take still inside its window, as a second EVOLVE pick does.
+    commitTake();
     const pick = { tree: state.cur.json, overrides: overrides(), offer: o.json, took };
     if (!took) {
       sendAnswer(pick);
-      host.note("Passed on B — that counts as a pick for what you had.");
+      host.note("Passed on B — that counts as a pick for what you had.", { replace: "pf-offer" });
       return;
     }
     // A take waits out a short window: taking something to hear it in place
-    // is not always a verdict, and the toast says how to say so.
-    let dropped = false;
-    const t = setTimeout(() => { if (!dropped) sendAnswer(pick); }, TAKE_SETTLE_MS);
-    host.note("Took B — that counts as a pick over what you had.", {
-      undo: () => { dropped = true; clearTimeout(t); },
+    // is not always a verdict, and the toast says how to say so. The window
+    // is counted from when the toast is on screen, not from the press: the
+    // lane can hold a toast back behind another, and its "don't count it"
+    // used to appear after the pick had already been sent, and do nothing.
+    const pt = { pick, sent: false, dropped: false, at: performance.now(), shownAt: 0, timer: null, toast: null };
+    pt.toast = host.note("Took B — that counts as a pick over what you had.", {
+      undo: () => {
+        if (pt.sent) {
+          host.note("Already counted — that Take's window had closed.", { urgent: true });
+          return;
+        }
+        pt.dropped = true;
+        clearTimeout(pt.timer);
+        if (state.takeWait === pt) state.takeWait = null;
+      },
       undoLabel: "don't count it",
+      replace: "pf-offer",
     });
+    state.takeWait = pt;
+    watchTake();
+  }
+
+  // The Take waiting out its window (see answerOffer): its clock starts when
+  // its toast reaches the screen, and it is counted when the window ends or
+  // when the toast leaves the screen early (a later word on the offer took
+  // its place, so its undo is gone). A toast that never gets on screen at all
+  // is counted after a generous wait rather than held for ever.
+  function watchTake() {
+    const pt = state.takeWait;
+    if (!pt || pt.sent || pt.dropped) return;
+    const onScreen = !!(pt.toast && pt.toast.isConnected);
+    if (!pt.shownAt) {
+      if (onScreen) {
+        pt.shownAt = performance.now();
+        pt.timer = setTimeout(commitTake, TAKE_SETTLE_MS);
+      } else if (performance.now() - pt.at > 30_000) commitTake();
+      return;
+    }
+    if (!onScreen) commitTake();
+  }
+  function commitTake() {
+    const pt = state.takeWait;
+    if (!pt) return;
+    state.takeWait = null;
+    clearTimeout(pt.timer);
+    if (pt.sent || pt.dropped) return;
+    pt.sent = true;
+    sendAnswer(pt.pick);
   }
 
   function sendAnswer(pick) {
@@ -949,6 +1154,41 @@ export function createPerform(host) {
     state.offer = null;
     const live = host.live();
     if (live) live.bClear();
+    // B is empty: Blend comes home, as it does after a Take. Left past half,
+    // it read "67% offer" over an empty B, and the next offer arrived at that
+    // level over what the player was playing, without being asked for.
+    blendHome();
+    renderOffer();
+    knobs.forEach(paintKnob);
+  }
+
+  // Blend back to *home*: at once for the sound (B is empty or emptying), and
+  // over BLEND_HOME_MS for the dial, so the eye sees where it went. A hand on
+  // Blend stops the glide (bindDrag).
+  const BLEND_HOME_MS = 300;
+  function blendHome() {
+    const k = knobs.find((x) => x.spec.kind === "blend");
+    state.blend = 0;
+    if (!k) return;
+    if (k.tween) cancelAnimationFrame(k.tween);
+    k.tween = null;
+    host.controlMoved?.(k.i);
+    const v0 = k.value;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!v0 || still) {
+      k.value = 0;
+      paintKnob(k);
+      return;
+    }
+    const t0 = performance.now();
+    const step = () => {
+      const u = clamp((performance.now() - t0) / BLEND_HOME_MS, 0, 1);
+      k.value = v0 * (1 - u * u * (3 - 2 * u));
+      if (u >= 1) k.value = 0;
+      paintKnob(k);
+      k.tween = u < 1 ? requestAnimationFrame(step) : null;
+    };
+    k.tween = requestAnimationFrame(step);
   }
 
   function requestOffer(why) {
@@ -1001,6 +1241,7 @@ export function createPerform(host) {
   // A measurement arrived (or came out of the cache): wire the controls.
   function applyWired(data) {
     state.measuring = false;
+    state.carried = false;
     // Where the sound is *now* becomes the new centre and the controls
     // return to zero there, so nothing audibly moves. Now, not when the
     // measurement was asked for: the player may have kept turning while
@@ -1031,7 +1272,7 @@ export function createPerform(host) {
     const playable = (i) => {
       const w = state.wire[i];
       const [lo, hi] = rangeOf(w);
-      return w && !w.search && lo < 0 && hi > 0;
+      return turns(w) && lo < 0 && hi > 0;
     };
     if (state.touch.i >= 0 && !playable(state.touch.i)) {
       const first = state.wire.findIndex((_, i) => playable(i));
@@ -1039,6 +1280,7 @@ export function createPerform(host) {
     }
     sendTouch();
     renderStatus();
+    renderSteps();
     // A graft was asked for by a turn: finish the gesture on the new patch.
     const it = state.intent;
     if (it && performance.now() - it.at < 30_000) {
@@ -1046,14 +1288,14 @@ export function createPerform(host) {
       const w = state.wire[it.i];
       const k = knobs[it.i];
       const [lo, hi] = rangeOf(w);
-      if (w && k && !w.search && (it.dir > 0 ? hi > 0 : lo < 0)) {
+      if (k && turns(w) && (it.dir > 0 ? hi > 0 : lo < 0)) {
         k.value = 0.5 * it.dir;
         state.c[it.i] = k.value;
         push();
         paintKnob(k);
-        host.note(`${w.name} now turns ${w.knobs.map(([a]) => knobWord(a, true)).join(" and ")}`);
+        host.note(`${w.name} now turns ${w.knobs.map(([a]) => knobWord(a, true)).join(" and ")}`, { replace: `pf-graft:${w.name}` });
       } else if (w) {
-        host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} did not reach it here — growing an offer instead`);
+        host.note(`${w.name}: the ${GRAFTS[w.name] || "graft"} did not reach it here — growing an offer instead`, { replace: `pf-graft:${w.name}` });
         requestOffer(`${w.name.toLowerCase()} ${it.dir > 0 ? "up" : "down"}`);
       }
     }
@@ -1096,6 +1338,7 @@ export function createPerform(host) {
           // A wiring borrowed from another sound is not this patch's: with no
           // measurement to replace it, it goes rather than lingering.
           state.wire = null;
+          state.carried = false;
           renderStatus("could not measure this patch");
         }
         knobs.forEach(paintKnob);
@@ -1151,7 +1394,7 @@ export function createPerform(host) {
         state.intent = null;
         const w = state.wire && state.wire[i];
         if (w) {
-          host.note(`${w.name}: nothing to add here — growing an offer instead`);
+          host.note(`${w.name}: nothing to add here — growing an offer instead`, { replace: `pf-graft:${w.name}` });
           requestOffer(`${w.name.toLowerCase()}`);
         }
         return true;
@@ -1236,6 +1479,7 @@ export function createPerform(host) {
     state.spare = null;
     state.changedAt = performance.now();
     state.revalidating = false;
+    state.carried = false;
     // An offer still growing for the old patch is consumed when it lands (its
     // generation is stale), so B must say so now: it used to keep "growing an
     // offer…" for ever when the patch changed under a growing offer.
@@ -1247,6 +1491,9 @@ export function createPerform(host) {
       state.home.knobs = new Map(here);
       state.wiredAt = new Map(here);
       state.wire = carried;
+      // A borrowed wiring: the XY keeps its axes (see pickXY) until the
+      // taken patch's own measurement says which controls reach it.
+      state.carried = true;
       state.playableAt = performance.now();
       // The offer was grown from the performed sound, controls and all, so
       // the taken tree already contains their deltas: they read zero on it.
@@ -1265,6 +1512,7 @@ export function createPerform(host) {
     } else if (state.visible) wire();
     knobs.forEach(paintKnob);
     renderHood();
+    renderSteps();
   }
 
   // A tree as its content alone — keys sorted, node uids dropped — so the
@@ -1288,13 +1536,17 @@ export function createPerform(host) {
 
   // The wiring `wire` had, kept for the tree whose live knobs are `list`: each
   // control keeps the knobs that tree still has; one left with none has
-  // nothing to turn until the measurement says otherwise.
+  // nothing to turn until the measurement says otherwise. That one is
+  // *pending* ("listening…"), not a search control: it used to be marked
+  // search, so a control that worked a second before the Take turned amber,
+  // said "turn to ask for it", and a turn of it grafted a module or grew an
+  // offer, ten seconds before the measurement put it back.
   function carryWiring(wire, list) {
     const live = new Set(list.map(([a]) => a));
     return wire.map((w) => {
       if (!w || w.search) return w;
       const kept = w.knobs.filter(([a]) => live.has(a));
-      return kept.length ? { ...w, knobs: kept } : { ...w, knobs: [], search: true };
+      return kept.length ? { ...w, knobs: kept } : { ...w, knobs: [], pending: true };
     });
   }
 
@@ -1381,7 +1633,7 @@ export function createPerform(host) {
       if (!out.includes(a) && state.cur && state.cur.knobs.has(a) && out.length < HOOD_MAX) out.push(a);
     };
     (state.wire || []).forEach((w) => {
-      if (!w.search) w.knobs.forEach(([a]) => add(a));
+      if (turns(w)) w.knobs.forEach(([a]) => add(a));
     });
     if (state.home && state.home.knobs && state.cur) {
       for (const [a, v] of state.cur.knobs) {
@@ -1482,7 +1734,7 @@ export function createPerform(host) {
       state.home = { json, makeup: state.cur.makeup, knobs: new Map(here) };
       state.keeping = json;
       host.commitTree(json);
-      host.note("kept — this is home now");
+      host.note("Kept — this is home now. Back returns here.", { replace: "pf-keep" });
       flash("keep");
     });
   }
@@ -1506,7 +1758,7 @@ export function createPerform(host) {
   }
 
   function take() {
-    if (!state.offer) return host.note("nothing offered yet — press Offer, or turn Wander up");
+    if (!state.offer) return host.note("Nothing offered yet — press Offer, or turn Wander up.", { urgent: true });
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
     const json = state.offer.json;
@@ -1518,12 +1770,7 @@ export function createPerform(host) {
     // …and Blend comes home. What was in B *is* A now, and B is empty: left
     // turned toward "offer", the next offer would sound at that level the
     // moment it arrived, over the sound the player just chose.
-    const blend = knobs.find((k) => k.spec.kind === "blend");
-    if (blend) {
-      blend.value = 0;
-      state.blend = 0;
-      host.controlMoved?.(blend.i);
-    }
+    blendHome();
     // The controls stay under the hands through the handover (see
     // `patchChanged`): the wiring measured on the sound being left carries
     // over to the one taken until the offer's own measurement lands.
@@ -1605,11 +1852,11 @@ export function createPerform(host) {
     else if (state.heldWire === "measure") parts.push("opening the patch you picked…");
     // A re-measure with a wiring in hand (after a glide past TRUST, say)
     // keeps the dials working on the old one, so it reads as a re-check, as
-    // after a Take. "measuring how this patch moves…" is for a patch with no
-    // wiring yet, whose dials really are waiting.
-    else if (state.measuring && !state.wire) parts.push("measuring how this patch moves…");
+    // after a Take. "listening to this patch…" is for a patch with no wiring
+    // yet, whose dials really are waiting.
+    else if (state.measuring && !state.wire) parts.push("listening to this patch…");
     else if (state.wire) {
-      const n = state.wire.filter((w) => !w.search).length;
+      const n = state.wire.filter(turns).length;
       parts.push(`${n} of ${state.wire.length} controls reach this patch`);
       if (state.revalidating || state.measuring) parts.push("re-checking");
     }
@@ -1650,7 +1897,8 @@ export function createPerform(host) {
   const whyBody = el("div", "pf-why-body hidden");
   whyBody.innerHTML =
     "<p>Each control is a direction in what the instrument can hear — <b>Bright</b> is spectral centroid and rolloff, <b>Snap</b> is a faster attack and a higher crest, <b>Motion</b> is how much the held note moves across its slow, mid and fast bands. When a patch loads, the instrument nudges every knob once and measures how the sound responds; each control is then wired to the few knobs that move the sound most purely in its direction. Hover a control to see which knobs and how purely.</p>" +
-    "<p>A control drawn in amber cannot be reached by this patch's knobs (a patch with no drive cannot get grittier by turning a filter). Turning it asks evolution for a variant that can, which arrives in <b>B</b>.</p>" +
+    "<p>The amber dot on a control's ring is where this sound measures on it, compared with the patches in your session. A control that turns only one way on this patch says so under its name (<i>turns toward far only</i>): its ring is solid on that side, and it stops at the centre on the other. One that reads <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>" +
+    "<p>A control drawn in amber cannot be reached by this patch's knobs (a patch with no drive cannot get grittier by turning a filter). Turn it past the notch and let go, and it adds what is missing or asks for a variant that can, which arrives in <b>B</b>; short of the notch it springs back and asks nothing.</p>" +
     "<p><b>Wander</b> sets how alive the patch is: <b>still</b>, <b>offer</b> (variants appear in B), <b>drift</b> (knob-only steps of the taste walk, glided, about one per phrase), <b>roam</b> (bigger, faster). Structure never changes on its own. Tap Wander to hold it; touching any control pauses it.</p>";
   whyBtn.onclick = () => {
     whyBody.classList.toggle("hidden");
@@ -1666,10 +1914,25 @@ export function createPerform(host) {
   // three have. Per visitor: the booth's "new visitor" brings it back.
   const STEPS_KEY = "auracle-perform-steps";
   const STEPS = [
-    { id: "play", text: "Play a key: A to L, or tap the keybed" },
-    { id: "turn", text: "Turn a lit control: BRIGHT is a good start" },
-    { id: "offer", text: "Press OFFER, then hold PEEK or TAKE it" },
+    { id: "play", text: () => "Play a key: A to L, or tap the keybed" },
+    { id: "turn", text: turnStep },
+    { id: "offer", text: () => "Press OFFER, then hold PEEK or TAKE it" },
   ];
+  // Step 2 names a control that turns on *this* patch. It used to say "Turn a
+  // lit control: BRIGHT is a good start" on every patch, when the only
+  // coloured names on the deck were the amber search controls (the ones that
+  // cannot turn), and Bright is itself one on some patches. Both ways first,
+  // in the order the XY pad picks (Bright, Motion, Snap…), then one way.
+  function turnStep() {
+    const order = [0, 2, 1, 3, 5, 4];
+    const w = state.wire;
+    if (!w) return "Turn a named control: drag up or down";
+    const both = order.find((i) => turns(w[i]) && rangeOf(w[i])[0] < 0 && rangeOf(w[i])[1] > 0);
+    if (both != null) return `Turn ${host.controls[both].name.toUpperCase()}: drag up or down`;
+    const one = order.find((i) => turns(w[i]));
+    if (one != null) return `Turn ${host.controls[one].name.toUpperCase()}: drag ${rangeOf(w[one])[1] > 0 ? "up" : "down"}`;
+    return "Turn a named control: drag up or down";
+  }
   const stepsDone = new Set();
   try {
     for (const id of JSON.parse(localStorage.getItem(STEPS_KEY) || "[]")) stepsDone.add(id);
@@ -1677,15 +1940,16 @@ export function createPerform(host) {
     /* a per-viewer convenience; an empty set is fine */
   }
   function renderSteps() {
-    stepsEl.innerHTML = "";
     if (stepsDone.size >= STEPS.length) {
-      stepsEl.classList.add("hidden");
+      // The closing line stays for its moment (see stepDone).
+      if (!stepsEl.querySelector(".all")) stepsEl.classList.add("hidden");
       return;
     }
+    stepsEl.innerHTML = "";
     const now = STEPS.find((st) => !stepsDone.has(st.id));
     STEPS.forEach((st, i) => {
       const done = stepsDone.has(st.id);
-      stepsEl.append(el("span", `pf-step${done ? " done" : ""}${st === now ? " now" : ""}`, `${done ? "✓" : i + 1}  ${st.text}`));
+      stepsEl.append(el("span", `pf-step${done ? " done" : ""}${st === now ? " now" : ""}`, `${done ? "✓" : i + 1}  ${st.text()}`));
     });
   }
   function stepDone(id) {
@@ -1730,21 +1994,30 @@ export function createPerform(host) {
       XY[axis] = Number(sel.value);
       XY.chosen = true;
       paintXY();
+      giveBackKeys(sel, xyField);
     };
+    steerable(sel);
     xySels[axis] = sel;
     return sel;
   };
   xyHead.append(el("span", "pf-xy-cap", "XY"), axisSel("x"), el("span", null, "×"), axisSel("y"));
   xy.append(xyHead, xyField);
 
-  const xyReach = (i) => {
+  const xyReach = (i) => turns(state.wire && state.wire[i]);
+  // An axis not measured yet (no wiring, or a control a Take carried over with
+  // nothing to turn) is waiting, not dead: it is drawn dim, never struck
+  // through in the amber of "doesn't reach".
+  const xyPending = (i) => {
     const w = state.wire && state.wire[i];
-    return !!(w && !w.search);
+    return !w || !!w.pending;
   };
   // A fresh wiring: unless the player has chosen the axes, put the first two
-  // reachable controls under the finger (Bright × Motion when both reach).
+  // reachable controls under the finger (Bright × Motion when both reach). Not
+  // on a wiring a Take carried over: it is borrowed from the sound before, and
+  // swapping an axis under the player's hand because of it was wrong ten
+  // seconds later.
   function pickXY() {
-    if (XY.chosen || !state.wire) return;
+    if (XY.chosen || !state.wire || state.carried) return;
     const order = [0, 2, 1, 3, 5, 4];
     const reach = order.filter((i) => xyReach(i));
     if (reach.length < 2 || (xyReach(XY.x) && xyReach(XY.y))) return;
@@ -1764,13 +2037,19 @@ export function createPerform(host) {
     xyLab.b.textContent = ky.spec.low;
     xyLab.t.textContent = ky.spec.high;
     const rx = xyReach(XY.x), ry = xyReach(XY.y);
-    xyField.classList.toggle("dead-x", !rx);
-    xyField.classList.toggle("dead-y", !ry);
-    xyNote.textContent = !state.wire
-      ? (state.measuring ? "measuring…" : "")
-      : !rx && !ry
-        ? "neither reaches this patch — pick two others"
-        : !rx ? `${kx.spec.name} doesn't reach this patch` : !ry ? `${ky.spec.name} doesn't reach this patch` : "";
+    const px = xyPending(XY.x), py = xyPending(XY.y);
+    const dx = !rx && !px, dy = !ry && !py;
+    xyField.classList.toggle("dead-x", dx);
+    xyField.classList.toggle("dead-y", dy);
+    xyField.classList.toggle("pending-x", px);
+    xyField.classList.toggle("pending-y", py);
+    const listening = state.wire ? state.revalidating : state.measuring;
+    xyNote.classList.toggle("pending", !dx && !dy);
+    xyNote.textContent = dx && dy
+      ? "neither reaches this patch — pick two others"
+      : dx ? `${kx.spec.name} doesn't reach this patch`
+        : dy ? `${ky.spec.name} doesn't reach this patch`
+          : (px || py) && listening ? "listening to this patch…" : "";
     xyField.setAttribute("aria-valuetext", `${kx.spec.name} ${Math.round(kx.value * 100)}%, ${ky.spec.name} ${Math.round(ky.value * 100)}%`);
   }
   // Only a reachable axis moves: dragging along an amber one would be a
@@ -1839,7 +2118,7 @@ export function createPerform(host) {
       const live = host.live();
       state.peeking = true;
       if (live && state.offer) live.bMix(1);
-      else host.note("nothing offered yet");
+      else host.note("Nothing offered yet — press Offer first.", { urgent: true });
     },
     () => {
       state.peeking = false;
@@ -1919,7 +2198,7 @@ export function createPerform(host) {
     },
     reaches(i) {
       const w = state.wire && state.wire[i];
-      return !!(w && !w.search);
+      return turns(w);
     },
     // Still waiting on the first measurement of the patch under the hands:
     // its controls do nothing yet.

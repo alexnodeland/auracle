@@ -290,9 +290,10 @@ $$
 The half must move the asked way at half travel, and further at full travel. A
 half that moves at the end but reverses on the way is closed. A half is
 **open** when $r_s \ge 0.075$, half the reach floor. A control with neither
-half open becomes a search control. The instrument draws a half-closed control
-with half its ring and names the end it is stuck at: *already as still as it
-gets*, for Motion on First Bass.
+half open becomes a search control. The instrument draws a half-closed
+control's ring solid on the side it can turn toward and dotted on the other,
+with a stop at the centre, and says which way it turns: *turns toward restless
+only*, for Motion on First Bass.
 
 A control that would close at full travel gets **one retry at half**: the same
 two-point test over $c \in \{\pm\tfrac14, \pm\tfrac12\}$ (the $\pm\tfrac12$ renders

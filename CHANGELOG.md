@@ -116,6 +116,58 @@ changelog that edits its own past is not a record.
   plays the preset without also playing a D♯, *L* in the rack locks without
   playing a D, and *1* / *2* during PATCH's keep-as-new comparison play a side
   without also rating the bank's row (`keys_are_not_notes.spec.js`).
+- **A PERFORM control that turns only one way draws its ring on that side.**
+  The half you can turn toward is solid, the other is a dotted hairline, and a
+  stop sits at the top; a drag into the stop gives the pointer a small bump
+  (none with reduced motion). The ring used to be drawn on the closed side,
+  in a grey that barely showed, so the one cue for which way to turn pointed
+  the wrong way (`perform_truth.spec.js`).
+- **The line under a one-way control says what you can do: *turns toward far
+  only*.** It used to say *at the close end*, a guess about where the sound
+  sits that the amber dot on the same control often contradicted. The amber
+  dot now explains itself on hover: where this sound measures, compared with
+  the patches in your session. The PERFORM film's line changes to match.
+- **A control PERFORM has not measured yet reads *listening…*, looks quiet, and
+  does nothing.** After a Take, a control whose knobs the taken sound no longer
+  had turned amber and said *turn to ask for it*, and turning it grafted a
+  module or grew an offer, seconds before the measurement put it back. The XY
+  pad struck both axes through in amber while a patch was being measured, the
+  look of "this patch can't", and swapped an axis under your hand after a
+  Take. Now "not measured yet" has its own look, a turn of it springs back,
+  and the status line says *listening to this patch…* where it said
+  *measuring how this patch moves…* (`perform_truth.spec.js`).
+- **First steps name a control that turns on the patch you're playing.** Step 2
+  said "Turn a lit control: BRIGHT is a good start" on every patch, while the
+  only coloured names on screen were the amber controls that can't turn, and
+  Bright is one of them on some patches. It now says *Turn BRIGHT: drag up or
+  down* (or whichever control turns), and the keybed's first-run hint waits
+  while the steps show, instead of saying step 1 again in a second voice.
+- **Choosing an XY axis gives the keys back.** The axis drop-downs kept focus
+  after a choice, so the note keys went silent until you clicked elsewhere,
+  and pressing `s` jumped the axis to Snap or Space (`perform_truth.spec.js`).
+- **An amber search control always springs back when you let go, and says
+  what letting go will do.** Turned less than three tenths of the way it used
+  to stay off-centre, doing nothing, with nothing said. Now a notch marks
+  where asking starts, and the line reads *turn further to ask*, then *let go
+  to ask for rough* (or *let go to add a tone EQ*).
+- **After a pass, Blend comes home.** Pressing Offer again with an offer in B
+  left Blend at, say, 67% over an empty B, and the next offer arrived at that
+  level over what you were playing. It now glides home, as it does after a
+  Take (`perform_truth.spec.js`).
+- **PERFORM's toasts follow the lane's rules, and a Take's *don't count it*
+  always works while you can see it.** A later word about the offer replaces
+  the earlier one instead of queueing behind it; refusals such as *Nothing
+  offered yet* jump the queue. The Take's window used to start at the press,
+  so a toast held back in the lane could show the button after the pick had
+  been sent, and it did nothing; the window now starts when the toast
+  appears, and a late press says *Already counted*. Keep says *Kept — this is
+  home now. Back returns here.*
+- **PERFORM's words match the app.** The guide's opening line counts six named
+  controls, Blend and Wander (it said eight named ones); help says Freeze
+  stops Wander where it is (it said it holds everything still); a control's
+  caption names at most two knobs and then *+N* instead of cutting a third
+  off mid-word; and a control at its centre reads *centre* to a screen
+  reader, not *far 0%*.
 
 ### Added — the films
 

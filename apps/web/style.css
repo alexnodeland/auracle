@@ -4564,7 +4564,20 @@ html.handheld .handheld-gate {
 }
 .pf-knob:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .pf-knob svg { width: 100%; max-width: 96px; height: auto; overflow: visible; }
-.pf-k-ring { fill: none; stroke: var(--hairline); stroke-width: 3; }
+/* The travel, as its two halves (perform.js makeKnob). Open: the way the
+   control turns. Closed: a dotted hairline, with a stop at 12 o'clock. */
+.pf-k-half { fill: none; stroke: var(--silk-mute); stroke-width: 3; }
+.pf-k-half.closed { stroke-width: 1; stroke-dasharray: 1 4; stroke-linecap: round; }
+.pf-k-stop { stroke: var(--silk); stroke-width: 2; display: none; }
+.pf-knob.half-lo .pf-k-stop, .pf-knob.half-hi .pf-k-stop { display: inline; }
+/* A search control being turned: where letting go starts to ask. */
+.pf-k-notch { stroke: var(--phos-b); stroke-width: 2; display: none; }
+.pf-knob.search.asking .pf-k-notch { display: inline; }
+/* A drag into a half-closed control's stop bumps the pointer and back. */
+.pf-knob.bump-lo .pf-k-turn { animation: pf-bump-lo 120ms ease-out; }
+.pf-knob.bump-hi .pf-k-turn { animation: pf-bump-hi 120ms ease-out; }
+@keyframes pf-bump-lo { 50% { transform: rotate(-3deg); } }
+@keyframes pf-bump-hi { 50% { transform: rotate(3deg); } }
 .pf-k-arc { fill: none; stroke: var(--phos-a); stroke-width: 3.5; stroke-linecap: round; }
 .pf-k-body { fill: var(--knob-body); stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
 .pf-k-ptr { stroke: var(--silk); stroke-width: 3; stroke-linecap: round; }
@@ -4596,15 +4609,16 @@ html.handheld .handheld-gate {
 }
 /* Unreachable by this patch's knobs: amber, and the gesture asks for an offer. */
 .pf-knob.search .pf-k-arc { stroke: var(--phos-b); }
-.pf-knob.search .pf-k-ring { stroke: var(--phos-b-deep); stroke-dasharray: 3 5; }
+.pf-knob.search .pf-k-half { stroke: var(--phos-b-deep); stroke-dasharray: 3 5; }
 .pf-knob.search .pf-k-name { color: var(--phos-b-dim); }
 .pf-knob.search .pf-k-sub { color: var(--phos-b-dim); }
 .pf-knob.unwired .pf-k-ptr { stroke: var(--silk-mute); }
 .pf-knob.unwired .pf-k-arc { stroke: var(--silk-mute); }
 .pf-knob.held .pf-k-sub { color: var(--phos-b); }
-/* A half the patch's own renders did not confirm is closed, and looks it. */
-.pf-knob.half-lo .pf-k-ring { stroke-dasharray: 0 70 139 70; }
-.pf-knob.half-hi .pf-k-ring { stroke-dasharray: 139 139; }
+/* Listening: not measured yet (no wiring, or a control a Take carried over
+   with nothing to turn). Neutral and quiet, never the amber of "can't". */
+.pf-knob.pending .pf-k-half { stroke-width: 1; opacity: 0.6; }
+.pf-knob.pending .pf-k-name, .pf-knob.pending .pf-k-sub { color: var(--silk-dim); }
 .pf-touch {
   width: min(1040px, 100%);
   display: flex;
@@ -4642,7 +4656,7 @@ html.handheld .handheld-gate {
 .pf-pad:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 var(--shadow-ink); }
 @media (hover: hover) {
   .pf-pad:hover:not(:disabled) { background: linear-gradient(180deg, var(--btn-hover-hi), var(--btn-hover-lo)); }
-  .pf-knob:hover .pf-k-ring { stroke: var(--silk-mute); }
+  .pf-knob:not(.search):not(.pending):hover .pf-k-half:not(.closed) { stroke: var(--silk-dim); }
 }
 .pf-pad:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
 .pf-pad.lit { color: var(--phos-b); box-shadow: var(--lift), 0 0 12px rgba(255,180,84,0.3), 0 3px 0 var(--shadow-ink); }
@@ -4739,6 +4753,7 @@ html.handheld .handheld-gate {
 }
 @media (prefers-reduced-motion: reduce) {
   .pf-pad.flash { animation: none; }
+  .pf-knob.bump-lo .pf-k-turn, .pf-knob.bump-hi .pf-k-turn { animation: none; }
 }
 
 /* ===================== MIDI panel ===================== */
@@ -4884,6 +4899,10 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
   text-align: center; font-size: var(--t-micro); color: var(--phos-b);
   pointer-events: none;
 }
+/* An axis still being listened to: dim, not struck through, not amber. */
+.pf-xy-field.pending-x .pf-xy-l, .pf-xy-field.pending-x .pf-xy-r,
+.pf-xy-field.pending-y .pf-xy-t, .pf-xy-field.pending-y .pf-xy-b { opacity: 0.55; }
+.pf-xy-note.pending { color: var(--silk-dim); }
 @media (prefers-reduced-motion: reduce) { .pf-xy-dot { transition: none; } }
 
 /* ---------- narrow desktop window ---------- */
@@ -4980,6 +4999,9 @@ g.performed .knob-value { fill: var(--phos-b); }
 .pf-step.now { color: var(--phos-a); text-shadow: 0 0 8px rgba(142,240,177,0.45); }
 .pf-step.done { color: var(--silk-dim); }
 .pf-step.done.all { color: var(--phos-a); }
+/* One voice per lesson: while PERFORM's first steps are showing, their step 1
+   says what the keybed coach says, so the coach waits. */
+body:has(#view-perform:not(.hidden) .pf-steps:not(.hidden)) .coach { display: none; }
 
 /* A preset row whose load is on its way: said at once, where the eye is. A
    bank row whose bench open is on its way says the same, until the rack is

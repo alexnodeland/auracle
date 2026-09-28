@@ -24,7 +24,9 @@ typing a name does not play a melody. Everywhere else they play, even with a
 button or knob focused. This is also why the save key is <kbd>m</kbd> rather
 than <kbd>s</kbd>. Two letters are the exception, where something focused
 uses them itself: <kbd>p</kbd> in the presets list plays the preset, and
-<kbd>L</kbd> in the rack locks; neither also plays its note.
+<kbd>L</kbd> in the rack locks; neither also plays its note. PERFORM's drop-downs (the XY pad's axes and what touch
+plays) hand the keys back as soon as you choose, unless you are stepping
+through them with the arrow keys.
 ```
 
 ## Global
@@ -132,6 +134,11 @@ A focused control (reach it with <kbd>Tab</kbd>):
 | <kbd>shift</kbd> + arrow | Fine |
 | <kbd>Home</kbd> | Back to the centre (Blend: to *home*; Wander: to *still*) |
 | <kbd>Enter</kbd> | Hear it: a sweep through both ends and back |
+
+A run of arrow presses is one turn. On an amber search control, or one still
+*listening…*, the control springs back to the centre about half a second after
+the last press, and a search control turned past its notch asks, as letting go
+of a drag does.
 
 With the mouse: drag up or down, <kbd>shift</kbd> for fine, double-click a
 named control to centre it (Blend and Wander ignore a double-click), long-press

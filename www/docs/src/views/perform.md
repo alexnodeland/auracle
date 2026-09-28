@@ -1,7 +1,7 @@
 # PERFORM — the sound under your hands
 
-<p class="lede">Eight controls with names that mean the same thing on every
-patch, six pads, and nothing that stops to ask you a question.</p>
+<p class="lede">Six controls named for what you hear, Blend and Wander, six
+pads, and nothing that stops to ask you a question.</p>
 
 <!-- film:view-perform --><!-- /film:view-perform -->
 
@@ -21,8 +21,8 @@ shares.
 From the top:
 
 **The header.** The patch's name, a status line, and a small scope. The status
-line says what PERFORM is doing: *measuring how this patch moves…* (a new
-patch, whose controls wait for it), *4 of 6 controls reach this patch*, with
+line says what PERFORM is doing: *listening to this patch…* (a new patch,
+whose controls wait for it), *4 of 6 controls reach this patch*, with
 *re-checking* after it while the controls keep working on their last
 measurement (after a Take, or once Wander has moved the sound a long way),
 *wander: drift*, and *paused — your hands are on it* for a few seconds after
@@ -36,7 +36,19 @@ Grit, Space**), then **Blend** and **Wander**. Each named control is bipolar
 and its centre is the sound as it is now. A small amber dot on the outer ring
 shows where the sound *measures* on that axis, relative to the patches in your
 session, so a patch that is already very bright has its dot near the right
-stop.
+stop. Hover the dot and it says so.
+
+A named control is in one of four states, each with its own look:
+
+| Look | Line under it | What it means |
+|---|---|---|
+| A solid ring both ways | the knobs it turns | It turns both ways on this patch |
+| A solid ring on one side, dotted on the other, a stop at the top | *turns toward far only* | It turns one way only (see [half-closed controls](#half-closed-controls)) |
+| Amber, a dashed ring | *turn to ask for it* | This patch's knobs can't do it (see [search controls](#amber-dashed-search-controls)) |
+| Dim, a thin ring | *listening…* | Not measured on this patch yet. Turning it does nothing, and it springs back |
+
+The line under a control names at most two knobs, then how many more
+(*mod depth · lfo rate +2*); hover the control for all of them.
 
 **Six pads.** **Keep · Back · Offer · Take · Peek · Freeze**, below.
 
@@ -55,8 +67,11 @@ what PERFORM plays is live until you press **Keep**, and then PATCH has it too.
 closed at rest.
 
 **First steps.** Until you have done each once, a strip under the header lays
-out the loop: play a key, turn a lit control, press Offer. Each step ticks off
-as you do it, and the strip goes away when all three have.
+out the loop: play a key, turn a control, press Offer. The second step names a
+control that turns on the patch you are playing (*Turn BRIGHT: drag up or
+down*), never one this patch can't reach. Each step ticks off as you do it,
+and the strip goes away when all three have. While it shows, the keybed's
+first-run hint stays hidden, since the first step says the same thing.
 
 **Show measurements** in the ⋯ menu adds the numbers behind each control to
 its tooltip: purity, reach in σ, the verified halves, and the knob gains.
@@ -89,8 +104,10 @@ Hover a control to see which knobs it moves, how purely, and how far it
 measured. The line under its name lists the knobs.
 
 Measuring costs one render per knob, plus up to four more per control to check
-the result, so a large patch takes a moment. Until the session's pool has
-warmed up there is nothing to measure against, and the status line says so.
+the result, so a large patch takes a moment. Meanwhile every control reads
+*listening…* and the status line *listening to this patch…*; the keys play
+throughout. Until the session's pool has warmed up there is nothing to measure
+against, and the status line says so.
 
 ### Turning them
 
@@ -121,13 +138,19 @@ else instead. On *First Bass*, turning Motion down made the sound very slightly
 **more** restless, which is the opposite of the label.
 
 So every half of every control is checked on real renders before it is
-offered. A half that did not move the sound the way its word says is closed:
-the ring is drawn only on the side you can turn toward, the control will not
-go past the centre on the other side, and the line under it says so:
+offered. A half that did not move the sound the way its word says is closed.
+The ring is solid on the side you can turn toward and dotted on the other, with
+a stop at the top; the control will not go past the centre on the closed side
+(a drag into the stop gives the pointer a small bump), and the line under it
+says which way it turns:
 
 ```text
-at the still end
+turns toward restless only
 ```
+
+That is a statement about the control, not about where the sound sits: a half
+closes because the renders did not confirm it, and the amber dot can sit
+anywhere.
 
 ### Amber, dashed: search controls
 
@@ -137,8 +160,12 @@ get rougher by turning a filter, and a patch with no delay or reverb cannot get
 much farther away. Measured over the preset library, **Grit** and **Space** are
 search controls on most patches for exactly that reason.
 
-The line under it reads *turn to ask for it*. Turning it about a
-third of the way to either end and letting go does one of two things.
+The line under it reads *turn to ask for it*. Let go of it and it always springs
+back to the centre. While you turn it, an amber notch marks three tenths of the
+way to either end, and the line says what letting go will do: *turn further to
+ask* short of the notch (letting go there asks nothing), then *let go to ask
+for rough*, or *let go to add a tone EQ* where it can be given something to
+turn. Letting go past the notch does one of two things.
 
 **Where one change would give it something to turn, that change is made.**
 
@@ -197,8 +224,15 @@ back to the centre, or use the arrow keys when it has focus (hold
 Bright on the dial moves the dot too.
 
 Only an axis whose control reaches the patch moves. An amber control's end
-words are struck through on the pad and a note says so. The pad has no
-"turn to ask" gesture; use the dial for that.
+words are struck through on the pad and a note says so. An axis not measured
+yet is only dimmed, with *listening to this patch…*, and the pad keeps the
+axes you had through a Take until the taken sound has been measured. The pad
+has no "turn to ask" gesture; use the dial for that.
+
+Choosing an axis hands the keyboard back to the pad, so the note keys play
+straight away and a note letter can't change the axis. (Stepping through the
+axes with the arrow keys keeps the drop-down focused until you
+<kbd>Tab</kbd> away.)
 
 ## Blend, Peek and the B slot
 
@@ -251,10 +285,10 @@ it is. The dial reads *held*. Tap again to release.
 
 | Pad | |
 |---|---|
-| **Keep** | Make the sound you hear home. The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it |
+| **Keep** | Make the sound you hear home (*Kept — this is home now. Back returns here.*). The controls' positions are written into the patch, which goes onto the workbench as one undo step, so PATCH shows it. The controls then re-centre on it |
 | **Back** | Glide back to home, the last sound you kept or loaded |
-| **Offer** | Grow a variant from here into B |
-| **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep or commit it, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is |
+| **Offer** | Grow a variant from here into B. With an offer already in B, this passes on it: B empties and Blend glides home |
+| **Take** | Make the offer in B your sound. It becomes home, named *(taken offer)* until you keep or commit it, and Blend returns home. The controls stay under your hands: they play on the wiring they had while the taken sound is measured, and the status line says *re-checking* until it is. A control whose knobs the taken sound no longer has reads *listening…* until then |
 | **Peek** | Hold to hear the offer alone |
 | **Freeze** | Freeze Wander. Same as tapping the Wander dial (not the dock's **hold**, which latches notes) |
 
@@ -300,9 +334,10 @@ counts:
 
 "Heard" means Peek held, or Blend past half, for at least a second while notes
 were sounding. An offer you take or pass on without hearing it teaches
-nothing. A Take waits eight seconds before it counts, and its toast has a
-**don't count it** button: taking a sound to hear it in place is not always a
-verdict.
+nothing. A Take's toast has a **don't count it** button, and the Take counts
+only when that button goes: taking a sound to hear it in place is not always a
+verdict. Its window starts when the toast appears, not when you press Take, so
+the button always works while you can see it.
 
 Both directions count, deliberately. A log that only recorded takes would be
 the model hearing its own proposals agreed with. The answers enter the model

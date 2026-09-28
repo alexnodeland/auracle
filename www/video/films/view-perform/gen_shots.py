@@ -231,7 +231,7 @@ shots.append({
         {"at": "named5:wiring", "op": "seq", "steps": [
             {"op": "click", "sel": ".bank-item.preset-item:has(.bi-name:text-is('Bell Jar'))"},
             {"op": "mark", "name": "row", "sel": ".bank-item.preset-item:has(.bi-name:text-is('Bell Jar'))"},
-            {"op": "until", "js": "/Bell Jar/.test(document.querySelector('.pf-name')?.textContent || '') && /measuring/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 90000, "stamp": "measuring"},
+            {"op": "until", "js": "/Bell Jar/.test(document.querySelector('.pf-name')?.textContent || '') && /listening to this patch/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 90000, "stamp": "measuring"},
             {"op": "log", "name": "measuring", "js": STATUS},
             {"op": "until", "js": "/Bell Jar/.test(document.querySelector('.pf-name')?.textContent || '') && /controls reach/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000, "stamp": "wired"},
             {"op": "log", "name": "bell wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ' [' + k.querySelector('.pf-k-sub').textContent + ']').join(' | ') + ' || ' + " + STATUS},
@@ -250,7 +250,7 @@ shots.append({
 })
 
 # ---------------------------------------------------------------- honest controls
-# Glass Pad: Space reaches only toward far ("at the close end"); Grit is a
+# Glass Pad: Space reaches only toward far ("turns toward far only"); Grit is a
 # search control. A short chord before and after Space goes up, so the tail
 # is heard; then a held chord while Grit is turned, springs back, and the
 # variant it asked for lands in B (cut if it grows slowly), heard on Peek.
@@ -289,11 +289,9 @@ shots.append({
     "marks": {"xy": ".pf-xy-field", "xyhead": ".pf-xy-head", "ysel": ".pf-xy-head select >> nth=1", "bright": BRIGHT, "motion": MOTION, "deck": ".pf-deck"},
     "actions": [
         {"at": "xy2:Choose", "op": "select", "sel": ".pf-xy-head select >> nth=1", "value": 4},
-        {"at": "xy2:Choose+0.2", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
         {"at": "xy2:tells", "op": "mark", "name": "note", "sel": ".pf-xy-note"},
         {"at": "xy2:tells", "op": "log", "name": "note", "js": "document.querySelector('.pf-xy-note').textContent"},
         {"at": "xy2:patch+0.5", "op": "select", "sel": ".pf-xy-head select >> nth=1", "value": 2},
-        {"at": "xy2:patch+0.7", "op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
         hold("xy1-0.3", ["f", "h", "k", ";"], until="xy3:Hold-0.05"),
         hold("xy3:Hold", ["d", "g", "h", "k"], until="xy4:centre+0.5"),
         {"at": "xy3:draw", "op": "path", "sel": ".pf-xy-field", "points": [[0.5, 0.5], [0.24, 0.3], [0.5, 0.12], [0.84, 0.22], [0.78, 0.42], [0.6, 0.3]], "ms": 3600},

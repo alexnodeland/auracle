@@ -53,7 +53,7 @@ async function openPreset(page, name) {
   await page.waitForFunction((n) => (document.getElementById("rack-subject")?.textContent || "").includes(n), name, { timeout: 90_000 });
 }
 
-test("a player's ▶ is answered while PERFORM is still measuring", async ({ page }) => {
+test("a player's ▶ is answered while PERFORM is still listening to a patch", async ({ page }) => {
   test.setTimeout(240_000);
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
@@ -63,7 +63,7 @@ test("a player's ▶ is answered while PERFORM is still measuring", async ({ pag
   await expect(page.locator(".pf-name")).toHaveText("Glass Pad", { timeout: 30_000 });
   // A fresh profile has no wiring cached: the measurement is thirty-odd
   // renders. Ask for a render of another patch while it runs.
-  await page.waitForSelector(".pf-status:has-text('measuring')", { timeout: 30_000 });
+  await page.waitForSelector(".pf-status:has-text('listening to this patch')", { timeout: 30_000 });
   await page.locator('.bf[data-f="pool"]').click();
   const target = await page.evaluate(() =>
     [...document.querySelectorAll("#bank-list .bank-item .bi-id")].map((e) => Number(e.textContent.slice(1))).find((x) => x > 0));
@@ -72,7 +72,7 @@ test("a player's ▶ is answered while PERFORM is still measuring", async ({ pag
   const measuringAtAsk = await page.evaluate((i) => {
     window.__pwAskedAt = performance.now();
     window.__pwEngine().postMessage({ type: "render", id: i });
-    return /measuring/.test(document.querySelector(".pf-status").textContent);
+    return /listening to this patch/.test(document.querySelector(".pf-status").textContent);
   }, target);
   expect(measuringAtAsk, "the measurement was over before the render was asked for").toBe(true);
   // The render is answered, and before the measurement it was queued behind.
@@ -183,8 +183,8 @@ test("Take keeps the controls live, names the taken offer, and brings Blend home
   const reachAfter = await page.evaluate(() => [0, 1, 2, 3, 4, 5].filter((i) => !document.querySelector(`.pf-knob[data-i="${i}"]`).classList.contains("unwired")).length);
   expect(reachBefore).toBeGreaterThan(0);
   expect(reachAfter, "every control went dark after Take").toBeGreaterThan(0);
-  const allMeasuring = await page.evaluate(() => [...document.querySelectorAll(".pf-knob .pf-k-sub")].slice(0, 6).every((s) => /measuring/.test(s.textContent)));
-  expect(allMeasuring, "every control read measuring… after Take").toBe(false);
+  const allListening = await page.evaluate(() => [...document.querySelectorAll(".pf-knob .pf-k-sub")].slice(0, 6).every((s) => /listening/.test(s.textContent)));
+  expect(allListening, "every control read listening… after Take").toBe(false);
   // …and the taken offer's own measurement lands.
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
   await expect(page.locator(".pf-status")).not.toContainText("re-checking", { timeout: 120_000 });
