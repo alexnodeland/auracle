@@ -177,17 +177,17 @@
         },
         {
           "id": "dir3",
-          "text": "Here, every style pulls away from grit.",
+          "text": "Here, every style leans away from noise sources.",
           "post": 0.5
         },
         {
           "id": "dir4",
-          "text": "Some rows share names with PERFORM's controls, like body, grit and space. They're the same measurements.",
+          "text": "Some rows are what you hear, like shimmer and brightness. Others are what the patch is built from, like reverbs.",
           "post": 0.5
         },
         {
           "id": "dir5",
-          "text": "Read the whisker, not the bar. If a whisker crosses the centre line, it's still a guess.",
+          "text": "Read the whisker, not the bar. A whisker across the centre line is still a guess, and here most are.",
           "post": 0.7
         }
       ],
@@ -217,7 +217,7 @@
         },
         {
           "id": "trust4",
-          "text": "The number to trust is its score on duels dealt at random. Here, twenty percent sharper than chance.",
+          "text": "The number to trust is its score on duels dealt at random. Here, twenty-seven percent sharper than chance.",
           "post": 0.4
         },
         {
@@ -260,7 +260,7 @@
         },
         {
           "id": "wrong6",
-          "text": "At the refit, that sound has dimmed, and the map stays the way round you left it.",
+          "text": "At the refit, it rates that sound a little lower. One pick moves it a little, so keep telling it.",
           "post": 0.8
         }
       ]

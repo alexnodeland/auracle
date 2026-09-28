@@ -44,7 +44,9 @@ preset by a table, so it judges the same way every time.
   listener likes and neither one it dislikes, so the two auditions on camera
   are musical.
 - **RICH** (every chapter): the warm start answered by the listener (its
-  three favourite cards), thirty duels, stars from the listener (★5 on the
+  three favourite cards), one *skip ↻* once the pool is full (the first pair
+  is dealt while the pool is still filling, so it is the one deal that can
+  differ between takes), thirty duels, stars from the listener (★5 on the
   three bank rows it likes most, ★1 on the two it likes least), a first note
   to retire the keybed coach, then duels to the edge of a refit.
 
@@ -127,28 +129,34 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
 
 - **Actions:** `styles1:taste` STYLES; `styles4:plays` ▶ on the chip whose
   example the listener likes best, then ▶ on another style's; `styles5:Name`
-  that first chip renamed (`RENAME` in gen_shots.py, which has to fit its
-  example: the `pick` log says what it is), Enter. No refit follows the
+  that first chip renamed *warm washes* (`RENAME` in gen_shots.py, which has
+  to fit its example, here Warm Wash: the `pick` log says what it is), Enter. No refit follows the
   rename on camera.
 - **Callouts:** the chips; each ▶; the renamed chip, *yours now*.
 
 ## 7. `directions` — shot `vt-dir` (dir1–5) — chapter `04 · directions`
 
-- **Actions:** `dir1:Directions` DIRECTIONS; markers on the rows the lines
-  name (grit, body, space), the longest bars each way, and the longest bar
-  whose drawn whisker plainly crosses the centre line.
-- **Callouts:** *toward*, *away*, grit, *body*, *space*, *whisker over the
-  line: a guess*.
-- **Check:** dir3 says every style pulls away from grit. The `rows` log has
-  every style's grit bar; rewrite the line if one is not left of centre.
+- **Actions:** `dir1:Directions` DIRECTIONS; markers (from the app's own
+  `taste-geom.js`) on the rows dir4 names (shimmer, brightness, reverbs), the
+  row every style pulls the same way, the longest bars each way, and the
+  longest bar whose drawn whisker plainly crosses the centre line.
+- **Callouts:** *toward*, *away*, *noise srcs: all three lean away*, *what
+  you hear* (shimmer, brightness), *what it's built from* (reverbs),
+  *whisker over the line: a guess*.
+- **Check:** the `rows` log has every row with each style's bar (`x`: the
+  interval crosses zero; `>`: a whisker cut at the edge). This session shows
+  no PERFORM word (snap, body, grit, space) among its twelve rows, every
+  style leans away from *noise srcs*, and all but one whisker cross the
+  line; dir3–dir5 say exactly that. Rewrite them if the session changes.
 
 ## 8. `trust` — shot `vt-trust` (trust1–5) — chapter `05 · trust`
 
 - **Actions:** `trust1:believe` TRUST; markers on the diagonal, the axis,
   the largest bucket and the check-duel line.
 - **Check:** trust4 says the score on duels dealt at random, as the check
-  line prints it. The `trust` log has the numbers; the line follows the
-  screen.
+  line prints it: 35 forecasts, Brier 0.182, 27% sharper than chance, all 35
+  of them check duels (every deal under the default random rule). The
+  `trust` log has the numbers; the line follows the screen.
 
 ## 9. `wrong` — shot `vt-wrong` (wrong1–6; bed out) — chapter `06 · when it's wrong`
 
@@ -161,7 +169,9 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
   `wrong4` EVOLVE, where that pair is on the table; `wrong4:other` choose the
   other side, against the model: *⚡ Surprise — it had this backwards*; the
   link clicked at `@learned+1.0`; the refit lands (stamp `fitted`); the same
-  sound marked again (the axes turn a little at a refit) and hovered, dimmer.
+  sound marked again (the axes turn a little at a refit) and hovered. It is
+  Noisy Pluck 2, 81% before and 78% after: one pick moves it a little, and
+  wrong6 says so.
 - **Clips:** `["wrong6-0.3", "@fitted-0.7"]`.
 
 ## 10. `profile` — shot `vt-profile` (profile1–4) — chapter `07 · your profile`
@@ -175,8 +185,9 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
 
 - **Actions:** `together2:walk` the map focused, the arrow keys step the
   dashed cursor to a bright dot the listener likes, Enter, Fmaj7 to the bar;
-  `together3:maybe` on to a maybe nobody has starred, Enter, Em7 then Am7;
-  `together3:Star` ★5 on its row; `together3:pick` EVOLVE.
+  `together3-1.4` on to a maybe nobody has starred, Enter, so it opens on
+  "Try a maybe", Em7 then Am7; `together3:Star` ★5 on its row (once the
+  bench has it); `together3:back` EVOLVE.
 
 ## 12. `outro` — shot `vt-outro` (outro1–3; bed at 0)
 
@@ -195,9 +206,12 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
    one refit), against the guide's "the orientation is pinned". Fixed in the
    engine (11c4a15); the wrong beat re-checks it.
 3. **Size barely varied** on the map, so "a small, bright dot" and "a big,
-   bright dot" were hard to tell apart. With a fix agent.
+   bright dot" were hard to tell apart. Fixed: dots span 2.5–9 px over the
+   map's own range of uncertainty (the firm yes here is 2.5 px, the maybe 9).
 4. **A renamed style seemed to move at a refit.** It stays on the style (the
    exemplar can change); the guide now says so (21a339e).
 5. **DIRECTIONS capped the drawn whisker**, so a wide interval could look as
-   if it did not cross the centre line. With a fix agent; `dirRows()` in
-   `session.py` replays the cap and must follow the fix.
+   if it did not cross the centre line. Fixed (bars and whiskers on one
+   scale, `taste-geom.js`); `dirRows()` in `session.py` uses that module.
+6. **Renaming a style renamed the others** and moved every share (the rename
+   was the first fresh views since the last fit). Fixed (06fee64).

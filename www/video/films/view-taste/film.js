@@ -26,8 +26,8 @@
 //   stars. So "picks land" is shown the way the app designs it: a pick, then
 //   "● it just learned — see what changed ▸", then the map.
 // - The wrong beat marks the corrected dot again after the refit: the axes
-//   turn a little at every refit (the map no longer mirrors), so the dot has
-//   moved by the time it has dimmed.
+//   turn a little at every refit, so the dot has moved by then. One pick
+//   against the model moves it a little, and the narration says so.
 // - The cold open cuts from the link to just before the fit lands, and the
 //   wrong beat from its link to the refit (the shots' `clips`; no cut when
 //   they are quick).
@@ -39,12 +39,15 @@ const PLAN = [
   {
     beat: "open",
     shot: "vt-open",
-    cam: [[0, 1.0, 0.5, 0.5], [1.5, 1.0, 0.5, 0.5], [1.9, ...aim(1.1, 1086, 480)], [6.8, 1.0, 0.5, 0.5], [9.2, ...aim(1.12, 900, 640)], [10.4, ...aim(1.3, 700, 700)]],
+    // Wide on the map before any fit; in on the pair; wide as the map
+    // lights; then a slow push onto the dot that is played.
+    cam: [[0, 1.0, 0.5, 0.5], [1.4, 1.0, 0.5, 0.5], [2.0, ...aim(1.12, 960, 470)], [6.1, ...aim(1.12, 960, 470)],
+      [6.9, 1.0, 0.5, 0.5], [8.2, 1.0, 0.5, 0.5], [9.8, ...aim(1.35, 520, 420)], [14.2, ...aim(1.45, 480, 400)]],
   },
   {
     beat: "title",
     shot: "vt-title",
-    cam: [[0, ...aim(1.1, 900, 640)], ["title2", ...aim(1.16, 850, 660)]],
+    cam: [[0, ...aim(1.1, 1100, 560)], ["title2", ...aim(1.16, 1150, 560)]],
   },
   {
     beat: "tabs",
@@ -56,40 +59,40 @@ const PLAN = [
       { at: "tabs2:Styles", until: "tabs3:Directions", mark: "tab-styles", side: "bottom", dx: 40, dy: 90, text: "the tastes it has found" },
       { at: "tabs3:Directions", until: "tabs3:Trust", mark: "tab-dir", side: "bottom", dx: 40, dy: 90, text: "what pulls you" },
       { at: "tabs3:Trust", until: "tabs4", mark: "tab-trust", side: "bottom", dx: 40, dy: 90, text: "whether to believe it" },
-      { at: "tabs4:chips", mark: "chips", side: "bottom", ox: 120, dx: 60, dy: 90, text: "your styles, in every tab" },
+      { at: "tabs4:chips", mark: "chips", side: "bottom", ox: -440, dx: 60, dy: 90, text: "your styles, in every tab" },
     ],
   },
   {
     beat: "map",
     shot: "vt-map",
     chapter: "02 · the map",
-    cam: [[0, 1.0, 0.5, 0.5], ["map1:heard", ...aim(1.08, 1000, 600)], ["map2:Nearby-0.3", ...aim(1.8, 1100, 800)], ["map2:flat", ...aim(1.08, 1000, 600)],
-      ["map3:Glow-0.2", 1.0, 0.5, 0.5], ["map4-0.2", ...aim(1.8, 1179, 734)], ["map5-0.2", ...aim(1.7, 420, 700)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["map1:heard", ...aim(1.08, 1000, 600)], ["map2:Nearby-0.3", ...aim(1.8, 840, 720)], ["map2:flat", ...aim(1.08, 1000, 600)],
+      ["map3:Glow-0.2", 1.0, 0.5, 0.5], ["map4-0.2", ...aim(1.8, 1278, 600)], ["map5-0.2", ...aim(1.7, 1090, 300)]],
     callouts: [
-      { at: "map2:Nearby+0.4", until: "map2:flat", mark: "n1", side: "top", dx: -60, dy: -90, text: "gritty, noisy sounds, together" },
+      { at: "map2:Nearby+0.4", until: "map2:flat", mark: "n1", side: "top", dx: -60, dy: -90, text: "noisy sounds, side by side" },
       { at: "map3:Glow", until: "map3:bank", mark: "legend", side: "top", ox: -40, dx: -60, dy: -70, text: "dim to bright: would like" },
       { at: "map3:bank", until: "map4", mark: "row0", side: "right", dx: 80, dy: 10, text: "its best guesses first" },
       { at: "map4:small", until: "map5", mark: "yes", side: "left", ox: -8, dx: -120, dy: -70, text: "small and bright: a firm yes" },
-      { at: "map5:big", mark: "maybe", side: "right", ox: 8, dx: 110, dy: -80, text: "big and bright: a maybe" },
+      { at: "map5:big", mark: "maybe", side: "right", ox: 12, dx: 110, dy: 70, text: "big and bright: a maybe" },
     ],
   },
   {
     beat: "hear",
     shot: "vt-hear",
-    cam: [[0, ...aim(1.2, 1100, 640)], ["hear2-0.3", ...aim(1.2, 700, 640)], ["hear3-0.3", ...aim(1.2, 1500, 640)]],
+    cam: [[0, ...aim(1.2, 1100, 620)], ["hear2-0.3", ...aim(1.12, 1000, 540)], ["hear3-0.3", ...aim(1.2, 900, 620)]],
     callouts: [
       { at: "hear1:fingers", until: "hear2", mark: "keys", side: "top", ox: 60, dx: 60, dy: -80, text: "your keys play it" },
-      { at: "hear2:maybes", until: "hear3", mark: "maybe", side: "top", dx: 60, dy: -90, text: "a maybe" },
-      { at: "hear3:dim", mark: "dim", side: "top", dx: -60, dy: -90, text: "dim: it thinks you'd skip it" },
+      { at: "hear2:maybes", until: "hear3", mark: "maybe", side: "right", ox: 12, dx: 100, dy: 70, text: "a maybe" },
+      { at: "hear3:dim", mark: "dim", side: "top", dx: 80, dy: -90, text: "dim: it thinks you'd skip it" },
     ],
   },
   {
     beat: "styles",
     shot: "vt-styles",
     chapter: "03 · styles",
-    cam: [[0, 1.0, 0.5, 0.5], ["styles2", ...aim(1.12, 1000, 480)], ["styles4-0.3", ...aim(1.6, 760, 260)], ["styles5:sticks", ...aim(1.25, 900, 360)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["styles2", ...aim(1.12, 1000, 480)], ["styles4-0.3", ...aim(1.6, 600, 300)], ["styles5:sticks", ...aim(1.25, 700, 360)]],
     callouts: [
-      { at: "styles3:separate", until: "styles4", mark: "chips", side: "bottom", ox: 200, dx: 60, dy: 90, text: "three styles here, each with its share" },
+      { at: "styles3:separate", until: "styles4", mark: "chips", side: "bottom", ox: -440, dx: 60, dy: 90, text: "three styles here, each with its share" },
       { at: "styles4:plays", until: "styles4:plays+2.9", mark: "play-first", side: "bottom", dx: 40, dy: 110, text: "its best example" },
       { at: "styles4:plays+2.9", until: "styles5", mark: "play-second", side: "bottom", dx: 40, dy: 110, text: "another style's" },
       { at: "styles5:sticks", mark: "named", side: "bottom", dx: 60, dy: 100, text: "yours now" },
@@ -99,14 +102,15 @@ const PLAN = [
     beat: "directions",
     shot: "vt-dir",
     chapter: "04 · directions",
-    cam: [[0, 1.0, 0.5, 0.5], ["dir1:listens", ...aim(1.1, 1080, 520)], ["dir3-0.2", ...aim(1.6, 1000, 632)], ["dir4:body", ...aim(1.15, 1080, 600)], ["dir5-0.2", ...aim(1.5, 1150, 520)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["dir1:listens", ...aim(1.1, 1080, 520)], ["dir3-0.2", ...aim(1.6, 1000, 300)], ["dir4", ...aim(1.1, 1080, 560)], ["dir5-0.2", ...aim(1.6, 1000, 300)]],
     callouts: [
       { at: "dir2:right", until: "dir2:left", mark: "right", side: "right", dx: 70, dy: -40, text: "toward" },
-      { at: "dir2:left", until: "dir3", mark: "left", side: "left", dx: -70, dy: -40, text: "away" },
-      { at: "dir3:grit", until: "dir4", mark: "grit", side: "left", dx: -90, dy: -50, text: "grit: all three pull away" },
-      { at: "dir4:body", until: "dir5", mark: "body", side: "left", dx: -90, dy: -40, text: "body" },
-      { at: "dir4:space", until: "dir5", mark: "space", side: "left", dx: -90, dy: 40, text: "space" },
-      { at: "dir5:crosses", mark: "guess", side: "right", dx: 90, dy: -60, text: "whisker over the line: a guess" },
+      { at: "dir2:left", until: "dir3", mark: "left", side: "left", dx: -70, dy: 40, text: "away" },
+      { at: "dir3:every", until: "dir4", mark: "agree", side: "left", dx: -90, dy: -50, text: "noise srcs: all three lean away" },
+      { at: "dir4:shimmer", until: "dir4:Others", mark: "shimmer", side: "left", dx: -90, dy: -40, text: "what you hear" },
+      { at: "dir4:brightness", until: "dir4:Others", mark: "brightness", side: "left", dx: -90, dy: -40, text: "what you hear" },
+      { at: "dir4:reverbs", until: "dir5", mark: "reverbs", side: "left", dx: -90, dy: 40, text: "what it's built from" },
+      { at: "dir5:across", mark: "guess", side: "right", dx: 90, dy: -60, text: "whisker over the line: a guess" },
     ],
   },
   {
@@ -117,7 +121,7 @@ const PLAN = [
     callouts: [
       { at: "trust2:forecasts", until: "trust3", mark: "xaxis", side: "bottom", dx: 60, dy: 50, text: "its forecast, before you pick" },
       { at: "trust3:diagonal", until: "trust3:whiskers", mark: "honest", side: "right", dx: 90, dy: -40, text: "honest" },
-      { at: "trust3:whiskers", until: "trust4", mark: "bin", side: "right", dx: 90, dy: 30, text: "a bucket of forecasts, and its wobble" },
+      { at: "trust3:whiskers", until: "trust4", mark: "bin", side: "left", dx: -90, dy: 40, text: "a bucket of forecasts, and its wobble" },
       { at: "trust4:random", until: "trust5", mark: "check", side: "bottom", ox: 200, dx: 40, dy: 50, text: "the number to trust", color: "b" },
     ],
   },
@@ -125,19 +129,19 @@ const PLAN = [
     beat: "wrong",
     shot: "vt-wrong",
     chapter: "06 · when it's wrong",
-    cam: [[0, 1.0, 0.5, 0.5], ["wrong2-0.2", ...aim(1.5, 1100, 700)], ["wrong3:star-0.3", ...aim(1.3, 600, 600)], ["wrong4:duel", 1.0, 0.5, 0.5], ["wrong6", 1.0, 0.5, 0.5]],
+    cam: [[0, 1.0, 0.5, 0.5], ["wrong2-0.2", ...aim(1.5, 1250, 560)], ["wrong3:star-0.3", ...aim(1.3, 300, 800)], ["wrong4", 1.0, 0.5, 0.5], ["wrong6", ...aim(1.5, 1330, 540)]],
     callouts: [
-      { at: "wrong2:thinks+0.5", until: "wrong3", mark: "wrong", side: "right", ox: 8, dx: 110, dy: -80, text: "it's sure you'll like this" },
+      { at: "wrong2:thinks+0.5", until: "wrong3", mark: "wrong", side: "right", ox: 8, dx: 110, dy: -80, text: "it's sure you'll like this: 81%" },
       { at: "wrong3:star", until: "wrong4", mark: "star1", side: "right", dx: 90, dy: -40, text: "one star" },
       { at: "wrong4:other+0.3", until: "wrong5:See", mark: "pred", side: "bottom", dx: 60, dy: 70, text: "it had this backwards", color: "b" },
-      { at: "wrong6:dimmed", mark: "wrong2", side: "right", ox: 8, dx: 110, dy: -80, text: "the same sound, dimmed" },
+      { at: "wrong6:lower", mark: "wrong2", side: "right", ox: 8, dx: 110, dy: -80, text: "a little lower: 78%" },
     ],
   },
   {
     beat: "profile",
     shot: "vt-profile",
     chapter: "07 · your profile",
-    cam: [[0, 1.0, 0.5, 0.5], ["profile1:stays-0.2", ...aim(1.6, 1700, 300)]],
+    cam: [[0, 1.0, 0.5, 0.5], ["profile1:stays-0.2", ...aim(1.6, 1700, 300)], ["profile3-0.3", ...aim(1.3, 1100, 300)]],
     callouts: [
       { at: "profile2:save", until: "profile2:load", mark: "save", side: "left", dx: -90, dy: 20, text: "a file you keep" },
       { at: "profile3:Loading+0.3", until: "profile4", mark: "alarm-load", side: "bottom", dx: 40, dy: 60, text: "it asks, and saves yours first" },
@@ -148,11 +152,11 @@ const PLAN = [
     beat: "together",
     shot: "vt-together",
     chapter: "08 · the loop",
-    cam: [[0, 1.0, 0.5, 0.5], ["together2:walk-0.3", ...aim(1.2, 700, 640)], ["together3:pick+0.4", 1.0, 0.5, 0.5]],
+    cam: [[0, 1.0, 0.5, 0.5], ["together2:walk-0.3", ...aim(1.2, 1000, 500)], ["together3:back", 1.0, 0.5, 0.5]],
     callouts: [
-      { at: "together2:arrow", until: "together3", mark: "t1", side: "top", dx: 90, dy: -80, text: "arrows step, Enter opens" },
-      { at: "together3:maybe", until: "together3:Star", mark: "t2", side: "top", dx: 90, dy: -80, text: "a maybe" },
-      { at: "together3:Star", until: "together3:pick", mark: "star5", side: "right", dx: 90, dy: -40, text: "five stars" },
+      { at: "together2:arrow", until: "together3", mark: "t1", side: "top", dx: -90, dy: -70, text: "arrows step, Enter opens" },
+      { at: "together3:maybe", until: "together3:Star", mark: "t2", side: "right", ox: 12, dx: 100, dy: 60, text: "a maybe" },
+      { at: "together3:Star+0.2", until: "together3:back", mark: "star5", side: "right", dx: 90, dy: -40, text: "five stars" },
     ],
   },
   {

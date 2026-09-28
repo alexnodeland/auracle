@@ -161,7 +161,7 @@ const dirRows = () => {
         x: X(b.len), y: Math.round(r.top + yy * k), lo: X(b.lo), hi: X(b.hi), clip: b.clipLo || b.clipHi,
         // Where the drawn whisker ends past the centre line, and by how much
         // (a share of the half-width), when its interval crosses zero.
-        cross: b.crossesZero, far: b.crossesZero ? X(b.mean < 0 ? b.hi : b.lo) : null,
+        cross: b.crossesZero, far: b.crossesZero ? X(t.mean < 0 ? b.hi : b.lo) : null,
         over: b.crossesZero ? Math.min(-b.lo, b.hi) / usable : 0 };
     }).filter(Boolean);
     return { name, y: Math.round(r.top + y * k), cx: X(0), label: Math.round(r.left + (cx - usable - 10 * dpr) * k), bars };
@@ -363,8 +363,8 @@ const d = ds.slice(0, Math.ceil(ds.length / 4)).find((q) => q.like >= 0.5) || ds
 return marker('vt-best', d) + ' (brightest: ' + ds[0].name + ' ' + ds[0].glow.toFixed(2) + ')';
 """)
 
-# DIRECTIONS: the rows that carry a PERFORM control's word (snap, body, grit,
-# space: the guide's list), the rows every style pulls the same way, the
+# DIRECTIONS: the rows dir4 names (two sounds and a part), the rows every
+# style pulls the same way, the
 # longest bar each way, and the longest bar whose drawn whisker plainly
 # crosses the centre line. Every row is logged with its bars (x: the interval
 # crosses zero; >: a whisker cut at the edge), so the narration can be checked
@@ -372,13 +372,13 @@ return marker('vt-best', d) + ' (brightest: ' + ds[0].name + ' ' + ds[0].glow.to
 DIR_MARKS = js(r"""
 const rows = dirRows();
 const base = (n) => String(n).split(':')[0];
-const PERFORM = { crest: 'snap', bass_fraction: 'body', flatness_mean: 'grit', tail_ratio: 'space' };
+const NAMED = { centroid_std: 'shimmer', centroid_mean: 'brightness', n_reverb: 'reverbs' };
 // A row this session does not show gets its marker in the canvas's corner,
 // named "absent", so every mark resolves and the log says which are real.
 const { r: box } = crt();
 const absent = (id) => markAt(id, Math.round(box.left + 2), Math.round(box.top + 2), 'absent');
 const words = [];
-for (const [key, w] of Object.entries(PERFORM)) {
+for (const [key, w] of Object.entries(NAMED)) {
   const q = rows.find((x) => base(x.name) === key);
   if (q) { markAt('vt-' + w, q.label + 4, q.y, w); words.push(w); } else absent('vt-' + w);
 }
@@ -395,7 +395,7 @@ markAt('vt-left', left.x, left.y, left.row);
 const crossing = all.filter((b) => b.cross).sort((p, q) => q.len - p.len);
 const guess = crossing.find((b) => b.over >= 0.03) || crossing[0];
 if (guess) markAt('vt-guess', guess.far, guess.y, guess.row); else absent('vt-guess');
-return JSON.stringify({ perform: words, agree: agree.map((a) => a.q.name + ' ' + a.side + ' ' + a.m.toFixed(3)),
+return JSON.stringify({ named: words, agree: agree.map((a) => a.q.name + ' ' + a.side + ' ' + a.m.toFixed(3)),
   right: right.row + ' ' + right.mean, left: left.row + ' ' + left.mean,
   guess: guess ? guess.row + ' ' + guess.mean + '±' + guess.std + ' over ' + guess.over.toFixed(2) : null,
   styles: byShare().filter((q) => q.share >= 0.08).map((q) => q.k + ' ' + q.share.toFixed(3)),

@@ -43,7 +43,7 @@ FIFTH = ["a", "g"]             # C4 G4
 # The name typed for the style the STYLES chapter plays first. It has to fit
 # that style's example, which the seeded session decides: vt-styles logs it
 # ("pick"), so check it there whenever the session changes.
-RENAME = "dark drones"
+RENAME = "warm washes"
 
 IDLE = {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 300000}
 FITTED = lambda stamp: {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 120000, "stamp": stamp}
@@ -278,7 +278,7 @@ shots.append({
             {"op": "click", "sel": ".tab[data-tab='dir']"},
             {"op": "wait", "ms": 400},
             {"op": "log", "name": "rows", "js": DIR_MARKS},
-            *marks(("snap", "#vt-snap"), ("body", "#vt-body"), ("grit", "#vt-grit"), ("space", "#vt-space"),
+            *marks(("shimmer", "#vt-shimmer"), ("brightness", "#vt-brightness"), ("reverbs", "#vt-reverbs"),
                    ("agree", "#vt-agree"), ("right", "#vt-right"), ("left", "#vt-left"), ("guess", "#vt-guess")),
         ]},
     ],
@@ -407,26 +407,26 @@ shots.append({
             {"op": "wait", "ms": 350},
             {"op": "eval", "js": LABEL_SNAP},
             {"op": "key", "key": "Enter", "ms": 100},
-            {"op": "until", "js": LABEL_MOVED, "ms": 30000, "stamp": "t1"},
+            {"op": "until", "js": BENCHED("vt-t1"), "ms": 30000, "stamp": "t1"},
             {"op": "log", "name": "t1", "js": "document.getElementById('live-label').textContent"},
         ]},
-        hold("@t1+0.1", FMAJ7, until="@t1+2.8", until_snap="bar"),
-        {"at": "together3:maybe-0.4", "op": "seq", "steps": [
+        hold("@t1+0.1", FMAJ7, until="@t1+2.6", until_snap="bar"),
+        # On to the maybe while the chord rings, so it opens on "Try a maybe".
+        {"at": "together3-1.4", "op": "seq", "steps": [
             {"op": "log", "name": "to-t2", "js": WALK_TO("t2")},
-            {"op": "wait", "ms": 350},
-            {"op": "eval", "js": LABEL_SNAP},
+            {"op": "wait", "ms": 250},
             {"op": "key", "key": "Enter", "ms": 100},
-            {"op": "until", "js": LABEL_MOVED, "ms": 30000, "stamp": "t2"},
+            {"op": "until", "js": BENCHED("vt-t2"), "ms": 30000, "stamp": "t2"},
             {"op": "log", "name": "t2", "js": "document.getElementById('live-label').textContent"},
             {"op": "mark", "name": "star5", "sel": ".bank-item.live .star[data-s='5']"},
         ]},
-        hold("@t2+0.1", EM7, ms=1800),
-        hold("@t2+2.0", AM7, ms=2300),
-        {"at": "together3:Star", "op": "seq", "steps": [
-            {"op": "until", "js": LABEL_MOVED, "ms": 30000},
+        hold("@t2+0.1", EM7, ms=1700),
+        hold("@t2+1.9", AM7, ms=2300),
+        {"at": "together3:Star+0.2", "op": "seq", "steps": [
+            {"op": "until", "js": BENCHED("vt-t2"), "ms": 30000},
             {"op": "click", "sel": ".bank-item.live .star[data-s='5']"},
         ]},
-        {"at": "together3:pick+0.6", "op": "view", "v": "evolve"},
+        {"at": "together3:back", "op": "view", "v": "evolve"},
     ],
 })
 
