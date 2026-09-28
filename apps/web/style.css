@@ -868,6 +868,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mod-plate { fill: url(#plateGrad); stroke: #2c313a; stroke-width: 1; }
 .mod-plate.modside { stroke: #57431f; }
 .mod-plate.locked { stroke: var(--phos-b); stroke-dasharray: 4 3; }
+/* A gesture waiting its turn in the bench lane — a bypass pressed while a
+   knob turn was still landing — is aimed at this plate. It will happen, in
+   order; the rack's caption counts what is waiting (main.js `lanePaint`). */
+.mod-group.queued .mod-plate { stroke: var(--phos-a-dim); stroke-dasharray: 2 3; }
 /* The opt-in belief tint. A stroke rather than a fill, and inset rather than
    on the plate's own edge, so it can never be confused with the dashed amber
    `locked` outline — one says "the model leans this way about this family",

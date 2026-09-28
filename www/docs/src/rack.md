@@ -62,11 +62,21 @@ step to sit and drag ([more on the step sequencer](./wiring.md#the-step-sequence
 
 Every edit is a **one-site write at that knob's trace address**. The patch is
 re-rendered and re-vetted before it can be auditioned, and the live instrument
-is re-patched immediately so held notes keep sounding.
+is re-patched immediately so held notes keep sounding. While you drag you hear
+every value the knob passes through; the engine re-renders the one you let go
+on. A run of <kbd>↑</kbd>/<kbd>↓</kbd> presses on one knob is one turn.
+
+Edits reach the engine **in the order you make them**. On a busy machine the
+engine can still be working on the last one when you make the next: a bypass
+right after a knob turn, a cable pulled right after ⌘Z. The new one waits its
+turn and then happens. Its plate is outlined while it waits and the caption
+under the patch name says *1 edit waiting*. A knob always shows the value you
+last set, never an older one the engine is still catching up on.
 
 Edits are staged. The toolbar's **commit** inserts the result as a new
 candidate, leaving the original intact. <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> undo and
-redo.
+redo, and ⌘Z always undoes the last thing you did, even if the engine has not
+finished it yet. Undoing an edit also takes down the message that announced it.
 
 **my edit is better** is a separate claim. Ticking it teaches the model an
 "edit beat original" duel, which the
@@ -112,7 +122,9 @@ pinning it somewhere you cannot see.
 - **clear locks** releases everything.
 
 Then **⚡ evolve from this**: refinement mutates everything *except* the locked
-addresses.
+addresses. If you go on editing while it breeds, the child waits in the bank
+rather than replacing your edits; the message that announces it has an
+**open it** button.
 
 A proposal that would change, delete **or create** any locked address is
 rejected. Both directions matter: allowing a *birth* at a locked address while

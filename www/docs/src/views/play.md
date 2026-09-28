@@ -85,7 +85,13 @@ tell you that.
 Every knob is live and every structural edit is a grammar operation, so you
 cannot break the patch into something unplayable. Drag knobs, click selectors,
 drag cables between typed jacks, arm a module from the catalogue and place it.
-Undo with <kbd>⌘Z</kbd>.
+Undo with <kbd>⌘Z</kbd>: it undoes the last thing you did, even while the
+engine is still catching up.
+
+Edits happen in the order you make them. If the engine is still working on the
+last one, the next one waits its turn and then happens: its plate is outlined
+and the caption under the patch name says *1 edit waiting*. See
+[turning knobs](../rack.md#turning-knobs).
 
 Changes are *staged* until you **commit**. Committing inserts the edited patch
 into the bank as a new candidate, leaving the original alone.
