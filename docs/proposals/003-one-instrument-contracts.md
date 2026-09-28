@@ -1,7 +1,7 @@
 ---
 title: "One instrument: shared words, colours, states, undo, messages and keys"
 number: 3
-status: in-review
+status: accepted
 author: Claude Code
 created: 2026-09-28
 updated: 2026-09-28
@@ -135,10 +135,14 @@ this adds stars, PERFORM's Take and pass, and saves.)
 - Guide pages that quote the old words change with it (the truth-pass skill).
 - New specs: the banned-words check, one per keymap row, bank stability.
 
-## Open questions (for the maintainer)
+## Decisions (maintainer, 2026-09-28)
 
-1. TAUGHT or ANSWERS for the counter?
-2. The keymap: PERFORM's pads on Space/Enter/B/⇧Enter/⇧Space, views on ⌥1–4.
-3. Dock toggles lit green (they change the sound) rather than amber?
-4. A row click that stays in the view: is the double-click / "↗ patch" route
-   to PATCH enough?
+1. The counter is **TAUGHT**, with the breakdown in its tooltip.
+2. The keymap is approved as proposed, ⌥1–4 included.
+3. Dock toggles that change the sound light a **green** LED with a silk
+   label when on.
+4. A bank row click puts the patch under your hands in the view you are in;
+   "↗ patch" on the hovered row, or a double-click, opens it in PATCH.
+
+Accepted as [ADR-009](../decisions/009-one-instrument-contracts.md). Built as
+Wave 2, in its own change after Wave 1, with its own film pass.

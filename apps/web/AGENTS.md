@@ -38,6 +38,11 @@ the long-form notes are this directory's `README.md`.
   word on the same thing replaces the earlier one (`replace: key`), a refusal
   says why and jumps the queue (`urgent`), and an undo retires the receipt of
   what it undid. A confirmation must not queue behind stale news.
+- **One language across the views**
+  ([ADR-009](../../docs/decisions/009-one-instrument-contracts.md)): the
+  words, colours (green sound, amber the model, red danger, silk you), undo,
+  message channels and keymap in RFC-003. New copy, colours and keys follow
+  them; an exception amends the ADR.
 - **Say what is true.** In-app copy, tooltips and status lines are
   descriptions too. If PERFORM says "measuring…", the dials must really be
   waiting. Check the guide (`www/docs/src/views/*.md`) when you change what a

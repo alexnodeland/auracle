@@ -54,6 +54,7 @@ plugins work on it.
 | [006](decisions/006-layered-agent-context.md) | Agent context is layered: AGENTS.md per area, deeper docs here |
 | [007](decisions/007-generations-breed-in-parallel.md) | A generation breeds its walks in parallel, absorbed in job order |
 | [008](decisions/008-search-offers-are-aimed.md) | A search control's offer is aimed along the control's direction |
+| [009](decisions/009-one-instrument-contracts.md) | One vocabulary, one colour contract, one undo, one keymap across the instrument |
 
 ## Proposals
 
@@ -61,7 +62,7 @@ plugins work on it.
 | --- | --- | --- |
 | [001](proposals/001-evolve-pool-parallel-walks.md) | accepted | Breed a generation in seconds: walks in parallel on the render farm |
 | [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
-| [003](proposals/003-one-instrument-contracts.md) | in-review | One instrument: shared words, colours, states, undo, messages and keys |
+| [003](proposals/003-one-instrument-contracts.md) | accepted | One instrument: shared words, colours, states, undo, messages and keys |
 
 ## Plans
 
