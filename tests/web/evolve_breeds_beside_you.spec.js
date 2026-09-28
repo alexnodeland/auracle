@@ -20,7 +20,8 @@
 // - Stop keeps what has been bred, and only then are replaced patches retired.
 // - ⚡ evolve from this leaves the engine free: a deal is answered within a
 //   second while it walks, a ▶ costs only its own render, and its stop drops
-//   it. (A cold ▶ is a render, 0.3–1 s on a quiet machine and more on a busy
+//   it. It and EVOLVE POOL take turns: each is disabled while the other runs,
+//   and says why on hover. (A cold ▶ is a render, 0.3–1 s on a quiet machine and more on a busy
 //   one, so it is held to "answered while ⚡ still walks", not to a second.)
 //
 // Every test logs what it measured. Sessions are seeded (the films' own
@@ -142,11 +143,16 @@ const bankIds = (page) =>
 test("EVOLVE POOL breeds beside you: children land in order at the top of the bank, and a pick deals its next pair within 1 s", async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
+  await page.waitForFunction(() => window.__aur && window.__aur.wb && window.__aur.wb.rack, null, { timeout: 60_000 });
   const before = await bankIds(page);
   const mark = await toastMark(page);
   const t0 = await page.evaluate(() => performance.now());
 
   await page.locator("#evolve-btn").click();
+  // ⚡ takes turns with a generation: disabled while it breeds, and it says
+  // why where a hover finds it (a disabled button shows no title).
+  await expect(page.locator("#rack-evolve")).toBeDisabled();
+  await expect(page.locator(".evolve-slot")).toHaveAttribute("title", /EVOLVE POOL is breeding a generation — ⚡ waits for it/);
   // The button is its own progress bar, the slot names the job, the E is lit.
   await expect(page.locator("#evolve-btn")).toHaveClass(/\bbreeding\b/);
   await expect(page.locator("#job-slot")).toBeVisible();
@@ -212,6 +218,8 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   if (retired.some((id) => !born.includes(id))) expect(receipt).toMatch(/replaced: [^.]*\S\./);
   for (const id of retired) expect(after).not.toContain(id);
   await expect(page.locator("#job-slot")).toBeHidden({ timeout: 10_000 });
+  // ⚡'s turn: the generation is over.
+  await expect(page.locator("#rack-evolve")).toBeEnabled();
   // The lamp and the slot never disagreed.
   const lamp = await page.evaluate(() => window.__pwLamp.slice());
   expect(lamp.filter((s) => s.lit !== s.shown), "the E and the job slot disagreed").toEqual([]);
@@ -320,6 +328,9 @@ test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and
   await page.locator("#rack-evolve").click();
   await expect(page.locator("#job-text")).toHaveText(`⚡ evolving ${name}`);
   await expect(page.locator("#rack-evolve")).toBeDisabled();
+  // EVOLVE POOL waits for ⚡, and says so on hover.
+  await expect(page.locator("#evolve-btn")).toBeDisabled();
+  await expect(page.locator("#evolve-wrap")).toHaveAttribute("title", /EVOLVE POOL waits for it/);
   await expect(page.locator("#job-stop")).toBeVisible({ timeout: 30_000 });
   const since = await page.evaluate(() => performance.now());
 
@@ -348,6 +359,8 @@ test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and
   expect(playedAt, "the ▶ waited for ⚡ to land").toBeLessThan(landedAt);
   console.log(`⚡ landed after ${Math.round(took / 100) / 10} s: child ${first.childId}, reason ${first.reason}`);
   await expect(page.locator("#job-slot")).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator("#evolve-btn")).toBeEnabled();
+  await expect(page.locator("#evolve-wrap")).toHaveAttribute("title", "");
 
   // Again, and stop it: answered at once, and nothing is added.
   await page.locator('.viewtab[data-view="play"]').click();

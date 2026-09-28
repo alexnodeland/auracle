@@ -67,15 +67,18 @@ test("the engine binary exports the walk surface the worker calls", async ({ pag
     const proto = mod.WasmEngine.prototype;
     const methods = [
       "refine_jobs", "refine_absorb", "refine_finish", "refine_retired", "refine_retiring",
-      "refine_from_job", "refine_from_absorb", "refine_seed", "refine_from", "last_refine_reason",
+      "refine_from_job", "refine_from_absorb", "refine_from_walk", "refine_from_cancel",
+      "refine_seed", "last_refine_reason",
     ];
     return {
       farm_walk: typeof mod.farm_walk,
+      cache_namespace: typeof mod.cache_namespace,
       farm_render: typeof mod.farm_render,
       missing: methods.filter((k) => typeof proto[k] !== "function"),
     };
   });
   expect(got.farm_walk).toBe("function");
+  expect(got.cache_namespace).toBe("function");
   expect(got.farm_render).toBe("function");
   expect(got.missing, "WasmEngine methods worker.js calls are missing").toEqual([]);
 });

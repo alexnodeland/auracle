@@ -159,6 +159,15 @@ const farm = [];   // {port, ready, alive, job}
 const farmPreDead = new Set();
 
 function farmSetup(ports) {
+  // What each worker checks its own binary against (farm.js, `phrase`): the
+  // render namespace this worker's binary computes for the phrase.
+  const phrase = engine.phrase_json();
+  let ns = null;
+  try {
+    ns = glue && typeof glue.cache_namespace === "function" ? glue.cache_namespace(phrase) : null;
+  } catch (_) {
+    ns = null;
+  }
   for (let k = 0; k < ports.length; k++) {
     const f = { port: ports[k], ready: false, alive: !farmPreDead.has(k), job: null, index: k };
     if (!f.alive) {
@@ -168,7 +177,7 @@ function farmSetup(ports) {
     f.port.onmessage = (ev) => onFarmMessage(f, ev.data);
     // Posted before the worker has finished initializing; the port buffers it
     // until the far side sets `onmessage`, which is exactly when it can use it.
-    f.port.postMessage({ type: "phrase", json: engine.phrase_json(), build: V });
+    f.port.postMessage({ type: "phrase", json: phrase, ns });
     farm.push(f);
   }
 }
@@ -471,11 +480,17 @@ function walkCannot(f, m) {
 }
 
 // A worker died holding a walk: that says nothing about the walk, so it goes
-// back to the front of the queue for whoever is left.
+// back to the front of the queue for whoever is left. Either way the queue is
+// pumped: when this was the last worker standing (it died, or declined a walk
+// and was dropped), nothing else will ever pump it, and `walkPump` then hands
+// every walk still queued to its owner to walk here. Without that a generation
+// with walks queued behind a declining worker never finished, and a refit and
+// the next EVOLVE POOL waited for it until the player pressed stop.
 function walkLost(f) {
-  if (f.job === null || !walkInflight.has(f.job)) return;
-  const task = walkSettle(f, f.job);
-  if (task && !task.dead) walkQueue.unshift(task);
+  if (f.job !== null && walkInflight.has(f.job)) {
+    const task = walkSettle(f, f.job);
+    if (task && !task.dead) walkQueue.unshift(task);
+  }
   f.job = null;
   walkPump();
 }
@@ -1151,6 +1166,11 @@ function breedOpen() {
   let parents;
   let ctx = null;
   let jobs = null;
+  // A session saved while a generation ran comes back over size, and opening
+  // a generation trims it first. Done here, on its own, so the rows it
+  // retires leave main's bank now and are named, rather than going silently
+  // inside `refine_jobs` and staying live in main until the first child.
+  poolTrim();
   if (typeof engine.refine_jobs === "function") {
     const reply = JSON.parse(engine.refine_jobs());
     if (reply.context) {
@@ -1193,9 +1213,26 @@ function breedOpen() {
   });
 }
 
+// Bring the pool back to size (`refine_finish` with no generation open) and
+// tell main what left, with the views that no longer hold it.
+function poolTrim() {
+  let gone = [];
+  try {
+    gone = JSON.parse(engine.refine_finish());
+  } catch (_) {
+    gone = [];
+  }
+  if (gone.length) post({ type: "pool_trimmed", retired: gone, views: tasteViews(), status: status() });
+}
+
 async function breedFarm(g) {
   const farmed = jobsOk(g) && (await crewUp());
-  if (gen !== g || g.stopped) return;
+  if (gen !== g || g.stopped) {
+    // Stopped while the crew came up: it has nothing to walk, so it starts
+    // its idle minute now rather than standing for the rest of the session.
+    if (farmed && !walkBusy()) crewIdle();
+    return;
+  }
   if (!farmed) {
     for (let i = 0; i < g.total; i++) g.results.set(i, SERIAL);
     genStep(g);
@@ -1396,78 +1433,101 @@ function breedStop() {
 // makes the job, a farm worker walks it, `refine_from_absorb` folds it in. For
 // the walk's whole length (about 20 s, up to four times that with many locks)
 // this worker answers everything; it used to be one call that answered
-// nothing. It goes to the front of the walk queue: the player asked for this
-// one patch, and a generation's walks can wait one walk.
+// nothing.
 //
-// Stop answers "stopped" at once and drops the walk's result when it lands.
-// With no farm it is the old single call, `refine_from`, which cannot be
-// stopped: the same child, because both draw the walk's seed the same way.
+// The job is drawn **first**, before this worker waits for anything. It is
+// one draw of the `refine` stream, and so is a generation's; drawn after the
+// wait for a crew, a generation dispatched during a cold crew's handshake drew
+// first, and which children a seed bred depended on how warm the crew was
+// (ADR-001). From the draw until the walk lands or is stopped, the engine
+// keeps the seed in the pool: an edit, a preset or a trim replaces something
+// else.
+//
+// ⚡ and a generation take turns (`blocked`): a generation waits for ⚡ and ⚡
+// for a generation, so a ⚡ child is never absorbed into a generation at
+// whatever job count its walk happened to finish on (ADR-007). A refit waits
+// for ⚡ too, as it does for a generation: the walk is judged under the model
+// it was drawn under.
+//
+// Stop answers "stopped" at once, drops the job in the engine and drops the
+// walk's result when it lands. With no farm, or a walk no worker could run,
+// the same job is walked here (`refine_from_walk`), so the child is the same;
+// that cannot be stopped, and main is told so before it starts.
 let evolving = null;
 
 async function evolveFrom(m) {
   const locks = JSON.stringify(m.locks || []);
-  // Held from the start, so a second ⚡ waits for this one (see `blocked`).
-  const ev = { id: m.id, dead: false };
-  evolving = ev;
-  const farmed = typeof engine.refine_from_job === "function" && (await crewUp());
-  if (ev.dead) return; // stopped while the crew came up; already answered
-  if (!farmed) {
-    post({ type: "evolve_started", seedId: m.id, stoppable: false });
-    beginLongOp();
-    try {
-      evolvedFrom(m.id, Number(engine.refine_from(m.id, locks)));
-    } finally {
-      endLongOp();
-      evolving = null;
-      schedulePump();
-    }
-    return;
-  }
+  // Drawn before any await: see above.
   const reply = JSON.parse(engine.refine_from_job(m.id, locks));
   if (!reply.job) {
-    evolving = null;
+    // No taste yet, or the seed has gone. No crew is raised for nothing.
     post({ type: "evolved_from", seedId: m.id, childId: 0, reason: reply.reason || refineReason(), views: tasteViews(), status: status() });
     schedulePump();
     return;
   }
+  // Held from the draw, so what waits for ⚡ (see `blocked`) waits from now.
+  const ev = { id: m.id, dead: false };
+  evolving = ev;
   const ctx = JSON.stringify(reply.context);
   const job = JSON.stringify(reply.job);
+  const farmed = await crewUp();
+  if (ev.dead) {
+    // Stopped while the crew came up: already answered, and the crew it
+    // raised is reaped after its idle minute like any other.
+    if (!walkBusy()) crewIdle();
+    return;
+  }
+  if (!farmed) return evolveHere(ev);
   post({ type: "evolve_started", seedId: m.id, stoppable: true });
-  const land = (result) => {
-    if (ev.dead) return;
-    evolving = null;
-    evolvedFrom(m.id, Number(engine.refine_from_absorb(m.id, result)));
-    schedulePump();
-  };
   walkSubmit(
     {
       request: "refine_from",
       evolve: ev,
       ctx,
       job,
-      done: (result) => land(result),
-      // A worker that could not walk it: walked here, the same job.
-      fail: () => {
+      done: (result) => {
         if (ev.dead) return;
-        beginLongOp();
-        let result = "";
-        try {
-          result = glue.farm_walk(ctx, job);
-        } finally {
-          endLongOp();
-        }
-        if (result) land(result);
-        else {
-          // The engine's own context and job did not parse: a fault, said
-          // as one, and main releases the ⚡ it was holding.
-          evolving = null;
-          schedulePump();
-          throw new Error("⚡'s walk did not parse");
-        }
+        evolveEnd(ev);
+        evolvedFrom(ev.id, Number(engine.refine_from_absorb(ev.id, result)));
       },
+      // No worker could walk it (it declined, died with no one left, or the
+      // watchdog fired): walked here, the same job.
+      fail: () => evolveHere(ev),
     },
     true
   );
+}
+
+// ⚡'s job walked in this worker. It cannot be interrupted, so main hears
+// that first (the slot drops its stop), and the walk waits one turn, so a
+// stop already on its way is answered rather than ignored.
+function evolveHere(ev) {
+  if (ev.dead) return;
+  post({ type: "evolve_started", seedId: ev.id, stoppable: false });
+  setTimeout(() => {
+    if (ev.dead || evolving !== ev) return;
+    let child = 0;
+    beginLongOp();
+    try {
+      child = Number(engine.refine_from_walk(ev.id));
+    } catch (err) {
+      evolveEnd(ev);
+      engineError("refine_from", ev.id, err);
+      return;
+    } finally {
+      endLongOp();
+    }
+    evolveEnd(ev);
+    evolvedFrom(ev.id, child);
+  }, 0);
+}
+
+// ⚡ is over (landed, walked here, or failed): what waited for it may start,
+// and a crew with nothing left to walk starts its idle minute.
+function evolveEnd(ev) {
+  if (evolving === ev) evolving = null;
+  if (!walkBusy()) crewIdle();
+  schedulePump();
 }
 
 function evolvedFrom(seedId, childId) {
@@ -1488,6 +1548,11 @@ function evolveStop() {
   if (!ev) return;
   ev.dead = true;
   evolving = null;
+  try {
+    engine.refine_from_cancel(ev.id); // its seed may be replaced again
+  } catch (_) {
+    /* a poisoned engine: already reported */
+  }
   walkAbandon((t) => t.evolve === ev);
   post({ type: "evolved_from", seedId: ev.id, childId: 0, reason: "stopped", views: tasteViews(), status: status() });
   if (!walkBusy()) {
@@ -1572,22 +1637,27 @@ function schedulePump() {
   setTimeout(pump, 0);
 }
 
-// What waits for a walk job rather than for the floor. A generation does not
-// hold the floor (see `breedOpen`), but a refit waits for it — the generation
-// is bred under the posterior it started under — and so does the next
-// generation. A second ⚡ waits for the first. And while boot's own crew is
-// still rendering the bank, a generation or ⚡ waits for it to be reaped: the
-// farm has one crew at a time. (With no boot crew — `?farm=0`, a small machine
-// — they run during the fill, between its batches, as they always did.)
+// What waits for a walk job rather than for the floor. A generation and ⚡ do
+// not hold the floor (see `breedOpen`, `evolveFrom`), but a refit waits for
+// both: each is bred under the posterior it started under, and admitted under
+// it too. They wait for each other: the next generation for this one or for
+// ⚡, and ⚡ for a generation or another ⚡. So the `refine` stream is drawn in
+// the order they were asked for, and a ⚡ child is never absorbed into a
+// generation at whatever job count its walk finished on. (Main keeps the two
+// buttons from being pressed over each other; this is the rule, whatever
+// arrives.) And while boot's own crew is still rendering the bank, a
+// generation or ⚡ waits for it to be reaped: the farm has one crew at a time.
+// (With no boot crew — `?farm=0`, a small machine — they run during the fill,
+// between its batches, as they always did.)
 const bootCrewLive = () => !booted && farmCrew_ === 0 && !farmClosed && farm.some((f) => f.alive);
+const walking = () => gen != null || evolving != null;
 function blocked(m) {
   switch (m.type) {
     case "fit":
-      return gen != null;
+      return walking();
     case "refine":
-      return gen != null || bootCrewLive();
     case "refine_from":
-      return evolving != null || bootCrewLive();
+      return walking() || bootCrewLive();
     default:
       return false;
   }
@@ -2268,7 +2338,15 @@ async function dispatch(m) {
       // On the farm (see `evolveFrom`): this returns once the walk is out,
       // and the pump goes on serving everything else while it runs.
       evolveFrom(m).catch((err) => {
-        evolving = null;
+        if (evolving && evolving.id === m.id) {
+          evolving.dead = true;
+          evolving = null;
+        }
+        try {
+          engine.refine_from_cancel(m.id);
+        } catch (_) {
+          /* a poisoned engine: reported below */
+        }
         engineError("refine_from", m.id, err);
         schedulePump();
       });

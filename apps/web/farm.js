@@ -131,23 +131,30 @@ function cachePut(key, cached) {
 // the difference between one lost render and a 30 s pause.
 async function onJob(m) {
   if (m.type === "phrase") {
-    // Build skew is impossible by construction (main compiles one module and
-    // shares it), but a stale worker script paired with a fresh engine is not:
-    // refuse rather than render under a stimulus we cannot vouch for. The
-    // engine sees a worker that never accepts work and falls back.
-    if (m.build != null && String(m.build) !== String(V)) {
-      port.postMessage({ type: "refused", reason: `build skew ${m.build} vs ${V}` });
-      return;
-    }
-    phrase = m.json;
     // The namespace is a pure function of the stimulus and the featurizer
     // generation, so it is known as soon as the phrase is, and every row this
     // worker reads or writes is scoped by it.
     try {
-      cacheNs = wasm ? wasm.cache_namespace(phrase) : null;
+      cacheNs = wasm ? wasm.cache_namespace(m.json) : null;
     } catch (_) {
       cacheNs = null;
     }
+    // Skew between this instance and the engine's. Comparing build stamps
+    // cannot find it: this script, the engine worker's and both URLs of the
+    // binary carry main's one stamp, so the old check compared main's stamp
+    // with itself. What can differ is the binary each instance actually
+    // loaded, when the compiled module could not be shared and each fetched
+    // its own. So the engine sends the namespace *its* binary computes for
+    // this phrase (the stimulus and the featurizer's `RENDER_EPOCH`), and a
+    // worker whose binary computes another refuses rather than render or walk
+    // under a measurement the engine does not make. The engine sees a worker
+    // that never accepts work and falls back.
+    if (m.ns != null && cacheNs != null && m.ns !== cacheNs) {
+      cacheNs = null;
+      port.postMessage({ type: "refused", reason: `render namespace ${m.ns} is not this binary's` });
+      return; // `phrase` stays unset, so a job already on its way is declined
+    }
+    phrase = m.json;
     if (cacheNs) await cacheOpen(cacheNs);
     return;
   }
@@ -246,7 +253,8 @@ async function onJob(m) {
 let walkContext = null;
 
 function onWalk(m) {
-  if (!wasm || typeof wasm.farm_walk !== "function" || walkContext == null) {
+  // `phrase` unset: not initialized, or this binary refused the engine's.
+  if (!wasm || typeof wasm.farm_walk !== "function" || walkContext == null || phrase == null) {
     port.postMessage({ type: "cannot", i: m.i, walk: true, reason: "not initialized" });
     return;
   }

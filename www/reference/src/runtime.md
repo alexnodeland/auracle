@@ -143,6 +143,15 @@ the pool is the serial path's at every width; natively
 crew that never comes up, is walked in the engine worker from the engine's own
 copy of the same job.
 
+⚡ evolve from this is one job over the same path. It draws its job from the
+`refine` stream **before** it waits for a crew, so a generation asked for
+during a cold crew's handshake cannot draw first and change the child: a
+seeded session breeds the same ⚡ child however warm the crew was. With no
+crew the engine walks that very job (`refine_from_walk`). A generation and ⚡ take turns in the engine worker,
+and a refit waits for both, so a ⚡ child is never absorbed into a generation
+at whatever job count its walk finished on. The engine keeps a ⚡ seed out of
+every eviction until its walk is absorbed or stopped.
+
 Replacement waits for the end: children join the pool as they are absorbed,
 and `refine_finish` retires the weakest unpinned members once, when the last
 job lands or the player stops the generation.

@@ -154,10 +154,16 @@ let learnedShown = false;
 // worker's estimate (ms, from this session's walk times) as of `etaAt`, and
 // `farm` whether its walks run on the farm (the engine answers everything
 // meanwhile) or in the engine worker (a deal waits for the walk in progress).
-// ⚡ evolve from this: `{id, name, stoppable}`. A refit waits for a
-// generation, never for ⚡ on the farm.
+// ⚡ evolve from this: `{id, name, stoppable}`. A refit waits for either. The
+// two take turns: while one runs the other's button is disabled and says why
+// (`EVOLVE_WAITS_FOR_ZAP`, `ZAP_WAITS_FOR_GENERATION`), and the worker holds
+// either one back until the other is over whatever arrives.
 let breeding = null;
 let evolvingFrom = null;
+const EVOLVE_WAITS_FOR_ZAP =
+  "⚡ evolve from this is walking — EVOLVE POOL waits for it. The job slot in the menu bar shows it.";
+const ZAP_WAITS_FOR_GENERATION =
+  "EVOLVE POOL is breeding a generation — ⚡ waits for it. Stop it in the menu bar, or let it finish.";
 // The generation whose children the bank's "new" group holds (`lastBorn`).
 let bornGen = 0;
 // Children that landed since the last bank render: they glow once.
@@ -1468,6 +1474,19 @@ worker.onmessage = (e) => {
       scheduleSave();
       break;
     }
+    // EVOLVE POOL found the pool over size (a session saved while a
+    // generation ran comes back that way) and brought it back to size before
+    // opening the next: that interrupted generation's end. What it retired
+    // leaves the bank now, by name, not silently with the next child.
+    case "pool_trimmed": {
+      const trimmed = Array.isArray(m.retired) ? m.retired : [];
+      applyViews(m.views);
+      applyStatus(m.status);
+      refreshInstruments();
+      scheduleSave();
+      if (trimmed.length) note(`The generation that was breeding when you left has ended.${madeRoom(trimmed)}`);
+      break;
+    }
     case "refined": {
       lampOff("refine");
       const wasStopped = !!m.stopped;
@@ -2060,6 +2079,7 @@ worker.onmessage = (e) => {
       if (evolvingFrom && evolvingFrom.id === m.seedId) {
         evolvingFrom.stoppable = !!m.stoppable;
         renderJobSlot();
+        renderEvolveFrom();
       }
       break;
     }
@@ -2067,6 +2087,8 @@ worker.onmessage = (e) => {
       lampOff("refine_from");
       evolvingFrom = null;
       renderEvolveFrom();
+      renderEvolveBtn(); // EVOLVE POOL's turn
+      renderNextStep();
       renderTeach();
       const evolveEvicted = applyViews(m.views);
       applyStatus(m.status);
@@ -2365,6 +2387,8 @@ function releaseRequest(request, id) {
       evolvingFrom = null;
       renderTeach();
       renderEvolveFrom();
+      renderEvolveBtn();
+      renderNextStep();
       pendingEvolve = false;
       break;
     case "edit_commit":
@@ -2543,9 +2567,9 @@ function renderTeach() {
   mid.classList.toggle("learned", !learning && learnedShown);
   $("play-duel")?.classList.toggle("learning", learning);
   if (learning) {
-    // A refit waits for a generation; for ⚡ only when ⚡ is walked in the
-    // engine worker itself.
-    copy.textContent = breeding || (evolvingFrom && !evolvingFrom.stoppable)
+    // A refit waits for a generation, and for ⚡: each is bred and admitted
+    // under the model it started with.
+    copy.textContent = breeding || evolvingFrom
       ? `● it will learn from these ${FIT_EVERY} when breeding finishes`
       : `● learning from your last ${FIT_EVERY} picks…`;
     return;
@@ -2641,7 +2665,7 @@ function slotJob() {
       stop: !!e.stoppable,
       title: e.stoppable
         ? "⚡ evolve from this is walking from the patch on the bench. Stop drops the walk; nothing is added."
-        : "⚡ evolve from this is walking from the patch on the bench. On this machine it runs in the engine and cannot be stopped.",
+        : "⚡ evolve from this is walking from the patch on the bench. It is walking in the engine itself, where it cannot be stopped.",
     };
   }
   if (lampJobs.has("fit")) {
@@ -2722,8 +2746,8 @@ function renderNextStep() {
   } else if (status.generation === 0) {
     // It starts the generation where the player is: the job slot shows it
     // from any view, and the children land at the top of the bank.
-    label = breeding ? "Breeding — keep playing ▸" : "It’s learned something. Breed a generation ▸";
-    act = breeding ? null : () => $("evolve-btn").click();
+    label = breeding || evolvingFrom ? "Breeding — keep playing ▸" : "It’s learned something. Breed a generation ▸";
+    act = breeding || evolvingFrom ? null : () => $("evolve-btn").click();
   } else if (lastBorn.size > 0) {
     label = `Gen ${bornGen || status.generation} bred new patches — they're at the top of the bank ▸`;
     act = showNewGroup;
@@ -5713,6 +5737,17 @@ function retractVote() {
   // that was just taken back is the lane saying something untrue.
   aheadDrop(key);
   dropToast(toast);
+  // A side left the pool inside the window (a generation ended, or a preset
+  // load or an edit made room): the question is about a patch that no longer
+  // exists, so it is not asked again. The pick is still taken back, and the
+  // table keeps the pair that replaced it (or the deal on its way).
+  const gone = pair.find((id) => goneIds.has(id) || cutIds.has(id));
+  if (gone !== undefined) {
+    const who = nameOrKnown(gone) || "one of them";
+    note(`Pick taken back — ${who} has left the bank, so that pair is not asked again.`, { replace: "vote" });
+    renderPlayDuel();
+    return true;
+  }
   // The pair that replaced it waits as the next one, sounds and all: the
   // player has seen it, so it comes before any pair dealt behind it. A deal
   // still out when the pick is taken back lands with the pair on the table,
@@ -5873,7 +5908,7 @@ $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
 $("skip-duel").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 $("evolve-btn").onclick = () => {
-  if (breeding) return;
+  if (breeding || evolvingFrom) return;
   lampOn("refine");
   breeding = { generation: 0, done: 0, total: 0, eta: null, etaAt: 0, farm: true, stopping: false, retiring: [] };
   renderTeach(); // a refit armed now waits for the generation, and says so
@@ -5914,8 +5949,12 @@ function renderEvolveBtn() {
   const stop = $("evolve-stop");
   const b = breeding;
   btn.classList.toggle("breeding", !!b);
-  btn.disabled = !!b;
+  btn.disabled = !!b || !!evolvingFrom;
   stop.classList.toggle("hidden", !b || !b.total || b.stopping);
+  // A disabled button shows no title, so why it waits is on its wrapper.
+  $("evolve-wrap").title = !b && evolvingFrom ? EVOLVE_WAITS_FOR_ZAP : "";
+  // ⚡ takes its turn from this: disabled while a generation breeds.
+  renderEvolveFrom();
   if (!b) {
     btn.textContent = "evolve pool";
     btn.removeAttribute("aria-valuenow");
@@ -8493,7 +8532,7 @@ function renderRack(rebuild = false) {
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
   syncCommitBtn();
-  enable("rack-evolve", hasRack && !evolvingFrom);
+  enable("rack-evolve", hasRack && !evolvingFrom && !breeding);
   enable("lock-knobs", hasRack);
   enable("lock-structure", hasRack);
   enable("lock-clear", hasRack && wb.locks.size > 0);
@@ -8504,7 +8543,7 @@ function renderRack(rebuild = false) {
     if (wrap) wrap.title = $(id).disabled ? text : "";
   };
   reason("rack-play", !hasRack ? "Pick a patch from the bank first" : "This patch failed the safety vet and is muted");
-  reason("rack-evolve", evolvingFrom ? "⚡ is evolving this patch — the job slot in the menu bar shows it, with stop" : "Pick a patch from the bank first");
+  reason("rack-evolve", evolveFromWhy() || "Pick a patch from the bank first");
   reason("lock-knobs", "Pick a patch from the bank first");
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
@@ -12928,11 +12967,20 @@ $("rack-svg").addEventListener("keydown", (e) => {
 });
 
 function startEvolveFrom(id) {
+  // ⚡ waits for a generation (see `breeding`). Its button is disabled then,
+  // but a commit's duel can end with "…then evolve" while one breeds: the
+  // commit stands, and the ⚡ it was on its way to says why it did not go.
+  if (breeding || evolvingFrom) {
+    note(`⚡ not started — ${breeding ? "EVOLVE POOL is breeding a generation" : "⚡ is already evolving a patch"}. Press ⚡ again when it finishes.`, { urgent: true, replace: "evolve-from" });
+    return;
+  }
   // Said in the job slot (and on the button), not a toast: a toast carries
   // the result of a gesture, and this one's result comes when the walk lands.
   evolvingFrom = { id, name: nameOf(id), stoppable: false };
   lampOn("refine_from");
   renderEvolveFrom();
+  renderEvolveBtn(); // EVOLVE POOL waits for ⚡
+  renderNextStep();
   renderTeach();
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
@@ -12943,14 +12991,28 @@ function startEvolveFrom(id) {
 }
 
 // ⚡ is disabled and says what it is doing while its walk runs; the rack stays
-// live, and so does everything else, because the walk is on the farm.
+// live, and so does everything else, because the walk is on the farm. It is
+// disabled while a generation breeds too, and says so.
 function renderEvolveFrom() {
   const btn = $("rack-evolve");
   if (!btn) return;
   btn.textContent = evolvingFrom ? "⚡ evolving…" : "⚡ evolve from this";
   btn.classList.toggle("evolving", !!evolvingFrom);
-  if (evolvingFrom) btn.disabled = true;
-  else btn.disabled = !(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
+  const hasRack = !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
+  btn.disabled = !!evolvingFrom || !!breeding || !hasRack;
+  const wrap = btn.closest(".tt");
+  if (wrap) wrap.title = btn.disabled ? evolveFromWhy() || "Pick a patch from the bank first" : "";
+}
+
+/** Why ⚡ cannot be pressed now for a job, or null. */
+function evolveFromWhy() {
+  if (evolvingFrom) {
+    return evolvingFrom.stoppable
+      ? "⚡ is evolving this patch — the job slot in the menu bar shows it, with stop"
+      : "⚡ is evolving this patch — the job slot in the menu bar shows it";
+  }
+  if (breeding) return ZAP_WAITS_FOR_GENERATION;
+  return null;
 }
 
 function stopEvolveFrom() {

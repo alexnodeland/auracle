@@ -90,9 +90,9 @@ count so far, and how the pair on the table was dealt.</figcaption>
 The pips count down to the next **refit**, and the sixth pick always brings
 one. The row fills and the strip says *● learning from your last 6 picks…*
 while the sixth pick's seven seconds run out and the refit runs (pick again
-first and the refit goes out at once). During a generation it says *● it will
-learn from these 6 when breeding finishes* instead, because a refit waits for
-the generation. When the refit lands, the [TASTE](./taste.md) map is redrawn
+first and the refit goes out at once). During a generation, or while ⚡ evolve
+from this walks, it says *● it will learn from these 6 when breeding finishes*
+instead, because a refit waits for them. When the refit lands, the [TASTE](./taste.md) map is redrawn
 and the strip glows amber and says *● it just learned — see what changed ▸*;
 the link opens the map. It says so until your next pick.
 
@@ -156,9 +156,12 @@ measured on a busy four-core machine, about two to three and a half minutes,
 a little less with more cores to spare. The whole instrument goes on
 answering while it breeds: a pick deals its next pair in a few hundredths of
 a second, a ▶ plays, a patch opens, and PERFORM measures and grows offers.
-Only a refit waits for the generation to finish, so the generation is bred
-under the model it started with. The seeds give the same children however
-many workers walk them.
+Only a refit and [⚡ evolve from this](../rack.md#locks-and-evolving-from-here)
+wait for the generation to finish: the refit so that the generation is bred
+under the model it started with, and ⚡ because the two take turns (its button
+is disabled until then, and says why when you hover it). While ⚡ walks,
+EVOLVE POOL waits for it in the same way. The seeds give the same children
+however many workers walk them.
 
 While it breeds, **EVOLVE POOL** is its own progress bar, *breeding 3/10*
 (the walks folded in so far), with **stop** beside it; the job slot in the

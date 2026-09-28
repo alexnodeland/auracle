@@ -114,8 +114,9 @@ EVOLVE or in PATCH's pick strip, or an offer answered in PERFORM. On the sixth
 the row fills and the meter reads **● learning from your last 6 picks…**: the
 sixth pick keeps its seven seconds to be taken back like any other, and the
 refit goes out when they are up (or at once, if you pick again first). While a
-generation is breeding it reads **● it will learn from these 6 when breeding
-finishes**, because a refit waits for the generation. The wordmark's **E**
+generation is breeding, or ⚡ evolve from this is walking, it reads **● it will
+learn from these 6 when breeding finishes**, because a refit waits for them.
+The wordmark's **E**
 lights while the fit runs. When it lands, the TASTE map is redrawn and the
 meter reads **● it just learned — see what changed ▸** until your next pick;
 the link opens the map.

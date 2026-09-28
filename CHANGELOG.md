@@ -113,7 +113,9 @@ changelog that edits its own past is not a record.
   evolution bank, in the order they were bred, playable at once; the ranked
   rows below it do not move. Nothing leaves the bank until the generation
   ends, so a patch you save while it breeds is safe, and hovering EVOLVE POOL
-  marks the rows it may replace. The ten children used to arrive at once at
+  marks the rows it may replace. A session saved while a generation bred
+  comes back with that generation unfinished; the next EVOLVE POOL ends it
+  first and names what it replaced. The ten children used to arrive at once at
   the end, scattered through the ranked list, and patches were replaced as the
   walks went (`evolve_breeds_beside_you.spec.js`).
 - **EVOLVE POOL is its own progress bar, and a generation can be stopped.**
@@ -125,7 +127,13 @@ changelog that edits its own past is not a record.
   seconds, longer with many locks) no longer stops the engine: a deal, a ▶, a
   bank open and an edit are answered while it runs, and **stop** drops it. It
   used to be one call during which nothing but the knobs answered, with a
-  toast as its only sign (`evolve_breeds_beside_you.spec.js`).
+  toast as its only sign. ⚡ and EVOLVE POOL take turns: while a generation
+  breeds ⚡ is disabled and says why when you hover it, while ⚡ walks
+  EVOLVE POOL waits, and a refit waits for either, so a seeded session breeds
+  the same children whichever finishes first. The patch ⚡ walks from stays in
+  the bank until its walk lands or is stopped
+  (`evolve_breeds_beside_you.spec.js`,
+  `a_seed_evolving_is_never_evicted_until_its_walk_lands`).
 - **Long work has one home: the job slot in the menu bar.** Beside
   GENERATIONS it shows *⚡ breeding 3/10 · about 40 s*, *⚡ evolving Glass
   Pad* or *refitting your taste map…* while one runs, with **stop** where the

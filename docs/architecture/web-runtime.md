@@ -59,9 +59,13 @@ floor at a time. A hidden PERFORM's measurement drops to `later`.
 
 A generation (`refine`) and ⚡ (`refine_from`) are **walk jobs**: they run on
 the farm and never hold the floor, so every lane is served while they run.
-Two things wait for a walk job instead of for the floor (`blocked` in
-`worker.js`): a refit and another generation wait for the running
-generation, and a second ⚡ waits for the first. Neither starts before boot's
+What waits for a walk job instead of for the floor (`blocked` in
+`worker.js`): a refit waits for a generation and for ⚡ (each is bred and
+admitted under the posterior it started under), and the two take turns — a
+generation waits for the running one or for ⚡, and ⚡ for a generation or
+another ⚡ — so the `refine` stream is drawn in the order they were asked for
+and a ⚡ child never lands inside a generation. Main disables each button
+while the other runs, with the reason on hover. Neither starts before boot's
 crew is gone.
 
 **Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
@@ -98,10 +102,17 @@ first.
   the walk in progress, which the cards say.
 
 ⚡ evolve from this is one walk over the same path: `refine_from_job`, a farm
-walk (at the front of the queue), `refine_from_absorb`. Stop
-(`refine_from_stop`) answers at once and drops the walk's result. With no
-crew it is the single `refine_from` call, which cannot be stopped; both draw
-the walk's seed the same way.
+walk (at the front of the queue), `refine_from_absorb`. The job is drawn
+**before** the worker waits for a crew, so nothing dispatched during a cold
+crew's handshake can draw from the `refine` stream first (ADR-001). From the
+draw until absorb or stop the engine exempts the seed from eviction. Stop
+(`refine_from_stop`) answers at once, drops the job (`refine_from_cancel`) and
+drops the walk's result. With no crew, or a walk no worker could run, the
+engine walks the job it already drew (`refine_from_walk`): the same child, not
+stoppable, and main is told so (`evolve_started` with `stoppable: false`)
+before the walk starts. A generation also brings a pool restored over size
+back to size before it opens (`poolTrim`), posting `pool_trimmed` so main
+drops and names the rows.
 
 ## The farm on demand
 
