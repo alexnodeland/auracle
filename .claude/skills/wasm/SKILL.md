@@ -28,6 +28,10 @@ current.
 make wasm          # wasm-pack --release with the 8 MB stack, then the build stamp
 ```
 
+If it stops with "failed to download … binaryen", the proxy is in the way of
+wasm-pack's own downloader: `docs/runbooks/wasm-opt-download.md` (fetch the
+same release with curl and put it on `PATH`; never disable wasm-opt).
+
 - Always through `make`: it sets `WASM_STACK`. A plain `wasm-pack build` ships
   a 1 MB stack that overflows on large patches.
 - It takes about a minute. Run it before queueing browser work, not while a

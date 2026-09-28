@@ -85,6 +85,7 @@ plugins work on it.
 
 - [`wasm-engine-poisoned.md`](runbooks/wasm-engine-poisoned.md): "recursive use of an object", "memory access out of bounds"
 - [`stale-wasm.md`](runbooks/stale-wasm.md): the app runs old engine code
+- [`wasm-opt-download.md`](runbooks/wasm-opt-download.md): `make wasm` cannot download wasm-opt behind a proxy
 - [`disk-full.md`](runbooks/disk-full.md): no space left, mid-build or mid-render
 - [`film-shot-fails.md`](runbooks/film-shot-fails.md): a rehearsal shot errors or runs late
 - [`browser-queue.md`](runbooks/browser-queue.md): a browser job waits forever
