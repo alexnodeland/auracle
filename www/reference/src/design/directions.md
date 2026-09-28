@@ -7,8 +7,9 @@ never on the table. Written down so that <em>not considered</em> and
 
 Everything here came out of a review pass in August 2026 that read the books and
 the crates and asked what the architecture already supports that nobody has
-argued about. **Nothing on this page has been decided**, and several entries
-name the reason they might be wrong.
+argued about. **Nothing on this page has been decided**, except §13, which
+has since shipped and is kept as a short record, and several entries name the
+reason they might be wrong.
 
 ## Why this is a fourth register
 
@@ -52,7 +53,7 @@ page rather than an issue.
 | [10](#10-the-measurements-are-a-result-and-results-travel) | The measurements as published results | The changelog already holds them |
 | [11](#11-the-model-nobody-has-fitted-is-in-the-render-cache) | The production→brightness map, so **audio** taste can tilt proposals too | Every `(term, spec) → φ` ever computed |
 | [12](#12-the-screening-cascade-is-cited-and-unbuilt) | Building the cascade the φ split is justified by | φ_struct is render-free |
-| [13](#13-ten-independent-walks-run-one-at-a-time) | Refinement seeds across the farm, for ⚡ latency | The seeds are independent; the farm is idle |
+| [13](#13-ten-independent-walks-now-run-side-by-side) | Refinement seeds across the farm — **shipped**, now in the [decisions log](./decisions.md) | The seeds are independent; the farm was idle |
 | [14](#14-stars-have-a-global-scale-keepkill-has-a-per-session-one) | A per-session cutpoint offset, by the argument already made for $\tau_s$ | The $\tau_s$ design, one likelihood over |
 | [15](#15-the-fit-budget-is-denominated-in-steps-not-sweeps) | A sweep-denominated fit budget, as the alternative to capping K | `fit_bench` already measures the axis |
 | [16](#16-provenance-is-scored-and-then-ignored) | A per-provenance likelihood temperature | `ProvenanceScore`, already computed |
@@ -497,33 +498,33 @@ consumed as a single scalar, `QUARANTINE_FITNESS`. A screen fitted on those
 labels prunes exactly the candidates whose render was guaranteed to be thrown
 away.
 
-## 13. Ten independent walks, run one at a time
+## 13. Ten independent walks, now run side by side
 
-```rust
-pub fn refine<R: Rng>(&mut self, rng: &mut R) {
-    for parent_id in self.refine_begin() {
-        self.refine_seed(rng, parent_id);
-    }
-}
-```
+**Shipped, and so no longer a direction**: it left this page for the
+[decisions log](./decisions.md) when it was built. It is kept here, short,
+because it was argued on this page first.
 
-An MH walk is inherently sequential. The ten **seeds** are not — they are
-independent by construction, which is why `search_health` already spawns one
-thread per seed natively. In the browser they run one after another, while the
-[render farm](../runtime.md#the-render-farm) — a pool of wasm workers — sits
-idle for the duration.
+The entry observed that an MH walk is sequential but a generation's ten
+**seeds** are not: they are independent by construction, `search_health`
+already walked them one thread per seed natively, and in the browser they ran
+one after another while the [render farm](../runtime.md#the-render-farm) sat
+idle. It named the blocker too: farm workers were stateless
+`(term, phrase) → φ`, and a walk needs the kernel and the posterior.
 
-This is **not** the closed `parallel`-feature entry in
-[open questions](./open-questions.md). That one was about `rayon` inside
-fugue-evo and it was correctly closed. This is about distributing whole
-seed-walks across workers that already exist.
+What shipped crosses that blocker with data rather than state. A generation is
+now jobs and a shared context ([refinement](../search/refinement.md#what-runs)):
+`refine_jobs` hands out one job per seed (its tree, step budget and its own
+RNG seed) and one context (the tilted prior, the posterior, the standardizer,
+the phrase), a pure `run_walk` walks a job on any worker, and `refine_absorb`
+folds the results back **in job order**, so the pool is the serial path's at
+every width. The context crosses to each walk worker once per generation. In
+the browser the walks run on a crew raised on demand
+([walks on the farm](../runtime.md#walks-on-the-farm)), and a generation takes
+about as long as its slowest walks rather than the sum of ten.
 
-The blocker is real and worth stating: farm workers are deliberately stateless
-`(term, phrase) → φ`, and a walk needs the kernel and the posterior, so they
-would have to become *walk* workers with a much heavier contract and a
-versioning problem the render protocol does not have. The prize is the number
-that same entry already identified as the one that matters — ⚡ latency — and it
-is a factor of the seed count rather than a few percent.
+The prize the entry named, ⚡ latency, moved less than the entry hoped: ⚡ is
+one walk, so it still takes a walk's time. What changed is that it walks on the
+farm, and the engine answers everything else while it does.
 
 ## 14. Stars have a global scale; keep/kill has a per-session one
 

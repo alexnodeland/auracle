@@ -1380,8 +1380,9 @@ function genDrop(g) {
   schedulePump(); // a refit or a generation waiting for this one
 }
 
-// `refine_stop`: keep what has been bred. A walk running *here* (the serial
-// path) cannot be interrupted; the stop lands when it returns.
+// `refine_stop`: end the generation with what has been bred. A walk running
+// *here* (the serial path) cannot be interrupted; the stop lands when it
+// returns.
 function breedStop() {
   const g = gen;
   if (!g || g.stopped) return;

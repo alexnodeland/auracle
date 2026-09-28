@@ -157,13 +157,22 @@ a little less with more cores to spare. The whole instrument goes on
 answering while it breeds: a pick deals its next pair in a few hundredths of
 a second, a ▶ plays, a patch opens, and PERFORM measures and grows offers.
 Only a refit waits for the generation to finish, so the generation is bred
-under the model it started with. The seeds give the same children however
+under the model it started with. A pick you make meanwhile moves the next pair
+at once, but not which children are kept: that is judged by the same model
+the generation started with, whenever your picks land, and they count from
+the refit after it. The seeds give the same children however
 many workers walk them.
 
 While it breeds, **EVOLVE POOL** is its own progress bar, *breeding 3/10*
 (the walks folded in so far), with **stop** beside it; the job slot in the
-menu bar says the same with the time left, in every view. **Stop** keeps the
-children bred so far and replaces only as many patches as they need.
+menu bar says the same with the time left, in every view. The
+**generations** counter beside it counts a generation once its first child
+has landed in the bank, or once it has ended. **Stop** drops the
+walks still running and ends the generation with the children bred so far.
+As at any generation's end, the bank then goes back to its size by retiring
+its lowest-ranked unsaved patches, as many as the children need: usually
+older members, but a child bred early can rank below one bred after it and
+go too. The toast says how many were kept and how many were not.
 
 With no render farm (a single-core machine, or `?farm=0` in the address) the
 walks run in the engine itself, one after another, and a generation takes

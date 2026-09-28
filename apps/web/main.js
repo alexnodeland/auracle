@@ -1464,6 +1464,8 @@ worker.onmessage = (e) => {
       drawLineage();
       renderEvolveBtn();
       renderJobSlot();
+      renderGenCount(); // the generation counts from its first child
+      renderNextStep();
       if (mayGoShown) markMayGo(true);
       scheduleSave();
       break;
@@ -2480,10 +2482,25 @@ function renderPicks() {
   renderNextStep();
 }
 
+/** Generations that have bred. The engine counts a generation from the
+ *  moment it opens, so any status posted while it breeds (a pick's) carries
+ *  it already; GENERATIONS, the next-step chip and the EVOLUTION strip count
+ *  it once a child of it has landed in the bank, or once it has finished. */
+function gensBred() {
+  const g = status.generation || 0;
+  const open = breeding && breeding.generation;
+  if (!open || g < open) return g; // the status predates the open generation
+  const landed = bornGen === open && lastBorn.size > 0;
+  return landed ? open : open - 1;
+}
+function renderGenCount() {
+  $("gen-count").textContent = gensBred();
+}
+
 function applyStatus(st) {
   status = st;
   $("duel-count").textContent = picksTaught();
-  $("gen-count").textContent = st.generation;
+  renderGenCount();
   renderTeach();
   renderNextStep();
   if (!belief.has) renderBelief();
@@ -2622,7 +2639,7 @@ function slotJob() {
   if (lampJobs.has("refine")) {
     const b = breeding || {};
     const total = b.total || 0;
-    if (b.stopping) return { kind: "refine", text: "⚡ stopping — keeping what's bred", fill: total ? b.done / total : 0 };
+    if (b.stopping) return { kind: "refine", text: "⚡ stopping — ending with what's bred", fill: total ? b.done / total : 0 };
     const count = total ? ` ${b.done}/${total}` : "…";
     const left = total && b.done < total ? aboutLeft(breedLeft()) : "";
     return {
@@ -2630,7 +2647,7 @@ function slotJob() {
       text: `⚡ breeding${count}${left ? ` · ${left}` : ""}`,
       fill: total ? b.done / total : 0,
       stop: total > 0,
-      title: "EVOLVE POOL is breeding a generation. Keep playing — it runs beside you. Stop keeps the children bred so far.",
+      title: "EVOLVE POOL is breeding a generation. Keep playing — it runs beside you. Stop ends it with the children bred so far; the lowest unsaved patches then leave, as at any generation's end.",
     };
   }
   if (lampJobs.has("refine_from")) {
@@ -2719,16 +2736,16 @@ function renderNextStep() {
   } else if (n < FIT_EVERY) {
     label = `${FIT_EVERY - n} more pick${FIT_EVERY - n > 1 ? "s" : ""} and it refits ▸`;
     act = () => showView("evolve");
-  } else if (status.generation === 0) {
+  } else if (gensBred() === 0) {
     // It starts the generation where the player is: the job slot shows it
     // from any view, and the children land at the top of the bank.
     label = breeding ? "Breeding — keep playing ▸" : "It’s learned something. Breed a generation ▸";
     act = breeding ? null : () => $("evolve-btn").click();
   } else if (lastBorn.size > 0) {
-    label = `Gen ${bornGen || status.generation} bred new patches — they're at the top of the bank ▸`;
+    label = `Gen ${bornGen || gensBred()} bred new patches — they're at the top of the bank ▸`;
     act = showNewGroup;
   } else {
-    label = `Gen ${status.generation} bred — see what it thinks of your taste ▸`;
+    label = `Gen ${gensBred()} bred — see what it thinks of your taste ▸`;
     act = () => showView("taste");
   }
   el.textContent = label;
@@ -5896,8 +5913,9 @@ function breedingFrom(m) {
   }
 }
 
-// Stop keeps what has been bred: the worker finishes the generation with the
-// children absorbed so far, and the replaced patches leave then.
+// Stop ends the generation with what has been bred: the worker finishes it
+// with the children absorbed so far, and the lowest unsaved members (which
+// can include a child bred early) leave then, as at any generation's end.
 function stopBreeding() {
   if (!breeding || breeding.stopping || !breeding.total) return;
   breeding.stopping = true;
@@ -18552,9 +18570,10 @@ function drawLineage() {
     // Don't keep telling the user to press a button they have already pressed.
     // The toast of a generation that bred nothing says "no move was
     // accepted"; this says the same thing in the same words.
+    const ran = gensBred();
     log.innerHTML =
-      status.generation > 0
-        ? `<span class="silk-dim">Generation ${status.generation} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
+      ran > 0
+        ? `<span class="silk-dim">Generation ${ran} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
         : '<span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span>';
     return;
   }
@@ -20334,8 +20353,9 @@ function canShareModule(mod) {
   }
 }
 
-// The compiled binary, kept for every crew after boot's: a walk crew is then
-// N instantiations, never N compiles. Null where it cannot be shared.
+// The compiled binary, compiled once (for boot's crew, or where boot filled
+// serially for the first walk crew) and kept: every crew after that is N
+// instantiations, never N compiles. Null where it cannot be shared.
 let wasmModule;
 async function sharedModule() {
   if (wasmModule !== undefined) return wasmModule;

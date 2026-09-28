@@ -128,9 +128,12 @@ A generation is `refine_seeds` walks, and each is a pure function of the
 generation's shared context and its own job
 ([refinement](./search/refinement.md)). So after boot the farm comes back for
 them: the engine worker asks main for a crew when a generation or ⚡ evolve
-from this starts, main spawns it from the module compiled at boot (an
-instantiation per worker, not a compile), and the crew is reaped after a
-minute with nothing to walk. Its width is boot's rule with a floor of one
+from this starts, main spawns it, and the crew is reaped after a minute with
+nothing to walk. Main compiles the wasm module once and keeps it, so a crew is
+an instantiation per worker, not a compile: where boot had a farm (four cores
+or more) the module was compiled then, and on a two- or three-core machine,
+where boot fills serially, the first crew compiles it. A browser that cannot
+hand a compiled module to a worker has each worker compile its own. Its width is boot's rule with a floor of one
 worker wherever there are two cores, because even one worker takes the walk
 off the engine worker, which then answers everything else.
 
@@ -145,7 +148,10 @@ copy of the same job.
 
 Replacement waits for the end: children join the pool as they are absorbed,
 and `refine_finish` retires the weakest unpinned members once, when the last
-job lands or the player stops the generation.
+job lands or the player stops the generation. Weakest is judged under the
+posterior the generation opened with, as admission is, so picks made while it
+breeds (they reweight the posterior for the next pair) do not change which
+children are kept.
 
 ## Worker replies are load-bearing
 
