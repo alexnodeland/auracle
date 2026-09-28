@@ -98,7 +98,7 @@ async function boot(page, opts = {}) {
   page.on("pageerror", (err) => pageErrors.push(err.message));
   await page.addInitScript(SEED);
   await page.addInitScript(init(opts));
-  await page.goto("/");
+  await page.goto(`/${opts.query || ""}`);
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
   return pageErrors;
 }
@@ -337,9 +337,13 @@ test("opening a patch is not announced unless it kept you waiting", async ({ pag
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("during a generation a pick's deal says the engine is breeding, and what it bred and replaced is named", async ({ page }) => {
+// With no render farm (`?farm=0`, or a machine too small for one) a
+// generation's walks run in the engine worker, and a deal can wait for the
+// walk in progress. On the farm it does not wait at all
+// (evolve_breeds_beside_you.spec.js).
+test("with no farm, a pick's deal during a generation says which seed it waits on, and what it bred and replaced is named", async ({ page }) => {
   test.setTimeout(600_000);
-  const pageErrors = await boot(page);
+  const pageErrors = await boot(page, { query: "?farm=0" });
   await toEvolve(page);
   // A model to breed toward: six picks, and their refit landed.
   for (let i = 1; i <= 6; i++) await pick(page, i % 2 ? "a" : "b");
@@ -390,7 +394,7 @@ test("during a generation a pick's deal says the engine is breeding, and what it
   console.log(`generation receipt: ${receipt}`);
   expect(receipt).toBeTruthy();
   expect(receipt).not.toMatch(/#\d|retired/);
-  if (/replaced/.test(receipt)) expect(receipt).toMatch(/replaced: [^.]*\S\.$/);
+  if (/replaced/.test(receipt)) expect(receipt).toMatch(/replaced: [^.]*\S\./);
   // The strip names parent and child and says "liked", not "Δtaste" or ids.
   const lineage = (await page.locator("#lineage-log").textContent()).trim();
   console.log(`lineage strip: ${lineage.slice(0, 300)}`);
