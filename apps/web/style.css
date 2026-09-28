@@ -3892,9 +3892,13 @@ html:not(.engineer) .dn-sig { display: none; }
 .budget .bg-cell.full { color: var(--led-red); }
 .budget .bg-cell.full b { color: var(--led-red); }
 
-/* A duel drawn at random rather than by the acquisition function. */
-.duel-pred.check { color: var(--phos-b); }
-.duel-pred.check::before { content: "◇ "; }
+/* How the pair on the table was chosen (`renderDealRule`): quiet silk under
+   the default, where it is the same fact about every pair; amber only for a
+   check dealt at random under a rule that otherwise chooses. */
+.duel-deal { display: flex; align-items: center; gap: var(--s2); }
+.duel-rule { font-size: var(--t-micro); color: var(--silk-dim); white-space: nowrap; cursor: help; }
+.duel-rule:empty { display: none; }
+.duel-rule.check { color: var(--phos-b); }
 
 /* ---------- round-2 corrections ---------- */
 

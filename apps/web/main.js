@@ -1129,7 +1129,8 @@ worker.onmessage = (e) => {
       duelMeta = m.meta || null;
       dealing = false;
       setDuelControlsEnabled(true);
-      renderCheckBadge();
+      retireForecast();
+      renderDealRule();
       if (currentDuel) {
         setFlip("a", false);
         setFlip("b", false);
@@ -4368,19 +4369,6 @@ function onRenderArrived(id) {
   drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
 }
 
-// Roughly one duel in ten is drawn uniformly at random rather than by the
-// acquisition function. Those are the only ones whose accuracy means anything —
-// the acquisition rule deliberately serves near-ties, so scoring it on its own
-// choices measures the chooser, not the model. Say so on screen.
-// How many of the recent duels were uniformly-random probes. Under
-// `Acquisition::Random` that is all of them, and a badge that fires every
-// time distinguishes nothing — it is only worth saying when the model is
-// *usually* choosing and this one time it isn't.
-const checkWindow = [];
-function checksAreUniversal() {
-  return checkWindow.length >= 6 && checkWindow.every(Boolean);
-}
-
 // The forecast is the payoff for the vote just cast, and the next pair arrives
 // ~15 ms later. Hold it long enough to be read.
 let predHoldUntil = 0;
@@ -4398,7 +4386,6 @@ function showForecast(pChosen) {
     : pChosen <= 0.45 ? `⚡ Surprise — it had this backwards. ${Math.round(pChosen * 100)}%`
     : `Toss-up — that one taught it the most. ${Math.round(pChosen * 100)}%`;
   el.title = "The model's forecast, made before your vote. Surprises are where it's still learning.";
-  el.classList.remove("check");
   predHoldUntil = performance.now() + PRED_HOLD_MS;
   const pd = $("pd-pred");
   if (pd) {
@@ -4407,25 +4394,70 @@ function showForecast(pChosen) {
   }
 }
 
-function renderCheckBadge() {
+/** A forecast belongs to the pair it was made for: a deal after it has been
+ *  read clears it. Never one the user has not had time to read. */
+function retireForecast() {
   const el = $("duel-pred");
-  if (!el) return;
-  const check = !!(duelMeta && duelMeta.random_check);
-  checkWindow.push(check);
-  if (checkWindow.length > 10) checkWindow.shift();
-  // Never step on a forecast the user has not had time to read.
-  if (performance.now() < predHoldUntil) return;
+  if (!el || performance.now() < predHoldUntil) return;
   el.textContent = "";
   el.classList.remove("hit", "miss");
-  // Below ~10 picks the badge is suppressed outright: a brand-new user's
-  // first duel captioned "picked at random" reads as "this question is
-  // arbitrary". When it does appear, it states its benefit.
-  const show = check && !checksAreUniversal() && status.observations >= 10;
-  el.classList.toggle("check", show);
-  if (show) {
-    el.textContent = "unbiased probe — picks like this one score the honesty meter";
-    el.title = "About one duel in ten is dealt at random rather than by the acquisition rule. Only those score the model's honesty — see TASTE → trust.";
-  }
+}
+
+// ---------- how the pair was chosen ----------
+// The engine says, on every deal, which rule dealt the pair (`meta.method`):
+// "random", "bald" or "thompson", or "check" — a pair dealt at random on the
+// one-in-ten schedule rather than by the rule. It used to be shown as a ◇
+// "unbiased probe" mark over the forecast line, captioned "about one duel in
+// ten is dealt at random rather than by the acquisition rule". Under the
+// default rule, `Acquisition::Random`, that caption was false: *every* pair is
+// dealt at random, which is the reason it is the default (engine.rs). So the
+// mark was hidden after five deals as saying nothing, never drawn on the deal
+// after a vote (the forecast held its slot), and the rule in use went unsaid.
+//
+// Now the rule is stated on its own line, where it holds its place while
+// forecasts come and go above it. Under the default it is one fact about
+// every pair — the model does not choose what you hear, which is what makes
+// every pick a fair test of its forecast — and it does not change from deal
+// to deal. The one-in-ten ◇ mark is kept for what it is true of: a check
+// dealt at random under a rule that otherwise chooses.
+//
+// The rule is read from the deals themselves, as the method of the last deal
+// that was not a scheduled check. Under `Random` the engine still tags every
+// tenth pair "check", though it is drawn exactly like the other nine; reading
+// the rule from the rest keeps that from being taken for a change of rule.
+// (An engine's first deal is never a check.)
+let dealRule = null;
+
+const DEAL_RULE = {
+  random: {
+    text: "◇ random pair — a fair test",
+    title: "The model doesn't choose what you hear: every pair is dealt at random from the pool. That is what makes every pick a fair test of the forecast it makes before you vote — TASTE → TRUST scores them all.",
+  },
+  bald: {
+    text: "chosen where it's least sure",
+    title: "The model dealt this pair where its forecast is closest to a coin flip: the question it learns most from. About one duel in ten is dealt at random instead, as a check (◇).",
+  },
+  thompson: {
+    text: "chosen from its best guesses",
+    title: "The model drew two plausible versions of your taste and dealt each one's favourite. About one duel in ten is dealt at random instead, as a check (◇).",
+  },
+  check: {
+    text: "◇ unbiased probe — dealt at random",
+    title: "About one duel in ten is dealt at random rather than chosen by the model. Picks like this one score its honesty without the chooser's bias — see TASTE → TRUST.",
+  },
+};
+
+function renderDealRule() {
+  const el = $("duel-rule");
+  if (!el || !duelMeta || !duelMeta.method) return;
+  const method = duelMeta.method;
+  if (method !== "check") dealRule = method;
+  // A scheduled check is only news under a rule that otherwise chooses.
+  const said = DEAL_RULE[method === "check" && dealRule !== "random" ? "check" : dealRule || method];
+  if (!said) return;
+  el.textContent = said.text;
+  el.title = said.title;
+  el.classList.toggle("check", said === DEAL_RULE.check);
 }
 
 // ---------- the live utility readout ----------
