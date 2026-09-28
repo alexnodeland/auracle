@@ -137,9 +137,19 @@ async function main() {
           : ["-c:v", "mjpeg", "-i", "-", "-c:v", "copy"];
         const enc = spawn(ff, ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(fps), ...encArgs, part], { stdio: ["pipe", "inherit", "inherit"] });
         const page = await openPage(browser, port);
+        // The capture straight from DevTools: Playwright's screenshot() waits
+        // on fonts and stability checks the stage has already settled, and
+        // optimizeForSpeed picks Chromium's fast JPEG encoder.
+        const cdp = await page.context().newCDPSession(page);
+        const grab = async () => {
+          const r = await cdp.send("Page.captureScreenshot", lossless
+            ? { format: "png", fromSurface: true }
+            : { format: "jpeg", quality: 95, fromSurface: true, optimizeForSpeed: true });
+          return Buffer.from(r.data, "base64");
+        };
         for (let i = a; i < b; i++) {
           await page.evaluate((t) => window.__stage.seek(t), i / fps);
-          const shot = lossless ? await page.screenshot({ type: "png" }) : await page.screenshot({ type: "jpeg", quality: 95 });
+          const shot = await grab();
           if (!enc.stdin.write(shot)) await new Promise((r) => enc.stdin.once("drain", r));
           done++;
           if (done % 60 === 0) {
@@ -153,16 +163,33 @@ async function main() {
       }),
     );
     process.stdout.write("\n");
-    const list = path.join(outDir, "parts.txt");
-    fs.writeFileSync(list, parts.filter(Boolean).map((p) => `file '${p}'`).join("\n"));
-    const out = arg("out", path.join(outDir, "picture.mkv"));
-    await new Promise((res, rej) => {
-      const c = spawn(ff, ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out], { stdio: "inherit" });
-      c.on("close", (code) => (code === 0 ? res() : rej(new Error("concat failed"))));
-    });
-    for (const p of parts.filter(Boolean)) fs.unlinkSync(p);
-    fs.unlinkSync(list);
-    console.log(`${out}  (${n} frames, ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
+    const done_parts = parts.filter(Boolean);
+    const out = arg("out", null);
+    if (out) {
+      // One file where one was asked for: the parts joined, then removed.
+      const list = path.join(outDir, "parts.txt");
+      fs.writeFileSync(list, done_parts.map((p) => `file '${p}'`).join("\n"));
+      await new Promise((res, rej) => {
+        const c = spawn(ff, ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out], { stdio: "inherit" });
+        c.on("close", (code) => (code === 0 ? res() : rej(new Error("concat failed"))));
+      });
+      for (const p of done_parts) fs.unlinkSync(p);
+      fs.unlinkSync(list);
+      console.log(`${out}  (${n} frames, ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
+    } else {
+      // The picture is the parts themselves, read in order through an
+      // ffconcat list (mix.py). Joining them into one picture.mkv copied
+      // every frame once more, and a five-minute film's 4 GB of parts needed
+      // 8 GB at the moment of the join: the render finished and then failed
+      // for want of disk.
+      const list = path.join(outDir, "picture.ffconcat");
+      fs.writeFileSync(list, ["ffconcat version 1.0", ...done_parts.map((p) => `file '${path.basename(p)}'`)].join("\n") + "\n");
+      const keep = new Set(done_parts.map((p) => path.basename(p)));
+      for (const f of fs.readdirSync(outDir)) {
+        if ((/^part-\d+\.mkv$/.test(f) && !keep.has(f)) || f === "picture.mkv") fs.unlinkSync(path.join(outDir, f));
+      }
+      console.log(`${list}  (${n} frames in ${done_parts.length} parts, ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
+    }
   } finally {
     await browser.close();
     srv.close();

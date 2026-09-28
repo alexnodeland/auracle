@@ -13,18 +13,19 @@
 //
 // Picture: Chromium's screencast, JPEG q92, every frame the page paints, with
 // its own timestamp; resampled to a constant 30 fps by time, not by count, so
-// a dropped paint repeats a frame instead of shortening the clip. Sound: the
-// app's own recorder (the same bounce as the ● rec button), started through
-// the capture hook so no toast lands in the shot. Both are stamped in wall
-// time, and the offset between them is written beside the clip.
+// a dropped paint repeats a frame instead of shortening the clip. The paints
+// are kept as JPEG files (out/FILM/shots/ID/NNNNN.jpg) with an index
+// (ID.frames.json); nothing is encoded, so the next shot starts at once. Sound: the
+// app's master bus, tapped through the ?film capture hook (main.js), so the
+// voices and every audition are in it (▶ on a bank row, the duels, the node
+// bank's preview, space), and no toast lands in the shot. Both are stamped in
+// wall time, and the offset between them is written beside the clip.
 //
-// Only the recorder's `.wav` is the shot's sound: a download the shot itself
-// starts (an export: .auracle.json, .png, .svg, a taste profile) is kept
-// beside the clip in ID.dl/ and listed in the sidecar. Because the recorder
-// IS the ● rec button's buffer, ● rec cannot be pressed on camera — the press
-// would end the capture. Show what a take leaves (its toast), not the press.
-// Auditions (▶ on a bank row, the commit duel, the node bank's preview,
-// space) play outside the voices the recorder taps, so they are not in it.
+// Only the capture (auracle-film-capture.wav) is the shot's sound: any other
+// download the shot starts (an export: .auracle.json, .png, .svg, a taste
+// profile, a ● rec take) is kept beside the clip in ID.dl/ and listed in the
+// sidecar. The capture has its own switch, so ● rec can be pressed on camera:
+// the take it makes, and its "saved … take" toast, are the app's own.
 //
 // A rehearsal (`--dry`) runs every shot's set-up and actions against the live
 // app at their times, and records neither picture nor sound. It saves a
@@ -118,12 +119,10 @@
 //                                       nearest a time (`start: "clock2:start"`)
 //     {start: true} | {stop: true} | {bytes: [0xB0, 74, 64]}
 //   seq {steps}                         steps in order, as one action
-//   rec {on: false}                     stop the shot's capture now: its take downloads and
-//                                       the app says "saved … take" on camera (the result of
-//                                       ● rec without the press); the shot's sound ends here
+//   rec {on: false}                     stop the shot's capture now: the shot's sound ends
+//                                       here (quietly; to show a take, press ● rec on camera)
 //   eval {js}                           run js in the page
 import { createRequire } from "node:module";
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
@@ -155,15 +154,6 @@ const FPS = 30;
 const KEEP_S = 6;
 const MIME = { ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json", ".wav": "audio/wav" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
-
-function ffmpegPath() {
-  const r = spawn("python3", ["-c", "import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())"]);
-  return new Promise((res) => {
-    let s = "";
-    r.stdout.on("data", (d) => (s += d));
-    r.on("close", () => res(s.trim()));
-  });
-}
 
 // The app's own dev-server rules: no-store, so a rebuilt pkg/ is never stale.
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".wasm": "application/wasm", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp" };
@@ -339,21 +329,32 @@ function midiSend(page, bytes, ts) {
   }, [bytes, ts ?? null]);
 }
 
+/** How long a held op holds, in ms. `"ms": "end"` arrives as a function:
+ *  the time left to the shot's end, which a cut keyed to a stamp only knows
+ *  once that stamp has come. Every op asks for it *after* it has pressed, so
+ *  the keys go down at `at` and only the release waits. (Asked before the
+ *  press, a hold "to the end" pressed nothing until the stamp arrived, and
+ *  the rehearsal still called it on time.) */
+const holdMs = async (ms, dflt) => (typeof ms === "function" ? await ms() : ms) || dflt;
+
 /** Through `values` (a number, or points to move between) over `ms`, sending
  *  what `make` builds for each value; like a hand on a pot, only changes. */
 async function midiSweep(page, values, ms, make) {
   const pts = Array.isArray(values) ? values : [values];
   if (pts.length === 1 || !ms) return midiSend(page, make(pts[pts.length - 1]));
-  const n = Math.max(2, Math.round(ms / 25));
+  // The first value at once; the length may be the time to the shot's end.
+  let last = make(pts[0]).join();
+  await midiSend(page, make(pts[0]));
+  const dur = await holdMs(ms, 0);
+  const n = Math.max(2, Math.round(dur / 25));
   const t0 = Date.now();
-  let last = null;
-  for (let i = 0; i <= n; i++) {
+  for (let i = 1; i <= n; i++) {
+    await sleep(t0 + (i * dur) / n - Date.now());
     const u = (i / n) * (pts.length - 1);
     const k = Math.min(pts.length - 2, Math.floor(u));
     const msg = make(pts[k] + (pts[k + 1] - pts[k]) * (u - k));
     if (msg.join() !== last) await midiSend(page, msg);
     last = msg.join();
-    await sleep(t0 + ((i + 1) * ms) / n - Date.now());
   }
 }
 
@@ -377,7 +378,7 @@ async function midi(page, s, ctx = {}) {
   if (s.note != null) {
     const notes = Array.isArray(s.note) ? s.note : [s.note];
     for (const n of notes) await midiSend(page, [0x90 | ch, n, b7(s.vel ?? 100)]);
-    await sleep(s.ms ?? 500);
+    await sleep(await holdMs(s.ms, 500));
     for (const n of notes) await midiSend(page, [0x80 | ch, n, 0]);
   }
   if (s.clock) {
@@ -418,7 +419,7 @@ async function step(page, s, ctx = {}) {
       // In a `seq`, `until` waits for a narration time (not before the step
       // ahead of it is done, and at once if that time has passed).
       if (s.until != null && ctx.clock) return sleep(((await ctx.clock.at(s.until)) - ctx.now()) * 1000);
-      return page.waitForTimeout(s.ms);
+      return page.waitForTimeout(await holdMs(s.ms, 0));
     case "until":
       // Wait for the app to reach a state (an offer ready, a view shown); a
       // stamp records when, on the shot's clock.
@@ -470,13 +471,13 @@ async function step(page, s, ctx = {}) {
       return page.waitForTimeout(s.settle ?? 400);
     case "key":
       await page.keyboard.down(s.key);
-      await page.waitForTimeout(s.ms || 250);
+      await page.waitForTimeout(await holdMs(s.ms, 250));
       return page.keyboard.up(s.key);
     case "hold": {
       // All at once, not one round trip after another: on a busy machine a
       // chord sent key by key is strummed.
       await Promise.all(s.keys.map((k) => page.keyboard.down(k)));
-      await page.waitForTimeout(s.ms);
+      await page.waitForTimeout(await holdMs(s.ms, 250));
       await Promise.all(s.keys.map((k) => page.keyboard.up(k)));
       return;
     }
@@ -500,7 +501,7 @@ async function step(page, s, ctx = {}) {
       }
       await travel(page, x, y, 150);
       await page.mouse.down();
-      await glide(page, x, y, dx, dy, s.ms || 800);
+      await glide(page, x, y, dx, dy, await holdMs(s.ms, 800));
       return page.mouse.up();
     }
     case "press": {
@@ -511,7 +512,7 @@ async function step(page, s, ctx = {}) {
       const y = s.fy != null ? b.y + s.fy * b.height : b.y + b.height / 2 + (s.oy || 0);
       await travel(page, x, y, 150);
       await page.mouse.down();
-      await page.waitForTimeout(s.ms || 1500);
+      await page.waitForTimeout(await holdMs(s.ms, 1500));
       return page.mouse.up();
     }
     case "path": {
@@ -521,7 +522,7 @@ async function step(page, s, ctx = {}) {
       const pts = s.points.map(([fx, fy]) => [b.x + fx * b.width, b.y + fy * b.height]);
       await travel(page, pts[0][0], pts[0][1], 200);
       await page.mouse.down();
-      const per = (s.ms || 2000) / Math.max(1, pts.length - 1);
+      const per = (await holdMs(s.ms, 2000)) / Math.max(1, pts.length - 1);
       for (let i = 1; i < pts.length; i++) {
         await glide(page, pts[i - 1][0], pts[i - 1][1], pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], per);
       }
@@ -561,8 +562,7 @@ async function step(page, s, ctx = {}) {
       for (const x of s.steps) await step(page, x, ctx);
       return;
     case "rec":
-      // Stop the shot's capture now: its take downloads, and the app says so
-      // ("saved … take") on camera. The shot's sound ends here.
+      // Stop the shot's capture now, quietly. The shot's sound ends here.
       if (s.on !== false) throw new Error("rec: only {on: false} (stop the capture mid-shot)");
       if (ctx.stopCapture) return ctx.stopCapture();
       return;
@@ -575,7 +575,7 @@ async function step(page, s, ctx = {}) {
 
 const describe = (s) => [s.op, s.sel || s.name || s.v || s.key || (s.keys && s.keys.join("+")) || s.text || s.file || ""].join(" ").trim();
 
-async function shoot(browser, port, shot, ff) {
+async function shoot(browser, port, shot) {
   const beat = timeline.beats.find((b) => b.id === shot.beat);
   const errors = [];
   const [W, H] = spec.viewport || [1920, 1080];
@@ -630,8 +630,7 @@ async function shoot(browser, port, shot, ff) {
   }
   if (snap) await snap("start");
 
-  // Every download the shot starts; only the recorder's .wav after the stop
-  // is its sound.
+  // Every download the shot starts; only the capture is its sound.
   const downloads = [];
   let t0 = null;
   page.on("download", (d) => downloads.push({ t: t0 == null ? null : +(Date.now() / 1000 - t0).toFixed(2), name: d.suggestedFilename(), d }));
@@ -657,16 +656,19 @@ async function shoot(browser, port, shot, ff) {
       }
     });
   }
-  // The sound: the app's recorder, from here to the end (or to a `rec`
-  // action). A rehearsal runs it only for a shot that stops it on camera, so
-  // the take's toast shows up there too.
+  // The sound: the master-bus capture, from here to the end (or to a `rec`
+  // action). A rehearsal runs it only for a shot that stops it mid-shot.
   const usesRec = (list) => (list || []).some((a) => a.op === "rec" || (a.op === "seq" && usesRec(a.steps)));
+  let hooked = false; // the ?film capture hook; else the ● rec button's own take
   if (!DRY || usesRec(shot.actions)) {
-    recAt = await page.evaluate(() => {
+    [recAt, hooked] = await page.evaluate(() => {
       const t = (performance.timeOrigin + performance.now()) / 1000;
-      if (window.__film?.rec) window.__film.rec(true);
-      else document.getElementById("rec-btn").click();
-      return t;
+      if (window.__film?.rec) {
+        window.__film.rec(true);
+        return [t, true];
+      }
+      document.getElementById("rec-btn").click();
+      return [t, false];
     });
   }
   if (cdp) await cdp.send("Page.startScreencast", { format: "jpeg", quality: 92, maxWidth: W * (spec.dpr || 1), maxHeight: H * (spec.dpr || 1), everyNthFrame: 1 });
@@ -699,10 +701,13 @@ async function shoot(browser, port, shot, ff) {
   // that stamp without holding up the rest.
   const tasks = (shot.actions || []).map((a) => (async () => {
     let t;
-    let t2 = null;
+    // `until` is asked for now but awaited only for the release: a time past
+    // a stamp-keyed cut resolves when that stamp comes, and the press must
+    // not wait for it (the same trap "end" had).
+    const t2P = a.until != null ? clock.at(a.until, a.until_snap) : null;
+    t2P?.catch(() => {});
     try {
       t = await clock.at(a.at, a.snap);
-      if (a.until != null) t2 = await clock.at(a.until, a.until_snap);
     } catch (e) {
       return errors.push(`${describe(a)} @ ${a.at}: ${e.message}`);
     }
@@ -711,7 +716,11 @@ async function shoot(browser, port, shot, ff) {
     const lag = now() - t;
     const row = { op: describe(a), at: a.at, t: +t.toFixed(2), late: +lag.toFixed(3) };
     late.push(row);
-    const ms = t2 != null ? Math.max(100, (t2 - now()) * 1000) : a.ms === "end" ? Math.max(200, ((endT ?? (await endP)) - now() - 0.3) * 1000) : a.ms;
+    // "end" and `until` are asked for after the press (holdMs): either may
+    // wait on a stamp that a cut needs, and the keys must still go down at `at`.
+    const ms = t2P
+      ? async () => Math.max(100, ((await t2P) - now()) * 1000)
+      : a.ms === "end" ? async () => Math.max(200, ((endT ?? (await endP)) - now() - 0.3) * 1000) : a.ms;
     try {
       await step(page, { ...a, ms }, actx);
     } catch (e) {
@@ -759,9 +768,11 @@ async function shoot(browser, port, shot, ff) {
       else document.getElementById("rec-btn").click();
     });
   }
+  // The capture, by its name; without the hook, the ● rec take the click
+  // above ended.
   let take = null;
   for (let i = 0; i < 1200 && !take; i++) {
-    take = downloads.slice(k).find((x) => /\.wav$/i.test(x.name));
+    take = hooked ? downloads.find((x) => x.name === "auracle-film-capture.wav") : downloads.slice(k).find((x) => /\.wav$/i.test(x.name));
     if (!take) await sleep(100);
   }
   await saveMid(downloads.filter((x) => x !== take));
@@ -770,25 +781,39 @@ async function shoot(browser, port, shot, ff) {
   await ctx.close();
   if (errors.length) console.warn(`  [${shot.id}] ${errors.join(" | ")}`);
 
-  // Resample the paints to a constant frame rate, by timestamp.
+  // Resample the paints to a constant frame rate, by timestamp. The picture
+  // is kept as the screencast's own JPEGs, one file per paint shown, with an
+  // index from each constant-rate frame to its paint (ID.frames.json): the
+  // stage draws them directly. Encoding a clip here (VP9, since Playwright's
+  // Chromium has no H.264) held the browser for about as long again as the
+  // shot itself, only for the renderer to decode it frame by frame.
   frames.sort((a, b) => a.t - b.t);
   const start = t0;
   const n = Math.round(end * FPS);
-  // WebM/VP9: Playwright's Chromium has no H.264, and the stage seeks this
-  // clip frame by frame, so a keyframe every half second keeps seeks cheap.
-  const out = path.join(odir, `${shot.id}.webm`);
-  const enc = spawn(ff, ["-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(FPS), "-c:v", "mjpeg", "-i", "-", "-c:v", "libvpx-vp9", "-crf", "16", "-b:v", "0", "-g", "15", "-deadline", "good", "-cpu-used", "4", "-row-mt", "1", "-pix_fmt", "yuv420p", out], { stdio: ["pipe", "inherit", "inherit"] });
+  const fdir = path.join(odir, shot.id);
+  fs.rmSync(fdir, { recursive: true, force: true });
+  fs.mkdirSync(fdir, { recursive: true });
+  const fileOf = new Map(); // paint index → file number
+  const runs = []; // [file, count] over the n constant-rate frames
   let j = 0;
   for (let i = 0; i < n; i++) {
     const tt = start + i / FPS;
     while (j + 1 < frames.length && frames[j + 1].t <= tt) j++;
-    const buf = Buffer.from(frames[j].data, "base64");
-    if (!enc.stdin.write(buf)) await new Promise((r) => enc.stdin.once("drain", r));
+    let k = fileOf.get(j);
+    if (k == null) {
+      k = fileOf.size;
+      fileOf.set(j, k);
+      fs.writeFileSync(path.join(fdir, `${String(k).padStart(5, "0")}.jpg`), Buffer.from(frames[j].data, "base64"));
+    }
+    if (runs.length && runs[runs.length - 1][0] === k) runs[runs.length - 1][1]++;
+    else runs.push([k, 1]);
   }
-  enc.stdin.end();
-  await new Promise((r) => enc.on("close", r));
-  const paints = frames.filter((f) => f.t >= start && f.t <= start + end).length;
-  const meta = { ...base, fps: FPS, audio_offset: recAt - start, audio_until: captureStop ? captureStop.t : undefined, paints_per_s: paints / end, downloads: downloads.filter((x) => x !== take).map(({ t, name }) => ({ t, name })) };
+  // Every paint's time in the clip, for takes.py's frame-rate check.
+  const paintTimes = frames.filter((f) => f.t >= start && f.t <= start + end).map((f) => +(f.t - start).toFixed(4));
+  fs.writeFileSync(path.join(odir, `${shot.id}.frames.json`), JSON.stringify({ fps: FPS, n, runs, paints: paintTimes }));
+  fs.rmSync(path.join(odir, `${shot.id}.webm`), { force: true });
+  const paints = paintTimes.length;
+  const meta = { ...base, fps: FPS, picture: "frames", audio_offset: recAt - start, audio_until: captureStop ? captureStop.t : undefined, paints_per_s: paints / end, downloads: downloads.filter((x) => x !== take).map(({ t, name }) => ({ t, name })) };
   write(meta);
   console.log(`  ${shot.id}: ${end.toFixed(1)}s, ${meta.paints_per_s.toFixed(1)} paints/s, audio offset ${meta.audio_offset.toFixed(3)} s`);
   return errors.length === 0;
@@ -797,13 +822,12 @@ async function shoot(browser, port, shot, ff) {
 (async () => {
   const srv = await serve();
   const port = srv.address().port;
-  const ff = DRY ? null : await ffmpegPath();
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--force-color-profile=srgb"] });
   const failed = [];
   try {
     for (const shot of spec.shots) {
       if (only && !only.has(shot.id)) continue;
-      if (!(await shoot(browser, port, shot, ff))) failed.push(shot.id);
+      if (!(await shoot(browser, port, shot))) failed.push(shot.id);
     }
   } finally {
     await browser.close();

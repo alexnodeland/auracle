@@ -396,6 +396,44 @@ class EvoVoiceProcessor extends AudioWorkletProcessor {
   }
 }
 registerProcessor("auracle-voice", EvoVoiceProcessor);
+
+// A film's sound: whatever reaches the master bus, voices and auditions
+// alike, captured from the next quantum after "on" until "off", then handed
+// back in one block. Only the ?film capture hook creates one.
+class TapProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.blocks = null;
+    this.port.onmessage = (e) => {
+      if (e.data.type === "on") {
+        this.blocks = [];
+      } else if (e.data.type === "off" && this.blocks) {
+        let total = 0;
+        for (const b of this.blocks) total += b.length;
+        const all = new Float32Array(total);
+        let o = 0;
+        for (const b of this.blocks) { all.set(b, o); o += b.length; }
+        this.blocks = null;
+        this.port.postMessage({ type: "tap_done", samples: all, sampleRate }, [all.buffer]);
+      }
+    };
+  }
+  process(inputs) {
+    if (this.blocks) {
+      // Interleaved stereo; a quantum with nothing connected is silence,
+      // so the take keeps wall time.
+      const inp = inputs[0] || [];
+      const l = inp[0];
+      const r = inp[1] || l;
+      const n = l ? l.length : 128;
+      const b = new Float32Array(n * 2);
+      if (l) for (let i = 0; i < n; i++) { b[2 * i] = l[i]; b[2 * i + 1] = r[i]; }
+      this.blocks.push(b);
+    }
+    return true;
+  }
+}
+registerProcessor("auracle-tap", TapProcessor);
 `;
 
 export async function initLiveAudio(audioCtx, build, dest) {

@@ -69,18 +69,22 @@ are hue-coded on the taste map *and* named in text everywhere they appear.
 ## Motion
 
 The rack pulses modulation cables at their modulator's rate, which carries
-information rather than decorating. The documentation site honours
-`prefers-reduced-motion`. **The instrument does not yet gate its own animations
-on it**, which is listed as a gap below.
+information rather than decorating.
+
+The instrument honours `prefers-reduced-motion`, and follows the setting live
+if you change it with the app open. With it on, the cable pulses, glows and
+transitions stop, the rack jumps to a new layout or view instead of gliding
+there, and a duel card waiting for its render stops sweeping. The live scope
+still moves, because what it shows is the sound, but it redraws ten times a
+second instead of every frame. The documentation site
+honours the setting too.
 
 ## Known gaps
 
-- **No handheld layout.** A coarse pointer under 620px gets a stand-in screen
-  instead of the instrument. Deliberate for now: boot costs ~40 renders that a
+- **No handheld layout.** A touch screen under 620px on its shorter side gets
+  a stand-in screen instead of the instrument. Deliberate for now: boot costs ~40 renders that a
   phone would pay for and have nowhere to display. It does mean Auracle is
   unusable on a phone.
-- **`prefers-reduced-motion` is not honoured in the instrument.** The docs site
-  respects it; the rack's pulsing cables and the boot animation do not.
 - **The taste map is visual only.** The STYLES and DIRECTIONS tabs carry the
   same information as named coefficients and are the accessible route to it,
   but the map's spatial reading is not available another way.

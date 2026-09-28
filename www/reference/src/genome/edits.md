@@ -122,6 +122,16 @@ off.
 while the module is `ringmod` everywhere else, and one module with two
 spellings is a defect waiting for a caller.
 
+`Silence` is `silence` on both sides, and it is the one kind in the vocabulary
+nobody shops for: `Replace { kind: silence }` is how an edit unplugs a socket.
+The app's unplug, extract and cable-move gestures leave the same leaf (as
+`{"Silence":{}}` in the tree they post), the rack describes it as kind
+`silence` titled *empty*, and it renders nothing. It used to be unreachable by
+hand, so the app stood a saw VCO in an unplugged socket and drew the EMPTY
+plate over it; the plate said "nothing here" while the saw played, and φ
+measured the saw. As a source kind it can be neither inserted into a wire nor
+wrap anything.
+
 ## Node identity
 
 Nodes carry a `Uid` assigned on the way into the pool. This is what makes the

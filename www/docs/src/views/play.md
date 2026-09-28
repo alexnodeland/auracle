@@ -2,7 +2,7 @@
 
 <p class="lede">One patch, in full, playable while you take it apart.</p>
 
-<!-- film:circuit --><!-- /film:circuit -->
+<!-- film:view-patch --><!-- /film:view-patch -->
 
 PATCH shows a single patch as its whole rack: every module, every cable, every
 knob at its true position. It is running live the entire time. Turn a knob and
@@ -19,8 +19,10 @@ here is live while you edit it.</figcaption>
 
 From the top:
 
-**The subject block.** The patch's name, its id, and a short structural summary
-(`wsqr·mix·cho`). The **▶** plays the standard sample.
+**The subject block.** The patch's name, *(edited)* once you have changed it,
+and a caption for what you did to it (*2 locked*). The **▶** plays the standard
+sample. Its id and a short structural summary (`#30 · wsqr·mix·cho`) are the
+engine's bookkeeping, shown only with **⋯ › Show measurements**.
 
 **The toolbar.** The edit controls (*commit*, *my edit is better*), the layout
 and view controls (*freeform / chain*, *snap*, *reset*, *detail*, *belief*,
@@ -41,11 +43,16 @@ drive & fold −0.08   under your style 2 lens
 That is a prediction (how likely you are to prefer it in a duel), the three
 coordinates contributing most, and which style lens is currently judging it.
 When the model has no basis for a claim, this row says so instead of printing a
-number. See [Reading what it learned](../reading-the-model.md).
+number, and when nothing reaches the output (the patch's only source socket is
+[empty](../rack.md#empty-sockets)) it says *no guess while nothing reaches the
+output*. See [Reading what it learned](../reading-the-model.md).
 
-Beside it, the **budget**: `8/24 modules · 4/6 depth · 1/3 mod depth`. These
-are the ceilings evolution searches within. A hand-built patch past them is
-refused, and one *at* them has no room left to grow.
+Beside it, the **budget**: the ceilings evolution searches within, `24
+modules · 6 depth · 3 mod depth`. It speaks up only when one is close
+(`5/6 depth`, amber) or reached (red), because a patch *at* a ceiling has no
+room left to grow and a hand-built patch past one is refused. With **⋯ › Show
+measurements** it shows all three all the time (`8/24 modules · 4/6 depth ·
+1/3 mod depth`).
 
 **The rack.** The patch itself. See [the rack chapter](../rack.md).
 
@@ -58,7 +65,7 @@ pointing at, in the catalogue or in the patch.
 
 **HELD.** The staging tray. Anything you unplug, delete or bypass lands here
 instead of vanishing, and stays across a reload. Drag it back onto any lit ○ to
-put it in.
+put it in. The socket an unplug leaves reads EMPTY and makes no sound.
 
 **The quick-pick strip.** <kbd>TEACH</kbd> plus the current duel pair, so you
 can vote without leaving PATCH.
@@ -80,7 +87,13 @@ tell you that.
 Every knob is live and every structural edit is a grammar operation, so you
 cannot break the patch into something unplayable. Drag knobs, click selectors,
 drag cables between typed jacks, arm a module from the catalogue and place it.
-Undo with <kbd>⌘Z</kbd>.
+Undo with <kbd>⌘Z</kbd>: it undoes the last thing you did, even while the
+engine is still catching up.
+
+Edits happen in the order you make them. If the engine is still working on the
+last one, the next one waits its turn and then happens: its plate is outlined
+and the caption under the patch name says *1 edit waiting*. See
+[turning knobs](../rack.md#turning-knobs).
 
 Changes are *staged* until you **commit**. Committing inserts the edited patch
 into the bank as a new candidate, leaving the original alone.

@@ -8,6 +8,173 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — true today
+
+- **A guess looks like a guess in TASTE, and in PATCH's node bank.** A pull
+  the model is sure of (its interval clears zero) is a solid bar with its
+  whisker; one it is still guessing at is a faint hollow bar with the whisker
+  drawn at full strength, and its label ends in **?**. DIRECTIONS used to draw
+  every coefficient as the same glowing bar under "Longer bar = stronger
+  pull", when at 58 picks 35 of its 36 intervals crossed zero; STYLES drew
+  them with no interval at all; the node bank called the same numbers "no
+  lean either way" and capped their whiskers at 16 px. DIRECTIONS' caption
+  now reads "Where each style leans. Solid = it's sure. Hollow = still a guess
+  — the thin line is how far it could be off." (`taste_marks.spec.js`,
+  `taste-geom.test.mjs`)
+- **TASTE's early states count from where you are.** MAP offers "1 more pick
+  →" at five picks, not "Start 6 quick picks →"; STYLES says "Your first style
+  appears at pick 6; more split off as you teach it."; TRUST counts its own
+  twenty guesses ("14 to go →") instead of borrowing the six-pick button. The
+  map's footer is in words ("A flat view of 40 patches — close dots usually
+  sound alike (it shows 29% of how they differ)"), and its caption says what a
+  click does: it opens the patch (`taste_marks.spec.js`).
+- **Reset taste profile keeps your saved patches, and downloads a copy
+  first.** It used to delete the whole saved session: every saved patch, the
+  modules set aside and the dock's settings went with the picks, although the
+  question named none of them and the guide said saved patches survive. It
+  now asks with the counts ("Your 2 picks, stars, cuts and 0 generations are
+  forgotten, with every patch you haven't saved. Your 1 saved patch stays."),
+  saves `auracle-profile-before-reset.json`, and keeps the saved patches with
+  their pins and layout. **Save taste profile** now says what it wrote
+  ("Downloaded auracle-profile.json — 58 picks."), and a loaded profile
+  redraws the taste map at once instead of waiting for six more picks
+  (`taste_profile.spec.js`).
+- **COMMIT's comparison is blind, and Esc cancels it.** The two sides are A
+  and B until you pick, and the receipt says which was yours ("B was your
+  edit"); they used to be titled "your edit" and "the original". Esc, or
+  **cancel**, closes the card and commits nothing (it used to commit);
+  **commit without comparing** is its own button. **my edit is better** skips
+  the comparison for one commit and unticks itself: it used to stay ticked
+  and silently turn every later commit into an unheard claim
+  (`patch_editing.spec.js`).
+- **A commit's receipt is said next, not behind the edits it committed.** The
+  lane still showed a placement's "TAKE IT OUT" 1.3 s after COMMIT, offering
+  to undo into a patch already saved; a landed commit now takes the edits'
+  receipts down (`patch_editing.spec.js`).
+- **A tablet in portrait gets the narrow-window notice.** The notice needed a
+  mouse and the phone gate a small screen, so a 768 × 1024 tablet got neither
+  and a layout with PERFORM's pads under the keybar. It now shows at 999 px or
+  less with any pointer: "Turn your tablet sideways, or widen the window."
+  (`narrow_gate.spec.js`)
+- **The EVOLVE guide gives today's timing.** A generation takes about two to
+  three minutes in the browser, and after a pick the next pair can wait for
+  the seed being bred, up to about 20 seconds; the guide said "a minute or
+  two" and that a pick is answered between seeds as if at once. The node
+  bank's "nothing called that" no longer says Auracle has no sequencer: steps
+  and euclid are sequencers that play the sound, not the notes.
+- **⌘Z outside PATCH never undoes a PATCH edit.** It takes back your newest
+  pick or cut still inside its seven seconds, in any view; with none left it
+  says *nothing to undo here — PATCH edits undo in PATCH* and changes nothing.
+  In EVOLVE it used to fall through to the edit undo and silently revert a
+  knob turned minutes earlier on a patch you could not see. In PATCH, a pick
+  from the pick strip is now taken back before any edit (`evolve_truth.spec.js`).
+- **The sixth pick can be taken back like the other five.** Its refit waits
+  for the pick's seven seconds (or goes out when you pick again), and the
+  meter says *● learning from your last 6 picks…* meanwhile. The sixth pick
+  used to go into the log the moment the next pair landed, and its toast
+  showed a dead **IN THE LOG** button; a closed undo window now simply removes
+  the button (`evolve_truth.spec.js`).
+- **"● it just learned" appears when the model has learned.** It used to be
+  shown when the refit was *sent* and taken down 3.2 s later, so during a
+  generation it announced a map that would not be redrawn for minutes. It now
+  appears when the refit lands and stays until your next pick; during a
+  generation the meter says *● it will learn from these 6 when breeding
+  finishes*. *see what changed* always opens TASTE's map, and the wordmark's
+  **E** stays lit until every job it stands for is done, rather than going
+  dark when the first of them replies (`evolve_truth.spec.js`,
+  `evolve_feedback.spec.js`).
+- **skip ↻ puts the pair away like a pick does.** The cards dim and their
+  buttons stop until the next pair is dealt, and a deal slower than 300 ms says
+  why on the cards, for example *dealing — the engine is breeding (seed
+  4/10)*. A skip used to leave the old pair up with buttons that looked live
+  and did nothing, which during a generation could last twenty seconds
+  (`evolve_truth.spec.js`).
+- **A cut patch is never dealt again.** A cut hid the row, but the patch stayed
+  in the pool and could come back minutes later as a duel side. The toast now
+  reads *Cut Soft Wash — it won't be dealt again*, without the id, and ⌘Z
+  takes a cut back too (`a_cut_patch_is_never_dealt_again`,
+  `evolve_truth.spec.js`).
+- **What a generation or a loaded preset replaced is named.** The toast used
+  to count ("the 10 patches it liked least were retired to make room"); it now
+  names them: *The 10 it liked least were replaced: Soft Wash, Noisy Pad, Glass
+  Rain +7 more.*
+- **The EVOLUTION strip speaks names.** A step reads *Soft Pad → Warm Drone 2 ·
+  … · liked +0.06* where it read *#51 → #52 · … · Δtaste +0.06*; with nothing
+  bred yet it says *no move was accepted*, as the generation's toast does. The
+  guide now says what the sparkline plots: each step's child as the model
+  scored it then, not the pool's utility over generations.
+- **Opening a patch is not announced unless it kept you waiting.** Every open
+  used to toast "X on the bench", and a click on the TASTE map toasted "…
+  selected — it's on the workbench and under your fingers" before the patch
+  had arrived, then the bench toast after it. Now the dot shows a dotted ring
+  while it opens, and only an open slower than a second says *Opened Acid
+  Line* when it lands (`evolve_truth.spec.js`).
+- **Clicking a view's tab puts the keyboard in that view,** so EVOLVE's ←/→
+  pick on arrival and Tab continues inside it; keyboard users on the tabs still
+  move between them with the arrows (`evolve_truth.spec.js`).
+- **Keys a list or the rack uses are not also notes.** *p* in the presets list
+  plays the preset without also playing a D♯, *L* in the rack locks without
+  playing a D, and *1* / *2* during PATCH's keep-as-new comparison play a side
+  without also rating the bank's row (`keys_are_not_notes.spec.js`).
+- **A PERFORM control that turns only one way draws its ring on that side.**
+  The half you can turn toward is solid, the other is a dotted hairline, and a
+  stop sits at the top; a drag into the stop gives the pointer a small bump
+  (none with reduced motion). The ring used to be drawn on the closed side,
+  in a grey that barely showed, so the one cue for which way to turn pointed
+  the wrong way (`perform_truth.spec.js`).
+- **The line under a one-way control says what you can do: *turns toward far
+  only*.** It used to say *at the close end*, a guess about where the sound
+  sits that the amber dot on the same control often contradicted. The amber
+  dot now explains itself on hover: where this sound measures, compared with
+  the patches in your session. The PERFORM film's line changes to match.
+- **A control PERFORM has not measured yet reads *listening…*, looks quiet, and
+  does nothing.** After a Take, a control whose knobs the taken sound no longer
+  had turned amber and said *turn to ask for it*, and turning it grafted a
+  module or grew an offer, seconds before the measurement put it back. The XY
+  pad struck both axes through in amber while a patch was being measured, the
+  look of "this patch can't", and swapped an axis under your hand after a
+  Take. Now "not measured yet" has its own look, a turn of it springs back,
+  and the status line says *listening to this patch…* where it said
+  *measuring how this patch moves…* (`perform_truth.spec.js`).
+- **First steps name a control that turns on the patch you're playing.** Step 2
+  said "Turn a lit control: BRIGHT is a good start" on every patch, while the
+  only coloured names on screen were the amber controls that can't turn, and
+  Bright is one of them on some patches. It now says *Turn BRIGHT: drag up or
+  down* (or whichever control turns), and the keybed's first-run hint waits
+  while the steps show, instead of saying step 1 again in a second voice.
+- **Choosing an XY axis gives the keys back.** The axis drop-downs kept focus
+  after a choice, so the note keys went silent until you clicked elsewhere,
+  and pressing `s` jumped the axis to Snap or Space (`perform_truth.spec.js`).
+- **An amber search control always springs back when you let go, and says
+  what letting go will do.** Turned less than three tenths of the way it used
+  to stay off-centre, doing nothing, with nothing said. Now a notch marks
+  where asking starts, and the line reads *turn further to ask*, then *let go
+  to ask for rough* (or *let go to add a tone EQ*).
+- **After a pass, Blend comes home.** Pressing Offer again with an offer in B
+  left Blend at, say, 67% over an empty B, and the next offer arrived at that
+  level over what you were playing. It now glides home, as it does after a
+  Take (`perform_truth.spec.js`).
+- **Re-checks after a Keep or a Wander glide wait behind what you ask for.**
+  They ran in the engine's foreground lane for 10–16 s, so an Offer pressed
+  after a Keep or during roam waited behind a measurement nobody had asked
+  for. Keep no longer re-measures at all unless the knobs have travelled far
+  from where they were measured; either way the controls keep working and the
+  status says *re-checking* (`perform_truth.spec.js`).
+- **PERFORM's toasts follow the lane's rules, and a Take's *don't count it*
+  always works while you can see it.** A later word about the offer replaces
+  the earlier one instead of queueing behind it; refusals such as *Nothing
+  offered yet* jump the queue. The Take's window used to start at the press,
+  so a toast held back in the lane could show the button after the pick had
+  been sent, and it did nothing; the window now starts when the toast
+  appears, and a late press says *Already counted*. Keep says *Kept — this is
+  home now. Back returns here.*
+- **PERFORM's words match the app.** The guide's opening line counts six named
+  controls, Blend and Wander (it said eight named ones); help says Freeze
+  stops Wander where it is (it said it holds everything still); a control's
+  caption names at most two knobs and then *+N* instead of cutting a third
+  off mid-word; and a control at its centre reads *centre* to a screen
+  reader, not *far 0%*.
+
 ### Added — the films
 
 Five films, each on the page it explains, with the launch film as the landing
@@ -27,6 +194,151 @@ its chapters and full transcript. The README carries the launch film's poster,
 each crate's API docs link the films about it, and the app's ⋯ menu gains
 **Watch the films**. Everything you hear is Auracle: the scores are played by
 its own engine. The narration is synthetic (Kokoro-82M, offline).
+
+### Fixed — what the films found
+
+Rehearsing a film of each view meant doing everything the guide says, on
+camera, in a seeded session. Wherever the app fell short of the guide, the app
+was fixed, not the words.
+
+- **The TASTE map stays the way round you left it.** A refit could mirror it:
+  in a taught session one refit sent "Warm Drone 2" from the far left to the
+  far right, though the guide says the orientation is pinned. The rule that set
+  each axis's sign (its largest loading positive) changes its answer as the
+  axis turns, and with φ's near-equal brightness loadings that was routine.
+  Each map now faces the way the last one was drawn, and the session saves it,
+  so a reload does not mirror it either (`a_redraw_never_mirrors_the_map`,
+  `taste_map_keeps_its_orientation_across_redraws_and_reloads`).
+- **A seeded session is the same session every time.** Fills, duels, fits,
+  evolution and PERFORM's offers drew from one random stream, so a spare offer
+  that finished early or late moved every duel and fit after it: the same patch
+  read 0.39 in one session and 0.43 in its twin. Each now has its own stream,
+  and a fit is seeded from the evidence it is fitted on
+  (`a_consumer_draws_only_from_its_own_stream`).
+- **Keys work after a click.** A focused button swallowed every key that
+  doesn't play a note, so one click on HOLD or ▶ turned off `[`/`]`, `m`, 1–5
+  and EVOLVE's ←/→ until you clicked elsewhere. A button now keeps only Space
+  and Enter.
+- **A half-closed PERFORM control stops at the centre** on the side it can't
+  reach, with the mouse, the arrow keys, a MIDI pot or a long-press, as the
+  guide says; the dial used to turn on past it while the sound stayed put. An
+  XY axis the patch can't move now strikes its end words through
+  (`perform_controls.spec.js`).
+- **Knobs read in their units.** A slew's rise and fall read "52.84 s" for a
+  53 ms glide, and a granular grain "10.00 s" for 10 ms.
+- **The wavefolder's knob is called threshold.** It is the fold threshold, so
+  turning "fold" up folded less, and PERFORM's hood showed "fold" falling as
+  Bright folded harder.
+- **A bank row's cut appears on approach again.** Its reveal rules were less
+  specific than the rule that hides it, so cut could never be seen or pressed
+  (`bank_row.spec.js`).
+- **The spec strip no longer says "heard as as".** Its label is "heard", which
+  every module's line was written to follow.
+- **A node-bank preview ends at silence.** Its fade stopped one step short of
+  zero and left a sliver of a loud patch's last sample.
+- **Renaming a style renames that style and nothing else.** A rename showed
+  every change the votes and stars had made since the last redraw, so naming
+  one style "dark drones" renamed the other two and moved every share. The
+  name now changes alone, at once, and sticks through refits.
+- **The bank scrolls to the patch you opened**, not the one you left. Opening
+  a patch from the TASTE map scrolled the list to the previous patch, so the
+  one just opened, and its stars, stayed out of sight.
+- **PICKS counts a pick the moment you make it.** It showed the engine's log,
+  which hears of a pick only after its seven-second undo window, so it lagged
+  every pick and read 22 after 23 quick picks. Now picks, cuts and stars count
+  at once, and ⌘Z uncounts a pick everywhere it was counted.
+- **The latest word replaces the last.** Each pick's toast takes the place of
+  the one before instead of queueing behind it (the lane used to name the
+  first pick six seconds after the third). The warm start's result replaces
+  "Loading those in…" and names the patch under your fingers; ● rec's "saved"
+  replaces "recording"; a MIDI mapping's confirmation replaces the last.
+- **EVOLVE says how its pairs are dealt, truly and steadily.** A line beside
+  skip ↻ reads "◇ random pair — a fair test": the model doesn't choose what you
+  hear, so every pick is a fair test of its forecast, which TRUST scores. The
+  old "unbiased probe" mark claimed only one duel in ten was random, and
+  vanished after five.
+- **The sixth pick always redraws your taste map**, and "● it just learned"
+  says so. After picks the model agreed with, the promised redraw used to
+  quietly not happen (`evolve_feedback.spec.js`).
+- **The first generation's result arrives at once**, with "what happened?" on
+  it. A separate one-time explanation used to hold "Gen 1: 10 new patches in
+  the bank" back for seven seconds. ⚡ evolve from this now announces its child
+  when it is actually on the bench.
+- **The newest generation says "new" in the bank**, and a bank row's ▶ (and
+  EVOLVE's ▶ SAMPLE) lights while it plays and stops on a second press.
+- **TASTE draws uncertainty so you can read it.** Map dots now range from 2.5
+  to 9 px over the map's own spread of uncertainty (they were 5.6–7.5 px), and
+  DIRECTIONS draws each whisker on its bar's scale: a capped whisker made
+  grit's −0.12 ± 0.13 look settled. An interval that includes zero now crosses
+  the centre line.
+- **The menu bar says "generations"** and fits every window the app opens in;
+  at 1000 px it used to push ⋯ off the edge.
+- **Wander says it is paused while your hands are on it.** It waits a few
+  seconds after any touch, but only said so when a touch interrupted a glide.
+- **PERFORM says "re-checking" when the controls keep working.** After Wander
+  moved the sound a long way, the status read "measuring how this patch
+  moves…", the words for a patch whose controls are waiting, while the dials
+  worked on.
+- **Back after a drift glides home.** After Wander's drift, Back used to jump
+  seconds late and clear the offer in B, because the drifted patch was written
+  out with its fields in a different order and read as a new patch. Keep after
+  a drift, and PERFORM's memory of measured patches, had the same fault
+  (`perform_replies_write_trees_in_their_own_key_order`).
+- **An empty socket is silent.** Unplugging a source, extracting a module or
+  moving a cable left a dashed EMPTY plate, but under it the app had put a saw
+  oscillator that went on playing: the film's scope showed a clean saw under a
+  held chord, and the model scored and learned from a sound you never built.
+  The socket now holds the grammar's own silent source, so nothing plays
+  there; one side of a mix unplugged mutes only that side. When the socket was
+  the patch's only source the whole patch is silent, and it says so in those
+  words ("silent — nothing reaches the output", and "no guess" from the model)
+  instead of the runaway-feedback warning. A patch saved with an empty socket
+  before this change still has the saw behind its EMPTY plate until you fill
+  it (`patch_truth.spec.js`,
+  `an_unplugged_socket_is_silent_and_filling_it_sounds`).
+- **A knob you turn in PATCH shows the value you turned it to.** Once PERFORM
+  had measured a patch, PATCH redrew a knob you had just turned at its old
+  value, in amber, with a pointer claiming PERFORM was playing it: CUTOFF set
+  to 7.83 kHz read 1.78 kHz. PERFORM's own copy of the knob never heard the
+  turn, so the next PERFORM control you moved also put the old value back into
+  the sound. PERFORM now plays from what you set, and PATCH draws an amber
+  pointer only where a PERFORM control, Wander or Back is actually moving the
+  knob (`patch_truth.spec.js`).
+
+### Fixed — the player first
+
+The engine does long work (measuring a patch for PERFORM, growing offers,
+refitting), and every request used to wait its turn behind all of it. Films of
+the app caught a warm-start ▶ silent for 18 s and every PERFORM control
+reading "measuring…" for 14 s after a Take.
+
+- **Your gestures are answered first.** The engine serves the player's own
+  requests (plays, edits, picks, opens) ahead of work nobody is waiting on, and
+  long jobs pause between pieces to answer them (`responsive.spec.js`).
+- **Take keeps the controls under your hands**, names the offer you took
+  ("Acid Line (taken offer)") and brings Blend home. The controls used to go
+  dead while the new patch was measured.
+- **A warm-start ▶ says it is waiting and never plays late**, and "teach it"
+  opens PERFORM straight onto the pick.
+- **Out of sight, PERFORM waits.** Its measurements step back while PERFORM is
+  hidden, so editing in PATCH is not slowed by a view you are not using.
+
+### Fixed — editing a patch
+
+- **Every edit lands, in order.** Two knobs turned close together could lose
+  the first one, and a second drag could start from a stale value. Every edit
+  to the patch on the bench now goes through one ordered lane, and a drag
+  starts from the value you last set (`patch_editing.spec.js`).
+- **A knob survives the redraw that follows an edit**, and a knob you are
+  holding is never rebuilt. For a moment after an edit a knob could vanish
+  from under the pointer.
+- **Undo retires the toast of what it undid**, and the newest edit's toast
+  replaces the last one's instead of queueing behind it.
+- **⚡ evolve from this never overwrites edits** you made while it bred: the
+  child waits in the bank ("open it").
+- **With SYNC on, a sequencer's RATE reads the division it plays**; HOLD, the
+  dock and notes leave the arp drawer open; ▶ on a placement preview plays the
+  socket being previewed.
 
 ### Fixed — every patch at one level, and none that blasts
 
@@ -287,9 +599,9 @@ A walkthrough of the first-run flow, played the way a visitor would, found:
 * The warm start is a real dialog (role, `aria-modal`, focus on the first ▶);
   the menubar's forecast count no longer runs one behind TRUST; style names
   are no longer clipped.
-* **A narrow desktop window** (under ~860 px, fine pointer) says to widen it,
-  instead of overprinting the controls into "BRIGSNAPTIOBODY". CSS only: it
-  disappears as the window widens, and nothing underneath is reset.
+* **A narrow window** (999 px or less, any pointer but a phone's) says to
+  widen it, instead of overprinting the controls into "BRIGSNAPTIOBODY". CSS
+  only: it disappears as the window widens, and nothing underneath is reset.
 * **PERFORM's pads.** The Hold pad is **Freeze** (the dock's **hold** latches
   notes — two buttons named the same doing different jobs); Take and Peek are
   disabled until there is an offer; Offer reads as the primary.

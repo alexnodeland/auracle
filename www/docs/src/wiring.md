@@ -6,16 +6,17 @@ does not know about it.</p>
 ## The catalogue
 
 <figure>
-<img src="./img/node-bank.webp" alt="The PATCH view with the node bank open on the right: eight groups of modules down a rail, each entry carrying a transfer-function glyph, a name, a port signature and a θ bar, with the formant oscillator's spec card opened beside it." loading="eager" width="1440" height="900">
+<img src="./img/node-bank.webp" alt="The PATCH view with the node bank open on the right: ten groups of modules down a rail, each entry carrying a transfer-function glyph, a name, a port signature and a θ bar, with the formant oscillator's spec card opened beside it." loading="eager" width="1440" height="900">
 <figcaption><strong>The node bank, with a card open.</strong> Every entry says
 what it does to a wave, what it takes and gives, and what the model makes of
 it.</figcaption>
 </figure>
 
 The rail on the right of PATCH is the instrument's inventory: **forty-two
-modules in eight groups**, ordered along the signal path: sources → shape →
-filter → space → motion → dynamics → combine → modulation. That way "what goes
-after a filter" is a question the ordering answers.
+modules in ten groups**, ordered along the signal path: sources → shape →
+filter → space → motion → dynamics → combine, then the modulators: modulation
+→ shape cv (what bends a modulator) → combine cv (two modulators, one cable).
+That way "what goes after a filter" is a question the ordering answers.
 
 Every entry carries four things at rest:
 
@@ -24,7 +25,9 @@ Every entry carries four things at rest:
 - A **port signature** in both phosphors: what it takes and what it gives.
 - A **θ bar with a ±σ whisker**: what the model thinks of this module. It
   appears only once the model has been fitted **and** at least five patches in
-  the pool use it. Below that it draws a dash.
+  the pool use it. Below that it draws a dash. The bar is solid when the
+  whisker clears zero and hollow while it crosses it (still a guess), the same
+  two marks as TASTE's DIRECTIONS.
 
 That threshold matters. "The model barely likes this" and "the model has never
 seen this" are completely different statements and should not look alike.
@@ -51,13 +54,17 @@ Five things:
 1. One sentence in the instrument's voice.
 2. The port map.
 3. The parameters it will arrive with.
-4. **What the model believes**, with four ways of saying nothing: *not
-   measured* / *not fitted* / *too few examples* / *here is the belief, with
-   its interval*. The card above shows an interval straddling zero, which means
-   the model has looked and found nothing.
-5. **heard as**: what the feature extractor can and cannot pick up about this
-   module. Chorus's card says outright that the model will never learn it,
-   because the feature vector has no stereo-width coordinate.
+4. **What the model believes**, in one of five states: *not measured*, *not
+   fitted*, *too few examples*, *still a guess*, or *here is the belief, with
+   its interval*. The card above is the fourth: *still a guess: it could lean
+   either way*, with an interval that crosses zero. (The screenshot shows the
+   older wording, *has no lean either way*.)
+   [Reading what it learned](./reading-the-model.md#five-states-and-what-each-means)
+   quotes all five.
+5. **heard**: what the feature extractor can and cannot pick up about this
+   module. Chorus's card says the model hears it *as comb filtering, not as
+   width*: the feature pipeline sums left and right, so the model can learn the
+   artefact but never the effect.
 
 That fifth line tells you when your preference is real but *invisible* to the
 machinery. In that case, starring patches that use it will not teach the model
@@ -74,6 +81,12 @@ what you think it is teaching.
 3. **Click a lit ○** to place. <kbd>Esc</kbd> to put it down.
 
 Press-dragging from an entry also works, and a missed drop tells you so.
+
+To hear a placement before you make it, rest the pointer on a lit ○ for a
+moment, or press **▶** on the strip under the rack: it renders two seconds of
+this patch with the module spliced in, and places nothing. Once the pointer has
+left the socket, the strip names the one it is about ("hear it after the
+filter") and that socket is ringed, so ▶ always plays what the strip shows.
 
 Every placement is **one undo step**, and the confirmation toast offers **take
 it out**.
@@ -141,11 +154,11 @@ knob, so it can change one step of a pattern without touching the others, and a
 lock on a bar (press <kbd>L</kbd> with it focused) holds that step while the rest
 evolve.
 
-Nearly every module carries a modulation slot with a named destination; on the
-oscillators the slot bends pitch. The exceptions are the ones with nowhere
-sensible to send it: `noise`, whose only control is a colour switch, and `mix`
-and `ring mod`, whose two inputs are both audio and whose single knob is the
-blend.
+Nearly every module carries a modulation slot with a named destination. Among
+the sources, `vco` and `supersaw` take it as pitch, `wavetable` as morph,
+`pluck` as decay and `formant` as vowel. The exceptions are the ones with
+nowhere sensible to send it: `noise`, whose only control is a colour switch,
+and `mix` and `ring mod`, whose two inputs are both audio.
 
 ## Binary modules
 
@@ -168,7 +181,8 @@ to that module in the rack.
 ## The HELD tray
 
 Anything you unplug, delete or bypass goes here, and **stays across a reload**.
-Drag it back onto any lit ○ to put it in.
+Drag it back onto any lit ○ to put it in. The socket it came out of is left
+[empty and silent](./rack.md#empty-sockets).
 
 Collapsed, the rail keeps its name and the count of what is held below it, so
 staged work is never hidden silently. The rail's width, its collapsed state,

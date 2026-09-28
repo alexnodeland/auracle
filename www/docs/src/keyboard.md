@@ -5,7 +5,8 @@ same map without leaving it.</p>
 
 ## Notes
 
-An Ableton-style layout across the bottom two rows:
+An Ableton-style layout across the home row (white keys) and the row above it
+(black keys):
 
 ```text
 black:    w  e     t  y  u     o  p
@@ -18,9 +19,14 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 | <kbd>z</kbd> / <kbd>x</kbd> | Octave down / up |
 
 ```admonish note
-Note letters only reach the synth when focus is **not** in a control, so typing in
-a name field does not play a melody. This is also why the bank's save key is
-<kbd>m</kbd> rather than <kbd>s</kbd>.
+Note letters are blocked only while a text field (or a drop-down) has focus, so
+typing a name does not play a melody. Everywhere else they play, even with a
+button or knob focused. This is also why the save key is <kbd>m</kbd> rather
+than <kbd>s</kbd>. Two letters are the exception, where something focused
+uses them itself: <kbd>p</kbd> in the presets list plays the preset, and
+<kbd>L</kbd> in the rack locks; neither also plays its note. PERFORM's
+drop-downs (the XY pad's axes and what touch plays) hand the keys back as soon
+as you choose, unless you are stepping through them with the arrow keys.
 ```
 
 ## Global
@@ -31,8 +37,8 @@ a name field does not play a melody. This is also why the bank's save key is
 | <kbd>[</kbd> / <kbd>]</kbd> | Step through the bank |
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate the patch you are on |
 | <kbd>m</kbd> | Save the patch you are on |
-| <kbd>p</kbd> | In **presets**, play the row |
-| <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> | Undo / redo a workbench edit |
+| <kbd>⌘Z</kbd> | Take back your last pick or cut while its seven seconds last, in any view. Otherwise, in PATCH, undo an edit; elsewhere it changes nothing and says *nothing to undo here — PATCH edits undo in PATCH* |
+| <kbd>⇧⌘Z</kbd> | In PATCH, redo an edit |
 | <kbd>?</kbd> | Key map and gestures |
 | <kbd>Esc</kbd> | Close a dialog, or put down an armed module |
 
@@ -41,8 +47,12 @@ a name field does not play a melody. This is also why the bank's save key is
 | | |
 |---|---|
 | <kbd>1</kbd> / <kbd>2</kbd> | Audition A / B |
-| <kbd>←</kbd> / <kbd>→</kbd> | Vote A / B |
-| <kbd>⌘Z</kbd> | Take back a vote |
+| <kbd>←</kbd> / <kbd>→</kbd> | Vote A / B, from the moment you click the EVOLVE tab |
+| <kbd>⌘Z</kbd> | Take back your last pick, the sixth included, within seven seconds |
+
+Clicking a view's tab puts the keyboard in that view. A keyboard user who
+reaches the tabs with <kbd>Tab</kbd> still moves between them with
+<kbd>←</kbd> / <kbd>→</kbd>.
 
 ## The rack canvas
 
@@ -80,6 +90,10 @@ a name field does not play a melody. This is also why the bank's save key is
 | <kbd>1</kbd>–<kbd>5</kbd> | Rate |
 | <kbd>m</kbd> | Save |
 
+In **presets** the cursor keys work the same, <kbd>Home</kbd> / <kbd>End</kbd>
+jump to the first and last row, <kbd>Enter</kbd> opens the preset, and
+<kbd>p</kbd> plays it.
+
 ## The node bank
 
 | | |
@@ -102,9 +116,9 @@ The search matches by **sound as well as by name**: *grit*, *vowel*,
 | Drag a knob | Change it; you hear it immediately |
 | Click an enum plate | Cycle it (`saw`, `square`, `−2 oct`) |
 | Drag from an **out** jack | Pull a cable; every legal input lights up |
-| Drag a wired **in** jack off its socket | Unplug. The chain goes to **HELD** |
+| Drag a wired **in** jack off its socket | Unplug. The chain goes to **HELD** and the socket goes quiet |
 | Drag from **HELD** onto a lit ○ | Put it back |
-| Click **⋯** on a plate | Bypass, delete, replace with…, insert after… |
+| Click **⋯** on a plate | replace with…, insert before…, insert after…, duplicate, extract to HELD, bypass, modulate → *destination*, probe this output, swap the two inputs, delete |
 | Click **▢** on a plate | Lock the module so evolution cannot touch it |
 | Click a knob's lock dot | Lock just that knob |
 | Drag a plate by its faceplate | Move it (freeform mode); <kbd>shift</kbd> to ignore the grid |
@@ -121,8 +135,14 @@ A focused control (reach it with <kbd>Tab</kbd>):
 | <kbd>Home</kbd> | Back to the centre (Blend: to *home*; Wander: to *still*) |
 | <kbd>Enter</kbd> | Hear it: a sweep through both ends and back |
 
-With the mouse: drag up or down, <kbd>shift</kbd> for fine, double-click to
-centre, long-press to hear it, a short tap on Wander to hold it. See
+A run of arrow presses is one turn. On an amber search control, or one still
+*listening…*, the control springs back to the centre about half a second after
+the last press, and a search control turned past its notch asks, as letting go
+of a drag does.
+
+With the mouse: drag up or down, <kbd>shift</kbd> for fine, double-click a
+named control to centre it (Blend and Wander ignore a double-click), long-press
+to hear it, a short tap on Wander to hold it. See
 [PERFORM](./views/perform.md).
 
 ## MIDI
@@ -135,11 +155,12 @@ with knobs and they work too.
 | Note on/off | Plays, with **velocity** |
 | Pitch bend | Bends every voice. Range **±2** semitones by default; ±7, ±12, ±24 or ±48 in the MIDI panel |
 | Sustain pedal (CC 64) | Sustains. Notes you release while it is down ring until it lifts |
-| Mod wheel (CC 1) | Drives **Motion**, unless you learn CC 1 onto another control |
-| Channel pressure | Drives **Bright**: pressing harder turns it from the centre toward *bright* |
-| Any other CC | The first eight you move claim PERFORM's controls, in order |
+| Mod wheel (CC 1) | Adds **Motion** on top of where the control sits, unless you learn CC 1 onto a control |
+| Channel pressure | Adds **Bright** on top of where the control sits: press harder, brighter |
+| Any other CC | The first eight you move claim PERFORM's controls, in order. Reserved CCs are never claimed (below) |
 | MIDI clock | Sets the tempo |
 | CC 120, CC 123 | All sound off / all notes off: the same as **◼** |
+| CC 121 | Reset all controllers: the mod wheel and pressure add nothing until they move again |
 
 Web MIDI works in Chromium browsers and in Firefox, which asks once whether
 to add a site permission for it. Safari has none; there the computer keyboard
@@ -157,7 +178,10 @@ row:
 
 - **learn**: the next CC you move is bound to this control. Any CC it
   replaces is unbound.
-- **clear**: unbind this control.
+- **clear**: unbind this control. It appears only on a row that has a CC bound.
+
+A row with no CC bound says what drives it: *mod wheel* on Motion, *pressure*
+on Bright, and *—* elsewhere.
 
 Below the rows: a switch for auto-mapping (*first knobs you turn claim free
 controls*), the bend range, and the incoming clock tempo.
@@ -167,11 +191,17 @@ controls*), the bend range, and the incoming clock tempo.
 With auto-mapping on, the first eight distinct CCs you move claim PERFORM's
 controls in the order you move them: **Bright, Snap, Motion, Body, Grit, Space,
 Blend, Wander**. Each claim is announced (*mapped: CC 74 → Bright*). The mod
-wheel and the sustain pedal are left out, because they already mean something.
+wheel is left out, because it already means something.
 
-The controls are measured when PERFORM first shows a patch, so a mapped knob
-moves nothing on a patch PERFORM has not measured yet. Open PERFORM once and
-the knobs work from any view.
+Some controllers are never claimed, by auto-mapping or by **learn**, because
+the MIDI spec gives them a meaning of their own: bank select (CC 0 and 32),
+data entry and (N)RPN (CC 6, 38 and 96–101), the sustain, sostenuto and soft
+pedals (CC 64, 66 and 67), and the channel-mode messages (CC 120–127). A
+keyboard that sets its bend range over RPN cannot grab a control that way.
+
+A patch's controls have to be measured before they turn anything. Moving a
+mapped knob measures the current patch if PERFORM has not already, so the knobs
+work from any view without opening PERFORM first.
 
 ### Endless encoders
 
@@ -198,11 +228,12 @@ of a pot left at three o'clock would snap a control that is now at nine.
 Whenever a control moves by the mouse, the keys or Wander, the pots bound to it
 have to pick it up again.
 
-The mod wheel works the same way. With Motion at its centre, the wheel takes
-over as it passes its halfway point; below that it makes the sound stiller,
-above it more restless. Channel pressure is not picked up: it only ever
-brightens from the centre, and letting go (pressure back to zero) returns
-Bright to the centre.
+The mod wheel and channel pressure are not picked up, because they do not set
+a control's position. Unless you learn CC 1 onto a control, each one adds to
+the control it drives, on top of wherever that control sits: the wheel pushes
+Motion toward *restless*, pressure pushes Bright toward *bright*. At rest they
+add nothing, so letting go returns the sound to exactly where the control is.
+They never count as touching the controls, so they do not pause Wander.
 
 ### Clock
 

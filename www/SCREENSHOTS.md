@@ -72,7 +72,7 @@ debris rather than dressing up the product:
 |---|---|---|
 | `play.png` | PATCH | that patch, tray empty, zoomed in, minimap on |
 | `nodebank.png` | PATCH | same, the node bank scrolled to SOURCES and `formant` hovered, the spec strip dragged open to fit its card (its 92px default at this size clips the "heard as" line) |
-| `evolve.png` | EVOLVE | a duel dealt and heard, marked as an unbiased probe, the meter on a refit boundary, lineage log populated |
+| `evolve.png` | EVOLVE | a duel dealt and heard, the meter on a refit boundary and saying how the pair was dealt, lineage log populated |
 | `taste.png` | TASTE › MAP | styles separated, the PATCH patch's dot ringed |
 | `styles.png` | TASTE › STYLES | — |
 | `directions.png` | TASTE › DIRECTIONS | — |

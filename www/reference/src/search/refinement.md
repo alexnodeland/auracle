@@ -219,7 +219,8 @@ pub struct LineageEvent {
 ```
 
 `tree_diff` produces the address-level diff, which the app renders as `attack
-0.59→0.83, +noise, −distortion · Δtaste +0.65`.
+0.59→0.83, +noise, −distortion · liked +0.65`, naming the parent and child
+by their bank names.
 
 Utilities are **recorded at event time**: a later refit changes the model, and
 re-deriving these numbers afterwards would rewrite history to look

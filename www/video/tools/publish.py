@@ -31,6 +31,7 @@ and no picture — build with `make site` to see them play.)
 It refuses a film whose picture and mix disagree about its length by more
 than a frame, or whose captions are missing.
 """
+import html
 import json
 import os
 import re
@@ -48,7 +49,8 @@ DOCS = os.path.join(WWW, "docs", "src")
 # film, then the films about playing it, then the ones about how it works.
 GROUPS = [
     ("Start here", ["launch"]),
-    ("Playing it", ["perform", "circuit", "playing", "composing", "sounddesign"]),
+    ("The instrument", ["tour", "view-perform", "view-patch", "view-evolve", "view-taste"]),
+    ("Playing it", ["playing", "composing", "sounddesign"]),
     ("How it works", ["taste", "engine", "math", "dsp"]),
 ]
 ORDER = [f for _, fs in GROUPS for f in fs]
@@ -61,6 +63,11 @@ SITE_URL = "https://auracle.alexnodeland.com/"
 CHAPTER_NAMES = {
     "launch": {"open": "The problem", "title": "Auracle", "duel": "Two patches, one pick", "grow": "Real circuits", "play": "Playing it", "offer": "Offers", "depth": "Underneath", "close": "Every note", "end": "Play it"},
     "taste": {"hook": "Choosing, not describing", "hears": "What it listens for", "evidence": "A pick is evidence", "posterior": "Every taste that still fits", "lenses": "More than one taste", "forecast": "Forecasts, scored", "search": "The search", "reading": "Reading what it learned", "playing": "Learning while you play", "outro": "In the open"},
+    "tour": {"title": "A tour of Auracle", "views": "The four views", "bank": "The bank", "dock": "The dock", "header": "Up top", "first": "Your first visit", "next": "Where to go next"},
+    "view-evolve": {"title": "EVOLVE", "turn1": "The duel", "turn2": "Play it yourself", "turn3": "Point it", "turn4": "What a pick does", "turn5": "Fair questions", "turn6": "A generation", "turn7": "Stars, save, cut", "turn8": "A working rhythm", "outro": "Next: TASTE"},
+    "view-perform": {"open": "PERFORM", "turn-play": "Play it", "turn-named": "Named for what you hear", "turn-honest": "Honest controls", "turn-xy": "The XY pad", "turn-offer": "Offers", "turn-wander": "Wander, Keep and Back", "turn-dock": "The dock", "turn-midi": "MIDI", "turn-together": "All of it at once", "outro": "Next: PATCH"},
+    "view-patch": {"cold": "A filter sweep", "title": "What PATCH is for", "t-read": "Reading the circuit", "t-hear": "Hearing it properly", "t-change": "Changing it", "t-add": "Adding a module", "t-move": "Modulation chains", "t-steps": "Steps", "t-lock": "Locks and ⚡ evolve", "t-keep": "Commit", "t-take": "Taking it with you", "t-together": "Putting it together", "outro": "Next: EVOLVE"},
+    "view-taste": {"open": "The map lights up", "title": "TASTE", "tabs": "Four ways in", "map": "The map", "styles": "Styles", "directions": "Directions", "trust": "Trust", "wrong": "When it's wrong", "profile": "Your profile", "together": "The loop", "outro": "Keep picking"},
     "engine": {"intro": "Five crates", "genome": "The genome", "compile": "Compiling to DSP", "audition": "The audition", "features": "Features", "utility": "Utility", "calibration": "Calibration", "search": "Search", "perform": "PERFORM's wiring", "runtime": "The runtime", "outro": "Read it, run it"},
 }
 
@@ -105,13 +112,20 @@ def main():
         for ext, p in files.items():
             shutil.copy2(p, os.path.join(DEST, f"{f}.{ext}"))
         make_loop(f, files["mp4"])
-        names = CHAPTER_NAMES.get(f, {})
+        # A film with names lists exactly its chapters, so a chapter can open
+        # on a wordless turn (its card) and the demo after it stays inside it.
+        # Without names, every beat that speaks is a chapter.
+        names = CHAPTER_NAMES.get(f)
         chapters = []
         for b in tl["beats"]:
-            lines = [l for l in tl["lines"] if l["beat"] == b["id"]]
-            if not lines:
+            if names is not None:
+                if b["id"] not in names:
+                    continue
+                name = names[b["id"]]
+            elif any(l["beat"] == b["id"] for l in tl["lines"]):
+                name = b["id"].replace("_", " ").capitalize()
+            else:
                 continue
-            name = names.get(b["id"]) or b["id"].replace("_", " ").capitalize()
             chapters.append({"t": round(b["t0"], 2), "name": name})
         reg[f] = {
             "title": script["title"],
@@ -128,12 +142,16 @@ def main():
     fill_landing(reg)
     fill_readme(reg)
     unhide_app_links(reg)
+    fill_film_chip(reg)
 
 
 def write_docs_page(reg):
     # Say what the films on the page are, not what the set will be: the
-    # walkthroughs' clause only once one is published.
-    walks = any(f in reg for f in dict(GROUPS)["Playing it"])
+    # walkthroughs' clause only once one is published (the tour and the
+    # views' films are recordings of the app too), and the app's film chip
+    # only once a view has its film.
+    walks = any(f in reg for f in dict(GROUPS)["Playing it"] + CHIP_FILMS)
+    views = any(f in reg for f in CHIP_FILMS if f != "tour")
     out = [
         "# Films",
         "",
@@ -147,6 +165,12 @@ def write_docs_page(reg):
         "The narration is synthetic (Kokoro-82M, offline).",
         "",
     ]
+    if views:
+        out += [
+            "In the app, **▶ film** in the menu bar opens the film of the view you are",
+            "in. The first time you open a view, it says so.",
+            "",
+        ]
     for group, films in GROUPS:
         present = [f for f in films if f in reg]
         if not present:
@@ -202,7 +226,7 @@ def fill_books(reg):
     """A film's player wherever a page of the guide or the reference asks for
     it. The path climbs out of the book to the site's copy: a page at
     docs/views/perform.html reaches assets/ as ../../assets/."""
-    pat = re.compile(r"<!-- film:(\w+) -->")
+    pat = re.compile(r"<!-- film:([\w-]+) -->")
     for book in BOOKS:
         for dirpath, _, names in os.walk(book):
             for n in names:
@@ -247,7 +271,8 @@ def film_link(f, r, cls, inner, extra=""):
 # The landing page's rows of films, by the section they sit in: each film
 # beside the claim it shows, not all of them in one band.
 LANDING_ROWS = {
-    "instrument": ["perform", "circuit", "playing"],
+    # The four views' films sit in their own tabs (PANES), not in this row.
+    "instrument": ["playing"],
     "learning": ["taste", "math"],
     "engine": ["engine", "dsp"],
     "making": ["sounddesign", "composing"],
@@ -255,6 +280,20 @@ LANDING_ROWS = {
 # The hero's silent loop: the launch film's opening, which carries its own
 # words on screen, so it reads with the sound off.
 LOOPS = {"launch": (0.0, 17.2)}
+# The four views' films, each in its tab of *Four views, one loop* on the
+# landing page (the pane marker `films:pane-<tab>`), playing its own silent
+# loop in place of the screenshot. Their loop windows are the films' own
+# choices (set in VIEW_LOOPS when each film is published).
+PANES = {"view-perform": "perform", "view-patch": "play", "view-evolve": "evolve", "view-taste": "taste"}
+VIEW_NAMES = {"view-perform": "PERFORM", "view-patch": "PATCH", "view-evolve": "EVOLVE", "view-taste": "TASTE"}
+VIEW_LOOPS = {
+    "tour": (26.9, 40.6),
+    "view-perform": (60.2, 74.0),
+    "view-patch": (0.6, 10.8),
+    "view-evolve": (116.5, 128.5),
+    "view-taste": (0.0, 14.0),
+}
+LOOPS.update(VIEW_LOOPS)
 
 
 def make_loop(f, src):
@@ -325,6 +364,34 @@ def fill_landing(reg):
         )
         return film_link(f, r, "film-chip", inner)
 
+    # The tour, above the four views' tabs: the map before the deep dives.
+    if "tour" in reg:
+        r = reg["tour"]
+        tour = "\n".join(["", '  <div class="tour-cta">', "    " + film_link(
+            "tour", r, "btn btn-film",
+            f'<span class="btn-film-play" aria-hidden="true">▶</span>Take the tour'
+            f'<span class="btn-film-len mono">{fmt(r["duration"])}</span>'), "  </div>", "  "])
+    else:
+        tour = ""
+    fill(LANDING, "films:tour", tour)
+
+    for f, pane in PANES.items():
+        if f not in reg:
+            fill(LANDING, f"films:pane-{pane}", "")
+            continue
+        r = reg[f]
+        loop = f"assets/film/{f}-loop"
+        name = VIEW_NAMES[f]
+        block = film_link(
+            f, r, "hero-film-screen pane-film",
+            f'<video poster="assets/film/{f}.jpg" autoplay muted loop playsinline preload="metadata" '
+            f'aria-hidden="true" data-hero-loop>'
+            f'<source src="{loop}.webm" type="video/webm"><source src="{loop}.mp4" type="video/mp4"></video>'
+            f'<span class="hero-film-play"><span class="btn-film-play" aria-hidden="true">▶</span>'
+            f'Watch {name} in depth <span class="btn-film-len mono">{fmt(r["duration"])}</span></span>',
+            extra=f' aria-label="Watch {name} in depth, {fmt(r["duration"])}, with sound"')
+        fill(LANDING, f"films:pane-{pane}", block)
+
     for row, films in LANDING_ROWS.items():
         present = [f for f in films if f in reg]
         body = "" if not present else "\n".join(
@@ -359,8 +426,9 @@ def fill_readme(reg):
 
 # The app's two ways to the films, and the film each needs before it leads
 # anywhere: the menu's "Watch the films" opens the guide's page of them (any
-# film writes it), the help's "watch it played" the PERFORM walkthrough.
-APP_LINKS = {"films-link": None, "help-film": "perform"}
+# film writes it); the help card's link opens the film of the view it was
+# opened from (main.js), so it waits for the four views' films.
+APP_LINKS = {"films-link": None, "help-film": "view-perform", "warm-tour": "tour"}
 
 
 def unhide_app_links(reg):
@@ -384,6 +452,31 @@ def unhide_app_links(reg):
     if new != text:
         open(APP, "w").write(new)
         print(f"  {os.path.relpath(APP, ROOT)}: film links shown")
+
+
+# The menu bar's film chip (main.js, pointFilmChip): the tour on a first
+# visit, then each view's own film. It reads which are published, and how
+# long each runs, from data-films, so it never links a film that isn't out.
+CHIP_FILMS = ["tour", "view-perform", "view-patch", "view-evolve", "view-taste"]
+
+
+def fill_film_chip(reg):
+    """Write the published chip films' lengths into the app's film chip and
+    un-hide it once any view has its film."""
+    if not os.path.exists(APP):
+        return
+    text = open(APP).read()
+    m = re.search(r'<div class="([^"]*)" id="film-chip" data-films="[^"]*"', text)
+    if not m:
+        return
+    lengths = {f: fmt(reg[f]["duration"]) for f in CHIP_FILMS if f in reg}
+    shown = any(f != "tour" for f in lengths)
+    cls = " ".join(w for w in m.group(1).split() if not (shown and w == "hidden"))
+    attr = html.escape(json.dumps(lengths, separators=(",", ":")), quote=True)
+    new = text[: m.start()] + f'<div class="{cls}" id="film-chip" data-films="{attr}"' + text[m.end():]
+    if new != text:
+        open(APP, "w").write(new)
+        print(f"  {os.path.relpath(APP, ROOT)}: film chip lists {', '.join(lengths) or 'nothing'}")
 
 
 if __name__ == "__main__":

@@ -25,15 +25,18 @@ white:  a  s  d  f  g  h  j  k  l  ;  '
 black:   w  e     t  y  u     o  p
 ```
 
-<kbd>z</kbd> / <kbd>x</kbd> shift octave, from `a = C0` to `a = C7`, so the
-letters reach C0 to C8: an 88-key piano's compass, and a few notes below. The
-left of the dock always shows the current anchor (`a = C4`).
+<kbd>z</kbd> / <kbd>x</kbd> shift octave, from `a = C0` to `a = C7`. At the
+bottom <kbd>a</kbd> plays C0; at the top <kbd>'</kbd> plays F8, five notes past
+an 88-key piano's C8. The on-screen keybed stops at C8, so the last few letters
+sound without a key lighting. The left of the dock always shows the current
+anchor (`a = C4`).
 
-```admonish note title="Letters only play when the interface does not want them"
-Note letters reach the synth only when focus is not in a control, and they get
-through even when it is. That is why <kbd>m</kbd> saves a patch in the bank
-instead of the obvious <kbd>s</kbd>: <kbd>s</kbd> is a note, so binding save to
-it would have played a D every time.
+```admonish note title="Letters play unless you are typing"
+Note letters are blocked only while a text field (or a drop-down) has focus, so
+naming a patch does not play a melody. A focused button, knob or tab keeps just
+the keys it uses (Space, Enter, the arrows) and lets the letters through. That
+is why <kbd>m</kbd> saves a patch instead of the obvious <kbd>s</kbd>:
+<kbd>s</kbd> is a note, so binding save to it would have played a D every time.
 ```
 
 ### MIDI
@@ -75,7 +78,7 @@ takes MIDI back. The computer keyboard already worked that way.
 
 | Control | |
 |---|---|
-| **HOLD** | Latch: notes stay on until you play them again |
+| **HOLD** | Latch: every note you play stays on until you switch HOLD off or press **◼**. Playing a held note again restrikes it |
 | **◼** | Panic. Kills every voice immediately |
 | **⇕ tall** | Grow the dock; the rack re-zooms into what is left |
 | **keys** | Keybed width, 1–4 octaves |
@@ -104,6 +107,12 @@ It is **sample-accurate**: it runs inside the audio engine rather than on a
 page timer, so it does not drift and it does not stutter when the interface is
 busy.
 
+The settings open in a drawer above the dock when you switch ARP or SYNC on,
+and fold to a chip under the buttons (`arp 1/8 · 120`) when you click outside
+the dock or press <kbd>Esc</kbd>; the chip opens it again. Playing, HOLD and
+the dock's other controls leave it open, so you can latch a chord and set the
+rate against it.
+
 **SYNC** (next to ARP) puts a patch's step sequencers on the same tempo. Each
 one plays the musical division nearest the speed it was evolved at, so a
 pattern that ran at 3.7 steps a second becomes 8ths at 120 BPM, and all of
@@ -111,8 +120,10 @@ them restart together with the first key you press, on the same beat the arp
 starts. MIDI start restarts them too, and from then until a MIDI stop the
 clock pulls them back onto its beat once a beat. A five-step pattern still cycles against
 the bar; that is the point of it. Turning a sequencer's rate knob with sync on
-moves it between divisions rather than off the grid. Sync changes only what you
-hear live: the model still auditions every patch free-running.
+moves it between divisions rather than off the grid, and the knob reads the
+rate it plays (`2.1 Hz sync`); its tooltip gives the free-running rate. Sync
+changes only what you hear live: the model still auditions every patch
+free-running.
 
 ## Recording
 

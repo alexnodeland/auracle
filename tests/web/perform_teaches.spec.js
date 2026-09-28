@@ -5,7 +5,9 @@
 // Asking for another is a pass (the played sound wins), Take is a take (the
 // offer wins, after its settle window), and an offer taken without being
 // heard counts for nothing. The picks counter is the engine's own observation
-// count, so this is the log, not the UI, being checked.
+// count plus the EVOLVE picks, cuts and ratings it has not answered for yet,
+// and PERFORM makes none of those, so this is the log, not the UI, being
+// checked.
 const { test, expect } = require("@playwright/test");
 test("an offer heard and answered is a pick; unheard, it is not", async ({ page }) => {
   test.setTimeout(240_000);

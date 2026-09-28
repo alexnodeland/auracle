@@ -27,13 +27,40 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
         wasm wasm-stamp serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
-        site-tools brand-rasters docs-serve reference-serve
+        site-tools brand-rasters docs-serve reference-serve \
+        film-sounds film-voice film film-rehearse film-record film-publish \
+        film-record-all film-preview dev-check help install-hooks
 
 all: check
 
 ## check: everything CI runs — format, lints as errors, the app's syntax and
-## its pure-logic unit tests, the wasm target, full test suite
-check: fmt-check lint web-check wasm-check test
+## its pure-logic unit tests, the tooling's own checks, the wasm target, full
+## test suite
+check: fmt-check lint web-check dev-check wasm-check test
+
+## help: every target with a description, in the order this file defines them
+help:
+	@awk '/^## [a-z][a-z0-9-]*:/ { sub(/^## /, ""); split($$0, a, ":"); \
+		printf "  %-18s%s\n", a[1], substr($$0, length(a[1]) + 2) }' $(MAKEFILE_LIST)
+
+## install-hooks: use the repo's git hooks (.githooks): fast format and syntax
+## checks on staged files before each commit. Opt-in, per clone.
+install-hooks:
+	git config core.hooksPath .githooks
+	@printf '  git hooks: .githooks (skip once with --no-verify)\n'
+
+## dev-check: the tooling around the code stays sound — the agent docs'
+## links, anchors and frontmatter, the constants the books quote by name, the
+## Claude Code hooks against inputs they must block and pass, and the syntax
+## of every film tool
+dev-check:
+	@python3 .claude/checks/check_docs.py
+	@python3 www/checknames.py
+	@bash .claude/checks/test_hooks.sh
+	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
+	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
+	@for f in www/video/tools/*.sh .claude/hooks/*.sh; do bash -n $$f || exit 1; done
+	@printf '  film tools and hooks: syntax OK\n'
 
 ## web-check: every web module parses (js-check), and the pure-logic modules'
 ## unit tests pass
@@ -73,7 +100,7 @@ wasm-check:
 ## Playwright's Chromium (`make smoke-tools` once).
 smoke:
 	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
-	cd tests/web && npm ci --no-audit --no-fund && npx playwright test
+	cd tests/web && npm ci --no-audit --no-fund && npx playwright test smoke.spec.js failure_flows.spec.js
 
 ## smoke-tools: Playwright's Chromium, once. CI passes --with-deps for the
 ## runner's system libraries; a workstation usually has them.
@@ -333,6 +360,42 @@ brand-rasters:
 	@printf '  lockup.png and og.png set the LOGOTYPE, so they cannot come from\n'
 	@printf '  an SVG renderer with no Jost. Serve the repo and screenshot the\n'
 	@printf '  #banner and #og elements of www/brand/render.html instead.\n\n'
+
+## film-sounds: render the films' shared scores (signal, study, stingers), once
+film-sounds:
+	www/video/tools/sounds.sh
+
+## film-voice: voice a film's script and time it to the words (FILM=name)
+film-voice:
+	www/video/tools/voice.sh $(FILM)
+
+## film: render an illustrated film, voice to encode (FILM=name POSTER=seconds)
+film:
+	www/video/tools/illustrated.sh $(FILM) $(POSTER)
+
+## film-rehearse: check and dry-run a walkthrough's shots, then summarise (FILM=name)
+film-rehearse:
+	node www/video/tools/validate.mjs $(FILM)
+	www/video/tools/rehearse.sh $(FILM)
+
+## film-record: record a walkthrough on a quiet machine and render it
+## (FILM=name POSTER=seconds [DRAFT=1: fast MP4 + preview, no WebM] [SHOTS=a,b: re-record only these])
+film-record:
+	www/video/tools/walkthrough.sh $(FILM) $(POSTER) $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS))
+
+## film-record-all: record several walkthroughs (the quiet part), then finish
+## each: encoded, previewed, cleared of its frame parts
+## (FILMS="name poster name poster …" [DRAFT=1] [SHOTS=a,b])
+film-record-all:
+	www/video/tools/record_films.sh $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS)) $(FILMS)
+
+## film-preview: a 720p MP4 of a finished film, for review (FILM=name)
+film-preview:
+	www/video/tools/preview.sh $(FILM)
+
+## film-publish: put finished films on the site, guide, reference and README (FILMS="a b")
+film-publish:
+	python3 www/video/tools/publish.py $(FILMS)
 
 ## site-tools: install the pinned doc toolchain
 site-tools:

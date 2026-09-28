@@ -670,12 +670,28 @@ function tasteViews() {
 // makeup gain riding along here is still the previous edit's, because measuring
 // the new one is the expensive half; main corrects it from the bench reply with
 // a bare `setMakeup` rather than a second swap.
-function postLiveTree(edited) {
+//
+// `knobs` is the tree's live knobs (a compile, no render): PERFORM keeps a
+// taken offer playable on the wiring it had until the offer's own measurement
+// lands, and centres that wiring on these values. `why` is echoed — see
+// `edit_set_tree`.
+function postLiveTree(edited, why) {
+  const json = engine.edit_tree_json();
+  let knobs;
+  if (typeof engine.perform_knobs === "function") {
+    try {
+      knobs = JSON.parse(engine.perform_knobs(json));
+    } catch (_) {
+      knobs = undefined;
+    }
+  }
   post({
     type: "tree_json",
     edited,
-    json: engine.edit_tree_json(),
+    json,
     makeup: engine.edit_makeup(),
+    knobs,
+    why: why || undefined,
   });
 }
 
@@ -699,6 +715,10 @@ function postBench(extra) {
       type: "bench",
       rack: JSON.parse(engine.edit_describe()),
       vetOk: engine.edit_vet_ok(),
+      // Failed for being *silent* — nothing reaches the output, as when the
+      // only source socket is unplugged — rather than for running away. The
+      // two need different words on screen.
+      vetSilent: typeof engine.edit_vet_silent === "function" ? engine.edit_vet_silent() : false,
       sampleRate: engine.sample_rate(),
       buffer: arr,
       treeJson: engine.edit_tree_json(),
@@ -770,7 +790,220 @@ self.addEventListener("unhandledrejection", (ev) => {
   });
 });
 
-self.onmessage = async (e) => {
+// ---------- PERFORM's measurement, in pieces ----------
+//
+// Wiring the named controls is thirty-odd phrase renders (a Jacobian, then
+// four points per reachable control), and it was one synchronous call: 14 s
+// on a busy laptop during which this thread answered nothing — not the ▶ of
+// the patch being measured, not a bench open, not a save. The engine now
+// answers "which renders does this measurement still owe?" without rendering
+// (`perform_wire_plan`, over `Engine::wire_plan`), so the renders are made
+// here one per turn with the player's requests answered between them, and the
+// measurement is finished from the memo — the same numbers, pinned natively by
+// `a_planned_measurement_is_the_measurement`.
+//
+// A measurement nobody is waiting on (a re-check, a pre-warm) gives way to
+// long work the player asks for, and loses nothing by it: every render it made
+// is in the memo, so it resumes where it stopped. What it has learned about
+// renders that do not vet rides on the message, because the memo keeps only
+// successes and would otherwise ask for those again.
+async function measure(m) {
+  const ov = JSON.stringify(m.overrides || []);
+  if (typeof engine.perform_wire_plan !== "function") {
+    // A binary without the plan (see this file's header): the one call.
+    performReply(m, "perform_wired", "data", true, () => JSON.parse(engine.perform_wire(m.tree, ov)));
+    return;
+  }
+  const failed = m.failed || (m.failed = []);
+  try {
+    // A measurement is at most three rounds (see `Engine::wire_plan`); the cap
+    // only guards against a memo evicting under it, in which case the finish
+    // below renders whatever is missing itself.
+    for (let round = 0; round < 6; round++) {
+      const need = JSON.parse(engine.perform_wire_plan(m.tree, ov, JSON.stringify(failed)));
+      if (!need.length) break;
+      for (const job of need) {
+        if (!engine.memo_render(job.tree)) failed.push(job.key);
+        if (await breathe(laneOf(m))) {
+          lanes[LATER].unshift(m);
+          return;
+        }
+      }
+    }
+  } catch (err) {
+    // Answered, as every PERFORM request is (see `performReply`): the page
+    // holds the request open until its reply lands. A trap still poisons the
+    // engine, through `dispatch`'s catch.
+    const message = String((err && err.message) || err);
+    post({ type: "perform_wired", req: m.req, data: null, error: message });
+    if (isFatal(err, message)) throw err;
+    return;
+  }
+  performReply(m, "perform_wired", "data", false, () =>
+    JSON.parse(engine.perform_wire_known(m.tree, ov, JSON.stringify(failed))));
+}
+
+// One EVOLVE POOL generation, a seed at a time (see `case "refine"`).
+async function breed() {
+  beginLongOp();
+  try {
+    let seeds = [];
+    try {
+      seeds = JSON.parse(engine.refine_begin());
+    } catch (_) {
+      engine.refine(); // older engine: single-shot
+      post({ type: "refined", views: tasteViews(), status: status(), born: null });
+      return;
+    }
+    if (seeds.length === 0) {
+      // No posterior yet — nothing to refine *toward*. Report it rather
+      // than burning a minute to produce nothing.
+      post({ type: "refined", views: tasteViews(), status: status(), born: [], untaught: true });
+      return;
+    }
+    const born = [];
+    // Why each seed that produced nothing produced nothing — see
+    // `refineReason`. All of them, so main can say "every seed" when it is
+    // true rather than the first one's story.
+    const reasons = [];
+    for (let i = 0; i < seeds.length; i++) {
+      post({ type: "refine_progress", done: i, total: seeds.length });
+      const childId = Number(engine.refine_seed(seeds[i]));
+      if (childId > 0) born.push(childId);
+      else reasons.push(refineReason());
+      await breathe(SOON);
+    }
+    // The last seed is bred; what is left is placing the children and
+    // re-drawing the views. Said, or the button sits on "10/10…".
+    post({ type: "refine_progress", done: seeds.length, total: seeds.length });
+    post({ type: "refined", views: tasteViews(), status: status(), born, reasons, bench: benchBelief() });
+  } finally {
+    endLongOp();
+  }
+}
+
+// ---------- the queue: the player first ----------
+//
+// This is the engine's only thread, and it used to take requests strictly in
+// the order they arrived. Most of what arrives is small — a knob, a vote, a
+// bench open, a ▶ — but some of it is not, and much of the large work is work
+// nobody asked for yet: a re-measurement of a patch already playing, a spare
+// offer grown ahead, a booth pre-warm, a refit. First come, first served put a
+// player's ▶ behind all of it. Films of the app caught a warm-start ▶ silent
+// for 18 s, a bank row outlined for 3.5 s with the old rack still up, and every
+// PERFORM control reading "measuring…" for 14 s after a Take, each time behind
+// work the player had not asked for.
+//
+// So requests go into three lanes, served most urgent first and first come,
+// first served within a lane:
+//
+// - **now**: the player's own gestures, and everything that has to stay in
+//   order with them — edits, votes, opens, auditions, saves, logs. One lane,
+//   so every ordering rule the app already relies on (edits to one bench land
+//   in order; a save sees the votes cast before it; a log line carries the φ of
+//   the edit it follows) holds exactly as it did.
+// - **soon**: long work the player did ask for — a generation, an offer they
+//   pressed, the first measurement of the patch in their hands.
+// - **later**: work nobody is waiting on — refits, re-measurements, spare
+//   offers, Wander's drift, booth pre-warms.
+//
+// Reordering between lanes only ever moves a `soon` or `later` request *later*,
+// past gestures that arrived after it, and none of them depends on the state
+// from before those gestures: PERFORM's carry the tree they are about, ⚡ names
+// its seed by id, and a generation or a refit reads the pool and the log as it
+// finds them — a refit that runs after one more vote has seen one more vote.
+//
+// Queueing alone cannot help a request that arrives while a long call is
+// already *running* — wasm cannot be interrupted. That half is chunking: a
+// long job that can be cut into renders (`measure`, `breed`) runs one piece
+// per turn and calls `breathe` in between, which answers every `now` request
+// that arrived meanwhile before the next piece starts. One long job holds the
+// floor at a time — two interleaved would each take twice as long, and the
+// generation's order of work is its own — and a background job gives the floor
+// up entirely when the player asks for long work of their own.
+const NOW = 0;
+const SOON = 1;
+const LATER = 2;
+const lanes = [[], [], []];
+
+function laneOf(m) {
+  switch (m.type) {
+    case "refine":
+    case "refine_from":
+      return SOON;
+    case "perform_wire":
+    case "perform_offer":
+      return m.bg ? LATER : SOON;
+    case "perform_drift":
+    case "fit":
+      return LATER;
+    case "load_preset":
+      return m.prewarm ? LATER : NOW;
+    default:
+      return NOW;
+  }
+}
+
+// The long job holding the floor, or null. While one is set, only `now`
+// requests are started; `soon` and `later` wait for it to finish (or, for a
+// `later` job, to give way).
+let floor = null;
+let pumpQueued = false;
+
+function schedulePump() {
+  if (pumpQueued) return;
+  pumpQueued = true;
+  setTimeout(pump, 0);
+}
+
+// Is there anything the pump may start now? Work waiting behind a held floor
+// is not: the floor's release schedules the pump, and re-arming it meanwhile
+// would spin a timer every few milliseconds for as long as a generation runs.
+const runnable = () => lanes[NOW].length > 0 || (!floor && (lanes[SOON].length > 0 || lanes[LATER].length > 0));
+
+async function pump() {
+  pumpQueued = false;
+  while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
+  const m = floor ? null : lanes[SOON].shift() || lanes[LATER].shift();
+  if (m) await runMessage(m);
+  if (runnable()) schedulePump();
+}
+
+async function runMessage(m) {
+  if (poisoned) {
+    engineError(m.type, m.id, null);
+    return;
+  }
+  try {
+    await dispatch(m);
+  } catch (err) {
+    engineError(m.type, m.id, err);
+  }
+}
+
+// Between two pieces of a long job: let every message that arrived during the
+// last piece be delivered, answer the player's at once, and say whether a
+// background job must give the floor up to long work the player asked for.
+async function breathe(lane) {
+  await yieldToQueue();
+  while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
+  return lane === LATER && lanes[SOON].length > 0;
+}
+
+// Run `job` for message `m` holding the floor; the floor is released however
+// it ends.
+async function holdFloor(m, job) {
+  const me = { m };
+  floor = me;
+  try {
+    return await job();
+  } finally {
+    if (floor === me) floor = null;
+    schedulePump();
+  }
+}
+
+self.onmessage = (e) => {
   const m = e.data;
   // Everything but `init` needs the engine, and `init` is async: it imports the
   // wasm, instantiates it and fills a pool. Any request that arrives inside
@@ -787,16 +1020,78 @@ self.onmessage = async (e) => {
     post({ type: "not_ready", request: m.type });
     return;
   }
-  if (poisoned) {
-    engineError(m.type, m.id, null);
+  // Boot is not queued: it is the fill everything else is served *between*
+  // (it yields after every batch), and a lost farm worker must be heard while
+  // it is running, not after.
+  if (m.type === "init" || m.type === "farm_lost") {
+    runMessage(m);
     return;
   }
-  try {
-    await dispatch(m);
-  } catch (err) {
-    engineError(m.type, m.id, err);
+  // Background work became the player's: Offer claimed a spare still waiting
+  // in `later`, or PERFORM came back into sight with its measurement demoted
+  // (see `retire`). It waits in `soon` now, and a running one stops giving way.
+  if (m.type === "promote") {
+    if (floor && floor.m && floor.m.req === m.req && floor.m.type === m.kind) floor.m.bg = false;
+    const i = lanes[LATER].findIndex((q) => q.req === m.req && q.type === m.kind);
+    if (i >= 0) {
+      const [q] = lanes[LATER].splice(i, 1);
+      q.bg = false;
+      lanes[SOON].push(q);
+    }
+    if (runnable()) schedulePump();
+    return;
   }
+  // PERFORM moved on to another patch, or out of sight. Its measurement is
+  // still worth finishing — it is cached, and coming back is the common case —
+  // but nobody is waiting on it now, so it drops to `later`, where long work
+  // the player asks for can overtake it (a running one gives way at its next
+  // breath). Offers and drifts grown from a patch it left are worth nothing,
+  // so any of those named here that are still queued are answered empty:
+  // PERFORM holds every request open until its reply lands.
+  if (m.type === "retire") {
+    const reqs = new Set(m.reqs || []);
+    if (floor && floor.m && floor.m.type === "perform_wire" && reqs.has(floor.m.req)) floor.m.bg = true;
+    const mine = (q) => reqs.has(q.req) && q.type.startsWith("perform_");
+    for (const q of lanes[SOON].filter((q) => mine(q) && q.type === "perform_wire")) {
+      lanes[SOON].splice(lanes[SOON].indexOf(q), 1);
+      q.bg = true;
+      lanes[LATER].push(q);
+    }
+    for (const lane of [SOON, LATER]) {
+      for (const q of lanes[lane].filter((q) => mine(q) && q.type !== "perform_wire")) {
+        if (q.type === "perform_offer") {
+          post({ type: "perform_offered", req: q.req, offer: null, error: "retired" });
+        } else if (q.type === "perform_drift") {
+          post({ type: "perform_drifted", req: q.req, drift: null, error: "retired" });
+        } else {
+          continue; // not a kind that is ever retired
+        }
+        lanes[lane].splice(lanes[lane].indexOf(q), 1);
+      }
+    }
+    return;
+  }
+  const lane = laneOf(m);
+  lanes[lane].push(m);
+  // The player's requests run on arrival, as every request used to: parked
+  // behind a timer, the boot fill's next batch — a second or more of renders
+  // — could slip in ahead of them. Long work waits for the pump, so a burst of
+  // messages is all queued before any of it starts and the gestures in it go
+  // first.
+  if (lane === NOW) drainNow();
+  if (runnable()) schedulePump();
 };
+
+let draining = false;
+async function drainNow() {
+  if (draining) return;
+  draining = true;
+  try {
+    while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
+  } finally {
+    draining = false;
+  }
+}
 
 async function dispatch(m) {
   switch (m.type) {
@@ -996,10 +1291,10 @@ async function dispatch(m) {
         // out. Main has already answered it with a `{type:"duel"}` and will
         // follow with the pair's two `{type:"render"}`s — all of which would sit
         // behind the fit, dropping the veil onto a frozen, empty duel table.
-        // Drain them first: one macrotask for the duel, two more for its
-        // renders.
+        // Drain them first: three breaths, each answering every request of the
+        // player's that has arrived by then — the duel, then its renders.
         if (restored > 0 && st.observations > 0) {
-          for (let i = 0; i < 3; i++) await yieldToQueue();
+          for (let i = 0; i < 3; i++) await breathe(LATER);
           beginLongOp();
           try {
             engine.fit();
@@ -1036,7 +1331,9 @@ async function dispatch(m) {
       let pair = null;
       let meta = null;
       try {
-        const ex = JSON.parse(engine.next_duel_ex());
+        // The patches the player cut are never dealt again (`exclude`, ids
+        // main holds from the cut on, undo window included).
+        const ex = JSON.parse(engine.next_duel_ex(new Uint32Array(m.exclude || [])));
         if (ex && ex.a != null) {
           pair = [ex.a, ex.b];
           meta = ex;
@@ -1166,40 +1463,15 @@ async function dispatch(m) {
       // Driven one seed at a time so the UI can show progress and say what
       // actually happened. A generation is tens of seconds of render-bound
       // work; as one opaque call it reads as a hang.
-      beginLongOp();
-      try {
-        let seeds = [];
-        try {
-          seeds = JSON.parse(engine.refine_begin());
-        } catch (_) {
-          engine.refine(); // older engine: single-shot
-          post({ type: "refined", views: tasteViews(), status: status(), born: null });
-          break;
-        }
-        if (seeds.length === 0) {
-          // No posterior yet — nothing to refine *toward*. Report it rather
-          // than burning a minute to produce nothing.
-          post({ type: "refined", views: tasteViews(), status: status(), born: [], untaught: true });
-          break;
-        }
-        const born = [];
-        // Why each seed that produced nothing produced nothing — see
-        // `refineReason`. All of them, so main can say "every seed" when it is
-        // true rather than the first one's story.
-        const reasons = [];
-        for (let i = 0; i < seeds.length; i++) {
-          post({ type: "refine_progress", done: i, total: seeds.length });
-          const childId = Number(engine.refine_seed(seeds[i]));
-          if (childId > 0) born.push(childId);
-          else reasons.push(refineReason());
-        }
-        // The last seed is bred; what is left is placing the children and
-        // re-drawing the views. Said, or the button sits on "10/10…".
-        post({ type: "refine_progress", done: seeds.length, total: seeds.length });
-        post({ type: "refined", views: tasteViews(), status: status(), born, reasons, bench: benchBelief() });
-      } finally {
-        endLongOp();
-      }
+      //
+      // And it breathes between seeds (see `breathe`): a generation is a
+      // couple of minutes on a laptop, and for all of it a ▶ on a bank row, a
+      // bench open or a vote used to wait for the last seed. Each seed is
+      // still one call, so the player waits at most one seed's walk, not ten.
+      // What is served between seeds is only the player's own requests — a
+      // refit waits for the generation, which is therefore bred under the
+      // posterior it started under, whatever votes land meanwhile.
+      await holdFloor(m, breed);
       break;
     }
     // ---- workbench (the interactive rack) ----
@@ -1325,10 +1597,10 @@ async function dispatch(m) {
     // PERFORM's four questions. Every one answers, even on a throw: the page
     // tracks each request until its reply lands, and a missing reply would
     // leave (say) an offer "in flight" forever and refuse the next one.
-    case "perform_wire":
-      performReply(m, "perform_wired", "data", true, () =>
-        JSON.parse(engine.perform_wire(m.tree, JSON.stringify(m.overrides || []))));
+    case "perform_wire": {
+      await holdFloor(m, () => measure(m));
       break;
+    }
     case "perform_apply":
       performReply(m, "perform_applied", "json", false, () =>
         engine.perform_apply(m.tree, JSON.stringify(m.overrides || [])));
@@ -1371,9 +1643,12 @@ async function dispatch(m) {
         post({ type: "edit_rejected", error: err });
         break;
       }
-      postLiveTree("restore");
+      // `why` names what the new tree is when it is not a hand edit — "taken
+      // offer", from PERFORM's Take — and rides back on both replies so every
+      // label calls it that instead of "(edited)".
+      postLiveTree("restore", m.why);
       engine.edit_revet();
-      postBench({ edited: "restore" });
+      postBench({ edited: "restore", why: m.why || undefined });
       break;
     }
     case "import_patch": {
@@ -1407,8 +1682,12 @@ async function dispatch(m) {
       break;
     }
     case "set_style_name": {
+      // The name, and nothing else. Posting fresh views here was the first
+      // post since the last fit, so a rename also showed every reweighting
+      // the votes and stars had made since: the other styles changed their
+      // generated names and shares at the moment the player named one. The
+      // page updates its own copy; the next fit's views carry the name.
       engine.set_style_name(m.k, m.name);
-      post({ type: "taste_views", views: tasteViews() });
       break;
     }
     case "log_event": {
@@ -1442,7 +1721,12 @@ async function dispatch(m) {
       break;
     }
     case "load_preset": {
-      const id = Number(engine.load_preset(m.index));
+      // A preview is about to be played: `load_preset_heard` keeps the audio
+      // of the one render the insert costs, so the `render` that follows is a
+      // memo hit rather than the same phrase rendered twice. (Absent on a
+      // stale binary: the plain load, and the second render, as before.)
+      const heard = m.preview && typeof engine.load_preset_heard === "function";
+      const id = Number(heard ? engine.load_preset_heard(m.index) : engine.load_preset(m.index));
       // Pin *here*, not in a follow-up message. The warm start posts nine
       // loads in one burst, so by the time a `set_pinned` reply could be sent
       // and re-queued, the whole burst has already run and the early picks
@@ -1479,6 +1763,13 @@ async function dispatch(m) {
         if (id > 0) {
           engine.set_pinned(id, true);
           ids[i] = id;
+          // The first pick is what the player is waiting to play, and the
+          // rest of this turn is eight more inserts. Posted now, it reaches
+          // the voices (and PERFORM) seconds before `warm_done` does; the
+          // bench follows when main's open is served.
+          if (i === m.picked[0]) {
+            post({ type: "warm_first", id, index: i, json: engine.tree_json_of(id), makeup: engine.makeup_of(id) });
+          }
         }
       }
       let n = 0;

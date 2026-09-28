@@ -108,12 +108,13 @@ const AXIS_TOL: f64 = 1e-12;
 /// data rather than a property of the projection.
 ///
 /// The convention is the standard one (`svd_flip`): the component of largest
-/// magnitude is made positive. It is stateless, which is why it is used here
-/// over aligning each axis to the previously drawn one — that would be strictly
-/// more stable, and it needs `taste_map` to carry state across calls, which is
-/// a bigger change than the defect warrants. What remains is that a *tie* for
-/// largest magnitude can still flip; with 40 continuous coordinates that is a
-/// measure-zero event rather than the routine one this replaces.
+/// magnitude is made positive. It is stateless, so it decides only the *first*
+/// map's orientation; every map after that faces the way the last one was
+/// drawn ([`orient`]). The convention alone was not enough: as the axis turns
+/// between refits, which loading is largest changes hands, and when the new
+/// largest has the other sign the whole map mirrors. With φ's near-equal
+/// brightness loadings that is routine, not a tie at a single point — a taught
+/// session measured x before and after one refit at a correlation of −0.98.
 fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64, bool) {
     let d = rows.first().map(|r| r.len()).unwrap_or(0);
     if d == 0 {
@@ -203,8 +204,27 @@ fn leading_axis(rows: &[Vec<f64>], deflate: Option<&[f64]>) -> (Vec<f64>, f64, b
     (v, variance, converged)
 }
 
+/// Turn `axis` to face the way `drawn` did, if it has flipped: the sign that
+/// keeps somewhere you recognise where you left it. An axis that has turned
+/// through a right angle has no such sign, and whichever it keeps is as good.
+fn orient(axis: &mut [f64], drawn: &[f64]) {
+    if axis.len() != drawn.len() {
+        return;
+    }
+    let dot: f64 = axis.iter().zip(drawn).map(|(a, b)| a * b).sum();
+    if dot < 0.0 {
+        for a in axis.iter_mut() {
+            *a = -*a;
+        }
+    }
+}
+
 impl Engine {
     /// Build the taste map over the pool plus recent observation history.
+    ///
+    /// Each axis faces the way the last map drawn by this session did (the
+    /// first takes the sign convention in [`leading_axis`]), so a refit turns
+    /// the map rather than mirroring it.
     pub fn taste_map(&self) -> TasteMap {
         let mut rows: Vec<Vec<f64>> = Vec::new();
         let mut meta: Vec<(Option<u64>, String)> = Vec::new();
@@ -259,8 +279,16 @@ impl Engine {
             .map(|r| r.iter().map(|x| x * x).sum::<f64>())
             .sum::<f64>()
             / centered.len() as f64;
-        let (ax1, var1, ok1) = leading_axis(&centered, None);
-        let (ax2, var2, ok2) = leading_axis(&centered, Some(&ax1));
+        let (mut ax1, var1, ok1) = leading_axis(&centered, None);
+        let (mut ax2, var2, ok2) = leading_axis(&centered, Some(&ax1));
+        {
+            let mut drawn = self.map_axes.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some([d1, d2]) = drawn.as_ref() {
+                orient(&mut ax1, d1);
+                orient(&mut ax2, d2);
+            }
+            *drawn = Some([ax1.clone(), ax2.clone()]);
+        }
 
         let points = centered
             .iter()
@@ -379,6 +407,38 @@ mod tests {
                 assert!((norm - 1.0).abs() < 1e-8, "case {name}: {which} not unit");
             }
         }
+    }
+
+    fn dot(a: &[f64], b: &[f64]) -> f64 {
+        a.iter().zip(b).map(|(x, y)| x * y).sum()
+    }
+
+    /// **A redraw never mirrors the map.** Two pools a refit apart: the
+    /// leading axis turns by about a degree, and its two largest loadings,
+    /// of opposite sign, trade places. That is where the largest-component
+    /// convention flips, so on its own it mirrors the map (the first assert
+    /// documents that). Oriented against the axis last drawn, it does not.
+    #[test]
+    fn a_redraw_never_mirrors_the_map() {
+        let unit = |v: [f64; 3]| {
+            let n = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+            [v[0] / n, v[1] / n, v[2] / n]
+        };
+        let before = plane(unit([0.62, -0.60, 0.3]), unit([0.3, 0.2, -0.5]), 40);
+        let after = plane(unit([0.60, -0.62, 0.3]), unit([0.3, 0.2, -0.5]), 40);
+        let axis = |rows: &Vec<Vec<f64>>| {
+            let mut c = rows.clone();
+            mean_center(&mut c);
+            leading_axis(&c, None).0
+        };
+        let drawn = axis(&before);
+        let mut next = axis(&after);
+        assert!(
+            dot(&drawn, &next) < -0.9,
+            "this case no longer flips under the convention alone"
+        );
+        orient(&mut next, &drawn);
+        assert!(dot(&drawn, &next) > 0.9, "the redraw mirrored the map");
     }
 
     /// A near-degenerate spectrum must be *reported*, not silently returned as

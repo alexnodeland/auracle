@@ -187,4 +187,4 @@ made
 
 Capped at `pool_size / 4` so the pool can never be pinned solid. That state has
 no honest report, because it surfaces as `insert_candidate` returning `None`,
-which callers already render as "no proposal beat its parent".
+which callers already render as "no move was accepted".

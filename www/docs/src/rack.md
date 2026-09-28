@@ -6,7 +6,7 @@ teaches the machine something.</p>
 <!-- film:sounddesign --><!-- /film:sounddesign -->
 
 <figure>
-<img src="./img/rack-detail.webp" alt="Rack detail: wavefolder, mix, chorus and wavetable modules with labelled knobs reading FOLD 49%, RATE 8.23 Hz, BAL +4.0 dB, MORPH 85%, joined by green audio cables and amber modulation cables ending in named destinations PITCH, THRESHOLD, DEPTH and MORPH." loading="eager" width="560" height="300">
+<img src="./img/rack-detail.webp" alt="Rack detail: wavefolder, mix, chorus and wavetable modules with labelled knobs, among them the wavefolder's threshold, RATE 8.23 Hz, BAL +4.0 dB and MORPH 85%, joined by green audio cables and amber modulation cables ending in named destinations PITCH, THRESHOLD, DEPTH and MORPH." loading="eager" width="560" height="300">
 <figcaption><strong>Two cable colours, two meanings.</strong> Green carries
 audio; amber carries modulation, and its cable says what it lands
 on.</figcaption>
@@ -51,7 +51,9 @@ so a very large patch shows as bare plates until you zoom in.
 | <kbd>shift</kbd>-click the minimap | Bookmark a spot |
 | <kbd>shift</kbd> + <kbd>1</kbd>–<kbd>9</kbd> | Jump to a bookmark |
 
-Zoom runs 0.30×–2.50×, and it fits to the frame on load (capped at 2.2× there).
+Zoom runs 0.30×–2.50× by hand, and it fits to the frame on load (capped at
+2.2× there). <kbd>Home</kbd> and the other fits may go below 0.30× when that is
+what it takes to show the whole of a large patch.
 
 ## Turning knobs
 
@@ -62,16 +64,45 @@ step to sit and drag ([more on the step sequencer](./wiring.md#the-step-sequence
 
 Every edit is a **one-site write at that knob's trace address**. The patch is
 re-rendered and re-vetted before it can be auditioned, and the live instrument
-is re-patched immediately so held notes keep sounding.
+is re-patched immediately so held notes keep sounding. While you drag you hear
+every value the knob passes through; the engine re-renders the one you let go
+on. A run of <kbd>↑</kbd>/<kbd>↓</kbd> presses on one knob is one turn.
+
+Edits reach the engine **in the order you make them**. On a busy machine the
+engine can still be working on the last one when you make the next: a bypass
+right after a knob turn, a cable pulled right after ⌘Z. The new one waits its
+turn and then happens. Its plate is outlined while it waits and the caption
+under the patch name says *1 edit waiting*. A knob always shows the value you
+last set, never an older one the engine is still catching up on, and never
+PERFORM's older copy of it: once you turn it here, PERFORM plays from your
+value too ([the circuit](./views/perform.md#opening-the-circuit)).
 
 Edits are staged. The toolbar's **commit** inserts the result as a new
 candidate, leaving the original intact. <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> undo and
-redo.
+redo, and ⌘Z always undoes the last thing you did, even if the engine has not
+finished it yet. Each structural edit's message replaces the last one's, and
+undoing an edit takes down the message that announced it.
 
-**my edit is better** is a separate claim. Ticking it teaches the model an
-"edit beat original" duel, which the
-[TRUST tab scores separately](./views/taste.md#trust--is-its-confidence-honest)
-from duels you actually listened to.
+**Commit asks first.** If the edit really changed the patch, a card opens:
+**WHICH ONE IS BETTER?** It holds the original and your edit as **A** and
+**B**, in a random order and unlabelled, each with **▶ play** and **this one**.
+Either answer teaches the model; picking the original teaches it the most. The
+receipt says which side was yours: *"committed as patch #51 · B was your edit ·
+taught: your edit won the comparison."* <kbd>1</kbd> / <kbd>2</kbd> play,
+<kbd>←</kbd> / <kbd>→</kbd> pick. <kbd>Esc</kbd> or **cancel** closes the card
+and commits nothing: your edit stays on the bench. **commit without
+comparing** commits and teaches nothing. **⚡ evolve from this** on an edited
+patch asks the same question before it breeds, and cancelling it cancels the
+generation too.
+
+**my edit is better** is the shortcut past the card, for one commit. Tick it
+and the next commit files a claim that your edit won, without hearing the two
+back to back; then it unticks itself. The
+[TRUST tab scores the two apart](./views/taste.md#trust--is-its-confidence-honest):
+answers you heard, and claims you filed.
+
+A commit's receipt takes the place of the edits' receipts it follows: once the
+edit is committed, their *take it out* buttons are gone.
 
 ```admonish tip title="Hit targets are bigger than they look"
 A knob's whole face is grabbable, including under its ticks and value arc, and a
@@ -112,7 +143,9 @@ pinning it somewhere you cannot see.
 - **clear locks** releases everything.
 
 Then **⚡ evolve from this**: refinement mutates everything *except* the locked
-addresses.
+addresses. If you go on editing while it breeds, the child waits in the bank
+rather than replacing your edits; the message that announces it has an
+**open it** button.
 
 A proposal that would change, delete **or create** any locked address is
 rejected. Both directions matter: allowing a *birth* at a locked address while
@@ -126,13 +159,45 @@ not about subtrees.
 
 ## The ⋯ menu
 
-Per module: bypass, delete, **replace with…**, **insert after…**.
+Per module:
 
-The last two hand off to the [node bank](./wiring.md) with the socket already
-chosen and lit, so there is one module inventory in one place.
+| | |
+|---|---|
+| **replace with…** | Another module in this socket; it keeps what feeds it |
+| **insert before…** | A new module between this one's input and it. Greyed on a source, which has no input |
+| **insert after…** | A new module between this one and what it feeds |
+| **duplicate** | A second one in series, with the same settings. Greyed on a source |
+| **extract to HELD** | Leaves the socket [empty and silent](#empty-sockets); drag it back any time |
+| **bypass** | The input passes straight through. Greyed on a source |
+| **modulate → *destination*** | Arms the node bank at the modulators, for this module's mod slot. Only on a module that has one |
+| **probe this output** | A little scope on the out ○: the patch rendered as if it ended here |
+| **swap the two inputs** | On the six two-input modules only |
+| **delete** | Set apart below a rule, in red |
+
+The *replace*, *insert* and *modulate* rows hand off to the
+[node bank](./wiring.md) with the socket already chosen and lit, so there is one
+module inventory in one place. A modulator's own ⋯ has two rows: **replace
+with…** and **unplug this modulator**.
 
 Anything you bypass or delete goes to the **HELD** tray rather than
 disappearing, and stays there across a reload.
+
+## Empty sockets
+
+Unplug a cable, extract a module or move a source into another socket, and the
+socket it leaves is **empty**: a small dashed plate titled *empty*, listed as
+*empty* under IN THIS PATCH, and **silent**. Nothing plays there. On one side
+of a mix, only that side goes quiet. Under a module you insert after it, that
+module has nothing to process.
+
+If the empty socket was the patch's only source, the whole patch is silent.
+The caption under its name says *silent — nothing reaches the output*, ▶ and
+**commit** wait for a source, and the model's line says it has no guess. Arm
+any source and the empty socket is the one already picked; place it, or press
+<kbd>⌘Z</kbd>, and you hear the patch again.
+
+The model sees an empty socket as one too: *empty sockets* is one of the
+structural coordinates it weighs.
 
 ## Exporting a patch
 

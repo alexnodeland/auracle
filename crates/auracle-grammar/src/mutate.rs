@@ -53,7 +53,8 @@ pub const MAX_DEPTH: usize = crate::prior::PRIOR_MAX_DEPTH + 1;
 /// recursion on top of the audio tree's.
 pub const MAX_MOD_DEPTH: usize = crate::prior::PRIOR_MAX_MOD_DEPTH + 1;
 
-/// The buildable node palette (everything the grammar can express).
+/// The buildable node palette (everything the grammar can express), plus
+/// [`NodeKind::Silence`], the empty socket.
 ///
 /// Serialized in snake_case, which is also the string the rack description
 /// reports as [`crate::describe::RackModule::kind`] and the frontend keys its
@@ -116,13 +117,29 @@ pub enum NodeKind {
     Gate,
     /// Carrier/modulator vocoder.
     Vocoder,
+    /// An unplugged socket: the source that makes no sound
+    /// ([`AudioNode::Silence`]).
+    ///
+    /// Here so the edit vocabulary can *name* a hole. The grammar has had the
+    /// production for a while (prior weight, compiler, rack description, φ's
+    /// `n_silence`), but nothing a hand does could reach it: the app unplugged
+    /// a socket by standing a saw VCO in it and drawing an EMPTY plate over
+    /// the top, so the plate said "nothing here" while a saw played and the
+    /// model was taught on a patch the player never built. `Replace` with this
+    /// kind is the unplug; `Replace` of it with any source is the refill.
+    ///
+    /// A source kind for [`NodeKind::is_source`], so it can be neither
+    /// inserted into a wire nor wrap anything. Declared last because the
+    /// palette grew in this order; the enum is serialized by name, so its
+    /// order is not a wire format.
+    Silence,
 }
 
 impl NodeKind {
     /// Every buildable kind, in declaration order — the palette as one table,
     /// so a sweep over "everything a hand can place" cannot skip the newest
     /// production.
-    pub const ALL: [NodeKind; 26] = [
+    pub const ALL: [NodeKind; 27] = [
         NodeKind::Vco,
         NodeKind::Supersaw,
         NodeKind::Noise,
@@ -149,6 +166,7 @@ impl NodeKind {
         NodeKind::Duck,
         NodeKind::Gate,
         NodeKind::Vocoder,
+        NodeKind::Silence,
     ];
 
     /// Is this a source (leaf) kind?
@@ -161,6 +179,7 @@ impl NodeKind {
                 | NodeKind::Wavetable
                 | NodeKind::Pluck
                 | NodeKind::Formant
+                | NodeKind::Silence
         )
     }
 }
@@ -728,6 +747,9 @@ fn default_node(kind: NodeKind, input: Option<AudioNode>) -> AudioNode {
             }),
             modulation: ModNode::None,
         },
+        // Nothing to default: a hole has no parameters. The one kind here that
+        // is *meant* to be inaudible the instant it lands, which is the point.
+        NodeKind::Silence => AudioNode::Silence { uid: Uid::NEW },
     }
 }
 

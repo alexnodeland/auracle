@@ -1,0 +1,21 @@
+# The repo's formatting conventions, for any editor. rustfmt (Rust) and the
+# hooks in .claude/ are the enforcement; this keeps editors from fighting them.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.{rs,py}]
+indent_size = 4
+
+[{Makefile,*.mk}]
+indent_style = tab
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown.
+trim_trailing_whitespace = false

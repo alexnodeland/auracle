@@ -17,20 +17,24 @@ The [TASTE view](./views/taste.md) documents what each tab shows. This page is
 about reading it well: the interpretation mistakes that are easy to make, and
 how the interface tries to stop you making them.
 
-## Four states, and what each means
+## Five states, and what each means
 
-The instrument distinguishes four, and never lets two of them look alike:
+The instrument distinguishes five, and never lets two of them look alike. A
+module's spec card in the node bank says them in these words:
 
-| It says | It means |
+| The card says | It means |
 |---|---|
-| *not measured* | The feature vector has no coordinate for this. It never will |
-| *not fitted* | No posterior yet. Answer some duels |
-| *too few examples* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
-| a value **± an interval** | Here is the belief, and here is how much to trust it |
+| *Not a coordinate the taste model measures on its own.* | The feature vector has no coordinate for this. It never will |
+| *The model hasn't been fitted yet — make a few picks.* | No posterior yet. Answer some duels |
+| *In 3 of 40 patches — too few for the model to have an opinion yet.* | Fewer than five patches in the pool use it. Not enough to fit a coefficient |
+| *In 6 of 40 patches. Still a guess: it could lean either way — θ 0.05 ± 0.17, an interval that crosses zero.* | Enough patches use it, and the model has looked, but it cannot yet tell which way you lean |
+| *In 12 of 40 patches. in drive & fold + chorus (60% of your bank) you lean toward it — θ +0.62 ± 0.20* | Here is the belief, and here is how much to trust it |
 
-A dash is not zero. "The model is indifferent to this" and "the model has never
-had a chance to form a view" are different statements, and one grey bar cannot
-say both.
+A dash is not zero. "The model is not sure yet" and "the model has never had a
+chance to form a view" are different statements, and one grey bar cannot say
+both. On the node bank's θ bars, *still a guess* is a hollow bar whose whisker
+crosses the zero line, the belief is a solid bar, and the three silences
+before them are a dash. TASTE's STYLES and DIRECTIONS draw the same two marks.
 
 ## Read the interval, not the bar
 
@@ -39,7 +43,9 @@ The single most useful habit.
 In [DIRECTIONS](./views/taste.md#directions), every coefficient is drawn with a
 credible interval behind it. **If the interval crosses the centre line, the
 model has not established that coordinate**: the bar is a guess that happens to
-point somewhere, and it will likely point elsewhere after ten more duels.
+point somewhere, and it will likely point elsewhere after ten more duels. The
+app draws such a bar hollow, with its whisker at full strength, and ends the
+row's label with **?**; only an interval clear of zero gets a solid bar.
 
 A short bar with a tight interval is worth more than a long bar with a wide
 one. The former is a small preference the model is sure of; the latter is noise
@@ -49,7 +55,8 @@ with confidence.
 <figcaption><strong>Drag the evidence slider.</strong> Early on every interval
 straddles zero, and the individual bars mean nothing even though they point
 somewhere. As observations accumulate the intervals narrow and coefficients
-start clearing zero one at a time. Red whiskers are the ones that have not.
+start clearing zero one at a time. Hollow bars, labelled with a **?**, are the
+ones that have not, drawn as the app draws them.
 </figcaption>
 </figure>
 
@@ -72,10 +79,10 @@ size.
 Early in a session everything is big. That is what a cold start looks like, and
 it is why the first generation you breed is not very targeted.
 
-Also read the variance footer: the two axes typically capture around half the
-variation in the feature space, so two dots close together are *probably*
-similar and two far apart are *probably* different. It is a projection, not a
-map of the territory.
+Also read the footer (*"it shows 29% of how they differ"*): the two axes
+often capture a third or less of the variation in the feature space, so two
+dots close together *usually* sound alike and two far apart are *probably*
+different. It is a projection, not a map of the territory.
 
 ## Styles are lenses, not genres
 
@@ -96,12 +103,14 @@ Two things follow:
 ## The prediction on a bank row
 
 The percentage is roughly "how likely you are to prefer this patch in a duel
-against an average pool member". It is a posterior mean, so it already accounts
-for the model's uncertainty by averaging over it, which means a confident 80%
-and an unsure 80% look identical here.
+against an average pool member". It is a posterior mean, so on its own a
+confident 80% and an unsure 80% print the same number.
 
-If you want the uncertainty, that is what the map's size channel and the belief
-row's interval are for. The row is a ranking aid, not a measurement.
+The bar under the row tells them apart. Its bright tick is the same mean, and
+the dimmer block around the tick spans one standard deviation either way: a
+narrow block is a sure guess, a wide one an unsure guess. The map's size channel
+and the belief row's interval say the same thing at more length. The row is
+still a ranking aid, not a measurement.
 
 ## Trust, and what to expect over time
 
@@ -125,9 +134,11 @@ Two failure shapes worth recognising:
   learn](./teaching.md#what-it-cannot-learn)), or your answers are
   inconsistent, which happens: some days you are not choosing on one axis.
 
-The number to watch is **check-duel skill** rather than overall skill. The
-overall number is measured on questions the model helped choose; the check
-duels are drawn at random.
+The number to watch is **check-duel skill** rather than overall skill. Check
+duels are the ones dealt at random, which under the default pairing is every
+duel EVOLVE and PATCH deal you. The overall number also counts comparisons you
+chose yourself (an edit against its original, a PERFORM offer), and those are
+not a fair sample.
 
 ```admonish note title="Why a low score early is the honest one"
 Auracle forecasts every duel *before* you answer it, then reports its own error
@@ -139,7 +150,8 @@ early on it does. That is what makes it worth reading later.
 
 You will notice it before the numbers say so:
 
-- The duels get **harder** — both candidates are plausible.
+- More pairs hold **two patches you like**. The pairs are still dealt at
+  random; it is the pool that has moved toward you.
 - Generations produce children you want to keep rather than children you want
   to skip.
 - The belief row's explanation matches your own reason for liking a patch.

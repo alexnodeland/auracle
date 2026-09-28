@@ -77,6 +77,11 @@ const BUILD = await (async () => {
   } catch (_) { /* no build, or no server: fall through to the clock */ }
   return String(Date.now());
 })();
+// The TASTE view's lengths — dot sizes, bars, whiskers — pure, so they are
+// unit-tested (taste-geom.js, tests/taste-geom.test.mjs). Awaited before the
+// worker exists, so no reply can arrive while it loads.
+const { mapUnsureScale, mapDotRadius, directionsScale, pullMark, pullLabel, countPulls } =
+  await import(`./taste-geom.js?v=${BUILD}`);
 const worker = new Worker(`./worker.js?v=${BUILD}`, { type: "module" });
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 // ONE master gain. Every audible path — live keys AND every ▶ phrase
@@ -114,10 +119,24 @@ let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
 let engineCalib = null;    // authoritative calibration, incl. unbiased check-duel skill
 let duelsSinceFit = 0;
-const FIT_EVERY = 6;   // pacing floor between refits, not the trigger — see settleFit()
-let fitDue = false;    // armed by a vote, enqueued once the next pair is on screen
+const FIT_EVERY = 6;   // every sixth pick refits — see settleFit()
+let fitDue = false;    // armed by the sixth pick, sent once that pick is in the log
 let fitting = false;
+// The meter's refit, from the moment it is sent until `fitted` answers it —
+// the only span in which "● learning from your last 6 picks…" is true, and
+// what lets `fitted` say "● it just learned" for the meter's own fit only.
+let meterFitting = false;
+// `fitted` answered the meter's refit: "● it just learned" stands until the
+// next pick, not for a timer's 3.2 s (which fired when the fit was *sent*).
+let learnedShown = false;
+// Long work holding the engine that a deal or a refit waits behind:
+// EVOLVE POOL ({done, total} as its seeds go) and ⚡ evolve from this.
+let breeding = null;
+let evolvingFrom = false;
 let playingSrc = null;
+// ⚡'s child, waiting for the bench to hold it before it is announced:
+// {id, text(name)} — see `evolved_from` and the `bench` reply.
+let evolvedAnnounce = null;
 
 let views = null;          // {map, styles, lineage, ranked} from the worker
 let tasteTab = "map";
@@ -156,15 +175,36 @@ const wb = {
   rack: null,
   buffer: null,      // phrase render of the bench state
   vetOk: true,
+  // The vet failed because the patch is *silent* (no source reaches the
+  // output: its only source socket is unplugged), not because it can run
+  // away. Only meaningful while `vetOk` is false.
+  vetSilent: false,
   dirty: false,
   // Locked sites, keyed by **node identity** rather than by trace address —
   // `41#cut`, not `node/0#cut`. See the lock section below for why the whole
   // point of this phase hangs off that one substitution.
   locks: new Set(),
 };
-let editInFlight = false;
-let editQueue = null;
-let auditionOnSettle = false;
+// The bench lane: every edit waiting its turn at the worker, in the order the
+// player made them. See `pumpLane` for what an entry is and why there is one
+// lane rather than the two there used to be.
+let editInFlight = false;  // an `edit_param` is at the worker (`paramAtWorker`)
+const benchLane = [];
+// Declared here rather than beside `queueStruct`: the lane reads it from the
+// top of the file down.
+let structInFlight = false;
+// Stamps every knob write. The worker echoes it back as the bench reply's
+// `token`, which is how a reply is matched to the write it answers.
+let laneSeq = 0;
+let paramAtWorker = null;
+// What the player has set and the engine has not yet confirmed, by knob
+// identity (`lockIdOf`): `{value, seq, live}`. Drawn over every rack the
+// engine sends (`overlayPending`), so a reply for an older write can never
+// repaint a knob behind the hand that is turning it.
+const pendingKnobs = new Map();
+// True while `pumpLane` is running the entry at the head: that entry owns
+// the worker, so what it posts goes out instead of queueing behind itself.
+let laneDraining = false;
 let pendingEvolve = false;
 let knobDragging = false;
 
@@ -200,12 +240,22 @@ let healedRev = -1;
 let liveOptimisticJson = null;
 let liveMuted = false;
 
-function setLivePatchJson(json, makeup) {
+function setLivePatchJson(json, makeup, knobs) {
   liveTreeJson = json;
   liveMakeup = makeup;
   liveRev += 1;
-  if (perform) perform.patchChanged(json, makeup);
+  // `knobs` (the tree's live knobs, when the worker sent them) lets PERFORM
+  // keep a taken offer playable on the wiring it had until it is re-measured.
+  if (perform) perform.patchChanged(json, makeup, knobs);
 }
+
+// Why the bench differs from the bank entry it was opened from, in the words
+// every label uses: "edited", or "taken offer" when the difference is an offer
+// taken in PERFORM. A Take is not a hand edit, and "Glass Pad (edited)" read as
+// one. Set from each edit's reply (the worker echoes `why`), cleared by a new
+// subject or a commit.
+let benchDirtyWhy = null;
+const dirtySuffix = () => ` (${benchDirtyWhy || "edited"})`;
 
 // The one place the instrument is silenced without touching the player's
 // fader. `alarm()` has claimed "Muted" on an unvetted state since the beginning
@@ -629,9 +679,31 @@ function benchStep(trays) {
     trays: trays || [],
   };
 }
+/** One undo step for a knob gesture, which is "the bench before it".
+ *
+ *  Taken at the gesture only when nothing is still on its way to the engine.
+ *  Otherwise `wb.tree` is the bench from the last reply, not the bench this
+ *  gesture starts from — a second knob turned while the first one's write was
+ *  queued snapshotted a tree without that write, so its ⌘Z took both turns
+ *  back at once and the next ⌘Z was a dead keystroke. A `mark` in the lane
+ *  takes the step when its turn comes, which is exactly when everything
+ *  before it has landed and the bench is the one this gesture began on. */
 function pushUndo() {
   if (!wb.tree) return;
-  undoStack.push(benchStep());
+  // Any gesture's step ends a run of arrow-key nudges: the next press is a
+  // turn of its own (the keyboard branch sets it again after this).
+  nudge = null;
+  if (!laneFree()) {
+    benchLane.push({ t: "mark" });
+    return;
+  }
+  takeUndoStep();
+}
+function takeUndoStep() {
+  if (!wb.tree) return;
+  const step = benchStep();
+  landedOver(undoStack[undoStack.length - 1]);
+  undoStack.push(step);
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
 }
@@ -664,8 +736,10 @@ function stageUndo() {
   stagingBound = openEdit;
   return openEdit;
 }
+/** Returns the step it pushed, so the sentence the edit earned can be filed
+ *  under it (`settleLanded`). */
 function commitStagedUndo() {
-  if (!openEdit) return;
+  if (!openEdit) return null;
   // Uids while the edit is open, because that is all `stageFragment` can hand
   // back and a rejection has to be able to unstage by one. Records at commit,
   // because from here the step may have to put them *back* on the shelf, and a
@@ -675,10 +749,37 @@ function commitStagedUndo() {
   openEdit.snap.trays = openEdit.trays
     .map((uid) => tray.find((t) => t.uid === uid))
     .filter(Boolean);
+  landedOver(undoStack[undoStack.length - 1]);
   undoStack.push(openEdit.snap);
   if (undoStack.length > 60) undoStack.shift();
   redoStack.length = 0;
+  const step = openEdit.snap;
   openEdit = null;
+  return step;
+}
+
+// A confirmation toast is a sentence about one edit, and most of them carry
+// that edit's undo ("PLUG IT BACK IN"). Both go stale on the stack's schedule,
+// not the toast lane's, so each toast is filed under the undo step of the edit
+// it describes:
+//
+//  - When that step is *undone*, by ⌘Z or by any other button, the toast goes.
+//    It used to stay for its whole seven seconds: pull a cable, press ⌘Z, and
+//    the supersaw was back in the patch and HELD was empty while the toast
+//    still said the supersaw was held below — and its button, pressed then,
+//    undid the edit *before* the unplug, which the player never asked for.
+//  - When another edit lands *on top of* it, the sentence is still true but
+//    the button is not: undo is a stack, and the button would now take back
+//    the newer edit. It retires, the same way a vote's undo retires when a
+//    refit claims it.
+function landedOver(step) {
+  if (!step || !step.toasts) return;
+  for (const el of step.toasts) retireToastUndo(el, "not the last edit");
+}
+function landedUndone(step) {
+  if (!step || !step.toasts) return;
+  for (const el of step.toasts) retireToast(el);
+  step.toasts = null;
 }
 function discardStagedUndo() {
   if (!openEdit) return;
@@ -705,13 +806,33 @@ function discardStagedUndo() {
 // twice.
 let landedNote = null;
 let landedDrops = [];
-/** Pay what the edit that just landed owes. */
-function settleLanded() {
+/** Pay what the edit that just landed owes. `step` is the undo step that edit
+ *  pushed, if any: the sentence is filed under it (see `landedOver`). */
+function settleLanded(step) {
   const l = landedNote;
   landedNote = null;
   for (const uid of landedDrops) unstage(uid);
   landedDrops = [];
-  if (l) note(l.text, l.opts);
+  if (!l) return;
+  // The newest edit's receipt replaces the last one's rather than queueing
+  // behind it. A receipt carries an undo, so the lane holds it for its whole
+  // seven seconds: pull a cable just after a bypass and the bypass's receipt
+  // stayed up over the empty socket, the unplug's waiting "+1" behind it
+  // until after the player had already undone the unplug. Its button was
+  // retired anyway the moment this edit landed on top of it (`landedOver`).
+  for (const old of editReceipts) retireToast(old);
+  const el = note(l.text, l.opts);
+  editReceipts = [el];
+  if (step) (step.toasts = step.toasts || []).push(el);
+}
+let editReceipts = [];
+/** A landed commit takes the edits it committed with it: their receipts are
+ *  about a bench that is now a saved patch, and their buttons would undo into
+ *  it. The commit's own receipt used to wait behind them — "distortion
+ *  patched into the wire. TAKE IT OUT +1", 1.3 s after COMMIT. */
+function retireEditReceipts() {
+  for (const old of editReceipts) retireToast(old);
+  editReceipts = [];
 }
 /** …and take it all back when the engine refuses: nothing was announced,
  *  and nothing left the shelf. */
@@ -732,7 +853,15 @@ function bindLanded(landed) {
  *  the engine validates these too (the ceilings), so they can be refused, and
  *  a refused one must not have announced itself. */
 function noteOnLanding(text, opts) {
-  if (!structInFlight) return note(text, opts); // nothing is pending to wait on
+  if (!structInFlight) {
+    // Nothing is pending to wait on: said now, and filed as the newest edit
+    // receipt, as `settleLanded` files one — so the next edit's receipt, or a
+    // commit, retires it too.
+    for (const old of editReceipts) retireToast(old);
+    const el = note(text, opts);
+    editReceipts = [el];
+    return el;
+  }
   landedNote = { text, opts: opts || {} };
 }
 
@@ -758,7 +887,13 @@ let restorePending = null; // {kind: "undo"|"redo", cur: <the step being left>}
 // whatever landed in between. Each drain re-reads the live stack and sends the
 // step the player would get if they pressed it right then. Undo and redo
 // requests cancel each other, because that is what they mean.
-let restoreBacklog = 0; // >0 undos owed, <0 redos owed
+//
+// The count is a `restore` entry in the bench lane, behind everything the
+// player did before pressing. It used to be a counter beside the lane that
+// waited only for *structural* edits — so a knob write still queued when ⌘Z
+// was pressed went out after the undo and landed on top of it, and the knob
+// came back to the value the player had just undone. "Undo" means the last
+// thing I did, whatever the engine has or has not heard about yet.
 const RESTORE_BACKLOG_MAX = 60; // the depth of the stack itself
 
 function doUndo() { requestRestore("undo"); }
@@ -766,13 +901,17 @@ function doRedo() { requestRestore("redo"); }
 
 function requestRestore(kind) {
   const step = kind === "undo" ? 1 : -1;
-  // A restore is a whole tree, so it also waits behind ops that are still
-  // queued — those are aimed at the tree it would replace.
-  if (structInFlight || structQueue.length) {
-    restoreBacklog = clamp(restoreBacklog + step, -RESTORE_BACKLOG_MAX, RESTORE_BACKLOG_MAX);
-    return;
+  nudge = null; // a nudge after ⌘Z is a new turn, with a step of its own
+  if (laneFree()) return performRestore(kind);
+  // Presses in a row are one entry, so a burst stays one place in the order.
+  const tail = benchLane[benchLane.length - 1];
+  if (tail && tail.t === "restore") {
+    tail.n = clamp(tail.n + step, -RESTORE_BACKLOG_MAX, RESTORE_BACKLOG_MAX);
+    if (tail.n === 0) benchLane.pop();
+  } else {
+    benchLane.push({ t: "restore", n: step });
   }
-  performRestore(kind);
+  lanePaint();
 }
 
 // ---------- the implicit stream (WS-8 §3) ----------
@@ -832,12 +971,13 @@ function noteRevertIfAudible() {
   logImplicit("revert", { op: e.op, dwell_ms: dwell }, { value: dwell, withPhi: true });
 }
 
-function performRestore(kind) {
+/** `burst` is the lane entry this press came from, when it came from one. */
+function performRestore(kind, burst) {
   const stack = kind === "undo" ? undoStack : redoStack;
   if (stack.length === 0 || !wb.tree) {
     // Nothing left to land on, so the rest of the burst has nothing to do
     // either — said once rather than once per press.
-    restoreBacklog = 0;
+    if (burst && benchLane[0] === burst) benchLane.shift();
     return note(kind === "undo" ? "nothing to undo" : "nothing to redo");
   }
   // The other side of the step, captured before the engine moves: the state a
@@ -870,17 +1010,27 @@ function settleRestore() {
   const to = undoing ? redoStack : undoStack;
   const step = from.pop();
   const cur = restorePending.cur;
+  const toggles = restorePending.toggles || [];
   restorePending = null;
   // Only reachable if the stack emptied between the request and the reply,
   // which nothing does today — but a step that is not there cannot be the
   // state to go back to, and inventing one would put a phantom on the far
   // stack.
   if (!step) return;
+  // Whatever was said about the edit this undoes is no longer true.
+  if (undoing) landedUndone(step);
   cur.trays = step.trays;
   to.push(cur);
   // The tree is already back — the engine sent it. These are the parts of the
-  // step the engine has never heard of.
+  // step the engine has never heard of…
   wb.locks = new Set(step.locks);
+  // …plus the locks the player toggled while it was on its way, which are
+  // newer than either step (see `setLock`). The prune after this drops any
+  // whose module the restore took away.
+  for (const [id, on] of toggles) {
+    if (on) wb.locks.add(id);
+    else wb.locks.delete(id);
+  }
   // `settlePlaceholders` runs after this on the same reply and prunes whatever
   // the restored tree no longer contains, so this only has to be the set as it
   // stood — it does not have to be right about the tree.
@@ -965,15 +1115,21 @@ worker.onmessage = (e) => {
       // unconditionally; `choose()`'s early return on it is inert here because
       // there is no pair on the table yet.
       dealing = true;
-      send({ type: "duel" });
+      requestDeal();
       send({ type: "taste_views" });
-      if (m.restored > 0) {
+      // A session restored with no picks in it — the saved patches a reset
+      // kept — is not "your taste restored": there is none yet, and the warm
+      // start the reset owes comes first.
+      const taughtBefore = (m.status && m.status.observations) || 0;
+      if (m.restored > 0 && taughtBefore > 0) {
         note(`Welcome back — ${m.restored} patches and your taste restored.`);
       } else if (
         !localStorage.getItem("auracle-warmed") &&
         !localStorage.getItem("auracle-warm-deferred")
       ) {
         setTimeout(openWarmStart, 500);
+      } else if (m.restored > 0) {
+        note(`Welcome back — ${m.restored} patch${m.restored === 1 ? "" : "es"} restored.`);
       } else if (fillTarget > fillPool) {
         note(`Start picking — ${fillTarget - fillPool} more patches are still arriving.`);
       }
@@ -1019,11 +1175,17 @@ worker.onmessage = (e) => {
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
       send({ type: "taste_views" });
-      if (!currentDuel && !dealing) send({ type: "duel" });
+      if (!currentDuel && !dealing) requestDeal();
       renderFillHint();
       break;
     }
     case "saved": {
+      // A reset writes its own record, from the save that follows its copy.
+      if (resetting === "saving") {
+        finishReset(m.json);
+        break;
+      }
+      if (resetting) break;
       persistState({ v: STATE_VERSION, session: m.json, ui: uiState() });
       break;
     }
@@ -1064,9 +1226,16 @@ worker.onmessage = (e) => {
     // app stating something untrue about its own state. Say what happened,
     // and pull fresh views so the row that can't be opened stops being listed.
     case "bench_missing": {
-      // Not on its way any more, either (PERFORM holds a measurement for it).
-      if (benchPending === m.id) benchPending = null;
-      note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
+      // Not on its way any more, either (PERFORM holds a measurement for it),
+      // and the bench is still the patch the lane's edits were aimed at.
+      if (benchPending === m.id) {
+        benchPending = null;
+        pumpLane();
+      }
+      renderSubject(); // the rack stops saying "opening…"
+      if (currentView === "taste") drawTaste(); // …and the map's dot stops waiting
+      if (evolvedAnnounce && evolvedAnnounce.id === m.id) evolvedAnnounce = null;
+      note(`${nameOrKnown(m.id) || "That patch"} isn't in the bank any more — a bred generation replaced it.`);
       send({ type: "taste_views" });
       break;
     }
@@ -1080,6 +1249,7 @@ worker.onmessage = (e) => {
         // Filed under the id it landed as, *before* benching it, so the first
         // render already draws the arrangement the sender chose.
         const placed = adoptLayout(m.id, layout);
+        quietBench.add(m.id); // the import's own toast names it
         openOnBench(m.id);
         note(`patch imported as ${nameOf(m.id)}${placed ? `, with its ${placed}-module layout` : ""}.${madeRoom(evicted)}`);
         scheduleSave();
@@ -1097,6 +1267,7 @@ worker.onmessage = (e) => {
         // is not a reason to move plates they placed by hand.
         if (!ffLayouts.has(String(m.duplicate))) adoptLayout(m.duplicate, layout);
         note(`${nameOf(m.duplicate)} is already in the bank — opening it.`);
+        quietBench.add(m.duplicate);
         openOnBench(m.duplicate);
         scheduleSave();
       } else {
@@ -1126,7 +1297,8 @@ worker.onmessage = (e) => {
       duelMeta = m.meta || null;
       dealing = false;
       setDuelControlsEnabled(true);
-      renderCheckBadge();
+      retireForecast();
+      renderDealRule();
       if (currentDuel) {
         setFlip("a", false);
         setFlip("b", false);
@@ -1175,7 +1347,8 @@ worker.onmessage = (e) => {
     case "tree_json": {
       if (!(m.json && m.json !== "null" && live)) break;
       live.setPatch(m.json, m.makeup);
-      setLivePatchJson(m.json, m.makeup);
+      if (m.edited !== undefined) benchDirtyWhy = m.why || null;
+      setLivePatchJson(m.json, m.makeup, m.knobs);
       if (m.edited !== undefined) {
         // The bench speaking early: the worker posts the edited tree the
         // instant it is adopted and featurizes afterwards, so this arrives
@@ -1183,7 +1356,7 @@ worker.onmessage = (e) => {
         // in the voices now; the vet lands later and mutes if it fails.
         liveOptimisticJson = m.json;
         livePatchId = null;
-        setLiveLabel(`${benchName(wb.subjectId)} (edited)`);
+        setLiveLabel(`${benchName(wb.subjectId)}${dirtySuffix()}`);
       } else {
         livePatchId = m.id;
         setLiveLabel(benchName(m.id));
@@ -1199,6 +1372,9 @@ worker.onmessage = (e) => {
       break;
     }
     case "status": {
+      // Taken or refused, the log has answered for this one: from here the
+      // engine's count is the whole truth about it (see `taughtAhead`).
+      if (m.vote) aheadDrop(aheadKey(m.vote));
       applyStatus(m.status);
       send({ type: "calibration" });
       // The engine took nothing: the patch left the pool between the gesture
@@ -1225,22 +1401,37 @@ worker.onmessage = (e) => {
     }
     case "fitted": {
       fitting = false;
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("fit");
+      // The meter's refit has landed: now, and not when it was sent, it has
+      // learned. Said until the next pick (see `renderTeach`).
+      if (meterFitting) {
+        meterFitting = false;
+        learnedShown = true;
+        try { performance.mark("auracle:fitted"); } catch { /* ignore */ }
+      }
       applyViews(m.views);
       applyStatus(m.status);
       // The bench's guess under the model just fitted ("was" is the old one).
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       refreshInstruments();
       scheduleSave();
+      // A sixth pick made while this fit ran was told a redraw was coming;
+      // it goes out now rather than waiting for a seventh. Mid-deal, the
+      // deal's own `settleFit` sends it, behind the pair's audio.
+      if (fitDue && !dealing) settleFit();
       break;
     }
     case "refine_progress": {
       const btn = $("evolve-btn");
       btn.textContent = m.done >= m.total ? "placing in the pool…" : `breeding ${m.done + 1}/${m.total}…`;
+      breeding = { done: m.done, total: m.total };
+      sayDealing(); // a deal waiting on this generation names the seed it waits on
       break;
     }
     case "refined": {
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine");
+      breeding = null;
+      renderTeach(); // a refit waiting for the generation is on its way now
       $("evolve-btn").disabled = false;
       $("evolve-btn").textContent = "evolve pool";
       // The pool is fixed-size: every accepted child evicts the patch the
@@ -1274,11 +1465,10 @@ worker.onmessage = (e) => {
           note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
         }
       } else if (m.born) {
-        offerBankTourAfterFirstGeneration();
         const made = evicted.length
           ? madeRoom(evicted)
           : "";
-        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`);
+        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`, bankTourOffer());
       } else {
         note(`Generation ${m.status.generation} bred.`);
       }
@@ -1293,6 +1483,7 @@ worker.onmessage = (e) => {
       // from, and this is the only place a rack is ever replaced.
       lockIndex = null;
       wb.vetOk = m.vetOk;
+      wb.vetSilent = !m.vetOk && !!m.vetSilent;
       if (m.subject !== undefined) {
         // Benching anything that is NOT the auditioned candidate ends the
         // audition detour — otherwise the header keeps naming a candidate
@@ -1307,7 +1498,11 @@ worker.onmessage = (e) => {
         }
         wb.subjectId = m.subject;
         benchPending = null;
+        // Whatever was done to the last patch while this one was on its way
+        // was aimed at a rack that is gone now (see `pumpLane`).
+        dropLane();
         wb.dirty = false;
+        benchDirtyWhy = null;
         // A new subject: whatever the spec strip was describing belonged to
         // the pointer's last trip along the catalogue, not to this patch.
         specRest();
@@ -1338,7 +1533,26 @@ worker.onmessage = (e) => {
         holesRestoreFor(m.subject);
         undoStack.length = 0;
         redoStack.length = 0;
-        note(`${nameOf(m.subject)} on the bench`);
+        // ⚡'s child is announced here, where it is true (see `evolved_from`);
+        // `replace` lets it take over from "⚡ evolving around…" if that is
+        // still up, rather than queue behind it.
+        const evolved = evolvedAnnounce && evolvedAnnounce.id === m.subject ? evolvedAnnounce : null;
+        const asked = openAsk && openAsk.id === m.subject ? openAsk : null;
+        openAsk = null;
+        if (evolved) {
+          evolvedAnnounce = null;
+          const row = rowOf(m.subject);
+          note(evolved.text(row ? `${row.name} #${m.subject}` : `patch #${m.subject}`), { replace: "evolve-from" });
+        } else if (!quietBench.delete(m.subject) && asked && !asked.auto &&
+                   performance.now() - asked.at > OPEN_SAID_MS) {
+          // No toast for an open: the header, the dock and the live row
+          // already name the patch, and "X on the bench" after every one —
+          // right after the warm start's own result, in PERFORM, where
+          // nothing is called a bench — was noise in a word the player never
+          // meets. Only an open the player asked for that kept them waiting
+          // is news, and it is said once, in place of any earlier one.
+          note(`Opened ${nameOf(m.subject)}`, { replace: "open" });
+        }
         // First patch on the bench: a one-time walkthrough of the gestures
         // nothing else explains — locks, ⚡ evolve from this, my-edit-is-better.
         if (!localStorage.getItem("auracle-bench-tour")) {
@@ -1358,6 +1572,7 @@ worker.onmessage = (e) => {
       const settlingRestore = m.edited === "restore" && restorePending !== null;
       if (m.edited !== undefined) {
         wb.dirty = true;
+        benchDirtyWhy = m.why || null;
         if (structural) {
           // Everything keyed by trace address is invalidated by the same
           // fact — the addresses moved. Locks were already being cleared
@@ -1422,6 +1637,9 @@ worker.onmessage = (e) => {
       } else {
         wb.buffer = null;
       }
+      // Whether the voices were holding the bench's tree before this reply —
+      // read before the reply overwrites it (see the knob-write branch below).
+      const voicesHadBench = liveTreeJson !== null && liveTreeJson === benchTreeJson;
       if (m.treeJson && m.treeJson !== "null") {
         wb.tree = JSON.parse(m.treeJson);
         benchTreeJson = m.treeJson;
@@ -1454,8 +1672,20 @@ worker.onmessage = (e) => {
         // It landed, so the step it displaced is now history worth keeping —
         // and only now is the sentence about it a true one, and only now is
         // the shelf entry it came from really spent.
-        commitStagedUndo();
-        settleLanded();
+        settleLanded(commitStagedUndo());
+      } else if (m.edited !== undefined) {
+        // A knob write landed. Settled before anything is drawn, so the
+        // overlay below draws only what the engine still has not heard.
+        settleParam(m.token);
+        // A live knob's write reached the voices as a parameter, not a new
+        // tree, so the voices now hold this reply's tree in all but name.
+        // Say so, and let PERFORM's tree text follow: its first measurement,
+        // Keep and offers are all built from that text, and the old one put
+        // the knob's previous value back.
+        if (!paramNonLive && voicesHadBench && m.treeJson && m.treeJson !== "null") {
+          liveTreeJson = m.treeJson;
+          if (perform && perform.followTree) perform.followTree(m.treeJson);
+        }
       }
       // Structural edits already reached the voices from the worker's early
       // `tree_json` post. Swapping the identical tree in again would buy a
@@ -1467,6 +1697,7 @@ worker.onmessage = (e) => {
       if (spokeEarly) {
         if (live && m.makeup != null) live.setMakeup(m.makeup);
         liveMakeup = m.makeup;
+        livePending();
       } else if (
         m.treeJson && m.treeJson !== "null" && live &&
         (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
@@ -1474,7 +1705,8 @@ worker.onmessage = (e) => {
         live.setPatch(m.treeJson, m.makeup);
         setLivePatchJson(m.treeJson, m.makeup);
         livePatchId = wb.dirty ? null : wb.subjectId;
-        setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)} (edited)` : benchName(wb.subjectId));
+        setLiveLabel(wb.dirty ? `${benchName(wb.subjectId)}${dirtySuffix()}` : benchName(wb.subjectId));
+        livePending();
       }
       // Optimism's other half: the sound arrived before the verdict. A patch
       // that fails vetting can self-oscillate, and it is already in the
@@ -1487,7 +1719,12 @@ worker.onmessage = (e) => {
       // was pinned there: the first patch landing on the bench at boot
       // cleared the quarantine alert `restore_failed` had raised a moment
       // before, and any later bench reply cleared a crash or a refused save.
-      if (!wb.vetOk) {
+      //
+      // A *silent* failure is not a hazard and gets no alarm: it is what an
+      // unplugged socket sounds like when it was the patch's only source. The
+      // runaway sentence over it was untrue, and the EMPTY plate, the caption
+      // ("silent") and the model's line already say what is going on.
+      if (!wb.vetOk && !wb.vetSilent) {
         alarm(
           "Muted — this setting can run away (self-oscillation or runaway feedback). Turn the last knob back, or undo.",
           { label: "undo", run: doUndo }
@@ -1517,16 +1754,9 @@ worker.onmessage = (e) => {
       // bench change while the map is up must repaint it — clicking a dot
       // used to leave the ring on the old patch.
       if (currentView === "taste") drawTaste();
-      editInFlight = false;
-      if (editQueue) {
-        const q = editQueue;
-        editQueue = null;
-        sendEdit(q.addr, q.value, q.isIndex);
-      } else if (auditionOnSettle) {
-        auditionOnSettle = false;
-      }
-      settleCommit();
-      drainStruct();
+      // Whatever is next in the lane goes now — and if nothing is, a COMMIT
+      // that was waiting on this edit goes instead (see `pumpLane`).
+      pumpLane();
       break;
     }
     // A request that arrived before the engine finished booting. The worker
@@ -1605,11 +1835,15 @@ worker.onmessage = (e) => {
           `${label} isn't on this patch any more — that change did not land.`,
           { urgent: true },
         );
+        // Settled first, so the overlay does not paint the refused value
+        // straight back over the snap.
+        settleParam(null);
         if (wb.rack) renderRack();
       }
       editInFlight = false;
-      // Nothing landed, so COMMIT goes back to what the bench actually says.
-      editPending = false;
+      // Nothing landed, so COMMIT goes back to what the bench actually says —
+      // unless another knob write is still on its way.
+      editPending = pendingKnobs.size > 0;
       syncCommitBtn();
       // A rejected op never reached the tree, so nothing was posted early and
       // nothing is in flight; the next one may go. `restoreInFlight` matters
@@ -1627,14 +1861,8 @@ worker.onmessage = (e) => {
       // A refused restore means ⌘Z is aimed at a route the engine is turning
       // down; replaying the rest of the burst would say the same thing ten
       // times over. The stacks are untouched, so nothing is lost by stopping.
-      if (refusedRestore) restoreBacklog = 0;
-      if (editQueue) {
-        const q = editQueue;
-        editQueue = null;
-        sendEdit(q.addr, q.value, q.isIndex);
-      }
-      settleCommit();
-      drainStruct();
+      if (refusedRestore && benchLane[0] && benchLane[0].t === "restore") benchLane.shift();
+      pumpLane();
       break;
     }
     // The answer to "is there a duel to deal here, and what does the other
@@ -1688,6 +1916,7 @@ worker.onmessage = (e) => {
       if (m.id > 0) {
         wb.subjectId = m.id;
         wb.dirty = false;
+        benchDirtyWhy = null;
         // The bench is now a different patch — the child this commit inserted
         // — and everything keyed by subject has to be told, or it stays filed
         // under the parent. `lockKey()` and `ffKey()`/`holesRemember()` all
@@ -1708,24 +1937,33 @@ worker.onmessage = (e) => {
         // Say what was taught, from what actually happened rather than from
         // the state of a checkbox: three of these four sentences were
         // unsayable before the outcome had a direction.
+        // The comparison was blind, so its receipt names the side that was
+        // the edit (`cdPick`).
+        const was = commitReveal ? ` · ${commitReveal} was your edit` : "";
         const taught =
-          m.outcome === "heard_edited" ? " · taught: your edit won the comparison"
-          : m.outcome === "heard_original" ? " · taught: the original won — the model learns most from that"
+          m.outcome === "heard_edited" ? `${was} · taught: your edit won the comparison`
+          : m.outcome === "heard_original" ? `${was} · taught: the original won — the model learns most from that`
           : m.outcome === "self_edited" ? " · taught: you say your edit is better"
           : "";
-        note(`committed as patch #${m.id}${taught}.${madeRoom(evicted)}`);
+        // A landed commit is the latest word on the bench: the receipts of the
+        // edits it took in ("… TAKE IT OUT") are stale news about a patch that
+        // is now committed, and this receipt used to queue behind them.
+        retireEditReceipts();
+        note(`committed as patch #${m.id}${taught}.${madeRoom(evicted)}`, { replace: "commit" });
         if (pendingEvolve) {
           pendingEvolve = false;
           startEvolveFrom(m.id);
         }
+        commitReveal = null;
       } else {
+        commitReveal = null;
         // A patch the bank already holds is not a new candidate — but if the
         // player answered a comparison on the way in, the engine scored it
         // against the twin rather than dropping it, and saying "failed" about
         // a vote that was recorded is the wrong sentence.
         note(m.outcome && m.outcome !== "none"
           ? "that patch is already in the bank — nothing new to add, but your pick was recorded."
-          : "commit failed (duplicate or unvetted state)");
+          : "commit failed (duplicate or unvetted state)", { replace: "commit" });
         // …and the generation still runs. ⚡ on an edited patch commits *and
         // then* evolves; a commit the bank had no room for is a reason to
         // evolve from the seed instead of a reason to swallow the gesture.
@@ -1749,13 +1987,40 @@ worker.onmessage = (e) => {
     }
     case "evolved_from": {
       $("rack-evolve").disabled = false;
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine_from");
+      evolvingFrom = false;
+      renderTeach();
       const evolveEvicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
       if (m.childId > 0) {
-        note(`⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — now on the bench, play it.${madeRoom(evolveEvicted)}`);
-        send({ type: "edit_begin", id: m.childId });
+        // ⚡ is one engine call of about 20 s (23 s measured on a quiet
+        // machine), and the worker answers nothing while it runs: knobs still
+        // sound, because a turn goes straight to the voices, but every other
+        // edit — bypass, place, unplug — waits in the lane until it is done.
+        // If the player went on editing, the child used to be opened over
+        // those edits regardless — gone without a word, and every write still
+        // in the lane then landed on the child at addresses read off the
+        // patch it replaced. The bench is the player's: the child waits in
+        // the bank, one click away.
+        const editedSince = wb.dirty || editPending || !laneFree();
+        if (editedSince) {
+          note(
+            `⚡ gen ${m.status.generation}: evolution proposed patch #${m.childId} — it is in the bank, and your edits are still on the bench.${madeRoom(evolveEvicted)}`,
+            { undo: () => openOnBench(m.childId), undoLabel: "open it", replace: "evolve-from" },
+          );
+        } else {
+          // Said when it is true. The child exists now, but the bench swaps
+          // only when `edit_begin` has rendered and vetted it, 1–3 s on — and
+          // "now on the bench, play it" said here was played on the parent.
+          // The `bench` reply for this id says it instead of "X on the bench".
+          evolvedAnnounce = {
+            id: m.childId,
+            text: (name) =>
+              `⚡ gen ${m.status.generation}: evolution proposed ${name} — it's on the bench, play it.${madeRoom(evolveEvicted)}`,
+          };
+          openOnBench(m.childId, { auto: true });
+        }
         scheduleSave();
       } else {
         note(
@@ -1763,6 +2028,7 @@ worker.onmessage = (e) => {
             m.reason,
             "⚡ evolution found no accepted move — try again, or loosen some locks",
           ),
+          { replace: "evolve-from" },
         );
       }
       break;
@@ -1809,7 +2075,7 @@ worker.onmessage = (e) => {
         if (rowOf(m.id)) {
           note(`That would pass your limit of ${pinBudget[1]} saved patches. Release one first.`);
         } else {
-          note(`#${m.id} isn't in the bank any more — a bred generation replaced it.`);
+          note(`${nameOrKnown(m.id) || "That patch"} isn't in the bank any more — a bred generation replaced it.`);
         }
       } else if (m.pinned) {
         note(`Saved ${nameOf(m.id)} — it won't be replaced. ${pinBudget[0]}/${pinBudget[1]} slots used.`);
@@ -1822,6 +2088,10 @@ worker.onmessage = (e) => {
       renderPinBudget();
       renderBank();
       scheduleSave();
+      break;
+    }
+    case "warm_first": {
+      warmFirstLanded(m);
       break;
     }
     case "warm_done": {
@@ -1851,7 +2121,7 @@ worker.onmessage = (e) => {
         // it holds. That is defensible, but it has to be *said*: this branch
         // used to drop the eviction on the floor, so pressing ▶ destroyed a
         // patch and reported nothing at all.
-        warmPreviewLoaded(m.id, evicted);
+        warmPreviewLoaded(m.index, m.id, evicted);
         scheduleSave();
         break;
       }
@@ -1870,6 +2140,7 @@ worker.onmessage = (e) => {
           // the bank now, and the patch in their hands stays there.
           note(`${nameOf(m.id)} is in the bank now — you had moved on, so it was not opened.${madeRoom(evicted)}`);
         } else {
+          quietBench.add(m.id); // "Preset loaded as …" names it
           openOnBench(m.id);
           note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
         }
@@ -1887,23 +2158,49 @@ worker.onmessage = (e) => {
       const blob = new Blob([m.json], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      // The safety copy taken before a profile import is named for what it
-      // is, so it cannot be mistaken for the one the player asked for.
+      // The safety copies taken before an import or a reset are named for
+      // what they are, so neither can be mistaken for one the player asked for.
       a.download = m.reason === "before-import"
         ? "auracle-profile-before-import.json"
-        : "auracle-profile.json";
+        : m.reason === "before-reset"
+          ? "auracle-profile-before-reset.json"
+          : "auracle-profile.json";
       a.click();
       URL.revokeObjectURL(a.href);
+      if (m.reason === "before-reset" && resetting === "exporting") resetting = "saving";
+      // A save the player asked for said nothing: the file landed in the
+      // downloads bar, and the app itself was silent. Counted from the file,
+      // so the number is what it holds.
+      if (!m.reason) {
+        let n = null;
+        try { n = JSON.parse(m.json).log.observations.length; } catch (_) { /* counted below */ }
+        n = n == null ? picksTaught() : n;
+        note(`Downloaded ${a.download} — ${n} pick${n === 1 ? "" : "s"}.`, { replace: "profile" });
+      }
       break;
     }
     case "imported": {
       if (m.ok) {
         applyStatus(m.status);
-        note("profile loaded — its standardizer and history are now active");
         send({ type: "taste_views" });
+        // An import clears the fitted model (the engine refits from the log),
+        // and nothing asked for a fit: TASTE sat on "nothing predicted yet"
+        // over a profile of 58 picks until six more had been made. It refits
+        // now, and says so in the player's words.
+        const n = m.status.observations || 0;
+        if (n > 0) {
+          fitDue = false;
+          duelsSinceFit = 0;
+          fitting = true;
+          $("wm-lamp").classList.add("thinking");
+          send({ type: "fit" });
+        }
+        note(n > 0
+          ? `Profile loaded — ${n} pick${n === 1 ? "" : "s"}. Redrawing your taste map…`
+          : "Profile loaded — it has no picks yet.", { replace: "profile" });
         scheduleSave();
       } else {
-        note("could not read that profile file");
+        note("Could not read that profile file — nothing was changed.", { urgent: true });
       }
       break;
     }
@@ -1923,48 +2220,68 @@ function releaseRequest(request, id) {
   engineBusy = false; // the worker's `finally` posts `idle`; belt to that brace
   switch (request) {
     case "edit_param":
-      editInFlight = false;
-      editQueue = null; // the knob is already where the player left it
+      // That write did not land. The ones queued behind it are gestures of
+      // their own and still go; the next reply draws what the engine holds.
+      settleParam(null);
       // The edit did not land, so neither the guess that lit COMMIT nor a
       // commit waiting on it stands.
-      editPending = false;
+      editPending = pendingKnobs.size > 0;
       commitOnSettle = null;
       syncCommitBtn();
-      drainStruct();
+      pumpLane();
       break;
     case "edit_structure":
     case "edit_set_tree":
       structInFlight = false;
       restoreInFlight = false;
       placeholderPending = null; // the tree it described never happened
-      restoreBacklog = 0;
+      // Nothing happened, so nothing is owed to history and a restore that
+      // died consumed no step — the same accounting as a refusal.
+      discardStagedUndo();
+      restorePending = null;
+      if (benchLane[0] && benchLane[0].t === "restore") benchLane.shift();
       forgetLanded();
-      drainStruct();
+      pumpLane();
       break;
     case "fit":
       fitting = false;
-      $("wm-lamp").classList.remove("thinking");
+      meterFitting = false;
+      lampOff("fit");
+      renderTeach();
       break;
     case "edit_begin":
-      // An open that failed is not on its way either.
+      // An open that failed is not on its way either — and the edits the lane
+      // was holding for it are about the patch still on the bench, so they go.
       benchPending = null;
+      renderSubject();
+      renderBank();
+      pumpLane();
       break;
     case "load_preset":
       // A load that failed is not still on its way: its row stops saying
       // "opening…", and the first-arrival open is no longer held for it.
       presetClicks.clear();
+      warmPreviewCancel(); // a ▶ waiting on it is not going to play
       document.querySelectorAll(".preset-item.loading").forEach((r) => {
         r.classList.remove("loading");
         r.removeAttribute("aria-busy");
       });
       break;
     case "refine":
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine");
+      breeding = null;
+      renderTeach();
       $("evolve-btn").disabled = false;
       $("evolve-btn").textContent = "evolve pool";
       break;
+    case "warm_start":
+      // The first pick is not on its way: PERFORM stops saying so.
+      openExpect = null;
+      break;
     case "refine_from":
-      $("wm-lamp").classList.remove("thinking");
+      lampOff("refine_from");
+      evolvingFrom = false;
+      renderTeach();
       $("rack-evolve").disabled = false;
       pendingEvolve = false;
       break;
@@ -2037,9 +2354,49 @@ worker.onmessageerror = () => {
 let status = { observations: 0, generation: 0 };
 let hasPlayed = !!localStorage.getItem("auracle-played");
 
+// ---------- what PICKS counts ----------
+// What you have taught it, from the moment you teach it. `status.observations`
+// is the engine's log, and the log sees a pick only once its undo window has
+// closed and the worker has answered — so PICKS read 18 for seven seconds
+// after the nineteenth pick, read 22 after 23 picks made two seconds apart,
+// and disagreed with the pips beside it, which light at the click. Picks the
+// log has not answered for yet are counted here, keyed by the request they
+// are or will become, so the worker's reply settles exactly the one it
+// answers (a refused vote settles too, and so is uncounted) and a reply to
+// anyone else's request settles nothing. An undo takes its key back.
+const taughtAhead = new Map(); // "duel:a:b" | "keep:id" | "stars:id" -> n
+
+function aheadKey(v) {
+  return v.kind === "duel" ? `duel:${v.a}:${v.b}` : `${v.kind}:${v.id}`;
+}
+function aheadAdd(key) {
+  taughtAhead.set(key, (taughtAhead.get(key) || 0) + 1);
+  renderPicks();
+}
+/** Settle or take back one taught-ahead pick; false when none was waiting. */
+function aheadDrop(key) {
+  const n = taughtAhead.get(key) || 0;
+  if (n === 0) return false;
+  if (n === 1) taughtAhead.delete(key);
+  else taughtAhead.set(key, n - 1);
+  renderPicks();
+  return true;
+}
+/** PICKS: the log, plus what it has not answered for yet. */
+function picksTaught() {
+  let n = status.observations || 0;
+  for (const k of taughtAhead.values()) n += k;
+  return n;
+}
+function renderPicks() {
+  $("duel-count").textContent = picksTaught();
+  renderTeach();
+  renderNextStep();
+}
+
 function applyStatus(st) {
   status = st;
-  $("duel-count").textContent = st.observations;
+  $("duel-count").textContent = picksTaught();
   $("gen-count").textContent = st.generation;
   renderTeach();
   renderNextStep();
@@ -2065,18 +2422,28 @@ function applyStatus(st) {
 // the only "it just learned" signal was an 8px LED that flashed for a fraction
 // of a second in a corner 1200px from where anyone was looking. This is the
 // surface that makes the loop legible: it is never blank, it counts down to
-// the refit, and it takes over the column when the refit happens.
-let teachTakeover = false;
-
+// the refit, and it says what the refit is doing while it happens.
+//
+// Two phases, each said only while it is true. From the sixth pick until
+// `fitted` answers: "● learning from your last 6 picks…" (the pick's undo
+// window, then the fit on its way or running), or, while a generation holds
+// the engine, "● it will learn from these 6 when breeding finishes" — a refit
+// waits for the generation. From `fitted` until the next pick: "● it just
+// learned — see what changed ▸". It used to say "it just learned" when the
+// fit was *sent* and take it down on a 3.2 s timer, so during a generation it
+// announced a map that would not be redrawn for minutes, and the link opened
+// the old one.
 function renderTeach() {
   const pips = $("teach-pips");
   const copy = $("teach-copy");
   if (!pips || !copy) return;
-  // Wraps rather than saturates: `duelsSinceFit` can now run past FIT_EVERY,
-  // because a refit the engine says it doesn't need is skipped and re-armed
-  // on the next vote (see settleFit). The countdown restarting is the right
-  // reading of that — the next pick is a candidate for the refit again.
-  const into = duelsSinceFit % FIT_EVERY;
+  // The sixth pip lights on the sixth pick and the row stays full while the
+  // refit it counted down to is armed, running or just answered; the first
+  // pick after that starts the next row. It used to empty on the sixth pick
+  // itself — "23 picks in", six dark pips — before anything had been redrawn.
+  const learning = fitDue || meterFitting;
+  const full = fitDue || ((meterFitting || learnedShown) && duelsSinceFit === 0);
+  const into = full ? FIT_EVERY : duelsSinceFit % FIT_EVERY;
   const dots = Array.from(
     { length: FIT_EVERY },
     (_, i) => `<i class="${i < into ? "lit" : ""}"></i>`
@@ -2085,36 +2452,62 @@ function renderTeach() {
   // The play-view strip runs the same loop, so it shows the same state.
   const pdPips = $("pd-pips");
   if (pdPips) pdPips.innerHTML = dots;
-  if (teachTakeover) return;
+  const mid = $("duel-mid");
+  mid.classList.toggle("learning", learning);
+  mid.classList.toggle("learned", !learning && learnedShown);
+  $("play-duel")?.classList.toggle("learning", learning);
+  if (learning) {
+    copy.textContent = breeding || evolvingFrom
+      ? `● it will learn from these ${FIT_EVERY} when breeding finishes`
+      : `● learning from your last ${FIT_EVERY} picks…`;
+    return;
+  }
+  if (learnedShown) {
+    copy.innerHTML = `● it just learned — <b class="teach-link" role="link" tabindex="0">see what changed ▸</b>`;
+    const link = copy.querySelector(".teach-link");
+    link.onclick = showTasteMap;
+    link.onkeydown = (e) => { if (e.key === "Enter") showTasteMap(); };
+    return;
+  }
   // Single-line copy: the duel bar is a grid now, and the sentence that
   // teaches the whole product should land whole. Name the payoff, not the
-  // refit schedule.
-  if (status.observations === 0) {
+  // refit schedule. The count is PICKS's own (`picksTaught`), so the line
+  // and the menubar move on the same click.
+  const n = picksTaught();
+  if (n === 0) {
     copy.innerHTML = "Play both. Keep the one you’d reach for.";
   } else {
     const left = FIT_EVERY - into;
     copy.innerHTML = left === FIT_EVERY
-      ? `<b>${status.observations}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
+      ? `<b>${n}</b> picks in. Every ${FIT_EVERY} it redraws your taste map.`
       : `${left} more pick${left > 1 ? "s" : ""} and it redraws your taste map.`;
   }
 }
 
-// The learning moment, given its own beat instead of a blinked LED — and a
-// link to the evidence: the map it just redrew.
-function teachLearned() {
-  const copy = $("teach-copy");
-  if (!copy) return;
-  teachTakeover = true;
-  $("duel-mid").classList.add("learning");
+/** "see what changed" is the map: TASTE opens on its MAP tab, whichever tab
+ *  it was last left on. */
+function showTasteMap() {
+  const tab = document.querySelector('.tab[data-tab="map"]');
+  if (tab && tasteTab !== "map") tab.click();
+  showView("taste");
+}
+
+// ---------- the wordmark's lamp ----------
+// The E of the wordmark lights while the engine does long work: a refit, a
+// generation, ⚡ evolve from this. Each job used to switch it on and its own
+// reply switch it off, so the first reply cleared the lamp of another job
+// still running — a refit landing mid-generation put it out for the rest of
+// the generation. Counted per job now, and dark only when every job is done.
+const lampJobs = new Map(); // job -> requests in flight
+function lampOn(job) {
+  lampJobs.set(job, (lampJobs.get(job) || 0) + 1);
   $("wm-lamp").classList.add("thinking");
-  copy.innerHTML = `● it just learned — <b class="teach-link">see what changed ▸</b>`;
-  const link = copy.querySelector(".teach-link");
-  if (link) link.onclick = () => showView("taste");
-  setTimeout(() => {
-    teachTakeover = false;
-    $("duel-mid").classList.remove("learning");
-    renderTeach();
-  }, 3200);
+}
+function lampOff(job) {
+  const n = (lampJobs.get(job) || 0) - 1;
+  if (n > 0) lampJobs.set(job, n);
+  else lampJobs.delete(job);
+  $("wm-lamp").classList.toggle("thinking", lampJobs.size > 0);
 }
 
 // ---------- next step ----------
@@ -2123,7 +2516,7 @@ function teachLearned() {
 function renderNextStep() {
   const el = $("nextstep");
   if (!el) return;
-  const n = status.observations;
+  const n = picksTaught();
   let label, act;
   // Every state of this chip is now actionable. The previous "go play" branch
   // was inert *and* outranked the teaching guidance for votes 1–5, so the one
@@ -2226,6 +2619,16 @@ const UNDO_WINDOW_MS = 7000;
 // about, and under a burst it never surfaced at all — it carries no action, so
 // the staleness drop and the backlog trim both cut exactly it. So `urgent`
 // jumps the queue, displaces what is on screen, and is exempt from both cuts.
+//
+// Rule 5, from the films: A LATER WORD ON THE SAME THING SUPERSEDES THE
+// EARLIER ONE. First-in-first-out is right for different news and wrong for
+// news about one thing that has moved on. Voting every two seconds, the lane
+// still named the first pick six seconds after the third, beside a ⌘Z that
+// would undo the third; the warm start's result ("18 preferences learned")
+// waited out the "Loading those in…" it answered while PICKS already read 18.
+// A toast given `replace: key` takes the place of any earlier toast with the
+// same key, on screen or queued: on screen it takes the floor at once with
+// its own full window, queued it takes the earlier one's place in line.
 const toastQueue = [];
 let toastLive = null;
 /** A queued remark about a patch state that has moved on is worse than
@@ -2259,11 +2662,69 @@ function note(text, opts = {}) {
   const stack = document.createElement("span");
   stack.className = "toast-stack mono hidden";
   el.appendChild(stack);
-  if (opts.urgent) preemptToast(entry);
-  else toastQueue.push(entry);
+  if (opts.urgent) {
+    // Rule 5 holds for refusals too: the same refusal said again (⌘Z pressed
+    // twice where there is nothing to undo) takes the earlier one's place
+    // rather than queueing a second copy behind it.
+    if (opts.replace) dropReplaced(opts.replace);
+    preemptToast(entry);
+  } else if (!(opts.replace && supersedeToast(entry))) toastQueue.push(entry);
   trimToastQueue();
   toastPump();
   return el;
+}
+
+/** Rule 5: put `entry` where the last toast with its `replace` key is. False
+ *  when there is none, and the caller queues it as usual. */
+function supersedeToast(entry) {
+  const key = entry.opts.replace;
+  const same = (t) => t.opts.replace === key;
+  const held = toastLive && same(toastLive) ? toastLive : null;
+  const at = toastQueue.findIndex(same);
+  // Every earlier word on it goes; only the newest is ever said.
+  for (let i = toastQueue.length - 1; i >= 0; i--) {
+    if (!same(toastQueue[i])) continue;
+    toastQueue[i].el.remove();
+    toastQueue.splice(i, 1);
+  }
+  if (held) {
+    // On screen, even mid-fade: the floor passes straight to the newer word.
+    // The old toast's timer goes with it, so it cannot dismiss its successor.
+    clearTimeout(held.timer);
+    held.el.remove();
+    toastLive = null;
+    toastQueue.unshift(entry);
+    return true;
+  }
+  if (at < 0) return false;
+  toastQueue.splice(at, 0, entry);
+  return true;
+}
+
+/** Every toast with this `replace` key goes, on screen or queued, with no
+ *  successor put in its place (the caller is about to say it again). */
+function dropReplaced(key) {
+  for (let i = toastQueue.length - 1; i >= 0; i--) {
+    if (toastQueue[i].opts.replace !== key) continue;
+    toastQueue[i].el.remove();
+    toastQueue.splice(i, 1);
+  }
+  if (toastLive && toastLive.opts.replace === key) {
+    clearTimeout(toastLive.timer);
+    toastLive.el.remove();
+    toastLive = null;
+  }
+}
+
+/** Take a toast off the lane now, whether it is on screen or still waiting —
+ *  for a toast whose claim stopped being true before its window ran out. */
+function dropToast(el) {
+  if (!el) return;
+  if (toastLive && toastLive.el === el) return dismissToast(toastLive, true);
+  const i = toastQueue.findIndex((t) => t.el === el);
+  if (i >= 0) toastQueue.splice(i, 1);
+  el.remove();
+  renderToastStack();
 }
 
 /** Put a refusal at the head of the lane and take the floor for it. Whatever
@@ -2424,14 +2885,31 @@ window.addEventListener("resize", positionToastLane);
   }
 }
 
-// A toast whose undo can no longer fire must say so — see commitPendingVote,
-// which retires a vote's undo early when a refit claims it.
-function retireToastUndo(el) {
+// A toast whose undo can no longer fire must not offer it. When the window has
+// closed (a pick or a cut is in the log) the button simply goes: it used to
+// stay as a dead "IN THE LOG", which still looked like a button. With a
+// `label` it stays, disabled, saying why — an edit's undo that another edit
+// has landed on top of ("not the last edit").
+function retireToastUndo(el, label) {
   const b = el?.querySelector?.(".toast-undo");
   if (!b) return;
+  if (!label) {
+    b.remove();
+    return;
+  }
   b.disabled = true;
   b.style.pointerEvents = "none";
-  b.textContent = "in the log";
+  b.textContent = label;
+}
+
+/** Take a toast down because what it says stopped being true — the edit it
+ *  confirmed was undone. Wherever it is: on screen, or still waiting its
+ *  turn in the lane, where it must not surface later as news. */
+function retireToast(el) {
+  if (!el) return;
+  const t = toastLive && toastLive.el === el ? toastLive : toastQueue.find((x) => x.el === el);
+  if (t) dismissToast(t);
+  else el.remove();
 }
 
 // One number, one source. The menubar readout and the TRUST tab must not
@@ -2530,6 +3008,10 @@ function esc(s) {
 function applyViews(next) {
   const prevIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const prevNames = new Map(((views && views.ranked) || []).map((r) => [r.id, r.name]));
+  // Every name a row has had, last one wins: what was replaced is named by the
+  // name it had when it went, and the lineage names parents long gone.
+  for (const [id, name] of prevNames) knownNames.set(id, name);
+  for (const r of (next && next.ranked) || []) knownNames.set(r.id, r.name);
   views = next;
   const nowIds = new Set(((views && views.ranked) || []).map((r) => r.id));
   const evicted = [...prevIds].filter((id) => !nowIds.has(id) && !cutIds.has(id));
@@ -2550,6 +3032,7 @@ function applyViews(next) {
     if (t !== undefined) {
       clearTimeout(t);
       pendingCuts.delete(id);
+      aheadDrop(aheadKey({ kind: "keep", id })); // never sent, so never taught
     }
   }
   // A pair that just lost a side to the pool is a question about a patch that
@@ -2561,7 +3044,7 @@ function applyViews(next) {
   if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
     dealing = true;
     setDuelControlsEnabled(false);
-    send({ type: "duel" });
+    requestDeal();
   }
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
@@ -2573,9 +3056,9 @@ function applyViews(next) {
   // apologise for.
   const lost = evicted.filter((id) => (starsById.get(id) || 0) >= 4);
   if (lost.length > 0) {
-    const names = lost.map((id) => prevNames.get(id) || `#${id}`).join(", ");
+    const names = lost.map((id) => prevNames.get(id) || "a patch").join(", ");
     alarm(
-      `Made room by dropping ${names}, which you rated highly. Stars tell the model what you like; ` +
+      `Replaced ${names}, which you rated highly, to make room. Stars tell the model what you like; ` +
         `saving is what stops a patch being replaced.`,
       { label: "ok", run: () => alarm(null) }
     );
@@ -2584,10 +3067,28 @@ function applyViews(next) {
 }
 
 // The clause every insertion path appends to its own message, so the exchange
-// is reported as an exchange rather than as a gift.
+// is reported as an exchange rather than as a gift — and by name. It used to
+// count ("The 10 patches it liked least were retired to make room."), which
+// told the player something was lost and nothing about what.
+const REPLACED_NAMED = 3;
 function madeRoom(evicted) {
   if (!evicted || evicted.length === 0) return "";
-  return ` ${evicted.length === 1 ? "The patch it liked least was" : `The ${evicted.length} patches it liked least were`} retired to make room.`;
+  const names = evicted.slice(0, REPLACED_NAMED).map((id) => knownNames.get(id) || "a patch");
+  const more = evicted.length - names.length;
+  const list = more > 0
+    ? `${names.join(", ")} +${more} more`
+    : names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+  return evicted.length === 1
+    ? ` The patch it liked least was replaced: ${list}.`
+    : ` The ${evicted.length} it liked least were replaced: ${list}.`;
+}
+
+// id -> the last name its bank row had. Filled by `applyViews`; never pruned
+// (a name is a few bytes, and a session holds a few hundred ids at most).
+const knownNames = new Map();
+/** A patch's name, including one no longer in the pool. */
+function nameOrKnown(id) {
+  return rowOf(id)?.name || knownNames.get(id) || null;
 }
 
 function rowOf(id) {
@@ -2623,10 +3124,10 @@ function sigOf(id) {
 // because only one of the messages that replace the rows re-rendered them.
 function refreshNames() {
   renderSubject();
-  const edited = liveLabelText.endsWith("(edited)");
+  const edited = / \((edited|taken offer)\)$/.test(liveLabelText);
   const id = livePatchId != null ? livePatchId : edited ? wb.subjectId : null;
   if (id == null || !rowOf(id)) return;
-  const text = `${nameOf(id)}${edited ? " (edited)" : ""}`;
+  const text = `${nameOf(id)}${edited ? dirtySuffix() : ""}`;
   if (text === liveLabelText) return;
   liveLabelText = text;
   $("live-label").textContent = text;
@@ -2676,6 +3177,7 @@ function showView(name) {
   // The lane is anchored to the rack frame, which only exists in PLAY, and it
   // has to clear whichever teaching strip this view puts up.
   positionToastLane();
+  pointFilmChip();
   if (name === "taste") drawTaste();
   if (name === "evolve") {
     drawLineage();
@@ -2686,8 +3188,26 @@ function showView(name) {
   }
 }
 
+// When the player last chose a view themselves (a click, or the tab list's
+// arrow keys, which click): the film chip's tour note gives way to that, and
+// not to the app changing view on its own.
+let viewChosenAt = 0;
 document.querySelectorAll(".viewtab").forEach((t) => {
-  t.onclick = () => showView(t.dataset.view);
+  t.onclick = (e) => {
+    viewChosenAt = performance.now();
+    showView(t.dataset.view);
+    // Clicked with a pointer, the view itself takes focus, so its own keys
+    // (EVOLVE's ←/→) work on arrival and Tab continues inside it. The tab
+    // keeps focus only for a keyboard user walking the tablist (a click
+    // synthesised by the arrows has `detail` 0), whose arrows move tabs.
+    if (e && e.detail > 0) {
+      const view = $(`view-${t.dataset.view}`);
+      if (view) {
+        view.tabIndex = -1;
+        view.focus({ preventScroll: true });
+      }
+    }
+  };
 });
 
 // role=tablist / role=menu promise arrow keys; deliver them. One wiring for
@@ -2736,8 +3256,25 @@ function ensureAudio() {
 }
 
 let playingGain = null;
+// What is sounding, by name ("bank:12", "duel:31"), so a ▶ can tell its own
+// phrase from someone else's and a ▶ drawn after the press can still light:
+// a bank row is rebuilt on every render, so the button that was pressed is
+// usually not the one on screen when the phrase ends. Buttons that stand for
+// a key carry it as `data-hear`.
+let playingKey = null;
+let playingBtn = null;
 
-function playBuffer(buffer, btn) {
+function paintHearing(key, btn, on) {
+  if (btn) btn.classList.toggle("playing", on);
+  if (key) for (const b of document.querySelectorAll(`[data-hear="${key}"]`)) b.classList.toggle("playing", on);
+}
+
+/** A ▶ is a transport: pressed while its own phrase plays, it stops it. */
+function hearingNow(key) {
+  return !!(key && playingSrc && playingKey === key);
+}
+
+function playBuffer(buffer, btn, key = null) {
   if (!buffer) return;
   ensureAudio();
   if (playingSrc) {
@@ -2747,6 +3284,9 @@ function playBuffer(buffer, btn) {
     const oldGain = playingGain;
     if (oldGain) oldGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
     setTimeout(() => { try { oldSrc.stop(); } catch (_) {} }, 20);
+    // The old phrase's ▶ goes dark with it, not 20 ms later when its source
+    // reports: by then the same button may be lit for the new phrase.
+    paintHearing(playingKey, playingBtn, false);
   }
   const src = audioCtx.createBufferSource();
   const g = audioCtx.createGain();
@@ -2756,11 +3296,19 @@ function playBuffer(buffer, btn) {
   src.start();
   playingSrc = src;
   playingGain = g;
+  playingKey = key;
+  playingBtn = btn || null;
   src.onended = () => {
-    if (playingSrc === src) { playingSrc = null; playingGain = null; }
-    if (btn) btn.classList.remove("playing");
+    // Stopped or replaced, it was painted dark then; only a phrase that ran
+    // to its end still owns its buttons.
+    if (playingSrc !== src) return;
+    playingSrc = null;
+    playingGain = null;
+    playingKey = null;
+    playingBtn = null;
+    paintHearing(key, btn, false);
   };
-  if (btn) btn.classList.add("playing");
+  paintHearing(key, btn, true);
 }
 
 // Space is a transport: it stops what's sounding, or auditions the current
@@ -2771,8 +3319,11 @@ function stopAudition() {
   const g = playingGain;
   if (g) g.gain.setTargetAtTime(0, audioCtx.currentTime, 0.003);
   setTimeout(() => { try { s.stop(); } catch (_) {} }, 20);
+  paintHearing(playingKey, playingBtn, false);
   playingSrc = null;
   playingGain = null;
+  playingKey = null;
+  playingBtn = null;
   return true;
 }
 
@@ -2795,6 +3346,7 @@ function stepBank(d) {
   const next = rows[idx];
   if (!next || next.id === wb.subjectId) return;
   bankScrollTo = next.id;
+  bankScrollAt = performance.now();
   // Stepping is what "the highlighted row" means to someone who just pressed
   // [ or ] — so the step moves the keyboard cursor too, and 1–5 rates what
   // they just stepped to rather than nothing.
@@ -2802,9 +3354,9 @@ function stepBank(d) {
   openOnBench(next.id);
 }
 
-function play(id, btn) {
+function play(id, btn, key = null) {
   const r = renders.get(id);
-  if (r) playBuffer(r.buffer, btn);
+  if (r) playBuffer(r.buffer, btn, key);
 }
 
 // Every "hear this thing that isn't loaded yet" path in the app used to be its
@@ -2898,6 +3450,8 @@ function healParamMiss(addr) {
   live.setPatch(benchTreeJson, benchMakeup);
   setLivePatchJson(benchTreeJson, benchMakeup);
   healedRev = liveRev;
+  // The bench tree has none of the writes still waiting in the lane.
+  livePending();
 }
 
 // ---------- PERFORM ----------
@@ -2936,14 +3490,15 @@ async function bootPerform() {
     // Another patch is on its way to the bench: PERFORM holds a measurement
     // of the one in hand, which is about to be replaced.
     opening: () => openingNow(),
+    // …and its name, which PERFORM says while it waits.
+    openingName: () => openingName(),
     // A PERFORM offer answer joined the log: it paces refits like any pick.
     voteLanded: () => {
+      learnedShown = false; // a pick, so "● it just learned" has had its turn
       duelsSinceFit += 1;
+      if (duelsSinceFit >= FIT_EVERY) fitDue = true;
       renderTeach();
-      if (duelsSinceFit >= FIT_EVERY) {
-        fitDue = true;
-        settleFit();
-      }
+      settleFit();
     },
     controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
     // The under-the-hood strip: a knob's module, label and value in its own
@@ -2956,9 +3511,10 @@ async function bootPerform() {
         const variant = fk && fk.kind.t === "enum"
           ? (fk.kind.options[Math.round(fk.value)] || "").replace(/^svf /, "svf-")
           : null;
-        let text = knobUnit(addr, v, m.kind, variant);
         // With sync on, a sequencer plays the division its rate snaps to, not
-        // the rate on the knob: say what is heard.
+        // the rate on the knob: say what is heard — the same words the rack
+        // uses (`heardUnit`), with the room the strip has.
+        let text = knobUnit(addr, v, m.kind, variant);
         if (perf.sync && addr.endsWith("#srate")) text = `${fmtHz(syncedStepHz(v, perf.bpm))} · sync`;
         return { module: m.title, label: k.label, text };
       }
@@ -2988,9 +3544,11 @@ async function bootPerform() {
     // A performed sound becomes the bench's tree by the same whole-tree route
     // a restore takes, so PATCH shows what PERFORM kept. queueStruct stages
     // the one undo step itself.
-    commitTree: (json) => {
+    // `why` names a tree that is not a hand edit ("taken offer"), so the
+    // labels say what it is (see `benchDirtyWhy`).
+    commitTree: (json, why) => {
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
-      queueStruct({ type: "edit_set_tree", json }, null, { op: "perform" });
+      queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
     },
   });
   // Booth attract's band lives in PERFORM's marquee row, over the first steps.
@@ -3044,13 +3602,21 @@ paintEngineer();
 // amber pointer at the value actually sounding: open the circuit mid-phrase
 // and you watch the controls and the taste walk turn real knobs. Keep writes
 // them in and the ghosts fold into the pointers.
+//
+// Only where PERFORM has actually moved the knob (`perform.movedOn`: a control
+// or expression offset on it, a glide, or a drift not yet kept). It used to be
+// wherever PERFORM's copy of the knob disagreed with the rack, and PERFORM's
+// copy only followed structural edits — so a knob turned here was redrawn a
+// tenth of a second later at its *old* value, in amber, with a ghost claiming
+// PERFORM was playing it. A disagreement is not a performance.
 function paintPerformedKnobs() {
   if (currentView !== "play" || !perform || !perform.performedKnobs) return;
   const svg = $("rack-svg");
   if (!svg) return;
   const playing = perform.performedKnobs();
   for (const kg of svg.querySelectorAll("g[data-addr][aria-valuenow]")) {
-    const v = playing ? playing.get(kg.dataset.addr) : null;
+    const moved = playing && perform.movedOn ? perform.movedOn(kg.dataset.addr) : null;
+    const v = moved ? playing.get(kg.dataset.addr) : null;
     const kept = Number(kg.getAttribute("aria-valuenow"));
     let ghost = kg.querySelector(".knob-ghost");
     const val = kg.querySelector(".knob-value");
@@ -3066,7 +3632,7 @@ function paintPerformedKnobs() {
     // The readout says what is sounding; the kept value is the green pointer.
     if (val) {
       if (val.dataset.kept == null) val.dataset.kept = val.textContent;
-      val.textContent = knobUnit(kg.dataset.addr, v, kg.dataset.kind, kg.dataset.variant || null);
+      val.textContent = heardUnit(kg.dataset.addr, v, kg.dataset.kind, kg.dataset.variant || null);
     }
     if (!ghost) {
       ghost = svgEl("line", {}, "knob-ghost");
@@ -3079,8 +3645,7 @@ function paintPerformedKnobs() {
     ghost.setAttribute("y1", (-Math.cos(ang) * KNOB_R * 0.2).toFixed(2));
     ghost.setAttribute("x2", (Math.sin(ang) * (KNOB_R + 4)).toFixed(2));
     ghost.setAttribute("y2", (-Math.cos(ang) * (KNOB_R + 4)).toFixed(2));
-    const by = perform.controlsOn(kg.dataset.addr);
-    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM${by.length ? ` (${by.join(", ")})` : " (Wander)"} — Keep writes it in`;
+    ghost.firstChild.textContent = `Playing at ${Math.round(v * 100)}% in PERFORM (${moved.join(", ")}) — Keep writes it in`;
     kg.classList.add("performed");
   }
 }
@@ -3123,9 +3688,11 @@ function boothPrewarmLanded(m) {
 }
 
 /** Forget this visitor: the taste profile goes, booth mode and the measured
- *  PERFORM wirings stay, and the next person gets the warm start. The same as
+ *  PERFORM wirings stay, and the next person gets the warm start. Like
  *  "Reset taste profile…" without the question — at a booth, staff press it
- *  between visitors, and a confirmation is a step they will learn to skip. */
+ *  between visitors, and a confirmation is a step they will learn to skip —
+ *  and unlike it, the visitor's saved patches go too, and no copy is
+ *  downloaded: the next visitor must not inherit the last one's bank. */
 async function boothResetVisitor() {
   clearTimeout(saveTimer);
   await idbDel("state");
@@ -3202,6 +3769,7 @@ async function bootBooth() {
     $("booth-btn").setAttribute("aria-checked", String(booth.on));
     $("booth-btn").textContent = booth.on ? "Booth mode: on" : "Booth mode";
     $("booth-reset-btn").classList.toggle("hidden", !booth.on);
+    pointFilmChip();
   };
   $("booth-btn").onclick = () => {
     booth.setOn(!booth.on);
@@ -3255,7 +3823,6 @@ async function bootLiveAudio() {
 
 function liveNoteOn(note_, vel = 1.0) {
   if (!live) return;
-  foldArpDrawerOnPlay();
   sustainedNotes.delete(note_);
   ensureAudio();
   live.noteOn(note_, vel);
@@ -3479,12 +4046,24 @@ function attachPianoPointers(piano) {
 // Computer keys play notes everywhere (no text inputs in the app).
 const downComputerKeys = new Map(); // event.key -> midi
 document.addEventListener("keydown", (e) => {
-  // Undo/redo for workbench edits (knobs, wiring, structure).
+  // ⌘Z: first the newest teaching act still inside its undo window, in any
+  // view; then, in PATCH only, the edit undo.
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
-    // In EVOLVE, ⌘Z takes back the vote still inside its undo window;
-    // everywhere else it is the workbench edit undo.
-    if (!e.shiftKey && currentView === "evolve" && retractVote()) return;
+    if (!e.shiftKey && takeBackNewest()) return;
+    // Edit undo belongs to PATCH, where the rack it changes is on screen. It
+    // used to be what ⌘Z fell through to everywhere: in EVOLVE, pressed a
+    // moment after a pick's window had closed, it silently reverted a knob
+    // turned minutes earlier on a patch the player could not see.
+    if (currentView !== "play") {
+      note(
+        e.shiftKey
+          ? "nothing to redo here — PATCH edits redo in PATCH"
+          : "nothing to undo here — PATCH edits undo in PATCH",
+        { urgent: true, replace: "undo-here" },
+      );
+      return;
+    }
     // Unconditional: a restore already in flight is a reason to *queue* the
     // press, not to discard it — which is what this gate did, silently, to
     // nine presses out of ten in a burst. `requestRestore` owns the waiting.
@@ -3567,7 +4146,18 @@ document.addEventListener("keydown", (e) => {
     }
   }
   const noteKey = k in KEYMAP || k === "z" || k === "x";
-  if (!noteKey && e.target?.closest?.("button, [role=tab], [data-addr], input[type=range]")) return;
+  // A focused control keeps only the keys it uses. A button uses Space and
+  // Enter; tabs, menu items, options, knobs and sliders also steer with the
+  // arrows and Home/End. Swallowing every non-note key made one click on HOLD
+  // or ▶ turn off `[`/`]`, `m`, 1–5 and EVOLVE's ←/→ until the player clicked
+  // elsewhere.
+  const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], input[type=range]";
+  const ctl = noteKey ? null : e.target?.closest?.(`button, [role=button], ${STEERED}`);
+  if (ctl) {
+    const activates = e.key === " " || e.key === "Enter";
+    const steers = /^(Arrow|Page)|^(Home|End)$/.test(e.key) && ctl.matches(STEERED);
+    if (activates || steers) return;
+  }
   if (k in KEYMAP) {
     const midi = 60 + 12 * octShift + KEYMAP[k];
     if (midi >= 0 && midi <= 127 && !downComputerKeys.has(k)) {
@@ -3635,7 +4225,7 @@ window.addEventListener("blur", () => {
 // is the belt to that brace. The vote is committed first so the save that
 // follows it through the worker's serial queue contains it.
 function saveOnLeave() {
-  commitPendingVote();
+  commitAndSettle();
   saveNow();
 }
 window.addEventListener("pagehide", saveOnLeave);
@@ -3719,15 +4309,47 @@ function sendArp() {
     if (!open) setArpDrawer(false);
   }
   renderArpChip();
+  // Every route that moves SYNC or the tempo comes through here — the
+  // buttons, the tempo field and MIDI clock, which can do it every beat — so
+  // the sequencer readouts are repainted in place rather than the rack
+  // rebuilt.
+  repaintSyncedRates();
+}
+
+/** The RATE readout of every sequencer on the bench, re-said for the SYNC
+ *  state and tempo now (see `heardUnit`). */
+function repaintSyncedRates() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  for (const kg of svg.querySelectorAll('g[data-addr$="#srate"]')) {
+    const knob = knobByAddr(kg.dataset.addr);
+    if (!knob) continue;
+    const val = kg.querySelector(".knob-value");
+    if (val && !kg.classList.contains("performed")) {
+      val.textContent = heardUnit(knob.addr, knob.value, kg.dataset.kind, kg.dataset.variant || null);
+    }
+    const long = heardUnit(knob.addr, knob.value, kg.dataset.kind, kg.dataset.variant || null, true);
+    kg.setAttribute("aria-valuetext", long);
+    const tt = kg.querySelector(".knob-hit > title");
+    if (tt) tt.textContent = `${knob.label}: ${long} — drag up/down`;
+  }
 }
 
 // The drawer is a popover now, and the chip is what stays. Pinned open for as
 // long as ARP or SYNC ran, it covered the bank's last row and the corner of
 // the XY pad for a whole performance. It opens when either is switched on —
 // the moment its settings are wanted — and from the chip; it folds on a click
-// elsewhere, on Escape, and on the next note played with the pointer
-// elsewhere, leaving "arp 1/8 · 120" under the ARP button: what the arp is
-// doing, one click from changing it, and the keybed never moves.
+// outside the dock and on Escape, leaving "arp 1/8 · 120" under the ARP
+// button: what the arp is doing, one click from changing it, and the keybed
+// never moves.
+//
+// Not on the dock's own controls, and not on notes. It used to fold on any
+// press outside the drawer and on the next note played with the pointer
+// elsewhere, which is exactly how an arpeggio is set up: latch HOLD, play the
+// chord, then set the rate against it — and HOLD folded the drawer, and so did
+// the chord. The keybed, HOLD, the octave buttons and the rest of the dock are
+// the instrument the drawer's settings are heard through; the bank and the XY
+// pad it floats over are outside the dock, and reaching for them folds it.
 function renderArpChip() {
   const chip = $("arp-chip");
   if (!chip) return;
@@ -3745,16 +4367,11 @@ function setArpDrawer(open) {
   chip.setAttribute("aria-expanded", String(show));
 }
 const arpDrawerOpen = () => $("arp-ctl").classList.contains("open");
-// A note is the performance starting: the drawer gets out of its way, unless
-// the pointer or the focus is in it (someone setting the rate against a
-// held chord).
-function foldArpDrawerOnPlay() {
-  const d = $("arp-ctl");
-  if (d.classList.contains("open") && !d.matches(":hover") && !d.contains(document.activeElement)) setArpDrawer(false);
-}
 $("arp-chip").onclick = () => setArpDrawer(!arpDrawerOpen());
 document.addEventListener("pointerdown", (e) => {
-  if (arpDrawerOpen() && !e.target.closest("#arp-ctl, #arp-chip, #arp-btn, #sync-btn")) setArpDrawer(false);
+  // The MIDI panel opens up out of the dock but is a dialog of its own, over
+  // the rack: a press in it is not a press on the instrument.
+  if (arpDrawerOpen() && (!e.target.closest(".keybar") || e.target.closest("#midi-panel"))) setArpDrawer(false);
 }, true);
 function sendSync() {
   if (live && live.sync) live.sync(perf.sync);
@@ -3868,12 +4485,15 @@ $("rec-btn").onclick = () => {
   $("rec-btn").classList.toggle("lit", recording);
   $("rec-btn").textContent = recording ? "◼ stop" : "● rec";
   live.rec(recording);
-  if (recording) note("recording — play something; stop to download the take");
+  // One slot for the take's toasts, so "saved" replaces "recording" the moment
+  // you stop, rather than waiting out its window (2–3 s late on camera).
+  if (recording) note("recording — play something; stop to download the take", { replace: "rec" });
 };
 
-// The film pipeline (www/video/tools/footage.mjs) records the instrument's
-// own sound for a walkthrough without the ● rec button's toast landing in the
-// shot. Present only on `?film`; the take downloads exactly as a rec does.
+// The film pipeline (www/video/tools/footage.mjs) records a walkthrough's
+// sound from the master bus (below), independently of the ● rec button, which
+// a film can press on camera like anyone else. Present only on `?film`; the
+// capture downloads as a WAV, as a take does, but without a take's toast.
 // It also plays MIDI in: under `?film` the page's MIDI access is the film's
 // own port, installed here before bootMidi() asks for one. `midiDevice(name)`
 // plugs a device in (midi.js wires it as it wires a real one, and the panel
@@ -3882,11 +4502,30 @@ $("rec-btn").onclick = () => {
 if (new URLSearchParams(location.search).has("film")) {
   const filmMidi = { inputs: new Map(), outputs: new Map(), sysexEnabled: false, onstatechange: null };
   Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async () => filmMidi });
+  // The film's sound is the page's whole output: the master bus, where the
+  // voices and every audition meet (▶ in the bank, the duel, the node bank's
+  // preview). The ● rec take taps the voices alone, which left a film silent
+  // wherever it showed an audition. The capture downloads quietly under its
+  // own name, so a ● rec take pressed on camera is never mistaken for it.
+  // Its own flag, not the ● rec button's: a film may press ● rec on camera,
+  // and that press must start a take whether or not the film is capturing.
+  let tap = null;
+  let tapping = false;
   window.__film = {
     rec(on) {
       if (!live) return;
-      recording = !!on;
-      live.rec(recording);
+      tapping = !!on;
+      if (!tap) {
+        tap = new AudioWorkletNode(audioCtx, "auracle-tap", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+        const mute = audioCtx.createGain();
+        mute.gain.value = 0;
+        master.connect(tap);
+        tap.connect(mute).connect(audioCtx.destination);
+        tap.port.onmessage = (e) => {
+          if (e.data.type === "tap_done" && e.data.samples.length) downloadWav(e.data.samples, e.data.sampleRate, { quiet: true, name: "film-capture" });
+        };
+      }
+      tap.port.postMessage({ type: tapping ? "on" : "off" });
     },
     midiDevice(name = "MIDI controller") {
       filmMidi.inputs.clear();
@@ -3900,7 +4539,7 @@ if (new URLSearchParams(location.search).has("film")) {
   };
 }
 
-function downloadWav(samples, sampleRate) {
+function downloadWav(samples, sampleRate, { quiet = false, name = null } = {}) {
   // Interleaved stereo float → 16-bit PCM WAV.
   const nFrames = samples.length / 2;
   const buf = new ArrayBuffer(44 + samples.length * 2);
@@ -3924,11 +4563,11 @@ function downloadWav(samples, sampleRate) {
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
-  const who = (liveLabelText || "take").replace(/[^\w-]+/g, "_").slice(0, 32);
+  const who = name || (liveLabelText || "take").replace(/[^\w-]+/g, "_").slice(0, 32);
   a.download = `auracle-${who}.wav`;
   a.click();
   URL.revokeObjectURL(a.href);
-  note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`);
+  if (!quiet) note(`saved ${(nFrames / sampleRate).toFixed(1)}s take`, { replace: "rec" });
 }
 
 // ---------- Web MIDI ----------
@@ -4080,10 +4719,7 @@ $("pd-a").onclick = () => selectDuelSide("a");
 $("pd-b").onclick = () => selectDuelSide("b");
 $("pd-pick-a").onclick = () => choose("a");
 $("pd-pick-b").onclick = () => choose("b");
-$("pd-skip").onclick = () => {
-  currentDuel = null;
-  send({ type: "duel" });
-};
+$("pd-skip").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 // Renders are ~0.6 s of engine work each and the worker is one thread, so a
 // render requested for a pair the user has already voted past sits at the head
 // of the queue and delays the *next* deal behind it. That is what made rapid
@@ -4234,19 +4870,6 @@ function onRenderArrived(id) {
   drawWave($(`scope-${side}`), r.buffer.getChannelData(0));
 }
 
-// Roughly one duel in ten is drawn uniformly at random rather than by the
-// acquisition function. Those are the only ones whose accuracy means anything —
-// the acquisition rule deliberately serves near-ties, so scoring it on its own
-// choices measures the chooser, not the model. Say so on screen.
-// How many of the recent duels were uniformly-random probes. Under
-// `Acquisition::Random` that is all of them, and a badge that fires every
-// time distinguishes nothing — it is only worth saying when the model is
-// *usually* choosing and this one time it isn't.
-const checkWindow = [];
-function checksAreUniversal() {
-  return checkWindow.length >= 6 && checkWindow.every(Boolean);
-}
-
 // The forecast is the payoff for the vote just cast, and the next pair arrives
 // ~15 ms later. Hold it long enough to be read.
 let predHoldUntil = 0;
@@ -4264,7 +4887,6 @@ function showForecast(pChosen) {
     : pChosen <= 0.45 ? `⚡ Surprise — it had this backwards. ${Math.round(pChosen * 100)}%`
     : `Toss-up — that one taught it the most. ${Math.round(pChosen * 100)}%`;
   el.title = "The model's forecast, made before your vote. Surprises are where it's still learning.";
-  el.classList.remove("check");
   predHoldUntil = performance.now() + PRED_HOLD_MS;
   const pd = $("pd-pred");
   if (pd) {
@@ -4273,25 +4895,70 @@ function showForecast(pChosen) {
   }
 }
 
-function renderCheckBadge() {
+/** A forecast belongs to the pair it was made for: a deal after it has been
+ *  read clears it. Never one the user has not had time to read. */
+function retireForecast() {
   const el = $("duel-pred");
-  if (!el) return;
-  const check = !!(duelMeta && duelMeta.random_check);
-  checkWindow.push(check);
-  if (checkWindow.length > 10) checkWindow.shift();
-  // Never step on a forecast the user has not had time to read.
-  if (performance.now() < predHoldUntil) return;
+  if (!el || performance.now() < predHoldUntil) return;
   el.textContent = "";
   el.classList.remove("hit", "miss");
-  // Below ~10 picks the badge is suppressed outright: a brand-new user's
-  // first duel captioned "picked at random" reads as "this question is
-  // arbitrary". When it does appear, it states its benefit.
-  const show = check && !checksAreUniversal() && status.observations >= 10;
-  el.classList.toggle("check", show);
-  if (show) {
-    el.textContent = "unbiased probe — picks like this one score the honesty meter";
-    el.title = "About one duel in ten is dealt at random rather than by the acquisition rule. Only those score the model's honesty — see TASTE → trust.";
-  }
+}
+
+// ---------- how the pair was chosen ----------
+// The engine says, on every deal, which rule dealt the pair (`meta.method`):
+// "random", "bald" or "thompson", or "check" — a pair dealt at random on the
+// one-in-ten schedule rather than by the rule. It used to be shown as a ◇
+// "unbiased probe" mark over the forecast line, captioned "about one duel in
+// ten is dealt at random rather than by the acquisition rule". Under the
+// default rule, `Acquisition::Random`, that caption was false: *every* pair is
+// dealt at random, which is the reason it is the default (engine.rs). So the
+// mark was hidden after five deals as saying nothing, never drawn on the deal
+// after a vote (the forecast held its slot), and the rule in use went unsaid.
+//
+// Now the rule is stated on its own line, where it holds its place while
+// forecasts come and go above it. Under the default it is one fact about
+// every pair — the model does not choose what you hear, which is what makes
+// every pick a fair test of its forecast — and it does not change from deal
+// to deal. The one-in-ten ◇ mark is kept for what it is true of: a check
+// dealt at random under a rule that otherwise chooses.
+//
+// The rule is read from the deals themselves, as the method of the last deal
+// that was not a scheduled check. Under `Random` the engine still tags every
+// tenth pair "check", though it is drawn exactly like the other nine; reading
+// the rule from the rest keeps that from being taken for a change of rule.
+// (An engine's first deal is never a check.)
+let dealRule = null;
+
+const DEAL_RULE = {
+  random: {
+    text: "◇ random pair — a fair test",
+    title: "The model doesn't choose what you hear: every pair is dealt at random from the pool. That is what makes every pick a fair test of the forecast it makes before you vote — TASTE → TRUST scores them all.",
+  },
+  bald: {
+    text: "chosen where it's least sure",
+    title: "The model dealt this pair where its forecast is closest to a coin flip: the question it learns most from. About one duel in ten is dealt at random instead, as a check (◇).",
+  },
+  thompson: {
+    text: "chosen from its best guesses",
+    title: "The model drew two plausible versions of your taste and dealt each one's favourite. About one duel in ten is dealt at random instead, as a check (◇).",
+  },
+  check: {
+    text: "◇ unbiased probe — dealt at random",
+    title: "About one duel in ten is dealt at random rather than chosen by the model. Picks like this one score its honesty without the chooser's bias — see TASTE → TRUST.",
+  },
+};
+
+function renderDealRule() {
+  const el = $("duel-rule");
+  if (!el || !duelMeta || !duelMeta.method) return;
+  const method = duelMeta.method;
+  if (method !== "check") dealRule = method;
+  // A scheduled check is only news under a rule that otherwise chooses.
+  const said = DEAL_RULE[method === "check" && dealRule !== "random" ? "check" : dealRule || method];
+  if (!said) return;
+  el.textContent = said.text;
+  el.title = said.title;
+  el.classList.toggle("check", said === DEAL_RULE.check);
 }
 
 // ---------- the live utility readout ----------
@@ -4380,9 +5047,13 @@ function renderBelief() {
     // Say what is actually missing. "Fitting to your 2 picks…" stayed up
     // through twenty more picks and a generation: it was only re-rendered
     // on a bench reply, and it claimed a fit that was not running.
-    const n = status.observations;
+    const n = picksTaught();
     const fitted = !!(views && views.styles && views.styles.length);
-    const why = fitting
+    // A silent bench has no φ to score, whatever the model knows: say that,
+    // not "not yet", which would promise a number the next pick cannot give.
+    const why = !wb.vetOk && wb.vetSilent
+      ? "no guess while nothing reaches the output"
+      : fitting
       ? `fitting to your ${n} pick${n === 1 ? "" : "s"}…`
       : n === 0 || !fitted
         ? "not yet — it needs a few picks first"
@@ -4522,6 +5193,7 @@ function selectDuelSide(side) {
   if (benchBeforeAudition == null) benchBeforeAudition = wb.subjectId;
   setDuelSelection(side);
   bankScrollTo = id;
+  bankScrollAt = performance.now();
   openOnBench(id);
 }
 
@@ -4531,6 +5203,7 @@ $("pd-back").onclick = () => {
   setDuelSelection(null);
   if (back != null) {
     bankScrollTo = back;
+    bankScrollAt = performance.now();
     openOnBench(back);
   }
 };
@@ -4549,6 +5222,58 @@ $("pd-back").onclick = () => {
 // away. Normal deal latency is ~30 ms, so nobody feels the lockout.
 let dealing = false;
 
+/** Ask the engine for the next pair. The patches the player has cut go with
+ *  the request, their undo windows included: a cut patch is never dealt
+ *  again (the engine skips them, `next_duel_ex`). It stays in the pool until a
+ *  generation replaces it, and dealing used to ignore the cut, so a sound the
+ *  player had thrown out came back minutes later as a question. */
+function requestDeal() {
+  send({ type: "duel", exclude: [...cutIds] });
+}
+
+// A deal that takes longer than this says why on the dimmed cards. Most deals
+// land in ~30 ms and say nothing; during a generation a deal waits for the
+// seed being bred, up to twenty seconds, and inert cards with no reason read
+// as a frozen app.
+const DEAL_SAY_MS = 300;
+let dealSayTimer = null;
+
+/** What the deal is waiting behind, as far as main can know it. */
+function dealingWhy() {
+  if (breeding) {
+    if (!breeding.total) return "dealing — the engine is breeding";
+    const seed = Math.min(breeding.done + 1, breeding.total);
+    return breeding.done >= breeding.total
+      ? "dealing — the engine is placing a bred generation in the pool"
+      : `dealing — the engine is breeding (seed ${seed}/${breeding.total})`;
+  }
+  if (evolvingFrom) return "dealing — the engine is ⚡ evolving a patch";
+  if (meterFitting && engineBusy) return "dealing — the engine is redrawing your taste map";
+  return "dealing…";
+}
+
+/** Write (or clear) the reason on the dimmed cards. Called with no argument
+ *  it refreshes a reason already showing — a generation's seed count moves. */
+function sayDealing(text) {
+  const showing = $("duel-a").classList.contains("dealing-slow");
+  if (text === undefined) {
+    if (!showing || !dealing) return;
+    text = dealingWhy();
+  }
+  for (const s of ["a", "b"]) {
+    const card = $(`duel-${s}`);
+    let el = card.querySelector(".deal-why");
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "deal-why mono";
+      el.setAttribute("role", "status");
+      card.appendChild(el);
+    }
+    el.textContent = text || "";
+    card.classList.toggle("dealing-slow", !!text);
+  }
+}
+
 function setDuelControlsEnabled(on) {
   for (const id of ["choose-a", "choose-b", "skip-duel", "pd-pick-a", "pd-pick-b", "pd-skip"]) {
     const el = $(id);
@@ -4556,13 +5281,54 @@ function setDuelControlsEnabled(on) {
   }
   $("duel-a").classList.toggle("dealing", !on);
   $("duel-b").classList.toggle("dealing", !on);
+  $("play-duel")?.classList.toggle("dealing", !on);
+  clearTimeout(dealSayTimer);
+  if (on) sayDealing(null);
+  else dealSayTimer = setTimeout(() => { if (dealing) sayDealing(dealingWhy()); }, DEAL_SAY_MS);
+}
+
+/** Put the pair on the table away and deal another: a pick does this, and so
+ *  does "another pair" (↻), which used to leave the old pair up with buttons
+ *  that looked live and did nothing until the deal landed. */
+function dealAnother() {
+  currentDuel = null;
+  dealing = true;
+  setDuelControlsEnabled(false);
+  requestDeal();
+}
+
+// ---------- taking back a teaching act ----------
+// ⌘Z takes back the newest teaching act still inside its undo window — a pick
+// from EVOLVE's cards or PATCH's strip, or a cut — in any view. Each act
+// registers how to take itself back when its receipt goes up, and leaves when
+// its window closes or it is taken back, so ⌘Z reaches the act whose toast is
+// on screen and never one already in the log. Only with none of these left
+// does ⌘Z mean edit undo, and only in PATCH (see the key handler).
+const takeBacks = [];
+function holdTakeBack(run) {
+  const t = { run };
+  takeBacks.push(t);
+  return t;
+}
+function releaseTakeBack(t) {
+  const i = takeBacks.indexOf(t);
+  if (i >= 0) takeBacks.splice(i, 1);
+}
+/** Take back the newest teaching act still undoable; false when none is. */
+function takeBackNewest() {
+  // An act that has quietly gone (a cut patch replaced by a generation inside
+  // its window) answers false, and the next one down is tried.
+  while (takeBacks.length) {
+    if (takeBacks.pop().run() !== false) return true;
+  }
+  return false;
 }
 
 // One vote at a time may sit behind the undo window — the only irreversible
 // action in an app that gives a *cut* seven seconds of grace was the vote.
 // The observation is held, not logged-and-compensated: a taste log containing
 // "picked it, then unpicked it" records the user's mouse, not their taste.
-let pendingVote = null; // { timer, commit, pair }
+let pendingVote = null; // { timer, commit, pair, key, toast, back, armsFit }
 
 let ignoreNextDeal = false;
 
@@ -4571,21 +5337,36 @@ function commitPendingVote() {
   clearTimeout(pendingVote.timer);
   const v = pendingVote;
   pendingVote = null;
+  releaseTakeBack(v.back);
   retireToastUndo(v.toast);
   v.commit();
+}
+
+/** A pick's window closed (or the tab is being left): into the log, and if it
+ *  was the sixth, the refit it armed goes out behind it. */
+function commitAndSettle() {
+  commitPendingVote();
+  // Mid-deal, the deal's own `settleFit` sends it, behind the pair's audio.
+  if (!dealing) settleFit();
 }
 
 function retractVote() {
   if (!pendingVote) return false;
   clearTimeout(pendingVote.timer);
-  const pair = pendingVote.pair;
+  const { pair, key, toast, back } = pendingVote;
   pendingVote = null;
+  releaseTakeBack(back);
   // The next deal was requested at vote time; if it hasn't landed yet it
   // must not overwrite the pair we are restoring.
   if (dealing) ignoreNextDeal = true;
   duelsSinceFit = Math.max(0, duelsSinceFit - 1);
   fitDue = duelsSinceFit >= FIT_EVERY;
-  renderTeach();
+  // Uncounted everywhere it was counted: PICKS, the meter's copy, the pips
+  // (`aheadDrop` re-renders all three). And the toast goes: ⌘Z does not pass
+  // through its button, and "Picked X over Y." left standing over a pick
+  // that was just taken back is the lane saying something untrue.
+  aheadDrop(key);
+  dropToast(toast);
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
   dealing = false;
@@ -4611,8 +5392,11 @@ function choose(side) {
   }
   if (!currentDuel) return;
   // A second vote inside the first one's window commits it — one pending
-  // vote at a time keeps the log ordered.
+  // vote at a time keeps the log ordered. If that was the sixth, its refit
+  // goes out once this pick's pair is dealt (the `duel` reply's `settleFit`).
   commitPendingVote();
+  // "● it just learned" stands until the next pick, and this is it.
+  learnedShown = false;
   benchBeforeAudition = null; // the vote closes the audition detour
   const [a, b] = currentDuel;
   const choseA = side === "a";
@@ -4624,20 +5408,34 @@ function choose(side) {
     setTimeout(() => nameEl.classList.remove("chosen"), 400);
   }
   send({ type: "duel_pred", a, b, choseA });
-  const timer = setTimeout(commitPendingVote, UNDO_WINDOW_MS);
+  const timer = setTimeout(commitAndSettle, UNDO_WINDOW_MS);
   pendingVote = {
     timer,
     pair: [a, b],
+    // The `record_duel` it becomes, so its reply settles this count.
+    key: aheadKey({ kind: "duel", a, b }),
     commit: () => send({ type: "record_duel", a, b, choseA }),
   };
+  pendingVote.back = holdTakeBack(() => retractVote());
   const win = choseA ? a : b;
   const lose = choseA ? b : a;
+  // `replace`: only one vote is ever undoable (this one commits the last), so
+  // the lane names this one, not whichever pick's toast was first in line.
   pendingVote.toast = note(`Picked ${nameOf(win)} over ${nameOf(lose)}.`, {
     undo: () => retractVote(),
     undoLabel: "not what I meant",
+    replace: "vote",
   });
   duelsSinceFit += 1;
-  renderTeach();
+  // The refit is *armed* here and sent in `settleFit` once this pick is in
+  // the log, so the sixth pick keeps its undo window like every other.
+  // Armed before the meter draws, so the sixth pip lights on the sixth pick.
+  if (duelsSinceFit >= FIT_EVERY && !fitDue) {
+    fitDue = true;
+    pendingVote.armsFit = true;
+  }
+  // Counted now, not when the log hears of it seven seconds on.
+  aheadAdd(pendingVote.key);
 
   // Ask for the next pair BEFORE the refit. The worker is one thread and
   // processes in order, so queueing a ~2.7 s posterior fit ahead of the deal
@@ -4647,50 +5445,47 @@ function choose(side) {
   // immediately, so it was precisely the wrong thing to put behind a fit.
   // The pair is chosen against the pre-fit posterior, which is fine: the model
   // already tolerates a posterior that lags its log by up to FIT_EVERY votes.
-  currentDuel = null;
-  dealing = true;
-  setDuelControlsEnabled(false);
-  send({ type: "duel" });
-
-  // The refit is *armed* here and enqueued in `settleFit`, once the new pair
-  // has actually landed. See that function for why it is not sent from here.
-  if (duelsSinceFit >= FIT_EVERY) fitDue = true;
+  dealAnother();
 }
 
-// A refit is armed. Two things have to be true before it goes out.
+// A refit is armed by the sixth pick and sent once that pick is in the log:
+// when its seven-second undo window closes, or when the next pick commits it
+// (whichever is first). It used to be sent as soon as the next pair landed,
+// committing the sixth pick at once — the one pick of every six that ⌘Z and
+// "not what I meant" could not take back, whatever the guide promised.
 //
-// 1. **The engine has to want it.** `status.needs_refit` is the engine's own
-//    answer — the importance weights have collapsed since the last fit, or the
-//    log holds evidence no posterior has seen. It has been shipped in
-//    `status()` all along with nobody reading it, while the app spent 3–13 s on
-//    a fixed every-sixth-vote fit whether or not the posterior had gone stale.
-//    `FIT_EVERY` stays, but as a *floor*: pacing, so a fast voter is never
-//    interrupted more often than every sixth pick. `needs_refit` decides above
-//    it. `duelsSinceFit` is therefore reset only when a fit actually goes out,
-//    so a skipped one re-arms on the very next vote instead of waiting out
-//    another six.
-//    An engine too old to report the flag leaves it `undefined`, and only an
-//    explicit `false` suppresses the fit — a stale binary must not be able to
-//    turn refitting off altogether.
+// It goes out once the pair is audible, too. The worker is one thread and
+// processes in order, so a fit queued ahead of the pair's buffers hands the
+// user two cards they cannot hear for the whole fit. The renders jump the
+// settle delay and go in front of it; that delay exists to protect the *next
+// deal* from a render nobody is looking at, which is the opposite situation
+// to this one.
 //
-// 2. **The pair has to be audible first.** The worker is one thread and
-//    processes in order, so a fit queued ahead of the pair's buffers hands the
-//    user two cards they cannot hear for the whole fit. The renders jump the
-//    settle delay and go in front of it; that delay exists to protect the
-//    *next deal* from a render nobody is looking at, which is the opposite
-//    situation to this one.
+// The sixth pick always refits: the meter promises it ("1 more pick and it
+// redraws your taste map"), and a promise kept only sometimes teaches the
+// player the meter is noise. It used to be gated on the engine's own
+// `status.needs_refit` as well — the importance weights collapsing since the
+// last fit — to save the seconds of a fit whose posterior had not gone
+// stale. Which picks those were depended on how surprising they had been, so
+// a run of agreeable picks ended with the pips wrapping to zero and the copy
+// reading "23 picks in" with no "● it just learned", no redrawn map and no
+// lamp: the meter counting down to something it then did not do. A fit costs
+// a few seconds off the audio thread, at most once every sixth pick — the
+// pacing `FIT_EVERY` has always set — and the pair is audible through it.
 function settleFit() {
   if (!fitDue || fitting) return;
-  if (status.needs_refit === false) return;
+  // The sixth pick is still inside its undo window: the fit waits for it.
+  if (pendingVote && pendingVote.armsFit) return;
   fitDue = false;
-  duelsSinceFit = 0;
-  // A vote still inside its undo window belongs in the log the fit reads.
-  // Committing here trades the tail of one undo window for a fit that has
-  // actually seen all six picks.
-  commitPendingVote();
+  // Picks made since the sixth (behind a fit already running) start the
+  // next row rather than vanishing from it.
+  duelsSinceFit = Math.max(0, duelsSinceFit - FIT_EVERY);
   requestPairRendersNow();
   fitting = true;
-  teachLearned();
+  meterFitting = true;
+  learnedShown = false;
+  lampOn("fit");
+  renderTeach();
   send({ type: "fit" });
 }
 
@@ -4707,7 +5502,11 @@ $("duel-b").addEventListener("click", (e) => {
 function auditionDuelSide(i, btn) {
   if (!currentDuel) return;
   const want = currentDuel[i];
-  awaitRender(want, () => play(want, btn), {
+  // Pressed again while this candidate's phrase plays, it stops, as every ▶
+  // in the app does; a press for the other side, or a newly dealt one, plays.
+  const key = `duel:${want}`;
+  if (hearingNow(key)) return void stopAudition();
+  awaitRender(want, () => play(want, btn, key), {
     // Voted past it: stop silently, this is not a failure.
     abandoned: () => !currentDuel || currentDuel[i] !== want,
   });
@@ -4716,19 +5515,19 @@ $("play-a").onclick = () => auditionDuelSide(0, $("play-a"));
 $("play-b").onclick = () => auditionDuelSide(1, $("play-b"));
 $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
-$("skip-duel").onclick = () => {
-  currentDuel = null;
-  send({ type: "duel" });
-};
+$("skip-duel").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 $("evolve-btn").onclick = () => {
   $("evolve-btn").disabled = true;
-  $("wm-lamp").classList.add("thinking");
+  lampOn("refine");
+  breeding = { done: 0, total: 0 };
+  renderTeach(); // a refit armed now waits for the generation, and says so
   note("breeding a generation toward your taste…");
   send({ type: "refine" });
 };
 
 // ---------- patch bank ----------
 let bankScrollTo = null;
+let bankScrollAt = 0;
 
 // The three banks the chips switch between.
 //
@@ -4868,15 +5667,25 @@ function renderBank() {
   list.innerHTML = "";
   list.appendChild(frag);
   syncBankCursor();
+  // Scrolled to the row asked for, by id, and not to whichever row is live
+  // now: opening from the TASTE map asks before the bench has moved, so the
+  // render that saw the request used to scroll to the patch being left and
+  // spend it. The request waits for its row (a few seconds at most, so a
+  // stale one can never move the list later).
   if (bankScrollTo != null) {
-    const target = list.querySelector(".bank-item.live");
-    if (target) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    bankScrollTo = null;
+    const target = list.querySelector(`.bank-item[data-id="${bankScrollTo}"]`);
+    if (target) {
+      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      bankScrollTo = null;
+    } else if (performance.now() - bankScrollAt > 5000) {
+      bankScrollTo = null;
+    }
   }
 }
 
 function bankRow(r, fitted) {
   const el = document.createElement("div");
+  el.dataset.id = String(r.id);
   el.className = "bank-item"
     + (r.id === wb.subjectId ? " live" : "")
     // The keyboard cursor is state, so it is carried by *id* and re-applied
@@ -4886,7 +5695,9 @@ function bankRow(r, fitted) {
     // rated a patch nobody had selected. See `kbdRowId`.
     + (r.id === kbdRowId ? " kbd" : "")
     + (r.pinned ? " saved" : "")
-    + (lastBorn.has(r.id) ? " fresh" : "");
+    + (lastBorn.has(r.id) ? " fresh" : "")
+    // Its bench open is on its way (see `openOnBench`).
+    + (r.id === benchPending && r.id !== wb.subjectId ? " opening" : "");
   const frac = fitted ? sq(r.mean) : 0;
   const lo = fitted ? sq(r.mean - (r.std || 0)) : 0;
   const hi = fitted ? sq(r.mean + (r.std || 0)) : 0;
@@ -4914,13 +5725,17 @@ function bankRow(r, fitted) {
   el.setAttribute("aria-label", said.join(", "));
   el.innerHTML = `
     <div class="bi-top">
-      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
+      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>${
+        // "Gen 3: 5 new patches in the bank" sent the player to a column of
+        // ⚡ rows where the only thing marking the five was a glow on a glyph.
+        lastBorn.has(r.id) ? `<span class="bi-new" title="Bred in the latest generation">new</span>` : ""
+      }
       <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} — ` : ""}double-click to rename">${esc(r.name)}</span>
       <span class="bi-pct mono" title="${fitted ? "How much the model thinks you'd like this" : "No prediction yet — teach it with a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "—"}</span>
       <span class="bi-id">#${r.id}</span>
     </div>
     <div class="bi-row">
-      <button class="bi-hear" title="Hear this patch" aria-label="Audition ${esc(r.name)}">▶</button>
+      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}" data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
       ${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ — teaches the model, ${s > 3 ? "does not" : "does not"} keep the patch">★</button>`)
@@ -4942,7 +5757,14 @@ function bankRow(r, fitted) {
     openOnBench(r.id);
     showView("play");
   });
-  el.querySelector(".bi-hear").onclick = () => awaitRender(r.id, () => play(r.id));
+  // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
+  // phrase plays, and pressed again it stops rather than starting over.
+  el.querySelector(".bi-hear").onclick = (e) => {
+    const key = `bank:${r.id}`;
+    if (hearingNow(key)) return void stopAudition();
+    const btn = e.currentTarget;
+    awaitRender(r.id, () => play(r.id, btn, key));
+  };
   el.querySelectorAll(".star").forEach((btn) => {
     btn.onclick = () => {
       // The row you just rated is the one a follow-up 1–5 should correct,
@@ -4979,20 +5801,45 @@ function cutRow(r) {
   cutIds.add(r.id);
   renderBank();
   scheduleSave(); // `cut` used to skip this, so a reload could resurrect it
+  // A cut patch is never dealt again (`requestDeal` sends the cut ids), and
+  // that includes the pair on the table: a side the player just threw out is
+  // not a question worth asking, so another pair is dealt the way ↻ deals one.
+  if (currentDuel && currentDuel.includes(r.id) && !dealing) dealAnother();
+  let toast = null;
+  let back = null;
   const commit = setTimeout(() => {
     pendingCuts.delete(r.id);
+    releaseTakeBack(back);
+    // A toast that waited its turn in the lane outlives this window; its undo
+    // stops offering what can no longer be taken back, as a vote's does.
+    retireToastUndo(toast);
     send({ type: "record_keep", id: r.id, kept: false });
   }, UNDO_WINDOW_MS);
   pendingCuts.set(r.id, commit);
-  note(`Cut ${r.name} #${r.id}.`, {
-    undo: () => {
-      clearTimeout(pendingCuts.get(r.id));
-      pendingCuts.delete(r.id);
-      cutIds.delete(r.id);
-      renderBank();
-      scheduleSave();
-    },
+  // A cut teaches as a pick does, so PICKS counts it now, as it counts a pick.
+  aheadAdd(aheadKey({ kind: "keep", id: r.id }));
+  const undo = () => {
+    // Only what is still waiting: a sent cut uncounted here would be a
+    // PICKS lower than the log it is counting.
+    if (!pendingCuts.has(r.id)) return;
+    clearTimeout(pendingCuts.get(r.id));
+    pendingCuts.delete(r.id);
+    releaseTakeBack(back);
+    aheadDrop(aheadKey({ kind: "keep", id: r.id }));
+    cutIds.delete(r.id);
+    renderBank();
+    scheduleSave();
+  };
+  // ⌘Z reaches it too, like a pick's: the newest teaching act first.
+  back = holdTakeBack(() => {
+    if (!pendingCuts.has(r.id)) return false;
+    undo();
+    dropToast(toast);
+    return true;
   });
+  // By name, never "#9": ids are hidden everywhere else. And it says what the
+  // cut does, which is now true: the patch is not dealt again.
+  toast = note(`Cut ${r.name} — it won't be dealt again`, { undo });
 }
 
 function wireRename(nameEl, r) {
@@ -5192,7 +6039,11 @@ function presetKeydown(e) {
     e.preventDefault();
     rows[Math.max(0, presetCursor)]?.click();
   } else if (e.key.toLowerCase() === "p") {
+    // `p` is also a note (D♯ on the computer keybed), and the global handler
+    // lets note letters through a focused control: stopped here, or hearing a
+    // preset also played a D♯ over it.
     e.preventDefault();
+    e.stopPropagation();
     rows[Math.max(0, presetCursor)]?.querySelector(".bi-hear")?.click();
   }
 }
@@ -5241,6 +6092,8 @@ function rateRow(rating, explicitId) {
   const prev = starsById.get(id) || 0;
   starsById.set(id, rating);
   send({ type: "record_stars", id, rating, prev });
+  // Counted now: behind a generation, the reply can be tens of seconds away.
+  aheadAdd(aheadKey({ kind: "stars", id }));
   renderBank();
   note(`${nameOf(id)} rated ${rating}★`);
 }
@@ -5301,6 +6154,7 @@ $("bank-list").addEventListener("keydown", (e) => {
     e.preventDefault();
     const id = kbdRowId ?? bankRows[0].id;
     bankScrollTo = id;
+    bankScrollAt = performance.now();
     openOnBench(id);
   } else if (e.key.toLowerCase() === "m") {
     // Save from the keyboard, since the row's buttons are deliberately out of
@@ -5381,7 +6235,8 @@ const TOUR = [
       `Press <b>EVOLVE POOL</b> and it breeds: it takes the patches it thinks you ` +
       `like best and makes mutated children of them. Children that score better ` +
       `than the worst patch in the pool get in. That round is a <b>generation</b>. ` +
-      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow.`,
+      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow ` +
+      `and say <b>new</b>.`,
   },
   {
     bank: "pool",
@@ -5456,18 +6311,20 @@ $("tour-skip").onclick = endBankTour;
 // The one moment the eviction rule stops being trivia: the first time a
 // generation actually lands. Offer the explanation then rather than at boot,
 // where it would be one more thing to dismiss before making a sound.
-function offerBankTourAfterFirstGeneration() {
-  if (localStorage.getItem("auracle-bank-toured")) return;
+//
+// It rides on the generation's own toast, as that toast's button: a toast of
+// its own came first and held "Gen 1: 10 new patches" back for its whole
+// window, so the result of the press arrived seven seconds after it happened.
+// Returns the toast options to add, or nothing after the first time.
+function bankTourOffer() {
+  if (localStorage.getItem("auracle-bank-toured")) return {};
   localStorage.setItem("auracle-bank-toured", "1");
   // `note` takes `undo`/`undoLabel`, not `label`/`run` — that is `alarm`'s
   // shape. Passing the wrong one rendered a bare toast with no button, so the
   // single designed entry point to the walkthrough was consumed silently and
   // never offered again. The action here is not an undo, but the toast's one
   // action slot is what it is; the label carries the meaning.
-  note("The bank just bred a generation — some patches were replaced.", {
-    undoLabel: "what happened?",
-    undo: () => startBankTour(2),
-  });
+  return { undoLabel: "what happened?", undo: () => startBankTour(2) };
 }
 
 // ---------- presets ----------
@@ -5502,9 +6359,34 @@ const presetClicks = new Map(); // library index -> benchSeq at the click
 // costs PERFORM's hold (see `heldForOpen` in perform.js), never its
 // measurement.
 let openAskedAt = 0;
+// The open on its way, for the bench reply to judge whether it is news:
+// {id, at, auto}. An open slower than this is announced when it lands
+// ("Opened Acid Line"); a quicker one is seen, not said.
+let openAsk = null;
+const OPEN_SAID_MS = 1000;
+// An open promised before there is an id to open: "teach it" names its first
+// pick before the engine has inserted it. {name, at}, or null.
+let openExpect = null;
 function openingNow() {
+  if (openExpect && performance.now() - openExpect.at < 60_000) return true;
   if (benchPending == null && presetClicks.size === 0) return false;
+  // The patch on its way is already the one the voices play (the warm start
+  // hands its first pick to the voices ahead of the bench): nothing is being
+  // left behind, so nothing need wait for it.
+  if (benchPending != null && benchPending === livePatchId && presetClicks.size === 0) return false;
   return performance.now() - openAskedAt < 60_000;
+}
+/** The name of the patch on its way to the player's hands, or null. PERFORM
+ *  says it ("opening Acid Line…") where it used to say "opening the patch you
+ *  picked…" beside the name of the patch being left — which read as though
+ *  that were the pick. */
+function openingName() {
+  if (!openingNow()) return null;
+  if (openExpect) return openExpect.name;
+  if (benchPending != null && rowOf(benchPending)) return nameOf(benchPending);
+  const index = [...presetClicks.keys()].pop();
+  const p = index != null ? (presetRows || []).find((r) => r.index === index) : null;
+  return p ? p.name : null;
 }
 /** Put a patch on the bench. `auto` marks an open the app made on its own
  *  (the first patch landing after boot or a reload, booth attract): it is not
@@ -5515,13 +6397,25 @@ function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
   openAskedAt = performance.now();
+  openAsk = { id, at: openAskedAt, auto };
   // A COMMIT still waiting on the last patch's edit is about that patch; it
   // must not land on this one when the edit settles.
   commitOnSettle = null;
+  // …and so is everything still waiting in the lane. Sent after this, each
+  // entry would land on the patch being opened, at an address that names
+  // something else there.
+  dropLane();
   // No separate `explain` request any more: the bench reply carries the
   // decomposition of the tree it is describing, so the readout can never name
   // a patch other than the one on screen. See `renderBelief`.
   send({ type: "edit_begin", id });
+  // Said at once, on the row and over the rack, until the rack is this patch:
+  // a bench open is a render, and a click that shows nothing gets clicked
+  // again or given up on.
+  if (id !== wb.subjectId) {
+    renderBank();
+    renderSubject();
+  }
 }
 
 // The categorical sites that reach the running voices without a recompile.
@@ -5566,41 +6460,114 @@ function syncCommitBtn() {
     wrap.title = !b.disabled ? ""
       : !hasRack ? "Pick a patch from the bank first"
       : !edited ? "Nothing to commit — turn a knob first"
+      : wb.vetSilent ? "Nothing reaches the output — plug a source into the empty socket first"
       : "This patch failed the safety vet";
   }
   b.title = b.disabled ? ""
     : "Plays your version against the original and asks which you prefer (with “my edit is better” ticked, it takes your word for it). Either answer teaches the model, and “the original” teaches it most.";
 }
 
-function sendEdit(addr, value, isIndex) {
+/** A knob write. `id` is the knob's identity as the gesture saw it (a drag
+ *  reads it once, at the press, off the rack under the hand); without one it
+ *  is read off the bench now, which is the rack on screen whenever no drag is
+ *  holding the redraw back. */
+function sendEdit(addr, value, isIndex, id) {
   if (!wb.dirty && !editPending) {
     editPending = true;
     syncCommitBtn();
   }
+  const who = id || lockIdOf(addr);
   // Sound first: continuous knobs — and the two live categorical sites —
-  // write straight into the running voices.
+  // write straight into the running voices. At the address the knob has *on
+  // the bench*, which a structural reply that landed mid-drag may have moved.
   const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
   if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
-  else if (live) live.param(addr, value);
+  else if (live) live.param(lockAddrOf(who) || addr, value);
+  // …and PERFORM plays from it. Its base for this knob was the tree it last
+  // measured, so without this PATCH drew the old value back over the knob in
+  // PERFORM's amber, and PERFORM's next move wrote it back into the voices.
+  if (!isIndex && perform && perform.knobSet) perform.knobSet(lockAddrOf(who) || addr, value);
   // The readout above the rack describes the tree before this write until the
   // bench answers with the new φ. Say so rather than leave a stale number
   // looking current.
   beliefStale();
   pendingEditTag = { op: "param", addr };
-  // Genome second: the worker validates, re-renders the phrase, updates φ.
-  if (editInFlight) {
-    editQueue = { addr, value, isIndex };
-    return;
+  // Genome second: the worker validates, re-renders the phrase, updates φ —
+  // in its turn, behind whatever the player did before this.
+  const seq = ++laneSeq;
+  pendingKnobs.set(who, { value, seq, live: !isIndex || liveIndex, index: !!isIndex });
+  const held = knobDragging;
+  const tail = benchLane[benchLane.length - 1];
+  if (tail && tail.t === "param" && tail.id === who) {
+    // The same knob, still waiting: the new value supersedes the old one
+    // outright. Nothing in between wanted the old value landed first.
+    Object.assign(tail, { addr, value, isIndex, seq, held });
+  } else {
+    benchLane.push({ t: "param", id: who, addr, value, isIndex, seq, held });
   }
-  editInFlight = true;
-  send({ type: "edit_param", addr, value, isIndex });
+  pumpLane();
+}
+
+/** The hand came off the knob: what it settled on may go to the engine. */
+function releaseHeldEdits() {
+  for (const q of benchLane) if (q.t === "param") q.held = false;
+  pumpLane();
+}
+
+/** A knob write's reply landed (or was refused, or died): the engine holds
+ *  that value now, or never will. Either way the overlay stops drawing it —
+ *  unless a newer write to the same knob is still on its way. */
+function settleParam(token) {
+  const q = paramAtWorker;
+  paramAtWorker = null;
+  editInFlight = false;
+  if (!q) return;
+  // A token that answers some other write is a reply this lane did not send
+  // (nothing does that today); drawing the overlay a little longer is safe.
+  if (token != null && token !== q.seq) return;
+  const p = pendingKnobs.get(q.id);
+  if (p && p.seq === q.seq) pendingKnobs.delete(q.id);
+}
+
+/** Draw every unconfirmed write over the rack the engine last described.
+ *  Called by `renderRack`, so no reply — for an older write, for a
+ *  structural edit that landed under a drag, for a ⌘Z the player has
+ *  already turned the knob after — can repaint a knob behind the value the
+ *  player last set. That flash was a drag's first reply: the rack redrew at
+ *  the value from the write before, and jumped when the next reply caught
+ *  up. It also cost keyboard nudges outright: the next ↑ read its base off
+ *  the stale redraw, and the presses in between were lost. */
+function overlayPending() {
+  if (!wb.rack || pendingKnobs.size === 0) return;
+  for (const [id, p] of pendingKnobs) {
+    const addr = lockAddrOf(id);
+    const k = addr && knobByAddr(addr);
+    if (k) k.value = p.value;
+  }
+}
+
+/** The voices were just handed a tree that has none of the writes still in
+ *  the lane (they are sent after it). Give them back, or the sound sits at
+ *  the old value under a knob drawn at the new one until something else
+ *  swaps the patch — a continuous write's own reply never does. */
+function livePending() {
+  if (!live || pendingKnobs.size === 0) return;
+  for (const [id, p] of pendingKnobs) {
+    if (!p.live) continue;
+    const addr = lockAddrOf(id);
+    if (!addr) continue;
+    live.param(addr, p.value);
+    // PERFORM was handed the same tree, without the same writes.
+    if (!p.index && perform && perform.knobSet) perform.knobSet(addr, p.value);
+  }
 }
 
 function playBench() {
   if (wb.buffer) {
     markHeard();
     playBuffer(wb.buffer, $("rack-play"));
-  } else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
+  } else if (!wb.vetOk && wb.vetSilent) note("nothing to play — no source reaches the output");
+  else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
 }
 
 // Layout constants.
@@ -5649,13 +6616,16 @@ function plateStep(mod) {
   return MOD_BY_KIND[mod.kind]?.ins === 2 ? Math.max(1, step) : step;
 }
 
-/** Is this rack module standing in for an empty socket? One predicate, asked
- *  by the renderer, the layout and the bank, so the three cannot disagree
- *  about what is and is not there. `placeholders` is a set of **uids** (see
- *  `placeholderUids`); the amp is not a node and modulators are never holes. */
+/** Is this rack module an empty socket? One predicate, asked by the renderer,
+ *  the layout and the bank, so the three cannot disagree about what is and is
+ *  not there. A `silence` module is one by its kind, on any rack (a duel mini
+ *  included: it is silent there too). `placeholders` is a set of **uids** (see
+ *  `placeholderUids`) for the stand-ins older saves recorded; the amp is not a
+ *  node and modulators are never holes. */
 function isEmptySocket(mod, placeholders) {
-  return !!mod && !mod.is_mod && mod.kind !== "amp"
-    && !!mod.uid && !!placeholders && placeholders.has(mod.uid);
+  if (!mod || mod.is_mod || mod.kind === "amp") return false;
+  if (mod.kind === "silence") return true;
+  return !!mod.uid && !!placeholders && placeholders.has(mod.uid);
 }
 
 /** Plate geometry for one module: width, height, and its knob grid.
@@ -5805,6 +6775,9 @@ function attachStepDrag(el, kg, knob) {
     el.setPointerCapture(ev.pointerId);
     pushUndo();
     knobDragging = true;
+    // Read off the rack under the hand, now: a reply that lands mid-drag
+    // replaces `wb.rack`, and the address this bar had may name another.
+    const id = lockIdOf(knob.addr);
     kg.classList.add("dragging");
     const track = kg.querySelector(".step-track");
     const at = (e) => {
@@ -5814,7 +6787,7 @@ function attachStepDrag(el, kg, knob) {
       if (v === knob.value) return;
       knob.value = v;
       paintStepBar(kg, knob);
-      sendEdit(knob.addr, v, false);
+      sendEdit(knob.addr, v, false, id);
     };
     at(ev);
     const onMove = (mv) => at(mv);
@@ -5824,6 +6797,7 @@ function attachStepDrag(el, kg, knob) {
       el.removeEventListener("pointercancel", onUp);
       knobDragging = false;
       kg.classList.remove("dragging");
+      releaseHeldEdits();
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
@@ -6440,7 +7414,7 @@ function applyGrid() {
     });
   }
   camHold = !stranded; // a re-seed *should* move the camera; a snap should not
-  renderRack();
+  renderRack(true);
   if (stranded) fitAll(true);
   scheduleSave();
   note(stranded
@@ -6469,7 +7443,7 @@ function resetPositions() {
   // is somewhere useless, so this is the one relayout that must move it.
   camHold = false;
   viewUserSet = false;
-  renderRack();
+  renderRack(true);
   fitAll(true);
   scheduleSave();
   note(n
@@ -6901,9 +7875,121 @@ function midOf(m) {
   return m && m.uid ? `u${m.uid}` : `k${m ? m.key : "?"}`;
 }
 
-function renderRack() {
+// What the rack on screen was built from: the rack object its handlers hold,
+// and everything about it that decides what the DOM *is* (`rackShapeOf`).
+let rackBuilt = null;
+
+/** Everything `buildRack` turns into elements, and nothing it only paints.
+ *  A continuous knob's value is paint, and so is the step lane's `active`
+ *  count, which `paintLaneLength` keeps. Enum values stay in: they choose a
+ *  plate's variant and its chips' text. */
+function rackShapeOf(rack, build) {
+  const sorted = (s) => (s ? [...s].sort() : null);
+  return JSON.stringify(
+    [
+      rack,
+      sorted(build.locks),
+      sorted(build.placeholders),
+      build.compact,
+      layoutMode,
+      build.places ? [...build.places].sort((a, b) => (a[0] < b[0] ? -1 : 1)) : null,
+      !!beliefOverlay,
+      portTrace.mid ?? null,
+    ],
+    (key, v) => {
+      if (key === "active") return undefined;
+      if (v && typeof v === "object" && typeof v.addr === "string" && v.kind && v.kind.t === "continuous") {
+        return { ...v, value: undefined };
+      }
+      return v;
+    },
+  );
+}
+
+/** A redraw that changes values only. The reply's rack is carried into the
+ *  objects the rack on screen was built from — its knobs' handlers hold
+ *  those, and a drag reads its start from them — and then painted where it
+ *  stands: knobs, step bars, the cables' reach and their breathing. Same
+ *  shape means same modules, same knobs, in the same order. */
+function repaintRackInPlace(fresh) {
+  const built = rackBuilt.rack;
+  if (fresh !== built) {
+    fresh.modules.forEach((m, i) => {
+      const o = built.modules[i];
+      m.knobs.forEach((k, j) => Object.assign(o.knobs[j], k));
+      const { knobs: _k, ...rest } = m;
+      Object.assign(o, rest);
+    });
+    const { modules: _m, ...top } = fresh;
+    Object.assign(built, top);
+    wb.rack = built;
+    lockIndex = null;
+  }
+  const svg = $("rack-svg");
+  for (const m of built.modules) {
+    for (const k of m.knobs) {
+      if (k.kind.t !== "continuous") continue;
+      const kg = svg.querySelector(`[data-addr="${CSS.escape(k.addr)}"]`);
+      if (kg) paintKnobKept(kg, k);
+    }
+  }
+  if (rackFrame) {
+    rackFrame.flow = wireLevels(built);
+    for (const it of rackFrame.wires) {
+      if (it.w.kind === "mod") {
+        it.inkEl.style.animationDuration = `${modBreath(rackFrame.mods.get(it.w.from)).toFixed(2)}s`;
+      } else {
+        paintWireLevel(it.inkEl, rackFrame.flow.get(it.w.from) ?? 1);
+      }
+    }
+  }
+  markQueuedPlates();
+}
+
+/** `paintKnob`, for a redraw rather than a hand: a knob PERFORM is playing
+ *  keeps its readout on the value sounding (`paintPerformedKnobs` owns that)
+ *  and has its kept value filed behind it, and the tooltip is re-said. */
+function paintKnobKept(kg, k) {
+  const val = kg.querySelector(".knob-value");
+  const performed = !!val && kg.classList.contains("performed") && val.dataset.kept != null;
+  const sounding = performed ? val.textContent : null;
+  paintKnob(kg, k);
+  if (performed) {
+    val.dataset.kept = val.textContent;
+    val.textContent = sounding;
+  }
+  const tt = kg.querySelector(".knob-hit > title");
+  if (tt) tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, kg.dataset.kind, kg.dataset.variant || null, true)} — drag up/down`;
+}
+
+/** How fast a modulation cable breathes: roughly its modulator's own rate. */
+function modBreath(src) {
+  let dur = 1.6;
+  if (!src) return dur;
+  const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
+  // A step sequence has a real rate in steps per second, so its cable can
+  // breathe once a step rather than on the LFO's approximation.
+  const srate = src.knobs.find((k) => k.addr.endsWith("#srate"));
+  if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
+  else if (srate) dur = Math.min(2.2, Math.max(0.25, 1 / stepRateHz(srate.value)));
+  else {
+    const att = src.knobs.find((k) => k.addr.endsWith("#att"));
+    const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
+    if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
+  }
+  return dur;
+}
+
+/** `rebuild` is for the callers that need the camera re-aimed even when no
+ *  element would change — the view coming back into sight, a resize, a
+ *  layout reset — and so must not be answered with a repaint in place. */
+function renderRack(rebuild = false) {
   const svg = $("rack-svg");
   const hasRack = wb.rack && wb.rack.modules && wb.rack.modules.length > 0;
+  // The engine's rack, with the player's newest values over it (see
+  // `overlayPending`). Here rather than in the reply handler, because a drag
+  // keeps writing after the last reply and it is the redraw that must agree.
+  overlayPending();
   $("rack-empty").style.display = hasRack ? "none" : "flex";
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
@@ -6944,6 +8030,7 @@ function renderRack() {
     svg.innerHTML = "";
     rackBoxes = new Map();
     rackFrame = null;
+    rackBuilt = null;
     cancelRackMotion();
     rackContent = { w: frameSize().w, h: frameSize().h };
     syncFitHint(); // nothing drawn is not a stranded layout
@@ -6952,12 +8039,7 @@ function renderRack() {
     return;
   }
 
-  // Measured before the teardown, because after it there is nothing left to
-  // measure: where every plate was, and where the keyboard was standing.
-  const before = captureRackMotion();
-  const focusMark = markRackFocus();
-
-  buildRack(svg, wb.rack, {
+  const build = {
     interactive: true,
     locks: lockedAddrs(),
     compact: effectiveLod() === "compact",
@@ -6968,7 +8050,34 @@ function renderRack() {
     // and it has to draw through the freeform path so the first drop does not
     // switch arrangements underneath the plate being dropped.
     places: layoutMode === "freeform" ? (ffPlaces() || new Map()) : null,
-  });
+  };
+  // Most redraws change values and nothing else — a knob reply, a release, a
+  // ⌘Z of a knob turn. Those are painted into the knobs already on screen
+  // (`repaintRackInPlace`) rather than rebuilt: a rebuild replaces every
+  // element in the rack, and a knob replaced between the moment something
+  // found it and the moment it pressed on it is a knob that was not there —
+  // the PATCH film's second drag, straight after a first one's reply,
+  // failed on exactly that. It is also most of the cost of a reply.
+  const shape = rackShapeOf(wb.rack, build);
+  // Not while the probe or the belief overlay is up: both draw from state
+  // that moves without the rack's shape moving (a trace landing, the pool's
+  // support), and they are redrawn by rebuilding.
+  if (!rebuild && rackBuilt && rackBuilt.shape === shape && !portTraceOn && !beliefOverlay) {
+    repaintRackInPlace(wb.rack);
+    return;
+  }
+  // A new shape is new DOM, and new DOM is never built under a hand that is
+  // holding a knob: that would take the knob out from under the pointer
+  // mid-turn. Every drag redraws when it lets go, and that redraw builds it.
+  if (knobDragging) return;
+
+  // Measured before the teardown, because after it there is nothing left to
+  // measure: where every plate was, and where the keyboard was standing.
+  const before = captureRackMotion();
+  const focusMark = markRackFocus();
+
+  buildRack(svg, wb.rack, build);
+  rackBuilt = { rack: wb.rack, shape };
   // Then play the difference. This has to happen before the camera is aimed,
   // because whether anything is moving is what decides whether the camera
   // travels on the motion curve or on its own.
@@ -6998,6 +8107,8 @@ function renderRack() {
   // pick mode draws — all of it lives in the DOM the build just replaced.
   connectSync();
   pickFeedback();
+  // …and for the plates a waiting gesture is aimed at.
+  markQueuedPlates();
 
   // Cache the amp faceplate for the per-note flash (see flashAmp).
   // Match the module *kind*, not its silkscreen: the title renders as
@@ -7032,7 +8143,7 @@ function renderSubject() {
   }
   // "(edited)", the same words the keybar and PERFORM use for the same fact —
   // the header said "· edited" while the dock under it said "(edited)".
-  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? " (edited)" : ""}`;
+  nameEl.textContent = `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}`;
   // The name's column is fixed and ellipsizes (`.patch-head`); the whole of
   // it is one hover away.
   nameEl.title = nameEl.textContent;
@@ -7040,10 +8151,15 @@ function renderSubject() {
   // bookkeeping, not the patch's name: on request only (⋯ › Show
   // measurements). What the caption keeps is what the player did to it.
   metaEl.textContent = [
+    // The rack is still this patch; the one asked for is on its way.
+    benchPending != null && benchPending !== wb.subjectId && rowOf(benchPending)
+      ? `opening ${nameOf(benchPending)}…`
+      : "",
     engineerMode ? `#${wb.subjectId}` : "",
     engineerMode ? sigOf(wb.subjectId) : "",
     wb.locks.size ? `${wb.locks.size} locked` : "",
-    wb.vetOk ? "" : "⚠ muted",
+    wb.vetOk ? "" : wb.vetSilent ? "silent — nothing reaches the output" : "⚠ muted",
+    laneWaitingText(),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -7231,22 +8347,8 @@ function buildRack(svg, rack, opts) {
     mWires.push({ w, wid, caseEl, inkEl: wireEl });
     if (w.kind === "mod") {
       // The wire breathes at (roughly) the modulator's own rate, so the
-      // patch looks alive where it sounds alive.
-      const src = modByKey.get(w.from);
-      let dur = 1.6;
-      if (src) {
-        const rate = src.knobs.find((k) => k.addr.endsWith("#rate"));
-        // A step sequence has a real rate in steps per second, so its cable
-        // can breathe once a step rather than on the LFO's approximation.
-        const srate = src.knobs.find((k) => k.addr.endsWith("#srate"));
-        if (rate) dur = 0.25 + (1 - rate.value) * 2.4;
-        else if (srate) dur = Math.min(2.2, Math.max(0.25, 1 / stepRateHz(srate.value)));
-        else {
-          const att = src.knobs.find((k) => k.addr.endsWith("#att"));
-          const dec = src.knobs.find((k) => k.addr.endsWith("#dec"));
-          if (att && dec) dur = 0.4 + (att.value + dec.value) * 1.4;
-        }
-      }
+      // patch looks alive where it sounds alive (`modBreath`).
+      const dur = modBreath(modByKey.get(w.from));
       // Only the ink breathes. A casing that pulsed would read as the cable
       // itself thinning and thickening, which is not what modulation does.
       wireEl.classList.add("pulse");
@@ -7539,7 +8641,8 @@ function buildRack(svg, rack, opts) {
       nbSocketClick(j);
       return true;
     };
-    const isSource = SOURCE_KINDS.includes(m.kind);
+    // A `silence` leaf is a source with nothing in it: no input socket.
+    const isSource = SOURCE_KINDS.includes(m.kind) || m.kind === "silence";
     if (m.is_mod) {
       // A modulator's output is a cable source too, but only the one sitting
       // *in* the slot: the deeper links of a CV chain are the chain's own
@@ -7690,12 +8793,15 @@ function buildRack(svg, rack, opts) {
         }
         kg.appendChild(ticks);
         kg.appendChild(svgEl("path", { d: arcPath(KNOB_R + 3, 0, 1) }, "knob-track"));
-        if (k.value > 0.004) {
-          kg.appendChild(
-            svgEl("path", { d: arcPath(KNOB_R + 3, 0, k.value) },
-              `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`)
-          );
-        }
+        // Always drawn, and hidden at zero the way `paintKnob` hides it. It
+        // used to be left out below 0.004, so a knob turned up from zero had
+        // no arc until the rack was rebuilt — and a knob at zero was a
+        // different element tree from the same knob anywhere else, which a
+        // redraw of values alone cannot paint over (`rackShapeOf`).
+        const arc = svgEl("path", { d: arcPath(KNOB_R + 3, 0, Math.max(0.004, k.value)) },
+          `knob-arc${m.is_mod ? " modside" : ""}${isModulated(k) ? " modulated" : ""}`);
+        if (!(k.value > 0.004)) arc.style.opacity = "0";
+        kg.appendChild(arc);
         const body = svgEl("circle", { r: KNOB_R }, "knob-body");
         kg.appendChild(body);
         // The pointer starts at 45% radius: a full-radius spoke reads as a pie
@@ -7724,7 +8830,7 @@ function buildRack(svg, rack, opts) {
           // it so the dot still wins its own corner.
           const hit = svgEl("circle", { r: KNOB_R + 7 }, "knob-hit");
           const tt = svgEl("title", {});
-          tt.textContent = `${k.label}: ${knobUnit(k.addr, k.value, m.kind, variant)} — drag up/down`;
+          tt.textContent = `${k.label}: ${heardUnit(k.addr, k.value, m.kind, variant, true)} — drag up/down`;
           hit.appendChild(tt);
           kg.appendChild(hit);
           attachKnobDrag(hit, m, k);
@@ -7797,7 +8903,7 @@ function buildRack(svg, rack, opts) {
         kg.dataset.kind = m.kind;
         if (variant) kg.dataset.variant = variant;
         if (k.kind.t === "continuous") {
-          kg.setAttribute("aria-valuetext", knobUnit(k.addr, k.value, m.kind, variant));
+          kg.setAttribute("aria-valuetext", heardUnit(k.addr, k.value, m.kind, variant, true));
           kg.setAttribute("aria-valuenow", k.value.toFixed(3));
           kg.setAttribute("aria-valuemin", "0");
           kg.setAttribute("aria-valuemax", "1");
@@ -7813,7 +8919,9 @@ function buildRack(svg, rack, opts) {
       kg.appendChild(lbl);
       if (k.kind.t === "continuous") {
         const val = svgEl("text", { y: KNOB_R + 25 }, "knob-value");
-        val.textContent = knobUnit(k.addr, k.value, m.kind, variant);
+        val.textContent = interactive
+          ? heardUnit(k.addr, k.value, m.kind, variant)
+          : knobUnit(k.addr, k.value, m.kind, variant);
         // Still inside its window: this readout changed a moment ago and the
         // teardown must not be what ends the flash.
         const until = knobFlash.get(k.addr);
@@ -8622,9 +9730,10 @@ syncBeliefBtn();
 
 /** What the posterior has resolved about this module's family, or null — which
  *  is the answer for anything the taste model does not measure, has not been
- *  fitted for, has too few patches carrying, or has looked at and found no
- *  lean in. Nothing at all is drawn for any of those, the same law
- *  `nbPaintTheta` runs under: a tint without evidence is a lie with a colour. */
+ *  fitted for, has too few patches carrying, or has only a guess about (an
+ *  interval that crosses zero). No tint is drawn for any of those: a tint
+ *  cannot be hollow, and a tint without evidence is a lie with a colour. The
+ *  node bank's θ cell, which can, draws a guess hollow (`nbPaintTheta`). */
 function beliefResolved(m, sup) {
   const spec = MOD_BY_KIND[m.kind];
   if (!spec || !spec.phi) return null;
@@ -9452,9 +10561,12 @@ new ResizeObserver(() => {
 // `recursive use of an object detected … at WasmEngine.edit_structure`, which
 // is what overlapping calls into one wasm object look like from the outside.
 // Queue rather than drop: the ops came from deliberate gestures, and each is
-// re-sent only once the tree it will land on is the tree it was aimed at.
-let structInFlight = false;
-const structQueue = [];
+// sent only once everything the player did before it has landed.
+//
+// Every edit shares this one lane now — knob writes, ops, whole-tree
+// rewrites and ⌘Z — see `pumpLane`. `structInFlight` (declared at the top)
+// is the lane's structural half: an op, a rewrite or a restore is at the
+// worker.
 /** Post a structural op. `landed` is what it earns *if the engine accepts it* —
  *  `{text, opts}` for the confirmation, `{drop}` for a HELD entry that is only
  *  really gone once the module is really in the patch. See `landedNote`;
@@ -9462,21 +10574,28 @@ const structQueue = [];
 function sendStruct(op, landed) {
   queueStruct({ type: "edit_structure", op }, landed || null);
 }
+// Deliberately shallow. This is a hand at a menu, not a stream; a backlog of
+// structural gestures deeper than this means the worker is wedged, and
+// replaying a minute of stale intent into a tree that has moved on is worse
+// than saying so. Knob writes and ⌘Z do not count: they coalesce.
+const LANE_STRUCT_MAX = 8;
+function laneStructCount() {
+  let n = 0;
+  for (const q of benchLane) if (q.t === "struct" || q.t === "rewrite") n += 1;
+  return n;
+}
+const LANE_FULL =
+  `${LANE_STRUCT_MAX} edits are already waiting on the engine, so this one was not queued — ` +
+  "it is busy (a breed, or a heavy render); try again when they land.";
 function queueStruct(msg, landed, tag, waiting) {
-  if (structInFlight) {
-    // Deliberately shallow. This is a hand at a menu, not a stream; a backlog
-    // deeper than a rapid double-click means the worker is wedged, and
-    // replaying a minute of stale intent into a tree that has moved on is
-    // worse than saying so.
-    if (structQueue.length >= 8) {
-      return note("still applying the last edit — give it a moment");
-    }
+  if (!laneFree()) {
+    if (laneStructCount() >= LANE_STRUCT_MAX) return note(LANE_FULL, { urgent: true });
     // The confirmation travels with the op rather than being said now, for the
     // same reason it waits on the reply: nothing has happened yet. It cannot
     // ride *on* `msg`, which is structured-cloned to the worker and would
     // choke on the undo closure.
     const held = { trays: waiting ? [...waiting] : [] };
-    structQueue.push({ msg, landed: landed || null, tag, staged: held.trays });
+    benchLane.push({ t: "struct", msg, landed: landed || null, tag, staged: held.trays });
     // Waiting its turn is still in flight as far as the shelf is concerned.
     if (landed && landed.drop != null) setTrayPending(landed.drop, true);
     // Nothing went out, so nothing may be charged to the edit that *is* out —
@@ -9487,6 +10606,7 @@ function queueStruct(msg, landed, tag, waiting) {
     // step to hand them to. Untracked, they were the one route left by which a
     // ⌘Z could restore the tree and leave a duplicate on HELD.
     stagingBound = held;
+    lanePaint();
     return;
   }
   structInFlight = true;
@@ -9505,6 +10625,207 @@ function queueStruct(msg, landed, tag, waiting) {
   pendingEditTag = editTagOf(msg, tag);
   logImplicit("edit", pendingEditTag);
   send(msg);
+}
+
+// ---------- the bench lane ----------
+// Every edit to the bench goes through one lane, one request at the worker at
+// a time, in the order the player made them.
+//
+// There used to be two lanes and a side channel. Knob writes had a one-deep
+// queue of their own, ops had theirs, and ⌘Z waited only for the ops — so a
+// ⌘Z pressed while a drag's last write was still queued went out ahead of
+// it, the undo landed, and then the write landed on top of it: the knob came
+// back to the value the player had just undone. Two lanes cannot agree on an
+// order, and one queue has nothing to disagree about. The worker is serial
+// anyway, so the cost is one message hop between requests, not a render.
+//
+// An entry is a *gesture*, never a tree computed from a bench that has since
+// moved:
+//
+//  - `param` — a knob write, named by the knob's identity (`lockIdOf`, the
+//    same name a lock uses) and aimed at an address only when it is sent,
+//    because an op ahead of it may have moved every address below it. Writes
+//    to one knob in a row coalesce, and a knob still under the hand is
+//    *held*: the voices hear every value the pointer passes through
+//    (`live.param`) and the engine renders the one it settles on. A drag used
+//    to keep the worker rendering values already superseded by the time they
+//    landed, and a bypass after it waited out that whole backlog.
+//  - `struct` — an op, exactly as `queueStruct` always queued it. Its key is
+//    the one the player aimed at; ops are not re-aimed yet.
+//  - `rewrite` — a whole-tree gesture (bypass, unplug, a cable moved…), re-run
+//    against the tree it lands on with its sockets re-aimed by node identity
+//    (`holdRewrite`).
+//  - `restore` — ⌘Z / ⌘⇧Z owed, `n` of them, read off the live stack when
+//    their turn comes (see `requestRestore`).
+//  - `mark` — the undo step of a knob gesture begun while the lane was busy
+//    (see `pushUndo`).
+
+/** Nothing is at the worker and nothing is waiting — or the entry being run
+ *  is the one asking, which owns the worker by being at the head. */
+function laneFree() {
+  return !editInFlight && !structInFlight && (laneDraining || benchLane.length === 0);
+}
+
+/** Send whatever is next, for as long as nothing is at the worker. Called on
+ *  every reply, refusal and failure, and whenever something joins the lane. */
+function pumpLane() {
+  while (!editInFlight && !structInFlight && benchLane.length) {
+    // Another patch is on its way to the bench. Anything sent now would land
+    // on *it* — at addresses read off the rack still on screen, which is the
+    // one leaving — so the lane holds until it lands, and the bench reply
+    // then drops what was aimed at the patch it replaced (`dropLane`).
+    if (benchPending != null) break;
+    const q = benchLane[0];
+    // A knob still under the hand holds everything behind it too: a ⌘Z
+    // pressed mid-drag is about the turn the drag is making.
+    if (q.t === "param" && q.held) break;
+    laneDraining = true;
+    try {
+      if (q.t === "restore") {
+        const kind = q.n > 0 ? "undo" : "redo";
+        q.n += q.n > 0 ? -1 : 1;
+        if (q.n === 0) benchLane.shift();
+        performRestore(kind, q);
+        continue;
+      }
+      benchLane.shift();
+      if (q.t === "mark") takeUndoStep();
+      else if (q.t === "param") postParam(q);
+      else if (q.t === "struct") queueStruct(q.msg, q.landed, q.tag, q.staged);
+      else if (q.t === "rewrite") runRewrite(q);
+    } finally {
+      laneDraining = false;
+    }
+  }
+  lanePaint();
+  // Everything the player did has landed: a COMMIT or ⚡ waiting on it goes.
+  if (laneFree()) settleCommit();
+}
+
+/** Send one knob write, at the address its knob has on the bench now. */
+function postParam(q) {
+  const addr = lockAddrOf(q.id);
+  if (!addr || !knobByAddr(addr)) {
+    // The module left the patch in an edit that landed ahead of this turn.
+    const p = pendingKnobs.get(q.id);
+    if (p && p.seq === q.seq) pendingKnobs.delete(q.id);
+    note("that knob's module left the patch before the turn could land — nothing changed.", { urgent: true });
+    return;
+  }
+  editInFlight = true;
+  paramAtWorker = q;
+  send({ type: "edit_param", addr, value: q.value, isIndex: q.isIndex, token: q.seq });
+}
+
+/** The bench is being replaced: everything still waiting was aimed at the
+ *  patch that is leaving. What each entry promised is taken back — a drop
+ *  from HELD stays on the shelf, and what a queued op staged comes off it,
+ *  because that op will never run. (The request already at the worker lands
+ *  on the old patch, ahead of the new one, which is harmless.) */
+function dropLane() {
+  for (const q of benchLane) {
+    if (q.t !== "struct") continue;
+    if (q.landed && q.landed.drop != null) setTrayPending(q.landed.drop, false);
+    for (const uid of q.staged || []) unstage(uid);
+  }
+  benchLane.length = 0;
+  pendingKnobs.clear();
+  lanePaint();
+}
+
+// ---- whole-tree gestures, held until their turn ----
+// A rewrite computes a whole tree from the bench on screen, and posting that
+// tree behind another edit would silently discard the edit in front of it —
+// which is why `applyTreeRewrite` used to refuse outright while anything was
+// in flight: "still applying the last edit — give it a moment". On a loaded
+// machine that was most of the time, and a bypass pressed right after a knob
+// turn, or right after ⌘Z, simply did not happen.
+//
+// So the *gesture* waits instead of the tree: it is run again when its turn
+// comes, against the tree the engine has then, with each socket it was aimed
+// at re-found by the identity of the module in it. If that module is gone —
+// the edit ahead of it removed it — the gesture is refused then, and says
+// why. That is the one case where waiting cannot be made safe.
+
+/** A socket as a gesture aims at it: the module in it (or, for `…/m`, the
+ *  module whose modulation slot it is) by identity. The amp is not a node and
+ *  never moves, so its keys stand for themselves. */
+function aimOfKey(key) {
+  const mod = key.endsWith("/m") ? key.slice(0, -2) : key;
+  const m = wb.rack?.modules.find((x) => x.key === mod);
+  return m && m.uid ? { uid: m.uid, suffix: key.slice(mod.length) } : { key };
+}
+/** …and back, against the rack the engine sent last. Null if it is gone. */
+function keyOfAim(a) {
+  if (a.key !== undefined) return a.key;
+  const m = wb.rack?.modules.find((x) => x.uid === a.uid);
+  return m ? m.key + a.suffix : null;
+}
+
+/** Hold a whole-tree gesture until everything in front of it has landed.
+ *  `keys` are the sockets it is aimed at, `rerun(...keys)` runs it again
+ *  with them re-aimed. True when it was held — the caller stops there, and
+ *  says nothing yet: nothing has happened. */
+function holdRewrite(keys, rerun, what) {
+  if (laneFree()) return false;
+  if (laneStructCount() >= LANE_STRUCT_MAX) {
+    note(LANE_FULL, { urgent: true });
+    return true;
+  }
+  benchLane.push({ t: "rewrite", aims: keys.map(aimOfKey), rerun, what });
+  lanePaint();
+  nbAnnounce(`${what} waits for the edit in front of it, then happens.`);
+  return true;
+}
+function runRewrite(q) {
+  const keys = q.aims.map(keyOfAim);
+  if (keys.some((k) => k == null)) {
+    note(`the ${q.what} did not happen — the module it was for left the patch in the edit before it.`, { urgent: true });
+    return;
+  }
+  q.rerun(...keys);
+}
+
+/** Visible pending feedback: the plates a waiting gesture is aimed at, and a
+ *  count in the rack's caption. Called on every knob write (a drag is one per
+ *  pointer move), so it touches the DOM only when what it says has changed;
+ *  `renderRack` re-marks the plates it rebuilds on its own. */
+let laneSaid = "";
+function lanePaint() {
+  let rewrites = 0;
+  for (const q of benchLane) if (q.t === "rewrite") rewrites += 1;
+  const said = `${laneWaitingText()}|${rewrites}`;
+  if (said === laneSaid) return;
+  laneSaid = said;
+  markQueuedPlates();
+  renderSubject();
+}
+function markQueuedPlates() {
+  const svg = $("rack-svg");
+  if (!svg) return;
+  svg.querySelectorAll("g.mod-group.queued").forEach((g) => g.classList.remove("queued"));
+  for (const q of benchLane) {
+    if (q.t !== "rewrite") continue;
+    for (const a of q.aims) {
+      const k = keyOfAim(a);
+      if (!k) continue;
+      const g = svg.querySelector(`g.mod-group[data-key="${cssKey(k.replace(/\/m$/, ""))}"]`);
+      if (g) g.classList.add("queued");
+    }
+  }
+}
+function laneWaitingText() {
+  let edits = 0;
+  let undos = 0;
+  for (const q of benchLane) {
+    if (q.t === "struct" || q.t === "rewrite") edits += 1;
+    else if (q.t === "restore") undos += q.n;
+  }
+  const parts = [];
+  if (edits) parts.push(`${edits} edit${edits > 1 ? "s" : ""} waiting`);
+  if (undos > 0) parts.push(undos > 1 ? `${undos} undos waiting` : "undo waiting");
+  else if (undos < 0) parts.push(undos < -1 ? `${-undos} redos waiting` : "redo waiting");
+  return parts.join(" · ");
 }
 
 /** `{op, kind, key}` for a structural message, from the payload the engine is
@@ -9673,6 +10994,11 @@ function setLock(addr, on) {
   const id = lockIdOf(addr);
   if (on) wb.locks.add(id);
   else wb.locks.delete(id);
+  // A ⌘Z on its way puts back the lock set of the step it restores, which
+  // was read before this toggle — so the toggle rides along and is applied
+  // over it (`settleRestore`), rather than silently undone by a reply that
+  // was already in flight when the player made it.
+  if (restorePending) (restorePending.toggles = restorePending.toggles || []).push([id, on]);
   locksRemember();
 }
 
@@ -9701,21 +11027,6 @@ function pruneLocks() {
   return dropped;
 }
 
-function drainStruct() {
-  if (structInFlight) return;
-  if (structQueue.length) {
-    const q = structQueue.shift();
-    queueStruct(q.msg, q.landed, q.tag, q.staged);
-    return;
-  }
-  // The lane is clear, so a ⌘Z burst that piled up behind it may take its next
-  // step — one per reply, each read off the stack as it stands now.
-  if (restoreBacklog === 0) return;
-  const kind = restoreBacklog > 0 ? "undo" : "redo";
-  restoreBacklog -= restoreBacklog > 0 ? 1 : -1;
-  performRestore(kind);
-}
-
 // ---------- client-side tree rewrites ----------
 // `StructOp` has no `Move`, and most of the connection grammar is moves:
 // reconnect an output into another socket, promote a branch over its parent,
@@ -9738,12 +11049,15 @@ function drainStruct() {
 // bypass, reconnect, unplug — is exactly what a later model would want.
 function applyTreeRewrite(fn, tag) {
   if (!wb.tree) { note("no patch on the bench"); return false; }
-  // Deliberately NOT queued, unlike an op. An op is a description of an edit
-  // and is re-aimed at whatever tree it lands on; a whole-tree replace *is* a
-  // tree, computed from the one on screen. Held until the tree has moved on,
-  // it would post a patch that silently discards the edit in front of it.
-  if (structInFlight) {
-    note("still applying the last edit — give it a moment");
+  // Never queued as a tree. An op is a description of an edit; a whole-tree
+  // replace *is* a tree, computed from the one on screen, and held until the
+  // tree has moved on it would post a patch that silently discards the edit
+  // in front of it. The gestures that call this wait in the lane as
+  // gestures (`holdRewrite`) and only get here with the lane clear — so
+  // arriving with anything in front is a caller that skipped that, and
+  // posting would be exactly the silent discard.
+  if (!laneFree()) {
+    note("that edit could not wait its turn safely, so it was not made — try it again.", { urgent: true });
     return false;
   }
   const tree = JSON.parse(JSON.stringify(wb.tree));
@@ -9760,10 +11074,9 @@ function applyTreeRewrite(fn, tag) {
   // because the node had no name of its own.
   const refusal = fn(tree, marks);
   if (typeof refusal === "string") { note(refusal); return false; }
-  // Only the holes this rewrite *made* need saying — one of them is a bare
-  // `SEED_VCO()` with no identity yet, and the engine mints it on the way in.
-  // The keys are the handle until then; `settlePlaceholders` trades them for
-  // uids against the tree that comes back.
+  // Where the holes ended up, as keys. A new hole is a `Silence` leaf and is
+  // one by its kind; `settlePlaceholders` only keeps a uid mark for a
+  // stand-in an older save recorded, read back against the tree that returns.
   placeholderPending = keysOfNodes(tree, marks);
 
   queueStruct({ type: "edit_set_tree", json: JSON.stringify(tree) }, null, tag);
@@ -9771,70 +11084,47 @@ function applyTreeRewrite(fn, tag) {
 }
 
 // ---------- empty sockets ----------
-// An unplugged socket has to look empty. The grammar cannot express that: the
-// term is total and every input is filled. So the engine keeps its substitute
-// node and the UI knows which one it is: a plate drawn as a hole, and the
-// first place the next module wants to go.
+// An unplugged socket has to look empty *and be silent*. For a long time it
+// was only the first: the grammar's term is total, every input is filled, and
+// the app stood a saw VCO (`SEED_VCO()`) in the socket and drew a dashed EMPTY
+// plate over it. The plate said "drop a source here" while the saw played
+// under a held chord — the films caught it on the scope — and the model scored
+// and learned from a patch with a source in it the player believed was gone.
 //
-// WS-1 §7 deferred a real `Silence` production to phase 3, to be batched with
-// the φ_struct arrangement columns so that one evolution revalidation would
-// pay for both. Phase 3 ran that revalidation (two columns shipped, two were
-// cut by it) and **did not ship `Silence`**, for two reasons that are not
-// about the labour:
+// The grammar has a production for exactly this: `Silence`, a source with no
+// parameters that compiles to a VCA with nothing in its input. It has prior
+// weight (small, never zero, so a hand-made hole never makes a patch
+// un-evolvable), φ counts it (`n_silence`), and the rack describes it as kind
+// `silence`, title "empty". What was missing was a way for an edit to *name*
+// it, and `NodeKind::Silence` is that. So `placeholderNode()` is a `Silence`
+// leaf now, and the hole is what it looks like: the engine renders zero there,
+// a patch whose only source is unplugged is silent (and fails the vet as
+// silent, which the caption and the model's line say in those words), and one
+// side of a mix unplugged mutes that side and nothing else.
 //
-// - **There is no prior weight that is right.** A production the prior can
-//   draw is a production evolution will *propose*: give `Silence` mass and ⚡
-//   starts offering patches with deliberately dead branches, and manufactures
-//   its own quarantines every time a draw bottoms out in one. Give it none and
-//   every patch containing one sits outside the prior's support, which is
-//   risk R2 exactly — `refine_from` mutates the user's hole away and the
-//   structure they built evaporates on the button they press most.
-// - **Batching it would have cost the measurement its meaning.** A seventh
-//   source changes the source categorical, so it moves the *prior*, which
-//   moves pool composition, which moves every search-health number. Run in the
-//   same wave as a feature-space change, a regression could not have been
-//   attributed to either. The whole point of the pre/post run is attribution.
-//
-// An empty socket is an editing state — a hole you are about to fill — not a
-// musical idea, and the substitute plus a `.placeholder` plate says that
-// honestly. What is genuinely still wrong is that the hole *makes a sound*.
-// The fix that does not touch the prior is a compile-time one (a substitute
-// the compiler renders at zero gain), and it belongs with the liveness work,
-// not here.
+// A `silence` module is a hole by its kind, whether or not this session made
+// it — a reload, a patch the prior drew with one, a tree imported from a file
+// — so `isEmptySocket` and `isPlaceholderKey` ask the kind first. The uid set
+// below is still kept, for the holes older saves recorded over a stand-in VCO:
+// those still draw EMPTY (and still sound, until the socket is filled), because
+// they were saved before a hole could be silent.
 //
 // ---- what a hole is *named by* ----
 //
-// It was named by its trace key, which is a position, and that made it survive
-// exactly as long as the positions did: the client-side rewrite path carried
-// holes across by object identity, and every `StructOp` — insert, delete,
-// replace, set_mod, swap_mix, at any key in the patch — forgot them. The
-// symptom was a lie told one gesture late. Unplug: a correct dashed EMPTY
-// plate. Insert anything, anywhere, even at a key that does not move the hole:
-// the plate silently becomes a full vco with knobs, the bank lists "vco", and
-// the accessibility tree says "vco module". The player is then editing a patch
-// that contains a source they believe is silent, and the model is taught on it.
+// A `Silence` leaf names itself: its kind *is* the fact, it travels inside the
+// JSON a rewrite moves, and every `StructOp` carries it like any other node.
+// Nothing below is needed for one.
 //
-// So a hole is named by the **uid of the node standing in the socket** — the
-// same identity locks are keyed by, for the same reason and with the same
-// consequences (see `lockStore`). `apply_struct_op` works on a clone and
-// splices in place, so every node that lives through an edit carries its uid
-// across inside the `memmove` that carried its knobs. A hole therefore survives
-// every op for free, and stops surviving at exactly the moment it should: when
-// the node standing in the socket is replaced (`Replace` with a source mints a
-// fresh node, so the mark prunes itself) or deleted.
-//
-// Two seams the identity does not cross by itself:
-//
-//  - **A hole this session just made has no uid yet.** `placeholderNode()` is
-//    a bare `SEED_VCO()`; the engine mints on `ensure_uids` at the end of
-//    `edit_set_tree_apply`. So the rewrite path files its new holes as *keys*
-//    in `placeholderPending`, and `settlePlaceholders` reads the uid back out
-//    of the tree the engine returns — the structure it returns is the
-//    structure we sent, so the key is exact.
-//  - **A reload has no session.** `holeStore` is the same shape as `lockStore`
-//    and rides in the same `ui` blob, keyed by subject, so a socket you
-//    emptied is still empty tomorrow. Persisting it is only honest for the
-//    same reason persisting a lock is: it names a node, not a slot.
+// A stand-in could not: it was a vco like any other. Its mark was first a
+// trace key, which forgot it on the next op anywhere in the patch (the plate
+// turned back into a full vco one gesture later), and then the **uid of the
+// node standing in the socket** — the identity locks are keyed by, which
+// survives every op for free and stops surviving when the node is replaced or
+// deleted. That set (`placeholderUids`) and its store (`holeStore`, in the
+// same `ui` blob as `lockStore`, keyed by subject) are kept so a save that
+// recorded stand-ins still draws them EMPTY after a reload. No new mark is
+// filed: `settlePlaceholders` only reads back uids for a rewrite that moved
+// a stand-in, and prunes marks whose node is gone.
 const HOLE_KEEP = 60; // as the lock store; the bank holds 40
 // The bank chip's glyph for a hole (p4). Every other chip's glyph is a
 // waveform or a curve — a picture of what the module does to a signal — so the
@@ -9846,7 +11136,17 @@ let placeholderUids = new Set();
 let placeholderPending = null;      // Set<trace key>, awaiting the minted uids
 const holeStore = new Map();        // subject key → Set<uid>
 
-function placeholderNode() { return SEED_VCO(); }
+/** The node an unplugged socket holds: the grammar's `Silence` leaf, in the
+ *  externally tagged form every tree node takes on the wire. No `uid` field —
+ *  the engine mints one on the way in (see above). */
+function placeholderNode() { return { Silence: {} }; }
+
+/** Is this *tree JSON* node a hole? By kind for a `Silence` leaf, by the uid
+ *  set for a stand-in an older save recorded. */
+function isHoleJSON(n) {
+  if (!n || typeof n === "string") return false;
+  return nodeTag(n) === "Silence" || (placeholderUids.size > 0 && placeholderUids.has(uidOfJSON(n)));
+}
 
 /** The uid on a *tree JSON* node, or 0 for one the engine has not settled.
  *  `Uid` is `#[serde(transparent)]`, so it is a bare number in the wire tree,
@@ -9862,15 +11162,18 @@ function uidOfJSON(n) {
  *  that has to tell the truth about absence — the plate, the bank chip, the
  *  aria-label, the structure menu, the connect verbs, the pick chip. */
 function isPlaceholderKey(key) {
-  if (!placeholderUids.size) return false;
-  const uid = wb.rack?.modules.find((m) => m.key === key)?.uid;
-  return !!uid && placeholderUids.has(uid);
+  const mod = wb.rack?.modules.find((m) => m.key === key);
+  if (!mod || mod.is_mod) return false;
+  if (mod.kind === "silence") return true;
+  return !!mod.uid && placeholderUids.has(mod.uid);
 }
 
-/** The hole set as the renderer and the layout want it: uids, passed as an
- *  argument rather than read from module scope, so that the one caller drawing
- *  a *different* patch (a duel mini) gets full plates by simply not passing it.
- *  `settlePlaceholders` is what keeps the set true of the current rack. */
+/** The stand-in holes as the renderer and the layout want them: uids, passed
+ *  as an argument rather than read from module scope, so that the one caller
+ *  drawing a *different* patch (a duel mini) does not borrow this bench's
+ *  marks by simply not passing it. (A `Silence` leaf needs no mark: it is a
+ *  hole by its kind on any rack — see `isEmptySocket`.) `settlePlaceholders`
+ *  is what keeps the set true of the current rack. */
 function placeholderSet() {
   return placeholderUids;
 }
@@ -9880,9 +11183,8 @@ function placeholderSet() {
  *  staged to HELD when it is only a hole. */
 function holeNodesIn(tree) {
   const out = [];
-  if (!placeholderUids.size) return out;
   walkTreeKeys(tree, (n) => {
-    if (placeholderUids.has(uidOfJSON(n))) out.push(n);
+    if (isHoleJSON(n)) out.push(n);
   });
   return out;
 }
@@ -9938,7 +11240,11 @@ function settlePlaceholders() {
     // the tree we posted addresses the same node in the tree that came back —
     // this is only reading off the identity it minted on the way through.
     for (const k of placeholderPending) {
-      const uid = uidOfJSON(nodeAtIn(wb.tree, k));
+      const n = nodeAtIn(wb.tree, k);
+      // A `Silence` leaf is a hole by its kind and needs no mark; only a
+      // stand-in (a hole an older save recorded, moved by this rewrite) does.
+      if (!n || nodeTag(n) === "Silence") continue;
+      const uid = uidOfJSON(n);
       if (uid) placeholderUids.add(uid);
     }
     placeholderPending = null;
@@ -10086,7 +11392,7 @@ function openStructMenu(mod, x, y) {
     run: (ev) => deleteModule(key, ev.clientX || x, ev.clientY || y),
   });
   showMenu(x, y, {
-    glyph: spec?.glyph,
+    glyph: isPlaceholderKey(key) ? EMPTY_GLYPH : spec?.glyph,
     title: isPlaceholderKey(key) ? "empty" : mod.title || kindName(mod.kind),
     sub: `${mod.knobs?.length || 0} knobs · ${subtreeSize(node || {})} modules from here down`,
   }, rows);
@@ -10146,6 +11452,7 @@ function duplicateModule(key) {
   const here = nodeAtKey(key);
   if (!here) return note("that module has moved");
   const name = kindName(rackKindAt(key)) || fragLabel(here, false);
+  if (holdRewrite([key], duplicateModule, `duplicate of the ${name}`)) return;
   const ok = applyTreeRewrite((tree) => {
     const node = nodeAtIn(tree, key);
     if (!node) return "that module has moved — try again";
@@ -10167,6 +11474,9 @@ function duplicateModule(key) {
 function extractModule(key) {
   const here = nodeAtKey(key);
   if (!here) return note("that module has moved");
+  // Held as a gesture while anything is in front of it (see `holdRewrite`);
+  // everything below runs when its turn comes, against the tree then.
+  if (holdRewrite([key], extractModule, `unplug of the ${plateTitle(key)}`)) return;
   // Named before the rewrite goes out, off the rack the player is looking at.
   const what = chainTitle(key);
   let doomed = null;
@@ -10202,6 +11512,7 @@ function bypassModule(key) {
   const name = kindName(rackKindAt(key)) || fragLabel(here, false);
   const f = childFields(MOD_BY_TAG[nodeTag(here)] || {});
   if (f.length === 0) return note(`${name} generates the signal — there is nothing to pass through it.`);
+  if (holdRewrite([key], bypassModule, `bypass of the ${name}`)) return;
   const lost = f.length === 2 ? subtreeSize(here[nodeTag(here)][f[1]] || {}) : 0;
   let head = null;
   const ok = applyTreeRewrite((tree) => {
@@ -10279,8 +11590,18 @@ function deleteModule(key, x, y) {
     return sendStruct({ op: "delete", key });
   }
 
-  // The plain case — one module out of a chain, what it feeds moves up. No
-  // confirm: the loss is one module and the toast's undo is right there.
+  return deletePlain(key);
+}
+
+/** The plain case — one module out of a chain, what it feeds moves up. No
+ *  confirm: the loss is one module and the toast's undo is right there. Its
+ *  own function so a delete that has to wait its turn is re-run as exactly
+ *  this, not as the menu's whole decision again. */
+function deletePlain(key) {
+  const node = nodeAtKey(key);
+  if (!node) return note("that module has moved");
+  const name = kindName(rackKindAt(key)) || fragLabel(node, false);
+  if (holdRewrite([key], deletePlain, `delete of the ${name}`)) return;
   let head = null;
   const ok = applyTreeRewrite((tree) => {
     const n = nodeAtIn(tree, key);
@@ -10301,6 +11622,7 @@ function deleteModule(key, x, y) {
 /** Collapse the binary at `key` onto child `keep`; the other branch goes to
  *  HELD whole, so "discards 3 modules" is a statement about where they went. */
 function deleteKeeping(key, keep, name) {
+  if (holdRewrite([key], (k) => deleteKeeping(k, keep, name), `delete of the ${name}`)) return;
   // Named while it is still in the rack, and by its plate: this sentence is
   // the receipt for a branch the player just agreed to lose.
   const droppedName = chainTitle(`${key}/${1 - keep}`);
@@ -10624,7 +11946,7 @@ const KNOB_UNITS = {
   low: (x) => eqBand(x),
   mid: (x) => eqBand(x),
   high: (x) => eqBand(x),
-  gsize: (x) => fmtSec((0.01 + x * 0.49) * 1000),        // quiver Granular: 10–500 ms
+  gsize: (x) => fmtSec(0.01 + x * 0.49),                 // quiver Granular: 10–500 ms, in seconds
   gdens: (x) => `${(1 + x * 19).toFixed(0)}/s`,          // grains per second
 
   // ---- wave 2B ----
@@ -10662,9 +11984,11 @@ const KNOB_UNITS = {
   qroot: (x) => `${Math.round(x * 100)}%`,
   qscale: (x) => `${Math.round(x * 100)}%`,
   // SlewLimiter's own map is square-law and the compiler scales into its
-  // usable quarter, so this is the real time constant.
-  rise: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
-  fall: (x) => fmtSec(1000 * (0.001 + Math.pow(0.4 * x, 2) * 10)),
+  // usable quarter, so this is the real time constant, in seconds (compile.rs
+  // slew_time: 1.6 s at the top). It was multiplied by 1000 on the way into
+  // fmtSec, which takes seconds, so a 53 ms glide read "52.84 s".
+  rise: (x) => fmtSec(0.001 + Math.pow(0.4 * x, 2) * 10),
+  fall: (x) => fmtSec(0.001 + Math.pow(0.4 * x, 2) * 10),
 
   // ---- the step sequencer (crates/auracle-grammar/src/steps.rs) ----
   // Steps per second on `0.5·2^(5x)`: half a step a second to sixteen.
@@ -10760,6 +12084,22 @@ function knobUnit(addr, value, kind, variant) {
   return f ? f(value) : pct(value);
 }
 
+/** A bench knob's readout: what the voices do with the value, which is the
+ *  knob's own unit everywhere but one place. With SYNC on, a step sequencer
+ *  plays the division of the tempo its rate snaps to (`syncedStepHz`, the
+ *  same rule as `live.rs`), so its RATE read "2.0 Hz" while the pattern ran
+ *  at 2.1 — PERFORM's hood strip already said the heard rate, and the rack
+ *  under it contradicted the hood. Only the bench's rack: a duel mini or a
+ *  lineage diff describes a patch as the model renders it, free-running.
+ *  `long` is for the tooltip and the screen reader, which have room for why;
+ *  the plate's readout has one knob's width. */
+function heardUnit(addr, value, kind, variant, long) {
+  const text = knobUnit(addr, value, kind, variant);
+  if (!perf.sync || !addr.endsWith("#srate") || text === OUT_OF_RANGE) return text;
+  const heard = fmtHz(syncedStepHz(value, perf.bpm));
+  return long ? `${heard} · synced to ${perf.bpm} BPM (free, ${text})` : `${heard} sync`;
+}
+
 function enumDisplay(k) {
   if (k.kind.t === "octave") {
     const v = Math.round(k.value) - 2;
@@ -10794,7 +12134,7 @@ function paintKnob(kg, knob) {
   const kind = kg.dataset.kind;
   const variant = kg.dataset.variant;
   if (valText) {
-    const next = knobUnit(knob.addr, v, kind, variant);
+    const next = heardUnit(knob.addr, v, kind, variant);
     // Only on a *change*. A drag emits a move per pixel and the readout
     // quantises to two significant figures, so most frames say the same
     // thing — and a flash retriggered sixty times a second is a steady glow,
@@ -10808,7 +12148,7 @@ function paintKnob(kg, knob) {
     }
   }
   kg.setAttribute("aria-valuenow", v.toFixed(3));
-  kg.setAttribute("aria-valuetext", knobUnit(knob.addr, v, kind, variant));
+  kg.setAttribute("aria-valuetext", heardUnit(knob.addr, v, kind, variant, true));
 }
 
 function attachKnobDrag(el, mod, knob) {
@@ -10818,6 +12158,10 @@ function attachKnobDrag(el, mod, knob) {
     el.setPointerCapture(ev.pointerId);
     pushUndo(); // one undo step per knob gesture
     knobDragging = true;
+    // Who this knob is, read off the rack under the hand while it is still the
+    // bench's: a reply that lands mid-drag replaces `wb.rack`, and after a
+    // structural one the address below may name a different knob.
+    const id = lockIdOf(knob.addr);
     const startY = ev.clientY;
     const startV = knob.value;
     const kg = el.parentNode;
@@ -10830,7 +12174,9 @@ function attachKnobDrag(el, mod, knob) {
       const v = Math.min(1, Math.max(0, startV + (startY - mv.clientY) / travel));
       knob.value = v;
       paintKnob(kg, knob);
-      sendEdit(knob.addr, v, false);
+      // Held in the lane until the hand lets go (`releaseHeldEdits`): the
+      // voices hear every value on the way, the engine renders the last one.
+      sendEdit(knob.addr, v, false, id);
     };
     const onUp = () => {
       el.removeEventListener("pointermove", onMove);
@@ -10838,6 +12184,7 @@ function attachKnobDrag(el, mod, knob) {
       el.removeEventListener("pointercancel", onUp);
       knobDragging = false;
       kg.classList.remove("dragging");
+      releaseHeldEdits();
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
@@ -10874,8 +12221,11 @@ function attachEnumSweep(el, txt, knob) {
     const n = knob.kind.t === "octave" ? 5 : knob.kind.options.length;
     const startY = ev.clientY;
     const startV = Math.round(knob.value);
+    // Identity off the rack under the hand, as `attachKnobDrag` reads it.
+    const id = lockIdOf(knob.addr);
     let moved = false;
     let last = startV;
+    let swept = false;
     const onMove = (mv) => {
       const travel = mv.shiftKey ? 104 : 26;
       const next = Math.min(n - 1, Math.max(0,
@@ -10883,15 +12233,18 @@ function attachEnumSweep(el, txt, knob) {
       if (Math.abs(mv.clientY - startY) > 3) moved = true;
       if (next === last) return;
       // One undo step for the whole sweep, taken at the first real step so a
-      // drag that never leaves its starting value costs nothing.
-      if (last === startV) {
+      // drag that never leaves its starting value costs nothing. (Not keyed
+      // on `last === startV`: a sweep that comes back through its start is
+      // still the same sweep.)
+      if (!swept) {
+        swept = true;
         pushUndo();
         knobDragging = true;
       }
       last = next;
       knob.value = next;
       txt.textContent = enumDisplay(knob);
-      sendEdit(knob.addr, next, true);
+      sendEdit(knob.addr, next, true, id);
     };
     const onUp = () => {
       el.removeEventListener("pointermove", onMove);
@@ -10903,8 +12256,9 @@ function attachEnumSweep(el, txt, knob) {
       // `menuOpenedAt` is one: a pointerdown that never produces a click must
       // not leave a suppressor behind to eat the *next* one.
       if (moved) enumSweptAt = Date.now();
-      if (!knobDragging) return;
+      if (!swept) return;
       knobDragging = false;
+      releaseHeldEdits();
       renderRack();
     };
     el.addEventListener("pointermove", onMove);
@@ -10977,6 +12331,11 @@ function focusPlate(el, say) {
   }
 }
 
+// The keyboard's knob gesture: presses on one knob less than this far apart
+// are one turn (see the ↑/↓ branch below).
+const NUDGE_GAP_MS = 700;
+let nudge = null; // {id, at} — the last knob nudged, and when
+
 $("rack-svg").addEventListener("keydown", (e) => {
   const plate = e.target.closest?.("g.mod-group");
   if (plate && !e.target.closest?.("[data-addr]")) {
@@ -11011,7 +12370,9 @@ $("rack-svg").addEventListener("keydown", (e) => {
       if (mod && mod.kind !== "amp" && !mod.is_mod) armFromRack("insert", key);
       else armFromRack("insert", "node");
     } else if (e.key.toLowerCase() === "l" && mod && mod.kind !== "amp") {
+      // `l` is a note too (D, an octave up): the lock must not also play it.
       e.preventDefault();
+      e.stopPropagation();
       const on = isModuleLocked(mod);
       for (const a of moduleLockAddrs(mod)) setLock(a, !on);
       nbAnnounce(on ? `${mod.title} unlocked` : `${mod.title} locked`);
@@ -11040,10 +12401,17 @@ $("rack-svg").addEventListener("keydown", (e) => {
   } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
     e.preventDefault();
     if (knob.kind.t !== "continuous") return;
-    pushUndo();
+    // A run of presses on one knob is one gesture, the way a drag is: one
+    // undo step, and one write that the next press supersedes while it
+    // waits. A step per press made a held arrow key thirty undo steps a
+    // second, each a separate trip through the engine.
+    const now = performance.now();
+    const id = lockIdOf(knob.addr);
+    if (!nudge || nudge.id !== id || now - nudge.at > NUDGE_GAP_MS) pushUndo();
+    nudge = { id, at: now };
     knob.value = Math.min(1, Math.max(0, knob.value + (e.key === "ArrowUp" ? step : -step)));
     paintKnob(kg, knob);
-    sendEdit(knob.addr, knob.value, false);
+    sendEdit(knob.addr, knob.value, false, id);
   } else if (e.key === "Enter" || e.key === " ") {
     if (knob.kind.t === "continuous") return;
     e.preventDefault();
@@ -11053,6 +12421,7 @@ $("rack-svg").addEventListener("keydown", (e) => {
     sendEdit(knob.addr, knob.value, true);
   } else if (e.key.toLowerCase() === "l") {
     e.preventDefault();
+    e.stopPropagation(); // …as on a plate: a lock, not a note
     setLock(knob.addr, !isLockedAddr(knob.addr));
     renderRack();
     focusRackControl(i);
@@ -11061,8 +12430,10 @@ $("rack-svg").addEventListener("keydown", (e) => {
 
 function startEvolveFrom(id) {
   $("rack-evolve").disabled = true;
-  $("wm-lamp").classList.add("thinking");
-  note("⚡ evolving around the locked controls…");
+  lampOn("refine_from");
+  evolvingFrom = true;
+  renderTeach();
+  note("⚡ evolving around the locked controls…", { replace: "evolve-from" });
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
   // that is on screen on the way out.
@@ -11088,6 +12459,9 @@ function startEvolveFrom(id) {
 // instead of averaged. Which of them is better calibrated is a question this
 // build can now answer and previously could not even ask.
 let commitDuel = null; // {orig, edit, origSide, then}
+// Which side of the blind comparison was the edit ("A" / "B"), from the pick
+// to the commit's reply, so the receipt can say it.
+let commitReveal = null;
 
 /** The bench is the bank's patch again. `wb.dirty` is the panel's own belief
  *  about whether anything has changed and it can only ever be an upper bound —
@@ -11112,15 +12486,19 @@ function clearBenchDirty() {
  *  and the player has not already told us the answer. */
 function commitBench(opts = {}) {
   if (wb.subjectId == null) return;
-  // Pressed while the knob edit that lit it is still on its way: wait for it,
-  // or the duel would compare the tree from before the edit (and a bench not
-  // yet marked dirty would commit "none").
-  if (editInFlight || editQueue) {
+  // Pressed while an edit is still on its way — the knob write that lit it,
+  // or anything else in the lane: wait for all of it, or the duel would
+  // compare the tree from before the edit (and a bench not yet marked dirty
+  // would commit "none"). What is committed is what the player sees.
+  if (!laneFree() || benchLane.some((q) => q.held)) {
     commitOnSettle = opts;
     return;
   }
   if ($("improve-check").checked) {
-    // The express path: asserted, not heard, and tagged as such.
+    // The express path: asserted, not heard, and tagged as such. One-shot:
+    // the tick used to stay, so every later COMMIT and every ⚡ on an edited
+    // patch became a claim with no comparison, and nothing said so.
+    $("improve-check").checked = false;
     return sendCommit("self_edited", opts);
   }
   if (!wb.dirty || !wb.vetOk) return sendCommit("none", opts);
@@ -11135,10 +12513,17 @@ function commitBench(opts = {}) {
  *  refused or the vet may have muted it — and silently otherwise: COMMIT then
  *  says why it is disabled. */
 function settleCommit() {
-  if (!commitOnSettle || editInFlight || editQueue) return;
+  if (!commitOnSettle || !laneFree()) return;
   const opts = commitOnSettle;
   commitOnSettle = null;
   if (wb.dirty && wb.vetOk) commitBench(opts);
+  else if (opts.evolving && pendingEvolve && wb.subjectId != null) {
+    // ⚡ waited for an edit that turned out to change nothing (refused, or a
+    // knob put back where it was): there is nothing to commit, but the
+    // generation is still what was asked for.
+    pendingEvolve = false;
+    startEvolveFrom(wb.subjectId);
+  }
 }
 
 function sendCommit(outcome, opts = {}) {
@@ -11159,9 +12544,12 @@ function openCommitDuel(m, then) {
   // `clientWidth`, which is 0 while the overlay is `display:none`, and a
   // waveform drawn into a 0-wide canvas is a blank card.
   $("cduel").classList.remove("hidden");
+  // Blind: A and B, nothing more, until the pick. The sides were titled "your
+  // edit" and "the original", which answered the question before it was
+  // asked; the receipt says which was which (`cdPick`).
   for (const side of ["a", "b"]) {
     const isOrig = side === commitDuel.origSide;
-    $(`cd-name-${side}`).textContent = isOrig ? "the original" : "your edit";
+    $(`cd-name-${side}`).textContent = "";
     drawWave($(`cd-scope-${side}`), (isOrig ? orig : wb.buffer).getChannelData(0));
   }
   $(`cd-play-${commitDuel.origSide === "a" ? "a" : "b"}`).focus();
@@ -11182,22 +12570,40 @@ function cdPlay(side) {
 function cdPick(side) {
   if (!commitDuel) return;
   const editWon = side !== commitDuel.origSide;
+  const editSide = commitDuel.origSide === "a" ? "B" : "A";
   const then = commitDuel.then;
+  commitReveal = editSide;
   closeCommitDuel();
   stopAudition();
   sendCommit(editWon ? "heard_edited" : "heard_original", { evolving: then === "evolve" });
+  // The reveal: the card was blind, so the receipt says which side was which.
   note(editWon
-    ? "taught: you heard both and your edit won."
-    : "taught: you heard both and the original won — that is the more useful half.");
+    ? `${editSide} was your edit — taught: you heard both and your edit won.`
+    : `${editSide} was your edit — taught: you heard both and the original won, the more useful half.`,
+  { replace: "commit" });
+}
+
+/** Close the card and commit nothing: the edit stays on the bench, and a ⚡
+ *  that was waiting behind the question does not run. Esc used to commit
+ *  ("esc skip" sent `sendCommit("none")`), the one place in the app where Esc
+ *  was not "never mind". */
+function cdCancel() {
+  if (!commitDuel) return;
+  closeCommitDuel();
+  stopAudition();
+  pendingEvolve = false;
 }
 
 $("cd-play-a").onclick = () => cdPlay("a");
 $("cd-play-b").onclick = () => cdPlay("b");
 $("cd-pick-a").onclick = () => cdPick("a");
 $("cd-pick-b").onclick = () => cdPick("b");
+$("cd-cancel").onclick = () => cdCancel();
+// Commit without comparing: the edit goes in, and the model is taught nothing.
 $("cd-skip").onclick = () => {
   const then = commitDuel && commitDuel.then;
   closeCommitDuel();
+  stopAudition();
   sendCommit("none", { evolving: then === "evolve" });
 };
 // The overlay owns the keyboard while it is up — the keys underneath it play
@@ -11205,19 +12611,25 @@ $("cd-skip").onclick = () => {
 window.addEventListener("keydown", (e) => {
   if (!commitDuel) return;
   const k = e.key;
-  if (k === "Escape") { e.preventDefault(); $("cd-skip").click(); }
-  else if (k === "1") { e.preventDefault(); cdPlay("a"); }
+  if (k === "Escape") { e.preventDefault(); cdCancel(); return; }
+  // Every other key stops here, the handled ones included: 1 and 2 went on to
+  // the global handler, which rated the bank's row 1★ or 2★ while they played
+  // a side of this comparison.
+  e.stopPropagation();
+  if (k === "1") { e.preventDefault(); cdPlay("a"); }
   else if (k === "2") { e.preventDefault(); cdPlay("b"); }
   else if (k === "ArrowLeft") { e.preventDefault(); cdPick("a"); }
   else if (k === "ArrowRight") { e.preventDefault(); cdPick("b"); }
-  else e.stopPropagation();
 }, true);
 
 $("rack-play").onclick = () => playBench();
 $("rack-commit").onclick = () => commitBench();
 $("rack-evolve").onclick = () => {
   if (wb.subjectId == null) return;
-  if (wb.dirty) {
+  // An edit still on its way counts: `wb.dirty` is only set by its reply, and
+  // ⚡ pressed a moment after a knob turn used to breed from the bank's patch
+  // as if the turn had never happened. `commitBench` waits for the lane.
+  if (wb.dirty || editPending || !laneFree()) {
     // The edit is about to become the seed of a whole generation. If there was
     // ever a moment to ask which of the two it should breed from, this is it —
     // so the same duel runs, and the evolve waits behind the answer.
@@ -11238,6 +12650,11 @@ $("lock-structure").onclick = () => {
   renderRack();
 };
 $("lock-clear").onclick = () => {
+  // Through the same record `setLock` keeps, so a ⌘Z already on its way does
+  // not put them all back when it lands.
+  if (restorePending) {
+    for (const id of wb.locks) (restorePending.toggles = restorePending.toggles || []).push([id, false]);
+  }
   wb.locks.clear();
   locksRemember(); // clearing is a decision too, and it has to survive a reload
   renderRack();
@@ -12731,40 +14148,64 @@ function chipBlockedWhy(m, { hasRack, hasModSocket, mismatch }) {
 }
 
 /** The belief cell. A bar without evidence is a lie with a shape, so anything
- *  short of a resolved coefficient draws a mark that is not a bar.
- *  Shared by the catalogue chips and the in-patch chips: the model must not
- *  speak loudest about the modules you are merely browsing and go silent about
- *  the ones you actually built with (WS-2 §7). */
+ *  short of a fitted coefficient with enough patches behind it draws a dash,
+ *  not a bar. Shared by the catalogue chips and the in-patch chips: the model
+ *  must not speak loudest about the modules you are merely browsing and go
+ *  silent about the ones you actually built with (WS-2 §7).
+ *
+ *  A coefficient it has looked at is drawn with TASTE's one mark for a pull
+ *  (taste-geom `pullMark`): settled, a solid bar with its ±σ whisker; a guess
+ *  (the interval crosses zero), a hollow bar with the whisker at full
+ *  strength. A guess used to be a dot on zero captioned "no lean either way"
+ *  — the same number DIRECTIONS drew as a bar — and a settled bar's whisker
+ *  was capped at 16 px and drawn from zero rather than around the mean, so
+ *  the interval it stood for could not be read. Now the whisker is the
+ *  interval, on one scale for the whole rail, and an end past the cell's
+ *  edge is cut there and marked, never drawn shorter. */
 function nbPaintTheta(cell, m, byPhi, total) {
   if (!cell) return;
   const t = nbTheta(m.kind);
   const sup = m.phi ? (byPhi[m.phi] || 0) : 0;
   const state = m.phi ? beliefState(t, sup) : "unmeasured";
-  if (state !== "resolved") {
-    cell.className = "ni-theta " + (state === "flat" ? "flat" : "thin");
+  if (state !== "resolved" && state !== "flat") {
+    cell.className = "ni-theta thin";
     cell.innerHTML = "";
     cell.title =
       state === "unmeasured" ? "Not something the taste model measures directly."
       : state === "unfitted" ? unfittedWhy()
-      : state === "thin" ? `Too little to go on — ${sup} of ${total} patches carry this.`
-      : `The model has looked and has no lean either way (θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}).`;
+      : `Too little to go on — ${sup} of ${total} patches carry this.`;
     return;
   }
-  // 16px of travel each side of the zero rule (see .ni-theta), so the
-  // clamps are the geometry rather than a number that overflows it.
-  const scale = 14; // px per unit θ
-  const len = Math.max(2, Math.min(15, Math.abs(t.mean) * scale));
-  const whisk = Math.min(16, (Math.abs(t.mean) + t.std) * scale);
+  // The catalogue cell is 34 px with the zero rule at 17; the in-patch pill's
+  // is 24 px with it at 12 (style.css, .ni-theta).
+  const inPatch = !!cell.closest(".nb-chips");
+  const zero = inPatch ? 12 : 17;
+  const usable = inPatch ? 11 : 16;
+  const mark = pullMark(t, nbThetaScale(usable), usable);
   const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
-  cell.className = "ni-theta" + (t.mean >= 0 ? " pos" : " neg");
+  const barL = zero + Math.min(0, mark.len);
+  const barW = Math.max(mark.guess ? 2 : 1, Math.abs(mark.len));
+  cell.className = "ni-theta" + (mark.guess ? " guess" : "") + (t.mean >= 0 ? " pos" : " neg");
   cell.innerHTML =
-    `<i class="tb-whisk" style="width:${whisk}px"></i>` +
-    `<i class="tb-bar" style="width:${len}px;background:${color}"></i>`;
-  cell.title =
-    `In ${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank) ` +
-    `you lean ${t.mean >= 0 ? "toward" : "away from"} this ` +
-    `— θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}, ` +
-    `from ${sup} of ${total} patches.`;
+    `<i class="tb-whisk${mark.clipLo ? " cut-lo" : ""}${mark.clipHi ? " cut-hi" : ""}" ` +
+      `style="left:${(zero + mark.lo).toFixed(1)}px;width:${Math.max(1, mark.hi - mark.lo).toFixed(1)}px"></i>` +
+    `<i class="tb-bar" style="left:${barL.toFixed(1)}px;width:${barW.toFixed(1)}px;` +
+      `${mark.guess ? `border-color:${color}` : `background:${color}`}"></i>`;
+  const lens = `${styleName(views.styles[t.style], t.style)} (${Math.round(t.share * 100)}% of your bank)`;
+  const fig = `θ ${t.mean >= 0 ? "+" : "−"}${Math.abs(t.mean).toFixed(2)} ± ${t.std.toFixed(2)}`;
+  cell.title = mark.guess
+    ? `Still a guess: in ${lens} it leans ${t.mean >= 0 ? "toward" : "away from"} this, but it could be ` +
+      `either way — ${fig}, an interval that crosses zero, from ${sup} of ${total} patches.`
+    : `In ${lens} you lean ${t.mean >= 0 ? "toward" : "away from"} this — ${fig}, from ${sup} of ${total} patches.`;
+}
+
+/** Pixels per unit θ in a belief cell of `usable` px each side of zero: one
+ *  scale for the whole rail, fitted over the dominant style's coefficients
+ *  the way DIRECTIONS fits its rows (taste-geom `directionsScale`). */
+function nbThetaScale(usable) {
+  const styles = activeStyles();
+  const s = styles[0];
+  return directionsScale((s && s.theta) || [], usable);
 }
 
 // ---- render: filter, availability, and the model's belief ----
@@ -12853,17 +14294,19 @@ function nbRenderInPatch() {
   const sec = $("nb-inpatch");
   const list = $("nb-inpatch-list");
   const mods = (wb.rack && wb.rack.modules) || [];
-  const real = mods.filter((m) => MOD_BY_KIND[m.kind]);
+  const holes = placeholderSet();
+  // A hole is listed too, as "empty": a `silence` module has no palette entry
+  // (nobody shops for one), and filtering by the palette alone dropped it.
+  const real = mods.filter((m) => MOD_BY_KIND[m.kind] || isEmptySocket(m, holes));
   sec.classList.toggle("hidden", real.length === 0);
   if (real.length === 0) { list.innerHTML = ""; return; }
   $("nb-inpatch-n").textContent = String(real.length);
   // The same three columns the catalogue chip has, including the belief cell:
   // the model was speaking loudest about modules you were merely shopping for
   // and going silent about the ones you had actually built with (WS-2 §7).
-  const holes = placeholderSet();
   list.innerHTML = real
     .map((m) => {
-      const d = MOD_BY_KIND[m.kind];
+      const d = MOD_BY_KIND[m.kind] || { name: "empty", sort: "source", glyph: EMPTY_GLYPH };
       // p4: the canvas draws a dashed EMPTY plate and this list was printing
       // "vco" beside it — the *same* substitute node, named two ways, one of
       // them a lie about a destructive act the player had just performed. The
@@ -13004,14 +14447,13 @@ function specParts(m) {
          m.modTarget ? `mod → ${m.modTarget}` : null]
           .filter(Boolean).join(" · ");
 
-  // Four different silences, and they are not the same sentence: this is not
-  // measured / the model has not been fitted / too few examples / here is what
-  // it thinks. Collapsing any of them into "no data" is how a HITL surface
-  // starts implying more than it knows.
-  // Five distinct silences, and they are not the same sentence: this is not
+  // Five distinct states, and they are not the same sentence: this is not
   // measured / the model has not been fitted / too few examples / it looked and
-  // found no lean / here is what it thinks. Collapsing any of them into "no
-  // data" is how a human-in-the-loop surface starts implying more than it knows.
+  // has only a guess / here is what it is sure of. Collapsing any of them into
+  // "no data" is how a human-in-the-loop surface starts implying more than it
+  // knows. The guess is worded as TASTE draws it (a hollow bar, "still a
+  // guess"): it used to read "no lean either way", while DIRECTIONS drew the
+  // same number as a bar pointing one way.
   const state = m.phi ? beliefState(t, sup) : "unmeasured";
   let belief;
   if (state === "unmeasured") {
@@ -13022,8 +14464,8 @@ function specParts(m) {
     belief = `<span class="sp-dim">In ${sup} of ${total} patches — too few for the model to have an opinion yet.</span>`;
   } else if (state === "flat") {
     belief =
-      `<span class="sp-dim">In ${sup} of ${total} patches. The model has looked and has no lean either way ` +
-      `— θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}, an interval that straddles zero.</span>`;
+      `<span class="sp-dim">In ${sup} of ${total} patches. Still a guess: it could lean either way ` +
+      `— θ ${t.mean.toFixed(2)} ± ${t.std.toFixed(2)}, an interval that crosses zero.</span>`;
   } else {
     const color = STYLE_COLORS[t.style % STYLE_COLORS.length];
     belief =
@@ -13132,7 +14574,7 @@ function renderSpecDock() {
     `<div class="sd-ports mono">${esc(p.ports)}</div></div></div>` +
     `<div class="sd-body"><p class="sp-blurb">${esc(m.blurb)}</p>` +
     `<div class="sd-strip mono"><span class="sp-params">${esc(p.params)}</span>` +
-    `<span class="sp-heard"><b>heard as</b> ${esc(m.heard)}</span></div></div>` +
+    `<span class="sp-heard"><b>heard</b> ${esc(m.heard)}</span></div></div>` +
     `<div class="sd-model mono">${p.belief}</div>`;
 }
 
@@ -13265,8 +14707,8 @@ function priceWhatNotWhere(p) {
  *  plate, which sits between two modules and carries the rest as a tooltip.
  *
  *  The figure itself is printed in every state where one exists, including
- *  "no lean" — a number the model is not confident about is still the number,
- *  and hiding it would make "no lean" indistinguishable from "no answer". */
+ *  a guess — a number the model is not confident about is still the number,
+ *  and hiding it would make "a guess" indistinguishable from "no answer". */
 function priceHTML(p, long) {
   if (!p) return "";
   const fig = `${PRICE_SIGN(p.du)} ± ${p.sd.toFixed(2)}`;
@@ -13287,10 +14729,10 @@ function priceHTML(p, long) {
       }</span>`;
     case "flat":
       return long
-        ? `<span class="pr pr-flat">the model has no lean here</span>` +
-            ` <span class="pr-dim">(${fig}, straddling zero)</span>` +
+        ? `<span class="pr pr-flat">still a guess — it could go either way</span>` +
+            ` <span class="pr-dim">(${fig}, crossing zero)</span>` +
             ` <span class="pr-note">what, not where</span>`
-        : `<span class="pr pr-flat">no lean</span> <span class="pr-dim">${fig}</span>`;
+        : `<span class="pr pr-flat">a guess</span> <span class="pr-dim">${fig}</span>`;
     default:
       return long
         ? `<span class="pr ${p.du >= 0 ? "up" : "down"}">${fig}</span>` +
@@ -13328,6 +14770,7 @@ const PREVIEW_SECONDS = 2.0;   // the phrase's first held note, whole
 const preview = {
   token: 0,          // monotonic; a reply with an older one is stale
   inflight: false,
+  asked: null,       // {kind, key, mode} the render at the worker is *for*
   pending: null,     // the request that arrived while one was out
   want: null,        // {kind, key, mode} the strip is currently about
   have: null,        // {kind, key, mode, buffer} the last good render
@@ -13357,13 +14800,22 @@ function previewTarget() {
   if (!armed || !armedSockets.length) return null;
   const at = (k) =>
     k && armedSockets.find((j) => (j.getAttribute("data-childkey") || j.getAttribute("data-modkey")) === k);
+  const mine = (t) => (t && t.kind === armed.kind ? t.key : null);
   const jack =
     at(pickHoverKey) ||
     // Leaving the 6px nut is not leaving the decision. A render already paid
     // for stays on the strip until the player points at a different socket or
     // puts the module down — otherwise the waveform vanishes at the exact
     // moment the pointer travels to the ▶ that plays it.
-    at(preview.have && preview.have.kind === armed.kind ? preview.have.key : null) ||
+    //
+    // …and so does a render already *asked for*, newest first. Only the
+    // finished one used to count: a dwell's render still at the worker when
+    // the pointer left for ▶ fell through to the pre-selected socket, so ▶
+    // asked for a different socket, and what played was not what the strip
+    // had been rendering. The socket a render is for is the socket ▶ plays.
+    at(mine(preview.pending)) ||
+    at(preview.inflight ? mine(preview.asked) : null) ||
+    at(mine(preview.have)) ||
     (armedIdx >= 0 ? armedSockets[armedIdx] : null) ||
     armedSockets[0];
   const key = jack.getAttribute("data-childkey") || jack.getAttribute("data-modkey");
@@ -13379,6 +14831,7 @@ function previewInvalidate() {
   preview.dwellTimer = null;
   preview.token++;
   preview.inflight = false;
+  preview.asked = null;
   preview.pending = null;
   preview.have = null;
   preview.failed = null;
@@ -13402,6 +14855,14 @@ function requestPreview(target, play) {
   }
   if (sameTarget(preview.failed, target)) return; // it already said no
   preview.want = target;
+  if (preview.inflight && sameTarget(preview.asked, target)) {
+    // Already rendering exactly this: ▶ waits for it rather than asking for
+    // it a second time, and a newer request elsewhere is superseded by it.
+    preview.pending = null;
+    if (play) preview.playOnArrive = true;
+    renderSpecDock();
+    return;
+  }
   preview.playOnArrive = !!play;
   if (preview.inflight) {
     // Supersede rather than queue: the answer in flight is about a socket the
@@ -13412,6 +14873,7 @@ function requestPreview(target, play) {
   }
   preview.inflight = true;
   preview.token += 1;
+  preview.asked = target;
   send({
     type: "preview_render",
     token: preview.token,
@@ -13427,7 +14889,14 @@ function requestPreview(target, play) {
 function onPreviewArrived(m) {
   if (m.token !== preview.token) return;   // stale: the cancellation
   preview.inflight = false;
-  const target = { kind: m.kind, key: m.key, mode: preview.want ? preview.want.mode : "insert" };
+  // Filed under the socket it was asked for — never the one the strip has
+  // since moved on to (its mode used to be read off `want`, which is exactly
+  // that).
+  const asked = preview.asked;
+  preview.asked = null;
+  const target = asked && asked.key === m.key && asked.kind === m.kind
+    ? asked
+    : { kind: m.kind, key: m.key, mode: asked ? asked.mode : "insert" };
   if (m.buffer && m.buffer.length > 0) {
     const buf = audioCtx.createBuffer(1, m.buffer.length, m.sampleRate);
     buf.copyToChannel(m.buffer, 0);
@@ -13470,12 +14939,19 @@ function previewStripHTML(target) {
   const ready = sameTarget(preview.have, target);
   const dead = sameTarget(preview.failed, target);
   const busy = preview.inflight || !!preview.pending;
+  // "Here" is the socket under the pointer. Once the pointer has left it —
+  // on its way to this ▶, usually — the strip names the socket it is about,
+  // so a render that lands after the pointer has gone reads as that socket's
+  // and nobody else's. The socket itself is marked on the canvas too
+  // (`markPreviewSocket`).
+  const away = target && pickHoverKey !== target.key;
+  const where = away ? ` ${socketWhere(target.key)}` : "";
   const label = dead
-    ? "can't audition that here"
+    ? `can't audition that${away ? where : " here"}`
     : ready
-      ? "hear it here"
+      ? `hear it${away ? where : " here"}`
       : busy
-        ? "rendering…"
+        ? `rendering${where}…`
         : "hold a socket, or ▶";
   return (
     `<span class="pv${busy ? " busy" : ""}${dead ? " dead" : ""}">` +
@@ -13487,9 +14963,32 @@ function previewStripHTML(target) {
   );
 }
 
+/** Where a socket is, in the words of the plate it belongs to — "after the
+ *  filter", "on the vco's mod", "in the empty socket". Short, because it
+ *  rides a strip that already names the module in hand. */
+function socketWhere(key) {
+  if (!key) return "";
+  if (isPlaceholderKey(key)) return "in the empty socket";
+  if (armed && armed.sort === "mod") return `on the ${kindName(rackKindAt(key)) || "module"}`;
+  const title = plateTitle(key);
+  return armed && armed.sort === "source" ? `in place of the ${title}` : `after the ${title}`;
+}
+
+/** The socket the strip is about, marked on the canvas while the pointer is
+ *  somewhere else — the other half of naming it on the strip. */
+function markPreviewSocket(target) {
+  for (const j of armedSockets) {
+    const k = j.getAttribute("data-childkey") || j.getAttribute("data-modkey");
+    const on = !!target && k === target.key && pickHoverKey !== k &&
+      (preview.inflight || !!preview.pending || sameTarget(preview.have, target));
+    j.classList.toggle("previewed", on);
+  }
+}
+
 /** Paint whatever the strip is currently holding. Called after the dock is in
  *  the DOM, because the canvas has to exist to be drawn on. */
 function paintPreviewScope(target) {
+  markPreviewSocket(target);
   const c = $("pv-scope");
   if (!c) return;
   const dpr = window.devicePixelRatio || 1;
@@ -13685,7 +15184,7 @@ function disarm() {
   if (armPriced) { logPriceOutcome(armPriced, false, null); armPriced = null; }
   const chip = $("nb-groups").querySelector(".nb-item.armed");
   if (chip) chip.classList.remove("armed");
-  for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot");
+  for (const j of armedSockets) j.classList.remove("legal", "replaces", "hot", "previewed");
   armedSockets = [];
   armedIdx = -1;
   armed = null;
@@ -13695,6 +15194,11 @@ function disarm() {
   preview.failed = null;
   preview.pending = null;
   preview.playOnArrive = false;
+  // A render still at the worker is for a module no longer in hand. Its reply
+  // must not come back as the preview of the next one's socket.
+  preview.token++;
+  preview.inflight = false;
+  preview.asked = null;
   $("rack-scroll").classList.remove("placing");
   $("nb-status").textContent = "";
   nbAnnounce("");
@@ -13755,9 +15259,10 @@ const NB_TOUR = [
     title: "what the model thinks",
     body:
       `The bar on the right of a row is the model's opinion of that module, with ` +
-      `its uncertainty. It stays <b>blank until there is evidence for it</b>, and ` +
-      `shows a dot on zero when the model has looked and found no lean either ` +
-      `way. A short bar and "I do not know" must not look alike.`,
+      `its uncertainty. It is <b>a dash until there is evidence for it</b>, ` +
+      `<b>hollow while it is still a guess</b> (the thin line, how far it could ` +
+      `be off, crosses zero), and solid once it is sure. A short bar and ` +
+      `"I do not know" must not look alike.`,
   },
 ];
 
@@ -14113,6 +15618,7 @@ function openChooser(x, y, head, rows) {
  *  one undo step: the vacated socket becomes a hole and whatever was in the
  *  target is held below. */
 function connectMove(srcKey, targetKey) {
+  if (holdRewrite([srcKey, targetKey], connectMove, "cable move")) return;
   const srcName = kindName(rackKindAt(srcKey)) || "that";
   const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
   const hereChain = chainTitle(targetKey); // named before the tree moves
@@ -14151,6 +15657,7 @@ function connectMove(srcKey, targetKey) {
  *  — the term cannot share a node, and the toast says "a copy" for the same
  *  reason the socket labels say "replaces". */
 function connectBranch(srcKey, targetKey) {
+  if (holdRewrite([srcKey, targetKey], connectBranch, "branch")) return;
   const srcName = kindName(rackKindAt(srcKey)) || "that";
   const ownerName = kindName(rackKindAt(socketOwnerKey(targetKey))) || "the socket";
   const hereName = plateTitle(targetKey); // the plate it will mix with
@@ -14173,10 +15680,39 @@ function connectBranch(srcKey, targetKey) {
   noteOnLanding(`a copy of ${srcName} now mixes with ${hereName} into ${ownerName}.`, { undo: doUndo, undoLabel: "take it out" });
 }
 
+/** A cable pulled out of an input and dropped on nothing. The socket is left
+ *  empty, audibly and visibly: the term is total, so the engine gets a
+ *  `Silence` leaf there (it renders nothing), the plate says "empty", and the
+ *  next module goes there by default. */
+function unplugCable(childKey) {
+  if (!nodeAtKey(childKey)) return note("that cable is no longer there");
+  if (holdRewrite([childKey], unplugCable, "unplug")) return;
+  const pulled = chainTitle(childKey); // while it is still in the rack
+  let doomed = null;
+  const ok = applyTreeRewrite((tree, marks) => {
+    const old2 = nodeAtIn(tree, childKey);
+    if (!old2) return "that cable is no longer there";
+    const hole = placeholderNode();
+    if (!setNodeAtIn(tree, childKey, hole)) return "that cable is no longer there";
+    if (!marks.includes(old2)) doomed = old2;
+    marks.push(hole);
+    return null;
+  }, { op: "unplug", key: childKey, kind: rackKindAt(childKey) });
+  if (!ok) return;
+  const uid = doomed ? stageFragment(doomed, false) : null;
+  noteOnLanding(
+    doomed
+      ? `unplugged — the ${pulled} is held below and the socket is empty.`
+      : "unplugged — the socket is empty.",
+    { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
+  );
+}
+
 /** Modulation has one slot per module, so its only verb is move. */
 function connectMoveMod(srcKey, targetKey) {
   const srcMod = modAtKey(srcKey.replace(/\/m$/, ""));
   if (!srcMod) return note("that modulator has moved — try the cable again");
+  if (holdRewrite([srcKey, targetKey], connectMoveMod, "modulation move")) return;
   const from = srcKey.replace(/\/m$/, "");
   const dest = kindModTarget(rackKindAt(targetKey)) || "mod";
   let doomed = null;
@@ -14917,29 +16453,7 @@ function onWireUp(ev) {
       }
       return;
     }
-    // The socket is left visibly empty. The engine still needs a node there —
-    // the term is total — but the plate says "empty" and the next module goes
-    // there by default, instead of a fresh vco quietly pretending the unplug
-    // did nothing.
-    const pulled = chainTitle(w.childKey); // while it is still in the rack
-    let doomed = null;
-    const ok = applyTreeRewrite((tree, marks) => {
-      const old2 = nodeAtIn(tree, w.childKey);
-      if (!old2) return "that cable is no longer there";
-      const hole = placeholderNode();
-      if (!setNodeAtIn(tree, w.childKey, hole)) return "that cable is no longer there";
-      if (!marks.includes(old2)) doomed = old2;
-      marks.push(hole);
-      return null;
-    }, { op: "unplug", key: w.childKey, kind: rackKindAt(w.childKey) });
-    if (!ok) return;
-    const uid = doomed ? stageFragment(doomed, false) : null;
-    noteOnLanding(
-      doomed
-        ? `unplugged — the ${pulled} is held below and the socket is empty.`
-        : "unplugged — the socket is empty.",
-      { undo: () => { if (uid != null) unstage(uid); doUndo(); }, undoLabel: "plug it back in" },
-    );
+    unplugCable(w.childKey);
   } else if (w.mode === "unplug-mod") {
     if (jack) {
       const to = jack.getAttribute("data-modkey");
@@ -15609,6 +17123,8 @@ const NICE_NAMES = {
   // member, or the WHY line credits a wavefolder for a bitcrusher's evidence.
   n_vco: "VCOs", n_supersaw: "supersaws", n_noise: "noise srcs", n_mix: "mixers",
   n_wavetable: "wavetables", n_pluck: "plucked strings", n_formant: "formant voices",
+  // A hole a player's edit left (a Silence leaf): a socket with nothing in it.
+  n_silence: "empty sockets",
   n_filter: "filtering", n_drive: "drive & fold", n_time: "delay & grains",
   n_mod_fx: "chorus & sweeps", n_reverb: "reverbs", n_dynamics: "level control",
   // `n_rand` is the stepped-CV family now — s&h rand and the step sequencer.
@@ -15681,6 +17197,7 @@ const STYLE_WORDS = {
   n_wavetable: { adj: "wavetable", noun: "wavetables" },
   n_pluck: { adj: "plucked", noun: "plucked strings", coord: true },
   n_formant: { adj: "vocal", noun: "formants" },
+  n_silence: { adj: "sparse", noun: "empty sockets" },
   n_filter: { adj: "filtered", noun: "filters" },
   n_drive: { adj: "driven", noun: "drive" },
   n_time: { adj: "echoing", noun: "delays" },
@@ -15759,7 +17276,17 @@ function renderStyleChips() {
     input.addEventListener("input", fit);
     input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") input.blur(); });
     input.addEventListener("keyup", (e) => e.stopPropagation());
-    input.onblur = () => send({ type: "set_style_name", k, name: input.value });
+    input.onblur = () => {
+      const name = input.value.trim();
+      if ((s.name || "") === name) return;
+      s.name = name;
+      send({ type: "set_style_name", k, name });
+      scheduleSave();
+      // Everywhere the style is mentioned says the new name at once: the
+      // chips, the map's titles, DIRECTIONS and the rack's family belief.
+      renderStyleChips();
+      if (currentView === "taste") drawTaste();
+    };
     // A lens the model has learned but has no exemplar for yet cannot be
     // auditioned. Saying so on the control beats a ▶ that silently returns.
     const ex = s.exemplars && s.exemplars[0];
@@ -15773,60 +17300,88 @@ function renderStyleChips() {
     holder.appendChild(chip);
   });
 }
+// Each caption says what the tab draws, in the player's words. MAP's said
+// "islands are styles", which nothing on it shows, and "Click a dot to open
+// it" is what a click does (it opens the patch on the bench; it does not play
+// the phrase). DIRECTIONS said "Longer bar = stronger pull" over bars that
+// were almost all guesses; it now says how a guess is drawn.
 const CAPTIONS = {
-  map: "Every patch you’ve heard, mapped by sound & structure. Glow is how much the model thinks you’d like it, size is how sure it is — islands are styles. Click a dot to open it.",
-  styles: "Your taste as separate styles — new lenses appear as you give the model more to work with (up to 5). Dim lenses are idle.",
-  dir: "What each style listens for — learned directions in sound, not settings. Longer bar = stronger pull.",
+  map: "Brighter: it thinks you’d like it more. Bigger: it’s less sure. Click a dot to open it.",
+  styles: "Your taste as separate styles (up to 5), each with the five qualities it leans on hardest. Solid = it's sure; hollow, with a ?, = still a guess. Dim styles are idle.",
+  dir: "Where each style leans. Solid = it's sure. Hollow = still a guess — the thin line is how far it could be off.",
   trust: "Should you believe it? Each dot is a bucket of forecasts: how confident it was, against how often it was right. On the line = honest.",
 };
 // While a chart is empty, the caption must describe the state on screen —
-// "longer bar = stronger pull" over a void promises a chart that isn't there.
+// a caption about bars over a void promises a chart that isn't there.
 const EMPTY_CAPTIONS = {
-  map: "Your patches will map here by sound & structure — a few picks and it lights up.",
+  map: "Every patch you hear, placed by sound & structure. The dots light up when it first redraws your taste map.",
   styles: "Your taste as separate styles. None on record yet.",
   dir: "The sound qualities that pull you — brightness, roughness, attack. Nothing learned yet.",
-  trust: "Whether to believe the model. It forecasts every duel before your vote; the first 20 land here.",
+  trust: "Whether to believe the model. Once it has fitted your taste it guesses before each pick which you'll choose; after 20 guesses it grades itself here.",
 };
 
 const TRUST_MIN_N = 20;
 
 // Empty states are HTML, not canvas paint: selectable, with a real CTA, and
 // no two tabs identical.
+//
+// Every count and every CTA here is computed from what is left, in the words
+// EVOLVE's meter uses ("redraws your taste map"). They were fixed: "Start 6
+// quick picks →" at five picks of six, TRUST's twenty guesses behind the same
+// six-pick button, and STYLES promising "after a dozen picks" under "n of 6".
+/** Picks until the next refit redraws the taste map, as the EVOLVE meter
+ *  counts them (`renderTeach`), or 0 when one is armed or running. */
+function picksToRefit() {
+  if (fitDue || fitting) return 0;
+  return FIT_EVERY - (duelsSinceFit % FIT_EVERY);
+}
 function renderEmptyState(tab) {
   const holder = $("crt-empty");
   if (!holder) return;
-  const n = status.observations;
+  const n = picksTaught();
   const cn = engineCalib ? engineCalib.n : 0;
+  const left = picksToRefit();
   const skel = (rows, cls = "") =>
     `<div class="ce-skel ${cls}" aria-hidden="true">${"<i></i>".repeat(rows)}</div>`;
-  const cta = `<button class="hw-btn small" id="ce-cta">Start ${FIT_EVERY} quick picks →</button>`;
+  const more = (k) => `${k} more pick${k === 1 ? "" : "s"}`;
+  const pickCta = left > 0
+    ? `<button class="hw-btn small" id="ce-cta">${more(left)} →</button>`
+    : `<button class="hw-btn small" id="ce-cta" disabled>redrawing your taste map…</button>`;
+  const count = left > 0
+    ? `<div class="ce-count">${more(left)} and it redraws your taste map</div>`
+    : `<div class="ce-count">redrawing your taste map…</div>`;
+  const toGo = Math.max(0, TRUST_MIN_N - cn);
   const content = {
     map: `
       <div class="ce-title">nothing predicted yet</div>
-      <div class="ce-copy">Every patch you hear lands on this map. After your first
-      ${FIT_EVERY} picks the model fits, and the dots glow by how much it thinks
+      <div class="ce-copy">Every patch you hear lands on this map. ${left > 0 ? `In ${more(left)} it` : "It is"}
+      ${left > 0 ? "redraws" : "redrawing"} your taste map, and the dots glow by how much it thinks
       you'd like them.</div>
-      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+      ${count}${pickCta}`,
     styles: `${skel(3)}
-      <div class="ce-title">one lens, waiting</div>
-      <div class="ce-copy">Your taste gets up to five lenses as it splits — after a
-      dozen picks it can separate ambient-you from acid-you, and you can name
-      each one.</div>
-      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+      <div class="ce-title">no style yet</div>
+      <div class="ce-copy">${left > 0
+        ? `Your first style appears at pick ${n + left}; more split off as you teach it.`
+        : "Your first style is on its way; more split off as you teach it."}
+      You can name each one.</div>
+      ${count}${pickCta}`,
     dir: `${skel(4, "dir")}
       <div class="ce-title">nothing learned yet</div>
       <div class="ce-copy">This shows which <i>qualities</i> pull you — brightness,
-      roughness, attack — not which knobs. Longer bar, stronger pull.</div>
-      <div class="ce-count">${Math.min(n, FIT_EVERY)} of ${FIT_EVERY} picks</div>${cta}`,
+      roughness, attack — not which knobs, and how sure it is of each: solid
+      when it's sure, hollow while it's still a guess.</div>
+      ${count}${pickCta}`,
     trust: `<div class="ce-trust-skel" aria-hidden="true"></div>
-      <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} forecasts</div>
-      <div class="ce-copy">Before every vote the model forecasts your pick. Dots land
-      here: forecast against outcome, and on the line means honest. Dots inside
-      their whisker are indistinguishable from honest.</div>${cta}`,
+      <div class="ce-title">${Math.min(cn, TRUST_MIN_N)} of ${TRUST_MIN_N} guesses</div>
+      <div class="ce-copy">${views && views.styles
+        ? "Before each pick it guesses which you'll choose."
+        : `From pick ${n + left} on, it guesses before each pick which you'll choose.`} After
+      ${TRUST_MIN_N} guesses it grades itself here.</div>
+      <button class="hw-btn small" id="ce-cta">${toGo} to go →</button>`,
   }[tab];
   holder.innerHTML = content || "";
   const btn = holder.querySelector("#ce-cta");
-  if (btn) btn.onclick = () => showView("evolve");
+  if (btn && !btn.disabled) btn.onclick = () => showView("evolve");
 }
 
 let mapHits = [];
@@ -15859,6 +17414,9 @@ function drawTaste() {
   $("crt-empty").classList.toggle("hidden", !empty && !mapPrefit);
   $("crt-empty").classList.toggle("translucent", mapPrefit);
   $("map-legend").classList.toggle("hidden", tasteTab !== "map" || empty || noTaste);
+  // The map's label says how to walk it; STYLES and DIRECTIONS write their
+  // own as they draw (`describeTasteCanvas`).
+  if (tasteTab === "map" || tasteTab === "trust" || empty) describeTasteCanvas(null);
   if (empty) return renderEmptyState(tasteTab);
   if (mapPrefit) renderEmptyState("map");
 
@@ -16002,6 +17560,9 @@ function drawTrustTab(ctx, w, h, dpr) {
 function drawMapTab(ctx, w, h, dpr) {
   const map = views && views.map;
   const pts = map.points;
+  // Size carries the model's *uncertainty*, spread over this map's own range
+  // of it — see taste-geom.js for why, and for the numbers the legend shows.
+  const unsureOf = mapUnsureScale(pts.filter((p) => p.id != null).map((p) => p.utility_std));
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const pad = 34 * dpr;
   const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
@@ -16025,12 +17586,8 @@ function drawMapTab(ctx, w, h, dpr) {
       ctx.shadowBlur = 3 + glow * 16;
       ctx.globalAlpha = 0.35 + 0.65 * glow;
       ctx.fillStyle = color;
-      // Size carries the model's *uncertainty*: "I don't know this region"
-      // is the most useful thing an interactive-ML view can say, and the
-      // posterior spread was already being computed and discarded.
-      const base = p.origin === "edited" ? 5.5 : p.origin === "refined" ? 4.8 : 4;
-      const unsure = p.utility_std != null ? Math.min(1, p.utility_std) : 0;
-      const r = (base + unsure * 3.5) * dpr;
+      // Size is uncertainty and nothing else; origin no longer nudges it.
+      const r = mapDotRadius(unsureOf(p.utility_std)) * dpr;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
@@ -16044,6 +17601,19 @@ function drawMapTab(ctx, w, h, dpr) {
         ctx.beginPath();
         ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
         ctx.stroke();
+      }
+      if (p.id === benchPending && p.id !== wb.subjectId) {
+        // Asked for and on its way: a dotted silk ring until the patch is
+        // the one being played, when the solid ring above takes over.
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = INK.silk;
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.setLineDash([1.5 * dpr, 2.5 * dpr]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 3 * dpr, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
       mapHits.push({ x: cx, y: cy, id: p.id, u01: fitted ? glow : null });
       if (p.id === mapCursorId) {
@@ -16074,8 +17644,13 @@ function drawMapTab(ctx, w, h, dpr) {
 
   ctx.fillStyle = INK.amberDim;
   ctx.textAlign = "left";
+  // In words, not "axes = sound-space PCA · 29% of variance": the two axes
+  // are the directions the patches differ most, and the share is how much of
+  // their difference a flat picture can hold — 29–32% in the sessions the
+  // films measured, so "close" is a hint, not a promise.
   ctx.fillText(
-    `axes = sound-space PCA · ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of variance · ${pts.filter((p) => p.id != null).length} patches`,
+    `A flat view of ${pts.filter((p) => p.id != null).length} patches — close dots usually sound alike ` +
+      `(it shows ${Math.round((map.explained[0] + map.explained[1]) * 100)}% of how they differ).`,
     10 * dpr, h - 8 * dpr
   );
 }
@@ -16090,6 +17665,14 @@ function activeStyles() {
 function drawStylesTab(ctx, w, h, dpr) {
   const styles = activeStyles();
   const blockH = h / styles.length;
+  // Each style's five strongest coordinates, drawn with DIRECTIONS' mark and
+  // on one scale across the tab: it drew them with no interval at all, each
+  // style stretched to its own longest bar, so a guess (chorus & sweeps,
+  // 0.159 ± 0.227) came out the longest, surest-looking bar of its style.
+  const top = (s) => [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
+  const cx = w * 0.6, usable = w * 0.3;
+  const scale = directionsScale(styles.flatMap(top), usable);
+  const said = [];
   styles.forEach((s, row) => {
     const y0 = row * blockH;
     const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
@@ -16107,19 +17690,27 @@ function drawStylesTab(ctx, w, h, dpr) {
     ctx.textAlign = "left";
     ctx.fillText(`${styleName(s, s.k)} — claims ${Math.round(s.share * 100)}% of the bank`, 30 * dpr, y0 + 24 * dpr);
 
-    const rows = [...s.theta].sort((a, b) => Math.abs(b.mean) - Math.abs(a.mean)).slice(0, 5);
-    const maxAbs = Math.max(0.12, ...rows.map((r) => Math.abs(r.mean)));
-    const cx = w * 0.6, usable = w * 0.3;
-    rows.forEach((r, i) => {
+    // The centre line a guess's whisker crosses, as in DIRECTIONS.
+    const rowsFit = Math.max(0, Math.min(5, Math.floor((blockH / dpr - 8 - 42) / 18) + 1));
+    if (rowsFit > 0) {
+      ctx.strokeStyle = "rgba(255,180,84,0.28)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, y0 + 34 * dpr);
+      ctx.lineTo(cx, y0 + (42 + (rowsFit - 1) * 18 + 8) * dpr);
+      ctx.stroke();
+    }
+    top(s).forEach((r, i) => {
       const y = y0 + (42 + i * 18) * dpr;
       if (y > y0 + blockH - 8 * dpr) return;
+      const mark = pullMark(r, scale, usable);
+      const label = pullLabel(niceName(r.name), mark.guess);
+      said.push({ label: `${styleName(s, s.k)}: ${label}`, guess: mark.guess });
       ctx.fillStyle = INK.amberDim;
       ctx.textAlign = "right";
-      ctx.fillText(niceName(r.name), cx - usable - 10 * dpr, y + 3 * dpr);
+      ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
       ctx.textAlign = "left";
-      const len = (r.mean / maxAbs) * usable;
-      ctx.fillStyle = color;
-      ctx.fillRect(Math.min(cx, cx + len), y - 2.5 * dpr, Math.abs(len), 5 * dpr);
+      drawPull(ctx, cx, y, mark, color, dpr, 5 * dpr);
     });
     ctx.globalAlpha = 1;
     if (row > 0) {
@@ -16130,6 +17721,7 @@ function drawStylesTab(ctx, w, h, dpr) {
       ctx.stroke();
     }
   });
+  describeTasteCanvas("Styles", said);
 }
 
 function drawDirectionsTab(ctx, w, h, dpr) {
@@ -16138,6 +17730,7 @@ function drawDirectionsTab(ctx, w, h, dpr) {
     // Fitted, but every lens is idle — show the pre-state, not a void.
     $("taste-caption").textContent = EMPTY_CAPTIONS.dir;
     $("crt-empty").classList.remove("hidden");
+    describeTasteCanvas(null);
     return renderEmptyState("dir");
   }
   const chosen = new Map();
@@ -16151,55 +17744,117 @@ function drawDirectionsTab(ctx, w, h, dpr) {
       });
   }
   const names = [...chosen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([n]) => n);
-  const maxAbs = Math.max(
-    0.12,
-    ...styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name)).map((r) => Math.abs(r.mean)))
-  );
   const cx = w * 0.60, usable = w * 0.30;
   const rowH = h / (names.length + 1);
+  // Bars and whiskers on one scale, fitted so the widest interval reaches the
+  // half-width (taste-geom.js). The whisker used to be capped at 0.3 of it
+  // while a bar could take 0.7, so an interval crossing zero was drawn
+  // stopping short of the centre line — a guess drawn as settled.
+  const scale = directionsScale(
+    styles.flatMap((s) => s.theta.filter((r) => names.includes(r.name))),
+    usable,
+  );
 
   ctx.strokeStyle = "rgba(255,180,84,0.28)";
   ctx.beginPath(); ctx.moveTo(cx, rowH * 0.4); ctx.lineTo(cx, h - rowH * 0.4); ctx.stroke();
 
-  // A bar is at most 0.7 of the half-width and its ±σ whisker at most 0.3,
-  // so neither can reach the label column: a long negative bar plus its
-  // whisker used to strike through "filtering" and "shimmer". The clip is the
-  // belt to that pair of braces.
-  const barMax = usable * 0.7;
+  // Nothing is drawn past the half-width — a cut whisker ends in an arrowhead
+  // at the edge — so neither reaches the label column: a long negative bar
+  // plus its whisker used to strike through "filtering" and "shimmer". The
+  // clip is the belt to that pair of braces.
+  const said = [];
   names.forEach((name, i) => {
     const y = rowH * (i + 1);
+    const lane = 7 * dpr;
+    const pulls = [];
+    styles.forEach((s, si) => {
+      const r = s.theta.find((t) => t.name === name);
+      if (r) pulls.push({ s, si, mark: pullMark(r, scale, usable) });
+    });
+    // A row is a guess when no style is sure of it; its label says so.
+    const rowGuess = pulls.length > 0 && pulls.every((p) => p.mark.guess);
+    const label = pullLabel(niceName(name), rowGuess);
+    said.push({ label, guess: rowGuess });
     ctx.fillStyle = INK.amberDim;
     ctx.textAlign = "right";
-    ctx.fillText(niceName(name), cx - usable - 10 * dpr, y + 3 * dpr);
+    ctx.fillText(label, cx - usable - 10 * dpr, y + 3 * dpr);
     ctx.textAlign = "left";
-    const lane = 7 * dpr;
     ctx.save();
     ctx.beginPath();
     ctx.rect(cx - usable - 2 * dpr, 0, 2 * usable + 4 * dpr, h);
     ctx.clip();
-    styles.forEach((s, si) => {
-      const r = s.theta.find((t) => t.name === name);
-      if (!r) return;
+    for (const { s, si, mark } of pulls) {
       const yy = y + (si - (styles.length - 1) / 2) * lane;
-      const len = (r.mean / maxAbs) * barMax;
-      const wl = Math.min((r.std / maxAbs) * barMax, usable * 0.3);
-      const color = STYLE_COLORS[s.k % STYLE_COLORS.length];
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 6;
-      ctx.fillRect(Math.min(cx, cx + len), yy - 2 * dpr, Math.abs(len), 4 * dpr);
-      ctx.shadowBlur = 0;
-      // Silk, not a fourth amber: the whisker is a reading about the bar,
-      // and has to show over it.
-      ctx.strokeStyle = "rgba(217,212,200,0.55)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx + len - wl, yy);
-      ctx.lineTo(cx + len + wl, yy);
-      ctx.stroke();
-    });
+      drawPull(ctx, cx, yy, mark, STYLE_COLORS[s.k % STYLE_COLORS.length], dpr, 4 * dpr);
+    }
     ctx.restore();
   });
+  describeTasteCanvas("Directions", said);
+}
+
+/** One pull, the same mark in STYLES and DIRECTIONS (taste-geom `pullMark`):
+ *  settled is a solid bar with its whisker; a guess is a hollow 1 px outline
+ *  at GUESS_ALPHA with its whisker at full strength, because for a guess the
+ *  whisker is the reading and the bar is only where it happens to point. */
+function drawPull(ctx, cx, yy, mark, color, dpr, thick) {
+  const x = Math.min(cx, cx + mark.len);
+  const w = Math.abs(mark.len);
+  ctx.save();
+  if (mark.hollow) {
+    ctx.globalAlpha *= mark.barAlpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = dpr;
+    ctx.strokeRect(x + dpr / 2, yy - thick / 2 + dpr / 2, Math.max(0, w - dpr), thick - dpr);
+  } else {
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(x, yy - thick / 2, w, thick);
+  }
+  ctx.restore();
+  // Silk, not a fourth amber: the whisker is a reading about the bar, and has
+  // to show over it.
+  ctx.save();
+  ctx.globalAlpha *= mark.whiskerAlpha;
+  ctx.strokeStyle = INK.silk;
+  ctx.fillStyle = INK.silk;
+  ctx.lineWidth = Math.max(1, dpr * 0.75);
+  ctx.beginPath();
+  ctx.moveTo(cx + mark.lo, yy);
+  ctx.lineTo(cx + mark.hi, yy);
+  ctx.stroke();
+  // Cut at the edge, and said to be: an arrowhead, not a shorter line.
+  const head = (hx, dir) => {
+    ctx.beginPath();
+    ctx.moveTo(hx, yy);
+    ctx.lineTo(hx - dir * 4 * dpr, yy - 2.5 * dpr);
+    ctx.lineTo(hx - dir * 4 * dpr, yy + 2.5 * dpr);
+    ctx.closePath();
+    ctx.fill();
+  };
+  if (mark.clipLo) head(cx + mark.lo, -1);
+  if (mark.clipHi) head(cx + mark.hi, 1);
+  ctx.restore();
+}
+
+/** The canvas's words for what it draws, for anyone who cannot see it: which
+ *  pulls are settled and which are guesses, in the labels on screen. The map
+ *  keeps its own label, which says how to walk it with the keys. */
+const TASTE_CANVAS_MAP_LABEL = "Taste map — arrow keys step between patches, Enter opens one on the bench";
+function describeTasteCanvas(what, rows) {
+  const canvas = $("taste-crt");
+  if (!canvas) return;
+  if (!what) {
+    canvas.setAttribute("role", "application");
+    canvas.setAttribute("aria-label", TASTE_CANVAS_MAP_LABEL);
+    return;
+  }
+  const { settled, guesses } = countPulls(rows);
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute(
+    "aria-label",
+    `${what}: ${settled} settled, ${guesses} still a guess (marked ?). ` + rows.map((r) => r.label).join(", "),
+  );
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -16227,9 +17882,14 @@ $("taste-crt").addEventListener("click", (ev) => {
     if (d < bestD) { bestD = d; best = hit; }
   }
   if (best) {
+    // No toast at the click: it claimed the patch was "on the workbench and
+    // under your fingers" before the engine had opened it, and a second toast
+    // followed when it had. The dot shows the open pending (a dotted ring),
+    // and a slow one is announced when it lands (the bench reply).
     openOnBench(best.id);
-    note(`${nameOf(best.id)} selected — it's on the workbench and under your fingers`);
+    drawTaste();
     bankScrollTo = best.id;
+    bankScrollAt = performance.now();
   }
 });
 
@@ -16281,7 +17941,7 @@ $("taste-crt").addEventListener("pointermove", (ev) => {
   }
   const r = rowOf(best.id);
   mapTipEl.innerHTML =
-    `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to open on the bench</div>`;
+    `<div class="mt-name"></div><div class="mt-dim mono"></div><div class="mt-u"></div><div class="mt-dim">click to play it</div>`;
   mapTipEl.children[0].textContent = r ? r.name : `#${best.id}`;
   // The signature is engine bookkeeping: on request (⋯ › Show measurements).
   mapTipEl.children[1].textContent = r && engineerMode ? r.sig || r.signature || "" : "";
@@ -16307,8 +17967,9 @@ $("taste-crt").addEventListener("keydown", (e) => {
     if (mapCursorId != null) {
       e.preventDefault();
       bankScrollTo = mapCursorId;
+      bankScrollAt = performance.now();
       openOnBench(mapCursorId);
-      note(`${nameOf(mapCursorId)} selected — it's on the workbench and under your fingers`);
+      drawTaste(); // the dot's pending ring, as for a click
     }
     return;
   }
@@ -16324,6 +17985,13 @@ $("taste-crt").addEventListener("keydown", (e) => {
 });
 
 // ---------- lineage ----------
+// The strip speaks names, not ids: "Soft Pad → Warm Drone 2", where it used
+// to print "#51 → #52", which named nothing a player could find — ids are
+// hidden everywhere else. A parent replaced since is named by the name it had.
+function lineageName(id) {
+  return nameOrKnown(id) || "an earlier patch";
+}
+
 function drawLineage() {
   if (currentView !== "evolve") return;
   const lineage = (views && views.lineage) || [];
@@ -16335,6 +18003,10 @@ function drawLineage() {
   ctx.clearRect(0, 0, w, h);
   drawGraticule(ctx, w, h, "rgba(255,180,84,0.05)");
 
+  // One point per step, oldest to newest: the child's predicted score as the
+  // model saw it when the step was made (amber bred, green your edit). The
+  // guide says exactly this; it used to say "the pool's utility over
+  // generations", which this never plotted.
   if (lineage.length > 0) {
     const us = lineage.map((ev) => ev.child_utility);
     const [u0, u1] = [Math.min(...us, 0), Math.max(...us, 0.001)];
@@ -16355,13 +18027,18 @@ function drawLineage() {
       ctx.fill();
     });
   }
+  canvas.title = lineage.length
+    ? "Each step's child as the model scored it when it was made, oldest to newest — amber bred, green your edits."
+    : "";
 
   const log = $("lineage-log");
   if (lineage.length === 0) {
     // Don't keep telling the user to press a button they have already pressed.
+    // The toast of a generation that bred nothing says "no move was
+    // accepted"; this says the same thing in the same words.
     log.innerHTML =
       status.generation > 0
-        ? `<span class="silk-dim">Generation ${status.generation} ran, but no proposal beat its parent — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
+        ? `<span class="silk-dim">Generation ${status.generation} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
         : '<span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span>';
     return;
   }
@@ -16373,21 +18050,23 @@ function drawLineage() {
       const sign = du >= 0 ? "+" : "−";
       // The walk samples the taste posterior rather than climbing it, so
       // some children land below their parent on purpose. Printed bare, a
-      // column of negative Δtaste read as "it bred worse patches"; said
+      // column of negative scores read as "it bred worse patches"; said
       // plainly, it is the search looking around.
       const explore = ev.kind !== "edit" && du < -0.05;
       const tag = explore
         ? ` <span class="lin-explore" title="Evolution samples your taste rather than only climbing it: some steps go sideways or down so it does not get stuck. Your picks decide whether they were worth it.">exploring</span>`
         : "";
       return `<div><span class="gen-tag">gen ${ev.generation}</span>` +
-        `${ev.kind === "edit" ? "✎ your edit" : "⚡ evolution"} on #${ev.parent_id} → <b>#${ev.child_id}</b> · ` +
-        `${humanizeDiff(ev.diff)} · Δtaste ${sign}${Math.abs(du).toFixed(2)}${tag}</div>`;
+        `${ev.kind === "edit" ? "✎ your edit" : "⚡ evolution"} on ${esc(lineageName(ev.parent_id))} → <b>${esc(lineageName(ev.child_id))}</b> · ` +
+        `${humanizeDiff(ev.diff)} · <span title="How much more (or less) the model expects you to like the child than its parent">liked ${sign}${Math.abs(du).toFixed(2)}</span>${tag}</div>`;
     })
     .join("");
 }
 
 const SITE_NAMES = {
-  cut: "cutoff", res: "resonance", mdepth: "mod depth", thresh: "fold",
+  // `thresh` is a threshold wherever it appears (the wavefolder's, and the
+  // compressor's): "fold" read backwards on the folder and wrong on the rest.
+  cut: "cutoff", res: "resonance", mdepth: "mod depth", thresh: "threshold",
   time: "delay time", fb: "feedback", dmix: "delay mix", crate: "chorus rate",
   cdepth: "chorus depth", cmix: "chorus mix", bal: "balance", det: "detune",
   smix: "stack mix", rate: "lfo rate", att: "mod attack", dec: "mod decay",
@@ -16450,7 +18129,7 @@ $("import-input").onchange = async (e) => {
   e.target.value = "";
   if (!file) return;
   const json = await file.text();
-  const n = status.observations || 0;
+  const n = picksTaught();
   if (n === 0) {
     send({ type: "import", json });
     return;
@@ -16462,6 +18141,7 @@ $("import-input").onchange = async (e) => {
       label: "replace it",
       run: () => {
         alarm(null);
+        commitPendingVote(); // counted in the question, so kept in the copy
         send({ type: "export", reason: "before-import" });
         send({ type: "import", json });
       },
@@ -16477,23 +18157,118 @@ $("import-input").onchange = async (e) => {
 // The warm start stays reachable after a skip, and the profile can start
 // over — previously the only reset was clearing site data by hand.
 $("warm-rerun-btn").onclick = () => openWarmStart();
+// Reset forgets the taste, and keeps what is yours. It used to delete the whole
+// saved record and reload, which also took every saved patch (MY PATCHES),
+// the modules set aside, the dock settings and the pins — none of which the
+// question named, and all of which the guide said a reset leaves alone — and
+// it kept no copy, where Load downloads one first. Now it asks with the
+// counts, downloads the profile first, and writes a record that keeps the
+// saved patches (with their pins, holes, positions and bookmarks), the set-
+// aside modules and the dock, and nothing learned: no picks, stars, cuts,
+// forecasts, style names or generations, and none of the unsaved pool, which
+// is filled afresh on the reload.
+let resetting = null; // null | "exporting" | "saving"
+function resetQuestion() {
+  const n = picksTaught();
+  const g = status.generation || 0;
+  const saved = ((views && views.ranked) || []).filter((r) => r.pinned).length;
+  const plural = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const forgotten = `Your ${plural(n, "pick", "picks")}, stars, cuts and ${plural(g, "generation", "generations")} are forgotten`;
+  return saved > 0
+    ? `Reset your taste profile? ${forgotten}, with every patch you haven't saved. ` +
+        `Your ${plural(saved, "saved patch stays", "saved patches stay")}. A copy of the profile downloads first.`
+    : `Reset your taste profile? ${forgotten}, and the bank starts afresh. A copy of the profile downloads first.`;
+}
 $("taste-reset-btn").onclick = () => {
-  alarm("Reset the taste profile? Every pick, star and generation is forgotten.", {
-    label: "reset it",
-    run: async () => {
-      clearTimeout(saveTimer); // a pending autosave would rewrite the record
-      await idbDel("state");
-      for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-perform-steps"])
-        localStorage.removeItem(k);
-      location.reload();
-    },
-  });
+  if (saveBlocked === "crashed") {
+    // No engine to export from or to ask for the bank: say what that costs.
+    alarm("Reset your taste profile? The engine has stopped, so no copy can be downloaded and nothing can " +
+      "be kept: every pick, star, saved patch and generation is forgotten.", {
+      label: "reset everything",
+      run: async () => {
+        clearTimeout(saveTimer);
+        await idbDel("state");
+        clearFirstRunMarks();
+        location.reload();
+      },
+    });
+  } else {
+    alarm(resetQuestion(), {
+      label: "download & reset",
+      run: () => {
+        alarm(null);
+        clearTimeout(saveTimer); // a pending autosave would rewrite the record
+        // A pick still inside its undo window is one of the picks the question
+        // counted: it goes into the log, so the copy holds it too.
+        commitPendingVote();
+        // In this order on the one worker: the copy downloads, then the
+        // session it was taken from comes back to be cut down (`finishReset`).
+        // A save already on its way lands before the copy and is ignored
+        // (`resetting` is still "exporting"), so the reload can never
+        // overtake the download.
+        resetting = "exporting";
+        note("Downloading a copy of your profile, then resetting…", { replace: "profile" });
+        send({ type: "export", reason: "before-reset" });
+        send({ type: "save" });
+      },
+    });
+  }
   const keep = document.createElement("button");
   keep.className = "toast-undo";
   keep.textContent = "keep it";
   keep.onclick = () => alarm(null);
   $("alarm").appendChild(keep);
 };
+
+function clearFirstRunMarks() {
+  for (const k of ["auracle-warmed", "auracle-warm-deferred", "auracle-warm-reoffered", "auracle-played", "auracle-bench-tour", "auracle-perform-steps"]) {
+    try { localStorage.removeItem(k); } catch (_) { /* private window */ }
+  }
+}
+
+/** The second half of Reset, with the session as the engine holds it now. */
+async function finishReset(json) {
+  saveBlocked = "resetting"; // nothing autosaves over this record before the reload
+  let session = null;
+  try { session = JSON.parse(json); } catch (_) { /* nothing to keep */ }
+  const kept = session && Array.isArray(session.bank) ? session.bank.filter((e) => e && e.pinned) : [];
+  if (kept.length > 0) {
+    const ids = new Set(kept.map((e) => Number(e.id)));
+    const theirs = (list) => (Array.isArray(list) ? list.filter(([id]) => ids.has(Number(id))) : []);
+    const ui = uiState();
+    await idbPut("state", {
+      v: STATE_VERSION,
+      // A `SessionState` with nothing learned in it: an empty log and no
+      // standardizer (the reload fits one to the refilled pool), no lineage,
+      // forecasts, events, style names or shares, generation 0, and the bank
+      // cut to the saved patches. The boot tops the pool back up.
+      session: JSON.stringify({
+        profile: { log: { observations: [] }, standardizer: null },
+        bank: kept,
+        lineage: [],
+        generation: 0,
+        style_names: [],
+        events: [],
+        forecasts: [],
+        style_shares: [],
+      }),
+      ui: {
+        vol: ui.vol,
+        oct: ui.oct,
+        perf: ui.perf,
+        held: ui.held,
+        positions: theirs(ui.positions),
+        locks: theirs(ui.locks),
+        holes: theirs(ui.holes),
+        marks: theirs(ui.marks),
+      },
+    });
+  } else {
+    await idbDel("state");
+  }
+  clearFirstRunMarks();
+  location.reload();
+}
 
 // ---------- patch share (single-patch files) ----------
 /** The share payload, for every file the app can write.
@@ -17395,7 +19170,7 @@ function refitRack() {
   refitPending = true;
   requestAnimationFrame(() => {
     refitPending = false;
-    if (!knobDragging) renderRack();
+    if (!knobDragging) renderRack(true);
   });
 }
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitRack);
@@ -17584,33 +19359,66 @@ function renderWarmStart(all) {
 // purpose, and strictly better than a screen that asks you to judge nine
 // sounds you cannot hear.
 const presetIds = new Map(); // preset index -> bank id
-let warmPreview = null; // {index, btn} — the one preview in flight
+// The one ▶ the player is waiting to hear: {index, btn}. Only this one may
+// play when its sound arrives. It used to be a lock as well as a claim — a
+// second ▶ while the first was loading was ignored outright — and it outlived
+// the card: a preview still loading when "teach it" closed the screen played
+// seconds later, in PERFORM, over whatever the player was doing by then. Now
+// the latest ▶ wins, pressing the waiting ▶ again takes it back, and closing
+// the card takes it back too; an answer that arrives for anything else still
+// lands in the bank (it was inserted), and is simply not played.
+let warmPreview = null;
+
+function warmPreviewCancel() {
+  if (warmPreview) {
+    warmPreview.btn.classList.remove("loading");
+    warmPreview.btn.removeAttribute("aria-busy");
+  }
+  warmPreview = null;
+}
+
+// Play `id` for this claim once its buffer is here, unless the claim has gone.
+function warmPreviewPlay(req, id) {
+  awaitRender(id, () => {
+    if (warmPreview !== req) return;
+    warmPreviewCancel();
+    play(id, req.btn);
+  }, { abandoned: () => warmPreview !== req });
+}
 
 function previewPreset(row, btn) {
   if (stopAudition()) return; // pressing ▶ again stops it
-  const known = presetIds.get(row.index);
-  if (known != null) return awaitRender(known, () => play(known, btn));
-  if (warmPreview) return; // one load at a time; the engine is single-file
+  // …and pressing a ▶ that is still waiting takes it back.
+  if (warmPreview && warmPreview.btn === btn) return warmPreviewCancel();
+  warmPreviewCancel();
+  const req = { index: row.index, btn };
+  warmPreview = req;
   btn.classList.add("loading");
-  warmPreview = { index: row.index, btn };
+  btn.setAttribute("aria-busy", "true");
+  const known = presetIds.get(row.index);
+  if (known != null) return warmPreviewPlay(req, known);
   send({ type: "load_preset", index: row.index, preview: true });
 }
 
-function warmPreviewLoaded(id, evicted) {
-  const req = warmPreview;
-  warmPreview = null;
-  if (!req) return;
-  req.btn.classList.remove("loading");
-  if (!id) return note("That preset wouldn't load.");
-  presetIds.set(req.index, id);
+function warmPreviewLoaded(index, id, evicted) {
+  if (id) presetIds.set(index, id);
   if (evicted && evicted.length) note(`Loaded to play it.${madeRoom(evicted)}`);
   if (bankFilter === "preset") renderBank(); // it can now say "in bank"
-  awaitRender(id, () => play(id, req.btn));
+  const req = warmPreview;
+  if (!req || req.index !== index) return; // superseded, taken back, or the card closed
+  if (!id) {
+    warmPreviewCancel();
+    return note("That preset wouldn't load.");
+  }
+  warmPreviewPlay(req, id);
 }
 
 function closeWarmStart(mark = true) {
+  warmPreviewCancel();
   $("warmstart").classList.add("hidden");
   if (mark) localStorage.setItem("auracle-warmed", "1");
+  // The film note waited for the warm start; now it can speak.
+  pointFilmChip();
 }
 
 $("warm-skip").onclick = () => {
@@ -17620,38 +19428,96 @@ $("warm-skip").onclick = () => {
   // A skip DEFERS the warm start rather than destroying it — it is the
   // highest-value-per-second elicitation in the product, so it is re-offered
   // once after a few duels and stays reachable from the ⋯ menu.
-  closeWarmStart(false);
   localStorage.setItem("auracle-warm-deferred", "1");
   localStorage.setItem("auracle-helped", "1");
+  closeWarmStart(false);
   note("Press a key to hear it. The ⋯ menu has the full keyboard map.");
 };
 
 $("warm-go").onclick = () => {
   if (warmPicked.size !== 3 || !warmRows) return;
+  const picked = [...warmPicked];
+  const first = warmRows.find((r) => r.index === picked[0]);
+  // Straight onto the first pick. It used to wait for the whole warm start —
+  // nine inserts, seconds of renders — and then for a refit queued in front
+  // of the bench open, while PERFORM showed the patch that had been on the
+  // bench before, beside "opening the patch you picked…". A pick the player
+  // has heard is already in the bank, so it opens now, ahead of the inserts;
+  // one they have not is handed to the voices by the worker the moment it is
+  // inserted (`warm_first`), and until then PERFORM names it.
+  const known = presetIds.get(picked[0]);
+  // Quiet: the warm start's result toast names it ("…and Acid Line is
+  // under your fingers"), and a second word about it followed that result.
+  if (known != null && rowOf(known)) { quietBench.add(known); openOnBench(known); }
+  else openExpect = { name: first ? first.name : "the patch you picked", at: performance.now() };
   // Every chosen ≻ every unchosen, logged as a duel: same likelihood, same
   // log format, no new inference path. One worker turn does the inserts and
   // the votes together (see its `warm_start`), so nothing can be evicted
   // between a preset landing and its preferences being recorded.
   send({
     type: "warm_start",
-    picked: [...warmPicked],
+    picked,
     rest: warmRows.map((r) => r.index).filter((i) => !warmPicked.has(i)),
   });
   closeWarmStart();
-  note("Loading those in and teaching the model what you picked…");
-};
-
-function warmStartDone(m) {
-  for (const [idx, id] of Object.entries(m.ids || {})) presetIds.set(Number(idx), id);
-  send({ type: "fit" });
-  fitting = true;
-  $("wm-lamp").classList.add("thinking");
-  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved.`);
-  if (m.first != null) openOnBench(m.first);
   // Straight to the instrument, not the rack: the first thing after teaching
   // it should be playing it. PATCH is the densest view in the app and it was
   // where a newcomer landed.
   showView("perform");
+  // The result replaces this when it lands (`replace`): it used to wait out
+  // this toast's window, so PICKS read 18 beside "Loading those in…" for
+  // seconds, and the result surfaced about fifteen seconds in.
+  note("Loading those in and teaching the model what you picked…", { replace: "warm" });
+};
+
+// The warm start's first pick, inserted, while its other eight are still
+// loading: into the voices now, onto the bench when the worker gets to it.
+// Opens that must not be announced even when slow ("Opened X", see the bench
+// reply), because a message of their own already names them: the warm
+// start's first pick (said separately it queued behind "Loading those in…"
+// and was still waiting, as "+1", after the result had replaced that toast),
+// a loaded preset, an imported patch.
+const quietBench = new Set();
+function warmFirstLanded(m) {
+  openExpect = null;
+  if (m.id <= 0 || m.id === wb.subjectId || m.id === benchPending) return;
+  presetIds.set(m.index, m.id);
+  quietBench.add(m.id);
+  openOnBench(m.id);
+  if (!live || !m.json || m.json === "null") return;
+  livePatchId = m.id;
+  // The bench reply for this subject carries the identical tree: it must not
+  // swap it in a second time (see `spokeEarly`).
+  liveOptimisticJson = m.json;
+  live.setPatch(m.json, m.makeup);
+  setLivePatchJson(m.json, m.makeup);
+  // Named from the library: the bank has no row for it until the warm start
+  // is done.
+  const p = (presetRows || warmRows || []).find((r) => r.index === m.index);
+  setLiveLabel(p ? p.name : benchName(m.id));
+}
+
+function warmStartDone(m) {
+  for (const [idx, id] of Object.entries(m.ids || {})) presetIds.set(Number(idx), id);
+  openExpect = null;
+  if (m.first != null && m.first !== wb.subjectId && m.first !== benchPending) {
+    quietBench.add(m.first);
+    openOnBench(m.first);
+  }
+  // After the open, never before it: the refit is background work (the
+  // worker's `later` lane), and the pick's bench, its sound and its
+  // measurement are what the player is waiting for.
+  send({ type: "fit" });
+  fitting = true;
+  lampOn("fit");
+  // Named from the bank, or from the warm start's own cards while the bank
+  // has no row for it yet.
+  const firstIdx = [...presetIds].find(([, id]) => id === m.first)?.[0];
+  const firstName = m.first == null ? null
+    : rowOf(m.first)?.name || (warmRows || presetRows || []).find((r) => r.index === firstIdx)?.name;
+  note(`${m.n} preferences learned from your three picks — the model starts out pointed at you. Your three are saved${firstName ? `, and ${firstName} is under your fingers` : ""}.`, {
+    replace: "warm",
+  });
 }
 
 // ---------- overflow menu ----------
@@ -17675,6 +19541,7 @@ function showHelp(on) {
   const el = $("help");
   const wasOpen = !el.classList.contains("hidden");
   el.classList.toggle("hidden", !on);
+  if (on) pointHelpFilm();
   if (on && !wasOpen) {
     // A modal that doesn't move focus is a modal a keyboard user cannot reach
     // or leave.
@@ -17690,20 +19557,139 @@ function showHelp(on) {
     helpReturnFocus = null;
   }
 }
-// The films live in the guide beside the instrument (/play/ → /docs/): the
-// help card's is PERFORM's own walkthrough, on PERFORM's page; ⋯ opens the
-// index of all of them. A local build has no site around it, so it links to
-// the published one.
-{
-  const docs = location.pathname.includes("/play/")
-    ? new URL("../docs/", location.href).href
-    : "https://auracle.alexnodeland.com/docs/";
-  $("films-link").href = `${docs}films.html`;
-  $("help-film").href = `${docs}views/perform.html#film-perform`;
-  // Both stay hidden (index.html) until the films are published: publish.py
-  // un-hides them when it puts the films beside the site. A request asking
-  // the site whether they exist would log a 404 in every console until then.
+// The films live in the guide beside the instrument (/play/ → /docs/). The
+// help card's link is the in-depth film of the view it was opened from, on
+// that view's page; ⋯ opens the index of all of them. A local build has no
+// site around it, so it links to the published one. Both links stay hidden
+// (index.html) until the films are published: publish.py un-hides them when
+// it puts the films beside the site. A request asking the site whether they
+// exist would log a 404 in every console until then.
+const FILMS_DOCS = location.pathname.includes("/play/")
+  ? new URL("../docs/", location.href).href
+  : "https://auracle.alexnodeland.com/docs/";
+const VIEW_FILMS = {
+  perform: { page: "perform", film: "view-perform", name: "PERFORM" },
+  play: { page: "play", film: "view-patch", name: "PATCH" },
+  evolve: { page: "evolve", film: "view-evolve", name: "EVOLVE" },
+  taste: { page: "taste", film: "view-taste", name: "TASTE" },
+};
+const viewFilmHref = (v) => `${FILMS_DOCS}views/${v.page}.html#film-${v.film}`;
+const TOUR_HREF = `${FILMS_DOCS}getting-started/first-session.html#film-tour`;
+function pointHelpFilm() {
+  const v = VIEW_FILMS[currentView] || VIEW_FILMS.perform;
+  const a = $("help-film");
+  a.href = viewFilmHref(v);
+  a.lastChild.textContent = ` watch ${v.name} in depth`;
 }
+$("films-link").href = `${FILMS_DOCS}films.html`;
+$("warm-tour").href = TOUR_HREF;
+pointHelpFilm();
+
+// The film of the view you are in, in the menu bar. The first time you open a
+// view it says so in words ("new to PATCH? watch it in depth · 5:40"), and
+// the very first time of all, the tour; then it folds to a quiet ▶ film that
+// links the same view's film, with its length on hover. Once per view, never
+// again: a note that comes back every visit is a note people learn to close
+// without reading.
+//
+// publish.py lists the published films and their lengths in data-films, so a
+// view whose film is not out shows nothing and nothing asks the site. Quiet
+// in a film's own recording (?film, where it would be on camera) and in booth
+// mode (a link out of the instrument is a visitor walking away from it), and
+// it waits while the warm start is up rather than competing with it.
+const filmChip = $("film-chip");
+const FILM_LENGTHS = (() => {
+  try {
+    return JSON.parse(filmChip?.dataset.films || "{}");
+  } catch {
+    return {};
+  }
+})();
+const FILM_NOTED = "auracle-film-notes";
+function filmNoted() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(FILM_NOTED) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function noteFilmSeen(key) {
+  try {
+    const seen = filmNoted();
+    seen.add(key);
+    localStorage.setItem(FILM_NOTED, JSON.stringify([...seen]));
+  } catch { /* storage can throw (private windows); the note just returns */ }
+}
+const hasFilm = (f) => Object.prototype.hasOwnProperty.call(FILM_LENGTHS, f);
+// Until the warm start is answered or skipped, the chip keeps quiet. For a
+// newcomer the instrument is on screen for a moment before the warm start
+// comes up over it (it waits for the pool), and a note spoken then is gone
+// behind the dialog before anyone reads it.
+function warmUnresolved() {
+  if (!$("warmstart").classList.contains("hidden")) return true;
+  try {
+    return !localStorage.getItem("auracle-warmed") && !localStorage.getItem("auracle-warm-deferred");
+  } catch {
+    return false;
+  }
+}
+// The tour is for someone new: offered once to a player whose first session
+// this is, never as "new here?" to someone who has been playing for weeks.
+const filmNewcomer = warmUnresolved();
+let filmSaying = null; // what the open note is about: "tour", a view, or null
+let filmSaidAt = 0;
+let filmFoldTimer = null;
+function foldFilmChip() {
+  clearTimeout(filmFoldTimer);
+  filmSaying = null;
+  filmChip.classList.remove("open");
+  const v = VIEW_FILMS[currentView];
+  if (!v) return;
+  $("fc-link").href = viewFilmHref(v);
+  $("fc-text").textContent = "film";
+}
+function pointFilmChip() {
+  if (!filmChip) return;
+  const v = VIEW_FILMS[currentView];
+  if (!v || !hasFilm(v.film) || new URLSearchParams(location.search).has("film") || booth?.on) {
+    clearTimeout(filmFoldTimer);
+    filmChip.classList.add("hidden");
+    filmChip.classList.remove("open");
+    return;
+  }
+  filmChip.classList.remove("hidden");
+  $("fc-link").title = `Watch ${v.name} in depth · ${FILM_LENGTHS[v.film]} (opens in the guide)`;
+  // The tour's note is about the whole instrument, so it outlasts the switch
+  // to PERFORM that follows the warm start, and gives way only to a view the
+  // player chose; a view's note is about that view.
+  if (filmSaying === "tour" && filmChip.classList.contains("open") && viewChosenAt < filmSaidAt) return;
+  const seen = filmNoted();
+  // The lead ("new here?") is the first words to go when the bar is narrow.
+  const say = warmUnresolved() ? null
+    : filmNewcomer && hasFilm("tour") && !seen.has("tour")
+      ? { key: "tour", href: TOUR_HREF, lead: "new here?", text: `take the tour · ${FILM_LENGTHS.tour}` }
+      : !seen.has(currentView)
+        ? { key: currentView, href: viewFilmHref(v), lead: `new to ${v.name}?`, text: `watch ${v.name} in depth · ${FILM_LENGTHS[v.film]}` }
+        : null;
+  if (!say) {
+    foldFilmChip();
+    return;
+  }
+  noteFilmSeen(say.key);
+  filmSaying = say.key;
+  filmSaidAt = performance.now();
+  $("fc-link").href = say.href;
+  const lead = document.createElement("span");
+  lead.className = "fc-lead";
+  lead.textContent = `${say.lead} `;
+  $("fc-text").replaceChildren(lead, say.text);
+  filmChip.classList.add("open");
+  clearTimeout(filmFoldTimer);
+  filmFoldTimer = setTimeout(foldFilmChip, 15_000);
+}
+$("fc-close").onclick = foldFilmChip;
+// Opened in a new tab: the note has done its job here.
+$("fc-link").addEventListener("click", () => setTimeout(foldFilmChip, 0));
 $("help-btn").onclick = () => showHelp(true);
 $("help-open").onclick = () => showHelp(true);
 $("help-close").onclick = () => {
@@ -17727,7 +19713,7 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(() => {
     drawTaste();
     drawLineage();
-    if (!knobDragging) renderRack();
+    if (!knobDragging) renderRack(true);
     if (currentDuel) {
       onRenderArrived(currentDuel[0]);
       onRenderArrived(currentDuel[1]);

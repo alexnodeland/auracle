@@ -820,6 +820,11 @@ pub struct SessionState {
     /// option is gated on.
     #[serde(default)]
     pub style_shares: Vec<StyleShareRecord>,
+    /// The taste map's axes as last drawn, so the map comes back after a
+    /// reload facing the way it was left. Absent from sessions saved before
+    /// it existed; their first map takes the sign convention.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_axes: Option<[Vec<f64>; 2]>,
 }
 
 /// A chosen duel, with the reasoning that produced it.
@@ -835,7 +840,9 @@ pub struct DuelChoice {
     /// True when this pair was drawn uniformly at random as a calibration
     /// check rather than chosen by the acquisition function.
     pub random_check: bool,
-    /// `"random"` (no posterior), `"check"`, or `"bald"`.
+    /// How the pair was dealt: `"random"` (the random rule, or no posterior
+    /// yet), `"check"` (a scheduled random probe under a choosing rule),
+    /// `"thompson"` or `"bald"`.
     pub method: &'static str,
 }
 
@@ -1133,6 +1140,11 @@ pub struct Engine {
     /// What the most recent `refine_seed`/`refine_from` did — see
     /// [`RefineOutcome`]. Not persisted: it describes a call, not a session.
     last_refine: RefineOutcome,
+    /// The taste map's axes as last drawn, so the next map faces the same way
+    /// (see [`Engine::taste_map`]). Behind a lock because drawing the map is a
+    /// read of the session, and remembering how it was drawn is not a change
+    /// to it. Persisted with the session, so a reload does not mirror it either.
+    pub(crate) map_axes: std::sync::Mutex<Option<[Vec<f64>; 2]>>,
 }
 
 impl Engine {
@@ -1167,6 +1179,7 @@ impl Engine {
             repaired_cells: 0,
             dropped_observations: 0,
             last_refine: RefineOutcome::Idle,
+            map_axes: std::sync::Mutex::new(None),
         }
     }
 
@@ -2733,12 +2746,24 @@ impl Engine {
     /// pair, its expected information gain in nats, and whether it is one of
     /// the uniformly-random check duels that calibration is scored on.
     pub fn next_duel_full<R: Rng>(&mut self, rng: &mut R) -> Option<DuelChoice> {
+        self.next_duel_except(rng, &[])
+    }
+
+    /// [`Engine::next_duel_full`], never dealing a candidate whose id is in
+    /// `exclude`: the patches the player has cut. A cut hides the row and
+    /// teaches the model a kill, but the patch stays in the pool until a
+    /// generation replaces it, and without this it could be put back in front
+    /// of the player as a duel side minutes after they threw it out. The
+    /// caller owns the list (the app holds a cut back for its undo window
+    /// before the engine hears of it, and persists the set itself), so it is
+    /// passed in rather than inferred from the log, whose kills carry no ids.
+    pub fn next_duel_except<R: Rng>(&mut self, rng: &mut R, exclude: &[u64]) -> Option<DuelChoice> {
         // Un-standardized candidates score utility exactly 0 (`dot` over an
         // empty vector), which beats every real utility once a user has killed
         // enough patches — they must not be selectable, the same guard
         // `ranked()` applies.
         let cands: Vec<usize> = (0..self.pool.len())
-            .filter(|&i| !self.pool[i].phi_std.is_empty())
+            .filter(|&i| !self.pool[i].phi_std.is_empty() && !exclude.contains(&self.pool[i].id))
             .collect();
         if cands.len() < 2 {
             return None;
@@ -2773,6 +2798,21 @@ impl Engine {
                     method: "random",
                 }
             }
+            // Under the random rule every pair is random, so a scheduled
+            // check is no different from any other deal and says "random".
+            // Matched before the check arm: labelled "check", every tenth
+            // pair read as the exception to a rule that has none. Both arms
+            // draw the pair the same way, so a seeded deal is unchanged.
+            (Some(_), _) if self.cfg.acquisition == Acquisition::Random => {
+                let (a, b) = uniform(rng);
+                DuelChoice {
+                    a,
+                    b,
+                    info_gain: 0.0,
+                    random_check: true,
+                    method: "random",
+                }
+            }
             (Some(_), true) => {
                 let (a, b) = uniform(rng);
                 DuelChoice {
@@ -2781,16 +2821,6 @@ impl Engine {
                     info_gain: 0.0,
                     random_check: true,
                     method: "check",
-                }
-            }
-            (Some(_), false) if self.cfg.acquisition == Acquisition::Random => {
-                let (a, b) = uniform(rng);
-                DuelChoice {
-                    a,
-                    b,
-                    info_gain: 0.0,
-                    random_check: true,
-                    method: "random",
                 }
             }
             (Some(posterior), false) if self.cfg.acquisition == Acquisition::Thompson => {
@@ -3307,6 +3337,11 @@ impl Engine {
             events: self.events.clone(),
             forecasts: self.forecasts.clone(),
             style_shares: self.style_shares.clone(),
+            map_axes: self
+                .map_axes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
         }
     }
 
@@ -3355,6 +3390,7 @@ impl Engine {
         self.events = state.events;
         self.forecasts = state.forecasts;
         self.style_shares = state.style_shares;
+        *self.map_axes.get_mut().unwrap_or_else(|e| e.into_inner()) = state.map_axes;
         // The implicit stream stores raw φ on both sides of a hand edit, so it
         // is the fourth carrier of the corruption after the pool, the log and
         // the HELD tray — and the only one nothing reads yet, which is exactly

@@ -231,7 +231,10 @@ export function createMidi(host) {
     state.map.set(key, { slot, mode: "abs" });
     state.pickups.delete(key);
     save();
-    host.note(`${why}: CC ${key.split(":")[1]} → ${slotName(slot)}`);
+    // The latest mapping replaces the last one's toast: turning four knobs,
+    // or learning one after three were mapped, used to queue a toast each, and
+    // the one about the knob in your hand arrived last.
+    host.note(`${why}: CC ${key.split(":")[1]} → ${slotName(slot)}`, { replace: "midi-map" });
     renderPanel();
   }
 
@@ -562,7 +565,10 @@ export function createMidi(host) {
   // each other settle on one: a tab that hears a claim it beats says so, and
   // the other stands aside.
   const tab = {
-    id: Math.random().toString(36).slice(2, 10),
+    // From the crypto source, never Math.random: a recorded film seeds
+    // Math.random so every take opens the same session, and a draw here
+    // before the engine's would move the whole session.
+    id: [...crypto.getRandomValues(new Uint32Array(2))].map((n) => n.toString(36)).join(""),
     channel: host.tabs?.() || null,
     here: true, // this tab plays MIDI
     at: 0, // when it last claimed MIDI; 0 = never

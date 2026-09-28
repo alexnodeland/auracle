@@ -375,19 +375,18 @@ export function textBlock(layer, { x, y, w = 1400, cls = "display", size = 72, a
 
 /**
  * A recorded clip of the real app, in a window frame. Seeking is exact: the
- * stage waits for `seeked` before the frame is captured.
+ * stage waits for `seeked` (a video) or `decode()` (a frame) before the frame
+ * is captured.
+ *
+ * `frames` ({base, fps, n, runs}, from footage.mjs's ID.frames.json) shows the
+ * screencast's own JPEGs, one per paint, instead of a video: no encode after
+ * each shot, and a seek is one small image decode instead of a VP9 seek.
+ * `runs` is [[file, count]…] over the clip's constant-rate frames.
  */
-export function footage(layer, { src, x, y, w, h, radius = 14, chrome = true }) {
-  const wrap = place(el("div", {}, layer), { x, y, w, h });
-  Object.assign(wrap.style, {
-    borderRadius: `${radius}px`,
-    overflow: "hidden",
-    background: "#07080a",
-    boxShadow: "0 0 0 1px #292e36, 0 40px 90px rgba(0,0,0,.7), 0 0 60px rgba(142,240,177,.06)",
-  });
-  const inner = el("div", {}, wrap);
-  Object.assign(inner.style, { position: "absolute", inset: "0", transformOrigin: "0 0" });
-  const v = el("video", { src, muted: "", playsinline: "", preload: "auto" }, inner);
+export function footage(layer, { src, frames = null, x, y, w, h, radius = 14, chrome = true }) {
+  if (frames) return footageFrames(layer, { frames, x, y, w, h, radius });
+  const { wrap, inner } = footageWrap(layer, { x, y, w, h, radius });
+  const v =el("video", { src, muted: "", playsinline: "", preload: "auto" }, inner);
   v.muted = true;
   Object.assign(v.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
   const ready = new Promise((res) => {
@@ -409,6 +408,47 @@ export function footage(layer, { src, x, y, w, h, radius = 14, chrome = true }) 
           v.addEventListener("seeked", () => res(), { once: true });
           v.currentTime = tt;
         });
+      }
+      inner.style.transform = `translate(${(-fx * (z - 1) * w).toFixed(2)}px, ${(-fy * (z - 1) * h).toFixed(2)}px) scale(${z})`;
+    },
+  };
+}
+
+function footageWrap(layer, { x, y, w, h, radius }) {
+  const wrap = place(el("div", {}, layer), { x, y, w, h });
+  Object.assign(wrap.style, {
+    borderRadius: `${radius}px`,
+    overflow: "hidden",
+    background: "#07080a",
+    boxShadow: "0 0 0 1px #292e36, 0 40px 90px rgba(0,0,0,.7), 0 0 60px rgba(142,240,177,.06)",
+  });
+  const inner = el("div", {}, wrap);
+  Object.assign(inner.style, { position: "absolute", inset: "0", transformOrigin: "0 0" });
+  return { wrap, inner };
+}
+
+function footageFrames(layer, { frames, x, y, w, h, radius }) {
+  const { wrap, inner } = footageWrap(layer, { x, y, w, h, radius });
+  const img = el("img", { alt: "", decoding: "sync" }, inner);
+  Object.assign(img.style, { width: "100%", height: "100%", objectFit: "cover", display: "block" });
+  // Constant-rate frame i → the paint it shows.
+  const file = new Int32Array(frames.n);
+  let i = 0;
+  for (const [k, c] of frames.runs) for (let j = 0; j < c && i < frames.n; j++) file[i++] = k;
+  let shown = -1;
+  return {
+    wrap,
+    inner,
+    video: null,
+    ready: Promise.resolve(),
+    async seek(ct, { z = 1, fx = 0.5, fy = 0.5 } = {}) {
+      // A hair past the frame's start, as the video path aims, so the two
+      // paths show the same frame for the same clip time.
+      const k = file[clamp(Math.floor((ct + 0.002) * frames.fps), 0, frames.n - 1)];
+      if (k !== shown) {
+        shown = k;
+        img.src = `${frames.base}/${String(k).padStart(5, "0")}.jpg`;
+        await img.decode().catch(() => {});
       }
       inner.style.transform = `translate(${(-fx * (z - 1) * w).toFixed(2)}px, ${(-fy * (z - 1) * h).toFixed(2)}px) scale(${z})`;
     },

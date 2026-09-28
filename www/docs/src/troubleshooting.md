@@ -19,13 +19,15 @@
 
 ## It asks for a desktop
 
-A coarse pointer with a viewport narrower than 620px does not boot the engine.
-That is deliberate; see
+A touch screen whose window is under 620px on its **shorter** side does not
+boot the engine. That is deliberate; see
 [browser support](./getting-started/running-locally.md#handheld-devices). The
 *look around anyway* link sets a session flag and reloads past the gate, but
 there is no handheld layout behind it.
 
-On a tablet, rotating to landscape is usually enough.
+Rotating to landscape does not help: turning the device swaps the window's
+width and height, and the shorter side stays the same. A tablet whose shorter
+side is 620px or more boots in either orientation.
 
 ## Boot is very slow, or stalls
 
@@ -34,8 +36,12 @@ On a tablet, rotating to landscape is usually enough.
   workers and the bar moves; a big session can take tens of seconds.
 - **Safari caps the render workers** and boots more slowly than Chromium. Expected.
 - **A worker that fails** falls back to the serial path over the *same* draws,
-  so it costs time and not content. A job retired after two attempts logs a
-  console warning.
+  so it costs time and not content.
+- **A render that times out twice is retired.** That draw is skipped, which
+  is the one way a boot can end with different patches from a clean run. It
+  is noted in `window.__aurLog` (*[auracle] draw 12 retired after 2
+  attempts*), not in the console, because it is a sign of a busy machine
+  rather than a fault.
 
 To force the single-threaded path, add `?farm=0` to the URL.
 
@@ -82,12 +88,14 @@ be opened by the browser too; close that program and replug.
 
 ## Evolution does nothing
 
-**EVOLVE POOL does nothing at all** when there is no fitted posterior; there is
-no direction to climb in yet. Answer some duels first.
+**EVOLVE POOL** says *breeding a generation toward your taste…* and then what
+happened. Before the model has anything to aim at, that is *Nothing to breed
+toward yet — make a few picks first, then evolve.* Answer some duels first.
 
-**A generation produces no new patch** when the walk was rejected, or landed on
-a patch the pool already holds. This is reported as "no proposal beat its
-parent". It is normal occasionally, and persistent when:
+**A generation can produce no new patch**, when every walk was rejected or
+landed on a patch the pool already holds. It says so: *Gen 4: no move was
+accepted. Teach it more, or ⚡ evolve one patch you like.* That is normal
+occasionally, and persistent when:
 
 - The patch is at its **budget ceilings** (`24/24 modules`), leaving no room to
   grow. Check the budget line in PATCH.
@@ -95,6 +103,12 @@ parent". It is normal occasionally, and persistent when:
   the search nothing to do.
 - **The pool is pinned solid.** Pins are capped at a quarter of the pool, but
   it is worth checking if you have been saving a lot.
+
+When every patch the model chose to breed from is out of evolution's reach, the
+message is different: *Gen 4: nothing could be bred — every seed the model
+picked is outside what evolution can reach (a knob on its stop, or a tree
+deeper than the model scores). Nudge those knobs off their stops.* More picks
+will not fix that one; moving those knobs will.
 
 ## An edit did not take
 
@@ -111,15 +125,17 @@ than your impression. Then:
 
 - **Fewer than ~20 picks.** It is genuinely too early.
 - **Your preference may not be in the feature space.** The clearest case is
-  stereo width, which has no coordinate at all. Read the **heard as** line on
+  stereo width, which has no coordinate at all. Read the **heard** line on
   the modules involved; it will tell you outright. See [what it cannot
   learn](./teaching.md#what-it-cannot-learn).
 - **You have been saving instead of starring.** Saving teaches nothing.
-- **Check-duel skill is the honest number.** Overall skill is measured on
-  questions the model helped choose.
+- **Check-duel skill is the honest number.** Check duels are the pairs dealt
+  at random, which by default is every duel EVOLVE and PATCH deal. Overall
+  skill also counts comparisons you chose (edits, PERFORM offers).
 
-If it has learned something wrong, **⋯** → *Reset taste profile…* clears the
-log and the model, and leaves your saved patches alone.
+If it has learned something wrong, **⋯** → *Reset taste profile…* downloads a
+copy of the profile, clears the log and the model, and leaves your saved
+patches alone.
 
 ## Everything is broken / the engine crashed
 

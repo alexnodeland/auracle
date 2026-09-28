@@ -23,16 +23,21 @@
 <link rel="preload" href="fonts/plexmono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css?b=70">
 <!-- Handheld gate. The instrument is a bank + a rack + a keybed side by side;
-     under ~1000px with a coarse pointer there is no honest way to show it, so
-     we say so instead of shipping a broken one. This runs before anything
-     else because the point is to NOT boot the engine on a phone: main.js is
-     injected below only when the gate lets us through. -->
+     on a coarse pointer whose shorter side is under 620px (a phone) there is
+     no honest way to show it, so we say so instead of shipping a broken one.
+     This runs before anything else because the point is to NOT boot the
+     engine on a phone: main.js is injected below only when the gate lets us
+     through. Anything else under 1000px wide — a desktop window, or a tablet
+     in portrait — gets the narrow gate below instead, which is CSS only. -->
 <script>
 (function () {
   var forced = false;
   try { forced = sessionStorage.getItem("auracle-anyway") === "1"; } catch (e) {}
   var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
   var handheld = !forced && coarse && Math.min(window.innerWidth, window.innerHeight) < 620;
+  // "Look around anyway" is a choice to see it at any size: the narrow gate
+  // must not stand in for the handheld one it just dismissed.
+  if (forced) document.documentElement.className += " anyway";
   if (handheld) {
     document.documentElement.className += " handheld";
     // Rotating a phone to landscape doesn't earn you the instrument, but an
@@ -50,15 +55,17 @@
 </script>
 </head>
 <body>
-<!-- A desktop window narrower than the instrument's layout. The handheld gate
-     is for coarse pointers and never loads the app; this one is CSS-only and
-     disappears the moment the window is wide enough, so nothing is lost by
-     narrowing it for a moment. -->
+<!-- A window narrower than the instrument's layout, whatever the pointer: a
+     desktop window, or a tablet in portrait (768 × 1024 slipped between the
+     two gates: too big for the handheld one, and the narrow one asked for a
+     fine pointer). The handheld gate never loads the app; this one is CSS-only
+     and disappears the moment the window is wide enough, so nothing is lost by
+     narrowing it — or turning the tablet — for a moment. -->
 <div id="narrow-gate" class="narrow-gate" role="status" aria-live="polite">
   <div class="ng-card">
     <div class="ng-title">A little wider</div>
     <p>Auracle's rack, controls and keybed need about 1000 px side by side.
-      Widen the window and everything is where you left it.</p>
+      Turn your tablet sideways, or widen the window — everything is where you left it.</p>
   </div>
 </div>
 <div class="app">
@@ -75,8 +82,19 @@
       <button class="viewtab" data-view="taste" role="tab" aria-selected="false" aria-controls="view-taste">taste</button>
     </nav>
     <div class="menubar-right">
+      <!-- The film of the view you are in (main.js, pointFilmChip). The first
+           time you open a view it says so in words, then it folds to a small
+           ▶ film. publish.py writes the published films' lengths into
+           data-films and un-hides it; until a view's film is out, that view
+           shows nothing, and nothing asks the site whether it exists. -->
+      <div class="film-chip hidden" id="film-chip" data-films="{}">
+        <a class="fc-link" id="fc-link" href="https://auracle.alexnodeland.com/docs/films.html" target="_blank" rel="noopener"><span class="fc-play" aria-hidden="true">▶</span> <span class="fc-text" id="fc-text">film</span></a>
+        <button class="fc-close" id="fc-close" type="button" title="Fold this away" aria-label="Fold the film note away">×</button>
+      </div>
       <span class="counter" title="A/B picks you've made — this is what the model learns from"><span class="counter-label">picks</span> <span id="duel-count">0</span></span>
-      <span class="counter" title="Generations bred toward your taste"><span class="counter-label">gen</span> <span id="gen-count">0</span></span>
+      <!-- Named in full: "gen" beside "picks" said what it counted only in
+           its tooltip. -->
+      <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
       <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
@@ -214,7 +232,7 @@
                by opening the file. -->
           <div class="ix-dims mono" id="ix-dims">—</div>
           <button class="ix-go" id="ix-go">export</button>
-          <p class="sp-note">The patch rides inside the file. Drop the picture back onto auracle and it opens as a patch.</p>
+          <p class="sp-note">The patch rides inside the file. Drop the picture back onto Auracle and it opens as a patch.</p>
         </div>
       </div>
     </div>
@@ -311,8 +329,11 @@
               <!-- The express path. Commit normally plays both versions and asks;
                    tick this when you already know, and it commits straight away.
                    The two answers are logged distinguishably, because an
-                   assertion and a heard comparison are not the same evidence. -->
-              <label class="toggle seg-item" title="Skip the comparison: commit and tell the model your edit is better without hearing them back to back">
+                   assertion and a heard comparison are not the same evidence.
+                   One-shot: it unticks after the commit it skipped, because a
+                   tick that stayed turned every later commit (and every ⚡ on an
+                   edited patch) into a claim, without a word. -->
+              <label class="toggle seg-item" title="Skip the comparison once: the next commit tells the model your edit is better without hearing them back to back, and this unticks itself">
                 <input type="checkbox" id="improve-check"><span>my edit is better</span>
               </label>
               <span class="tt" title="Nothing to commit — turn a knob first"><button class="util-btn seg-item" id="rack-commit" disabled>commit</button></span>
@@ -498,7 +519,7 @@
                 <div class="nb-chips" id="nb-inpatch-list"></div>
               </section>
               <div id="nb-groups"></div>
-              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler and no sequencer — it is one voice you play.</p>
+              <p class="nb-none hidden" id="nb-none">Nothing called that. Auracle has no sampler, and its sequencers (steps, euclid) play the sound, not the notes — it is one voice you play.</p>
               <div class="nb-legend">
                 <span class="lg-row"><i class="lg-swatch"></i>audio</span>
                 <span class="lg-row"><i class="lg-swatch mod"></i>modulation</span>
@@ -548,7 +569,12 @@
           </div>
           <div class="duel-centre">
             <div class="mono duel-pred" id="duel-pred" title="The model's forecast, made before your vote"></div>
-            <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
+            <!-- How the pair on the table was chosen: its own line, so it
+                 holds its place while forecasts come and go above it. -->
+            <div class="duel-deal">
+              <span class="mono duel-rule" id="duel-rule"></span>
+              <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
+            </div>
           </div>
           <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste">evolve pool</button>
         </div>
@@ -710,6 +736,9 @@
       votes in one go, and it means the model starts out already pointed at you.</p>
     <div class="warm-grid" id="warm-grid"></div>
     <div class="warm-foot">
+      <!-- The tour film, on "Your first session"; main.js sets the href and
+           publish.py un-hides it once the film is published. -->
+      <a class="warm-tour hidden" id="warm-tour" href="https://auracle.alexnodeland.com/docs/getting-started/first-session.html#film-tour" target="_blank" rel="noopener"><span aria-hidden="true">▶</span> new here? take the tour</a>
       <button class="util-btn" id="warm-skip">skip</button>
       <button class="hw-btn small" id="warm-go" disabled>teach it</button>
     </div>
@@ -723,13 +752,19 @@
      better". So a commit that actually changed something asks, plays both,
      and records what was heard in whichever direction it went. The express
      checkbox survives for people who are sure; its answers are tagged so the
-     two can be scored against each other rather than averaged. -->
+     two can be scored against each other rather than averaged.
+     Blind until the pick: the sides are A and B in a random order, and the
+     receipt says which was the edit. They used to be titled "your edit" and
+     "the original", which told the player the answer to the question. Esc
+     cancels (it used to commit), and committing without the comparison is a
+     button of its own. -->
 <section id="cduel" class="warm hidden" role="dialog" aria-modal="true" aria-labelledby="cd-title">
   <div class="warm-card panel cduel-card">
     <div class="screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="boot-title" id="cd-title">WHICH ONE IS BETTER?</div>
-    <p class="warm-sub">You changed this patch. Play them both and pick — it teaches the model
-      either way, and “the original won” teaches it the most.</p>
+    <p class="warm-sub">You changed this patch. One of these is your edit, the other the
+      original — play both and pick the better one. It teaches the model either way,
+      and picking the original teaches it the most. You'll see which was which after.</p>
     <div class="cduel-grid">
       <div class="cduel-cell">
         <div class="cd-head"><span class="cd-letter">A</span><span class="cd-name" id="cd-name-a"></span></div>
@@ -749,8 +784,9 @@
       </div>
     </div>
     <div class="warm-foot">
-      <button class="util-btn" id="cd-skip" title="Commit the edit without teaching the model anything">commit without teaching</button>
-      <span class="cd-hint silk-dim mono">1 / 2 play · ← → pick · esc skip</span>
+      <button class="util-btn" id="cd-cancel" title="Close this and commit nothing — your edit stays on the bench">cancel</button>
+      <button class="util-btn" id="cd-skip" title="Commit the edit without comparing — it teaches the model nothing">commit without comparing</button>
+      <span class="cd-hint silk-dim mono">1 / 2 play · ← → pick · esc cancel</span>
     </div>
   </div>
 </section>
@@ -764,13 +800,13 @@
     <div class="help-cols">
       <div>
         <div class="help-h">perform — play it</div>
-        <p><b>Bright, Snap, Motion, Body, Grit</b> and <b>Space</b> are named for what you hear. Each is wired to the knobs of <i>this</i> patch that do that job, measured when it loads, and the strip underneath shows them move. An <b>amber</b> control is one this patch cannot reach: turn it anyway, and it adds what is missing or grows a variant that can.</p>
+        <p><b>Bright, Snap, Motion, Body, Grit</b> and <b>Space</b> are named for what you hear. Each is wired to the knobs of <i>this</i> patch that do that job, measured when it loads, and the strip underneath shows them move. An <b>amber</b> control is one this patch cannot reach: turn it anyway, and it adds what is missing or grows a variant that can. A control that says <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>
         <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. Asking for another is a pass. Once you have heard an offer, either answer teaches the model.</p>
-        <p><b>Wander</b> lets the model play along: a little offers ideas, more drifts the knobs toward your taste, all the way roams. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> holds everything still. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller's first eight knobs claim the eight controls.</p>
+        <p><b>Wander</b> lets the model play along: a little offers ideas, more drifts the knobs toward your taste, all the way roams. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller's first eight knobs claim the eight controls.</p>
         <div class="help-h">keys</div>
-        <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> undo edit · <kbd>⇧⌘Z</kbd> redo</p>
+        <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>
-        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a vote</p>
+        <p>In EVOLVE: <kbd>1</kbd>/<kbd>2</kbd> audition · <kbd>←</kbd>/<kbd>→</kbd> vote · <kbd>⌘Z</kbd> take back a pick (7 s, the sixth too)</p>
         <div class="help-h">the rack canvas</div>
         <p><kbd>home</kbd> fit the whole patch · <kbd>.</kbd> fit what you’re on · <kbd>⌘0</kbd> actual size · <kbd>⌘−</kbd>/<kbd>⌘=</kbd> zoom out/in</p>
         <p><kbd>ctrl</kbd>+wheel or pinch zooms at the pointer · wheel or a drag on bare canvas pans · <kbd>space</kbd>-drag and middle-drag pan from anywhere on it. <b>map</b> shows where you are; <b>detail</b> drops the knobs when you zoom out.</p>
@@ -789,7 +825,7 @@
         <p>Modulation <b>chains</b>. Drop a <b>shape cv</b> module — quantize, slew, rectify, hold — on a cable that already carries a modulator and it takes that modulator as its input instead of replacing it, so <i>s&amp;h rand → quantize → slew</i> is three clicks. <b>combine cv</b> takes two modulators and gives back one. The socket says which of fill / replace / shape it is about to do.</p>
         <p>Drag a wired <b>in</b> jack off its socket to unplug — the chain is <b>held</b> under the rack, even across a reload, and dragging its ● puts it back.</p>
         <div class="help-h">teaching it</div>
-        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut patches in the bank. Commit edits with “my edit is better”. Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
+        <p>Pick between pairs in EVOLVE (or the quick-pick strip in PATCH). Star and cut patches in the bank. Commit an edit and it plays your edit against the original and asks which is better (tick “my edit is better” to skip that, once). Watch TASTE learn your styles — name them. The bank's <b>?</b> walks you through what a generation is.</p>
         <p>The rail holds three banks. <b>evolution</b> is the live pool of 40:
         each bred patch replaces the one the model thinks you like <i>least</i>.
         <b>presets</b> is the hand-made library that came with the instrument.
@@ -804,9 +840,9 @@
     <p class="help-fine mono">© 2026 <a href="https://alexnodeland.com" rel="author">Alex Nodeland</a> · MIT licensed · <a href="https://github.com/alexnodeland/auracle">source</a></p>
     </div>
     <div class="help-foot">
-      <!-- The films show what this card tells; the href is set in main.js
-           (the site's films page beside /play/, or the published one). -->
-      <a class="help-film hidden" id="help-film" href="https://auracle.alexnodeland.com/docs/films.html#film-perform" target="_blank" rel="noopener"><span aria-hidden="true">▶</span> watch it played</a>
+      <!-- The in-depth film of the view the card was opened from; main.js
+           sets it (the site's guide beside /play/, or the published one). -->
+      <a class="help-film hidden" id="help-film" href="https://auracle.alexnodeland.com/docs/views/perform.html#film-view-perform" target="_blank" rel="noopener"><span aria-hidden="true">▶</span> watch PERFORM in depth</a>
       <button class="hw-btn small" id="help-close">got it</button>
     </div>
   </div>

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make check)",
+      "Bash(make test)",
+      "Bash(make fmt)",
+      "Bash(make fmt-check)",
+      "Bash(make lint)",
+      "Bash(make js-check)",
+      "Bash(make web-check)",
+      "Bash(make wasm)",
+      "Bash(make wasm-check)",
+      "Bash(make wasm-stamp)",
+      "Bash(make -s wasm-stamp)",
+      "Bash(make smoke)",
+      "Bash(make site)",
+      "Bash(make site-check)",
+      "Bash(make serve)",
+      "Bash(make film-rehearse *)",
+      "Bash(cargo fmt *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo check *)",
+      "Bash(cargo test *)",
+      "Bash(cargo run -q --release -p auracle-* --example *)",
+      "Bash(node --check *)",
+      "Bash(node www/video/tools/validate.mjs *)",
+      "Bash(python3 www/video/tools/takes.py *)",
+      "Bash(python3 www/video/tools/framing.py *)",
+      "Bash(www/video/tools/rehearse.sh *)",
+      "Bash(www/video/tools/one_browser.sh *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(rg *)"
+    ],
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git push -f *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-generated.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-bash.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit-check.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "principled-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "alexnodeland/principled"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "principled-docs@principled-marketplace": true,
+    "principled-architecture@principled-marketplace": true,
+    "principled-quality@principled-marketplace": true
+  }
+}

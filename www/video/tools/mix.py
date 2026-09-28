@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lay a film's sound in, mix it, and encode the film for the web.
 
-usage: mix.py FILM [--voice DIR] [--music DIR] [--sfx DIR] [--encode] [--poster T]
+usage: mix.py FILM [--voice DIR] [--music DIR] [--sfx DIR] [--encode [--draft] [--preview]] [--poster T]
 
 Reads www/video/films/FILM/timeline.json (tools/timeline.py) and
 www/video/out/FILM/cues.json (render.mjs --cues), and writes to
@@ -9,7 +9,8 @@ www/video/out/FILM/:
 
   mix.wav        48 kHz stereo, -16 LUFS integrated, true peak under -1 dBTP
   FILM.mp4       H.264 + AAC, faststart          (with --encode)
-  FILM.webm      VP9 + Opus                      (with --encode)
+  FILM.webm      VP9 + Opus                      (with --encode, not --draft)
+  FILM-preview.mp4  720p H.264, to send for review (with --preview or --draft)
   FILM.vtt       captions, from the narration's own timing
   FILM.jpg/.webp the poster frame                (with --poster, seconds)
 
@@ -189,6 +190,10 @@ def main():
     ap.add_argument("--sfx")
     ap.add_argument("--app", help="JSON list of {file, t, gain_db}: recorded app audio under footage")
     ap.add_argument("--encode", action="store_true")
+    ap.add_argument("--draft", action="store_true",
+                    help="with --encode: a fast MP4 and the preview only, for review (no WebM)")
+    ap.add_argument("--preview", action="store_true",
+                    help="with --encode: also FILM-preview.mp4, 720p, small enough to send")
     ap.add_argument("--poster", type=float)
     ap.add_argument("--target", type=float, default=-16.0, help="integrated loudness, LUFS")
     ap.add_argument("--music-db", type=float, default=-9.0, help="music level relative to the voice, before ducking")
@@ -239,6 +244,24 @@ def main():
         ml = lufs(music)
         music *= 10 ** ((-18 + args.music_db - ml) / 20)
         print(f"music: {ml:.1f} LUFS → {-18 + args.music_db:.1f}")
+        # The bed's levels (arrangement.json `levels`, from each beat's
+        # bed_db): after the loudness match, so 0 dB is the bed as mixed, and
+        # before the ducking. Each change ramps over 0.4 s; -60 dB is out.
+        arr_f = os.path.join(fdir, "arrangement.json")
+        levels = json.load(open(arr_f)).get("levels") if os.path.exists(arr_f) else None
+        if levels:
+            gain = np.ones(n, np.float32)
+            ramp = int(0.4 * SR)
+            cur = 1.0
+            for t0, db in sorted(levels):
+                g = 0.0 if db <= -60 else 10 ** (db / 20)
+                i = max(0, min(n, int(round(t0 * SR))))
+                j = min(n, i + ramp)
+                gain[i:j] = np.linspace(cur, g, j - i, endpoint=False, dtype=np.float32) if j > i else gain[i:j]
+                gain[j:] = g
+                cur = g
+            music *= gain[:, None]
+            print(f"music: {len(levels)} bed levels")
 
     # Effects, at the times the picture shows them.
     cues_f = os.path.join(odir, "cues.json")
@@ -314,26 +337,55 @@ def main():
     open(os.path.join(odir, f"{args.film}.vtt"), "w").write("\n".join(vtt))
 
     if args.encode:
-        pic = os.path.join(odir, "picture.mkv")
+        pic = picture_input(odir)
         ff = ffmpeg()
         mp4 = os.path.join(odir, f"{args.film}.mp4")
         webm = os.path.join(odir, f"{args.film}.webm")
+        prev = os.path.join(odir, f"{args.film}-preview.mp4")
         wav = os.path.join(odir, "mix.wav")
-        subprocess.run([ff, "-y", "-loglevel", "error", "-i", pic, "-i", wav, "-map", "0:v", "-map", "1:a",
-                        "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-tune", "animation", "-pix_fmt", "yuv420p",
-                        "-profile:v", "high", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "192k", "-shortest", mp4], check=True)
-        subprocess.run([ff, "-y", "-loglevel", "error", "-i", pic, "-i", wav, "-map", "0:v", "-map", "1:a",
-                        "-c:v", "libvpx-vp9", "-crf", "34", "-b:v", "0", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2",
-                        "-pix_fmt", "yuv420p", "-c:a", "libopus", "-b:a", "128k", "-shortest", webm], check=True)
-        for p in (mp4, webm):
+        av = [ff, "-y", "-loglevel", "error", *pic, "-i", wav, "-map", "0:v", "-map", "1:a"]
+        # The encodes run side by side: each decodes the picture itself, and
+        # x264 and VP9 each leave cores idle that the other uses. One after the
+        # other they took about twenty minutes for a five-minute film.
+        jobs = {}
+        if args.draft:
+            # For review: the same picture and mix, encoded fast. Publish
+            # needs the full encode (drop --draft).
+            jobs[mp4] = [*av, "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-tune", "animation",
+                         "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "192k", "-shortest", mp4]
+        else:
+            jobs[mp4] = [*av, "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-tune", "animation", "-pix_fmt", "yuv420p",
+                         "-profile:v", "high", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "192k", "-shortest", mp4]
+            jobs[webm] = [*av, "-c:v", "libvpx-vp9", "-crf", "34", "-b:v", "0", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2",
+                          "-pix_fmt", "yuv420p", "-c:a", "libopus", "-b:a", "128k", "-shortest", webm]
+        if args.preview or args.draft:
+            # 720p: uploads for review stop at 30 MB, and an iPhone plays no WebM.
+            jobs[prev] = [*av, "-vf", "scale=1280:-2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "26",
+                          "-tune", "animation", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "128k",
+                          "-shortest", prev]
+        procs = {out: subprocess.Popen(cmd) for out, cmd in jobs.items()}
+        failed = [out for out, pr in procs.items() if pr.wait() != 0]
+        if failed:
+            sys.exit(f"encode failed: {', '.join(failed)}")
+        for p in jobs:
             print(f"{p}: {os.path.getsize(p) / 1e6:.1f} MB")
     if args.poster is not None:
         ff = ffmpeg()
-        pic = os.path.join(odir, "picture.mkv")
+        pic = picture_input(odir)
         jpg = os.path.join(odir, f"{args.film}.jpg")
-        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), "-i", pic, "-frames:v", "1", "-q:v", "3", jpg], check=True)
-        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), "-i", pic, "-frames:v", "1", "-c:v", "libwebp", "-quality", "82", os.path.join(odir, f"{args.film}.webp")], check=True)
+        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-q:v", "3", jpg], check=True)
+        subprocess.run([ff, "-y", "-loglevel", "error", "-ss", str(args.poster), *pic, "-frames:v", "1", "-c:v", "libwebp", "-quality", "82", os.path.join(odir, f"{args.film}.webp")], check=True)
         print(jpg)
+
+
+def picture_input(odir):
+    """ffmpeg input arguments for the rendered picture: the parts render.mjs
+    left, through their ffconcat list, or one picture.mkv (an --out render,
+    or an older one)."""
+    lst = os.path.join(odir, "picture.ffconcat")
+    if os.path.exists(lst):
+        return ["-f", "concat", "-safe", "0", "-i", lst]
+    return ["-i", os.path.join(odir, "picture.mkv")]
 
 
 def fmt(t):

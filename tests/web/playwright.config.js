@@ -9,6 +9,12 @@
 // fail on.
 const { defineConfig } = require("@playwright/test");
 
+// AURACLE_TEST_PORT runs the suite on a server of its own, never reusing one
+// already listening: from a worktree, :8642 is often the main checkout's
+// server, and a suite that reuses it tests the wrong app and says nothing.
+const OWN_PORT = process.env.AURACLE_TEST_PORT;
+const PORT = OWN_PORT || "8642";
+
 module.exports = defineConfig({
   testDir: __dirname,
   testMatch: /.*\.spec\.js/,
@@ -20,7 +26,7 @@ module.exports = defineConfig({
   retries: 0,
   reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
-    baseURL: "http://localhost:8642",
+    baseURL: `http://localhost:${PORT}`,
     // Wider than the handheld gate (min dimension ≥ 620 and a fine pointer),
     // or index.html never injects main.js at all.
     viewport: { width: 1440, height: 900 },
@@ -32,9 +38,9 @@ module.exports = defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "python3 ../../apps/web/serve.py 8642",
-    url: "http://localhost:8642/",
-    reuseExistingServer: true,
+    command: `python3 ../../apps/web/serve.py ${PORT}`,
+    url: `http://localhost:${PORT}/`,
+    reuseExistingServer: !OWN_PORT,
     timeout: 30_000,
   },
 });

@@ -6,6 +6,11 @@ cut. It follows the same conventions as
 [quiver](https://github.com/alexnodeland/quiver) and the
 [fugue ecosystem](https://github.com/alexnodeland/fugue).
 
+The engineering record (architecture notes, decisions, proposals, runbooks)
+is in [`docs/`](./docs/README.md), and each area's working rules are in its
+`AGENTS.md`, starting from the [root one](./AGENTS.md); coding agents read
+the same files.
+
 For the web app's internals see [`apps/web/README.md`](./apps/web/README.md);
 for the documentation site see [`www/README.md`](./www/README.md); for how the
 instrument works see the [technical
@@ -31,6 +36,10 @@ Be respectful and constructive.
    [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) if you're touching the
    web app.
 3. **Verify your setup** with `make check`.
+4. **Optionally, `make install-hooks`**: a pre-commit hook that checks the
+   formatting and syntax of what you stage, in seconds (skip once with
+   `git commit --no-verify`). `.editorconfig` sets each file type's
+   indentation for your editor.
 
 ## Layout
 
@@ -52,7 +61,8 @@ Branch from `main` with a descriptive name (`feature/tempo-synced-lfo`,
 `fix/arp-gate-length`, `docs/…`), then:
 
 ```bash
-make check          # fmt + clippy -D warnings + node --check + wasm32 check + tests (CI gate)
+make check          # fmt + clippy -D warnings + node --check + dev-check + wasm32 check + tests (CI gate)
+make help           # every make target, with what it does
 make wasm           # rebuild apps/web/pkg after any Rust change
 make serve          # http://localhost:8642 — just the instrument
 make smoke          # boot the instrument in a browser against pkg/ (make smoke-tools once)
@@ -93,10 +103,15 @@ Every change must pass `make check`:
 
 1. `cargo fmt --all --check`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
-3. `node --check` on each of the four `apps/web` scripts (`make js-check`)
-4. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
+3. `node --check` on every `apps/web` script, and the pure modules' unit tests
+   (`make web-check`)
+4. The tooling's own checks (`make dev-check`): the agent docs' links and
+   frontmatter, every constant the books quote by name still existing in the
+   code (`www/checknames.py`), the Claude Code hooks against the inputs they
+   must block and pass, and the syntax of every film tool
+5. `cargo check -p auracle-wasm --target wasm32-unknown-unknown --release`
    (`make wasm-check`; needs `rustup target add wasm32-unknown-unknown`)
-5. `cargo test --workspace --profile test-fast` — release-grade codegen
+6. `cargo test --workspace --profile test-fast` — release-grade codegen
    without release's shipping flags; see the profile's comment in `Cargo.toml`
 
 That list is what CI's `lint`, `web`, `wasm` and `test` jobs run, so "green
@@ -177,7 +192,14 @@ trap) it dispatches the worker's message on the real `Worker` object and its
 test name says so. It reaches the engine worker by wrapping `Worker` before
 `main.js` runs; nothing in `apps/web` exists for the tests' sake.
 
-Everything else about UI changes is still verified live in a browser by hand,
+The rest of `tests/web` (the bank, EVOLVE's feedback, PATCH editing,
+PERFORM's controls and offers, responsiveness, booth mode, the film chip) runs
+the same way on demand; `tests/web/AGENTS.md` says how, and
+[`docs/architecture/testing.md`](./docs/architecture/testing.md) lists what
+each spec pins. Run them on their own port (`AURACLE_TEST_PORT`) through
+`www/video/tools/one_browser.sh` when anything else might be using a browser.
+
+What no spec covers about a UI change is still verified live in a browser,
 with **numeric audio assertions** (an `AnalyserNode` RMS, boundary-sample
 checks around patch swaps) plus a zero-console-error requirement. Debug hooks
 for this live at `window.__aur` / `window.__aurLog` (`window.__ric` is kept as

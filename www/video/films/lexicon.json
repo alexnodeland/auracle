@@ -61,7 +61,8 @@
     "bass": {
       "us": "bˈAs",
       "gb": "bˈAs"
-    }
+    },
+    "PICKS": "pˈɪks"
   },
   "asr_aliases": {
     "Auracle": "oracle",
@@ -76,6 +77,16 @@
     "sidechained": "side chained",
     "weighting": "waiting",
     "Breyer": "briar",
-    "bass": "base"
+    "bass": "base",
+    "sync": "sink",
+    "duel": "dual",
+    "duels": "duals",
+    "picks": "pics",
+    "chord": "cord",
+    "chords": "cords",
+    "Peek": "peak",
+    "dock": "doc",
+    "B": "be",
+    "centre": "center"
   }
 }
