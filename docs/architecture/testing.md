@@ -25,7 +25,7 @@ this table.
 | All tests | `make test` | The workspace, optimized | Before a commit that touches Rust |
 | Everything CI runs | `make check` | fmt, lint, js, wasm32, tests | Before every commit |
 | Browser smoke | `make smoke` | Boots clean, worklet registers, failure flows contained | After `make wasm` |
-| Browser suite | `tests/web` specs (see its `AGENTS.md`) | Every behaviour a spec names | Any app behaviour change |
+| Browser suite | `tests/web` specs (see its `AGENTS.md`) | Every behaviour a spec names | Any app behaviour change; CI's *Browser suite* workflow runs it on PRs touching the app, nightly and on demand (not required) |
 | Site | `make site && make site-check` | The site builds; every link, asset and anchor resolves | Any `www/` change, public API docs |
 | Search health | `make search-check`, `make climb`, `make islands` | The search still improves the pool | Engine search changes |
 | φ | `make revalidate` (both sides, diff) | What the model can hear did not silently change | Any φ, phrase, vetting or normalization change |

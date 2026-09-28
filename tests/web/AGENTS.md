@@ -21,8 +21,10 @@ AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh \
 - **`one_browser.sh`** queues the run behind any rehearsal, recording or other
   suite. Two browsers at once make both late, and a timing assertion then
   fails for the machine, not the app.
-- **`make smoke`** runs the CI pair (`smoke.spec.js`, `failure_flows.spec.js`).
-  The whole suite takes about fifteen minutes.
+- **`make smoke`** runs the pair CI requires (`smoke.spec.js`,
+  `failure_flows.spec.js`). The whole suite takes about fifteen minutes; the
+  *Browser suite* workflow (`.github/workflows/browser-suite.yml`) runs it on
+  PRs that touch the app, nightly and on demand, as a report.
 
 ## Writing a spec
 
