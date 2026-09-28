@@ -450,6 +450,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item .bi-origin.preset { color: var(--phos-a-dim); }
 /* Just born this generation. */
 .bank-item.fresh .bi-origin.refined { text-shadow: 0 0 7px rgba(255,180,84,0.8); }
+/* The latest generation's children, said in a word as well as a glow. */
+.bank-item .bi-new {
+  flex: 0 0 auto;
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--phos-b);
+  border: 1px solid var(--phos-b-dim);
+  border-radius: 2px;
+  padding: 1px 3px;
+}
 
 /* The prediction meter is a full-width underline on the row's bottom edge.
    At 54px, 1% was 0.54px — the number beside it existed because the bar could

@@ -5146,7 +5146,11 @@ function bankRow(r, fitted) {
   el.setAttribute("aria-label", said.join(", "));
   el.innerHTML = `
     <div class="bi-top">
-      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>
+      <span class="bi-origin ${r.origin}" title="${ORIGIN_TITLE[r.origin] || r.origin}">${ORIGIN_GLYPH[r.origin] || ""}</span>${
+        // "Gen 3: 5 new patches in the bank" sent the player to a column of
+        // ⚡ rows where the only thing marking the five was a glow on a glyph.
+        lastBorn.has(r.id) ? `<span class="bi-new" title="Bred in the latest generation">new</span>` : ""
+      }
       <span class="bi-name ${r.named ? "custom" : ""}" title="${sig && engineerMode ? `${esc(sig)} — ` : ""}double-click to rename">${esc(r.name)}</span>
       <span class="bi-pct mono" title="${fitted ? "How much the model thinks you'd like this" : "No prediction yet — teach it with a few picks"}">${fitted ? `${Math.round(frac * 100)}%` : "—"}</span>
       <span class="bi-id">#${r.id}</span>
@@ -5632,7 +5636,8 @@ const TOUR = [
       `Press <b>EVOLVE POOL</b> and it breeds: it takes the patches it thinks you ` +
       `like best and makes mutated children of them. Children that score better ` +
       `than the worst patch in the pool get in. That round is a <b>generation</b>. ` +
-      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow.`,
+      `The ⚡ glyph marks every patch evolution has bred — the newest ones glow ` +
+      `and say <b>new</b>.`,
   },
   {
     bank: "pool",
