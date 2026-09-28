@@ -538,8 +538,9 @@ kbd {
 
 .made-trace { filter: drop-shadow(0 0 4px rgba(255, 180, 84, 0.34)); }
 
-/* The coordinates it chose, spelled out. Without them "built for you" is a
-   claim; with them it is a receipt you can read against the bars above. */
+/* The coordinates it chose, spelled out. Without them "bred toward your
+   taste" is a claim; with them it is a receipt you can read against the bars
+   above. */
 .made-from {
   margin: var(--s2) 0 var(--s3);
   font-size: var(--t-micro);

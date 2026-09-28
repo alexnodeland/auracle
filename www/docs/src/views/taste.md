@@ -46,8 +46,12 @@ are computed from the patches you have actually heard.
 
 The size channel is easy to miss and it is the useful one. A big dim dot is *"I
 have no idea about this"*. A small bright dot is *"I am confident you like
-this"*. Early in a session everything is big; that is what a cold start looks
-like.
+this"*. Sizes are spread over the map's own range of uncertainty: the patches
+it is surest about are the smallest dots, the ones it knows least about the
+largest, and the legend's two rings are those two sizes. Where it is about as
+sure of every patch as of any other, the dots come out about the same size
+rather than a contrast drawn from noise. Before the first refit there is no
+uncertainty to draw, and every dot is the same middling size.
 
 Click any dot to open that patch on the workbench.
 
@@ -83,7 +87,10 @@ display says so.</figcaption>
 </figure>
 
 What each lens listens for, coordinate by coordinate. Bar length is the weight;
-the thin whisker behind it is the credible interval.
+the thin whisker across its end is the credible interval, ±1σ, drawn on the
+same scale as the bar. The widest interval reaches the edge of the panel; a
+whisker that would run past it is cut there and ends in an arrowhead, rather
+than being drawn shorter than it is.
 
 **Read the whiskers, not the bars.** A long bar with a whisker that crosses the
 centre line is a coefficient the model has not established: a guess that
@@ -121,8 +128,12 @@ Underneath, the numbers:
 - **Brier score.** Mean squared error of the forecasts. Lower is better; `0.25`
   is what always saying "50/50" scores. Reported as **skill** against that
   baseline, so `0` means no better than a coin and `1` means perfect.
-- **check duels.** The same score restricted to the randomly-drawn probes. This
-  is the number without an asterisk.
+- **check duels.** The same score on the duels that were dealt at random,
+  which under the default pairing is every duel EVOLVE and PATCH deal you:
+  only the forecasts for your edits and for PERFORM's offers are left out,
+  since you chose those comparisons yourself. This is the number without an
+  asterisk. (Under the information-seeking pairing it is the one duel in ten
+  dealt at random as a check.)
 - **hit rate.** Kept so you can see how misleading it is.
 
 ```admonish note title="Why not just show accuracy"

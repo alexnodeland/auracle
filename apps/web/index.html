@@ -85,7 +85,9 @@
         <button class="fc-close" id="fc-close" type="button" title="Fold this away" aria-label="Fold the film note away">×</button>
       </div>
       <span class="counter" title="A/B picks you've made — this is what the model learns from"><span class="counter-label">picks</span> <span id="duel-count">0</span></span>
-      <span class="counter" title="Generations bred toward your taste"><span class="counter-label">gen</span> <span id="gen-count">0</span></span>
+      <!-- Named in full: "gen" beside "picks" said what it counted only in
+           its tooltip. -->
+      <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
       <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
@@ -557,7 +559,12 @@
           </div>
           <div class="duel-centre">
             <div class="mono duel-pred" id="duel-pred" title="The model's forecast, made before your vote"></div>
-            <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
+            <!-- How the pair on the table was chosen: its own line, so it
+                 holds its place while forecasts come and go above it. -->
+            <div class="duel-deal">
+              <span class="mono duel-rule" id="duel-rule"></span>
+              <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
+            </div>
           </div>
           <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste">evolve pool</button>
         </div>

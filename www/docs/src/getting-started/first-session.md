@@ -112,9 +112,11 @@ whether they were worth it. The **EVOLUTION** strip below reports what each
 step did, in plain terms:
 
 ```text
-gen 31 ⚡ evolution on #90 → #91 · attack 0.59→0.83, decay 0.45→0.28,
-release 0.13→0.82, +1 more, +noise, −distortion, −filter · Δtaste +0.65
+gen 1 ⚡ evolution on #43 → #57 · decay 100 ms → 91 ms, granular → filter,
+op → lfo, +mix, +mix, −vco, −lfo · Δtaste +0.62
 ```
+
+The bank marks the new generation's children ⚡ **new**.
 
 Then keep duelling. New candidates are in the mix now, and the questions get
 better as the model gets less uncertain.
