@@ -198,12 +198,12 @@
       "lines": [
         {
           "id": "dock1",
-          "text": "In the dock, Hold latches a chord and Unison stacks all four voices on one note.",
+          "text": "In the dock, Hold latches chords, and Unison stacks all four voices on one note.",
           "post": 0.4
         },
         {
           "id": "dock2",
-          "text": "Glide slides a line from note to note, and chords stay clean.",
+          "text": "Glide slides a melody line from note to note, and chords stay clean.",
           "post": 0.4
         },
         {

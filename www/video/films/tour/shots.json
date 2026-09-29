@@ -186,7 +186,7 @@
         {"at": "dock5:volume+0.3", "op": "click", "sel": "#rec-btn"},
         {"at": "dock5:volume+1.1", "op": "mark", "name": "saved", "sel": "#toasts .toast:last-child"},
         {"at": "dock5:volume+1.1", "op": "log", "name": "toasts", "js": "document.getElementById('toasts').textContent"},
-        {"at": "dock5+6.86", "op": "rec", "on": false}
+        {"at": "dock5+6.82", "op": "rec", "on": false}
       ]
     },
     {

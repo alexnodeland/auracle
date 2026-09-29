@@ -105,8 +105,8 @@ B*) until Take empties B.
 *How do I play it?*
 
 > Along the bottom is the dock, the same in every view. Play the keys on
-> screen, your computer keys, or a MIDI keyboard. Hold latches a chord, and
-> the arpeggiator plays it in time. On the right, glide slides each note into
+> screen, your computer keys, or a MIDI keyboard. Hold latches chords, and
+> the arpeggiator plays them in time. On the right, glide slides each note into
 > the next. Record saves what you play, next to MIDI and the volume.
 
 - Under the first line, a bass figure on the keys on screen (C3 C3 G3 B♭3…).

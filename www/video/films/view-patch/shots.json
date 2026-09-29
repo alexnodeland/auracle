@@ -280,7 +280,7 @@
         {"at": "lock1-0.650", "snap": "bar", "op": "hold", "keys": ["h", "k", ";"], "ms": 2747},
         {"at": "lock1+2.207", "snap": "bar", "op": "hold", "keys": ["f", "h", "k"], "ms": 2747},
         {"at": "lock1+5.064", "snap": "bar", "op": "hold", "keys": ["a", "d", "g"], "ms": 2747},
-        {"at": "lock1+7.921", "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": 2119},
+        {"at": "lock1+7.921", "snap": "bar", "op": "hold", "keys": ["g", "j", "l"], "ms": 2179},
         {"at": "lock1:dot-0.7", "op": "seq", "steps": [{"op": "move", "sel": "#rack-svg [data-addr='node/0#cut']", "ms": 450}, {"op": "wait", "until": "lock1:dot-0.05"}, {"op": "click", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"}, {"op": "wait", "ms": 200}, {"op": "mark", "name": "dot", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"}]},
         {"at": "lock1:square-0.6", "op": "seq", "steps": [{"op": "move", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "ms": 450}, {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"}, {"op": "wait", "ms": 200}, {"op": "mark", "name": "square", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"}, {"op": "log", "name": "locks", "js": "document.querySelectorAll('#rack-svg .locked, #rack-svg .lock-dot.on').length + ' locked marks'"}]},
         {"at": "lock2:Evolve-0.5", "op": "move", "sel": "#rack-evolve", "ms": 400},

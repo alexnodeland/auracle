@@ -115,7 +115,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.6,
-      "tail": 2.528,
+      "tail": 2.493,
       "lines": [
         {
           "id": "dock1",
@@ -129,7 +129,7 @@
         },
         {
           "id": "dock3",
-          "text": "Hold latches a chord, and the arpeggiator plays it in time.",
+          "text": "Hold latches chords, and the arpeggiator plays them in time.",
           "post": 0.5
         },
         {

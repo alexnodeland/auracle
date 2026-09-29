@@ -358,7 +358,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 0.964,
+      "tail": 3.421,
       "lines": [
         {
           "id": "dock1",
@@ -372,7 +372,7 @@
         },
         {
           "id": "dock3",
-          "text": "Glide slides a line from note to note, and chords stay clean.",
+          "text": "Glide slides a melody line from note to note, and chords stay clean.",
           "post": 0.8
         },
         {
