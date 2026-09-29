@@ -6,9 +6,10 @@ sounds you like (tools/footage.mjs). Run from anywhere, after the timeline:
 
 One seeded session for every shot (shotgen.INIT). The film-level set-up is
 the taught session: the warm start answered with a pad, a texture and one
-more of either (see TAG_JS), then EVOLVE, and one note so the "press A–L" coach
-goes. Each chapter adds its own picks off camera, so the pair on the cards
-differs from chapter to chapter.
+more of either (see TAG_JS), the duel re-dealt from the full pool
+(shotgen.REDEAL), then EVOLVE, and one note so the "press A–L" coach goes.
+Each chapter adds its own picks off camera, so the pair on the cards differs
+from chapter to chapter.
 
 A chapter's demo shot starts PRE seconds before its beat: its one-bar turn
 beat borrows the shot (film.js, meta.pre = PRE − BAR), so the footage runs on
@@ -22,7 +23,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
-from shotgen import INIT, FILLED, QUIET, CATS, dump  # noqa: E402
+from shotgen import INIT, FILLED, QUIET, CATS, REDEAL, dump  # noqa: E402
 
 OUT = os.path.join(HERE, "shots.json")
 TB = {b["id"]: b for b in json.load(open(os.path.join(HERE, "timeline.json")))["beats"]}
@@ -69,6 +70,9 @@ TAUGHT = WARM + [
     {"op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000},
     {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
     {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+    # The pair on the table, re-dealt from the full pool (shotgen.REDEAL),
+    # so every chapter's picks start from the same pair in every take.
+    REDEAL,
     {"op": "view", "v": "evolve"},
     {"op": "wait", "ms": 800},
     BLUR,
