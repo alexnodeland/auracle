@@ -48,6 +48,6 @@ node tools/render.mjs "$F" --cues | tail -1
 python3 tools/app_audio.py "$F" --gain-db "${APP_DB:--3}" > "out/$F/app.json"
 MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers --app "out/$F/app.json" --music-db "${MUSIC_DB:--6}" --duck-db "${DUCK_DB:--9}")
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -4
-node tools/render.mjs "$F" --jobs "${JOBS:-$(nproc)}" | tr '\r' '\n' | tail -1
+node tools/render.mjs "$F" --jobs "${JOBS:-$(getconf _NPROCESSORS_ONLN)}" | tr '\r' '\n' | tail -1
 python3 tools/mix.py "$F" "${MIX[@]}" --encode "${DRAFT[@]}" --preview --poster "$POSTER" | tail -5
 ls -la "out/$F/$F.mp4" "out/$F/$F-preview.mp4"
