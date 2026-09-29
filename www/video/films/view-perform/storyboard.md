@@ -42,11 +42,11 @@ PERFORM's first steps as done. The tour film shows both. Two set-ups:
   re-checked → the wiring logged → no toast on screen. Every preset ships
   wired (`apps/web/perform-wirings.json`), so `measured` comes at once, with
   *re-checking* on the status line while PERFORM measures it again under
-  this session's pool; the set-up waits that out (`RECHECKED`), so a shot
-  starts on the session's own wiring and nothing re-wires under its first
-  gesture.
-- **taught**: the three-pick warm start (`nth=0, 4, 7`), then the fit, then as
-  above. It adds `wait 9000`, so a spare offer has grown for Offer to hand
+  this session's pool; `measured` waits that out (it passes only once no
+  re-check is in flight), so a shot starts on the session's own wiring and
+  nothing re-wires under its first gesture.
+- **taught**: the three-pick warm start (`nth=0, 4, 7`), then the fit, then
+  the duel re-dealt twice (`shotgen.REDEAL`), then as above. It adds `wait 9000`, so a spare offer has grown for Offer to hand
   over at once.
 
 **The wiring this session measures** (logged by every shot; rehearsed on
@@ -167,17 +167,19 @@ are the ideas, drift and roam boundaries (three ticks on Wander's ring).
   - a short chord, then Space dragged toward close, where it stops at the
     centre (the pointer bumps against the stop), then turned up (toward far),
     then a short chord again, so the longer tail is heard;
-  - under a held Am7, Grit (amber, dashed) is turned up. It springs back,
-    and a variant grows in B, marked *(grit up)*. If it grows slowly, the
-    beat cuts to it (`clips`). If a spare grown ahead is still fresh (the
-    knobs have not moved more than TRUST since), the ask is answered with it
-    at once, marked *(grit up)* but grown before the ask, so the callout
-    says *marked*, not *grown because you asked*; the `offered` stamp says
-    which happened;
+  - under a held Am7, Grit (amber, dashed) is turned up past its notch. It
+    springs back, the toast says *Grit: no knobs here make it grittier —
+    growing a grittier offer instead*, and B counts seconds while the aimed
+    offer grows (*growing a grittier offer… 4 s*). An aimed offer never
+    takes a spare grown ahead: it is always grown for the gesture. The beat
+    cuts from *growing* to it landing (`clips`). B then says how far it went,
+    in the model's colour: *grittier by 3.9σ* in this session (or *not
+    grittier: this walk found no way there — turn it again to try another*,
+    which the narration also names, so the line holds either way);
   - Peek plays B alone.
 - **Callouts:** *turns toward far only: a stop at the centre* · *amber, dashed: out of
-  reach* (amber) · *B: marked (grit up)* (amber) · *Peek: hear it
-  first*.
+  reach* (amber) · *B: growing a grittier offer* (amber) · *B: how far it
+  went* (amber) · *Peek: hear it first*.
 - The film says what the control does ("On this pad, Space stops at the
   centre toward close. It only turns toward far, and the line under it says
   so."), not where the sound sits: the old line, "This pad already sits at

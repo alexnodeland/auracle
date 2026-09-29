@@ -21,7 +21,7 @@ import sys
 
 FILM = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(FILM, "..", "..", "tools"))
-from shotgen import FILLED, QUIET, taught, dump  # noqa: E402
+from shotgen import INIT as SEED_INIT, FILLED, QUIET, taught, dump  # noqa: E402
 
 tl = json.load(open(os.path.join(FILM, "timeline.json")))
 B = {b["id"]: b for b in tl["beats"]}
@@ -33,10 +33,8 @@ BAR = 4 * 60 / 84
 # from Math.random or changes the session; they are UI hints only.
 INIT = (
     "(() => { try { localStorage.setItem('auracle-played', '1'); "
-    "localStorage.setItem('auracle-perform-steps', JSON.stringify(['play', 'turn', 'offer'])); } catch (e) {} "
-    "let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; "
-    "t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); "
-    "return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();"
+    "localStorage.setItem('auracle-perform-steps', JSON.stringify(['play', 'turn', 'offer'])); } catch (e) {} })(); "
+    + SEED_INIT
 )
 DEV = {"op": "midi", "device": "MIDI keyboard"}
 WIRING = {"op": "log", "name": "wiring", "js": "[...document.querySelectorAll('.pf-knob')].slice(0, 6).map((k) => k.querySelector('.pf-k-name').textContent + ':' + (k.classList.contains('search') ? 'search' : k.classList.contains('half-lo') ? 'up' : k.classList.contains('half-hi') ? 'down' : 'both')).join(' ')"}
@@ -44,16 +42,15 @@ STATUS = "document.querySelector('.pf-status').textContent"
 # Wander's own state ("drift · next in 9 s", "drift · gliding", "paused 3 s",
 # "held") is on the line under its dial; the status line keeps to the patch.
 WSUB = "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"
-# Every preset ships wired (apps/web/perform-wirings.json), so `measured`
-# returns at once with "… controls reach this patch · re-checking" while
-# PERFORM measures it again under this session's own pool. Off camera, a shot
-# waits that out: its wiring is the session's, as rehearsed, and nothing
-# re-wires under the first gesture.
-RECHECKED = {"op": "until", "js": "(() => { const s = " + STATUS + " || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000}
+# Every preset ships wired (apps/web/perform-wirings.json), so it plays at
+# once with "… controls reach this patch · re-checking" while PERFORM measures
+# it again under this session's own pool. shotgen's `measured` waits that out
+# off camera: a shot starts on the session's own wiring, as rehearsed, and
+# nothing re-wires under its first gesture.
 
 
 def perform(name, extra=()):
-    return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, RECHECKED, WIRING, *extra, QUIET]
+    return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, WIRING, *extra, QUIET]
 
 
 def taught_perform(name, extra=()):
@@ -288,11 +285,13 @@ shots.append({
 # ---------------------------------------------------------------- honest controls
 # Glass Pad: Space reaches only toward far ("turns toward far only"); Grit is a
 # search control. A short chord before and after Space goes up, so the tail
-# is heard; then a held chord while Grit is turned, springs back, and the
-# variant it asked for lands in B (cut if it grows slowly), heard on Peek.
+# is heard; then a held chord while Grit is turned: it springs back, the
+# toast says a grittier offer is growing, B counts while it grows (the beat
+# cuts from "growing" to it landing), then B says how far it went
+# ("grittier by 3.9σ" in this session), heard on Peek.
 shots.append({
     "id": "vp-honest", "beat": "honest", "pre": turn_pre("honest", "turn-honest"),
-    "clips": [["honest5:marked", "@offered-0.1"]],
+    "clips": [["honest6", "@offered-0.1"]],
     # Off camera: Space dragged the closed way (the guide says it will not go
     # past the centre), where the dial and the sound end up logged, then
     # double-clicked back to the centre.
@@ -312,9 +311,12 @@ shots.append({
         {"at": "honest2:line", "op": "log", "name": "space", "js": "document.querySelector(\"" + SPACE + "\").getAttribute('aria-valuetext') + ' / ' + document.querySelector(\"" + SPACE + " .pf-k-sub\").textContent"},
         hold("honest3:amber", ["d", "g", "h", "k"], until="honest6:take+0.6"),
         {"at": "honest4:Turn", "op": "drag", "sel": GRIT, "dy": -70, "ms": 800},
+        {"at": "honest4:Turn+1.1", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "honest4:Turn+1.1", "op": "log", "name": "asked", "js": "document.querySelector('#toasts .toast')?.textContent || ''"},
         {"at": "honest4:Turn+1.0", "op": "until", "sel": ".pf-offer.ready", "ms": 90000, "stamp": "offered"},
-        {"at": "honest5:marked", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
-        {"at": "honest6:listen", "op": "press", "sel": PAD("Peek"), "ms": 1500},
+        {"at": "honest5:growing", "op": "log", "name": "growing", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
+        {"at": "honest6:says", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 200)"},
+        {"at": "honest6:Listen", "op": "press", "sel": PAD("Peek"), "ms": 1500},
     ],
 })
 

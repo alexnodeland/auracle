@@ -50,7 +50,7 @@ import { walkthrough, aim } from "../../stage/walk.js";
 // from timeline.json: where the shot a card beat borrows starts, as that
 // beat's `meta.pre`. Rerun it after every timeline change; validate.mjs
 // checks these.
-const BORROW = /*borrow*/ { title: 11.929, outro: 23.358 } /*/borrow*/;
+const BORROW = /*borrow*/ { title: 11.929, outro: 23.357 } /*/borrow*/;
 
 /** A narration time moved by d seconds, as one offset ("play2:Z-1.30"). */
 function shift(at, d) {
@@ -163,8 +163,9 @@ const PLAN = [
     callouts: [
       { at: "honest2:close", until: "honest3:amber-1.35", mark: "space", side: "bottom", dx: -70, dy: 150, text: "turns toward far only: a stop at the centre" },
       { at: "honest3:amber", until: "honest5:variant-1.25", mark: "grit", side: "bottom", dx: -90, dy: 150, text: "amber, dashed: out of reach", color: "b" },
-      { at: "honest5:marked", until: "honest6:listen", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "B: marked (grit up)", color: "b" },
-      { at: "honest6:listen", mark: "peek", side: "top", dx: 40, dy: -100, text: "Peek: hear it first" },
+      { at: "honest5:growing+0.3", until: "honest6-0.1", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "B: growing a grittier offer", color: "b" },
+      { at: "honest6:says", until: "honest6:Listen-0.1", mark: "offer", side: "top", ox: -380, dx: 40, dy: -70, text: "B: how far it went", color: "b" },
+      { at: "honest6:Listen", mark: "peek", side: "top", dx: 40, dy: -100, text: "Peek: hear it first" },
     ],
   },
 

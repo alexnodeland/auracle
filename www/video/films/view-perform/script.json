@@ -164,7 +164,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 2.877,
+      "tail": 3.541,
       "lines": [
         {
           "id": "honest1",
@@ -188,12 +188,12 @@
         },
         {
           "id": "honest5",
-          "text": "Grit springs back, and a variant grows in B, marked with what you asked for.",
+          "text": "Grit springs back, and B starts growing a variant aimed at grit.",
           "post": 0.5
         },
         {
           "id": "honest6",
-          "text": "It isn't aimed at grit yet, so listen before you take it.",
+          "text": "When it lands, B says how much grittier it got, or that it found no way there. Listen before you take it.",
           "post": 1.0
         }
       ]
