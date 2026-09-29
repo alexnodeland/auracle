@@ -55,10 +55,11 @@ the final cut, so a wait the engine needs is not a wait the viewer sits
 through. Holds press at `at`; only their release may wait on a stamp.
 
 Every walkthrough runs a **seeded session**: a set-up (`INIT`, taught or
-plain) that reaches the same state in every take. A taught set-up skips twice
-after the fill (`shotgen.REDEAL`), each skip once the pair behind the table
+plain) that reaches the same state in every take. A taught set-up re-deals the
+duel after the fill (`shotgen.REDEAL`): it skips until the pair on the table is
+the fifth one the engine has dealt, each skip once the pair behind the table
 has been dealt, so the duel does not depend on how far the fill had got when
-the first two pairs were dealt.
+the first pairs were dealt.
 
 ## Readiness
 

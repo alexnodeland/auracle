@@ -46,7 +46,7 @@ PERFORM's first steps as done. The tour film shows both. Two set-ups:
   re-check is in flight), so a shot starts on the session's own wiring and
   nothing re-wires under its first gesture.
 - **taught**: the three-pick warm start (`nth=0, 4, 7`), then the fit, then
-  the duel re-dealt twice (`shotgen.REDEAL`), then as above. It adds `wait 9000`, so a spare offer has grown for Offer to hand
+  the duel re-dealt to the fifth pair (`shotgen.REDEAL`), then as above. It adds `wait 9000`, so a spare offer has grown for Offer to hand
   over at once.
 
 **The wiring this session measures** (logged by every shot; rehearsed on
