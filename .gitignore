@@ -51,3 +51,6 @@ __pycache__/
 # shared setup (settings.json, hooks, skills, agents) is committed.
 .claude/worktrees/
 .claude/settings.local.json
+
+# The voice and film tools environment (make film-setup)
+.venv-voice/

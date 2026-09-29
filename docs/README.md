@@ -93,3 +93,4 @@ plugins work on it.
 - [`disk-full.md`](runbooks/disk-full.md): no space left, mid-build or mid-render
 - [`film-shot-fails.md`](runbooks/film-shot-fails.md): a rehearsal shot errors or runs late
 - [`browser-queue.md`](runbooks/browser-queue.md): a browser job waits forever
+- [`finish-the-view-films.md`](runbooks/finish-the-view-films.md): record, render and publish the five view films on your own machine (PR3)

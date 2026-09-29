@@ -4,6 +4,9 @@ CARGO := cargo
 # Homebrew's rustc shadows rustup's and lacks the wasm std — always prefer
 # ~/.cargo/bin for wasm builds.
 WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
+# The film tools run on .venv-voice when it exists (make film-setup puts the
+# voice and the film tools' packages there), else on the python3 on PATH.
+FILM_ENV := PATH="$(CURDIR)/.venv-voice/bin:$(PATH)"
 
 # wasm32's default stack is 1 MB, and the patch compiler is recursive: every
 # level of `Compiler::build` constructs quiver modules *by value* before moving
@@ -20,7 +23,7 @@ WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
 WASM_STACK := 8388608
 WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
-.PHONY: web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
+.PHONY: setup film-setup web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
         nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
         browser-fast browser-slow \
@@ -47,6 +50,15 @@ help:
 
 ## install-hooks: use the repo's git hooks (.githooks): fast format and syntax
 ## checks on staged files before each commit. Opt-in, per clone.
+## setup: install what the engine, the app and its tests need (scripts/setup.sh)
+setup:
+	scripts/setup.sh
+
+## film-setup: setup, plus the films: .venv-voice (voice + film tools), the
+## voice models and the shared sound (scripts/setup.sh --film)
+film-setup:
+	scripts/setup.sh --film
+
 install-hooks:
 	git config core.hooksPath .githooks
 	@printf '  git hooks: .githooks (skip once with --no-verify)\n'
@@ -456,39 +468,39 @@ brand-rasters:
 
 ## film-sounds: render the films' shared scores (signal, study, stingers), once
 film-sounds:
-	www/video/tools/sounds.sh
+	$(FILM_ENV) www/video/tools/sounds.sh
 
 ## film-voice: voice a film's script and time it to the words (FILM=name)
 film-voice:
-	www/video/tools/voice.sh $(FILM)
+	$(FILM_ENV) www/video/tools/voice.sh $(FILM)
 
 ## film: render an illustrated film, voice to encode (FILM=name POSTER=seconds)
 film:
-	www/video/tools/illustrated.sh $(FILM) $(POSTER)
+	$(FILM_ENV) www/video/tools/illustrated.sh $(FILM) $(POSTER)
 
 ## film-rehearse: check and dry-run a walkthrough's shots, then summarise (FILM=name)
 film-rehearse:
 	node www/video/tools/validate.mjs $(FILM)
-	www/video/tools/rehearse.sh $(FILM)
+	$(FILM_ENV) www/video/tools/rehearse.sh $(FILM)
 
 ## film-record: record a walkthrough on a quiet machine and render it
 ## (FILM=name POSTER=seconds [DRAFT=1: fast MP4 + preview, no WebM] [SHOTS=a,b: re-record only these])
 film-record:
-	www/video/tools/walkthrough.sh $(FILM) $(POSTER) $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS))
+	$(FILM_ENV) www/video/tools/walkthrough.sh $(FILM) $(POSTER) $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS))
 
 ## film-record-all: record several walkthroughs (the quiet part), then finish
 ## each: encoded, previewed, cleared of its frame parts
 ## (FILMS="name poster name poster …" [DRAFT=1] [SHOTS=a,b])
 film-record-all:
-	www/video/tools/record_films.sh $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS)) $(FILMS)
+	$(FILM_ENV) www/video/tools/record_films.sh $(if $(DRAFT),--draft) $(if $(SHOTS),--shot $(SHOTS)) $(FILMS)
 
 ## film-preview: a 720p MP4 of a finished film, for review (FILM=name)
 film-preview:
-	www/video/tools/preview.sh $(FILM)
+	$(FILM_ENV) www/video/tools/preview.sh $(FILM)
 
 ## film-publish: put finished films on the site, guide, reference and README (FILMS="a b")
 film-publish:
-	python3 www/video/tools/publish.py $(FILMS)
+	$(FILM_ENV) python3 www/video/tools/publish.py $(FILMS)
 
 ## site-tools: install the pinned doc toolchain
 site-tools:

@@ -1,0 +1,9 @@
+# The film tools' own Python packages (timeline, fit_score, mix, takes,
+# publish, preview): installed into .venv-voice beside the voice by
+# `make film-setup` (scripts/setup.sh --film). numpy and scipy are pinned to
+# the voice's versions, so the two files install into one environment.
+numpy==2.4.6
+scipy==1.17.1
+pillow==12.3.0
+# Brings its own static ffmpeg: no system ffmpeg needed.
+imageio-ffmpeg==0.6.0

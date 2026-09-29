@@ -166,12 +166,16 @@ git clone https://github.com/alexnodeland/auracle.git
 cd auracle
 ```
 
-Build and run the instrument:
+Set up (needs [rustup](https://rustup.rs/) and Node 20+; idempotent), then
+run the instrument:
 
 ```bash
-make wasm    # wasm-pack build → apps/web/pkg (uses rustup's toolchain)
+make setup   # wasm target, wasm-pack, test browser, git hooks, then make wasm
 make serve   # no-store static server on http://localhost:8642
 ```
+
+`make film-setup` adds everything the films need (the voice's Python
+environment and models, the film tools, the shared sound).
 
 Open http://localhost:8642, wait for the pool to warm up, and play
 (`a w s e d f t g y h u j …`, or plug in a MIDI keyboard). Press `?` in the app
