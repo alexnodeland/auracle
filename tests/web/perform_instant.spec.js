@@ -12,7 +12,7 @@
 // is steady, and pressing Offer hands it over instead of starting ~10 s of
 // renders.
 const { test, expect } = require("@playwright/test");
-test("a patch measured once is playable at once, even after a reload", async ({ page }) => {
+test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.route("**/perform-wirings.json*", (r) => r.abort());
@@ -55,7 +55,7 @@ test("a patch measured once is playable at once, even after a reload", async ({ 
   expect(errs).toEqual([]);
 });
 
-test("an offer grown ahead lands the moment Offer is pressed", async ({ page }) => {
+test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   // Counts the offers the engine hands back, to know when the spare is here

@@ -9,7 +9,7 @@
 // and PERFORM makes none of those, so this is the log, not the UI, being
 // checked.
 const { test, expect } = require("@playwright/test");
-test("an offer heard and answered is a pick; unheard, it is not", async ({ page }) => {
+test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/");

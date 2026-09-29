@@ -142,7 +142,7 @@ function latencies(log, req, reply, since = 0) {
 const bankIds = (page) =>
   page.evaluate(() => [...document.querySelectorAll("#bank-list .bank-item[data-id]")].map((el) => Number(el.dataset.id)));
 
-test("EVOLVE POOL breeds beside you: children land in order at the top of the bank, and a pick deals its next pair within 1 s", async ({ page }) => {
+test("EVOLVE POOL breeds beside you: children land in order at the top of the bank, and a pick deals its next pair within 1 s", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
   await page.waitForFunction(() => window.__aur && window.__aur.wb && window.__aur.wb.rack, null, { timeout: 60_000 });
@@ -229,7 +229,7 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("GENERATIONS and the next-step chip count a generation once a child of it has landed, not when a pick's status does", async ({ page }) => {
+test("GENERATIONS and the next-step chip count a generation once a child of it has landed, not when a pick's status does", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
   await expect(page.locator("#gen-count")).toHaveText("0");
@@ -270,7 +270,7 @@ test("GENERATIONS and the next-step chip count a generation once a child of it h
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("stop ends with what's bred, and replaced patches leave only then", async ({ page }) => {
+test("stop ends with what's bred, and replaced patches leave only then", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
   const mark = await toastMark(page);
@@ -311,7 +311,7 @@ test("stop ends with what's bred, and replaced patches leave only then", async (
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("during a generation PERFORM is answered: a new patch is measured and a pressed Offer starts within 1 s", async ({ page }) => {
+test("during a generation PERFORM is answered: a new patch is measured and a pressed Offer starts within 1 s", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
   await page.locator("#evolve-btn").click();
@@ -347,7 +347,7 @@ test("during a generation PERFORM is answered: a new patch is measured and a pre
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and a ▶ while it walks, and its stop drops it", async ({ page }) => {
+test("⚡ evolve from this leaves the engine free: a deal answers within 1 s and a ▶ while it walks, and its stop drops it", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
   // A ▶ on a row the page has never asked to hear, from the n-th on, so it

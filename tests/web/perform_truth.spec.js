@@ -301,7 +301,7 @@ test("after a pass, Blend comes home", async ({ page }) => {
   expect(errs).toEqual([]);
 });
 
-test("a drift is not a new patch: the status never says listening, and its re-check waits in the background", async ({ page }) => {
+test("a drift is not a new patch: the status never says listening, and its re-check waits in the background", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(360_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");
