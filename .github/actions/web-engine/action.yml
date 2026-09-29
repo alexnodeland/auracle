@@ -1,0 +1,60 @@
+name: Web engine
+description: >
+  apps/web/pkg for this commit, built once per workflow run and uploaded as the
+  `web-engine` artifact for the browser shards to download. Restored from the
+  cache when no input of the wasm build changed, built otherwise.
+
+# Every browser shard used to install Rust and build the wasm itself: about a
+# minute and a half each, five times over, for the same bytes. Now one job
+# builds it and the shards download it.
+#
+# The cache key is every input of `make wasm`: the crates, the workspace
+# manifest and lockfile (profiles live in Cargo.toml), the Makefile (the wasm
+# stack size and flags) and a toolchain pin if one is ever added. A PR that
+# touches only apps/web or tests/web restores main's build and skips the Rust
+# toolchain entirely. It does not key on the stable compiler's version, which
+# moves under a fixed key between releases; a new stable changes the wasm's
+# bytes, not what the app does.
+#
+# On a hit the pkg is re-stamped, because pkg/build.json is a hash over the
+# engine AND the app scripts (see the Makefile's `wasm-stamp`), and the app
+# scripts are this commit's, not the ones of the run that saved the cache.
+
+runs:
+  using: composite
+  steps:
+    - id: pkg
+      uses: actions/cache@v4
+      with:
+        path: apps/web/pkg
+        key: web-engine-${{ runner.os }}-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'Makefile', 'rust-toolchain*') }}
+
+    - if: steps.pkg.outputs.cache-hit != 'true'
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - if: steps.pkg.outputs.cache-hit != 'true'
+      uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+
+    - if: steps.pkg.outputs.cache-hit != 'true'
+      uses: taiki-e/install-action@wasm-pack
+
+    - name: Build the engine for the browser
+      if: steps.pkg.outputs.cache-hit != 'true'
+      shell: bash
+      run: make wasm
+
+    - name: Stamp the cached engine against this commit's app scripts
+      if: steps.pkg.outputs.cache-hit == 'true'
+      shell: bash
+      run: make -s wasm-stamp
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: web-engine
+        path: apps/web/pkg/
+        retention-days: 3
+        if-no-files-found: error

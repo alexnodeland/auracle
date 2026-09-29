@@ -115,10 +115,22 @@ Every change must pass `make check`:
    without release's shipping flags; see the profile's comment in `Cargo.toml`
 
 That list is what CI's `lint`, `web`, `wasm` and `test` jobs run, so "green
-locally" and "green in CI" are one claim. The one thing CI runs that `make
-check` does not is the site build (`make site && make site-check`) and the
-browser smoke test inside it (`make smoke`), because both need the wasm built
-and the first needs the pinned doc toolchain.
+locally" and "green in CI" are one claim. What CI runs that `make check` does
+not is the site build (`make site && make site-check`) with the browser smoke
+test inside it (`make smoke`), and the browser specs, because they need the
+wasm built and the first needs the pinned doc toolchain.
+
+CI runs in two tiers
+([`docs/architecture/testing.md` § CI tiers](docs/architecture/testing.md#ci-tiers)).
+The **fast tier** is the required `CI` check, about five to seven minutes: the
+jobs above, the Rust tests except the slow ones, and every browser spec not
+tagged `@slow`. A PR may merge on it alone. The **slow tier** (the *Slow
+suite* workflow) runs the search floor, the other Rust tests over a minute and
+the `@slow` browser specs on every push to `main` and nightly, where a failure
+opens an issue; on a PR it runs when the diff reaches what those tests cover,
+or when you add the `full-ci` label. Locally, `make check` still runs every
+Rust test; `make test-fast-tier` / `make test-slow-tier` and
+`make browser-fast` / `make browser-slow` run one tier the way CI does.
 
 Changes that touch `www/`, `apps/web/` or any public API must also pass `make
 site && make site-check`. If you changed a doc comment that the reference
@@ -177,8 +189,8 @@ these properties explicitly.
 
 ## Verification beyond `make check`
 
-Two browser specs are automated under `make smoke` (CI runs them in the `site`
-job, against the wasm that job just built), in Playwright's Chromium.
+Two browser specs are automated under `make smoke` (CI's `site` job runs them
+against the wasm that job just built), in Playwright's Chromium.
 `tests/web/smoke.spec.js` boots the instrument and requires **no console
 errors, a registered worklet, and an engine that reaches `playable`** — the
 whole of its claim, and the only gate that notices a backtick in the worklet
@@ -192,9 +204,10 @@ trap) it dispatches the worker's message on the real `Worker` object and its
 test name says so. It reaches the engine worker by wrapping `Worker` before
 `main.js` runs; nothing in `apps/web` exists for the tests' sake.
 
-The rest of `tests/web` (the bank, EVOLVE's feedback, PATCH editing,
-PERFORM's controls and offers, responsiveness, booth mode, the film chip) runs
-the same way on demand; `tests/web/AGENTS.md` says how, and
+The rest of `tests/web` (the bank, EVOLVE's feedback and generations, PATCH
+editing, PERFORM's controls and offers, responsiveness, booth mode, the film
+chip) runs in CI's two tiers and locally with `make browser-fast` and
+`make browser-slow`; `tests/web/AGENTS.md` says how, and
 [`docs/architecture/testing.md`](./docs/architecture/testing.md) lists what
 each spec pins. Run them on their own port (`AURACLE_TEST_PORT`) through
 `www/video/tools/one_browser.sh` when anything else might be using a browser.
