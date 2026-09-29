@@ -29,7 +29,7 @@ import json
 # Math.random, so it changes no session.
 DEALS = ("(() => { const N = window.Worker; const d = (window.__deals = { all: [], ahead: null, aheads: 0 }); "
          "window.Worker = class extends N { constructor(...a) { super(...a); this.addEventListener('message', (e) => { "
-         "const m = e.data; if (!m || m.type !== 'duel') return; d.all.push(m.pair || null); "
+         "const m = e.data; if (!m || m.type !== 'duel') return; if (!m.pair) { d.none = (d.none || 0) + 1; return; } d.all.push(m.pair); "
          "if (m.ahead) { d.ahead = m.pair || null; d.aheads += 1; } }); } }; })();")
 SEED = "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();"
 INIT = SEED + " " + DEALS
@@ -80,7 +80,11 @@ def taught(votes=0, picks=(0, 4, 7), redeal=True):
 # for the table's sounds and for the pair behind it to be dealt (a skip before
 # that deal lands would race it). One fixed skip was enough while a pair was
 # dealt only once the one before it was answered. Run in any view: it presses
-# the app's own skip button.
+# the app's own skip button. Not yet exact: a deal from the filling pool
+# draws from the engine's duel stream a number of times that depends on the
+# pool's size (rejection sampling), so a take whose early deals met a
+# smaller pool can deal other pairs later (the tour rehearsal of 29
+# September: 11 taught takes agreed, one did not). Its log lists every deal.
 REDEAL_AT = 5
 REDEAL = {"op": "log", "name": "redeal", "js": r"""(async () => {
 const K = %d;
@@ -96,7 +100,8 @@ const dealt = () => !$('choose-a').disabled && !$('duel-a').classList.contains('
 const ids = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => Number(e.textContent.replace(/\D/g, '')));
 const same = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.includes(q[0]) && p.includes(q[1]));
 const names = () => ids().map((i) => '#' + i).join(' | ');
-// Which deal the pair on the table is (1-based; 0 if not seen).
+// Which deal the pair on the table is (1-based; 0 if not seen). A reply with
+// no pair (a pool too small to deal from) is not counted (DEALS).
 const index = () => { const t = ids(); for (let i = d.all.length - 1; i >= 0; i--) if (same(d.all[i], t)) return i + 1; return 0; };
 const out = [];
 for (let i = 0; i < 12; i++) {
@@ -114,7 +119,7 @@ for (let i = 0; i < 12; i++) {
   await until(() => dealt() && names() !== was, 60000, 'a new pair');
 }
 if (index() !== K) throw new Error('redeal: the table is deal ' + index() + ', not ' + K + ': ' + out.join(' -> '));
-return out.join(' -> ');
+return out.join(' -> ') + ' [dealt: ' + d.all.map((p) => p.join('/')).join(' ') + (d.none ? '; ' + d.none + ' with no pair' : '') + ']';
 })()""" % REDEAL_AT}
 def perform(name):
     return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, WIRING]
