@@ -50,22 +50,15 @@ PAD_NAME = ", ".join(x + " .bi-name" for x in _PAD)
 # is measured per session, so it is picked by what it does, not by name.
 UP = ".pf-knob:is([data-i='0'], [data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0"
 TABS_LOG = {"op": "log", "name": "view", "js": "document.querySelector('.viewtab.active')?.dataset.view"}
-# A preset ships with its wiring, so PERFORM plays it and its controls work at
-# once, and re-measures it in the background ("… controls reach this patch ·
-# re-checking"): shotgen's `measured` passes as soon as the shipped wiring is
-# on. The shots wait for the re-check too, so which controls reach the patch
-# (UP, the WIRING log) is the measured wiring in every take, not whichever of
-# the two a take happened to catch.
-RECHECKED = {"op": "until", "js": "!/re-checking/.test(document.querySelector('.pf-status')?.textContent || '')", "ms": 120000}
 # The job slot in the menu bar (long work only: a generation, ⚡, a refit).
 SLOT_JS = "(document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent)"
 
 
 def perform_settled(name):
-    """shotgen.perform, with the background re-check done before WIRING logs."""
-    steps = perform(name)
-    i = next(k for k, x in enumerate(steps) if x.get("op") == "measured")
-    return steps[: i + 1] + [RECHECKED] + steps[i + 1:]
+    """shotgen.perform: a preset ships wired and PERFORM re-checks it in the
+    background; `measured` waits for the re-check, so which controls reach
+    the patch (UP, the WIRING log) is the measured wiring in every take."""
+    return perform(name)
 
 
 def key_sel(note):
@@ -138,7 +131,6 @@ shots.append({
         {"op": "log", "name": "duel", "js": "document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
         {"op": "view", "v": "perform"},
         {"op": "measured", "name": "Glass Pad"},
-        RECHECKED,
         WIRING,
         QUIET,
     ],
