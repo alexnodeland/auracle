@@ -2,14 +2,14 @@
 //
 // The claim in views/perform.md, walked end to end on the real engine: hold a
 // note, grow an offer, hear it (Peek held past a second), and answer it.
-// Asking for another is a pass (the played sound wins), Take is a take (the
-// offer wins, after its settle window), and an offer taken without being
-// heard counts for nothing. The picks counter is the engine's own observation
+// Asking for another (the Offer pad reads NEXT while B holds one) is a pass
+// (the played sound wins), Take is a take (the offer wins); each counts after
+// its undo window, and an offer taken without being heard counts for nothing. The picks counter is the engine's own observation
 // count plus the EVOLVE picks, cuts and ratings it has not answered for yet,
 // and PERFORM makes none of those, so this is the log, not the UI, being
 // checked.
 const { test, expect } = require("@playwright/test");
-test("an offer heard and answered is a pick; unheard, it is not", async ({ page }) => {
+test("an offer heard and answered is a pick; unheard, it is not", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/");
@@ -27,7 +27,7 @@ test("an offer heard and answered is a pick; unheard, it is not", async ({ page 
   const p0 = await picks();
   await page.keyboard.down("a");
   const grow = async () => {
-    await page.locator(".pf-pad", { hasText: "Offer" }).click();
+    await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
     await page.waitForSelector(".pf-offer.ready", { timeout: 90000 });
   };
   const peek = async (ms) => {
@@ -37,8 +37,13 @@ test("an offer heard and answered is a pick; unheard, it is not", async ({ page 
   };
   await grow();
   await peek(1800);
-  await grow(); // passing on the heard offer
-  await page.waitForTimeout(1500);
+  // NEXT: passing on the heard offer, said at once (its undo window runs
+  // from then, so it is read before the next offer is waited for).
+  await page.locator(".pf-pad", { hasText: /^(Offer|Next)$/ }).click();
+  await expect(page.locator("#toasts")).toContainText("Passed on B — that counts as a pick for what you had.", { timeout: 10_000 });
+  await page.waitForSelector(".pf-offer.ready", { timeout: 90000 });
+  // It counts once its seven-second undo window has run out.
+  await expect.poll(picks, { timeout: 30_000 }).toBe(p0 + 1);
   const p1 = await picks();
   await peek(1800);
   await page.locator(".pf-pad", { hasText: "Take" }).click();

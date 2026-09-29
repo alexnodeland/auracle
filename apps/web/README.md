@@ -13,7 +13,8 @@ the bank head walks through what a generation is and what evolving costs.
 
 - **PERFORM** — the sound under your hands: six named controls (Bright,
   Snap, Motion, Body, Grit, Space) wired onto this patch's knobs by its own
-  measured response, a Wander dial (still → offer → drift → roam), pads to
+  measured response (every preset ships measured), a Wander dial (still →
+  ideas → drift → roam), pads to
   Keep, go Back, grow an Offer into a second slot and Peek, Blend or Take it,
   and velocity → timbre. MIDI controllers auto-map onto the controls.
 - **PATCH** — the patch is the hero: its full rack (modules, cables, knobs at
@@ -168,9 +169,18 @@ to a pinned `role="alert"` strip that stays until resolved.
   (`perform_wire_plan` names the renders still owed without rendering,
   `memo_render` makes one, `perform_wire_known` finishes from the memo — the
   same numbers as `perform_wire`, pinned natively by
-  `a_planned_measurement_is_the_measurement`), and `refine` breathes between
-  seeds. A *later* measurement gives the floor up to *soon* work and resumes
-  from the memo. `{type: "promote", req, kind}` moves a queued background
+  `a_planned_measurement_is_the_measurement`). A *later* measurement gives
+  the floor up to *soon* work and resumes from the memo. `refine` and
+  `refine_from` are **walk jobs** instead: their walks run on the farm, they
+  never hold the floor, and only a `fit` or another `refine` waits for a
+  running generation (a second `refine_from` for the first). The breed job
+  (`breedOpen`) stringifies `refine_jobs`' context once, hands each job to the
+  crew, holds results that land early, and absorbs them in job order with
+  `refine_absorb`, one per turn, posting each as `refine_child` (the child, the
+  ranked rows, `refine_retiring`) and `refine_progress` (with an `eta` from
+  this session's walk times). `refine_stop` and `refine_from_stop` are
+  answered on arrival. With no crew, or for a walk a worker could not run,
+  the job is walked here with `refine_seed` as a *soon* piece. `{type: "promote", req, kind}` moves a queued background
   offer to *soon* when Offer claims it; `{type: "retire", reqs}` demotes
   PERFORM's measurement of a patch it has left and answers its queued offers
   and drifts empty. `warm_start` posts `warm_first` (the first pick's
@@ -189,6 +199,17 @@ to a pinned `role="alert"` strip that stays until resolved.
   only in 16.4), no SharedArrayBuffer, no COOP/COEP, no build or server
   change. Override with `?farm=k` or `localStorage["auracle-renderers"]`;
   `0` is today's serial path exactly.
+
+  Boot's crew is reaped when boot ends. A generation or ⚡ raises a **walk
+  crew** on demand: the engine worker posts `farm_want`, main spawns
+  `walkWidth()` workers (boot's rule, but at least one wherever there are two
+  cores) from the module it keeps (`sharedModule`: compiled at boot where
+  boot had a farm, otherwise by the first crew) and answers `farm_ports`; the
+  crew is reaped (`farm_done` with its crew id) after 60 s with nothing to
+  walk, or at once when a stop leaves it walking for nobody. A walk job is
+  `walk_context` (once per worker per generation) then `walk` →
+  `farm_walk(context, job)` → `walked`; `""` from `farm_walk` comes back as
+  `cannot`, and the engine worker walks that job itself.
 
   **The pool is identical at every width, including 0.** Two properties make
   that structural rather than argued: draws are *indexed* — draw `i` is the

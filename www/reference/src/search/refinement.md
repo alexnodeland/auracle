@@ -16,24 +16,46 @@ target, rather than a draw *from* it.
 
 ## What runs
 
-`Engine::refine` is three lines over two primitives:
+A generation is **jobs, then absorption**. A walk reads the engine and changes
+nothing; only admitting its child changes the pool. So the engine hands the
+walks out as data and folds their results back in, in a fixed order:
 
 ```rust
 pub fn refine<R: Rng>(&mut self, rng: &mut R) {
-    for parent_id in self.refine_begin() {
-        self.refine_seed(rng, parent_id);
+    let Some((ctx, jobs)) = self.refine_jobs(rng) else { return };
+    for job in &jobs {
+        let result = run_walk(&ctx, job, &self.memo);
+        self.refine_absorb(result);
     }
+    self.refine_finish();
 }
 ```
 
-**`refine_begin`** advances the generation counter and returns the top
-`refine_seeds` candidates by posterior utility, best first. It returns
-**empty** (and does *not* advance the counter) when there is no posterior or no
-standardizer, because there is no direction to climb in.
+**`refine_jobs`** advances the generation counter and makes one job for each of
+the top `refine_seeds` candidates by posterior utility, best first. Every walk
+shares one **context**: the grammar prior tilted by the posterior (computed
+once, as the pool stands when the generation opens), the posterior, the
+standardizer, the phrase, β and the keep rule. Each job carries its seed tree,
+its step budget and **its own RNG seed**, derived from a single draw of the
+caller's `refine` stream. It returns nothing (and does *not* advance the
+counter) when there is no posterior or no standardizer, because there is no
+direction to climb in.
 
-**`refine_seed`** clones the seed's tree, walks `refine_steps` MH steps with no
-locks, and injects one state of that walk as a child. It returns `None` if the
-walk was rejected or landed on a tree the pool already holds.
+**`run_walk`** is the walk as a pure function of a context and a job: it walks
+`refine_steps` MH steps from the seed and returns one state of that walk, or
+the reason there is none. Because each walk owns its randomness and the
+render memo only ever saves work, a walk returns the same child in the engine
+or on a render-farm worker, early or late.
+
+**`refine_absorb`** takes the results **in job order**, whatever order they
+finished in, and does what the serial loop always did after its walk: it
+drops a child the pool already holds, admits the rest if they earn a place,
+and records the lineage. A result offered out of turn changes nothing.
+
+**`refine_finish`** closes the generation, and it is where patches leave (see
+[who leaves, and when](#who-leaves-and-when)). Stopping a generation early is
+the same call: it ends the generation with the children already absorbed,
+which are then ranked with everyone else when the pool is trimmed.
 
 ### Which state of the walk gets injected
 
@@ -70,10 +92,30 @@ generations, because `insert_candidate` admits and evicts by the model. Turning
 ```
 
 **`refine_from(seed_id, locked)`** is the same thing from an explicit seed with
-an explicit [lock set](./locks.md), the `⚡ evolve from this` path.
+an explicit [lock set](./locks.md), the `⚡ evolve from this` path: a single job
+over the same walk and the same absorption, with the seed never displaced by
+its own child, nor by anything else while its walk is out: from
+`refine_from_job` until `refine_from_absorb` (or `refine_from_cancel`, a stop)
+the seed is exempt from eviction like a pinned patch.
 
-Injection displaces the pool's lowest-utility member; pinned candidates are
-exempt.
+### Who leaves, and when
+
+A child is admitted only if it beats the member it would displace: the
+lowest-utility unpinned member, counting the displacements the generation
+already owes. Nobody leaves while the generation runs. At its end the pool is
+trimmed back to `pool_size` by retiring its lowest-utility unpinned members,
+so the patches that leave are exactly the ones evicting one child at a time
+would have removed, but a patch saved (pinned) at any point before the end is
+never among them. Pinned candidates are always exempt.
+
+Both the bar a child must beat and the trim at the end are judged under the
+posterior the generation **opened** with, the one in its context and the one
+its walks climbed. A pick made while the generation runs reweights the
+engine's posterior at once, so the next pair responds to it, but not the
+generation's: which children are kept and which members leave do not depend
+on when picks landed between absorptions (natively,
+`picks_during_a_generation_do_not_change_which_children_are_kept`). The picks
+count from the next refit, which waits for the generation to end.
 
 ## The split is measured
 

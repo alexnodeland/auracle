@@ -63,8 +63,10 @@ descriptors of the standard render, twenty-six structural counts of the term.
 ### Generation
 
 One round of breeding. Takes the pool's best patches, walks each a short
-distance uphill on the current model, and injects the children, replacing the
-patches it likes least to make room (the toast names them).
+distance uphill on the current model, and injects the children as they are
+bred; when it ends (or you stop it) it replaces the patches it likes least to
+make room (the toast names them). The walks run in parallel on the render farm,
+so the rest of the instrument keeps answering while it breeds.
 
 ### Genome / term
 
@@ -75,6 +77,13 @@ list. The rack you see is compiled from it.
 
 The staging tray under the rack. Anything you unplug, delete or bypass goes
 here rather than vanishing, and stays across a reload.
+
+### Job slot
+
+The place in the menu bar, beside **generations**, where long work shows while
+it runs: a generation (*⚡ breeding 3/10 · about 40 s*), ⚡ evolve from this, a
+refit. It has **stop** where the job can be stopped. The wordmark's **E** is lit
+exactly while it shows.
 
 ### Lens
 
@@ -111,7 +120,9 @@ and does nothing. See [PERFORM](./views/perform.md#the-named-controls).
 A variant grown from the sound you are playing, held in a second voice set
 called **B** that plays every note you play. You hear it by crossfading with
 **Blend** or holding **Peek**, at matched loudness, and it replaces your sound
-only if you press **Take**. An offer may change structure. The only other
+only if you press **Take**. An offer from the **Offer** pad or Wander is grown
+toward your taste; one a search control asks for is also aimed the way it was
+turned. An offer may change structure. The only other
 thing in PERFORM that can is a **search control** that grafts a tone EQ on (see
 below); Wander never does. See [Blend, Peek and the B
 slot](./views/perform.md#blend-peek-and-the-b-slot).
@@ -173,7 +184,10 @@ to turn: a flat tone EQ grafted onto the patch. So can **Space** turned up: a
 longer release. The graft
 goes in as one undo step, the patch is measured again, and the control is set
 where your hand left it (*Bright now turns …*). Otherwise, or when the graft
-does not reach, the control springs back and asks for an offer in B. See
+does not reach, the control springs back and asks for an offer in B, aimed the
+way you turned it: the walk that grows it counts a variant for more the further
+it goes that way, and B says how far it went (*grittier by 1.8σ*), or that it
+did not get there. See
 [search controls](./views/perform.md#amber-dashed-search-controls).
 
 ### Standardizer
@@ -215,10 +229,12 @@ screaming resonance and silent duds; this is why you never hear them.
 
 ### Wander
 
-PERFORM's dial for how alive the patch is on its own: **still**, **offer**
+PERFORM's dial for how alive the patch is on its own: **still**, **ideas**
 (variants appear in B), **drift** (the knobs glide through nearby settings the
-search prefers), **roam** (bigger and faster). It never changes structure, it
-pauses while your hands are on the controls, and a tap holds it. See
+search prefers), **roam** (bigger and faster). It answers a second and a half
+after you let go of it in a new region, the line under it says what it is
+doing and when it moves next, it never changes structure, it pauses while
+your hands are on the other controls, and a tap holds it. See
 [Wander](./views/perform.md#wander).
 
 ### Warm start

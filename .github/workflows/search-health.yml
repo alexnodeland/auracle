@@ -6,9 +6,10 @@
 # of genuine MH walks. Blocking every PR on that would spend most of its budget
 # on the brand and documentation changes that make up most of them.
 #
-# The always-on floors live in `make check` instead (`refinement_improves_pool`,
-# `closed_loop_learns_synthetic_taste`). They catch a loop that stopped working.
-# This catches one that quietly got worse.
+# The always-on floors live in `make check` and CI's slow tier instead
+# (`refinement_improves_pool`, `closed_loop_learns_synthetic_taste`; see
+# slow-suite.yml). They catch a loop that stopped working. This catches one
+# that quietly got worse.
 #
 # Two ways in:
 #

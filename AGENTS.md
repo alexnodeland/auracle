@@ -39,7 +39,8 @@ contributor guide; this file does not repeat it.
    `truth-pass` skill finds what describes a behaviour.
 2. **φ is a measurement contract.** The audition phrase, the feature list and
    loudness normalization define what the model can hear. Changing any of them
-   owes `make revalidate` on both sides of the change and a diff of the tables
+   owes `make revalidate` on both sides of the change and a diff of the tables,
+   then `make perform-wirings` for the preset wirings the app ships
    ([`crates/auracle-features/AGENTS.md`](crates/auracle-features/AGENTS.md)).
 3. **Rust tests run optimized.** Use `--profile test-fast` (or `make test`).
    The grammar, features and session suites render audio sample by sample, and
@@ -75,9 +76,10 @@ contributor guide; this file does not repeat it.
 | Only JS changed | `make web-check` |
 | One crate's tests | `cargo test -p auracle-<crate> --profile test-fast` |
 | Browser tests | `cd tests/web && AURACLE_TEST_PORT=8690 ../../www/video/tools/one_browser.sh npx playwright test [spec]` |
+| One CI tier, locally | `make test-fast-tier` / `make test-slow-tier` (Rust), `make browser-fast` / `make browser-slow` (specs tagged `@slow`) |
 | The instrument, locally | `make serve`, then <http://localhost:8642> |
 | The site | `make site && make site-check` (needs `make site-tools` once) |
-| A φ-touching change | `make revalidate` before and after, then diff |
+| A φ-touching change | `make revalidate` before and after, then diff; then `make perform-wirings` |
 
 The `check` skill picks the right subset for what changed.
 

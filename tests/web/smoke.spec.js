@@ -53,3 +53,32 @@ test("the instrument boots clean: no console errors, worklet registered, engine 
 
   expect(errors, `the page raised errors:\n${errors.join("\n")}`).toEqual([]);
 });
+
+// Every binding `worker.js` calls must exist in the binary it is served
+// (crates/auracle-wasm/AGENTS.md): a method that was renamed or never built
+// shows up only as a generation that falls back, or a blank instrument. These
+// are the walk surface of RFC-001 — a generation's jobs, the farm's stateless
+// walk, ordered absorption, stop, and ⚡ as one farm job.
+test("the engine binary exports the walk surface the worker calls", async ({ page }) => {
+  expect(fs.existsSync(PKG), `no built engine at ${PKG} — run \`make wasm\` first`).toBe(true);
+  await page.goto("/pkg/build.json");
+  const got = await page.evaluate(async () => {
+    const mod = await import(`/pkg/auracle_wasm.js?v=${Date.now()}`);
+    const proto = mod.WasmEngine.prototype;
+    const methods = [
+      "refine_jobs", "refine_absorb", "refine_finish", "refine_retired", "refine_retiring",
+      "refine_from_job", "refine_from_absorb", "refine_from_walk", "refine_from_cancel",
+      "refine_seed", "last_refine_reason",
+    ];
+    return {
+      farm_walk: typeof mod.farm_walk,
+      cache_namespace: typeof mod.cache_namespace,
+      farm_render: typeof mod.farm_render,
+      missing: methods.filter((k) => typeof proto[k] !== "function"),
+    };
+  });
+  expect(got.farm_walk).toBe("function");
+  expect(got.cache_namespace).toBe("function");
+  expect(got.farm_render).toBe("function");
+  expect(got.missing, "WasmEngine methods worker.js calls are missing").toEqual([]);
+});

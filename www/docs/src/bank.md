@@ -33,7 +33,12 @@ Everything else on it is described below.</figcaption>
 
 - **The name** is generated from what the patch is, and you can rename it.
   Double-click it.
-- **new** beside the name marks a child of the latest generation.
+- **new** beside the name marks a child of the latest generation. In the
+  **evolution** bank those children lead the list under **new · gen N**, in
+  the order they were bred, and the rest follow under **ranked by the
+  model**, the patches it thinks you would like most first. While a
+  generation breeds, each child joins the group the moment it is bred and
+  glows once; the rows below it do not move.
 - **The percentage** is the model's prediction: roughly, how likely you are to
   prefer this patch in a duel. Before the model has been fitted it reads
   **—**.
@@ -41,7 +46,8 @@ Everything else on it is described below.</figcaption>
   is the model's guess; the dimmer block around it spans one standard
   deviation either way, so its width is how sure the model is. Before a fit the
   bar is an empty hatched track.
-- **▶** plays the standard sample.
+- **▶** plays the standard sample. If the sample has to be rendered first, a
+  dotted amber ring says it is on its way.
 - **★★★★★** rates it. This is an observation and it teaches the model.
 - **💾** saves it. This is storage and it teaches nothing.
 - **cut** teaches the model "not this one" and takes the row out of the bank.
@@ -76,8 +82,12 @@ Stars are for teaching; **save** is what keeps.
 
 ## Eviction and pins
 
-The pool holds **40** vetted candidates. Injecting children removes the weakest
-to make room, by posterior utility.
+The pool holds **40** vetted candidates. A generation's children join it as
+they are bred, and when the generation ends (or you stop it) the weakest
+unsaved members, by posterior utility, are removed to bring it back to 40. So
+a patch you save while a generation is still breeding is safe. Hovering
+**EVOLVE POOL** marks the rows it may replace with a dashed rail and *may be
+replaced*.
 
 (The engine's library default is 48; the web app asks for 40. If you see 48
 quoted in the [reference](../reference/architecture/two-loops.html), that is

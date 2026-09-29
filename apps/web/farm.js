@@ -1,11 +1,17 @@
 // AURACLE render farm worker — a wasm instance and nothing else.
 //
-// It owns no Engine, no pool, no RNG and no session state. Its whole job is
-// `farm_render(tree, phrase) -> {features, samples}`, which is a pure function
-// of its arguments, so any farm worker is interchangeable with any other and
-// with the engine worker itself. That is what lets the engine hand out work by
-// *index*, re-issue a lost job to whoever is free, and throw away speculative
-// renders past the stop point without any of it touching the pool.
+// It owns no Engine, no pool, no RNG and no session state. It has two jobs,
+// each a pure function of its arguments: `farm_render(tree, phrase) ->
+// {features, samples}` for boot's fill and restore, and `farm_walk(context,
+// job) -> result` for a generation's walks and ⚡ evolve from this. So any farm
+// worker is interchangeable with any other and with the engine worker itself.
+// That is what lets the engine hand out work by *index*, re-issue a lost job
+// to whoever is free, and throw away speculative work past the stop point
+// without any of it touching the pool.
+//
+// A crew is spawned for boot and reaped when boot ends, and spawned again on
+// demand for walks and reaped after a minute with nothing to do: N × ~15 MB of
+// linear memory is not kept resident behind a running instrument.
 //
 // It never talks to the main thread after boot. Main spawns it, hands it one
 // end of a MessageChannel whose other end went into the engine worker, and
@@ -125,28 +131,48 @@ function cachePut(key, cached) {
 // the difference between one lost render and a 30 s pause.
 async function onJob(m) {
   if (m.type === "phrase") {
-    // Build skew is impossible by construction (main compiles one module and
-    // shares it), but a stale worker script paired with a fresh engine is not:
-    // refuse rather than render under a stimulus we cannot vouch for. The
-    // engine sees a worker that never accepts work and falls back.
-    if (m.build != null && String(m.build) !== String(V)) {
-      port.postMessage({ type: "refused", reason: `build skew ${m.build} vs ${V}` });
-      return;
-    }
-    phrase = m.json;
     // The namespace is a pure function of the stimulus and the featurizer
     // generation, so it is known as soon as the phrase is, and every row this
     // worker reads or writes is scoped by it.
     try {
-      cacheNs = wasm ? wasm.cache_namespace(phrase) : null;
+      cacheNs = wasm ? wasm.cache_namespace(m.json) : null;
     } catch (_) {
       cacheNs = null;
     }
+    // Skew between this instance and the engine's. Comparing build stamps
+    // cannot find it: this script, the engine worker's and both URLs of the
+    // binary carry main's one stamp, so the old check compared main's stamp
+    // with itself. What can differ is the binary each instance actually
+    // loaded, when the compiled module could not be shared and each fetched
+    // its own. So the engine sends the namespace *its* binary computes for
+    // this phrase (the stimulus and the featurizer's `RENDER_EPOCH`), and a
+    // worker whose binary computes another refuses rather than render or walk
+    // under a measurement the engine does not make. The engine sees a worker
+    // that never accepts work and falls back.
+    if (m.ns != null && cacheNs != null && m.ns !== cacheNs) {
+      cacheNs = null;
+      port.postMessage({ type: "refused", reason: `render namespace ${m.ns} is not this binary's` });
+      return; // `phrase` stays unset, so a job already on its way is declined
+    }
+    phrase = m.json;
     if (cacheNs) await cacheOpen(cacheNs);
     return;
   }
   if (m.type === "bye") {
     self.close();
+    return;
+  }
+  if (m.type === "walk_context") {
+    // A generation's shared half: the tilted prior, the posterior's draws,
+    // the standardizer (about 2 MB of JSON). Sent once per worker per
+    // generation and kept as the exact text, because `farm_walk` keeps the
+    // parsed context keyed by that text: the same string with every job is
+    // one parse per worker per generation, not one per walk.
+    walkContext = m.text;
+    return;
+  }
+  if (m.type === "walk") {
+    onWalk(m);
     return;
   }
   if (m.type !== "job") return;
@@ -214,6 +240,39 @@ async function onJob(m) {
     // whole boot's worth of feature JSON inside this instance's linear memory.
     job.free();
   }
+}
+
+// ---------- walks (RFC-001) ----------
+//
+// One refinement walk of a generation, or ⚡ evolve from this: `farm_walk` is
+// the engine's `run_walk` with no engine anywhere, a pure function of the
+// context and the job, so which worker runs it (or the engine worker itself)
+// cannot change the child. The result goes back as the JSON the engine
+// absorbs; the engine folds results in job order, so this worker never needs
+// to know where in the generation its job sits.
+let walkContext = null;
+
+function onWalk(m) {
+  // `phrase` unset: not initialized, or this binary refused the engine's.
+  if (!wasm || typeof wasm.farm_walk !== "function" || walkContext == null || phrase == null) {
+    port.postMessage({ type: "cannot", i: m.i, walk: true, reason: "not initialized" });
+    return;
+  }
+  const t0 = performance.now();
+  let result = "";
+  try {
+    result = wasm.farm_walk(walkContext, m.job);
+  } catch (e) {
+    port.postMessage({ type: "cannot", i: m.i, walk: true, reason: String((e && e.message) || e) });
+    return;
+  }
+  // "" is a context or job that did not parse: a broken caller or instance,
+  // not a walk that found nothing. The engine runs that job itself.
+  if (!result) {
+    port.postMessage({ type: "cannot", i: m.i, walk: true, reason: "walk did not parse" });
+    return;
+  }
+  port.postMessage({ type: "walked", i: m.i, result, ms: performance.now() - t0 });
 }
 
 self.onmessage = async (e) => {

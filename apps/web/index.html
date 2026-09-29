@@ -95,6 +95,16 @@
       <!-- Named in full: "gen" beside "picks" said what it counted only in
            its tooltip. -->
       <span class="counter" title="Generations bred toward your taste"><span class="counter-label">generations</span> <span id="gen-count">0</span></span>
+      <!-- The job slot: long work, only while it runs — a generation, ⚡
+           evolve from this, a refit — with stop where it can be stopped. The
+           wordmark's E is lit exactly while this is showing (main.js,
+           renderJobSlot). -->
+      <!-- Not a live region: its estimate changes every second. -->
+      <div class="job-slot hidden" id="job-slot">
+        <span class="job-fill" id="job-fill" aria-hidden="true"></span>
+        <span class="job-text mono" id="job-text"></span>
+        <button class="job-stop hidden" id="job-stop" type="button">stop</button>
+      </div>
       <span class="skill mono" id="skill" title="How much sharper than a coin flip the model's predictions have been (Brier skill). Blank until it has forecast something."></span>
       <button id="help-open" class="util-btn sq" title="Keyboard map &amp; gestures (?)" aria-label="Help — keyboard map and gestures">?</button>
       <div class="ovf">
@@ -576,7 +586,13 @@
               <button class="inspect-btn" id="skip-duel" title="Deal a different pair">skip ↻</button>
             </div>
           </div>
-          <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste">evolve pool</button>
+          <!-- While it breeds, EVOLVE POOL is its own progress bar, with stop
+               beside it. Hovering it marks the rows a generation may replace
+               (the wrapper hears the pointer while the button is disabled). -->
+          <span class="evolve-wrap" id="evolve-wrap">
+            <button class="hw-btn small" id="evolve-btn" title="Breed new patches toward your taste. The rows it may replace are marked while you hover; save one to keep it.">evolve pool</button>
+            <button class="hw-btn small evolve-stop hidden" id="evolve-stop" type="button" title="Stop breeding: the walks still running are dropped, and the generation ends with the children bred so far. As at any generation's end, the lowest unsaved patches leave to bring the bank back to its size, and that can be a child bred early.">stop</button>
+          </span>
         </div>
         <div class="duel-row">
           <section class="duel-card" id="duel-a">
@@ -801,8 +817,8 @@
       <div>
         <div class="help-h">perform — play it</div>
         <p><b>Bright, Snap, Motion, Body, Grit</b> and <b>Space</b> are named for what you hear. Each is wired to the knobs of <i>this</i> patch that do that job, measured when it loads, and the strip underneath shows them move. An <b>amber</b> control is one this patch cannot reach: turn it anyway, and it adds what is missing or grows a variant that can. A control that says <i>listening…</i> has not been measured on this patch yet, and does nothing until it has.</p>
-        <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. Asking for another is a pass. Once you have heard an offer, either answer teaches the model.</p>
-        <p><b>Wander</b> lets the model play along: a little offers ideas, more drifts the knobs toward your taste, all the way roams. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller's first eight knobs claim the eight controls.</p>
+        <p><b>Offer</b> grows a new version of what you are playing into <b>B</b>. Hold <b>Peek</b> to hear it, turn <b>Blend</b> to move between the two, and <b>Take</b> to make it yours. While B holds one, the pad reads <b>Next</b>: it passes on B and brings the next. Once you have heard an offer, either answer teaches the model, and either can be taken back from its note.</p>
+        <p><b>Wander</b> lets the model play along: a little brings ideas into B, more drifts the knobs toward your taste, all the way roams; let go of it and it answers in a moment, and the line under it says what it is doing. <b>Keep</b> marks where you are and <b>Back</b> returns there; <b>Freeze</b> stops Wander where it is. The <b>XY pad</b> puts two controls under one finger, and a MIDI controller's first eight knobs claim the eight controls.</p>
         <div class="help-h">keys</div>
         <p><kbd>a w s e d f t g y h u j k …</kbd> play notes · <kbd>z</kbd>/<kbd>x</kbd> octave · <kbd>⌘Z</kbd> take back a pick or cut (7 s), else in PATCH undo edit · <kbd>⇧⌘Z</kbd> redo</p>
         <p><kbd>space</kbd> audition the current patch · <kbd>[</kbd>/<kbd>]</kbd> step through the bank · <kbd>1–5</kbd> rate the patch you’re on · <kbd>m</kbd> save it · in <b>presets</b>, <kbd>p</kbd> plays the row</p>

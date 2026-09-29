@@ -92,6 +92,10 @@ calibration restricted to those is unbiased:
 It costs a small share of the query budget and it is the only number here that
 means what it says unqualified.
 
+The share is of the pairs the player is *shown*, not of the pairs dealt: the
+app deals the next pair ahead and sometimes throws a deal away unseen, and a
+probe thrown away does not use up its turn.
+
 ```admonish note title="With the default rule, every duel is a probe"
 The shipped default acquisition is **uniform random pairing**, so every duel is already
 an unbiased sample and `check_skill` equals overall skill. The probe machinery exists

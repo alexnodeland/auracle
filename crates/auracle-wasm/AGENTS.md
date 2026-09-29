@@ -8,11 +8,13 @@ Rules shared by all crates are in [`../AGENTS.md`](../AGENTS.md). The JS side is
 
 | File | Holds |
 | --- | --- |
-| `lib.rs` | `WasmEngine`: every method `worker.js` calls; `Streams` (one RNG per consumer); `TreeReply` |
+| `lib.rs` | `WasmEngine`: every method `worker.js` calls; `Streams` (one RNG per consumer); `TreeReply`; the farm's stateless exports (`farm_render`, `farm_walk`) |
 | `live.rs` | `LivePoly`: N compiled copies of the patch played from the render thread; the arpeggiator |
 | `level.rs` | One level policy for everything the player hears (live makeup) |
 | `examples/score.rs` | Renders a film score (`www/video/sound/*.json`) with the engine's own voices |
 | `examples/pool_loudness.rs` | Measures what a fresh bank sounds like, level-wise |
+| `examples/preset_wirings.rs` | Measures PERFORM's wiring of every preset through this surface and writes `apps/web/perform-wirings.json` (`make perform-wirings`) |
+| `shipped.rs` | What that file was measured from: fingerprints of the presets and named inputs, and the standard engine (`boot`) a sample of it is re-measured on. `tests/shipped_wirings.rs` fails when a preset, an input or the measurement's arithmetic changes without regenerating it (native only) |
 
 ## Rules
 

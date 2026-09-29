@@ -271,6 +271,55 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* The skill line gives way first when the bar is full (it ellipsizes). */
 .menubar-right .skill { min-width: 0; }
 
+/* The job slot: long work, only while it runs. Amber, because it is the
+   model's work; the fill is the share done; stop is a small raised button. */
+.job-slot {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 340px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--phos-b-deep);
+  border-radius: 999px;
+  color: var(--phos-b);
+  font-size: var(--t-micro);
+  white-space: nowrap;
+}
+.job-slot.hidden { display: none; }
+.job-slot .job-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: rgba(255, 180, 84, 0.12);
+  transition: width 300ms ease;
+  pointer-events: none;
+}
+.job-slot > .job-text, .job-slot > .job-stop { position: relative; }
+.job-slot .job-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.job-slot .job-stop {
+  flex: none;
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--silk);
+  background: linear-gradient(180deg, var(--btn-hi), var(--btn-lo));
+  border: 1px solid var(--shadow-ink);
+  border-radius: 999px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.job-slot .job-stop.hidden { display: none; }
+.job-slot .job-stop:hover { color: var(--phos-b); }
+.job-slot .job-stop:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .job-slot .job-fill { transition: none; } }
+@media (max-width: 1240px) { .job-slot { max-width: 270px; } }
+
 /* The film of this view (main.js, pointFilmChip). Folded, a quiet "▶ film";
    open, on a view's first visit, the one line a newcomer needs, in the
    phosphor of sound, with a way to fold it. */
@@ -531,6 +580,37 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bank-item .bi-origin.preset { color: var(--phos-a-dim); }
 /* Just born this generation. */
 .bank-item.fresh .bi-origin.refined { text-shadow: 0 0 7px rgba(255,180,84,0.8); }
+/* The bank's groups: the latest generation's children lead the pool under
+   their own heading, and the rest keep their ranked order under theirs. */
+.bank-group {
+  font-family: var(--font-silk);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--phos-b-dim);
+  padding: 8px 4px 3px;
+}
+.bank-group ~ .bank-group { color: var(--silk-dim); }
+/* A child that has just landed glows once. */
+.bank-item.landed { animation: bank-landed 900ms ease-out; }
+@keyframes bank-landed {
+  from { box-shadow: 0 0 14px rgba(255, 180, 84, 0.45); border-color: var(--phos-b); }
+}
+@media (prefers-reduced-motion: reduce) { .bank-item.landed { animation: none; } }
+/* Hovering EVOLVE POOL: the rows a generation may replace. A dashed rail and
+   the words, so it is not only a colour. */
+.bank-item.may-go { border-left-style: dashed; border-left-color: var(--phos-b-dim); }
+.bank-item.may-go .bi-top::after {
+  content: "may be replaced";
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--phos-b-dim);
+}
+/* The words sit after the name; the percentage keeps its place on the right. */
+.bank-item.may-go .bi-top .bi-pct,
+.bank-item.may-go .bi-top .bi-id { order: 1; }
 /* The latest generation's children, said in a word as well as a glow. */
 .bank-item .bi-new {
   flex: 0 0 auto;
@@ -619,6 +699,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-shadow: 0 0 6px rgba(142, 240, 177, 0.6);
   box-shadow: inset 0 0 8px rgba(142, 240, 177, 0.25);
   border-radius: 4px;
+}
+/* Pressed, and its buffer is on its way: a dotted amber ring at once, so a
+   ▶ that has to wait for a render says it heard you. */
+.bank-item .bi-row button.bi-hear.pending {
+  outline: 1px dotted var(--phos-b);
+  outline-offset: -2px;
+  border-radius: 4px;
+  color: var(--phos-b);
 }
 /* Each of these must out-specify `.bank-item .bi-row button` above (0,2,1) or
    its font-size, padding and tracking are silently discarded — which is how
@@ -3678,7 +3766,31 @@ html:not(.engineer) .dn-sig { display: none; }
 @media (min-width: 1200px) {
   .teach-copy { min-width: 0; white-space: nowrap; font-size: var(--t-title); }
 }
-#evolve-btn { justify-self: end; }
+/* EVOLVE POOL and, while it breeds, its stop. */
+.evolve-wrap { justify-self: end; display: inline-flex; align-items: center; gap: var(--s2); }
+.evolve-wrap .evolve-stop.hidden { display: none; }
+/* While it breeds the button is its own progress bar: an amber fill for the
+   share of the generation absorbed, the count over it, full strength rather
+   than the dimmed look of a disabled button — it is working, not unavailable.
+   The wrapper hears the pointer (the "may be replaced" marks). */
+#evolve-btn.breeding {
+  position: relative;
+  overflow: hidden;
+  opacity: 1;
+  min-width: 150px;
+  pointer-events: none;
+  color: var(--phos-b);
+  background: linear-gradient(180deg, var(--plate-hi), var(--plate-lo));
+}
+#evolve-btn.breeding .eb-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(255, 180, 84, 0.22);
+  box-shadow: inset -1px 0 0 var(--phos-b);
+  transition: width 300ms ease;
+}
+#evolve-btn.breeding .eb-text { position: relative; }
+@media (prefers-reduced-motion: reduce) { #evolve-btn.breeding .eb-fill { transition: none; } }
 .duel-mid.learning .teach-copy,
 .duel-mid.learned .teach-copy { color: var(--phos-b); }
 /* "● learning from your last 6 picks…": the full row breathes while the refit
@@ -4579,6 +4691,15 @@ html.handheld .handheld-gate {
 @keyframes pf-bump-lo { 50% { transform: rotate(-3deg); } }
 @keyframes pf-bump-hi { 50% { transform: rotate(3deg); } }
 .pf-k-arc { fill: none; stroke: var(--phos-a); stroke-width: 3.5; stroke-linecap: round; }
+/* Wander: where its zones begin (ideas, drift, roam), and a thin arc inside
+   the ring filling toward its next move — the model's, so amber. */
+.pf-k-zone { stroke: var(--silk-dim); stroke-width: 1.5; stroke-linecap: round; }
+.pf-k-count { fill: none; stroke: var(--phos-b-deep); stroke-width: 1.5; stroke-linecap: round; }
+/* Where a re-centred control was: a tick that fades over a second while the
+   pointer glides home (perform.js recentre). None under reduced motion. */
+.pf-k-ghost { stroke: var(--silk-dim); stroke-width: 2; stroke-linecap: round; opacity: 0; }
+.pf-k-ghost.fade { animation: pf-ghost 1000ms ease-out forwards; }
+@keyframes pf-ghost { from { opacity: 0.85; } to { opacity: 0; } }
 .pf-k-body { fill: var(--knob-body); stroke: #000; stroke-width: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)); }
 .pf-k-ptr { stroke: var(--silk); stroke-width: 3; stroke-linecap: round; }
 .pf-k-where { fill: var(--phos-b); }
@@ -4673,8 +4794,12 @@ html.handheld .handheld-gate {
   background: linear-gradient(180deg, #1d2127, #15171c);
   color: var(--silk-dim);
 }
-.pf-pad:disabled[data-wait]:not([data-wait=""])::after {
-  content: attr(data-wait);
+/* …and a pad whose press does more than its name says (Offer, while B holds
+   an offer, passes on it: NEXT · passes on B) says so the same way. */
+.pf-pad[data-sub]:not([data-sub=""])::after { content: attr(data-sub); }
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after { content: attr(data-wait); }
+.pf-pad:disabled[data-wait]:not([data-wait=""])::after,
+.pf-pad[data-sub]:not([data-sub=""])::after {
   display: block;
   margin-top: 3px;
   font-family: var(--font-mono);
@@ -4753,6 +4878,7 @@ html.handheld .handheld-gate {
 }
 @media (prefers-reduced-motion: reduce) {
   .pf-pad.flash { animation: none; }
+  .pf-k-ghost.fade { animation: none; }
   .pf-knob.bump-lo .pf-k-turn, .pf-knob.bump-hi .pf-k-turn { animation: none; }
 }
 
@@ -4838,6 +4964,9 @@ button.midi-ind:hover, button.midi-ind:focus-visible { border-color: var(--hairl
 /* A bred child that landed below its parent: the sampler exploring, said so. */
 .lin-explore { color: var(--silk-dim); font-style: italic; border-bottom: 1px dotted var(--silk-mute); cursor: help; }
 .pf-offer-what { color: var(--phos-b); font-style: normal; font-weight: 600; }
+/* How far an aimed offer went the way its control was turned: the model's
+   measurement, so amber; a miss says so in words, not in another colour. */
+.pf-offer-aim { color: var(--phos-b-dim); font-style: normal; }
 
 /* ---------- PERFORM: XY pad beside the hood ---------- */
 .pf-stage {

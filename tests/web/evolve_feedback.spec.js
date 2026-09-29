@@ -39,6 +39,9 @@ const init = ({ warmed = true } = {}) => `(() => {
       // object, so main reads what this leaves: the engine reporting its
       // importance weights intact, which is the case the refit used to skip.
       if (window.__pwNoRefit && d && d.status && typeof d.status === "object") d.status.needs_refit = false;
+      // Deals tagged as a given rule dealt them (the ◇ test): the engine's own
+      // pairs, under a rule the session is not running.
+      if (window.__pwDealMeta && d && d.type === "duel" && d.meta) Object.assign(d.meta, window.__pwDealMeta);
       if (d && typeof d.type === "string") {
         last[d.type] = d;
         counts[d.type] = (counts[d.type] || 0) + 1;
@@ -88,8 +91,6 @@ async function boot(page, opts = {}) {
 
 const count = (page, type) => page.evaluate((t) => window.__pwCounts[t] || 0, type);
 const post = (page, data) => page.evaluate((d) => window.__pwEngine().postMessage(d), data);
-const inject = (page, data) =>
-  page.evaluate((d) => window.__pwEngine().dispatchEvent(new MessageEvent("message", { data: d })), data);
 const picks = async (page) => Number(await page.locator("#duel-count").textContent());
 /** The names on the cards, as the toast will say them. */
 const cardNames = (page) =>
@@ -249,9 +250,21 @@ test("◇ states the dealing rule steadily: every pair under the default, a chec
 
   // The engine tags every tenth pair "check" under Random too, though it is
   // drawn like the rest: it must not read as a change of rule.
-  const pair = await page.evaluate(() => window.__pwLast.duel.pair);
-  const deal = (method) =>
-    inject(page, { type: "duel", pair, meta: { a: pair[0], b: pair[1], info_gain: 0, random_check: method !== "bald", method } });
+  //
+  // A pair reaches the table the way the engine deals it: one is up and the
+  // next is already dealt, waiting. So the deals from here on are tagged with
+  // the rule under test, and the pair is skipped until one dealt since is up:
+  // the first skip puts up the pair dealt before, the second one dealt after.
+  const deal = async (method) => {
+    await page.evaluate((m) => {
+      window.__pwDealMeta = { info_gain: 0, random_check: m !== "bald", method: m };
+    }, method);
+    for (let i = 0; i < 3; i++) {
+      await expect(page.locator("#skip-duel")).toBeEnabled({ timeout: 30_000 });
+      await page.locator("#skip-duel").click();
+    }
+    await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 30_000 });
+  };
   await deal("check");
   await expect(rule).toHaveText(RANDOM);
   await expect(rule).not.toHaveClass(/\bcheck\b/);

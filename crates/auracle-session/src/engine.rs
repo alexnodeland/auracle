@@ -43,7 +43,6 @@ use auracle_taste::{
     TasteModel, TastePosterior,
 };
 use fugue::Trace;
-use fugue_evo::inference::mh::EvolutionChain;
 use fugue_evo::inference::model::EvolutionModel;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -53,17 +52,7 @@ use crate::calib::{calibration, Calibration, Forecast};
 use crate::farm::{draw_seed, Draw, PreFeaturized};
 use crate::naming::{claim_name, NameScale};
 use crate::surrogate::SurrogateFitness;
-
-/// Ceiling on the step-count compensation for locked sites — the most a locked
-/// refinement walk may cost relative to an unlocked one.
-///
-/// 4× fully compensates a walk with three quarters of its sites pinned, which is
-/// already a heavier lock than the hand-build → pin → breed loop produces. Past
-/// that the walk is deliberately under-compensated, because `⚡ evolve from
-/// this` is a button press with a person waiting behind it and a 90%-locked
-/// patch would otherwise ask for ten times the budget. See the note at the use
-/// site in `refine_one` for what that costs.
-const LOCK_SCALE_CAP: f64 = 4.0;
+use crate::walk::{run_walk, walk_on, walk_seed, WalkContext, WalkJob, WalkResult};
 
 /// The φ coordinate names, as owned strings (what the log records).
 pub fn phi_names() -> Vec<String> {
@@ -256,7 +245,8 @@ pub enum Acquisition {
 ///   just does not aim anywhere better on average. That is a coherent thing
 ///   for argmax-over-a-noisy-surrogate to be, and it is the argument to
 ///   re-run this on if the surrogate ever gets sharper.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RefineKeep {
     /// Inject the state the walk ended on. The shipped behaviour, and the
     /// default — the A/B above ran and tied, so nothing moved it.
@@ -517,7 +507,9 @@ pub struct SessionConfig {
     /// steps. Expressed as a fraction of the observed SD, 0.6 means the same
     /// softness whatever the spread.
     pub duel_temperature: f64,
-    /// Show one uniformly-random "check" duel every N duels. An
+    /// Show one uniformly-random "check" duel every N pairs shown (pairs
+    /// dealt and thrown away unseen do not count; see
+    /// [`Engine::duel_shown`]). An
     /// information-seeking acquisition deliberately picks pairs near p = 0.5,
     /// so calibration measured on acquisition-chosen duels is
     /// selection-biased; these are the unbiased subsample.
@@ -1041,6 +1033,11 @@ pub enum RefineOutcome {
     /// The child was novel but ranked below the pool's worst member and was
     /// not admitted.
     NotAdmitted,
+    /// The walk result is not the one the engine absorbs next: its generation
+    /// was already finished (stopped, or replaced by a newer one), or it
+    /// arrived ahead of an earlier job. Nothing changed. Results are absorbed
+    /// strictly in job order, so a caller holds an early one until its turn.
+    Stale,
 }
 
 impl RefineOutcome {
@@ -1055,14 +1052,43 @@ impl RefineOutcome {
             RefineOutcome::NoMove => "no_move",
             RefineOutcome::Duplicate => "duplicate",
             RefineOutcome::NotAdmitted => "not_admitted",
+            RefineOutcome::Stale => "stale",
         }
     }
+}
+
+/// A generation between [`Engine::refine_jobs`] and its finish: what the
+/// engine needs to absorb its results in job order and to retire what they
+/// displaced at the end.
+///
+/// Not persisted. A reload mid-generation simply ends it: the children
+/// already absorbed are in the bank, nothing has been retired, and the next
+/// generation's finish evicts whatever the pool still owes.
+struct OpenGeneration {
+    /// The generation number its children are stamped with.
+    generation: usize,
+    /// The shared context, kept for the serial path ([`Engine::refine_seed`]).
+    context: WalkContext,
+    /// The jobs, in absorption order. Their seeds are what each child is
+    /// diffed against and inherits node identities from.
+    jobs: Vec<WalkJob>,
+    /// Index of the next job to absorb.
+    next: usize,
+    /// Ids the end-of-generation eviction must spare besides pinned ones: the
+    /// seed of a `⚡ evolve from this` absorbed while this generation is open.
+    protect: HashSet<u64>,
 }
 
 /// How many dealt, unanswered check pairs the engine remembers (see
 /// `Engine::pending_checks`). A duel is answered within a few deals; this only
 /// bounds the pairs that never are.
 pub const PENDING_CHECKS: usize = 32;
+
+/// How many pairs dealt but not yet reported shown the engine remembers (see
+/// `Engine::dealt_unshown`). The app holds at most a pair on the table, the
+/// pair dealt ahead and a few re-deals of it; this only bounds the deals it
+/// throws away.
+pub const DEALT_UNSHOWN: usize = 8;
 
 pub struct Engine {
     /// Configuration.
@@ -1096,9 +1122,17 @@ pub struct Engine {
     shown_pairs: HashMap<(u64, u64), u32>,
     /// How many times each candidate has been offered, by any pairing.
     shown_candidates: HashMap<u64, u32>,
-    /// Duels offered this run (not the same as observations recorded — the
-    /// user may skip). Paces the random check duels.
+    /// Pairs put in front of the player this run (not the same as
+    /// observations recorded — the user may skip; not the same as pairs
+    /// dealt — a deal ahead can be thrown away unseen). Paces the random check
+    /// duels, so the calibration subsample is a fixed share of what the player
+    /// was actually asked.
     duels_shown: usize,
+    /// Pairs dealt by [`Engine::deal_duel_except`] and not yet reported shown
+    /// by [`Engine::duel_shown`], oldest first, each with whether it was dealt
+    /// as a random check. Bounded by [`DEALT_UNSHOWN`]: a deal the caller
+    /// threw away is simply forgotten.
+    dealt_unshown: VecDeque<((u64, u64), bool)>,
     /// Check pairs dealt and not yet answered, oldest first. An answer is
     /// scored as a random check when its pair was dealt as one — not only
     /// when it is the *last* pair dealt. The app records a vote after its
@@ -1140,6 +1174,19 @@ pub struct Engine {
     /// What the most recent `refine_seed`/`refine_from` did — see
     /// [`RefineOutcome`]. Not persisted: it describes a call, not a session.
     last_refine: RefineOutcome,
+    /// The generation being absorbed, if one is open. See [`OpenGeneration`].
+    open: Option<OpenGeneration>,
+    /// `⚡ evolve from this` walks drawn and not yet absorbed or cancelled,
+    /// by seed id: the context and job [`Engine::refine_from_job`] dealt, so
+    /// [`Engine::refine_from_walk`] can walk that very job here. A seed in
+    /// this table is never evicted (an edit's insert, a preset, a trim): a
+    /// walk from a patch that left the pool meanwhile would be thrown away
+    /// as `unknown_seed`. Not persisted: a walk in flight does not survive
+    /// a reload.
+    evolving: HashMap<u64, (WalkContext, WalkJob)>,
+    /// What the last generation to finish retired ([`Engine::retired`]). Not
+    /// persisted: it describes a call, like `last_refine`.
+    retired: Vec<u64>,
     /// The taste map's axes as last drawn, so the next map faces the same way
     /// (see [`Engine::taste_map`]). Behind a lock because drawing the map is a
     /// read of the session, and remembering how it was drawn is not a change
@@ -1167,6 +1214,7 @@ impl Engine {
             shown_pairs: HashMap::new(),
             shown_candidates: HashMap::new(),
             duels_shown: 0,
+            dealt_unshown: VecDeque::new(),
             pending_checks: VecDeque::new(),
             resamples_since_fit: 0,
             memo: RenderMemo::default(),
@@ -1179,6 +1227,9 @@ impl Engine {
             repaired_cells: 0,
             dropped_observations: 0,
             last_refine: RefineOutcome::Idle,
+            open: None,
+            evolving: HashMap::new(),
+            retired: Vec::new(),
             map_axes: std::sync::Mutex::new(None),
         }
     }
@@ -1187,9 +1238,9 @@ impl Engine {
     /// — fill, insert, restore, and the refinement surrogate.
     ///
     /// Shared rather than owned so a frontend can pre-load one and read back
-    /// what the engine learned. Refinement captures it by clone at
-    /// [`Engine::refine_one`] time, so swapping it mid-generation is not
-    /// something to do.
+    /// what the engine learned. A walk captures it by clone when it starts,
+    /// and the memo never changes a result (a hit is bit-identical to a
+    /// miss), so swapping it mid-generation only costs renders.
     pub fn set_memo(&mut self, memo: RenderMemo) {
         self.memo = memo;
     }
@@ -1808,23 +1859,7 @@ impl Engine {
     /// it costs nothing in detailed balance; it just means "locked" is a
     /// guarantee about *addresses*, not about subtrees.
     pub fn violates_locks(prev: &Trace, next: &Trace, locked: &HashSet<String>) -> bool {
-        if locked.is_empty() {
-            return false;
-        }
-        for (addr, c) in &prev.choices {
-            if locked.contains(&**addr) {
-                match next.choices.get(addr) {
-                    Some(n) if n.value == c.value => {}
-                    _ => return true,
-                }
-            }
-        }
-        for addr in next.choices.keys() {
-            if locked.contains(&**addr) && !prev.choices.contains_key(addr) {
-                return true;
-            }
-        }
-        false
+        crate::walk::violates_locks(prev, next, locked)
     }
 
     /// Grammar prior with kind-weights tilted toward the fitted taste: each
@@ -2129,6 +2164,29 @@ impl Engine {
         self.walk_with(rng, seed, locked, steps, fitness)
     }
 
+    /// The same locked walk on a fitness the caller built: PERFORM's aimed
+    /// offer ([`Engine::offer_toward`]) hands it a
+    /// [`crate::perform::TiltedFitness`] around the target
+    /// [`Self::refine_walk`] would choose.
+    pub(crate) fn walk_fitness<R, F>(
+        &self,
+        rng: &mut R,
+        seed: &PatchTree,
+        locked: &HashSet<String>,
+        steps: usize,
+        fitness: F,
+    ) -> Result<PatchTree, RefineOutcome>
+    where
+        R: Rng,
+        F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.walk_with(rng, seed, locked, steps, fitness)
+    }
+
     /// A **local** Metropolis walk over the knobs in `free` for the
     /// performance drift: each step picks one free knob uniformly, proposes
     /// `v + σ·N(0, 1)` reflected into the knob domain, and accepts on the
@@ -2266,11 +2324,11 @@ impl Engine {
         self.walk_with(rng, seed, locked, steps, fitness)
     }
 
-    /// The locked walk itself, over any scalar fitness. [`Self::refine_one`]
-    /// hands it the taste surrogate; the performance surfaces hand it
-    /// [`crate::perform::VetOnlyFitness`] when no taste has been fitted yet,
-    /// which makes the target `π ∝ p_grammar` restricted to vetted patches —
-    /// exactly what the posterior is before it has seen any evidence.
+    /// The locked walk ([`crate::walk`]'s `walk_on`) on this engine's current
+    /// target: the prior tilted by the posterior as the pool stands now, and
+    /// the configured β and keep rule. [`Self::refine_one`] hands it the taste
+    /// surrogate; the performance surfaces hand it
+    /// [`crate::perform::VetOnlyFitness`] when no taste has been fitted yet.
     fn walk_with<R, F>(
         &self,
         rng: &mut R,
@@ -2287,110 +2345,16 @@ impl Engine {
             + Sync
             + 'static,
     {
-        let model = EvolutionModel::new(self.biased_prior(), fitness).with_beta(self.cfg.beta);
-        let mut chain = EvolutionChain::new(model);
-        // `init_from` is `None` exactly when the seed's total log-weight is not
-        // finite. The surrogate fitness is finite by construction (a
-        // quarantined render scores `QUARANTINE_FITNESS`, not `−∞`), so the
-        // only way to get here is a seed the grammar prior gives zero mass —
-        // which is a fact about the patch, and the caller needs to hear it as
-        // one rather than as a walk that happened not to move.
-        let Some(mut trace) = chain.init_from(seed) else {
-            return Err(RefineOutcome::OutsideSupport);
-        };
-
-        // Scale steps for proposals wasted on locked sites. The kernel picks a
-        // target site uniformly over all of them, so with a fraction `f` free
-        // only `f` of the proposals can be accepted and the walk needs `1/f`
-        // times as many steps to travel as far.
-        //
-        // **The cap is a cost bound, not a correction**, and it is stated
-        // rather than left silent. Past 75% of sites locked, `LOCK_SCALE_CAP`
-        // stops the compensation short — a patch with 90% of its sites pinned
-        // would otherwise ask for ten times the budget, and a `⚡ evolve from
-        // this` on a heavily-pinned patch is a button press with a person
-        // waiting behind it. So a very heavily locked walk *does* explore less
-        // than the config nominally buys. That is the intended trade; the thing
-        // to avoid is believing otherwise.
-        let total_sites = trace.choices.len().max(1);
-        let locked_present = trace
-            .choices
-            .keys()
-            .filter(|a| locked.contains(&***a))
-            .count();
-        let free = total_sites.saturating_sub(locked_present).max(1);
-        let factor = (total_sites as f64 / free as f64).min(LOCK_SCALE_CAP);
-        let steps = ((steps as f64) * factor).ceil() as usize;
-
-        let mut current = seed.clone();
-        // The elite archive, and it is **free**.
-        //
-        // Every trace the kernel hands back is already scored under the target
-        // program, so `total_log_weight()` *is* `log π_β = log p_grammar +
-        // β·E[u]` for the state it accompanies — no extra model execution, no
-        // extra featurization, one f64 compare per step.
-        //
-        // Scored on the target rather than on fitness alone, which is the
-        // choice worth stating. Taking the argmax of `E[u]` would discard the
-        // parsimony half of the very distribution the walk is sampling, and it
-        // would do so with a bias: a bigger term has more modules to score
-        // well with, so fitness-argmax systematically returns the largest tree
-        // the walk touched. `log π_β` is what the walk is climbing, so it is
-        // what "the best point this walk found" has to mean.
-        //
-        // The seed is in the archive. A walk that never improves on where it
-        // started therefore returns the seed and is filtered to `None` below,
-        // instead of injecting whatever it happened to be standing on at step
-        // 40 — which is what `Last` does, and is the thing being A/B'd.
-        let mut best: Option<(f64, PatchTree)> = match self.cfg.refine_keep {
-            RefineKeep::Last => None,
-            RefineKeep::Best => Some((trace.total_log_weight(), seed.clone())),
-        };
-        for _ in 0..steps {
-            let (g, t) = chain.step(rng, &trace);
-            if Self::violates_locks(&trace, &t, locked) {
-                continue; // reject outside the kernel; stay at `trace`
-            }
-            if let Some((best_w, best_tree)) = &mut best {
-                let w = t.total_log_weight();
-                if w > *best_w {
-                    *best_w = w;
-                    *best_tree = g.clone();
-                }
-            }
-            current = g;
-            trace = t;
-        }
-        if let Some((_, best_tree)) = best {
-            current = best_tree;
-        }
-        // The mutation boundary, and the reason the clamp is *here* rather than
-        // at the knob that draws the number: everything downstream of this line
-        // — φ, the observation log, the faceplate, the exported PNG — takes the
-        // term as given, so a value that leaves this function wrong is wrong in
-        // six places by the time anyone can see it.
-        //
-        // The kernel should never produce one. Every continuous site is
-        // `Uniform(0,1)`, whose `log_prob` is −∞ outside the unit interval, so
-        // a proposal that escapes scores `log α = −∞` and is rejected — and
-        // that is measured, not assumed: `auracle-grammar --example
-        // mh_escape` runs 8 chains × 20 000 single-site transitions through
-        // this exact kernel and observes zero escapes. So this is a belt on a
-        // proven brace, costing one trace walk per accepted child, and its real
-        // job is to be the line that has to be deleted before the invariant can
-        // be broken again.
-        debug_assert_eq!(
-            current.domain_violations().len(),
-            0,
-            "MH seated an out-of-domain site: {:?}",
-            current.domain_violations()
-        );
-        current.clamp_domains();
-        if current == *seed {
-            Err(RefineOutcome::NoMove)
-        } else {
-            Ok(current)
-        }
+        walk_on(
+            self.biased_prior(),
+            self.cfg.beta,
+            self.cfg.refine_keep,
+            fitness,
+            rng,
+            seed,
+            locked,
+            steps,
+        )
     }
 
     /// How many distinct candidate pairs the exposure tally currently tracks.
@@ -2406,14 +2370,18 @@ impl Engine {
         self.shown_candidates.keys().copied().collect()
     }
 
-    /// What the most recent [`Engine::refine_seed`] / [`Engine::refine_from`]
-    /// did. [`RefineOutcome::Idle`] until one has run.
+    /// What the most recent absorption did ([`Engine::refine_absorb`],
+    /// [`Engine::refine_seed`], [`Engine::refine_from`] and its job/absorb
+    /// pair). [`RefineOutcome::Idle`] until one has run.
     pub fn last_refine(&self) -> RefineOutcome {
         self.last_refine
     }
 
-    /// Insert a candidate (evicting the worst if full, never `protect`).
-    /// Returns the new id, or `None` if the newcomer ranks below the evictee.
+    /// Insert a hand-made candidate — an edit or a preset — evicting the worst
+    /// member at once if the pool is full (never `protect`, never a pinned
+    /// one, never the seed of a ⚡ walk in flight). It always lands when anything is evictable: the player asked for
+    /// it. Refined children do not come here; they must earn their slot and
+    /// wait for the generation's end ([`Engine::admit_refined`]).
     fn insert_candidate(
         &mut self,
         tree: PatchTree,
@@ -2426,7 +2394,6 @@ impl Engine {
         let want_audio = self.wants_admitted_audio();
         let (cf, fresh) = featurize_memo(&tree, &self.cfg.phrase, &self.memo, want_audio).ok()?;
         let phi_std = standardizer.transform(&cf.features.phi());
-        let mean_new = self.utility_of(&phi_std);
         if self.pool.len() >= self.cfg.pool_size {
             // Rank un-standardized members as *worst*, explicitly, rather
             // than letting `utility_of` score them 0.0 and land them
@@ -2442,32 +2409,24 @@ impl Engine {
                 .pool
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| Some(c.id) != protect && !c.pinned)
+                .filter(|(_, c)| {
+                    Some(c.id) != protect && !c.pinned && !self.evolving.contains_key(&c.id)
+                })
                 .min_by(|(_, x), (_, y)| {
                     let (sx, ux) = rank(x);
                     let (sy, uy) = rank(y);
                     sx.cmp(&sy).then(ux.total_cmp(&uy))
                 })
-                .map(|(i, c)| (i, self.utility_of(&c.phi_std)));
-            match worst {
-                Some((worst_idx, worst_mean)) => {
-                    // Hand edits always land (the user asked for them);
-                    // refined candidates must earn their slot.
-                    if origin == Origin::Refined && mean_new <= worst_mean {
-                        return None;
-                    }
-                    let gone = self.pool[worst_idx].id;
-                    self.pool.swap_remove(worst_idx);
-                    // The exposure tallies are about candidates that can still
-                    // be dealt; an evicted id can never be, and keeping its
-                    // rows made both maps grow with every eviction for the life
-                    // of the session.
-                    self.shown_pairs
-                        .retain(|(a, b), _| *a != gone && *b != gone);
-                    self.shown_candidates.remove(&gone);
-                }
-                None => return None,
-            }
+                .map(|(i, _)| i);
+            let worst_idx = worst?;
+            let gone = self.pool[worst_idx].id;
+            self.pool.swap_remove(worst_idx);
+            // The exposure tallies are about candidates that can still be
+            // dealt; an evicted id can never be, and keeping its rows made both
+            // maps grow with every eviction for the life of the session.
+            self.shown_pairs
+                .retain(|(a, b), _| *a != gone && *b != gone);
+            self.shown_candidates.remove(&gone);
         }
         let id = self.alloc_id();
         let render = self.admitted_render(&tree, &cf.features, fresh);
@@ -2485,95 +2444,517 @@ impl Engine {
         Some(id)
     }
 
-    /// Taste-guided refinement: run fugue-evo typed MH on the Boltzmann
-    /// target from each of the top seeds, and add improved, vetted, novel
-    /// candidates to the pool (evicting the worst if full). Each injection
-    /// is recorded as a lineage event.
-    pub fn refine<R: Rng>(&mut self, rng: &mut R) {
-        for parent_id in self.refine_begin() {
-            self.refine_seed(rng, parent_id);
+    /// The pool members an eviction takes first, lowest first: every member
+    /// that is neither pinned nor in `protect`, ranked by `(standardized,
+    /// utility)` ascending, utility under `judge` — a member without φ_std
+    /// ranks worst explicitly, for the reason [`Engine::insert_candidate`]
+    /// gives. Ties keep pool order, so the first of equals goes first, which
+    /// is the member `min_by` picked when eviction happened one child at a
+    /// time.
+    fn eviction_order(&self, protect: &HashSet<u64>) -> Vec<(usize, f64)> {
+        let mut rows: Vec<(usize, bool, f64)> = self
+            .pool
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                !c.pinned && !protect.contains(&c.id) && !self.evolving.contains_key(&c.id)
+            })
+            .map(|(i, c)| (i, !c.phi_std.is_empty(), self.judged_utility(&c.phi_std)))
+            .collect();
+        rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.total_cmp(&b.2)));
+        rows.into_iter().map(|(i, _, u)| (i, u)).collect()
+    }
+
+    /// The posterior a generation's admissions and retirements are judged
+    /// under: while a generation is open, the one it opened with (its
+    /// context's), not the one picks made since have reweighted. Which
+    /// children are kept, and which members they displace, then do not
+    /// depend on when the picks landed relative to the walks — the pool is
+    /// the one the serial path would have bred with the picks after it. With
+    /// no generation open, or if the scale has changed under it (a refit the
+    /// app does not allow meanwhile), the current posterior.
+    fn judge(&self) -> Option<&TastePosterior> {
+        if let (Some(open), Some(st)) = (&self.open, &self.standardizer) {
+            if Arc::ptr_eq(st, &open.context.standardizer) {
+                return Some(&open.context.posterior);
+            }
+        }
+        self.posterior.as_deref()
+    }
+
+    /// Posterior-mean mixture utility of a standardized φ under `judge`
+    /// (0 with no posterior).
+    fn judged_utility(&self, phi_std: &[f64]) -> f64 {
+        match self.judge() {
+            Some(p) if !phi_std.is_empty() => p.utility_mix(phi_std).0,
+            _ => 0.0,
         }
     }
 
-    /// Open a generation and return the parent ids it will refine from, best
-    /// first. Empty if there is nothing to refine toward yet (no posterior),
-    /// in which case the generation counter is **not** advanced.
+    /// Admit a refined child **without evicting anyone yet**. Returns the new
+    /// id, or `None` if the child does not earn a slot.
     ///
-    /// This exists so a caller can drive refinement one seed at a time and
-    /// report progress between seeds. A whole generation is tens of seconds of
-    /// render-bound work — running it as one opaque call is what made the app
-    /// look hung.
-    pub fn refine_begin(&mut self) -> Vec<u64> {
-        if self.posterior.is_none() || self.standardizer.is_none() {
+    /// The bar is the one eviction-per-child always set: a refined child must
+    /// beat the member it would displace. It is computed against the pool as
+    /// it will stand once the evictions already owed are paid — with `e`
+    /// evictions owed after this child is in, the child must beat the `e`-th
+    /// lowest evictable member, which is exactly the member per-child eviction
+    /// would be comparing it with at this point. So the children admitted and
+    /// the members finally retired are the ones per-child eviction chose
+    /// (`deferred_eviction_retires_what_per_child_eviction_did` pins it). What
+    /// moves is *when* the retirees leave — at [`Engine::refine_finish`] — so
+    /// a save made while the generation runs protects its patch, and a row the
+    /// player is looking at does not vanish half way through.
+    fn admit_refined(&mut self, tree: PatchTree, protect: &HashSet<u64>) -> Option<u64> {
+        let standardizer = self.standardizer.as_ref()?;
+        // Memoized: the walk featurized the state it ended on, and a farm
+        // walk's result puts that featurization here before this runs.
+        let want_audio = self.wants_admitted_audio();
+        let (cf, fresh) = featurize_memo(&tree, &self.cfg.phrase, &self.memo, want_audio).ok()?;
+        let phi_std = standardizer.transform(&cf.features.phi());
+        let mean_new = self.judged_utility(&phi_std);
+        let owed = (self.pool.len() + 1).saturating_sub(self.cfg.pool_size);
+        if owed > 0 {
+            // Fewer evictable members than evictions owed: nothing can make
+            // room, as when every candidate for eviction was pinned.
+            let (_, bar) = *self.eviction_order(protect).get(owed - 1)?;
+            if mean_new <= bar {
+                return None;
+            }
+        }
+        let id = self.alloc_id();
+        let render = self.admitted_render(&tree, &cf.features, fresh);
+        self.pool.push(Candidate {
+            id,
+            tree: settled(tree),
+            phi_std,
+            key: cf.key,
+            render,
+            features: cf.features,
+            origin: Origin::Refined,
+            name: None,
+            pinned: false,
+        });
+        Some(id)
+    }
+
+    /// Retire the lowest evictable members until the pool is back to
+    /// `pool_size`, or nothing evictable is left. Returns the retired ids,
+    /// lowest first. Removal keeps the survivors' order.
+    pub(crate) fn evict_to_size(&mut self, protect: &HashSet<u64>) -> Vec<u64> {
+        let owed = self.pool.len().saturating_sub(self.cfg.pool_size);
+        if owed == 0 {
             return Vec::new();
         }
+        let gone: Vec<u64> = self
+            .eviction_order(protect)
+            .into_iter()
+            .take(owed)
+            .map(|(i, _)| self.pool[i].id)
+            .collect();
+        let set: HashSet<u64> = gone.iter().copied().collect();
+        self.pool.retain(|c| !set.contains(&c.id));
+        // The exposure tallies are about candidates that can still be dealt;
+        // a retired id never can be again.
+        self.shown_pairs
+            .retain(|(a, b), _| !set.contains(a) && !set.contains(b));
+        for id in &gone {
+            self.shown_candidates.remove(id);
+        }
+        gone
+    }
+
+    /// Taste-guided refinement, one whole generation: open it
+    /// ([`Engine::refine_jobs`]), run every walk here with this engine's memo
+    /// ([`run_walk`]), absorb the results in job order
+    /// ([`Engine::refine_absorb`]) and retire what they displaced. These are
+    /// the jobs, the pure walk and the absorption the render farm drives, so
+    /// the serial path is the parallel one with a single worker.
+    pub fn refine<R: Rng>(&mut self, rng: &mut R) {
+        let Some((ctx, jobs)) = self.refine_jobs(rng) else {
+            return;
+        };
+        for job in &jobs {
+            let result = run_walk(&ctx, job, &self.memo);
+            self.refine_absorb(result);
+        }
+        self.refine_finish();
+    }
+
+    /// What every walk of a generation opened now would share — the prior
+    /// tilted by the posterior as the pool stands, the posterior, the
+    /// standardizer, the phrase, β and the keep rule — or `None` before there
+    /// is a taste to refine toward.
+    pub fn walk_context(&self) -> Option<WalkContext> {
+        let (Some(posterior), Some(standardizer)) = (&self.posterior, &self.standardizer) else {
+            return None;
+        };
+        Some(WalkContext {
+            prior: self.biased_prior(),
+            posterior: Arc::clone(posterior),
+            standardizer: Arc::clone(standardizer),
+            phrase: self.cfg.phrase.clone(),
+            beta: self.cfg.beta,
+            refine_keep: self.cfg.refine_keep,
+        })
+    }
+
+    /// Open a generation as data: the context its walks share and one job
+    /// per parent, best parent first. `None` if there is nothing to refine
+    /// toward yet (no posterior), in which case no generation is opened and
+    /// the counter does not advance.
+    ///
+    /// Finishes any generation still open first ([`Engine::refine_finish`]).
+    /// Then: bumps [`Engine::generation`], takes the top
+    /// [`SessionConfig::refine_seeds`] of [`Engine::ranked`] as parents, draws
+    /// **one** `u64` from `rng` (the caller's `refine` stream) and gives job
+    /// `i` the seed [`walk_seed`]`(base, i)`. Each walk therefore owns its
+    /// randomness, and no walk can move another by finishing early or late.
+    ///
+    /// The jobs can run anywhere ([`run_walk`] is pure); their results come
+    /// back through [`Engine::refine_absorb`] in job order.
+    pub fn refine_jobs<R: Rng>(&mut self, rng: &mut R) -> Option<(WalkContext, Vec<WalkJob>)> {
+        self.refine_finish();
+        let ctx = self.walk_context()?;
         self.generation += 1;
-        self.ranked()
+        let base: u64 = rng.gen();
+        let jobs: Vec<WalkJob> = self
+            .ranked()
             .iter()
             .take(self.cfg.refine_seeds)
-            .map(|&(i, _, _)| self.pool[i].id)
+            .enumerate()
+            .map(|(index, &(i, _, _))| WalkJob {
+                generation: self.generation,
+                index,
+                parent_id: self.pool[i].id,
+                seed: self.pool[i].tree.clone(),
+                locked: Vec::new(),
+                steps: self.cfg.refine_steps,
+                rng_seed: walk_seed(base, index as u64),
+            })
+            .collect();
+        if !jobs.is_empty() {
+            self.open = Some(OpenGeneration {
+                generation: self.generation,
+                context: ctx.clone(),
+                jobs: jobs.clone(),
+                next: 0,
+                protect: HashSet::new(),
+            });
+        }
+        Some((ctx, jobs))
+    }
+
+    /// Fold one walk's result into the open generation: the novelty check,
+    /// admission and lineage, exactly as the serial path always did after its
+    /// walk. Returns the child id, or `None` with the reason in
+    /// [`Engine::last_refine`].
+    ///
+    /// Results are taken **strictly in job order**. One that is not the next
+    /// job of the open generation — early, repeated, or from a generation that
+    /// has since finished — changes nothing and reads
+    /// [`RefineOutcome::Stale`]; hold it and offer it again in its turn.
+    ///
+    /// Admission never evicts here ([`Engine::admit_refined`] says why);
+    /// absorbing the last job finishes the generation, which is when the
+    /// displaced members are retired. To stop early, call
+    /// [`Engine::refine_finish`]: the children already absorbed stay, and the
+    /// pool is back to size.
+    pub fn refine_absorb(&mut self, result: WalkResult) -> Option<u64> {
+        let turn = match &mut self.open {
+            Some(open)
+                if result.generation == open.generation
+                    && result.index == open.next
+                    && open
+                        .jobs
+                        .get(result.index)
+                        .is_some_and(|j| j.parent_id == result.parent_id) =>
+            {
+                open.next += 1;
+                let last = open.next == open.jobs.len();
+                Some((
+                    open.jobs[result.index].seed.clone(),
+                    open.protect.clone(),
+                    last,
+                ))
+            }
+            _ => None,
+        };
+        let Some((seed, protect, last)) = turn else {
+            self.last_refine = RefineOutcome::Stale;
+            return None;
+        };
+        let (child, outcome) = self.absorb_walk(result.parent_id, &seed, result, &protect);
+        self.last_refine = outcome;
+        if last {
+            self.refine_finish();
+        }
+        child
+    }
+
+    /// Close the open generation, if any, and retire the lowest unpinned
+    /// members until the pool is back to [`SessionConfig::pool_size`].
+    /// Returns the retired ids, lowest first.
+    ///
+    /// This is **stop**: the children absorbed so far stay, results still in
+    /// flight read [`RefineOutcome::Stale`] if offered, and the pool is
+    /// consistent. It is also what absorbing a generation's last job does, and
+    /// what opening the next one does first. Idempotent; with no generation
+    /// open it still restores the pool's size (a session saved mid-generation
+    /// reloads over size, and is trimmed here).
+    ///
+    /// Pins are read **now**, not when a child was admitted: a patch saved at
+    /// any point before the finish is never retired by it.
+    ///
+    /// The retirees are ranked under the posterior the generation opened
+    /// with, as its admissions were: picks made while it ran reweight the
+    /// posterior for the next pair, not for which children are kept.
+    pub fn refine_finish(&mut self) -> Vec<u64> {
+        let was_open = self.open.is_some();
+        let protect = self
+            .open
+            .as_ref()
+            .map(|o| o.protect.clone())
+            .unwrap_or_default();
+        let gone = self.evict_to_size(&protect);
+        self.open = None;
+        if was_open || !gone.is_empty() {
+            self.retired = gone.clone();
+        }
+        gone
+    }
+
+    /// The ids the last generation to finish retired, lowest first —
+    /// whether it finished on its last absorb, on a stop, or because the next
+    /// one opened. The pool no longer holds them.
+    pub fn retired(&self) -> &[u64] {
+        &self.retired
+    }
+
+    /// `(absorbed, total)` jobs of the open generation, or `None` when none
+    /// is open.
+    pub fn refine_progress(&self) -> Option<(usize, usize)> {
+        self.open.as_ref().map(|o| (o.next, o.jobs.len()))
+    }
+
+    /// The members [`Engine::refine_finish`] would retire if it ran now,
+    /// lowest first: while a generation runs, the rows a save would rescue.
+    /// Ranked as the finish will rank them, under the posterior the
+    /// generation opened with.
+    /// Empty when the pool is not over size.
+    pub fn retiring(&self) -> Vec<u64> {
+        let owed = self.pool.len().saturating_sub(self.cfg.pool_size);
+        let protect = self
+            .open
+            .as_ref()
+            .map(|o| o.protect.clone())
+            .unwrap_or_default();
+        self.eviction_order(&protect)
+            .into_iter()
+            .take(owed)
+            .map(|(i, _)| self.pool[i].id)
             .collect()
     }
 
-    /// Refine from one seed of the open generation. Returns the injected child
-    /// id, or `None` — and then [`Engine::last_refine`] says why: the walk did
-    /// not move, it landed on a patch the pool already holds, the child was
-    /// not admitted, or the seed was outside the prior's support to begin with.
-    pub fn refine_seed<R: Rng>(&mut self, rng: &mut R, parent_id: u64) -> Option<u64> {
-        let no_locks = HashSet::new();
-        let (child, outcome) = self.refine_inner(rng, parent_id, &no_locks, None);
-        self.last_refine = outcome;
-        child
+    /// Open a generation with its jobs kept in the engine, and return the
+    /// parent ids it will refine from, in job order. Empty if there is nothing
+    /// to refine toward yet (no posterior), in which case the generation
+    /// counter is **not** advanced.
+    ///
+    /// The serial driver: pair it with [`Engine::refine_seed`] to run a
+    /// generation one walk at a time and report progress between walks. It
+    /// is [`Engine::refine_jobs`] with the jobs held here instead of handed
+    /// out, so it draws the same one base seed from `rng`.
+    pub fn refine_begin<R: Rng>(&mut self, rng: &mut R) -> Vec<u64> {
+        self.refine_jobs(rng)
+            .map(|(_, jobs)| jobs.iter().map(|j| j.parent_id).collect())
+            .unwrap_or_default()
+    }
+
+    /// Run the open generation's job for `parent_id` here, with this
+    /// engine's memo, and absorb it. Returns the injected child id, or `None`
+    /// — and then [`Engine::last_refine`] says why: the walk did not move, it
+    /// landed on a patch the pool already holds, the child was not admitted,
+    /// the seed was outside the prior's support, or no open job has that
+    /// parent ([`RefineOutcome::UnknownSeed`]). Jobs listed before it that
+    /// were never run are skipped.
+    pub fn refine_seed(&mut self, parent_id: u64) -> Option<u64> {
+        let found = self.open.as_mut().and_then(|open| {
+            let at = open.next
+                + open.jobs[open.next..]
+                    .iter()
+                    .position(|j| j.parent_id == parent_id)?;
+            open.next = at;
+            Some((open.context.clone(), open.jobs[at].clone()))
+        });
+        let Some((ctx, job)) = found else {
+            self.last_refine = RefineOutcome::UnknownSeed;
+            return None;
+        };
+        let result = run_walk(&ctx, &job, &self.memo);
+        self.refine_absorb(result)
     }
 
     /// Locked refinement from one explicit seed candidate: evolve everything
     /// *except* the locked addresses. Returns the injected child id, or `None`
     /// with the reason in [`Engine::last_refine`].
     ///
-    /// The generation counter advances only when a child actually lands. It
-    /// used to advance on every call, so a run of "no move" presses read as
-    /// generations in the lineage that contained nothing.
+    /// One job over the generation's path: [`Engine::refine_from_job`], then
+    /// [`Engine::refine_from_walk`] (the pure walk here with this engine's
+    /// memo, absorbed).
     pub fn refine_from<R: Rng>(
         &mut self,
         rng: &mut R,
         seed_id: u64,
         locked: &[String],
     ) -> Option<u64> {
-        let locked: HashSet<String> = locked.iter().cloned().collect();
-        // Open the generation the child will be recorded under, and close it
-        // again if nothing lands — `record_child` stamps `self.generation`, so
-        // the bump has to precede it.
-        self.generation += 1;
-        let (child, outcome) = self.refine_inner(rng, seed_id, &locked, Some(seed_id));
-        if child.is_none() {
-            self.generation -= 1;
-        }
+        self.refine_from_job(rng, seed_id, locked).ok()?;
+        self.refine_from_walk(seed_id)
+    }
+
+    /// Walk the ⚡ job [`Engine::refine_from_job`] dealt for `seed_id` here,
+    /// with this engine's memo, and absorb it: the child a farm worker would
+    /// have bred from the same job. The frontend draws the job first and
+    /// only then decides where to walk it, so the `refine` stream is drawn
+    /// in the order the requests came, however long a crew takes to come
+    /// up. `None` with [`RefineOutcome::UnknownSeed`] when no job for that
+    /// seed is in flight.
+    pub fn refine_from_walk(&mut self, seed_id: u64) -> Option<u64> {
+        let Some((ctx, job)) = self.evolving.get(&seed_id).cloned() else {
+            self.last_refine = RefineOutcome::UnknownSeed;
+            return None;
+        };
+        let result = run_walk(&ctx, &job, &self.memo);
+        self.refine_from_absorb(seed_id, result)
+    }
+
+    /// Drop the ⚡ job in flight for `seed_id` (a stop): its seed may be
+    /// evicted again, and its result, if it is offered anyway, is absorbed
+    /// as any other would be. Returns whether one was in flight.
+    pub fn refine_from_cancel(&mut self, seed_id: u64) -> bool {
+        self.evolving.remove(&seed_id).is_some()
+    }
+
+    /// The seeds of the ⚡ walks in flight, ascending.
+    pub fn refine_from_inflight(&self) -> Vec<u64> {
+        let mut ids: Vec<u64> = self.evolving.keys().copied().collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    /// `⚡ evolve from this` as data: the context and the single job, for a
+    /// farm worker to walk while this engine keeps answering. Draws one `u64`
+    /// from `rng`. Fails, with the reason also in [`Engine::last_refine`],
+    /// when the seed is not in the pool or there is no taste yet.
+    ///
+    /// The job is kept until [`Engine::refine_from_absorb`] (or
+    /// [`Engine::refine_from_walk`]) takes its result or
+    /// [`Engine::refine_from_cancel`] drops it, and until then its seed is
+    /// never evicted.
+    pub fn refine_from_job<R: Rng>(
+        &mut self,
+        rng: &mut R,
+        seed_id: u64,
+        locked: &[String],
+    ) -> Result<(WalkContext, WalkJob), RefineOutcome> {
+        let Some(i) = self.find(seed_id) else {
+            self.last_refine = RefineOutcome::UnknownSeed;
+            return Err(RefineOutcome::UnknownSeed);
+        };
+        let Some(ctx) = self.walk_context() else {
+            self.last_refine = RefineOutcome::NoTaste;
+            return Err(RefineOutcome::NoTaste);
+        };
+        let job = WalkJob {
+            generation: self.generation,
+            index: 0,
+            parent_id: seed_id,
+            seed: self.pool[i].tree.clone(),
+            locked: locked.to_vec(),
+            steps: self.cfg.refine_steps,
+            rng_seed: walk_seed(rng.gen(), 0),
+        };
+        self.evolving.insert(seed_id, (ctx.clone(), job.clone()));
+        Ok((ctx, job))
+    }
+
+    /// Fold a `⚡ evolve from this` walk in: novelty, admission and lineage,
+    /// with the seed never displaced by its own child. Returns the child id,
+    /// or `None` with the reason in [`Engine::last_refine`].
+    ///
+    /// With no generation open this is a generation of its own: the counter
+    /// advances only when a child actually lands (it used to advance on every
+    /// press, so a run of "no move" presses read as empty generations), and
+    /// what the child displaced is retired at once. While a pool generation
+    /// is open the child joins it — stamped with its number, the seed spared
+    /// by its finish, and nothing retired before then.
+    pub fn refine_from_absorb(&mut self, seed_id: u64, result: WalkResult) -> Option<u64> {
+        self.evolving.remove(&seed_id);
+        let (child, outcome) = self.absorb_from(seed_id, result);
         self.last_refine = outcome;
         child
     }
 
-    /// The shared body of `refine_seed`/`refine_from`: seed lookup, the walk,
-    /// the novelty check, the admission. Returns the child (if any) *and* the
-    /// outcome, so the two public entry points can report both.
-    fn refine_inner<R: Rng>(
-        &mut self,
-        rng: &mut R,
-        seed_id: u64,
-        locked: &HashSet<String>,
-        protect: Option<u64>,
-    ) -> (Option<u64>, RefineOutcome) {
+    fn absorb_from(&mut self, seed_id: u64, result: WalkResult) -> (Option<u64>, RefineOutcome) {
+        if result.parent_id != seed_id {
+            return (None, RefineOutcome::Stale);
+        }
         let Some(i) = self.find(seed_id) else {
             return (None, RefineOutcome::UnknownSeed);
         };
         let seed = self.pool[i].tree.clone();
-        let end = match self.refine_one(rng, &seed, locked, self.cfg.refine_steps) {
-            Ok(end) => end,
-            Err(reason) => return (None, reason),
+        if let Some(open) = &mut self.open {
+            open.protect.insert(seed_id);
+            let protect = open.protect.clone();
+            return self.absorb_walk(seed_id, &seed, result, &protect);
+        }
+        // Open the generation the child will be recorded under, and close it
+        // again if nothing lands — `record_child` stamps `self.generation`, so
+        // the bump has to precede it.
+        self.generation += 1;
+        let protect = HashSet::from([seed_id]);
+        let (child, outcome) = self.absorb_walk(seed_id, &seed, result, &protect);
+        self.evict_to_size(&protect);
+        if child.is_none() {
+            self.generation -= 1;
+        }
+        (child, outcome)
+    }
+
+    /// The shared back half of every refinement: the walk's verdict, the
+    /// novelty check, the admission, the lineage. Returns the child (if any)
+    /// *and* the outcome, so the public entry points can report both.
+    fn absorb_walk(
+        &mut self,
+        parent_id: u64,
+        seed: &PatchTree,
+        result: WalkResult,
+        protect: &HashSet<u64>,
+    ) -> (Option<u64>, RefineOutcome) {
+        let WalkResult {
+            child,
+            reason,
+            cached,
+            ..
+        } = result;
+        let Some(mut end) = child else {
+            return (None, reason.unwrap_or(RefineOutcome::NoMove));
         };
+        // A no-op for any honest walk (it clamps before returning), and the
+        // line that keeps a damaged farm result from seating a knob past its
+        // domain in the pool.
+        end.clamp_domains();
+        // The walk's own featurization of its child, when its content key says
+        // it is of this very tree: admission then costs no render here.
+        if let Some(c) = cached {
+            if c.key == auracle_features::render_key(&end, &self.cfg.phrase) {
+                self.memo.put(c, None);
+            }
+        }
         if self.pool.iter().any(|c| c.tree == end) {
             return (None, RefineOutcome::Duplicate);
         }
-        match self.record_child(seed_id, &seed, end, "refine", protect) {
+        match self.record_child(parent_id, seed, end, "refine", protect) {
             Some(id) => (Some(id), RefineOutcome::Injected),
             None => (None, RefineOutcome::NotAdmitted),
         }
@@ -2647,7 +3028,7 @@ impl Engine {
         seed: &PatchTree,
         mut end: PatchTree,
         kind: &str,
-        protect: Option<u64>,
+        protect: &HashSet<u64>,
     ) -> Option<u64> {
         // The one place a refined child meets its seed, and therefore the one
         // place its node identities can be recovered.
@@ -2665,7 +3046,7 @@ impl Engine {
             .find(parent_id)
             .map(|i| self.pool[i].phi_std.clone())
             .unwrap_or_default();
-        let child_id = self.insert_candidate(end, Origin::Refined, protect)?;
+        let child_id = self.admit_refined(end, protect)?;
         let ci = self.find(child_id).expect("just inserted");
         let (ctree, cphi) = (self.pool[ci].tree.clone(), self.pool[ci].phi_std.clone());
         self.lineage.push(LineageEvent {
@@ -2757,7 +3138,61 @@ impl Engine {
     /// caller owns the list (the app holds a cut back for its undo window
     /// before the engine hears of it, and persists the set itself), so it is
     /// passed in rather than inferred from the log, whose kills carry no ids.
+    ///
+    /// For a caller that shows every pair it deals: the deal counts as shown
+    /// at once. A caller that deals ahead and may throw a deal away uses
+    /// [`Engine::deal_duel_except`] and reports what it shows.
     pub fn next_duel_except<R: Rng>(&mut self, rng: &mut R, exclude: &[u64]) -> Option<DuelChoice> {
+        let choice = self.deal_duel_except(rng, exclude)?;
+        self.duel_shown(self.pool[choice.a].id, self.pool[choice.b].id);
+        Some(choice)
+    }
+
+    /// Record that the pair `(a_id, b_id)` (candidate ids, either order),
+    /// dealt by [`Engine::deal_duel_except`], is now in front of the player.
+    /// Returns false, and counts nothing, for a pair not dealt or already
+    /// reported — putting a pair back up (a retracted pick restores its
+    /// question) is not a second showing.
+    ///
+    /// Everything that is about what the player has *seen* moves here rather
+    /// than at the deal: the check cadence, the repeat and exposure penalties
+    /// the choosing rules read, and the pending check a later answer is
+    /// scored against. A deal thrown away unseen (the app deals the next pair
+    /// ahead, and drops it after a cut, an eviction or a retraction, or when
+    /// the engine deals the pair already on the table) then moves none of
+    /// them. Counted at the deal, a scheduled check dealt ahead and thrown
+    /// away was a check nobody was asked, and the calibration subsample
+    /// shrank with every one.
+    pub fn duel_shown(&mut self, a_id: u64, b_id: u64) -> bool {
+        let key = pair_key(a_id, b_id);
+        // The newest deal of the pair is the one on the table; any older deal
+        // of it was thrown away, and goes too, so a later putting-back finds
+        // nothing to count.
+        let Some(&(_, random_check)) = self.dealt_unshown.iter().rev().find(|(k, _)| *k == key)
+        else {
+            return false;
+        };
+        self.dealt_unshown.retain(|(k, _)| *k != key);
+        self.duels_shown += 1;
+        *self.shown_pairs.entry(key).or_insert(0) += 1;
+        *self.shown_candidates.entry(key.0).or_insert(0) += 1;
+        *self.shown_candidates.entry(key.1).or_insert(0) += 1;
+        if random_check {
+            self.pending_checks.push_back(key);
+            if self.pending_checks.len() > PENDING_CHECKS {
+                self.pending_checks.pop_front();
+            }
+        }
+        true
+    }
+
+    /// Choose the next duel as [`Engine::next_duel_except`] does, without
+    /// counting it as shown: the caller reports the pairs it puts in front
+    /// of the player with [`Engine::duel_shown`]. Whether this deal is a
+    /// scheduled check depends on how many pairs have been *shown*, so a deal
+    /// thrown away and dealt again is dealt under the same schedule. The
+    /// random stream is consumed exactly as `next_duel_except` consumes it.
+    pub fn deal_duel_except<R: Rng>(&mut self, rng: &mut R, exclude: &[u64]) -> Option<DuelChoice> {
         // Un-standardized candidates score utility exactly 0 (`dot` over an
         // empty vector), which beats every real utility once a user has killed
         // enough patches — they must not be selectable, the same guard
@@ -2845,16 +3280,10 @@ impl Engine {
             }
         };
 
-        self.duels_shown += 1;
         let key = pair_key(self.pool[choice.a].id, self.pool[choice.b].id);
-        *self.shown_pairs.entry(key).or_insert(0) += 1;
-        *self.shown_candidates.entry(key.0).or_insert(0) += 1;
-        *self.shown_candidates.entry(key.1).or_insert(0) += 1;
-        if choice.random_check {
-            self.pending_checks.push_back(key);
-            if self.pending_checks.len() > PENDING_CHECKS {
-                self.pending_checks.pop_front();
-            }
+        self.dealt_unshown.push_back((key, choice.random_check));
+        if self.dealt_unshown.len() > DEALT_UNSHOWN {
+            self.dealt_unshown.pop_front();
         }
         Some(choice)
     }
@@ -3401,10 +3830,15 @@ impl Engine {
             self.repaired_cells +=
                 crate::migrate::repair_phi_pair(&mut e.phi_before, &mut e.phi_after, &names);
         }
+        // A generation open over the old bank has nothing left to absorb into,
+        // and neither has a ⚡ walk from it.
+        self.open = None;
+        self.evolving.clear();
         self.pool.clear();
         self.audio_lru.clear();
         self.shown_pairs.clear();
         self.shown_candidates.clear();
+        self.dealt_unshown.clear();
         self.bound_events();
         // Every saved term, repaired on the way in. This is the *only* place a
         // tree written by an older build enters the engine, and a bank entry

@@ -67,6 +67,24 @@ function inkHsl(hex) {
 // fetched with `no-cache` (revalidate, not bypass) so a new build is noticed.
 // A module script may await at top level; nothing above this line needs the
 // worker.
+// ---------- timing marks ----------
+// What the instrument promises about time is measured where it happens:
+// `performance.mark("auracle:<name>")` at boot start, veil down, first sound,
+// pool full, PERFORM wired (perform.js), a patch opened, a pair dealt and a
+// refit landed. `window.__aur.marks()` lists them; the film recorder writes
+// them into every rehearsal's sidecar, and the budget specs read them.
+const marksOnce = new Set();
+function mark(name, detail, { once = false } = {}) {
+  if (once && marksOnce.has(name)) return;
+  marksOnce.add(name);
+  try {
+    performance.mark(`auracle:${name}`, detail ? { detail } : undefined);
+  } catch {
+    /* evidence, never load-bearing */
+  }
+}
+mark("boot-start");
+
 const BUILD = await (async () => {
   try {
     const r = await fetch("./pkg/build.json", { cache: "no-cache" });
@@ -112,8 +130,10 @@ const renderFailures = new Map(); // id -> reason|null
 // spinner: the render deadline below stops while it is set, because during a
 // stopped queue a live render and a lost one look identical from here.
 let engineBusy = false;
-// Stateless render workers, alive only for boot. Their MessagePorts went into
-// the engine worker; main holds the handles solely to reap them on `farm_done`.
+// Stateless render workers: a crew for boot, and a crew raised on demand for a
+// generation's walks and ⚡ (the engine worker asks, `farm_want`). Their
+// MessagePorts go into the engine worker; main holds the handles solely to
+// reap them on `farm_done`. `{w, crew}`.
 const farmWorkers = [];
 let currentDuel = null;    // [idA, idB]
 let duelMeta = null;       // why the engine chose this pair (acquisition, info gain)
@@ -129,10 +149,25 @@ let meterFitting = false;
 // `fitted` answered the meter's refit: "● it just learned" stands until the
 // next pick, not for a timer's 3.2 s (which fired when the fit was *sent*).
 let learnedShown = false;
-// Long work holding the engine that a deal or a refit waits behind:
-// EVOLVE POOL ({done, total} as its seeds go) and ⚡ evolve from this.
+// The long jobs the job slot shows. EVOLVE POOL: `{generation, done, total,
+// eta, etaAt, farm, stopping, retiring}` — `done` is jobs absorbed, `eta` the
+// worker's estimate (ms, from this session's walk times) as of `etaAt`, and
+// `farm` whether its walks run on the farm (the engine answers everything
+// meanwhile) or in the engine worker (a deal waits for the walk in progress).
+// ⚡ evolve from this: `{id, name, stoppable}`. A refit waits for either. The
+// two take turns: while one runs the other's button is disabled and says why
+// (`EVOLVE_WAITS_FOR_ZAP`, `ZAP_WAITS_FOR_GENERATION`), and the worker holds
+// either one back until the other is over whatever arrives.
 let breeding = null;
-let evolvingFrom = false;
+let evolvingFrom = null;
+const EVOLVE_WAITS_FOR_ZAP =
+  "⚡ evolve from this is walking — EVOLVE POOL waits for it. The job slot in the menu bar shows it.";
+const ZAP_WAITS_FOR_GENERATION =
+  "EVOLVE POOL is breeding a generation — ⚡ waits for it. Stop it in the menu bar, or let it finish.";
+// The generation whose children the bank's "new" group holds (`lastBorn`).
+let bornGen = 0;
+// Children that landed since the last bank render: they glow once.
+const landedNow = new Set();
 let playingSrc = null;
 // ⚡'s child, waiting for the bench to hold it before it is announced:
 // {id, text(name)} — see `evolved_from` and the `bench` reply.
@@ -559,6 +594,7 @@ function uiState() {
     // able to prevent it.
     bank: bankFilter,
     born: [...lastBorn],
+    bornGen,
     // What you pulled out of a patch and have not put back. "Removed" is
     // supposed to mean "recoverable"; before this it meant "recoverable until
     // you refresh", which is not a promise worth making.
@@ -1140,10 +1176,20 @@ worker.onmessage = (e) => {
     // only for boot, and N × ~15 MB of linear memory is not something to keep
     // resident behind a running instrument.
     case "farm_done": {
-      for (const w of farmWorkers) {
-        try { w.terminate(); } catch (_) {}
+      for (let k = farmWorkers.length - 1; k >= 0; k--) {
+        const f = farmWorkers[k];
+        if (m.crew != null && f.crew !== m.crew) continue;
+        try { f.w.terminate(); } catch (_) {}
+        farmWorkers.splice(k, 1);
       }
-      farmWorkers.length = 0;
+      break;
+    }
+    // The engine worker wants a crew for walks (a generation, ⚡). Spawned from
+    // the kept module (`sharedModule`: compiled at boot where boot had a farm,
+    // otherwise by the first crew) and handed straight back; an empty answer
+    // means "walk them yourself".
+    case "farm_want": {
+      raiseCrew(m.crew);
       break;
     }
     // Boot threw inside the engine worker, so neither `playable` nor `filled`
@@ -1167,6 +1213,7 @@ worker.onmessage = (e) => {
       bootPct = 100;
       $("boot-fill").style.width = "100%";
       dropBootVeil();
+      mark("pool-full", { pool: m.status && m.status.pool }, { once: true });
       applyStatus(m.status);
       fillPool = m.status.pool;
       fillTarget = m.status.pool_target;
@@ -1175,8 +1222,9 @@ worker.onmessage = (e) => {
       // pool. Deliberately *not* a new `duel` unless the table is empty —
       // re-dealing here would throw away the pair the user is listening to.
       send({ type: "taste_views" });
-      if (!currentDuel && !dealing) requestDeal();
+      if (!currentDuel && !dealing && !dealsOut) requestDeal();
       renderFillHint();
+      warmPrewarmPump();
       break;
     }
     case "saved": {
@@ -1228,6 +1276,7 @@ worker.onmessage = (e) => {
     case "bench_missing": {
       // Not on its way any more, either (PERFORM holds a measurement for it),
       // and the bench is still the patch the lane's edits were aimed at.
+      if (earlyOpen && earlyOpen.id === m.id) unvoiceEarly();
       if (benchPending === m.id) {
         benchPending = null;
         pumpLane();
@@ -1281,37 +1330,10 @@ worker.onmessage = (e) => {
       break;
     }
     case "duel": {
-      // A retract restored the previous pair while this deal was in flight —
-      // the restored question stands; this pair is dropped like a skip.
-      if (ignoreNextDeal) {
-        ignoreNextDeal = false;
-        dealing = false;
-        setDuelControlsEnabled(true);
-        break;
-      }
-      currentDuel = m.pair;
-      // Randomise the presented side: the engine's first pick was always A,
-      // always left, always ←. `duel_pred` is computed at record time from
-      // the order we submit, so a swapped pair stays consistent end-to-end.
-      if (currentDuel && Math.random() < 0.5) currentDuel = [currentDuel[1], currentDuel[0]];
-      duelMeta = m.meta || null;
-      dealing = false;
-      setDuelControlsEnabled(true);
-      retireForecast();
-      renderDealRule();
-      if (currentDuel) {
-        setFlip("a", false);
-        setFlip("b", false);
-        loadSide("a", currentDuel[0]);
-        loadSide("b", currentDuel[1]);
-        benchBeforeAudition = null; // a fresh pair closes any audition detour
-        setDuelSelection(null);
-        dealCards();
-      }
-      renderPlayDuel();
-      // The pair is on the table; a refit armed by the last vote can now be
-      // enqueued *behind* this pair's audio rather than in front of it.
-      settleFit();
+      // Every deal, a pick's or one dealt ahead, lands here in the order it
+      // was asked for (see `onDealt`).
+      dealsOut = Math.max(0, dealsOut - 1);
+      onDealt(m.pair, m.meta || null);
       break;
     }
     // The worker announces the start and end of every call that blocks its
@@ -1342,10 +1364,17 @@ worker.onmessage = (e) => {
       buf.copyToChannel(m.buffer, 0);
       renders.set(m.id, { buffer: buf, sexpr: m.sexpr, bestStyle: m.bestStyle });
       onRenderArrived(m.id);
+      requestAhead();
       break;
     }
     case "tree_json": {
       if (!(m.json && m.json !== "null" && live)) break;
+      // An edit to the rack being left, while the voices already play the
+      // patch on its way (`voiceEarly`): it is not what the player hears.
+      if (m.edited !== undefined && earlyOpen) {
+        benchDirtyWhy = m.why || null;
+        break;
+      }
       live.setPatch(m.json, m.makeup);
       if (m.edited !== undefined) benchDirtyWhy = m.why || null;
       setLivePatchJson(m.json, m.makeup, m.knobs);
@@ -1361,6 +1390,18 @@ worker.onmessage = (e) => {
         livePatchId = m.id;
         setLiveLabel(benchName(m.id));
       }
+      break;
+    }
+    case "bench_opening": {
+      // An open speaking before its render (a preset's insert, or the bench
+      // open; see `voiceEarly`): the voices take the patch now, and PERFORM
+      // with them. A preset's is remembered, for opening it again without
+      // the engine. Only the open the player is still waiting on is voiced;
+      // a later click has superseded an earlier one.
+      if (m.index != null) rememberPresetVoiced(m.index, m.json, m.makeup);
+      if (m.id !== benchPending || m.id === wb.subjectId || !m.json || m.json === "null") break;
+      if (earlyOpen && earlyOpen.id === m.id) break; // voiced from memory already
+      voiceEarly(m.json, m.makeup, { id: m.id, label: benchName(m.id) });
       break;
     }
     case "calibration": {
@@ -1407,7 +1448,7 @@ worker.onmessage = (e) => {
       if (meterFitting) {
         meterFitting = false;
         learnedShown = true;
-        try { performance.mark("auracle:fitted"); } catch { /* ignore */ }
+        mark("fitted");
       }
       applyViews(m.views);
       applyStatus(m.status);
@@ -1422,26 +1463,84 @@ worker.onmessage = (e) => {
       break;
     }
     case "refine_progress": {
-      const btn = $("evolve-btn");
-      btn.textContent = m.done >= m.total ? "placing in the pool…" : `breeding ${m.done + 1}/${m.total}…`;
-      breeding = { done: m.done, total: m.total };
-      sayDealing(); // a deal waiting on this generation names the seed it waits on
+      breedingFrom(m);
+      renderEvolveBtn();
+      renderJobSlot();
+      sayDealing(); // a deal waiting on a walk here names the seed it waits on
+      break;
+    }
+    // One job of the generation absorbed, in job order: its child (if it
+    // bred one) goes into the bank's "new · gen N" group at once, playable,
+    // without re-sorting the ranked rows. Nothing leaves the bank until the
+    // generation ends.
+    case "refine_child": {
+      breedingFrom(m);
+      if (breeding) breeding.retiring = m.retiring || [];
+      if (m.child > 0) {
+        if (bornGen !== m.generation) {
+          lastBorn.clear();
+          bornGen = m.generation;
+        }
+        lastBorn.add(m.child);
+        landedNow.add(m.child);
+      }
+      applyViews({ ...(views || {}), ranked: m.ranked, ...(m.lineage ? { lineage: m.lineage } : {}) });
+      renderBank();
+      renderPlayDuel();
+      drawLineage();
+      renderEvolveBtn();
+      renderJobSlot();
+      renderGenCount(); // the generation counts from its first child
+      renderNextStep();
+      if (mayGoShown) markMayGo(true);
+      scheduleSave();
+      break;
+    }
+    // EVOLVE POOL found the pool over size (a session saved while a
+    // generation ran comes back that way) and brought it back to size before
+    // opening the next: that interrupted generation's end. What it retired
+    // leaves the bank now, by name, not silently with the next child.
+    case "pool_trimmed": {
+      const trimmed = Array.isArray(m.retired) ? m.retired : [];
+      applyViews(m.views);
+      applyStatus(m.status);
+      refreshInstruments();
+      scheduleSave();
+      if (trimmed.length) note(`The generation that was breeding when you left has ended.${madeRoom(trimmed)}`);
       break;
     }
     case "refined": {
       lampOff("refine");
+      const wasStopped = !!m.stopped;
       breeding = null;
       renderTeach(); // a refit waiting for the generation is on its way now
-      $("evolve-btn").disabled = false;
-      $("evolve-btn").textContent = "evolve pool";
-      // The pool is fixed-size: every accepted child evicts the patch the
-      // model predicts you like least. Say so — silent eviction is how a
-      // user loses something they liked and stops trusting the bank.
-      const evicted = applyViews(m.views);
-      if (m.born && m.born.length > 0) {
+      renderEvolveBtn();
+      renderJobSlot();
+      // The pool is fixed-size: every accepted child displaces the patch the
+      // model predicts you like least, at the end of the generation. Say so —
+      // silent eviction is how a user loses something they liked and stops
+      // trusting the bank.
+      const diffed = applyViews(m.views);
+      // What the generation retired, by the engine's own list: absorbing the
+      // last job finishes the generation inside the engine, so the rows it
+      // retired have already gone from the last child's ranked rows, and the
+      // diff above would name none of them.
+      const evicted = Array.isArray(m.retired) && m.retired.length ? m.retired : diffed;
+      // A child can be retired too: one bred early can end below children
+      // bred after it. It was bred but not kept, and it replaced nothing.
+      const bred = m.born || [];
+      const kept = bred.filter((id) => !evicted.includes(id));
+      const replaced = evicted.filter((id) => !bred.includes(id));
+      const dropped = bred.length - kept.length;
+      for (const id of bred) if (!kept.includes(id)) lastBorn.delete(id);
+      if (m.born && m.born.length > 0 && bornGen !== m.status.generation) {
+        // A generation whose children were not posted as they landed (an
+        // older worker): the group is its children, in birth order.
         lastBorn.clear();
-        for (const id of m.born) lastBorn.add(id);
+        for (const id of kept) lastBorn.add(id);
+        bornGen = m.status.generation;
       }
+      if (mayGoShown) markMayGo(true);
       applyStatus(m.status);
       if (m.bench && wb.subjectId != null) applyBelief(m.bench);
       refreshInstruments();
@@ -1452,6 +1551,8 @@ worker.onmessage = (e) => {
       // engine did not produce.
       if (m.untaught) {
         note("Nothing to breed toward yet — make a few picks first, then evolve.");
+      } else if (wasStopped && m.born && m.born.length === 0) {
+        note(`Gen ${m.status.generation} stopped before it bred anything — the bank is as it was.${madeRoom(evicted)}`);
       } else if (m.born && m.born.length === 0) {
         // When every seed the model picked has zero mass under the prior, the
         // advice is different: more teaching will not move a walk that never
@@ -1464,11 +1565,20 @@ worker.onmessage = (e) => {
         } else {
           note(`Gen ${m.status.generation}: no move was accepted. Teach it more, or ⚡ evolve one patch you like.`);
         }
+      } else if (m.born && kept.length === 0) {
+        note(`Gen ${m.status.generation}${wasStopped ? " stopped" : ""}: ${bred.length} bred, but none ranked above the patches already in the bank, so the bank is as it was.`);
       } else if (m.born) {
-        const made = evicted.length
-          ? madeRoom(evicted)
+        const made = madeRoom(replaced);
+        const n = kept.length;
+        const below = dropped
+          ? ` ${dropped} more ${dropped === 1 ? "was" : "were"} bred but ranked below the rest, and ${dropped === 1 ? "was" : "were"} not kept.`
           : "";
-        note(`Gen ${m.status.generation}: ${m.born.length} new patch${m.born.length > 1 ? "es" : ""} in the bank.${made}`, bankTourOffer());
+        note(
+          wasStopped
+            ? `Gen ${m.status.generation} stopped: ${n} new patch${n > 1 ? "es" : ""} kept, at the top of the bank.${made}${below}`
+            : `Gen ${m.status.generation}: ${n} new patch${n > 1 ? "es" : ""} in the bank.${made}${below}`,
+          bankTourOffer(),
+        );
       } else {
         note(`Generation ${m.status.generation} bred.`);
       }
@@ -1539,6 +1649,7 @@ worker.onmessage = (e) => {
         const evolved = evolvedAnnounce && evolvedAnnounce.id === m.subject ? evolvedAnnounce : null;
         const asked = openAsk && openAsk.id === m.subject ? openAsk : null;
         openAsk = null;
+        mark("patch-opened", { name: rowOf(m.subject)?.name || null, waited: asked ? Math.round(performance.now() - asked.at) : null });
         if (evolved) {
           evolvedAnnounce = null;
           const row = rowOf(m.subject);
@@ -1692,15 +1803,36 @@ worker.onmessage = (e) => {
       // second fade-out, rebuild and re-attack for no change in sound; all
       // that is left to reconcile is the makeup gain, which the early post
       // could not know because measuring it *is* the expensive half.
-      const spokeEarly = liveOptimisticJson !== null && liveOptimisticJson === m.treeJson;
+      //
+      // An open the voices took early (`voiceEarly`) is the same: its tree
+      // is already playing (read as a sound, since a remembered preset
+      // carries the uids of the session it was remembered in), and its text
+      // is brought up to the bench's.
+      const early = subjectLoad && earlyOpen && earlyOpen.id === m.subject ? earlyOpen : null;
+      // …or the voices already play an open made after this one: the bench
+      // takes this patch, and the voices keep the one the player asked for
+      // last, which is on its way.
+      const voicesLater = subjectLoad && !!earlyOpen && !early;
+      if (early) earlyOpen = null;
+      const openedEarly =
+        !!early && !!liveTreeJson && !!m.treeJson && treeSound(liveTreeJson) === treeSound(m.treeJson);
+      const spokeEarly = openedEarly || (liveOptimisticJson !== null && liveOptimisticJson === m.treeJson);
       liveOptimisticJson = null;
+      if (openedEarly && liveTreeJson !== m.treeJson) {
+        liveTreeJson = m.treeJson;
+        if (perform && perform.followTree) perform.followTree(m.treeJson);
+      }
+      if (openedEarly) {
+        livePatchId = wb.subjectId;
+        setLiveLabel(benchName(wb.subjectId));
+      }
       if (spokeEarly) {
         if (live && m.makeup != null) live.setMakeup(m.makeup);
         liveMakeup = m.makeup;
         livePending();
       } else if (
-        m.treeJson && m.treeJson !== "null" && live &&
-        (subjectLoad || (wb.vetOk && (structural || paramNonLive)))
+        m.treeJson && m.treeJson !== "null" && live && !voicesLater &&
+        (subjectLoad || (wb.vetOk && !earlyOpen && (structural || paramNonLive)))
       ) {
         live.setPatch(m.treeJson, m.makeup);
         setLivePatchJson(m.treeJson, m.makeup);
@@ -1711,8 +1843,11 @@ worker.onmessage = (e) => {
       // Optimism's other half: the sound arrived before the verdict. A patch
       // that fails vetting can self-oscillate, and it is already in the
       // voices, so the mute has to be real. Any vet that passes lifts it.
-      if (wb.vetOk) setLiveMuted(false);
-      else if (spokeEarly) setLiveMuted(true);
+      // (Unless the voices play a patch other than the rack's, taken early:
+      // this vet is not about what they play.)
+      const vetIsVoices = !voicesLater && !(earlyOpen && !subjectLoad);
+      if (vetIsVoices && wb.vetOk) setLiveMuted(false);
+      else if (vetIsVoices && spokeEarly) setLiveMuted(true);
       // The strip is one slot (see `alarm`), and this owns it only while the
       // condition it reports — a runaway the vet muted — is its own. It used
       // to call `alarm(null)` on every clean vet, which wiped whatever else
@@ -1985,24 +2120,36 @@ worker.onmessage = (e) => {
       scheduleSave();
       break;
     }
+    // ⚡'s walk is out: on the farm it can be stopped, and the slot says so.
+    case "evolve_started": {
+      if (evolvingFrom && evolvingFrom.id === m.seedId) {
+        evolvingFrom.stoppable = !!m.stoppable;
+        renderJobSlot();
+        renderEvolveFrom();
+      }
+      break;
+    }
     case "evolved_from": {
-      $("rack-evolve").disabled = false;
       lampOff("refine_from");
-      evolvingFrom = false;
+      evolvingFrom = null;
+      renderEvolveFrom();
+      renderEvolveBtn(); // EVOLVE POOL's turn
+      renderNextStep();
       renderTeach();
       const evolveEvicted = applyViews(m.views);
       applyStatus(m.status);
       refreshInstruments();
-      if (m.childId > 0) {
-        // ⚡ is one engine call of about 20 s (23 s measured on a quiet
-        // machine), and the worker answers nothing while it runs: knobs still
-        // sound, because a turn goes straight to the voices, but every other
-        // edit — bypass, place, unplug — waits in the lane until it is done.
-        // If the player went on editing, the child used to be opened over
-        // those edits regardless — gone without a word, and every write still
-        // in the lane then landed on the child at addresses read off the
-        // patch it replaced. The bench is the player's: the child waits in
-        // the bank, one click away.
+      if (m.reason === "stopped") {
+        note("⚡ stopped — nothing was added to the bank.", { replace: "evolve-from" });
+      } else if (m.childId > 0) {
+        // ⚡ is a walk of about 20 s (23 s measured on a quiet machine; more
+        // with many locks). It runs on the farm, and the player goes on
+        // playing and editing meanwhile — knobs, bypass, place, unplug. If
+        // they did edit, the child used to be opened over those edits
+        // regardless — gone without a word, and every write still in the
+        // lane then landed on the child at addresses read off the patch it
+        // replaced. The bench is the player's: the child waits in the bank,
+        // one click away.
         const editedSince = wb.dirty || editPending || !laneFree();
         if (editedSince) {
           note(
@@ -2135,11 +2282,18 @@ worker.onmessage = (e) => {
         // Only the warm-start preview path used to record this, so a plain
         // click re-loaded the same preset forever and never marked it.
         if (m.index !== undefined) presetIds.set(m.index, m.id);
+        const early = earlyOpen && earlyOpen.id == null && earlyOpen.index === m.index ? earlyOpen : null;
         if (clickedAt !== undefined && clickedAt !== benchSeq) {
           // The player opened something else while this was loading: it is in
           // the bank now, and the patch in their hands stays there.
+          if (early) unvoiceEarly();
           note(`${nameOf(m.id)} is in the bank now — you had moved on, so it was not opened.${madeRoom(evicted)}`);
         } else {
+          // Voiced from memory at the click: now it has an id.
+          if (early) {
+            early.id = m.id;
+            livePatchId = m.id;
+          }
           quietBench.add(m.id); // "Preset loaded as …" names it
           openOnBench(m.id);
           note(`Preset loaded as ${nameOf(m.id)}.${madeRoom(evicted)}`);
@@ -2150,6 +2304,7 @@ worker.onmessage = (e) => {
         // branch did not exist: the click closed the menu and did nothing at
         // all, with no message. The bank is still filling at that moment, so
         // this is the most likely moment for a new user to press it.
+        if (earlyOpen && earlyOpen.id == null && earlyOpen.index === m.index) unvoiceEarly();
         note("The bank is still warming up — try that preset again in a moment.");
       }
       break;
@@ -2192,7 +2347,7 @@ worker.onmessage = (e) => {
           fitDue = false;
           duelsSinceFit = 0;
           fitting = true;
-          $("wm-lamp").classList.add("thinking");
+          lampOn("fit");
           send({ type: "fit" });
         }
         note(n > 0
@@ -2252,6 +2407,8 @@ function releaseRequest(request, id) {
     case "edit_begin":
       // An open that failed is not on its way either — and the edits the lane
       // was holding for it are about the patch still on the bench, so they go.
+      // Voices that took it early go back to that patch.
+      if (earlyOpen) unvoiceEarly();
       benchPending = null;
       renderSubject();
       renderBank();
@@ -2260,6 +2417,7 @@ function releaseRequest(request, id) {
     case "load_preset":
       // A load that failed is not still on its way: its row stops saying
       // "opening…", and the first-arrival open is no longer held for it.
+      if (earlyOpen && earlyOpen.id == null) unvoiceEarly();
       presetClicks.clear();
       warmPreviewCancel(); // a ▶ waiting on it is not going to play
       document.querySelectorAll(".preset-item.loading").forEach((r) => {
@@ -2268,21 +2426,26 @@ function releaseRequest(request, id) {
       });
       break;
     case "refine":
-      lampOff("refine");
+      // A generation that died still bred what it bred; the bank shows what
+      // the engine holds when the next views arrive.
+      if (breeding) lampOff("refine");
       breeding = null;
       renderTeach();
-      $("evolve-btn").disabled = false;
-      $("evolve-btn").textContent = "evolve pool";
+      renderEvolveBtn();
+      renderJobSlot();
+      renderNextStep();
       break;
     case "warm_start":
       // The first pick is not on its way: PERFORM stops saying so.
       openExpect = null;
       break;
     case "refine_from":
-      lampOff("refine_from");
-      evolvingFrom = false;
+      if (evolvingFrom) lampOff("refine_from");
+      evolvingFrom = null;
       renderTeach();
-      $("rack-evolve").disabled = false;
+      renderEvolveFrom();
+      renderEvolveBtn();
+      renderNextStep();
       pendingEvolve = false;
       break;
     case "edit_commit":
@@ -2290,9 +2453,13 @@ function releaseRequest(request, id) {
       pendingEvolve = false;
       break;
     case "duel":
-      dealing = false;
-      ignoreNextDeal = false;
-      setDuelControlsEnabled(true);
+      dealsOut = Math.max(0, dealsOut - 1);
+      // The table waits on nothing else: it stops waiting, as it always did.
+      // A deal ahead that died leaves the table as it was.
+      if (!currentDuel && dealsOut === 0) {
+        dealing = false;
+        setDuelControlsEnabled(true);
+      }
       break;
     case "render":
       if (id != null) {
@@ -2394,10 +2561,25 @@ function renderPicks() {
   renderNextStep();
 }
 
+/** Generations that have bred. The engine counts a generation from the
+ *  moment it opens, so any status posted while it breeds (a pick's) carries
+ *  it already; GENERATIONS, the next-step chip and the EVOLUTION strip count
+ *  it once a child of it has landed in the bank, or once it has finished. */
+function gensBred() {
+  const g = status.generation || 0;
+  const open = breeding && breeding.generation;
+  if (!open || g < open) return g; // the status predates the open generation
+  const landed = bornGen === open && lastBorn.size > 0;
+  return landed ? open : open - 1;
+}
+function renderGenCount() {
+  $("gen-count").textContent = gensBred();
+}
+
 function applyStatus(st) {
   status = st;
   $("duel-count").textContent = picksTaught();
-  $("gen-count").textContent = st.generation;
+  renderGenCount();
   renderTeach();
   renderNextStep();
   if (!belief.has) renderBelief();
@@ -2457,6 +2639,8 @@ function renderTeach() {
   mid.classList.toggle("learned", !learning && learnedShown);
   $("play-duel")?.classList.toggle("learning", learning);
   if (learning) {
+    // A refit waits for a generation, and for ⚡: each is bred and admitted
+    // under the model it started with.
     copy.textContent = breeding || evolvingFrom
       ? `● it will learn from these ${FIT_EVERY} when breeding finishes`
       : `● learning from your last ${FIT_EVERY} picks…`;
@@ -2492,23 +2676,114 @@ function showTasteMap() {
   showView("taste");
 }
 
-// ---------- the wordmark's lamp ----------
-// The E of the wordmark lights while the engine does long work: a refit, a
-// generation, ⚡ evolve from this. Each job used to switch it on and its own
-// reply switch it off, so the first reply cleared the lamp of another job
-// still running — a refit landing mid-generation put it out for the rest of
-// the generation. Counted per job now, and dark only when every job is done.
+// ---------- the job slot, and the wordmark's lamp ----------
+// Long work has one home: the slot in the menu bar, beside GENERATIONS. It
+// shows only while something long runs — "⚡ breeding 3/10 · about 40 s",
+// "⚡ evolving Glass Pad", "refitting your taste map…" — with **stop** where
+// the job can be stopped, and the E of the wordmark is lit exactly while the
+// slot is not empty: both are drawn from `lampJobs`, one count per job kind.
+// Each job used to switch the lamp on and its own reply switch it off, so the
+// first reply cleared the lamp of another job still running; and the lamp was
+// the only sign a three-minute generation was running at all.
 const lampJobs = new Map(); // job -> requests in flight
 function lampOn(job) {
   lampJobs.set(job, (lampJobs.get(job) || 0) + 1);
-  $("wm-lamp").classList.add("thinking");
+  renderJobSlot();
 }
 function lampOff(job) {
   const n = (lampJobs.get(job) || 0) - 1;
   if (n > 0) lampJobs.set(job, n);
   else lampJobs.delete(job);
-  $("wm-lamp").classList.toggle("thinking", lampJobs.size > 0);
+  renderJobSlot();
 }
+
+/** "about 40 s" for a remaining time in ms; "" when there is no estimate. */
+function aboutLeft(ms) {
+  if (ms == null || !Number.isFinite(ms)) return "";
+  const s = ms / 1000;
+  if (s < 3) return "almost done";
+  if (s < 60) return `about ${Math.max(5, Math.round(s / 5) * 5)} s`;
+  return `about ${Math.round(s / 60)} min`;
+}
+
+/** What the generation still owes, counted down from the worker's last
+ *  estimate. */
+function breedLeft() {
+  if (!breeding || breeding.eta == null) return null;
+  return Math.max(0, breeding.eta - (performance.now() - breeding.etaAt));
+}
+
+/** The job the slot shows, most important first, or null. */
+function slotJob() {
+  if (lampJobs.has("refine")) {
+    const b = breeding || {};
+    const total = b.total || 0;
+    if (b.stopping) return { kind: "refine", text: "⚡ stopping — ending with what's bred", fill: total ? b.done / total : 0 };
+    const count = total ? ` ${b.done}/${total}` : "…";
+    const left = total && b.done < total ? aboutLeft(breedLeft()) : "";
+    return {
+      kind: "refine",
+      text: `⚡ breeding${count}${left ? ` · ${left}` : ""}`,
+      fill: total ? b.done / total : 0,
+      stop: total > 0,
+      title: "EVOLVE POOL is breeding a generation. Keep playing — it runs beside you. Stop ends it with the children bred so far; the lowest unsaved patches then leave, as at any generation's end.",
+    };
+  }
+  if (lampJobs.has("refine_from")) {
+    const e = evolvingFrom || {};
+    return {
+      kind: "refine_from",
+      text: `⚡ evolving ${e.name || "this patch"}`,
+      stop: !!e.stoppable,
+      title: e.stoppable
+        ? "⚡ evolve from this is walking from the patch on the bench. Stop drops the walk; nothing is added."
+        : "⚡ evolve from this is walking from the patch on the bench. It is walking in the engine itself, where it cannot be stopped.",
+    };
+  }
+  if (lampJobs.has("fit")) {
+    return { kind: "fit", text: "refitting your taste map…", title: "Redrawing the taste model from every pick so far." };
+  }
+  return null;
+}
+
+let slotTicker = null;
+function renderJobSlot() {
+  const job = slotJob();
+  $("wm-lamp").classList.toggle("thinking", !!job);
+  $("wm-lamp").title = job ? job.text : "";
+  const slot = $("job-slot");
+  if (!slot) return;
+  slot.classList.toggle("hidden", !job);
+  if (!job) {
+    if (slotTicker) clearInterval(slotTicker);
+    slotTicker = null;
+    return;
+  }
+  slot.dataset.job = job.kind;
+  slot.title = job.title || "";
+  $("job-text").textContent = job.text;
+  const fill = $("job-fill");
+  fill.style.width = job.fill != null ? `${Math.round(job.fill * 100)}%` : "0";
+  $("job-stop").classList.toggle("hidden", !job.stop);
+  // The estimate counts down between the worker's updates.
+  const ticking = job.kind === "refine" && breeding && breeding.eta != null;
+  if (ticking && !slotTicker) {
+    slotTicker = setInterval(() => {
+      if (!breeding) return;
+      renderJobSlot();
+    }, 1000);
+  } else if (!ticking && slotTicker) {
+    clearInterval(slotTicker);
+    slotTicker = null;
+  }
+}
+
+$("job-stop").onclick = () => {
+  const job = slotJob();
+  if (!job) return;
+  if (job.kind === "refine") stopBreeding();
+  else if (job.kind === "refine_from") stopEvolveFrom();
+};
 
 // ---------- next step ----------
 // Nothing in the app ever answered "what should I do now?". This chip always
@@ -2540,16 +2815,30 @@ function renderNextStep() {
   } else if (n < FIT_EVERY) {
     label = `${FIT_EVERY - n} more pick${FIT_EVERY - n > 1 ? "s" : ""} and it refits ▸`;
     act = () => showView("evolve");
-  } else if (status.generation === 0) {
-    label = "It’s learned something. Breed a generation ▸";
-    act = () => { showView("evolve"); $("evolve-btn").click(); };
+  } else if (gensBred() === 0) {
+    // It starts the generation where the player is: the job slot shows it
+    // from any view, and the children land at the top of the bank.
+    label = breeding || evolvingFrom ? "Breeding — keep playing ▸" : "It’s learned something. Breed a generation ▸";
+    act = breeding || evolvingFrom ? null : () => $("evolve-btn").click();
+  } else if (lastBorn.size > 0) {
+    label = `Gen ${bornGen || gensBred()} bred new patches — they're at the top of the bank ▸`;
+    act = showNewGroup;
   } else {
-    label = `Gen ${status.generation} bred new patches — hear them ▸`;
+    label = `Gen ${gensBred()} bred — see what it thinks of your taste ▸`;
     act = () => showView("taste");
   }
   el.textContent = label;
   el.classList.toggle("inert", !act);
   el.onclick = act || null;
+}
+
+/** The bank's "new · gen N" group, in view and flashed once. */
+function showNewGroup() {
+  if (bankFilter !== "pool") selectBank("pool");
+  const head = document.querySelector("#bank-list .bank-group");
+  if (!head) return;
+  head.scrollIntoView({ block: "start", behavior: "smooth" });
+  pulseOnce(head);
 }
 
 function pulseOnce(el) {
@@ -2571,6 +2860,7 @@ function showCoach() {
 }
 
 function firstNotePlayed() {
+  mark("first-sound", { via: "a key" }, { once: true });
   if (coachEl) {
     coachEl.remove();
     coachEl = null;
@@ -3028,6 +3318,7 @@ function applyViews(next) {
     renderAnnounced.delete(id);
     starsById.delete(id);
     cutIds.delete(id);
+    goneIds.add(id);
     const t = pendingCuts.get(id);
     if (t !== undefined) {
       clearTimeout(t);
@@ -3037,15 +3328,15 @@ function applyViews(next) {
   }
   // A pair that just lost a side to the pool is a question about a patch that
   // no longer exists: TEACH could only print "…" for its name, and a vote on
-  // it is refused ("that patch is gone"). Deal a fresh one, as ↻ does — but
-  // the way a vote does, with the pair left standing and its controls inert
-  // until the new one lands, so the strip does not blink out and take the
-  // rack's height with it.
+  // it is refused ("that patch is gone"). The next pair goes up the way a
+  // pick puts it up (`dealAnother`): the pair dealt ahead at once when one
+  // may still be dealt, or else a deal, with the old pair left standing and
+  // its controls inert until the new one lands, so the strip does not blink
+  // out and take the rack's height with it.
   if (currentDuel && !dealing && prevIds.size && currentDuel.some((id) => !nowIds.has(id))) {
-    dealing = true;
-    setDuelControlsEnabled(false);
-    requestDeal();
+    dealAnother();
   }
+  checkAhead();
   // The engine owns the budget and ships it with every views post, which is
   // the only reason the readout survives a reload: nothing in the UI knows how
   // many pins a restored session came back with.
@@ -3356,7 +3647,9 @@ function stepBank(d) {
 
 function play(id, btn, key = null) {
   const r = renders.get(id);
-  if (r) playBuffer(r.buffer, btn, key);
+  if (!r) return;
+  mark("first-sound", { via: "a phrase" }, { once: true });
+  playBuffer(r.buffer, btn, key);
 }
 
 // Every "hear this thing that isn't loaded yet" path in the app used to be its
@@ -3387,14 +3680,21 @@ const RENDER_WAIT_MS = 12_000;
 const RENDER_POLL_MS = 100;
 
 function awaitRender(id, onReady, opts = {}) {
-  if (renders.has(id)) return onReady();
+  if (renders.has(id)) {
+    if (opts.settled) opts.settled();
+    return onReady();
+  }
   // A previous failure must not silently answer a fresh request: the term may
   // render fine now (the bench re-vetted it, the pool re-admitted it).
   renderFailures.delete(id);
   send({ type: "render", id });
   let waited = 0;
   let last = performance.now();
-  const stop = (fn) => { clearInterval(wait); if (fn) fn(); };
+  const stop = (fn) => {
+    clearInterval(wait);
+    if (opts.settled) opts.settled();
+    if (fn) fn();
+  };
   const wait = setInterval(() => {
     const now = performance.now();
     const dt = now - last;
@@ -3490,6 +3790,9 @@ async function bootPerform() {
     // Another patch is on its way to the bench: PERFORM holds a measurement
     // of the one in hand, which is about to be replaced.
     opening: () => openingNow(),
+    // The patch PERFORM plays but the bench does not hold yet (see
+    // `voiceEarly`), by name, or null: a Keep, Take or Back waits for it.
+    openLanding: () => (earlyOpen ? earlyOpen.label : null),
     // …and its name, which PERFORM says while it waits.
     openingName: () => openingName(),
     // A PERFORM offer answer joined the log: it paces refits like any pick.
@@ -3500,7 +3803,9 @@ async function bootPerform() {
       renderTeach();
       settleFit();
     },
-    controlMoved: (i) => midi && midi.controlMovedElsewhere(i),
+    // A control moved without its pot: set by the mouse, the keys or the XY
+    // pad (the pot lets go), or re-centred (the pot keeps working, anchored).
+    controlMoved: (i, how) => midi && midi.controlMovedElsewhere(i, how),
     // The under-the-hood strip: a knob's module, label and value in its own
     // units, read off the bench's rack (PERFORM's structure is the bench's).
     knobInfo: (addr, v) => {
@@ -3547,6 +3852,14 @@ async function bootPerform() {
     // `why` names a tree that is not a hand edit ("taken offer"), so the
     // labels say what it is (see `benchDirtyWhy`).
     commitTree: (json, why) => {
+      // PERFORM plays a patch still on its way to the bench (`voiceEarly`),
+      // and a tree sent now would land on the rack it replaces. PERFORM asks
+      // `openLanding` before a Keep, Take or Back and refuses there, before
+      // anything has changed; this is the backstop, and it says so too.
+      if (earlyOpen) {
+        note(`That didn't stick — ${earlyOpen.label} is still opening. Try again in a moment.`, { urgent: true, replace: "pf-landing" });
+        return;
+      }
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
       queueStruct({ type: "edit_set_tree", json, ...(why ? { why } : {}) }, null, { op: "perform" });
     },
@@ -3736,11 +4049,14 @@ async function bootBooth() {
       const p = (presetRows || []).find((r) => r.name === name);
       if (!p) return;
       const id = presetIds.get(p.index);
-      if (id != null && rowOf(id)) openOnBench(id, { auto: true });
-      else {
+      if (id != null && rowOf(id)) {
+        openOnBench(id, { auto: true });
+        voicePresetEarly(p, id);
+      } else {
         presetClicks.set(p.index, benchSeq);
         openAskedAt = performance.now();
-        send({ type: "load_preset", index: p.index });
+        send({ type: "load_preset", index: p.index, open: true });
+        voicePresetEarly(p);
       }
     },
     resetVisitor: () => boothResetVisitor(),
@@ -4731,10 +5047,14 @@ $("pd-skip").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 let renderWanted = null;
 const RENDER_SETTLE_MS = 180;
 
+// In the background (`bg`): the worker serves them after any gesture waiting
+// in its `now` lane, a render at a time, so a preset clicked while the
+// table's sounds render is opened next. ▶ on a side still waiting asks again,
+// as the player's own request (`awaitRender`).
 function requestPairRendersNow() {
   clearTimeout(renderWanted);
   if (!currentDuel) return;
-  for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id });
+  for (const id of currentDuel) if (!renders.has(id)) send({ type: "render", id, bg: true });
 }
 
 function requestPairRenders() {
@@ -5228,6 +5548,7 @@ let dealing = false;
  *  generation replaces it, and dealing used to ignore the cut, so a sound the
  *  player had thrown out came back minutes later as a question. */
 function requestDeal() {
+  dealsOut += 1;
   send({ type: "duel", exclude: [...cutIds] });
 }
 
@@ -5238,16 +5559,18 @@ function requestDeal() {
 const DEAL_SAY_MS = 300;
 let dealSayTimer = null;
 
-/** What the deal is waiting behind, as far as main can know it. */
+/** What the deal is waiting behind, as far as main can know it. A generation
+ *  or ⚡ on the farm holds nothing up; walked in the engine worker (no farm on
+ *  this machine), a deal waits for the walk in progress. */
 function dealingWhy() {
-  if (breeding) {
+  if (breeding && !breeding.farm) {
     if (!breeding.total) return "dealing — the engine is breeding";
     const seed = Math.min(breeding.done + 1, breeding.total);
     return breeding.done >= breeding.total
       ? "dealing — the engine is placing a bred generation in the pool"
       : `dealing — the engine is breeding (seed ${seed}/${breeding.total})`;
   }
-  if (evolvingFrom) return "dealing — the engine is ⚡ evolving a patch";
+  if (evolvingFrom && !evolvingFrom.stoppable) return "dealing — the engine is ⚡ evolving a patch";
   if (meterFitting && engineBusy) return "dealing — the engine is redrawing your taste map";
   return "dealing…";
 }
@@ -5287,14 +5610,158 @@ function setDuelControlsEnabled(on) {
   else dealSayTimer = setTimeout(() => { if (dealing) sayDealing(dealingWhy()); }, DEAL_SAY_MS);
 }
 
+/** Put a dealt pair on the table: a deal's reply, or the pair dealt ahead.
+ *  The one place a pair goes up, so anything owed to a pair being *shown*
+ *  belongs here. */
+function placePair(pair, meta) {
+  leftPair = null;
+  currentDuel = pair;
+  // Randomise the presented side: the engine's first pick was always A,
+  // always left, always ←. `duel_pred` is computed at record time from
+  // the order we submit, so a swapped pair stays consistent end-to-end.
+  if (currentDuel && Math.random() < 0.5) currentDuel = [currentDuel[1], currentDuel[0]];
+  duelMeta = meta || null;
+  dealing = false;
+  setDuelControlsEnabled(true);
+  retireForecast();
+  renderDealRule();
+  if (currentDuel) {
+    setFlip("a", false);
+    setFlip("b", false);
+    loadSide("a", currentDuel[0]);
+    loadSide("b", currentDuel[1]);
+    benchBeforeAudition = null; // a fresh pair closes any audition detour
+    setDuelSelection(null);
+    dealCards();
+    mark("pair-dealt");
+    send({ type: "duel_shown", a: currentDuel[0], b: currentDuel[1] });
+  }
+  renderPlayDuel();
+  // The pair is on the table; a refit armed by the last vote can now be
+  // enqueued *behind* this pair's audio rather than in front of it.
+  settleFit();
+  aheadRetries = 0;
+  // A pair waiting that is the one just put up is no next pair.
+  checkAhead();
+  requestAhead();
+}
+
+// ---------- the next pair, dealt ahead ----------
+// A pick used to put the table away and wait for the engine to deal: ~30 ms
+// on a quiet engine, but a whole seed's walk (up to about 20 s) while a
+// generation ran, and the new pair's sounds then rendered after it. So while
+// a pair is on the table the next one is dealt and both its sounds fetched,
+// and a pick or "another pair" swaps it in at once; the one after is dealt
+// in the background. The pair is chosen before the pick is known, which is
+// what already happened (the pick is held in its undo window, and the deal
+// used to go out before it was logged): under the default rule every pair is
+// dealt at random, and under bald/thompson it is chosen against the current
+// posterior, which the model already lets lag its log by up to six picks.
+//
+// Asked for only once the table's own two sounds are here, so the pair in
+// front of the player never waits behind the next one's. The next pair's
+// sounds are fetched in the background (`bg`): the worker renders them
+// behind every gesture waiting on it.
+//
+// The worker answers deals in the order they were asked for, and `onDealt`
+// takes each answer on its own terms rather than by which request asked for
+// it: the first to land while the table waits goes up, and any other waits as
+// the next pair. A pick made while a deal ahead is still out (a generation
+// holds deals behind the seed being bred) waits for that deal rather than
+// asking for a second. It used to ask for one, keep the first answer as "the
+// next" because a pick's deal was expected, and put the second up: the table
+// ran P, R, Q, with the cards dimmed through a deal and two renders nobody
+// needed, and when an answer landed changed what a seeded session showed
+// (ADR-001). Now the pairs go up in the order the engine dealt them.
+let ahead = null; // {pair, meta}: dealt, sounds fetched or on their way
+let dealsOut = 0; // deals asked for and not yet answered
+let aheadRetries = 0; // deals refused since the table last changed
+let leftPair = null; // the pair ↻ or a lost side just put away, until the next goes up
+const goneIds = new Set(); // ids that have left the pool, as views said so
+
+function aheadUsable(pair) {
+  if (!pair || pair.length !== 2) return false;
+  // A patch cut since (its undo window included) is never dealt: the deal
+  // excluded the cuts made before it, and this re-checks the ones made since.
+  if (pair.some((id) => cutIds.has(id))) return false;
+  // Replaced since (a generation, a preset load or an import can replace a
+  // patch while the pair waits): `applyViews` drops the pair when one of
+  // its ids leaves the pool. The bank's rows can lag the pool while it
+  // fills, so a missing row is not taken for a replaced patch.
+  if (pair.some((id) => goneIds.has(id))) return false;
+  // Not the question on the table, the one just put away, or the one being
+  // held in an undo window.
+  const same = (p) => p && p.includes(pair[0]) && p.includes(pair[1]);
+  return !same(currentDuel) && !same(leftPair) && !same(pendingVote && pendingVote.pair);
+}
+
+function requestAhead() {
+  if (ahead || dealsOut || !currentDuel || dealing) return;
+  const heard = (id) => renders.has(id) || renderFailures.has(id);
+  if (!currentDuel.every(heard)) return;
+  dealsOut += 1;
+  send({ type: "duel", exclude: [...cutIds], ahead: true });
+}
+
+/** A deal's answer. With the table waiting it goes up; with a pair on the
+ *  table it waits as the next one, its sounds fetched. */
+function onDealt(pair, meta) {
+  if (!currentDuel) {
+    if (!pair || aheadUsable(pair)) return void placePair(pair, meta);
+    // Dealt before a cut, or the pair just put away: the next answer is
+    // already on its way, or one more is asked for. A pool too small to
+    // deal anything else puts it up after a few tries.
+    if (dealsOut) return;
+    if (aheadRetries++ < 3) return void requestDeal();
+    return void placePair(pair, meta);
+  }
+  if (!pair || ahead) return;
+  if (!aheadUsable(pair)) {
+    // The engine may deal the very pair on the table again (a small pool
+    // early in a session does, often): ask again, a few times.
+    if (aheadRetries++ < 3) requestAhead();
+    return;
+  }
+  ahead = { pair, meta };
+  // In the background (`bg`, see `requestPairRendersNow`): nobody hears
+  // these until the next pick, and a gesture must not wait behind them.
+  for (const id of pair) if (!renders.has(id)) send({ type: "render", id, bg: true });
+}
+
+/** Swap the pair dealt ahead onto the table; false when there is none that
+ *  may still be dealt. */
+function takeAhead() {
+  const a = ahead;
+  ahead = null;
+  if (!a || !aheadUsable(a.pair)) return false;
+  placePair(a.pair, a.meta);
+  return true;
+}
+
+/** A pair that may no longer be dealt (cut, or replaced) is dropped, and the
+ *  next is asked for. */
+function checkAhead() {
+  if (ahead && !aheadUsable(ahead.pair)) {
+    ahead = null;
+    requestAhead();
+  }
+}
+
 /** Put the pair on the table away and deal another: a pick does this, and so
  *  does "another pair" (↻), which used to leave the old pair up with buttons
- *  that looked live and did nothing until the deal landed. */
+ *  that looked live and did nothing until the deal landed. The pair dealt
+ *  ahead goes up at once when there is one; the pair put away is remembered
+ *  until the next goes up, so neither it nor a deal of it goes straight back. */
 function dealAnother() {
+  leftPair = currentDuel;
   currentDuel = null;
+  aheadRetries = 0;
+  if (takeAhead()) return;
   dealing = true;
   setDuelControlsEnabled(false);
-  requestDeal();
+  // A deal already out (one asked for ahead) is the next pair: its answer
+  // goes up when it lands. Only with none out is one asked for.
+  if (!dealsOut) requestDeal();
 }
 
 // ---------- taking back a teaching act ----------
@@ -5330,8 +5797,6 @@ function takeBackNewest() {
 // "picked it, then unpicked it" records the user's mouse, not their taste.
 let pendingVote = null; // { timer, commit, pair, key, toast, back, armsFit }
 
-let ignoreNextDeal = false;
-
 function commitPendingVote() {
   if (!pendingVote) return;
   clearTimeout(pendingVote.timer);
@@ -5356,9 +5821,6 @@ function retractVote() {
   const { pair, key, toast, back } = pendingVote;
   pendingVote = null;
   releaseTakeBack(back);
-  // The next deal was requested at vote time; if it hasn't landed yet it
-  // must not overwrite the pair we are restoring.
-  if (dealing) ignoreNextDeal = true;
   duelsSinceFit = Math.max(0, duelsSinceFit - 1);
   fitDue = duelsSinceFit >= FIT_EVERY;
   // Uncounted everywhere it was counted: PICKS, the meter's copy, the pips
@@ -5367,8 +5829,26 @@ function retractVote() {
   // that was just taken back is the lane saying something untrue.
   aheadDrop(key);
   dropToast(toast);
+  // A side left the pool inside the window (a generation ended, or a preset
+  // load or an edit made room): the question is about a patch that no longer
+  // exists, so it is not asked again. The pick is still taken back, and the
+  // table keeps the pair that replaced it (or the deal on its way).
+  const gone = pair.find((id) => goneIds.has(id) || cutIds.has(id));
+  if (gone !== undefined) {
+    const who = nameOrKnown(gone) || "one of them";
+    note(`Pick taken back — ${who} has left the bank, so that pair is not asked again.`, { replace: "vote" });
+    renderPlayDuel();
+    return true;
+  }
+  // The pair that replaced it waits as the next one, sounds and all: the
+  // player has seen it, so it comes before any pair dealt behind it. A deal
+  // still out when the pick is taken back lands with the pair on the table,
+  // so it becomes the next pair (`onDealt`) rather than covering this one.
+  const displaced = currentDuel;
   // Re-deal the retracted pair so the question is asked again.
   currentDuel = pair;
+  leftPair = null;
+  if (displaced && aheadUsable(displaced)) ahead = { pair: displaced, meta: duelMeta };
   dealing = false;
   setDuelControlsEnabled(true);
   setFlip("a", false);
@@ -5378,6 +5858,9 @@ function retractVote() {
   setDuelSelection(null);
   dealCards();
   renderPlayDuel();
+  // Its sounds are resident, so no render will land to ask for the pair
+  // after it: asked here, unless one is waiting or on its way.
+  requestAhead();
   return true;
 }
 
@@ -5517,13 +6000,113 @@ $("choose-a").onclick = () => choose("a");
 $("choose-b").onclick = () => choose("b");
 $("skip-duel").onclick = () => { if (!dealing && currentDuel) dealAnother(); };
 $("evolve-btn").onclick = () => {
-  $("evolve-btn").disabled = true;
+  if (breeding || evolvingFrom) return;
   lampOn("refine");
-  breeding = { done: 0, total: 0 };
+  breeding = { generation: 0, done: 0, total: 0, eta: null, etaAt: 0, farm: true, stopping: false, retiring: [] };
   renderTeach(); // a refit armed now waits for the generation, and says so
-  note("breeding a generation toward your taste…");
+  renderEvolveBtn();
+  renderNextStep();
   send({ type: "refine" });
 };
+$("evolve-stop").onclick = () => stopBreeding();
+
+// A `refine_progress` or `refine_child`: where the generation is.
+function breedingFrom(m) {
+  if (!breeding) return;
+  if (m.generation) breeding.generation = m.generation;
+  if (m.total != null) breeding.total = m.total;
+  if (m.done != null) breeding.done = m.done;
+  if (m.farm != null) breeding.farm = !!m.farm;
+  if (m.eta !== undefined) {
+    breeding.eta = m.eta;
+    breeding.etaAt = performance.now();
+  }
+}
+
+// Stop ends the generation with what has been bred: the worker finishes it
+// with the children absorbed so far, and the lowest unsaved members (which
+// can include a child bred early) leave then, as at any generation's end.
+function stopBreeding() {
+  if (!breeding || breeding.stopping || !breeding.total) return;
+  breeding.stopping = true;
+  send({ type: "refine_stop" });
+  renderEvolveBtn();
+  renderJobSlot();
+}
+
+// EVOLVE POOL is its own progress bar while it breeds: an amber fill for the
+// jobs absorbed, "breeding 3/10", and a stop beside it. At rest it is the
+// button it always was.
+function renderEvolveBtn() {
+  const btn = $("evolve-btn");
+  const stop = $("evolve-stop");
+  const b = breeding;
+  btn.classList.toggle("breeding", !!b);
+  btn.disabled = !!b || !!evolvingFrom;
+  stop.classList.toggle("hidden", !b || !b.total || b.stopping);
+  // A disabled button shows no title, so why it waits is on its wrapper.
+  $("evolve-wrap").title = !b && evolvingFrom ? EVOLVE_WAITS_FOR_ZAP : "";
+  // ⚡ takes its turn from this: disabled while a generation breeds.
+  renderEvolveFrom();
+  if (!b) {
+    btn.textContent = "evolve pool";
+    btn.removeAttribute("aria-valuenow");
+    btn.removeAttribute("role");
+    return;
+  }
+  const label = !b.total
+    ? "breeding…"
+    : b.stopping
+      ? "stopping…"
+      : b.done >= b.total
+        ? "placing in the pool…"
+        : `breeding ${b.done}/${b.total}`;
+  const pct = b.total ? Math.round((100 * b.done) / b.total) : 0;
+  btn.innerHTML = `<span class="eb-fill" style="width:${pct}%"></span><span class="eb-text">${label}</span>`;
+  btn.setAttribute("aria-label", `EVOLVE POOL: ${label}`);
+}
+
+// ---------- what a generation may replace ----------
+// Hovering (or focusing) EVOLVE POOL marks the rows a generation could
+// replace, so a save can come first. At rest: the unsaved rows the model
+// likes least, as many as a generation has walks — a generation retires the
+// lowest unsaved members at its end, and a child only displaces a member
+// below it, so nothing outside these can go. While one runs: the rows its end
+// would retire if it ended now (the engine's own `refine_retiring`).
+const GEN_WALKS = 10; // `refine_seeds`, until a generation has said its size
+let mayGoShown = false;
+let mayGo = new Set();
+// Hovered and focused are kept apart: pressing EVOLVE POOL disables it, which
+// takes its focus away while the pointer is still on it.
+const mayGoBy = { hover: false, focus: false };
+function mayGoIds() {
+  if (breeding && breeding.retiring && breeding.retiring.length) return breeding.retiring;
+  if (!views || !views.styles || !views.ranked) return [];
+  const n = (breeding && breeding.total) || GEN_WALKS;
+  return views.ranked
+    .filter((r) => !r.pinned && !cutIds.has(r.id))
+    .sort((a, b) => a.mean - b.mean)
+    .slice(0, n)
+    .map((r) => r.id);
+}
+function markMayGo(on) {
+  mayGoShown = on;
+  mayGo = new Set(on ? mayGoIds() : []);
+  for (const el of document.querySelectorAll("#bank-list .bank-item[data-id]")) {
+    el.classList.toggle("may-go", mayGo.has(Number(el.dataset.id)));
+  }
+}
+{
+  const wrap = $("evolve-wrap");
+  const set = (by, on) => {
+    mayGoBy[by] = on;
+    markMayGo(mayGoBy.hover || mayGoBy.focus);
+  };
+  wrap.addEventListener("pointerenter", () => set("hover", true));
+  wrap.addEventListener("pointerleave", () => set("hover", false));
+  wrap.addEventListener("focusin", () => set("focus", true));
+  wrap.addEventListener("focusout", () => set("focus", false));
+}
 
 // ---------- patch bank ----------
 let bankScrollTo = null;
@@ -5645,7 +6228,14 @@ function renderBank() {
     return;
   }
 
-  const rows = bankSource();
+  // The pool leads with the latest generation's children, in the order they
+  // were bred, under their own heading; the rest keep their ranked order. So
+  // a child lands where the player is looking, and nothing below it moves.
+  const source = bankSource();
+  const fresh = bankFilter === "pool"
+    ? [...lastBorn].map((id) => source.find((r) => r.id === id)).filter(Boolean)
+    : [];
+  const rows = fresh.length ? [...fresh, ...source.filter((r) => !lastBorn.has(r.id))] : source;
   bankRows = rows; // assigned before ANY return: [ ] and 1–5 step THIS list
   list.innerHTML = "";
   if (rows.length === 0) {
@@ -5663,7 +6253,18 @@ function renderBank() {
 
   const fitted = !!(views && views.styles);
   const frag = document.createDocumentFragment();
-  for (const r of rows) frag.appendChild(bankRow(r, fitted));
+  rows.forEach((r, i) => {
+    if (fresh.length && i === 0) {
+      frag.appendChild(bankGroup(bornGen ? `new · gen ${bornGen}` : "new",
+        "Bred in the latest generation, in the order they were bred"));
+    }
+    if (fresh.length && i === fresh.length) {
+      frag.appendChild(bankGroup(fitted ? "ranked by the model" : "the rest",
+        fitted ? "The rest of the pool, the patches the model thinks you'd like most first" : ""));
+    }
+    frag.appendChild(bankRow(r, fitted));
+  });
+  landedNow.clear();
   list.innerHTML = "";
   list.appendChild(frag);
   syncBankCursor();
@@ -5683,6 +6284,15 @@ function renderBank() {
   }
 }
 
+function bankGroup(text, title) {
+  const h = document.createElement("div");
+  h.className = "bank-group";
+  h.setAttribute("role", "presentation");
+  h.textContent = text;
+  if (title) h.title = title;
+  return h;
+}
+
 function bankRow(r, fitted) {
   const el = document.createElement("div");
   el.dataset.id = String(r.id);
@@ -5696,6 +6306,8 @@ function bankRow(r, fitted) {
     + (r.id === kbdRowId ? " kbd" : "")
     + (r.pinned ? " saved" : "")
     + (lastBorn.has(r.id) ? " fresh" : "")
+    + (landedNow.has(r.id) ? " landed" : "")
+    + (mayGo.has(r.id) ? " may-go" : "")
     // Its bench open is on its way (see `openOnBench`).
     + (r.id === benchPending && r.id !== wb.subjectId ? " opening" : "");
   const frac = fitted ? sq(r.mean) : 0;
@@ -5735,7 +6347,7 @@ function bankRow(r, fitted) {
       <span class="bi-id">#${r.id}</span>
     </div>
     <div class="bi-row">
-      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}" data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
+      <button class="bi-hear${hearingNow(`bank:${r.id}`) ? " playing" : ""}${hearPending.has(r.id) ? " pending" : ""}"${hearPending.has(r.id) ? ' aria-busy="true"' : ""} data-hear="bank:${r.id}" title="Hear this patch — press again to stop" aria-label="Audition ${esc(r.name)}">▶</button>
       <span class="stars" role="group" aria-label="Rate ${esc(r.name)}">
       ${[1, 2, 3, 4, 5]
         .map((s) => `<button class="star ${stars >= s ? "lit" : ""}" data-s="${s}" aria-pressed="${stars >= s}" aria-label="${s} star${s > 1 ? "s" : ""}" title="${s}★ — teaches the model, ${s > 3 ? "does not" : "does not"} keep the patch">★</button>`)
@@ -5759,11 +6371,15 @@ function bankRow(r, fitted) {
   });
   // A transport, as ▶ SAMPLE and the warm start's ▶ are: lit while its
   // phrase plays, and pressed again it stops rather than starting over.
+  // Its buffer may take a moment (a render in the engine): the ▶ says it is
+  // on its way at once, and the row keeps saying so if the bank redraws.
   el.querySelector(".bi-hear").onclick = (e) => {
     const key = `bank:${r.id}`;
     if (hearingNow(key)) return void stopAudition();
     const btn = e.currentTarget;
-    awaitRender(r.id, () => play(r.id, btn, key));
+    const hear = () => document.querySelector(`#bank-list .bi-hear[data-hear="${key}"]`) || btn;
+    if (!renders.has(r.id)) bankHearPending(r.id, true);
+    awaitRender(r.id, () => play(r.id, hear(), key), { settled: () => bankHearPending(r.id, false) });
   };
   el.querySelectorAll(".star").forEach((btn) => {
     btn.onclick = () => {
@@ -5804,6 +6420,8 @@ function cutRow(r) {
   // A cut patch is never dealt again (`requestDeal` sends the cut ids), and
   // that includes the pair on the table: a side the player just threw out is
   // not a question worth asking, so another pair is dealt the way ↻ deals one.
+  // …and so does the pair dealt ahead: it is dropped, and dealt again.
+  checkAhead();
   if (currentDuel && currentDuel.includes(r.id) && !dealing) dealAnother();
   let toast = null;
   let back = null;
@@ -5929,15 +6547,24 @@ function renderPresetBank(list) {
     if (presetClicks.has(p.index)) el.classList.add("loading");
     el.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
-      if (inBank) { openOnBench(loadedId); showView("play"); }
-      else {
+      if (inBank) {
+        openOnBench(loadedId);
+        voicePresetEarly(p, loadedId);
+        showView("play");
+      } else {
         // Said at once: the engine may be busy for seconds, and a click
         // that shows nothing gets clicked again, or given up on.
+        // A click is an open too: a preset clicked before this one and still
+        // loading lands in the bank, not on the bench (the player moved on).
+        // It used to open when it landed, and this one was then refused.
+        benchSeq += 1;
         presetClicks.set(p.index, benchSeq);
         openAskedAt = performance.now();
         el.classList.add("loading");
         el.setAttribute("aria-busy", "true");
-        send({ type: "load_preset", index: p.index });
+        send({ type: "load_preset", index: p.index, open: true });
+        // Heard before: it plays now, while the engine inserts it.
+        voicePresetEarly(p);
       }
     });
     el.querySelectorAll("button").forEach((b) => { b.tabIndex = -1; });
@@ -5954,7 +6581,20 @@ let pinBudget = [0, 0]; // [used, cap], owned by the engine and echoed here
 let renamingId = null; // a rename in flight; see `syncBankCursor`
 let presetCursor = -1;  // the preset bank's own row cursor (presets have no id)
 let bankRenderPending = false; // a render deferred while a rename is open
-const lastBorn = new Set(); // ids born in the latest bred generation
+const lastBorn = new Set(); // ids born in the latest bred generation, in birth order
+
+// Bank ▶s whose buffer is on its way (EV-16): lit as pending until it plays
+// or fails, across bank redraws.
+const hearPending = new Set();
+function bankHearPending(id, on) {
+  if (on) hearPending.add(id);
+  else hearPending.delete(id);
+  const btn = document.querySelector(`#bank-list .bi-hear[data-hear="bank:${id}"]`);
+  if (!btn) return;
+  btn.classList.toggle("pending", on);
+  if (on) btn.setAttribute("aria-busy", "true");
+  else btn.removeAttribute("aria-busy");
+}
 
 function selectBank(which) {
   if (!BANKS.includes(which)) return;
@@ -6367,8 +7007,132 @@ const OPEN_SAID_MS = 1000;
 // An open promised before there is an id to open: "teach it" names its first
 // pick before the engine has inserted it. {name, at}, or null.
 let openExpect = null;
+
+// ---------- an open reaches the voices before the bench ----------
+// Opening a patch is a render on the engine's one thread (the bench's buffer),
+// and it waits behind whatever render is already running there. Just after a
+// boot that is always something (the first patch, the table's pair), so a
+// preset clicked then reached the voices, and PERFORM, late: PERFORM showed
+// it wired 0.3-0.9 s after its tab was opened (0.8 s after the click) on a
+// quiet four-core machine, 4.7 s on one core and 9.3 s on a CI runner, for a
+// patch it had measured and could have played at once.
+//
+// The voices need only the tree and its makeup gain, and both are known
+// before the render: the engine sends them first (`bench_opening`, from a
+// preset's insert or a bench open), and a preset opened before is remembered
+// here (`presetVoiced`), so opening it again, after a reload too, does not
+// wait on the engine at all. The rack stays the patch it was until the bench
+// reply lands; meanwhile its knobs do not write into voices that are playing
+// something else (`voicesAheadOfRack`), and edits still landing on it do not
+// take the voices back. The reply vets the patch, and mutes it if it fails.
+let earlyOpen = null; // {json, id, index, label, prev, tick}: the voices took this open early
+// Counts opens, the app's own included, so an early open can tell whether the
+// open still pending on the bench was asked for before it or after.
+let openTick = 0;
+let benchPendingTick = 0;
+const VOICED_STORE = "auracle-voiced-presets";
+const VOICED_MAX = 64;
+// Preset name -> {json, makeup} as this build's engine gave them. Keyed by the
+// build, since a new build may change a preset (its tree, or φ and so its
+// makeup): the first open after an update asks the engine again.
+const presetVoicedMap = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(VOICED_STORE) || "null");
+    return new Map(raw && raw.build === BUILD && Array.isArray(raw.presets) ? raw.presets : []);
+  } catch {
+    return new Map();
+  }
+})();
+let voicedSaveTimer = null;
+function rememberPresetVoiced(index, json, makeup) {
+  const p = [...(presetRows || []), ...(warmRows || [])].find((r) => r.index === index);
+  if (!p || !json || json === "null" || !Number.isFinite(makeup)) return;
+  presetVoicedMap.delete(p.name);
+  while (presetVoicedMap.size >= VOICED_MAX) presetVoicedMap.delete(presetVoicedMap.keys().next().value);
+  presetVoicedMap.set(p.name, { json, makeup });
+  clearTimeout(voicedSaveTimer);
+  voicedSaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(VOICED_STORE, JSON.stringify({ build: BUILD, presets: [...presetVoicedMap] }));
+    } catch {
+      // Quota or a private window: a convenience, never load-bearing.
+    }
+  }, 1500);
+}
+const presetVoiced = (name) => presetVoicedMap.get(name) || null;
+// A tree as a sound: its text without the node uids, which the pool mints
+// per session (the same rule as PERFORM's `wireKey`).
+function treeSound(json) {
+  try {
+    return JSON.stringify(JSON.parse(json), (k, v) => (k === "uid" ? undefined : v));
+  } catch {
+    return json;
+  }
+}
+/** Hand the voices (and PERFORM) the patch being opened, ahead of its bench
+ *  reply. `id` is null for a preset whose insert has not answered yet. */
+function voiceEarly(json, makeup, { id = null, index = null, label }) {
+  if (!live || !json || json === "null") return;
+  const prev = earlyOpen
+    ? earlyOpen.prev
+    : { json: liveTreeJson, makeup: liveMakeup, id: livePatchId, label: liveLabelText, muted: liveMuted };
+  earlyOpen = { json, id, index, label, prev, tick: ++openTick };
+  livePatchId = id;
+  if (!(liveTreeJson && treeSound(liveTreeJson) === treeSound(json))) {
+    live.setPatch(json, makeup);
+    setLivePatchJson(json, makeup);
+  }
+  // A pool member, or a preset that was one: vetted when it was admitted.
+  // A mute the rack being left earned (a runaway edit) is not this patch's.
+  setLiveMuted(false);
+  setLiveLabel(label);
+}
+/** An early open that is not going to land (its insert failed, the patch
+ *  left the bank, the player moved on): the voices go back to what they had. */
+function unvoiceEarly() {
+  const e = earlyOpen;
+  earlyOpen = null;
+  if (!e || !live) return;
+  // The bench's patch, muted if its last vet failed (an open that landed
+  // behind this one skipped its vet, see `vetIsVoices`); else what played
+  // before, as it was.
+  const back = benchTreeJson && benchTreeJson !== "null"
+    ? { json: benchTreeJson, makeup: benchMakeup, id: wb.dirty ? null : wb.subjectId, label: null, muted: !wb.vetOk }
+    : e.prev;
+  if (!back || !back.json) return;
+  livePatchId = back.id;
+  live.setPatch(back.json, back.makeup);
+  setLivePatchJson(back.json, back.makeup);
+  setLiveMuted(!!back.muted);
+  setLiveLabel(back.label || (wb.subjectId != null ? `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}` : "no patch"));
+}
+/** A preset the voices have played before, opened from the library: into
+ *  the voices now, from memory. */
+function voicePresetEarly(p, id = null) {
+  const v = presetVoiced(p.name);
+  if (v) voiceEarly(v.json, v.makeup, { id, index: p.index, label: p.name });
+}
+/** The voices play the patch on its way to the bench, while the rack on
+ *  screen is still the one it replaces. */
+function voicesAheadOfRack() {
+  if (earlyOpen) return true;
+  return benchPending != null && livePatchId === benchPending && wb.subjectId !== benchPending;
+}
+/** The early open is the one the player is waiting on (no later open since). */
+function earlyIsCurrent() {
+  const e = earlyOpen;
+  if (!e) return false;
+  const clickedSince = [...presetClicks.values()].includes(benchSeq);
+  if (e.id != null) return e.id === benchPending && !clickedSince;
+  // A preset still being inserted: current if it is the latest click and
+  // nothing was opened after it (an open from before it, the first patch
+  // after boot say, is one it replaces).
+  return presetClicks.get(e.index) === benchSeq && (benchPending == null || benchPendingTick < e.tick);
+}
 function openingNow() {
   if (openExpect && performance.now() - openExpect.at < 60_000) return true;
+  // The patch on its way is already in the voices (see `voiceEarly`).
+  if (earlyIsCurrent()) return false;
   if (benchPending == null && presetClicks.size === 0) return false;
   // The patch on its way is already the one the voices play (the warm start
   // hands its first pick to the voices ahead of the bench): nothing is being
@@ -6396,6 +7160,7 @@ function openingName() {
 function openOnBench(id, { auto = false } = {}) {
   if (!auto) benchSeq += 1;
   benchPending = id;
+  benchPendingTick = ++openTick;
   openAskedAt = performance.now();
   openAsk = { id, at: openAskedAt, auto };
   // A COMMIT still waiting on the last patch's edit is about that patch; it
@@ -6481,12 +7246,17 @@ function sendEdit(addr, value, isIndex, id) {
   // write straight into the running voices. At the address the knob has *on
   // the bench*, which a structural reply that landed mid-drag may have moved.
   const liveIndex = isIndex && LIVE_INDEX_SITES.has(addr.split("#").pop());
+  // Unless the voices have already moved on to a patch on its way to the
+  // bench (`bench_opening`): this address is the leaving rack's, and there it
+  // could name a different knob. The write itself is dropped when the new
+  // patch lands, as every edit aimed at the rack it replaces is (`dropLane`).
+  const voicesAhead = voicesAheadOfRack();
   if (isIndex && !liveIndex) nonLiveAddrs.add(addr);
-  else if (live) live.param(lockAddrOf(who) || addr, value);
+  else if (live && !voicesAhead) live.param(lockAddrOf(who) || addr, value);
   // …and PERFORM plays from it. Its base for this knob was the tree it last
   // measured, so without this PATCH drew the old value back over the knob in
   // PERFORM's amber, and PERFORM's next move wrote it back into the voices.
-  if (!isIndex && perform && perform.knobSet) perform.knobSet(lockAddrOf(who) || addr, value);
+  if (!isIndex && !voicesAhead && perform && perform.knobSet) perform.knobSet(lockAddrOf(who) || addr, value);
   // The readout above the rack describes the tree before this write until the
   // bench answers with the new φ. Say so rather than leave a stale number
   // looking current.
@@ -7994,7 +8764,7 @@ function renderRack(rebuild = false) {
   const enable = (id, on) => { $(id).disabled = !on; };
   enable("rack-play", hasRack && wb.vetOk);
   syncCommitBtn();
-  enable("rack-evolve", hasRack);
+  enable("rack-evolve", hasRack && !evolvingFrom && !breeding);
   enable("lock-knobs", hasRack);
   enable("lock-structure", hasRack);
   enable("lock-clear", hasRack && wb.locks.size > 0);
@@ -8005,7 +8775,7 @@ function renderRack(rebuild = false) {
     if (wrap) wrap.title = $(id).disabled ? text : "";
   };
   reason("rack-play", !hasRack ? "Pick a patch from the bank first" : "This patch failed the safety vet and is muted");
-  reason("rack-evolve", "Pick a patch from the bank first");
+  reason("rack-evolve", evolveFromWhy() || "Pick a patch from the bank first");
   reason("lock-knobs", "Pick a patch from the bank first");
   reason("lock-structure", "Pick a patch from the bank first");
   reason("lock-clear", !hasRack ? "Pick a patch from the bank first" : "No locks set — click a lock dot or ▢ on a module first");
@@ -12429,17 +13199,57 @@ $("rack-svg").addEventListener("keydown", (e) => {
 });
 
 function startEvolveFrom(id) {
-  $("rack-evolve").disabled = true;
+  // ⚡ waits for a generation (see `breeding`). Its button is disabled then,
+  // but a commit's duel can end with "…then evolve" while one breeds: the
+  // commit stands, and the ⚡ it was on its way to says why it did not go.
+  if (breeding || evolvingFrom) {
+    note(`⚡ not started — ${breeding ? "EVOLVE POOL is breeding a generation" : "⚡ is already evolving a patch"}. Press ⚡ again when it finishes.`, { urgent: true, replace: "evolve-from" });
+    return;
+  }
+  // Said in the job slot (and on the button), not a toast: a toast carries
+  // the result of a gesture, and this one's result comes when the walk lands.
+  evolvingFrom = { id, name: nameOf(id), stoppable: false };
   lampOn("refine_from");
-  evolvingFrom = true;
+  renderEvolveFrom();
+  renderEvolveBtn(); // EVOLVE POOL waits for ⚡
+  renderNextStep();
   renderTeach();
-  note("⚡ evolving around the locked controls…", { replace: "evolve-from" });
   // Identity is the panel's business; the engine's refinement kernel rejects
   // proposals at *trace addresses*, so the set is projected back onto the rack
   // that is on screen on the way out.
   const locks = [...lockedAddrs()];
   logImplicit("evolve_from", { locks: locks.length }, { id });
   send({ type: "refine_from", id, locks });
+}
+
+// ⚡ is disabled and says what it is doing while its walk runs; the rack stays
+// live, and so does everything else, because the walk is on the farm. It is
+// disabled while a generation breeds too, and says so.
+function renderEvolveFrom() {
+  const btn = $("rack-evolve");
+  if (!btn) return;
+  btn.textContent = evolvingFrom ? "⚡ evolving…" : "⚡ evolve from this";
+  btn.classList.toggle("evolving", !!evolvingFrom);
+  const hasRack = !!(wb.rack && wb.rack.modules && wb.rack.modules.length > 0);
+  btn.disabled = !!evolvingFrom || !!breeding || !hasRack;
+  const wrap = btn.closest(".tt");
+  if (wrap) wrap.title = btn.disabled ? evolveFromWhy() || "Pick a patch from the bank first" : "";
+}
+
+/** Why ⚡ cannot be pressed now for a job, or null. */
+function evolveFromWhy() {
+  if (evolvingFrom) {
+    return evolvingFrom.stoppable
+      ? "⚡ is evolving this patch — the job slot in the menu bar shows it, with stop"
+      : "⚡ is evolving this patch — the job slot in the menu bar shows it";
+  }
+  if (breeding) return ZAP_WAITS_FOR_GENERATION;
+  return null;
+}
+
+function stopEvolveFrom() {
+  if (!evolvingFrom || !evolvingFrom.stoppable) return;
+  send({ type: "refine_from_stop" });
 }
 
 // ---------- commit deals a real duel (WS-8 §1) ----------
@@ -18036,9 +18846,10 @@ function drawLineage() {
     // Don't keep telling the user to press a button they have already pressed.
     // The toast of a generation that bred nothing says "no move was
     // accepted"; this says the same thing in the same words.
+    const ran = gensBred();
     log.innerHTML =
-      status.generation > 0
-        ? `<span class="silk-dim">Generation ${status.generation} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
+      ran > 0
+        ? `<span class="silk-dim">Generation ${ran} ran, but no move was accepted — that happens, and it is the search working, not failing. More picks sharpen it; ⚡ evolve from a patch you like aims it.</span>`
         : '<span class="silk-dim">No generations yet — make a few picks, then press EVOLVE POOL, or ⚡ evolve a patch you like.</span>';
     return;
   }
@@ -19199,6 +20010,7 @@ let poolSettled = false;
 function dropBootVeil() {
   if (booted) return;
   booted = true;
+  mark("veil-down");
   $("boot").classList.add("done");
   setTimeout(() => $("boot").classList.add("hidden"), 460);
 }
@@ -19259,6 +20071,35 @@ function bootField(pool, target) {
 // model is already pointed somewhere before the user casts a single vote.
 let warmRows = null;
 const warmPicked = new Set();
+
+// While the warm start is open, PERFORM's wiring of its nine cards is measured
+// in the background, under this session's model, so the pick the player lands
+// on after "teach it" is not playing from the shipped wiring alone (which was
+// measured natively, and is re-checked the moment it is used). One card at a
+// time, in the engine's background lane, and only once the pool is full: a
+// measurement is thirty-odd renders on the engine's one thread, and during the
+// fill they would slow the bank's arrival. Picked cards first, then the ones
+// the player has heard, then the rest. It stops when the card closes; a
+// measurement already running finishes and is kept.
+const warmHeard = new Set(); // preset indices ▶'d on the warm start
+let warmPrewarm = null; // {done: Set<index>, busy} while the card is open
+function warmPrewarmPump() {
+  const w = warmPrewarm;
+  if (!w || w.busy || !perform || !poolSettled || !warmRows) return;
+  if ($("warmstart").classList.contains("hidden")) return;
+  const order = [...warmPicked, ...warmHeard, ...warmRows.map((r) => r.index)];
+  const next = order.find((i) => !w.done.has(i));
+  if (next == null) return;
+  w.done.add(next);
+  const row = warmRows.find((r) => r.index === next);
+  const tree = row && perform.shippedTree ? perform.shippedTree(row.name) : null;
+  if (!tree) return warmPrewarmPump();
+  w.busy = true;
+  perform.prewarm(tree, { fresh: true }).finally(() => {
+    w.busy = false;
+    warmPrewarmPump();
+  });
+}
 
 function openWarmStart() {
   send({ type: "presets" });
@@ -19334,6 +20175,7 @@ function renderWarmStart(all) {
       else if (warmPicked.size < 3) warmPicked.add(r.index);
       b.classList.toggle("picked", warmPicked.has(r.index));
       b.setAttribute("aria-pressed", String(warmPicked.has(r.index)));
+      warmPrewarmPump();
       $("warm-go").disabled = warmPicked.size !== 3;
       $("warm-go").textContent =
         warmPicked.size === 3 ? "teach it"
@@ -19346,6 +20188,9 @@ function renderWarmStart(all) {
   $("warm-go").disabled = true;
   $("warm-go").textContent = "pick any three";
   $("warmstart").classList.remove("hidden");
+  warmHeard.clear();
+  warmPrewarm = { done: new Set(), busy: false };
+  warmPrewarmPump();
   // A modal that leaves focus on <body> cannot be reached from the keyboard.
   // Land on the first ▶: hearing comes before choosing.
   grid.querySelector(".wi-play")?.focus();
@@ -19393,6 +20238,8 @@ function previewPreset(row, btn) {
   warmPreviewCancel();
   const req = { index: row.index, btn };
   warmPreview = req;
+  warmHeard.add(row.index);
+  warmPrewarmPump();
   btn.classList.add("loading");
   btn.setAttribute("aria-busy", "true");
   const known = presetIds.get(row.index);
@@ -19415,6 +20262,7 @@ function warmPreviewLoaded(index, id, evicted) {
 
 function closeWarmStart(mark = true) {
   warmPreviewCancel();
+  warmPrewarm = null;
   $("warmstart").classList.add("hidden");
   if (mark) localStorage.setItem("auracle-warmed", "1");
   // The film note waited for the warm start; now it can speak.
@@ -19480,6 +20328,7 @@ $("warm-go").onclick = () => {
 const quietBench = new Set();
 function warmFirstLanded(m) {
   openExpect = null;
+  if (m.id > 0) rememberPresetVoiced(m.index, m.json, m.makeup);
   if (m.id <= 0 || m.id === wb.subjectId || m.id === benchPending) return;
   presetIds.set(m.index, m.id);
   quietBench.add(m.id);
@@ -19736,6 +20585,15 @@ window.addEventListener("resize", () => {
 // harder on small-memory devices where N × ~15 MB is the binding constraint.
 // Below 2 there is nothing to gain over the serial path, so take it.
 function farmWidth() {
+  const override = farmOverride();
+  if (override != null) return override;
+  let n = Math.min(6, Math.max(0, (navigator.hardwareConcurrency || 2) - 2));
+  if (navigator.deviceMemory && navigator.deviceMemory <= 4) n = Math.min(n, 2);
+  return n < 2 ? 0 : n;
+}
+
+/** `?farm=N` (or the `auracle-renderers` setting), 0–8, or null. */
+function farmOverride() {
   const override =
     new URLSearchParams(location.search).get("farm") ??
     localStorage.getItem("auracle-renderers");
@@ -19743,9 +20601,17 @@ function farmWidth() {
     const n = Number(override);
     if (Number.isFinite(n)) return Math.max(0, Math.min(8, Math.floor(n)));
   }
-  let n = Math.min(6, Math.max(0, (navigator.hardwareConcurrency || 2) - 2));
-  if (navigator.deviceMemory && navigator.deviceMemory <= 4) n = Math.min(n, 2);
-  return n < 2 ? 0 : n;
+  return null;
+}
+
+// The width of a walk crew (a generation's walks, ⚡). The same rule as boot's,
+// except that one worker is worth having here: it takes the walk off the
+// engine worker, which then answers the player while it runs.
+function walkWidth() {
+  const override = farmOverride();
+  if (override != null) return override;
+  if ((navigator.hardwareConcurrency || 2) < 2) return 0;
+  return Math.max(1, farmWidth());
 }
 
 // Can this browser structured-clone a compiled module to a worker? Chrome 55 /
@@ -19764,40 +20630,53 @@ function canShareModule(mod) {
   }
 }
 
-async function spawnFarm() {
-  const n = farmWidth();
-  if (n === 0) return { ports: [], module: null };
-
-  let mod = null;
+// The compiled binary, compiled once (for boot's crew, or where boot filled
+// serially for the first walk crew) and kept: every crew after that is N
+// instantiations, never N compiles. Null where it cannot be shared.
+let wasmModule;
+async function sharedModule() {
+  if (wasmModule !== undefined) return wasmModule;
   try {
-    mod = await WebAssembly.compileStreaming(fetch(`./pkg/auracle_wasm_bg.wasm?v=${BUILD}`));
-    if (!canShareModule(mod)) mod = null;
+    const mod = await WebAssembly.compileStreaming(fetch(`./pkg/auracle_wasm_bg.wasm?v=${BUILD}`));
+    wasmModule = canShareModule(mod) ? mod : null;
   } catch (err) {
     // No shared module: the workers fetch it themselves. Slower start, and
     // nothing else changes.
     console.warn("[auracle] shared wasm module unavailable:", err);
-    mod = null;
+    wasmModule = null;
   }
+  return wasmModule;
+}
 
-  // Width 0 — the serial path — is a fully supported, gated configuration, so
-  // *nothing* in here may escape: farm setup must never be the reason the app
-  // fails to boot. The whole per-worker block is guarded, not just the
-  // `new Worker`, because `new MessageChannel()` can throw and, more to the
-  // point, `postMessage` can reject the structured clone of the compiled
-  // module — `canShareModule` probes a MessagePort, and a Worker is a
-  // different receiving agent, which is precisely where the engines that
-  // restrict module cloning differ. Bailing returns `module: null` as well as
-  // no ports, so the `init` send below cannot then hit the same clone.
+async function spawnFarm() {
+  const n = farmWidth();
+  if (n === 0) return { ports: [], module: null };
+  const mod = await sharedModule();
+  const ports = spawnCrew(n, mod, 0);
+  return { ports, module: ports.length ? mod : null };
+}
+
+// Width 0 — the serial path — is a fully supported, gated configuration, so
+// *nothing* in here may escape: farm setup must never be the reason the app
+// fails to boot, or a generation fails to run. The whole per-worker block is
+// guarded, not just the `new Worker`, because `new MessageChannel()` can throw
+// and, more to the point, `postMessage` can reject the structured clone of the
+// compiled module — `canShareModule` probes a MessagePort, and a Worker is a
+// different receiving agent, which is precisely where the engines that
+// restrict module cloning differ. Bailing returns no ports, so boot's `init`
+// send does not then hit the same clone.
+function spawnCrew(n, mod, crew) {
   const ports = [];
+  const mine = [];
   try {
     for (let k = 0; k < n; k++) {
       const w = new Worker(`./farm.js?v=${BUILD}`, { type: "module" });
       const ch = new MessageChannel();
       // A worker that dies is reported to the *engine*, which re-issues the
-      // job it was holding by index. Main only carries the news.
+      // job it was holding. Main only carries the news.
       const index = k;
       w.onerror = (e) => {
-        try { send({ type: "farm_lost", index, reason: String(e.message || e) }); } catch (_) {}
+        try { send({ type: "farm_lost", index, crew, reason: String(e.message || e) }); } catch (_) {}
       };
       w.postMessage(
         {
@@ -19810,21 +20689,35 @@ async function spawnFarm() {
         },
         [ch.port2]
       );
-      farmWorkers.push(w);
+      mine.push({ w, crew });
       ports.push(ch.port1);
     }
   } catch (err) {
-    console.warn("[auracle] farm setup failed; filling serially:", err);
-    for (const w of farmWorkers) {
-      try { w.terminate(); } catch (_) {}
+    console.warn("[auracle] farm setup failed; working serially:", err);
+    for (const f of mine) {
+      try { f.w.terminate(); } catch (_) {}
     }
-    farmWorkers.length = 0;
     for (const p of ports) {
       try { p.close(); } catch (_) {}
     }
-    return { ports: [], module: null };
+    return [];
   }
-  return { ports, module: mod };
+  farmWorkers.push(...mine);
+  return ports;
+}
+
+// `farm_want`: a walk crew, answered with its ports — none at width 0 or on a
+// failure, and the engine worker then walks the jobs itself.
+async function raiseCrew(crew) {
+  let ports = [];
+  try {
+    const n = walkWidth();
+    if (n > 0) ports = spawnCrew(n, await sharedModule(), crew);
+  } catch (err) {
+    console.warn("[auracle] walk crew unavailable:", err);
+    ports = [];
+  }
+  send({ type: "farm_ports", crew, ports }, ports);
 }
 
 // ---------- boot ----------
@@ -19884,6 +20777,7 @@ bootMidi();
     if (saved.ui.oct != null) { octShift = Math.max(OCT_MIN, Math.min(OCT_MAX, saved.ui.oct | 0)); buildPiano(); }
     if (saved.ui.perf) Object.assign(perf, saved.ui.perf);
     for (const id of saved.ui.born || []) lastBorn.add(id);
+    bornGen = saved.ui.bornGen | 0;
     restoreTray(saved.ui.held);
     restorePositions(saved.ui.positions);
     restoreBookmarks(saved.ui.marks);
@@ -19920,7 +20814,14 @@ bootMidi();
 // `note` rides along because the toast lane's guarantee — that nothing
 // transient ever lands on PICK A / PICK B — is only testable by forcing a
 // toast at a moment the app would not normally produce one.
-window.__aur = { audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note };
+window.__aur = {
+  audioCtx, getLive: () => live, wb, tray, nonLiveAddrs, note,
+  // The timing marks (see `mark`), in the page's clock: ms since it loaded.
+  marks: () =>
+    performance.getEntriesByType("mark")
+      .filter((e) => e.name.startsWith("auracle:"))
+      .map((e) => ({ name: e.name.slice(8), t: Math.round(e.startTime), ...(e.detail ? { detail: e.detail } : {}) })),
+};
 // The probe was `window.__ric` for as long as the app was called Ricercar, and
 // hand-written browser checks in the notes still reach for it. Aliased rather
 // than dropped: an alias costs one line, and a probe that silently became

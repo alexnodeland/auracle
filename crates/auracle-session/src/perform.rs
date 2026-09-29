@@ -52,6 +52,7 @@
 //! change structure; its result is heard through a crossfade, never a jump.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use auracle_features::{featurize_memo, render_key, AudioFeatures, PhraseSpec, RenderMemo};
 use auracle_grammar::edit::{set_param, ParamValue};
@@ -92,6 +93,80 @@ impl fugue_evo::fitness::traits::Fitness for VetOnlyFitness {
     }
 }
 
+/// Any fitness, tilted along a named control's direction in standardized
+/// audio φ: a search control's offer walks
+/// `π ∝ p_grammar · exp(β·(f(x) + γ·s·ê·z(x)))`, where `f` is the taste
+/// surrogate (or [`VetOnlyFitness`] before a fit), `ê` the control's unit
+/// direction, `s` the way it was turned and `γ` how hard to aim
+/// ([`AIM_GAMMA`]).
+///
+/// Costs no render of its own: the inner fitness featurizes through the same
+/// memo first, so the tilt's look at `z` is a memo hit. A proposal that does
+/// not vet keeps the quarantine score untilted, and is not rendered twice.
+#[derive(Clone, Debug)]
+pub struct TiltedFitness<F> {
+    /// The target being tilted: [`crate::SurrogateFitness`], or
+    /// [`VetOnlyFitness`] before any taste has been fitted.
+    pub inner: F,
+    /// The standardizer the session's φ lives under.
+    pub standardizer: Arc<Standardizer>,
+    /// `ê`: the control's unit direction over [`AudioFeatures::NAMES`].
+    pub direction: Vec<f64>,
+    /// `+1` turned up (toward the control's high word), `−1` turned down.
+    pub sign: f64,
+    /// How hard to aim, in fitness per σ moved along `ê`.
+    pub gamma: f64,
+    /// The audition stimulus (the inner fitness's own).
+    pub phrase: PhraseSpec,
+    /// The engine's featurization memo, shared with `inner`.
+    pub memo: RenderMemo,
+}
+
+impl<F> TiltedFitness<F> {
+    /// The same tilt around another fitness.
+    pub fn around<G>(self, inner: G) -> TiltedFitness<G> {
+        TiltedFitness {
+            inner,
+            standardizer: self.standardizer,
+            direction: self.direction,
+            sign: self.sign,
+            gamma: self.gamma,
+            phrase: self.phrase,
+            memo: self.memo,
+        }
+    }
+
+    /// `ê · z(tree)`: where `tree` measures along the direction, in σ, or
+    /// `None` if it does not vet.
+    pub fn along(&self, tree: &PatchTree) -> Option<f64> {
+        let z = audio_z(tree, &self.phrase, &self.memo, &self.standardizer)?;
+        Some(dot(&self.direction, &z))
+    }
+}
+
+impl<F> fugue_evo::fitness::traits::Fitness for TiltedFitness<F>
+where
+    F: fugue_evo::fitness::traits::Fitness<Genome = PatchTree, Value = f64>,
+{
+    type Genome = PatchTree;
+    type Value = f64;
+
+    fn evaluate(&self, genome: &PatchTree) -> f64 {
+        let f = self.inner.evaluate(genome);
+        if f <= QUARANTINE_FITNESS {
+            return f;
+        }
+        match self.along(genome) {
+            Some(a) => f + self.gamma * self.sign * a,
+            None => f,
+        }
+    }
+}
+
+fn dot(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
 /// Finite-difference step on a knob's normalized range. Large enough to move
 /// φ past its numerical floor on a 5 s render, small enough to stay local;
 /// the same step the `jacobian_probe` measurements used.
@@ -128,6 +203,16 @@ pub const MONO_TOL: f64 = 0.05;
 /// so a floor set against the presets (0.25σ) hid controls that are plainly
 /// audible on a live patch.
 pub const REACH_FLOOR: f64 = 0.15;
+/// How hard a search control's offer aims along the control's direction: γ
+/// in [`TiltedFitness`]'s target, in fitness per σ moved. At β = 2 a proposal
+/// one σ further the asked way gains `2γ` of log-weight. Chosen by census
+/// (`make offer-census`; the table is in the reference's PERFORM page).
+pub const AIM_GAMMA: f64 = 1.0;
+/// Most walks one aimed offer may take: a walk of the asked steps that has not
+/// yet moved the asked way by [`REACH_FLOOR`] keeps walking from where it
+/// stopped, up to this many times ([`Engine::offer_toward`]). Chosen by the
+/// same census.
+pub const AIM_WALKS: usize = 3;
 
 /// A named performance control: a fixed direction in audio-φ.
 #[derive(Clone, Copy, Debug)]
@@ -417,8 +502,10 @@ pub fn structural_addrs(tree: &PatchTree) -> Vec<String> {
         .collect()
 }
 
-/// Standardized audio φ from a featurization's raw features.
-fn standardized_audio(features: &auracle_features::Features, std: &Standardizer) -> Vec<f64> {
+/// Standardized audio φ from a featurization's raw features: the `z` every
+/// measurement starts from (and the one `apps/web/perform-wirings.json`
+/// records per preset, which is why it is public).
+pub fn standardized_audio(features: &auracle_features::Features, std: &Standardizer) -> Vec<f64> {
     features
         .audio
         .to_vec()
@@ -1095,6 +1182,143 @@ impl Engine {
         let locked: HashSet<String> = player_locks.iter().cloned().collect();
         self.refine_walk(rng, tree, &locked, steps)
     }
+
+    /// A search control's offer: [`Self::offer`]'s walk on the target tilted
+    /// along named control `control` ([`CONTROLS`] order), turned up (a
+    /// positive `sign`) or down, at [`AIM_GAMMA`]. A walk that has not yet moved the asked
+    /// way by [`REACH_FLOOR`] keeps walking from where it stopped, up to
+    /// [`AIM_WALKS`] walks of `steps`. The Offer button and Wander stay on
+    /// [`Self::offer`].
+    ///
+    /// Without a standardizer there is no `z` to aim along, and an unknown
+    /// control has no direction: both walk undirected, exactly as
+    /// [`Self::offer`], and [`Self::moved_along`] then has nothing to say.
+    pub fn offer_toward<R: Rng>(
+        &self,
+        rng: &mut R,
+        tree: &PatchTree,
+        player_locks: &[String],
+        steps: usize,
+        control: usize,
+        sign: f64,
+    ) -> Result<PatchTree, RefineOutcome> {
+        self.offer_aimed(
+            rng,
+            tree,
+            player_locks,
+            steps,
+            control,
+            sign,
+            AIM_GAMMA,
+            AIM_WALKS,
+        )
+    }
+
+    /// [`Self::offer_toward`] at a stated `gamma` and number of `walks`: the
+    /// census (`examples/offer_census.rs`) sweeps both; everything else uses
+    /// [`AIM_GAMMA`] and [`AIM_WALKS`].
+    ///
+    /// Each further walk continues the chain from the state the last one
+    /// ended in (or from `tree` again, with the stream advanced, if it did
+    /// not move), so nothing grown is thrown away: it is one longer walk that
+    /// stops as soon as it has gone the asked way, not several offers
+    /// filtered afterwards.
+    #[allow(clippy::too_many_arguments)]
+    pub fn offer_aimed<R: Rng>(
+        &self,
+        rng: &mut R,
+        tree: &PatchTree,
+        player_locks: &[String],
+        steps: usize,
+        control: usize,
+        sign: f64,
+        gamma: f64,
+        walks: usize,
+    ) -> Result<PatchTree, RefineOutcome> {
+        let (Some(c), Some(std)) = (CONTROLS.get(control), self.standardizer.as_ref()) else {
+            return self.offer(rng, tree, player_locks, steps);
+        };
+        let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+        let locked: HashSet<String> = player_locks.iter().cloned().collect();
+        let tilt = TiltedFitness {
+            inner: (),
+            standardizer: Arc::clone(std),
+            direction: direction(c, &names),
+            sign: if sign < 0.0 { -1.0 } else { 1.0 },
+            gamma,
+            phrase: self.cfg.phrase.clone(),
+            memo: self.memo().clone(),
+        };
+        let home = tilt.along(tree);
+        let mut grown: Result<PatchTree, RefineOutcome> = Err(RefineOutcome::NoMove);
+        for _ in 0..walks.max(1) {
+            let from = grown.as_ref().unwrap_or(tree);
+            match self.tilted_walk(rng, from, &locked, steps, &tilt) {
+                Ok(t) => grown = Ok(t),
+                // A patch the prior gives no mass cannot be walked from at
+                // all; nothing further will change that.
+                Err(RefineOutcome::OutsideSupport) if grown.is_err() => {
+                    return Err(RefineOutcome::OutsideSupport)
+                }
+                Err(_) => {}
+            }
+            let went = match (&grown, home) {
+                (Ok(t), Some(h)) => tilt.along(t).map(|a| tilt.sign * (a - h)),
+                _ => None,
+            };
+            if went.is_some_and(|m| m >= REACH_FLOOR) {
+                break;
+            }
+        }
+        grown
+    }
+
+    /// One walk on `tilt` around the target [`Self::refine_walk`] would
+    /// choose: the taste surrogate, or the vetted prior before a fit.
+    fn tilted_walk<R: Rng>(
+        &self,
+        rng: &mut R,
+        from: &PatchTree,
+        locked: &HashSet<String>,
+        steps: usize,
+        tilt: &TiltedFitness<()>,
+    ) -> Result<PatchTree, RefineOutcome> {
+        match (&self.posterior, &self.standardizer) {
+            (Some(p), Some(std)) => {
+                let inner = crate::SurrogateFitness {
+                    posterior: Arc::clone(p),
+                    standardizer: Arc::clone(std),
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo().clone(),
+                };
+                self.walk_fitness(rng, from, locked, steps, tilt.clone().around(inner))
+            }
+            _ => {
+                let inner = VetOnlyFitness {
+                    phrase: self.cfg.phrase.clone(),
+                    memo: self.memo().clone(),
+                };
+                self.walk_fitness(rng, from, locked, steps, tilt.clone().around(inner))
+            }
+        }
+    }
+
+    /// How far `to` moved from `from` along named control `control`'s
+    /// direction, in σ of the session's spread: `ê · (z(to) − z(from))`.
+    /// Positive is toward the control's high word. What B's strip reports of
+    /// an aimed offer. `None` before a standardizer exists, for an unknown
+    /// control, or if either tree does not vet. Both renders are memo hits
+    /// after the walk that produced `to`.
+    pub fn moved_along(&self, from: &PatchTree, to: &PatchTree, control: usize) -> Option<f64> {
+        let c = CONTROLS.get(control)?;
+        let std = self.standardizer.as_deref()?;
+        let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+        let d = direction(c, &names);
+        let (spec, memo) = (&self.cfg.phrase, self.memo());
+        let a = audio_z(from, spec, memo, std)?;
+        let b = audio_z(to, spec, memo, std)?;
+        Some(dot(&d, &b) - dot(&d, &a))
+    }
 }
 
 #[cfg(test)]
@@ -1249,6 +1473,117 @@ mod tests {
             small / 6.0 < 0.15,
             "a gentle drift should stay local: mean max {:.2}",
             small / 6.0
+        );
+    }
+
+    /// The tilt is exactly `f + γ·s·ê·z` and renders nothing of its own: the
+    /// inner fitness's render is the one the tilt reads, and a proposal that
+    /// does not vet keeps its quarantine score, untilted.
+    #[test]
+    fn a_tilt_adds_its_aim_and_costs_no_render() {
+        let spec = PhraseSpec::default();
+        let std = Arc::new(preset_standardizer(&spec));
+        let names: Vec<String> = AudioFeatures::NAMES.iter().map(|s| s.to_string()).collect();
+        let memo = RenderMemo::default();
+        let inner = VetOnlyFitness {
+            phrase: spec.clone(),
+            memo: memo.clone(),
+        };
+        use fugue_evo::fitness::traits::Fitness;
+        let bank = preset_bank();
+        let p = bank.iter().find(|p| p.name == "Glass Pad").expect("preset");
+        for sign in [1.0, -1.0] {
+            let tilt = TiltedFitness {
+                inner: inner.clone(),
+                standardizer: Arc::clone(&std),
+                direction: direction(&CONTROLS[4], &names),
+                sign,
+                gamma: 1.5,
+                phrase: spec.clone(),
+                memo: memo.clone(),
+            };
+            let before = memo.stats().misses;
+            let f = tilt.evaluate(&p.tree);
+            assert!(
+                memo.stats().misses <= before + 1,
+                "the tilt rendered a second time"
+            );
+            let z = audio_z(&p.tree, &spec, &memo, &std).expect("vets");
+            let want = 1.5 * sign * dot(&tilt.direction, &z);
+            assert!((f - want).abs() < 1e-12, "{f} vs {want}");
+        }
+    }
+
+    /// Does the patch have anything that makes it rough — a drive, a folder, a
+    /// crusher or a noise source? Grit's axis is spectral flatness.
+    fn has_grit(n: &AudioNode) -> bool {
+        matches!(
+            n,
+            AudioNode::Distortion { .. }
+                | AudioNode::Bitcrush { .. }
+                | AudioNode::Fold { .. }
+                | AudioNode::Noise { .. }
+        ) || n.children().into_iter().any(has_grit)
+    }
+
+    /// ADR-008: a search control's offer moves the way the control was
+    /// turned. On presets with nothing rough in them (no drive, folder,
+    /// crusher or noise: where Grit is a search control), `offer_toward(Grit,
+    /// +1)` ends at least [`REACH_FLOOR`] grittier in most trials, and further
+    /// than the undirected `offer` from the same seeds, which mostly does not
+    /// move that way at all. Before the first fit (the tilt around the vetted
+    /// prior), which is when a new player meets it.
+    #[test]
+    fn an_aimed_offer_moves_the_way_it_was_turned() {
+        use crate::engine::{Engine, SessionConfig};
+        let mut engine = Engine::new(
+            auracle_grammar::PatchGrammarPrior::default(),
+            SessionConfig::default(),
+        );
+        engine.standardizer = Some(Arc::new(preset_standardizer(&engine.cfg.phrase)));
+        let grit = CONTROLS.iter().position(|c| c.name == "Grit").unwrap();
+        let bank = preset_bank();
+        let (mut aimed, mut plain) = (Vec::new(), Vec::new());
+        for name in ["Glass Pad", "Detune Dream", "Choirboy"] {
+            let p = bank.iter().find(|p| p.name == name).expect("preset exists");
+            assert!(!has_grit(&p.tree.root), "{name} has something rough in it");
+            for seed in 0..3u64 {
+                let mut r = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(seed);
+                let a = engine
+                    .offer_toward(&mut r, &p.tree, &[], 20, grit, 1.0)
+                    .ok()
+                    .and_then(|t| engine.moved_along(&p.tree, &t, grit))
+                    .unwrap_or(0.0);
+                let mut r = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(seed);
+                let u = engine
+                    .offer(&mut r, &p.tree, &[], 20)
+                    .ok()
+                    .and_then(|t| engine.moved_along(&p.tree, &t, grit))
+                    .unwrap_or(0.0);
+                eprintln!("{name} seed {seed}: aimed {a:+.2}σ, undirected {u:+.2}σ");
+                aimed.push(a);
+                plain.push(u);
+            }
+        }
+        let hits = |v: &[f64]| v.iter().filter(|&&m| m >= REACH_FLOOR).count();
+        let median = |v: &[f64]| {
+            let mut v = v.to_vec();
+            v.sort_by(f64::total_cmp);
+            v[v.len() / 2]
+        };
+        assert!(
+            hits(&aimed) * 2 > aimed.len(),
+            "aimed offers moved grittier in only {} of {}",
+            hits(&aimed),
+            aimed.len()
+        );
+        assert!(
+            hits(&plain) < hits(&aimed) && median(&plain) < median(&aimed),
+            "the undirected offer moved as often or as far: {} hits, median {:.2}σ, against {} and {:.2}σ",
+            hits(&plain),
+            median(&plain),
+            hits(&aimed),
+            median(&aimed)
         );
     }
 

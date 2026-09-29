@@ -1,7 +1,7 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
 last_updated: 2026-09-28
-related_adrs: [1, 2]
+related_adrs: [1, 2, 7]
 ---
 
 # The web runtime: threads, lanes and the bench
@@ -21,7 +21,8 @@ history of each choice.
    │
    ├── postMessage ──► engine worker (worker.js + WasmEngine)
    │                      lanes: now │ soon │ later ; long jobs breathe
-   │                      └── farm workers (farm.js): stateless pool renders
+   │                      └── farm workers (farm.js): boot's renders, and
+   │                          walks (a generation, ⚡) on a crew raised on demand
    │
    └── AudioWorklet (live-audio.js + LivePoly)
           N compiled voices of the current patch, the arpeggiator, the limiter
@@ -33,7 +34,9 @@ history of each choice.
   (renders, MCMC), and wasm cannot be interrupted.
 - **Farm workers** render pool draws in parallel from the indexed draw stream,
   and the worker folds them in stream order, so the pool matches the serial
-  path's.
+  path's. Boot's crew is reaped when boot ends. A generation's walks and ⚡
+  evolve from this run on a crew raised on demand (see
+  [The farm on demand](#the-farm-on-demand)).
 - **AudioWorklet** plays the patch under the player's hands: `LivePoly`, a
   voice per note, allocation-free per quantum, no clock.
 
@@ -43,19 +46,98 @@ Requests are served in three lanes, most urgent first and first come, first
 served within a lane (`laneOf` in `worker.js`):
 
 - **now**: the player's gestures and everything that must stay in order with
-  them (edits, votes, opens, auditions, saves, logs).
+  them (edits, votes, opens, auditions, saves, logs). A render main asks for
+  in the background (`render` with `bg`: the sounds of a pair just dealt)
+  waits here behind every gesture, and before one starts the worker lets in
+  anything that arrived during the last call (`serveNow`). It also lets
+  `soon` work waiting to start go first (not a serial generation's
+  `breed_step`s), and runs between that job's pieces. A `now` render of the
+  same id supersedes it.
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
   offers, Wander's drift, booth pre-warms).
 
 Queueing cannot help a request that arrives while a long call is *running*,
-so long jobs are cut into pieces (`measure`, `breed`) and `breathe` between
-pieces, answering every `now` request that arrived meanwhile. One long job
-holds the floor at a time. A hidden PERFORM's measurement drops to `later`.
+so long jobs are cut into pieces (`measure`) and `breathe` between pieces,
+answering every `now` request that arrived meanwhile. One long job holds the
+floor at a time. A hidden PERFORM's measurement drops to `later`.
+
+A generation (`refine`) and ⚡ (`refine_from`) are **walk jobs**: they run on
+the farm and never hold the floor, so every lane is served while they run.
+What waits for a walk job instead of for the floor (`blocked` in
+`worker.js`): a refit waits for a generation and for ⚡ (each is bred and
+admitted under the posterior it started under), and the two take turns — a
+generation waits for the running one or for ⚡, and ⚡ for a generation or
+another ⚡ — so the `refine` stream is drawn in the order they were asked for
+and a ⚡ child never lands inside a generation. Main disables each button
+while the other runs, with the reason on hover. Neither starts before boot's
+crew is gone.
 
 **Every request gets a reply.** Bench edits get `bench` or `edit_rejected`,
 or the main thread's in-flight queue deadlocks.
+
+## The breed job
+
+EVOLVE POOL is ten walks (`refine_seeds`), each a pure function of the
+generation's shared context and its own job
+([ADR-007](../decisions/007-generations-breed-in-parallel.md)). `breedOpen`
+calls `refine_jobs`, stringifies the context **once** (about 2 MB, mostly the
+posterior's draws) and hands every job to the crew; each farm worker gets the
+context once per generation (`walk_context`), and `farm_walk` keeps the
+parsed context keyed by that exact text. Results that land early are held
+until their turn and absorbed **in job order** with `refine_absorb`, one per
+turn (`genStep`), so the pool is the serial path's whichever worker finished
+first.
+
+- **Children as they land.** Each absorbed job is posted as `refine_child`
+  with the ranked rows and `refine_retiring`; the bank shows the child at
+  once in a "new · gen N" group at the top of the pool, without re-sorting
+  the ranked rows. Nothing is retired until the finish.
+- **Progress.** `refine_progress` carries the jobs absorbed, the total and an
+  estimate (`eta`, ms) from this session's own walk times.
+- **Judged at the start.** Admission and the finish's retirements rank
+  under the posterior the generation opened with (`judge` in `engine.rs`),
+  not the one picks made meanwhile have reweighted, so which children are
+  kept does not depend on when those picks landed.
+- **Stop** (`refine_stop`, answered on arrival) calls `refine_finish`: the
+  generation ends with the children absorbed so far, the lowest unpinned
+  members are retired (a child bred early can be among them), and
+  walks still running are dropped (the crew is reaped at once if nothing else
+  is walking, which gives the cores back).
+- **Fallback.** With no crew (width 0, a spawn that failed, every worker
+  lost) or for a walk a worker could not run (`farm_walk` answered `""`, or a
+  five-minute watchdog), the job is walked in the engine worker with
+  `refine_seed`, which runs the engine's own copy of the same job: the same
+  child. Each such walk is a `soon` piece (`breed_step`), and a deal waits for
+  the walk in progress, which the cards say.
+
+⚡ evolve from this is one walk over the same path: `refine_from_job`, a farm
+walk (at the front of the queue), `refine_from_absorb`. The job is drawn
+**before** the worker waits for a crew, so nothing dispatched during a cold
+crew's handshake can draw from the `refine` stream first (ADR-001). From the
+draw until absorb or stop the engine exempts the seed from eviction. Stop
+(`refine_from_stop`) answers at once, drops the job (`refine_from_cancel`) and
+drops the walk's result. With no crew, or a walk no worker could run, the
+engine walks the job it already drew (`refine_from_walk`): the same child, not
+stoppable, and main is told so (`evolve_started` with `stoppable: false`)
+before the walk starts. A generation also brings a pool restored over size
+back to size before it opens (`poolTrim`), posting `pool_trimmed` so main
+drops and names the rows.
+
+## The farm on demand
+
+The engine worker asks main for a crew (`farm_want`); main spawns the workers
+from the `WebAssembly.Module` it keeps (`sharedModule`: compiled at boot where
+boot had a farm, otherwise by the first crew; an instantiation per worker
+after that, not a compile) and answers with their ports (`farm_ports`), or
+with none, and the worker then walks the jobs itself. Width is `walkWidth()` in
+`main.js`: boot's rule (leave the UI and audio threads a core each, at most
+6, at most 2 on a small-memory device), but at least one worker where there
+are two cores, because one worker already takes the walk off the engine
+worker. `?farm=N` sets both widths; `?farm=0` is the serial path. The crew is
+reaped after 60 s with nothing to walk (`farm_done` with its crew id; main
+terminates those workers), so N × ~15 MB is not kept resident.
 
 ## The bench lane
 
@@ -69,6 +151,24 @@ through one ordered lane in `main.js`:
   held pointer (`knobDragging`);
 - an undo retires the toast of what it undid.
 
+An open reaches the voices before the bench. Opening is a render (the bench's
+buffer) on the engine's one thread, behind whatever render is running there,
+but the voices need only the tree and its makeup: the worker posts them first
+(`bench_opening`, from a clicked preset's insert and from `edit_begin`), and
+`main.js` remembers each preset's (`auracle-voiced-presets` in localStorage,
+keyed by the build), so a preset opened before goes into the voices, and
+PERFORM, from the click, without the engine (`voiceEarly`). Until the bench
+reply lands, `earlyOpen` holds that state: the old rack's knobs do not write
+into the voices (`voicesAheadOfRack`), edits still landing on the old rack do
+not take the voices back, a subject reply for an earlier open leaves them
+alone, and PERFORM refuses a Keep, Take or Back, saying why, until the bench
+lands (`host.openLanding`; a tree committed then would land on the rack being
+replaced). An early open unmutes the voices (it is a vetted pool member). The
+reply is matched by sound (`treeSound`, uids aside), vets the patch and mutes
+it if it fails; an open that does not land (a failed insert, a patch gone
+from the bank, the player moved on) puts the voices back (`unvoiceEarly`),
+muted if the bench's last vet failed.
+
 ## PERFORM on the main thread
 
 `perform.js` asks the worker to measure the patch (`perform_wire`), caches
@@ -76,6 +176,30 @@ wirings by tree text (`wireKey`), keeps the old wiring working while a new one
 is measured ("re-checking"), and compares trees by text to tell a new
 structure from new knob values. That comparison is why trees must serialize in
 one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
+
+Every preset's wiring ships with the app in `apps/web/perform-wirings.json`,
+measured natively through the same `WasmEngine` surface the worker uses
+(`make perform-wirings`, the `preset_wirings` example) and keyed at load by the
+same `wireKey`. The player's own cache is asked first, then the file. A first
+measurement waits for the file at most `SHIPPED_WAIT_MS` (3 s), so a stalled
+fetch cannot hold a patch on *listening…*; a file that lands later still
+serves the presets opened after it. A shipped
+wiring is always re-measured in the background (it was taken under a native
+standardizer, not the session's). A stale file wires controls to the wrong
+knobs until that re-check lands, and the re-check then re-centres them, so
+`make test` guards it two ways. `shipped_preset_wirings_are_current` compares
+fingerprints of each preset and of the measurement's named inputs (phrase,
+feature names, controls, PERFORM's constants), rendering nothing.
+`shipped_preset_wirings_measure_the_same_today` covers what no fingerprint
+sees (feature maths, loudness normalization, vetting, compiler and DSP, the
+standard pool's fill, PERFORM's solver): it boots the standard engine and
+re-measures a sample of the file natively, the standardizer, every eighth
+preset's standardized φ and two presets' whole wiring, in about ten seconds on
+four cores. A change that moves nothing in the sample can still pass. Any φ
+change owes `make perform-wirings`.
+While the warm start is open, `main.js` pre-warms its nine cards
+(`perform.prewarm(tree, {fresh: true})`, trees from the file, no pool
+inserts), one at a time in `later`, once the pool is full.
 
 A continuous knob turned in PATCH reaches the voices as a parameter, never as
 a new tree, so PERFORM hears it separately: `sendEdit` calls
@@ -85,6 +209,46 @@ measurement, Keep and offers start from the edited patch). PATCH draws an
 amber "performed" pointer only where `perform.movedOn` names a reason: a
 control or expression offset, a Wander or Back glide, or a drift not yet kept.
 
+## Timing marks
+
+The app marks its own moments with `performance.mark("auracle:<name>")`:
+`boot-start`, `veil-down`, `first-sound`, `pool-full`, `perform-wired` (with
+how: shipped, cached or measured), `patch-opened`, `pair-dealt` and `fitted`.
+`window.__aur.marks()` lists them in the page's clock. The film recorder
+(`www/video/tools/footage.mjs`) writes them into every rehearsal sidecar as a
+`perf` block beside `stamps` (`at0` is the page's clock at the shot's t = 0),
+and `tests/web/budgets.spec.js` holds the budgets they measure.
+
+## EVOLVE's next pair
+
+While a pair is on the table, `main.js` deals the next one (`duel` with
+`ahead: true`, echoed in the reply) once the table's own two sounds are
+resident, and fetches the new pair's renders in the background (`bg`, as the
+table's own are). The worker does not render a pair in the deal's turn: it
+used to (`prefetch_render`), and a preset clicked just after a reload waited
+out four renders before it opened. A pick or ↻ swaps it in
+synchronously (`placePair`); the pair is re-checked at that moment against
+cuts and replacements made since, and against the pair just put away
+(`aheadUsable`). Only with nothing waiting does a pick wait for a deal, and a
+deal already out (asked for ahead) is the one it waits for: no second deal
+is asked for.
+
+Every deal's reply goes through `onDealt`, whichever request asked for it:
+the first to land while the table waits goes up, any other waits as the next
+pair. The worker answers deals in the order they were asked, so pairs go up
+in the order they were dealt whatever the timing (a seeded session shows the
+same pairs, [ADR-001](../decisions/001-one-random-stream-per-consumer.md)).
+`dealsOut` counts deals not yet answered; a taken-back pick leaves a deal
+still out to become the next pair. `placePair` is the one place a pair goes
+up: anything owed to a pair being shown belongs there.
+
+The worker deals with `deal_duel_ex`, which does not count the pair as shown;
+`placePair` tells it which pair went up (`duel_shown`). So a deal thrown away
+unseen (the engine re-dealt the pair on the table, a side was cut or
+replaced, a retraction put the old pair back) moves neither the check-probe
+cadence nor the repeat and exposure penalties: under a choosing rule the
+unbiased probes stay one in `duel_check_every` of the pairs the player saw.
+
 ## Audio
 
 `live-audio.js` builds the worklet as a blob with the wasm-bindgen glue
@@ -92,6 +256,15 @@ inlined behind a TextDecoder polyfill, and transfers raw wasm bytes for a
 synchronous compile inside the worklet. A patch swap compiles one voice per
 quantum while that node is muted. Levels follow one policy
 (`auracle-wasm/src/level.rs`) for auditions and live play.
+
+## The job slot
+
+Long work has one home, in the menu bar beside GENERATIONS: "⚡ breeding
+3/10 · about 40 s", "⚡ evolving Glass Pad", "refitting your taste map…",
+with **stop** where the job can be stopped. It shows only while such a job
+runs, and the wordmark's E is lit exactly while it shows: both are drawn from
+`lampJobs` (`lampOn`/`lampOff`, one count per job kind) in `renderJobSlot`.
+EVOLVE POOL is its own progress bar while it breeds, with a stop beside it.
 
 ## Toasts
 

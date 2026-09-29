@@ -1,0 +1,264 @@
+name: Slow suite
+
+# The SLOW tier: the tests too slow to gate every PR on. CI (ci.yml) is the
+# fast tier and the only required check; a PR may merge on it alone. Each test
+# runs in exactly one tier (docs/architecture/testing.md § CI tiers):
+#
+# - Rust: the search floor (`refinement_improves_pool`, ~330 s on a runner)
+#   and the ten other tests over a minute (~1030 s of test time between them),
+#   named in the Makefile as SEARCH_FLOOR and SLOW_TESTS. The fast tier runs
+#   every test NOT named there.
+# - Browser: the specs tagged `@slow` (13 tests, ~18.5 min of test time in one
+#   worker: EVOLVE POOL generations, and PERFORM's listening, offers and
+#   drift). The fast tier runs `--grep-invert @slow`.
+#
+# When it runs:
+#
+# - on a PR, only when the diff touches what these tests cover (the `scope`
+#   job below says exactly which paths and why), or when the PR carries the
+#   `full-ci` label (adding the label starts a run). It reports; it does not
+#   block merging.
+# - on every push to main and nightly, always and in full. A failure there
+#   opens an issue titled "Slow suite failing on main", or comments on it if
+#   one is already open, so a regression that merged on the fast tier is found
+#   within one push or one night.
+# - on demand (Actions → Slow suite → Run workflow), in full.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a PR makes its in-flight run obsolete. On main nothing is
+# cancelled: every push there gets its own verdict. Adding an unrelated label
+# to a PR starts a run too (GitHub cannot filter `labeled` by name); it gets a
+# group of its own, so it does nothing rather than cancel a real run.
+concurrency:
+  group: slow-suite-${{ github.head_ref || github.ref }}${{ (github.event.action == 'labeled' && github.event.label.name != 'full-ci') && '-label' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+
+jobs:
+  # Does this run cover anything?
+  #
+  # Rust: any crate. Every slow Rust test walks the whole pipeline (the
+  # grammar's edit ops propose, features render and measure, the taste model
+  # scores, the session walks and absorbs), so no crate is outside what they
+  # cover. Plus the manifests, the Makefile (it names the slow set) and this
+  # workflow and its actions.
+  #
+  # Browser: the parts of the app the @slow specs exercise and nothing else
+  # does as hard: the engine worker and the render farm (worker.js, farm.js:
+  # generations, walks, their ordering), PERFORM (perform.js) and the worklet it
+  # plays offers through (live-audio.js); the engine crates those scripts call
+  # into for walks and measurement (auracle-session, auracle-wasm); a spec file
+  # that holds an @slow test; the suite's config and lockfile. NOT main.js:
+  # every view lives in it, so it would make almost every app PR a slow run.
+  # A main.js change that breaks an @slow spec is caught on the push to main;
+  # add `full-ci` to a PR whose main.js change touches EVOLVE's generations
+  # or PERFORM's offers.
+  scope:
+    name: What this covers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      browser: ${{ steps.scope.outputs.browser }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: scope
+        name: Decide what to run
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          out() {
+            echo "rust=$1" >> "$GITHUB_OUTPUT"
+            echo "browser=$2" >> "$GITHUB_OUTPUT"
+            printf '\n  rust=%s browser=%s\n' "$1" "$2"
+          }
+
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "$EVENT — running everything"
+            out true true; exit 0
+          fi
+          if [ "$ACTION" = "labeled" ] && [ "$LABEL" != "full-ci" ]; then
+            echo "labelled '$LABEL', which asks for nothing — the last push's run stands"
+            out false false; exit 0
+          fi
+          if [ "$FULL_CI" = "true" ]; then
+            echo "the PR carries full-ci — running everything"
+            out true true; exit 0
+          fi
+
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
+          files="$(git diff --name-only "$base" HEAD)"
+          echo "changed files:"
+          echo "$files" | awk '{ print "  " $0 }'
+
+          own='^(Makefile$|\.github/workflows/slow-suite\.yml$|\.github/actions/)'
+
+          if echo "$files" | grep -qE "$own|^(crates/|Cargo\.(toml|lock)$|rust-toolchain)"; then
+            rust=true
+          else
+            rust=false
+          fi
+
+          # A changed spec counts if it holds an @slow test now.
+          slow_spec=false
+          for f in $(echo "$files" | grep -E '^tests/web/.*\.spec\.js$' || true); do
+            if [ -f "$f" ] && grep -q '@slow' "$f"; then slow_spec=true; fi
+          done
+
+          if [ "$slow_spec" = true ] || echo "$files" | grep -qE "$own|^(apps/web/(worker|farm|perform|live-audio)\.js$|crates/auracle-(session|wasm)/|Cargo\.lock$|tests/web/(playwright\.config\.js|package(-lock)?\.json)$)"; then
+            browser=true
+          else
+            browser=false
+          fi
+
+          out "$rust" "$browser"
+
+  # The slow Rust tests, in two legs: the search floor gets a runner to itself
+  # (it walks 16 seeds, one thread each, and on a 4-core runner those threads
+  # queue four deep; next to other tests it makes them wait for the cores),
+  # and the other ten share one (~5 min; the longest is ~3 min).
+  rust:
+    name: Slow Rust (${{ matrix.name }})
+    needs: scope
+    if: needs.scope.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: search floor
+            target: test-search-floor
+          - name: the rest
+            target: test-slow-rest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      # CI's test cache (ci.yml saves it from main); never saved from here.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test
+          save-if: false
+      - uses: taiki-e/install-action@nextest
+      - run: make ${{ matrix.target }}
+
+  engine:
+    name: Engine for the browser
+    needs: scope
+    if: needs.scope.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/web-engine
+
+  # The @slow specs on six runners. The split is by test in list order, and
+  # three tests are ~3 min each, so six is what keeps any one runner under
+  # ~5 min of tests; with four, one draws ~7.5.
+  browser:
+    name: Slow browser (${{ matrix.shard }})
+    needs: [scope, engine]
+    if: needs.scope.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      # Its own port, so the run can never be served by anything else.
+      - name: Run the slow browser tier
+        env:
+          AURACLE_TEST_PORT: "8690"
+        run: cd tests/web && npx playwright test --grep @slow --shard=${{ matrix.shard }} --reporter=list
+
+      - name: Keep the traces of failed specs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slow-browser-results-${{ github.sha }}-${{ strategy.job-index }}
+          path: tests/web/test-results/
+          if-no-files-found: ignore
+
+  # A red slow tier on main is a regression that merged on the fast tier.
+  # Nobody is watching a nightly run, so it files an issue: one open issue at
+  # a time, commented on by every further failing run until someone closes it.
+  report:
+    name: Report a failure on main
+    needs: [scope, rust, engine, browser]
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
+      contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v8
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const title = "Slow suite failing on main";
+            const { owner, repo } = context.repo;
+            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const results = JSON.parse(process.env.RESULTS);
+            const failed = Object.entries(results)
+              .filter(([, v]) => v.result === "failure")
+              .map(([k]) => `\`${k}\``)
+              .join(", ");
+            const why = context.eventName === "schedule" ? "The nightly run" : "The push";
+            const body = [
+              `${why} at ${context.sha.slice(0, 7)} failed: ${failed}.`,
+              "",
+              `Run: ${run}`,
+              "",
+              "This tier does not block merging, so the change that broke it is on main. " +
+                "The failing jobs' logs name the tests; a browser shard's traces are in the run's artifacts.",
+            ].join("\n");
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
+            });
+            const existing = open.find((i) => i.title === title && !i.pull_request);
+            if (existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+              core.info(`commented on #${existing.number}`);
+            } else {
+              const { data } = await github.rest.issues.create({ owner, repo, title, body });
+              core.info(`opened #${data.number}`);
+            }

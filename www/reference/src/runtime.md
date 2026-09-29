@@ -19,7 +19,7 @@ the architecture more than any design preference did.</p>
 |---|---|---|
 | **Main** | UI, Web Audio graph | `main.js` — never in the audio or render data path |
 | **Engine worker** | `WasmEngine` (all of `auracle-session`) | `worker.js` — pool fill, fits, refinement, workbench |
-| **Render workers** ×N | A wasm instance, nothing else | `farm.js` — stateless `(term, phrase) → φ` |
+| **Render workers** ×N | A wasm instance, nothing else | `farm.js` — stateless `(term, phrase) → φ` at boot, `(context, job) → child` for a generation's walks and ⚡ |
 | **AudioWorklet** | `LivePoly` | The instrument. Real-time |
 
 Main compiles the wasm binary **once**, spawns the render workers, and
@@ -121,6 +121,46 @@ parallelism costs time and never content.
 
 The one loud exception: a job retired after two attempts logs a console
 warning. That degradation is meant to be visible.
+
+### Walks on the farm
+
+A generation is `refine_seeds` walks, and each is a pure function of the
+generation's shared context and its own job
+([refinement](./search/refinement.md)). So after boot the farm comes back for
+them: the engine worker asks main for a crew when a generation or ⚡ evolve
+from this starts, main spawns it, and the crew is reaped after a minute with
+nothing to walk. Main compiles the wasm module once and keeps it, so a crew is
+an instantiation per worker, not a compile: where boot had a farm (four cores
+or more) the module was compiled then, and on a two- or three-core machine,
+where boot fills serially, the first crew compiles it. A browser that cannot
+hand a compiled module to a worker has each worker compile its own. Its width is boot's rule with a floor of one
+worker wherever there are two cores, because even one worker takes the walk
+off the engine worker, which then answers everything else.
+
+The context (the tilted prior, the posterior's draws, the standardizer, the
+phrase: about 2.2 MB of JSON) goes to each worker once per generation, as one
+string, and `farm_walk` keeps its parse keyed by that exact text. Results are
+absorbed **in job order**, one per turn, whatever order they finished in, so
+the pool is the serial path's at every width; natively
+`farm_walks_breed_the_serial_generation`. A walk a worker cannot run, or a
+crew that never comes up, is walked in the engine worker from the engine's own
+copy of the same job.
+
+⚡ evolve from this is one job over the same path. It draws its job from the
+`refine` stream **before** it waits for a crew, so a generation asked for
+during a cold crew's handshake cannot draw first and change the child: a
+seeded session breeds the same ⚡ child however warm the crew was. With no
+crew the engine walks that very job (`refine_from_walk`). A generation and ⚡ take turns in the engine worker,
+and a refit waits for both, so a ⚡ child is never absorbed into a generation
+at whatever job count its walk finished on. The engine keeps a ⚡ seed out of
+every eviction until its walk is absorbed or stopped.
+
+Replacement waits for the end: children join the pool as they are absorbed,
+and `refine_finish` retires the weakest unpinned members once, when the last
+job lands or the player stops the generation. Weakest is judged under the
+posterior the generation opened with, as admission is, so picks made while it
+breeds (they reweight the posterior for the next pair) do not change which
+children are kept.
 
 ## Worker replies are load-bearing
 

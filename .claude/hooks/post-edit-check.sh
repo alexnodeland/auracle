@@ -19,7 +19,13 @@ case "$file" in
     command -v node >/dev/null || exit 0
     # Also the only check that notices a backtick inside live-audio.js's
     # PROCESSOR template literal, which otherwise fails silently at runtime.
-    out=$(node --check "$file" 2>&1) || fail "node --check failed for $file:" "$out"
+    # The app's scripts are ES modules, and a plain --check parses them as
+    # scripts: it misses a name declared twice in a module function
+    # (make js-check checks them the same way).
+    case "$file" in
+      */apps/web/*.js) out=$(node --check --input-type=module < "$file" 2>&1) ;;
+      *) out=$(node --check "$file" 2>&1) ;;
+    esac || fail "node --check failed for $file:" "$out"
     ;;
   *.py)
     out=$(python3 -m py_compile "$file" 2>&1) || fail "Python syntax error in $file:" "$out"

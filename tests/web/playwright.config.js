@@ -23,6 +23,11 @@ module.exports = defineConfig({
   // flow that only sometimes rolls back, is a finding, not a flake to paper
   // over. Serial because every test boots the engine and the render farm.
   workers: 1,
+  // Still one test at a time per machine, but CI's shards split the suite by
+  // test rather than by file, so one file of slow PERFORM specs cannot make
+  // a single runner take three times as long as the others. Nothing in a
+  // spec file is shared between its tests (each boots its own page).
+  fullyParallel: true,
   retries: 0,
   reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {

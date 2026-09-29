@@ -50,10 +50,23 @@ Two loops share one pool of patches.
    (`model.rs`) with up to `k_styles` lenses. The new posterior is aligned to
    the previous one's lenses, so styles keep their identity and names.
    Between refits, votes reweight the existing draws.
-9. **Refine.** EVOLVE POOL runs `refine`: `refine_seeds` typed MH walks of
-   `refine_steps` steps on `π_β ∝ p_grammar · exp(β·E[u])`, one child per
-   seed, retiring the patches the model likes least (saved patches never
-   retire). ⚡ *evolve from this* is `refine_from` on one patch, with locks.
+9. **Refine.** EVOLVE POOL runs a generation: `refine_seeds` typed MH walks
+   of `refine_steps` steps on `π_β ∝ p_grammar · exp(β·E[u])`, one child per
+   seed. It is split into data and a fold (`walk.rs`,
+   [ADR-007](../decisions/007-generations-breed-in-parallel.md)):
+   `refine_jobs` opens the generation and returns one `WalkContext` (tilted
+   prior, posterior, standardizer, phrase, β, keep rule) and one `WalkJob` per
+   parent, each with its own RNG seed from one draw of the `refine` stream;
+   `run_walk` is the walk as a pure function, run in the engine or on a
+   render-farm worker (`farm_walk`); `refine_absorb` folds results in **job
+   order** (novelty, admission, lineage) and refuses one out of turn as
+   `stale`; `refine_finish` ends it (or stops it early) and only then
+   retires the lowest unpinned members, so a patch saved mid-generation is
+   never retired. `refine` is that loop run serially, and `refine_begin` +
+   `refine_seed` the same loop one walk per call. ⚡ *evolve from this* is one
+   job over the same path (`refine_from`, or `refine_from_job` +
+   `refine_from_absorb` / `refine_from_walk`), with locks; its seed is
+   exempt from eviction while the job is out.
 
 ## Key abstractions
 
@@ -75,7 +88,9 @@ Snap, Motion, Body, Grit, Space). Each is wired to the knobs whose change moves
 that direction in φ, measured on the patch's own renders (a Jacobian), and the
 wiring is verified on real renders before it is trusted. A control that no
 knob reaches becomes a **search control**: turning it asks for an offer, a
-nearby patch grown toward that direction (`Engine::offer`). Wander drifts the
+nearby patch grown on the taste walk tilted toward that direction
+(`Engine::offer_toward`, ADR-008), whose reply says how far it moved that way.
+The Offer pad's offers are the untilted walk (`Engine::offer`). Wander drifts the
 knobs (`Engine::drift`) or grows offers on its own. Measurement is the
 expensive part, which is why the web app caches wirings and measures in pieces.
 
@@ -85,7 +100,9 @@ Fills, duels, fits, evolution and PERFORM each draw from their own stream,
 derived from the session seed, and a fit is seeded from the evidence count
 ([ADR-001](../decisions/001-one-random-stream-per-consumer.md)). A seeded
 session therefore deals, fits and breeds the same way however long anything
-took. The one remaining nondeterminism in the app is *when* the first duel is
+took. Within a generation each walk has its own seed, derived from one draw of
+the `refine` stream, so which farm worker finishes first cannot change what
+is bred. The one remaining nondeterminism in the app is *when* the first duel is
 dealt: it is dealt at `playable`, while the pool is still filling.
 
 ## Adding a module

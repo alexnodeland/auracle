@@ -15,6 +15,8 @@ auracle-grammar.workspace = true
 auracle-features.workspace = true
 auracle-taste.workspace = true
 rand.workspace = true
-serde.workspace = true
+# `rc`: a `WalkContext` holds the posterior and standardizer behind the
+# engine's own `Arc`s, and crosses to farm workers as JSON.
+serde = { workspace = true, features = ["rc"] }
 serde_json.workspace = true
 thiserror.workspace = true

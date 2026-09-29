@@ -33,7 +33,7 @@
 //! | `record_duel(a, b, chose_a) -> bool` | `true` iff the vote was recorded | `false` when either id is no longer in the pool (evicted in the undo window); the vote was **dropped** and the UI must say so. |
 //! | `record_keep(id, kept) -> bool` | same | same |
 //! | `record_stars(id, rating) -> bool` | same | same |
-//! | `last_refine_reason() -> String` | `"idle"\|"injected"\|"no_taste"\|"unknown_seed"\|"outside_support"\|"no_move"\|"duplicate"\|"not_admitted"` | Why the last `refine_seed`/`refine_from` returned 0. `outside_support` is the one to surface: the seed has zero prior mass (a knob past its domain, a tree deeper than the prior can score) and no budget will move it. |
+//! | `last_refine_reason() -> String` | `"idle"\|"injected"\|"no_taste"\|"unknown_seed"\|"outside_support"\|"no_move"\|"duplicate"\|"not_admitted"\|"stale"` | Why the last `refine_seed`/`refine_absorb`/`refine_from` returned 0. `stale` means a walk result was offered out of job order or after its generation finished, and changed nothing. `outside_support` is the one to surface: the seed has zero prior mass (a knob past its domain, a tree deeper than the prior can score) and no budget will move it. |
 //! | `edit_param(addr, value, is_index) -> bool` | unchanged shape | now also `false` for a non-finite `value`. |
 //! | `import_patch(tree_json, name) -> u32` | unchanged shape | now also `0` for a tree over the `validate_tree` ceilings, which every other write route already refused. |
 //! | `budget_ceilings() -> String` (free function) | `{"size":24,"depth":6,"mod":3}` | The hand-edit ceilings, read from the grammar rather than restated in the app. |
@@ -41,19 +41,25 @@
 mod level;
 mod live;
 pub use live::LivePoly;
+// PERFORM's shipped preset wirings: what they were measured from (native
+// only — the generator and its currency test use it; the app does not).
+#[cfg(not(target_arch = "wasm32"))]
+pub mod shipped;
 
+use std::cell::RefCell;
 use std::sync::Arc;
 
 use auracle_features::{
-    featurize_memo, Audition, CachedFeatures, Features, FeaturizeError, PhraseSpec, VetFailure,
+    featurize_memo, Audition, CachedFeatures, Features, FeaturizeError, PhraseSpec, RenderMemo,
+    VetFailure,
 };
 use auracle_grammar::{
     apply_struct_op, describe, presets, set_param, validate_tree, ParamValue, PatchGrammarPrior,
     PatchTree, StructOp,
 };
 use auracle_session::{
-    BankEntry, EditOutcome, Engine, Origin, PreFeaturized, Profile, RenderPolicy, SessionConfig,
-    SessionState,
+    run_walk, BankEntry, EditOutcome, Engine, Origin, PreFeaturized, Profile, RenderPolicy,
+    SessionConfig, SessionState, WalkContext, WalkJob, WalkResult,
 };
 use level::{audition_pcm, live_makeup};
 use rand::rngs::StdRng;
@@ -275,6 +281,91 @@ pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> Rend
     }
 }
 
+// ----------------------------------------------------------------------
+// Walks on the farm (RFC-001, ADR-007)
+// ----------------------------------------------------------------------
+
+thread_local! {
+    /// This farm worker's featurization memo, kept between walk jobs. A walk
+    /// re-scores the state it stands on every step, and its seed is the first
+    /// thing it renders, so a warm memo saves renders; it never changes a
+    /// result (a hit is bit-identical to a miss). One per wasm instance: each
+    /// farm worker is its own instance.
+    static WALK_MEMO: RenderMemo = RenderMemo::default();
+    /// The last walk context this worker parsed, with the text it came from.
+    /// A generation sends the same context with every job; parsing it once
+    /// per worker per generation is the difference between one parse of the
+    /// posterior and one per walk. Matched on the whole text, so a new
+    /// generation's context is never mistaken for the last one's.
+    static WALK_CONTEXT: RefCell<Option<(String, Arc<WalkContext>)>> = const { RefCell::new(None) };
+}
+
+/// Run one refinement walk with **no [`Engine`] anywhere in sight** — what a
+/// farm worker does with a walk job. `context_json` is the `context` of a
+/// `refine_jobs` (or `refine_from_job`) reply and `job_json` one of its jobs,
+/// both as sent; returns the `WalkResult` JSON to hand to
+/// [`WasmEngine::refine_absorb`] (or `refine_from_absorb`):
+///
+/// ```json
+/// {"generation":3,"index":0,"parent_id":17,"child":{…}|null,
+///  "reason":null|"no_move"|"outside_support",
+///  "cached":{…}|null}
+/// ```
+///
+/// A pure function of its two arguments: the per-worker memo and the parsed
+/// context it keeps only save work. Returns `""` when either argument does not
+/// parse, which is a broken caller or instance, not a walk that found nothing:
+/// report it as `cannot` and let the engine run the job itself.
+#[wasm_bindgen]
+pub fn farm_walk(context_json: &str, job_json: &str) -> String {
+    let Ok(job) = serde_json::from_str::<WalkJob>(job_json) else {
+        return String::new();
+    };
+    let cached = WALK_CONTEXT.with(|c| {
+        c.borrow()
+            .as_ref()
+            .filter(|(text, _)| text == context_json)
+            .map(|(_, ctx)| Arc::clone(ctx))
+    });
+    let ctx = match cached {
+        Some(ctx) => ctx,
+        None => {
+            let Ok(ctx) = serde_json::from_str::<WalkContext>(context_json) else {
+                return String::new();
+            };
+            let ctx = Arc::new(ctx);
+            WALK_CONTEXT.with(|c| {
+                *c.borrow_mut() = Some((context_json.to_owned(), Arc::clone(&ctx)));
+            });
+            ctx
+        }
+    };
+    let result = WALK_MEMO.with(|memo| run_walk(&ctx, &job, memo));
+    serde_json::to_string(&result).unwrap_or_default()
+}
+
+/// A generation's jobs, as [`WasmEngine::refine_jobs`] replies: the context
+/// every walk shares (`null` when there is no taste yet) and the jobs in
+/// absorption order. Serialized from this struct, so each tree goes out in
+/// its own key order (ADR-002).
+#[derive(Serialize)]
+struct JobsReply<'a> {
+    context: Option<&'a WalkContext>,
+    jobs: &'a [WalkJob],
+}
+
+/// `⚡ evolve from this` as a job ([`WasmEngine::refine_from_job`]): the
+/// context and the one job, or the reason there is none.
+#[derive(Serialize)]
+struct FromJobReply<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context: Option<&'a WalkContext>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    job: Option<&'a WalkJob>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
+}
+
 /// A PERFORM reply that carries a tree (a graft, a drift, an offer).
 ///
 /// Serialized from this struct, so the tree goes out through its own
@@ -296,6 +387,12 @@ struct TreeReply<'a> {
     taste: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diff: Option<&'a [auracle_grammar::DiffEntry]>,
+    /// An aimed offer's move along the control it was asked for, in σ,
+    /// positive toward the control's high word
+    /// ([`auracle_session::Engine::moved_along`]). Only on a search control's
+    /// offer: the Offer button's is not aimed anywhere.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    moved: Option<f64>,
 }
 
 fn tree_reply(r: &TreeReply) -> String {
@@ -414,6 +511,15 @@ fn bench_audio(
 /// Parse `tree_json` and write the knob `overrides_json` (`[[addr, value]]`)
 /// into it. Non-finite values and addresses that are not continuous knobs on
 /// this tree are skipped. `None` only if the tree itself does not parse.
+/// The ids a deal must not use, from the worker's `Uint32Array`.
+fn exclude_ids(exclude: Option<Vec<u32>>) -> Vec<u64> {
+    exclude
+        .unwrap_or_default()
+        .into_iter()
+        .map(u64::from)
+        .collect()
+}
+
 fn performed_tree(tree_json: &str, overrides_json: &str) -> Option<PatchTree> {
     let mut tree = serde_json::from_str::<PatchTree>(tree_json).ok()?;
     let overrides: Vec<(String, f64)> = serde_json::from_str(overrides_json).unwrap_or_default();
@@ -739,7 +845,36 @@ impl WasmEngine {
     ///
     /// `exclude` lists candidate ids that must not be dealt (the patches the
     /// player has cut); omitted, every standardized candidate may be.
+    ///
+    /// The pair counts as shown at once. The app, which deals ahead and
+    /// throws some deals away, uses [`WasmEngine::deal_duel_ex`] and
+    /// [`WasmEngine::duel_shown`] instead.
     pub fn next_duel_ex(&mut self, exclude: Option<Vec<u32>>) -> String {
+        let exclude = exclude_ids(exclude);
+        let choice = self.engine.next_duel_except(&mut self.rng.duel, &exclude);
+        self.duel_json(choice)
+    }
+
+    /// [`WasmEngine::next_duel_ex`] without counting the pair as shown: the
+    /// caller says when it puts the pair in front of the player
+    /// ([`WasmEngine::duel_shown`]). A deal thrown away unseen then moves
+    /// nothing — not the check cadence the calibration sample is paced by,
+    /// not the repeat and exposure penalties. Same JSON, same random stream.
+    pub fn deal_duel_ex(&mut self, exclude: Option<Vec<u32>>) -> String {
+        let exclude = exclude_ids(exclude);
+        let choice = self.engine.deal_duel_except(&mut self.rng.duel, &exclude);
+        self.duel_json(choice)
+    }
+
+    /// The pair `a`, `b` (ids, either order), dealt by
+    /// [`WasmEngine::deal_duel_ex`], is on the table now. False, counting
+    /// nothing, for a pair not dealt or already reported (a retracted pick's
+    /// pair put back up is not shown twice).
+    pub fn duel_shown(&mut self, a: u32, b: u32) -> bool {
+        self.engine.duel_shown(u64::from(a), u64::from(b))
+    }
+
+    fn duel_json(&self, choice: Option<auracle_session::DuelChoice>) -> String {
         #[derive(Serialize)]
         struct Row {
             a: u64,
@@ -748,12 +883,7 @@ impl WasmEngine {
             random_check: bool,
             method: &'static str,
         }
-        let exclude: Vec<u64> = exclude
-            .unwrap_or_default()
-            .into_iter()
-            .map(u64::from)
-            .collect();
-        match self.engine.next_duel_except(&mut self.rng.duel, &exclude) {
+        match choice {
             Some(d) => serde_json::to_string(&Row {
                 a: self.engine.pool[d.a].id,
                 b: self.engine.pool[d.b].id,
@@ -897,38 +1027,170 @@ impl WasmEngine {
         self.engine.fit_posterior(&mut rng);
     }
 
-    /// One round of taste-guided refinement (renders — worker!).
+    /// One whole generation of taste-guided refinement, serially (renders —
+    /// worker!). The same jobs, walk and absorption as the farm path.
     pub fn refine(&mut self) {
         self.engine.refine(&mut self.rng.refine);
     }
 
-    /// Open a generation; returns the parent ids to refine from as a JSON
-    /// array, or `[]` if there is no taste to refine toward yet (in which case
-    /// no generation is opened).
+    /// Open a generation with its jobs kept in the engine; returns the parent
+    /// ids to refine from as a JSON array, in job order, or `[]` if there is
+    /// no taste to refine toward yet (in which case no generation is opened).
     ///
-    /// Paired with [`WasmEngine::refine_seed`] so the caller can drive a
-    /// generation one seed at a time and show progress. A generation is tens
-    /// of seconds of render-bound work; as a single call it looks like a hang.
+    /// The serial driver: pair it with [`WasmEngine::refine_seed`] to run the
+    /// generation one walk at a time in this worker and show progress. The
+    /// farm driver is [`WasmEngine::refine_jobs`].
     pub fn refine_begin(&mut self) -> String {
-        serde_json::to_string(&self.engine.refine_begin()).unwrap_or_else(|_| "[]".into())
+        serde_json::to_string(&self.engine.refine_begin(&mut self.rng.refine))
+            .unwrap_or_else(|_| "[]".into())
     }
 
-    /// Refine one seed of the open generation. Returns the child id, or 0 if
-    /// the walk was rejected or landed on a patch already in the pool.
+    /// Run the open generation's job for `parent_id` here and absorb it.
+    /// Returns the child id, or 0 with the reason in
+    /// [`WasmEngine::last_refine_reason`]. Also the fallback for a job the
+    /// farm could not run: it runs the next job with that parent, skipping any
+    /// earlier job never absorbed.
     pub fn refine_seed(&mut self, parent_id: u32) -> u32 {
-        self.engine
-            .refine_seed(&mut self.rng.refine, parent_id as u64)
-            .unwrap_or(0) as u32
+        self.engine.refine_seed(parent_id as u64).unwrap_or(0) as u32
+    }
+
+    /// Open a generation as data, for the render farm:
+    ///
+    /// ```json
+    /// {"context":{"prior":{…},"posterior":{…},"standardizer":{…},
+    ///             "phrase":{…},"beta":2.0,"refine_keep":"last"},
+    ///  "jobs":[{"generation":3,"index":0,"parent_id":17,"seed":{…},
+    ///           "locked":[],"steps":40,"rng_seed":123456789}, …]}
+    /// ```
+    ///
+    /// `context` is `null` (and `jobs` empty) when there is no taste yet; no
+    /// generation is opened then. Any generation still open is finished
+    /// first. Send `context` to each farm worker once and each job to one of
+    /// them ([`farm_walk`]); `rng_seed` is at most 2⁵³ − 1, so a job survives
+    /// `JSON.parse`/`JSON.stringify` unchanged. The context is the heavy half
+    /// (the posterior's draws): `auracle-session`'s `walk_payload` example
+    /// measures it.
+    pub fn refine_jobs(&mut self) -> String {
+        let opened = self.engine.refine_jobs(&mut self.rng.refine);
+        let reply = match &opened {
+            Some((ctx, jobs)) => JobsReply {
+                context: Some(ctx),
+                jobs,
+            },
+            None => JobsReply {
+                context: None,
+                jobs: &[],
+            },
+        };
+        serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"context":null,"jobs":[]}"#.into())
+    }
+
+    /// Absorb one walk's result (`farm_walk`'s reply) into the open
+    /// generation. Returns the child id, or 0 with the reason in
+    /// [`WasmEngine::last_refine_reason`].
+    ///
+    /// Strictly in job order: a result that is not the next job's reads
+    /// `"stale"` and changes nothing — hold it and absorb it in its turn. A
+    /// result that does not parse returns 0 and leaves the generation waiting
+    /// for that job (run it with [`WasmEngine::refine_seed`]). Absorbing the
+    /// last job finishes the generation and retires what the children
+    /// displaced; nothing is retired before that.
+    pub fn refine_absorb(&mut self, result_json: &str) -> u32 {
+        let Ok(result) = serde_json::from_str::<WalkResult>(result_json) else {
+            return 0;
+        };
+        self.engine.refine_absorb(result).unwrap_or(0) as u32
+    }
+
+    /// Stop (or close) the open generation: the children absorbed so far stay,
+    /// the lowest unpinned members are retired until the pool is back to size,
+    /// and results still in flight will read `"stale"`. Returns the retired
+    /// ids as a JSON array, lowest first. Idempotent.
+    pub fn refine_finish(&mut self) -> String {
+        serde_json::to_string(&self.engine.refine_finish()).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// The ids the last generation to finish retired, lowest first, as a JSON
+    /// array — including a finish that happened on its last
+    /// [`WasmEngine::refine_absorb`]. They are no longer in the bank.
+    pub fn refine_retired(&self) -> String {
+        serde_json::to_string(self.engine.retired()).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// The ids the end of the running generation would retire if it ended
+    /// now, lowest first, as a JSON array — the rows a save would rescue.
+    /// `[]` when the pool is not over size.
+    pub fn refine_retiring(&self) -> String {
+        serde_json::to_string(&self.engine.retiring()).unwrap_or_else(|_| "[]".into())
     }
 
     /// Locked refinement from candidate `id`: evolve everything except the
     /// locked addresses (`locked_json` = JSON array of `key#site` strings).
-    /// Returns the new child id, or 0 if no move was accepted.
+    /// Returns the new child id, or 0 with the reason in
+    /// [`WasmEngine::last_refine_reason`]. Runs the walk in this worker; the
+    /// farm path is [`WasmEngine::refine_from_job`].
     pub fn refine_from(&mut self, id: u32, locked_json: &str) -> u32 {
         let id = id as u64;
         let locked: Vec<String> = serde_json::from_str(locked_json).unwrap_or_default();
         self.engine
             .refine_from(&mut self.rng.refine, id, &locked)
+            .unwrap_or(0) as u32
+    }
+
+    /// `⚡ evolve from this` as one farm job: `{"context":{…},"job":{…}}`
+    /// (shapes as [`WasmEngine::refine_jobs`]), or `{"reason":"unknown_seed"}`
+    /// / `{"reason":"no_taste"}`. Walk it with [`farm_walk`] and hand the
+    /// result to [`WasmEngine::refine_from_absorb`] with the same `id`.
+    pub fn refine_from_job(&mut self, id: u32, locked_json: &str) -> String {
+        let locked: Vec<String> = serde_json::from_str(locked_json).unwrap_or_default();
+        let made = self
+            .engine
+            .refine_from_job(&mut self.rng.refine, id as u64, &locked);
+        let reply = match &made {
+            Ok((ctx, job)) => FromJobReply {
+                context: Some(ctx),
+                job: Some(job),
+                reason: None,
+            },
+            Err(reason) => FromJobReply {
+                context: None,
+                job: None,
+                reason: Some(reason.as_str()),
+            },
+        };
+        serde_json::to_string(&reply).unwrap_or_else(|_| r#"{"reason":"no_taste"}"#.into())
+    }
+
+    /// Walk the job [`WasmEngine::refine_from_job`] dealt for seed `id` here,
+    /// in this worker, and absorb it: the child a farm worker would breed from
+    /// that job. The worker draws the job before it knows whether a crew will
+    /// come up, so a request that arrives meanwhile cannot draw first; this is
+    /// how the job is walked when none does. Returns the child id, or 0 with
+    /// the reason in [`WasmEngine::last_refine_reason`] (`"unknown_seed"`
+    /// when no job for `id` is in flight).
+    pub fn refine_from_walk(&mut self, id: u32) -> u32 {
+        self.engine.refine_from_walk(id as u64).unwrap_or(0) as u32
+    }
+
+    /// Drop the ⚡ job in flight for seed `id` (a stop): its seed may be
+    /// replaced again. Until its result is absorbed or it is dropped, the seed
+    /// of a ⚡ walk is never evicted. Returns whether one was in flight.
+    pub fn refine_from_cancel(&mut self, id: u32) -> bool {
+        self.engine.refine_from_cancel(id as u64)
+    }
+
+    /// Absorb the walk of a [`WasmEngine::refine_from_job`] for seed `id`.
+    /// Returns the child id, or 0 with the reason in
+    /// [`WasmEngine::last_refine_reason`] (a result that does not parse
+    /// returns 0 and changes nothing). With no generation running the child
+    /// is a generation of its own and what it displaced is retired at once;
+    /// during a generation it joins it, its seed spared by the finish.
+    pub fn refine_from_absorb(&mut self, id: u32, result_json: &str) -> u32 {
+        let Ok(result) = serde_json::from_str::<WalkResult>(result_json) else {
+            return 0;
+        };
+        self.engine
+            .refine_from_absorb(id as u64, result)
             .unwrap_or(0) as u32
     }
 
@@ -1074,6 +1336,7 @@ impl WasmEngine {
                 makeup: None,
                 taste: None,
                 diff: None,
+                moved: None,
             }),
             None => serde_json::json!({ "reason": "no_graft" }).to_string(),
         }
@@ -1155,6 +1418,7 @@ impl WasmEngine {
                     makeup: None,
                     taste: Some(self.engine.has_taste()),
                     diff: None,
+                    moved: None,
                 })
             }
             Err(why) => serde_json::json!({ "reason": why.as_str() }).to_string(),
@@ -1165,21 +1429,39 @@ impl WasmEngine {
     /// the player's locks. Returns `{tree, makeup, taste, diff}` — makeup so the
     /// offer is heard at matched loudness, taste as for [`Self::perform_drift`]
     /// — or `{reason}` / `null` as there. Inserts nothing into the pool.
+    ///
+    /// With `control` (a named control's index, [`auracle_session::perform::CONTROLS`]
+    /// order) the offer is a search control's, aimed along that control's
+    /// direction, up for a positive `sign` and down otherwise
+    /// ([`auracle_session::Engine::offer_toward`]), and the reply adds `moved`:
+    /// how far the offer went that way, in σ, positive toward the control's
+    /// high word — so the page can say "grittier by 0.8σ", or that it did not
+    /// move that way. Without `control` it is the Offer button's undirected
+    /// walk, and there is no `moved`.
     pub fn perform_offer(
         &mut self,
         tree_json: &str,
         overrides_json: &str,
         locks_json: &str,
         steps: u32,
+        control: Option<u32>,
+        sign: Option<f64>,
     ) -> String {
         let Some(tree) = performed_tree(tree_json, overrides_json) else {
             return "null".into();
         };
         let locks: Vec<String> = serde_json::from_str(locks_json).unwrap_or_default();
-        let t = match self
-            .engine
-            .offer(&mut self.rng.perform, &tree, &locks, steps.max(1) as usize)
-        {
+        let steps = steps.max(1) as usize;
+        let rng = &mut self.rng.perform;
+        let grown = match control {
+            Some(k) => {
+                let s = sign.unwrap_or(1.0);
+                self.engine
+                    .offer_toward(rng, &tree, &locks, steps, k as usize, s)
+            }
+            None => self.engine.offer(rng, &tree, &locks, steps),
+        };
+        let t = match grown {
             Ok(t) => t,
             Err(why) => return serde_json::json!({ "reason": why.as_str() }).to_string(),
         };
@@ -1189,12 +1471,14 @@ impl WasmEngine {
         // What changed, so the B strip can say it ("+chorus, cutoff 448 Hz→1.2
         // kHz") instead of only "an offer is waiting".
         let diff = auracle_grammar::tree_diff(&tree, &t);
+        let moved = control.and_then(|k| self.engine.moved_along(&tree, &t, k as usize));
         tree_reply(&TreeReply {
             tree: &t,
             knobs: None,
             makeup: Some(makeup),
             taste: Some(self.engine.has_taste()),
             diff: Some(&diff),
+            moved,
         })
     }
 
@@ -2145,7 +2429,7 @@ mod tests {
         let mut compared = 0;
         for reply in [
             engine.perform_drift(&tree_json, "{}", "[]", 3, 0.15),
-            engine.perform_offer(&tree_json, "{}", "[]", 3),
+            engine.perform_offer(&tree_json, "{}", "[]", 3, None, None),
         ] {
             let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
             if v.get("reason").is_some() {
@@ -2163,6 +2447,193 @@ mod tests {
             compared > 0,
             "neither a drift nor an offer grew, so nothing was checked"
         );
+    }
+
+    /// A taught engine with a unit-test budget. The shipped refinement budget
+    /// is a minute and more of walks per generation natively, which a unit
+    /// test cannot pay; the machinery under test does not depend on it.
+    /// Deterministic in `seed`: two calls build the same engine.
+    fn taught_wasm(seed: u64) -> WasmEngine {
+        let mut engine = WasmEngine::new(seed, 12);
+        engine.engine.cfg.refine_steps = 8;
+        engine.engine.cfg.refine_seeds = 3;
+        engine.engine.cfg.mcmc_samples = 3_000;
+        engine.engine.cfg.mcmc_warmup = 1_000;
+        while engine.fill_step(4) > 0 {}
+        for _ in 0..16 {
+            let [a, b]: [u64; 2] = serde_json::from_str::<Option<[u64; 2]>>(&engine.next_duel())
+                .unwrap()
+                .expect("a duel");
+            // Any fixed rule will do: the test compares two twins, not a taste.
+            engine.record_duel(a as u32, b as u32, (a * 7 + b) % 3 != 0);
+        }
+        engine.fit();
+        engine
+    }
+
+    fn twins(seed: u64) -> (WasmEngine, WasmEngine) {
+        std::thread::scope(|s| {
+            let a = s.spawn(move || taught_wasm(seed));
+            let b = s.spawn(move || taught_wasm(seed));
+            (a.join().unwrap(), b.join().unwrap())
+        })
+    }
+
+    /// **The farm's wire changes no child.** One twin breeds a generation
+    /// serially (`refine`); the other hands its jobs out as JSON
+    /// (`refine_jobs`), walks each through the stateless `farm_walk` export —
+    /// which must answer exactly what `run_walk` answers on the engine's own
+    /// context and job — and absorbs the JSON results in order. The two must
+    /// end with the same bank and the same lineage.
+    #[test]
+    fn farm_walks_breed_the_serial_generation() {
+        let (mut serial, mut farmed) = twins(0xFA2);
+        serial.refine();
+
+        let reply: serde_json::Value = serde_json::from_str(&farmed.refine_jobs()).unwrap();
+        // Re-serialized through `Value`, so its keys come out sorted: the
+        // context is parsed by name, and its floats survive exactly
+        // (`float_roundtrip`), which is what the worker's JSON relies on.
+        let context = serde_json::to_string(&reply["context"]).unwrap();
+        let own = farmed.engine.walk_context().expect("taught");
+        let jobs = reply["jobs"].as_array().unwrap();
+        assert_eq!(jobs.len(), 3);
+        let mut children = 0;
+        for job in jobs {
+            let job_text = serde_json::to_string(job).unwrap();
+            let wired = farm_walk(&context, &job_text);
+            assert!(
+                !wired.is_empty(),
+                "farm_walk refused a job refine_jobs made"
+            );
+            let native: WalkJob = serde_json::from_value(job.clone()).unwrap();
+            let direct = run_walk(&own, &native, &RenderMemo::default());
+            assert_eq!(
+                wired,
+                serde_json::to_string(&direct).unwrap(),
+                "job {}: farm_walk differs from run_walk",
+                native.index
+            );
+            children += (farmed.refine_absorb(&wired) > 0) as usize;
+        }
+        assert!(
+            children > 0,
+            "no walk bred a child, so no child was compared"
+        );
+        assert_eq!(farmed.ranked(), serial.ranked(), "the bank differs");
+        assert_eq!(
+            serde_json::to_string(&farmed.engine.lineage).unwrap(),
+            serde_json::to_string(&serial.engine.lineage).unwrap()
+        );
+        assert_eq!(farmed.refine_retired(), serial.refine_retired());
+        assert_eq!(
+            farmed.refine_finish(),
+            "[]",
+            "the last absorb already finished"
+        );
+        assert_eq!(
+            farm_walk("{", "{}"),
+            "",
+            "a broken job is refused, not walked"
+        );
+    }
+
+    /// ⚡ as one farm job lands the same child as ⚡ in the engine, and so
+    /// does the job drawn first and walked here afterwards (`refine_from_walk`,
+    /// the worker's path when no crew comes up). An unknown seed says so
+    /// instead of producing a job, and a walk with no job drawn is refused.
+    #[test]
+    fn evolve_from_this_on_the_farm_is_evolve_from_this() {
+        let (mut serial, mut farmed) = twins(0x1F7);
+        let mut walked = taught_wasm(0x1F7);
+        let ranked: Vec<serde_json::Value> = serde_json::from_str(&serial.ranked()).unwrap();
+        let mut landed = 0;
+        for row in ranked.iter().take(4) {
+            let id = row["id"].as_u64().unwrap() as u32;
+            let here = serial.refine_from(id, "[]");
+            let reply: serde_json::Value =
+                serde_json::from_str(&farmed.refine_from_job(id, "[]")).unwrap();
+            let result = farm_walk(
+                &serde_json::to_string(&reply["context"]).unwrap(),
+                &serde_json::to_string(&reply["job"]).unwrap(),
+            );
+            let there = farmed.refine_from_absorb(id, &result);
+            assert_eq!(here, there, "seed {id}: the farm's ⚡ landed elsewhere");
+            assert_eq!(serial.last_refine_reason(), farmed.last_refine_reason());
+            let drawn: serde_json::Value =
+                serde_json::from_str(&walked.refine_from_job(id, "[]")).unwrap();
+            // The draw, not the whole job: a tree's node identities come from
+            // a process-wide mint and differ between twins.
+            assert_eq!(
+                drawn["job"]["rng_seed"], reply["job"]["rng_seed"],
+                "seed {id}: another job was drawn"
+            );
+            let later = walked.refine_from_walk(id);
+            assert_eq!(
+                here, later,
+                "seed {id}: the job walked here landed elsewhere"
+            );
+            assert_eq!(serial.last_refine_reason(), walked.last_refine_reason());
+            landed += (here > 0) as usize;
+        }
+        assert!(landed > 0, "no ⚡ landed, so no child was compared");
+        assert_eq!(farmed.ranked(), serial.ranked());
+        assert_eq!(walked.ranked(), serial.ranked());
+        assert_eq!(serial.status(), farmed.status());
+        assert_eq!(walked.refine_from_walk(0xDEAD), 0);
+        assert_eq!(walked.last_refine_reason(), "unknown_seed");
+        assert!(!walked.refine_from_cancel(0xDEAD));
+        assert_eq!(
+            farmed.refine_from_job(0xDEAD, "[]"),
+            r#"{"reason":"unknown_seed"}"#
+        );
+    }
+
+    /// A search control's offer says how far it moved the way it was turned
+    /// (ADR-008): the reply is the struct reply with `moved`, a number in σ
+    /// that is the engine's own measure of the move, the tree still in its
+    /// own key order. The Offer button's reply has no `moved`, and neither
+    /// does one for a control that does not exist (it walks undirected).
+    #[test]
+    fn an_aimed_offer_reply_carries_how_far_it_moved() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let tree_json = engine.edit_tree_json();
+        let home: PatchTree = serde_json::from_str(&tree_json).unwrap();
+        let grit = auracle_session::perform::CONTROLS
+            .iter()
+            .position(|c| c.name == "Grit")
+            .unwrap() as u32;
+        let mut aimed = 0;
+        for _ in 0..4 {
+            let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, Some(grit), Some(1.0));
+            let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+            if v.get("reason").is_some() {
+                continue; // nothing grew this time
+            }
+            let tree: PatchTree = serde_json::from_value(v["tree"].clone()).unwrap();
+            let own = serde_json::to_string(&tree).unwrap();
+            assert!(reply.starts_with(&format!("{{\"tree\":{own}")));
+            let moved = v["moved"]
+                .as_f64()
+                .expect("an aimed offer says how far it moved");
+            let want = engine
+                .engine
+                .moved_along(&home, &tree, grit as usize)
+                .unwrap();
+            assert!((moved - want).abs() < 1e-9, "{moved} vs {want}");
+            aimed += 1;
+        }
+        assert!(aimed > 0, "no aimed offer grew, so nothing was checked");
+        for (control, sign) in [(None, None), (Some(99), Some(-1.0))] {
+            let reply = engine.perform_offer(&tree_json, "{}", "[]", 6, control, sign);
+            let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+            assert!(v.get("moved").is_none(), "{control:?}: {reply}");
+        }
     }
 
     /// A draw on one stream never moves another: a spare offer grown in the
@@ -2679,6 +3150,50 @@ mod tests {
         }
         // Cut all but one and there is no pair left to deal.
         assert_eq!(dealt(engine.next_duel_ex(Some(ids[1..].to_vec()))), None);
+    }
+
+    /// The app's deal is counted when it reports the pair on the table, not
+    /// when it is dealt: `deal_duel_ex` deals what `next_duel_ex` would from
+    /// the same stream, and only `duel_shown` of a pair it dealt counts.
+    #[test]
+    fn a_deal_counts_when_it_is_shown() {
+        let fresh = || {
+            let mut e = WasmEngine::new(0x5E1, 6);
+            while e.fill_step(3) > 0 {}
+            e
+        };
+        let pair = |reply: &str| -> [u32; 2] {
+            let v: serde_json::Value = serde_json::from_str(reply).unwrap();
+            [
+                v["a"].as_u64().unwrap() as u32,
+                v["b"].as_u64().unwrap() as u32,
+            ]
+        };
+        let (mut counted, mut deferred) = (fresh(), fresh());
+        for _ in 0..5 {
+            let a = counted.next_duel_ex(None);
+            let b = deferred.deal_duel_ex(None);
+            assert_eq!(a, b, "one stream, one deal");
+            let [x, y] = pair(&b);
+            assert!(deferred.duel_shown(y, x));
+            assert!(!deferred.duel_shown(x, y), "shown once");
+        }
+        assert_eq!(
+            counted.engine.shown_pairs_len(),
+            deferred.engine.shown_pairs_len()
+        );
+        // Deals thrown away until one is a pair never shown before: under
+        // the old count-at-the-deal it would have added a row.
+        let before = deferred.engine.shown_pairs_len();
+        for _ in 0..20 {
+            let _ = deferred.deal_duel_ex(None);
+        }
+        assert!(!deferred.duel_shown(u32::MAX, u32::MAX - 1), "never dealt");
+        assert_eq!(
+            deferred.engine.shown_pairs_len(),
+            before,
+            "a deal thrown away is not shown"
+        );
     }
 
     /// The import route enforces the same ceilings as every other write route,

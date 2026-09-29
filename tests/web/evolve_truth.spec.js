@@ -8,9 +8,9 @@
 //   window. It used to be committed the moment the next pair landed.
 // - "● it just learned" appears only once `fitted` has answered, and stays
 //   until the next pick. It used to appear when the refit was *sent*.
-// - "another pair" (↻) puts the pair away like a pick does: inert buttons,
-//   and after 300 ms a reason on the cards. It used to leave the old pair up
-//   with buttons that looked live and did nothing.
+// - "another pair" (↻) with no pair dealt ahead puts the pair away like a
+//   pick does: inert buttons, and after 300 ms a reason on the cards. It used
+//   to leave the old pair up with buttons that looked live and did nothing.
 // - A cut patch is never dealt again, and its toast names it without an id.
 // - After clicking the EVOLVE tab, → picks.
 // - An open is not announced unless it kept the player waiting.
@@ -22,7 +22,8 @@ const { test, expect } = require("@playwright/test");
 
 const SEED = `(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
 
-const init = ({ warmed = true } = {}) => `(() => {
+const init = ({ warmed = true, holdAhead = false } = {}) => `(() => {
+  window.__pwNoAhead = ${holdAhead};
   const Orig = window.Worker;
   const workers = (window.__pwWorkers = []);
   const last = (window.__pwLast = {});
@@ -35,7 +36,7 @@ const init = ({ warmed = true } = {}) => `(() => {
     workers.push(w);
     w.addEventListener("message", (e) => {
       const d = e.data;
-      if (d && typeof d.type === "string") {
+      if (d && typeof d.type === "string" && !d.pwFake) {
         last[d.type] = d;
         counts[d.type] = (counts[d.type] || 0) + 1;
         log.push({ type: d.type, at: performance.now() });
@@ -47,9 +48,19 @@ const init = ({ warmed = true } = {}) => `(() => {
         counts["sent:" + m.type] = (counts["sent:" + m.type] || 0) + 1;
         sent[m.type] = m;
         log.push({ type: "sent:" + m.type, at: performance.now() });
+        // A deal asked for ahead of the pick (main.js requestAhead), with
+        // __pwNoAhead set, is answered here with no pair, as an engine with
+        // none to deal answers, so a spec can have no pair waiting. (Held
+        // instead, it would be the deal a pick waits for: a pick with a deal
+        // already out waits for that one rather than asking for another.)
+        if (m.type === "duel" && m.ahead && window.__pwNoAhead) {
+          setTimeout(() => w.dispatchEvent(new MessageEvent("message", { data: { type: "duel", pair: null, meta: null, ahead: true, pwFake: true } })), 0);
+          return;
+        }
         // A request held back on request (a deal, an open): the stand-in for
         // an engine busy with a generation, which is when they wait seconds.
-        const ms = (window.__pwHold || {})[m.type];
+        const key = m.type === "duel" && m.ahead ? "duel:ahead" : m.type;
+        const ms = (window.__pwHold || {})[key];
         if (ms > 0) {
           setTimeout(() => post(m, t), ms);
           return;
@@ -94,7 +105,7 @@ async function boot(page, opts = {}) {
   page.on("pageerror", (err) => pageErrors.push(err.message));
   await page.addInitScript(SEED);
   await page.addInitScript(init(opts));
-  await page.goto("/");
+  await page.goto(`/${opts.query || ""}`);
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 150_000 });
   return pageErrors;
 }
@@ -221,7 +232,9 @@ test("the sixth pick can be taken back, and it just learned only once fitted has
 });
 
 test("another pair leaves no live-looking buttons while it deals, and says why when slow", async ({ page }) => {
-  const pageErrors = await boot(page);
+  // No pair dealt ahead (it would go up at once; see evolve_ahead.spec.js):
+  // this is the deal a pick or ↻ waits for when none is waiting.
+  const pageErrors = await boot(page, { holdAhead: true });
   await toEvolve(page);
   const n0 = await picks(page);
   const [a0, b0] = await cardIds(page);
@@ -272,10 +285,13 @@ test("a cut patch is not dealt again, and its toast names it without an id", asy
     { timeout: 15_000 }).toBeTruthy();
   expect(said).toMatch(/^Cut .+ — it won't be dealt again$/);
   expect(said).not.toMatch(/#\d/);
-  // The pair it was on is put away; no deal from here on includes it.
+  // The pair it was on is put away; no deal from here on includes it. The
+  // pair dealt ahead goes up at once (re-checked against the cut), and the
+  // next deal is asked for once its sounds are in, so the latest request is
+  // waited for rather than read the instant the cards come back.
   await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
   for (let i = 0; i < 8; i++) {
-    expect(await page.evaluate(() => window.__pwSent.duel.exclude)).toContain(cut);
+    await expect.poll(() => page.evaluate(() => window.__pwSent.duel.exclude), { timeout: 10_000 }).toContain(cut);
     expect(await cardIds(page)).not.toContain(cut);
     await page.locator("#skip-duel").click();
     await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
@@ -331,9 +347,13 @@ test("opening a patch is not announced unless it kept you waiting", async ({ pag
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("during a generation a pick's deal says the engine is breeding, and what it bred and replaced is named", async ({ page }) => {
+// With no render farm (`?farm=0`, or a machine too small for one) a
+// generation's walks run in the engine worker, and a deal can wait for the
+// walk in progress. On the farm it does not wait at all
+// (evolve_breeds_beside_you.spec.js).
+test("with no farm, a pick's deal during a generation says which seed it waits on, and what it bred and replaced is named", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
-  const pageErrors = await boot(page);
+  const pageErrors = await boot(page, { query: "?farm=0" });
   await toEvolve(page);
   // A model to breed toward: six picks, and their refit landed.
   for (let i = 1; i <= 6; i++) await pick(page, i % 2 ? "a" : "b");
@@ -384,7 +404,7 @@ test("during a generation a pick's deal says the engine is breeding, and what it
   console.log(`generation receipt: ${receipt}`);
   expect(receipt).toBeTruthy();
   expect(receipt).not.toMatch(/#\d|retired/);
-  if (/replaced/.test(receipt)) expect(receipt).toMatch(/replaced: [^.]*\S\.$/);
+  if (/replaced/.test(receipt)) expect(receipt).toMatch(/replaced: [^.]*\S\./);
   // The strip names parent and child and says "liked", not "Δtaste" or ids.
   const lineage = (await page.locator("#lineage-log").textContent()).trim();
   console.log(`lineage strip: ${lineage.slice(0, 300)}`);

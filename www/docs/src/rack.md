@@ -143,9 +143,21 @@ pinning it somewhere you cannot see.
 - **clear locks** releases everything.
 
 Then **⚡ evolve from this**: refinement mutates everything *except* the locked
-addresses. If you go on editing while it breeds, the child waits in the bank
-rather than replacing your edits; the message that announces it has an
-**open it** button.
+addresses. It is one walk of a few dozen renders, and it runs on the render
+farm, so the rack, the bank and the duels go on answering while it walks. The
+button reads **⚡ evolving…**, and the job slot in the menu bar shows *⚡
+evolving Soft Pad* with **stop**, which drops the walk and adds nothing. (With no
+render farm, on a single-core machine or with `?farm=0`, or when no render
+worker could take the walk, it runs in the engine itself, where it cannot be
+stopped, and other requests wait for it; the job slot then shows no **stop**.)
+If you go on editing while it walks, the child waits in the bank rather than
+replacing your edits; the message that announces it has an **open it** button.
+The patch it walks from stays in the bank until the walk lands or is stopped,
+whatever else comes in meanwhile.
+
+⚡ and **EVOLVE POOL** take turns. While a generation breeds, ⚡ is disabled,
+and hovering it says why; while ⚡ walks, EVOLVE POOL waits the same way. A
+refit waits for either, so each is bred under the model it started with.
 
 A proposal that would change, delete **or create** any locked address is
 rejected. Both directions matter: allowing a *birth* at a locked address while

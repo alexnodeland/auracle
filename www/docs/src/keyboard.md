@@ -222,11 +222,23 @@ An ordinary pot does nothing until it passes through the control's current
 position. Then it takes over. This is often called *pickup*.
 
 It matters more here than on most instruments, because the controls move
-without the pot. Wander drifts the sound and re-centres the controls, and you
-can turn a control with the mouse or the keys. Without pickup, the first nudge
-of a pot left at three o'clock would snap a control that is now at nine.
-Whenever a control moves by the mouse, the keys or Wander, the pots bound to it
-have to pick it up again.
+without the pot. You can turn a control with the mouse, the keys or the XY
+pad. Without pickup, the first nudge of a pot left at three o'clock would snap
+a control that is now at nine. Whenever a control is set by the mouse, the
+keys or the XY pad, the pots bound to it have to pick it up again.
+
+PERFORM also re-centres its controls, after a Keep, a Take, a fresh
+measurement or a Wander glide, without moving the sound. A pot you are using
+is not let go then: the control's new centre is where the pot is now, and the
+pot's next movement moves the control from there, scaled so that each end of
+the pot still reaches the same end of the control. Once the pot and the
+control agree again, the pot simply follows.
+
+Blend is different. When B empties (you pass on an offer, or take it), Blend
+returns home, and a pot on Blend is let go: it does nothing until you bring it
+back down to home, and then it follows again. Otherwise a pot left near the top
+would reach the whole of Blend in its last few steps, and the next nudge would
+pour the next offer over the sound you just chose.
 
 The mod wheel and channel pressure are not picked up, because they do not set
 a control's position. Unless you learn CC 1 onto a control, each one adds to

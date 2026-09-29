@@ -38,11 +38,31 @@ its seven seconds. With none left it changes nothing and says *nothing to undo
 here — PATCH edits undo in PATCH*: edits to the patch are undone in PATCH,
 where you can see them.
 
-After a pick or a skip the cards dim and their buttons do nothing until the
-next pair is dealt, usually a few hundredths of a second. A deal that takes
-longer says why on the cards; during a generation, a deal waits for the seed
-being bred, and the cards read, for example, *dealing — the engine is breeding
-(seed 4/10)*.
+The next pair is already waiting. While a pair is on the table the engine
+deals the one after it and renders both its sounds, so a pick or a skip puts
+it up at once, sounds and all, and the pair after that is dealt behind it.
+Those renders, like the ones for the pair on the table, wait behind what you
+ask for: a patch you open, a ▶ you press, and the start of an Offer or of
+PERFORM's first measurement of a patch (they fit between its renders). It
+is chosen before your pick is known, which changes nothing: the pick is held
+in its seven seconds anyway, and pairs are dealt at random (see below). A
+patch you cut meanwhile is never put up: that pair is dropped and dealt again.
+Nor is a pair that lost a patch to the pool (a generation replaced it): the
+waiting pair goes up in its place. Taking a pick back puts its pair back on
+the table, and the pair it had brought up, or the one still being dealt,
+waits as the next.
+
+Pairs go up in the order they were dealt. A pick made while the next pair is
+still being dealt waits for that pair rather than asking for another, so a
+seeded session shows the same pairs in the same order however long each deal
+took.
+
+Only when no pair is waiting (right after a cut, say) do the cards dim and
+their buttons do nothing until the next pair is dealt, usually a few
+hundredths of a second, generation or not. A deal that takes longer says why
+on the cards: with no render farm (see [EVOLVE POOL](#evolve-pool)), a deal
+during a generation waits for the walk in progress, and the cards read, for
+example, *dealing — the engine is breeding (seed 4/10)*.
 
 Both sides play the *same* phrase. That is the point: audio features are only
 comparable across patches under an identical stimulus, so the sample is a fixed
@@ -73,18 +93,20 @@ count so far, and how the pair on the table was dealt.</figcaption>
 The pips count down to the next **refit**, and the sixth pick always brings
 one. The row fills and the strip says *● learning from your last 6 picks…*
 while the sixth pick's seven seconds run out and the refit runs (pick again
-first and the refit goes out at once). During a generation it says *● it will
-learn from these 6 when breeding finishes* instead, because a refit waits for
-the generation. When the refit lands, the [TASTE](./taste.md) map is redrawn
+first and the refit goes out at once). During a generation, or while ⚡ evolve
+from this walks, it says *● it will learn from these 6 when breeding finishes*
+instead, because a refit waits for them. When the refit lands, the [TASTE](./taste.md) map is redrawn
 and the strip glows amber and says *● it just learned — see what changed ▸*;
 the link opens the map. It says so until your next pick.
 
 Between refits your votes still count: each one is folded into the model
 immediately by reweighting, so the next question responds to the last answer.
 A refit is the expensive version: full Markov-chain inference over the whole
-log, a few seconds, off the audio thread. The **E** of the wordmark lights
-while a refit, a generation or ⚡ evolve from this runs, and goes dark when the
-last of them is done.
+log, a few seconds, off the audio thread. While a refit, a generation or ⚡
+evolve from this runs, the **job slot** in the menu bar, beside
+**generations**, says so (*refitting your taste map…*, *⚡ breeding 3/10 ·
+about 40 s*, *⚡ evolving Soft Pad*), and the **E** of the wordmark is lit
+exactly while the slot shows.
 
 **◇ random pair — a fair test**, beside **skip ↻**, says how pairs are
 dealt: at random from the pool. The model does not choose what you hear, and
@@ -111,10 +133,16 @@ Breeds a generation.
 The engine takes the ten highest-scoring patches in the pool and runs a short
 Metropolis–Hastings walk from each, mutating structure and parameters with the
 proposal distribution tilted by what your taste model has learned, then injects
-the children. The patches it likes least are replaced to make room, and the
-generation's toast names them (the first three, then *+N more*); anything you
-have **saved** is exempt. A patch you cut is never dealt to you again, though
-it stays in the pool until a generation replaces it.
+the children. Each child appears the moment it is bred, at the top of the bank
+under **new · gen N**, in the order the walks were dealt, and can be played at
+once; the ranked rows below it do not move. The patches it likes least are
+replaced to make room when the generation ends, and the generation's toast
+names them (the first three, then *+N more*); anything you have **saved** by
+then is exempt, including a patch you save while the generation is still
+running. A child bred early can end up below the children bred after it;
+then it is the one not kept, and the toast says so. Hover **EVOLVE POOL** to see which rows it may replace: they get a
+dashed rail and *may be replaced*. A patch you cut is never dealt to you
+again, though it stays in the pool until a generation replaces it.
 
 It is *local hill-climbing* on what the model believes, not a draw from the
 target distribution. In practice that means children resemble their parents,
@@ -124,13 +152,40 @@ and a generation moves the pool rather than replacing it. The
 Nothing happens if there is no fitted model yet; there is no direction to climb
 in. Answer some duels first.
 
-A generation is a walk of a few dozen renders from each of ten seeds, about
-two to three minutes in the browser. The keys stay playable while it runs,
-and the button counts the seeds as they go. A ▶, a bench open or a pick is
-answered between one seed and the next, so it can wait for the seed being
-bred, up to about 20 seconds: after a pick, the next pair can take that long
-to arrive, and the cards say which seed they are waiting on. A refit waits
-for the generation to finish.
+A generation is a walk of a few dozen renders from each of ten seeds. The
+walks run side by side on the render farm, as many at once as your machine
+has workers to spare, and a generation lasts as long as its slowest walks:
+measured on a busy four-core machine, about two to three and a half minutes,
+a little less with more cores to spare. The whole instrument goes on
+answering while it breeds: a pick deals its next pair in a few hundredths of
+a second, a ▶ plays, a patch opens, and PERFORM measures and grows offers.
+Only a refit and [⚡ evolve from this](../rack.md#locks-and-evolving-from-here)
+wait for the generation to finish: the refit so that the generation is bred
+under the model it started with, and ⚡ because the two take turns (its button
+is disabled until then, and says why when you hover it). While ⚡ walks,
+EVOLVE POOL waits for it in the same way. A pick you make meanwhile moves the
+next pair at once, but not which children are kept: that is judged by the same
+model the generation started with, whenever your picks land, and they count
+from the refit after it. The seeds give the same children however many
+workers walk them.
+
+While it breeds, **EVOLVE POOL** is its own progress bar, *breeding 3/10*
+(the walks folded in so far), with **stop** beside it; the job slot in the
+menu bar says the same with the time left, in every view. The
+**generations** counter beside it counts a generation once its first child
+has landed in the bank, or once it has ended. **Stop** drops the
+walks still running and ends the generation with the children bred so far.
+As at any generation's end, the bank then goes back to its size by retiring
+its lowest-ranked unsaved patches, as many as the children need: usually
+older members, but a child bred early can rank below one bred after it and
+go too. The toast says how many were kept and how many were not.
+
+With no render farm (a single-core machine, or `?farm=0` in the address) the
+walks run in the engine itself, one after another, and a generation takes
+about three and a half to four minutes on the same machine. Then a ▶, a bench
+open or a pick is answered between one walk and the next, so after a pick the
+next pair can take up to about 20 seconds, and the cards say which seed they
+are waiting on.
 
 ## The EVOLUTION strip
 

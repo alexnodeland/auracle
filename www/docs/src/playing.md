@@ -50,7 +50,9 @@ knobs you turn claim [PERFORM](./views/perform.md)'s eight controls in the
 order you turn them, and the panel's **learn** remaps any of them. Endless
 encoders are recognised from what they send. Ordinary pots pick a control up
 as they pass through its position rather than snapping it, which matters
-because Wander moves the controls under a pot that has not moved. Channel
+because the mouse and the keys move the controls under a pot that has not
+moved; when PERFORM re-centres a control, a pot in use keeps working from
+where it is. Channel
 pressure brightens the sound and the mod wheel drives Motion. Incoming MIDI
 clock sets the tempo. The mapping is remembered per device.
 

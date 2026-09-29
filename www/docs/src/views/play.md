@@ -30,8 +30,12 @@ and view controls (*freeform / chain*, *snap*, *reset*, *detail*, *belief*,
 [Reading and editing the rack](../rack.md).
 
 **The next-step chip.** An amber line that always says what to do now (*"Gen 31
-bred new patches — hear them ▸"*). It is a suggestion; clicking it takes you
-there.
+bred new patches — they're at the top of the bank ▸"*). It is a suggestion,
+and clicking it does the step it names: it points you at a key to play, opens
+EVOLVE for picks, starts a generation, scrolls the bank to the newest
+generation's patches, or (when that generation kept none) opens TASTE. While
+the first generation breeds and before any child of it has landed, it only
+says *Breeding — keep playing*, and clicking it does nothing.
 
 **The belief row.** What the model thinks of *this* patch and why:
 

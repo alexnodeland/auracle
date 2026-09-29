@@ -22,9 +22,11 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
+        nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
+        browser-fast browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
-        closed-loop revalidate \
-        wasm wasm-stamp serve doc bundle clean \
+        closed-loop walk-payload offer-census revalidate \
+        wasm wasm-stamp perform-wirings serve doc bundle clean \
         site site-clean site-landing site-play site-docs site-reference \
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
@@ -77,11 +79,14 @@ WEB_JS := $(wildcard apps/web/*.js)
 ## js-check: every app script parses. This is the only gate that catches a
 ## backtick inside live-audio.js's PROCESSOR template literal — the failure
 ## mode there is a worklet blob that silently never registers, not an error at
-## the edit site (CONTRIBUTING § Sharp edges).
+## the edit site (CONTRIBUTING § Sharp edges). Parsed as the ES modules they
+## are: `node --check file.js` reads a .js as CommonJS first and let a name
+## declared twice inside a function (a SyntaxError the browser refuses the
+## whole module for) pass as "parse OK".
 js-check:
 	@command -v node >/dev/null || { \
 		printf '  node not found — the web app is checked with `node --check`; install Node 18+\n'; exit 1; }
-	@for f in $(WEB_JS); do node --check $$f || exit 1; done
+	@for f in $(WEB_JS); do node --check --input-type=module < $$f || { printf '  in %s\n' $$f; exit 1; }; done
 	@printf '  %s: parse OK\n' $(WEB_JS)
 
 ## wasm-check: the engine compiles for wasm32, which the native build does not
@@ -121,6 +126,73 @@ test:
 test-verbose:
 	$(CARGO) test --workspace --profile test-fast -- --nocapture
 
+# ─── CI's two tiers ──────────────────────────────────────────────────────────
+#
+# CI splits the tests into a fast tier that gates merging and a slow tier that
+# runs on main, nightly, and on a PR that touches what it covers (see
+# docs/architecture/testing.md § CI tiers). These targets run each tier the
+# way CI does, so "green in CI" can be reproduced by name. `make test` and
+# `make check` still run every Rust test; nothing here replaces them.
+#
+# The slow Rust tests are the ones that took over a minute in CI (runner times
+# from PR #65's run, in the commit that introduced this list). They are named
+# here and nowhere else: the fast tier is *everything not named*, so a new or
+# renamed test lands in the fast tier and is never dropped from both, and
+# `--no-tests=fail` turns a list that no longer matches anything into a red
+# run. The search floor is split off because it alone is ~330 s on a runner:
+# it walks 16 seeds, one thread each, and gets a runner to itself.
+SEARCH_FLOOR := test(=tests::refinement_improves_pool)
+SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) \
+	| test(=perform::tests::a_planned_measurement_is_the_measurement) \
+	| test(=tests::a_walk_is_a_function_of_its_job) \
+	| test(=perform::tests::named_controls_move_the_sound_they_name) \
+	| test(=tests::evolve_from_this_on_the_farm_is_evolve_from_this) \
+	| test(=tests::closed_loop_learns_synthetic_taste) \
+	| test(=tests::closed_loop_learns_motion_rate) \
+	| test(=perform::tests::drift_is_local_and_follows_sigma) \
+	| test(=tests::farm_walks_breed_the_serial_generation) \
+	| test(=tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
+NEXTEST := $(CARGO) nextest run --workspace --cargo-profile test-fast --no-tests=fail
+# CI passes `--partition hash:k/N` here to split the fast tier across runners.
+NEXTEST_ARGS ?=
+
+nextest-installed:
+	@$(CARGO) nextest --version >/dev/null 2>&1 || { \
+		printf '  cargo-nextest is missing — run: cargo install cargo-nextest --locked\n'; exit 1; }
+
+## test-fast-tier: the Rust tests CI requires on every PR (all but the slow ones)
+test-fast-tier: nextest-installed
+	$(NEXTEST) -E 'not ($(SEARCH_FLOOR) | $(SLOW_TESTS))' $(NEXTEST_ARGS)
+
+## test-slow-tier: the slow Rust tests: the search floor, then the rest
+test-slow-tier: test-search-floor test-slow-rest
+
+## test-search-floor: `refinement_improves_pool` alone (~5 min on a runner)
+test-search-floor: nextest-installed
+	$(NEXTEST) -E '$(SEARCH_FLOOR)' $(NEXTEST_ARGS)
+
+## test-slow-rest: the slow tier's Rust tests other than the search floor
+test-slow-rest: nextest-installed
+	$(NEXTEST) -E '$(SLOW_TESTS)' $(NEXTEST_ARGS)
+
+# The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) runs
+# in the slow tier, every other one in the fast tier. Through the browser queue
+# and on a port of their own, like any local browser job (ADR-010). Needs
+# `make wasm` first and Playwright's Chromium (`make smoke-tools` once).
+BROWSER_PORT ?= 8690
+PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
+	../../www/video/tools/one_browser.sh npx playwright test
+
+## browser-fast: browser specs not tagged @slow, CI's fast tier (~17 min serially)
+browser-fast:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	$(PLAYWRIGHT) --grep-invert @slow --reporter=line
+
+## browser-slow: browser specs tagged @slow, CI's slow tier (~19 min serially)
+browser-slow:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	$(PLAYWRIGHT) --grep @slow --reporter=line
+
 fmt:
 	$(CARGO) fmt --all
 
@@ -146,10 +218,13 @@ clippy: lint
 # So they live here, and the standing rule is: **anything that touches φ, the
 # grammar prior, the audition stimulus, the surrogate or the MH kernel runs
 # `make revalidate` on both sides of the change, and the paired table goes in
-# the PR.** These targets exist so that is a command rather than a memory.
+# the PR.** These targets exist so that is a command rather than a memory. A φ
+# change also re-measures the preset wirings the app ships
+# (`make perform-wirings`); `make test` fails until it has.
 #
 # `refinement_improves_pool` and `closed_loop_learns_synthetic_taste` are the
-# always-on floors under all of this and they DO run in `make check`. Floors,
+# always-on floors under all of this and they DO run in `make check`, and in
+# CI's slow tier (on main, nightly, and on any PR that touches crates/). Floors,
 # not the measurement: they catch a loop that stopped working, not one that
 # quietly got worse.
 SEEDS ?= 16
@@ -186,9 +261,19 @@ fit-bench:
 closed-loop:
 	$(CARGO) run -p auracle-session --example closed_loop_sweep --release
 
+## walk-payload: what a generation's walks cost to ship to the render farm (RFC-001)
+walk-payload:
+	$(CARGO) run -p auracle-session --example walk_payload --release
+
+## offer-census: how far a search control's aimed offer moves, and what it
+## costs in taste, at several γ (the measurement behind AIM_GAMMA)
+offer-census:
+	$(CARGO) run -p auracle-session --example offer_census --release -- 16 2 20
+
 ## revalidate: what a φ-touching change owes — run on BOTH sides, diff the tables
 revalidate: phi-stats norm-peak climb search-check
-	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n\n'
+	@printf '\n  revalidation complete — the paired before/after table goes in the PR\n'
+	@printf '  a φ change also owes `make perform-wirings` (the shipped preset wirings)\n\n'
 
 ## wasm: build the web app's engine into apps/web/pkg, and stamp the build
 wasm:
@@ -204,10 +289,18 @@ wasm:
 # Every app script, not a list: a module main.js imports with `?v=` (perform.js,
 # midi.js) that was left out would keep its old URL when it changed and be
 # served from cache.
-WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS)
+WEB_STAMPED := apps/web/pkg/auracle_wasm_bg.wasm apps/web/pkg/auracle_wasm.js $(WEB_JS) apps/web/perform-wirings.json
 wasm-stamp:
 	@python3 -c 'import hashlib, json, sys; h = hashlib.sha256(); [h.update(open(f, "rb").read()) for f in sys.argv[1:]]; json.dump({"build": h.hexdigest()[:16]}, open("apps/web/pkg/build.json", "w"))' $(WEB_STAMPED)
 	@printf '  apps/web/pkg/build.json: %s\n' "$$(cat apps/web/pkg/build.json)"
+
+## perform-wirings: measure PERFORM's wiring of every preset natively, the way
+## the worker does, into apps/web/perform-wirings.json (a few minutes; commit
+## the file). `make test` fails while it is stale: a preset or a named input
+## changed, or a re-measured sample (φ, the standard pool, a wiring) differs.
+## Owed by every φ change. THREADS=n to use n cores.
+perform-wirings:
+	nice -n 10 $(CARGO) run -p auracle-wasm --example preset_wirings --release -- $(or $(THREADS),2) apps/web/perform-wirings.json
 
 ## serve: no-store static server for apps/web on http://localhost:8642
 serve:
