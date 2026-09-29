@@ -37,8 +37,12 @@ changelog that edits its own past is not a record.
   patch, the sounds of the pair on the table and of the next one): PERFORM
   showed a reloaded preset's controls working 9.3 s after its tab was opened
   on a CI runner and 4.7 s on one core. The sounds of a dealt pair now wait
-  behind anything you ask for, instead of the other way round
-  (`perform_instant.spec.js`).
+  behind what you ask for (an open, a ▶, the start of an Offer or of a
+  measurement) instead of the other way round. Until PATCH has the new rack,
+  PERFORM's Keep, Take and Back say they wait for it rather than land on the
+  rack being replaced. Two presets clicked in quick succession open the one
+  clicked last; the first used to open when it loaded, and the second was
+  then refused (`perform_instant.spec.js`, `perform_open_early.spec.js`).
 - **A preset clicked in the bank opens with one render instead of two.** Its
   insert used to throw its audio away and the bench then rendered the same
   phrase again; the insert now keeps it, as the warm start's ▶ already did,

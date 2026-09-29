@@ -1518,7 +1518,8 @@ function evolveStop() {
 //   in order; a save sees the votes cast before it; a log line carries the φ of
 //   the edit it follows) holds exactly as it did. A render main asks for in
 //   the background (`bg`: the sounds of a pair just dealt) waits in this lane
-//   behind every gesture, since nothing is ordered against it (`serveNow`).
+//   behind every gesture, since nothing is ordered against it, and lets
+//   waiting `soon` work start first (`serveNow`).
 // - **soon**: long work the player did ask for — a generation, an offer they
 //   pressed, the first measurement of the patch in their hands.
 // - **later**: work nobody is waiting on — refits, re-measurements, spare
@@ -1622,13 +1623,24 @@ const runnable = () =>
 // uninterruptible call, so before one starts, anything that arrived during
 // the last call is let in: a bank open clicked while the table's sounds were
 // rendering waits for the render already running, never the ones behind it.
+//
+// Background renders also give way to long work the player asked for that is
+// waiting to start (a pressed Offer, the first measurement of the patch in
+// their hands): it starts first, and they go between its pieces, as gestures
+// do. Not to a serial generation's walks (`breed_step`), which follow one
+// another for minutes: the pair on the table would stay silent through it.
+const bgWaits = () => !floor && lanes[SOON].some((q) => q.type !== "breed_step" && !blocked(q));
 async function serveNow() {
   while (lanes[NOW].length) {
     let i = lanes[NOW].findIndex((q) => !q.bg);
     if (i < 0) {
+      if (bgWaits()) break;
       await yieldToQueue();
-      if (!lanes[NOW].length) break;
-      i = Math.max(0, lanes[NOW].findIndex((q) => !q.bg));
+      i = lanes[NOW].findIndex((q) => !q.bg);
+      if (i < 0) {
+        if (!lanes[NOW].length || bgWaits()) break;
+        i = 0;
+      }
     }
     await runMessage(lanes[NOW].splice(i, 1)[0]);
   }

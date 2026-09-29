@@ -1804,10 +1804,6 @@ worker.onmessage = (e) => {
         livePatchId = wb.subjectId;
         setLiveLabel(benchName(wb.subjectId));
       }
-      // A Keep or Take made on the early patch goes to its bench now (it is
-      // sent below, once this reply has been taken in).
-      const keptEarly = early ? earlyCommit : null;
-      if (early) earlyCommit = null;
       if (spokeEarly) {
         if (live && m.makeup != null) live.setMakeup(m.makeup);
         liveMakeup = m.makeup;
@@ -1871,10 +1867,6 @@ worker.onmessage = (e) => {
       // bench change while the map is up must repaint it — clicking a dot
       // used to leave the ring on the old patch.
       if (currentView === "taste") drawTaste();
-      if (keptEarly && openedEarly && perform) {
-        const json = withUidsOf(keptEarly.json, m.treeJson);
-        queueStruct({ type: "edit_set_tree", json, ...(keptEarly.why ? { why: keptEarly.why } : {}) }, null, { op: "perform" });
-      }
       // Whatever is next in the lane goes now — and if nothing is, a COMMIT
       // that was waiting on this edit goes instead (see `pumpLane`).
       pumpLane();
@@ -3756,6 +3748,9 @@ async function bootPerform() {
     // Another patch is on its way to the bench: PERFORM holds a measurement
     // of the one in hand, which is about to be replaced.
     opening: () => openingNow(),
+    // The patch PERFORM plays but the bench does not hold yet (see
+    // `voiceEarly`), by name, or null: a Keep, Take or Back waits for it.
+    openLanding: () => (earlyOpen ? earlyOpen.label : null),
     // …and its name, which PERFORM says while it waits.
     openingName: () => openingName(),
     // A PERFORM offer answer joined the log: it paces refits like any pick.
@@ -3815,10 +3810,12 @@ async function bootPerform() {
     // `why` names a tree that is not a hand edit ("taken offer"), so the
     // labels say what it is (see `benchDirtyWhy`).
     commitTree: (json, why) => {
-      // PERFORM already plays a patch still on its way to the bench (see
-      // `voiceEarly`): what it keeps is for that patch, so it waits for it.
+      // PERFORM plays a patch still on its way to the bench (`voiceEarly`),
+      // and a tree sent now would land on the rack it replaces. PERFORM asks
+      // `openLanding` before a Keep, Take or Back and refuses there, before
+      // anything has changed; this is the backstop, and it says so too.
       if (earlyOpen) {
-        earlyCommit = { json, why };
+        note(`That didn't stick — ${earlyOpen.label} is still opening. Try again in a moment.`, { urgent: true, replace: "pf-landing" });
         return;
       }
       if (!wb.tree) return note("open a patch first — nothing is on the bench");
@@ -6499,6 +6496,10 @@ function renderPresetBank(list) {
       } else {
         // Said at once: the engine may be busy for seconds, and a click
         // that shows nothing gets clicked again, or given up on.
+        // A click is an open too: a preset clicked before this one and still
+        // loading lands in the bank, not on the bench (the player moved on).
+        // It used to open when it landed, and this one was then refused.
+        benchSeq += 1;
         presetClicks.set(p.index, benchSeq);
         openAskedAt = performance.now();
         el.classList.add("loading");
@@ -6966,12 +6967,11 @@ let openExpect = null;
 // reply lands; meanwhile its knobs do not write into voices that are playing
 // something else (`voicesAheadOfRack`), and edits still landing on it do not
 // take the voices back. The reply vets the patch, and mutes it if it fails.
-let earlyOpen = null; // {json, id, index, prev, tick}: the voices took this open early
+let earlyOpen = null; // {json, id, index, label, prev, tick}: the voices took this open early
 // Counts opens, the app's own included, so an early open can tell whether the
 // open still pending on the bench was asked for before it or after.
 let openTick = 0;
 let benchPendingTick = 0;
-let earlyCommit = null; // {json, why}: a Keep or Take PERFORM made meanwhile
 const VOICED_STORE = "auracle-voiced-presets";
 const VOICED_MAX = 64;
 // Preset name -> {json, makeup} as this build's engine gave them. Keyed by the
@@ -7011,40 +7011,22 @@ function treeSound(json) {
     return json;
   }
 }
-/** `json` with the node identities of `from` wherever the two have the same
- *  shape: a tree PERFORM built on a remembered preset (another session's
- *  uids), made the bench's own before it is sent there. */
-function withUidsOf(json, from) {
-  try {
-    const a = JSON.parse(json);
-    const walk = (x, y) => {
-      if (!x || !y || typeof x !== "object" || typeof y !== "object") return;
-      if (Array.isArray(x)) return void x.forEach((v, i) => walk(v, Array.isArray(y) ? y[i] : undefined));
-      for (const k of Object.keys(x)) {
-        if (k === "uid") {
-          if (y.uid !== undefined) x.uid = y.uid;
-        } else walk(x[k], y[k]);
-      }
-    };
-    walk(a, JSON.parse(from));
-    return JSON.stringify(a);
-  } catch {
-    return json;
-  }
-}
 /** Hand the voices (and PERFORM) the patch being opened, ahead of its bench
  *  reply. `id` is null for a preset whose insert has not answered yet. */
 function voiceEarly(json, makeup, { id = null, index = null, label }) {
   if (!live || !json || json === "null") return;
   const prev = earlyOpen
     ? earlyOpen.prev
-    : { json: liveTreeJson, makeup: liveMakeup, id: livePatchId, label: liveLabelText };
-  earlyOpen = { json, id, index, prev, tick: ++openTick };
+    : { json: liveTreeJson, makeup: liveMakeup, id: livePatchId, label: liveLabelText, muted: liveMuted };
+  earlyOpen = { json, id, index, label, prev, tick: ++openTick };
   livePatchId = id;
   if (!(liveTreeJson && treeSound(liveTreeJson) === treeSound(json))) {
     live.setPatch(json, makeup);
     setLivePatchJson(json, makeup);
   }
+  // A pool member, or a preset that was one: vetted when it was admitted.
+  // A mute the rack being left earned (a runaway edit) is not this patch's.
+  setLiveMuted(false);
   setLiveLabel(label);
 }
 /** An early open that is not going to land (its insert failed, the patch
@@ -7052,15 +7034,18 @@ function voiceEarly(json, makeup, { id = null, index = null, label }) {
 function unvoiceEarly() {
   const e = earlyOpen;
   earlyOpen = null;
-  earlyCommit = null;
   if (!e || !live) return;
+  // The bench's patch, muted if its last vet failed (an open that landed
+  // behind this one skipped its vet, see `vetIsVoices`); else what played
+  // before, as it was.
   const back = benchTreeJson && benchTreeJson !== "null"
-    ? { json: benchTreeJson, makeup: benchMakeup, id: wb.dirty ? null : wb.subjectId, label: null }
+    ? { json: benchTreeJson, makeup: benchMakeup, id: wb.dirty ? null : wb.subjectId, label: null, muted: !wb.vetOk }
     : e.prev;
   if (!back || !back.json) return;
   livePatchId = back.id;
   live.setPatch(back.json, back.makeup);
   setLivePatchJson(back.json, back.makeup);
+  setLiveMuted(!!back.muted);
   setLiveLabel(back.label || (wb.subjectId != null ? `${benchName(wb.subjectId)}${wb.dirty ? dirtySuffix() : ""}` : "no patch"));
 }
 /** A preset the voices have played before, opened from the library: into
@@ -7079,11 +7064,12 @@ function voicesAheadOfRack() {
 function earlyIsCurrent() {
   const e = earlyOpen;
   if (!e) return false;
-  if (e.id != null) return e.id === benchPending && presetClicks.size === 0;
-  // A preset still being inserted: current if it is the only click waiting
-  // and nothing was opened after it (an open from before it, the first patch
+  const clickedSince = [...presetClicks.values()].includes(benchSeq);
+  if (e.id != null) return e.id === benchPending && !clickedSince;
+  // A preset still being inserted: current if it is the latest click and
+  // nothing was opened after it (an open from before it, the first patch
   // after boot say, is one it replaces).
-  return presetClicks.size === 1 && presetClicks.has(e.index) && (benchPending == null || benchPendingTick < e.tick);
+  return presetClicks.get(e.index) === benchSeq && (benchPending == null || benchPendingTick < e.tick);
 }
 function openingNow() {
   if (openExpect && performance.now() - openExpect.at < 60_000) return true;

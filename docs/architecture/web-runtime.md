@@ -49,8 +49,10 @@ served within a lane (`laneOf` in `worker.js`):
   them (edits, votes, opens, auditions, saves, logs). A render main asks for
   in the background (`render` with `bg`: the sounds of a pair just dealt)
   waits here behind every gesture, and before one starts the worker lets in
-  anything that arrived during the last call (`serveNow`). A `now` render of
-  the same id supersedes it.
+  anything that arrived during the last call (`serveNow`). It also lets
+  `soon` work waiting to start go first (not a serial generation's
+  `breed_step`s), and runs between that job's pieces. A `now` render of the
+  same id supersedes it.
 - **soon**: long work the player asked for (a generation, a pressed offer, the
   first measurement of the patch in their hands).
 - **later**: work nobody is waiting on (refits, re-measurements, spare
@@ -142,11 +144,13 @@ PERFORM, from the click, without the engine (`voiceEarly`). Until the bench
 reply lands, `earlyOpen` holds that state: the old rack's knobs do not write
 into the voices (`voicesAheadOfRack`), edits still landing on the old rack do
 not take the voices back, a subject reply for an earlier open leaves them
-alone, and a Keep or Take PERFORM makes meanwhile waits for the bench
-(`earlyCommit`, given the bench's uids with `withUidsOf`). The reply is
-matched by sound (`treeSound`, uids aside), vets the patch and mutes it if it
-fails; an open that does not land (a failed insert, a patch gone from the
-bank, the player moved on) puts the voices back (`unvoiceEarly`).
+alone, and PERFORM refuses a Keep, Take or Back, saying why, until the bench
+lands (`host.openLanding`; a tree committed then would land on the rack being
+replaced). An early open unmutes the voices (it is a vetted pool member). The
+reply is matched by sound (`treeSound`, uids aside), vets the patch and mutes
+it if it fails; an open that does not land (a failed insert, a patch gone
+from the bank, the player moved on) puts the voices back (`unvoiceEarly`),
+muted if the bench's last vet failed.
 
 ## PERFORM on the main thread
 
