@@ -1179,8 +1179,9 @@ worker.onmessage = (e) => {
       break;
     }
     // The engine worker wants a crew for walks (a generation, ⚡). Spawned from
-    // the module compiled at boot — an instantiation per worker, not a compile
-    // — and handed straight back; an empty answer means "walk them yourself".
+    // the kept module (`sharedModule`: compiled at boot where boot had a farm,
+    // otherwise by the first crew) and handed straight back; an empty answer
+    // means "walk them yourself".
     case "farm_want": {
       raiseCrew(m.crew);
       break;

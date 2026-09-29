@@ -62,7 +62,8 @@ roughly the time of its slowest walk, identical to the serial result.
      measurements, offers, spares and drifts run during it.
    - **The farm on demand.** Boot's crew is still reaped at boot's end; a
      generation or ⚡ asks main for a crew (`farm_want` / `farm_ports`),
-     spawned from the module compiled at boot, reaped after 60 s idle or at
+     spawned from the kept module (compiled at boot where boot had a farm,
+     otherwise by the first crew), reaped after 60 s idle or at
      once on a stop that leaves it walking for nobody. `walkWidth()` is boot's
      rule with a floor of one worker on two or more cores.
    - **⚡ as one farm walk** (`refine_from_job` → `farm_walk` →
