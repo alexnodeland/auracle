@@ -10,7 +10,7 @@ ifneq ($(NODE_BIN),)
 export PATH := $(NODE_BIN):$(PATH)
 endif
 # Homebrew's rustc shadows rustup's and lacks the wasm std — always prefer
-# ~/.cargo/bin for wasm builds.
+# ~/.cargo/bin for wasm builds and checks.
 WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"
 # The film tools run on .venv-voice when it exists (make film-setup puts the
 # voice and the film tools' packages there), else on the python3 on PATH.
@@ -116,7 +116,7 @@ js-check:
 wasm-check:
 	@rustup target list --installed 2>/dev/null | grep -q '^wasm32-unknown-unknown$$' || { \
 		printf '  the wasm32 target is missing — run: rustup target add wasm32-unknown-unknown\n'; exit 1; }
-	$(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
+	$(WASM_PATH) $(CARGO) check -p auracle-wasm --target wasm32-unknown-unknown --release
 
 ## smoke: boot the instrument in a real browser against the built wasm and
 ## require a clean console and a registered worklet, then provoke the failure
