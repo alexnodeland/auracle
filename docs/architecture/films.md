@@ -1,6 +1,6 @@
 ---
 title: "Films: from script to the site"
-last_updated: 2026-09-28
+last_updated: 2026-09-29
 related_adrs: [3, 4]
 ---
 
@@ -55,8 +55,10 @@ the final cut, so a wait the engine needs is not a wait the viewer sits
 through. Holds press at `at`; only their release may wait on a stamp.
 
 Every walkthrough runs a **seeded session**: a set-up (`INIT`, taught or
-plain) that reaches the same state in every take, with one skip after the fill
-so the first duel does not depend on timing.
+plain) that reaches the same state in every take. A taught set-up skips twice
+after the fill (`shotgen.REDEAL`), each skip once the pair behind the table
+has been dealt, so the duel does not depend on how far the fill had got when
+the first two pairs were dealt.
 
 ## Readiness
 
