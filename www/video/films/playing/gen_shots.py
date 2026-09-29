@@ -19,18 +19,14 @@ shots = {s["id"]: s for s in old["shots"]}
 NAMED = ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5'])"
 REACH = NAMED + ":not(.search):not(.unwired)"
 UP = REACH + ":not(.half-hi)"
-# Every preset ships wired (apps/web/perform-wirings.json), so `measured`
-# returns at once with "… controls reach this patch · re-checking" while
-# PERFORM measures it again under this session's pool. Off camera, a shot
-# waits that out, so it starts on the session's own wiring (the one the
-# gestures above pick controls by) and nothing re-wires under its first
-# gesture. Replaces shotgen's perform(), which logs the wiring before this.
+# Every preset ships wired (apps/web/perform-wirings.json) and PERFORM
+# re-checks it in the background under this session's pool; shotgen's
+# `measured` waits that out, so a shot starts on the session's own wiring (the
+# one the gestures above pick controls by) and nothing re-wires under its
+# first gesture.
 STATUS = "document.querySelector('.pf-status').textContent"
 # Wander's own state is on the line under its dial, not the status line.
 WSUB = "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"
-RECHECKED = {"op": "until", "js": "(() => { const s = " + STATUS + " || ''; return /controls reach/.test(s) && !/re-checking/.test(s); })()", "ms": 120000}
-def perform(name):  # noqa: F811
-    return [{"op": "preset", "name": name}, {"op": "view", "v": "perform"}, {"op": "measured", "name": name}, RECHECKED, WIRING]
 def plain(name, extra=()):
     return perform(name) + list(extra) + [QUIET]
 spec = {
@@ -81,6 +77,16 @@ for a in wander:
     # would grow an offer).
     if a["op"] == "drag" and a["at"] == "wander4:waits":
         a["sel"] = REACH + " >> nth=0"
+# The touch and Freeze are 0.7 s apart in the narration: one after the other
+# (a Freeze clicked while the touch's drag still held the pointer did not
+# land), the touch a little shorter.
+k = next(k for k, a in enumerate(wander) if a["at"] == "wander4:waits")
+f = next(k for k, a in enumerate(wander) if a["at"] == "wander4:Freeze")
+touch, freeze = dict(wander[k]), wander[f]
+touch.pop("at")
+touch["ms"] = 380
+wander[k] = {"at": "wander4:waits", "op": "seq", "steps": [touch, {"op": "wait", "until": "wander4:Freeze"}, {"op": "click", "sel": freeze["sel"]}]}
+del wander[f]
 i = next(k for k, a in enumerate(wander) if a["at"] == "wander2:More")
 wander[i:i] = [
     {"at": "wander1:Wander+0.8", "op": "until", "sel": ".pf-offer.ready", "ms": 30000, "stamp": "offered"},

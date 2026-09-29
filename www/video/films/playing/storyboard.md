@@ -19,12 +19,11 @@ mix (as the perform film does); the study bed sits under it.
   `nth=4`, `nth=7`, `click #warm-go`, `wait 4000`. Used where Wander and
   the offers must move *toward your taste* (Wander, offers).
 
-Then each shot: `preset <name>`, `view perform`, `measured <name>`, then
-re-checked, and holds. Every preset ships wired
-(`apps/web/perform-wirings.json`), so `measured` comes at once with
-*re-checking* on the status line while PERFORM measures it again under this
-session's pool; the set-up waits that out (`RECHECKED` in `gen_shots.py`), so
-a shot starts on the session's own wiring.
+Then each shot: `preset <name>`, `view perform`, `measured <name>`, and
+holds. Every preset ships wired (`apps/web/perform-wirings.json`), so it
+plays at once with *re-checking* on the status line while PERFORM measures it
+again under this session's pool; `measured` waits that out (it passes only
+once no re-check is in flight), so a shot starts on the session's own wiring.
 
 **Keys.** `a` = C4 (the default octave). Chords used below, in the computer
 keymap: **C** `a d g` · **Am** `h k ;` · **F** `f h k` · **G** `g j l`.
