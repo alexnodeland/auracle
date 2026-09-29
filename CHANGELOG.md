@@ -102,7 +102,12 @@ changelog that edits its own past is not a record.
   pressed Offer and every refit waited for all of it. Now a pick deals its
   next pair in a few hundredths of a second, a ▶ plays, PERFORM measures and
   an Offer starts while it breeds; only a refit still waits, so the generation
-  is bred under the model it started with. On a busy four-core machine a
+  is bred under the model it started with. A pick made meanwhile moves the
+  next pair at once but not which children are kept, which is judged under
+  that same model however the picks and the walks interleave
+  (`picks_during_a_generation_do_not_change_which_children_are_kept`), and
+  GENERATIONS and the next-step chip count the generation once its first
+  child lands, not the moment a pick's reply arrives. On a busy four-core machine a
   generation still takes two to three and a half minutes (157–173 s with four
   workers, 208–230 s walked one at a time), because it lasts as long as its
   slowest walk (`evolve_breeds_beside_you.spec.js`,
@@ -120,8 +125,9 @@ changelog that edits its own past is not a record.
   walks went (`evolve_breeds_beside_you.spec.js`).
 - **EVOLVE POOL is its own progress bar, and a generation can be stopped.**
   While it breeds the button fills in amber and reads *breeding 3/10*, with
-  **stop** beside it; stop keeps the children bred so far and replaces only
-  as many patches as they need. It used to be a dimmed "BREEDING 1/10…" that
+  **stop** beside it; stop ends the generation with the children bred so far
+  and replaces only as many patches as they need (as at any generation's end,
+  the lowest-ranked go, which can include a child bred early). It used to be a dimmed "BREEDING 1/10…" that
   could not be stopped (`evolve_breeds_beside_you.spec.js`).
 - **⚡ evolve from this walks on the render farm.** Its walk (about twenty
   seconds, longer with many locks) no longer stops the engine: a deal, a ▶, a

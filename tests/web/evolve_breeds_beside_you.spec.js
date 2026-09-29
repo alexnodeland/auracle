@@ -17,7 +17,9 @@
 // - PERFORM is answered during a generation: a newly opened patch is measured
 //   (its controls wired) before the generation ends, and a pressed Offer
 //   starts at once.
-// - Stop keeps what has been bred, and only then are replaced patches retired.
+// - GENERATIONS and the next-step chip count a generation once it has bred,
+//   not when a pick's status (which carries the open generation) lands.
+// - Stop ends with what has been bred, and only then are patches retired.
 // - ⚡ evolve from this leaves the engine free: a deal is answered within a
 //   second while it walks, a ▶ costs only its own render, and its stop drops
 //   it. It and EVOLVE POOL take turns: each is disabled while the other runs,
@@ -227,7 +229,48 @@ test("EVOLVE POOL breeds beside you: children land in order at the top of the ba
   expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
 });
 
-test("stop keeps what's bred, and replaced patches leave only then", async ({ page }) => {
+test("GENERATIONS and the next-step chip count a generation once a child of it has landed, not when a pick's status does", async ({ page }) => {
+  test.setTimeout(600_000);
+  const pageErrors = await taught(page);
+  await expect(page.locator("#gen-count")).toHaveText("0");
+  await page.locator("#evolve-btn").click();
+  await expect(page.locator("#evolve-btn .eb-text")).toHaveText(/^breeding \d+\/10$/, { timeout: 30_000 });
+  await expect(page.locator("#nextstep")).toHaveText("Breeding — keep playing ▸");
+
+  // A pick while the first generation breeds. Its status comes back when its
+  // undo window closes, and the engine has counted the open generation since
+  // it opened: before, that one status turned GENERATIONS to 1 and the chip to
+  // "Gen 1 bred — see what it thinks of your taste" with nothing bred.
+  const statuses = await count(page, "status");
+  await expect(page.locator("#choose-a")).toBeEnabled({ timeout: 10_000 });
+  await page.locator("#choose-a").click();
+  await expect.poll(() => count(page, "status"), { timeout: 30_000 }).toBeGreaterThan(statuses);
+  const early = await page.evaluate(() => ({
+    generation: window.__pwLast.status.status.generation,
+    landed: window.__pwLog.some((e) => e.type === "refine_child" && e.child > 0),
+    count: document.getElementById("gen-count").textContent,
+    chip: document.getElementById("nextstep").textContent,
+  }));
+  console.log(`after a pick mid-generation: ${JSON.stringify(early)}`);
+  expect(early.generation, "the pick's status predates the generation, so nothing was tested").toBe(1);
+  if (!early.landed) {
+    expect(early.count, "GENERATIONS counted a generation that has bred nothing").toBe("0");
+    expect(early.chip).toBe("Breeding — keep playing ▸");
+  }
+
+  // Its first child lands: now it counts, and the chip points at it.
+  await expect.poll(async () => (await logOf(page)).some((e) => e.type === "refine_child" && e.child > 0), { timeout: 300_000 }).toBe(true);
+  await expect(page.locator("#gen-count")).toHaveText("1");
+  await expect(page.locator("#nextstep")).toHaveText(/^Gen 1 bred new patches — they're at the top of the bank ▸$/);
+
+  await page.locator("#evolve-stop").click();
+  await expect(page.locator("#evolve-btn")).not.toHaveClass(/\bbreeding\b/, { timeout: 120_000 });
+  await expect(page.locator("#gen-count")).toHaveText("1");
+  await expect(page.locator("#nextstep")).toHaveText(/^Gen 1 bred/);
+  expect(pageErrors, `uncaught exceptions:\n${pageErrors.join("\n")}`).toEqual([]);
+});
+
+test("stop ends with what's bred, and replaced patches leave only then", async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await taught(page);
   const mark = await toastMark(page);

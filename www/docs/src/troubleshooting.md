@@ -88,9 +88,10 @@ be opened by the browser too; close that program and replug.
 
 ## Evolution does nothing
 
-**EVOLVE POOL** says *breeding a generation toward your taste…* and then what
-happened. Before the model has anything to aim at, that is *Nothing to breed
-toward yet — make a few picks first, then evolve.* Answer some duels first.
+While a generation breeds, **EVOLVE POOL** is its own progress bar
+(*breeding 3/10*), and when it ends a toast says what happened. Before the
+model has anything to aim at, that toast is *Nothing to breed toward yet —
+make a few picks first, then evolve.* Answer some duels first.
 
 **A generation can produce no new patch**, when every walk was rejected or
 landed on a patch the pool already holds. It says so: *Gen 4: no move was

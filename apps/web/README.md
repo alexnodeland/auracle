@@ -203,7 +203,8 @@ to a pinned `role="alert"` strip that stays until resolved.
   Boot's crew is reaped when boot ends. A generation or ⚡ raises a **walk
   crew** on demand: the engine worker posts `farm_want`, main spawns
   `walkWidth()` workers (boot's rule, but at least one wherever there are two
-  cores) from the module it compiled at boot and answers `farm_ports`; the
+  cores) from the module it keeps (`sharedModule`: compiled at boot where
+  boot had a farm, otherwise by the first crew) and answers `farm_ports`; the
   crew is reaped (`farm_done` with its crew id) after 60 s with nothing to
   walk, or at once when a stop leaves it walking for nobody. A walk job is
   `walk_context` (once per worker per generation) then `walk` →

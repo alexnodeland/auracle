@@ -1312,6 +1312,69 @@ mod tests {
         assert!(moved > 0, "no walk moved, so no child was compared");
     }
 
+    /// **Picks made while a generation breeds do not choose its children.**
+    /// Every pick reweights the posterior at once (so the next pair answers
+    /// it), and in the app picks land between a generation's absorptions.
+    /// The children kept and the members retired are judged under the
+    /// posterior the generation opened with, so the same generation absorbed
+    /// with a run of contrary picks between its children, and absorbed with
+    /// none, keeps the same pool.
+    #[test]
+    fn picks_during_a_generation_do_not_change_which_children_are_kept() {
+        let mut engines = taught_n(0x91C5, 2);
+        let mut picked = engines.pop().unwrap();
+        let mut quiet = engines.pop().unwrap();
+        let stream = || StdRng::seed_from_u64(0x0DD5);
+        let (ctx, jobs) = quiet.refine_jobs(&mut stream()).expect("taught");
+        let (_, picked_jobs) = picked.refine_jobs(&mut stream()).expect("taught");
+        assert_eq!(
+            picked_jobs, jobs,
+            "the same engine and stream deal the same jobs"
+        );
+        let order: Vec<usize> = (0..jobs.len()).collect();
+        let results = farm_walks(&ctx, &jobs, &order);
+        let order_now =
+            |e: &Engine| -> Vec<u64> { e.ranked().iter().map(|&(i, _, _)| e.pool[i].id).collect() };
+        let before = order_now(&picked);
+        for r in &results {
+            quiet.refine_absorb(r.clone());
+            picked.refine_absorb(r.clone());
+            // Between children: the player prefers what the model likes
+            // least, over and over.
+            for _ in 0..6 {
+                let ranked = picked.ranked();
+                let (best, worst) = (ranked[0].0, ranked[ranked.len() - 1].0);
+                picked.record_duel(worst, best, true);
+            }
+        }
+        assert_ne!(
+            order_now(&picked)[..before.len().min(8)],
+            before[..before.len().min(8)],
+            "the picks did not move the posterior, so nothing was tested"
+        );
+        let by_id = |e: &Engine| {
+            let mut v = pool_of(e);
+            v.sort_by_key(|row| row.0);
+            v
+        };
+        assert_eq!(quiet.refine_progress(), None);
+        assert_eq!(picked.refine_progress(), None);
+        assert_eq!(by_id(&picked), by_id(&quiet), "the picks changed the pool");
+        assert_eq!(
+            picked.retired(),
+            quiet.retired(),
+            "the picks changed the retirees"
+        );
+        assert!(
+            quiet
+                .lineage
+                .iter()
+                .any(|ev| ev.generation == quiet.generation),
+            "the fixture bred nothing, so admission was not compared"
+        );
+        assert!(!quiet.retired().is_empty(), "the fixture retired nothing");
+    }
+
     /// **Stop keeps what was bred.** A generation stopped after its first
     /// children leaves a consistent pool: back to size, holding every child
     /// that earned its place, with a lineage event for each child absorbed

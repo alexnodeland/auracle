@@ -301,7 +301,8 @@ function farmShutdown() {
 // are walks, each a pure function of (context, job) (`farm_walk`), so they go
 // to a crew of their own, raised when one is wanted: this worker asks main
 // (`farm_want`), main spawns the workers from the `WebAssembly.Module` it
-// compiled at boot — an instantiation, not a compile — and hands the ports
+// keeps (compiled at boot where boot had a farm, otherwise by the first crew;
+// an instantiation per worker after that, not a compile) and hands the ports
 // back (`farm_ports`). The crew is reaped after a minute with nothing to do,
 // and at once when a stop leaves it walking for nobody. Width is main's call
 // (`walkWidth`).
@@ -1417,8 +1418,9 @@ function genDrop(g) {
   schedulePump(); // a refit or a generation waiting for this one
 }
 
-// `refine_stop`: keep what has been bred. A walk running *here* (the serial
-// path) cannot be interrupted; the stop lands when it returns.
+// `refine_stop`: end the generation with what has been bred. A walk running
+// *here* (the serial path) cannot be interrupted; the stop lands when it
+// returns.
 function breedStop() {
   const g = gen;
   if (!g || g.stopped) return;

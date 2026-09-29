@@ -2446,10 +2446,11 @@ impl Engine {
 
     /// The pool members an eviction takes first, lowest first: every member
     /// that is neither pinned nor in `protect`, ranked by `(standardized,
-    /// utility)` ascending — a member without φ_std ranks worst explicitly, for
-    /// the reason [`Engine::insert_candidate`] gives. Ties keep pool order, so
-    /// the first of equals goes first, which is the member `min_by` picked when
-    /// eviction happened one child at a time.
+    /// utility)` ascending, utility under `judge` — a member without φ_std
+    /// ranks worst explicitly, for the reason [`Engine::insert_candidate`]
+    /// gives. Ties keep pool order, so the first of equals goes first, which
+    /// is the member `min_by` picked when eviction happened one child at a
+    /// time.
     fn eviction_order(&self, protect: &HashSet<u64>) -> Vec<(usize, f64)> {
         let mut rows: Vec<(usize, bool, f64)> = self
             .pool
@@ -2458,10 +2459,36 @@ impl Engine {
             .filter(|(_, c)| {
                 !c.pinned && !protect.contains(&c.id) && !self.evolving.contains_key(&c.id)
             })
-            .map(|(i, c)| (i, !c.phi_std.is_empty(), self.utility_of(&c.phi_std)))
+            .map(|(i, c)| (i, !c.phi_std.is_empty(), self.judged_utility(&c.phi_std)))
             .collect();
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.total_cmp(&b.2)));
         rows.into_iter().map(|(i, _, u)| (i, u)).collect()
+    }
+
+    /// The posterior a generation's admissions and retirements are judged
+    /// under: while a generation is open, the one it opened with (its
+    /// context's), not the one picks made since have reweighted. Which
+    /// children are kept, and which members they displace, then do not
+    /// depend on when the picks landed relative to the walks — the pool is
+    /// the one the serial path would have bred with the picks after it. With
+    /// no generation open, or if the scale has changed under it (a refit the
+    /// app does not allow meanwhile), the current posterior.
+    fn judge(&self) -> Option<&TastePosterior> {
+        if let (Some(open), Some(st)) = (&self.open, &self.standardizer) {
+            if Arc::ptr_eq(st, &open.context.standardizer) {
+                return Some(&open.context.posterior);
+            }
+        }
+        self.posterior.as_deref()
+    }
+
+    /// Posterior-mean mixture utility of a standardized φ under `judge`
+    /// (0 with no posterior).
+    fn judged_utility(&self, phi_std: &[f64]) -> f64 {
+        match self.judge() {
+            Some(p) if !phi_std.is_empty() => p.utility_mix(phi_std).0,
+            _ => 0.0,
+        }
     }
 
     /// Admit a refined child **without evicting anyone yet**. Returns the new
@@ -2485,7 +2512,7 @@ impl Engine {
         let want_audio = self.wants_admitted_audio();
         let (cf, fresh) = featurize_memo(&tree, &self.cfg.phrase, &self.memo, want_audio).ok()?;
         let phi_std = standardizer.transform(&cf.features.phi());
-        let mean_new = self.utility_of(&phi_std);
+        let mean_new = self.judged_utility(&phi_std);
         let owed = (self.pool.len() + 1).saturating_sub(self.cfg.pool_size);
         if owed > 0 {
             // Fewer evictable members than evictions owed: nothing can make
@@ -2678,11 +2705,19 @@ impl Engine {
     ///
     /// Pins are read **now**, not when a child was admitted: a patch saved at
     /// any point before the finish is never retired by it.
+    ///
+    /// The retirees are ranked under the posterior the generation opened
+    /// with, as its admissions were: picks made while it ran reweight the
+    /// posterior for the next pair, not for which children are kept.
     pub fn refine_finish(&mut self) -> Vec<u64> {
-        let open = self.open.take();
-        let was_open = open.is_some();
-        let protect = open.map(|o| o.protect).unwrap_or_default();
+        let was_open = self.open.is_some();
+        let protect = self
+            .open
+            .as_ref()
+            .map(|o| o.protect.clone())
+            .unwrap_or_default();
         let gone = self.evict_to_size(&protect);
+        self.open = None;
         if was_open || !gone.is_empty() {
             self.retired = gone.clone();
         }
@@ -2704,6 +2739,8 @@ impl Engine {
 
     /// The members [`Engine::refine_finish`] would retire if it ran now,
     /// lowest first: while a generation runs, the rows a save would rescue.
+    /// Ranked as the finish will rank them, under the posterior the
+    /// generation opened with.
     /// Empty when the pool is not over size.
     pub fn retiring(&self) -> Vec<u64> {
         let owed = self.pool.len().saturating_sub(self.cfg.pool_size);

@@ -90,8 +90,13 @@ first.
   the ranked rows. Nothing is retired until the finish.
 - **Progress.** `refine_progress` carries the jobs absorbed, the total and an
   estimate (`eta`, ms) from this session's own walk times.
+- **Judged at the start.** Admission and the finish's retirements rank
+  under the posterior the generation opened with (`judge` in `engine.rs`),
+  not the one picks made meanwhile have reweighted, so which children are
+  kept does not depend on when those picks landed.
 - **Stop** (`refine_stop`, answered on arrival) calls `refine_finish`: the
-  children absorbed so far stay, the lowest unpinned members are retired, and
+  generation ends with the children absorbed so far, the lowest unpinned
+  members are retired (a child bred early can be among them), and
   walks still running are dropped (the crew is reaped at once if nothing else
   is walking, which gives the cores back).
 - **Fallback.** With no crew (width 0, a spawn that failed, every worker
@@ -117,9 +122,10 @@ drops and names the rows.
 ## The farm on demand
 
 The engine worker asks main for a crew (`farm_want`); main spawns the workers
-from the `WebAssembly.Module` it compiled at boot (an instantiation per worker,
-not a compile) and answers with their ports (`farm_ports`), or with none,
-and the worker then walks the jobs itself. Width is `walkWidth()` in
+from the `WebAssembly.Module` it keeps (`sharedModule`: compiled at boot where
+boot had a farm, otherwise by the first crew; an instantiation per worker
+after that, not a compile) and answers with their ports (`farm_ports`), or
+with none, and the worker then walks the jobs itself. Width is `walkWidth()` in
 `main.js`: boot's rule (leave the UI and audio threads a core each, at most
 6, at most 2 on a small-memory device), but at least one worker where there
 are two cores, because one worker already takes the walk off the engine
