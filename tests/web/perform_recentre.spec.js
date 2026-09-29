@@ -56,7 +56,7 @@ async function drag(page, loc, dy) {
   await page.mouse.move(10, 10);
 }
 
-test("a re-centred control glides home with a fading ghost, and a background re-check leaves it where it is", async ({ page }) => {
+test("a re-centred control glides home with a fading ghost, and a background re-check leaves it where it is", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(420_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");

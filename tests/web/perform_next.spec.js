@@ -78,7 +78,7 @@ async function peek(page, ms) {
 
 const spares = (page) => page.evaluate(() => window.__offered.length);
 
-test("the second offer is as fast as the first, and a pass says what it did and can be undone", async ({ page }) => {
+test("the second offer is as fast as the first, and a pass says what it did and can be undone", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(420_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");

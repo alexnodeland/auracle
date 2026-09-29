@@ -1,5 +1,15 @@
 name: CI
 
+# The FAST tier: what a PR must pass to merge, aimed at five to seven minutes of
+# wall time. The tests too slow for that (the search floor, the other Rust
+# tests over a minute, the browser specs tagged @slow) run in the Slow suite
+# workflow (slow-suite.yml): on main, nightly, and on a PR that touches what
+# they cover or carries the `full-ci` label. Each test runs in exactly one
+# tier; docs/architecture/testing.md § CI tiers lists which and why.
+#
+# The branch ruleset requires one check, `CI` (the last job here). The fast
+# browser shards are inside it; the Slow suite is not.
+
 on:
   push:
     branches: [main]
@@ -44,6 +54,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       site: ${{ steps.filter.outputs.site }}
+      browser: ${{ steps.filter.outputs.browser }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,6 +70,7 @@ jobs:
             echo "not a pull request — running everything"
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "site=true" >> "$GITHUB_OUTPUT"
+            echo "browser=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -70,7 +82,7 @@ jobs:
           # Anything that can change what the compiler sees or how CI runs.
           # The Makefile and the workflows are in here deliberately: they define
           # every build, so a change to one is treated as touching everything.
-          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.github/workflows/)'; then
+          if echo "$files" | grep -qE '^(crates/|Cargo\.(toml|lock)$|Makefile$|rust-toolchain|\.github/(workflows|actions)/)'; then
             rust=true
           else
             rust=false
@@ -87,9 +99,17 @@ jobs:
             site=false
           fi
 
+          # The fast browser tier: the app, its specs, and the engine it runs.
+          if [ "$rust" = true ] || echo "$files" | grep -qE '^(apps/web/|tests/web/)'; then
+            browser=true
+          else
+            browser=false
+          fi
+
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
           echo "site=$site" >> "$GITHUB_OUTPUT"
-          printf '\n  rust=%s site=%s\n' "$rust" "$site"
+          echo "browser=$browser" >> "$GITHUB_OUTPUT"
+          printf '\n  rust=%s site=%s browser=%s\n' "$rust" "$site" "$browser"
 
   # Formatting and lints share a job: `cargo fmt --check` needs no dependency
   # graph and finishes in seconds, so giving it its own runner spent more on
@@ -133,25 +153,25 @@ jobs:
       - run: make web-check
       - run: make dev-check
 
-  # The test suite, split across two runners.
+  # The fast tier of the Rust tests, split across two runners.
   #
-  # `refinement_improves_pool` is not merely the slowest test, it is most of the
-  # job: it walks 16 seeds, one thread each, and on a 4-core runner those 16
-  # threads queue four deep. Measured, it is ~550s of CPU against ~270s for the
-  # other 170 tests combined. Left in one job it does not just take its own time
-  # — every other test waits behind it for the cores.
+  # The slow tests (the search floor, `refinement_improves_pool`, ~330 s alone,
+  # and ten more over a minute each, ~1030 s of test time between them) are
+  # named in the Makefile (SEARCH_FLOOR, SLOW_TESTS) and run in the Slow suite.
+  # This job runs everything NOT named there, so the two tiers are exact
+  # complements by construction: a new or renamed test lands here rather than
+  # in neither, and `--no-tests=fail` turns a filter that empties a shard into
+  # a red run rather than a silently skipped gate.
   #
-  # So it gets a runner to itself and everything else gets another, and the job
-  # takes as long as the floor takes instead of the floor plus the suite. The two
-  # filters are exact complements, which is what keeps this honest: no test can
-  # land in both shards or in neither, and `--no-tests=fail` turns a rename that
-  # empties a shard into a red run rather than a silently skipped gate.
+  # What is left, 262 tests, is ~1120 s of test time that nextest runs about
+  # 3.7 wide on a 4-core runner; split in two by hash, each runner takes ~2.5 min
+  # of tests after its ~2 min compile, instead of one runner taking ~5.
   #
-  # nextest rather than `cargo test` for the filtering and because it pools every
-  # test binary into one scheduler; `cargo test` runs the five binaries strictly
-  # one after another.
+  # nextest rather than `cargo test` for the filtering and the partitioning,
+  # and because it pools every test binary into one scheduler; `cargo test`
+  # runs the five binaries strictly one after another.
   test:
-    name: Test (${{ matrix.name }})
+    name: Test (${{ matrix.partition }})
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
@@ -160,16 +180,15 @@ jobs:
       # One shard failing should not hide the other shard's result.
       fail-fast: false
       matrix:
-        include:
-          - name: search floor
-            filter: test(=tests::refinement_improves_pool)
-          - name: rest of suite
-            filter: not test(=tests::refinement_improves_pool)
+        partition: ["1/2", "2/2"]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      # One cache for every test job, here and in slow-suite.yml, saved from
+      # main by this job only.
       - uses: Swatinem/rust-cache@v2
         with:
+          shared-key: test
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@nextest
 
@@ -179,12 +198,12 @@ jobs:
       # under a tenth of a second while cutting compile CPU ~40% — the LTO was
       # buying the test suite nothing and costing it a serialized link. See the
       # profile's comment in Cargo.toml.
-      - run: cargo nextest run --workspace --cargo-profile test-fast --no-tests=fail -E '${{ matrix.filter }}'
+      - run: make test-fast-tier NEXTEST_ARGS='--partition hash:${{ matrix.partition }}'
 
       # nextest does not run doctests. There are none today, and this is what
       # keeps that a fact rather than an assumption.
       - name: Doctests
-        if: matrix.name == 'rest of suite'
+        if: matrix.partition == '1/2'
         run: cargo test --doc --workspace --profile test-fast
 
   wasm:
@@ -282,18 +301,13 @@ jobs:
       # engine that reaches `playable` (tests/web/smoke.spec.js); then provoke
       # the audit's four failure flows — an unparseable save, an engine error,
       # a refused vote, a profile import — and require each to be reported and
-      # contained (tests/web/failure_flows.spec.js). Here rather than in a job
-      # of its own because the engine is already built here; a job of its own
-      # would build it twice. The numeric audio assertions CONTRIBUTING
-      # describes are still run by hand.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: tests/web/package-lock.json
-
-      - name: Install Playwright's Chromium
-        run: cd tests/web && npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
+      # contained (tests/web/failure_flows.spec.js). The fast browser tier runs
+      # these two as well, but only when the app or the engine changed; here
+      # they also guard a site-only PR, whose `make site` ships this very
+      # engine as /play/, and cost seconds against the engine already built.
+      # The numeric audio assertions CONTRIBUTING describes are still run by
+      # hand.
+      - uses: ./.github/actions/playwright
 
       - name: Boot the instrument in a browser and exercise its failure flows
         run: make smoke
@@ -306,6 +320,64 @@ jobs:
           path: tests/web/test-results/
           if-no-files-found: ignore
 
+  # The engine for the fast browser tier, built once per run (see the
+  # action's comment): restored from the cache when no crate changed, which is
+  # most PRs that touch the app, and ~1.5 min of wasm build otherwise.
+  engine:
+    name: Engine for the browser
+    needs: changes
+    if: needs.changes.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/web-engine
+
+  # The fast browser tier: every spec in tests/web not tagged @slow, against
+  # the engine built above.
+  #
+  # Measured on PR #65 (head f67cde2), those 80 tests take ~16.6 min of test
+  # time in one worker; five runners take ~2.6–3.9 min each. The split is by
+  # test, not by file (`fullyParallel` in playwright.config.js), in the order
+  # Playwright lists them, so no runner draws a whole file of PERFORM specs.
+  #
+  # Several specs assert on timing (a toast within 1.5 s, a ▶ answered while
+  # the engine works). A failure that only appears here is still a finding
+  # about the app on a slower machine, not a flake to retry away.
+  browser:
+    name: Browser (${{ matrix.shard }})
+    needs: [changes, engine]
+    if: needs.changes.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-engine
+          path: apps/web/pkg
+
+      - uses: ./.github/actions/playwright
+
+      # Its own port, so the run can never be served by anything else.
+      - name: Run the fast browser tier
+        env:
+          AURACLE_TEST_PORT: "8690"
+        run: cd tests/web && npx playwright test --grep-invert @slow --shard=${{ matrix.shard }} --reporter=list
+
+      - name: Keep the traces of failed specs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-results-${{ github.sha }}-${{ strategy.job-index }}
+          path: tests/web/test-results/
+          if-no-files-found: ignore
+
   # One check that means "CI is green", whatever ran.
   #
   # The jobs above are conditional, and a skipped job reports neither success nor
@@ -315,7 +387,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [changes, lint, web, test, wasm, site]
+    needs: [changes, lint, web, test, wasm, site, engine, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

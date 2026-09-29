@@ -351,7 +351,7 @@ test("opening a patch is not announced unless it kept you waiting", async ({ pag
 // generation's walks run in the engine worker, and a deal can wait for the
 // walk in progress. On the farm it does not wait at all
 // (evolve_breeds_beside_you.spec.js).
-test("with no farm, a pick's deal during a generation says which seed it waits on, and what it bred and replaced is named", async ({ page }) => {
+test("with no farm, a pick's deal during a generation says which seed it waits on, and what it bred and replaced is named", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(600_000);
   const pageErrors = await boot(page, { query: "?farm=0" });
   await toEvolve(page);

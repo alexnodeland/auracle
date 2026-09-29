@@ -12,7 +12,7 @@
 // is steady, and pressing Offer hands it over instead of starting ~10 s of
 // renders.
 const { test, expect } = require("@playwright/test");
-test("a patch measured once is playable at once, even after a reload", async ({ page }) => {
+test("a patch measured once is playable at once, even after a reload", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   await page.route("**/perform-wirings.json*", (r) => r.abort());
@@ -62,7 +62,7 @@ test("a patch measured once is playable at once, even after a reload", async ({ 
 // seconds on a slow machine: the reload above was wired 9.3 s after the tab
 // click on a CI runner. Here every message to the engine is held back after
 // the reload, so nothing the engine does can be what wires the controls.
-test("a preset opened before plays at once after a reload, however busy the engine is", async ({ page }) => {
+test("a preset opened before plays at once after a reload, however busy the engine is", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
@@ -129,7 +129,7 @@ test("a preset opened before plays at once after a reload, however busy the engi
   expect(errs).toEqual([]);
 });
 
-test("an offer grown ahead lands the moment Offer is pressed", async ({ page }) => {
+test("an offer grown ahead lands the moment Offer is pressed", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(240_000);
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   // Counts the offers the engine hands back, to know when the spare is here

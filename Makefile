@@ -22,6 +22,8 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
 
 .PHONY: web-check all check build test test-verbose fmt fmt-check lint lint-fix clippy \
         js-check wasm-check smoke smoke-tools \
+        nextest-installed test-fast-tier test-slow-tier test-search-floor test-slow-rest \
+        browser-fast browser-slow \
         climb search-check budget-ab islands phi-stats norm-peak fit-bench \
         closed-loop walk-payload offer-census revalidate \
         wasm wasm-stamp perform-wirings serve doc bundle clean \
@@ -124,6 +126,73 @@ test:
 test-verbose:
 	$(CARGO) test --workspace --profile test-fast -- --nocapture
 
+# ─── CI's two tiers ──────────────────────────────────────────────────────────
+#
+# CI splits the tests into a fast tier that gates merging and a slow tier that
+# runs on main, nightly, and on a PR that touches what it covers (see
+# docs/architecture/testing.md § CI tiers). These targets run each tier the
+# way CI does, so "green in CI" can be reproduced by name. `make test` and
+# `make check` still run every Rust test; nothing here replaces them.
+#
+# The slow Rust tests are the ones that took over a minute in CI (runner times
+# from PR #65's run, in the commit that introduced this list). They are named
+# here and nowhere else: the fast tier is *everything not named*, so a new or
+# renamed test lands in the fast tier and is never dropped from both, and
+# `--no-tests=fail` turns a list that no longer matches anything into a red
+# run. The search floor is split off because it alone is ~330 s on a runner:
+# it walks 16 seeds, one thread each, and gets a runner to itself.
+SEARCH_FLOOR := test(=tests::refinement_improves_pool)
+SLOW_TESTS := test(=perform::tests::an_aimed_offer_moves_the_way_it_was_turned) \
+	| test(=perform::tests::a_planned_measurement_is_the_measurement) \
+	| test(=tests::a_walk_is_a_function_of_its_job) \
+	| test(=perform::tests::named_controls_move_the_sound_they_name) \
+	| test(=tests::evolve_from_this_on_the_farm_is_evolve_from_this) \
+	| test(=tests::closed_loop_learns_synthetic_taste) \
+	| test(=tests::closed_loop_learns_motion_rate) \
+	| test(=perform::tests::drift_is_local_and_follows_sigma) \
+	| test(=tests::farm_walks_breed_the_serial_generation) \
+	| test(=tests::a_generation_absorbed_in_any_completion_order_is_the_serial_one)
+NEXTEST := $(CARGO) nextest run --workspace --cargo-profile test-fast --no-tests=fail
+# CI passes `--partition hash:k/N` here to split the fast tier across runners.
+NEXTEST_ARGS ?=
+
+nextest-installed:
+	@$(CARGO) nextest --version >/dev/null 2>&1 || { \
+		printf '  cargo-nextest is missing — run: cargo install cargo-nextest --locked\n'; exit 1; }
+
+## test-fast-tier: the Rust tests CI requires on every PR (all but the slow ones)
+test-fast-tier: nextest-installed
+	$(NEXTEST) -E 'not ($(SEARCH_FLOOR) | $(SLOW_TESTS))' $(NEXTEST_ARGS)
+
+## test-slow-tier: the slow Rust tests: the search floor, then the rest
+test-slow-tier: test-search-floor test-slow-rest
+
+## test-search-floor: `refinement_improves_pool` alone (~5 min on a runner)
+test-search-floor: nextest-installed
+	$(NEXTEST) -E '$(SEARCH_FLOOR)' $(NEXTEST_ARGS)
+
+## test-slow-rest: the slow tier's Rust tests other than the search floor
+test-slow-rest: nextest-installed
+	$(NEXTEST) -E '$(SLOW_TESTS)' $(NEXTEST_ARGS)
+
+# The browser tiers: a spec tagged `@slow` (tests/web/AGENTS.md says when) runs
+# in the slow tier, every other one in the fast tier. Through the browser queue
+# and on a port of their own, like any local browser job (ADR-010). Needs
+# `make wasm` first and Playwright's Chromium (`make smoke-tools` once).
+BROWSER_PORT ?= 8690
+PLAYWRIGHT := cd tests/web && AURACLE_TEST_PORT=$(BROWSER_PORT) \
+	../../www/video/tools/one_browser.sh npx playwright test
+
+## browser-fast: browser specs not tagged @slow, CI's fast tier (~17 min serially)
+browser-fast:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	$(PLAYWRIGHT) --grep-invert @slow --reporter=line
+
+## browser-slow: browser specs tagged @slow, CI's slow tier (~19 min serially)
+browser-slow:
+	@test -f apps/web/pkg/auracle_wasm_bg.wasm || { printf '  no built engine — run `make wasm` first\n'; exit 1; }
+	$(PLAYWRIGHT) --grep @slow --reporter=line
+
 fmt:
 	$(CARGO) fmt --all
 
@@ -154,7 +223,8 @@ clippy: lint
 # (`make perform-wirings`); `make test` fails until it has.
 #
 # `refinement_improves_pool` and `closed_loop_learns_synthetic_taste` are the
-# always-on floors under all of this and they DO run in `make check`. Floors,
+# always-on floors under all of this and they DO run in `make check`, and in
+# CI's slow tier (on main, nightly, and on any PR that touches crates/). Floors,
 # not the measurement: they catch a loop that stopped working, not one that
 # quietly got worse.
 SEEDS ?= 16

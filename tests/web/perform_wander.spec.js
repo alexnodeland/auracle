@@ -54,7 +54,7 @@ async function openOnPerform(page, name) {
   await expect(page.locator(".pf-status")).toContainText("controls reach", { timeout: 120_000 });
 }
 
-test("Wander answers a second and a half after it is let go, and says what it is doing on itself", async ({ page }) => {
+test("Wander answers a second and a half after it is let go, and says what it is doing on itself", { tag: "@slow" }, async ({ page }) => {
   test.setTimeout(300_000);
   const errs = await boot(page);
   await openOnPerform(page, "Glass Pad");

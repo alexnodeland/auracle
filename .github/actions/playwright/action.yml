@@ -1,0 +1,37 @@
+name: Playwright
+description: >
+  Node, tests/web's locked dependencies and Playwright's Chromium with the
+  runner's system libraries, ready for `npx playwright test` in tests/web.
+
+# The browser download is cached on the lockfile (it pins the Playwright
+# version, which pins the Chromium build). The system libraries are apt
+# packages outside the cache, so they are installed on every run either way.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: tests/web/package-lock.json
+
+    - name: Install tests/web's dependencies
+      shell: bash
+      run: cd tests/web && npm ci --no-audit --no-fund
+
+    - id: browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('tests/web/package-lock.json') }}
+
+    - name: Install Playwright's Chromium
+      if: steps.browsers.outputs.cache-hit != 'true'
+      shell: bash
+      run: cd tests/web && npx playwright install --with-deps chromium
+
+    - name: Install Chromium's system libraries
+      if: steps.browsers.outputs.cache-hit == 'true'
+      shell: bash
+      run: cd tests/web && npx playwright install-deps chromium
