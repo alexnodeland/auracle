@@ -166,7 +166,7 @@ git clone https://github.com/alexnodeland/auracle.git
 cd auracle
 ```
 
-Set up (needs [rustup](https://rustup.rs/) and Node 20+; idempotent), then
+Set up (needs [rustup](https://rustup.rs/) and Node 22, the version in `.node-version`; idempotent), then
 run the instrument:
 
 ```bash

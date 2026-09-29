@@ -9,7 +9,8 @@ page is the whole of what is left.
 
 ## 1. Set up (once)
 
-Needs rustup, Node 20+ and Python 3.10–3.12.
+Needs rustup, Node 22 (`.node-version`; with fnm installed, setup and `make`
+use it whatever your shell's `node` is) and Python 3.10–3.12.
 
 ```bash
 git fetch origin && git checkout claude/auracles-composer-performer-gtlo9w

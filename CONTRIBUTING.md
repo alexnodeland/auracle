@@ -32,9 +32,10 @@ Be respectful and constructive.
    `../fugue-ecosystem/{fugue,fugue-evo}` and uncomment the `[patch.crates-io]`
    block at the bottom of the workspace `Cargo.toml` — don't commit the
    uncommented patch.
-2. **Install [rustup](https://rustup.rs/) and Node 20+**, then run
-   **`make setup`** (`scripts/setup.sh`): it adds the wasm32 target and
-   `wasm-pack`, installs the browser tests' packages and Chromium, turns on
+2. **Install [rustup](https://rustup.rs/) and Node 22** (the version in
+   `.node-version`; fnm or nvm pick it up), then run **`make setup`**
+   (`scripts/setup.sh`): it adds the wasm32 target, `wasm-pack` and
+   `cargo-nextest`, installs the browser tests' packages and Chromium, turns on
    the git hooks and builds the app's engine. It is idempotent; run it again
    after pulling. For the films, **`make film-setup`** also builds
    `.venv-voice` (the narration's pinned Kokoro/Whisper set and the film

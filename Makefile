@@ -1,6 +1,14 @@
 # Auracle development targets. `make check` is the CI gate.
 
 CARGO := cargo
+# The browser tests and the films run on the Node in .node-version, the one CI
+# runs. When fnm has it, it goes first on every recipe's PATH, whatever the
+# shell's node is (Playwright 1.56's browser install hangs on Node 26). First,
+# so the PATHs below include it.
+NODE_BIN := $(shell fnm exec --using="$$(cat .node-version)" sh -c 'dirname "$$(command -v node)"' 2>/dev/null)
+ifneq ($(NODE_BIN),)
+export PATH := $(NODE_BIN):$(PATH)
+endif
 # Homebrew's rustc shadows rustup's and lacks the wasm std — always prefer
 # ~/.cargo/bin for wasm builds.
 WASM_PATH := PATH="$(HOME)/.cargo/bin:$(PATH)"

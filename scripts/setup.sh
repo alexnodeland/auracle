@@ -11,14 +11,18 @@
 #
 # What it needs already installed (it checks, and says how to get them):
 #   - rustup (https://rustup.rs); the toolchain and wasm32 target it adds
-#   - Node 20 or newer (CI uses 22)
+#   - Node 22, the version in .node-version that CI runs (fnm or nvm, when
+#     installed, are used to install and select it). Node 26 will not do:
+#     Playwright 1.56's browser install hangs on it (the download finishes,
+#     the unzip never does)
 #   - for --film: Python 3.10, 3.11 or 3.12 (kokoro 0.9.4 does not install on
 #     3.13), found as python3.12 / python3.11 / python3.10 / python3
 #
 # What it installs:
-#   base   the wasm32-unknown-unknown target, wasm-pack 0.15.0, the browser
-#          tests' npm packages and Playwright's Chromium, the git hooks, and
-#          the app's engine (make wasm)
+#   base   the wasm32-unknown-unknown target, wasm-pack 0.15.0, cargo-nextest
+#          (the Rust test runner), the browser tests' npm packages and
+#          Playwright's Chromium, the git hooks, and the app's engine
+#          (make wasm)
 #   film   .venv-voice (the voice's pinned torch/kokoro/whisper set plus the
 #          film tools' numpy/scipy/pillow/imageio-ffmpeg; the film make
 #          targets use it), the Kokoro-82M and faster-whisper small.en models
@@ -38,7 +42,7 @@ for a in "$@"; do
     --film) FILM=1 ;;
     --site) SITE=1 ;;
     --all) FILM=1 SITE=1 ;;
-    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) echo "unknown option: $a (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -55,11 +59,22 @@ rustup component add rustfmt clippy
 if ! wasm-pack --version 2>/dev/null | grep -q '0\.15\.'; then
   cargo install wasm-pack --version 0.15.0 --locked
 fi
+cargo nextest --version >/dev/null 2>&1 || cargo install cargo-nextest --locked
 
 say "Node and the browser tests"
-need node "install Node 20+ (https://nodejs.org or your package manager)"
+want="$(cat .node-version)"
+if command -v fnm >/dev/null; then
+  eval "$(fnm env --shell bash)"
+  fnm use --install-if-missing "$want"
+elif [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
+  set +u; . "${NVM_DIR:-$HOME/.nvm}/nvm.sh"; nvm install "$want"; set -u
+fi
+need node "install Node $want (fnm and nvm read .node-version)"
 major="$(node -p 'process.versions.node.split(".")[0]')"
-[ "$major" -ge 20 ] || { echo "!! Node $major is too old: 20 or newer" >&2; exit 1; }
+case "$major" in
+  20|22|24) ;;
+  *) echo "!! Node $major: use Node $want (.node-version); fnm or nvm install it. Playwright 1.56's browser install hangs on Node 26" >&2; exit 1 ;;
+esac
 (cd tests/web && npm ci --no-audit --no-fund && npx playwright install chromium)
 
 say "Git hooks"
