@@ -2125,7 +2125,11 @@ export function createPerform(host) {
   }
   function renderHood() {
     const addrs = hoodAddrs();
-    const key = addrs.join("|");
+    // The labels are part of the key: an open reaches PERFORM before PATCH's
+    // rack has named its modules, so rows built then read raw addresses
+    // ("thresh", "dec") and must be rebuilt once the names arrive.
+    const info = (a) => (host.knobInfo ? host.knobInfo(a, 0) : { module: "", label: a });
+    const key = addrs.map((a) => `${a}=${info(a).module} ${info(a).label}`).join("|");
     if (key === hoodKey) return paintHood();
     hoodKey = key;
     hood.innerHTML = "";
@@ -2137,12 +2141,12 @@ export function createPerform(host) {
     hood.append(h);
     const grid = el("div", "pf-hood-grid");
     for (const a of addrs) {
-      const info = host.knobInfo ? host.knobInfo(a, 0) : { module: "", label: a };
+      const { module, label } = info(a);
       const row = el("button", "pf-hood-row");
       row.type = "button";
-      row.title = `${info.module} ${info.label} — open in PATCH (it shows the kept value until you Keep)`;
+      row.title = `${module} ${label} — open in PATCH (it shows the kept value until you Keep)`;
       const name = el("span", "pf-hood-name");
-      name.append(el("span", "pf-hood-mod", info.module), document.createTextNode(` ${info.label}`));
+      name.append(el("span", "pf-hood-mod", module), document.createTextNode(` ${label}`));
       const track = el("span", "pf-hood-track");
       const fill = el("span", "pf-hood-fill");
       const home = el("span", "pf-hood-home");
@@ -2690,6 +2694,11 @@ export function createPerform(host) {
   return {
     // The row under the title, where booth mode lays its attract band.
     marquee,
+    // PATCH's rack changed (a bench reply or a rebuild): the hood's rows are
+    // named from it, and an open reaches PERFORM before the rack does.
+    rackChanged() {
+      if (state.visible) renderHood();
+    },
     // For booth attract mode (booth.js): the pads by name, whether a control
     // reaches this patch, whether B holds an offer, and quiet — nothing done
     // while quiet is logged or taught.

@@ -1586,6 +1586,7 @@ worker.onmessage = (e) => {
     }
     case "bench": {
       wb.rack = m.rack;
+      perform?.rackChanged?.();
       // From here `wb.dirty` is the truth about COMMIT; the local guess that
       // lit it ahead of this reply (`editPending`) has done its job.
       editPending = false;
@@ -8693,6 +8694,7 @@ function repaintRackInPlace(fresh) {
     const { modules: _m, ...top } = fresh;
     Object.assign(built, top);
     wb.rack = built;
+    perform?.rackChanged?.();
     lockIndex = null;
   }
   const svg = $("rack-svg");

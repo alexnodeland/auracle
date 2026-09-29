@@ -382,6 +382,11 @@ Rehearsing a film of each view meant doing everything the guide says, on
 camera, in a seeded session. Wherever the app fell short of the guide, the app
 was fixed, not the words.
 
+- **PERFORM's "under the hood" rows name each knob by its module again.**
+  A patch opened from the bank while PERFORM was showing reached PERFORM
+  before PATCH's rack had named its modules, so the rows read raw knob names
+  ("thresh 15%", "dec 25 ms") under captions that said "threshold" and "mod
+  env decay", and stayed that way. The rows are rebuilt once the rack lands.
 - **The TASTE map stays the way round you left it.** A refit could mirror it:
   in a taught session one refit sent "Warm Drone 2" from the far left to the
   far right, though the guide says the orientation is pinned. The rule that set
