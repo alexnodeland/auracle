@@ -75,7 +75,7 @@ const PLAN = [
       { at: "map3:Glow", until: "map3:bank", mark: "legend", side: "top", ox: -40, dx: -60, dy: -70, text: "dim to bright: would like" },
       { at: "map3:bank", until: "map4", mark: "row0", side: "right", dx: 80, dy: 10, text: "its best guesses first" },
       { at: "map4:small", until: "map5", mark: "yes", side: "left", ox: -8, dx: -120, dy: -70, text: "small and bright: a firm yes" },
-      { at: "map5:big", mark: "maybe", side: "right", ox: 12, dx: 110, dy: 70, text: "big and bright: a maybe" },
+      { at: "map5:big", mark: "maybe", side: "left", ox: -12, dx: -110, dy: 70, text: "big and bright: a maybe" },
     ],
   },
   {
@@ -96,7 +96,7 @@ const PLAN = [
     callouts: [
       { at: "styles3:separate", until: "styles4", mark: "chips", side: "bottom", ox: -440, dx: 60, dy: 90, text: "your styles, each with its share" },
       { at: "styles4:plays", until: "styles4:plays+2.9", mark: "play-first", side: "bottom", dx: 40, dy: 110, text: "its best example" },
-      { at: "styles4:plays+2.9", until: "styles5", mark: "play-second", side: "bottom", dx: 40, dy: 110, text: "another style's" },
+      { at: "styles4:plays+2.9", until: "styles5", mark: "play-second", side: "bottom", dx: -60, dy: 110, text: "another style's" },
       { at: "styles5:sticks", mark: "named", side: "bottom", dx: 60, dy: 100, text: "yours now" },
     ],
   },
@@ -132,7 +132,7 @@ const PLAN = [
     chapter: "06 · when it's wrong",
     cam: [[0, 1.0, 0.5, 0.5], ["wrong2-0.2", ...aim(1.5, 1250, 560)], ["wrong3:star-0.3", ...aim(1.3, 300, 800)], ["wrong4", 1.0, 0.5, 0.5], ["wrong6", ...aim(1.5, 1330, 540)]],
     callouts: [
-      { at: "wrong2:thinks+0.5", until: "wrong3", mark: "wrong", side: "right", ox: 8, dx: 110, dy: -80, text: "it's sure you'll like this" },
+      { at: "wrong2:thinks+0.5", until: "wrong3", mark: "wrong", side: "left", ox: -8, dx: -110, dy: -80, text: "it's sure you'll like this" },
       { at: "wrong3:star", until: "wrong4", mark: "star1", side: "right", dx: 90, dy: -40, text: "one star" },
       { at: "wrong4:other+0.3", until: "wrong5:See", mark: "pred", side: "bottom", dx: 60, dy: 70, text: "it had this backwards", color: "b" },
       { at: "wrong6:lower", mark: "wrong2", side: "right", ox: 8, dx: 110, dy: -80, text: "a little lower" },
