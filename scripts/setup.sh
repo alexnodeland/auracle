@@ -16,7 +16,11 @@
 #     Playwright 1.56's browser install hangs on it (the download finishes,
 #     the unzip never does)
 #   - for --film: Python 3.10, 3.11 or 3.12 (kokoro 0.9.4 does not install on
-#     3.13), found as python3.12 / python3.11 / python3.10 / python3
+#     3.13), found as python3.12 / python3.11 / python3.10 / python3, or the
+#     one named by AURACLE_PYTHON (a command or a path; a .venv-voice from
+#     another Python is then rebuilt). A .venv-voice already there is kept.
+#     It must be able to reach pypi.org: a per-app firewall (Little Snitch)
+#     that blocks one Python is caught here, with a pointer to this variable
 #
 # What it installs:
 #   base   the wasm32-unknown-unknown target, wasm-pack 0.15.0, cargo-nextest
@@ -85,13 +89,31 @@ make wasm
 
 if [ "$FILM" = 1 ]; then
   say "The film tools and the voice (.venv-voice)"
-  PY=""
-  for c in python3.12 python3.11 python3.10 python3; do
-    if command -v "$c" >/dev/null && "$c" -c 'import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)'; then
-      PY="$c"; break
-    fi
-  done
-  [ -n "$PY" ] || { echo "!! the voice needs Python 3.10-3.12 (kokoro 0.9.4 does not install on 3.13)" >&2; exit 1; }
+  fits='import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)'
+  if [ -z "${AURACLE_PYTHON:-}" ] && [ -x .venv-voice/bin/python ] && .venv-voice/bin/python -c "$fits" 2>/dev/null; then
+    PY=.venv-voice/bin/python   # keep the venv there is, whichever Python made it
+  else
+    PY=""
+    for c in ${AURACLE_PYTHON:-python3.12 python3.11 python3.10 python3}; do
+      if command -v "$c" >/dev/null && "$c" -c "$fits"; then
+        PY="$c"; break
+      fi
+    done
+    [ -n "$PY" ] || { echo "!! the voice needs Python 3.10-3.12 (kokoro 0.9.4 does not install on 3.13)${AURACLE_PYTHON:+; AURACLE_PYTHON=$AURACLE_PYTHON is not one}" >&2; exit 1; }
+  fi
+  # Fail in seconds, not after pip's minutes of retries, when this Python
+  # cannot reach the package index (curl reaching it proves nothing: a
+  # per-app firewall judges each executable on its own).
+  "$PY" -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null || {
+    echo "!! $PY ($("$PY" -c 'import os, sys; print(os.path.realpath(sys.executable))')) cannot reach pypi.org. If other programs can," >&2
+    echo "   a firewall is blocking this Python: allow it, or choose another, e.g. AURACLE_PYTHON=python3.11 make film-setup" >&2
+    exit 1
+  }
+  # A venv made from another Python than AURACLE_PYTHON names is rebuilt.
+  want_v="$("$PY" -c 'import sys; print(sys.version_info[:2])')"
+  if [ -x .venv-voice/bin/python ] && [ "$(.venv-voice/bin/python -c 'import sys; print(sys.version_info[:2])')" != "$want_v" ]; then
+    rm -rf .venv-voice
+  fi
   [ -x .venv-voice/bin/python ] || "$PY" -m venv .venv-voice
   .venv-voice/bin/python -m pip install --quiet --upgrade pip
   .venv-voice/bin/python -m pip install -r www/video/voice/requirements.txt -r www/video/requirements-tools.txt

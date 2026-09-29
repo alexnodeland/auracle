@@ -17,6 +17,10 @@ git fetch origin && git checkout claude/auracles-composer-performer-gtlo9w
 make film-setup        # scripts/setup.sh --film: toolchain, engine, .venv-voice, models, shared sound
 ```
 
+If it stops with "cannot reach pypi.org" while other programs can, a
+per-app firewall (Little Snitch) is blocking that Python: allow it, or build
+the voice on another, e.g. `AURACLE_PYTHON=python3.11 make film-setup`.
+
 ## 2. Voice
 
 The narration audio is gitignored and rebuilt from the committed scripts. The
