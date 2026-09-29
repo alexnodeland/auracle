@@ -1583,7 +1583,10 @@ function evolveStop() {
 //   order with them — edits, votes, opens, auditions, saves, logs. One lane,
 //   so every ordering rule the app already relies on (edits to one bench land
 //   in order; a save sees the votes cast before it; a log line carries the φ of
-//   the edit it follows) holds exactly as it did.
+//   the edit it follows) holds exactly as it did. A render main asks for in
+//   the background (`bg`: the sounds of a pair just dealt) waits in this lane
+//   behind every gesture, since nothing is ordered against it, and lets
+//   waiting `soon` work start first (`serveNow`).
 // - **soon**: long work the player did ask for — a generation, an offer they
 //   pressed, the first measurement of the patch in their hands.
 // - **later**: work nobody is waiting on — refits, re-measurements, spare
@@ -1687,9 +1690,37 @@ function nextLong() {
 const runnable = () =>
   lanes[NOW].length > 0 || (!floor && [SOON, LATER].some((l) => lanes[l].some((q) => !blocked(q))));
 
+// Serve the `now` lane: gestures first come, first served, and a background
+// render (`bg`) only when no gesture is waiting. Each such render is one
+// uninterruptible call, so before one starts, anything that arrived during
+// the last call is let in: a bank open clicked while the table's sounds were
+// rendering waits for the render already running, never the ones behind it.
+//
+// Background renders also give way to long work the player asked for that is
+// waiting to start (a pressed Offer, the first measurement of the patch in
+// their hands): it starts first, and they go between its pieces, as gestures
+// do. Not to a serial generation's walks (`breed_step`), which follow one
+// another for minutes: the pair on the table would stay silent through it.
+const bgWaits = () => !floor && lanes[SOON].some((q) => q.type !== "breed_step" && !blocked(q));
+async function serveNow() {
+  while (lanes[NOW].length) {
+    let i = lanes[NOW].findIndex((q) => !q.bg);
+    if (i < 0) {
+      if (bgWaits()) break;
+      await yieldToQueue();
+      i = lanes[NOW].findIndex((q) => !q.bg);
+      if (i < 0) {
+        if (!lanes[NOW].length || bgWaits()) break;
+        i = 0;
+      }
+    }
+    await runMessage(lanes[NOW].splice(i, 1)[0]);
+  }
+}
+
 async function pump() {
   pumpQueued = false;
-  while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
+  await serveNow();
   const m = nextLong();
   if (m) await runMessage(m);
   if (runnable()) schedulePump();
@@ -1712,7 +1743,7 @@ async function runMessage(m) {
 // background job must give the floor up to long work the player asked for.
 async function breathe(lane) {
   await yieldToQueue();
-  while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
+  await serveNow();
   return lane === LATER && lanes[SOON].some((q) => !blocked(q));
 }
 
@@ -1812,6 +1843,16 @@ self.onmessage = (e) => {
     return;
   }
   const lane = laneOf(m);
+  // One render of an id answers everyone who asked (main keeps every buffer
+  // it is sent): a sound asked for in the background and then wanted at once
+  // (▶ on a pair that is waiting for it) is rendered once, as the player's.
+  if (m.type === "render") {
+    const i = lanes[NOW].findIndex((q) => q.type === "render" && q.id === m.id);
+    if (i >= 0) {
+      if (m.bg) return;
+      if (lanes[NOW][i].bg) lanes[NOW].splice(i, 1);
+    }
+  }
   lanes[lane].push(m);
   // The player's requests run on arrival, as every request used to: parked
   // behind a timer, the boot fill's next batch — a second or more of renders
@@ -1827,7 +1868,7 @@ async function drainNow() {
   if (draining) return;
   draining = true;
   try {
-    while (lanes[NOW].length) await runMessage(lanes[NOW].shift());
+    await serveNow();
   } finally {
     draining = false;
   }
@@ -2100,21 +2141,14 @@ async function dispatch(m) {
       // is on the table (see `requestAhead` in main.js); it rides back so the
       // reply is not taken for the table's.
       post({ type: "duel", pair, meta, ahead: !!m.ahead });
-      // Renders are lazy now (`RenderPolicy::Lazy`): the pool holds φ for
-      // everything and audio for only the last dozen auditions, so the pair
-      // just dealt is very likely cold. Materialize both sides *here*, after
-      // the pair has been posted — main gets its cards immediately, and the
-      // `render` requests that follow are served from a resident buffer
-      // instead of queueing behind two fresh renders.
-      //
-      // `prefetch_render` is newer than the binary a stale browser cache can
-      // hand us (see this file's header); a miss just means `render_of` does
-      // the work a moment later, which is exactly the un-prefetched path.
-      if (pair) {
-        for (const id of pair) {
-          try { engine.prefetch_render(id); } catch (_) { break; }
-        }
-      }
+      // The pair's sounds are not rendered here. They used to be, in this
+      // turn (`prefetch_render`, two renders, and two more for a deal ahead),
+      // and every gesture that arrived meanwhile waited them out: a preset
+      // clicked in the bank just after a reload reached PERFORM up to 4.7 s
+      // late on one core and 9.3 s on a CI runner, because the table's pair
+      // had just gone up and the next pair was being dealt. Main asks
+      // for them as background renders (`bg`), which the `now` lane serves
+      // after every gesture waiting in it (`serveNow`).
       break;
     }
     // Main put a dealt pair on the table (`placePair`). The engine counts
@@ -2238,6 +2272,16 @@ async function dispatch(m) {
     }
     // ---- workbench (the interactive rack) ----
     case "edit_begin": {
+      // The bench speaking early, as an edit does (`postLiveTree`) and the
+      // warm start's first pick does (`warm_first`): opening is a render
+      // (`edit_begin` materializes the bench's buffer), but the tree and its
+      // makeup are already in the pool, so the voices — and PERFORM, which
+      // plays a patch it has measured before from its cache — have the patch
+      // one render sooner. The `bench` reply that follows vets it.
+      const early = engine.tree_json_of(m.id);
+      if (early && early !== "null") {
+        post({ type: "bench_opening", id: m.id, json: early, makeup: engine.makeup_of(m.id) });
+      }
       const ok = engine.edit_begin(m.id);
       if (ok) postBench({ subject: m.id });
       else post({ type: "bench_missing", id: m.id });
@@ -2524,6 +2568,14 @@ async function dispatch(m) {
         prewarm: m.prewarm, json: m.prewarm && id > 0 ? engine.tree_json_of(id) : undefined,
         views: tasteViews(), status: status(),
       });
+      // A preset clicked open: main answers `preset_loaded` with the bench
+      // open (`edit_begin`), a round trip in which the engine is free to
+      // start a background render. Its tree and makeup are known now, so
+      // they are sent now, and main hands them to the voices (and PERFORM)
+      // when it opens the patch — without waiting for that turn.
+      if (m.open && id > 0) {
+        post({ type: "bench_opening", id, index: m.index, json: engine.tree_json_of(id), makeup: engine.makeup_of(id) });
+      }
       break;
     }
     // The first-run elicitation, in one turn. It used to be nine

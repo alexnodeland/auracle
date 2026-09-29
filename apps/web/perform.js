@@ -1886,6 +1886,7 @@ export function createPerform(host) {
       }
       // Committed like Keep: one undo step on the bench, and the patch comes
       // back through patchChanged to be measured.
+      if (refusedWhileLanding("That change")) return true;
       host.commitTree(JSON.stringify(t));
       return true;
     }
@@ -2192,10 +2193,24 @@ export function createPerform(host) {
     state.applyThen.set(req, then);
   }
 
+  // A patch PERFORM already plays whose bench has not landed yet (main hands
+  // an open to the voices before the engine renders it for the rack): a tree
+  // committed now would land on the rack it replaces. So a Keep, Take or
+  // Back is refused until it lands, before anything here has changed, and
+  // says so. Usually a moment; seconds on a busy machine.
+  function refusedWhileLanding(what) {
+    const name = host.openLanding ? host.openLanding() : null;
+    if (!name) return false;
+    host.note(`${what} waits for ${name} to finish opening — try again in a moment.`, { urgent: true, replace: "pf-landing" });
+    return true;
+  }
+
   function keep() {
     if (!state.cur) return;
+    if (refusedWhileLanding("Keep")) return;
     applyThen((json) => {
       if (!json || json === "null") return;
+      if (refusedWhileLanding("Keep")) return; // opened while it was applied
       const here = new Map(overrides());
       logImplicit("perform_keep", { controls: state.c.map((x) => +x.toFixed(3)) });
       // The sound does not change, so neither does anything playing it: the
@@ -2214,8 +2229,10 @@ export function createPerform(host) {
 
   function back() {
     if (!state.home || !state.home.knobs) return;
+    const structural = state.home.json !== state.cur.json && structureDiffers(state.home.json, state.cur.json);
+    if (structural && refusedWhileLanding("Back")) return;
     logImplicit("perform_back", {});
-    if (state.home.json !== state.cur.json && structureDiffers(state.home.json, state.cur.json)) {
+    if (structural) {
       host.commitTree(state.home.json);
       return;
     }
@@ -2232,6 +2249,7 @@ export function createPerform(host) {
 
   function take() {
     if (!state.offer) return host.note("Nothing offered yet — press Offer, or turn Wander up.", { urgent: true });
+    if (refusedWhileLanding("Take")) return;
     logImplicit("perform_take", { why: state.offerWhy || "" });
     answerOffer(true);
     const json = state.offer.json;

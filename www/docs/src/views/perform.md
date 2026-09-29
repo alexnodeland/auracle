@@ -29,7 +29,15 @@ the sound a long way; the re-check waits behind anything you ask for). It
 speaks only about the patch; what Wander is doing is said under Wander.
 While a patch you opened is on its way it names it, *opening Acid Line…*, and
 the name above stays the patch your keys still play, dimmed, until the new one
-lands.
+lands. The new one lands as soon as the engine turns to it, before it has
+rendered it for the rack in PATCH, which says *opening Acid Line…* over the
+old rack until then. A preset you have opened before in this browser does not
+wait for the engine at all: it plays the moment you click it, after a reload
+too, and its controls work at once if PERFORM has measured it. The first open
+after an update of the app asks the engine again. Until the rack has arrived,
+**Keep** and **Take** (and **Back**, when going home means a different
+circuit) change nothing and say so: *Take waits for Acid Line to finish
+opening — try again in a moment*.
 
 **Eight controls in a row.** Six named controls (**Bright, Snap, Motion, Body,
 Grit, Space**), then **Blend** and **Wander**. Each named control is bipolar
