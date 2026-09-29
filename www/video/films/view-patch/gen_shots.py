@@ -401,7 +401,23 @@ LOCK_CUT = "lock3:and-0.3"
 shots.append({
     "id": "vp-lock", "beat": "lock", "pre": PRE,
     "clips": [[LOCK_CUT, "@benched-0.6"]],
-    "setup": bench("Glass Pad"),
+    # This session's first ⚡ from Glass Pad with these locks finds nothing
+    # ("⚡ evolution's proposal did not survive the vet or beat its parent —
+    # try again", three rehearsals of 29 September in a row): each ⚡ is one
+    # draw of the engine's refine stream, and that draw is a miss. So the
+    # set-up spends it off camera, with the same locks, then clears them, and
+    # the ⚡ on camera is the session's second, which lands a child.
+    "setup": bench("Glass Pad",
+        {"op": "click", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"},
+        {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"},
+        {"op": "wait", "ms": 300},
+        {"op": "click", "sel": "#rack-evolve"},
+        {"op": "until", "sel": "#rack-evolve.evolving", "state": "attached", "ms": 10000},
+        {"op": "until", "sel": "#rack-evolve:not(.evolving)", "state": "attached", "ms": 300000},
+        log("first ⚡", "document.getElementById('toasts').innerText + ' | ' + " + SUBJ),
+        {"op": "click", "sel": "#lock-clear"},
+        {"op": "wait", "ms": 400},
+    ),
     "marks": {"rack": "#rack-scroll", "cut": "#rack-svg [data-addr='node/0#cut']", "chorus": "#rack-svg g.mod-group[data-key='node']",
               "square": "#rack-svg g.mod-group[data-key='node'] .mod-lock", "evolve": "#rack-evolve", "subject": "#rack-subject"},
     "actions": [

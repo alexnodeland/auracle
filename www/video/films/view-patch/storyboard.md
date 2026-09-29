@@ -200,6 +200,10 @@ chapter 01's card.
   stays live, so the chords play on through "Only what you left unlocked can
   change". The beat cuts on "and" to the moment the child is on the bench
   (`clips: [["lock3:and-0.3", "@benched-0.6"]]`); chords again on the child.
+  Off camera, the set-up spends this session's first ⚡ from Glass Pad (same
+  locks; a miss: *did not survive the vet or beat its parent — try again*)
+  and clears the locks, so the ⚡ on camera is the session's second, which
+  lands a child (*Fat Drone* in the rehearsal of 29 September).
   Which child ⚡ breeds varies from load to load; the chorus, locked, never
   changes.
 - **Callouts:** "one knob, by its dot"; "a whole module, by its ▢"; "⚡ evolve

@@ -2,7 +2,7 @@
   "viewport": [1920, 1080],
   "dpr": 1,
   "query": "?film",
-  "init": "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();",
+  "init": "(() => { let s = 20260927 >>> 0; Math.random = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })(); (() => { const N = window.Worker; const d = (window.__deals = { all: [], ahead: null, aheads: 0 }); window.Worker = class extends N { constructor(...a) { super(...a); this.addEventListener('message', (e) => { const m = e.data; if (!m || m.type !== 'duel') return; if (!m.pair) { d.none = (d.none || 0) + 1; return; } d.all.push(m.pair); if (m.ahead) { d.ahead = m.pair || null; d.aheads += 1; } }); } }; })();",
   "setup": [
     {"op": "until", "sel": "#warmstart:not(.hidden)", "ms": 180000},
     {"op": "until", "js": "Number(document.querySelector(\".bf-n[data-n='pool']\")?.textContent || 0) >= 40", "ms": 300000},
@@ -12,6 +12,7 @@
     {"op": "click", "sel": ".warm-item >> nth=7"},
     {"op": "click", "sel": "#warm-go"},
     {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
+    {"op": "log", "name": "redeal", "js": "(async () => {\nconst K = 5;\nconst $ = (id) => document.getElementById(id);\nconst sleep = (ms) => new Promise((r) => setTimeout(r, ms));\nasync function until(fn, ms, what) {\n  const t0 = Date.now();\n  for (;;) { let v = false; try { v = fn(); } catch (e) { v = false; } if (v) return v; if (Date.now() - t0 > ms) throw new Error('redeal: timed out waiting for ' + what); await sleep(150); }\n}\nconst d = window.__deals;\nif (!d) throw new Error('redeal: shotgen.DEALS is not in this film\\'s init');\nconst dealt = () => !$('choose-a').disabled && !$('duel-a').classList.contains('dealing');\nconst ids = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => Number(e.textContent.replace(/\\D/g, '')));\nconst same = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.includes(q[0]) && p.includes(q[1]));\nconst names = () => ids().map((i) => '#' + i).join(' | ');\n// Which deal the pair on the table is (1-based; 0 if not seen). A reply with\n// no pair (a pool too small to deal from) is not counted (DEALS).\nconst index = () => { const t = ids(); for (let i = d.all.length - 1; i >= 0; i--) if (same(d.all[i], t)) return i + 1; return 0; };\nconst out = [];\nfor (let i = 0; i < 12; i++) {\n  await until(() => dealt() && !document.querySelector('#play-a.pending, #play-b.pending'), 120000, 'the pair to render');\n  const table = ids();\n  // The pair behind it. A deal that repeats the table's pair is refused by\n  // the app and asked again; after three refusals it stops asking, and so\n  // does this wait.\n  await until(() => d.ahead && !same(d.ahead, table), 30000, 'the next pair, dealt ahead').catch(() => {});\n  const n = index();\n  out.push(names() + ' (deal ' + n + ')');\n  if (n >= K) break;\n  const was = names();\n  $('skip-duel').click();\n  await until(() => dealt() && names() !== was, 60000, 'a new pair');\n}\nif (index() !== K) throw new Error('redeal: the table is deal ' + index() + ', not ' + K + ': ' + out.join(' -> '));\nreturn out.join(' -> ') + ' [dealt: ' + d.all.map((p) => p.join('/')).join(' ') + (d.none ? '; ' + d.none + ' with no pair' : '') + ']';\n})()"},
     {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000}
   ],
   "shots": [
@@ -260,6 +261,15 @@
         {"op": "eval", "js": "const b = document.getElementById('bt-close'); if (b && b.offsetParent) b.click();"},
         {"op": "key", "key": "a", "ms": 60},
         {"op": "wait", "ms": 1200},
+        {"op": "click", "sel": "#rack-svg [data-addr='node/0#cut'] .lock-dot"},
+        {"op": "click", "sel": "#rack-svg g.mod-group[data-key='node'] .mod-lock"},
+        {"op": "wait", "ms": 300},
+        {"op": "click", "sel": "#rack-evolve"},
+        {"op": "until", "sel": "#rack-evolve.evolving", "state": "attached", "ms": 10000},
+        {"op": "until", "sel": "#rack-evolve:not(.evolving)", "state": "attached", "ms": 300000},
+        {"op": "log", "name": "first ⚡", "js": "document.getElementById('toasts').innerText + ' | ' + document.getElementById('rack-subject').textContent"},
+        {"op": "click", "sel": "#lock-clear"},
+        {"op": "wait", "ms": 400},
         {"op": "eval", "js": "document.activeElement && document.activeElement.blur()"},
         {"op": "until", "js": "!/re-measuring/.test(document.getElementById('belief').textContent) && !document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 180000},
         {"op": "until", "js": "!document.querySelector('#toasts .toast')", "ms": 45000},
