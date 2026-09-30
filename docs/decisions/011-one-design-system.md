@@ -34,22 +34,23 @@ six sentences of guidance at rest (`docs/notes/text-2026-09/`) (RFC-004).
   that searches for your sound". British spelling.
 - **Marks.** The mark, logotype and lockups stay. The icon set replaces the
   app's glyphs, and no emoji-presentation glyph remains in the UI.
-- **Picture.** One type scale with a 12 px canvas floor, a layout grid,
+- **Picture.** One type scale with a floor for canvas labels, a layout grid,
   motion tokens, and nothing moving without meaning. The app, the landing
   page and the films are dark; the docs also have a light theme.
 - **Components and disclosure.** The views are built from one component set.
   Each view has three levels (at rest; on approach; on request). At rest a
   view shows at most one sentence of guidance, from one surface. There are no
-  placeholder rows. Outside the guide, no block runs past 25 words, and a
-  tooltip holds a name and a key. A browser spec measures this.
+  placeholder rows, no long blocks of text outside the guide, and a tooltip
+  holds a name and a key. A browser spec measures this; its limits are set in
+  Plan-004.
 - **Drafted, then built.** Claude drafts the icon set, the type scale, the
   grid, the components and each view's disclosure map as visual specimens,
   and the maintainer approves each before it is built.
 - **Sound.** The app makes no UI sounds. A sonic floor governs a session's
   first deals and the films' casting, and nothing after that (RFC-005).
-- **Films.** `af_heart` at speed 0.81: a speaking rate of about 176 words a
-  minute and about 160 overall. A film that speaks faster than 185 fails.
-  Each chapter explains with a computed figure, then shows the app.
+- **Films.** The voice is `af_heart` at speed 0.81, chosen by ear. A check
+  fails a film that speaks too fast (its limit is set in Plan-004). Each
+  chapter explains with a computed figure, then shows the app.
 - **Wave 2 is split.** The word table and its check, the take-back registry,
   the keymap and bank stability stay in Plan-003. The colour looks, the
   message channels and onboarding surface, and the printed key hints are

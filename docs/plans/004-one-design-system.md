@@ -53,7 +53,7 @@ and printed key hints are built here; its other contracts stay in
    every action the app shows as a glyph and wired in, and a check fails on
    an emoji-presentation glyph in the UI.
 4. **Specimens** (parts 4 and 5), each a visual page the maintainer approves:
-   the type scale (12 px canvas floor), the grid and density rule, the motion
+   the type scale (a proposed 12 px canvas floor; TA20 found 10 px too small), the grid and density rule, the motion
    tokens, then the component set (primary, secondary, toggle, destructive,
    disclosure; knob, pad, bank row, card, toast, status line, empty state).
    Then each view's disclosure map and layout (what shows at rest, on
@@ -63,20 +63,27 @@ and printed key hints are built here; its other contracts stay in
    the tokens. The text-budget spec is built from `measure.js`. For each view
    it fails on more than one sentence of guidance at rest, on an instruction
    shown on two surfaces, on a placeholder row, on a block over 25 words, or
-   on a tooltip over eight words. It gates each view as that view is rebuilt.
+   on a tooltip over eight words (proposed limits; the maintainer can change
+   them here). It gates each view as that view is rebuilt.
 6. **The views rebuilt**, one at a time, to their approved specimens. Each is
    built from the components, with Wave 2's colour looks (Plan-003 task 2),
    message channels and one onboarding surface (task 4), and printed key hints
-   (from task 5). Each closes its quality findings: PF-08, EV-04, EV-15,
-   EV-19, PA-15, PA-16, PA-17, PA-22, TA15, TA20, CO4, CO8. The view's guide
+   (from task 5). Each closes its findings:
+   - the quality findings: PF-08, EV-04, EV-15, EV-19, PA-15, PA-16, PA-17,
+     PA-22, TA15, TA20, CO4, CO8;
+   - those Plan-003 handed over with its tasks 2 and 4: CO3, CO10, PA-08, TA6,
+     SH8, EV-07, CO9, SH5, PF-05, TA11.
+   Task 5's findings (CO11, PF-09, EV-13, EV-09, TA12, PA-12) close in
+   Plan-003; the key hints are printed here. The view's guide
    page is checked against it (ADR-004), and its spec passes the text budget.
 7. **One explanation figure** (part 8): the first causation candidate, in its
    own small proposal, on the shared graphics grammar. A generation's
    children beside their parents, in place of the lineage log's sentences,
    is the likeliest.
 8. **The films' second pass** (part 7, and Plan-003 task 7):
-   - `asr_check.py` targets a speaking rate of 176, reports the overall rate,
-     and fails a film faster than 185.
+   - `asr_check.py` targets a speaking rate of 176 (what speed 0.81 measured
+     in the audition), reports the overall rate, and fails a film faster than
+     185 (a proposed limit).
    - Every script moves to speed 0.81.
    - Each chapter opens with a figure.
    - Each film is cast from above the sonic floor, once RFC-005 lands.

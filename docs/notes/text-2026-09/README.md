@@ -44,7 +44,7 @@ duels, picked by key; no note had been played.
   set one teaching surface per view when PATCH had four.
 - **One instruction, several times.** How to play the first note shows as
   PERFORM's first step, PATCH's next-step pill and the coach. The coach stays
-  in every view until a note is played. TASTE's empty map says "6 more
+  in PATCH, EVOLVE and TASTE until a note is played. TASTE's empty map says "6 more
   picks" twice.
 - **Placeholder rows.** The spec strip's resting text (29 words) and the
   lineage log's empty text (17 words) are instructions standing in for
