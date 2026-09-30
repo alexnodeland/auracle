@@ -12,7 +12,9 @@ changelog that edits its own past is not a record.
 
 - **Every colour comes from one file**, `www/brand/tokens.json`, generated
   into the app's, the site's and the films' stylesheets and checked by
-  `make dev-check`; nothing looks different.
+  `make dev-check`; nothing looks different, except that the brand page now
+  lights the wordmark's lamp amber, as the app does, and the films' deep amber
+  is the palette's.
 
 ### Fixed — a patch keeps its name
 

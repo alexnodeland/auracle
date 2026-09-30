@@ -17,7 +17,7 @@ import { svgLayer, knob, cable, mark, keyboard, textBlock, voiceWave, GLOW, ink,
 
 const C = {
   a: ink("--phos-a"), aDim: ink("--phos-a-dim"), aDeep: ink("--phos-a-deep"),
-  b: ink("--phos-b"), bDim: ink("--phos-b-dim"), bDeep: ink("--kit-amber-deep"),
+  b: ink("--phos-b"), bDim: ink("--phos-b-dim"), bDeep: ink("--phos-b-deep"),
   silk: ink("--silk"), dim: ink("--silk-dim"), mute: ink("--silk-mute"), hair: ink("--hairline"), panel: ink("--panel"), bezel: ink("--bezel"),
 };
 const SR = 44100;

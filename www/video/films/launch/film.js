@@ -672,7 +672,7 @@ function sceneDepth({ stage, beat, line }) {
       const ry0 = 440;
       const rs = 380;
       el("rect", { x: rx0, y: ry0, width: rs, height: rs, fill: "none", stroke: ink("--gauge-frame"), "stroke-width": 2 }, rel);
-      const diag = el("line", { x1: rx0, y1: ry0 + rs, x2: rx0 + rs, y2: ry0, stroke: ink("--kit-amber-deep"), "stroke-width": 2, "stroke-dasharray": "6 8" }, rel);
+      const diag = el("line", { x1: rx0, y1: ry0 + rs, x2: rx0 + rs, y2: ry0, stroke: ink("--phos-b-deep"), "stroke-width": 2, "stroke-dasharray": "6 8" }, rel);
       const dotsG = el("g", {}, rel);
       dotsG.style.filter = GLOW.b;
       // Illustrative, and honest about it: dots near the line, whiskers wide.

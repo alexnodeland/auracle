@@ -100,7 +100,6 @@
   --phos-b-pulse: #fff1dc;   /* an amber signal pulse */
   --phos-b-hot: #ffd08a;     /* a walker, a head, a marker: amber, one step hotter */
   --phos-b-flash: #ffe2b8;   /* what amber flashes toward */
-  --kit-amber-deep: #6e4d22; /* the kit's deep amber, which drifted from --phos-b-deep; to go */
 
   /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
      (`--white-045` is 4.5%) */

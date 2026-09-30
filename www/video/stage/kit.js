@@ -28,9 +28,9 @@ export function inkA(name, a) {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
-export const PHOS ={ a: ink("--phos-a"), b: ink("--phos-b") };
+export const PHOS = { a: ink("--phos-a"), b: ink("--phos-b") };
 export const PHOS_DIM = { a: ink("--phos-a-dim"), b: ink("--phos-b-dim") };
-export const PHOS_DEEP = { a: ink("--phos-a-deep"), b: ink("--kit-amber-deep") };
+export const PHOS_DEEP = { a: ink("--phos-a-deep"), b: ink("--phos-b-deep") };
 const GLOW = {
   a: `drop-shadow(0 0 2.5px ${inkA("--phos-a", 0.95)}) drop-shadow(0 0 12px ${inkA("--phos-a", 0.38)})`,
   b: `drop-shadow(0 0 2.5px ${inkA("--phos-b", 0.95)}) drop-shadow(0 0 14px ${inkA("--phos-b", 0.42)})`,
