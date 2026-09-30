@@ -117,7 +117,7 @@
   --go-edge: #b6f8ce;    /*   …its edge under a pointer */
 
   /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
-     (`--white-045` is 4.5%) */
+     (`--phos-a-045` is 4.5%) */
   --white-03: rgba(255, 255, 255, 0.03);
   --white-06: rgba(255, 255, 255, 0.06);
   --white-07: rgba(255, 255, 255, 0.07);

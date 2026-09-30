@@ -69,7 +69,7 @@ and the film stage. It holds:
 - **each surface's own named shades** (a value only that surface uses, such as
   the keybed's white keys) and **the opacities it uses** of any token.
   `--phos-b-30` is `--phos-b` at 30%; a third digit is a tenth, so
-  `--white-045` is white at 4.5%. An opacity is generated as `rgba()`, not
+  `--phos-a-045` is green at 4.5%. An opacity is generated as `rgba()`, not
   `color-mix()`: a gradient with a `color-mix()` colour in it interpolates in
   Oklab rather than sRGB, and moved pixels.
 

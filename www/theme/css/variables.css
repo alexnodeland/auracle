@@ -108,7 +108,7 @@ html.coal {
     --table-stripe: #101318; /* a table's alternate row */
 
     /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
-       (`--white-045` is 4.5%) */
+       (`--phos-a-045` is 4.5%) */
     --bezel-62: rgba(7, 8, 10, 0.62);
     --black-50: rgba(0, 0, 0, 0.5);
     --white-08: rgba(255, 255, 255, 0.08);
@@ -152,7 +152,7 @@ html.light {
     --search-mark: #f2d9a8;  /* a search hit's highlight */
 
     /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
-       (`--white-045` is 4.5%) */
+       (`--phos-a-045` is 4.5%) */
     --silk-12: rgba(34, 36, 42, 0.12);
     --silk-35: rgba(34, 36, 42, 0.35);
     --white-70: rgba(255, 255, 255, 0.7);

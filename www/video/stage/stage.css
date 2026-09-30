@@ -102,7 +102,7 @@
   --phos-b-flash: #ffe2b8;   /* what amber flashes toward */
 
   /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
-     (`--white-045` is 4.5%) */
+     (`--phos-a-045` is 4.5%) */
   --phos-a-35: rgba(142, 240, 177, 0.35);
   --phos-a-45: rgba(142, 240, 177, 0.45);
   --phos-a-90: rgba(142, 240, 177, 0.9);

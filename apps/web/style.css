@@ -178,7 +178,7 @@
   --pkey-down-hint: #14532b;      /*   …while the key is held */
 
   /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
-     (`--white-045` is 4.5%) */
+     (`--phos-a-045` is 4.5%) */
   --white-012: rgba(255, 255, 255, 0.012);
   --white-02: rgba(255, 255, 255, 0.02);
   --white-04: rgba(255, 255, 255, 0.04);

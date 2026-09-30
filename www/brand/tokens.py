@@ -159,7 +159,7 @@ def sections(src: dict, surface: str) -> list[tuple[str, list[tuple[str, str, st
         for p in sorted(pcts, key=lambda x: Decimal(str(x))):
             alphas.append((alpha_name(base, p), alpha_value(named[base], p), ""))
     if alphas:
-        out.append(("opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth (`--white-045` is 4.5%)", alphas))
+        out.append(("opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth (`--phos-a-045` is 4.5%)", alphas))
     return out
 
 
