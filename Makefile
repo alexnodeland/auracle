@@ -42,7 +42,7 @@ WASM_RUSTFLAGS := RUSTFLAGS="-C link-arg=-zstack-size=$(WASM_STACK)"
         site-fonts site-brand site-api site-extras site-serve site-check \
         site-tools brand-rasters docs-serve reference-serve \
         film-sounds film-voice film film-rehearse film-record film-publish \
-        film-record-all film-preview dev-check help install-hooks
+        film-record-all film-preview dev-check tokens help install-hooks
 
 all: check
 
@@ -73,16 +73,24 @@ install-hooks:
 
 ## dev-check: the tooling around the code stays sound — the agent docs'
 ## links, anchors and frontmatter, the constants the books quote by name, the
-## Claude Code hooks against inputs they must block and pass, and the syntax
-## of every film tool
+## colour tokens (every generated block current, no colour written outside
+## www/brand/tokens.json, and the check's own tests), the Claude Code hooks
+## against inputs they must block and pass, and the syntax of every film tool
 dev-check:
 	@python3 .claude/checks/check_docs.py
 	@python3 www/checknames.py
+	@python3 www/brand/tokens.py --check
+	@python3 www/brand/test_tokens.py
 	@bash .claude/checks/test_hooks.sh
 	@for f in www/video/tools/*.mjs www/video/stage/*.js; do node --check $$f || exit 1; done
 	@python3 -m py_compile www/video/tools/*.py www/video/voice/*.py
 	@for f in www/video/tools/*.sh .claude/hooks/*.sh; do bash -n $$f || exit 1; done
 	@printf '  film tools and hooks: syntax OK\n'
+
+## tokens: write the colours and font families in www/brand/tokens.json into
+## every surface's stylesheet (the generated blocks are committed)
+tokens:
+	@python3 www/brand/tokens.py
 
 ## web-check: every web module parses (js-check), and the pure-logic modules'
 ## unit tests pass

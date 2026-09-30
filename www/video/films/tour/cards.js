@@ -4,7 +4,7 @@
 // play it). film.js imports this only when a real stage builds the film, so
 // the plan-only checks (validate, framing) never load the kit.
 import { el, place, lerp, ramp, E } from "../../stage/stage.js";
-import { svgLayer, mark, textBlock } from "../../stage/kit.js";
+import { svgLayer, mark, textBlock, ink, inkA } from "../../stage/kit.js";
 
 // Where walk.js puts the recorded app (its default frame).
 const F = { x: 120, y: 70, w: 1680, h: 945 };
@@ -15,7 +15,7 @@ function scrim(layer, alpha) {
   const d = place(el("div", {}, layer), { x: F.x, y: F.y, w: F.w, h: F.h });
   Object.assign(d.style, {
     borderRadius: "14px",
-    background: `radial-gradient(90% 80% at 50% 46%, rgba(12,13,16,${alpha}) 0%, rgba(7,8,10,${Math.min(1, alpha + 0.08)}) 100%)`,
+    background: `radial-gradient(90% 80% at 50% 46%, ${inkA("--rack", alpha)} 0%, ${inkA("--bezel", Math.min(1, alpha + 0.08))} 100%)`,
   });
   return d;
 }
@@ -60,7 +60,7 @@ function titleCard(stage, b, l2) {
       const svg = svgLayer(layer);
       const { lock, wm, mk } = lockup(layer, svg, { cy: 470, size: 104 });
       const sub = textBlock(layer, { x: 960, y: 610, w: 1400, cls: "mono", size: 26, align: "center", ax: 0.5, ay: 0.5 });
-      Object.assign(sub.style, { letterSpacing: "0.26em", textTransform: "uppercase", color: "#9a958a" });
+      Object.assign(sub.style, { letterSpacing: "0.26em", textTransform: "uppercase", color: ink("--silk-dim") });
       sub.textContent = "a tour of the instrument";
       stage.sfx("whoosh", b.t0 - 0.35, -10);
       return (tl) => {
@@ -100,11 +100,11 @@ function endCard(stage, b, l6) {
       place(url, { x: 960, y: 590, ax: 0.5, ay: 0.5 });
       Object.assign(url.style, { fontSize: "28px", padding: "14px 32px" });
       const note = textBlock(layer, { x: 960, y: 672, w: 1400, cls: "mono", size: 21, align: "center", ax: 0.5, ay: 0.5 });
-      Object.assign(note.style, { letterSpacing: "0.14em", textTransform: "uppercase", color: "#6f6c63" });
+      Object.assign(note.style, { letterSpacing: "0.14em", textTransform: "uppercase", color: ink("--silk-mute") });
       note.textContent = "the instrument · the guide · a film for each view";
       // The last moment goes to black, frame and captions with it.
       const black = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
-      black.style.background = "#060708";
+      black.style.background = ink("--fade-black");
       const end = b.t1 - t0;
       return (tl) => {
         glass.style.opacity = ramp(tl, 0, 0.45, E.io2);

@@ -51,12 +51,13 @@ committed.
 www/
   landing/          the landing page
     index.html
-    style.css       inherits apps/web/style.css's tokens and its three laws
+    style.css       the instrument's tokens (colours from brand/tokens.json) and its three laws
     hero.js         the interactive duel — real WebAudio, real Bradley–Terry
     assets/
       screens/      real app screenshots (webp)
-  brand/            the marks, ONE source, copied into every consumer
+  brand/            the marks and the colour tokens, ONE source for every consumer
     index.html      the spec — lockups, construction, the icon set. Builds to /brand/
+    tokens.json     every colour and font family; `make tokens` (tokens.py) writes them into each stylesheet
     mark.svg        THE mark. Becomes every favicon.svg on the site
     mark-16.svg     the same mark hinted for a true 16px raster
     mark-active.svg the mark with one quadrant lit — a state, never a favicon
@@ -69,7 +70,7 @@ www/
     index.hbs       + the cross-site header; five marked divergences from mdBook's
     head.hbs
     highlight.css   phosphor code theme, serving both themes from one file
-    css/variables.css   the palette, for `coal` (rack) and `light` (paper)
+    css/variables.css   the palette, for `coal` (rack) and `light` (paper), generated from brand/tokens.json
     fonts/          the faces, the vendored KaTeX package, and auracle.css
     favicon.svg / favicon.png   gitignored — staged from brand/ by `make site-brand`
   docs/             the product guide  (book.toml + src/)

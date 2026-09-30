@@ -188,12 +188,12 @@ const VIEWS = ["PERFORM", "PATCH", "EVOLVE", "TASTE"];
 
 /** A row of the four view names; `lit(i)` → 0..1 glow and `color(i)`. */
 function viewsRow(layer, { x, y, size = 30, gap = 64 }) {
-  const { el, place, lerp, PHOS } = kit;
+  const { el, place, lerp, PHOS, ink, inkA } = kit;
   const row = place(el("div", {}, layer), { x, y, ay: 0.5 });
   Object.assign(row.style, { display: "flex", alignItems: "center", gap: `${gap}px`, whiteSpace: "nowrap" });
   const items = VIEWS.map((v) => {
     const s = el("span", { class: "silk" }, row, v);
-    Object.assign(s.style, { fontSize: `${size}px`, letterSpacing: "0.22em", color: "#6f6c63" });
+    Object.assign(s.style, { fontSize: `${size}px`, letterSpacing: "0.22em", color: ink("--silk-mute") });
     return s;
   });
   return {
@@ -203,9 +203,9 @@ function viewsRow(layer, { x, y, size = 30, gap = 64 }) {
       items.forEach((s, i) => {
         const g = glow[i] || { u: 0, c: "b" };
         const col = g.c === "a" ? PHOS.a : PHOS.b;
-        s.style.color = g.u > 0.02 ? col : "#6f6c63";
+        s.style.color = g.u > 0.02 ? col : ink("--silk-mute");
         s.style.opacity = String(lerp(0.55, 1, g.u));
-        s.style.textShadow = g.u > 0.02 ? `0 0 ${Math.round(18 * g.u)}px ${g.c === "a" ? "rgba(142,240,177,.55)" : "rgba(255,180,84,.6)"}` : "none";
+        s.style.textShadow = g.u > 0.02 ? `0 0 ${Math.round(18 * g.u)}px ${g.c === "a" ? inkA("--phos-a", 0.55) : inkA("--phos-b", 0.6)}` : "none";
       });
     },
   };
@@ -213,7 +213,7 @@ function viewsRow(layer, { x, y, size = 30, gap = 64 }) {
 
 /** The title: TASTE, fourth of the four views, over the map that just lit. */
 function titleCard(stage, b) {
-  const { el, place, ramp, lerp, E, svgLayer, mark, textBlock, PHOS } = kit;
+  const { el, place, ramp, lerp, E, svgLayer, mark, textBlock, PHOS, inkA } = kit;
   const l1 = stage.line("title1");
   stage.scene({
     id: "title-card",
@@ -224,14 +224,14 @@ function titleCard(stage, b) {
     z: 5,
     build(layer) {
       const scrim = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
-      scrim.style.background = "linear-gradient(90deg, rgba(7,8,10,.93) 0%, rgba(7,8,10,.82) 38%, rgba(7,8,10,.25) 70%, rgba(7,8,10,0) 100%)";
+      scrim.style.background = `linear-gradient(90deg, ${inkA("--bezel", 0.93)} 0%, ${inkA("--bezel", 0.82)} 38%, ${inkA("--bezel", 0.25)} 70%, ${inkA("--bezel", 0)} 100%)`;
       const svg = svgLayer(layer);
       const mk = mark(svg, { cx: 196, cy: 318, size: 92 });
       const eyebrow = textBlock(layer, { x: 262, y: 318, w: 900, cls: "eyebrow b", size: 22, ay: 0.5 });
       eyebrow.textContent = "Auracle · the four views";
       const big = textBlock(layer, { x: 146, y: 470, w: 1200, cls: "display", size: 196, ay: 0.5 });
       big.textContent = "TASTE";
-      Object.assign(big.style, { fontWeight: "400", letterSpacing: "0.16em", color: PHOS.b, textShadow: "0 0 34px rgba(255,180,84,.35)" });
+      Object.assign(big.style, { fontWeight: "400", letterSpacing: "0.16em", color: PHOS.b, textShadow: `0 0 34px ${inkA("--phos-b", 0.35)}` });
       const sub = textBlock(layer, { x: 152, y: 614, w: 1100, cls: "voice", size: 58, ay: 0.5 });
       sub.textContent = "what it learned about you";
       const views = viewsRow(layer, { x: 156, y: 742, size: 24, gap: 46 });
@@ -257,7 +257,7 @@ function titleCard(stage, b) {
 
 /** The outro: the last of the four views, where to go next, and the guide. */
 function outroCard(stage, b) {
-  const { el, place, ramp, E, svgLayer, mark, textBlock } = kit;
+  const { el, place, ramp, E, svgLayer, mark, textBlock, inkA } = kit;
   const o1 = stage.line("outro1");
   const o2 = stage.line("outro2");
   const o3 = stage.line("outro3");
@@ -276,7 +276,7 @@ function outroCard(stage, b) {
     z: 5,
     build(layer) {
       const scrim = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
-      scrim.style.background = "radial-gradient(120% 95% at 50% 45%, rgba(7,8,10,.80) 0%, rgba(7,8,10,.90) 60%, rgba(7,8,10,.96) 100%)";
+      scrim.style.background = `radial-gradient(120% 95% at 50% 45%, ${inkA("--bezel", 0.8)} 0%, ${inkA("--bezel", 0.9)} 60%, ${inkA("--bezel", 0.96)} 100%)`;
       const views = viewsRow(layer, { x: 960, y: 400, size: 40, gap: 80 });
       views.row.style.translate = "-50% -50%";
       const loop = textBlock(layer, { x: 960, y: 486, w: 1200, cls: "mono", size: 24, align: "center", ax: 0.5, ay: 0.5 });

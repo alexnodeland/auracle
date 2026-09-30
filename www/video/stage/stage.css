@@ -1,9 +1,9 @@
 /* The film stage: one 1920×1080 frame, drawn in the instrument's own
    materials — graphite faceplates, silk-screened type, and two phosphors.
-   Green is sound, amber is the model's mind; no third colour. The tokens are
-   the app's (apps/web/style.css) and the brand's (www/brand/index.html),
-   copied rather than invented, so a film cannot drift from the product it
-   shows. */
+   Green is sound, amber is the model's mind; no third colour. The colours are
+   the instrument's, generated from www/brand/tokens.json (`make tokens`) into
+   the block below, so a film cannot drift from the product it shows. The kit
+   and every film read them from here (`ink` in kit.js), never as literals. */
 
 @font-face {
   font-family: "Jost";
@@ -28,26 +28,107 @@
   font-style: italic;
 }
 
+/* tokens:begin: generated from www/brand/tokens.json by `make tokens`. Edit the JSON, not this block. */
 :root {
-  --rack: #0c0d10;
-  --panel: #171a1f;
-  --panel-hi: #1d2127;
-  --bezel: #07080a;
+  /* grounds */
+  --rack: #0c0d10;     /* the void behind the rack */
+  --panel: #171a1f;    /* graphite faceplate */
+  --panel-hi: #1d2127; /* raised surface */
+  --bezel: #07080a;    /* screen bezels */
   --hairline: #292e36;
-  --silk: #d9d4c8;
-  --silk-dim: #9a958a;
-  --silk-mute: #6f6c63;
-  --phos-a: #8ef0b1;
-  --phos-a-dim: #63a97c;
-  --phos-a-deep: #3d6a4d;
-  --phos-b: #ffb454;
-  --phos-b-dim: #b8823c;
+
+  /* machined graphite: the two faces of every raised control and the ink of
+     the shadow under it, one literal each, so a retune is one line */
+  --plate-hi: #232830;     /* util buttons, selects: top of the face */
+  --plate-lo: #181b21;     /*   …and the bottom */
+  --btn-hi: #2a2f37;       /* hardware buttons and pads: top of the face */
+  --btn-lo: #1a1d23;       /*   …and the bottom */
+  --btn-hover-hi: #333944; /* the same face under a pointer: one step up */
+  --btn-hover-lo: #1e2228;
+  --shadow-ink: #0a0b0d;   /* the hard shadow line under a raised control */
+  --knob-body: #22262d;    /* PERFORM's knob caps */
+
+  /* shared shades: one value, used on more than one surface */
+  --rack-lo: #0a0b0e;   /* below the rack: the landing page's foot, the docs' sidebar */
+  --panel-lo: #12151a;  /* the foot of a raised panel; the docs' quotes and search results */
+  --pop-lo: #14161a;    /* the foot of a floating surface and of the menu bar; the docs' pop-ups */
+  --recess-hi: #14171b; /* the top of a recessed panel (bank, node bank); a screw's shadow; an empty tile */
+  --lifted: #1a1e24;    /* a lifted strip: a held tray item's top, a table's header row */
+  --amber-off: #1a1410; /* an unlit amber cell: pips, lock dots */
+  --steel: #3a3f47;     /* bare steel: a screw head's highlight; the docs' scrollbar */
+
+  /* silk: warm silkscreen ink */
+  --silk: #d9d4c8;      /* 13.1:1 on rack */
+  --silk-dim: #9a958a;  /*  5.9:1: all dimmed TEXT */
+  --silk-mute: #6f6c63; /*  non-text only: hairlines, disabled glyphs */
+
+  /* green phosphor: sound. `-dim` is the text tier, `-deep` the stroke tier */
+  --phos-a: #8ef0b1;      /* 14.1:1 */
+  --phos-a-dim: #63a97c;  /*  5.2:1: knob values, readouts */
+  --phos-a-deep: #3d6a4d; /*  strokes and fills only */
+
+  /* amber phosphor: the model's mind */
+  --phos-b: #ffb454;      /* 11.0:1 */
+  --phos-b-dim: #b8823c;  /*  5.4:1: lineage log, notes */
+  --phos-b-deep: #7a5526; /*  strokes and fills only */
+
+  /* danger */
   --led-red: #ff5747;
+
+  /* light and shadow: never ink */
+  --black: #000000; /* shadow lines, the edge under a raised control, masks */
+  --white: #ffffff; /* highlights only, at an opacity; as ink it reads cold against silk */
+
+  /* stage: shades only this surface uses */
+  --frame-glow: #111318;     /* the frame's centre; a quote's box */
+  --frame-edge: #08090b;     /* the frame's corners */
+  --fade-black: #060708;     /* the tour's fade to black */
+  --slot: #0b0c0e;           /* a screw's slot; a black key; an unlit pip's rim */
+  --screw-lo: #15171b;       /* a screw head's shadow side (the lit side is --steel) */
+  --cap-hi: #3b4048;         /* a knob cap: lit side */
+  --cap-mid: #1b1e23;        /*   …middle */
+  --cap-lo: #111317;         /*   …and shadow side */
+  --pad-lo: #191c21;         /* a pad's foot (its top is --knob-body) */
+  --module-face: #181b20;    /* a module plate in a grid of them */
+  --module-screw: #2a2e35;   /*   …its screws */
+  --plate-off: #1f232a;      /* an unlit chapter plate */
+  --plate-off-edge: #2e343d; /*   …its edge */
+  --gauge-track: #2a2319;    /* an amber gauge's empty track */
+  --gauge-frame: #3a2d1a;    /* an amber diagram's frame */
+  --cursor: #f4f1ea;         /* the pointer the films draw */
+  --phos-a-pulse: #eafff2;   /* the white-hot head of a green trace; a signal pulse */
+  --phos-b-pulse: #fff1dc;   /* an amber signal pulse */
+  --phos-b-hot: #ffd08a;     /* a walker, a head, a marker: amber, one step hotter */
+  --phos-b-flash: #ffe2b8;   /* what amber flashes toward */
+
+  /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
+     (`--phos-a-045` is 4.5%) */
+  --phos-a-12: rgba(142, 240, 177, 0.12);
+  --phos-a-35: rgba(142, 240, 177, 0.35);
+  --phos-a-45: rgba(142, 240, 177, 0.45);
+  --phos-a-90: rgba(142, 240, 177, 0.9);
+  --phos-b-40: rgba(255, 180, 84, 0.4);
+  --phos-b-50: rgba(255, 180, 84, 0.5);
+  --phos-b-90: rgba(255, 180, 84, 0.9);
+  --black-55: rgba(0, 0, 0, 0.55);
+  --black-60: rgba(0, 0, 0, 0.6);
+  --black-90: rgba(0, 0, 0, 0.9);
+  --white-025: rgba(255, 255, 255, 0.025);
+  --white-07: rgba(255, 255, 255, 0.07);
+  --bezel-66: rgba(7, 8, 10, 0.66);
+  --bezel-78: rgba(7, 8, 10, 0.78);
+  --bezel-82: rgba(7, 8, 10, 0.82);
+
+  /* families */
   --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  --font-voice: "Newsreader", Georgia, serif;
-  --glow-a: drop-shadow(0 0 3px rgba(142, 240, 177, 0.9)) drop-shadow(0 0 14px rgba(142, 240, 177, 0.35));
-  --glow-b: drop-shadow(0 0 3px rgba(255, 180, 84, 0.9)) drop-shadow(0 0 16px rgba(255, 180, 84, 0.4));
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+}
+/* tokens:end */
+
+:root {
+  --glow-a: drop-shadow(0 0 3px var(--phos-a-90)) drop-shadow(0 0 14px var(--phos-a-35));
+  --glow-b: drop-shadow(0 0 3px var(--phos-b-90)) drop-shadow(0 0 16px var(--phos-b-40));
 }
 
 * { box-sizing: border-box; }
@@ -70,7 +151,7 @@ body { overflow: hidden; }
   width: 1920px;
   height: 1080px;
   overflow: hidden;
-  background: radial-gradient(120% 90% at 50% 45%, #111318 0%, var(--rack) 62%, #08090b 100%);
+  background: radial-gradient(120% 90% at 50% 45%, var(--frame-glow) 0%, var(--rack) 62%, var(--frame-edge) 100%);
   transform-origin: 0 0;
 }
 .layer {
@@ -100,7 +181,7 @@ body { overflow: hidden; }
   inset: 0;
   z-index: 1000;
   pointer-events: none;
-  background: radial-gradient(130% 100% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.55) 100%);
+  background: radial-gradient(130% 100% at 50% 50%, transparent 58%, var(--black-55) 100%);
 }
 
 /* ---- type ------------------------------------------------------------- */
@@ -141,8 +222,8 @@ body { overflow: hidden; }
   color: var(--phos-a-dim);
 }
 .eyebrow.b { color: var(--phos-b-dim); }
-.ga { color: var(--phos-a); text-shadow: 0 0 18px rgba(142, 240, 177, 0.45); }
-.gb { color: var(--phos-b); text-shadow: 0 0 18px rgba(255, 180, 84, 0.5); }
+.ga { color: var(--phos-a); text-shadow: 0 0 18px var(--phos-a-45); }
+.gb { color: var(--phos-b); text-shadow: 0 0 18px var(--phos-b-50); }
 
 /* A word revealed with the voice. Each word is its own span; the stage sets
    --u from 0 to 1 as the narrator reaches it. */
@@ -175,13 +256,13 @@ body { overflow: hidden; }
   background: linear-gradient(180deg, var(--panel-hi), var(--panel));
   border: 1px solid var(--hairline);
   border-radius: 10px;
-  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.07), 0 18px 50px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 1px 1px 0 var(--white-07), 0 18px 50px var(--black-55);
 }
 .screen {
   position: absolute;
   background: var(--bezel);
   border-radius: 6px;
-  box-shadow: inset 0 0 0 1px #000, inset 0 2px 14px rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 0 0 1px var(--black), inset 0 2px 14px var(--black-90);
   overflow: hidden;
 }
 .screen::after {
@@ -189,7 +270,7 @@ body { overflow: hidden; }
   content: "";
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px);
+  background: repeating-linear-gradient(180deg, var(--white-025) 0 1px, transparent 1px 3px);
   pointer-events: none;
 }
 .screw {
@@ -197,8 +278,8 @@ body { overflow: hidden; }
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #3a3f47, #15171b 70%);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 35% 30%, var(--steel), var(--screw-lo) 70%);
+  box-shadow: inset 0 0 0 1px var(--black-60);
 }
 .screw::after {
   content: "";
@@ -207,7 +288,7 @@ body { overflow: hidden; }
   right: 2px;
   top: 5px;
   height: 2px;
-  background: #0b0c0e;
+  background: var(--slot);
   transform: rotate(var(--r, 35deg));
 }
 
@@ -236,7 +317,7 @@ body { overflow: hidden; }
   transform: translateX(-50%);
   max-width: 1400px;
   padding: 10px 22px;
-  background: rgba(7, 8, 10, 0.78);
+  background: var(--bezel-78);
   border-radius: 6px;
   font-family: var(--font-silk);
   font-size: 40px;
@@ -253,7 +334,7 @@ body { overflow: hidden; }
   bottom: 12px;
   font: 12px var(--font-mono);
   color: var(--silk-dim);
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--black-60);
   padding: 6px 10px;
   border-radius: 6px;
   z-index: 10;

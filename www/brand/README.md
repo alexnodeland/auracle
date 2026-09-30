@@ -1,9 +1,11 @@
 # Brand
 
-The marks live here once. Everything else in the repo is a copy made at build
-time, which is the point: before this directory existed there were three
-different Auracle icons in circulation — a ring-and-pip in the site favicon, an
-unrelated base64 PNG inlined in the app, and a `🎼` at the top of the README.
+The marks and the colour tokens live here once. Everything else in the repo is
+a copy (the marks copied at build time, the tokens generated into each
+stylesheet by `make tokens`), which is the point: before this directory existed
+there were three different Auracle icons in circulation — a ring-and-pip in the
+site favicon, an unrelated base64 PNG inlined in the app, and a `🎼` at the top
+of the README — and six hand copies of the palette that had begun to disagree.
 
 `index.html` is the full specification — the lockups, the construction rules,
 the tracking ramp, the icon set, and the rule behind each. It builds to
@@ -50,6 +52,83 @@ whether an icon set is real: it names things the product already names.
 `make site-extras` stages them to `site/brand/icon-set/`. Wiring them into the
 app's view tabs or the guide's chapter heads is a change to a working
 instrument, and belongs in its own commit.
+
+## The tokens
+
+`tokens.json` is the one source of every colour and font family on every
+surface: the app, the landing page, the docs theme, this brand page, the 404
+and the film stage. It holds:
+
+- **the palettes**: the rack (the instrument's dark palette, in the tiers the
+  app has always named: `rack`, `panel`, `hairline`, the plate and button
+  faces, `silk`/`silk-dim`/`silk-mute`, the two phosphors with their `-dim`
+  text tier and `-deep` stroke tier, `led-red`, and the few shades more than
+  one surface uses), and Paper, the docs' light theme; `black` and `white`,
+  for shadows and highlights only, go with both;
+- **the font families**: `--font-silk`, `--font-mono`, `--font-voice`;
+- **each surface's own named shades** (a value only that surface uses, such as
+  the keybed's white keys) and **the opacities it uses** of any token.
+  `--phos-b-30` is `--phos-b` at 30%; a third digit is a tenth, so
+  `--phos-a-045` is green at 4.5%. An opacity is generated as `rgba()`, not
+  `color-mix()`: a gradient with a `color-mix()` colour in it interpolates in
+  Oklab rather than sRGB, and moved pixels.
+
+A token's `note` (a contrast ratio, the role it plays) is written into the CSS
+beside it.
+
+    make tokens
+
+writes them into each consumer's stylesheet, between `/* tokens:begin … */`
+and `/* tokens:end */`. The blocks are committed, like the film blocks
+`publish.py` fills, so the app and the site still serve with no build step.
+Edit the JSON, never a block. The consumers, and which surface each reads, are
+listed at the top of `tokens.py`.
+
+Scripts read the same tokens, because a canvas or an SVG attribute cannot use
+a custom property: `tok()` in the app's `main.js`, `ink()` in the landing
+page's `hero.js`, and `ink()`/`inkA()` exported by the film kit
+(`www/video/stage/kit.js`), which every film uses. Each reads
+`getComputedStyle(document.documentElement)` once per name.
+
+`make dev-check` runs `tokens.py --check`. It fails when `tokens.json` holds
+something that is not a colour, when a block is stale, and on a colour written
+outside a block in any of these (the `SCANNED` list in `tokens.py`):
+
+- the app: `apps/web/*.css`, `*.js` and `index.html`;
+- the landing page: `www/landing/*.css`, `*.js` and `index.html`;
+- the docs theme: `www/theme/css/*.css`, `highlight.css` and `index.hbs`;
+- the brand page and the 404: `www/brand/*.html` (not `render.html`) and
+  `www/404.html`;
+- the films: `www/video/stage/*.css`, `*.js` and `*.html` (the stage, the kit,
+  the poster), and every film's `film.js`, `cards.js` and `index.html`.
+
+A colour there is a hex, an `rgb()`/`rgba()` or `hsl()`, an `"r,g,b"` string in
+a script, or a CSS named colour (`white`, `rebeccapurple` …) used as a colour:
+in a declaration's value, an SVG colour attribute, an inline style or a
+script's colour property. `transparent`, `currentColor` and `inherit` pass,
+comments are not read, and a word like "green" in prose or a script's own
+names is not a colour. It also fails when a script reads a token its surface
+does not define, when a stylesheet uses a token another surface owns, when a
+`theme-color` is not the rack, and when a hex quoted in prose
+(`<code>#0c0d10</code>`) is not a token's value.
+
+**Not checked yet** (`NOT_YET` in `tokens.py`, which `--check` lists every
+time it runs), each waiting on a token decision rather than a substitution:
+
+- `www/viz/viz.js` and `viz.css`, the live figures: the grammar figure fills
+  its tiles with the dark theme's phosphors as `rgba()` literals, which is
+  wrong on the docs' Paper theme, and their `var()` fallbacks are literals;
+- `www/theme/fonts/auracle.css`: a film's ground is `var(--bezel, #07080a)`,
+  and Paper defines no `--bezel`, so on Paper the literal is what shows;
+- `render.html`: a hand copy of six tokens, with the marks work (Plan-004
+  task 3).
+
+Never scanned: the marks (`*.svg`, assets a favicon slot reads without CSS)
+and `docs/notes/` (dated records). A new colour is a token first: add it to
+`tokens.json`, run `make tokens`, then use it. `test_tokens.py`, also run by
+`make dev-check`, plants each kind of stray colour in a copy of the tree and
+expects the check to fail on it, and holds the two drifts the tokens closed
+(the films' deep amber, the brand page's lamp) in place.
 
 ## Regenerating the rasters
 

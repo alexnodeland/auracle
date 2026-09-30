@@ -6,20 +6,29 @@
 const $ = (id) => document.getElementById(id);
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// Canvas has no access to CSS custom properties, so read the token layer once
-// at boot. Everything drawn into a <canvas> uses these — otherwise the painted
-// surfaces (scopes, taste map, lineage) drift away from the styled ones every
-// time the palette moves.
-const cssVar = (name, fallback) =>
-  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+// Canvas and SVG attributes have no access to CSS custom properties, so the
+// painted surfaces (scopes, taste map, lineage, the rack's defs) read the token
+// layer through `tok`, once per name. Every colour comes from
+// www/brand/tokens.json by way of style.css, or the painted surfaces drift
+// away from the styled ones every time the palette moves; `make dev-check`
+// fails on a colour written here.
+const TOKENS = new Map();
+function tok(name) {
+  let v = TOKENS.get(name);
+  if (v === undefined) {
+    v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (v) TOKENS.set(name, v);
+  }
+  return v;
+}
 const INK = {
-  silk: cssVar("--silk", "#d9d4c8"),
-  silkDim: cssVar("--silk-dim", "#9a958a"),
-  green: cssVar("--phos-a", "#8ef0b1"),
-  greenDim: cssVar("--phos-a-dim", "#63a97c"),
-  amber: cssVar("--phos-b", "#ffb454"),
-  amberDim: cssVar("--phos-b-dim", "#b8823c"),
-  amberDeep: cssVar("--phos-b-deep", "#7a5526"),
+  silk: tok("--silk"),
+  silkDim: tok("--silk-dim"),
+  green: tok("--phos-a"),
+  greenDim: tok("--phos-a-dim"),
+  amber: tok("--phos-b"),
+  amberDim: tok("--phos-b-dim"),
+  amberDeep: tok("--phos-b-deep"),
 };
 // Two phosphors and silk, and nothing else: every other colour the canvases
 // and the inline styles use is made *from* these tokens, so no third hue can
@@ -8971,18 +8980,18 @@ function buildRack(svg, rack, opts) {
   // one lamp rather than a collage.
   defs.innerHTML = `
     <linearGradient id="plateGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#22272f"/><stop offset="1" stop-color="#13161a"/>
+      <stop offset="0" stop-color="${tok("--module-hi")}"/><stop offset="1" stop-color="${tok("--module-lo")}"/>
     </linearGradient>
     <radialGradient id="knobGrad" cx="0.35" cy="0.3" r="0.9">
-      <stop offset="0" stop-color="#3b414c"/><stop offset="0.7" stop-color="#20242b"/>
-      <stop offset="1" stop-color="#101216"/>
+      <stop offset="0" stop-color="${tok("--knob-hi")}"/><stop offset="0.7" stop-color="${tok("--knob-mid")}"/>
+      <stop offset="1" stop-color="${tok("--recess-lo")}"/>
     </radialGradient>
     <radialGradient id="jackNut" cx="0.35" cy="0.3" r="0.85">
-      <stop offset="0" stop-color="#4a505b"/><stop offset="1" stop-color="#1a1d22"/>
+      <stop offset="0" stop-color="${tok("--nut-hi")}"/><stop offset="1" stop-color="${tok("--nut-lo")}"/>
     </radialGradient>
     <linearGradient id="bevelTop" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.13"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0" stop-color="${tok("--white")}" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="${tok("--white")}" stop-opacity="0"/>
     </linearGradient>
     <!-- One blur reads as a CSS card: a single soft shadow puts the plate at
          a constant distance from a surface it never touches. An object
@@ -8992,22 +9001,22 @@ function buildRack(svg, rack, opts) {
          shadow of the contact shadow. -->
     <filter id="plateShadow" x="-40%" y="-40%" width="200%" height="220%">
       <feDropShadow in="SourceGraphic" dx="0" dy="1" stdDeviation="1"
-                    flood-color="#000" flood-opacity="0.8" result="contact"/>
+                    flood-color="${tok("--black")}" flood-opacity="0.8" result="contact"/>
       <feDropShadow in="SourceGraphic" dx="0" dy="5" stdDeviation="7"
-                    flood-color="#000" flood-opacity="0.35" result="cast"/>
+                    flood-color="${tok("--black")}" flood-opacity="0.35" result="cast"/>
       <feMerge><feMergeNode in="cast"/><feMergeNode in="contact"/></feMerge>
     </filter>
     <g id="screw">
       <circle r="3.1" fill="url(#jackNut)"/>
-      <path d="M -2 0.6 L 2 -0.6" stroke="#07080a" stroke-width="0.9" stroke-linecap="round"/>
+      <path d="M -2 0.6 L 2 -0.6" stroke="${tok("--bezel")}" stroke-width="0.9" stroke-linecap="round"/>
     </g>
     <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
-      <circle cx="1.2" cy="1.2" r="1.05" fill="rgba(255,255,255,0.025)"/>
+      <circle cx="1.2" cy="1.2" r="1.05" fill="${inkAlpha(tok("--white"), 0.025)}"/>
     </pattern>
     <radialGradient id="patchPool" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.045"/>
-      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.018"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0" stop-color="${tok("--white")}" stop-opacity="0.045"/>
+      <stop offset="0.55" stop-color="${tok("--white")}" stop-opacity="0.018"/>
+      <stop offset="1" stop-color="${tok("--white")}" stop-opacity="0"/>
     </radialGradient>`;
   svg.appendChild(defs);
 
@@ -17673,7 +17682,7 @@ function scopeApply() {
 // the canvas rather than in CSS so it scales with the device pixel ratio the
 // trace is drawn at, and so a frozen trace keeps its grid.
 function scopeGraticule(ctx, w, h, dpr) {
-  ctx.strokeStyle = "rgba(142,240,177,0.06)";
+  ctx.strokeStyle = inkAlpha(INK.green, 0.06);
   ctx.lineWidth = Math.max(1, dpr * 0.5);
   ctx.beginPath();
   for (let i = 1; i < 8; i++) {
@@ -17876,7 +17885,7 @@ function scopeCtx(canvas) {
 function clearScope(canvas) {
   const ctx = scopeCtx(canvas);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawGraticule(ctx, canvas.width, canvas.height, "rgba(142,240,177,0.07)");
+  drawGraticule(ctx, canvas.width, canvas.height, inkAlpha(INK.green, 0.07));
 }
 
 function drawGraticule(ctx, w, h, color) {
@@ -17894,20 +17903,20 @@ function drawWave(canvas, data) {
   if (w === 0) return;
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
-  drawGraticule(ctx, w, h, "rgba(142,240,177,0.07)");
+  drawGraticule(ctx, w, h, inkAlpha(INK.green, 0.07));
   const mid = h / 2;
 
   // Two candidates rendered as bare envelopes are two green blobs. A zero
   // line, a full-scale reference and the note boundaries make them readable
   // as *the same measurement* — which is the whole point of an A/B.
-  ctx.strokeStyle = "rgba(142,240,177,0.28)";
+  ctx.strokeStyle = inkAlpha(INK.green, 0.28);
   ctx.lineWidth = 1 * dpr;
   ctx.beginPath();
   ctx.moveTo(0, mid);
   ctx.lineTo(w, mid);
   ctx.stroke();
   ctx.setLineDash([3 * dpr, 4 * dpr]);
-  ctx.strokeStyle = "rgba(142,240,177,0.16)";
+  ctx.strokeStyle = inkAlpha(INK.green, 0.16);
   for (const f of [0.92, -0.92]) {
     ctx.beginPath();
     ctx.moveTo(0, mid - f * mid * 0.92);
@@ -17922,7 +17931,7 @@ function drawWave(canvas, data) {
   const step = Math.max(1, Math.floor(data.length / w));
   ctx.strokeStyle = INK.green;
   ctx.lineWidth = 1.4;
-  ctx.shadowColor = "rgba(142,240,177,0.8)";
+  ctx.shadowColor = inkAlpha(INK.green, 0.8);
   ctx.shadowBlur = 6;
   ctx.beginPath();
   for (let x = 0; x < w; x++) {
@@ -18230,7 +18239,7 @@ function drawTaste() {
   if (w === 0) return;
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
-  drawGraticule(ctx, w, h, "rgba(255,180,84,0.06)");
+  drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.06));
   renderStyleChips();
   mapHits = [];
 
@@ -18269,7 +18278,7 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
   const sx = (p) => x0 + p * side;
   const sy = (p) => y0 + (1 - p) * side;
 
-  ctx.strokeStyle = "rgba(255,180,84,0.22)";
+  ctx.strokeStyle = inkAlpha(INK.amber, 0.22);
   ctx.lineWidth = 1 * dpr;
   ctx.strokeRect(x0, y0, side, side);
   ctx.setLineDash([4 * dpr, 4 * dpr]);
@@ -18304,7 +18313,7 @@ function drawTrustFromEngine(ctx, w, h, dpr, E) {
     const centre = (b.observed + (z * z) / (2 * b.n)) / denom;
     const half =
       (z * Math.sqrt((b.observed * (1 - b.observed)) / b.n + (z * z) / (4 * b.n * b.n))) / denom;
-    ctx.strokeStyle = "rgba(255,180,84,0.4)";
+    ctx.strokeStyle = inkAlpha(INK.amber, 0.4);
     ctx.lineWidth = 1 * dpr;
     ctx.beginPath();
     ctx.moveTo(bx, sy(Math.min(1, centre + half)));
@@ -18529,7 +18538,7 @@ function drawStylesTab(ctx, w, h, dpr) {
     // The centre line a guess's whisker crosses, as in DIRECTIONS.
     const rowsFit = Math.max(0, Math.min(5, Math.floor((blockH / dpr - 8 - 42) / 18) + 1));
     if (rowsFit > 0) {
-      ctx.strokeStyle = "rgba(255,180,84,0.28)";
+      ctx.strokeStyle = inkAlpha(INK.amber, 0.28);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(cx, y0 + 34 * dpr);
@@ -18550,7 +18559,7 @@ function drawStylesTab(ctx, w, h, dpr) {
     });
     ctx.globalAlpha = 1;
     if (row > 0) {
-      ctx.strokeStyle = "rgba(255,180,84,0.12)";
+      ctx.strokeStyle = inkAlpha(INK.amber, 0.12);
       ctx.beginPath();
       ctx.moveTo(10 * dpr, y0);
       ctx.lineTo(w - 10 * dpr, y0);
@@ -18591,7 +18600,7 @@ function drawDirectionsTab(ctx, w, h, dpr) {
     usable,
   );
 
-  ctx.strokeStyle = "rgba(255,180,84,0.28)";
+  ctx.strokeStyle = inkAlpha(INK.amber, 0.28);
   ctx.beginPath(); ctx.moveTo(cx, rowH * 0.4); ctx.lineTo(cx, h - rowH * 0.4); ctx.stroke();
 
   // Nothing is drawn past the half-width — a cut whisker ends in an arrowhead
@@ -18837,7 +18846,7 @@ function drawLineage() {
   if (w === 0) return;
   const dpr = window.devicePixelRatio || 1;
   ctx.clearRect(0, 0, w, h);
-  drawGraticule(ctx, w, h, "rgba(255,180,84,0.05)");
+  drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.05));
 
   // One point per step, oldest to newest: the child's predicted score as the
   // model saw it when the step was made (amber bred, green your edit). The
@@ -18849,7 +18858,7 @@ function drawLineage() {
     const sx = (i) => 8 * dpr + (i / Math.max(1, us.length - 1)) * (w - 16 * dpr);
     const sy = (u) => h - 8 * dpr - ((u - u0) / (u1 - u0)) * (h - 16 * dpr);
     ctx.strokeStyle = INK.amber;
-    ctx.shadowColor = "rgba(255,180,84,0.7)";
+    ctx.shadowColor = inkAlpha(INK.amber, 0.7);
     ctx.shadowBlur = 5;
     ctx.lineWidth = 1.4;
     ctx.beginPath();
@@ -18857,7 +18866,7 @@ function drawLineage() {
     ctx.stroke();
     ctx.shadowBlur = 0;
     us.forEach((u, i) => {
-      ctx.fillStyle = lineage[i].kind === "edit" ? "#8ef0b1" : "#ffb454";
+      ctx.fillStyle = lineage[i].kind === "edit" ? INK.green : INK.amber;
       ctx.beginPath();
       ctx.arc(sx(i), sy(u), 2 * dpr, 0, Math.PI * 2);
       ctx.fill();
@@ -19655,9 +19664,9 @@ async function buildExportSvg(rack, opts) {
     grad.setAttribute("id", "exportBg");
     grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0");
     grad.setAttribute("x2", "0"); grad.setAttribute("y2", "1");
-    // The frame's own background, literal rather than tokenised: this one
-    // lives in `.rack-scroll`, which is not an element the export renders.
-    grad.innerHTML = '<stop offset="0" stop-color="#0b0c0f"/><stop offset="1" stop-color="#0e1013"/>';
+    // The frame's own background, `.rack-scroll`'s, which is not an element
+    // the export renders, so it is read off the tokens rather than the page.
+    grad.innerHTML = `<stop offset="0" stop-color="${tok("--rack-bed-hi")}"/><stop offset="1" stop-color="${tok("--rack-bed-lo")}"/>`;
     ground.appendChild(grad);
     const rect = document.createElementNS(SVG_NS, "rect");
     rect.setAttribute("x", String(x)); rect.setAttribute("y", String(y));
@@ -20073,7 +20082,7 @@ function bootField(pool, target) {
     bootDots.push({ x: 0.5 + 0.44 * rad * Math.cos(a), y: 0.5 + 0.44 * rad * Math.sin(a) });
   }
   ctx.clearRect(0, 0, w, h);
-  drawGraticule(ctx, w, h, "rgba(255,180,84,0.05)");
+  drawGraticule(ctx, w, h, inkAlpha(INK.amber, 0.05));
   for (let i = 0; i < bootDots.length; i++) {
     const d = bootDots[i];
     const age = Math.min(1, (bootDots.length - i) / 6);

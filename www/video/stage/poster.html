@@ -22,7 +22,7 @@
     content: "";
     position: absolute;
     inset: 55% 0 0 0;
-    background: linear-gradient(180deg, transparent, rgba(7, 8, 10, 0.82));
+    background: linear-gradient(180deg, transparent, var(--bezel-82));
   }
   /* Bottom-left, with the caption beside it: the frame's centre is its
      subject (the launch film's is the logotype). */
@@ -34,8 +34,8 @@
     height: 112px;
     border-radius: 50%;
     border: 3px solid var(--phos-a);
-    background: rgba(7, 8, 10, 0.66);
-    box-shadow: 0 0 44px rgba(142, 240, 177, 0.35), inset 0 0 24px rgba(142, 240, 177, 0.12);
+    background: var(--bezel-66);
+    box-shadow: 0 0 44px var(--phos-a-35), inset 0 0 24px var(--phos-a-12);
     display: grid;
     place-items: center;
     z-index: 1;
@@ -67,7 +67,7 @@
 </head>
 <body>
 <div id="poster">
-  <div class="badge"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0 L10 6 L0 12 Z" fill="#8ef0b1"/></svg></div>
+  <div class="badge"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0 L10 6 L0 12 Z" style="fill: var(--phos-a)"/></svg></div>
   <div class="cap"><span class="what" id="what">Watch the film</span><span class="len" id="len"></span></div>
 </div>
 <script>

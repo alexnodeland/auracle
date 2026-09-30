@@ -8,6 +8,18 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — one source for colour
+
+- **The app, the website and the films take every colour from one file,
+  `www/brand/tokens.json`, and the repo's checks fail on a colour written
+  anywhere else.** The palette used to be copied by hand into six places, and
+  the copies had drifted: the films drew their darker amber as `#6e4d22` where
+  everything else used `#7a5526`, and the brand page lit the E of AURACLE
+  green where the app lights it amber, the colour that means the model is
+  working. Both now match, and nothing else looks different. The published
+  films were made with the old amber and change when they are next rendered
+  (`test_tokens.py`).
+
 ### Fixed — a patch keeps its name
 
 - **A patch keeps its name when the bank changes around it.** Names are read

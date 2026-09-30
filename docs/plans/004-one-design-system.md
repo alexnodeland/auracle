@@ -42,6 +42,23 @@ and printed key hints are built here; its other contracts stay in
    film stage, film kit. Hand copies are removed and the deep-amber drift is
    resolved. `make dev-check` fails on a colour, size or duration outside the
    tokens and on a raw hex in a rule.
+   - *Progress (2026-09-30):* **colour and the font families are done.**
+     `www/brand/tokens.json` holds the rack and Paper palettes, the families,
+     and each surface's own shades and opacities; `make tokens`
+     (`www/brand/tokens.py`) writes them into the app, the landing page, the
+     docs theme, the brand page, the 404 and the film stage, and the kit and
+     films read them with `ink()`. The deep-amber drift is resolved and the
+     brand page's lamp is amber. `tokens.py --check` and `test_tokens.py` run
+     in `make dev-check` and fail on a colour (hex, `rgb()`, `hsl()` or a
+     named one) written outside the tokens in every file on its `SCANNED`
+     list ([`www/brand/README.md`](../../www/brand/README.md#the-tokens)).
+   - *Still to do:* the type scale, spacing, radii and motion tokens, each
+     with its approved specimen (task 4), and the check on sizes and
+     durations. Not yet checked for colour (`NOT_YET` in `tokens.py`):
+     `www/viz/viz.js` and `viz.css` (the grammar figure's tiles glow in the
+     dark theme's phosphors, wrong on Paper), `www/theme/fonts/auracle.css`
+     (a literal fallback for `--bezel`, which Paper lacks) and
+     `www/brand/render.html` (a hand copy of six tokens, with task 3).
 2. **Voice guide** (part 2): `www/brand/voice.md` with its audiences, four
    registers, claims and spelling. ADR-004's copy rules, the `AGENTS.md` files,
    the docs-writer agent, the changelog skill and `VIEWS.md` point to it. The

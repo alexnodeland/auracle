@@ -6,12 +6,36 @@
 
 import { el, place, clamp, lerp, ramp, E, rng, noise1 } from "./stage.js";
 
-export const PHOS = { a: "#8ef0b1", b: "#ffb454" };
-export const PHOS_DIM = { a: "#63a97c", b: "#b8823c" };
-export const PHOS_DEEP = { a: "#3d6a4d", b: "#6e4d22" };
+// Every colour is a token of the stage's (stage.css, generated from
+// www/brand/tokens.json), read once per name: an SVG attribute cannot use a
+// custom property, and a film drawn in literals drifts from the product it
+// shows. `make dev-check` fails on a colour written in the kit or a film.
+const TOKENS = new Map();
+/** A token's value: `ink("--phos-a")` is "#8ef0b1". */
+export function ink(name) {
+  let v = TOKENS.get(name);
+  if (v === undefined) {
+    v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!v) throw new Error(`no colour token ${name} in stage.css`);
+    TOKENS.set(name, v);
+  }
+  return v;
+}
+/** A token at an opacity, as rgba(): `inkA("--phos-a", 0.5)`. */
+export function inkA(name, a) {
+  const h = ink(name);
+  // Only an opaque #rrggbb token has an opacity to set; say so for anything else.
+  if (!/^#[0-9a-f]{6}$/i.test(h)) throw new Error(`inkA(${name}): needs a #rrggbb token, got "${h}"`);
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+export const PHOS = { a: ink("--phos-a"), b: ink("--phos-b") };
+export const PHOS_DIM = { a: ink("--phos-a-dim"), b: ink("--phos-b-dim") };
+export const PHOS_DEEP = { a: ink("--phos-a-deep"), b: ink("--phos-b-deep") };
 const GLOW = {
-  a: "drop-shadow(0 0 2.5px rgba(142,240,177,.95)) drop-shadow(0 0 12px rgba(142,240,177,.38))",
-  b: "drop-shadow(0 0 2.5px rgba(255,180,84,.95)) drop-shadow(0 0 14px rgba(255,180,84,.42))",
+  a: `drop-shadow(0 0 2.5px ${inkA("--phos-a", 0.95)}) drop-shadow(0 0 12px ${inkA("--phos-a", 0.38)})`,
+  b: `drop-shadow(0 0 2.5px ${inkA("--phos-b", 0.95)}) drop-shadow(0 0 14px ${inkA("--phos-b", 0.42)})`,
 };
 
 /** A full-frame SVG in a layer. */
@@ -53,7 +77,7 @@ export function scope(parent, { x, y, w, h, color = "a", width = 3, points = 360
     { fill: "none", stroke: PHOS[color], "stroke-width": width, "stroke-linejoin": "round", "stroke-linecap": "round" },
     g,
   );
-  const head = el("circle", { r: width * 1.6, fill: "#fff", opacity: 0 }, g);
+  const head = el("circle", { r: width * 1.6, fill: ink("--white"), opacity: 0 }, g);
   let fn = wave || voiceWave();
   const api = {
     g,
@@ -109,7 +133,7 @@ export function knob(parent, { cx, cy, r = 38, label = null, color = "a", labelS
     return `M${p0[0].toFixed(2)} ${p0[1].toFixed(2)}A${rr} ${rr} 0 ${large} 1 ${p1[0].toFixed(2)} ${p1[1].toFixed(2)}`;
   };
   const ringOff = Math.max(5, r * 0.24);
-  el("path", { d: arcPath(1, r + ringOff), fill: "none", stroke: "#292e36", "stroke-width": Math.max(2, r * 0.08), "stroke-linecap": "round" }, g);
+  el("path", { d: arcPath(1, r + ringOff), fill: "none", stroke: ink("--hairline"), "stroke-width": Math.max(2, r * 0.08), "stroke-linecap": "round" }, g);
   const arcG = el("g", {}, g);
   if (glow) arcG.style.filter = GLOW[color];
   const arcW = Math.max(2.2, r * 0.095);
@@ -118,12 +142,12 @@ export function knob(parent, { cx, cy, r = 38, label = null, color = "a", labelS
   const capId = `cap${Math.floor(cx)}_${Math.floor(cy)}`;
   const defs = el("defs", {}, g);
   const rg = el("radialGradient", { id: capId, cx: "38%", cy: "30%", r: "75%" }, defs);
-  el("stop", { offset: "0%", "stop-color": "#3b4048" }, rg);
-  el("stop", { offset: "70%", "stop-color": "#1b1e23" }, rg);
-  el("stop", { offset: "100%", "stop-color": "#111317" }, rg);
-  el("circle", { cx, cy: cy + 3, r, fill: "rgba(0,0,0,.55)" }, g);
-  el("circle", { cx, cy, r, fill: `url(#${capId})`, stroke: "#07080a", "stroke-width": 1.5 }, g);
-  const ptr = el("line", { x1: cx, y1: cy - r * 0.28, x2: cx, y2: cy - r * 0.86, stroke: "#d9d4c8", "stroke-width": Math.max(1.6, r * 0.085), "stroke-linecap": "round" }, g);
+  el("stop", { offset: "0%", "stop-color": ink("--cap-hi") }, rg);
+  el("stop", { offset: "70%", "stop-color": ink("--cap-mid") }, rg);
+  el("stop", { offset: "100%", "stop-color": ink("--cap-lo") }, rg);
+  el("circle", { cx, cy: cy + 3, r, fill: inkA("--black", 0.55) }, g);
+  el("circle", { cx, cy, r, fill: `url(#${capId})`, stroke: ink("--bezel"), "stroke-width": 1.5 }, g);
+  const ptr = el("line", { x1: cx, y1: cy - r * 0.28, x2: cx, y2: cy - r * 0.86, stroke: ink("--silk"), "stroke-width": Math.max(1.6, r * 0.085), "stroke-linecap": "round" }, g);
   let text = null;
   if (label) {
     text = el(
@@ -132,7 +156,7 @@ export function knob(parent, { cx, cy, r = 38, label = null, color = "a", labelS
         x: cx,
         y: cy + r + 36,
         "text-anchor": "middle",
-        fill: "#d9d4c8",
+        fill: ink("--silk"),
         "font-family": "Jost",
         "font-weight": 500,
         "font-size": labelSize,
@@ -171,15 +195,15 @@ export function cable(parent, { p0, p1, sag = 80, color = "a", width = 5 }) {
     const my = Math.max(p0[1], p1[1]) + sag;
     return `M${p0[0]} ${p0[1]} C${lerp(p0[0], mx, 0.6)} ${my} ${lerp(p1[0], mx, 0.6)} ${my} ${p1[0]} ${p1[1]}`;
   };
-  const casing = el("path", { d: d(), fill: "none", stroke: "#0c0d10", "stroke-width": width + 5, "stroke-linecap": "round" }, g);
+  const casing = el("path", { d: d(), fill: "none", stroke: ink("--rack"), "stroke-width": width + 5, "stroke-linecap": "round" }, g);
   const glowG = el("g", {}, g);
   glowG.style.filter = GLOW[color];
   const line = el("path", { d: d(), fill: "none", stroke: PHOS[color], "stroke-width": width, "stroke-linecap": "round" }, glowG);
-  const pulse = el("path", { d: d(), fill: "none", stroke: "#eafff2", "stroke-width": width * 0.5, "stroke-linecap": "round", opacity: 0 }, glowG);
+  const pulse = el("path", { d: d(), fill: "none", stroke: ink("--phos-a-pulse"), "stroke-width": width * 0.5, "stroke-linecap": "round", opacity: 0 }, glowG);
   const len = line.getTotalLength();
   for (const p of [casing, line]) p.setAttribute("stroke-dasharray", `${len} ${len}`);
   pulse.setAttribute("stroke-dasharray", `26 ${len}`);
-  const jacks = [p0, p1].map((p) => el("circle", { cx: p[0], cy: p[1], r: width + 3, fill: "#07080a", stroke: PHOS_DEEP[color], "stroke-width": 2 }, g));
+  const jacks = [p0, p1].map((p) => el("circle", { cx: p[0], cy: p[1], r: width + 3, fill: ink("--bezel"), stroke: PHOS_DEEP[color], "stroke-width": 2 }, g));
   return {
     g,
     update(t, { draw = 1, flow = 0, opacity = 1 } = {}) {
@@ -208,7 +232,7 @@ export function plate(layer, svg, { x, y, w = 250, h = 190, name, kind = "", kno
   Object.assign(title.style, { position: "absolute", left: "18px", top: "14px", fontSize: "19px", letterSpacing: "0.16em" });
   if (kind) {
     const k = el("div", { class: "mono" }, div, kind);
-    Object.assign(k.style, { position: "absolute", right: "16px", top: "16px", fontSize: "14px", color: "#6f6c63" });
+    Object.assign(k.style, { position: "absolute", right: "16px", top: "16px", fontSize: "14px", color: ink("--silk-mute") });
   }
   for (const [sx, sy] of [[8, 8], [w - 20, 8], [8, h - 20], [w - 20, h - 20]]) {
     const s = el("i", { class: "screw" }, div);
@@ -245,14 +269,14 @@ export function plate(layer, svg, { x, y, w = 250, h = 190, name, kind = "", kno
 export function mark(parent, { cx, cy, size = 320 }) {
   const s = size / 32;
   const g = el("g", {}, parent);
-  const tile = el("rect", { x: cx - 16 * s, y: cy - 16 * s, width: 32 * s, height: 32 * s, rx: 7 * s, fill: "#0c0d10" }, g);
-  const outer = el("circle", { cx, cy, r: 12 * s, fill: "none", stroke: "#3d6a4d", "stroke-width": 2.2 * s }, g);
+  const tile = el("rect", { x: cx - 16 * s, y: cy - 16 * s, width: 32 * s, height: 32 * s, rx: 7 * s, fill: ink("--rack") }, g);
+  const outer = el("circle", { cx, cy, r: 12 * s, fill: "none", stroke: ink("--phos-a-deep"), "stroke-width": 2.2 * s }, g);
   const innerG = el("g", {}, g);
   innerG.style.filter = GLOW.a;
-  const inner = el("circle", { cx, cy, r: 7.4 * s, fill: "none", stroke: "#8ef0b1", "stroke-width": 2.6 * s }, innerG);
+  const inner = el("circle", { cx, cy, r: 7.4 * s, fill: "none", stroke: ink("--phos-a"), "stroke-width": 2.6 * s }, innerG);
   const coreG = el("g", {}, g);
   coreG.style.filter = GLOW.b;
-  const core = el("circle", { cx, cy, r: 3 * s, fill: "#ffb454" }, coreG);
+  const core = el("circle", { cx, cy, r: 3 * s, fill: ink("--phos-b") }, coreG);
   const circ = (r) => 2 * Math.PI * r;
   const lenO = circ(12 * s);
   const lenI = circ(7.4 * s);
@@ -277,19 +301,19 @@ export function mark(parent, { cx, cy, size = 320 }) {
 /** A mouse pointer with a click ripple, for showing a hand at work. */
 export function pointer(parent) {
   const g = el("g", {}, parent);
-  const ripple = el("circle", { r: 10, fill: "none", stroke: "#d9d4c8", "stroke-width": 2, opacity: 0 }, g);
+  const ripple = el("circle", { r: 10, fill: "none", stroke: ink("--silk"), "stroke-width": 2, opacity: 0 }, g);
   const arrow = el(
     "path",
     {
       d: "M0 0 L0 30 L8 23 L13.5 35 L18 33 L12.8 21.5 L23 21.5 Z",
-      fill: "#f4f1ea",
-      stroke: "#0c0d10",
+      fill: ink("--cursor"),
+      stroke: ink("--rack"),
       "stroke-width": 2,
       "stroke-linejoin": "round",
     },
     g,
   );
-  arrow.style.filter = "drop-shadow(0 3px 6px rgba(0,0,0,.6))";
+  arrow.style.filter = `drop-shadow(0 3px 6px ${inkA("--black", 0.6)})`;
   return {
     g,
     /** position, opacity, and click phase (0..1 over the ripple; null for none) */
@@ -332,7 +356,7 @@ export function keyboard(parent, { x, y, w = 900, h = 170, low = 48, octaves = 2
   for (let i = 0; i < nW; i++) {
     const oct = Math.floor(i / 7);
     const note = low + oct * 12 + pattern[i % 7];
-    const r = el("rect", { x: x + i * kw + 1.5, y, width: kw - 3, height: h, rx: 5, fill: "#1d2127", stroke: "#07080a", "stroke-width": 1.5 }, g);
+    const r = el("rect", { x: x + i * kw + 1.5, y, width: kw - 3, height: h, rx: 5, fill: ink("--panel-hi"), stroke: ink("--bezel"), "stroke-width": 1.5 }, g);
     whites.push({ note, r });
   }
   for (let i = 0; i < nW - 1; i++) {
@@ -340,7 +364,7 @@ export function keyboard(parent, { x, y, w = 900, h = 170, low = 48, octaves = 2
     if (deg === 2 || deg === 6) continue;
     const oct = Math.floor(i / 7);
     const note = low + oct * 12 + pattern[deg] + 1;
-    const r = el("rect", { x: x + (i + 1) * kw - kw * 0.3, y, width: kw * 0.6, height: h * 0.62, rx: 4, fill: "#0b0c0e", stroke: "#000", "stroke-width": 1 }, g);
+    const r = el("rect", { x: x + (i + 1) * kw - kw * 0.3, y, width: kw * 0.6, height: h * 0.62, rx: 4, fill: ink("--slot"), stroke: ink("--black"), "stroke-width": 1 }, g);
     blacks.push({ note, r });
   }
   return {
@@ -348,12 +372,12 @@ export function keyboard(parent, { x, y, w = 900, h = 170, low = 48, octaves = 2
     update(lit = new Set()) {
       for (const { note, r } of whites) {
         const on = lit.has(note);
-        r.setAttribute("fill", on ? "#8ef0b1" : "#1d2127");
+        r.setAttribute("fill", on ? ink("--phos-a") : ink("--panel-hi"));
         r.style.filter = on ? GLOW.a : "none";
       }
       for (const { note, r } of blacks) {
         const on = lit.has(note);
-        r.setAttribute("fill", on ? "#63a97c" : "#0b0c0e");
+        r.setAttribute("fill", on ? ink("--phos-a-dim") : ink("--slot"));
       }
     },
   };
@@ -419,8 +443,8 @@ function footageWrap(layer, { x, y, w, h, radius }) {
   Object.assign(wrap.style, {
     borderRadius: `${radius}px`,
     overflow: "hidden",
-    background: "#07080a",
-    boxShadow: "0 0 0 1px #292e36, 0 40px 90px rgba(0,0,0,.7), 0 0 60px rgba(142,240,177,.06)",
+    background: ink("--bezel"),
+    boxShadow: `0 0 0 1px ${ink("--hairline")}, 0 40px 90px ${inkA("--black", 0.7)}, 0 0 60px ${inkA("--phos-a", 0.06)}`,
   });
   const inner = el("div", {}, wrap);
   Object.assign(inner.style, { position: "absolute", inset: "0", transformOrigin: "0 0" });
@@ -500,11 +524,11 @@ export function duelCard(under, svg, { x, y, w = 620, h = 400, side = "A", name 
   const badge = el("div", {}, div, side);
   Object.assign(badge.style, {
     position: "absolute", left: "22px", top: "20px", width: "46px", height: "46px", borderRadius: "8px",
-    border: "1.5px solid #3d6a4d", display: "grid", placeItems: "center",
-    fontFamily: "IBM Plex Mono", fontWeight: 600, fontSize: "26px", color: "#8ef0b1",
+    border: `1.5px solid ${ink("--phos-a-deep")}`, display: "grid", placeItems: "center",
+    fontFamily: "IBM Plex Mono", fontWeight: 600, fontSize: "26px", color: ink("--phos-a"),
   });
   const nm = el("div", { class: "mono" }, div, name);
-  Object.assign(nm.style, { position: "absolute", left: "86px", top: "28px", fontSize: "26px", color: "#d9d4c8", letterSpacing: "0.02em" });
+  Object.assign(nm.style, { position: "absolute", left: "86px", top: "28px", fontSize: "26px", color: ink("--silk"), letterSpacing: "0.02em" });
   const scr = el("div", { class: "screen" }, div);
   Object.assign(scr.style, { left: "22px", top: "86px", width: `${w - 44}px`, height: `${h - 190}px` });
   const hear = el("div", { class: "pill" }, div, `▶  hear ${side}`);
@@ -514,8 +538,8 @@ export function duelCard(under, svg, { x, y, w = 620, h = 400, side = "A", name 
   const tr = scope(svg, { x: x + 40, y: y + 100, w: w - 80, h: h - 218, width: 3, points: 300, wave: wave || voiceWave({ seed: side.charCodeAt(0) }), color });
   const check = el("div", {}, div, "✓");
   Object.assign(check.style, {
-    position: "absolute", right: "22px", top: "16px", fontSize: "40px", color: "#8ef0b1",
-    textShadow: "0 0 18px rgba(142,240,177,.6)", opacity: 0,
+    position: "absolute", right: "22px", top: "16px", fontSize: "40px", color: ink("--phos-a"),
+    textShadow: `0 0 18px ${inkA("--phos-a", 0.6)}`, opacity: 0,
   });
   return {
     div, hear, pick, nm,
@@ -525,8 +549,8 @@ export function duelCard(under, svg, { x, y, w = 620, h = 400, side = "A", name 
       if (nn != null && nm.textContent !== nn) nm.textContent = nn;
       tr.update(t, { amp: level, draw });
       tr.g.style.opacity = 0.35 + 0.65 * clamp(level / 0.7);
-      div.style.borderColor = picked > 0 ? `rgba(142,240,177,${0.3 + 0.6 * picked})` : lit > 0 ? `rgba(142,240,177,${0.35 * lit})` : "#292e36";
-      div.style.boxShadow = `inset 1px 1px 0 rgba(255,255,255,.07), 0 18px 50px rgba(0,0,0,.55), 0 0 ${40 * picked}px rgba(142,240,177,${0.25 * picked})`;
+      div.style.borderColor = picked > 0 ? inkA("--phos-a", 0.3 + 0.6 * picked) : lit > 0 ? inkA("--phos-a", 0.35 * lit) : ink("--hairline");
+      div.style.boxShadow = `inset 1px 1px 0 ${inkA("--white", 0.07)}, 0 18px 50px ${inkA("--black", 0.55)}, 0 0 ${40 * picked}px ${inkA("--phos-a", 0.25 * picked)}`;
       hear.classList.toggle("a", lit > 0.5);
       pick.classList.toggle("a", picked > 0.5);
       check.style.opacity = picked;
@@ -553,7 +577,7 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
   const title = el("div", { class: "silk" }, div, "PERFORM");
   Object.assign(title.style, { position: "absolute", left: "40px", top: "30px", fontSize: "22px", letterSpacing: "0.2em" });
   const nm = el("div", { class: "mono" }, div, name);
-  Object.assign(nm.style, { position: "absolute", left: "200px", top: "31px", fontSize: "22px", color: "#9a958a" });
+  Object.assign(nm.style, { position: "absolute", left: "200px", top: "31px", fontSize: "22px", color: ink("--silk-dim") });
   // Screens.
   const sA = { x: x + 40, y: y + 82, w: 560, h: 200 };
   const sB = { x: x + w - 600, y: y + 82, w: 560, h: 200 };
@@ -562,7 +586,7 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
     place(d, { x: s.x, y: s.y, w: s.w, h: s.h });
     const l = el("div", { class: "mono" }, under, lbl);
     place(l, { x: s.x + 12, y: s.y + 10 });
-    Object.assign(l.style, { fontSize: "17px", color: cls === "a" ? "#63a97c" : "#b8823c", zIndex: 2 });
+    Object.assign(l.style, { fontSize: "17px", color: cls === "a" ? ink("--phos-a-dim") : ink("--phos-b-dim"), zIndex: 2 });
   }
   const trA = scope(svg, { x: sA.x + 24, y: sA.y + 40, w: sA.w - 48, h: sA.h - 60, width: 3, color: "a", points: 320 });
   const trB = scope(svg, { x: sB.x + 24, y: sB.y + 40, w: sB.w - 48, h: sB.h - 60, width: 3, color: "b", points: 320 });
@@ -574,11 +598,11 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
     const py0 = y + 92 + Math.floor(i / 3) * 96;
     const d = place(el("div", {}, under), { x: px0, y: py0, w: 100, h: 84 });
     Object.assign(d.style, {
-      borderRadius: "10px", border: "1px solid #292e36",
-      background: "linear-gradient(180deg,#22262d,#191c21)",
-      boxShadow: "inset 1px 1px 0 rgba(255,255,255,.08), 0 6px 14px rgba(0,0,0,.5)",
+      borderRadius: "10px", border: `1px solid ${ink("--hairline")}`,
+      background: `linear-gradient(180deg,${ink("--knob-body")},${ink("--pad-lo")})`,
+      boxShadow: `inset 1px 1px 0 ${inkA("--white", 0.08)}, 0 6px 14px ${inkA("--black", 0.5)}`,
       display: "grid", placeItems: "end center", paddingBottom: "12px",
-      fontFamily: "Jost", fontWeight: 500, fontSize: "15px", letterSpacing: "0.16em", color: "#9a958a",
+      fontFamily: "Jost", fontWeight: 500, fontSize: "15px", letterSpacing: "0.16em", color: ink("--silk-dim"),
     });
     d.textContent = p.toUpperCase();
     pads[p.toLowerCase()] = { d, pos: [px0 + 50, py0 + 42] };
@@ -593,19 +617,19 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
     k.set(0.5);
     knobs[n.toLowerCase()] = { k, cx, cy: ky, v: 0.5 };
   });
-  el("line", { x1: x + 120 + 5.5 * 186 + 20, y1: ky - 60, x2: x + 120 + 5.5 * 186 + 20, y2: ky + 70, stroke: "#292e36", "stroke-width": 2 }, svg);
+  el("line", { x1: x + 120 + 5.5 * 186 + 20, y1: ky - 60, x2: x + 120 + 5.5 * 186 + 20, y2: ky + 70, stroke: ink("--hairline"), "stroke-width": 2 }, svg);
   // The under-the-hood strip.
   const hy = y + 590;
   const hoodLbl = el("div", { class: "mono" }, over, "under the hood");
   place(hoodLbl, { x: x + 40, y: hy - 12 });
-  Object.assign(hoodLbl.style, { fontSize: "17px", color: "#6f6c63", letterSpacing: "0.08em" });
+  Object.assign(hoodLbl.style, { fontSize: "17px", color: ink("--silk-mute"), letterSpacing: "0.08em" });
   const strip = hood.map((n, i) => {
     const cx = x + 330 + i * 150;
     const k = knob(svg, { cx, cy: hy, r: 20, color: "a" });
     k.set(0.4);
     const t = el("div", { class: "mono" }, over, n);
     place(t, { x: cx + 32, y: hy - 12 });
-    Object.assign(t.style, { fontSize: "16px", color: "#9a958a" });
+    Object.assign(t.style, { fontSize: "16px", color: ink("--silk-dim") });
     return { k, cx, cy: hy, v: 0.4, t };
   });
   return { div, nm, trA, trB, sA, sB, pads, knobs, strip, h, y, x, w };
@@ -613,10 +637,10 @@ export function performPanel(under, svg, over, { x = 160, y = 110, w = 1600, nam
 
 /** A pad pressed: lit and pushed in (`u` 0..1), in green or amber. */
 export function pressPad(p, u, color = "a") {
-  const c = color === "a" ? "142,240,177" : "255,180,84";
-  p.d.style.borderColor = u > 0.01 ? `rgba(${c},${0.3 + 0.7 * u})` : "#292e36";
-  p.d.style.color = u > 0.3 ? (color === "a" ? "#8ef0b1" : "#ffb454") : "#9a958a";
-  p.d.style.boxShadow = `inset 1px 1px 0 rgba(255,255,255,.08), 0 ${6 - 4 * u}px 14px rgba(0,0,0,.5), 0 0 ${30 * u}px rgba(${c},${0.35 * u})`;
+  const c = color === "a" ? "--phos-a" : "--phos-b";
+  p.d.style.borderColor = u > 0.01 ? inkA(c, 0.3 + 0.7 * u) : ink("--hairline");
+  p.d.style.color = u > 0.3 ? (color === "a" ? ink("--phos-a") : ink("--phos-b")) : ink("--silk-dim");
+  p.d.style.boxShadow = `inset 1px 1px 0 ${inkA("--white", 0.08)}, 0 ${6 - 4 * u}px 14px ${inkA("--black", 0.5)}, 0 0 ${30 * u}px ${inkA(c, 0.35 * u)}`;
   p.d.style.transform = `translateY(${2 * u}px)`;
 }
 
@@ -638,7 +662,7 @@ export function phiBars(parent, over, { x, y, w = 900, h = 260, color = "a", lab
   const n = values.length;
   const bw = w / n;
   const mid = y + h / 2;
-  el("line", { x1: x, y1: mid, x2: x + w, y2: mid, stroke: "#292e36", "stroke-width": 2 }, g);
+  el("line", { x1: x, y1: mid, x2: x + w, y2: mid, stroke: ink("--hairline"), "stroke-width": 2 }, g);
   const bg = el("g", {}, g);
   bg.style.filter = GLOW[color];
   const bars = values.map((v, i) => el("rect", { x: x + i * bw + bw * 0.18, width: bw * 0.64, y: mid, height: 0, rx: 2, fill: PHOS[color] }, bg));
@@ -646,7 +670,7 @@ export function phiBars(parent, over, { x, y, w = 900, h = 260, color = "a", lab
     ? values.map((_, i) => {
         const t = el("div", { class: "mono" }, over, PHI_AUDIO[i] || "");
         place(t, { x: x + i * bw + bw / 2, y: y + h + 16, ax: 0.5 });
-        Object.assign(t.style, { fontSize: "13px", color: "#6f6c63", writingMode: "vertical-rl", transform: "rotate(180deg)", transformOrigin: "50% 0" });
+        Object.assign(t.style, { fontSize: "13px", color: ink("--silk-mute"), writingMode: "vertical-rl", transform: "rotate(180deg)", transformOrigin: "50% 0" });
         return t;
       })
     : [];

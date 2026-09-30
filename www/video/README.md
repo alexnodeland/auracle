@@ -26,7 +26,9 @@ music changes.
 
 - graphite plates and silk-screened Jost;
 - two phosphors. **Green is sound, amber is the model's mind**, exactly as in
-  the app and the brand (`www/brand/`). There is no third colour.
+  the app and the brand (`www/brand/`). There is no third colour. Every colour
+  is a token of `stage.css`'s, generated from `www/brand/tokens.json`; the kit
+  and the films read them with `ink()` and `inkA()`, never as literals.
 
 `stage/walk.js` turns recorded footage into a walkthrough. It adds a slow
 camera, callouts that point at the thing being named, a chapter label and

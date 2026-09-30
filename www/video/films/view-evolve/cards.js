@@ -14,7 +14,7 @@
 // Every time here comes from timeline.json (beats, lines, word times), never
 // from typed seconds. Green is sound, amber is the model's mind.
 import { el, place, clamp, lerp, ramp, E } from "../../stage/stage.js";
-import { svgLayer, mark, textBlock, PHOS, GLOW } from "../../stage/kit.js";
+import { svgLayer, mark, textBlock, PHOS, GLOW, ink, inkA } from "../../stage/kit.js";
 import { wordTime } from "../../stage/walk.js";
 
 /** The chapters: each turn beat, its number, its name and its question. */
@@ -41,7 +41,7 @@ export function cards(stage) {
  *  footage's window), so the narration stays readable under a card. */
 function scrim(layer, { top = 0.55, mid = 0.8, bottom = 0.55 } = {}) {
   const s = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1022 });
-  s.style.background = `linear-gradient(180deg, rgba(7,8,10,${top}) 0%, rgba(7,8,10,${mid}) 42%, rgba(7,8,10,${mid}) 62%, rgba(7,8,10,${bottom}) 100%)`;
+  s.style.background = `linear-gradient(180deg, ${inkA("--bezel", top)} 0%, ${inkA("--bezel", mid)} 42%, ${inkA("--bezel", mid)} 62%, ${inkA("--bezel", bottom)} 100%)`;
   return s;
 }
 
@@ -50,7 +50,7 @@ function pips(svg, { cx, cy, n = 6, r = 11, gap = 38 }) {
   const g = el("g", {}, svg);
   const x0 = cx - ((n - 1) * gap) / 2;
   const dots = Array.from({ length: n }, (_, i) => {
-    const off = el("circle", { cx: x0 + i * gap, cy, r, fill: "#1a1410", stroke: "#0b0c0e", "stroke-width": 1.5 }, g);
+    const off = el("circle", { cx: x0 + i * gap, cy, r, fill: ink("--amber-off"), stroke: ink("--slot"), "stroke-width": 1.5 }, g);
     const onG = el("g", {}, g);
     onG.style.filter = GLOW.b;
     const on = el("circle", { cx: x0 + i * gap, cy, r, fill: PHOS.b, opacity: 0 }, onG);
@@ -89,7 +89,7 @@ function sceneTitle(stage, beat) {
       eyebrow.style.letterSpacing = "0.32em";
       const name = textBlock(over, { x: 960, y: 392, w: 1600, cls: "silk", size: 168, align: "center", ax: 0.5, ay: 0.5, text: "EVOLVE" });
       const sub = textBlock(over, { x: 960, y: 530, w: 1400, cls: "voice", size: 66, align: "center", ax: 0.5, ay: 0.5, text: "breeding sounds you like" });
-      sub.style.color = "#d9d4c8";
+      sub.style.color = ink("--silk");
       const meter = pips(svg, { cx: 960, cy: 660 });
       const tag = textBlock(over, { x: 960, y: 716, w: 1200, cls: "mono", size: 24, align: "center", ax: 0.5, ay: 0.5, text: "two sounds · one pick · a new generation" });
       tag.style.letterSpacing = "0.12em";
@@ -132,7 +132,7 @@ function sceneTurn(stage, beat, c) {
       const rule = el("line", { x1: 960, y1: 418, x2: 960, y2: 418, stroke: PHOS.a, "stroke-width": 2, opacity: 0.7 }, svg);
       const name = textBlock(over, { x: 960, y: 492, w: 1700, cls: "silk", size: 104, align: "center", ax: 0.5, ay: 0.5, text: c.name });
       const q = textBlock(over, { x: 960, y: 612, w: 1500, cls: "voice", size: 54, align: "center", ax: 0.5, ay: 0.5, text: c.q });
-      q.style.color = "#9a958a";
+      q.style.color = ink("--silk-dim");
       const T = b.t1 - b.t0;
       return (tl) => {
         sc.style.opacity = ramp(tl, -0.2, 0.3);
@@ -182,7 +182,7 @@ function sceneOutro(stage, beat) {
       // The mark, small, above: the posterior contracting onto one taste.
       const mk = mark(svg, { cx: 960, cy: 300, size: 76 });
       const black = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
-      black.style.background = "#0c0d10";
+      black.style.background = ink("--rack");
       const T = b.t1 - b.t0;
       return (tl) => {
         sc.style.opacity = ramp(tl, -0.2, 0.5);

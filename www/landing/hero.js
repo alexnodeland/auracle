@@ -264,14 +264,35 @@
 
   /* ── traces: render offline, draw the envelope ─────────────────────── */
 
+  /* A canvas cannot use a custom property, so the inks are read off the token
+   * layer in style.css (generated from www/brand/tokens.json), once per name.
+   * `make dev-check` fails on a colour written here. */
+  const TOKENS = new Map();
+  function ink(name) {
+    let v = TOKENS.get(name);
+    if (v === undefined) {
+      v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      if (v) TOKENS.set(name, v);
+    }
+    return v;
+  }
+  /* A token at an opacity, as rgba(): `inkA('--phos-a', 0.5)`. Only an opaque
+   * #rrggbb token has an opacity to set; anything else is a mistake, said so. */
+  function inkA(name, a) {
+    const h = ink(name);
+    if (!/^#[0-9a-f]{6}$/i.test(h)) throw new Error(`inkA(${name}): needs a #rrggbb token, got "${h}"`);
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
   /* Two inks, per the page's colour law: green is sound, amber is the model's
    * mind. A candidate the page drew at random is green; the patch the model
    * built out of theta is amber, and that is the only cue that has to survive
    * being glanced at. */
-  const INK_A = { wave: '#8ef0b1', base: 'rgba(61, 106, 77, 0.55)' };
-  const INK_B = { wave: '#ffb454', base: 'rgba(122, 85, 38, 0.6)' };
+  const INK_A = { wave: ink('--phos-a'), base: inkA('--phos-a-deep', 0.55) };
+  const INK_B = { wave: ink('--phos-b'), base: inkA('--phos-b-deep', 0.6) };
 
-  async function renderTrace(canvas, z, ink = INK_A) {
+  async function renderTrace(canvas, z, pen = INK_A) {
     /* 44100, not a cheap 8000. An envelope does not need the bandwidth, but the
      * *filter* does: at 8 kHz Nyquist is 4 kHz, so Web Audio clamped every
      * cutoff above it and the offline render of a bright patch was a different
@@ -293,10 +314,10 @@
       // dishonesty this page is arguing against.
       return;
     }
-    drawEnvelope(canvas, data, ink);
+    drawEnvelope(canvas, data, pen);
   }
 
-  function drawEnvelope(canvas, data, ink) {
+  function drawEnvelope(canvas, data, pen) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = canvas.clientWidth || 520;
     const h = canvas.clientHeight || 86;
@@ -312,7 +333,7 @@
     for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
     const norm = peak > 0 ? 0.94 / peak : 0;
 
-    g.fillStyle = ink.wave;
+    g.fillStyle = pen.wave;
     for (let x = 0; x < w; x++) {
       const from = Math.floor(x * per);
       const to = Math.min(data.length, Math.floor((x + 1) * per));
@@ -328,7 +349,7 @@
     }
 
     // The 0 dBFS baseline, as the instrument's cards draw it.
-    g.fillStyle = ink.base;
+    g.fillStyle = pen.base;
     g.fillRect(0, mid, w, 1);
   }
 
