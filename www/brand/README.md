@@ -100,6 +100,10 @@ rack, and when a hex quoted in prose (`<code>#0c0d10</code>`) is not a
 token's value. The marks (`*.svg`), `render.html` and `docs/notes/` are
 exempt: the marks are assets a favicon slot reads without CSS. A new colour
 is a token first: add it to `tokens.json`, run `make tokens`, then use it.
+`test_tokens.py`, also run by `make dev-check`, plants each kind of stray
+colour in a copy of the tree and expects the check to fail on it, and holds
+the two drifts the tokens closed (the films' deep amber, the brand page's
+lamp) in place.
 
 ## Regenerating the rasters
 
