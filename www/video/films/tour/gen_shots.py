@@ -50,6 +50,15 @@ PAD_NAME = ", ".join(x + " .bi-name" for x in _PAD)
 # is measured per session, so it is picked by what it does, not by name.
 UP = ".pf-knob:is([data-i='0'], [data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5']):not(.search):not(.unwired):not(.half-hi) >> nth=0"
 TABS_LOG = {"op": "log", "name": "view", "js": "document.querySelector('.viewtab.active')?.dataset.view"}
+# The job slot in the menu bar (long work only: a generation, ⚡, a refit).
+SLOT_JS = "(document.getElementById('job-slot').classList.contains('hidden') ? 'slot empty' : 'slot: ' + document.getElementById('job-text').textContent)"
+
+
+def perform_settled(name):
+    """shotgen.perform: a preset ships wired and PERFORM re-checks it in the
+    background; `measured` waits for the re-check, so which controls reach
+    the patch (UP, the WIRING log) is the measured wiring in every take."""
+    return perform(name)
 
 
 def key_sel(note):
@@ -66,17 +75,18 @@ shots = []
 # ---- open: the cold open, wide. Glass Pad: C, then a Bright swell; Am as
 # Blend crosses into the offer in B; F on the offer; G, and Take; C on the
 # sound just taken. One chord a bar at 84 BPM, on the score's bar lines.
-# The offer is grown in set-up (Offer, until it lands in B): turning Bright
-# first would leave the spare offer behind (grown outside its trust region),
-# and a fresh one takes ~10 s of renders.
+# The offer is grown in set-up (Offer, until it lands in B): a fresh one takes
+# ~10 s of renders. While B holds it the Offer pad reads NEXT ("passes on B");
+# Take empties B, and the pad reads Offer again.
 shots.append({
     "id": "to-open", "beat": "open", "pre": 0.5,
-    "setup": perform("Glass Pad") + [
+    "setup": perform_settled("Glass Pad") + [
         {"op": "wait", "ms": 1500},
         {"op": "click", "sel": ".pf-pad.primary"},
         {"op": "until", "sel": ".pf-offer.ready", "ms": 120000},
         {"op": "wait", "ms": 1500},
         {"op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 140)"},
+        {"op": "log", "name": "offer pad", "js": "document.querySelector('.pf-pad.primary').textContent + ' · ' + (document.querySelector('.pf-pad.primary').dataset.sub || '')"},
         QUIET,
     ],
     "marks": {"deck": ".pf-deck", "offer": ".pf-offer", "blend": ".pf-knob[data-i='6']", "up": UP, "take": ".pf-pad:has-text('Take')", "name": ".pf-name"},
@@ -89,7 +99,7 @@ shots.append({
         hold(0.6 + 2 * BAR, G, snap="bar", ms=2830),
         {"at": 0.5 + 3 * BAR + 0.45, "op": "click", "sel": ".pf-pad:has-text('Take')"},
         {"at": 0.5 + 3 * BAR + 1.3, "op": "mark", "name": "toast", "sel": "#toasts .toast"},
-        {"at": 0.5 + 3 * BAR + 1.3, "op": "log", "name": "after take", "js": "document.querySelector('.pf-name').textContent + ' | ' + document.querySelector('.pf-offer').textContent.trim().slice(0, 100) + ' | ' + document.getElementById('toasts').textContent.slice(0, 160)"},
+        {"at": 0.5 + 3 * BAR + 1.3, "op": "log", "name": "after take", "js": "document.querySelector('.pf-name').textContent + ' | ' + document.querySelector('.pf-pad.primary').textContent + ' | ' + document.querySelector('.pf-offer').textContent.trim().slice(0, 100) + ' | ' + document.querySelector('.pf-status').textContent + ' | ' + document.getElementById('toasts').textContent.slice(0, 160)"},
         hold(0.6 + 3 * BAR, C, snap="bar", ms="end"),
     ],
 })
@@ -97,13 +107,15 @@ shots.append({
 # ---- title: the whole instrument, idle, under the title card; then the map.
 shots.append({
     "id": "to-map", "beat": "title", "pre": 0.5,
-    "setup": perform("Glass Pad") + [QUIET],
+    "setup": perform_settled("Glass Pad") + [QUIET],
     "marks": {"tabs": ".viewtabs", "bank": "aside.bank", "dock": "footer.keybar", "top": ".menubar-right", "piano": "#piano", "filters": ".bank-filters"},
     "actions": [],
 })
 
 # ---- views: the four tabs, each in use. The duel's pair is rendered in
 # set-up (▶ A and ▶ B, heard once off camera), so ▶ on camera sounds at once.
+# Once both are in, EVOLVE deals the next pair ahead, so the pick on camera
+# puts it up at once.
 shots.append({
     "id": "to-views", "beat": "views", "pre": 0.5,
     "setup": [
@@ -135,8 +147,11 @@ shots.append({
         {"at": "views4:plays", "op": "click", "sel": "#play-a"},
         {"at": "views4:plays+0.1", "op": "mark", "name": "cards", "sel": ".duel-row"},
         {"at": "views4:sounds+0.3", "op": "click", "sel": "#play-b"},
+        {"at": "views4:like-0.2", "op": "log", "name": "pair", "js": "document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
         {"at": "views4:like", "op": "click", "sel": "#choose-b"},
-        {"at": "views4:breeds", "op": "log", "name": "picks", "js": "document.getElementById('duel-count').textContent + ' picks · ' + document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
+        # The next pair is up at once: it was dealt ahead while this one played.
+        {"at": "views4:like+0.4", "op": "log", "name": "next pair", "js": "document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent"},
+        {"at": "views4:breeds", "op": "log", "name": "picks", "js": "document.getElementById('duel-count').textContent + ' picks · ' + document.getElementById('name-a').textContent + ' vs ' + document.getElementById('name-b').textContent + ' · ' + " + SLOT_JS},
         {"at": "views5:TASTE-0.25", "op": "click", "sel": TAB("taste")},
         # C over the map, to the end of the beat: the chapter resolves.
         hold("views5:TASTE+0.3", C, ms="end"),
@@ -145,10 +160,11 @@ shots.append({
 })
 
 # ---- bank: three lists, then ▶ one row and open it. A progression on
-# Glass Pad under the first four lines; the audition after it.
+# Glass Pad under the first four lines; the audition after it. The row opens
+# as it is clicked (its sound was just heard, and its wiring came with it):
+# no cut, and its chords wait for it to land rather than for a clock.
 shots.append({
     "id": "to-bank", "beat": "bank", "pre": 0.5,
-    "clips": [["bank5:Click+0.3", "@opened-0.1"]],
     "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "play"},
@@ -187,9 +203,9 @@ shots.append({
             {"op": "log", "name": "opened", "js": "document.getElementById('rack-subject').textContent"},
         ]},
         {"at": "bank5:Click+0.4", "op": "mark", "name": "padrow", "sel": PAD_ROW},
-        # The row's own sound, live, the moment it lands (after the cut).
-        hold("bank5:Click+0.45", AM, ms=1300),
-        hold("bank5:Click+1.8", F, ms="end"),
+        # The row's own sound, live, the moment it lands.
+        hold("@opened+0.35", AM, ms=1300),
+        hold("@opened+1.7", F, ms="end"),
     ],
 })
 
@@ -197,7 +213,7 @@ shots.append({
 # running arpeggio, and ● rec pressed on camera (a real take, and its toast).
 shots.append({
     "id": "to-dock", "beat": "dock", "pre": 0.5,
-    "setup": perform("Acid Line") + [
+    "setup": perform_settled("Acid Line") + [
         {"op": "eval", "js": "const b=document.getElementById('bpm'); b.value='84'; b.dispatchEvent(new Event('change'))"},
         QUIET,
     ],
@@ -237,19 +253,32 @@ shots.append({
     ],
 })
 
-# ---- up top: the counters, the help card, the ⋯ menu. Nothing plays: the
-# bed is up under this one.
+# ---- up top: the counters, the job slot, the help card, the ⋯ menu. Nothing
+# plays: the bed is up under this one. A generation is breeding (EVOLVE POOL,
+# pressed in set-up): it takes minutes on the render farm beside the player,
+# so the shot waits for its first child and films the slot mid-generation
+# ("⚡ breeding 1/10 · about 3 min") and EVOLVE POOL as its amber progress
+# bar. The pointer leaves EVOLVE POOL, whose hover marks the rows a
+# generation may replace. The counters sit left of the slot, so they are
+# measured again as they are named.
 shots.append({
     "id": "to-header", "beat": "header", "pre": 0.5,
     "setup": [
         {"op": "preset", "name": "Glass Pad"},
         {"op": "view", "v": "evolve"},
         {"op": "wait", "ms": 1500},
-        {"op": "log", "name": "counters", "js": "document.getElementById('duel-count').textContent + ' picks, gen ' + document.getElementById('gen-count').textContent"},
+        {"op": "click", "sel": "#evolve-btn"},
+        {"op": "move", "sel": ".duel-row", "ms": 300},
+        {"op": "until", "js": "/breeding [1-9][0-9]*\\/[0-9]+/.test(document.getElementById('job-text').textContent)", "ms": 300000},
+        {"op": "log", "name": "counters", "js": "document.getElementById('duel-count').textContent + ' picks, gen ' + document.getElementById('gen-count').textContent + ' · ' + " + SLOT_JS + " + ' · EVOLVE POOL: ' + document.getElementById('evolve-btn').textContent"},
         QUIET,
     ],
-    "marks": {"picks": "#duel-count", "gen": "#gen-count", "top": ".menubar-right", "help": "#help-open", "ovf": "#ovf-btn", "lamp": "#wm-lamp"},
+    "marks": {"picks": "#duel-count", "gen": "#gen-count", "slot": "#job-slot", "evolve": "#evolve-wrap", "top": ".menubar-right", "help": "#help-open", "ovf": "#ovf-btn", "lamp": "#wm-lamp"},
     "actions": [
+        {"at": "header1:PICKS-0.1", "op": "mark", "name": "picks", "sel": "#duel-count"},
+        {"at": "header1:number-0.1", "op": "mark", "name": "gen", "sel": "#gen-count"},
+        {"at": "header1b:slot-0.1", "op": "mark", "name": "slot", "sel": "#job-slot"},
+        {"at": "header1b:slot", "op": "log", "name": "slot", "js": SLOT_JS + " + ' · EVOLVE POOL: ' + document.getElementById('evolve-btn').textContent + ' · gen ' + document.getElementById('gen-count').textContent"},
         {"at": "header2:question-0.2", "op": "click", "sel": "#help-open"},
         {"at": "header2:question+0.3", "op": "mark", "name": "card", "sel": "#help .help-card"},
         {"at": "header3-0.4", "op": "key", "key": "Escape", "ms": 80},
@@ -263,6 +292,7 @@ shots.append({
         {"at": "header3:files-0.1", "op": "move", "sel": "#patch-export-btn", "ms": 300},
         {"at": "header3:taste-0.1", "op": "move", "sel": "#export-btn", "ms": 300},
         {"at": "header3:films-0.1", "op": "move", "sel": "#films-link", "ms": 300},
+        {"at": "header3:films+0.5", "op": "log", "name": "slot at the end", "js": SLOT_JS + " + ' · gen ' + document.getElementById('gen-count').textContent"},
     ],
 })
 
@@ -308,16 +338,24 @@ shots.append({
         ]},
         {"at": "first3:eighteen", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
         {"at": "first3:eighteen", "op": "mark", "name": "picks", "sel": "#duel-count"},
-        {"at": "first3:eighteen", "op": "log", "name": "landed", "js": "document.getElementById('duel-count').textContent + ' picks · lamp ' + (document.getElementById('wm-lamp').classList.contains('thinking') ? 'thinking' : 'idle') + ' · ' + document.getElementById('toasts').textContent.slice(0, 160)"},
+        {"at": "first3:eighteen", "op": "log", "name": "landed", "js": "document.getElementById('duel-count').textContent + ' picks · ' + " + SLOT_JS + " + ' · PICKS at x ' + Math.round(document.getElementById('duel-count').getBoundingClientRect().x) + ' · ' + document.getElementById('toasts').textContent.slice(0, 160)"},
+        # The refit after the warm start shows in the job slot beside the
+        # counters; if it ends under the "18 picks" callout, PICKS moves.
+        {"at": "first4-0.25", "op": "log", "name": "picks moved?", "js": "'PICKS at x ' + Math.round(document.getElementById('duel-count').getBoundingClientRect().x) + ' · ' + " + SLOT_JS},
         # PERFORM is open on the first pick: a soft pulse from the MIDI keyboard
         # (quarters at 84, velocity 64) under the result, before the full
         # figure on "ready to play".
         *[{"at": "first3+%.2f" % (0.5 + i * 0.714), "op": "midi", "note": n, "vel": 64, "ms": 300}
           for i, n in enumerate([48, 48, 55, 57, 48, 48, 55, 53])],
         {"at": "first4:saved", "op": "mark", "name": "mine", "sel": ".bf[data-f='mine']"},
+        # The pick's wiring came with it, so its controls work at once while
+        # PERFORM re-measures it in the background ("… · re-checking").
         {"at": "first4:ready-0.1", "op": "log", "name": "perform", "js": "(document.querySelector('.pf-name')?.textContent || '') + ' · ' + (document.querySelector('.pf-status')?.textContent || '')"},
-        # A 303 figure on the first pick, in eighths at 84: C C C' C G A C…
+        {"at": "first4:ready-0.1", "op": "log", "name": "wiring", "js": WIRING["js"]},
+        # A 303 figure on the first pick, in eighths at 84: C C C' C G A C…,
+        # with a control turned up under it: ready to play, controls and all.
         *[hold("first4:ready+%.2f" % (i * 0.357), [k], ms=230) for i, k in enumerate(["a", "a", "k", "a", "g", "h", "a", "k"])],
+        {"at": "first4:ready+0.6", "op": "drag", "sel": UP, "dy": -50, "ms": 1600},
         hold("first4:ready+%.2f" % (8 * 0.357), ["a"], ms="end"),
     ],
 })
@@ -325,7 +363,7 @@ shots.append({
 # ---- where next: a film per view, each tab clicked as its film is named.
 shots.append({
     "id": "to-next", "beat": "next", "pre": 0.5,
-    "setup": perform("Glass Pad") + [
+    "setup": perform_settled("Glass Pad") + [
         {"op": "view", "v": "taste"},
         {"op": "wait", "ms": 1200},
         QUIET,

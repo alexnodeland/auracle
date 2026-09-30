@@ -394,6 +394,11 @@ Rehearsing a film of each view meant doing everything the guide says, on
 camera, in a seeded session. Wherever the app fell short of the guide, the app
 was fixed, not the words.
 
+- **PERFORM's "under the hood" rows name each knob by its module again.**
+  A patch opened from the bank while PERFORM was showing reached PERFORM
+  before PATCH's rack had named its modules, so the rows read raw knob names
+  ("thresh 15%", "dec 25 ms") under captions that said "threshold" and "mod
+  env decay", and stayed that way. The rows are rebuilt once the rack lands.
 - **The TASTE map stays the way round you left it.** A refit could mirror it:
   in a taught session one refit sent "Warm Drone 2" from the far left to the
   far right, though the guide says the orientation is pinned. The rule that set
@@ -525,6 +530,11 @@ reading "measuring…" for 14 s after a Take.
 - **A knob survives the redraw that follows an edit**, and a knob you are
   holding is never rebuilt. For a moment after an edit a knob could vanish
   from under the pointer.
+- **Coming back to PATCH, the rack is where you left it, knobs and all.**
+  While another view was up, PATCH fitted the patch to its own hidden frame,
+  which measures nothing, so on the way back the rack zoomed in from far away
+  and showed bare plates for a moment before the knobs returned. A knob
+  reached for straight away was not there yet (`patch_truth.spec.js`).
 - **Undo retires the toast of what it undid**, and the newest edit's toast
   replaces the last one's instead of queueing behind it.
 - **⚡ evolve from this never overwrites edits** you made while it bred: the

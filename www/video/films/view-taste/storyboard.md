@@ -45,11 +45,25 @@ preset by a table, so it judges the same way every time.
   listener likes and neither one it dislikes, so the two auditions on camera
   are musical.
 - **RICH** (every chapter): the warm start answered by the listener (its
-  three favourite cards), one *skip ↻* once the pool is full (the first pair
-  is dealt while the pool is still filling, so it is the one deal that can
-  differ between takes), thirty duels, stars from the listener (★5 on the
-  three bank rows it likes most, ★1 on the two it likes least), a first note
-  to retire the keybed coach, then duels to the edge of a refit.
+  three favourite cards), two *skip ↻* once the pool is full, thirty duels,
+  stars from the listener (★5 on the three bank rows it likes most, ★1 on the
+  two it likes least), a first note to retire the keybed coach, then duels to
+  the edge of a refit.
+
+**Pairs dealt ahead.** EVOLVE deals the next pair while one is on the table
+(once the table's two sounds are in), and a pick or *skip ↻* puts it up at
+once. Two things follow for a seeded session (`session.py`):
+
+- The first pair is dealt while the pool is still filling, and so, most
+  likely, is the pair dealt ahead behind it: those are the two deals that can
+  differ between takes. Both sessions skip **twice** once the pool is full
+  (`REDEAL`), so the pair on the table was dealt from the full pool. One skip
+  was enough when a pair was dealt only after the one before it was answered.
+- A pick made while the next pair's deal is still on its way races it, and
+  the next two pairs can come up in either order. So every scripted pick and
+  skip first waits (`settle`) for the table's sounds and for the pair dealt
+  ahead (the passive listener counts the worker's `duel` replies marked
+  `ahead`), the way a person who plays both first does anyway.
 
 **Nothing is chosen by name.** A new build of the engine deals a different
 pool, so every target is chosen by what it is, from the engine's own taste
@@ -142,13 +156,18 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
 ## 7. `directions` — shot `vt-dir` (dir1–5) — chapter `04 · directions`
 
 - **Actions:** `dir1:Directions` DIRECTIONS; markers (from the app's own
-  `taste-geom.js`) on the rows dir4 names (shimmer, brightness, reverbs), the
-  row every style pulls the same way, the longest bars each way, and the
-  longest bar whose drawn whisker plainly crosses the centre line (a guess:
-  drawn hollow, its label ending in *?*).
-- **Callouts:** *toward*, *away*, *noise srcs: all three lean away*, *what
-  you hear* (shimmer, brightness), *what it's built from* (supersaws),
-  *hollow, with a ?: still a guess*.
+  `taste-geom.js`) on the topmost row of each kind dir4 names (`heard`: a
+  measurement of the sound, the first group of main.js `NICE_NAMES`;
+  `built`: a count of one kind of module, `n_…`), the row every style pulls
+  the same way, the longest bars each way, and the longest bar whose drawn
+  whisker plainly crosses the centre line (a guess: drawn hollow, its label
+  ending in *?*).
+- **Callouts:** *toward*, *away*, *noise srcs: every style leans away*,
+  *what you hear*, *what it's built from*, *hollow, with a ?: still a guess*.
+- dir4 names no row ("Some rows name what you hear. Others name what the
+  patch is built from."): which twelve rows DIRECTIONS shows moves with the
+  session, and it named shimmer, brightness and supersaws, then reverbs,
+  from one rehearsal to the next.
 - The app draws a sure bar solid and a guess hollow, with the caption
   *Where each style leans. Solid = it's sure. Hollow = still a guess — the
   thin line is how far it could be off.* dir5 says the same: "A solid bar is
@@ -162,17 +181,23 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
   supersaws, stepped mods, treble reach, amp sustain. Every style leans away
   from *noise srcs* (−0.13, −0.12, −0.17), and 32 of the 36 bars are guesses
   (only snap, grit, slow attack and amp sustain have a sure bar); there is
-  no reverbs row any more, so dir4 names supersaws. dir3–dir5 say exactly
-  that. Rewrite them if the session changes.
+  no reverbs row any more. dir3 and dir5 say exactly that. Deals ahead
+  (above) change the session, so re-check dir3 (*noise srcs* is the row every
+  style agrees on, `agree` in the log) and dir5 (most bars are guesses,
+  `guesses` in the log) at the next rehearsal, and rewrite them if they no
+  longer hold.
 
 ## 8. `trust` — shot `vt-trust` (trust1–5) — chapter `05 · trust`
 
 - **Actions:** `trust1:believe` TRUST; markers on the diagonal, the axis,
   the largest bucket and the check-duel line.
-- **Check:** trust4 says the score on duels dealt at random, as the check
-  line prints it: 35 forecasts, Brier 0.185, 26% sharper than chance, all 35
-  of them check duels (every deal under the default random rule). The
-  `trust` log has the numbers; the line follows the screen.
+- **Check:** trust4 says what the check line is ("its score on duels dealt
+  at random: how much sharper than chance it is"), and the screen gives the
+  number (*on N unbiased check duels: N% sharper than chance — this is the
+  number to trust*). It used to say "Here, twenty-six percent", and one
+  rehearsal of the same session read 26% and another 27%; the number moves
+  with the session, so the words do not quote it. The `trust` log has the
+  numbers.
 
 ## 9. `wrong` — shot `vt-wrong` (wrong1–6; bed out) — chapter `06 · when it's wrong`
 
@@ -185,9 +210,11 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
   `wrong4` EVOLVE, where that pair is on the table; `wrong4:other` choose the
   other side, against the model: *⚡ Surprise — it had this backwards*; the
   link clicked at `@learned+1.0`; the refit lands (stamp `fitted`); the same
-  sound marked again (the axes turn a little at a refit) and hovered. It is
-  Noisy Pluck 2, 81% before and 78% after: one pick moves it a little, and
-  wrong6 says so.
+  sound marked again (the axes turn a little at a refit) and hovered. On
+  28 September it was Noisy Pluck 2, 81% before and 78% after: one pick moves
+  it a little, and wrong6 says so. The callouts no longer quote the two
+  numbers (the tooltips show them); check that *after* is below *before* in
+  the `dot` and `after` logs.
 - **Clips:** `["wrong6-0.3", "@fitted-0.7"]`. The pick is the sixth since
   the last fit, and its refit now waits out the pick's seven-second undo
   window: under wrong5 the meter reads *● learning from your last 6 picks…*,
@@ -245,3 +272,23 @@ the *Load taste profile* label, `#taste-reset-btn`, `#alarm`.
    scale, `taste-geom.js`); `dirRows()` in `session.py` uses that module.
 6. **Renaming a style renamed the others** and moved every share (the rename
    was the first fresh views since the last fit). Fixed (06fee64).
+
+## ⚑ To re-check at the next rehearsal (Wave 1 and RFC-001)
+
+The app now deals the next pair ahead, and the engine breeds generations as
+farm jobs, so the RICH and FRESH sessions are new: the pairs differ from the
+28 September rehearsal. Read the sidecars (`out/view-taste/dry/*.json`) and
+fix what no longer holds:
+
+- **Camera aims** in `film.js` are typed as app coordinates from the old
+  session: `map4` (the firm yes, 1278,600), `map5` (the maybe, 1090,300),
+  `wrong2` and `wrong6` (the wrong dot, 1250,560 and 1330,540). Re-aim them
+  from the `targets`, `dot` and `after` logs; `framing.py` shows any callout
+  they push out of frame.
+- **RENAME** (*warm washes*) must fit the first style's example (`pick` log).
+- **dir3** (every style leans away from *noise srcs*: `agree` log), **dir5**
+  (most bars are guesses: `guesses` log), **wrong6** (the dot's *would like*
+  lower after the refit: `dot` and `after` logs).
+- The refit's new menu-bar slot (*refitting your taste map…*, the E lit)
+  runs inside the cold open's and the wrong beat's cuts, so it is not on
+  screen; nothing in the film says otherwise.

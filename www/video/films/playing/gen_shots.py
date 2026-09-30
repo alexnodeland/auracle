@@ -19,6 +19,14 @@ shots = {s["id"]: s for s in old["shots"]}
 NAMED = ".pf-knob:is([data-i='1'], [data-i='2'], [data-i='3'], [data-i='4'], [data-i='5'])"
 REACH = NAMED + ":not(.search):not(.unwired)"
 UP = REACH + ":not(.half-hi)"
+# Every preset ships wired (apps/web/perform-wirings.json) and PERFORM
+# re-checks it in the background under this session's pool; shotgen's
+# `measured` waits that out, so a shot starts on the session's own wiring (the
+# one the gestures above pick controls by) and nothing re-wires under its
+# first gesture.
+STATUS = "document.querySelector('.pf-status').textContent"
+# Wander's own state is on the line under its dial, not the status line.
+WSUB = "document.querySelector(\".pf-knob[data-i='7'] .pf-k-sub\").textContent"
 def plain(name, extra=()):
     return perform(name) + list(extra) + [QUIET]
 spec = {
@@ -60,25 +68,51 @@ add("pl-controls", plain("Glass Pad"), actions=ctl[:1] + nudges + ctl[1:], marks
 add("pl-xy", plain("Glass Pad"))
 wander = [dict(a) for a in shots["pl-wander"]["actions"]]
 for a in wander:
-    # Early and short: the offer comes 3.5 s after the hands leave (a spare
-    # grown ahead is handed over at once), and it must be in B before "More"
-    # turns Wander past the offer zone, where no offer is asked for.
+    # Early and short: let go in the ideas zone, Wander asks 1.5 s later (a
+    # spare grown ahead is handed over at once), and it must be in B before
+    # "More" turns Wander past ideas, where no offer is asked for.
     if a["op"] == "drag" and a["at"] == "wander1:Wander":
         a["at"], a["ms"] = "wander1:Wander-0.15", 450
     # "Touch anything": a control that reaches (turning a search control
     # would grow an offer).
     if a["op"] == "drag" and a["at"] == "wander4:waits":
         a["sel"] = REACH + " >> nth=0"
+# The touch and Freeze are 0.7 s apart in the narration: one after the other
+# (a Freeze clicked while the touch's drag still held the pointer did not
+# land), the touch a little shorter.
+k = next(k for k, a in enumerate(wander) if a["at"] == "wander4:waits")
+f = next(k for k, a in enumerate(wander) if a["at"] == "wander4:Freeze")
+touch, freeze = dict(wander[k]), wander[f]
+touch.pop("at")
+touch["ms"] = 380
+wander[k] = {"at": "wander4:waits", "op": "seq", "steps": [touch, {"op": "wait", "until": "wander4:Freeze"}, {"op": "click", "sel": freeze["sel"]}]}
+del wander[f]
 i = next(k for k, a in enumerate(wander) if a["at"] == "wander2:More")
 wander[i:i] = [
     {"at": "wander1:Wander+0.8", "op": "until", "sel": ".pf-offer.ready", "ms": 30000, "stamp": "offered"},
+    {"at": "wander2:ideas", "op": "log", "name": "ideas", "js": WSUB},
     {"at": "wander2:More-0.1", "op": "log", "name": "B", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"},
 ]
-wander.append({"at": "wander4:Freeze+0.6", "op": "log", "name": "B at the end", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"})
-# The idea takes a few seconds to grow once asked for: the beat cuts from
-# "ideas" to just before it lands in B (no cut when it is already there).
+# Into drift on "More": the first move is asked for 1.5 s after letting go,
+# and the walk renders a step at a time ("drift · walking…" under the dial),
+# so the stamp is the glide itself ("drift · gliding").
+i = next(k for k, a in enumerate(wander) if a["at"] == "wander2:More") + 1
+wander[i:i] = [
+    {"at": "wander2:More+1.0", "op": "until", "js": "/^drift · gliding/.test(" + WSUB + ")", "ms": 120000, "stamp": "drift"},
+    {"at": "@drift+0.3", "op": "log", "name": "drift", "js": WSUB + " + ' || ' + " + STATUS},
+]
+wander += [
+    {"at": "wander3:roams+0.2", "op": "log", "name": "roam", "js": WSUB},
+    {"at": "wander4:waits+0.4", "op": "log", "name": "waits", "js": WSUB},
+    {"at": "wander4:Freeze+0.6", "op": "log", "name": "held", "js": WSUB},
+    {"at": "wander4:Freeze+0.6", "op": "log", "name": "B at the end", "js": "document.querySelector('.pf-offer').textContent.trim().slice(0, 120)"},
+]
+# The idea lands at once (Wander asks 1.5 s after letting go and hands over
+# the spare), so there is no cut there any more. The walk into drift still
+# renders for a few seconds: the beat cuts from "taste" to just before the
+# glide, so the knobs are seen to drift (no cut if it is already gliding).
 add("pl-wander", TAUGHT + perform("Glass Pad") + [{"op": "wait", "ms": 9000}, QUIET], own=True, actions=wander,
-    clips=[["wander2:ideas+0.5", "@offered-0.3"]])
+    clips=[["wander2:taste+0.2", "@drift-0.3"]])
 add("pl-offer", TAUGHT + perform("Glass Pad") + [{"op": "wait", "ms": 9000}, QUIET], own=True)
 keep = shots["pl-keep"]["actions"]
 # One chain of gestures, in order, each on its word when the machine keeps up.

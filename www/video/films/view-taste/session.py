@@ -30,10 +30,14 @@ pointer-events: none and invisible.
 import json
 
 # The latest taste views and calibration the engine worker sent, kept in
-# window.__vt. Passive: an extra "message" listener on each worker.
-WATCH = ("(() => { const N = window.Worker; const vt = (window.__vt = { views: null, calib: null, fits: 0 }); "
+# window.__vt, and the last pair it dealt ahead (`ahead`; `aheads` counts
+# them): main.js deals the next pair while one is on the table, and the
+# teaching scripts wait for that deal before they answer (`settle`).
+# Passive: an extra "message" listener on each worker.
+WATCH = ("(() => { const N = window.Worker; const vt = (window.__vt = { views: null, calib: null, fits: 0, ahead: null, aheads: 0 }); "
          "window.Worker = class extends N { constructor(...a) { super(...a); this.addEventListener('message', (e) => { "
          "const m = e.data; if (!m || typeof m.type !== 'string') return; if (m.views) vt.views = m.views; "
+         "if (m.type === 'duel' && m.ahead) { vt.ahead = m.pair || null; vt.aheads += 1; } "
          "if (m.type === 'fitted') vt.fits += 1; if (m.type === 'calibration') vt.calib = m.calib; }); } }; })();")
 
 # ---------------------------------------------------------------- the listener
@@ -101,6 +105,34 @@ const sigOf = (s) => $('name-' + s).querySelector('.dn-sig')?.textContent || '';
 const dealt = () => !$('choose-a').disabled && !$('choose-b').disabled;
 const named = () => ['a', 'b'].every((s) => { const t = nameOf(s); return t && !t.startsWith('#') && !/^candidate/.test(t); });
 const pairIds = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => e.textContent).join();
+const tableIds = () => [...document.querySelectorAll('#name-a .dn-id, #name-b .dn-id')].map((e) => Number(e.textContent.replace(/\D/g, '')));
+const samePair = (p, q) => !!(p && q && p.length === 2 && q.length === 2 && p.includes(q[0]) && p.includes(q[1]));
+// The app deals the next pair while one is on the table (main.js
+// requestAhead), once the table's two sounds are in, and a pick or a skip puts
+// that pair up at once. A pick made while that deal is still on its way races
+// it: the next two pairs can then come up in either order, and the session
+// would differ from take to take. So the listener answers only once the pair
+// on the table has its sounds and the pair behind it is dealt, the way a
+// person who plays both first always does. A deal that repeats the table's
+// pair, or the pair whose pick is still in its undo window (__vtPicked), is
+// refused by the app and asked again, so it does not count; after three
+// refusals the app stops asking, and so does this wait.
+async function settle() {
+  await until(() => dealt() && !document.querySelector('#play-a.pending, #play-b.pending'), 120000, 'the pair to render');
+  const ids = tableIds();
+  await until(() => { const a = window.__vt.ahead; return a && !samePair(a, ids) && !samePair(a, window.__vtPicked); }, 30000, 'the next pair, dealt ahead').catch(() => {});
+}
+// Answer the pair on the table ('a' or 'b'), remembering which pair it was.
+function choose(side) {
+  window.__vtPicked = tableIds();
+  $('choose-' + side).click();
+}
+// Skip the pair on the table (records nothing), and wait for the next.
+async function skip() {
+  const was = pairIds();
+  $('skip-duel').click();
+  await until(() => dealt() && pairIds() !== was, 60000, 'a new pair');
+}
 // Every pool dot on the map, where drawMapTab puts it, in page pixels.
 const dots = () => {
   const V = window.__vt && window.__vt.views;
@@ -216,20 +248,19 @@ const out = [];
 let n = 0, redeals = 0;
 while (n < N) {
   await until(dealt, 300000, 'a pair to be dealt');
+  await settle();
   // A side still named by a bare #id has no bank row yet: re-deal (skip records nothing).
   const ok = await until(named, 20000, 'names').catch(() => false);
   if (!ok) {
     if (++redeals > 40) throw new Error('forty pairs in a row with an unnamed side');
-    const was = pairIds();
-    $('skip-duel').click();
-    await until(() => pairIds() !== was, 60000, 'a new pair').catch(() => {});
+    await skip().catch(() => {});
     continue;
   }
   redeals = 0;
   const a = nameOf('a'), b = nameOf('b');
   const ua = liking(a, sigOf('a')), ub = liking(b, sigOf('b'));
   const side = ub > ua ? 'b' : 'a';
-  $('choose-' + side).click();
+  choose(side);
   n += 1;
   out.push(n + ' ' + a + ' ' + ua.toFixed(2) + ' | ' + b + ' ' + ub.toFixed(2) + ' -> ' + side.toUpperCase());
   await sleep(250);
@@ -249,10 +280,11 @@ for (let i = 0; i < %d; i++) {
   await until(dealt, 300000, 'a pair');
   await sleep(600);
   await until(() => !$('duel-mid').classList.contains('learning'), 60000, 'the refit beat');
+  await settle();
   if (/^1 more pick/.test($('teach-copy').textContent)) return out.join('\n') + '\n(at the edge: ' + $('teach-copy').textContent + ')';
   const a = nameOf('a'), b = nameOf('b');
   const side = liking(b, sigOf('b')) > liking(a, sigOf('a')) ? 'b' : 'a';
-  $('choose-' + side).click();
+  choose(side);
   out.push(a + ' | ' + b + ' -> ' + side);
   await sleep(300);
 }
@@ -292,15 +324,23 @@ return out.join(', ');
 
 
 # The first pair is dealt at "playable", while the pool is still filling, so
-# which pair it is depends on how far the fill got. Re-dealt once the pool is
-# full (skip records nothing), every later deal is the same in every take.
+# which pair it is depends on how far the fill got; and so, now, does the pair
+# the app deals ahead behind it, as soon as the first pair's sounds are in.
+# Skipped twice once the pool is full (skip records nothing), the pair on the
+# table is the one dealt behind those two, from the full pool, and every later
+# deal is the same in every take. (One skip used to be enough, when a pair was
+# dealt only once the one before it was answered.)
 REDEAL = js(r"""
 await until(dealt, 120000, 'a pair');
-const was = pairIds();
-$('skip-duel').click();
-await until(() => dealt() && pairIds() !== was, 60000, 'a new pair');
+const out = [nameOf('a') + ' | ' + nameOf('b')];
+for (let i = 0; i < 2; i++) {
+  await settle();
+  await skip();
+  out.push(nameOf('a') + ' | ' + nameOf('b'));
+}
 await until(named, 20000, 'names').catch(() => {});
-return nameOf('a') + ' | ' + nameOf('b');
+out[out.length - 1] = nameOf('a') + ' | ' + nameOf('b');
+return out.join('  ->  ') + '  (' + window.__vt.aheads + ' dealt ahead)';
 """)
 
 # The pair on the table re-dealt with skip (which records nothing) until one
@@ -311,14 +351,13 @@ NICE_PAIR = js(r"""
 const out = [];
 for (let i = 0; i < 40; i++) {
   await until(dealt, 120000, 'a pair');
+  await settle();
   await until(named, 20000, 'names').catch(() => {});
   const a = nameOf('a'), b = nameOf('b'), ua = liking(a), ub = liking(b);
   out.push(a + ' | ' + b);
   if (Math.max(ua, ub) >= 0.5 && Math.min(ua, ub) >= 0 && a.split(' ')[1] !== b.split(' ')[1]) break;
   if (i === 39) throw new Error('no musical pair in forty deals: ' + out.join(' / '));
-  const was = pairIds();
-  $('skip-duel').click();
-  await until(() => pairIds() !== was, 60000, 'a new pair');
+  await skip();
 }
 await until(() => !document.querySelector('#play-a.pending, #play-b.pending'), 90000, 'the pair to render');
 return out.join('  /  ');
@@ -372,21 +411,27 @@ return marker('vt-best', d) + ' (brightest: ' + ds[0].name + ' ' + ds[0].glow.to
 DIR_MARKS = js(r"""
 const rows = dirRows();
 const base = (n) => String(n).split(':')[0];
-const NAMED = { centroid_std: 'shimmer', centroid_mean: 'brightness', n_supersaw: 'supersaws' };
 // A row this session does not show gets its marker in the canvas's corner,
 // named "absent", so every mark resolves and the log says which are real.
 const { r: box } = crt();
 const absent = (id) => markAt(id, Math.round(box.left + 2), Math.round(box.top + 2), 'absent');
-const words = [];
-for (const [key, w] of Object.entries(NAMED)) {
-  const q = rows.find((x) => base(x.name) === key);
-  if (q) { markAt('vt-' + w, q.label + 4, q.y, w); words.push(w); } else absent('vt-' + w);
-}
 // Rows where every style's bar points the same way, strongest first.
 const agree = rows.filter((q) => q.bars.length > 1 && (q.bars.every((b) => b.mean < 0) || q.bars.every((b) => b.mean > 0)))
   .map((q) => ({ q, side: q.bars[0].mean < 0 ? 'away' : 'toward', m: Math.min(...q.bars.map((b) => Math.abs(b.mean))) }))
   .sort((p, q) => q.m - p.m);
 if (agree[0]) markAt('vt-agree', agree[0].q.label + 4, agree[0].q.y, agree[0].q.name); else absent('vt-agree');
+// dir4's two kinds of row, whichever this session shows: what you hear (a
+// measurement of the sound: main.js NICE_NAMES, its first group) and what the
+// patch is built from (a count of one kind of module, n_…). The topmost of
+// each is marked, other than the row dir3 points at when there is another.
+const HEARD = new Set(['centroid_mean', 'centroid_std', 'rolloff_mean', 'flatness_mean', 'flux_mean', 'zcr_mean', 'rms_mean',
+  'rms_std', 'crest', 'attack_s', 'tail_ratio', 'bass_fraction', 'held_centroid_std', 'high_ratio', 'chord_flatness_delta',
+  'motion_slow', 'motion_mid', 'motion_fast']);
+const kind = (test) => { const all = rows.filter((q) => test(base(q.name))); return all.find((q) => !agree[0] || q !== agree[0].q) || all[0]; };
+const heard = kind((k) => HEARD.has(k)), built = kind((k) => k.startsWith('n_'));
+const words = [];
+if (heard) { markAt('vt-heard', heard.label + 4, heard.y, heard.name); words.push('heard ' + heard.name); } else absent('vt-heard');
+if (built) { markAt('vt-built', built.label + 4, built.y, built.name); words.push('built ' + built.name); } else absent('vt-built');
 const all = rows.flatMap((q) => q.bars.map((b) => ({ ...b, row: q.name })));
 const right = all.filter((b) => b.mean > 0).sort((p, q) => q.mean - p.mean)[0];
 const left = all.filter((b) => b.mean < 0).sort((p, q) => p.mean - q.mean)[0];
@@ -398,6 +443,7 @@ if (guess) markAt('vt-guess', guess.far, guess.y, guess.row); else absent('vt-gu
 return JSON.stringify({ named: words, agree: agree.map((a) => a.q.name + ' ' + a.side + ' ' + a.m.toFixed(3)),
   right: right.row + ' ' + right.mean, left: left.row + ' ' + left.mean,
   guess: guess ? guess.row + ' ' + guess.mean + '±' + guess.std + ' over ' + guess.over.toFixed(2) : null,
+  guesses: crossing.length + ' of ' + all.length + ' bars cross the centre line',
   styles: byShare().filter((q) => q.share >= 0.08).map((q) => q.k + ' ' + q.share.toFixed(3)),
   rows: rows.map((q) => q.name + ' ' + q.bars.map((b) => b.mean + '±' + b.std + (b.cross ? 'x' : '') + (b.clip ? '>' : '')).join(' ')) });
 """)
@@ -470,6 +516,7 @@ const out = [];
 let target = null;
 for (let i = 0; i < 60 && !target; i++) {
   await until(dealt, 120000, 'a pair');
+  await settle();
   await until(named, 20000, 'names').catch(() => {});
   const a = nameOf('a'), b = nameOf('b'), pa = pct(a), pb = pct(b);
   out.push(a + ' ' + pa + '% | ' + b + ' ' + pb + '%');
@@ -477,9 +524,7 @@ for (let i = 0; i < 60 && !target; i++) {
   if (bad(a, pa) && pb < pa) target = ['a', a];
   else if (bad(b, pb) && pa < pb) target = ['b', b];
   if (target) break;
-  const was = pairIds();
-  $('skip-duel').click();
-  await until(() => pairIds() !== was, 60000, 'a new pair');
+  await skip();
 }
 if (!target) throw new Error('no pair with a sound the model rates highly and the listener dislikes: ' + out.join(' / '));
 const other = target[0] === 'a' ? 'b' : 'a';

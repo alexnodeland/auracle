@@ -6,13 +6,13 @@
  "sections": [
   {
    "section": "loop_a",
-   "bars": 22,
+   "bars": 20,
    "t0": 0.0
   },
   {
    "section": "loop_b",
-   "bars": 36,
-   "t0": 64.286
+   "bars": 30,
+   "t0": 56.429
   }
  ]
 }

@@ -259,12 +259,12 @@
       "id": "breed",
       "bed_db": -60,
       "lead": 0.3,
-      "tail": 1.62,
+      "tail": 2.74,
       "lines": [
         {
           "id": "breed1",
           "text": "After a dozen picks or so, press Evolve Pool.",
-          "post": 0.5
+          "post": 1.2
         },
         {
           "id": "breed2",
@@ -273,26 +273,31 @@
         },
         {
           "id": "breed3",
-          "text": "The children join the pool, marked with a lightning bolt.",
-          "post": 0.4
+          "text": "It breeds beside you, so keep picking. The next pair still comes up at once.",
+          "post": 1.2
         },
         {
           "id": "breed4",
-          "text": "To make room, it replaces the sounds it likes least. A sound you saved is never replaced.",
+          "text": "The children land at the top of the bank one by one, marked with a lightning bolt.",
           "post": 0.4
         },
         {
           "id": "breed5",
-          "text": "The strip below says what each child changed: which knobs moved, and which modules came or went.",
+          "text": "When it's done, it replaces the sounds it likes least. A sound you saved is never replaced.",
           "post": 0.4
         },
         {
           "id": "breed6",
-          "text": "Each child is a variation on its parent, so the pool moves rather than starting over.",
+          "text": "The strip below says what each child changed: which knobs moved, and which modules came or went.",
           "post": 0.4
         },
         {
           "id": "breed7",
+          "text": "Each child is a variation on its parent, so the pool moves rather than starting over.",
+          "post": 0.4
+        },
+        {
+          "id": "breed8",
           "text": "Then listen to them.",
           "post": 4.4
         }
@@ -351,7 +356,7 @@
       "id": "rhythm",
       "bed_db": -60,
       "lead": 0.3,
-      "tail": 2.45,
+      "tail": 1.6,
       "lines": [
         {
           "id": "rhythm1",
@@ -370,7 +375,7 @@
         },
         {
           "id": "rhythm4",
-          "text": "Play the new children, and save the ones you'd use.",
+          "text": "Play the new children as they land, and save the ones you'd use.",
           "post": 6.0
         },
         {

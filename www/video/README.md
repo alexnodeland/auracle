@@ -41,7 +41,14 @@ Preview any film in a browser, served from the repo root:
 
 ## Setting up
 
-Everything here runs from the repo root, on Linux or macOS.
+Everything here runs from the repo root, on Linux or macOS. **`make
+film-setup`** (`scripts/setup.sh --film`) does all of the below that can be
+installed without sudo: the app's toolchain and engine, `.venv-voice` with the
+voice's pinned set and the film tools' packages
+(`www/video/requirements-tools.txt`), the voice models, and the shared sound.
+It needs rustup, Node 22 (`.node-version`) and Python 3.10–3.12, and is safe to re-run. The
+film make targets run on `.venv-voice`; to run a tool by hand, `source
+.venv-voice/bin/activate` first. The parts, for reference:
 
 - **Node and Chromium**, for the stage, the renderer and the footage recorder:
   `cd tests/web && npm ci && npx playwright install chromium` (the browser tests

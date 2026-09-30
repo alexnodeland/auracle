@@ -89,7 +89,9 @@
 //   click {sel, force?}  dblclick {sel} a click; a double-click (renaming a bank row)
 //   view {v}                            a view tab: perform, play (PATCH), evolve, taste
 //   preset {name}                       open a preset from the preset bank, and wait for it
-//   measured {name?, settle?}           wait until PERFORM has measured the patch
+//   measured {name?, settle?}           wait until PERFORM has measured the patch and no
+//                                       re-check is in flight (a preset ships wired, then
+//                                       re-checks in the background)
 //   key {key, ms?}                      press and release one key
 //   hold {keys, ms}                     hold keys together (["Shift", "a"] plays an accent)
 //   type {text, sel?, ms?, enter?}      type into sel (or whatever has focus), ms between keys
@@ -467,7 +469,23 @@ async function step(page, s, ctx = {}) {
       // The status line belongs to whatever patch PERFORM last measured, so a
       // fresh load must first show its own name, then its own measurement.
       if (s.name) await page.waitForFunction((n) => (document.querySelector(".pf-name")?.textContent || "").includes(n), s.name, { timeout: 60_000 });
-      await page.waitForFunction(() => /controls reach/.test(document.querySelector(".pf-status")?.textContent || ""), null, { timeout: 120_000 });
+      // Measured means settled: a wiring in hand ("N of M controls reach
+      // this patch") and nothing measuring it again. A preset's shipped
+      // wiring is on at once while PERFORM re-checks it in the background
+      // ("· re-checking"), and the re-check can move which controls reach
+      // the patch; an open still landing holds the re-check back for up to
+      // one tick of PERFORM's 250 ms interval, when the line reads settled
+      // but is not. So the line must read settled for a full second.
+      await page.evaluate(() => { window.__filmSettledSince = 0; });
+      await page.waitForFunction(() => {
+        const t = document.querySelector(".pf-status")?.textContent || "";
+        if (!/controls reach/.test(t) || /re-checking|opening|listening/.test(t)) {
+          window.__filmSettledSince = 0;
+          return false;
+        }
+        window.__filmSettledSince ||= performance.now();
+        return performance.now() - window.__filmSettledSince >= 1000;
+      }, null, { timeout: 180_000, polling: 100 });
       return page.waitForTimeout(s.settle ?? 400);
     case "key":
       await page.keyboard.down(s.key);

@@ -47,6 +47,13 @@ the first-visit aids away (the bench tour's banner by its *got it*; the
 keybed's hint by one note), and waits for the engine to settle (`#belief` not
 re-measuring, the wordmark's lamp not thinking) and the toasts to clear.
 
+**Long work.** No generation is bred in this film. ⚡ (chapter 07, and the
+set-up of chapter 09) is the one long job: the menu bar's job slot shows it
+while it runs, and the E of the wordmark is lit exactly while the slot is up.
+`SETTLED` waits for that lamp to go out (a ⚡ walk, a refit), and for the
+belief row to stop *re-measuring*. PERFORM is not visited, so its preset
+wiring and *re-checking* do not appear.
+
 **Edits.** Every bench edit goes through one ordered lane, so knobs can be
 turned back to back. A gesture that turns one knob both ways is one press
 (the cold open's, *changing it*'s and *together*'s cutoff: `path` in
@@ -186,12 +193,25 @@ chapter 01's card.
 ## 8. `lock` — shot `vp-lock` (lock1–3) · Glass Pad · **cut**
 
 - **Actions:** chords; lock1: the cutoff's lock dot, then the chorus's ▢.
-  lock2: ⚡ *evolve from this*. The beat cuts at lock3 to the moment the child
-  is on the bench (`clips: [["lock3", "@benched-0.6"]]`); chords again on the
-  child. Which child ⚡ breeds varies from load to load; the chorus, locked,
-  never changes.
+  lock2: ⚡ *evolve from this*. Its walk (about 20 s) runs on the render
+  farm, beside the player: the button reads *⚡ evolving…*, the menu bar's
+  job slot *⚡ evolving Glass Pad* (with **stop** when the walk is on the
+  farm; the `slot` log says which) and the wordmark's E is lit, and the rack
+  stays live, so the chords play on through "Only what you left unlocked can
+  change". The beat cuts on "and" to the moment the child is on the bench
+  (`clips: [["lock3:and-0.3", "@benched-0.6"]]`); chords again on the child.
+  Off camera, the set-up spends this session's first ⚡ from Glass Pad (same
+  locks; a miss: *did not survive the vet or beat its parent — try again*)
+  and clears the locks, so the ⚡ on camera is the session's second, which
+  lands a child (*Fat Drone* in the rehearsal of 29 September).
+  Which child ⚡ breeds varies from load to load; the chorus, locked, never
+  changes.
 - **Callouts:** "one knob, by its dot"; "a whole module, by its ▢"; "⚡ evolve
-  from this"; "locked: unchanged"; "unlocked: free to change" (amber).
+  from this"; "the menu bar says so too" (amber, on the job slot); "locked:
+  unchanged"; "unlocked: free to change" (amber).
+- Before Wave 1, ⚡ held the engine: a toast said *⚡ evolving around the
+  locked controls…* and the beat cut straight from the press, with nothing
+  to show while it walked.
 
 ## 9. `keep` — shot `vp-keep` (keep1–4) · Glass Pad (edited in set-up)
 

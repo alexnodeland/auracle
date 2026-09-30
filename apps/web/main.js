@@ -1586,6 +1586,7 @@ worker.onmessage = (e) => {
     }
     case "bench": {
       wb.rack = m.rack;
+      perform?.rackChanged?.();
       // From here `wb.dirty` is the truth about COMMIT; the local guess that
       // lit it ahead of this reply (`editPending`) has done its job.
       editPending = false;
@@ -8693,6 +8694,7 @@ function repaintRackInPlace(fresh) {
     const { modules: _m, ...top } = fresh;
     Object.assign(built, top);
     wb.rack = built;
+    perform?.rackChanged?.();
     lockIndex = null;
   }
   const svg = $("rack-svg");
@@ -10226,9 +10228,16 @@ let camHold = false;                  // leave the next build's framing alone
 let camSig = "";                      // bounding-box signature of the last build
 let viewTween = null;
 
+// The frame's size the last time it was on screen. Behind another view it
+// measures 0×0, and a build there (the bank keeps arriving under PERFORM) that
+// fitted the patch to that aimed the camera at an 80 px box: plates without
+// knobs, and a journey back in from far away on the way back to PATCH.
+let frameSeen = null;
 function frameSize() {
   const el = $("rack-scroll");
-  return { w: Math.max(80, el.clientWidth), h: Math.max(80, el.clientHeight) };
+  if (el.clientWidth > 0 && el.clientHeight > 0) frameSeen = { w: el.clientWidth, h: el.clientHeight };
+  const f = frameSeen || { w: 0, h: 0 };
+  return { w: Math.max(80, f.w), h: Math.max(80, f.h) };
 }
 /** The box a fit is a fit *of*: the union of the plates, not the extent of the
  *  layout canvas they happen to be drawn on.
@@ -10869,7 +10878,9 @@ function aimCamera(coMotion) {
   // structural edit is compared against what is actually on screen.
   const hold = camHold;
   camHold = false;
-  if (!camAimed) { camAimed = true; fitBox(contentBox(), false); return; }
+  // A fit to a frame that has never been on screen (the app opened in another
+  // view) is a guess, not an aim: the first real showing fits without travel.
+  if (!camAimed) { fitBox(contentBox(), false); camAimed = frameSeen != null; return; }
   if (!hold && changed && (!viewUserSet || !contentFullyVisible())) fitBox(contentBox(), true, coMotion);
   else applyView();
 }
@@ -11305,6 +11316,7 @@ function stopEdgePan() {
 // nothing refit — the patch just got clipped. There was no ResizeObserver
 // anywhere in the app; this is the one place that needs one.
 let roSettled = false;
+let roSize = null; // the last size on screen that the patch was fitted to
 new ResizeObserver(() => {
   // The scope's canvas is sized in percentages of this same frame, so a
   // resize re-backs it at a new pixel size and blanks whatever was on it.
@@ -11314,8 +11326,22 @@ new ResizeObserver(() => {
   // tooltip that quotes it has to be re-read when the frame changes shape —
   // which the divider above the spec strip does on every drag frame.
   syncLodBtn();
-  if (!roSettled) { roSettled = true; return; } // the observer's own first call
-  if (!wb.rack) return;
+  const el = $("rack-scroll");
+  const w = el.clientWidth, h = el.clientHeight;
+  if (!roSettled) { // the observer's own first call
+    roSettled = true;
+    if (w && h) roSize = { w, h };
+    return;
+  }
+  // Another view went up (0×0), or PATCH came back at the size it left: not a
+  // new shape to fit. Fitting to the first zoomed the camera out to nothing,
+  // and the second then travelled back in, dropping the rack to plates
+  // without knobs on the way, so a knob found on arrival was gone a frame
+  // later (`patch_truth.spec.js`, on a machine fast enough to look first).
+  if (!w || !h) return;
+  const same = roSize && roSize.w === w && roSize.h === h;
+  roSize = { w, h };
+  if (same || !wb.rack) return;
   if (viewUserSet && !contentFullyVisible()) applyView();
   else fitBox(contentBox(), camAimed);
 }).observe($("rack-scroll"));

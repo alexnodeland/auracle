@@ -46,9 +46,14 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   stamp) rather than sleeping, and a cut (`clips`) removes a wait the viewer
   should not sit through. A hold that ends at a stamp still presses at its
   `at` time; only the release waits.
-- **Sessions are seeded, and a set-up skips once.** The first duel is dealt
-  while the pool is still filling, so a taught session presses skip once after
-  the fill to make every take identical.
+- **Sessions are seeded, and a taught set-up re-deals the duel.** The first
+  pair is dealt while the pool is still filling, the pair behind it is dealt
+  ahead as soon as its sounds are in, and a pair is dealt again when one of its
+  patches leaves the pool, so how many pairs have gone by when the pool is
+  full depends on timing. The engine deals them in the same order every time,
+  so a taught session (`shotgen.taught`) presses skip until the pair on the
+  table is the fifth one dealt, each skip once the pair behind it has been
+  dealt (`shotgen.REDEAL`, which reads the deals `shotgen.INIT` watches).
 - **Disk is the limit.** A five-minute film renders about 4 GB of frame parts.
   The renderer keeps parts and lists them (`picture.ffconcat`) instead of
   joining them. Record films one at a time and delete a film's parts once its

@@ -32,14 +32,20 @@ Be respectful and constructive.
    `../fugue-ecosystem/{fugue,fugue-evo}` and uncomment the `[patch.crates-io]`
    block at the bottom of the workspace `Cargo.toml` — don't commit the
    uncommented patch.
-2. **Install Rust** (stable) via [rustup](https://rustup.rs/), plus
-   [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) if you're touching the
-   web app.
+2. **Install [rustup](https://rustup.rs/) and Node 22** (the version in
+   `.node-version`; fnm or nvm pick it up), then run **`make setup`**
+   (`scripts/setup.sh`): it adds the wasm32 target, `wasm-pack` and
+   `cargo-nextest`, installs the browser tests' packages and Chromium, turns on
+   the git hooks and builds the app's engine. It is idempotent; run it again
+   after pulling. For the films, **`make film-setup`** also builds
+   `.venv-voice` (the narration's pinned Kokoro/Whisper set and the film
+   tools' packages; needs Python 3.10–3.12), downloads the voice models and
+   renders the shared sound. `scripts/setup.sh --site` adds the site's
+   mdBook toolchain.
 3. **Verify your setup** with `make check`.
-4. **Optionally, `make install-hooks`**: a pre-commit hook that checks the
-   formatting and syntax of what you stage, in seconds (skip once with
-   `git commit --no-verify`). `.editorconfig` sets each file type's
-   indentation for your editor.
+4. The git hooks `make setup` turns on check the formatting and syntax of
+   what you stage, in seconds (skip once with `git commit --no-verify`).
+   `.editorconfig` sets each file type's indentation for your editor.
 
 ## Layout
 

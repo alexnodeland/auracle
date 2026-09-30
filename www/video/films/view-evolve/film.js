@@ -15,9 +15,12 @@
 // footage runs on unbroken under the card. The title borrows the cold open's
 // shot the same way. The camera and the callouts are pinned to the
 // narration's words and to the elements footage.mjs measured; `aim(z, x, y)`
-// centres the camera on a point of the 1920×1080 app. Two beats cut inside
-// themselves (the shot's `clips`): the warm start's "teach it" and EVOLVE
-// POOL, whose results arrive seconds and minutes after the press.
+// centres the camera on a point of the 1920×1080 app. Three beats cut inside
+// themselves (the shot's `clips`): the warm start's "teach it", whose picks
+// land seconds later; the generation, cut to its first child landing and
+// again to its end, minutes after the press; and the working rhythm, cut to
+// the first child. A generation breeds beside the player, so the picks made
+// while it runs are on camera, uncut.
 //
 // Under the demos the app is the music: the bed is out (each beat's `bed_db`
 // in script.json), and in under the title, the chapter cards, the fair
@@ -159,13 +162,20 @@ export async function build(stage) {
         beat: "breed",
         shot: "ve-breed",
         chapter: "06 · a generation",
-        cam: hold([[0, ...POOL_BTN], ["breed3", ...RAIL], ["breed4", ...WIDE], ["breed5", ...LINEAGE], ["breed7", ...RAIL]]),
+        // The button and the menu bar; the cards for the picks made while it
+        // breeds; then (two cuts) the bank for the first child, wide for the
+        // generation's toast, the strip, and the bank again.
+        cam: hold([[0, ...POOL_BTN], ["breed3", ...CARDS], ["breed4", ...RAIL], ["breed5", ...WIDE], ["breed6", ...LINEAGE], ["breed8", ...RAIL]]),
         callouts: [
-          { at: T("breed1:press", 0.3), until: T("breed3", -0.9), mark: "evolve", side: "bottom", dx: -120, dy: 100, text: "breeds from its ten best" },
-          { at: "breed3:lightning", until: T("breed4", -0.9), mark: "fresh", side: "right", dx: 90, dy: 20, text: "⚡ a new child" },
-          { at: "breed4:replaces", until: T("breed5", -0.9), mark: "toast", side: "top", dx: -60, dy: -70, text: "the ones it liked least, replaced, by name" },
-          { at: "breed5:changed", until: T("breed7", -0.9), mark: "line1", side: "top", ox: -420, dx: 40, dy: -70, text: "what each child changed", color: "b" },
-          { at: T("breed7:listen", 0.2), mark: "fresh", side: "right", dx: 90, dy: 20, text: "▶ hear it" },
+          { at: T("breed1:press", 0.4), until: T("breed3", -0.9), mark: "evolve", side: "bottom", dx: -120, dy: 100, text: "breeds from its ten best" },
+          { at: "breed2:highest", until: T("breed3", -0.9), mark: "job", side: "bottom", dx: -200, dy: 90, text: "the menu bar says so too", color: "b" },
+          { at: T("breed3:picking", 0.4), until: T("breed4", -0.9), mark: "pair2", side: "top", dx: 40, dy: -80, text: "the next pair, at once" },
+          { at: "breed3:still", until: T("breed4", -0.9), mark: "evolve", side: "bottom", dx: -120, dy: 100, text: "still breeding", color: "b" },
+          { at: "breed4:top", until: T("breed5", -0.9), mark: "group", side: "right", dx: 90, dy: -30, text: "new · as they're bred", color: "b" },
+          { at: "breed4:lightning", until: T("breed5", -0.9), mark: "child1", side: "right", dx: 90, dy: 40, text: "⚡ a new child" },
+          { at: "breed5:replaces", until: T("breed6", -0.9), mark: "toast", side: "top", dx: -60, dy: -70, text: "the ones it liked least, replaced, by name" },
+          { at: "breed6:changed", until: T("breed8", -0.9), mark: "line1", side: "top", ox: -420, dx: 40, dy: -70, text: "what each child changed", color: "b" },
+          { at: T("breed8:listen", 0.2), mark: "fresh", side: "right", dx: 90, dy: 20, text: "▶ hear it" },
         ],
       },
       turn("turn7", "ve-keep", WIDE),
@@ -191,7 +201,7 @@ export async function build(stage) {
         cam: hold([[0, ...CARDS], ["rhythm3", ...POOL_BTN], ["rhythm4", ...WIDE]]),
         callouts: [
           { at: T("rhythm4:Play", 0.6), until: T("rhythm5", -0.9), mark: "child", side: "right", dx: 40, dy: 70, text: "a new child, on the keys" },
-          { at: T("rhythm4:children", 6.3), until: T("rhythm5", -0.9), mark: "row", side: "right", dx: 90, dy: 40, text: "saved" },
+          { at: T("rhythm4:children", 6.3), until: T("rhythm5", -0.9), mark: "row", side: "right", dx: 90, dy: 40, text: "saved while it breeds: safe" },
         ],
       },
       {

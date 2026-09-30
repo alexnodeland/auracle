@@ -16,10 +16,14 @@ mix (as the perform film does); the study bed sits under it.
   model.
 - **taught** — `own_setup: true` and, instead of skipping, the three-pick warm
   start: `until #warmstart:not(.hidden)` (180 s), `click .warm-item >> nth=0`,
-  `nth=4`, `nth=7`, `click #warm-go`, `wait 4000`. Used where the status line
-  must say *toward your taste* (Wander, offers).
+  `nth=4`, `nth=7`, `click #warm-go`, `wait 4000`. Used where Wander and
+  the offers must move *toward your taste* (Wander, offers).
 
-Then each shot: `preset <name>`, `view perform`, `measured <name>`, and holds.
+Then each shot: `preset <name>`, `view perform`, `measured <name>`, and
+holds. Every preset ships wired (`apps/web/perform-wirings.json`), so it
+plays at once with *re-checking* on the status line while PERFORM measures it
+again under this session's pool; `measured` waits that out (it passes only
+once no re-check is in flight), so a shot starts on the session's own wiring.
 
 **Keys.** `a` = C4 (the default octave). Chords used below, in the computer
 keymap: **C** `a d g` · **Am** `h k ;` · **F** `f h k` · **G** `g j l`.
@@ -35,7 +39,11 @@ depth `#pf-touch-depth`; hood `.pf-hood`; status `.pf-status`. Dock:
 `#arp-mode`, `#arp-div`, `#bpm`, `#oct-label`, `#piano`, `.pkey[data-note='60']`,
 `#midi-ind`, `#midi-panel`. Named-control drags: 180 px of travel is the whole
 range, so `dy −45` is half a turn up. Wander drags are relative to where it is:
-0.15 / 0.40 / 0.75 are the offer / drift / roam boundaries.
+0.15 / 0.40 / 0.75 are the ideas / drift / roam boundaries (three ticks on
+Wander's ring). Wander's state is on the line under its dial
+(`.pf-knob[data-i='7'] .pf-k-sub`: *ideas · one in B*, *drift · next in 9 s*,
+*drift · walking…*, *drift · gliding*, *paused 3 s*, *held*); the status line
+speaks only about the patch.
 
 **Features the app or the tools lack** are marked **⚑** and collected at the
 end.
@@ -119,23 +127,27 @@ end.
 
 ## 6. `wander` — shot `pl-wander` (wander1–4; music `loop_b`)
 
-- **Set-up:** **taught** · Glass Pad · view perform · measured · `wait 3000`.
+- **Set-up:** **taught** · Glass Pad · view perform · measured · re-checked ·
+  `wait 9000` (a spare offer grows ahead).
 - **Marks:** `wander: .pf-knob[data-i='7']`, `status: .pf-status`,
   `offer: .pf-offer`, `hood: .pf-hood`, `freeze: .pf-pad:has-text('Freeze')`.
-- **Actions:** `at 0.2` hold F (`f h k`) `ms: "end"`. `wander2:little` → drag
-  Wander `dy −30` (offer zone). `wander2:More` → `dy −45` (drift).
-  `wander3:way` → `dy −75` (roam). `wander4:waits` → a short `dy −20` nudge on
-  Motion (hands on, Wander waits 3.5 s; if a glide is running it stops where it
-  is and the status reads *paused — your hands are on it*).
-  `wander4:Freeze` → `click` Freeze (the dial reads *held*).
-- **Camera:** 1.3 on Wander and the status line; 1.2 on the hood at
-  `wander2:drift`.
-- **Callouts:** `wander2:ideas` on `offer` "B"; `wander2:taste` on `status`
-  "drifting toward your taste" (amber); `wander4:Freeze` on `freeze`.
-- **Note:** Wander waits 3.5 s after any touch before it moves, and drift moves
-  once every 14–36 s, so a glide may not land inside this beat. If it does
-  not, extend the shot's `pre` so the drift zone is entered earlier, or accept
-  the status line as the proof. Do not fake a glide.
+- **Actions:** `at 0.2` hold F (`f h k`) `ms: "end"`. `wander1:Wander` → drag
+  Wander `dy −30` (ideas): let go in a new zone, it asks 1.5 s later, and the
+  spare lands in B at once (stamp `offered`; no cut). `wander2:More` →
+  `dy −45` (drift): the first move is asked for 1.5 s after letting go, and
+  the walk renders a step at a time (*drift · walking…*), so the beat cuts
+  (`clips`) from `wander2:taste+0.2` to just before the glide (stamp `drift`,
+  *drift · gliding*; no cut if it is already gliding). `wander3:way` →
+  `dy −75` (roam). `wander4:waits` → a short nudge on the first control that
+  reaches (hands on: a glide stops where it is and the line under Wander reads
+  *paused 3 s*). `wander4:Freeze` → `click` Freeze (the dial reads *held*).
+- **Camera:** 1.25 on Wander, then on the pads and the hood toward Freeze.
+- **Callouts:** `wander1:Wander` on `wander` "Wander"; `wander2:ideas` on
+  `offer` "B: ideas"; `wander2:taste+0.3` on `wander` "drift · gliding, toward
+  your taste" (amber); `wander4:Freeze` on `freeze`.
+- **Note:** do not fake a glide. If the walk finds nothing better
+  (*staying — nothing better nearby*), the `drift` stamp waits for the next
+  move; the rehearsal's logs say which.
 
 ## 7. `offer` — shot `pl-offer` (offer1–4)
 

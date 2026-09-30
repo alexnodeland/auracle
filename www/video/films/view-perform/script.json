@@ -102,7 +102,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 1.113,
+      "tail": 1.814,
       "lines": [
         {
           "id": "named1",
@@ -141,6 +141,11 @@
         },
         {
           "id": "named8",
+          "text": "A preset comes wired already, so it plays at once while PERFORM checks it.",
+          "post": 0.6
+        },
+        {
+          "id": "named9",
           "text": "On Bell Jar, Bright folds the wave instead. The name stays, and the knobs change.",
           "post": 1.0
         }
@@ -159,7 +164,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 2.877,
+      "tail": 3.541,
       "lines": [
         {
           "id": "honest1",
@@ -183,12 +188,12 @@
         },
         {
           "id": "honest5",
-          "text": "Grit springs back, and a variant grows in B, marked with what you asked for.",
+          "text": "Grit springs back, and B starts growing a variant aimed at grit.",
           "post": 0.5
         },
         {
           "id": "honest6",
-          "text": "It isn't aimed at grit yet, so listen before you take it.",
+          "text": "When it lands, B says how much grittier it got, or that it found no way there. Listen before you take it.",
           "post": 1.0
         }
       ]
@@ -243,7 +248,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 1.134,
+      "tail": 2.971,
       "lines": [
         {
           "id": "offer1",
@@ -267,7 +272,7 @@
         },
         {
           "id": "offer5",
-          "text": "Press Offer again, and that's a pass.",
+          "text": "Now the pad reads Next. Press it, and that's a pass.",
           "post": 0.8
         },
         {
@@ -353,7 +358,7 @@
       "snap": "beat",
       "bed_db": -60,
       "lead": 0.4,
-      "tail": 0.964,
+      "tail": 3.421,
       "lines": [
         {
           "id": "dock1",
@@ -367,7 +372,7 @@
         },
         {
           "id": "dock3",
-          "text": "Glide slides a line from note to note, and chords stay clean.",
+          "text": "Glide slides a melody line from note to note, and chords stay clean.",
           "post": 0.8
         },
         {

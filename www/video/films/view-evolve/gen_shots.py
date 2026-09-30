@@ -6,9 +6,10 @@ sounds you like (tools/footage.mjs). Run from anywhere, after the timeline:
 
 One seeded session for every shot (shotgen.INIT). The film-level set-up is
 the taught session: the warm start answered with a pad, a texture and one
-more of either (see TAG_JS), then EVOLVE, and one note so the "press A–L" coach
-goes. Each chapter adds its own picks off camera, so the pair on the cards
-differs from chapter to chapter.
+more of either (see TAG_JS), the duel re-dealt from the full pool
+(shotgen.REDEAL), then EVOLVE, and one note so the "press A–L" coach goes.
+Each chapter adds its own picks off camera, so the pair on the cards differs
+from chapter to chapter.
 
 A chapter's demo shot starts PRE seconds before its beat: its one-bar turn
 beat borrows the shot (film.js, meta.pre = PRE − BAR), so the footage runs on
@@ -22,7 +23,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "tools"))
-from shotgen import INIT, FILLED, QUIET, CATS, dump  # noqa: E402
+from shotgen import INIT, FILLED, QUIET, CATS, REDEAL, dump  # noqa: E402
 
 OUT = os.path.join(HERE, "shots.json")
 TB = {b["id"]: b for b in json.load(open(os.path.join(HERE, "timeline.json")))["beats"]}
@@ -69,6 +70,9 @@ TAUGHT = WARM + [
     {"op": "until", "sel": ".viewtab[data-view='perform'][aria-selected='true']", "ms": 180000},
     {"op": "until", "sel": "#belief .bl-u", "state": "attached", "ms": 180000},
     {"op": "until", "js": "!document.getElementById('wm-lamp').classList.contains('thinking')", "ms": 240000},
+    # The pair on the table, re-dealt from the full pool (shotgen.REDEAL),
+    # so every chapter's picks start from the same pair in every take.
+    REDEAL,
     {"op": "view", "v": "evolve"},
     {"op": "wait", "ms": 800},
     BLUR,
@@ -105,15 +109,17 @@ SETTLED = {"op": "until", "js": "!document.getElementById('wm-lamp').classList.c
 TOURED = {"op": "eval", "js": "localStorage.setItem('auracle-bank-toured', '1')"}
 
 
-# The next pair has landed: while a pair is being dealt the cards are marked
-# `dealing` and the choose buttons are disabled, and a pick then is dropped
-# (by design: the control is visibly inert). Right after the warm start the
-# engine can take seconds to deal, so every pick off camera waits for this.
-DEALT = {"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000}
+# The next pair is up. The engine deals a pair ahead, so a pick usually puts
+# the next one up at once; only when none is waiting (right after the warm
+# start, or a cut) are the cards marked `dealing`, with the choose buttons
+# disabled, and a pick then is dropped (by design: the control is visibly
+# inert). So every pick off camera waits for this.
+DEALT ={"op": "until", "js": "!document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled", "ms": 90000}
 
 
-# How long the next pair took to land after a pick, in ms (a diagnostic).
-DEAL_MS = {"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"}
+# How long the next pair took to land after a pick, in ms (a diagnostic; it
+# includes the 400 ms wait after the pick).
+DEAL_MS ={"op": "log", "name": "deal ms", "js": "Math.round(performance.now() - window.__veT)"}
 
 
 def votes(n):
@@ -313,26 +319,86 @@ shots.append({
     ],
 })
 
-# --- 06 a generation: EVOLVE POOL, a cut over the wait to the children; hear one.
+# --- 06 a generation: EVOLVE POOL breeds on the render farm, beside the
+# player. The button becomes its own amber progress bar ("breeding 0/10",
+# with stop) and the menu bar's job slot says the same; two picks while it
+# breeds, each putting the next pair up at once; a cut to the first child
+# landing at the top of the bank ("new · gen 1"), then a cut to the end of
+# the generation (its toast names what was replaced); hear a child.
+#
+# A generation takes about two to three and a half minutes on a busy
+# four-core machine (the first child lands after 40–75 s, absorbed in the
+# order the walks were dealt), so the film cuts on those two states.
+PAIR_JS = "(document.getElementById('name-a').firstChild.textContent.trim() + ' | ' + document.getElementById('name-b').firstChild.textContent.trim())"
+# A pick, remembering the pair it was made on and when.
+PICK_TIMED_JS = f"(() => {{ window.__vePair = {PAIR_JS}; window.__veT = performance.now(); return {PICK_JS}; }})()"
+# The next pair is up and live: another pair on the cards, nothing dimmed.
+NEXT_UP_JS = f"(() => {PAIR_JS} !== window.__vePair && !document.getElementById('duel-a').classList.contains('dealing') && !document.getElementById('choose-a').disabled)()"
+BREEDING_JS = (
+    "[document.getElementById('evolve-btn').textContent.trim(), 'stop ' + (document.getElementById('evolve-stop').classList.contains('hidden') ? 'hidden' : 'shown'),"
+    " 'slot: ' + (document.getElementById('job-slot').classList.contains('hidden') ? '(hidden)' : document.getElementById('job-text').textContent),"
+    " 'E ' + (document.getElementById('wm-lamp').classList.contains('thinking') ? 'lit' : 'dark'),"
+    " 'group: ' + (document.querySelector('#bank-list .bank-group')?.textContent || '(none)')].join(' · ')"
+)
+# The breeding button and the job slot, as the player sees them.
+BREEDING = {"op": "log", "name": "breeding", "js": BREEDING_JS}
+# The first child is in the bank, under "new · gen N".
+LANDED_JS = "!!document.querySelector('#bank-list .bank-group') && !!document.querySelector('#bank-list .bank-item.fresh')"
+# The generation is over: the button is EVOLVE POOL again.
+BRED_SEL = "#evolve-btn:not(.breeding):not([disabled])"
+# Hovering EVOLVE POOL marks the rows it may replace; a hand that pressed it
+# moves on, as it would to the cards.
+OFF_BUTTON = {"op": "move", "sel": "#duel-rule", "ms": 400}
+
+
+def picked_while_breeding(at, tag):
+    """A pick during the generation, and proof the next pair came up at once
+    (the budget is 0.3 s; this allows 1.5 s on a busy machine)."""
+    return [
+        {"at": at, "op": "eval", "js": PICK_TIMED_JS},
+        {"at": T(at, 0.02), "op": "seq", "steps": [
+            {"op": "until", "js": NEXT_UP_JS, "ms": 1500, "stamp": tag},
+            {"op": "log", "name": f"{tag} ms", "js": "Math.round(performance.now() - window.__veT)"},
+            {"op": "log", "name": tag, "js": STATE_JS},
+            BREEDING,
+        ]},
+    ]
+
+
 shots.append({
     "id": "ve-breed", "beat": "breed", "pre": PRE,
     "setup": ready(votes(9) + [TOURED]),
-    "marks": M("meter", "evolve", "lineage", "rail", "cardA", "cardB"),
-    "clips": [["breed3", "@bred-0.4"]],
+    "marks": M("meter", "evolve", "lineage", "rail", "cardA", "cardB", "nameA"),
+    "clips": [["breed4", "@landed-0.4"], ["breed5", "@bred-0.4"]],
     "actions": [
         state(B(0.2)),
         {"at": "breed1:press", "op": "click", "sel": "#evolve-btn"},
-        {"at": "breed1:press+0.3", "op": "until", "sel": "#evolve-btn:not([disabled])", "ms": 900000, "stamp": "bred"},
-        {"at": "breed1:press+0.6", "op": "mark", "name": "evolve", "sel": "#evolve-btn"},
+        {"at": "breed1:press+0.2", "op": "until", "sel": "#evolve-btn.breeding", "ms": 5000, "stamp": "breeding"},
+        {"at": "breed1:press+0.3", **OFF_BUTTON},
+        {"at": "breed1:press+0.3", "op": "until", "js": LANDED_JS, "ms": 600000, "stamp": "landed"},
+        {"at": "breed1:press+0.3", "op": "until", "sel": BRED_SEL, "ms": 900000, "stamp": "bred"},
+        {"at": "breed2", "op": "mark", "name": "evolve", "sel": "#evolve-btn"},
+        {"at": "breed2", "op": "mark", "name": "job", "sel": "#job-slot"},
+        {"at": "breed2+0.1", **BREEDING},
+        *picked_while_breeding("breed3:picking", "next1"),
+        {"at": "breed3:picking+0.4", "op": "mark", "name": "pair2", "sel": "#name-a"},
+        *picked_while_breeding("breed3:once+0.1", "next2"),
+        {"at": "breed3:once+0.5", "op": "mark", "name": "pair3", "sel": "#name-a"},
+        # After the first cut: the first child, at the top of the bank.
+        {"at": "@landed+0.2", "op": "mark", "name": "group", "sel": "#bank-list .bank-group"},
+        {"at": "@landed+0.2", "op": "mark", "name": "child1", "sel": "#bank-list .bank-item.fresh"},
+        {"at": "@landed+0.3", **BREEDING},
+        {"at": "@landed+0.3", "op": "log", "name": "landed", "js": FRESH_JS},
+        # After the second: the generation's end, its toast and the strip.
         {"at": "@bred+0.2", "op": "mark", "name": "fresh", "sel": "#bank-list .bank-item.fresh"},
         {"at": "@bred+0.2", "op": "mark", "name": "lineage", "sel": "#lineage-log"},
         {"at": "@bred+0.2", "op": "mark", "name": "line1", "sel": "#lineage-log > div"},
         {"at": "@bred+0.3", "op": "log", "name": "lineage", "js": "document.getElementById('lineage-log').innerText"},
         {"at": "@bred+0.3", "op": "log", "name": "fresh", "js": FRESH_JS},
-        {"at": "breed4:room", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
-        {"at": "breed4:room", "op": "log", "name": "toast", "js": TOASTS_JS},
-        {"at": "breed7:listen", "op": "click", "sel": "#bank-list .bank-item.fresh .bi-hear"},
-        state("breed7:listen+0.3"),
+        {"at": "breed5:replaces", "op": "mark", "name": "toast", "sel": "#toasts .toast"},
+        {"at": "breed5:replaces", "op": "log", "name": "toast", "js": TOASTS_JS},
+        {"at": "breed8:listen", "op": "click", "sel": "#bank-list .bank-item.fresh .bi-hear"},
+        state("breed8:listen+0.3"),
     ],
 })
 
@@ -368,23 +434,27 @@ shots.append({
     ],
 })
 
-# --- 08 a working rhythm: quick duels, EVOLVE POOL (a cut over the wait), a
-# new child opened from the bank and played in PATCH, saved; back to a pick.
+# --- 08 a working rhythm: quick duels, EVOLVE POOL (a cut to its first
+# child), that child opened from the bank and played in PATCH while the rest
+# breed, saved (safe from this generation's replacements); back to a pick,
+# the generation still breeding beside it.
 shots.append({
     "id": "ve-rhythm", "beat": "rhythm", "pre": PRE,
     "setup": ready(votes(3) + [TOURED]),
     "marks": M("meter", "pips", "copy", "evolve", "cardA", "cardB", "rail", label="#live-label"),
-    "clips": [["rhythm4", "@bred-0.3"]],
+    "clips": [["rhythm4", "@landed-0.3"]],
     "actions": [
         *quick(B(0.0), B(0.7), B(1.4), "q1"),
         *quick("rhythm2", "rhythm2+0.7", "rhythm2+1.4", "q2"),
         *quick("rhythm2+2.3", "rhythm2+3.0", "rhythm2+3.7", "q3"),
         *quick("rhythm2+4.6", "rhythm2+5.3", "rhythm2+6.0", "q4"),
         {"at": "rhythm3:Evolve", "op": "click", "sel": "#evolve-btn"},
-        {"at": "rhythm3:Evolve+0.3", "op": "until", "sel": "#evolve-btn:not([disabled])", "ms": 900000, "stamp": "bred"},
-        {"at": "@bred+0.3", "op": "log", "name": "after", "js": STATE_JS},
-        {"at": "@bred+0.3", "op": "log", "name": "fresh", "js": FRESH_JS},
-        # 0.35 s after "Play": the cut lands 0.3 s before the bred stamp, and
+        {"at": "rhythm3:Evolve+0.3", **OFF_BUTTON},
+        {"at": "rhythm3:Evolve+0.3", "op": "until", "js": LANDED_JS, "ms": 600000, "stamp": "landed"},
+        {"at": "@landed+0.2", "op": "log", "name": "after", "js": STATE_JS},
+        {"at": "@landed+0.2", "op": "log", "name": "fresh", "js": FRESH_JS},
+        {"at": "@landed+0.2", **BREEDING},
+        # 0.35 s after "Play": the cut lands 0.3 s before the landed stamp, and
         # "Play" is 0.04 s into the line, so at the word the stamp is not in.
         {"at": "rhythm4:Play+0.35", "op": "seq", "steps": [
             {"op": "eval", "js": "window.__veChild = document.querySelector('#bank-list .bank-item.fresh .bi-name').textContent.trim()"},
@@ -401,11 +471,12 @@ shots.append({
             {"op": "wait", "ms": 400},
             {"op": "mark", "name": "row", "sel": "#bank-list .bank-item.live"},
             {"op": "mark", "name": "toast", "sel": "#toasts .toast"},
+            {"op": "log", "name": "saved", "js": TOASTS_JS},
+            BREEDING,
         ]},
         {"at": "rhythm5:back", "op": "view", "v": "evolve"},
         {"at": "rhythm5:back+0.3", "op": "eval", "js": BLUR["js"]},
-        {"at": "rhythm5:round", "op": "eval", "js": PICK_JS},
-        state("rhythm5:round+0.4"),
+        *picked_while_breeding("rhythm5:round", "next"),
     ],
 })
 
