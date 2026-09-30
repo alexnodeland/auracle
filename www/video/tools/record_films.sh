@@ -40,7 +40,7 @@ PAIRS=("$@")
 for ((i = 0; i < ${#PAIRS[@]}; i += 2)); do
   f=${PAIRS[i]}; poster=${PAIRS[i + 1]}
   echo "=== $(date -u +%T) recording $f, $(free) free" | tee -a "$LOG"
-  if ! www/video/tools/walkthrough.sh "$f" "$poster" --record-only "${SHOTS[@]}" >> "$LOG" 2>&1; then
+  if ! www/video/tools/walkthrough.sh "$f" "$poster" --record-only ${SHOTS[@]+"${SHOTS[@]}"} >> "$LOG" 2>&1; then
     echo "=== $(date -u +%T) recording $f failed; stopping. The log above says where." | tee -a "$LOG"
     exit 1
   fi
@@ -52,7 +52,7 @@ for ((i = 0; i < ${#PAIRS[@]}; i += 2)); do
   f=${PAIRS[i]}; poster=${PAIRS[i + 1]}
   out="www/video/out/$f"
   echo "=== $(date -u +%T) finishing $f" | tee -a "$LOG"
-  www/video/tools/walkthrough.sh "$f" "$poster" --no-record "${DRAFT[@]}" >> "$LOG" 2>&1
+  www/video/tools/walkthrough.sh "$f" "$poster" --no-record ${DRAFT[@]+"${DRAFT[@]}"} >> "$LOG" 2>&1
   rc=$?
   if [ $rc -ne 0 ] || [ ! -s "$out/$f.mp4" ] || [ ! -s "$out/$f-preview.mp4" ] || { [ ${#DRAFT[@]} -eq 0 ] && [ ! -s "$out/$f.webm" ]; }; then
     echo "=== $(date -u +%T) $f failed (exit $rc); stopping. The log above says where." | tee -a "$LOG"

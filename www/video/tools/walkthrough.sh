@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
 done
 cd "$ROOT/www/video"
 if [ "$REC" = 1 ]; then
-  tools/one_browser.sh node tools/footage.mjs "$F" "${SHOTS[@]}" 2>&1 | tee "out/$F/record.log" | grep -v '^\s*$' | tail -40
+  tools/one_browser.sh node tools/footage.mjs "$F" ${SHOTS[@]+"${SHOTS[@]}"} 2>&1 | tee "out/$F/record.log" | grep -v '^\s*$' | tail -40
 fi
 python3 tools/takes.py "$F" || echo "!! takes need attention (see above)"
 [ "$POST" = 1 ] || exit 0
@@ -49,5 +49,5 @@ python3 tools/app_audio.py "$F" --gain-db "${APP_DB:--3}" > "out/$F/app.json"
 MIX=(--voice "out/$F/voice" --music "out/$F/music/study" --sfx out/sound/stingers --app "out/$F/app.json" --music-db "${MUSIC_DB:--6}" --duck-db "${DUCK_DB:--9}")
 python3 tools/mix.py "$F" "${MIX[@]}" | tail -4
 node tools/render.mjs "$F" --jobs "${JOBS:-$(getconf _NPROCESSORS_ONLN)}" | tr '\r' '\n' | tail -1
-python3 tools/mix.py "$F" "${MIX[@]}" --encode "${DRAFT[@]}" --preview --poster "$POSTER" | tail -5
+python3 tools/mix.py "$F" "${MIX[@]}" --encode ${DRAFT[@]+"${DRAFT[@]}"} --preview --poster "$POSTER" | tail -5
 ls -la "out/$F/$F.mp4" "out/$F/$F-preview.mp4"
