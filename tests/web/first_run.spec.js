@@ -100,12 +100,21 @@ test("the warm start measures its cards in the background while it is open", asy
   await page.addInitScript(`(() => {
     const Orig = window.Worker;
     const posts = (window.__posts = []);
+    // Before and after are counted, not timed: Chrome coarsens its clocks to
+    // 100 us, and a post made just after the pool-full mark, in the same
+    // handler, could carry a timestamp one tick before the mark's.
+    let seq = 0;
+    const mark = performance.mark.bind(performance);
+    performance.mark = (name, opts) => {
+      if (name === "auracle:pool-full" && window.__fullSeq == null) window.__fullSeq = ++seq;
+      return mark(name, opts);
+    };
     function Wrapped(url, opts) {
       const w = new Orig(url, opts);
       if (/worker\\.js/.test(String(url))) {
         const post = w.postMessage.bind(w);
         w.postMessage = (m, t) => {
-          if (m && m.type) posts.push({ type: m.type, bg: !!m.bg, t: performance.now() });
+          if (m && m.type) posts.push({ type: m.type, bg: !!m.bg, seq: ++seq });
           return post(m, t);
         };
       }
@@ -118,9 +127,8 @@ test("the warm start measures its cards in the background while it is open", asy
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await expect(page.locator("#warmstart")).not.toHaveClass(/\bhidden\b/, { timeout: 30_000 });
   // Nothing is measured before the pool is full…
-  await page.waitForFunction(() => window.__aur.marks().some((m) => m.name === "pool-full"), null, { timeout: 200_000 });
-  const full = await page.evaluate(() => window.__aur.marks().find((m) => m.name === "pool-full").t);
-  const early = await page.evaluate((t) => window.__posts.filter((p) => p.type === "perform_wire" && p.bg && p.t < t).length, full);
+  await page.waitForFunction(() => window.__fullSeq != null, null, { timeout: 200_000 });
+  const early = await page.evaluate(() => window.__posts.filter((p) => p.type === "perform_wire" && p.bg && p.seq < window.__fullSeq).length);
   expect(early, "a card was measured while the pool was still filling").toBe(0);
   // …then the cards are, in the background, while the card is still open.
   await page.waitForFunction(() => window.__posts.filter((p) => p.type === "perform_wire" && p.bg).length >= 2, null, { timeout: 120_000 });
