@@ -2650,6 +2650,108 @@ mod tests {
         );
     }
 
+    /// A patch keeps its name when the bank moves around it.
+    ///
+    /// Names are read off the pool's terciles, and were read afresh on every
+    /// call, so a generation that replaced nine patches renamed patches that
+    /// had not changed: the EVOLVE film caught the child on the bench going
+    /// from `Soft Drone` to `Soft Lead` as its generation landed. This evicts a
+    /// third of a filled bank and fills it again, as a generation does, and
+    /// requires every survivor to read exactly as before — having first
+    /// checked that reading them afresh really would rename one, so the test
+    /// cannot pass on a bank that happened not to move.
+    #[test]
+    fn a_patch_keeps_its_name_when_the_bank_moves() {
+        let mut rng = StdRng::seed_from_u64(0x9A5);
+        let cfg = SessionConfig {
+            pool_size: 30,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let before = engine.display_names();
+
+        let gone: Vec<u64> = engine.pool.iter().map(|c| c.id).take(10).collect();
+        engine.pool.retain(|c| !gone.contains(&c.id));
+        engine.fill_pool(&mut rng);
+        let after = engine.display_names();
+        let survivors: Vec<u64> = engine
+            .pool
+            .iter()
+            .map(|c| c.id)
+            .filter(|id| before.contains_key(id))
+            .collect();
+        assert_eq!(survivors.len(), 20);
+
+        // What the old reading gave: every generated name afresh, in id order.
+        let afresh: std::collections::HashMap<u64, String> = {
+            let scale = NameScale::fit(engine.pool.iter().map(|c| &c.features));
+            let mut taken = std::collections::HashSet::new();
+            let mut pool: Vec<&Candidate> = engine.pool.iter().collect();
+            pool.sort_by_key(|c| c.id);
+            pool.into_iter()
+                .map(|c| (c.id, claim_name(&scale.name(&c.features), &mut taken)))
+                .collect()
+        };
+        let moved = survivors
+            .iter()
+            .filter(|id| afresh[*id] != before[*id])
+            .count();
+        assert!(
+            moved > 0,
+            "this bank did not move enough to rename anyone afresh; the test needs a seed that does"
+        );
+        for id in &survivors {
+            assert_eq!(
+                after[id], before[id],
+                "patch {id} was renamed when the bank moved"
+            );
+        }
+        let unique: std::collections::HashSet<&String> = after.values().collect();
+        assert_eq!(unique.len(), after.len(), "names collide: {after:?}");
+    }
+
+    /// Kept names survive a reload, and a session saved before names were
+    /// kept is named once, on restore, with every name unique.
+    #[test]
+    fn names_are_kept_across_a_reload() {
+        let mut rng = StdRng::seed_from_u64(0x9A6);
+        let cfg = SessionConfig {
+            pool_size: 16,
+            ..fast()
+        };
+        let mut engine = Engine::new(PatchGrammarPrior::default(), cfg);
+        engine.begin_session();
+        engine.fill_pool(&mut rng);
+        let before = engine.display_names();
+
+        let mut restored = Engine::new(PatchGrammarPrior::default(), fast());
+        restored.import_state(engine.export_state());
+        assert_eq!(
+            restored.display_names(),
+            before,
+            "a reload renamed the bank"
+        );
+
+        let mut old = serde_json::to_value(engine.export_state()).unwrap();
+        for entry in old["bank"].as_array_mut().unwrap() {
+            entry.as_object_mut().unwrap().remove("auto_name");
+        }
+        let mut restored = Engine::new(PatchGrammarPrior::default(), fast());
+        restored.import_state(serde_json::from_value(old).unwrap());
+        assert!(
+            restored
+                .pool
+                .iter()
+                .all(|c| c.name.is_some() || c.auto_name.is_some()),
+            "an older save came back with patches never named"
+        );
+        let names = restored.display_names();
+        let unique: std::collections::HashSet<&String> = names.values().collect();
+        assert_eq!(unique.len(), names.len(), "names collide: {names:?}");
+    }
+
     /// Duels must spread over *candidates*, not just over pairs.
     ///
     /// Measured in the shipped app: over twelve consecutive duels one

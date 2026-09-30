@@ -8,6 +8,18 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed — a patch keeps its name
+
+- **A patch keeps its name when the bank changes around it.** Names are read
+  off the patch next to the rest of the bank, and they were read again every
+  time the bank changed, so a generation that replaced nine patches renamed
+  patches that had not changed: the child you had just opened could turn from
+  *Soft Drone* into *Soft Lead* as the generation landed, and a numeral could
+  come and go (*Warm Key* became *Warm Key 2*). A name is now given once, when
+  the patch joins the bank, and kept, across reloads too
+  (`a_patch_keeps_its_name_when_the_bank_moves`,
+  `names_are_kept_across_a_reload`).
+
 ### Changed — the hands first
 
 - **A preset's controls work the moment it lands.** Every one of the 62
