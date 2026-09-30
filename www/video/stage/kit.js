@@ -24,6 +24,8 @@ export function ink(name) {
 /** A token at an opacity, as rgba(): `inkA("--phos-a", 0.5)`. */
 export function inkA(name, a) {
   const h = ink(name);
+  // Only an opaque #rrggbb token has an opacity to set; say so for anything else.
+  if (!/^#[0-9a-f]{6}$/i.test(h)) throw new Error(`inkA(${name}): needs a #rrggbb token, got "${h}"`);
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }

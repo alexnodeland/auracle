@@ -3328,14 +3328,14 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 }
 .style-chip .sc-share { font-size: var(--t-micro); color: var(--silk-dim); }
 .style-chip .sc-play {
-  background: none; border: none; color: var(--phos-a, var(--phos-a));
+  background: none; border: none; color: var(--phos-a);
   cursor: pointer; font-size: var(--t-micro); padding: 0 2px;
 }
 .style-badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-micro); color: var(--silk-dim); }
 .style-badge i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .duel-pred { font-size: var(--t-micro); color: var(--silk-dim); text-align: center; min-height: 12px; }
-.duel-pred.hit { color: var(--phos-a, var(--phos-a)); }
-.duel-pred.miss { color: var(--phos-b, var(--phos-b)); }
+.duel-pred.hit { color: var(--phos-a); }
+.duel-pred.miss { color: var(--phos-b); }
 
 /* ---------- living modulation (tier 4) ---------- */
 .wire.mod.pulse { animation: modpulse linear infinite; }
@@ -3359,11 +3359,11 @@ html:not(.engineer) .preset-item .pb-sig { display: none; }
 .play-duel .pd-label { font-size: var(--t-micro); letter-spacing: 0.12em; text-transform: uppercase; }
 .pd-side {
   background: var(--pd-side); border: 1px solid var(--plate-edge); border-radius: 3px;
-  color: var(--phos-a, var(--phos-a)); font: var(--t-micro)/1.4 var(--font-mono);
+  color: var(--phos-a); font: var(--t-micro)/1.4 var(--font-mono);
   padding: 2px 8px; cursor: pointer; max-width: 180px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pd-side:hover { border-color: var(--phos-a, var(--phos-a)); }
+.pd-side:hover { border-color: var(--phos-a); }
 /* A name still on its way: dimmed text, not a green "…" that reads as the
    patch's name. */
 .pd-side .pd-wait { color: var(--silk-dim); }
@@ -3399,9 +3399,9 @@ a.ovf-item { text-decoration: none; }
 /* Prose in the panel face at reading size; keys and values stay in mono. */
 .help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; font-size: var(--t-body); line-height: 1.55; }
 .help-cols p { margin: 4px 0 10px; color: var(--silk); }
-.help-cols b { color: var(--phos-a, var(--phos-a)); font-weight: 600; }
+.help-cols b { color: var(--phos-a); font-weight: 600; }
 .help-h {
-  color: var(--phos-b, var(--phos-b)); font-size: var(--t-micro); letter-spacing: 0.14em;
+  color: var(--phos-b); font-size: var(--t-micro); letter-spacing: 0.14em;
   text-transform: uppercase; margin-top: 8px;
 }
 /* Keys are named in the readout face everywhere, not the browser's monospace. */
@@ -3417,7 +3417,7 @@ kbd { font-family: var(--font-mono); }
   color: var(--silk-dim); border-top: 1px solid var(--hairline); padding-top: 12px;
 }
 .help-fine a { color: var(--silk-dim); }
-.help-fine a:hover { color: var(--phos-a, var(--phos-a)); }
+.help-fine a:hover { color: var(--phos-a); }
 #help-close { margin-top: 14px; }
 @media (max-width: 640px) { .help-cols { grid-template-columns: 1fr; } }
 

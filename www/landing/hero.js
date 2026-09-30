@@ -276,10 +276,12 @@
     }
     return v;
   }
-  /* A token at an opacity, as rgba(): `inkA('--phos-a', 0.5)`. */
+  /* A token at an opacity, as rgba(): `inkA('--phos-a', 0.5)`. Only an opaque
+   * #rrggbb token has an opacity to set; anything else is a mistake, said so. */
   function inkA(name, a) {
-    const h = ink(name).replace('#', '');
-    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const h = ink(name);
+    if (!/^#[0-9a-f]{6}$/i.test(h)) throw new Error(`inkA(${name}): needs a #rrggbb token, got "${h}"`);
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
@@ -290,7 +292,7 @@
   const INK_A = { wave: ink('--phos-a'), base: inkA('--phos-a-deep', 0.55) };
   const INK_B = { wave: ink('--phos-b'), base: inkA('--phos-b-deep', 0.6) };
 
-  async function renderTrace(canvas, z, ink = INK_A) {
+  async function renderTrace(canvas, z, pen = INK_A) {
     /* 44100, not a cheap 8000. An envelope does not need the bandwidth, but the
      * *filter* does: at 8 kHz Nyquist is 4 kHz, so Web Audio clamped every
      * cutoff above it and the offline render of a bright patch was a different
@@ -312,10 +314,10 @@
       // dishonesty this page is arguing against.
       return;
     }
-    drawEnvelope(canvas, data, ink);
+    drawEnvelope(canvas, data, pen);
   }
 
-  function drawEnvelope(canvas, data, ink) {
+  function drawEnvelope(canvas, data, pen) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = canvas.clientWidth || 520;
     const h = canvas.clientHeight || 86;
@@ -331,7 +333,7 @@
     for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]));
     const norm = peak > 0 ? 0.94 / peak : 0;
 
-    g.fillStyle = ink.wave;
+    g.fillStyle = pen.wave;
     for (let x = 0; x < w; x++) {
       const from = Math.floor(x * per);
       const to = Math.min(data.length, Math.floor((x + 1) * per));
@@ -347,7 +349,7 @@
     }
 
     // The 0 dBFS baseline, as the instrument's cards draw it.
-    g.fillStyle = ink.base;
+    g.fillStyle = pen.base;
     g.fillRect(0, mid, w, 1);
   }
 

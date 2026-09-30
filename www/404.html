@@ -113,7 +113,9 @@
   .mark svg { width: 1.28em; height: 1.28em; flex: none; transform: translateY(-.035em); }
   .code {
     margin: 28px 0 10px;
-    font-family: var(--font-mono);
+    /* Its own stack, not --font-mono: this page loads no faces, so the
+       fallbacks are what shows, and these are the ones it has always had. */
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
     font-size: .7rem;
     letter-spacing: .16em;
     text-transform: uppercase;
