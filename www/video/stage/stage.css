@@ -103,6 +103,7 @@
 
   /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
      (`--phos-a-045` is 4.5%) */
+  --phos-a-12: rgba(142, 240, 177, 0.12);
   --phos-a-35: rgba(142, 240, 177, 0.35);
   --phos-a-45: rgba(142, 240, 177, 0.45);
   --phos-a-90: rgba(142, 240, 177, 0.9);
@@ -114,7 +115,9 @@
   --black-90: rgba(0, 0, 0, 0.9);
   --white-025: rgba(255, 255, 255, 0.025);
   --white-07: rgba(255, 255, 255, 0.07);
+  --bezel-66: rgba(7, 8, 10, 0.66);
   --bezel-78: rgba(7, 8, 10, 0.78);
+  --bezel-82: rgba(7, 8, 10, 0.82);
 
   /* families */
   --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;

@@ -59,9 +59,12 @@ the long-form notes are this directory's `README.md`.
   a kiosk (the film chip, for one). Check both when you add chrome.
 - **Style with tokens.** Colours come from `www/brand/tokens.json` (the
   generated block at the top of `style.css`; `tok()` in a script), never a
-  literal: a new colour is a token first, and `make dev-check` fails on one
-  written here. Two rules fighting over one element is usually a
-  specificity mistake (the bank row's cut was invisible for that reason).
+  literal: a new colour is a token first. `make dev-check` fails on one
+  written in `style.css`, any script here or `index.html`, which is all the
+  app loads; what is not checked yet elsewhere is listed in
+  [`www/brand/README.md`](../../www/brand/README.md#the-tokens). Two rules
+  fighting over one element is usually a specificity mistake (the bank row's
+  cut was invisible for that reason).
 - **The build stamp** (`pkg/build.json`) hashes the wasm and every app
   script, so browsers refetch what changed. `make wasm` writes it; after a
   JS-only change `make -s wasm-stamp` refreshes it.

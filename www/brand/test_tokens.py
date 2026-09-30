@@ -100,6 +100,59 @@ class TheCheck(unittest.TestCase):
             t.edit("apps/web/style.css", lambda s: s + "\n.x { color: var(--paper-stock); }\n")
             self.assertTrue(any("belongs to brand" in p for p in t.problems()))
 
+    def test_a_named_colour_used_as_a_colour_fails_the_check(self):
+        cases = [
+            ("apps/web/style.css", "\n.x { color: white; }\n"),
+            ("apps/web/style.css", "\n.x { border: 1px solid RebeccaPurple; }\n"),
+            ("apps/web/style.css", "\n.x { background: var(--nope, black); }\n"),
+            ("www/404.html", '\n<svg><path fill="black"/></svg>\n'),
+            ("www/404.html", '\n<p style="color: red">x</p>\n'),
+            ("www/video/films/dsp/film.js", '\nctx.fillStyle = "red";\n'),
+            ("www/video/films/dsp/film.js", '\nObject.assign(d.style, { background: "navy" });\n'),
+            ("www/video/films/dsp/film.js", '\nr.setAttribute("stroke", "white");\n'),
+            ("www/video/films/dsp/film.js", '\nq.innerHTML = `<span style="color:tomato">x</span>`;\n'),
+        ]
+        for rel, add in cases:
+            with Tree() as t:
+                t.edit(rel, lambda s: s + add)
+                self.assertTrue(any("a named colour outside the tokens" in p for p in t.problems()), add)
+
+    def test_a_word_that_names_a_colour_but_is_not_one_passes(self):
+        with Tree() as t:
+            t.edit("apps/web/style.css", lambda s: s + "\n.x { color: transparent; fill: currentColor; stroke: inherit; }\n.red:not(.white) { color: var(--silk); }\n")
+            t.edit("www/video/films/dsp/film.js", lambda s: s + '\nconst mode = "white";\nconst o = { colour: "green", tags: ["pink"] };\nif (color === "red") mode;\n')
+            t.edit("www/brand/index.html", lambda s: s.replace("</main>", "<p>Green is sound, and nothing is red.</p></main>", 1))
+            self.assertEqual(t.problems(), [])
+
+    def test_the_new_pages_are_scanned(self):
+        with Tree() as t:
+            t.edit("www/landing/index.html", lambda s: s.replace('content="#0c0d10"', 'content="#000000"', 1))
+            t.edit("www/video/stage/poster.html", lambda s: s.replace("var(--bezel-66)", "rgba(7, 8, 10, 0.66)", 1))
+            t.edit("www/theme/highlight.css", lambda s: s + "\n.hljs-x { color: #123456; }\n")
+            got = t.problems()
+            for rel in ("www/landing/index.html", "www/video/stage/poster.html", "www/theme/highlight.css"):
+                self.assertTrue(any(p.startswith(rel) for p in got), rel)
+
+    def test_the_not_yet_files_are_named_and_not_scanned(self):
+        scanned = {rel for rel, _ in T.scanned_files()}
+        for rel, why in T.NOT_YET:
+            self.assertTrue(os.path.exists(os.path.join(T.ROOT, rel)), rel)
+            self.assertNotIn(rel, scanned)
+            self.assertTrue(why)
+
+    def test_a_value_that_is_not_a_colour_is_reported_as_one(self):
+        # Even when opacities are derived from it: a friendly line, not a traceback.
+        for bad in ("#12345", "rgb(1, 2)", "blue"):
+            with Tree() as t:
+                t.edit(T.SOURCE, lambda s: s.replace('"scrim": { "value": "#0a0c0f"', f'"scrim": {{ "value": "{bad}"', 1))
+                got = t.problems()
+                self.assertTrue(any(f"--scrim: `{bad}` is not a colour" in p for p in got), (bad, got))
+
+    def test_an_opacity_of_a_colour_that_is_already_see_through_is_refused(self):
+        with Tree() as t:
+            t.edit(T.SOURCE, lambda s: s.replace('"alpha": {\n        "white"', '"alpha": {\n        "rack-map-glass": [50],\n        "white"', 1))
+            self.assertTrue(any("need an opaque colour" in p for p in t.problems()))
+
     def test_prose_may_quote_a_colour_only_if_it_is_a_tokens_value(self):
         with Tree() as t:
             t.edit("www/brand/index.html", lambda s: s.replace("</main>", "<p><code>#7a5526</code></p></main>", 1))
@@ -119,14 +172,12 @@ class TheDriftsItClosed(unittest.TestCase):
         self.assertNotIn(stale, {T.rgba_of(v) for s in src["surfaces"] for v in T.names_of(src, s).values()})
 
     def test_the_brand_page_lights_the_lamp_in_the_apps_amber(self):
-        app = source("apps/web/style.css")
-        lit = re.search(r"\.wordmark b\.thinking \{[^}]*?\bcolor: (var\(--[\w-]+\))", app).group(1)
-        brand = source("www/brand/index.html")
-        live = re.search(r'AURACL<b style="[^"]*color:(var\(--[\w-]+\))">E</b>', brand).group(1)
-        second = re.search(r"\.versus \.no \.wm b \{[^}]*?\bcolor: (var\(--[\w-]+\))", brand).group(1)
-        self.assertEqual(lit, "var(--phos-b)")
-        self.assertEqual(live, lit)
-        self.assertEqual(second, lit)
+        app, brand = source("apps/web/style.css"), source("www/brand/index.html")
+        # The app's lit lamp, then the brand page's two drawings of a lit one:
+        # the "lamp live" lockup and the "two lamps" example.
+        self.assertRegex(app, r"\.wordmark b\.thinking \{[^}]*?\bcolor: var\(--phos-b\);")
+        self.assertRegex(brand, r'AURACL<b style="[^"]*\bcolor:var\(--phos-b\)">E</b>')
+        self.assertRegex(brand, r"\.versus \.no \.wm b \{[^}]*?\bcolor: var\(--phos-b\);")
 
 
 if __name__ == "__main__":

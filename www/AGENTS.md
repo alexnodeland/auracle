@@ -37,8 +37,10 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   into `www/brand/` (`voice.md`) under Plan-004; until then, match the brand
   spec (`www/brand/index.html`).
 - **Colours come from `www/brand/tokens.json`, never a literal**: a new colour
-  is a token first, then `make tokens`; `make dev-check` fails on a colour
-  written in a page, a stylesheet, the film kit or a film
+  is a token first, then `make tokens`. `make dev-check` fails on a colour
+  written in the landing page, the docs theme, the brand page, the 404, the
+  stage, the kit or a film; `www/viz/`, `theme/fonts/auracle.css` and
+  `brand/render.html` are not checked yet
   ([`brand/README.md`](brand/README.md#the-tokens)).
 - **A new guide page goes in `SUMMARY.md`**, or mdBook silently skips it.
 - **KaTeX macros live in `reference/katex-macros.txt`.** A table in

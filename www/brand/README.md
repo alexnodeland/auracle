@@ -90,20 +90,45 @@ page's `hero.js`, and `ink()`/`inkA()` exported by the film kit
 (`www/video/stage/kit.js`), which every film uses. Each reads
 `getComputedStyle(document.documentElement)` once per name.
 
-`make dev-check` runs `tokens.py --check`. It fails when a block is stale, and
-on any colour literal (hex, `rgb()`/`rgba()`, `hsl()`, or an `"r,g,b"` string
-in a script) outside a block in the app, the landing page, the docs theme, the
-brand page, the 404, the stage, the kit or a film; comments are not read. It
-also fails when a script reads a token its surface does not define, when a
-stylesheet uses a token another surface owns, when a `theme-color` is not the
-rack, and when a hex quoted in prose (`<code>#0c0d10</code>`) is not a
-token's value. The marks (`*.svg`), `render.html` and `docs/notes/` are
-exempt: the marks are assets a favicon slot reads without CSS. A new colour
-is a token first: add it to `tokens.json`, run `make tokens`, then use it.
-`test_tokens.py`, also run by `make dev-check`, plants each kind of stray
-colour in a copy of the tree and expects the check to fail on it, and holds
-the two drifts the tokens closed (the films' deep amber, the brand page's
-lamp) in place.
+`make dev-check` runs `tokens.py --check`. It fails when `tokens.json` holds
+something that is not a colour, when a block is stale, and on a colour written
+outside a block in any of these (the `SCANNED` list in `tokens.py`):
+
+- the app: `apps/web/*.css`, `*.js` and `index.html`;
+- the landing page: `www/landing/*.css`, `*.js` and `index.html`;
+- the docs theme: `www/theme/css/*.css`, `highlight.css` and `index.hbs`;
+- the brand page and the 404: `www/brand/*.html` (not `render.html`) and
+  `www/404.html`;
+- the films: `www/video/stage/*.css`, `*.js` and `*.html` (the stage, the kit,
+  the poster), and every film's `film.js`, `cards.js` and `index.html`.
+
+A colour there is a hex, an `rgb()`/`rgba()` or `hsl()`, an `"r,g,b"` string in
+a script, or a CSS named colour (`white`, `rebeccapurple` …) used as a colour:
+in a declaration's value, an SVG colour attribute, an inline style or a
+script's colour property. `transparent`, `currentColor` and `inherit` pass,
+comments are not read, and a word like "green" in prose or a script's own
+names is not a colour. It also fails when a script reads a token its surface
+does not define, when a stylesheet uses a token another surface owns, when a
+`theme-color` is not the rack, and when a hex quoted in prose
+(`<code>#0c0d10</code>`) is not a token's value.
+
+**Not checked yet** (`NOT_YET` in `tokens.py`, which `--check` lists every
+time it runs), each waiting on a token decision rather than a substitution:
+
+- `www/viz/viz.js` and `viz.css`, the live figures: their glows are
+  hard-coded dark rgba, which is wrong on the docs' Paper theme, and their
+  `var()` fallbacks are literals;
+- `www/theme/fonts/auracle.css`: `var(--bezel, #07080a)`, and Paper defines
+  no `--bezel`;
+- `render.html`: a hand copy of six tokens, with the marks work (Plan-004
+  task 3).
+
+Never scanned: the marks (`*.svg`, assets a favicon slot reads without CSS)
+and `docs/notes/` (dated records). A new colour is a token first: add it to
+`tokens.json`, run `make tokens`, then use it. `test_tokens.py`, also run by
+`make dev-check`, plants each kind of stray colour in a copy of the tree and
+expects the check to fail on it, and holds the two drifts the tokens closed
+(the films' deep amber, the brand page's lamp) in place.
 
 ## Regenerating the rasters
 
