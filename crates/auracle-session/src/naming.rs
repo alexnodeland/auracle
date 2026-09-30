@@ -10,9 +10,15 @@
 //! So a name here is `<character> <role>` — read off the extracted features
 //! and the amp envelope, not off the module list. `Bright Pluck` is a claim
 //! about the render the user can check with their ears; it stays true if the
-//! same sound is reached by a different circuit, and it changes when the sound
-//! changes. The signature stays available as separate metadata for anyone who
-//! wants the circuit.
+//! same sound is reached by a different circuit, and a changed sound is a new
+//! patch with a new name. The signature stays available as separate metadata
+//! for anyone who wants the circuit.
+//!
+//! A name is read once, when the patch joins the bank, and kept
+//! ([`crate::Engine::display_names`]). The buckets below are the *pool's*
+//! terciles, so reading a name again after the pool moved could rename a
+//! patch whose sound had not changed — and did, every time a generation
+//! replaced part of the bank.
 //!
 //! ## Why the buckets are quantiles and not thresholds
 //!
