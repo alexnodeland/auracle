@@ -264,12 +264,31 @@
 
   /* ── traces: render offline, draw the envelope ─────────────────────── */
 
+  /* A canvas cannot use a custom property, so the inks are read off the token
+   * layer in style.css (generated from www/brand/tokens.json), once per name.
+   * `make dev-check` fails on a colour written here. */
+  const TOKENS = new Map();
+  function ink(name) {
+    let v = TOKENS.get(name);
+    if (v === undefined) {
+      v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      if (v) TOKENS.set(name, v);
+    }
+    return v;
+  }
+  /* A token at an opacity, as rgba(): `inkA('--phos-a', 0.5)`. */
+  function inkA(name, a) {
+    const h = ink(name).replace('#', '');
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
   /* Two inks, per the page's colour law: green is sound, amber is the model's
    * mind. A candidate the page drew at random is green; the patch the model
    * built out of theta is amber, and that is the only cue that has to survive
    * being glanced at. */
-  const INK_A = { wave: '#8ef0b1', base: 'rgba(61, 106, 77, 0.55)' };
-  const INK_B = { wave: '#ffb454', base: 'rgba(122, 85, 38, 0.6)' };
+  const INK_A = { wave: ink('--phos-a'), base: inkA('--phos-a-deep', 0.55) };
+  const INK_B = { wave: ink('--phos-b'), base: inkA('--phos-b-deep', 0.6) };
 
   async function renderTrace(canvas, z, ink = INK_A) {
     /* 44100, not a cheap 8000. An envelope does not need the bandwidth, but the

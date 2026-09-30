@@ -3,7 +3,7 @@
 // without anyone editing seconds here.
 
 import { el, place, clamp, lerp, ramp, fade, keys, E, rng, noise1, words, reveal } from "../../stage/stage.js";
-import { svgLayer, scope, knob, cable, plate, mark, pointer, glide, keyboard, textBlock, voiceWave, duelCard, performPanel, pressPad, PHOS, GLOW } from "../../stage/kit.js";
+import { svgLayer, scope, knob, cable, plate, mark, pointer, glide, keyboard, textBlock, voiceWave, duelCard, performPanel, pressPad, PHOS, GLOW, ink, inkA } from "../../stage/kit.js";
 
 export async function build(stage) {
   const beat = (id) => stage.tl.beats.find((b) => b.id === id);
@@ -49,21 +49,21 @@ function wall(g, { cols = 8, rows = 5, margin = 34, gap = 16, seed = 3, center =
       const x = margin + i * (pw + gap);
       const y = margin + j * (ph + gap);
       const pg = el("g", {}, g);
-      el("rect", { x, y, width: pw, height: ph, rx: 9, fill: "#181b20", stroke: "#292e36", "stroke-width": 1.2 }, pg);
-      el("rect", { x: x + 1, y: y + 1, width: pw - 2, height: 2, rx: 1, fill: "rgba(255,255,255,.05)" }, pg);
+      el("rect", { x, y, width: pw, height: ph, rx: 9, fill: ink("--module-face"), stroke: ink("--hairline"), "stroke-width": 1.2 }, pg);
+      el("rect", { x: x + 1, y: y + 1, width: pw - 2, height: 2, rx: 1, fill: inkA("--white", 0.05) }, pg);
       for (const [sx, sy] of [[9, 9], [pw - 9, 9], [9, ph - 9], [pw - 9, ph - 9]]) {
-        el("circle", { cx: x + sx, cy: y + sy, r: 3.2, fill: "#2a2e35" }, pg);
+        el("circle", { cx: x + sx, cy: y + sy, r: 3.2, fill: ink("--module-screw") }, pg);
       }
       el(
         "text",
-        { x: x + 16, y: y + 30, fill: "#9a958a", "font-family": "Jost", "font-weight": 500, "font-size": 15, "letter-spacing": "0.16em" },
+        { x: x + 16, y: y + 30, fill: ink("--silk-dim"), "font-family": "Jost", "font-weight": 500, "font-size": 15, "letter-spacing": "0.16em" },
         pg,
         names[Math.floor(r() * names.length)],
       );
       const isCenter = i === center[0] && j === center[1];
       if (isCenter) {
         screen = { x: x + 14, y: y + 44, w: pw - 28, h: ph - 58 };
-        el("rect", { x: screen.x, y: screen.y, width: screen.w, height: screen.h, rx: 5, fill: "#07080a", stroke: "#000", "stroke-width": 1 }, pg);
+        el("rect", { x: screen.x, y: screen.y, width: screen.w, height: screen.h, rx: 5, fill: ink("--bezel"), stroke: ink("--black"), "stroke-width": 1 }, pg);
         continue;
       }
       // Six small knobs, 3×2, and a jack row.
@@ -78,7 +78,7 @@ function wall(g, { cols = 8, rows = 5, margin = 34, gap = 16, seed = 3, center =
         }
       }
       for (let q = 0; q < 4; q++) {
-        el("circle", { cx: x + (pw * (q + 1)) / 5, cy: y + ph - 22, r: 5.5, fill: "#07080a", stroke: "#3d6a4d", "stroke-width": 1.4 }, pg);
+        el("circle", { cx: x + (pw * (q + 1)) / 5, cy: y + ph - 22, r: 5.5, fill: ink("--bezel"), stroke: ink("--phos-a-deep"), "stroke-width": 1.4 }, pg);
       }
     }
   }
@@ -107,7 +107,7 @@ function sceneOpen({ stage, beat, line }) {
 
       // The two voice lines.
       const shade = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
-      shade.style.background = "linear-gradient(180deg, rgba(7,8,10,0) 45%, rgba(7,8,10,.85) 100%)";
+      shade.style.background = `linear-gradient(180deg, ${inkA("--bezel", 0)} 45%, ${inkA("--bezel", 0.85)} 100%)`;
       const t1 = textBlock(layer, { x: 960, y: 230, w: 1600, cls: "voice", size: 84, align: "center", ax: 0.5, ay: 0.5 });
       const w1 = words(t1, "Every synthesizer has a sound in it\nthat's *yours*.");
       const t2 = textBlock(layer, { x: 960, y: 900, w: 1700, cls: "voice", size: 64, align: "center", ax: 0.5, ay: 0.5 });
@@ -205,7 +205,7 @@ function sceneTitle({ stage, beat, line }) {
           spin: (R() - 0.5) * 1.6,
           s: 1 + R() * 2.6,
           d: R() * 0.35,
-          c: el("circle", { r: 2, fill: "#ffb454" }, cloudG),
+          c: el("circle", { r: 2, fill: ink("--phos-b") }, cloudG),
         });
       }
       const M = { cx: 960, cy: 470, size: 300 };
@@ -216,7 +216,7 @@ function sceneTitle({ stage, beat, line }) {
       const desc = textBlock(layer, { x: 960, y: 700, w: 1600, cls: "mono", size: 27, align: "center", ax: 0.5, ay: 0.5 });
       desc.style.letterSpacing = "0.26em";
       desc.style.textTransform = "uppercase";
-      desc.style.color = "#9a958a";
+      desc.style.color = ink("--silk-dim");
       desc.textContent = "a synthesizer that searches for your sound";
 
       stage.sfx("whoosh", b.t0 - 0.9, -3);
@@ -307,11 +307,11 @@ function sceneDuel({ stage, beat, line }) {
       // The model's side of it: an amber posterior that tightens with each pick.
       const post = el("g", {}, svg);
       post.style.filter = GLOW.b;
-      const rings = [0, 1, 2].map((i) => el("ellipse", { cx: 960, cy: 150, rx: 100, ry: 30, fill: "none", stroke: "#ffb454", "stroke-width": 2 - i * 0.5, opacity: 0.5 }, post));
-      const core = el("circle", { cx: 960, cy: 150, r: 5, fill: "#ffb454" }, post);
-      const sparks = Array.from({ length: 8 }, () => el("circle", { r: 6, fill: "#ffb454", opacity: 0 }, post));
+      const rings = [0, 1, 2].map((i) => el("ellipse", { cx: 960, cy: 150, rx: 100, ry: 30, fill: "none", stroke: ink("--phos-b"), "stroke-width": 2 - i * 0.5, opacity: 0.5 }, post));
+      const core = el("circle", { cx: 960, cy: 150, r: 5, fill: ink("--phos-b") }, post);
+      const sparks = Array.from({ length: 8 }, () => el("circle", { r: 6, fill: ink("--phos-b"), opacity: 0 }, post));
       const count = textBlock(over, { x: 960, y: 222, w: 400, cls: "mono", size: 24, align: "center", ax: 0.5, ay: 0.5 });
-      count.style.color = "#b8823c";
+      count.style.color = ink("--phos-b-dim");
       count.style.letterSpacing = "0.14em";
       const ptr = pointer(svg);
       {
@@ -430,7 +430,7 @@ function sceneGrow({ stage, beat, line }) {
       ];
       const out = el("div", { class: "silk" }, over, "OUT ▸");
       place(out, { x: 1660, y: 526, ay: 0.5 });
-      Object.assign(out.style, { fontSize: "22px", color: "#63a97c", letterSpacing: "0.2em" });
+      Object.assign(out.style, { fontSize: "22px", color: ink("--phos-a-dim"), letterSpacing: "0.2em" });
       const outCable = cable(svg, { p0: plates[3].out, p1: [1648, 526], sag: 8 });
       // Lineage: what each generation changed, in the app's own words.
       const gens = [
@@ -440,7 +440,7 @@ function sceneGrow({ stage, beat, line }) {
       ];
       const chips = gens.map(([g, d], i) => {
         const c = el("div", { class: "pill" }, over, "");
-        c.innerHTML = `<span style="color:#b8823c">${g}</span>&nbsp;&nbsp;<span style="color:#d9d4c8">${d}</span>`;
+        c.innerHTML = `<span style="color:${ink("--phos-b-dim")}">${g}</span>&nbsp;&nbsp;<span style="color:${ink("--silk")}">${d}</span>`;
         place(c, { x: 150 + i * 560, y: 700 });
         return c;
       });
@@ -475,7 +475,7 @@ function sceneGrow({ stage, beat, line }) {
         const nm = plates[1].div.querySelector(".silk");
         nm.textContent = swap > 0.5 ? "LADDER" : "SVF";
         plates[1].div.style.transform = `rotateY(${Math.sin(swap * Math.PI) * 70}deg)`;
-        plates[1].div.style.borderColor = swap > 0.5 ? `rgba(255,180,84,${0.8 * (1 - ramp(tl, L2 + 1.3, L2 + 3))})` : "";
+        plates[1].div.style.borderColor = swap > 0.5 ? inkA("--phos-b", 0.8 * (1 - ramp(tl, L2 + 1.3, L2 + 3))) : "";
         chips.forEach((c, i) => {
           const a0 = L2 + 0.3 + i * 0.9;
           const u = ramp(tl, a0, a0 + 0.5, E.out3);
@@ -542,7 +542,7 @@ function scenePerform({ stage, beat, line }) {
         stage.sfx("blip", at0("offer2") + 1.55, -2);
       }
       const plus = textBlock(over, { x: 1640, y: 90, w: 300, cls: "mono", size: 24, align: "right", ax: 1, ay: 0.5 });
-      plus.style.color = "#ffb454";
+      plus.style.color = ink("--phos-b");
       return (tl, t) => {
         const T0 = bp.t0;
         const at = (id, k = "t0") => stage.line(id)[k] - T0;
@@ -659,11 +659,11 @@ function sceneDepth({ stage, beat, line }) {
       // The forecast: two small cards and the model's bet.
       const fc = el("div", { class: "layer" }, over);
       const bet = textBlock(fc, { x: 960, y: 260, w: 1200, cls: "mono", size: 30, align: "center", ax: 0.5, ay: 0.5 });
-      bet.style.color = "#ffb454";
+      bet.style.color = ink("--phos-b");
       const gauge = el("g", {}, svg);
       gauge.style.filter = GLOW.b;
-      const track = el("rect", { x: 560, y: 340, width: 800, height: 10, rx: 5, fill: "#2a2319" }, gauge);
-      const fill = el("rect", { x: 560, y: 340, width: 0, height: 10, rx: 5, fill: "#ffb454" }, gauge);
+      const track = el("rect", { x: 560, y: 340, width: 800, height: 10, rx: 5, fill: ink("--gauge-track") }, gauge);
+      const fill = el("rect", { x: 560, y: 340, width: 0, height: 10, rx: 5, fill: ink("--phos-b") }, gauge);
       const lblA = textBlock(fc, { x: 540, y: 345, w: 200, cls: "mono", size: 26, align: "right", ax: 1, ay: 0.5, text: "A" });
       const lblB = textBlock(fc, { x: 1380, y: 345, w: 200, cls: "mono", size: 26, align: "left", ax: 0, ay: 0.5, text: "B" });
       // A reliability diagram, drawn: forecasts against outcomes.
@@ -671,21 +671,21 @@ function sceneDepth({ stage, beat, line }) {
       const rx0 = 760;
       const ry0 = 440;
       const rs = 380;
-      el("rect", { x: rx0, y: ry0, width: rs, height: rs, fill: "none", stroke: "#3a2d1a", "stroke-width": 2 }, rel);
-      const diag = el("line", { x1: rx0, y1: ry0 + rs, x2: rx0 + rs, y2: ry0, stroke: "#6e4d22", "stroke-width": 2, "stroke-dasharray": "6 8" }, rel);
+      el("rect", { x: rx0, y: ry0, width: rs, height: rs, fill: "none", stroke: ink("--gauge-frame"), "stroke-width": 2 }, rel);
+      const diag = el("line", { x1: rx0, y1: ry0 + rs, x2: rx0 + rs, y2: ry0, stroke: ink("--kit-amber-deep"), "stroke-width": 2, "stroke-dasharray": "6 8" }, rel);
       const dotsG = el("g", {}, rel);
       dotsG.style.filter = GLOW.b;
       // Illustrative, and honest about it: dots near the line, whiskers wide.
       const pts = [[0.14, 0.24, 7], [0.3, 0.22, 9], [0.47, 0.55, 13], [0.62, 0.53, 10], [0.78, 0.86, 8], [0.9, 0.8, 6]];
       const dots = pts.map(([fx, fy, r]) => {
-        const c = el("circle", { cx: rx0 + fx * rs, cy: ry0 + rs - fy * rs, r, fill: "#ffb454", opacity: 0 }, dotsG);
+        const c = el("circle", { cx: rx0 + fx * rs, cy: ry0 + rs - fy * rs, r, fill: ink("--phos-b"), opacity: 0 }, dotsG);
         const wv = 0.34 / Math.sqrt(r);
-        const wsk = el("line", { x1: rx0 + fx * rs, x2: rx0 + fx * rs, y1: ry0 + rs - (fy - wv) * rs, y2: ry0 + rs - (fy + wv) * rs, stroke: "#b8823c", "stroke-width": 2, opacity: 0 }, rel);
+        const wsk = el("line", { x1: rx0 + fx * rs, x2: rx0 + fx * rs, y1: ry0 + rs - (fy - wv) * rs, y2: ry0 + rs - (fy + wv) * rs, stroke: ink("--phos-b-dim"), "stroke-width": 2, opacity: 0 }, rel);
         return { c, wsk };
       });
       stage.sfx("whoosh", b.t0 - 0.4, -6);
       const relLbl = textBlock(fc, { x: rx0 + rs + 30, y: ry0 + 40, w: 520, cls: "mono", size: 22, align: "left" });
-      relLbl.innerHTML = `<span style="color:#b8823c">TRUST</span><br><span style="color:#9a958a">what it said would happen,<br>against what did.<br>on the line = honest.</span>`;
+      relLbl.innerHTML = `<span style="color:${ink("--phos-b-dim")}">TRUST</span><br><span style="color:${ink("--silk-dim")}">what it said would happen,<br>against what did.<br>on the line = honest.</span>`;
       return (tl, t) => {
         const L2 = l2.t0 - b.t0;
         const T = b.t1 - b.t0;
@@ -720,8 +720,8 @@ function sceneDepth({ stage, beat, line }) {
         gauge.style.opacity = fin * (1 - ramp(tl, T - 0.3, T + 0.3));
         bet.textContent = `before you answer:  B, ${Math.round(p * 100 * g)}%`;
         fc.style.opacity = fin * (1 - ramp(tl, T - 0.3, T + 0.3));
-        lblA.style.color = "#9a958a";
-        lblB.style.color = "#ffb454";
+        lblA.style.color = ink("--silk-dim");
+        lblB.style.color = ink("--phos-b");
         rel.style.opacity = fin * (1 - ramp(tl, T - 0.3, T + 0.3));
         dots.forEach((d, i) => {
           const u = ramp(tl, L2 + 1.8 + i * 0.35, L2 + 2.2 + i * 0.35, E.outBack);
@@ -766,7 +766,7 @@ function sceneClose({ stage, beat, line }) {
         const d = place(el("div", { class: "screen" }, under), { x, y, w: 360, h: 180 });
         const lbl = el("div", { class: "mono" }, under, n);
         place(lbl, { x: x + 14, y: y + 12 });
-        Object.assign(lbl.style, { fontSize: "19px", color: "#63a97c", zIndex: 2 });
+        Object.assign(lbl.style, { fontSize: "19px", color: ink("--phos-a-dim"), zIndex: 2 });
         const tr = scope(svg, { x: x + 20, y: y + 46, w: 320, h: 110, width: 2.5, points: 220, wave: voiceWave({ f: 1.2 + (i % 5) * 0.5, bright: 0.2 + ((i * 37) % 10) / 12, seed: 60 + i }) });
         return { d, lbl, tr };
       });
@@ -788,7 +788,7 @@ function sceneClose({ stage, beat, line }) {
           const hot = ((beatNo % 12) + 12) % 12 === i ? 1 - ph : 0;
           c.d.style.opacity = u;
           c.lbl.style.opacity = u;
-          c.lbl.style.color = hot > 0.2 ? "#8ef0b1" : "#63a97c";
+          c.lbl.style.color = hot > 0.2 ? ink("--phos-a") : ink("--phos-a-dim");
           c.tr.update(t, { amp: 0.3 + 0.45 * hot, ox: t * 0.3 });
           c.tr.g.style.opacity = u * (0.45 + 0.55 * hot);
         });

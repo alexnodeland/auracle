@@ -311,10 +311,10 @@ const Z = 6; // above the walkthrough's scenes, below the grain
 
 /** A veil over the footage's window only (walk.js's frame), so the captions
  *  and the chapter label outside it stay as they are. */
-function veil(S, layer, { a = 0.62, blur = 5 } = {}) {
+function veil(S, K, layer, { a = 0.62, blur = 5 } = {}) {
   const v = S.place(S.el("div", {}, layer), { x: 120, y: 70, w: 1680, h: 945 });
   v.style.borderRadius = "14px";
-  v.style.background = `radial-gradient(120% 95% at 30% 50%, rgba(7,8,10,${a}) 0%, rgba(7,8,10,${Math.min(0.92, a + 0.18)}) 100%)`;
+  v.style.background = `radial-gradient(120% 95% at 30% 50%, ${K.inkA("--bezel", a)} 0%, ${K.inkA("--bezel", Math.min(0.92, a + 0.18))} 100%)`;
   v.style.backdropFilter = `blur(${blur}px) saturate(0.85)`;
   return v;
 }
@@ -333,14 +333,14 @@ function titleCard(stage, S, K) {
     fout: 0.35,
     z: Z,
     build(layer) {
-      veil(S, layer, { a: 0.66, blur: 6 });
+      veil(S, K, layer, { a: 0.66, blur: 6 });
       const eyebrow = S.place(S.el("div", { class: "eyebrow" }, layer, "Auracle · the four views, in depth"), { x: 960, y: 250, ax: 0.5, ay: 0.5 });
       eyebrow.style.fontSize = "22px";
       const title = K.textBlock(layer, { x: 960, y: 372, w: 1600, cls: "silk", size: 168, align: "center", ax: 0.5, ay: 0.5, text: "PERFORM" });
       title.style.letterSpacing = "0.14em";
-      title.style.textShadow = "0 0 40px rgba(142,240,177,0.18)";
+      title.style.textShadow = `0 0 40px ${K.inkA("--phos-a", 0.18)}`;
       const sub = K.textBlock(layer, { x: 960, y: 505, w: 1400, cls: "voice", size: 64, align: "center", ax: 0.5, ay: 0.5, text: "playing the sound" });
-      sub.style.color = "#d9d4c8";
+      sub.style.color = K.ink("--silk");
       // The eight controls, as the deck has them: six named for what you
       // hear (sound, green), then Blend and Wander (the model's side, amber).
       const svg = K.svgLayer(layer);
@@ -348,7 +348,7 @@ function titleCard(stage, S, K) {
       const xs = names.map((_, i) => 960 + (i - 3.5) * 150 + (i >= 6 ? 30 : -30));
       const ks = names.map((n, i) => ({ i, k: K.knob(svg, { cx: xs[i], cy: 700, r: 34, label: n, labelSize: 15, color: i >= 6 ? "b" : "a" }) }));
       const mid = (xs[5] + xs[6]) / 2;
-      S.el("line", { x1: mid, y1: 655, x2: mid, y2: 765, stroke: "#292e36", "stroke-width": 2 }, svg);
+      S.el("line", { x1: mid, y1: 655, x2: mid, y2: 765, stroke: K.ink("--hairline"), "stroke-width": 2 }, svg);
       const bar = (4 * 60) / stage.tl.grid.bpm;
       return (tl, t) => {
         const u = S.ramp(tl, -0.3, 0.9, S.E.out4);
@@ -387,16 +387,16 @@ function turnCard(stage, S, K, c) {
     fout: 0.45,
     z: Z,
     build(layer) {
-      veil(S, layer, { a: 0.6, blur: 5 });
+      veil(S, K, layer, { a: 0.6, blur: 5 });
       const X = 250;
       const num = S.place(S.el("div", { class: "eyebrow" }, layer, c.n ? `${String(c.n).padStart(2, "0")} / ${String(COUNT).padStart(2, "0")}` : "putting it together"), { x: X, y: 400 });
       num.style.fontSize = "24px";
       const rule = S.place(S.el("div", {}, layer), { x: X, y: 446, w: 0, h: 2 });
-      rule.style.background = "#8ef0b1";
-      rule.style.boxShadow = "0 0 12px rgba(142,240,177,0.6)";
+      rule.style.background = K.ink("--phos-a");
+      rule.style.boxShadow = `0 0 12px ${K.inkA("--phos-a", 0.6)}`;
       const name = K.textBlock(layer, { x: X - 6, y: 470, w: 1500, cls: "display", size: 104, text: c.name });
       const q = K.textBlock(layer, { x: X, y: 610, w: 1400, cls: "voice", size: 50 });
-      q.style.color = "#d9d4c8";
+      q.style.color = K.ink("--silk");
       const qs = S.words(q, c.q);
       // Where this chapter sits among the eight: a row of dots, this one lit.
       const dots = [];
@@ -404,8 +404,8 @@ function turnCard(stage, S, K, c) {
         for (let i = 1; i <= COUNT; i++) {
           const dot = S.place(S.el("div", {}, layer), { x: X + (i - 1) * 26, y: 720, w: 10, h: 10 });
           dot.style.borderRadius = "50%";
-          dot.style.background = i === c.n ? "#8ef0b1" : i < c.n ? "#3d6a4d" : "#292e36";
-          if (i === c.n) dot.style.boxShadow = "0 0 10px rgba(142,240,177,0.8)";
+          dot.style.background = i === c.n ? K.ink("--phos-a") : i < c.n ? K.ink("--phos-a-deep") : K.ink("--hairline");
+          if (i === c.n) dot.style.boxShadow = `0 0 10px ${K.inkA("--phos-a", 0.8)}`;
           dots.push(dot);
         }
       }
@@ -439,7 +439,7 @@ function outroCard(stage, S, K) {
     fin: 0.5,
     z: Z,
     build(layer) {
-      const v = veil(S, layer, { a: 0.64, blur: 5 });
+      const v = veil(S, K, layer, { a: 0.64, blur: 5 });
       // "play it · turn it · let it offer", lit as they are said.
       const loop = K.textBlock(layer, { x: 960, y: 380, w: 1700, cls: "display", size: 92, align: "center", ax: 0.5, ay: 0.5 });
       const ls = S.words(loop, "*play it* · *turn it* · _let it offer_");
@@ -449,7 +449,7 @@ function outroCard(stage, S, K) {
       const patch = K.textBlock(layer, { x: 244, y: 676, w: 1200, cls: "silk", size: 96, text: "PATCH" });
       patch.style.letterSpacing = "0.14em";
       const inside = K.textBlock(layer, { x: 250, y: 800, w: 1200, cls: "voice", size: 50, text: "inside the sound" });
-      inside.style.color = "#d9d4c8";
+      inside.style.color = K.ink("--silk");
       const guide = S.el("div", { class: "pill a" }, layer, "the guide · docs / views / perform");
       S.place(guide, { x: 1670, y: 860, ax: 1, ay: 0.5 });
       // The lockup, small, to sign off.

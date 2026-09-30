@@ -15,10 +15,74 @@
      its own styles inline, and the links below are absolute *within the origin's
      project path*, which the script fills in from where this page was served. -->
 <style>
+  /* The colours and the families are generated from www/brand/tokens.json
+     (`make tokens`), inline like everything else here. */
+  /* tokens:begin: generated from www/brand/tokens.json by `make tokens`. Edit the JSON, not this block. */
+  :root {
+    /* grounds */
+    --rack: #0c0d10;     /* the void behind the rack */
+    --panel: #171a1f;    /* graphite faceplate */
+    --panel-hi: #1d2127; /* raised surface */
+    --bezel: #07080a;    /* screen bezels */
+    --hairline: #292e36;
+
+    /* machined graphite: the two faces of every raised control and the ink of
+       the shadow under it, one literal each, so a retune is one line */
+    --plate-hi: #232830;     /* util buttons, selects: top of the face */
+    --plate-lo: #181b21;     /*   …and the bottom */
+    --btn-hi: #2a2f37;       /* hardware buttons and pads: top of the face */
+    --btn-lo: #1a1d23;       /*   …and the bottom */
+    --btn-hover-hi: #333944; /* the same face under a pointer: one step up */
+    --btn-hover-lo: #1e2228;
+    --shadow-ink: #0a0b0d;   /* the hard shadow line under a raised control */
+    --knob-body: #22262d;    /* PERFORM's knob caps */
+
+    /* shared shades: one value, used on more than one surface */
+    --rack-lo: #0a0b0e;   /* below the rack: the landing page's foot, the docs' sidebar */
+    --panel-lo: #12151a;  /* the foot of a raised panel; the docs' quotes and search results */
+    --pop-lo: #14161a;    /* the foot of a floating surface and of the menu bar; the docs' pop-ups */
+    --recess-hi: #14171b; /* the top of a recessed panel (bank, node bank); a screw's shadow; an empty tile */
+    --lifted: #1a1e24;    /* a lifted strip: a held tray item's top, a table's header row */
+    --amber-off: #1a1410; /* an unlit amber cell: pips, lock dots */
+    --steel: #3a3f47;     /* bare steel: a screw head's highlight; the docs' scrollbar */
+
+    /* silk: warm silkscreen ink */
+    --silk: #d9d4c8;      /* 13.1:1 on rack */
+    --silk-dim: #9a958a;  /*  5.9:1: all dimmed TEXT */
+    --silk-mute: #6f6c63; /*  non-text only: hairlines, disabled glyphs */
+
+    /* green phosphor: sound. `-dim` is the text tier, `-deep` the stroke tier */
+    --phos-a: #8ef0b1;      /* 14.1:1 */
+    --phos-a-dim: #63a97c;  /*  5.2:1: knob values, readouts */
+    --phos-a-deep: #3d6a4d; /*  strokes and fills only */
+
+    /* amber phosphor: the model's mind */
+    --phos-b: #ffb454;      /* 11.0:1 */
+    --phos-b-dim: #b8823c;  /*  5.4:1: lineage log, notes */
+    --phos-b-deep: #7a5526; /*  strokes and fills only */
+
+    /* danger */
+    --led-red: #ff5747;
+
+    /* light and shadow: never ink */
+    --black: #000000; /* shadow lines, the edge under a raised control, masks */
+    --white: #ffffff; /* highlights only, at an opacity; as ink it reads cold against silk */
+
+    /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
+       (`--white-045` is 4.5%) */
+    --phos-a-05: rgba(142, 240, 177, 0.05);
+
+    /* families */
+    --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+  }
+  /* tokens:end */
+
   :root { color-scheme: dark; }
   html {
-    background: #0c0d10;
-    background-image: radial-gradient(900px 500px at 50% -10%, rgba(142,240,177,.05), transparent 70%);
+    background: var(--rack);
+    background-image: radial-gradient(900px 500px at 50% -10%, var(--phos-a-05), transparent 70%);
   }
   body {
     margin: 0;
@@ -26,8 +90,8 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    color: #d9d4c8;
-    font-family: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
+    color: var(--silk);
+    font-family: var(--font-silk);
     font-weight: 300;
     line-height: 1.6;
   }
@@ -43,29 +107,29 @@
     font-size: 1rem;
     font-weight: 500;
     letter-spacing: .145em;
-    color: #d9d4c8;
+    color: var(--silk);
     text-decoration: none;
   }
   .mark svg { width: 1.28em; height: 1.28em; flex: none; transform: translateY(-.035em); }
   .code {
     margin: 28px 0 10px;
-    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: .7rem;
     letter-spacing: .16em;
     text-transform: uppercase;
-    color: #6f6c63;
+    color: var(--silk-mute);
   }
   h1 { margin: 0 0 14px; font-size: clamp(1.7rem, 5vw, 2.4rem); font-weight: 300; letter-spacing: -.015em; }
-  p { margin: 0 0 22px; color: #9a958a; }
+  p { margin: 0 0 22px; color: var(--silk-dim); }
   ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-  a.go { color: #8ef0b1; text-decoration-color: #3d6a4d; text-underline-offset: .18em; }
+  a.go { color: var(--phos-a); text-decoration-color: var(--phos-a-deep); text-underline-offset: .18em; }
   a.go:hover { text-decoration-color: currentColor; }
-  .hint { margin-top: 26px; font-size: .82rem; color: #6f6c63; }
+  .hint { margin-top: 26px; font-size: .82rem; color: var(--silk-mute); }
 </style>
 </head>
 <body>
 <div class="card">
-  <a class="mark" href="./" id="home"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0c0d10"/><circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/><circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/><circle cx="16" cy="16" r="3" fill="#ffb454"/></svg>AURACLE</a>
+  <a class="mark" href="./" id="home"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" style="fill: var(--rack)"/><circle cx="16" cy="16" r="12" fill="none" stroke-width="2.2" style="stroke: var(--phos-a-deep)"/><circle cx="16" cy="16" r="7.4" fill="none" stroke-width="2.6" style="stroke: var(--phos-a)"/><circle cx="16" cy="16" r="3" style="fill: var(--phos-b)"/></svg>AURACLE</a>
 
   <p class="code">404 · no such page</p>
   <h1>That page is not here.</h1>

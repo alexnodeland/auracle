@@ -13,12 +13,12 @@
 // −3.885 for Glass Pad) before anything here was drawn from them.
 
 import { el, place, clamp, lerp, ramp, fade, keys, E, words, reveal } from "../../stage/stage.js";
-import { svgLayer, knob, cable, mark, keyboard, textBlock, voiceWave, GLOW } from "../../stage/kit.js";
+import { svgLayer, knob, cable, mark, keyboard, textBlock, voiceWave, GLOW, ink, inkA } from "../../stage/kit.js";
 
 const C = {
-  a: "#8ef0b1", aDim: "#63a97c", aDeep: "#3d6a4d",
-  b: "#ffb454", bDim: "#b8823c", bDeep: "#6e4d22",
-  silk: "#d9d4c8", dim: "#9a958a", mute: "#6f6c63", hair: "#292e36", panel: "#171a1f", bezel: "#07080a",
+  a: ink("--phos-a"), aDim: ink("--phos-a-dim"), aDeep: ink("--phos-a-deep"),
+  b: ink("--phos-b"), bDim: ink("--phos-b-dim"), bDeep: ink("--kit-amber-deep"),
+  silk: ink("--silk"), dim: ink("--silk-dim"), mute: ink("--silk-mute"), hair: ink("--hairline"), panel: ink("--panel"), bezel: ink("--bezel"),
 };
 const SR = 44100;
 
@@ -150,7 +150,7 @@ function fnD(n, f) {
 /** A dark instrument panel for a plot. */
 function panel(under, { x, y, w, h }) {
   const d = place(el("div", {}, under), { x, y, w, h });
-  Object.assign(d.style, { background: "rgba(7,8,10,.62)", border: `1px solid ${C.hair}`, borderRadius: "10px" });
+  Object.assign(d.style, { background: inkA("--bezel", 0.62), border: `1px solid ${C.hair}`, borderRadius: "10px" });
   return d;
 }
 const fmtInt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -299,7 +299,7 @@ function sceneIntro({ stage, beat, line }) {
       }
       const wg = group(svg, "a");
       const wave = path(wg, "", { stroke: C.a, "stroke-width": 1.25 });
-      const head = el("circle", { r: 6, fill: "#eafff2", opacity: 0 }, wg);
+      const head = el("circle", { r: 6, fill: ink("--phos-a-pulse"), opacity: 0 }, wg);
       const tag = label(over, "Glass Pad · the standard phrase · 5.05 s", { x: X + WD, y: Y + 248, size: 17, color: C.mute, ax: 1 });
       // The patch graph, small, on the left.
       const chainLbl = label(over, "the patch graph", { x: 120, y: 668, size: 18, color: C.mute });
@@ -466,7 +466,7 @@ function sceneGraph({ stage, beat, line }) {
       // The dots: one sample per tick through the whole graph.
       const xs = ROW.map((r) => r.x + PW / 2);
       const dotG = group(svg, "a");
-      const dots = Array.from({ length: 5 }, () => el("circle", { r: 8, fill: "#eafff2", opacity: 0 }, dotG));
+      const dots = Array.from({ length: 5 }, () => el("circle", { r: 8, fill: ink("--phos-a-pulse"), opacity: 0 }, dotG));
       // A sample is seen on the cables and goes out of sight inside a module,
       // which lights while it has it.
       const onCable = (x) => {
@@ -548,8 +548,8 @@ function sceneGraph({ stage, beat, line }) {
         });
         ROW.forEach((r, j) => {
           const on = lit.has(j) && t < tAll;
-          r.d.style.borderColor = on ? "rgba(142,240,177,.75)" : "";
-          r.d.style.boxShadow = on ? "inset 1px 1px 0 rgba(255,255,255,.07), 0 18px 50px rgba(0,0,0,.55), 0 0 26px rgba(142,240,177,.22)" : "";
+          r.d.style.borderColor = on ? inkA("--phos-a", 0.75) : "";
+          r.d.style.boxShadow = on ? `inset 1px 1px 0 ${inkA("--white", 0.07)}, 0 18px 50px ${inkA("--black", 0.55)}, 0 0 26px ${inkA("--phos-a", 0.22)}` : "";
         });
         wires.forEach((w, i) => w.update(t, { draw: ramp(t, b.t0 + 0.5 + i * 0.12, b.t0 + 0.9 + i * 0.12), flow: 0.8 * flow, opacity: ramp(t, b.t0 + 0.3 + i * 0.12, b.t0 + 0.6 + i * 0.12) }));
         // The output, sample by sample, until the knob takes the screen.
@@ -640,7 +640,7 @@ function sceneModules({ stage, beat, line }) {
         DATA.glyphs.filter((m) => m[0] === gid).forEach((m, i) => {
           const x = x0 + 150 + i * 112;
           const d = place(el("div", {}, bankU), { x, y: y0, w: 104, h: 96 });
-          Object.assign(d.style, { background: "linear-gradient(180deg,#1d2127,#171a1f)", border: `1px solid ${C.hair}`, borderRadius: "8px" });
+          Object.assign(d.style, { background: `linear-gradient(180deg,${ink("--panel-hi")},${ink("--panel")})`, border: `1px solid ${C.hair}`, borderRadius: "8px" });
           const nm = el("div", { class: "mono" }, d, m[1]);
           Object.assign(nm.style, { position: "absolute", left: 0, right: 0, bottom: "9px", textAlign: "center", fontSize: "14px", color: C.dim });
           const gg = el("g", { transform: `translate(${x + 20} ${y0 + 14}) scale(3.2)` }, bankS);
@@ -663,13 +663,13 @@ function sceneModules({ stage, beat, line }) {
       });
       const setTile = (tile, on) => {
         const hot = tile.amber ? C.b : C.a;
-        const rest = tile.amber ? "#7a5526" : C.aDeep;
+        const rest = tile.amber ? ink("--phos-b-deep") : C.aDeep;
         tile.paths.forEach(({ p, cls }) => {
           if (cls === "gl" || cls === "gl-ghost") p.style.stroke = on > 0.5 ? hot : rest;
         });
         tile.gg.style.filter = on > 0.5 ? GLOW[tile.amber ? "b" : "a"] : "none";
-        tile.d.style.borderColor = on > 0.01 ? (tile.amber ? `rgba(255,180,84,${0.3 + 0.6 * on})` : `rgba(142,240,177,${0.3 + 0.6 * on})`) : C.hair;
-        tile.d.style.boxShadow = on > 0.01 ? `0 0 ${26 * on}px ${tile.amber ? "rgba(255,180,84,.25)" : "rgba(142,240,177,.25)"}` : "none";
+        tile.d.style.borderColor = on > 0.01 ? (tile.amber ? inkA("--phos-b", 0.3 + 0.6 * on) : inkA("--phos-a", 0.3 + 0.6 * on)) : C.hair;
+        tile.d.style.boxShadow = on > 0.01 ? `0 0 ${26 * on}px ${tile.amber ? inkA("--phos-b", 0.25) : inkA("--phos-a", 0.25)}` : "none";
         tile.nm.style.color = on > 0.5 ? C.silk : C.dim;
       };
       const mTiles = tiles.filter((x) => x.d);
@@ -810,7 +810,7 @@ function sceneModules({ stage, beat, line }) {
       const intruder = pill(typO, "lfo", { x: 0, y: 0, cls: "b", ax: 0.5 });
       Object.assign(intruder.style, { fontSize: "24px", padding: "10px 26px" });
       const cross = label(typO, "✕", { x: 0, y: 0, size: 64, color: C.silk, ax: 0.5, ay: 0.5 });
-      cross.style.textShadow = "0 0 18px rgba(217,212,200,.45)";
+      cross.style.textShadow = `0 0 18px ${inkA("--silk", 0.45)}`;
       const err1 = label(typO, "error[E0308]: mismatched types", { x: 980, y: 560, size: 24, color: C.silk });
       const err2 = label(typO, "expected Box<AudioNode>, found ModNode", { x: 980, y: 602, size: 20, color: C.dim });
       const err3 = label(typO, "a mistyped patch cannot be constructed", { x: 980, y: 660, size: 22, color: C.silk });
@@ -1076,7 +1076,7 @@ function sceneCompile({ stage, beat, line }) {
         [src, ...B].forEach((d) => (d.style.filter = `brightness(${rowDim})`));
         // DC blocker: the offset drops to zero before the VCA.
         const lit = ramp(t, tDC, tDC + 0.3);
-        B[0].style.borderColor = lit > 0 && one > 0.5 ? `rgba(142,240,177,${0.3 + 0.6 * lit})` : "";
+        B[0].style.borderColor = lit > 0 && one > 0.5 ? inkA("--phos-a", 0.3 + 0.6 * lit) : "";
         dcNote.style.opacity = ramp(t, tDC - 0.1, tDC + 0.3) * one;
         const drop = ramp(t, tDC + 0.3, tDC + 1.1, E.io3);
         const off = mean * (1 - drop);
@@ -1104,9 +1104,9 @@ function sceneCompile({ stage, beat, line }) {
         linDraw(ramp(t, tEx, tEx + 1.0, E.io2));
         expDraw(ramp(t, tEx + 0.1, tEx + 1.2, E.io2));
         vcaSub.style.opacity = ramp(t, tEx + 0.2, tEx + 0.6);
-        B[1].style.borderColor = ramp(t, tEx, tEx + 0.3) * one > 0.1 ? "rgba(142,240,177,.6)" : "";
+        B[1].style.borderColor = ramp(t, tEx, tEx + 0.3) * one > 0.1 ? inkA("--phos-a", 0.6) : "";
         const lu = ramp(t, tLi - 0.1, tLi + 0.3);
-        B[2].style.borderColor = lu > 0 && one > 0.5 ? `rgba(142,240,177,${0.3 + 0.6 * lu})` : "";
+        B[2].style.borderColor = lu > 0 && one > 0.5 ? inkA("--phos-a", 0.3 + 0.6 * lu) : "";
         limNote.style.opacity = lu * one;
         chan.style.opacity = ramp(t, tLi + 0.4, tLi + 0.9) * one;
         // compile2: the caps.
@@ -1295,7 +1295,7 @@ function scenePhrase({ stage, beat, line }) {
           diffDraw(ramp(t, tRen + 1.0, tBit + 0.1, E.io2));
           const glow = ramp(t, tBit, tBit + 0.4);
           diffP.setAttribute("stroke-width", (3 + 2.5 * glow).toFixed(2));
-          diffG.style.filter = glow > 0.05 ? `${GLOW.a} drop-shadow(0 0 ${(22 * glow).toFixed(1)}px rgba(142,240,177,.55))` : GLOW.a;
+          diffG.style.filter = glow > 0.05 ? `${GLOW.a} drop-shadow(0 0 ${(22 * glow).toFixed(1)}px ${inkA("--phos-a", 0.55)})` : GLOW.a;
           show(diffN, ramp(t, tBit + 0.1, tBit + 0.5));
         }
         speak(v1, t, l1, l2.t0);
@@ -1567,7 +1567,7 @@ function sceneLoudness({ stage, beat, line }) {
         const track = place(el("div", {}, bU), { x: MX, y: p.y - 30, w: MW, h: 24 });
         Object.assign(track.style, { background: C.bezel, border: `1px solid ${C.hair}`, borderRadius: "5px" });
         const fill = place(el("div", {}, bU), { x: MX, y: p.y - 30, w: 0, h: 24 });
-        Object.assign(fill.style, { background: "linear-gradient(90deg,#3d6a4d,#8ef0b1)", borderRadius: "5px" });
+        Object.assign(fill.style, { background: `linear-gradient(90deg,${ink("--phos-a-deep")},${ink("--phos-a")})`, borderRadius: "5px" });
         const tick = el("line", { x1: mxv(-18), x2: mxv(-18), y1: p.y - 42, y2: p.y + 6, stroke: C.silk, "stroke-width": 2 }, bS);
         const val = label(bO, "", { x: MX, y: p.y + 14, size: 20, color: C.a });
         const rms = label(bO, "", { x: MX, y: p.y + 48, size: 20, color: C.silk });
@@ -1853,7 +1853,7 @@ function sceneFeatures({ stage, beat, line }) {
         const d = place(el("div", {}, f6U), { x, y, w: 118, h: 76 });
         const v = DATA.gpStruct[i];
         const fam = i < 19;
-        Object.assign(d.style, { borderRadius: "8px", border: `1px solid ${fam ? C.aDeep : C.hair}`, background: v > 0 ? (fam ? "rgba(142,240,177,.16)" : "rgba(217,212,200,.10)") : "#14171b" });
+        Object.assign(d.style, { borderRadius: "8px", border: `1px solid ${fam ? C.aDeep : C.hair}`, background: v > 0 ? (fam ? inkA("--phos-a", 0.16) : inkA("--silk", 0.1)) : ink("--recess-hi") });
         const nm = label(f6, n, { x: x + 59, y: y + 12, size: 14, color: C.dim, ax: 0.5 });
         const vl = label(f6, Number.isInteger(v) ? `${v}` : v.toFixed(2), { x: x + 59, y: y + 38, size: 21, color: v > 0 ? (fam ? C.a : C.silk) : C.mute, ax: 0.5 });
         return { d, nm, vl, i };
@@ -1863,7 +1863,7 @@ function sceneFeatures({ stage, beat, line }) {
       const sPill = pill(f6, "φ_struct · 26", { x: P0, y: 760 });
       const phi = label(f6, "", { x: P0 + 300, y: 756, size: 44, color: C.b, ay: 0.5, html: true });
       phi.innerHTML = "φ ∈ ℝ<sup>44</sup>";
-      phi.style.textShadow = "0 0 22px rgba(255,180,84,.45)";
+      phi.style.textShadow = `0 0 22px ${inkA("--phos-b", 0.45)}`;
 
       const v1 = voiceLine(over, "From that render come *eighteen audio features*.");
       const v2 = voiceLine(over, "Four measure the spectrum's *brightness* and its *movement*, on a *logarithmic frequency axis*.");
@@ -1999,7 +1999,7 @@ function sceneLive({ stage, beat, line }) {
       const { under, svg, over } = stack(layer);
       const comp = box(under, { x: 100, y: 300, w: 240, h: 100, title: "compile()", sub: "auracle_grammar", color: "s" });
       const wk = place(el("div", {}, under), { x: 420, y: 150, w: 1000, h: 470 });
-      Object.assign(wk.style, { border: `1.5px solid ${C.hair}`, borderRadius: "16px", background: "rgba(23,26,31,.4)" });
+      Object.assign(wk.style, { border: `1.5px solid ${C.hair}`, borderRadius: "16px", background: inkA("--panel", 0.4) });
       const wkT = label(over, "AudioWorklet · the render thread", { x: 444, y: 166, size: 19, color: C.silk });
       const LX = 470, LW = 520;
       const laneSet = (y0, color, seedBase) => [0, 1, 2, 3].map((i) => {
@@ -2044,12 +2044,12 @@ function sceneLive({ stage, beat, line }) {
       const quanta = Array.from({ length: QN }, (_, i) => {
         const x = 100 + i * 120;
         const d = place(el("div", {}, q3U), { x, y: 700, w: 108, h: 54 });
-        Object.assign(d.style, { borderRadius: "6px", border: `1px solid ${C.aDeep}`, background: "rgba(142,240,177,.06)" });
+        Object.assign(d.style, { borderRadius: "6px", border: `1px solid ${C.aDeep}`, background: inkA("--phos-a", 0.06) });
         const t = label(q3, "128", { x: x + 54, y: 727, size: 16, color: C.dim, ax: 0.5, ay: 0.5 });
         return { d, t, x };
       });
       const buf = place(el("div", {}, q3U), { x: 1400, y: 690, w: 400, h: 74 });
-      Object.assign(buf.style, { borderRadius: "8px", border: `1.5px solid ${C.a}`, background: "rgba(142,240,177,.08)", boxShadow: "0 0 24px rgba(142,240,177,.15)" });
+      Object.assign(buf.style, { borderRadius: "8px", border: `1.5px solid ${C.a}`, background: inkA("--phos-a", 0.08), boxShadow: `0 0 24px ${inkA("--phos-a", 0.15)}` });
       label(q3, "out_buf · one persistent buffer", { x: 1600, y: 716, size: 17, color: C.a, ax: 0.5, ay: 0.5 });
       label(q3, "process_ptr() → a pointer into wasm memory", { x: 1600, y: 744, size: 14, color: C.dim, ax: 0.5, ay: 0.5 });
       label(q3, "render quanta, 128 frames each", { x: 100, y: 664, size: 17, color: C.dim });
@@ -2065,7 +2065,7 @@ function sceneLive({ stage, beat, line }) {
       const gy = (g) => 820 - g * 130;
       const cellsQ = ["fade", "fade", "voice 1", "voice 2", "voice 3", "voice 4", "fade", "fade"].map((n, i) => {
         const d = place(el("div", {}, s4U), { x: fx(i * 128) + 2, y: 836, w: TW / 8 - 4, h: 36 });
-        Object.assign(d.style, { borderRadius: "5px", border: `1px solid ${i >= 2 && i < 6 ? C.aDeep : C.hair}`, background: i >= 2 && i < 6 ? "rgba(142,240,177,.07)" : "transparent" });
+        Object.assign(d.style, { borderRadius: "5px", border: `1px solid ${i >= 2 && i < 6 ? C.aDeep : C.hair}`, background: i >= 2 && i < 6 ? inkA("--phos-a", 0.07) : "transparent" });
         const t = label(s4, n, { x: fx(i * 128 + 64), y: 854, size: 15, color: i >= 2 && i < 6 ? C.a : C.dim, ax: 0.5, ay: 0.5 });
         return { d, t };
       });
@@ -2108,7 +2108,7 @@ function sceneLive({ stage, beat, line }) {
         inArr.update(ramp(t, b.t0 + 0.3, b.t0 + 0.8));
         show(wk, ramp(t, b.t0 + 0.3, b.t0 + 0.8, E.out3));
         wkT.style.opacity = lerp(0.35, 1, ramp(t, tAW - 0.3, tAW + 0.2)) * ramp(t, b.t0 + 0.5, b.t0 + 0.9);
-        wk.style.borderColor = fade(t, tAW - 0.2, tAW + 0.2, tAW + 1.2, tAW + 1.8) > 0.02 ? `rgba(142,240,177,${(0.55 * fade(t, tAW - 0.2, tAW + 0.2, tAW + 1.2, tAW + 1.8)).toFixed(3)})` : C.hair;
+        wk.style.borderColor = fade(t, tAW - 0.2, tAW + 0.2, tAW + 1.2, tAW + 1.8) > 0.02 ? inkA("--phos-a", (0.55 * fade(t, tAW - 0.2, tAW + 0.2, tAW + 1.2, tAW + 1.8)).toFixed(3)) : C.hair;
         aT.style.opacity = ramp(t, tFour - 0.2, tFour + 0.2);
         bT.style.opacity = ramp(t, tOff - 0.2, tOff + 0.2);
         // The blend: A alone, then across to B, then back (a Peek).
@@ -2147,7 +2147,7 @@ function sceneLive({ stage, beat, line }) {
         quanta.forEach((q, i) => {
           const on = i === cur;
           q.d.style.borderColor = on ? C.a : C.aDeep;
-          q.d.style.boxShadow = on ? "0 0 18px rgba(142,240,177,.3)" : "none";
+          q.d.style.boxShadow = on ? `0 0 18px ${inkA("--phos-a", 0.3)}` : "none";
           q.t.style.color = on ? C.a : C.dim;
         });
         writeP.setAttribute("d", `M${quanta[cur].x + 54} 700 C${quanta[cur].x + 54} 640 1600 640 1600 688`);
@@ -2221,7 +2221,7 @@ function sceneFarm({ stage, beat, line }) {
         const cells = Array.from({ length: NP }, (_, i) => {
           const x = PX + i * PC;
           const d = place(el("div", {}, under), { x, y, w: PC - 12, h: 44 });
-          Object.assign(d.style, { borderRadius: "6px", border: `1px solid ${C.hair}`, background: "#14171b" });
+          Object.assign(d.style, { borderRadius: "6px", border: `1px solid ${C.hair}`, background: ink("--recess-hi") });
           const g = group(svg, "a");
           const p = path(g, cellD(i, x, y), { stroke: C.a, "stroke-width": 1.8 });
           const n = label(over, `${i}`, { x: x + PC - 18, y: y + 4, size: 13, color: C.mute, ax: 1 });
@@ -2320,7 +2320,7 @@ function sceneOutro({ stage, beat, line }) {
       const dn = box(diagU, { x: 960, y: 710, w: 700, h: 96, title: "stage · LivePoly", sub: "4 + 4 voices in the AudioWorklet", ax: 0.5, ay: 0.5 });
       const aUp = arrow(diagS, [960, 420], [960, 282], "b", { width: 3 });
       const aDn = arrow(diagS, [960, 520], [960, 658], "a", { width: 3 });
-      const pulses = [group(diagS, "b"), group(diagS, "a")].map((g, i) => el("circle", { r: 9, fill: i ? "#eafff2" : "#fff1dc", opacity: 0 }, g));
+      const pulses = [group(diagS, "b"), group(diagS, "a")].map((g, i) => el("circle", { r: 9, fill: i ? ink("--phos-a-pulse") : ink("--phos-b-pulse"), opacity: 0 }, g));
       // The lockup, as in the engine film.
       const lock = place(el("div", { class: "lk" }, over), { x: 0, y: 0 });
       lock.style.fontSize = "96px";
@@ -2352,7 +2352,7 @@ function sceneOutro({ stage, beat, line }) {
           p.setAttribute("cy", i ? lerp(520, 658, u) : lerp(420, 282, u));
           p.setAttribute("opacity", fade(t, tMe - 0.1, tMe, tMe + 0.5, tMe + 0.6).toFixed(3));
         });
-        cb.style.boxShadow = `inset 1px 1px 0 rgba(255,255,255,.07), 0 18px 50px rgba(0,0,0,.55), 0 0 ${(40 * fade(t, tMe - 0.1, tMe + 0.1, tMe + 0.5, tMe + 0.9)).toFixed(1)}px rgba(217,212,200,.25)`;
+        cb.style.boxShadow = `inset 1px 1px 0 ${inkA("--white", 0.07)}, 0 18px 50px ${inkA("--black", 0.55)}, 0 0 ${(40 * fade(t, tMe - 0.1, tMe + 0.1, tMe + 0.5, tMe + 0.9)).toFixed(1)}px ${inkA("--silk", 0.25)}`;
         const u = ramp(t, tLk - 0.2, tLk + 0.7, E.out4);
         mk.update({ tile: u, outer: u, inner: ramp(t, tLk - 0.3, tLk + 0.4), core: E.outBack(ramp(t, tLk - 0.3, tLk + 0.2, E.lin)) });
         lock.style.opacity = u;

@@ -33,9 +33,13 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   or edit them (`docs/src/img/` is one).
 - **One design system**
   ([ADR-011](../docs/decisions/011-one-design-system.md)). The tagline is "A
-  synthesizer that searches for your sound". Colours, sizes and copy rules are
-  moving into `www/brand/` (`tokens.json`, `voice.md`) under Plan-004; until
-  then, match the brand spec (`www/brand/index.html`).
+  synthesizer that searches for your sound". Sizes and copy rules are moving
+  into `www/brand/` (`voice.md`) under Plan-004; until then, match the brand
+  spec (`www/brand/index.html`).
+- **Colours come from `www/brand/tokens.json`, never a literal**: a new colour
+  is a token first, then `make tokens`; `make dev-check` fails on a colour
+  written in a page, a stylesheet, the film kit or a film
+  ([`brand/README.md`](brand/README.md#the-tokens)).
 - **A new guide page goes in `SUMMARY.md`**, or mdBook silently skips it.
 - **KaTeX macros live in `reference/katex-macros.txt`.** A table in
   `book.toml` parses and is ignored.

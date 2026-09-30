@@ -5,7 +5,7 @@
 // most of this film.
 
 import { el, place, clamp, lerp, ramp, fade, E, rng, words, reveal } from "../../stage/stage.js";
-import { svgLayer, mark, textBlock, voiceWave, scope, knob, PHOS, PHOS_DIM, PHOS_DEEP, GLOW } from "../../stage/kit.js";
+import { svgLayer, mark, textBlock, voiceWave, scope, knob, PHOS, PHOS_DIM, PHOS_DEEP, GLOW, ink, inkA } from "../../stage/kit.js";
 
 export async function build(stage) {
   const beat = (id) => stage.tl.beats.find((b) => b.id === id);
@@ -37,20 +37,20 @@ const A_DIM = PHOS_DIM.a;
 const B_DIM = PHOS_DIM.b;
 const A_DEEP = PHOS_DEEP.a;
 const B_DEEP = PHOS_DEEP.b;
-const SILK = "#d9d4c8";
-const DIM = "#9a958a";
-const MUTE = "#6f6c63";
-const HAIR = "#292e36";
-const PANEL = "#171a1f";
-const INK = "#0c0d10";
+const SILK = ink("--silk");
+const DIM = ink("--silk-dim");
+const MUTE = ink("--silk-mute");
+const HAIR = ink("--hairline");
+const PANEL = ink("--panel");
+const INK = ink("--rack");
 const sig = (v) => 1 / (1 + Math.exp(-v));
 
 const glowCss = (c, k = 1) =>
   c === "a"
-    ? `drop-shadow(0 0 ${(2.5 * k).toFixed(2)}px rgba(142,240,177,.95)) drop-shadow(0 0 ${(12 * k).toFixed(2)}px rgba(142,240,177,.38))`
-    : `drop-shadow(0 0 ${(2.5 * k).toFixed(2)}px rgba(255,180,84,.95)) drop-shadow(0 0 ${(14 * k).toFixed(2)}px rgba(255,180,84,.42))`;
+    ? `drop-shadow(0 0 ${(2.5 * k).toFixed(2)}px ${inkA("--phos-a", 0.95)}) drop-shadow(0 0 ${(12 * k).toFixed(2)}px ${inkA("--phos-a", 0.38)})`
+    : `drop-shadow(0 0 ${(2.5 * k).toFixed(2)}px ${inkA("--phos-b", 0.95)}) drop-shadow(0 0 ${(14 * k).toFixed(2)}px ${inkA("--phos-b", 0.42)})`;
 const textGlow = (c, k = 1) =>
-  c === "a" ? `0 0 ${(18 * k).toFixed(1)}px rgba(142,240,177,${Math.min(0.9, 0.45 * k).toFixed(2)})` : `0 0 ${(20 * k).toFixed(1)}px rgba(255,180,84,${Math.min(0.95, 0.45 * k).toFixed(2)})`;
+  c === "a" ? `0 0 ${(18 * k).toFixed(1)}px ${inkA("--phos-a", Math.min(0.9, 0.45 * k).toFixed(2))}` : `0 0 ${(20 * k).toFixed(1)}px ${inkA("--phos-b", Math.min(0.95, 0.45 * k).toFixed(2))}`;
 
 function mixHex(c1, c2, u) {
   const p = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
@@ -214,7 +214,7 @@ function miniCard(under, svg, { x, y, w = 300, h = 124, side, name, wave }) {
   const badge = el("div", {}, d, side);
   Object.assign(badge.style, {
     position: "absolute", left: "16px", top: "14px", width: "40px", height: "40px", borderRadius: "7px",
-    border: "1.5px solid #3d6a4d", display: "grid", placeItems: "center",
+    border: `1.5px solid ${ink("--phos-a-deep")}`, display: "grid", placeItems: "center",
     fontFamily: "IBM Plex Mono", fontWeight: 600, fontSize: "22px", color: A,
   });
   const nm = el("div", { class: "mono" }, d, name);
@@ -229,8 +229,8 @@ function miniCard(under, svg, { x, y, w = 300, h = 124, side, name, wave }) {
       d.style.opacity = o;
       tr.g.style.opacity = o;
       tr.update(t, { amp: 0.8, ox: t * 0.25 });
-      d.style.borderColor = picked > 0 ? `rgba(142,240,177,${0.3 + 0.6 * picked})` : "#292e36";
-      d.style.boxShadow = `inset 1px 1px 0 rgba(255,255,255,.07), 0 18px 50px rgba(0,0,0,.55), 0 0 ${40 * picked}px rgba(142,240,177,${0.25 * picked})`;
+      d.style.borderColor = picked > 0 ? inkA("--phos-a", 0.3 + 0.6 * picked) : ink("--hairline");
+      d.style.boxShadow = `inset 1px 1px 0 ${inkA("--white", 0.07)}, 0 18px 50px ${inkA("--black", 0.55)}, 0 0 ${40 * picked}px ${inkA("--phos-a", 0.25 * picked)}`;
     },
   };
 }
@@ -531,7 +531,7 @@ function sceneUtility({ stage, beat, line }) {
         // utility2
         show(fx, ramp(t, l2.t0 - 0.3, l2.t0 + 0.3, E.out3), 10);
         const gm = fade(t, tMax - 0.1, tMax + 0.25, tMax + 1.0, tMax + 2.0);
-        maxSpan.style.color = mixHex(B, "#ffe2b8", gm);
+        maxSpan.style.color = mixHex(B, ink("--phos-b-flash"), gm);
         maxSpan.style.textShadow = textGlow("b", 1 + 2.2 * gm);
         op(eAxis, ramp(t, tExp - 0.3, tExp + 0.2));
         const hl = ramp(t, tExp + 0.8, tExp + 1.2);
@@ -902,7 +902,7 @@ function scenePosterior({ stage, beat, line }) {
       const zNote = txt(siteL, "no lens label to sample: the max removed it", { x: SX, y: SY + 3 * 86 + 44, size: 18, color: MUTE });
       const mh = txt(
         over,
-        "<span style='color:#ffb454'>adaptive single-site MH</span><br>3 000 warmup + 10 000 steps · thinned to 500<br><span style='color:#6f6c63'>mcmc_warmup · mcmc_samples · KEEP</span>",
+        `<span style='color:${ink("--phos-b")}'>adaptive single-site MH</span><br>3 000 warmup + 10 000 steps · thinned to 500<br><span style='color:${ink("--silk-mute")}'>mcmc_warmup · mcmc_samples · KEEP</span>`,
         { x: SX, y: 600, size: 20, color: DIM, lh: 1.6 },
       );
       const refitNote = txt(over, "needs_refit(): resampled since the last fit<br>the app refits at most every 6 duels", { x: SX, y: 740, size: 20, color: B_DIM, lh: 1.6 });
@@ -929,9 +929,9 @@ function scenePosterior({ stage, beat, line }) {
       const cloud2 = C2.draws.map((th) => mkArrow(th, gCloud));
       const head = el("g", {}, svg);
       head.style.filter = GLOW.b;
-      const headLn = el("line", { x1: O[0], y1: O[1], stroke: "#ffd08a", "stroke-width": 3, opacity: 0 }, head);
-      const headTip = el("circle", { r: 7, fill: "#ffd08a", opacity: 0 }, head);
-      const stair = el("polyline", { fill: "none", stroke: "#ffd08a", "stroke-width": 2, opacity: 0 }, head);
+      const headLn = el("line", { x1: O[0], y1: O[1], stroke: ink("--phos-b-hot"), "stroke-width": 3, opacity: 0 }, head);
+      const headTip = el("circle", { r: 7, fill: ink("--phos-b-hot"), opacity: 0 }, head);
+      const stair = el("polyline", { fill: "none", stroke: ink("--phos-b-hot"), "stroke-width": 2, opacity: 0 }, head);
       const drawnLbl = txt(over, "", { x: 1250, y: 250, size: 22, color: B, glow: "b" });
       const drawnSub = txt(over, "500 draws · 160 of them drawn here", { x: 1250, y: 284, size: 17, color: MUTE });
 
@@ -984,7 +984,7 @@ function scenePosterior({ stage, beat, line }) {
       const MH = 400;
       const essLbl = txt(over, "ESS = 1 / Σ<sub>s</sub> w<sub>s</sub><sup>2</sup>", { x: MX + 20, y: 230, size: 26, color: B, ax: 0.5, glow: "b" });
       const meter = el("g", { opacity: 0 }, svg);
-      el("rect", { x: MX, y: MY0 - MH, width: 40, height: MH, rx: 6, fill: "#07080a", stroke: HAIR, "stroke-width": 1.5 }, meter);
+      el("rect", { x: MX, y: MY0 - MH, width: 40, height: MH, rx: 6, fill: ink("--bezel"), stroke: HAIR, "stroke-width": 1.5 }, meter);
       const mFill = el("rect", { x: MX + 4, width: 32, rx: 3, fill: B }, meter);
       mFill.style.filter = GLOW.b;
       el("line", { x1: MX - 12, y1: MY0 - MH / 2, x2: MX + 52, y2: MY0 - MH / 2, stroke: SILK, "stroke-width": 2, "stroke-dasharray": "4 4" }, meter);
@@ -1112,7 +1112,7 @@ function scenePosterior({ stage, beat, line }) {
         mFill.setAttribute("y", (MY0 - 4 - (MH - 8) * frac).toFixed(1));
         mFill.setAttribute("height", ((MH - 8) * frac).toFixed(1));
         const flash = fade(t, tCol + 0.3, tCol + 0.5, tCol + 1.3, tCol + 1.9);
-        mFill.setAttribute("fill", mixHex(B, "#ffe2b8", flash));
+        mFill.setAttribute("fill", mixHex(B, ink("--phos-b-flash"), flash));
         // Below half the draw count, the half line lights: this is what triggers the resample.
         const below = frac < 0.5 ? 1 : 0;
         half.style.color = below ? B : DIM;
@@ -1152,7 +1152,7 @@ function sceneCalibration({ stage, beat, line }) {
       const cA = miniCard(cardsU, cardsG, { x: 330, y: 330, w: 560, h: 250, side: "A", name: "Soft Engine", wave: voiceWave({ f: 1.5, bright: 0.3, seed: 31 }) });
       const cB = miniCard(cardsU, cardsG, { x: 1030, y: 330, w: 560, h: 250, side: "B", name: "Pale Wire", wave: voiceWave({ f: 2.3, bright: 0.65, seed: 32 }) });
       const note = place(el("div", {}, over), { x: 960, y: 240, ax: 0.5, ay: 0.5 });
-      Object.assign(note.style, { fontFamily: "IBM Plex Mono", fontSize: "36px", color: B, textShadow: textGlow("b"), border: "1.5px dashed #b8823c", borderRadius: "10px", padding: "12px 30px", whiteSpace: "nowrap" });
+      Object.assign(note.style, { fontFamily: "IBM Plex Mono", fontSize: "36px", color: B, textShadow: textGlow("b"), border: `1.5px dashed ${ink("--phos-b-dim")}`, borderRadius: "10px", padding: "12px 30px", whiteSpace: "nowrap" });
       note.textContent = "forecast: B, 64%";
       const pick = txt(over, "you pick B", { x: 1310, y: 610, size: 22, color: A, ax: 0.5 });
       const score = place(el("div", { class: "pill b" }, over), { x: 960, y: 700, ax: 0.5, ay: 0.5 });
@@ -1178,7 +1178,7 @@ function sceneCalibration({ stage, beat, line }) {
       const para = el("path", { d: curveD(EB, qx, ey), fill: "none", stroke: B, "stroke-width": 3.2 }, pg);
       const paraLen = para.getTotalLength();
       para.setAttribute("stroke-dasharray", `${paraLen} ${paraLen}`);
-      const marker = el("circle", { r: 10, fill: "#ffd08a", opacity: 0 }, pg);
+      const marker = el("circle", { r: 10, fill: ink("--phos-b-hot"), opacity: 0 }, pg);
       const h2 = el("div", { class: "layer" }, over);
       txt(h2, "𝔼[score] = (q − p)<sup>2</sup> + p(1 − p)", { x: PX0, y: 232, size: 30, color: B, glow: "b" });
       txt(h2, "reported probability q", { x: (PX0 + PX1) / 2, y: PY0 + 34, size: 20, color: DIM, ax: 0.5 });
@@ -1511,9 +1511,9 @@ function landscape(svg, over, { X0 = 150, X1 = 1250, base = 760, H = 400 } = {})
   prior.setAttribute("stroke-dasharray", `${pLen} ${pLen}`);
   const gT = el("g", {}, g);
   gT.style.filter = GLOW.b;
-  const tgt = el("path", { fill: "rgba(255,180,84,.07)", stroke: B, "stroke-width": 3.2 }, gT);
+  const tgt = el("path", { fill: inkA("--phos-b", 0.07), stroke: B, "stroke-width": 3.2 }, gT);
   const util = el("path", { d: curveD(LAND.util, X, (v) => base - 90 - v * 150), fill: "none", stroke: B_DIM, "stroke-width": 2, "stroke-dasharray": "3 7", opacity: 0 }, g);
-  const legend = txt(over, "<span style='color:#8ef0b1'>— p<sub>grammar</sub>(x)</span>&nbsp;&nbsp;&nbsp;<span style='color:#ffb454'>— π<sub>β</sub>(x)</span>", { x: X0, y: base + 22, size: 22 });
+  const legend = txt(over, `<span style='color:${ink("--phos-a")}'>— p<sub>grammar</sub>(x)</span>&nbsp;&nbsp;&nbsp;<span style='color:${ink("--phos-b")}'>— π<sub>β</sub>(x)</span>`, { x: X0, y: base + 22, size: 22 });
   const axisL = txt(over, "x · terms, simpler → deeper", { x: X1, y: base + 22, size: 18, color: MUTE, ax: 1 });
   const utilL = txt(over, "··· 𝔼[u<sub>θ</sub>(x)]", { x: X0 + legend.getBoundingClientRect().width + 40, y: base + 22, size: 22, color: B_DIM });
   return {
@@ -1558,8 +1558,8 @@ function sceneTarget({ stage, beat, line }) {
       const f = txt(over, "π<sub>β</sub>(x) ∝ p<sub>grammar</sub>(x) · e<sup>β 𝔼[u<sub>θ</sub>(x)]</sup>", { x: 700, y: 170, size: 50, color: SILK, ax: 0.5, ay: 0.5 });
       const land = landscape(svg, over, { X0: 150, X1: 1250, base: 760, H: 400 });
       // What each factor does (reference: search / target).
-      const roleP = txt(over, "p<sub>grammar</sub>(x)<br><span style='color:#9a958a;font-size:20px'>supplies parsimony</span>", { x: 1370, y: 340, size: 30, color: A, lh: 1.5 });
-      const roleU = txt(over, "e<sup>β 𝔼[u<sub>θ</sub>(x)]</sup><br><span style='color:#9a958a;font-size:20px'>supplies direction</span>", { x: 1370, y: 470, size: 30, color: B, lh: 1.5 });
+      const roleP = txt(over, `p<sub>grammar</sub>(x)<br><span style='color:${ink("--silk-dim")};font-size:20px'>supplies parsimony</span>`, { x: 1370, y: 340, size: 30, color: A, lh: 1.5 });
+      const roleU = txt(over, `e<sup>β 𝔼[u<sub>θ</sub>(x)]</sup><br><span style='color:${ink("--silk-dim")};font-size:20px'>supplies direction</span>`, { x: 1370, y: 470, size: 30, color: B, lh: 1.5 });
       // target2: three terms, depth 1–3, and the prior mass each is left with.
       const TX = 1370;
       const BW = 300;
@@ -1606,7 +1606,7 @@ function sceneTarget({ stage, beat, line }) {
         const tt = txt(knH, text, { x, y, size: 18, color: B_DIM, ax: side, ay: 0.5, align: side === 1 ? "right" : "left", lh: 1.4 });
         return { tk, tt };
       };
-      const ticks = [tickAt(0, "0 · browse the prior", 1), tickAt(2, "2 · shipped<br><span style='color:#6f6c63'>SessionConfig::beta</span>", 1), tickAt(8, "8 · optimizer", 0)];
+      const ticks = [tickAt(0, "0 · browse the prior", 1), tickAt(2, `2 · shipped<br><span style='color:${ink("--silk-mute")}'>SessionConfig::beta</span>`, 1), tickAt(8, "8 · optimizer", 0)];
       const foot = txt(
         over,
         "With a posterior, the grammar's categorical weights are tilted by the model (η = 0.6, each multiplier clamped to ¼…4, proposal_tilt),<br>and that tilted grammar is the prior the walk runs under:  π′ ∝ p<sub>tilted</sub> · e<sup>β𝔼[u]</sup>  — reference, Proposals.",
@@ -1716,7 +1716,7 @@ function sceneRefine({ stage, beat, line }) {
       const mv1 = txt(tH, "parameter move", { x: 1020, y: 380, size: 26, color: B });
       const mv1s = txt(tH, "node/0#cut  0.42 → 0.57", { x: 1020, y: 420, size: 22, color: DIM });
       const mv2 = txt(tH, "structural move", { x: 1020, y: 520, size: 26, color: B });
-      const mv2s = txt(tH, "node/0/m regenerated: s&amp;h → steps<br><span style='color:#6f6c63'>reversible jump · fugue handles the Jacobian bookkeeping</span>", { x: 1020, y: 560, size: 22, color: DIM, lh: 1.55 });
+      const mv2s = txt(tH, `node/0/m regenerated: s&amp;h → steps<br><span style='color:${ink("--silk-mute")}'>reversible jump · fugue handles the Jacobian bookkeeping</span>`, { x: 1020, y: 560, size: 22, color: DIM, lh: 1.55 });
       const acc = txt(tH, "accept with min(1, π<sub>β</sub>(x′) q(x | x′) / π<sub>β</sub>(x) q(x′ | x))", { x: 1020, y: 700, size: 22, color: B_DIM });
       // refine2/3: the landscape, the pool on it, and ten walks of forty steps.
       const lG = el("g", {}, svg);
@@ -1777,16 +1777,16 @@ function sceneRefine({ stage, beat, line }) {
           path.push(x);
         }
         const ring = el("circle", { cx: land.X(pool[i]), cy: land.y(pool[i], BETA), r: 13, fill: "none", stroke: B, "stroke-width": 2.5, opacity: 0 }, wG);
-        const dot = el("circle", { r: 8, fill: "#ffd08a", opacity: 0 }, wG);
+        const dot = el("circle", { r: 8, fill: ink("--phos-b-hot"), opacity: 0 }, wG);
         const trail = el("polyline", { fill: "none", stroke: B, "stroke-width": 1.6, opacity: 0 }, wG);
         const flag = el("path", { fill: B, opacity: 0 }, wG);
         const endX = land.X(x);
-        const tick = el("line", { x1: endX, y1: land.base - 16, x2: endX, y2: land.base + 16, stroke: "#ffd08a", "stroke-width": 3, opacity: 0 }, wG);
+        const tick = el("line", { x1: endX, y1: land.base - 16, x2: endX, y2: land.base + 16, stroke: ink("--phos-b-hot"), "stroke-width": 3, opacity: 0 }, wG);
         return { path, ring, dot, trail, flag, tick };
       });
       const budget = txt(lH, "refine_seeds = 10 · refine_steps = 40  (2 × N_OPS)", { x: 150, y: 150, size: 26, color: B, glow: "b" });
       const endMean = walks.reduce((a2, w) => a2 + w.path[40], 0) / walks.length;
-      const endsL = txt(lH, "↑ where the ten walks ended", { x: land.X(endMean), y: land.base + 52, size: 18, color: "#ffd08a", ax: 0.5 });
+      const endsL = txt(lH, "↑ where the ten walks ended", { x: land.X(endMean), y: land.base + 52, size: 18, color: ink("--phos-b-hot"), ax: 0.5 });
       const stepL = txt(lH, "", { x: 150, y: 196, size: 20, color: DIM });
       // The pool strip the ends drop into.
       const SX = 260;
@@ -1819,7 +1819,7 @@ function sceneRefine({ stage, beat, line }) {
         // Parameter move: #cut flashes and takes a new value.
         const f1 = fade(t, tMH - 0.05, tMH + 0.15, tMH + 0.7, tMH + 1.3);
         pills[1].ad.style.textShadow = textGlow("b", 1 + 2.5 * f1);
-        pills[1].ad.style.color = mixHex(B, "#ffe2b8", f1);
+        pills[1].ad.style.color = mixHex(B, ink("--phos-b-flash"), f1);
         const cv = lerp(0.42, 0.57, ramp(t, tMH + 0.1, tMH + 0.5));
         cutVal.textContent = `= ${cv.toFixed(2)}`;
         show(cutVal, ramp(t, b.t0 + 0.6, b.t0 + 1.0), 0);
@@ -1937,7 +1937,7 @@ function sceneLocks({ stage, beat, line }) {
       const DX1 = 1590;
       const DY = 780;
       const dG = el("g", {}, svg);
-      const region = el("path", { fill: "rgba(255,180,84,.06)", stroke: B_DIM, "stroke-width": 2, "stroke-dasharray": "8 7" }, dG);
+      const region = el("path", { fill: inkA("--phos-b", 0.06), stroke: B_DIM, "stroke-width": 2, "stroke-dasharray": "8 7" }, dG);
       const nx = txt(over, "x", { x: DX0, y: DY, size: 34, color: SILK, ax: 0.5, ay: 0.5 });
       const nx2 = txt(over, "x′", { x: DX1, y: DY, size: 34, color: SILK, ax: 0.5, ay: 0.5 });
       const birth = arrow(dG, [DX0 + 40, DY - 26], [DX1 - 40, DY - 26], "a", { curve: 0.12, width: 3 });
@@ -2130,7 +2130,7 @@ function scenePerform({ stage, beat, line }) {
       const ridge = txt(jH, "δ* = (J<sup>T</sup>J + λI)<sup>−1</sup> J<sup>T</sup> ê,&nbsp;&nbsp;λ = 0.05&nbsp;&nbsp;(RIDGE)", { x: 1000, y: 330, size: 28, color: B, glow: "b" });
       const r2 = txt(
         jH,
-        "support: the 4 largest effects (MAX_KNOBS = 4), then re-solved on them<br>" + "a full turn moves no knob more than half its range (MAX_TRAVEL = 0.5)<br>" + "<span style='color:#b8823c'>search ⇔ ρ &lt; 0.35 ∨ R &lt; 0.15σ&nbsp;&nbsp;(PURITY_FLOOR, REACH_FLOOR)</span>",
+        "support: the 4 largest effects (MAX_KNOBS = 4), then re-solved on them<br>" + "a full turn moves no knob more than half its range (MAX_TRAVEL = 0.5)<br>" + `<span style='color:${ink("--phos-b-dim")}'>search ⇔ ρ &lt; 0.35 ∨ R &lt; 0.15σ&nbsp;&nbsp;(PURITY_FLOOR, REACH_FLOOR)</span>`,
         { x: 1000, y: 400, size: 19, color: DIM, lh: 1.9 },
       );
       const ctrl = txt(jH, "control: Bright", { x: 1000, y: 280, size: 22, color: A_DIM });
@@ -2144,7 +2144,7 @@ function scenePerform({ stage, beat, line }) {
       const my = (m) => MYc - m * 900;
       el("line", { x1: MX0, y1: MYc, x2: MX1, y2: MYc, stroke: HAIR, "stroke-width": 2 }, mG);
       el("line", { x1: cx(0), y1: MYc + 250, x2: cx(0), y2: MYc - 260, stroke: HAIR, "stroke-width": 2 }, mG);
-      const lower = el("rect", { x: MX0, y: MYc - 260, width: (MX1 - MX0) / 2, height: 510, fill: "rgba(154,149,138,.08)", opacity: 0 }, mG);
+      const lower = el("rect", { x: MX0, y: MYc - 260, width: (MX1 - MX0) / 2, height: 510, fill: inkA("--silk-dim", 0.08), opacity: 0 }, mG);
       el("line", { x1: cx(-1.05), y1: my(-1.05 * 0.2), x2: cx(1.05), y2: my(1.05 * 0.2), stroke: DIM, "stroke-width": 2, "stroke-dasharray": "7 7" }, mG);
       txt(mH, "linear prediction", { x: cx(0.62), y: my(0.62 * 0.2) + 18, size: 17, color: DIM });
       const MEAS = [[-1, 0.021], [-0.5, 0.009], [0.5, 0.11], [1, 0.19]];
@@ -2175,8 +2175,8 @@ function scenePerform({ stage, beat, line }) {
       const ringHiG = el("g", {}, kG);
       ringHiG.style.filter = GLOW.a;
       el("path", { d: arcP(d2r(-90), d2r(45), KR + 22), fill: "none", stroke: A, "stroke-width": 6, "stroke-linecap": "round" }, ringHiG);
-      el("circle", { cx: KX, cy: KY + 4, r: KR, fill: "rgba(0,0,0,.55)" }, kG);
-      el("circle", { cx: KX, cy: KY, r: KR, fill: "#1b1e23", stroke: "#07080a", "stroke-width": 1.5 }, kG);
+      el("circle", { cx: KX, cy: KY + 4, r: KR, fill: inkA("--black", 0.55) }, kG);
+      el("circle", { cx: KX, cy: KY, r: KR, fill: ink("--cap-mid"), stroke: ink("--bezel"), "stroke-width": 1.5 }, kG);
       el("line", { x1: KX, y1: KY - KR * 0.28, x2: KX, y2: KY - KR * 0.86, stroke: SILK, "stroke-width": 7, "stroke-linecap": "round" }, kG);
       txt(mH, "MOTION", { x: KX, y: KY + KR + 46, size: 22, color: SILK, ax: 0.5, cls: "silk" });
       const stillL = txt(mH, "already as still as it gets", { x: KX, y: KY + KR + 92, size: 30, color: DIM, ax: 0.5, cls: "voice" });

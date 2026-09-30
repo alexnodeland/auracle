@@ -1,8 +1,10 @@
 /* AURACLE — the landing page.
  *
  * Inherits the instrument's design system rather than inventing one. The token
- * layer below is lifted from apps/web/style.css and carries the same three laws,
- * which is the whole visual argument that this page belongs to that instrument:
+ * layer below is the instrument's own (its colours are generated from
+ * www/brand/tokens.json, the one source for every surface, by `make tokens`)
+ * and carries the same three laws, which is the whole visual argument that this
+ * page belongs to that instrument:
  *
  *   1. TEXT TIER vs STROKE TIER. Each phosphor exists twice. `*-dim` is the text
  *      tier and clears 4.5:1; `*-deep` is for strokes, glow and fills, where
@@ -53,31 +55,107 @@
 
 /* ─── tokens ────────────────────────────────────────────────────────────── */
 
+/* `make dev-check` fails on a colour written anywhere else in this file. */
+/* tokens:begin: generated from www/brand/tokens.json by `make tokens`. Edit the JSON, not this block. */
 :root {
-  --rack: #0c0d10;
-  --panel: #171a1f;
-  --panel-hi: #1d2127;
-  --bezel: #07080a;
+  /* grounds */
+  --rack: #0c0d10;     /* the void behind the rack */
+  --panel: #171a1f;    /* graphite faceplate */
+  --panel-hi: #1d2127; /* raised surface */
+  --bezel: #07080a;    /* screen bezels */
   --hairline: #292e36;
 
-  --silk: #d9d4c8;        /* 13.1:1 on the rack */
-  --silk-dim: #9a958a;    /*  5.9:1 — all dimmed TEXT */
-  --silk-mute: #6f6c63;   /*  non-text only: rules, disabled glyphs */
+  /* machined graphite: the two faces of every raised control and the ink of
+     the shadow under it, one literal each, so a retune is one line */
+  --plate-hi: #232830;     /* util buttons, selects: top of the face */
+  --plate-lo: #181b21;     /*   …and the bottom */
+  --btn-hi: #2a2f37;       /* hardware buttons and pads: top of the face */
+  --btn-lo: #1a1d23;       /*   …and the bottom */
+  --btn-hover-hi: #333944; /* the same face under a pointer: one step up */
+  --btn-hover-lo: #1e2228;
+  --shadow-ink: #0a0b0d;   /* the hard shadow line under a raised control */
+  --knob-body: #22262d;    /* PERFORM's knob caps */
 
-  --phos-a: #8ef0b1;      /* green — sound.            14.1:1 */
-  --phos-a-dim: #63a97c;  /*                            5.2:1 */
-  --phos-a-deep: #3d6a4d; /*  strokes, glow, fills only */
+  /* shared shades: one value, used on more than one surface */
+  --rack-lo: #0a0b0e;   /* below the rack: the landing page's foot, the docs' sidebar */
+  --panel-lo: #12151a;  /* the foot of a raised panel; the docs' quotes and search results */
+  --pop-lo: #14161a;    /* the foot of a floating surface and of the menu bar; the docs' pop-ups */
+  --recess-hi: #14171b; /* the top of a recessed panel (bank, node bank); a screw's shadow; an empty tile */
+  --lifted: #1a1e24;    /* a lifted strip: a held tray item's top, a table's header row */
+  --amber-off: #1a1410; /* an unlit amber cell: pips, lock dots */
+  --steel: #3a3f47;     /* bare steel: a screw head's highlight; the docs' scrollbar */
 
-  --phos-b: #ffb454;      /* amber — the model's mind. 11.0:1 */
-  --phos-b-dim: #b8823c;  /*                            5.4:1 */
-  --phos-b-deep: #7a5526; /*  strokes, glow, fills only */
+  /* silk: warm silkscreen ink */
+  --silk: #d9d4c8;      /* 13.1:1 on rack */
+  --silk-dim: #9a958a;  /*  5.9:1: all dimmed TEXT */
+  --silk-mute: #6f6c63; /*  non-text only: hairlines, disabled glyphs */
 
+  /* green phosphor: sound. `-dim` is the text tier, `-deep` the stroke tier */
+  --phos-a: #8ef0b1;      /* 14.1:1 */
+  --phos-a-dim: #63a97c;  /*  5.2:1: knob values, readouts */
+  --phos-a-deep: #3d6a4d; /*  strokes and fills only */
+
+  /* amber phosphor: the model's mind */
+  --phos-b: #ffb454;      /* 11.0:1 */
+  --phos-b-dim: #b8823c;  /*  5.4:1: lineage log, notes */
+  --phos-b-deep: #7a5526; /*  strokes and fills only */
+
+  /* danger */
   --led-red: #ff5747;
 
+  /* light and shadow: never ink */
+  --black: #000000; /* shadow lines, the edge under a raised control, masks */
+  --white: #ffffff; /* highlights only, at an opacity; as ink it reads cold against silk */
+
+  /* landing: shades only this surface uses */
+  --crt-rim: #040506;    /* the hero screen's rim */
+  --crt-glow: #0f1318;   /*   …and the glow at its top */
+  --card-edge: #1b2126;  /* a duel card's edge */
+  --screw-lit: #4a5058;  /* a screw head: lit side */
+  --screw-face: #202429; /*   …and face */
+  --go-hi: #a5f5c2;      /* the green call to action: top */
+  --go-edge: #b6f8ce;    /*   …its edge under a pointer */
+
+  /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
+     (`--white-045` is 4.5%) */
+  --white-03: rgba(255, 255, 255, 0.03);
+  --white-06: rgba(255, 255, 255, 0.06);
+  --white-07: rgba(255, 255, 255, 0.07);
+  --black-50: rgba(0, 0, 0, 0.5);
+  --black-55: rgba(0, 0, 0, 0.55);
+  --black-60: rgba(0, 0, 0, 0.6);
+  --black-70: rgba(0, 0, 0, 0.7);
+  --black-80: rgba(0, 0, 0, 0.8);
+  --phos-a-022: rgba(142, 240, 177, 0.022);
+  --phos-a-045: rgba(142, 240, 177, 0.045);
+  --phos-a-05: rgba(142, 240, 177, 0.05);
+  --phos-a-09: rgba(142, 240, 177, 0.09);
+  --phos-a-25: rgba(142, 240, 177, 0.25);
+  --phos-a-30: rgba(142, 240, 177, 0.3);
+  --phos-a-32: rgba(142, 240, 177, 0.32);
+  --phos-b-03: rgba(255, 180, 84, 0.03);
+  --phos-b-032: rgba(255, 180, 84, 0.032);
+  --phos-b-045: rgba(255, 180, 84, 0.045);
+  --phos-b-05: rgba(255, 180, 84, 0.05);
+  --phos-b-06: rgba(255, 180, 84, 0.06);
+  --phos-b-10: rgba(255, 180, 84, 0.1);
+  --phos-b-16: rgba(255, 180, 84, 0.16);
+  --phos-b-34: rgba(255, 180, 84, 0.34);
+  --phos-b-45: rgba(255, 180, 84, 0.45);
+  --rack-86: rgba(12, 13, 16, 0.86);
+  --silk-06: rgba(217, 212, 200, 0.06);
+  --bezel-75: rgba(7, 8, 10, 0.75);
+  --bezel-78: rgba(7, 8, 10, 0.78);
+  --bezel-88: rgba(7, 8, 10, 0.88);
+
+  /* families */
   --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+}
+/* tokens:end */
 
+:root {
   /* The names the shared figure runtime asks for. www/viz is loaded by both
      books and this page and reads the surrounding page's tokens, but the books
      spell two of them differently; without these aliases every figure here fell
@@ -100,8 +178,8 @@
   --s6: 32px; --s7: 48px; --s8: 72px; --s9: 112px;
 
   /* Light comes from 315°, everywhere, as it does on the rack. */
-  --lift: inset 1px 1px 0 rgba(255, 255, 255, 0.07);
-  --cast: 0 3px 8px rgba(0, 0, 0, 0.5);
+  --lift: inset 1px 1px 0 var(--white-07);
+  --cast: 0 3px 8px var(--black-50);
 
   --measure: 62ch;
   --wide: 1440px;
@@ -131,8 +209,8 @@ html {
      one very low-contrast wash keeps a 2000px page from reading as a black
      rectangle. Fixed rather than scrolling, so it never draws attention. */
   background-image:
-    radial-gradient(1200px 620px at 50% -12%, rgba(142, 240, 177, 0.045), transparent 70%),
-    radial-gradient(900px 520px at 88% 8%, rgba(255, 180, 84, 0.032), transparent 70%);
+    radial-gradient(1200px 620px at 50% -12%, var(--phos-a-045), transparent 70%),
+    radial-gradient(900px 520px at 88% 8%, var(--phos-b-032), transparent 70%);
   background-attachment: fixed;
   -webkit-text-size-adjust: 100%;
 }
@@ -197,7 +275,7 @@ kbd {
   gap: var(--s5);
   padding: 0 var(--gutter);
   height: 56px;
-  background: rgba(12, 13, 16, 0.86);
+  background: var(--rack-86);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--hairline);
 }
@@ -328,11 +406,11 @@ kbd {
 
 .btn-go {
   color: var(--rack);
-  background: linear-gradient(180deg, #a5f5c2, var(--phos-a));
+  background: linear-gradient(180deg, var(--go-hi), var(--phos-a));
   border-color: var(--phos-a);
   font-weight: 500;
 }
-.btn-go:hover { background: var(--phos-a); border-color: #b6f8ce; }
+.btn-go:hover { background: var(--phos-a); border-color: var(--go-edge); }
 
 .inline-go {
   display: inline-block;
@@ -375,11 +453,11 @@ kbd {
 .panel {
   position: relative;
   min-width: 0;
-  background: linear-gradient(180deg, var(--panel-hi), #12151a);
+  background: linear-gradient(180deg, var(--panel-hi), var(--panel-lo));
   border: 1px solid var(--hairline);
   border-radius: 5px;
   padding: var(--s4);
-  box-shadow: var(--lift), 0 24px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--lift), 0 24px 60px var(--black-55);
 }
 
 /* Rack faceplates have screws. Four of them, in the corners, is what makes this
@@ -389,8 +467,8 @@ kbd {
   position: absolute;
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #4a5058, #202429 60%, #14171b);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: radial-gradient(circle at 35% 35%, var(--screw-lit), var(--screw-face) 60%, var(--recess-hi));
+  box-shadow: 0 1px 0 var(--white-06);
 }
 .screws i:nth-child(1) { top: 0; left: 0; }
 .screws i:nth-child(2) { top: 0; right: 0; }
@@ -403,11 +481,11 @@ kbd {
    effect borrowed from somewhere else. Kept to 3% so it reads as glass. */
 .crt {
   position: relative;
-  background: radial-gradient(120% 140% at 50% 0%, #0f1318, var(--bezel));
-  border: 1px solid #040506;
+  background: radial-gradient(120% 140% at 50% 0%, var(--crt-glow), var(--bezel));
+  border: 1px solid var(--crt-rim);
   border-radius: 3px;
   padding: var(--s3);
-  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 26px var(--black-80), inset 0 1px 0 var(--white-03);
   overflow: hidden;
 }
 
@@ -426,7 +504,7 @@ kbd {
   pointer-events: none;
   background: repeating-linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.03) 0 1px,
+    var(--white-03) 0 1px,
     transparent 1px 3px
   );
 }
@@ -434,15 +512,15 @@ kbd {
 .duel { display: grid; gap: var(--s3); }
 
 .card {
-  background: rgba(142, 240, 177, 0.022);
-  border: 1px solid #1b2126;
+  background: var(--phos-a-022);
+  border: 1px solid var(--card-edge);
   border-radius: 3px;
   padding: var(--s3);
   transition: border-color 0.18s ease, background-color 0.18s ease;
 }
 .card[data-armed] {
   border-color: var(--phos-a-deep);
-  background: rgba(142, 240, 177, 0.05);
+  background: var(--phos-a-05);
 }
 
 .card-head {
@@ -469,7 +547,7 @@ kbd {
   width: 100%;
   height: 70px;
   /* Phosphor bloom on the trace, matching the instrument's scope. */
-  filter: drop-shadow(0 0 4px rgba(142, 240, 177, 0.32));
+  filter: drop-shadow(0 0 4px var(--phos-a-32));
 }
 
 .card-play {
@@ -487,7 +565,7 @@ kbd {
   padding: 5px 11px;
   cursor: pointer;
 }
-.card-play:hover { background: rgba(142, 240, 177, 0.09); }
+.card-play:hover { background: var(--phos-a-09); }
 .card-play kbd { border-color: var(--phos-a-deep); color: var(--phos-a-dim); }
 
 /* ─── the patch it built ────────────────────────────────────────────────── */
@@ -497,18 +575,18 @@ kbd {
    replaces the duel rather than joining it, so there is no question about which
    of the three things on screen is the new one. */
 .made {
-  background: rgba(255, 180, 84, 0.03);
+  background: var(--phos-b-03);
   border: 1px solid var(--phos-b-deep);
   border-radius: 3px;
   padding: var(--s3);
-  box-shadow: inset 0 0 22px rgba(255, 180, 84, 0.05);
+  box-shadow: inset 0 0 22px var(--phos-b-05);
 }
 
 /* Lit while it is sounding — the same cue the duel cards use, in the other
    phosphor, so "this is the one playing" reads the same in both states. */
 .made[data-armed] {
   border-color: var(--phos-b);
-  background: rgba(255, 180, 84, 0.06);
+  background: var(--phos-b-06);
 }
 
 .made-head {
@@ -536,7 +614,7 @@ kbd {
   letter-spacing: 0;
 }
 
-.made-trace { filter: drop-shadow(0 0 4px rgba(255, 180, 84, 0.34)); }
+.made-trace { filter: drop-shadow(0 0 4px var(--phos-b-34)); }
 
 /* The coordinates it chose, spelled out. Without them "bred toward your
    taste" is a claim; with them it is a receipt you can read against the bars
@@ -564,10 +642,10 @@ kbd {
   color: var(--phos-b);
   border-color: var(--phos-b-deep);
 }
-.made-play:hover, .made-back:hover { background: rgba(255, 180, 84, 0.1); }
+.made-play:hover, .made-back:hover { background: var(--phos-b-10); }
 .made-play kbd, .made-back kbd { border-color: var(--phos-b-deep); color: var(--phos-b-dim); }
 .made-back { color: var(--silk-dim); border-color: var(--hairline); }
-.made-back:hover { background: rgba(217, 212, 200, 0.06); }
+.made-back:hover { background: var(--silk-06); }
 
 .pickrow {
   display: grid;
@@ -654,7 +732,7 @@ kbd {
   top: 4px;
   height: 6px;
   background: var(--phos-b);
-  box-shadow: 0 0 6px rgba(255, 180, 84, 0.45);
+  box-shadow: 0 0 6px var(--phos-b-45);
   transition: left 0.4s cubic-bezier(0.2, 0.7, 0.2, 1), width 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
@@ -704,9 +782,9 @@ kbd {
   margin-top: var(--s2);
   color: var(--phos-b);
   border-color: var(--phos-b-deep);
-  background: linear-gradient(180deg, rgba(255, 180, 84, 0.1), transparent);
+  background: linear-gradient(180deg, var(--phos-b-10), transparent);
 }
-.btn-make:hover { background: rgba(255, 180, 84, 0.16); border-color: var(--phos-b); }
+.btn-make:hover { background: var(--phos-b-16); border-color: var(--phos-b); }
 
 .honesty {
   margin-top: var(--s3);
@@ -788,7 +866,7 @@ kbd {
   border: 1px solid var(--hairline);
   border-radius: 4px;
   background: var(--bezel);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 60px var(--black-50);
 }
 
 .shot-cap {
@@ -822,7 +900,7 @@ kbd {
   font-size: 0.62rem;
   padding-left: 2px;
 }
-.btn-film:hover .btn-film-play { border-color: var(--phos-a); box-shadow: 0 0 10px rgba(142, 240, 177, 0.25); }
+.btn-film:hover .btn-film-play { border-color: var(--phos-a); box-shadow: 0 0 10px var(--phos-a-25); }
 .btn-film-len { font-size: var(--t-micro); color: var(--silk-dim); }
 
 /* The hero film: the launch film's opening, looping silently inside the
@@ -836,7 +914,7 @@ kbd {
   border-radius: 6px;
   overflow: hidden;
   background: var(--bezel);
-  box-shadow: inset 0 0 0 1px var(--hairline), inset 0 0 60px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 0 0 1px var(--hairline), inset 0 0 60px var(--black-60);
   text-decoration: none;
   color: var(--silk);
 }
@@ -851,14 +929,14 @@ kbd {
   padding: 8px 16px 8px 8px;
   border: 1px solid var(--phos-a-deep);
   border-radius: 999px;
-  background: rgba(7, 8, 10, 0.78);
+  background: var(--bezel-78);
   font-size: 0.92rem;
   letter-spacing: 0.02em;
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 .hero-film-play .btn-film-play { width: 30px; height: 30px; font-size: 0.72rem; border-color: var(--phos-a); }
 .hero-film-screen:hover .hero-film-play,
-.hero-film-screen:focus-visible .hero-film-play { border-color: var(--phos-a); box-shadow: 0 0 18px rgba(142, 240, 177, 0.3); }
+.hero-film-screen:focus-visible .hero-film-play { border-color: var(--phos-a); box-shadow: 0 0 18px var(--phos-a-30); }
 .hero-film-screen:focus-visible { outline: 2px solid var(--phos-a); outline-offset: 3px; }
 /* The tour, above the four views' tabs: the map before the deep dives. */
 .tour-cta { display: flex; justify-content: center; margin: calc(-1 * var(--s3)) 0 var(--s5); }
@@ -916,7 +994,7 @@ kbd {
   height: 34px;
   border-radius: 50%;
   border: 1px solid var(--phos-a-deep);
-  background: rgba(7, 8, 10, 0.75);
+  background: var(--bezel-75);
   color: var(--phos-a);
   font-size: 0.7rem;
   padding-left: 2px;
@@ -925,7 +1003,7 @@ kbd {
 .film-chip:hover .film-chip-shot,
 .film-chip:focus-visible .film-chip-shot { border-color: var(--phos-a-deep); }
 .film-chip:hover .film-chip-badge,
-.film-chip:focus-visible .film-chip-badge { border-color: var(--phos-a); box-shadow: 0 0 14px rgba(142, 240, 177, 0.3); }
+.film-chip:focus-visible .film-chip-badge { border-color: var(--phos-a); box-shadow: 0 0 14px var(--phos-a-30); }
 .film-chip:focus-visible { outline: none; }
 .film-chip:focus-visible .film-chip-shot { outline: 2px solid var(--phos-a); outline-offset: 3px; }
 .film-chip-meta { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
@@ -941,7 +1019,7 @@ kbd {
   background: transparent;
   overflow: visible;
 }
-.film-dialog::backdrop { background: rgba(7, 8, 10, 0.88); backdrop-filter: blur(4px); }
+.film-dialog::backdrop { background: var(--bezel-88); backdrop-filter: blur(4px); }
 .film-dialog-frame { position: relative; }
 .film-dialog video {
   display: block;
@@ -950,7 +1028,7 @@ kbd {
   background: var(--bezel);
   border: 1px solid var(--hairline);
   border-radius: 4px;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 30px 90px var(--black-70);
 }
 .film-dialog-close {
   position: absolute;
@@ -994,7 +1072,7 @@ kbd {
 .formula {
   margin: var(--s5) 0;
   padding: var(--s4);
-  background: rgba(255, 180, 84, 0.045);
+  background: var(--phos-b-045);
   border-inline-start: 2px solid var(--phos-b-deep);
   border-radius: 0 3px 3px 0;
   overflow-x: auto;
@@ -1098,7 +1176,7 @@ kbd {
 
 .foot {
   border-top: 1px solid var(--hairline);
-  background: #0a0b0e;
+  background: var(--rack-lo);
   padding: var(--s8) 0 var(--s7);
 }
 
@@ -1213,8 +1291,8 @@ kbd {
 /* ─── print ─────────────────────────────────────────────────────────────── */
 
 @media print {
-  html { background: #fff; }
-  body { color: #000; }
+  html { background: var(--white); }
+  body { color: var(--black); }
   .bar, .panel, .shot-tabs { display: none; }
   .shot-pane[hidden] { display: block !important; }
 }

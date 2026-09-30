@@ -17,7 +17,7 @@
 // Every time here comes from timeline.json (beats, lines, word times), never
 // from typed seconds. Green is sound, amber is the model's mind.
 import { el, place, lerp, ramp, E, words, reveal } from "../../stage/stage.js";
-import { svgLayer, cable, mark, textBlock, PHOS, PHOS_DEEP } from "../../stage/kit.js";
+import { svgLayer, cable, mark, textBlock, PHOS, PHOS_DEEP, ink, inkA } from "../../stage/kit.js";
 import { wordTime } from "../../stage/walk.js";
 
 /** The turns: a one-bar card before each chapter. */
@@ -55,7 +55,7 @@ export function cards(stage) {
 function veil(layer, { a = 0.62, blur = 5 } = {}) {
   const v = place(el("div", {}, layer), { x: 120, y: 70, w: 1680, h: 945 });
   v.style.borderRadius = "14px";
-  v.style.background = `radial-gradient(120% 95% at 32% 50%, rgba(7,8,10,${a}) 0%, rgba(7,8,10,${Math.min(0.92, a + 0.18)}) 100%)`;
+  v.style.background = `radial-gradient(120% 95% at 32% 50%, ${inkA("--bezel", a)} 0%, ${inkA("--bezel", Math.min(0.92, a + 0.18))} 100%)`;
   v.style.backdropFilter = `blur(${blur}px) saturate(0.85)`;
   return v;
 }
@@ -102,9 +102,9 @@ function sceneTitle(stage, beat) {
       const eyebrow = textBlock(over, { x: 960, y: 250, w: 1400, cls: "eyebrow", size: 24, align: "center", ax: 0.5, ay: 0.5, text: "Auracle · the four views, in depth" });
       eyebrow.style.letterSpacing = "0.32em";
       const name = textBlock(over, { x: 960, y: 372, w: 1600, cls: "silk", size: 168, align: "center", ax: 0.5, ay: 0.5, text: "PATCH" });
-      name.style.textShadow = "0 0 40px rgba(142,240,177,0.18)";
+      name.style.textShadow = `0 0 40px ${inkA("--phos-a", 0.18)}`;
       const sub = textBlock(over, { x: 960, y: 505, w: 1400, cls: "voice", size: 64, align: "center", ax: 0.5, ay: 0.5, text: "inside the sound" });
-      sub.style.color = "#d9d4c8";
+      sub.style.color = ink("--silk");
       // One cable, out → in: a patch at its smallest (the kit draws its jacks).
       const wire = cable(svg, { p0: [690, 640], p1: [1230, 640], sag: 46, color: "a", width: 5 });
       const tags = [
@@ -153,9 +153,9 @@ function sceneTurn(stage, beat, c) {
       num.style.letterSpacing = "0.3em";
       const name = textBlock(layer, { x: X - 6, y: 410, w: 1500, cls: "display", size: 108, text: c.name });
       const rule = place(el("div", {}, layer), { x: X, y: 552, w: 0, h: 3 });
-      Object.assign(rule.style, { background: PHOS.a, boxShadow: "0 0 14px rgba(142,240,177,.5)", borderRadius: "2px" });
+      Object.assign(rule.style, { background: PHOS.a, boxShadow: `0 0 14px ${inkA("--phos-a", 0.5)}`, borderRadius: "2px" });
       const q = textBlock(layer, { x: X, y: 584, w: 1400, cls: "voice", size: 54 });
-      q.style.color = "#d9d4c8";
+      q.style.color = ink("--silk");
       const qs = words(q, c.q);
       // Where this chapter sits among the nine: a row of small plates, as a
       // rack reads, this one lit.
@@ -164,9 +164,9 @@ function sceneTurn(stage, beat, c) {
         for (let i = 1; i <= COUNT; i++) {
           const p = place(el("div", {}, layer), { x: X + (i - 1) * 44, y: 700, w: 34, h: 18 });
           p.style.borderRadius = "4px";
-          p.style.background = i === c.n ? PHOS.a : i < c.n ? PHOS_DEEP.a : "#1f232a";
-          p.style.border = `1px solid ${i === c.n ? PHOS.a : "#2e343d"}`;
-          if (i === c.n) p.style.boxShadow = "0 0 12px rgba(142,240,177,0.7)";
+          p.style.background = i === c.n ? PHOS.a : i < c.n ? PHOS_DEEP.a : ink("--plate-off");
+          p.style.border = `1px solid ${i === c.n ? PHOS.a : ink("--plate-off-edge")}`;
+          if (i === c.n) p.style.boxShadow = `0 0 12px ${inkA("--phos-a", 0.7)}`;
           plates.push(p);
         }
       }
@@ -222,7 +222,7 @@ function sceneOutro(stage, beat) {
       nextEye.style.letterSpacing = "0.34em";
       const next = textBlock(over, { x: 960, y: 566, w: 1600, cls: "silk", size: 118, align: "center", ax: 0.5, ay: 0.5, text: "EVOLVE" });
       const nextSub = textBlock(over, { x: 960, y: 674, w: 1400, cls: "voice", size: 56, align: "center", ax: 0.5, ay: 0.5, text: "breeding sounds you like" });
-      nextSub.style.color = "#d9d4c8";
+      nextSub.style.color = ink("--silk");
       const guide = el("div", { class: "pill" }, over, "the guide · The instrument › PATCH");
       place(guide, { x: 960, y: 790, ax: 0.5, ay: 0.5 });
       Object.assign(guide.style, { fontSize: "24px", padding: "12px 28px" });
@@ -238,14 +238,14 @@ function sceneOutro(stage, beat) {
       place(lock, { x: left + markPx + gap, y: 900, ay: 0.5 });
       // Black over everything, captions too, for the last second.
       const black = place(el("div", {}, layer), { x: 0, y: 0, w: 1920, h: 1080 });
-      black.style.background = "#0c0d10";
+      black.style.background = ink("--rack");
       const T = b.t1 - b.t0;
       return (tl, t) => {
         chips.forEach(({ p, at }) => {
           const u = ramp(t, at - 0.12, at + 0.25, E.out3);
           p.style.opacity = (0.18 + 0.82 * u).toFixed(3);
           p.style.transform = `translateY(${(1 - u) * 10}px)`;
-          p.style.filter = u > 0.5 ? "drop-shadow(0 0 10px rgba(142,240,177,.35))" : "none";
+          p.style.filter = u > 0.5 ? `drop-shadow(0 0 10px ${inkA("--phos-a", 0.35)})` : "none";
         });
         row.style.opacity = (ramp(tl, -0.4, 0.2) * (1 - 0.45 * ramp(t, l2.t0 - 0.3, l2.t0 + 0.4))).toFixed(3);
         const n = ramp(t, l2.t0 - 0.25, l2.t0 + 0.45, E.out3);

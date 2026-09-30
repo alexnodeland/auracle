@@ -8,6 +8,12 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Changed — one source for colour
+
+- **Every colour comes from one file**, `www/brand/tokens.json`, generated
+  into the app's, the site's and the films' stylesheets and checked by
+  `make dev-check`; nothing looks different.
+
 ### Fixed — a patch keeps its name
 
 - **A patch keeps its name when the bank changes around it.** Names are read

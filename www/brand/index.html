@@ -27,37 +27,86 @@
   font-display: swap;
 }
 
-/* Tokens are the instrument's own, verbatim from www/landing/style.css. A
-   brand page painted in anything else would be arguing with itself. */
+/* Tokens are the instrument's own: the colours and the families are generated
+   from tokens.json, the one source for every surface (`make tokens`). A brand
+   page painted in anything else would be arguing with itself. */
+/* tokens:begin: generated from www/brand/tokens.json by `make tokens`. Edit the JSON, not this block. */
 :root {
-  --rack: #0c0d10;
-  --panel: #171a1f;
-  --panel-hi: #1d2127;
-  --bezel: #07080a;
+  /* grounds */
+  --rack: #0c0d10;     /* the void behind the rack */
+  --panel: #171a1f;    /* graphite faceplate */
+  --panel-hi: #1d2127; /* raised surface */
+  --bezel: #07080a;    /* screen bezels */
   --hairline: #292e36;
 
-  --silk: #d9d4c8;
-  --silk-dim: #9a958a;
-  --silk-mute: #6f6c63;
+  /* machined graphite: the two faces of every raised control and the ink of
+     the shadow under it, one literal each, so a retune is one line */
+  --plate-hi: #232830;     /* util buttons, selects: top of the face */
+  --plate-lo: #181b21;     /*   …and the bottom */
+  --btn-hi: #2a2f37;       /* hardware buttons and pads: top of the face */
+  --btn-lo: #1a1d23;       /*   …and the bottom */
+  --btn-hover-hi: #333944; /* the same face under a pointer: one step up */
+  --btn-hover-lo: #1e2228;
+  --shadow-ink: #0a0b0d;   /* the hard shadow line under a raised control */
+  --knob-body: #22262d;    /* PERFORM's knob caps */
 
-  --phos-a: #8ef0b1;
-  --phos-a-dim: #63a97c;
-  --phos-a-deep: #3d6a4d;
+  /* shared shades: one value, used on more than one surface */
+  --rack-lo: #0a0b0e;   /* below the rack: the landing page's foot, the docs' sidebar */
+  --panel-lo: #12151a;  /* the foot of a raised panel; the docs' quotes and search results */
+  --pop-lo: #14161a;    /* the foot of a floating surface and of the menu bar; the docs' pop-ups */
+  --recess-hi: #14171b; /* the top of a recessed panel (bank, node bank); a screw's shadow; an empty tile */
+  --lifted: #1a1e24;    /* a lifted strip: a held tray item's top, a table's header row */
+  --amber-off: #1a1410; /* an unlit amber cell: pips, lock dots */
+  --steel: #3a3f47;     /* bare steel: a screw head's highlight; the docs' scrollbar */
 
-  --phos-b: #ffb454;
-  --phos-b-dim: #b8823c;
+  /* silk: warm silkscreen ink */
+  --silk: #d9d4c8;      /* 13.1:1 on rack */
+  --silk-dim: #9a958a;  /*  5.9:1: all dimmed TEXT */
+  --silk-mute: #6f6c63; /*  non-text only: hairlines, disabled glyphs */
 
+  /* green phosphor: sound. `-dim` is the text tier, `-deep` the stroke tier */
+  --phos-a: #8ef0b1;      /* 14.1:1 */
+  --phos-a-dim: #63a97c;  /*  5.2:1: knob values, readouts */
+  --phos-a-deep: #3d6a4d; /*  strokes and fills only */
+
+  /* amber phosphor: the model's mind */
+  --phos-b: #ffb454;      /* 11.0:1 */
+  --phos-b-dim: #b8823c;  /*  5.4:1: lineage log, notes */
+  --phos-b-deep: #7a5526; /*  strokes and fills only */
+
+  /* danger */
   --led-red: #ff5747;
-  --paper: #e8e6e0;
 
+  /* light and shadow: never ink */
+  --black: #000000; /* shadow lines, the edge under a raised control, masks */
+  --white: #ffffff; /* highlights only, at an opacity; as ink it reads cold against silk */
+
+  /* brand: shades only this surface uses */
+  --paper-stock: #e8e6e0;      /* the stock the mark is shown on, to prove the tile does not invert (not the docs' Paper) */
+  --paper-stock-edge: #c9c6bd; /*   …its edge */
+  --paper-ink: #1b1a18;        /*   …the logotype printed on it */
+  --paper-ink-dim: #6b6862;    /*   …a caption printed on it */
+
+  /* opacities: `--phos-b-30` is --phos-b at 30%; a third digit is a tenth
+     (`--white-045` is 4.5%) */
+  --white-07: rgba(255, 255, 255, 0.07);
+  --rack-86: rgba(12, 13, 16, 0.86);
+  --led-red-30: rgba(255, 87, 71, 0.3);
+  --led-red-35: rgba(255, 87, 71, 0.35);
+
+  /* families */
   --font-silk: "Jost", "Futura", "Avenir Next", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-voice: "Newsreader", Georgia, "Times New Roman", serif;
+}
+/* tokens:end */
 
+:root {
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
   --s6: 32px; --s7: 48px; --s8: 72px;
 
   --t-micro: 0.66rem;
-  --lift: inset 1px 1px 0 rgba(255, 255, 255, 0.07);
+  --lift: inset 1px 1px 0 var(--white-07);
   --frame: 1180px;
   --gutter: clamp(20px, 5vw, 56px);
 
@@ -145,7 +194,7 @@ a:focus-visible, .lk:focus-visible { outline: 2px solid var(--phos-a); outline-o
   display: flex; align-items: center; height: 56px;
   border-bottom: 1px solid var(--hairline);
   position: sticky; top: 0; z-index: 10;
-  background: rgba(12, 13, 16, 0.86);
+  background: var(--rack-86);
   backdrop-filter: blur(10px);
 }
 .bar-in { display: flex; align-items: center; width: 100%; }
@@ -190,8 +239,8 @@ section:first-of-type { border-top: 0; }
   border-radius: 4px; box-shadow: var(--lift);
   margin: var(--s5) 0 0;
 }
-.stage.paper { background: var(--paper); border-color: #c9c6bd; }
-.stage.paper .lk, .stage.paper .lk-stack { color: #1b1a18; }
+.stage.paper { background: var(--paper-stock); border-color: var(--paper-stock-edge); }
+.stage.paper .lk, .stage.paper .lk-stack { color: var(--paper-ink); }
 .cell { display: flex; flex-direction: column; align-items: center; gap: var(--s4); }
 .cap {
   font-family: var(--font-mono); font-size: var(--t-micro);
@@ -199,8 +248,8 @@ section:first-of-type { border-top: 0; }
   color: var(--silk-mute); text-align: center; line-height: 1.5;
 }
 .cap b { display: block; color: var(--phos-a-dim); font-weight: 400; }
-.stage.paper .cap { color: #6b6862; }
-.stage.paper .cap b { color: #3d6a4d; }
+.stage.paper .cap { color: var(--paper-ink-dim); }
+.stage.paper .cap b { color: var(--phos-a-deep); }
 
 /* the size ladder */
 .ladder {
@@ -231,7 +280,7 @@ section:first-of-type { border-top: 0; }
   letter-spacing: 0.12em; text-transform: uppercase;
   margin: var(--s5) 0 0; line-height: 1.5;
 }
-.versus .no { border-color: rgba(255, 87, 71, 0.35); }
+.versus .no { border-color: var(--led-red-35); }
 .versus .no .verdict { color: var(--led-red); }
 .versus .no .wm b { font-weight: 500; color: var(--phos-a); }
 .versus .yes { border-color: var(--phos-a-deep); }
@@ -321,7 +370,7 @@ section:first-of-type { border-top: 0; }
 }
 .dont {
   padding: var(--s6) var(--s4) var(--s4);
-  background: var(--bezel); border: 1px solid rgba(255, 87, 71, 0.3);
+  background: var(--bezel); border: 1px solid var(--led-red-30);
   border-radius: 4px; display: flex; flex-direction: column;
   align-items: center; gap: var(--s5); text-align: center;
 }
@@ -347,22 +396,22 @@ section:first-of-type { border-top: 0; }
   <!-- Geometry mirrored from mark.svg and mark-active.svg. Those files are
        canonical; if these ever disagree, they are the ones that are wrong. -->
   <symbol id="mark" viewBox="0 0 32 32">
-    <rect width="32" height="32" rx="7" fill="#0c0d10"/>
-    <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/>
-    <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/>
-    <circle cx="16" cy="16" r="3" fill="#ffb454"/>
+    <rect width="32" height="32" rx="7" style="fill: var(--rack)"/>
+    <circle cx="16" cy="16" r="12" fill="none" stroke-width="2.2" style="stroke: var(--phos-a-deep)"/>
+    <circle cx="16" cy="16" r="7.4" fill="none" stroke-width="2.6" style="stroke: var(--phos-a)"/>
+    <circle cx="16" cy="16" r="3" style="fill: var(--phos-b)"/>
   </symbol>
   <symbol id="mark-active" viewBox="0 0 32 32">
-    <rect width="32" height="32" rx="7" fill="#0c0d10"/>
-    <circle cx="16" cy="16" r="12" fill="none" stroke="#3d6a4d" stroke-width="2.2"/>
-    <path d="M16 4a12 12 0 0 1 12 12" fill="none" stroke="#8ef0b1" stroke-width="2.2" stroke-linecap="round"/>
-    <circle cx="16" cy="16" r="7.4" fill="none" stroke="#8ef0b1" stroke-width="2.6"/>
-    <circle cx="16" cy="16" r="3" fill="#ffb454"/>
+    <rect width="32" height="32" rx="7" style="fill: var(--rack)"/>
+    <circle cx="16" cy="16" r="12" fill="none" stroke-width="2.2" style="stroke: var(--phos-a-deep)"/>
+    <path d="M16 4a12 12 0 0 1 12 12" fill="none" stroke-width="2.2" stroke-linecap="round" style="stroke: var(--phos-a)"/>
+    <circle cx="16" cy="16" r="7.4" fill="none" stroke-width="2.6" style="stroke: var(--phos-a)"/>
+    <circle cx="16" cy="16" r="3" style="fill: var(--phos-b)"/>
   </symbol>
   <symbol id="mark16" viewBox="0 0 16 16">
-    <rect width="16" height="16" rx="3.5" fill="#0c0d10"/>
-    <circle cx="8" cy="8" r="5" fill="none" stroke="#8ef0b1" stroke-width="2"/>
-    <circle cx="8" cy="8" r="1.6" fill="#ffb454"/>
+    <rect width="16" height="16" rx="3.5" style="fill: var(--rack)"/>
+    <circle cx="8" cy="8" r="5" fill="none" stroke-width="2" style="stroke: var(--phos-a)"/>
+    <circle cx="8" cy="8" r="1.6" style="fill: var(--phos-b)"/>
   </symbol>
 
   <!-- The icon set. Single colour, currentColor, 24px grid, 2px stroke. -->

@@ -19,7 +19,7 @@ the long-form notes are this directory's `README.md`.
 | `midi.js` | main thread | Web MIDI: devices, learn, CC mapping, clock, one-tab ownership |
 | `booth.js` | main thread | Booth mode: attract loop, visitor reset |
 | `taste-geom.js` | main thread | Pure geometry for TASTE (map dot sizes, DIRECTIONS bars, the settled/guess mark PATCH's θ cell shares); unit-tested in `tests/` |
-| `style.css` | page | Tokens on `:root`, then per-view sections |
+| `style.css` | page | Tokens on `:root` (the colours generated from `www/brand/tokens.json`), then per-view sections |
 
 ## Rules
 
@@ -57,8 +57,10 @@ the long-form notes are this directory's `README.md`.
   `localStorage` access is wrapped in `try`: private windows throw.
 - **Film mode** (`?film`) and booth mode hide what must not be on camera or at
   a kiosk (the film chip, for one). Check both when you add chrome.
-- **Style with tokens.** Colours are `:root` tokens; a raw hex in a rule is a
-  review finding. Two rules fighting over one element is usually a
+- **Style with tokens.** Colours come from `www/brand/tokens.json` (the
+  generated block at the top of `style.css`; `tok()` in a script), never a
+  literal: a new colour is a token first, and `make dev-check` fails on one
+  written here. Two rules fighting over one element is usually a
   specificity mistake (the bank row's cut was invisible for that reason).
 - **The build stamp** (`pkg/build.json`) hashes the wasm and every app
   script, so browsers refetch what changed. `make wasm` writes it; after a
