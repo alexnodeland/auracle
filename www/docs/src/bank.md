@@ -31,8 +31,9 @@ Each row carries a name, an id, a prediction, stars, a save control and a cut:
 Everything else on it is described below.</figcaption>
 </figure>
 
-- **The name** is generated from what the patch is, and you can rename it.
-  Double-click it.
+- **The name** is generated from what the patch is, next to the bank it
+  joined, and it keeps that name as the bank changes around it. You can
+  rename it: double-click it.
 - **new** beside the name marks a child of the latest generation. In the
   **evolution** bank those children lead the list under **new · gen N**, in
   the order they were bred, and the rest follow under **ranked by the

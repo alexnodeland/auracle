@@ -614,6 +614,10 @@ pub struct Candidate {
     pub origin: Origin,
     /// User-given name (frontends fall back to `tree.signature()`).
     pub name: Option<String>,
+    /// The generated name this patch was given, kept from then on (see
+    /// [`Engine::fix_names`]). `None` until the bank is first handed over, and
+    /// for a patch with a name of its own.
+    pub auto_name: Option<String>,
     /// The user asked to keep this one: [`Engine::insert_candidate`] will never
     /// evict it.
     ///
@@ -717,6 +721,11 @@ pub struct BankEntry {
     /// loads with nothing pinned, which is exactly what it meant.
     #[serde(default)]
     pub pinned: bool,
+    /// The generated name it was shown under, so a reload does not read a new
+    /// one off the restored pool. Absent from sessions saved before names were
+    /// kept; those are named once, on restore ([`Engine::finish_restore`]).
+    #[serde(default)]
+    pub auto_name: Option<String>,
 }
 
 /// An implicit preference signal, logged but (for now) not modeled: promote
@@ -1411,6 +1420,7 @@ impl Engine {
                     .unwrap()
                     .transform(&c.features.phi());
             }
+            self.fix_names();
         }
     }
 
@@ -1616,6 +1626,7 @@ impl Engine {
             features: cached.features,
             origin: Origin::Prior,
             name: None,
+            auto_name: None,
             pinned: false,
         });
         id
@@ -1637,6 +1648,7 @@ impl Engine {
                 c.phi_std = sz.transform(&c.features.phi());
             }
         }
+        self.fix_names();
     }
 
     /// Give every pool member a φ_std **now**, fitting a standardizer from
@@ -1671,6 +1683,9 @@ impl Engine {
                 c.phi_std = sz.transform(&c.features.phi());
             }
         }
+        // The partial pool is handed over here, so this is where names are
+        // first shown, and first kept.
+        self.fix_names();
     }
 
     /// Re-fit the standardizer over the finished pool — a no-op the moment a
@@ -2439,8 +2454,10 @@ impl Engine {
             features: cf.features,
             origin,
             name: None,
+            auto_name: None,
             pinned: false,
         });
+        self.fix_names();
         Some(id)
     }
 
@@ -2533,8 +2550,10 @@ impl Engine {
             features: cf.features,
             origin: Origin::Refined,
             name: None,
+            auto_name: None,
             pinned: false,
         });
+        self.fix_names();
         Some(id)
     }
 
@@ -3652,8 +3671,16 @@ impl Engine {
     /// once did, let a preset called `Glass Pad` and a generated `Glass Pad`
     /// both survive into the bank: the preset occupied the name without ever
     /// competing for it.
+    ///
+    /// Generated names are the ones [`Engine::fix_names`] kept, read back as
+    /// they were given. This used to read every one afresh off the pool's
+    /// terciles on each call, so a generation that replaced nine patches
+    /// renamed patches that had not changed: the one on the bench went from
+    /// `Soft Drone` to `Soft Lead` as the generation landed, and numerals
+    /// shifted when the name they counted from left. Only a patch not yet
+    /// named (the bank not yet handed over) gets a provisional name, read off
+    /// the pool as it stands.
     pub fn display_names(&self) -> HashMap<u64, String> {
-        let scale = NameScale::fit(self.pool.iter().map(|c| &c.features));
         let mut taken: HashSet<String> = HashSet::new();
         let mut out: HashMap<u64, String> = HashMap::new();
 
@@ -3665,13 +3692,61 @@ impl Engine {
             }
         }
         // Then generated ones, in id order: a patch's numeral must not
-        // reshuffle when the pool is re-ranked underneath it.
+        // reshuffle when the pool is re-ranked underneath it. Kept names are
+        // claimed as given (unique when given, so they come back unchanged
+        // unless a user name has since taken the spelling)…
         let mut rest: Vec<&Candidate> = self.pool.iter().filter(|c| c.name.is_none()).collect();
         rest.sort_by_key(|c| c.id);
-        for c in rest {
-            out.insert(c.id, claim_name(&scale.name(&c.features), &mut taken));
+        for c in &rest {
+            if let Some(name) = &c.auto_name {
+                out.insert(c.id, claim_name(name, &mut taken));
+            }
+        }
+        // …and any patch not yet named reads a provisional one off the pool.
+        if rest.iter().any(|c| c.auto_name.is_none()) {
+            let scale = NameScale::fit(self.pool.iter().map(|c| &c.features));
+            for c in rest.iter().filter(|c| c.auto_name.is_none()) {
+                out.insert(c.id, claim_name(&scale.name(&c.features), &mut taken));
+            }
         }
         out
+    }
+
+    /// Give every patch without a name its generated one, **kept from then
+    /// on**: read off the pool it joins ([`NameScale`]), claimed against every
+    /// name already held, and never read again. A patch's name says what it
+    /// sounds like next to the bank it arrived in; recomputing it as the bank
+    /// moved renamed patches that had not changed.
+    ///
+    /// Names start being kept once the bank is handed over — a standardizer
+    /// exists: the fill has finished, or a progressive boot made the partial
+    /// pool duel-able ([`Engine::standardize_now`]) — which is when a player
+    /// first sees them. Called wherever the pool grows after that, so which
+    /// name a patch gets depends only on the order the engine took patches
+    /// in, never on when a frontend asked (ADR-001).
+    fn fix_names(&mut self) {
+        if self.standardizer.is_none()
+            || self
+                .pool
+                .iter()
+                .all(|c| c.name.is_some() || c.auto_name.is_some())
+        {
+            return;
+        }
+        let scale = NameScale::fit(self.pool.iter().map(|c| &c.features));
+        let mut taken: HashSet<String> = self
+            .pool
+            .iter()
+            .filter_map(|c| c.name.clone().or_else(|| c.auto_name.clone()))
+            .collect();
+        let mut fresh: Vec<usize> = (0..self.pool.len())
+            .filter(|&i| self.pool[i].name.is_none() && self.pool[i].auto_name.is_none())
+            .collect();
+        fresh.sort_by_key(|&i| self.pool[i].id);
+        for i in fresh {
+            let name = claim_name(&scale.name(&self.pool[i].features), &mut taken);
+            self.pool[i].auto_name = Some(name);
+        }
     }
 
     /// Name (or rename; empty clears) a candidate.
@@ -3679,6 +3754,9 @@ impl Engine {
         if let Some(i) = self.find(id) {
             let trimmed = name.trim();
             self.pool[i].name = (!trimmed.is_empty()).then(|| trimmed.chars().take(40).collect());
+            // A name cleared hands the patch back to a generated one, kept like
+            // any other.
+            self.fix_names();
         }
     }
 
@@ -3758,6 +3836,7 @@ impl Engine {
                     origin: c.origin,
                     name: c.name.clone(),
                     pinned: c.pinned,
+                    auto_name: c.auto_name.clone(),
                 })
                 .collect(),
             lineage: self.lineage.clone(),
@@ -3903,6 +3982,7 @@ impl Engine {
             render,
             origin: entry.origin,
             name: entry.name,
+            auto_name: entry.auto_name,
             pinned: entry.pinned,
         });
     }
@@ -3922,6 +4002,9 @@ impl Engine {
             }
             self.standardizer = Some(sz);
         }
+        // A session saved before names were kept is named here, once,
+        // against the bank it restored.
+        self.fix_names();
         self.pool.len()
     }
 
