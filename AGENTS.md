@@ -60,8 +60,10 @@ contributor guide; this file does not repeat it.
    share a generator across consumers again.
 7. **Generated files are not hand-edited.** `apps/web/pkg/`, `site/`,
    `www/docs/src/img/`, `www/landing/assets/film/` (written by
-   `www/video/tools/publish.py`) and the `<!-- film:NAME -->` blocks it fills.
-   A hook blocks edits to the first three.
+   `www/video/tools/publish.py`) and the `<!-- film:NAME -->` blocks it fills,
+   and the `tokens:begin` … `tokens:end` blocks in six stylesheets (written by
+   `make tokens` from `www/brand/tokens.json`; `make dev-check` fails when one
+   is stale). A hook blocks edits to the first three.
 8. **Commits explain why.** Loose conventional prefixes (`feat:`, `fix(web):`,
    `docs:` …), an imperative subject, a body that says what was wrong and why
    this is the fix. User-visible changes get a `CHANGELOG.md` entry under
