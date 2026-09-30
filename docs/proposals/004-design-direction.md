@@ -1,7 +1,7 @@
 ---
 title: "Design direction: one system for words, marks, picture, interaction, sound and explanation"
 number: 4
-status: in-review
+status: accepted
 author: Claude Code
 created: 2026-09-29
 updated: 2026-09-30
@@ -13,7 +13,7 @@ superseded_by: null
 
 ## Audience
 
-The maintainer, who decides the open question at the end, and anyone who
+The maintainer, who decided the questions at the end, and anyone who
 writes copy, draws UI, makes a film or chooses the first sounds a player
 hears. [RFC-003](003-one-instrument-contracts.md) (Wave 2) fixes the shared
 words, colours, undo, messages and keys across the views; this proposal sets
@@ -275,7 +275,7 @@ for explaining causation, each its own small proposal:
 3. The component set, the type scale, the grid and the motion tokens, and each
    view's disclosure map, drafted as specimens and approved (parts 4 and 5).
 4. The views rebuilt to them, one at a time, with the text budget's check.
-   Wave 2 is split (the open question below). The contracts that do not
+   Wave 2 is split (decision 7). The contracts that do not
    depend on the new components go ahead now in Plan-003: the word table and
    its check (task 1), the take-back registry (task 3), the keymap and MIDI
    learn rows (task 5, less the printed key hints), and bank stability
@@ -335,11 +335,10 @@ The maintainer also asked for the UI components and the interaction design to
 be refreshed, each view's experience rethought around progressive disclosure,
 and far less text in the app: part 5.
 
-Open:
+7. **Wave 2 is split** as Sequencing step 4 proposes: the non-visual
+   contracts go ahead in Plan-003, and the colour looks, channels, onboarding
+   surface and printed key hints are built into the rebuild.
 
-- **Wave 2's split** (Sequencing, step 4): the non-visual contracts go ahead
-  in Plan-003 now, and the colour looks, channels, onboarding surface and
-  printed key hints move into the rebuild.
-
-On acceptance, an ADR records these decisions, a plan breaks down parts 1–5,
-7 and 8, and RFC-005 takes the sonic floor.
+Accepted as [ADR-011](../decisions/011-one-design-system.md). Built as
+[Plan-004](../plans/004-one-design-system.md), with Plan-003 keeping Wave 2's
+other contracts; RFC-005 takes the sonic floor.

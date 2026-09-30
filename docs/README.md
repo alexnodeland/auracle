@@ -56,6 +56,7 @@ plugins work on it.
 | [008](decisions/008-search-offers-are-aimed.md) | A search control's offer is aimed along the control's direction |
 | [009](decisions/009-one-instrument-contracts.md) | One vocabulary, one colour contract, one undo, one keymap across the instrument |
 | [010](decisions/010-tests-share-the-browser-recordings-do-not.md) | Browser tests share the machine, two at a time; rehearsals and recordings do not |
+| [011](decisions/011-one-design-system.md) | One design system: one source, shared components, a text budget, and films that explain |
 
 ## Proposals
 
@@ -64,7 +65,7 @@ plugins work on it.
 | [001](proposals/001-evolve-pool-parallel-walks.md) | accepted | Breed a generation in seconds: walks in parallel on the render farm |
 | [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
 | [003](proposals/003-one-instrument-contracts.md) | accepted | One instrument: shared words, colours, states, undo, messages and keys |
-| [004](proposals/004-design-direction.md) | in-review | Design direction: one system for words, marks, picture, interaction, sound and explanation |
+| [004](proposals/004-design-direction.md) | accepted | Design direction: one system for words, marks, picture, interaction, sound and explanation |
 
 ## Plans
 
@@ -72,7 +73,8 @@ plugins work on it.
 | --- | --- | --- |
 | [001](plans/001-evolve-pool-parallel-walks.md) | active | RFC-001, ADR-007 |
 | [002](plans/002-directed-search-offers.md) | active | RFC-002, ADR-008 |
-| [003](plans/003-one-instrument-contracts.md) | active | RFC-003, ADR-009 (Wave 2) |
+| [003](plans/003-one-instrument-contracts.md) | active | RFC-003, ADR-009 (Wave 2: words, undo, keys, stability) |
+| [004](plans/004-one-design-system.md) | active | RFC-004, ADR-011 (the design system and the views rebuilt to it) |
 
 ## Notes
 
