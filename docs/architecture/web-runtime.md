@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-09-28
+last_updated: 2026-09-30
 related_adrs: [1, 2, 7]
 ---
 
@@ -149,7 +149,11 @@ through one ordered lane in `main.js`:
   starts from the value last set, never a stale reply;
 - a value-only redraw repaints knobs in place, and no knob is rebuilt under a
   held pointer (`knobDragging`);
-- an undo retires the toast of what it undid.
+- an undo retires the toast of what it undid;
+- COMMIT (`commitOnSettle`) and the bench's ▶ and Space (`playOnSettle`)
+  pressed while anything is in the lane wait for it to settle. The bench's
+  phrase buffer is replaced only by an edit's reply, so until then it is the
+  sound from before the edit.
 
 An open reaches the voices before the bench. Opening is a render (the bench's
 buffer) on the engine's one thread, behind whatever render is running there,

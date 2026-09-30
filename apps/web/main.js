@@ -3630,6 +3630,8 @@ function stopAudition() {
 
 function toggleAudition() {
   if (stopAudition()) return;
+  // A second press while the bench's ▶ waits for an edit is a stop, too.
+  if (playWaitCancel()) return;
   if (currentView === "play" && wb.buffer && !$("rack-play").disabled) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
@@ -7174,8 +7176,9 @@ function openOnBench(id, { auto = false } = {}) {
   openAskedAt = performance.now();
   openAsk = { id, at: openAskedAt, auto };
   // A COMMIT still waiting on the last patch's edit is about that patch; it
-  // must not land on this one when the edit settles.
+  // must not land on this one when the edit settles. Nor a ▶.
   commitOnSettle = null;
+  playWaitCancel();
   // …and so is everything still waiting in the lane. Sent after this, each
   // entry would land on the patch being opened, at an address that names
   // something else there.
@@ -7342,12 +7345,39 @@ function livePending() {
   }
 }
 
+// ▶ (or Space) pressed while an edit is still on its way to the engine. The
+// bench's buffer is replaced only by the edit's reply, so until then it is the
+// phrase rendered *before* the edit: a wave chip clicked and ▶ pressed at once
+// played the old wave. The press waits for the lane, as COMMIT does
+// (`commitOnSettle`), and plays what the engine rendered for the edit.
+let playOnSettle = false;
+
 function playBench() {
+  if (!laneFree()) {
+    playOnSettle = true;
+    $("rack-play").setAttribute("aria-busy", "true");
+    return;
+  }
+  playWaitCancel();
   if (wb.buffer) {
     markHeard();
     playBuffer(wb.buffer, $("rack-play"));
   } else if (!wb.vetOk && wb.vetSilent) note("nothing to play — no source reaches the output");
   else if (!wb.vetOk) note("⚠ unvetted state — audio withheld");
+}
+
+/** A ▶ still waiting for the lane is taken back (a new patch is opening, or
+ *  Space was pressed again). True if one was waiting. */
+function playWaitCancel() {
+  const was = playOnSettle;
+  playOnSettle = false;
+  $("rack-play").removeAttribute("aria-busy");
+  return was;
+}
+
+/** The deferred half of `playBench`, once the lane has settled. */
+function settlePlay() {
+  if (playOnSettle && laneFree()) playBench();
 }
 
 // Layout constants.
@@ -11503,8 +11533,12 @@ function pumpLane() {
     }
   }
   lanePaint();
-  // Everything the player did has landed: a COMMIT or ⚡ waiting on it goes.
-  if (laneFree()) settleCommit();
+  // Everything the player did has landed: a COMMIT or ⚡ waiting on it goes,
+  // and so does a ▶ (the buffer is the edit's now).
+  if (laneFree()) {
+    settleCommit();
+    settlePlay();
+  }
 }
 
 /** Send one knob write, at the address its knob has on the bench now. */

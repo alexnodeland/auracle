@@ -20,8 +20,9 @@ here is live while you edit it.</figcaption>
 From the top:
 
 **The subject block.** The patch's name, *(edited)* once you have changed it,
-and a caption for what you did to it (*2 locked*). The **▶** plays the standard
-sample. Its id and a short structural summary (`#30 · wsqr·mix·cho`) are the
+and a caption for what you did to it (*2 locked*). The **▶** (or
+<kbd>Space</kbd>) plays the standard sample of the patch as it stands: pressed
+while an edit is still on its way to the engine, it waits for it. Its id and a short structural summary (`#30 · wsqr·mix·cho`) are the
 engine's bookkeeping, shown only with **⋯ › Show measurements**.
 
 **The toolbar.** The edit controls (*commit*, *my edit is better*), the layout

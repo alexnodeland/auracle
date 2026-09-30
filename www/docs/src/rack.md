@@ -63,7 +63,8 @@ cycle it. A step sequencer's bars are knobs too: press one where you want the
 step to sit and drag ([more on the step sequencer](./wiring.md#the-step-sequencer)).
 
 Every edit is a **one-site write at that knob's trace address**. The patch is
-re-rendered and re-vetted before it can be auditioned, and the live instrument
+re-rendered and re-vetted before it can be auditioned (a **▶** pressed before
+then waits for it and plays the edit), and the live instrument
 is re-patched immediately so held notes keep sounding. While you drag you hear
 every value the knob passes through; the engine re-renders the one you let go
 on. A run of <kbd>↑</kbd>/<kbd>↓</kbd> presses on one knob is one turn.

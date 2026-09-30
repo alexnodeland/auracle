@@ -1,6 +1,6 @@
 ---
 title: "Testing: every gate, what it proves, when to run it"
-last_updated: 2026-09-29
+last_updated: 2026-09-30
 related_adrs: [3, 5]
 ---
 
@@ -132,6 +132,7 @@ that matches nothing fails its leg (`--no-tests=fail`). `make test` and
 | `perform_circuit.spec.js` | A knob turned in PERFORM is drawn performed in PATCH |
 | `perform_truth.spec.js` | Half-closed rings on the open side and their captions; *listening…* is never the search look and never grafts; first steps name a control that turns; choosing an XY axis gives the keys back; search controls spring back; Blend home after a pass; a drift's re-check is background; a stalled shipped-wirings fetch still lets a preset be measured |
 | `patch_truth.spec.js` | An unplugged socket goes quiet and reads EMPTY; a knob turned in PATCH keeps its value with no ghost, and PERFORM plays from it |
+| `patch_audible.spec.js` | Measured at the output: a VCO's wave cycled in PATCH has each wave's harmonics under a held note and on ▶ and Space; a cutoff turned down lowers the centroid live and on ▶; ▶ or Space pressed while the edit is still at the engine plays the edit, not the sound before it |
 | `responsive.spec.js` | The player is answered first while PERFORM measures; warm-start ▶; Take keeps its controls |
 | `booth.spec.js` | Attract plays in PERFORM, hands over on a key, and teaches nothing |
 | `film_chip.spec.js` | The menu bar's film chip |
