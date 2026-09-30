@@ -11,10 +11,11 @@ clean, every take checked) and is **held, not published**. Watching the
 previews, the narration was too fast (195–202 words a minute against the voice
 pipeline's own target of 160, `TARGET_WPM` in `asr_check.py`), the sounds the
 seeded session dealt were often blaring, noisy or harsh, and the films were
-walkthroughs with too little visual explanation. The second pass waits on a
-design direction (voice and tone, brand, audio-visual), a sound-quality floor
-in the app, and Wave 2 ([Plan-003](../plans/003-one-instrument-contracts.md)),
-so that it films the improved app. The scripts, timelines and shots of the
+walkthroughs with too little visual explanation. The second pass is
+[Plan-004](../plans/004-one-design-system.md) task 8, under
+[ADR-011](../decisions/011-one-design-system.md). It waits on the design
+system and the rebuilt views (tasks 1–6) and the sonic floor (RFC-005), so
+that it films the improved app. The scripts, timelines and shots of the
 first round are committed; the renders were not.
 
 **Where published films live is undecided.** `publish.py` copies them into
@@ -38,6 +39,9 @@ the voice on another, e.g. `AURACLE_PYTHON=python3.11 make film-setup`.
 ## 2. Voice
 
 The narration audio is gitignored and rebuilt from the committed scripts.
+**The films' voice is `af_heart` at speed 0.81** (ADR-011, chosen by
+audition on 2026-09-30). The scripts still say 0.9 until the second pass moves
+them (Plan-004 task 8); do not voice a new round at 0.9.
 Kokoro is deterministic on one machine but **not across CPU architectures**:
 on Apple silicon, line boundaries held within 3 ms of the container's, but up
 to 15% of word starts moved, by as much as 260 ms. The shots are pinned to

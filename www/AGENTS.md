@@ -31,6 +31,11 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
 - **One copy of each asset.** Faces, brand marks and screenshots have one
   source and are copied at build time. The copies are gitignored: never commit
   or edit them (`docs/src/img/` is one).
+- **One design system**
+  ([ADR-011](../docs/decisions/011-one-design-system.md)). The tagline is "A
+  synthesizer that searches for your sound". Colours, sizes and copy rules are
+  moving into `www/brand/` (`tokens.json`, `voice.md`) under Plan-004; until
+  then, match the brand spec (`www/brand/index.html`).
 - **A new guide page goes in `SUMMARY.md`**, or mdBook silently skips it.
 - **KaTeX macros live in `reference/katex-macros.txt`.** A table in
   `book.toml` parses and is ignored.
