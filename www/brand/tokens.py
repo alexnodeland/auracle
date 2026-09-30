@@ -97,14 +97,16 @@ EXEMPT = [
 # waiting on a decision rather than a substitution. They are not scanned, and
 # `--check` names them every time it runs so they are not forgotten.
 NOT_YET = [
-    # The live figures, loaded by both books and the landing page. They glow in
-    # hard-coded dark rgba (viz.js, the audio/model tile fills), which also
-    # shows on the docs' Paper theme; and their var() fallbacks are literals.
-    # Needs a token per figure role, on both palettes.
-    ("www/viz/viz.js", "figure glows and fallbacks; the glows are wrong on Paper"),
+    # The live figures, loaded by both books and the landing page. The grammar
+    # figure fills its audio and model tiles with the dark theme's phosphors
+    # as rgba literals (viz.js, near line 1614), so on the docs' Paper theme
+    # they glow in the rack's hues under Paper's strokes; and the var()
+    # fallbacks are literals. Needs a token per figure role, on both palettes.
+    ("www/viz/viz.js", "tile glows in the dark theme's phosphors, wrong on Paper; literal fallbacks"),
     ("www/viz/viz.css", "var() fallbacks and a print colour"),
-    # The docs' layer over mdBook: `var(--bezel, #07080a)`, and Paper defines
-    # no --bezel, so Paper gets the rack's bezel. Needs a Paper value first.
+    # The docs' layer over mdBook: a film's ground is `var(--bezel, #07080a)`,
+    # and Paper defines no --bezel, so on Paper the literal is what shows (on
+    # purpose: films stay dark). Needs a token that says so on both palettes.
     ("www/theme/fonts/auracle.css", "a literal fallback for --bezel, which Paper lacks"),
     # The raster source of lockup.png and og.png: a hand copy of six tokens and
     # a grey workbench. Belongs with the marks work (Plan-004 task 3).

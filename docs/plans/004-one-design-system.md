@@ -55,10 +55,10 @@ and printed key hints are built here; its other contracts stay in
    - *Still to do:* the type scale, spacing, radii and motion tokens, each
      with its approved specimen (task 4), and the check on sizes and
      durations. Not yet checked for colour (`NOT_YET` in `tokens.py`):
-     `www/viz/viz.js` and `viz.css` (their glows are hard-coded dark rgba,
-     wrong on Paper), `www/theme/fonts/auracle.css` (a literal fallback for
-     `--bezel`, which Paper lacks) and `www/brand/render.html` (a hand copy of
-     six tokens, with task 3).
+     `www/viz/viz.js` and `viz.css` (the grammar figure's tiles glow in the
+     dark theme's phosphors, wrong on Paper), `www/theme/fonts/auracle.css`
+     (a literal fallback for `--bezel`, which Paper lacks) and
+     `www/brand/render.html` (a hand copy of six tokens, with task 3).
 2. **Voice guide** (part 2): `www/brand/voice.md` with its audiences, four
    registers, claims and spelling. ADR-004's copy rules, the `AGENTS.md` files,
    the docs-writer agent, the changelog skill and `VIEWS.md` point to it. The

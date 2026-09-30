@@ -115,11 +115,11 @@ does not define, when a stylesheet uses a token another surface owns, when a
 **Not checked yet** (`NOT_YET` in `tokens.py`, which `--check` lists every
 time it runs), each waiting on a token decision rather than a substitution:
 
-- `www/viz/viz.js` and `viz.css`, the live figures: their glows are
-  hard-coded dark rgba, which is wrong on the docs' Paper theme, and their
-  `var()` fallbacks are literals;
-- `www/theme/fonts/auracle.css`: `var(--bezel, #07080a)`, and Paper defines
-  no `--bezel`;
+- `www/viz/viz.js` and `viz.css`, the live figures: the grammar figure fills
+  its tiles with the dark theme's phosphors as `rgba()` literals, which is
+  wrong on the docs' Paper theme, and their `var()` fallbacks are literals;
+- `www/theme/fonts/auracle.css`: a film's ground is `var(--bezel, #07080a)`,
+  and Paper defines no `--bezel`, so on Paper the literal is what shows;
 - `render.html`: a hand copy of six tokens, with the marks work (Plan-004
   task 3).
 
