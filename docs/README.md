@@ -64,7 +64,7 @@ plugins work on it.
 | [001](proposals/001-evolve-pool-parallel-walks.md) | accepted | Breed a generation in seconds: walks in parallel on the render farm |
 | [002](proposals/002-directed-search-offers.md) | accepted | Aim PERFORM's search-control offers along the control's direction |
 | [003](proposals/003-one-instrument-contracts.md) | accepted | One instrument: shared words, colours, states, undo, messages and keys |
-| [004](proposals/004-design-direction.md) | draft | Design direction: one system for words, marks, picture, sound and explanation |
+| [004](proposals/004-design-direction.md) | in-review | Design direction: one system for words, marks, picture, interaction, sound and explanation |
 
 ## Plans
 
@@ -83,6 +83,8 @@ plugins work on it.
 - [`interaction-2026-09/`](notes/interaction-2026-09/README.md): six
   interaction reviews (119 findings, measured) and the spec that combines them:
   rules, time budget, contracts for words, colour, undo, messages and keys
+- [`text-2026-09/`](notes/text-2026-09/README.md): how much the app says,
+  view by view, at rest and on request (measured; informed RFC-004)
 - [`plugin-lab/`](notes/plugin-lab/README.md): named controls measured on a
   third-party synth, a feasibility study for a plugin
 
