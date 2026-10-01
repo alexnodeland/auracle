@@ -31,6 +31,22 @@ listed in this directory's `README.md`. The `film` skill walks the steps.
   patch names and percentages on screen come from the seeded session:
   re-check them after any engine change, or keep the narration from quoting
   them.
+- **The spoken voice is [`www/brand/voice.md`](../brand/voice.md)'s**
+  ([ADR-013](../../docs/decisions/013-one-voice.md)):
+  - the narrator beside you, never a presenter;
+  - writing for the ear;
+  - explain, pause, demo, continue, with nothing played under speech;
+  - the cold open before any words.
+
+  It wins where `VIEWS.md` or `SCRIPTS.md` differ.
+- **The films' sound is [ADR-014](../../docs/decisions/014-the-films-sound.md)'s:**
+  - no cues;
+  - one key (F) and one room;
+  - Bloom in and Reach out;
+  - the N3 bed;
+  - the ladder and the grammar in `docs/notes/sound-2026-09/SPEC.md`.
+
+  Plan-006 brings the tools to it.
 - **Rehearse before recording.** `tools/rehearse.sh <film>` dry-runs every
   shot and summarises lateness and errors. A film is ready when every shot
   passes with no errors, `tools/validate.mjs` is clean, `tools/framing.py`

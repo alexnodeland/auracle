@@ -32,10 +32,15 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   source and are copied at build time. The copies are gitignored: never commit
   or edit them (`docs/src/img/` is one).
 - **One design system**
-  ([ADR-011](../docs/decisions/011-one-design-system.md)). The tagline is "A
-  synthesizer that searches for your sound". Sizes and copy rules are moving
-  into `www/brand/` (`voice.md`) under Plan-004; until then, match the brand
-  spec (`www/brand/index.html`).
+  ([ADR-011](../docs/decisions/011-one-design-system.md)). Sizes and marks
+  follow the brand spec (`www/brand/index.html`).
+- **One voice** ([ADR-013](../docs/decisions/013-one-voice.md)): every word on
+  the site follows [`www/brand/voice.md`](brand/voice.md):
+  - the line, "A synthesizer that grows toward you", with its descriptor;
+  - the character and the tone;
+  - the word table, with sound for what you hear and patch for how it's built;
+  - American spelling and no em dashes;
+  - the spoken voice for the films.
 - **Motion shows what the engine does**
   ([ADR-012](../docs/decisions/012-motion-shows-what-the-engine-does.md)): a
   figure or film that animates a mechanism shows what the engine does, and a

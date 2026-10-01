@@ -1,7 +1,7 @@
 # Auracle
 
-<p class="lede">A playable modular synthesizer that learns what you like, and can
-show you what it learned.</p>
+<p class="lede">A synthesizer that grows toward you. Pick the sound you&rsquo;d reach
+for. It learns your ear, and every generation grows a little closer.</p>
 
 <!-- film:launch -->
 <figure class="film" id="film-launch">

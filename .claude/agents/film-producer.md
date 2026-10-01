@@ -21,6 +21,14 @@ How you work:
 - Every browser run goes through `www/video/tools/one_browser.sh`. Never run
   two. Do not record: recording and publishing happen later, on a quiet
   machine.
+- Write the narration in the spoken voice of
+  [`www/brand/voice.md`](../../www/brand/voice.md):
+  - the narrator beside you;
+  - one breath a sentence;
+  - explain, pause, demo, continue, with nothing under speech;
+  - the cold open first.
+
+  It wins over `VIEWS.md` and `SCRIPTS.md` where they differ.
 - Write what the app does, in its own words. Plan each claim so the recording
   shows it, and check every number and name against the rehearsal's logs.
 - When the app falls short of the guide or of your script, report it to the

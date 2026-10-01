@@ -1,5 +1,9 @@
 # Five new films: scripts and storyboards
 
+The spoken voice is [`www/brand/voice.md`](../../brand/voice.md)'s, and it wins
+where this file differs (the voice is now speed 0.81, and nothing plays under
+speech).
+
 Each film has a `script.json` (narration, in the explainers' format) and a
 `storyboard.md` (what is on screen, beat by beat). All five use the `study`
 bed at 84 BPM, `loop_a` on the first beat and `loop_b` about halfway, the

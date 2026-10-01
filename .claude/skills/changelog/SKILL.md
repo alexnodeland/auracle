@@ -1,7 +1,7 @@
 ---
 name: changelog
 description: >
-  Write Auracle's CHANGELOG.md entries under [Unreleased] in the house voice:
+  Write Auracle's CHANGELOG.md entries under [Unreleased] in the house voice (www/brand/voice.md):
   for someone who has never seen the repo, saying what was wrong and what is
   true now. Use for any user-visible change.
 ---
@@ -13,8 +13,9 @@ write for a player or a newcomer, not for the diff.
 
 ## Shape
 
-- Sections are `### Added — <theme>`, `### Changed — <theme>`,
-  `### Fixed — <theme>`, grouping related entries under one theme.
+- Sections are `### Added: <theme>`, `### Changed: <theme>`,
+  `### Fixed: <theme>`, grouping related entries under one theme. No em
+  dashes ([`www/brand/voice.md`](../../../www/brand/voice.md)).
 - Each entry is a bullet that opens with a **bold sentence saying what is true
   now**, then what was wrong before and why it matters, in one or two
   sentences.
@@ -30,6 +31,8 @@ write for a player or a newcomer, not for the diff.
 - No internal jargon without a gloss (φ, lens, lane): say what the player
   noticed.
 - Present tense for the fix, past tense for the bug.
+- The rest of the voice (the word table, American spelling, sound for what you
+  hear and patch for how it's built) is [`www/brand/voice.md`](../../../www/brand/voice.md)'s.
 
 ## Example
 
