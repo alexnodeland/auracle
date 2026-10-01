@@ -722,8 +722,12 @@ Lines from the app and the site, rewritten to this guide.
   and British spellings. It reads each surface the block names, with the
   figures and the films' on-screen text, and the script lists the files. It
   reads only what a reader sees or hears: comments and code don't count.
-- **Names:** a script line that ends in `// voice: name` holds names, not
-  copy, so the check skips its strings.
+- **The engine's words:** some of the app's words are written in the Rust
+  engine: preset names and descriptions, the rack's labels, PERFORM's
+  controls, the bank's sound names, and the reasons an edit is refused. The
+  check reads every string in the files they come from, as the app's own.
+- **Names:** a script or Rust line that ends in `// voice: name` holds names
+  (or a code, or a key), not copy, so the check skips its strings.
 - **Quotes:** in Markdown, someone else's words (a standard's title, a label
   the app used to show) sit between `<!-- voice: quote -->` and
   `<!-- /voice -->`. They keep their own spelling, and the check skips them.

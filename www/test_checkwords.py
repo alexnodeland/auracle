@@ -48,6 +48,7 @@ VOICE = f"# Voice\n\nThe guide quotes the bench, the AI and an em dash — and i
 FIXTURES = {
     "apps/web/index.html": "<!doctype html>\n<title>Auracle</title>\n<p>Back on the bench.</p>\n</body>\n",
     "apps/web/main.js": 'const bench = 1;\nnote("Back on the bench: play it.");\n$("bench-tour");\n',
+    "crates/auracle-grammar/src/presets.rs": '//! The library — never read.\npub const BLURB: &str = "a grey pad — wide";\n',
     "www/landing/index.html": "<body>\n<p>Every duel grows closer — to you.</p>\n</body>\n",
     "www/landing/hero.js": 'const line = "Every duel is two sounds.";\n',
     "www/viz/viz.js": 'cap.textContent = "Each duel, forecast first.";\n',
@@ -75,6 +76,10 @@ def rules(text, kind="md", entries=LIST):
 
 def js(src):
     return words(W.js_literals(src), "js")
+
+
+def rust(src):
+    return words(W.rust_literals(src), "rust")
 
 
 class Tree:
@@ -213,6 +218,35 @@ class WhatItReads(unittest.TestCase):
 
     def test_code_held_in_a_literal_by_name_is_not_copy(self):
         self.assertEqual(W.js_literals('const POLYFILL = `note("a bench")`;\nconst y = "a bench";', "apps/web/live-audio.js"), [(2, "a bench")])
+
+    def test_a_crates_literals_not_its_comments_tests_or_names(self):
+        src = "\n".join(
+            [
+                "//! The bench, in a module's doc.",  # 1
+                "/// The bench, in an item's doc.",  # 2
+                '/* a bench /* nested */ still a bench */ const A: &str = "a duel";',  # 3: nested comment, then a literal
+                "#[derive(Debug, Error)]",  # 4
+                '#[error("no patch on the bench")]',  # 5: a refusal's text is copy
+                "Bench(String),",  # 6: a name, not a literal
+                'blurb: "a pad — wide",',  # 7
+                'let r = r#"a "raw" bench"#; let b = br"a vote";',  # 8: raw strings
+                "let c = '\"'; let q = '\\''; fn f<'a>(s: &'a str) -> &'static str { \"a duel\" }",  # 9: chars, lifetimes
+                'name: "Duel", // voice: name',  # 10
+                '"a long line that \\',  # 11: a line continuation
+                '    reaches the bench"',  # 12
+                "#[cfg(test)]",  # 13
+                "mod tests {",  # 14
+                '    fn f() -> [u8; 2] { let s = "the bench"; [0; 2] }',  # 15
+                '    const T: &str = "}";',  # 16: a brace in a literal does not close the item
+                "}",  # 17
+                'const Z: &str = "\\u{2014} and a vote";',  # 18: read again after the test item
+                '#[cfg(test)] use crate::bench; const Y: &str = "a duel";',  # 19: a test `use` ends at its `;`
+            ]
+        )
+        self.assertEqual(
+            rust(src),
+            [(3, "duel"), (5, "bench"), (7, "em dash"), (8, "bench"), (8, "vote"), (9, "duel"), (12, "bench"), (18, "em dash"), (18, "vote"), (19, "duel")],
+        )
 
     def test_a_pages_text_and_shown_attributes(self):
         src = (
@@ -381,7 +415,7 @@ class TheRatchet(unittest.TestCase):
         with Tree() as t:
             code, out, err = t.run()
             self.assertEqual((code, err), (0, ""))
-            self.assertEqual(out, f"  voice: {len(FIXTURES)} files, 14 hits under baseline, 0 rises\n")
+            self.assertEqual(out, f"  voice: {len(FIXTURES)} files, 16 hits under baseline, 0 rises\n")
 
     def test_a_new_hit_fails_and_says_where(self):
         with Tree() as t:
@@ -402,6 +436,7 @@ class TheRatchet(unittest.TestCase):
         planted = {
             "apps/web/index.html": ("vote", lambda s: s.replace("</body>", "<p>A vote.</p></body>", 1)),
             "apps/web/main.js": ("bench", lambda s: s + 'note("back on the bench");\n'),
+            "crates/auracle-grammar/src/presets.rs": ("duel", lambda s: s + 'pub const W: &str = "a duel";\n'),
             "www/landing/index.html": ("colour", lambda s: s.replace("</body>", '<img alt="the colour of it"></body>', 1)),
             "www/landing/hero.js": ("AI", lambda s: s + 'const x = "an AI";\n'),
             "www/viz/viz.js": ("commit", lambda s: s + 'cap.textContent = "Commit it.";\n'),
@@ -512,8 +547,26 @@ class TheSurfaces(unittest.TestCase):
         read = W.files()
         for surface, _, _ in W.SURFACES:
             self.assertTrue(any(s == surface for _, s, _, _ in read), surface)
-        for rel in ("www/viz/viz.js", "README.md", "CHANGELOG.md", "apps/web/index.html", "www/landing/index.html"):
+        for rel in (
+            "www/viz/viz.js",
+            "README.md",
+            "CHANGELOG.md",
+            "apps/web/index.html",
+            "www/landing/index.html",
+            "crates/auracle-grammar/src/presets.rs",
+            "crates/auracle-grammar/src/mutate.rs",
+            "crates/auracle-wasm/src/lib.rs",
+        ):
             self.assertIn(rel, {f for f, *_ in read})
+
+    def test_every_file_a_surface_names_exists(self):
+        # A glob finds nothing for a file that moved, and the ratchet cannot
+        # miss a file with no hits: the engine's surface names its files, so a
+        # renamed one would drop out of the check without a word.
+        for surface, _, globs in W.SURFACES:
+            for pattern, _ in globs:
+                if not any(c in pattern for c in "*?["):
+                    self.assertTrue(os.path.isfile(os.path.join(REAL_ROOT, pattern)), f"{surface}: {pattern}")
 
     def test_the_guide_and_this_check_are_never_read(self):
         read = {f for f, *_ in W.files()}

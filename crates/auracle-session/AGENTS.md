@@ -42,6 +42,11 @@ loop (observe, refit). Rules shared by all crates are in
   Anything keyed by lens index (names, colours, shares) relies on it.
 - **Session state is persisted and migrated.** A new field needs a default for
   old profiles.
+- **PERFORM's control words and the bank's sound names are copy.**
+  `CONTROLS` in `perform.rs` and the words in `naming.rs` reach the screen,
+  and `make dev-check` reads both against `www/brand/voice.md`
+  ([`../AGENTS.md`](../AGENTS.md)). `CONTROLS` is also part of the shipped
+  wirings' fingerprint: change a word there and run `make perform-wirings`.
 
 ## Tests and measurements
 

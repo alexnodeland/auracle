@@ -46,7 +46,10 @@ auracle.alexnodeland.com serves. Rules for the whole repo are in
   or British spellings moves from `brand/voice-baseline.json`
   (`www/checkwords.py`): a sweep lowers it in the same change with
   `python3 www/checkwords.py --update`.
-  A script line that ends in `// voice: name` holds names, not copy.
+  The check also reads the app's words the engine writes (its `engine`
+  surface): every string in the Rust files that send preset descriptions,
+  rack labels and edit refusals to the screen.
+  A script or Rust line that ends in `// voice: name` holds names, not copy.
   In Markdown, a quotation keeps its own words between
   `<!-- voice: quote -->` and `<!-- /voice -->`.
 - **Motion shows what the engine does**

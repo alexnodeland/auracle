@@ -12,9 +12,9 @@ Auracle speaks, and held to a baseline that only goes down.
 It counts three things on every surface in SURFACES:
 - the words and phrases in voice.md's `banned` block, read at run time so the
   guide stays the one list. Each line there is `word or phrase | scope | say
-  instead`; `player` applies to the app, the landing page and its figures,
-  the guide and the films, and `all` adds the reference, the README and the
-  changelog;
+  instead`; `player` applies to the app (and the words the engine's Rust
+  sends it), the landing page and its figures, the guide and the films, and
+  `all` adds the reference, the README and the changelog;
 - em dashes (voice.md: "No em dashes, anywhere");
 - the British spellings in BRITISH below (voice.md: "The spelling is
   American").
@@ -23,9 +23,11 @@ Only what a reader sees or hears is read: a script's string and template
 literals (not its comments, its names, or a literal used as a name: see
 `is_name`), a page's text and its `title`, `aria-label`, `placeholder` and
 `alt` (and a `<meta>` description or social-card title), Markdown's prose
-outside code (an admonish callout is prose), and a film script's `text`
-lines. Entities are decoded everywhere. A script line that ends in the
-comment `// voice: name` holds names, and its literals are not read. In
+outside code (an admonish callout is prose), a film script's `text` lines,
+and a Rust file's string literals (not its comments or its `#[cfg(test)]`
+items; see `rs_raw`). Entities are decoded everywhere but in Rust. A script
+or Rust line that ends in the comment `// voice: name` holds names (or a
+code, or a key), and its literals are not read. In
 Markdown, text between `<!-- voice: quote -->` and `<!-- /voice -->` quotes
 someone else's words (a standard's title, a label the app used to show), and
 is not read; the span can wrap a line, never a paragraph.
@@ -68,6 +70,31 @@ UPDATE = "python3 www/checkwords.py --update"
 # "duel" is the reference's own term). Em dashes and spellings count on all.
 SURFACES = [
     ("app", "player", [("apps/web/index.html", "html"), ("apps/web/*.js", "js")]),
+    # The app's words that the engine writes: every Rust file a string reaches
+    # the screen from, read whole. The preset library's names and
+    # descriptions; the rack's module titles, knob labels and options, and the
+    # names the lineage strip gives them; PERFORM's controls and their ends;
+    # the bank's sound names; and the reasons an edit is refused, which the
+    # app's toast quotes. A code, a JSON key or a panic's message in these
+    # files is read too (a panic never reaches the screen: it traps in the
+    # browser), and one that trips the check ends its line `// voice: name`.
+    # Reason codes (`no_move`) and the status the worker posts are not copy,
+    # and live in files not read here.
+    (
+        "engine",
+        "player",
+        [
+            ("crates/auracle-grammar/src/presets.rs", "rust"),
+            ("crates/auracle-grammar/src/describe.rs", "rust"),
+            ("crates/auracle-grammar/src/term.rs", "rust"),
+            ("crates/auracle-grammar/src/prior.rs", "rust"),
+            ("crates/auracle-grammar/src/diff.rs", "rust"),
+            ("crates/auracle-grammar/src/mutate.rs", "rust"),
+            ("crates/auracle-session/src/perform.rs", "rust"),
+            ("crates/auracle-session/src/naming.rs", "rust"),
+            ("crates/auracle-wasm/src/lib.rs", "rust"),
+        ],
+    ),
     ("landing", "player", [("www/landing/index.html", "html"), ("www/landing/*.js", "js")]),
     # The live figures the landing page and the guide load: their literals
     # are captions and labels.
@@ -536,13 +563,134 @@ def script_lines(text: str) -> list[tuple[int, str]]:
     return [(text.count("\n", 0, m.start()) + 1, html.unescape(json.loads(m.group(1)))) for m in SCRIPT_TEXT.finditer(text)]
 
 
+RS_ESC = re.compile(r"\\(\n[ \t\r\n]*|u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)", re.S)
+# A raw string's opener (`r"`, `r#"`, `br##"`), or a plain one's prefix.
+RS_RAW = re.compile(r"(?:b|c)?r(#*)\"")
+RS_PREFIX = re.compile(r"(?:b|c)?\"")
+# A test item: the attribute, then everything up to the end of the item it
+# marks (a `mod tests { … }`, a helper `fn`, or a `use …;`).
+RS_TEST = re.compile(r"#\[\s*cfg\s*\(\s*test\s*\)\s*\]")
+
+
+def rs_unescape(s: str) -> str:
+    """A Rust string's text. A line continuation keeps its line breaks, so a
+    hit after it is counted on its own line."""
+
+    def one(m: re.Match) -> str:
+        e = m.group(1)
+        if e[0] == "\n":
+            return "\n" * e.count("\n")
+        if e[0] == "u" and len(e) > 1:
+            return chr(int(e[2:-1].replace("_", ""), 16))
+        if e[0] == "x" and len(e) == 3:
+            return chr(int(e[1:], 16))
+        return " " if e in "nrt0" else e
+
+    return RS_ESC.sub(one, s)
+
+
+def rs_raw(t: str) -> tuple[list[tuple[int, int, str]], list[int], list[tuple[int, int]]]:
+    """Every string literal in a Rust file, as (start, end, text), with the
+    offset of every `// voice: name` comment and the span of every
+    `#[cfg(test)]` item. Never its comments (nested ones too), its char
+    literals or its lifetimes. An attribute's literal is read: a refusal's
+    text lives in `#[error("…")]`."""
+    raw: list[tuple[int, int, str]] = []
+    marks: list[int] = []
+    tests: list[tuple[int, int]] = []
+    # An open test item: where it starts, its brace depth, and its bracket and
+    # paren depth (so the `;` in `[u8; 4]` does not end it).
+    test_at, depth, nest = None, 0, 0
+    i, n = 0, len(t)
+    while i < n:
+        ch = t[i]
+        if t.startswith("//", i):
+            j = t.find("\n", i)
+            j = n if j < 0 else j
+            if NAME_MARK.match(t, i, j):
+                marks.append(i)
+            i = j
+            continue
+        if t.startswith("/*", i):
+            j, nest = i + 2, 1
+            while j < n and nest:
+                if t.startswith("/*", j):
+                    nest, j = nest + 1, j + 2
+                elif t.startswith("*/", j):
+                    nest, j = nest - 1, j + 2
+                else:
+                    j += 1
+            i = j
+            continue
+        word_start = i == 0 or not (t[i - 1].isalnum() or t[i - 1] == "_")
+        m = RS_RAW.match(t, i) if word_start else None
+        if m:
+            close = '"' + m.group(1)
+            j = t.find(close, m.end())
+            j = n if j < 0 else j
+            raw.append((i, j + len(close), t[m.end() : j]))
+            i = j + len(close)
+            continue
+        m = RS_PREFIX.match(t, i) if word_start or ch == '"' else None
+        if m:
+            j = m.end()
+            while j < n and t[j] != '"':
+                j += 2 if t[j] == "\\" else 1
+            raw.append((i, j + 1, rs_unescape(t[m.end() : j])))
+            i = j + 1
+            continue
+        if ch == "'":
+            # A char literal ('"', '\'', '\u{2014}'), or a lifetime ('a).
+            c = re.match(r"'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'", t[i : i + 16])
+            i += len(c.group(0)) if c else 1
+            continue
+        if test_at is None and ch == "#":
+            m = RS_TEST.match(t, i)
+            if m:
+                test_at, depth, nest = i, 0, 0
+                i = m.end()
+                continue
+        if test_at is not None:
+            if ch in "([":
+                nest += 1
+            elif ch in ")]":
+                nest -= 1
+            elif ch == "{":
+                depth += 1
+            elif ch == "}" or (ch == ";" and depth == 0 and nest == 0):
+                depth -= ch == "}"
+                if depth == 0:
+                    tests.append((test_at, i + 1))
+                    test_at = None
+        i += 1
+    if test_at is not None:
+        tests.append((test_at, n))
+    return raw, marks, tests
+
+
+def rust_literals(t: str) -> list[tuple[int, str]]:
+    """A Rust file's copy: its string literals, as (line, text), less the
+    `#[cfg(test)]` items and the lines marked `// voice: name`."""
+    starts = [0] + [i + 1 for i, c in enumerate(t) if c == "\n"]
+    line_of = lambda at: bisect.bisect_right(starts, at)  # noqa: E731
+    raw, marks, tests = rs_raw(t)
+    marked = {line_of(k) for k in marks}
+    out = []
+    for start, _, s in raw:
+        if any(a <= start < b for a, b in tests) or line_of(start) in marked:
+            continue
+        if s.strip():
+            out.append((line_of(start), s))
+    return out
+
+
 @functools.lru_cache(maxsize=512)
 def extract(rel: str, kind: str, text: str) -> tuple[tuple[int, str], ...]:
     """The segments a reader sees in one file's text, cached on the text, so
     a file read again unchanged is not read twice."""
     if kind == "js":
         return tuple(js_literals(text, rel))
-    return tuple({"html": html_text, "md": md_prose, "script": script_lines}[kind](text))
+    return tuple({"html": html_text, "md": md_prose, "script": script_lines, "rust": rust_literals}[kind](text))
 
 
 def segments(rel: str, kind: str) -> tuple[tuple[int, str], ...]:

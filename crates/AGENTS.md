@@ -37,6 +37,14 @@ each crate's own `AGENTS.md` has its rules.
   ([ADR-001](../docs/decisions/001-one-random-stream-per-consumer.md)).
 - **Numbers the books quote are named constants.** If you change a default,
   grep `www/reference` and `www/docs` for its name and fix the text.
+- **Strings that reach the screen are copy, and they are checked.** Preset
+  names and descriptions, the rack's labels, PERFORM's control words, the
+  bank's sound names and the reasons an edit is refused follow
+  [`www/brand/voice.md`](../www/brand/voice.md). `make dev-check` reads every
+  string literal (not comments, not `#[cfg(test)]` items) in the files they
+  come from, listed as the `engine` surface in `www/checkwords.py`. A new file
+  whose strings reach the screen joins that list; a line there that holds
+  names, codes or JSON keys ends in `// voice: name`.
 - **A Rust change the app uses needs `make wasm`** before any browser test or
   film rehearsal means anything.
 
