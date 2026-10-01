@@ -207,6 +207,65 @@ impl RenderJob {
     }
 }
 
+/// The persistent render cache's namespace for `phrase_json`, or `""` if the
+/// phrase does not parse.
+///
+/// Two rows may only be compared, stored or served under the same namespace:
+/// it pins the stimulus, [`auracle_features::RENDER_EPOCH`] (the featurizer's
+/// own generation) and [`auracle_features::QUIVER_DSP_VERSION`] (the DSP it
+/// renders with). A build whose φ differs from the one that wrote a row
+/// therefore cannot read it: every row is stored under a key that begins with
+/// its namespace ([`farm_key`]), so a row from another namespace is never a
+/// hit, and there is no stale-row path to get wrong. The worker also hands
+/// the namespace to PERFORM, which stamps the wirings it keeps with it.
+///
+/// The store this keys is `namespace → key → CachedFeatures`. Dropping a
+/// namespace is how a cache is invalidated, and it is the *only* correct
+/// granularity: φ moving invalidates everything measured under the old φ.
+#[wasm_bindgen]
+pub fn cache_namespace(phrase_json: &str) -> String {
+    serde_json::from_str::<PhraseSpec>(phrase_json)
+        .map(|spec| auracle_features::cache_namespace(&spec))
+        .unwrap_or_default()
+}
+
+/// The persistent render cache's key for `(tree_json, phrase_json)`,
+/// computed **without rendering it**: what a caller asks the persistent cache
+/// about before paying for a render. See [`persistent_key`].
+///
+/// Returns `""` if either argument fails to parse, which the caller should
+/// treat as a miss rather than an error: the render path validates its own
+/// inputs and is the one place allowed to reject them.
+#[wasm_bindgen]
+pub fn farm_key(tree_json: &str, phrase_json: &str) -> String {
+    let (Ok(tree), Ok(spec)) = (
+        serde_json::from_str::<PatchTree>(tree_json),
+        serde_json::from_str::<PhraseSpec>(phrase_json),
+    ) else {
+        return String::new();
+    };
+    persistent_key(&tree, &spec)
+}
+
+/// `"<cache_namespace>/<render_key>"`: a row's namespace, then its content
+/// address.
+///
+/// The namespace is in every key, not only in the store's stamp, because the
+/// stamp is checked once, when a farm worker opens the store (`cacheOpen` in
+/// `farm.js`). A tab still running an older build keeps writing rows into a
+/// store that a newer tab has since cleared and re-stamped, and the engine's
+/// own check (`pre_featurized`) compares the content address alone, which a
+/// DSP or featurizer change does not move. Keyed by `render_key` alone, those
+/// rows were served to the newer build as current φ; keyed with the
+/// namespace, they are never a hit.
+fn persistent_key(tree: &PatchTree, spec: &PhraseSpec) -> String {
+    format!(
+        "{}/{}",
+        auracle_features::cache_namespace(spec),
+        auracle_features::render_key(tree, spec)
+    )
+}
+
 /// Render, vet and featurize one term under `phrase_json` — the farm worker's
 /// entire job, and a pure function of its two arguments.
 ///
@@ -221,44 +280,6 @@ impl RenderJob {
 /// audio at admission), so the flag exists to let the caller pay for audio
 /// exactly where it will be heard — the first few patches, which are the ones
 /// the user auditions while the rest of the bank lands.
-/// The persistent render cache's namespace for `phrase_json`, or `""` if the
-/// phrase does not parse.
-///
-/// Two rows may only be compared, stored or served under the same namespace:
-/// it pins the stimulus, [`auracle_features::RENDER_EPOCH`] (the featurizer's
-/// own generation) and [`auracle_features::QUIVER_DSP_VERSION`] (the DSP it
-/// renders with). A build whose φ differs from the one that wrote a row
-/// therefore cannot read it — the namespace simply does not match, so there is
-/// no stale-row path to get wrong. The worker also hands it to PERFORM, which
-/// stamps the wirings it keeps with it.
-///
-/// The store this keys is `namespace → key → CachedFeatures`. Dropping a
-/// namespace is how a cache is invalidated, and it is the *only* correct
-/// granularity: φ moving invalidates everything measured under the old φ.
-#[wasm_bindgen]
-pub fn cache_namespace(phrase_json: &str) -> String {
-    serde_json::from_str::<PhraseSpec>(phrase_json)
-        .map(|spec| auracle_features::cache_namespace(&spec))
-        .unwrap_or_default()
-}
-
-/// The content address of `(tree_json, phrase_json)` **without rendering it** —
-/// what a caller asks the persistent cache about before paying for a render.
-///
-/// Returns `""` if either argument fails to parse, which the caller should
-/// treat as a miss rather than an error: the render path validates its own
-/// inputs and is the one place allowed to reject them.
-#[wasm_bindgen]
-pub fn farm_key(tree_json: &str, phrase_json: &str) -> String {
-    let (Ok(tree), Ok(spec)) = (
-        serde_json::from_str::<PatchTree>(tree_json),
-        serde_json::from_str::<PhraseSpec>(phrase_json),
-    ) else {
-        return String::new();
-    };
-    auracle_features::render_key(&tree, &spec)
-}
-
 #[wasm_bindgen]
 pub fn farm_render(tree_json: &str, phrase_json: &str, want_audio: bool) -> RenderJob {
     let rejected = || RenderJob {
@@ -2495,6 +2516,33 @@ mod tests {
             compared > 0,
             "neither a drift nor an offer grew, so nothing was checked"
         );
+    }
+
+    /// A row in the farm's persistent cache is keyed by its namespace, so a
+    /// row another build wrote (another quiver, another featurizer) is never
+    /// a hit. The store's own stamp is checked only when a farm worker opens
+    /// it, and a tab still on the old build writes on into a store a newer
+    /// tab has re-stamped; the engine re-checks a row's content address, which
+    /// a DSP change does not move. One build has one namespace, so this pins
+    /// the key's shape: the namespace this binary measures in, then the
+    /// content address.
+    #[test]
+    fn a_stored_row_is_keyed_by_its_namespace() {
+        let spec = PhraseSpec::default();
+        let phrase = serde_json::to_string(&spec).unwrap();
+        let tree = auracle_grammar::presets()[0].1.clone();
+        let tree_json = serde_json::to_string(&tree).unwrap();
+        let ns = cache_namespace(&phrase);
+        assert!(
+            ns.contains(&format!(":q{}:", auracle_features::QUIVER_DSP_VERSION)),
+            "the namespace names the DSP: {ns}"
+        );
+        assert_eq!(
+            farm_key(&tree_json, &phrase),
+            format!("{ns}/{}", auracle_features::render_key(&tree, &spec)),
+            "a stored row's key must begin with the namespace it was measured in"
+        );
+        assert_eq!(farm_key("{", &phrase), "", "an unparsable tree is a miss");
     }
 
     /// The menu bar's TAUGHT tooltip splits the count by kind from
