@@ -82,7 +82,7 @@ A named control is in one of four states, each with its own look:
 
 | Look | Line under it | What it means |
 |---|---|---|
-| A solid ring both ways | the knobs it turns (*mod depth · lfo rate +2*) | It turns both ways on this sound |
+| A solid ring both ways | the knobs it turns (*mod depth · lfo rate +2*), or one and how many more when two names would run long | It turns both ways on this sound |
 | Solid on one side, dotted on the other, a stop at the top | *turns toward restless only* | It turns one way only (see [half-closed controls](#half-closed-controls)) |
 | Amber, a dashed ring | *turn to ask for it* | This patch’s knobs can’t do it (see [search controls](#amber-dashed-search-controls)) |
 | Dim, a thin ring | *listening…* | Not measured on this sound yet. It does nothing, and springs back |
@@ -298,7 +298,7 @@ The line under WANDER says what it is doing:
 - *ideas · one in B* while B holds an offer;
 - *paused 3 s* while your hands are on other controls;
 - *frozen* while **FREEZE** stops it;
-- *staying: nothing better nearby* when the walk finds nothing it prefers.
+- *nothing better nearby* when the walk finds nothing it prefers, and stays.
 
 Wander runs only while PERFORM is on screen.
 

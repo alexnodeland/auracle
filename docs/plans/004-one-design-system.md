@@ -52,9 +52,19 @@ and printed key hints are built here; its other contracts stay in
      in `make dev-check` and fail on a colour (hex, `rgb()`, `hsl()` or a
      named one) written outside the tokens in every file on its `SCANNED`
      list ([`www/brand/README.md`](../../www/brand/README.md#the-tokens)).
-   - *Still to do:* the type scale, spacing, radii and motion tokens, each
-     with its approved specimen (task 4), and the check on sizes and
-     durations. Not yet checked for colour (`NOT_YET` in `tokens.py`):
+   - *Progress (2026-10-01):* **the type scale, spacing, radii and motion
+     are done**, at prototype v2's approved values (Plan-005 task 1): six
+     type roles on a 1.2 ratio with 11 px labels and a 12 px canvas floor,
+     `--s1` to `--s7`, `--r1` to `--r3`, three durations and two easings,
+     and the reduced-motion rule, generated into every surface. The app's
+     stylesheet and scripts are on them, with each literal the scale has no
+     step for marked `token-exempt:` and its reason. `tokens.py --check`
+     counts literal font sizes, spacings, radii and durations per file
+     against `www/brand/sizes-baseline.json`, a ratchet that only goes down,
+     and fails when a token is redefined after its block.
+   - *Still to do:* move the landing page, the brand page, the 404 and the
+     films onto the scale (their counts are in the baseline, listed by every
+     `--check`). Not yet checked for colour (`NOT_YET` in `tokens.py`):
      `www/viz/viz.js` and `viz.css` (the grammar figure's tiles glow in the
      dark theme's phosphors, wrong on Paper), `www/theme/fonts/auracle.css`
      (a literal fallback for `--bezel`, which Paper lacks) and

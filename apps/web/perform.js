@@ -581,7 +581,7 @@ export function createPerform(host) {
       if (inFlight("perform_offer")) return ["ideas · growing…", null];
     }
     if (!state.cur || !state.wire) return [z, null];
-    if (state.wanderStay && now - state.wanderStay < 6000) return ["staying: nothing better nearby", null];
+    if (state.wanderStay && now - state.wanderStay < 6000) return ["nothing better nearby", null];
     const [from, at] = wanderDue();
     const left = Math.max(0, at - now);
     const span = Math.max(1, at - from);
@@ -855,12 +855,17 @@ export function createPerform(host) {
   }
 
   // The caption under a control: at most two knobs by name, then how many
-  // more ("mod depth · lfo rate +1"). Three long names were clipped
-  // mid-word by the two-line clamp, which reads as broken; the tooltip and
-  // the under-the-hood strip list them all.
+  // more ("mod depth · lfo rate +1"), and one when two would run past
+  // CAPTION_CHARS (two names that need their modules, "wavefolder mod depth ·
+  // vco mod depth"). The caption wraps in three lines, and three lines of
+  // the narrowest column (1000 px) hold 24 characters on any renderer; the
+  // tooltip and the under-the-hood strip list every knob.
+  const CAPTION_CHARS = 24;
   function knobCaption(addrs) {
-    if (addrs.length <= 2) return knobWords(addrs);
-    return `${knobWords(addrs).split(" · ").slice(0, 2).join(" · ")} +${addrs.length - 2}`;
+    const names = knobWords(addrs).split(" · ");
+    const two = names.length <= 2 ? names.join(" · ") : `${names.slice(0, 2).join(" · ")} +${names.length - 2}`;
+    if (names.length < 2 || two.length <= CAPTION_CHARS) return two;
+    return `${names[0]} +${names.length - 1}`;
   }
 
   function onKnob(k, fromMidi) {
@@ -907,10 +912,12 @@ export function createPerform(host) {
   // sound does not move, but the dial used to jump to 12 o'clock under the
   // player's eyes ("I set Bright to 70% and now it says 0"), and a MIDI pot on
   // it went dead until swept back through the middle. Now the pointer glides
-  // home over RECENTRE_MS while a ghost tick marks where it was and fades
+  // home over `--d-state` while a ghost tick marks where it was and fades
   // (none of it under reduced motion), and a pot bound to it keeps working
   // from where it is (midi.js re-anchors instead of letting go).
-  const RECENTRE_MS = 250;
+  // A motion token's length in ms, read when the motion starts (main.js's
+  // `motionMs`): 0 under reduced motion, which the glides also skip.
+  const motionMs = (name) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
   const stillMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   function recentre(k) {
     if (k.tween) cancelAnimationFrame(k.tween);
@@ -928,8 +935,9 @@ export function createPerform(host) {
       ghost.classList.add("fade");
     }
     const t0 = performance.now();
+    const ms = motionMs("--d-state");
     const step = () => {
-      const u = clamp((performance.now() - t0) / RECENTRE_MS, 0, 1);
+      const u = ms > 0 ? clamp((performance.now() - t0) / ms, 0, 1) : 1;
       k.drawn = u >= 1 ? null : from * (1 - u * u * (3 - 2 * u));
       paintKnob(k);
       k.tween = u < 1 ? requestAnimationFrame(step) : null;
@@ -1544,7 +1552,7 @@ export function createPerform(host) {
   }
 
   // Blend back to *home*: at once for the sound and the control's value (B
-  // is empty or emptying), and over BLEND_HOME_MS for the pointer, drawn
+  // is empty or emptying), and over `--d-move` for the pointer, drawn
   // (`k.drawn`) as a re-centre is, so the eye sees where it went. A hand on
   // Blend stops the glide (bindDrag).
   //
@@ -1554,7 +1562,7 @@ export function createPerform(host) {
   // blend over the little travel it had left (from 0.9, all of it in about
   // thirteen steps), so the next nudge poured the next offer in over what the
   // player had just chosen, which is what bringing Blend home is for.
-  const BLEND_HOME_MS = 300;
+  // Home over `--d-move`.
   function blendHome() {
     const k = knobs.find((x) => x.spec.kind === "blend");
     state.blend = 0;
@@ -1568,8 +1576,9 @@ export function createPerform(host) {
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!v0 || still) return paintKnob(k);
     const t0 = performance.now();
+    const ms = motionMs("--d-move");
     const step = () => {
-      const u = clamp((performance.now() - t0) / BLEND_HOME_MS, 0, 1);
+      const u = ms > 0 ? clamp((performance.now() - t0) / ms, 0, 1) : 1;
       k.drawn = u >= 1 ? null : v0 * (1 - u * u * (3 - 2 * u));
       paintKnob(k);
       k.tween = u < 1 ? requestAnimationFrame(step) : null;

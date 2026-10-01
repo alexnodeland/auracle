@@ -68,6 +68,16 @@ modulation, but every modulation cable also ends in a named destination, and
 each jack is labeled as well as colored. The styles are colored on the taste
 map, and named in words everywhere they appear.
 
+## Type size
+
+**No text in the panels is smaller than 11 px,** and none drawn on a canvas
+(the scopes, and TASTE’s map and tabs) is smaller than 12 px.
+
+The rack is the exception, because it’s drawn to its zoom. Its labels are 9 to
+13 px at 1×, and grow as you zoom in. A label that would print under 8 px is
+left off, unless detail is set to full. A glyph on a button (▶, ✓) is sized to
+its button.
+
 ## Motion
 
 The rack pulses modulation cables at their modulator’s rate. That pulse is
