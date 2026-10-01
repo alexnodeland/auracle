@@ -118,8 +118,17 @@ A new module is a change in every layer. In order:
    modules built by value are why the wasm stack is 8 MB.
 4. **Describe**: plate title and knob labels in `describe.rs`. Labels are copy:
    a label says what turning it up does.
-5. **Mutate**: audible defaults for a player's insert in `mutate.rs`, and let
-   the edit gate cover it.
+5. **Mutate**: in `mutate.rs`, a `NodeKind`, its audible defaults in
+   `default_fragment` (its own second branch included) and its `graft` arm,
+   which seats the chain at `/0`. The compiler asks for those two; it does not
+   ask for these:
+   - `NodeKind::ALL`, which the edit gate sweeps (a const check and
+     `node_kind_all_names_every_kind` fail until the kind is there);
+   - `is_source`, if it is a source;
+   - the three tables with catch-all arms: `child_mut` if it has audio
+     children, `binary_children_mut` if it has two, and `mod_slot_mut` if it
+     has a modulation slot. Forget one and the kind silently has no children
+     or no slot.
 6. **φ_struct**: count it in `auracle-features/src/structural.rs` if the model
    should see it. That is a φ change: run `make revalidate`.
 7. **Web**: the node bank entry in `apps/web/main.js` (kind, name, group,

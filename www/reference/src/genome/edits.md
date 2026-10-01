@@ -11,8 +11,8 @@ an audio slot, and a filter always has exactly one audio input.
 
 | Op | Does |
 |---|---|
-| `Replace { key, kind }` | Swap the node’s kind. Subtrees are preserved where the sorts allow; replacing a source with a processor **wraps** the source |
-| `Insert { key, kind }` | Insert a processor into the wire between this node and its parent |
+| `Replace { key, kind }` | Swap the node’s kind. A processor keeps the old node’s primary input, so replacing a source with a processor **wraps** the source; a source takes the whole subtree’s place |
+| `Insert { key, kind }` | Insert a processor into the wire between this node and its parent; the old subtree becomes its primary input |
 | `Delete { key }` | Remove the node, splicing its primary input up to take its place |
 | `SetMod { key, kind }` | Set the modulation slot on an audio module. A source kind replaces the slot’s term; a shaper **wraps** it |
 | `SwapMix { key }` | Swap the two audio inputs of a binary node |
@@ -26,6 +26,32 @@ Nodes are addressed by [trace key](../architecture/addresses.md): `node`,
 The `*Tree` variants exist for the wiring gestures: “plug this staged chain in
 here”. Callers park the displaced subtree client-side, which is what the SET
 ASIDE tray is.
+
+## What a splice keeps
+
+`Insert` and a processor `Replace` place the kind’s default module, and they
+seat the chain with the same splice `InsertTree` uses. The chain becomes the new
+module’s primary input, `/0`: the old subtree for `Insert`, the old node’s own
+primary input for `Replace` (the old node itself, when it was a source). On the
+two-input modules that is a mix’s or ring mod’s `a`, the `in` of a compressor,
+ducker or gate, and a vocoder’s **carrier**, the one branch whose waveform
+reaches the output. A `Replace` drops the old node itself and its `/1`, and
+nothing else. The default module brings its own second branch:
+
+| Kind | Its own `/1` |
+|---|---|
+| mix | a triangle VCO |
+| ring mod | a sine VCO an octave up |
+| comp, duck, gate | a pluck as the key |
+| vocoder | a formant oscillator as the voice |
+
+So a vocoder placed on a chain makes that chain speak. The Vox Machina preset
+is built the same way: a supersaw stack as the carrier, a formant voice as the
+modulator. Until October 2026 `Insert` and `Replace` built the vocoder with a
+supersaw carrier of its own and dropped the chain they landed on. The app was
+never affected: it never sends `Insert` or `Replace`. Its structural edits are
+`insert_tree`, `replace_tree`, `set_mod_tree`, `set_mod`, `swap_mix` and
+`delete`, and its other wiring gestures post the whole rewired tree.
 
 ## Wrap versus replace
 
@@ -41,15 +67,21 @@ The distinction shows up twice and is the same idea both times:
 The socket in the UI says which of **fill / replace / wrap** it is about to do,
 so the choice is never implicit.
 
-## Hand edits and MH proposals are the same moves
+## Hand edits and MH proposals share one lattice
 
-**These are the operations evolution’s structural proposals make.** There is no
-separate mutation vocabulary.
+**The search does not call these operations.** A walk’s structural move is
+fugue’s single-site MH on the trace: it redraws one structural site (`#leaf`,
+`#src`, `#op` or `#mod`) and draws from the prior whatever the new choice
+needs, keeping every site whose address survives. What hand edits and the
+search share is the state space and the
+[address scheme](../architecture/addresses.md): both produce terms of one
+grammar, under ceilings that end where the prior’s support does.
 
 Consequences:
 
-- Anything a player can build by hand, the search can reach. Anything the
-  search produces, a player can edit.
+- Anything a player can build by hand, the search can score and walk from,
+  because it is inside the prior’s support. Anything the search produces, a
+  player can edit.
 - A structural edit cannot produce a term the search would consider invalid,
   because validity is one predicate.
 - `⚡ evolve from this` on a hand-built patch is not a special case.
