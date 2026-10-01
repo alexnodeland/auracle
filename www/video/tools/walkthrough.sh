@@ -47,12 +47,17 @@ if [ "$REC" = 1 ]; then
 fi
 python3 tools/takes.py "$F" || echo "!! takes need attention (see above)"
 [ "$POST" = 1 ] || exit 0
-BED=$(python3 -c "import json,sys;print(str(json.load(open(sys.argv[1]))['bed']).lower())" "films/$F/arrangement.json")
+# Is the film on the N3 bed (sound.json `bed.name`, as the timeline reads its
+# script)? Its score renders into music/<the score's title, as a file name>.
+read -r ON_N3 BED < <(python3 -c "
+import json, re, sys; sys.path.insert(0, 'tools'); import sound_defaults as d, timeline
+print(int(timeline.on_n3(json.load(open(sys.argv[1])))), re.sub('[^a-z0-9]+', '_', d.SCORES['bed']['title'].lower()).strip('_'))
+" "films/$F/script.json")
 rm -rf "out/$F/music"
-if [ "$BED" = n3 ]; then
-  python3 tools/fit_score.py --film "films/$F" "out/$F/n3.film.json" | sed -n 1p
-  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/n3.film.json" "www/video/out/$F/music" --jobs 3 | tail -2)
-  MUSIC=(--score "out/$F/n3.film.json" --music "out/$F/music/n3")
+if [ "$ON_N3" = 1 ]; then
+  python3 tools/fit_score.py --film "films/$F" "out/$F/$BED.film.json" | sed -n 1p
+  (cd "$ROOT" && cargo run -q --release -p auracle-wasm --example score -- "www/video/out/$F/$BED.film.json" "www/video/out/$F/music" --jobs 3 | tail -2)
+  MUSIC=(--score "out/$F/$BED.film.json" --music "out/$F/music/$BED")
 else
   A=$(python3 -c "import json,sys;a=json.load(open(sys.argv[1]));print(' '.join(f\"{s['section']}={s['bars']}\" for s in a['sections']))" "films/$F/arrangement.json")
   python3 tools/fit_score.py sound/study.json "out/$F/study.fitted.json" $A | sed -n 1p
