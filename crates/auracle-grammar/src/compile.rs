@@ -1055,11 +1055,28 @@ impl Compiler {
         if self.patch.set_param_by_id(node, port, value) {
             return Ok(());
         }
-        // `false` has two causes, and both are the compiler's mistake, never
-        // the tree's: no such control port, or a cable already on it.
-        if self.patch.get_param_by_id(node, port).is_some() {
+        // `false` has three causes, all the compiler's mistake and never the
+        // tree's: a cable already on the control input, whose sum shadows a
+        // base value; an id that is not a control input, which quiver hands to
+        // the module's own parameter setter, and the setter refused the value;
+        // or no such input or parameter at all. Told apart only here, on the
+        // error path.
+        let input = self
+            .patch
+            .nodes()
+            .find(|(id, _, _)| *id == node)
+            .and_then(|(_, _, m)| m.port_spec().input_by_name(port).map(|p| p.id));
+        let cabled = input.is_some_and(|id| {
+            let to = PortRef { node, port: id };
+            self.patch.cables().iter().any(|c| c.to == to)
+        });
+        if cabled {
             Err(PatchError::CompilationFailed(format!(
                 "pinned constant `{port}` would be shadowed by the cable already on it"
+            )))
+        } else if self.patch.get_param_by_id(node, port).is_some() {
+            Err(PatchError::CompilationFailed(format!(
+                "`{port}` is not a control input, and the module refused {value} for it"
             )))
         } else {
             Err(PatchError::InvalidPort {
@@ -3171,6 +3188,87 @@ mod tests {
         assert!(
             v.patch.set_param_by_id(id, port, value),
             "no control port `{port}` on `{node}`"
+        );
+    }
+
+    /// A module whose own parameter setter refuses every value. No quiver
+    /// module refuses a value for a parameter it has today, so this stands in
+    /// for the third reason a pin cannot take.
+    struct Refuses(PortSpec);
+    impl GraphModule for Refuses {
+        fn port_spec(&self) -> &PortSpec {
+            &self.0
+        }
+        fn tick(&mut self, _: &PortValues, _: &mut PortValues) {}
+        fn reset(&mut self) {}
+        fn set_sample_rate(&mut self, _: f64) {}
+        fn introspect(&self) -> Option<&dyn quiver::introspection::ModuleIntrospection> {
+            Some(self)
+        }
+        fn introspect_mut(
+            &mut self,
+        ) -> Option<&mut dyn quiver::introspection::ModuleIntrospection> {
+            Some(self)
+        }
+    }
+    impl quiver::introspection::ModuleIntrospection for Refuses {
+        fn param_infos(&self) -> Vec<quiver::introspection::ParamInfo> {
+            vec![quiver::introspection::ParamInfo::new("depth", "Depth")]
+        }
+        fn set_param_by_id(&mut self, _: &str, _: f64) -> bool {
+            false
+        }
+    }
+
+    /// A pin that cannot take says why, because each cause is a different
+    /// compiler mistake: a cable already on the control input (quiver 0.4.0
+    /// refuses the pin rather than letting the cable shadow it), an id that
+    /// is not a control input and that the module's own setter refuses, or no
+    /// such input or parameter at all.
+    #[test]
+    fn a_pin_that_cannot_take_says_why() {
+        let mut patch = Patch::new(SR);
+        let gate = patch.add(
+            "io:gate",
+            ExternalInput::gate(Arc::new(AtomicF64::new(0.0))),
+        );
+        let pitch = patch.add(
+            "io:pitch",
+            ExternalInput::voct(Arc::new(AtomicF64::new(0.0))),
+        );
+        let mut c = Compiler {
+            patch,
+            pitch_out: pitch.out("out"),
+            gate_out: gate.out("out"),
+            params: HashMap::new(),
+            taps: Vec::new(),
+            pins: Vec::new(),
+        };
+        let adsr = c.patch.add("t:adsr", Adsr::new(SR));
+        c.constant(0.5, adsr.id(), "sustain")
+            .expect("an unpatched control input takes a pin");
+        c.patch.connect(c.gate_out, adsr.in_("release")).unwrap();
+        let err = c.constant(0.5, adsr.id(), "release").unwrap_err();
+        assert!(
+            matches!(&err, PatchError::CompilationFailed(m) if m.contains("shadowed")),
+            "a cabled input: {err}"
+        );
+        let refuses = c.patch.add(
+            "t:refuses",
+            Refuses(PortSpec {
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+            }),
+        );
+        let err = c.constant(0.5, refuses.id(), "depth").unwrap_err();
+        assert!(
+            matches!(&err, PatchError::CompilationFailed(m) if m.contains("refused")),
+            "a parameter its module refuses: {err}"
+        );
+        let err = c.constant(0.5, adsr.id(), "no_such_input").unwrap_err();
+        assert!(
+            matches!(err, PatchError::InvalidPort { .. }),
+            "no such input: {err}"
         );
     }
 
