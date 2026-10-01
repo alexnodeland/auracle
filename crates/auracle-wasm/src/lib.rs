@@ -15,7 +15,9 @@
 //!
 //! The **workbench** is the interactive-panel surface: `edit_begin(id)`
 //! clones a candidate's tree; `edit_param` writes one knob (a trace-address
-//! edit) and re-renders; `edit_commit` inserts the result as a new candidate
+//! edit) and re-renders (`edit_param_apply` then `edit_revet` is the same in
+//! two calls, so the voices can be handed the tree first); `edit_commit`
+//! inserts the result as a new candidate
 //! (optionally logging an "edited beats original" duel);
 //! `refine_from(id, locks)` evolves everything *except* the locked
 //! addresses.
@@ -1904,8 +1906,26 @@ impl WasmEngine {
     /// Write one knob on the workbench tree (`value` is the normalized
     /// continuous value, or the index when `is_index`), then re-render and
     /// re-vet. Returns false if the edit was rejected (structural site,
-    /// unknown address, no workbench).
+    /// unknown address, no workbench). A failed vet keeps the edit (the user
+    /// asked for it) but flags it: the buffer is withheld, never played
+    /// unvetted.
     pub fn edit_param(&mut self, addr: &str, value: f64, is_index: bool) -> bool {
+        let ok = self.edit_param_apply(addr, value, is_index);
+        if ok {
+            self.edit_revet();
+        }
+        ok
+    }
+
+    /// Write one knob on the workbench tree **without** re-rendering: the
+    /// cheap half of [`Self::edit_param`], split out as
+    /// [`Self::edit_structure_apply`] is. A selector (`wave`, `fkind`, …)
+    /// has no live handle in the voices, so they hear it only as a new tree,
+    /// and while the write and the render were one call that tree reached a
+    /// held note only after the render. A caller that splits owes a following
+    /// [`Self::edit_revet`]. Returns false, changing nothing, where
+    /// `edit_param` would.
+    pub fn edit_param_apply(&mut self, addr: &str, value: f64, is_index: bool) -> bool {
         // `f64::clamp` passes NaN through, and a NaN knob would then be
         // written into the tree, featurized, and logged. Refuse it here, where
         // it is still a rejected gesture and not evidence.
@@ -1920,26 +1940,8 @@ impl WasmEngine {
         } else {
             ParamValue::Continuous(value)
         };
-        let (phrase, memo) = (self.phrase(), self.engine.memo().clone());
         match set_param(tree, addr, v) {
             Ok(edited) => {
-                match featurize_memo(&edited, &phrase, &memo, true) {
-                    Ok((cf, audio)) => {
-                        self.bench_makeup = live_makeup(&cf.features);
-                        self.bench_render = bench_audio(&edited, &phrase, &cf.features, audio);
-                        self.bench_vet_ok = true;
-                        self.bench_vet_silent = false;
-                        self.set_bench_phi(Some(cf.features.phi()));
-                    }
-                    Err(e) => {
-                        // Keep the edit (the user asked for it) but flag it:
-                        // the buffer is withheld, never played unvetted.
-                        self.bench_render = None;
-                        self.bench_vet_ok = false;
-                        self.bench_vet_silent = is_silent(&e);
-                        self.set_bench_phi(None);
-                    }
-                }
                 self.bench_tree = Some(edited);
                 true
             }
@@ -3448,6 +3450,62 @@ mod tests {
             !engine.edit_differs_from_original(),
             "returning to the original tree still read as an edit"
         );
+    }
+
+    /// A selector's write is split as a structural edit is: the tree moves at
+    /// once and the render waits for `edit_revet`, so the worker can hand the
+    /// voices the new tree first. Apply then revet lands exactly where
+    /// `edit_param` does, and a refused write moves nothing.
+    #[test]
+    fn a_selector_written_before_its_render_lands_where_edit_param_does() {
+        let mut engine = WasmEngine::new(0x5E1E, 6);
+        while engine.fill_step(3) > 0 {}
+        let id = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked()).unwrap()[0]["id"]
+            .as_u64()
+            .unwrap() as u32;
+        assert!(engine.edit_begin(id));
+        let rack: serde_json::Value = serde_json::from_str(&engine.edit_describe()).unwrap();
+        let (addr, next) = rack["modules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|m| m["knobs"].as_array().unwrap().iter())
+            .find(|k| k["addr"].as_str().unwrap().ends_with("#wave"))
+            .map(|k| {
+                let n = k["kind"]["options"].as_array().unwrap().len();
+                let v = k["value"].as_f64().unwrap().round() as usize;
+                (
+                    k["addr"].as_str().unwrap().to_string(),
+                    ((v + 1) % n) as f64,
+                )
+            })
+            .expect("the patch has an oscillator with a wave selector");
+        let (tree0, render0) = (engine.edit_tree_json(), engine.edit_render());
+
+        assert!(!engine.edit_param_apply(&addr, f64::NAN, true));
+        assert!(!engine.edit_param_apply("node/9/9#nowhere", next, true));
+        assert_eq!(
+            engine.edit_tree_json(),
+            tree0,
+            "a refused write moved the tree"
+        );
+
+        assert!(engine.edit_param_apply(&addr, next, true));
+        let tree1 = engine.edit_tree_json();
+        assert_ne!(tree1, tree0, "the write did not reach the tree");
+        assert_eq!(
+            engine.edit_render(),
+            render0,
+            "the render moved before it was asked for"
+        );
+        engine.edit_revet();
+        let render1 = engine.edit_render();
+        assert_ne!(render1, render0, "another wave rendered the same phrase");
+
+        assert_eq!(engine.edit_set_tree(&tree0), "");
+        assert!(engine.edit_param(&addr, next, true));
+        assert_eq!(engine.edit_tree_json(), tree1);
+        assert_eq!(engine.edit_render(), render1);
     }
 
     /// The readout above the rack describes the tree under the player's

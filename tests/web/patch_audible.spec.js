@@ -23,6 +23,11 @@
 //   changes what comes out of the speakers to each waveform's harmonic
 //   signature, and once the edit has landed ▶ plays the triangle, Space stops
 //   it, and Space plays it again.
+// - The held note takes the new wave before the engine has rendered the
+//   change: the voices are handed the new tree, and the output reads the new
+//   wave, before the edit's reply lands (the render slowed by 1.5 s so the
+//   two are apart on any machine), and the reply swaps nothing again. It used
+//   to wait for the render: the tree reached the voices with the reply.
 // - Turning the filter's cutoff down lowers the centroid and the 3rd harmonic,
 //   live and on ▶.
 // - ▶ or Space pressed while a wave change is still at the engine plays the
@@ -38,6 +43,9 @@
 // - In PATCH, Space with ▶ disabled (nothing reaches the output) says so and
 //   plays nothing, rather than the bank's render of the patch before the edit;
 //   ▶'s tooltip gives the same reason.
+// - Space in PERFORM and EVOLVE plays the sound as edited (the wave changed in
+//   PATCH), not the preset as saved, and waits like ▶ for an edit still at the
+//   engine when it is pressed.
 //
 // The engine is made slow for real where a test needs the window between an
 // edit and its reply (a busy-wait prepended to worker.js, as
@@ -45,9 +53,8 @@
 //
 // What it does not claim: that the harmonic levels are exact (the tolerances
 // are a few dB either side of the textbook values); how quickly a wave change
-// is heard live (it waits for the engine's render, a few hundred ms; the log
-// prints it); anything about ▶ or Space in the other views, which play the
-// bank's render of the patch, not the bench's; anything about other patches.
+// is heard live beyond "before its render" (the analyser's window is a third
+// of a second; the log prints both times); anything about other patches.
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
@@ -144,6 +151,15 @@ const INIT = `(() => {
     return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
   };
 
+  // Every tree handed to the voices (the worklet's \`patch\` message), by
+  // time: when a change reached a held note, whatever the analyser's window.
+  const voiced = (window.__pwVoiced = []);
+  const portPost = MessagePort.prototype.postMessage;
+  MessagePort.prototype.postMessage = function (m, ...rest) {
+    if (m && m.type === "patch") voiced.push(performance.now());
+    return portPost.call(this, m, ...rest);
+  };
+
   // When the hand last pressed the wave chip, ▶ and Space (page clock).
   const at = (window.__pwAt = {});
   document.addEventListener("pointerdown", (e) => {
@@ -191,10 +207,28 @@ const INIT = `(() => {
 
 // Prepended to worker.js (as in patch_editing.spec.js): a busy-wait before the
 // engine's own handler sees chosen request types, switched on by a message.
+//
+// `__pw_slow_render` slows the render itself instead: `edit_param` and
+// `edit_revet` busy-wait before they run, and `edit_param_apply` (the write
+// without the render) does not. So the write and its render can be told
+// apart in time on any machine.
 const SLOW = `let __pwSlow = {};
 self.addEventListener("message", (e) => {
   const d = e.data;
   if (d && d.type === "__pw_slow") { __pwSlow = d.slow || {}; e.stopImmediatePropagation(); return; }
+  if (d && d.type === "__pw_slow_render") {
+    e.stopImmediatePropagation();
+    const P = WasmEngine.prototype;
+    for (const name of ["edit_param", "edit_revet"]) {
+      const f = P["__pw_" + name] || (P["__pw_" + name] = P[name]);
+      P[name] = function (...a) {
+        const until = performance.now() + d.ms;
+        while (performance.now() < until) {}
+        return f.apply(this, a);
+      };
+    }
+    return;
+  }
   const ms = d && __pwSlow[d.type];
   if (ms) { const until = performance.now() + ms; while (performance.now() < until) {} }
 });
@@ -228,6 +262,8 @@ async function boot(page, { slowable = false } = {}) {
 
 const slow = (page, map) =>
   page.evaluate((m) => window.__pwEngine().postMessage({ type: "__pw_slow", slow: m }), map);
+const slowRender = (page, ms) =>
+  page.evaluate((n) => window.__pwEngine().postMessage({ type: "__pw_slow_render", ms: n }), ms);
 
 /** Every edit posted has been answered, and stays that way for `quiet` ms. */
 async function settled(page, quiet = 700) {
@@ -322,6 +358,7 @@ const WAVES = {
   sin: { h2: null, h3: null },
   tri: { h2: null, h3: -19.1 },
   sqr: { h2: null, h3: -9.5 },
+  saw: { h2: -6.0, h3: -9.5 },
 };
 const TOL = 3.5;
 const isWave = (s, w) =>
@@ -457,6 +494,43 @@ test("a VCO's wave cycled in PATCH is heard: live under a held note, and on ▶ 
   expect(errors).toEqual([]);
 });
 
+test("a wave changed under a held note is heard before the engine has rendered the change", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await boot(page, { slowable: true });
+  await openPreset(page, "Falling Sign");
+  const { addr } = await waveKnob(page);
+  await expect(chipText(page, addr)).toHaveText("sqr");
+  await holdC4(page);
+  expectWave(await liveSpectrum(page), "sqr", "live");
+  // The render behind the change takes a second and a half more on any
+  // machine; the write ahead of it does not.
+  await slowRender(page, 1500);
+  const n = await replies(page);
+  await page.evaluate((w) => { window.__pwRec = window.__pwRecord(3000, w); }, C4);
+  await clickWave(page);
+  await expect(chipText(page, addr)).toHaveText("sin");
+  const [chip, snaps] = await page.evaluate(async () => [window.__pwAt.chip, await window.__pwRec]);
+  await pastReply(page, n, 0);
+  const [landed, voiced] = await page.evaluate(
+    ([i, t]) => [window.__pwIO.benchAt[i], window.__pwVoiced.find((x) => x > t)], [n, chip]);
+  const heard = snaps.find((x) => x.at > chip && isWave(x, "sin"));
+  console.log(
+    `[patch_audible] sqr → sin under a held note: the voices had it ${voiced ? Math.round(voiced - chip) + " ms" : "never"} ` +
+      `after the click, the new wave read ${heard ? Math.round(heard.at - chip) + " ms" : "after 3 s"}, ` +
+      `the engine's reply (its render) at ${Math.round(landed - chip)} ms`,
+  );
+  expect(voiced, "the voices were handed the new wave").toBeTruthy();
+  expect(voiced, "the voices had the new wave before its render landed").toBeLessThan(landed);
+  expect(heard, "the new wave is heard at the output").toBeTruthy();
+  expect(heard.at, "the new wave is heard before its render landed").toBeLessThan(landed);
+  // And once the render lands, the held note keeps the wave: no second swap.
+  await settled(page);
+  expectWave(await liveSpectrum(page), "sin", "live, after the render landed");
+  expect(await page.evaluate((t) => window.__pwVoiced.filter((x) => x > t).length, chip), "one swap for one change").toBe(1);
+  await page.keyboard.up("a");
+  expect(errors).toEqual([]);
+});
+
 test("a filter cutoff turned down in PATCH lowers the spectral centroid, live and on ▶", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = await boot(page);
@@ -533,6 +607,51 @@ test("▶ and Space pressed while a wave change is still at the engine play the 
   console.log(`[patch_audible] Space ${Math.round(r.pressedMs)} ms after the chip, reply at ${Math.round(r.landedMs)} ms: ${fmt(r.s)}`);
   expect(r.pressedMs, "Space was pressed while the edit was at the engine").toBeLessThan(r.landedMs);
   expectWave(r.s, "tri", "Space pressed before the edit landed");
+  expect(errors).toEqual([]);
+});
+
+test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an edit still at the engine", async ({ page }) => {
+  test.setTimeout(150_000);
+  const errors = await boot(page, { slowable: true });
+  await openPreset(page, "Falling Sign");
+  const { addr } = await waveKnob(page);
+  // Square → sine, landed: the preset as saved is square, the sound is sine.
+  await clickWave(page);
+  await expect(chipText(page, addr)).toHaveText("sin");
+  await settled(page);
+  const stop = async () => {
+    await page.keyboard.press(" ");
+    await expect.poll(() => peakDb(page), { timeout: 15_000, intervals: [100] }).toBeLessThan(-80);
+  };
+  for (const view of ["perform", "evolve"]) {
+    await page.locator(`.viewtab[data-view="${view}"]`).click();
+    const s = await replaySpectrum(page, () => page.keyboard.press(" "), 2200);
+    console.log(`[patch_audible] Space in ${view}: ${fmt(s)} (${s.n} reads)`);
+    expectWave(s, "sin", `Space in ${view}`);
+    await stop();
+  }
+
+  // An edit still at the engine: the wave cycled in PATCH, the view left at
+  // once and Space pressed there before the edit's reply. It plays the new
+  // wave when the reply lands, not the one before.
+  await slow(page, { edit_param: 1500 });
+  for (const [view, want] of [["perform", "tri"], ["evolve", "saw"]]) {
+    await page.locator('.viewtab[data-view="play"]').click();
+    await quiet(page);
+    const n = await replies(page);
+    const s = await replaySpectrum(page, async () => {
+      await clickWave(page);
+      await page.locator(`.viewtab[data-view="${view}"]`).click();
+      await page.keyboard.press(" ");
+    }, 4500);
+    const at = await page.evaluate(() => window.__pwAt);
+    const landed = await page.evaluate((i) => window.__pwIO.benchAt[i], n);
+    console.log(`[patch_audible] Space in ${view} ${Math.round(at.space - at.chip)} ms after the chip, reply at ${Math.round(landed - at.chip)} ms: ${fmt(s)}`);
+    expect(at.space - at.chip, `Space in ${view} was pressed while the edit was at the engine`).toBeLessThan(landed - at.chip);
+    expectWave(s, want, `Space in ${view}, pressed before the edit landed`);
+    await stop();
+    await settled(page);
+  }
   expect(errors).toEqual([]);
 });
 

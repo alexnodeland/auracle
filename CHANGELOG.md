@@ -8,6 +8,24 @@ changelog that edits its own past is not a record.
 
 ## [Unreleased]
 
+### Fixed: Space and the settings on the rack
+
+- **Space plays the sound you’re playing, with your edits, in every view.**
+  In PERFORM and EVOLVE, Space played the preset as it was saved: change a
+  wave in PATCH, switch to PERFORM, press Space, and you heard the old wave.
+  It now plays the edited sound there too, and waits for an edit still on
+  its way, as ▶ does in PATCH.
+- **Space plays after a click on a setting or a control.** A click on a
+  wave or filter-mode chip left it focused, and Space then changed the
+  setting again; after a drag on a PERFORM control or a click on the XY
+  pad, Space did nothing. From the keyboard, Enter cycles a focused setting
+  and ⇧Enter goes back.
+- **A held note takes a new wave or filter mode as soon as the engine has
+  it.** A setting that changes how the patch is built reached held notes
+  only after the engine had rendered the sound again, a fraction of a second
+  later and longer while it was busy. It now reaches them first, as a new
+  module does.
+
 ### Fixed: a reload keeps what PERFORM just measured
 
 - **A patch PERFORM measured just before a reload plays at once after it.**

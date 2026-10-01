@@ -35,9 +35,11 @@ where <kbd>a</kbd> sits (`a = C4`).
 
 ```admonish note title="Letters play unless you’re typing"
 Note letters stop only while a text field or a drop-down has focus, so naming
-a sound doesn’t play a melody. A focused button, knob, or tab keeps the keys
-it uses (Space, Enter, and the arrows) and lets the letters through. That is
-why <kbd>m</kbd> saves a sound, not <kbd>s</kbd>: <kbd>s</kbd> is a note.
+a sound doesn’t play a melody. A focused control keeps the keys it uses and
+lets the letters through: a button takes Space and Enter, a knob or tab the
+arrows, and a setting on the rack Enter. Anywhere else, Space plays the sound
+you’re playing. That is why <kbd>m</kbd> saves a sound, not <kbd>s</kbd>:
+<kbd>s</kbd> is a note.
 ```
 
 ### MIDI

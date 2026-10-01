@@ -2318,6 +2318,20 @@ async function dispatch(m) {
       break;
     }
     case "edit_param": {
+      // A selector (`wave`, `fkind`, …: `early` from main) reaches the
+      // voices only as a new tree. Written, posted, then rendered, as a
+      // structural edit is, so a held note takes the new wave before the
+      // render rather than after it (`edit_param_apply`).
+      if (m.early && typeof engine.edit_param_apply === "function") {
+        if (!engine.edit_param_apply(m.addr, m.value, m.isIndex)) {
+          post({ type: "edit_rejected", addr: m.addr });
+          break;
+        }
+        postLiveTree(m.addr);
+        engine.edit_revet();
+        postBench({ edited: m.addr, token: m.token });
+        break;
+      }
       const ok = engine.edit_param(m.addr, m.value, m.isIndex);
       if (ok) postBench({ edited: m.addr, token: m.token });
       else post({ type: "edit_rejected", addr: m.addr });

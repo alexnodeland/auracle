@@ -3514,9 +3514,10 @@ function showView(name) {
   // Nothing may stay in your hand across a view change: PLAY is only hidden,
   // not torn down, so its sockets still match and the armed key handler would
   // go on swallowing EVOLVE's arrow-key votes.
-  // Nor may a ▶ waiting for an edit: its phrase would start in a view that has
-  // nothing to do with it.
-  if (name !== "play") { disarm(); cancelPending(); playWaitCancel(); }
+  // Nor may a ▶ or Space waiting for an edit: its phrase would start in a
+  // view other than the one it was pressed in.
+  if (name !== "play") { disarm(); cancelPending(); }
+  if (name !== currentView) playWaitCancel();
   currentView = name;
   // Per-viewer convenience: a returning player comes back to the view they
   // were in. Storage can throw (private windows); it is never load-bearing.
@@ -3692,10 +3693,12 @@ function stopAudition() {
 
 function toggleAudition() {
   if (stopAudition()) return;
-  // In PATCH, Space is the bench's ▶: the patch as it stands, or why it cannot
-  // play. The bank's render, below, is the patch from before any edit, and
-  // Space used to fall through to it whenever ▶ was disabled.
-  if (currentView === "play" && wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
+  // In every view, Space is the bench's ▶: the patch as it stands, waiting
+  // for an edit still on its way, or why it cannot play. The bank's render,
+  // below, is the patch from before any edit. Space used to fall through to
+  // it whenever ▶ was disabled, and outside PATCH always, so PERFORM and
+  // EVOLVE played the preset as saved under a rack you had changed.
+  if (wb.rack && wb.rack.modules && wb.rack.modules.length > 0) return playBench();
   const id = wb.subjectId != null ? wb.subjectId : livePatchId;
   if (id == null) return;
   awaitRender(id, () => play(id));
@@ -4546,10 +4549,18 @@ document.addEventListener("keydown", (e) => {
   // arrows and Home/End. Swallowing every non-note key made one click on HOLD
   // or ▶ turn off `[`/`]`, `m`, 1–5 and EVOLVE's ←/→ until the player clicked
   // elsewhere.
+  //
+  // Space is the transport everywhere else. Only a native button presses
+  // itself on Space; a drawn control (a rack setting's chip, a knob, a
+  // PERFORM control, the XY pad) keeps Space only if its own handler used it
+  // (a list row opening, `defaultPrevented`). A click leaves such a control
+  // focused, and Space after a click on a wave chip used to cycle the wave
+  // again, and after a PERFORM control did nothing at all. A chip cycles on
+  // Enter.
   const STEERED = "[role=tab], [role=menuitem], [role=menuitemcheckbox], [role=option], [role=slider], [data-addr], input[type=range]";
   const ctl = noteKey ? null : e.target?.closest?.(`button, [role=button], ${STEERED}`);
   if (ctl) {
-    const activates = e.key === " " || e.key === "Enter";
+    const activates = e.key === "Enter" || (e.key === " " && (ctl.matches("button") || e.defaultPrevented));
     const steers = /^(Arrow|Page)|^(Home|End)$/.test(e.key) && ctl.matches(STEERED);
     if (activates || steers) return;
   }
@@ -9755,8 +9766,8 @@ function buildRack(svg, rack, opts) {
           const sweepable = LIVE_INDEX_SITES.has(k.addr.split("#").pop());
           const tt = svgEl("title", {});
           tt.textContent = sweepable
-            ? `${k.label} · click to cycle, drag up or down to sweep (live)`
-            : `${k.label} · click to cycle`;
+            ? `${k.label} · click or Enter to cycle, drag up or down to sweep (live)`
+            : `${k.label} · click or Enter to cycle`;
           body.appendChild(tt);
           body.addEventListener("click", (ev) => {
             // The click a sweep leaves behind on its way up is not a cycle.
@@ -9807,6 +9818,8 @@ function buildRack(svg, rack, opts) {
         // mouse. One roving tab stop per control; arrows move, up/down turn.
         kg.setAttribute("tabindex", "-1");
         kg.setAttribute("role", k.kind.t === "continuous" ? "slider" : "button");
+        // A setting cycles on Enter, never on Space (the transport).
+        if (k.kind.t !== "continuous") kg.setAttribute("aria-keyshortcuts", "Enter Shift+Enter");
         kg.setAttribute("aria-label", `${m.title} ${k.label}`);
         kg.dataset.addr = k.addr;
         kg.dataset.kind = m.kind;
@@ -11651,7 +11664,11 @@ function postParam(q) {
   }
   editInFlight = true;
   paramAtWorker = q;
-  send({ type: "edit_param", addr, value: q.value, isIndex: q.isIndex, token: q.seq });
+  // A selector the voices cannot take as a parameter (`LIVE_INDEX_SITES`
+  // aside) asks the worker for its tree before its render: the voices hear
+  // it from that `tree_json`, not from the bench reply a render later.
+  const early = !!q.isIndex && !LIVE_INDEX_SITES.has(addr.split("#").pop());
+  send({ type: "edit_param", addr, value: q.value, isIndex: q.isIndex, token: q.seq, early });
 }
 
 /** The bench is being replaced: everything still waiting was aimed at the
@@ -13349,7 +13366,10 @@ $("rack-svg").addEventListener("keydown", (e) => {
     knob.value = Math.min(1, Math.max(0, knob.value + (e.key === "ArrowUp" ? step : -step)));
     paintKnob(kg, knob);
     sendEdit(knob.addr, knob.value, false, id);
-  } else if (e.key === "Enter" || e.key === " ") {
+  } else if (e.key === "Enter") {
+    // Enter cycles a setting (⇧ backwards). Not Space: Space is the
+    // transport, and a chip a click left focused took it, so Space after a
+    // click on the wave changed the wave again instead of playing it.
     if (knob.kind.t === "continuous") return;
     e.preventDefault();
     pushUndo();

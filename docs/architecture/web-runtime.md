@@ -196,10 +196,22 @@ through one ordered lane in `main.js`:
   by an edit's reply, so until then it is the sound from before the edit. A
   waiting ▶ is lit `.pending` at once, and is taken back by a second press,
   any stop or other ▶ (`stopAudition`, `awaitRender`, `cdPlay`, the node
-  bank's preview), an open or a failed one, and leaving PATCH. In PATCH,
-  Space is the bench's ▶ whenever a patch is on the bench, so with ▶
-  disabled it says why rather than playing the bank's render of the patch
-  from before any edit.
+  bank's preview), an open or a failed one, and leaving the view it was
+  pressed in. In every view, Space is the bench's ▶ whenever a patch is on
+  the bench (`toggleAudition`): PERFORM and EVOLVE play the edited patch and
+  wait for an edit in flight as PATCH does, and with ▶ disabled Space says
+  why rather than playing the bank's render of the patch from before any
+  edit. Outside PATCH nothing lights while it waits: ▶ is PATCH's.
+- Space is the transport even with a drawn control focused (a rack chip or
+  knob, a PERFORM control, the XY pad): only a native button, or a control
+  whose own handler used the key (`defaultPrevented`), keeps it. A rack
+  setting's chip cycles on Enter (⇧Enter back).
+- A selector the voices cannot take as a parameter (`wave`, `fkind`, `dmode`,
+  `rmode`; `LIVE_INDEX_SITES` are live) is sent with `early`: the worker
+  writes it (`edit_param_apply`), posts the tree (`tree_json`, as a
+  structural edit does), then renders (`edit_revet`), so a held note takes
+  the new wave before the render, and the bench reply only corrects the
+  makeup.
 
 An open reaches the voices before the bench. Opening is a render (the bench's
 buffer) on the engine's one thread, behind whatever render is running there,

@@ -22,6 +22,10 @@ To place a module without a mouse:
    Each one is announced.
 5. Press <kbd>Enter</kbd> to place it.
 
+A setting on the rack (a wave, a filter mode) cycles on <kbd>Enter</kbd>, and
+<kbd>⇧Enter</kbd> goes back. It doesn’t take <kbd>Space</kbd>: Space plays the
+sound you’re playing from anywhere, a focused knob or setting included.
+
 Focus is always visible, and a dialog returns focus to whatever opened it.
 [Keyboard and MIDI](./keyboard.md) has the full map.
 
