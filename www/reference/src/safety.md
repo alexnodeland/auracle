@@ -13,7 +13,7 @@ covers it.
 | Layer | Where | What |
 |---|---|---|
 | **0** | quiver | Denormals flushed at graph scatter; NaN-latch protection on stateful modules; soft-clipped filter state; cycle detection with named paths; non-finite module outputs zeroed at scatter |
-| **1** | `auracle-features` | [The vetting gate](./audition/vetting.md). Audition plays pre-rendered, vetted, normalized buffers, never a live unvetted patch |
+| **1** | `auracle-features` | [The vetting gate](./audition/vetting.md). Every ▶ plays a pre-rendered, vetted, normalized buffer. The live keys play an edit before its check, and a failed check mutes them ([below](#the-live-keys-play-an-edit-before-its-check)) |
 | **2** | `auracle-session` | Quarantine → `QUARANTINE_FITNESS = -50.0`, so the search *learns to avoid* the region |
 | **3** | `auracle-grammar` | Mandatory `… → DC blocker → VCA → Limiter → StereoOutput`; parameter ranges bounded away from pathology |
 | **4** | tests | `ValidationMode::Strict` as a property-test oracle over grammar output |
@@ -57,7 +57,7 @@ gate quarantines like any other.
 
 ## Layer 1: the vetting gate
 
-*No candidate is ever played live unvetted.* Audition plays **pre-rendered,
+*No candidate is ever auditioned unvetted.* Every ▶ plays **pre-rendered,
 LUFS-normalized buffers**, and the standard-phrase render doubles as a health
 check.
 
@@ -65,9 +65,32 @@ Thresholds, the measurements that confirmed them, and the ordering that makes
 the whole thing work are in [The vetting gate](./audition/vetting.md).
 
 The structural point: **one render serves the health check, the features, and
-the playback.** That is what makes “a player never hears an unvetted patch”
-true by construction rather than by discipline: there is no second path that could skip
-the check, because there is no second render.
+the playback.** That is what makes “no audition is unvetted” true by
+construction rather than by discipline: there is no second path that could
+skip the check, because there is no second render.
+
+### The live keys play an edit before its check
+
+The gate stands between a patch and every ▶. The keys are another path: the
+live voices (`LivePoly`, in the AudioWorklet) play the sound you're playing,
+and they take an edit before the engine has rendered and checked it, so that
+a turn is heard as it is made. What reaches them early, and what happens when
+its check fails:
+
+| Edit | Reaches the voices | A failed check |
+|---|---|---|
+| A knob, the octave, a wavetable position | At once, as a parameter written into the running voices | The voices are muted until a check passes, and the alarm says so |
+| A structural edit (a module placed, removed or rewired; an undo) | As a new tree, as soon as the engine has made the edit (`tree_json`), at the previous tree’s makeup until the check’s reply corrects it | The same mute |
+| Any other selector (a VCO’s wave, a filter’s mode) | With the check’s reply, after its render, at the makeup the render measured | Never reaches them: the voices keep the tree before it |
+
+So an unchecked edit can sound for as long as its render takes (a fraction
+of a second, longer while the engine is busy) before a failed check mutes it.
+Everything the voices play passes the master brickwall on the summed
+polyphony and the leveler in front of it (`live.rs`), which bound the level
+that reaches the output, not the sound. A selector waits because only its
+render measures the level it plays at: sent early, the previous tree's
+makeup was off by more than 3 dB on 46% of the presets' selector changes,
+up to 27 dB hot (`crates/auracle-wasm/examples/selector_makeup.rs`).
 
 ## Layer 2: fitness shaping
 
@@ -131,9 +154,12 @@ when it did not exist.
   escaped and parameters are domain-checked and repaired, so the blast radius
   is intended to be zero. It is still a parser handling untrusted input, and
   that is always a claim rather than a guarantee.
-- **Hearing damage** is mitigated (limiter, LUFS normalization to a
+- **Hearing damage** is mitigated (limiters, LUFS normalization to a
   [peak ceiling](./audition/loudness.md#loudness-is-a-target-the-peak-is-a-limit),
-  no unvetted playback), but the output level is ultimately the player’s.
+  vetted auditions, a mute when an edit's check fails), but the output level
+  is ultimately the player’s. An edit at the keys plays until its check
+  fails, which is a fraction of a second or longer
+  ([above](#the-live-keys-play-an-edit-before-its-check)).
   Nothing stops a limiter-bounded signal from being turned up.
 - **Denial of service via a huge patch** is bounded by the module and depth
   ceilings, not by a time limit. A 24-module patch with granular and reverb is

@@ -20,6 +20,9 @@ changelog that edits its own past is not a record.
   setting again; after a drag on a PERFORM control or a click on the XY
   pad, Space did nothing. From the keyboard, Enter cycles a focused setting
   and ⇧Enter goes back.
+- **A knob turned into a runaway is muted, as the alarm says.** The alarm
+  read *Muted* while held notes went on playing what the knob had made; a
+  module placed or removed was already muted when its check failed.
 
 ### Fixed: a reload keeps what PERFORM just measured
 

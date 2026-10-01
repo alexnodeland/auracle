@@ -1874,8 +1874,13 @@ worker.onmessage = (e) => {
       // (Unless the voices play a patch other than the rack's, taken early:
       // this vet is not about what they play.)
       const vetIsVoices = !voicesLater && !(earlyOpen && !subjectLoad);
+      // A knob is in the voices already too (written as a parameter, before
+      // any check), so a knob whose check finds a runaway is muted as well:
+      // the alarm below says "Muted", and for a knob it was not. A selector
+      // that fails never reached them; a silent failure needs no mute.
+      const knobRanAway = m.edited !== undefined && !structural && !paramNonLive && !wb.vetSilent;
       if (vetIsVoices && wb.vetOk) setLiveMuted(false);
-      else if (vetIsVoices && spokeEarly) setLiveMuted(true);
+      else if (vetIsVoices && (spokeEarly || knobRanAway)) setLiveMuted(true);
       // The strip is one slot (see `alarm`), and this owns it only while the
       // condition it reports — a runaway the vet muted — is its own. It used
       // to call `alarm(null)` on every clean vet, which wiped whatever else

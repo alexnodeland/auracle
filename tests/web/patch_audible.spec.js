@@ -44,6 +44,10 @@
 //   taken back: by a second press, by Space (which also stops a phrase
 //   already sounding), by leaving PATCH, or by another ▶ (a bank row's, whose
 //   phrase it then does not cut off).
+// - A knob whose check finds a runaway is muted, as the alarm says: a knob
+//   reaches the voices before its check, and its failed check used to raise
+//   "Muted" over voices still playing. A check that passes lifts the mute.
+//   (The failure is the engine's reply edited on its way to the page.)
 // - In PATCH, Space with ▶ disabled (nothing reaches the output) says so and
 //   plays nothing, rather than the bank's render of the patch before the edit;
 //   ▶'s tooltip gives the same reason.
@@ -83,6 +87,13 @@ const INIT = `(() => {
       w.addEventListener("message", (e) => {
         const d = e.data;
         if (!d || typeof d.type !== "string") return;
+        // A check that finds a runaway, on demand: the next edit's reply says
+        // its vet failed (this listener runs before main's, on the same data).
+        if (window.__pwFailVet && d.type === "bench" && d.edited !== undefined) {
+          window.__pwFailVet = false;
+          d.vetOk = false;
+          d.vetSilent = false;
+        }
         if ((d.type === "bench" && d.edited !== undefined) || d.type === "edit_rejected") {
           io.in += 1;
           io.benchAt.push(performance.now());
@@ -599,6 +610,28 @@ test("a filter cutoff turned down in PATCH lowers the spectral centroid, live an
   // The fundamental is below the corner either way; the harmonics above it fall.
   expect(liveAfter.h3, "live 3rd harmonic").toBeLessThan(liveBefore.h3 - 6);
   expect(after.h3, "▶ 3rd harmonic").toBeLessThan(before.h3 - 6);
+  expect(errors).toEqual([]);
+});
+
+test("a knob whose check finds a runaway is muted, as the alarm says, until a check passes", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await boot(page);
+  await openPreset(page, "Falling Sign");
+  await holdC4(page);
+  const k = await rackKnob(page, "node#cut");
+  const n = await replies(page);
+  await page.evaluate(() => { window.__pwFailVet = true; });
+  await dragDown(page, k, 6);
+  await pastReply(page, n, 0);
+  await expect(page.locator("#alarm")).toContainText("Muted");
+  await expect.poll(() => peakDb(page), { timeout: 5_000, intervals: [100] }).toBeLessThan(-80);
+  // The next turn passes its check, and the held note sounds again.
+  const m = await replies(page);
+  await dragDown(page, await rackKnob(page, "node#cut"), -6);
+  await pastReply(page, m, 0);
+  await expect(page.locator("#alarm")).not.toContainText("Muted");
+  await expect.poll(() => peakDb(page), { timeout: 5_000, intervals: [100] }).toBeGreaterThan(-60);
+  await page.keyboard.up("a");
   expect(errors).toEqual([]);
 });
 

@@ -340,13 +340,15 @@ to a pinned `role="alert"` strip that stays until resolved.
   anyway` sets a session flag and reloads past it. A real handheld layout is
   still to be built.
 - **main.js** is UI + WebAudio: audition plays pre-rendered, LUFS-normalized
-  buffers transferred from the worker (never a live unvetted patch —
-  the vetting gate). Green phosphor = audio; amber = the model's mind.
+  buffers transferred from the worker (never an unvetted patch: the vetting
+  gate). The live keys play an edit before its check (a knob as a parameter,
+  a structural edit as an early tree; a selector waits for its render), and a
+  failed check mutes them. Green phosphor = audio; amber = the model's mind.
 - **Workbench**: open any candidate (⌖ on a duel side, ⌖ on a bench keeper,
   or click a taste-map dot) to see its full rack — modules, patch cables,
   knobs at their true positions. Drag knobs / click selectors to edit (each
   edit is a one-site write at the knob's trace address, re-rendered and
-  re-vetted before playback). Lock any knob or whole module, then
+  re-vetted before ▶ plays it; the keys hear a knob at once). Lock any knob or whole module, then
   **⚡ evolve from this**: MH refines everything *except* the locked
   addresses. **Commit** saves an edit as a new candidate; the "my edit is
   better" toggle also teaches the model an edited-beats-original duel.

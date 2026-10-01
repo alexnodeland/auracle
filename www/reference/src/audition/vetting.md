@@ -1,7 +1,9 @@
 # The vetting gate
 
-<p class="lede">No candidate is ever played live unvetted. This is what makes
-randomly composed DSP graphs safe to put in front of a person.</p>
+<p class="lede">No candidate is ever auditioned unvetted. This is what makes
+randomly composed DSP graphs safe to put in front of a person. The live keys
+play an edit before its check, and a failed check mutes them
+(<a href="../safety.html#the-live-keys-play-an-edit-before-its-check">Safety</a>).</p>
 
 Evolution **will** generate pathological patches: screaming resonance, silent
 duds, NaN-poisoned state, astronomically high pitches. The gate is what makes
@@ -156,7 +158,7 @@ its budget in a place it cannot see is bad.
 | Layer | Where | What |
 |---|---|---|
 | **0** | quiver | Denormals flushed at graph scatter; NaN-latch protection on stateful modules; soft-clipped filter state; cycle detection; non-finite module outputs zeroed at scatter so one module’s NaN cannot poison another’s state |
-| **1** | `auracle-features` | This gate. Audition plays pre-rendered, vetted, normalized buffers, never a live unvetted patch |
+| **1** | `auracle-features` | This gate. Every ▶ plays a pre-rendered, vetted, normalized buffer. The live keys play an edit before its check, and a failed check mutes them |
 | **2** | `auracle-session` | Quarantine → large negative fitness, so the search avoids the region |
 | **3** | `auracle-grammar` | Mandatory `… → Limiter → StereoOutput`, and parameter ranges bounded away from pathology |
 | **4** | tests | `ValidationMode::Strict` as a property-test oracle over grammar output |
