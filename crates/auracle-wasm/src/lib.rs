@@ -2468,6 +2468,35 @@ mod tests {
         );
     }
 
+    /// The menu bar's TAUGHT tooltip splits the count by kind from
+    /// `status()`: a duel is a pick, a rating a star, a keep/kill a cut, and
+    /// the three add up to `observations`.
+    #[test]
+    fn status_counts_picks_stars_and_cuts_apart() {
+        let mut engine = WasmEngine::new(3, 6);
+        while engine.fill_step(3) > 0 {}
+        let ids: Vec<u32> = serde_json::from_str::<Vec<serde_json::Value>>(&engine.ranked())
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_u64().unwrap() as u32)
+            .collect();
+        assert!(engine.record_duel(ids[0], ids[1], true));
+        assert!(engine.record_stars(ids[2], 3));
+        assert!(engine.record_stars(ids[3], 1));
+        assert!(engine.record_keep(ids[4], false));
+        let st: serde_json::Value = serde_json::from_str(&engine.status()).unwrap();
+        assert_eq!(
+            (&st["picks"], &st["stars"], &st["cuts"], &st["observations"]),
+            (
+                &serde_json::json!(1),
+                &serde_json::json!(2),
+                &serde_json::json!(1),
+                &serde_json::json!(4)
+            ),
+            "status: {st}"
+        );
+    }
+
     /// A taught engine with a unit-test budget. The shipped refinement budget
     /// is a minute and more of walks per generation natively, which a unit
     /// test cannot pay; the machinery under test does not depend on it.
