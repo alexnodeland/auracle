@@ -12,10 +12,16 @@
       python3 -m http.server 8080          # from the repo root
       open http://localhost:8080/www/brand/render.html
 
-  Then screenshot the two elements — `#banner` and `#og` — at CSS scale, and
-  save them over www/brand/lockup.png and www/brand/og.png. Any tool that can
-  screenshot a single element will do; the sizes below are already the final
-  pixel dimensions, so nothing needs scaling afterwards.
+  Then screenshot the two elements, `#banner` and `#og`, at a device scale of
+  1, and save them over www/brand/lockup.png and www/brand/og.png. Any tool
+  that can screenshot a single element will do (Playwright's
+  `locator('#og').screenshot()` from tests/web/node_modules, run through
+  www/video/tools/one_browser.sh like every browser job); the sizes below are
+  already the final pixel dimensions, so nothing needs scaling afterwards.
+
+  Both carry the line from www/brand/voice.md: the banner sets the tagline
+  under the wordmark, and the card sets the tagline with the descriptor under
+  it. Change the line there and these change with it.
 
   #banner is drawn at 2x (1440x360) and displayed at 720 in the README, because
   a 1x banner is visibly soft on a retina screen. #og is exactly 1200x630, the
@@ -39,7 +45,7 @@
 
 :root {
   --rack: #0c0d10;
-  --silk: #d9d4c8; --silk-mute: #6f6c63;
+  --silk: #d9d4c8; --silk-dim: #9a958a; --silk-mute: #6f6c63;
   --phos-a: #8ef0b1; --phos-a-deep: #3d6a4d; --phos-b: #ffb454;
   --font-silk: "Jost", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
@@ -58,8 +64,8 @@ body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px;
 }
 /* Both lines carry a start margin of one letter-space. letter-spacing is
-   applied after the *final* letter too, so a centred line's ink sits half a
-   letter-space left of true centre; a start margin of one full space puts it
+   applied after the *final* letter too, so a centered line's ink sits half a
+   letter-space left of true center; a start margin of one full space puts it
    back. It goes on the lockup rather than on .wm, or it would open the
    specified 0.62em gap between the mark and the word. */
 #banner .lk { font-size: 88px; margin-inline-start: .095em; }
@@ -79,18 +85,17 @@ body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-
 #og .halo { position: absolute; right: -250px; top: 50%; transform: translateY(-50%); width: 760px; height: 760px; }
 #og .head { position: relative; z-index: 1; }
 #og .head .lk { font-size: 40px; }
+/* The line: the tagline as the display, the descriptor under it in plain
+   Jost, as the landing page's hero sets them. */
 #og .display {
   position: relative; z-index: 1; margin: auto 0 0; max-width: 15ch;
-  font-size: 78px; font-weight: 300; letter-spacing: -.022em; line-height: 1.06; color: var(--silk);
+  font-size: 76px; font-weight: 300; letter-spacing: -.022em; line-height: 1.06; color: var(--silk);
 }
 #og .display b { font-weight: 300; color: var(--phos-a); }
-#og .foot {
-  position: relative; z-index: 1; margin-top: 40px;
-  display: flex; gap: 28px; align-items: baseline;
-  font-family: var(--font-mono); font-size: 17px; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--silk-mute);
+#og .desc {
+  position: relative; z-index: 1; margin: 30px 0 0; max-width: 36ch;
+  font-size: 27px; font-weight: 300; line-height: 1.4; color: var(--silk-dim);
 }
-#og .foot .dot { color: var(--phos-a-deep); }
 </style>
 </head>
 <body>
@@ -106,7 +111,7 @@ body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-
 
 <div id="banner">
   <span class="lk"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
-  <span class="tag">A synthesizer that searches for your sound</span>
+  <span class="tag">A synthesizer that grows toward you</span>
 </div>
 
 <div id="og">
@@ -118,12 +123,8 @@ body { margin: 0; background: #333; font-family: var(--font-silk); -webkit-font-
   <div class="head">
     <span class="lk"><svg class="glyph"><use href="#mark"/></svg><span class="wm">AURACLE</span></span>
   </div>
-  <p class="display">It plays you two patches. You pick <b>one</b>.</p>
-  <div class="foot">
-    <span>It learns, and makes more of it</span>
-    <span class="dot">&bull;</span>
-    <span>Runs in the browser</span>
-  </div>
+  <p class="display">A synthesizer that grows <b>toward you</b></p>
+  <p class="desc">Pick the sound you&rsquo;d reach for. It learns your ear, and every generation grows a little closer.</p>
 </div>
 
 </body>

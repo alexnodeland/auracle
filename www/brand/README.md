@@ -1,13 +1,13 @@
 # Brand
 
-The marks and the colour tokens live here once. Everything else in the repo is
+The marks and the color tokens live here once. Everything else in the repo is
 a copy (the marks copied at build time, the tokens generated into each
 stylesheet by `make tokens`), which is the point: before this directory existed
-there were three different Auracle icons in circulation — a ring-and-pip in the
+there were three different Auracle icons in circulation (a ring-and-pip in the
 site favicon, an unrelated base64 PNG inlined in the app, and a `🎼` at the top
-of the README — and six hand copies of the palette that had begun to disagree.
+of the README) and six hand copies of the palette that had begun to disagree.
 
-`index.html` is the full specification — the lockups, the construction rules,
+`index.html` is the full specification: the lockups, the construction rules,
 the tracking ramp, the icon set, and the rule behind each. It builds to
 `/brand/` on the site, and is written to stay true without dating: it states
 what the system is, not how it came to be. Read it before changing anything
@@ -26,21 +26,21 @@ here, and keep new text in that register.
 - the word table and the banned list the check reads;
 - the mechanics: American spelling and no em dashes.
 
-The lockup raster (`lockup.png`) and the social card (`og.png`) still carry the
-old tagline until they are re-rendered.
+Where a lockup carries words, they are the line: `lockup.png` sets the tagline
+under the wordmark, and `og.png` sets the tagline with the descriptor under it.
 
 ## The mark
 
 | File | What it is |
 | --- | --- |
 | `mark.svg` | **The mark.** The only icon. Copied into every favicon slot by `make site-brand`. |
-| `mark-active.svg` | The mark with one quadrant lit — a *state*, for use beside a running fit. Never a favicon. |
+| `mark-active.svg` | The mark with one quadrant lit: a *state*, for use beside a running fit. Never a favicon. |
 | `favicon.png` | 32×32 raster of `mark.svg`, for clients that will not take the SVG. |
-| `apple-touch-icon.png` | 180×180, square-cornered — iOS applies its own mask, so rounding it here double-rounds it. |
-| `lockup.png` | The horizontal lockup, drawn at 2× for the README, which cannot run CSS or load a webfont. |
-| `og.png` | The 1200×630 social card. Staged to `site/assets/og.png`. |
+| `apple-touch-icon.png` | 180×180, square-cornered: iOS applies its own mask, so rounding it here double-rounds it. |
+| `lockup.png` | The horizontal lockup over the tagline, drawn at 2× for the README, which cannot run CSS or load a webfont. |
+| `og.png` | The 1200×630 social card: the lockup, the tagline, and the descriptor. Staged to `site/assets/og.png`. |
 
-The logotype is not a file. It is Jost 500 caps on a tracking ramp, set in CSS —
+The logotype is not a file. It is Jost 500 caps on a tracking ramp, set in CSS:
 see the `.lk` rule in `index.html`, which is the spec rather than a picture of
 one. `lockup.png` is the single exception, rendered to raster only because
 GitHub has no fonts.
@@ -49,21 +49,21 @@ GitHub has no fonts.
 
 `icon-set/` holds the UI icons. They are a different kind of object from the
 mark:
-**single-colour, `currentColor`, no tile, 24px grid, 2px stroke** — because a UI
-icon has to take the colour of the control it sits in, and the two-phosphor
+**single-color, `currentColor`, no tile, 24px grid, 2px stroke**, because a UI
+icon has to take the color of the control it sits in, and the two-phosphor
 split belongs to the brand mark alone.
 
 | File | Means | Where it belongs |
 | --- | --- | --- |
-| `play.svg` | Two jacks and a cable | PLAY, the patch, wiring, the rack |
-| `evolve.svg` | A peak — one proposal at the mode | EVOLVE, duels, proposals |
+| `play.svg` | Two jacks and a cable | PATCH, modules, cables, the rack |
+| `evolve.svg` | A peak: one proposal at the mode | EVOLVE, pairs, generations |
 | `taste.svg` | A posterior over the ground | TASTE, the model's mind, what it learned |
 | `teach.svg` | A meter | Teaching, the teach meter, what it learns from |
 | `active.svg` | A ring with one quadrant sweeping | The model is fitting. The only icon allowed to animate. |
 
-The first four line up with the guide's own chapters (`views/play.md`,
-`views/evolve.md`, `views/taste.md`, `teaching.md`), which is the test of
-whether an icon set is real: it names things the product already names.
+The first four line up with the guide's own chapters (`views/play.md`, which
+is PATCH, `views/evolve.md`, `views/taste.md`, and `teaching.md`), which is the
+test of whether an icon set is real: it names things the product already names.
 
 `make site-extras` stages them to `site/brand/icon-set/`. Wiring them into the
 app's view tabs or the guide's chapter heads is a change to a working
@@ -71,8 +71,8 @@ instrument, and belongs in its own commit.
 
 ## The tokens
 
-`tokens.json` is the one source of every colour and font family on every
-surface: the app, the landing page, the docs theme, this brand page, the 404
+`tokens.json` is the one source of every color and font family on every
+surface: the app, the landing page, the docs theme, this brand page, the 404,
 and the film stage. It holds:
 
 - **the palettes**: the rack (the instrument's dark palette, in the tiers the
@@ -81,12 +81,13 @@ and the film stage. It holds:
   text tier and `-deep` stroke tier, `led-red`, and the few shades more than
   one surface uses), and Paper, the docs' light theme; `black` and `white`,
   for shadows and highlights only, go with both;
-- **the font families**: `--font-silk`, `--font-mono`, `--font-voice`;
+- **the font families**: `--font-silk`, `--font-mono`, `--font-voice` (the
+  last is Newsreader italic, for the model's own words and nothing else);
 - **each surface's own named shades** (a value only that surface uses, such as
   the keybed's white keys) and **the opacities it uses** of any token.
   `--phos-b-30` is `--phos-b` at 30%; a third digit is a tenth, so
   `--phos-a-045` is green at 4.5%. An opacity is generated as `rgba()`, not
-  `color-mix()`: a gradient with a `color-mix()` colour in it interpolates in
+  `color-mix()`: a gradient with a `color-mix()` color in it interpolates in
   Oklab rather than sRGB, and moved pixels.
 
 A token's `note` (a contrast ratio, the role it plays) is written into the CSS
@@ -107,7 +108,7 @@ page's `hero.js`, and `ink()`/`inkA()` exported by the film kit
 `getComputedStyle(document.documentElement)` once per name.
 
 `make dev-check` runs `tokens.py --check`. It fails when `tokens.json` holds
-something that is not a colour, when a block is stale, and on a colour written
+something that is not a color, when a block is stale, and on a color written
 outside a block in any of these (the `SCANNED` list in `tokens.py`):
 
 - the app: `apps/web/*.css`, `*.js` and `index.html`;
@@ -118,12 +119,12 @@ outside a block in any of these (the `SCANNED` list in `tokens.py`):
 - the films: `www/video/stage/*.css`, `*.js` and `*.html` (the stage, the kit,
   the poster), and every film's `film.js`, `cards.js` and `index.html`.
 
-A colour there is a hex, an `rgb()`/`rgba()` or `hsl()`, an `"r,g,b"` string in
-a script, or a CSS named colour (`white`, `rebeccapurple` …) used as a colour:
-in a declaration's value, an SVG colour attribute, an inline style or a
-script's colour property. `transparent`, `currentColor` and `inherit` pass,
+A color there is a hex, an `rgb()`/`rgba()` or `hsl()`, an `"r,g,b"` string in
+a script, or a CSS named color (`white`, `rebeccapurple` …) used as a color:
+in a declaration's value, an SVG color attribute, an inline style or a
+script's color property. `transparent`, `currentColor` and `inherit` pass,
 comments are not read, and a word like "green" in prose or a script's own
-names is not a colour. It also fails when a script reads a token its surface
+names is not a color. It also fails when a script reads a token its surface
 does not define, when a stylesheet uses a token another surface owns, when a
 `theme-color` is not the rack, and when a hex quoted in prose
 (`<code>#0c0d10</code>`) is not a token's value.
@@ -140,9 +141,9 @@ time it runs), each waiting on a token decision rather than a substitution:
   task 3).
 
 Never scanned: the marks (`*.svg`, assets a favicon slot reads without CSS)
-and `docs/notes/` (dated records). A new colour is a token first: add it to
+and `docs/notes/` (dated records). A new color is a token first: add it to
 `tokens.json`, run `make tokens`, then use it. `test_tokens.py`, also run by
-`make dev-check`, plants each kind of stray colour in a copy of the tree and
+`make dev-check`, plants each kind of stray color in a copy of the tree and
 expects the check to fail on it, and holds the two drifts the tokens closed
 (the films' deep amber, the brand page's lamp) in place.
 
@@ -154,14 +155,16 @@ The PNGs are committed rather than built, so neither CI nor a contributor needs
 
     make brand-rasters
 
-`lockup.png` and `og.png` are rendered from a headless browser rather than from
-SVG, because both set the logotype and need the real Jost outlines — see the
-target for how.
+`lockup.png` and `og.png` set the logotype, so they come out of a browser with
+the real Jost outlines rather than out of an SVG renderer. Their source is
+`render.html`, and its comment says how to shoot them. They also carry the
+line, so a change to the tagline or the descriptor in `voice.md` re-renders
+them: edit `#banner` and `#og` in `render.html`, then shoot both again.
 
 ## Why the directory is `icon-set/` and not `icons/`
 
-Because `icons/` does not survive `git add` on a Mac. The widely-copied macOS
-global gitignore carries `Icon?` — for the `Icon\r` file Finder leaves behind —
+Because `icons/` does not survive `git add` on a Mac. The widely copied macOS
+global gitignore carries `Icon?` (for the `Icon\r` file Finder leaves behind),
 and git's `?` is a single-character wildcard, so with `core.ignorecase` on (the
 default on macOS) the pattern matches the directory `icons` and every file in
 it disappears silently. It cost this directory one confused commit. Do not
