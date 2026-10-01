@@ -49,6 +49,13 @@ the long-form notes are this directory's `README.md`.
   at most one sentence of guidance, there are no placeholder rows, and a
   tooltip holds a name and a key. A new kind of control is drafted and
   approved before it is built (Plan-004).
+- **Motion shows what the engine does**
+  ([ADR-012](../../docs/decisions/012-motion-shows-what-the-engine-does.md)):
+  an animation that shows a mechanism (an offer growing, a child budding, a
+  pick's direction) reads its fact from the engine's data and names the engine
+  symbol in a comment beside it. What the engine doesn't record isn't drawn,
+  or is drawn as a guess (dashed amber). Plan-005 rebuilds the views as one
+  space to RFC-006.
 - **Say what is true.** In-app copy, tooltips and status lines are
   descriptions too. If PERFORM says "measuring…", the dials must really be
   waiting. Check the guide (`www/docs/src/views/*.md`) when you change what a

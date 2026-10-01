@@ -57,6 +57,7 @@ plugins work on it.
 | [009](decisions/009-one-instrument-contracts.md) | One vocabulary, one colour contract, one undo, one keymap across the instrument |
 | [010](decisions/010-tests-share-the-browser-recordings-do-not.md) | Browser tests share the machine, two at a time; rehearsals and recordings do not |
 | [011](decisions/011-one-design-system.md) | One design system: one source, shared components, a text budget, and films that explain |
+| [012](decisions/012-motion-shows-what-the-engine-does.md) | Motion shows what the engine does: no animation draws a fact the engine doesn't produce |
 
 ## Proposals
 
@@ -67,7 +68,7 @@ plugins work on it.
 | [003](proposals/003-one-instrument-contracts.md) | accepted | One instrument: shared words, colours, states, undo, messages and keys |
 | [004](proposals/004-design-direction.md) | accepted | Design direction: one system for words, marks, picture, interaction, sound and explanation |
 | 005 | reserved | The sonic floor: where the measurement lives, what it costs, and the first deals (named by RFC-004; not yet written) |
-| [006](proposals/006-the-sound-at-the-centre.md) | in-review | The sound at the centre: one space, shown as it works |
+| [006](proposals/006-the-sound-at-the-centre.md) | accepted | The sound at the centre: one space, shown as it works |
 
 ## Plans
 
@@ -77,6 +78,7 @@ plugins work on it.
 | [002](plans/002-directed-search-offers.md) | active | RFC-002, ADR-008 |
 | [003](plans/003-one-instrument-contracts.md) | active | RFC-003, ADR-009 (Wave 2: words, undo, keys, stability) |
 | [004](plans/004-one-design-system.md) | active | RFC-004, ADR-011 (the design system and the views rebuilt to it) |
+| [005](plans/005-the-sound-at-the-centre.md) | active | RFC-006, ADR-012 (the views rebuilt as one space around the sound in hand) |
 
 ## Notes
 

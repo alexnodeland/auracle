@@ -125,3 +125,7 @@ stunningly beautiful visuals." v1: https://claude.ai/artifact/Uw4FSmR6pFVyZdke41
   are approved, including Draft 1's five choices as the prototype sets them (the type
   ratio, the label size, the primary action, depth, where hints go). The audio branding
   goes to its own proposal, after an audition.
+
+## Round 9: accepted (2026-09-30)
+- "Yeah you can accept it." → RFC-006 accepted, as ADR-012 (motion shows what the
+  engine does) and Plan-005.

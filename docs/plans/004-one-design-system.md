@@ -75,14 +75,18 @@ and printed key hints are built here; its other contracts stay in
    disclosure; knob, pad, bank row, card, toast, status line, empty state).
    Then each view's disclosure map and layout (what shows at rest, on
    approach, on request), including the shell's first visit, the ? card as a
-   map of keys and gestures, and learning one act at a time.
+   map of keys and gestures, and learning one act at a time. Prototype v2 is
+   the approved specimen for every view's layout and disclosure, with Draft
+   1's five choices as it sets them (2026-09-30; see
+   [Plan-005](005-the-sound-at-the-centre.md)).
 5. **Components and the budget**: the approved component set built once from
    the tokens. The text-budget spec is built from `measure.js`. For each view
    it fails on more than one sentence of guidance at rest, on an instruction
    shown on two surfaces, on a placeholder row, on a block over 25 words, or
    on a tooltip over eight words (proposed limits; the maintainer can change
    them here). It gates each view as that view is rebuilt.
-6. **The views rebuilt**, one at a time, to their approved specimens. Each is
+6. **The views rebuilt**, one at a time, to their approved specimens, as the
+   levels of one space (Plan-005). Each is
    built from the components, with Wave 2's colour looks (Plan-003 task 2),
    message channels and one onboarding surface (task 4), and printed key hints
    (from task 5). Each closes its findings:
@@ -94,9 +98,9 @@ and printed key hints are built here; its other contracts stay in
    Plan-003; the key hints are printed here. The view's guide
    page is checked against it (ADR-004), and its spec passes the text budget.
 7. **One explanation figure** (part 8): the first causation candidate, in its
-   own small proposal, on the shared graphics grammar. A generation's
-   children beside their parents, in place of the lineage log's sentences,
-   is the likeliest.
+   own small proposal, on the shared graphics grammar: a generation's
+   children beside their seeds, in place of the lineage log's sentences (the
+   bank's Compare, Plan-005 task 4).
 8. **The films' second pass** (part 7, and Plan-003 task 7):
    - `asr_check.py` targets a speaking rate of 176 (what speed 0.81 measured
      in the audition), reports the overall rate, and fails a film faster than

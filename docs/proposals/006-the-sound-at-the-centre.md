@@ -1,7 +1,7 @@
 ---
 title: "The sound at the centre: one space, shown as it works"
 number: 6
-status: in-review
+status: accepted
 author: Claude Code
 created: 2026-09-30
 updated: 2026-09-30
@@ -162,7 +162,7 @@ directions, comes later.
   module. A suggestion can be skipped, a module removed (with undo), and the
   patch cleared.
 
-How the model suggests a module is not designed yet (Open question 3). The
+How the model suggests a module is not designed yet (Open question 2). The
 structural part of φ can rate a candidate addition without a render, but the
 audio part needs one.
 
@@ -185,7 +185,7 @@ audio part needs one.
     nothing else.
 
 Hearing or restoring a replaced sound would need the engine to keep its tree
-until the next generation: Open question 2.
+until the next generation: Open question 1.
 
 ### 7. TASTE and LEARNING
 
@@ -195,7 +195,7 @@ until the next generation: Open question 2.
   - **Per-pick redraw.** Picks draw as arrows and the glows move with each
     pick. The engine reweights on every pick, but today the app redraws only on
     a refit. Showing it per pick means posting the belief after each pick
-    (Open question 4).
+    (Open question 3).
 - **LEARNING** is the model room:
   - the weights, and the evidence of each pick flowing into them;
   - the direction liking rises on the map;
@@ -260,10 +260,10 @@ as RFC-004 part 8 set.
 | Picks as arrows, glows per pick | Redraws on a refit only | web, plus a belief posted per pick (wasm) |
 | Seeds and may-be-replaced marks | May-be-replaced exists | web, plus the seed count exposed |
 | Children from seeds, New, Replaced, Compare | New group, a 3-line lineage strip | web, from `lineage()` |
-| Hearing or restoring a replaced sound | Impossible: trees dropped | engine (Open question 2) |
+| Hearing or restoring a replaced sound | Impossible: trees dropped | engine (Open question 1) |
 | The palette of controls | Six controls | engine (twelve directions) and web |
 | PATCH's module sheet on touch | Knobs on the rack | web |
-| Start from nothing, a suggested module | "Add a module at the output" | engine (Open question 3) and web |
+| Start from nothing, a suggested module | "Add a module at the output" | engine (Open question 2) and web |
 | Modulation levels on cables | Not measured | engine probe and web |
 | LEARNING | TASTE's tabs | web, from the posterior |
 | Explain anything, lessons | Tooltips, the guide | web and guide |
@@ -298,9 +298,9 @@ gaps. None of these is fixed here; each is a small follow-up.
 
 ## Sequencing
 
-1. **On acceptance:**
+1. **On acceptance** (done):
    - ADR-012 records the rule in part 3, with a line in `apps/web/AGENTS.md`
-     pointing to it.
+     and `www/AGENTS.md` pointing to it.
    - Plan-005 breaks this proposal down alongside Plan-004:
      - the prototype stands as the approved specimen for the views' layout
        and disclosure (Plan-004 task 4);
@@ -318,7 +318,7 @@ gaps. None of these is fixed here; each is a small follow-up.
    - the palette's directions;
    - the module suggestion;
    - cable levels;
-   - Open question 2, if accepted.
+   - Open question 1, if decided.
 4. **A sound of your own.**
 5. **Audio in**, by its own proposal, quiver first.
 6. **The plugin**, by its own proposal.
@@ -387,16 +387,21 @@ short:
    - a filled primary action;
    - raised depth for pads and the primary only;
    - hints in place.
+9. **Accepted** (2026-09-30), with ADR-012 and Plan-005.
+
+Accepted as [ADR-012](../decisions/012-motion-shows-what-the-engine-does.md).
+Built as [Plan-005](../plans/005-the-sound-at-the-centre.md), within Plan-004's
+design system. RFC-005 takes the sonic floor, and RFC-007 the films' sound.
 
 ## Open
 
-1. **Accept now** (ADR-012 and Plan-005 follow in this pull request, as
-   RFC-004's did), or hold.
-2. **Keep a generation's replaced trees until the next one,** so they can be
+Each is decided as its task in Plan-005 comes up.
+
+1. **Keep a generation's replaced trees until the next one,** so they can be
    heard and brought back. The cost is up to ten trees in memory and in the
    session save.
-3. **How the model suggests the next module** in an empty or growing patch.
-4. **The cost of posting the belief after every pick,** so TASTE and the
+2. **How the model suggests the next module** in an empty or growing patch.
+3. **The cost of posting the belief after every pick,** so TASTE and the
    bank's ratings move per pick.
-5. **The palette's twelve new directions:** how each is defined in φ, and how
+4. **The palette's twelve new directions:** how each is defined in φ, and how
    often each is reachable.
