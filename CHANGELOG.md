@@ -15,8 +15,9 @@ changelog that edits its own past is not a record.
   saved: change a wave in PATCH, switch to PERFORM, press Space, and you
   heard the old wave. It now plays your edits there too, and in PERFORM what
   you kept or took, without a control turned since or Wander’s drift. It
-  waits for an edit still on its way, as ▶ does in PATCH, and the sound’s
-  name at the right of the keybed says so.
+  waits for an edit still on its way, as ▶ does in PATCH, and *▶ waiting
+  for the edit…* stands in for the sound’s name at the right of the keybed
+  until then.
 - **Space plays after a click on a setting or a control.** A click on a
   wave or filter-mode chip left it focused, and Space then changed the
   setting again; after a drag on a PERFORM control or a click on the XY

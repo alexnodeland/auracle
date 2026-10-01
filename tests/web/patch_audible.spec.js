@@ -58,9 +58,11 @@
 //   ▶'s tooltip gives the same reason.
 // - Space in PERFORM and EVOLVE plays the sound as edited (the wave changed in
 //   PATCH), not the preset as saved, and waits like ▶ for an edit still at the
-//   engine when it is pressed. While it waits, the dock's label says so
-//   ("· ▶ waits for the edit", aria-busy) within 100 ms of the press, until
-//   the edit lands; outside PATCH nothing else did.
+//   engine when it is pressed. While it waits, the dock says so ("▶ waiting
+//   for the edit…" over the sound's name, in a polite live region) within
+//   100 ms of the press, whole and on screen, until the edit lands; outside
+//   PATCH nothing did, and a first try appended it to the name, where the
+//   name's ellipsis hid it.
 //
 // The engine is made slow for real where a test needs the window between an
 // edit and its reply (a busy-wait prepended to worker.js, as
@@ -225,17 +227,30 @@ const INIT = `(() => {
     new MutationObserver(read).observe(b, { attributes: true, attributeFilter: ["class"] });
   });
 
-  // What the dock's label has said, in order, with the time.
+  // What the dock's wait sign has said, in order, with the time, and where
+  // it was then: whole (not clipped), on screen, clear of the keybed, and on
+  // top (what is at its middle is the sign).
   const dock = (window.__pwDockSaid = []);
   document.addEventListener("DOMContentLoaded", () => {
-    const el = document.getElementById("live-label");
+    const el = document.getElementById("live-wait");
     if (!el) return;
     const read = () => {
       const text = el.textContent;
-      if (dock.length === 0 || dock[dock.length - 1].text !== text) dock.push({ t: performance.now(), text, busy: el.getAttribute("aria-busy") === "true" });
+      if (dock.length && dock[dock.length - 1].text === text) return;
+      const r = el.getBoundingClientRect();
+      const p = document.getElementById("piano").getBoundingClientRect();
+      const hit = text ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+      dock.push({
+        t: performance.now(), text,
+        live: el.getAttribute("role") === "status" && el.getAttribute("aria-live") === "polite",
+        whole: el.scrollWidth <= el.clientWidth + 0.5,
+        onScreen: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.width > 0,
+        clearOfKeys: r.left >= p.right || r.right <= p.left || r.bottom <= p.top || r.top >= p.bottom,
+        onTop: !!hit && (hit === el || el.contains(hit)),
+      });
     };
     read();
-    new MutationObserver(read).observe(el, { childList: true, characterData: true, subtree: true, attributes: true });
+    new MutationObserver(read).observe(el, { childList: true, characterData: true, subtree: true });
   });
 
   // Every spectrum for \`ms\` from now, stamped with its time.
@@ -778,11 +793,11 @@ test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an ed
     }, 4500);
     const at = await page.evaluate(() => window.__pwAt);
     const landed = await page.evaluate((i) => window.__pwIO.benchAt[i], n);
-    // The dock's label says Space waits, at once, and stops saying it when
-    // the phrase starts.
+    // The dock says Space waits, at once, and stops saying it when the
+    // phrase starts.
     const dock = await page.evaluate((t) => window.__pwDockSaid.filter((d) => d.t >= t), at.space);
-    const waits = dock.find((d) => / · ▶ waits for the edit$/.test(d.text));
-    const done = waits && dock.find((d) => d.t > waits.t && !/waits for the edit/.test(d.text));
+    const waits = dock.find((d) => d.text === "▶ waiting for the edit…");
+    const done = waits && dock.find((d) => d.t > waits.t && d.text === "");
     console.log(
       `[patch_audible] Space in ${view} ${Math.round(at.space - at.chip)} ms after the chip, reply at ${Math.round(landed - at.chip)} ms; ` +
         `the dock said it waits ${waits ? Math.round(waits.t - at.space) + " ms" : "never"} after the press, until ` +
@@ -790,11 +805,14 @@ test("Space in PERFORM and EVOLVE plays the sound as edited, and waits for an ed
     );
     expect(at.space - at.chip, `Space in ${view} was pressed while the edit was at the engine`).toBeLessThan(landed - at.chip);
     expect(waits, `the dock says Space in ${view} waits`).toBeTruthy();
-    expect(waits.busy, "and is busy").toBe(true);
+    expect(waits.live, "in a polite live region").toBe(true);
+    expect(waits.whole, "whole, not clipped").toBe(true);
+    expect(waits.onScreen, "on screen").toBe(true);
+    expect(waits.clearOfKeys, "clear of the keybed").toBe(true);
+    expect(waits.onTop, "and on top, so it is seen").toBe(true);
     expect(waits.t - at.space, "within 100 ms of the press").toBeLessThan(100);
     expect(done, "and stops saying it").toBeTruthy();
     expect(done.t, "once the edit has landed").toBeGreaterThanOrEqual(landed);
-    expect(done.busy, "no longer busy").toBe(false);
     expectWave(s, want, `Space in ${view}, pressed before the edit landed`);
     await stop();
     await settled(page);

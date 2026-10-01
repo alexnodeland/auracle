@@ -202,7 +202,8 @@ through one ordered lane in `main.js`:
   wait for an edit in flight as PATCH does, and with ▶ disabled Space says
   why rather than playing the bank's render of the patch from before any
   edit. Outside PATCH, where ▶ is out of sight, the dock's label says Space
-  waits (`paintLiveLabel`: "· ▶ waits for the edit", `aria-busy`) within the
+  waits (`paintLiveLabel`: "▶ waiting for the edit…" in `#live-wait`, a
+  polite live region over the name, outside its ellipsis) within the
   same frame as the press.
 - Space is the transport even with a drawn control focused (a rack knob, a
   PERFORM control, the XY pad): only a native button, or a control whose own

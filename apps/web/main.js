@@ -3523,18 +3523,24 @@ function refreshNames() {
   if (perform) perform.relabel();
 }
 
-// The dock's label names what the keys play, and, outside PATCH, says when
-// Space is waiting for an edit to land (`playOnSettle`): there ▶ is out of
-// sight, and the press was otherwise answered by nothing until the phrase
-// began, which on a busy engine is seconds (ADR-009: acknowledged within
-// 100 ms, on what the player has). In PATCH the ▶'s dotted ring says it.
-const SPACE_WAITS = " · ▶ waits for the edit";
+// The dock's label names what the keys play. Outside PATCH, while Space
+// waits for an edit to land (`playOnSettle`), the wait is said over it:
+// there ▶ is out of sight, and the press was otherwise answered by nothing
+// until the phrase began, which on a busy engine is seconds (ADR-009:
+// acknowledged within 100 ms, on what the player has). In PATCH the ▶'s
+// dotted ring says it. The wait has a box of its own (`#live-wait`, a polite
+// live region): appended to the name it was cut off by the name's ellipsis,
+// and the name's element announces nothing.
+const SPACE_WAITS = "▶ waiting for the edit…";
 function paintLiveLabel() {
-  const el = $("live-label");
+  const label = $("live-label");
+  label.textContent = liveLabelText;
   const waits = playOnSettle && currentView !== "play";
-  el.textContent = waits ? `${liveLabelText}${SPACE_WAITS}` : liveLabelText;
-  if (waits) el.setAttribute("aria-busy", "true");
-  else el.removeAttribute("aria-busy");
+  const sign = $("live-wait");
+  if (!sign) return;
+  const text = waits ? SPACE_WAITS : "";
+  if (sign.textContent !== text) sign.textContent = text;
+  label.parentElement.classList.toggle("waiting", waits);
 }
 
 function setLiveLabel(text) {
