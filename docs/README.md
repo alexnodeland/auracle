@@ -60,6 +60,7 @@ plugins work on it.
 | [012](decisions/012-motion-shows-what-the-engine-does.md) | Motion shows what the engine does: no animation draws a fact the engine doesn't produce |
 | [013](decisions/013-one-voice.md) | One voice: the line, the words and the spoken voice in `www/brand/voice.md` (supersedes ADR-011's tagline and spelling) |
 | [014](decisions/014-the-films-sound.md) | The films' sound: one key, one room, the instrument on top, no cues |
+| [015](decisions/015-audio-in.md) | Audio in: one source node, its uses by patching, measured with an audition clip |
 
 ## Proposals
 
@@ -72,6 +73,7 @@ plugins work on it.
 | 005 | reserved | The sonic floor: where the measurement lives, what it costs, and the first deals (named by RFC-004; not yet written) |
 | [006](proposals/006-the-sound-at-the-centre.md) | accepted | The sound at the centre: one space, shown as it works |
 | [007](proposals/007-the-sound-of-the-films.md) | accepted | The sound of the films: one key, one room, the instrument on top |
+| [008](proposals/008-audio-in.md) | accepted | Audio in: your own signal in the patch, measured and bred like any other |
 
 ## Plans
 
@@ -83,6 +85,7 @@ plugins work on it.
 | [004](plans/004-one-design-system.md) | active | RFC-004, ADR-011 (the design system and the views rebuilt to it) |
 | [005](plans/005-the-sound-at-the-centre.md) | active | RFC-006, ADR-012 (the views rebuilt as one space around the sound in hand) |
 | [006](plans/006-the-sound-of-the-films.md) | active | RFC-007, ADR-014 (the film tools, the cast and the re-mix) |
+| [007](plans/007-audio-in.md) | active | RFC-008, ADR-015 (audio in, from quiver to the plate) |
 
 ## Notes
 
