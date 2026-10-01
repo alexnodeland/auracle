@@ -29,12 +29,15 @@
 //   changed patch. The bench's buffer is the phrase rendered before the edit
 //   until the edit's reply replaces it, and a press in that window used to
 //   play the old wave.
-// - A ▶ waiting like that is lit (`.pending`) within 100 ms of the press, and
-//   plays nothing when the edit lands if it was taken back: by a second press,
-//   by Space (which also stops a phrase already sounding), by leaving PATCH,
-//   or by another ▶ (a bank row's, whose phrase it then does not cut off).
+// - A ▶ waiting like that is lit (`.pending`) within 100 ms of the press, its
+//   glyph keeps the playing ink while a phrase also plays, and a keyboard
+//   focus keeps its ring. It plays nothing when the edit lands if it was
+//   taken back: by a second press, by Space (which also stops a phrase
+//   already sounding), by leaving PATCH, or by another ▶ (a bank row's, whose
+//   phrase it then does not cut off).
 // - In PATCH, Space with ▶ disabled (nothing reaches the output) says so and
-//   plays nothing, rather than the bank's render of the patch before the edit.
+//   plays nothing, rather than the bank's render of the patch before the edit;
+//   ▶'s tooltip gives the same reason.
 //
 // The engine is made slow for real where a test needs the window between an
 // edit and its reply (a busy-wait prepended to worker.js, as
@@ -393,6 +396,17 @@ const peakDb = (page) => page.evaluate(() => window.__pwPeakDb());
 const playedSince = (page, t) =>
   page.evaluate((s) => window.__pwPlaySaid.some((x) => x.t > s && x.playing), t);
 
+/** A colour token as the browser computes it (`rgb(…)`), for `toHaveCSS`. */
+const tokenRgb = (page, name) =>
+  page.evaluate((n) => {
+    const el = document.createElement("span");
+    el.style.color = `var(${n})`;
+    document.body.appendChild(el);
+    const c = getComputedStyle(el).color;
+    el.remove();
+    return c;
+  }, name);
+
 /** Until the engine has answered past the `n`th edit, and `ms` more. */
 async function pastReply(page, n, ms = 800) {
   await expect.poll(() => replies(page), { timeout: 30_000 }).toBeGreaterThan(n);
@@ -559,6 +573,16 @@ test("a ▶ waiting for an edit is lit at once, and a second press, Space, anoth
   await clickWave(page);
   await play.click();
   await expect(play).toHaveClass(/\bpending\b/);
+  // Playing and waiting at once, the glyph keeps the playing ink on the
+  // green face (amber on it was 1.28:1).
+  await expect(play).toHaveClass(/\bplaying\b/);
+  // Read after the button's colour transition has run, not at its start
+  // (where it still shows the colour it is leaving).
+  const ink = await play.evaluate((el) => {
+    for (const a of el.getAnimations()) a.finish();
+    return getComputedStyle(el).color;
+  });
+  expect(ink, "the glyph's ink while playing and waiting").toBe(await tokenRgb(page, "--xport-lo"));
   await page.locator("#rack-subject").click();
   t0 = await pageNow(page);
   await page.keyboard.press(" ");
@@ -598,6 +622,23 @@ test("a ▶ waiting for an edit is lit at once, and a second press, Space, anoth
   await pastReply(page, n);
   expect(await playedSince(page, t0), "the bench's ▶ does not start over the row's phrase").toBe(false);
   await expect(row).toHaveClass(/\bplaying\b/);
+  await settled(page);
+
+  // From the keyboard: ▶ focused and pressed with Enter while an edit is on
+  // its way keeps its focus ring, with the waiting cue on its edge.
+  n = await replies(page);
+  await clickWave(page);
+  await page.keyboard.press("Shift"); // the last input was a key: focus shows
+  await play.focus();
+  expect(await play.evaluate((el) => el.matches(":focus-visible")), "▶ has keyboard focus").toBe(true);
+  await page.keyboard.press("Enter");
+  await expect(play).toHaveClass(/\bpending\b/);
+  await expect(play).toHaveCSS("outline-style", "solid");
+  await expect(play).toHaveCSS("outline-width", "2px");
+  await expect(play).toHaveCSS("outline-color", await tokenRgb(page, "--phos-a"));
+  await expect(play).toHaveCSS("border-top-style", "dotted");
+  await expect(play).toHaveCSS("border-top-color", await tokenRgb(page, "--phos-b"));
+  await pastReply(page, n, 0);
   expect(errors).toEqual([]);
 });
 
@@ -612,6 +653,9 @@ test("in PATCH, Space with nothing reaching the output says so, and does not pla
   await page.locator("#ctx-menu .cm-item").filter({ hasText: /^extract to HELD/ }).first().click();
   await settled(page);
   await expect(page.locator("#rack-play")).toBeDisabled();
+  // Its tooltip gives that reason, not the vet's sentence about a runaway.
+  await expect(page.locator("span.tt:has(#rack-play)")).toHaveAttribute(
+    "title", "Nothing reaches the output — plug a source into the empty socket first");
   await page.locator("#rack-subject").click();
   await page.keyboard.press(" ");
   await expect(page.locator("#toasts .toast-msg", { hasText: "nothing to play" })).toBeVisible({ timeout: 5_000 });

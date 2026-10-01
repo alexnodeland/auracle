@@ -8848,7 +8848,12 @@ function renderRack(rebuild = false) {
     const wrap = $(id)?.closest(".tt");
     if (wrap) wrap.title = $(id).disabled ? text : "";
   };
-  reason("rack-play", !hasRack ? "Pick a patch from the bank first" : "This patch failed the safety vet and is muted");
+  // The same three reasons COMMIT gives (`syncCommitBtn`): a silent patch did
+  // not fail for running away, and the vet's sentence about it was untrue.
+  reason("rack-play",
+    !hasRack ? "Pick a patch from the bank first"
+    : wb.vetSilent ? "Nothing reaches the output — plug a source into the empty socket first"
+    : "This patch failed the safety vet and is muted");
   reason("rack-evolve", evolveFromWhy() || "Pick a patch from the bank first");
   reason("lock-knobs", "Pick a patch from the bank first");
   reason("lock-structure", "Pick a patch from the bank first");
