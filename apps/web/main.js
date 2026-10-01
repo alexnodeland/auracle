@@ -5783,11 +5783,17 @@ let aheadRetries = 0; // deals refused since the table last changed
 let leftPair = null; // the pair ↻ or a lost side just put away, until the next goes up
 const goneIds = new Set(); // ids that have left the pool, as views said so
 
+/** A side of the pair was cut (its undo window included) after the deal was
+ *  asked for: the deal excluded the cuts made before it, and this checks
+ *  the ones made since. */
+function holdsCut(pair) {
+  return pair.some((id) => cutIds.has(id));
+}
+
 function aheadUsable(pair) {
   if (!pair || pair.length !== 2) return false;
-  // A patch cut since (its undo window included) is never dealt: the deal
-  // excluded the cuts made before it, and this re-checks the ones made since.
-  if (pair.some((id) => cutIds.has(id))) return false;
+  // A patch cut since is never dealt.
+  if (holdsCut(pair)) return false;
   // Replaced since (a generation, a preset load or an import can replace a
   // patch while the pair waits): `applyViews` drops the pair when one of
   // its ids leaves the pool. The bank's rows can lag the pool while it
@@ -5813,9 +5819,15 @@ function onDealt(pair, meta) {
   if (!currentDuel) {
     if (!pair || aheadUsable(pair)) return void placePair(pair, meta);
     // Dealt before a cut, or the pair just put away: the next answer is
-    // already on its way, or one more is asked for. A pool too small to
-    // deal anything else puts it up after a few tries.
+    // already on its way, or one more is asked for.
     if (dealsOut) return;
+    // A pair holding a cut sound is never put up, however many tries it
+    // takes: it is dealt again. That ends, because every deal excludes the
+    // cuts made before it was asked for: only a cut made while a deal is out
+    // brings its answer back here, once per cut. It used to go up after the
+    // third try like any other refusal.
+    if (holdsCut(pair)) return void requestDeal();
+    // A pool too small to deal anything else puts it up after a few tries.
     if (aheadRetries++ < 3) return void requestDeal();
     return void placePair(pair, meta);
   }

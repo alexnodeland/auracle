@@ -78,6 +78,16 @@ changelog that edits its own past is not a record.
   changes when it is re-voiced and mixed again; until then it sounds as it
   did, without the effects (ADR-014, `docs/notes/sound-2026-09/SPEC.md`).
 
+### Fixed: a cut sound is never dealt
+
+- **A sound you cut no longer comes back in EVOLVE, even when the table was
+  slow to deal.** When the cards are dimmed waiting for a pair, a pair that
+  can't go up is dealt again, and after three tries the next one goes up
+  anyway, so a small pool can't leave the table waiting for good. A sound
+  you cut while that last deal was on its way could come back in it. Now a
+  pair holding a cut sound is always dealt again, as the cut's message
+  promises (`evolve_truth.spec.js`).
+
 ### Fixed: a reload keeps what PERFORM just measured
 
 - **A patch PERFORM measured just before a reload plays at once after it.**
