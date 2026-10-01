@@ -6,8 +6,9 @@ the demo windows, all read from www/brand/sound.json; and no cues.
 
 The tests import mix.py, which needs numpy and scipy (the film tools'
 packages, in .venv-voice); without them they are skipped. `make dev-check`
-runs this on .venv-voice when it exists. Every sound here is synthetic: no
-render, voice or recording is read.
+runs this on .venv-voice when it exists, and CI's Web job installs the two
+packages so they run there too. Every sound here is synthetic: no render,
+voice or recording is read.
 """
 
 import contextlib

@@ -157,6 +157,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
+      # The film tools' own tests need numpy and scipy for the mix (the rest
+      # of dev-check is the standard library). Only those two, pinned as
+      # www/video/requirements-tools.txt pins them: about half a minute,
+      # where the voice's whole set would take minutes.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install --quiet $(grep -E '^(numpy|scipy)==' www/video/requirements-tools.txt)
       - run: make web-check
       - run: make dev-check
 
