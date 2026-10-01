@@ -1127,25 +1127,44 @@ export function createPerform(host) {
       /* marks are evidence, never load-bearing */
     }
   }
+  // Written 1.5 s after the last change, and at once when the page is hidden
+  // or left (`pagehide`, `visibilitychange`), as the session is
+  // (`saveOnLeave` in main.js). Leaving cancels the timer: a reload, a closed
+  // tab or a booth's visitor reset in the 1.5 s after a measurement landed
+  // threw it away, and the patch said "listening…" for a whole measurement
+  // again after the reload (6.6 s on a quiet machine, 8.7-10 s on a CI
+  // runner, where perform_instant.spec.js reloads 1-1.5 s after one).
   let wireSaveTimer = null;
+  function writeWirings() {
+    clearTimeout(wireSaveTimer);
+    wireSaveTimer = null;
+    try {
+      localStorage.setItem(WIRE_STORE, JSON.stringify([...wireCache]));
+    } catch {
+      // Quota or a private window: the cache is a convenience, never
+      // load-bearing. Halve it and carry on in memory.
+      const keep = [...wireCache].slice(-Math.floor(WIRE_CACHE_MAX / 2));
+      wireCache.clear();
+      keep.forEach(([k, v]) => wireCache.set(k, v));
+    }
+  }
   function rememberWiring(json, data, rev) {
     const key = wireKey(json);
     wireCache.delete(key);
     while (wireCache.size >= WIRE_CACHE_MAX) wireCache.delete(wireCache.keys().next().value);
     wireCache.set(key, { data: structuredClone(data), rev });
     clearTimeout(wireSaveTimer);
-    wireSaveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(WIRE_STORE, JSON.stringify([...wireCache]));
-      } catch {
-        // Quota or a private window: the cache is a convenience, never
-        // load-bearing. Halve it and carry on in memory.
-        const keep = [...wireCache].slice(-Math.floor(WIRE_CACHE_MAX / 2));
-        wireCache.clear();
-        keep.forEach(([k, v]) => wireCache.set(k, v));
-      }
-    }, 1500);
+    wireSaveTimer = setTimeout(writeWirings, 1500);
   }
+  // Only a write still waiting: another tab holds its own copy of the cache,
+  // and hiding this one must not overwrite that tab's with nothing new.
+  const flushWirings = () => {
+    if (wireSaveTimer !== null) writeWirings();
+  };
+  window.addEventListener("pagehide", flushWirings);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushWirings();
+  });
 
   function wire() {
     if (!state.cur) return;

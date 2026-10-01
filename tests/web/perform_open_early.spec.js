@@ -89,7 +89,7 @@ async function remembered(page) {
     await expect(page.locator("#live-label")).toHaveText(name, { timeout: 60_000 });
     await expect(page.locator("#rack-subject")).toHaveText(new RegExp(`^${name}`), { timeout: 60_000 });
   }
-  await page.waitForTimeout(2000); // the memory is written 1.5 s after it changes
+  // No wait: the memory is written when the page is left (`flushVoiced`).
   await page.reload();
   await expect(page.locator("#boot")).toHaveClass(/\bdone\b/, { timeout: 120_000 });
   await expect(page.locator("#rack-subject")).not.toHaveText(/no sound open/, { timeout: 60_000 });

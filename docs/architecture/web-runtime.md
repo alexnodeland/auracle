@@ -1,6 +1,6 @@
 ---
 title: "The web runtime: threads, lanes and the bench"
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 related_adrs: [1, 2, 7]
 ---
 
@@ -186,6 +186,17 @@ wirings by tree text (`wireKey`), keeps the old wiring working while a new one
 is measured ("re-checking"), and compares trees by text to tell a new
 structure from new knob values. That comparison is why trees must serialize in
 one key order ([ADR-002](../decisions/002-trees-serialize-in-declaration-order.md)).
+
+The cache persists across reloads (`auracle-perform-wirings` in
+localStorage). It is written 1.5 s after a measurement lands, and at once when
+the page is hidden or left (`flushWirings` on `pagehide` and
+`visibilitychange`), as the session is (`saveOnLeave`): leaving cancels the
+timer, and a reload, a closed tab or a booth's visitor reset in those 1.5 s
+used to throw a measurement away, so the patch was measured again after the
+reload. The presets `main.js` remembers for opening early
+(`auracle-voiced-presets`, above) are written the same way (`flushVoiced`).
+Hiding a tab with nothing waiting writes nothing. A write replaces the stored
+copy with the tab's own, so with two tabs open the last one to write wins.
 
 Every preset's wiring ships with the app in `apps/web/perform-wirings.json`,
 measured natively through the same `WasmEngine` surface the worker uses
