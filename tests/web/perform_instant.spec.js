@@ -196,7 +196,12 @@ test("a preset opened, or a patch measured, just before a reload is remembered a
 
   // 1. A preset opened, then a reload at once.
   await page.locator(".bank-item", { hasText: "Acid Line" }).first().click();
-  await expect(page.locator("#live-label")).toHaveText("Acid Line", { timeout: 60_000 });
+  // Polled every 10 ms, not by an assertion's backoff (a second apart by
+  // then): the reload must land well inside the 1.5 s the old timer took.
+  await page.waitForFunction(() => document.getElementById("live-label")?.textContent === "Acid Line", null, {
+    timeout: 60_000,
+    polling: 10,
+  });
   await page.reload();
   await booted();
   // Away from it first, through the engine, whatever the reload left on the

@@ -193,10 +193,10 @@ the page is hidden or left (`flushWirings` on `pagehide` and
 `visibilitychange`), as the session is (`saveOnLeave`): leaving cancels the
 timer, and a reload, a closed tab or a booth's visitor reset in those 1.5 s
 used to throw a measurement away, so the patch was measured again after the
-reload. The presets `main.js`
-remembers for opening early (`auracle-voiced-presets`, above) are written the
-same way (`flushVoiced`). Only a write still waiting is flushed, so hiding one
-tab does not overwrite another tab's copy.
+reload. The presets `main.js` remembers for opening early
+(`auracle-voiced-presets`, above) are written the same way (`flushVoiced`).
+Hiding a tab with nothing waiting writes nothing. A write replaces the stored
+copy with the tab's own, so with two tabs open the last one to write wins.
 
 Every preset's wiring ships with the app in `apps/web/perform-wirings.json`,
 measured natively through the same `WasmEngine` surface the worker uses

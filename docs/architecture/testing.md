@@ -96,7 +96,7 @@ held-engine reload test, which boots twice like them, and the reload-at-once
 test, which boots three times: 14-20 s on a 16-core M3 Max, not yet on CI),
 `perform_wander.spec.js` (55 s), `perform_recentre.spec.js`'s glide home
 (54 s) and `perform_teaches.spec.js` (54 s). Sixteen tests, ~19 min in one
-worker; the other 80 take ~16.6 min, and the fast tier's five runners take
+worker; the other 87 took ~16.6 min when last timed (at 80), and the fast tier's five runners take
 2.6–3.9 min each. The next slowest (a shipped-wirings fetch that never
 answers, 38 s; the warm start's two, 36 and 32 s) stay fast.
 
