@@ -379,7 +379,7 @@
   function play(side, z) {
     const ac = audio();
     if (!ac) {
-      say('This browser will not start an audio context. The instrument itself needs one too.');
+      say('This browser won&rsquo;t start audio, so there is nothing to hear here. The instrument needs audio too.');
       return;
     }
     stop();
@@ -463,15 +463,20 @@
 
   function say(html) { verdictEl.innerHTML = html; }
 
+  /* The model's own words: Newsreader italic, lowercase, declarative, and the
+   * only thing on the page set that way (voice.md, "The model's voice").
+   * Instructions and descriptions around it stay plain. */
+  const model = (text) => `<span class="model">${text}</span>`;
+
   /** The verdict, with the same four silences the instrument distinguishes. */
   function renderVerdict() {
     if (picks === 0) {
-      say('Press <kbd>1</kbd> and <kbd>2</kbd>, then pick the one you prefer.');
+      say('Press <kbd>1</kbd> and <kbd>2</kbd>, then pick the one you&rsquo;d reach for.');
       return;
     }
     if (picks < TARGET_PICKS) {
       const left = TARGET_PICKS - picks;
-      say(`Listening. ${left} more ${left === 1 ? 'pick' : 'picks'} and it will say what it thinks.`);
+      say(model(`too few picks to lean yet · ${left} more`));
       return;
     }
 
@@ -484,13 +489,13 @@
     }
 
     if (best < 0 || bestZ < 1.0) {
-      say('It has listened and has <strong>no clear lean</strong> — every interval still ' +
-          'straddles zero. Five picks is not much evidence, and a model that claimed one ' +
-          'anyway would be lying to you.');
+      say(model('no clear lean yet · every whisker still crosses the center'));
     } else {
+      // How sure, in words from the app's one scale: a wide interval is a
+      // hunch, a narrow one fairly sure.
       const dir = theta[best] > 0 ? 'more' : 'less';
-      say(`It thinks you want <strong>${dir} ${AXES[best].label}</strong>` +
-          (bestZ < 1.6 ? ' — tentatively; that interval is still wide.' : '.'));
+      say(model(`it leans toward <strong>${dir} ${AXES[best].label}</strong> · ` +
+          (bestZ < 1.6 ? 'a hunch' : 'fairly sure')));
     }
     makeBtn.hidden = false;
   }
@@ -562,10 +567,9 @@
     pickrowEl.hidden = true;
     makeBtn.hidden = true;
     madeEl.hidden = false;
-    say(`Built you <strong>${nameOf(z)}</strong> — a new patch, from the direction ` +
-        `your ${picks} picks point in. Nothing on the page had played it before. ` +
-        `The real instrument builds these by evolving a patch grammar; ` +
-        `<a href="play/">that version is here</a>.`);
+    say(`It placed <strong>${nameOf(z)}</strong> where your ${picks} picks lean. ` +
+        `The instrument breeds its new sounds instead, each one a patch you can open: ` +
+        `<a href="play/">play it here</a>.`);
     madePlayBtn.focus();
   }
 
@@ -586,7 +590,6 @@
       }
     }
     renderVerdict();
-    makeBtn.innerHTML = 'Make me another&nbsp;▸';
     pickBtns[0].focus();
   }
 
