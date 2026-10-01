@@ -1,7 +1,7 @@
 # Acquisition
 
-<p class="lede">Which duel to ask next. The answer turned out to be "it does not
-matter much".</p>
+<p class="lede">Which duel to ask next. The answer turned out to be “it does not
+matter much”.</p>
 
 ## The rules
 
@@ -12,7 +12,7 @@ both alternatives are kept so the comparison stays runnable.
 |---|---|
 | **`Random`** *(default)* | A pair uniformly at random from the pool |
 | `Bald` | The pair maximizing expected information gain about $\theta$ |
-| `Thompson` | Dueling Thompson sampling — a best-arm rule |
+| `Thompson` | Dueling Thompson sampling: a best-arm rule |
 
 ## The measurement
 
@@ -25,7 +25,7 @@ cargo run -p auracle-session --example learn_synthetic --release -- --compare 20
 The methodology matters more than usual here, because the effect sizes are
 small:
 
-- **Common random numbers.** Pool fill, the user's coin flip at duel $t$, the
+- **Common random numbers.** Pool fill, the user’s coin flip at duel $t$, the
   MCMC seed at round $r$, and refinement seeds are all **shared across arms**,
   so only the acquisition draw differs. Without this the between-seed variance
   would swamp everything.
@@ -36,7 +36,7 @@ small:
 Three metrics: cosine similarity to the true $\theta^*$ (↑), rank correlation
 on the exam (↑), and excess nats against the true model (↓).
 
-### Static pool — i.i.d. prior draws, `refine_steps: 0`
+### Static pool: i.i.d. prior draws, `refine_steps: 0`
 
 | | cos θ\* ↑ | rank r ↑ | excess nats ↓ |
 |---|---|---|---|
@@ -54,7 +54,7 @@ deliver the second.
 
 BALD and uniform pairing are within two standard errors on every metric.
 
-### Evolving pool — `refine_steps: 12`, refinement between rounds
+### Evolving pool: `refine_steps: 12`, refinement between rounds
 
 A static i.i.d. pool is a weak regime to conclude from on its own: prior draws
 are spread over feature space **by construction**, which is exactly where
@@ -83,7 +83,7 @@ constants that ties a rule with none should not ship on a tie.**
 Two supporting reasons survived checking, one did not:
 
 - The `info_gain` BALD reports had **zero consumers** in the frontend.
-- BALD's repeat avoidance is real but barely needed over a pool this size that
+- BALD’s repeat avoidance is real but barely needed over a pool this size that
   uniform pairing already samples without repeating (gated by
   `duels_spread_over_candidates_not_just_pairs`).
 - `Random` makes **every** duel an unbiased [calibration
@@ -95,12 +95,12 @@ Two supporting reasons survived checking, one did not:
 One earlier justification was withdrawn for a bad reason, and the record should
 say so.
 
-The "pool grows and concentrates" argument was dismissed on the grounds that
+The “pool grows and concentrates” argument was dismissed on the grounds that
 insertion caps the pool, but a capped *size* is not an unchanging *spread*, and
 evicting the worst member could in principle concentrate a pool. Dismissing the
 concentration argument **because it was unmeasured**, while treating a
 measurement from the other regime as decisive, had the burden of proof
-backwards.
+backward.
 
 The evolving run above is that measurement. It happens to show the
 concentration
@@ -110,11 +110,12 @@ the measured tie, not on the dismissal.
 ## What `Bald` is still for
 
 It **decisively beats the best-arm rule**, so it is the right thing to reach
-for if acquisition ever needs to *do* something uniform pairing cannot:
+for if acquisition ever needs to *do* something uniform pairing cannot. Its
+levers are `SessionConfig` fields, with defaults in `engine.rs`:
 
 | Lever | Config | Default |
 |---|---|---|
-| Bias duels toward patches the user will enjoy auditioning | `duel_utility_weight` | 0.1 |
+| Bias duels toward patches the player will enjoy auditioning | `duel_utility_weight` | 0.1 |
 | Bound how often one patch reappears | `duel_exposure_penalty` | 0.25 |
 | Avoid re-asking a pair | `duel_repeat_penalty` | 0.5 |
 | Soften the selection | `duel_temperature` | 0.6 |
@@ -129,8 +130,8 @@ An earlier version of the BALD rule scored its enjoyment term on
 nats.
 
 Both are scale bets, and both lost. The enjoyment term grew without bound as
-the posterior sharpened, and $\exp(\Delta J / T)$ ran to $e^{10}$ — so the
-"softmax" was an argmax. That version was measurably **worse than random**, and
+the posterior sharpened, and $\exp(\Delta J / T)$ ran to $e^{10}$, so the
+“softmax” was an argmax. That version was measurably **worse than random**, and
 it is the version an independent replication measured.
 
 It also produced the duel repetition observed in the running app: the same
@@ -143,13 +144,14 @@ eventually break that bet.
 
 ## Where uncertainty would earn its keep
 
-The design's argument for acquisition is that $\theta$'s posterior
+The design’s argument for acquisition is that $\theta$’s posterior
 *uncertainty* lets early sessions ask informative questions (duels the model
-cannot rank) while a confident model mostly serves things you will like. That
+cannot rank) while a confident model mostly serves sounds the player will
+pick. That
 remains the right frame, and it is also the frame in which the measurement says
 the informative-question machinery is not currently paying for itself.
 
-At session horizon — tens of duels, a 48-patch pool kept spread by its own
-dynamics — there is not enough redundancy in the question set for an
+At session horizon (tens of duels, and a pool of 40 to 48 patches kept spread
+by its own dynamics), there is not enough redundancy in the question set for an
 information-seeking rule to exploit. A much larger pool, or a much longer
 session, is where the tie would be expected to break.

@@ -5,21 +5,21 @@ rather than left out, because a reference that only describes what works is not
 a description of the system.</p>
 
 Every entry below is a question **this design raised**. Possibilities it never
-raised are a separate register — [unraised directions](./directions.md) — and
+raised are a separate register ([unraised directions](./directions.md)), and
 an entry there graduates onto this page as soon as someone can state the
 measurement that would settle it.
 
 - **Tempered SMC for generation.** The [Boltzmann target](../search/target.md)
-  is written down but not sampled from. Whether the crossover population kernel
-  is worth the complexity over local climbing is untested; the measured
-  non-concentration of the pool — it *widens* slightly over a session —
-  weakens the diversity argument for it.
+  is written down but not sampled from, and there is no crossover: every child
+  grows from one seed. Whether a population sampler is worth the complexity over
+  local climbing is untested; the measured non-concentration of the pool (it
+  *widens* slightly over a session) weakens the diversity argument for it.
 - ~~**Cross-island discovery.**~~ **Closed by measurement, and it was wrong.**
-  This entry read: *"local refinement from island A will not find island B; a
-  tempering schedule would cross the valley."* Measured against a bimodal
+  This entry read: *“local refinement from island A will not find island B; a
+  tempering schedule would cross the valley.”* Measured against a bimodal
   synthetic user (`make islands`), **20.9 % of refinement events cross islands**
-  — 13.5 % of all events decisively, with both ends more than 1.0 onto their
-  island rather than hovering at the boundary — and **0 of 8 seeds** ended with
+  (13.5 % of all events decisively, with both ends more than 1.0 onto their
+  island rather than hovering at the boundary), and **0 of 8 seeds** ended with
   a pool on one island only.
 
   The reasoning was wrong about the geometry. The walk is not local in *feature*
@@ -31,53 +31,54 @@ measurement that would settle it.
 - **Fan-out and feedback in the grammar.** Two separate ceilings, deferred
   together because they are the two things the term algebra cannot say.
 
-  This entry used to read *"the grammar is DAG-only today"*, which understated
-  it in the direction that matters. The genome is a **tree** — `term.rs` says so
-  in its first line — and a tree forbids more than cycles. It forbids *sharing*:
+  This entry used to read *“the grammar is DAG-only today”*, which understated
+  it in the direction that matters. The genome is a **tree** (`term.rs` says so
+  in its first line), and a tree forbids more than cycles. It forbids *sharing*:
   one output cannot feed two places, so there is no shared sub-patch. A DAG
   would already allow that. The distinction is the whole of the first half of
   this entry, and the docs were describing the looser of the two ceilings.
 
   **Fan-out** is the more valuable of the two and the more invasive. One
-  oscillator into both a filter and a delay line, summed — an idiom so ordinary
+  oscillator into both a filter and a delay line, summed: an idiom so ordinary
   that the app already has to explain its absence. The connect offer does that
-  well, volunteering the constraint as a fact (*"A copy: one output cannot feed
-  two places"*), and the panel called it the best copy in the product. But it is
+  well, volunteering the constraint as a fact (*“A copy: one output cannot feed
+  two places”*), and the panel called it the best copy in the product. But it is
   still a ceiling being narrated rather than lifted.
 
   The cost is not the grammar rule; it is everything keyed to the tree. Child
   indices (`node/0`, `node/1`) are the trace addressing, so a shared node has no
   single path and the address scheme stops being a naming of the term. That
   scheme is load-bearing for panel knobs, locks, live parameter handles, MH
-  proposals and the persisted genome — `CONTRIBUTING.md` lists it as a sharp
-  edge for exactly this reason. `children()`, `size()`, `depth()` and
-  `site_count()` all assume each node is visited once, and `size` is φ's
-  parsimony term. Every structural op in `mutate` assumes a unique parent. It is
+  proposals, and the persisted genome. `CONTRIBUTING.md` lists it as a sharp
+  edge for exactly this reason. `children()`, `size()`, `depth()`, and
+  `site_count()` all assume each node is visited once, and `size` sets the
+  module ceiling (`MAX_SIZE`). Every structural op in `mutate` assumes a unique parent. It is
   a genome-format change with a migration, not a production.
 
   **Feedback** needs a mandatory attenuator and limiter in the loop path, and a
-  delay of at least one sample to be computable at all. quiver's graph is
+  delay of at least one sample to be computable at all. quiver’s graph is
   evaluated per sample in dependency order, so a cycle needs an explicit
-  unit-delay node to break it — which is a real design, not a relaxation of the
+  unit-delay node to break it, which is a real design, not a relaxation of the
   acyclicity check.
 
   **Deferred, deliberately, and this is the record of it.** Neither is blocked
-  on evidence — no measurement would change the answer — so neither belongs in
-  the "measure it" pile with the rest of this page. They are blocked on being
+  on evidence (no measurement would change the answer), so neither belongs in
+  the “measure it” pile with the rest of this page. They are blocked on being
   worth a genome migration, and nothing in the loop currently says they are: the
   search is not starved for expressiveness (refinement crosses islands, and the
-  pool widens rather than concentrates). Re-open this when a listener wants
+  pool widens rather than concentrates). Re-open this when a player wants
   something the tree cannot say, rather than when someone notices it cannot say
   it.
-- **Per-style audition phrases** — a discovered bass style picks a bassline, a
+- **Per-style audition phrases**: a discovered bass style picks a bassline, a
   pad style a chord swell. Still open, and worth stating precisely what stands
   in the way, because the migration mechanism is *not* it.
 
   The `:p2` [stimulus tag](../audition/phrase.md) does solve the history
   problem: a phrase change renames the audio coordinates, old votes keep their
   stimulus-independent structural coordinates, and their old-stimulus audio
-  coordinates are imputed as "no evidence" — which the likelihood now handles
-  honestly rather than as a measurement. Two prerequisites are therefore
+  coordinates are imputed as “no evidence”, which the likelihood now handles
+  honestly ([imputed coordinates](../taste/likelihoods.md#imputed-coordinates))
+  rather than as a measurement. Two prerequisites are therefore
   already met, and one is not:
 
   - **Comparability is fine**, contrary to the obvious worry. The phrase is a
@@ -91,16 +92,16 @@ measurement that would settle it.
     `PhraseSpec` actually rendered, or the names silently stop describing the
     numbers.
   - **The real obstacle is circular, and it is a design problem rather than an
-    engineering one.** A style is *discovered* — it is an inference from φ.
+    engineering one.** A style is *discovered*: it is an inference from φ.
     φ is measured under a phrase. If the phrase is chosen by the style, then
     the stimulus depends on an inference that depends on the stimulus. That
     loop can be broken (bootstrap from the standard phrase, switch only once a
-    style's share is confidently high, never re-audition history), but every
+    style’s share is confidently high, never re-audition history), but every
     way of breaking it is a decision about how much the instrument is allowed
     to change what it is measuring while it measures it.
 
   Deferred until that loop has an answer worth defending, rather than until
-  someone has time — the mechanism is ready and the question is not.
+  someone has time: the mechanism is ready and the question is not.
 - ~~**Where acquisition would earn its keep.**~~ **Measured, and the tie does
   not break.** [BALD ties uniform pairing](../search/acquisition.md) at session
   horizon, and this entry named two regimes where that should stop being true:
@@ -116,8 +117,8 @@ measurement that would settle it.
   At the baseline BALD has two marginal wins in the *static* regime (t = 2.6 and
   −2.2). **Widening the pool fourfold removes them** rather than growing them,
   and lengthening the session fourfold leaves everything inside noise with
-  several signs flipped. The reasoning behind the entry — that a bigger pair
-  space gives an information-seeking rule more redundancy to prune — does not
+  several signs flipped. The reasoning behind the entry (that a bigger pair
+  space gives an information-seeking rule more redundancy to prune) does not
   survive being tried.
 
   What *is* stable across all three regimes is that BALD beats dueling Thompson
@@ -131,20 +132,20 @@ measurement that would settle it.
   a constant.
 - **Fit cost at the K cap.** Single-site MH re-executes the whole program per
   step, so a mature [fit](../taste/posterior.md) is both slower and
-  statistically thinner than an early one (225 + S sites over a fixed 10 000
+  statistically thinner than an early one (225 + S sites over a fixed 10,000
   steps ≈ 44 sweeps per site). The address table is hoisted out of the step
   loop and the chain no longer holds itself in memory, so what is left is purely
-  the statistical shape of the problem — the budget can now be chosen on the
+  the statistical shape of the problem: the budget can now be chosen on the
   recovery tables rather than against a memory ceiling. The written-down option
   (cap $K$ at 3) is gated on `style_share` evidence from real sessions.
 
   **That evidence is now collected.** Every posterior fit records what fraction
-  of the pool each lens claimed, and the register persists across reloads
-  (`Engine::style_shares`). The question is still open — it wants sessions,
-  which take time to accumulate, and synthetic runs cannot answer it — but it is
+  of the pool each style claimed, and the register persists across reloads
+  (`Engine::style_shares`). The question is still open (it wants sessions,
+  which take time to accumulate, and synthetic runs cannot answer it), but it is
   now open for want of *data* rather than for want of an instrument. Rows where
   `k == k_styles` are the ones that bear on it: `k` grows with the log, so an
-  early row with two lenses is not evidence that lenses 3–5 are idle.
+  early row with two styles is not evidence that styles 3–5 are idle.
 - ~~**Which state of a refinement walk to inject.**~~ **Run, and it tied.** A
   walk renders ~40 candidates and keeps one; `RefineKeep::Best` takes the
   highest-`log π_β` state the walk occupied, seed included, and ships switched
@@ -160,39 +161,39 @@ measurement that would settle it.
   Paired difference (`Best` − `Last`): mean **−0.153 ± 0.384**, median −0.185,
   trimmed −0.113 ± 0.318, sign test **8 better / 8 worse (p = 1.000)**. As exact
   a tie as sixteen seeds can produce, and it does not clear zero at 2 se on any
-  statistic — so the default stays `Last`, kept re-checkable rather than
+  statistic, so the default stays `Last`, kept re-checkable rather than
   deleted, as `Acquisition::Thompson` is.
 
   Neither the feared failure nor the hoped-for win appeared. The worry was that
   argmax over a surrogate would deepen the catastrophic tail; across the pair
   the tails are a wash. What *did* show is that **`Best` is the lower-variance
-  rule rather than the better one** — half the trimmed standard error (0.190
-  against 0.383). Injecting the walk's argmax is more consistent than injecting
+  rule rather than the better one**: half the trimmed standard error (0.190
+  against 0.383). Injecting the walk’s argmax is more consistent than injecting
   where it stopped; it just does not aim anywhere better on average. That is the
   argument to re-run this on if the surrogate ever gets sharper.
 - ~~**Interior signal taps in quiver.**~~ **Closed, and it was wrong.** This
-  entry read: *"a compiled patch exposes exactly one output … a quiver-side
-  probe API would turn both into measurements. Not filed — it needs scoping
-  first."* There was nothing to scope and nothing to file. quiver's
-  `StateObserver` has taken `Level`, `Scope` and `Spectrum` subscriptions on
+  entry read: *“a compiled patch exposes exactly one output … a quiver-side
+  probe API would turn both into measurements. Not filed: it needs scoping
+  first.”* There was nothing to scope and nothing to file. quiver’s
+  `StateObserver` has taken `Level`, `Scope`, and `Spectrum` subscriptions on
   any node port for some time, in the release the lockfile already pinned. The
   gap was here, not upstream.
 
-  The compiler now records where each term node's audio leaves it, and the
-  rack's flow animation multiplies a measured RMS into its reach factor while
+  The compiler now records where each term node’s audio leaves it, and the
+  rack’s flow animation multiplies a measured RMS into its reach factor while
   notes sound. Two expectations about the work turned out not to hold either:
   `sync_output_keepalive` is unnecessary, because the genome is a tree and
-  every module's output already feeds a parent, so quiver is already computing
-  every metered value; and the open design question — which of N voices to
-  meter — has an answer, the most recently pressed one, since a sum across the
+  every module’s output already feeds a parent, so quiver is already computing
+  every metered value; and the open design question, which of N voices to
+  meter, has an answer: the most recently pressed one, since a sum across the
   bank averages notes at different envelope phases and is not the level on any
   wire. The port trace stays an offline render, now by choice: it wants the
   same phrase every time so that two looks at it are comparable.
-- ~~**fugue-evo's `parallel` feature on wasm32.**~~ **Closed, and it was wrong
-  three times over.** The entry read: *"it does not compile there, so the
+- ~~**fugue-evo’s `parallel` feature on wasm32.**~~ **Closed, and it was wrong
+  three times over.** The entry read: *“it does not compile there, so the
   workspace takes fugue-evo with default features off and refinement is
-  single-threaded natively too — in the one place the engine is embarrassingly
-  parallel."*
+  single-threaded natively too, in the one place the engine is embarrassingly
+  parallel.”*
 
   Wrong about the blocker: [fugue-evo#22](https://github.com/alexnodeland/fugue-evo/pull/22)
   established that `checkpoint`, not `parallel`, was the only thing that did not
@@ -202,30 +203,30 @@ measurement that would settle it.
   refinement itself through `inference::mh::EvolutionChain`. And wrong about the
   prize: the harness is not waiting on single-threaded refinement. `search_health`
   and the `refinement_improves_pool` floor already spawn one thread per seed and
-  saturate the machine, so parallelising *inside* a refinement cannot make a
-  16-seed measurement faster — the cores are already busy.
+  saturate the machine, so parallelizing *inside* a refinement cannot make a
+  16-seed measurement faster: the cores are already busy.
 
   What is left is real but smaller than the entry implies, and it is a UX
   number rather than a harness one: latency on a **single** refinement, which is
-  the app's ⚡ button. Filed as that, not as a build-configuration change.
+  the app’s ⚡ button. Filed as that, not as a build-configuration change.
 - **Bright and Body are entangled on a filtered bass** (open). On Acid Line the
   cutoff is the obvious brightness knob, +3.2σ of centroid per unit, and the
   [named-control](../search/perform.md) wiring does not use it: the same move
-  drops `bass_fraction` by 4.6σ, which is Body's axis, so the cross-talk gate is
+  drops `bass_fraction` by 4.6σ, which is Body’s axis, so the cross-talk gate is
   right to call it impure, and Bright reads *search* on the patch where a
   player most expects it. Solving in the six-dimensional named subspace instead
   of across φ was tried and reverted: with more knobs than named axes it can
-  always cancel the cross-talk, and it did so musically — Ceiling's "Bright"
-  became a shorter release. Candidates: let Bright own a little of Body's axis
+  always cancel the cross-talk, and it did so musically: Ceiling’s “Bright”
+  became a shorter release. Candidates: let Bright own a little of Body’s axis
   (a brightening is expected to thin a bass), or report a coupled control
-  honestly ("brighter, and thinner") instead of hiding it. Neither is decided.
-  *Update:* the wiring now tries a control's own sites first (Bright: cutoff,
+  honestly (“brighter, and thinner”) instead of hiding it. Neither is decided.
+  *Update:* the wiring now tries a control’s own sites first (Bright: cutoff,
   tone, …) and ranks knobs by effect rather than coefficient, and on the
   re-voiced Acid Line the cutoff alone clears the gate for Bright: purity 0.87,
   reach 2.85σ. The entanglement is still there, and now shows up on the other
-  side. Body's best move is the same cutoff turned the other way, so `separate`
+  side. Body’s best move is the same cutoff turned the other way, so `separate`
   makes Body the search control.
-- **Grit hears noise, not saturation** (open). Grit's axis is
+- **Grit hears noise, not saturation** (open). Grit’s axis is
   `flatness_mean`, and a drive on a tonal sound adds harmonics, which φ reads
   as Bright, not as flatness. On Iron Bass, a saw through a tube drive, drive
   moves flatness by 0.000σ per unit. Across 24 fresh-pool patches Grit reaches
@@ -233,51 +234,51 @@ measurement that would settle it.
   though, where its slope is zero and the local measurement cannot see it, and
   it clips anything hotter than its ±5 V window. So PERFORM grafts nothing for
   Grit. What would fix it is a roughness descriptor in φ (inharmonic or
-  beating partials, or Sethares-style sensory dissonance) with Grit's axis on
+  beating partials, or Sethares-style sensory dissonance) with Grit’s axis on
   it. That is a φ change, and it needs a `RENDER_EPOCH` bump and a taste-model
   revalidation.
 
-- **Remaining quiver hardening** — closed. `voct_to_hz` gained a ±32-octave
-  clamp in quiver-dsp 0.3.0, and auracle pins 0.3.3 as of the September 2026
-  audit. Renders inside ±32 octaves are unchanged, so no `RENDER_EPOCH` was
-  bumped for it; the render-cache namespace now carries the quiver version as
-  its own coordinate, which orphans the stored rows from 0.2.0 anyway — the
-  right outcome, because for pathological CV (chained `Offset`s past ±32
+- ~~**Remaining quiver hardening.**~~ **Closed.** `voct_to_hz` gained a
+  ±32-octave clamp in quiver-dsp 0.3.0, and Auracle pins 0.3.3 as of the
+  September 2026 audit. Renders inside ±32 octaves are unchanged, so no
+  `RENDER_EPOCH` was bumped for it; the render-cache namespace now carries the
+  quiver version as its own coordinate (`QUIVER_DSP_VERSION`), which orphans
+  the stored rows from 0.2.0 anyway. That is the right outcome, because for pathological CV (chained `Offset`s past ±32
   octaves) the two versions render *differently*: 0.2.0 recovered an infinite
   increment by phase reset, 0.3.x aliases at a finite ~THz pitch. Both are
   garbage the vet gate quarantines; they are not the same garbage.
-- **Frame silence is recognised only at exactly zero power** (AU-F2, open).
-  `audio.rs` splits the phrase into chains at frames whose unnormalised FFT
+- **Frame silence is recognized only at exactly zero power** (AU-F2, open).
+  `audio.rs` splits the phrase into chains at frames whose unnormalized FFT
   power is below `1e-12`, which is an amplitude of ≈2e-9 (−173 dBFS). Rests
-  read as silent only because quiver's `Adsr` snaps exactly to 0 at the end of
+  read as silent only because quiver’s `Adsr` snaps exactly to 0 at the end of
   its release and the VCA is multiplicative; a release or chord tail that
   outlasts a 0.15–0.2 s rest never gets a chain break, and the flux fix (#51)
   and the segment features depend on one. The likely fix is a threshold
   relative to the phrase (−60 dB of global RMS, say). It moves φ for every
   patch with a tail, so it is a `RENDER_EPOCH` bump *and* owes the measurement
-  — φ over prior draws before and after, and `make revalidate` — that has not
+  (φ over prior draws before and after, and `make revalidate`), which has not
   been made. Documented at the line rather than changed blind.
-- **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean` and
+- **The brightness cluster in φ_audio.** `rolloff_mean`, `zcr_mean`, and
   `centroid_mean` are three genuine measurements of one perceptual thing.
   A fused prior over the cluster is now **implemented and switched off**, which
-  is a more useful state than either "not done" or "done".
+  is a more useful state than either “not done” or “done”.
 
   The VIFs quoted when this was written were 18.4 / 10.4 / 5.9; after the ZCR DC
   removal they measure **16.9 / 9.7 / 5.9** and `zcr_mean` no longer trips the
   collinearity flag at all. A third of the original argument was a coordinate
-  bug rather than a modelling problem.
+  bug rather than a modeling problem.
 
   Two gates were run at ρ = 0.25 and they **disagreed**. The closed-loop gate,
   which scores θ recovery, improved (0.657 → 0.702). The 48-seed paired climb,
-  which scores what the pool is worth to the listener, regressed —
+  which scores what the pool is worth to the listener, regressed:
   **−0.579 ± 0.188 trimmed (−3.09 se)**, sign test 16 better / 32 worse
   (p = 0.029). So it ships at ρ = 0.
 
   Both results are real because they measure different things: pooling an
   ill-conditioned ridge regularizes *estimating* θ, and biases the *search* that
-  consumes θ. The general point outlives the feature — a VIF says these
+  consumes θ. The general point outlives the feature: a VIF says these
   coordinates move together across **patches**, which is a fact about φ; fusing
-  their coefficients asserts a listener's **preferences** move together, which
+  their coefficients asserts a listener’s **preferences** move together, which
   is a fact about people and does not follow. Re-open if the listener model ever
   gains a reason to believe it does; the sweep and both gates are there to
   re-run.

@@ -1,19 +1,20 @@
 # Loudness normalization
 
 <p class="lede">Louder reliably wins A/B tests. Without normalization the model
-would learn "I like loud" and present it as a preference about timbre.</p>
+would learn a taste for loudness and present it as a preference about
+timbre.</p>
 
-Every render is normalized to **−18 LUFS** (`TARGET_LUFS`) before audition
-*and* before feature extraction. Unnormalized loudness would poison $\theta$,
-and it would do so in a way that looks like a real result.
+Every render is normalized to **−18 LUFS** (`TARGET_LUFS`, in `pipeline.rs`)
+before audition *and* before feature extraction. Unnormalized loudness would
+poison $\theta$, and it would do so in a way that looks like a real result.
 
 ## Why LUFS and not RMS
 
 Because the confound is *perceived* loudness. K-weighting approximates the
-ear's sensitivity (a high-shelf boost above ~1.7 kHz plus a ~38 Hz highpass),
+ear’s sensitivity (a high-shelf boost above ~1.7 kHz plus a ~38 Hz highpass),
 and 400 ms gated blocks keep silence and release tails from dragging the
 measurement down. Plain RMS would under-measure a bright patch and over-measure
-a bass-heavy one, and then the "loudness" the model learned about would be a
+a bass-heavy one, and then the “loudness” the model learned about would be a
 spectral preference in disguise.
 
 The implementation follows ITU-R BS.1770 (`auracle_features::loudness`).
@@ -22,7 +23,7 @@ The implementation follows ITU-R BS.1770 (`auracle_features::loudness`).
 
 Two biquads in direct form 1, derived **parametrically** from the BS.1770
 analog prototype by the RBJ bilinear transform, the same approach pyloudnorm
-takes, so any sample rate works and the coefficients match the spec's published
+takes, so any sample rate works and the coefficients match the spec’s published
 48 kHz values at 48 kHz.
 
 **Stage 1, the high shelf:**
@@ -33,8 +34,8 @@ $$G = 3.999844\ \text{dB}, \quad Q = 0.707175, \quad f_c = 1681.974\ \text{Hz}$$
 
 $$Q = 0.500327, \quad f_c = 38.1355\ \text{Hz}$$
 
-With $k = \tan(\pi f_c / f_s)$, $V_H = 10^{G/20}$ and $V_B = V_H^{0.499667}$,
-the shelf's coefficients are
+With $k = \tan(\pi f_c / f_s)$, $V_H = 10^{G/20}$, and $V_B = V_H^{0.499667}$,
+the shelf’s coefficients are
 
 $$
 a_0 = 1 + \tfrac{k}{Q} + k^2, \qquad b_0 = \frac{V_H + V_B \tfrac{k}{Q} +
@@ -43,7 +44,7 @@ k^2}{a_0}, \qquad b_1 = \frac{2(k^2 - V_H)}{a_0}, \qquad b_2 = \frac{V_H - V_B
 $$
 
 and the highpass is the standard RBJ form. Deriving rather than tabulating is
-what makes the measurement correct at 44 100 Hz, which is the rate the phrase
+what makes the measurement correct at 44,100 Hz, which is the rate the phrase
 renders at.
 
 <figure class="viz" data-viz="k-weighting">
@@ -57,11 +58,11 @@ buys.</figcaption>
 
 ## Block loudness and the two gates
 
-Blocks are **400 ms with 75% overlap**. Each block's loudness is
+Blocks are **400 ms with 75% overlap**. Each block’s loudness is
 
 $$L_j = -0.691 + 10 \log_{10}\!\left(\frac{1}{N}\sum_{n} w[n]^2\right)$$
 
-where $w$ is the K-weighted signal. The $-0.691$ dB offset is the spec's
+where $w$ is the K-weighted signal. The $-0.691$ dB offset is the spec’s
 calibration constant.
 
 Then two gates, in order:
@@ -101,7 +102,7 @@ practice the cap is a backstop.
 ### Loudness is a target; the peak is a limit
 
 Matching integrated loudness says nothing about the peak, and crest factor spans
-tens of dB across this grammar — a pad and a pluck at the same LUFS are nowhere
+tens of dB across this grammar: a pad and a pluck at the same LUFS are nowhere
 near the same peak. A pure loudness match therefore sends percussive patches
 over full scale, and it did. Measured over 150 vetted prior draws:
 
@@ -110,30 +111,30 @@ over full scale, and it did. Measured over 150 vetted prior draws:
 | peak p50 | 0.623 | **0.623** |
 | peak p90 / p99 / max | 1.061 / 2.098 / 4.063 | 1.000 / 1.000 / 1.000 |
 | over full scale | 22 (15%) | **0** |
-| over 1.25 — where the app's `master.gain = 0.8` clips | 11 (8%) | **0** |
-| gave up gain | — | 22 (15%), mean 3.0 dB, worst 12.2 dB |
+| over 1.25 (where the app’s `master.gain = 0.8` clips) | 11 (8%) | **0** |
+| gave up gain | none | 22 (15%), mean 3.0 dB, worst 12.2 dB |
 
 The two 22s are the same twenty-two patches, and the **unmoved median** is the
-check that this is a fault stop rather than a re-levelling of the pool.
+check that this is a fault stop rather than a re-leveling of the pool.
 
 This is not a matter of audio polish. Preference data is elicited on this exact
-buffer, so a clipped audition collects a vote about *clipping* rather than about
-the patch — precisely the confound loudness normalization exists to remove, one
-stage later and silent. The live voice was never exposed to it; its master
+buffer, so a clipped audition collects a pick about *clipping* rather than
+about the patch. That is the confound loudness normalization exists to remove,
+one stage later and silent. The live voice was never exposed to it; its master
 limiter has always held a 0.98 ceiling. The offline path took the volt divisor
 and not the limiter.
 
 **A smaller gain, not a limiter.** A scalar keeps `render_playback`
-bit-identical *by construction* — the property its bit-identity test exists to
-protect — and cannot change timbre at all. A limiter would reshape the waveform,
-moving `crest`, `flatness_mean` and `flux_mean` as well as the RMS pair, and
+bit-identical *by construction* (the property its bit-identity test exists to
+protect), and cannot change timbre at all. A limiter would reshape the waveform,
+moving `crest`, `flatness_mean`, and `flux_mean` as well as the RMS pair, and
 would need a second copy of itself inside the replay path forever.
 
 What it costs is on the record rather than hidden: the ~15% that reach the
 ceiling audition *below* target, so loudness matching degrades exactly where
 crest is highest. Quieter is a smaller bias on a preference judgment than
 clipped. `Features::peak_reduction_db` carries the amount, so a surface can say
-"pulled down 3 dB so it would not clip" instead of presenting a peak-limited
+“pulled down 3 dB so it would not clip” instead of presenting a peak-limited
 patch as merely quiet.
 
 `make norm-peak` reproduces the table.
@@ -144,15 +145,15 @@ scale-invariant, so the change carries the standing
 [revalidation](../design/milestones.md). Paired 16-seed `make climb`:
 `+1.877 ± 0.362` → `+2.457 ± 0.298` mean gain, paired difference
 **+0.579 ± 0.350 (1 se), 95% CI [−0.121, +1.280]**. That crosses zero, so no
-improvement is claimed — what the run establishes is that the change costs the
+improvement is claimed. What the run establishes is that the change costs the
 search nothing. Every seed now climbs (16/16 against 15/16) and the generation
 curve stopped turning over.
 ```
 
-The report carries `lufs_before`, `gain_db` and `peak_reduction_db`, all of
+The report carries `lufs_before`, `gain_db`, and `peak_reduction_db`, all of
 which survive into `Features`. They are diagnostics rather than model inputs:
-they are not coordinates of $\varphi$, because "how quiet was this before we
-fixed it" is exactly the information normalization exists to discard.
+they are not coordinates of $\varphi$, because a sound’s level before
+normalization is exactly the information normalization exists to discard.
 
 ## Where it sits in the pipeline
 
@@ -161,13 +162,13 @@ fixed it" is exactly the information normalization exists to discard.
 $$\text{render} \to \text{vet} \to \text{normalize} \to \varphi_{\text{audio}}$$
 
 Vetting inspects the **raw** render, deliberately: its thresholds are about the
-patch's real output level, and measuring them post-normalization would make the
+patch’s real output level, and measuring them post-normalization would make the
 peak ceiling meaningless. See
 [the order is the design](./vetting.md#the-order-is-the-design).
 
-The normalized buffer is also **exactly what the user hears**. One buffer
-serves the health check, the measurement and the playback, which is what makes
-"you never hear an unvetted patch" true by construction rather than by
+The normalized buffer is also **exactly what the player hears**. One buffer
+serves the health check, the measurement, and the playback, which is what makes
+“a player never hears an unvetted patch” true by construction rather than by
 discipline.
 
 ## Mono
@@ -179,5 +180,5 @@ the live output, because the compiler
 but the *measurement* path sums.
 
 So **stereo width is invisible to the model.** There is no width coordinate, so
-no amount of voting can teach a preference for it. The app says so on the
-chorus module's spec card, and this is why.
+no number of picks can teach a preference for it. The app says so on the
+chorus module’s spec card, and this is why.

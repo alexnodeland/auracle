@@ -35,10 +35,12 @@ runaway**. On clean data it is bit-identical to the naive fit.
 Per column:
 
 1. Drop non-finite cells (a column that is *entirely* non-finite falls back to
-   $\mu = 0, s = 1$, the reading of "no usable evidence on this axis").
+   $\mu = 0, s = 1$, the reading of “no usable evidence on this axis”).
 2. Compute the plain moments $(\mu, s)$.
 3. Compute winsorized moments $(\mu_w, s_w)$ with the extreme 2% of each tail pulled in.
 4. **Use the winsorized pair only if $s > 10^6 \, s_w$.**
+
+The constants, in `auracle-taste`’s `standardize.rs`:
 
 ```rust
 const WINSOR_TAIL: f64 = 0.02;
@@ -55,7 +57,7 @@ Because it was tried first and thrown out, and the measurement is why.
 
 Clipping 2% of each tail unconditionally took a 16-seed `search_health --climb`
 run from **+1.877 ± 0.362** mean gain, climbing on 15 of 16 seeds, to **+0.204
-± 1.347** on 11 of 16 — with one seed at **−18.2**.
+± 1.347** on 11 of 16, with one seed at **−18.2**.
 
 Trimming a real tail is not free. A data-hygiene fix that costs the search a
 standard deviation is not a fix. So the clip became a **fault detector**: plain
@@ -63,8 +65,8 @@ moments unless the column is provably broken.
 
 ### Why the threshold is $10^6$
 
-The first guess was 8×, on the reasoning that clean columns differ "by a factor
-of order one". The paired run said otherwise: 15 of 16 seeds came back
+The first guess was 8×, on the reasoning that clean columns differ “by a factor
+of order one”. The paired run said otherwise: 15 of 16 seeds came back
 bit-identical and the sixteenth went from **+0.12** to **−40.5**.
 
 So the threshold was measured.
@@ -74,8 +76,8 @@ cargo run -p auracle-features --example winsor_ratio --release -- 150
 ```
 
 fits 150 clean 48-patch pools and reports the largest plain/winsorized $\sigma$
-ratio per column. Over 6 000 column-fits the maximum is **14.6**
-(`rms_std:p2`), with `chord_flatness_delta:p2` at 13.9 — and still climbing
+ratio per column. Over 6,000 column-fits the maximum is **14.6**
+(`rms_std:p2`), with `chord_flatness_delta:p2` at 13.9, and still climbing
 with the sample, because a log-scale audio descriptor over a pool that happens
 to contain one near-silent patch genuinely *has* a tail.
 
@@ -103,7 +105,7 @@ about it.
 
 There is also a `hi > lo` guard, which keeps a legitimately rare column intact:
 when 96% of rows are the same value (a module that appears in two patches out
-of forty-eight) the tail *is* the column's only information, and clipping it
+of forty-eight) the tail *is* the column’s only information, and clipping it
 would flatten a real coordinate to nothing in the name of robustness.
 
 ### Winsorizing rather than trimming
@@ -125,7 +127,7 @@ than 0.05 and that the coordinate still separates two real patches by more than
 3.
 
 **Clean columns come out bit-identical to the plain moments.** The load-bearing
-property, asserted with `assert_eq!` on floats, because "close enough" would
+property, asserted with `assert_eq!` on floats, because “close enough” would
 let the regression back in, over a heavy right tail, a near-constant column, a
 bipolar one, a count with a legitimately extreme member, and a five-row column
 below the floor entirely.
@@ -135,11 +137,11 @@ One implementation detail exists to protect that property: the column stays in
 not associative, so summing the sorted column would move the mean by a ULP on
 clean data, and the whole claim is that clean data comes out bit-identical.
 
-## Where this fits in the defence
+## Where this fits in the defense
 
 The fault this detector exists for is fixed upstream of here: `clamp_domains`
 on load, `FeaturizeError::OutOfDomain` before the render, the load-time repair.
-This is the line that means **the next** escape costs a coordinate's precision
+This is the line that means **the next** escape costs a coordinate’s precision
 rather than the coordinate.
 
 Layers above should make this unnecessary. It exists anyway, because in

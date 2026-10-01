@@ -1,13 +1,15 @@
-# φ_struct — structural descriptors
+# φ_struct: structural descriptors
 
 <p class="lede">Twenty-six dimensions, free to compute.</p>
 
-These cost nothing: no compile, no render, just a walk of the term. That is
-what makes the [screening
+These cost nothing: no compile, no render, only a walk of the term. That is
+what makes a [screening
 cascade](../search/refinement.md#the-screening-cascade) possible: a
-structure-only surrogate prunes candidates before the expensive render path.
-They also capture taste axes audio features cannot fully separate ("likes
-supersaws", "likes deep modulated chains").
+structure-only surrogate could prune candidates before the expensive render
+path. No such cascade is built yet
+([Directions §12](../design/directions.md#12-the-screening-cascade-is-cited-and-unbuilt)).
+They also capture taste axes audio features cannot fully separate (“likes
+supersaws”, “likes deep modulated chains”).
 
 ## The coordinates
 
@@ -32,25 +34,25 @@ coordinates](./audio.md) to give $\varphi \in \R^{44}$.
 ## Families, not one column per module
 
 `StructFeatures` keeps a raw counter per module kind internally (the Styles tab
-and the auto-namer both want "two filters", not "two subtractive stages"), but
+and the auto-namer both want “two filters”, not “two subtractive stages”), but
 `NAMES` and `to_vec` collapse **forty-three productions into nineteen family
 counts**.
 
 Two reasons.
 
-**Nothing meaningful distinguishes them.** `n_fold`, `n_distortion` and
-`n_bitcrush` all answer "how much nonlinear colour". `n_chorus`, `n_phaser`,
-`n_flanger`, `n_tremolo` and `n_vibrato` all answer "how much periodic
-movement". A user who likes drive does not first decide *which* drive.
+**Nothing meaningful distinguishes them.** `n_fold`, `n_distortion`, and
+`n_bitcrush` all answer “how much nonlinear color”. `n_chorus`, `n_phaser`,
+`n_flanger`, `n_tremolo`, and `n_vibrato` all answer “how much periodic
+movement”. A user who likes drive does not first decide *which* drive.
 
 **Per-kind columns arrive as near-indicator variables.** The prior draws
-bitcrush at 2.5%, ring mod at 2% and granular at 1.5%, so those columns are
+bitcrush at 2.5%, ring mod at 2%, and granular at 1.5%, so those columns are
 zero in ~19 of every 20 pool members. A coefficient fitted on a column that is
 almost always zero is estimated from a handful of rows, and the Styles tab
 would render it beside coefficients fitted on hundreds, at the same visual
 weight.
 
-Measured over 1200 draws, the extreme case: each of the four CV processors
+Measured over 1,200 draws, the extreme case: each of the four CV processors
 appears in under 4% of patches and each of the six combiners in **under 1%**. A
 column that is zero in 99 rows of every 100 is not a coefficient, it is a
 rounding error with a name in the UI.
@@ -68,7 +70,7 @@ anew at every tick. It does not join the euclid in `n_mod_logic`, because a
 euclid emits a gate and a step sequence emits a value. The column keeps the
 name `n_rand` because stored observations carry φ names, and every row already
 on disk predates the step sequencer, so its `n_rand` already *is* its
-stepped-CV count. The panel labels the column "stepped mods".
+stepped-CV count. The panel labels the column “stepped mods”.
 
 ## What is deliberately not in φ
 
@@ -115,14 +117,14 @@ $$
 no children, so it ends a branch exactly as a `Vco` does. Joining keeps this
 **one** equation with **one** dropped column, and $n_{\text{mix}}$ stays the
 column dropped. Leaving it outside instead would make the identity exact for a
-tree with no holes and slack for one with them — near-exact almost always,
+tree with no holes and slack for one with them: near-exact almost always,
 which is a worse thing to carry than an exact dependency: an exact one is
 unmistakable in a VIF sweep, and a near-exact one is a large number that looks
 like a judgment call.
 
-exactly, for every tree. This only became a *general* statement when the four
-dynamics productions arrived, each taking two audio subterms exactly as mix and
-ring mod do.
+The identity holds exactly, for every tree. It became a *general* statement
+only when the four sidechained productions (comp, duck, gate, and vocoder)
+arrived, each taking two audio subterms exactly as mix and ring mod do.
 
 That is **one** equation, so exactly **one** column has to go, and dropping
 more would remove real dimensions rather than redundant ones. With both binary
@@ -130,7 +132,7 @@ counts gone, $\varphi$ could not tell a crossfade from a ring modulator at all,
 which are about as different as two nodes in this grammar get.
 
 So `n_mix` leaves: it is the one determined by the others, and its proposal
-tilt is recovered from the source coefficients in the engine's `biased_prior`.
+tilt is recovered from the source coefficients in the engine’s `biased_prior`.
 The other five stay, but **never as columns of their own**: ring mod lives
 inside `n_drive`, the vocoder inside `n_filter`, and comp/duck/gate inside
 `n_dynamics`.
@@ -143,13 +145,13 @@ column, the only family whose members are all on the wrong side of the
 identity.
 
 It is safe because the identity needs each binary count **separately**.
-`n_ringmod` is only ever visible summed with folds, distortions and
+`n_ringmod` is only ever visible summed with folds, distortions, and
 bitcrushers; `n_vocoder` only summed with filters and EQs. No linear
 combination of the retained columns isolates either, so the equation cannot be
 reconstructed. `n_dynamics` supplies three of the six binary terms and nothing
 supplies the other three.
 
-Confirmed empirically: on the 1200-draw sweep every structural coordinate came
+Confirmed empirically: on the 1,200-draw sweep every structural coordinate came
 back well under 10, with `n_dynamics` at **1.9**.
 
 ### `depth`, a weaker but real argument
@@ -160,7 +162,7 @@ per-feature weights as though they were. Dropped.
 
 ## Health of the retained set
 
-Every family coordinate came back **under 4** on the 1200-draw sweep, the
+Every family coordinate came back **under 4** on the 1,200-draw sweep, the
 highest being `mod_depth_mean` at 3.8. That is the reason the families exist;
 forty separate module columns would not have managed it.
 
@@ -176,10 +178,14 @@ cargo run -p auracle-features --example pipeline_stats --release -- 1200
 
 ## The unit coordinates
 
-Seven of the twenty-six are `UNIT_NAMES`, a **subset** of `NAMES` rather than
-a reordering. Each is either a normalized genome site read straight through
-(`amp_attack`, `amp_sustain`, `amp_release`, `mod_depth_mean`) or a ratio that
-is already in $[0,1]$ (`mod_density`, `chain_balance`, `frac_sidechained`).
+Six of the twenty-six are `UNIT_NAMES`, a **subset** of `NAMES` rather than a
+reordering. Each is either a normalized genome site read straight through
+(`amp_attack`, `amp_sustain`, and `amp_release`) or a ratio of two counts,
+already in $[0,1]$ (`mod_density`, `chain_balance`, and `frac_sidechained`).
+
+`mod_depth_mean` is **not** one of them. It is a mean of modulation depths (1
+for a bare modulator, 2 for one shaped once), so it is 2 or more for exactly
+the shaped chains it exists to measure.
 
 The distinction matters for display: these can be rendered as percentages
 honestly, whereas a family count cannot.

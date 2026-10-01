@@ -47,12 +47,12 @@ impl Default for VetConfig {
 ```
 
 Deliberately **lenient**. The gate exists to catch pathology, not to encode
-taste; that is the model's job, and a gate that quietly enforces a preference
+taste; that is the model’s job, and a gate that quietly enforces a preference
 corrupts the data it protects.
 
 ### The polyphony-scaled ceiling
 
-`VetConfig::for_spec` scales the peak ceiling with the phrase's polyphony:
+`VetConfig::for_spec` scales the peak ceiling with the phrase’s polyphony:
 
 $$\text{ceiling} = 2.0 + 1.5\,(V - 1)$$
 
@@ -77,9 +77,9 @@ supersaw}`, plus a stacked fold → tube drive → resonant ladder chain:
 |---|---|---|
 | **peak** never exceeded 2.00 | ceiling 3.5 (at $V=2$) | Fine |
 | $\lvert\text{mean}\rvert/\text{rms}$ never exceeded 0.0016 | limit 0.6 | Fine |
-| **rms** stayed far above the floor | $10^{-4}$ | Fine — distortion raises level |
+| **rms** stayed far above the floor | $10^{-4}$ | Fine: distortion raises level |
 
-Peak is bounded **by construction**: quiver's shapers all normalize into the ±1
+Peak is bounded **by construction**: quiver’s shapers all normalize into the ±1
 domain and rescale, so a drive module is bounded at ±5 V however hard it is
 pushed. Drive buys harmonics, not level.
 
@@ -88,7 +88,7 @@ The DC result is 0.0016 only because
 blocker in front of every tube-mode patch. Without it the same renders measure
 1–8%, still nowhere near 0.6. **So this gate was never what protected the
 feature extractor from that offset.** A threshold a defect passes comfortably
-is not a defence against it.
+is not a defense against it.
 
 The one threshold that would have had to move, had the shaper not been bounded,
 is `peak_ceiling`.
@@ -98,7 +98,7 @@ is `peak_ceiling`.
 `pipeline::featurize` composes the stages, and the order matters:
 
 ```rust
-// 1. Domain check — BEFORE the render
+// 1. Domain check, BEFORE the render
 if let Some((site, value)) = tree.domain_violations().into_iter().next() {
     return Err(FeaturizeError::OutOfDomain { site, value });
 }
@@ -127,7 +127,7 @@ came through here.** It is also the gate that was missing when the `1e30`
 sentinel got in, because vetting is a gate on the *sound* and `amp.sustain =
 1e30` renders perfectly well.
 
-**Vetting is on the raw render.** Its thresholds are about the patch's real
+**Vetting is on the raw render.** Its thresholds are about the patch’s real
 output level; measuring peak after normalization would make the ceiling
 meaningless.
 
@@ -144,7 +144,8 @@ was legal and the *measurement* went wrong.
 ## Quarantine is not just hiding
 
 A failed candidate is never played and never shown, and it also scores
-`QUARANTINE_FITNESS = -50.0` in the search target.
+`QUARANTINE_FITNESS = -50.0` (in `auracle-session`’s `surrogate.rs`) in the
+search target.
 
 That is safety layer 2: evolution **learns to avoid the pathological region**
 rather than repeatedly sampling it. Hiding alone would leave the search wasting
@@ -154,8 +155,8 @@ its budget in a place it cannot see is bad.
 
 | Layer | Where | What |
 |---|---|---|
-| **0** | quiver | Denormals flushed at graph scatter; NaN-latch protection on stateful modules; soft-clipped filter state; cycle detection; non-finite module outputs zeroed at scatter so one module's NaN cannot poison another's state |
-| **1** | `auracle-features` | This gate. Audition plays pre-rendered, vetted, normalized buffers — never a live unvetted patch |
+| **0** | quiver | Denormals flushed at graph scatter; NaN-latch protection on stateful modules; soft-clipped filter state; cycle detection; non-finite module outputs zeroed at scatter so one module’s NaN cannot poison another’s state |
+| **1** | `auracle-features` | This gate. Audition plays pre-rendered, vetted, normalized buffers, never a live unvetted patch |
 | **2** | `auracle-session` | Quarantine → large negative fitness, so the search avoids the region |
 | **3** | `auracle-grammar` | Mandatory `… → Limiter → StereoOutput`, and parameter ranges bounded away from pathology |
 | **4** | tests | `ValidationMode::Strict` as a property-test oracle over grammar output |
@@ -171,11 +172,12 @@ that lurks under randomly composed DSP:
   an infinite increment (`voct_to_hz` overflows at extreme V/Oct). An infinite
   loop on the audio thread is not a glitch; it is a dead tab. Fixed with a
   shared $O(1)$ `wrap_phase` that recovers non-finite values.
-- **Q199.** Graph scatter now zeroes non-finite module outputs, so one module's
-  NaN/Inf can never poison another module's recursive state through the routing
+- **Q199.** Graph scatter now zeroes non-finite module outputs, so one module’s
+  NaN/Inf can never poison another module’s recursive state through the routing
   buffers. Containment at the graph boundary; per-module input sanitization
-  remains defence in depth.
+  remains defense in depth.
 
-Still open upstream, and non-blocking: `voct_to_hz` is unclamped. Q198
-*recovers* from the overflow rather than preventing it, and a pitch clamp would
-additionally tame the aliasing garbage that absurd-but-finite pitches produce.
+Since quiver-dsp 0.3.0, `voct_to_hz` clamps pitch to ±32 octaves (Auracle pins
+0.3.3), so the overflow Q198 recovers from can no longer be produced by pitch
+CV. What remains at the clamp is finite aliasing, which meets this gate like
+any other render.

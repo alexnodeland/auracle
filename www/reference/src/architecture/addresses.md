@@ -4,7 +4,7 @@
 this one naming scheme.</p>
 
 A **trace address** names one probabilistic choice site in the grammar program.
-Every site in a term has one, and it is derived from the site's position in the
+Every site in a term has one, and it is derived from the site’s position in the
 tree rather than assigned:
 
 | Address | Names |
@@ -15,7 +15,7 @@ tree rather than assigned:
 | `node/0/m/0` | A subterm of that modulation term |
 | `node/0#cut` | The `cut` parameter of the node at `node/0` |
 | `node/0/m#rate` | The `rate` parameter of that modulation term |
-| `amp#attack` | The amplitude envelope's attack |
+| `amp#attack` | The amplitude envelope’s attack |
 
 The pattern is `<path>#<param>` for parameters and `<path>` for structure.
 Paths are `/`-separated child indices from the root; a `/m` segment enters a
@@ -34,7 +34,7 @@ convention is reused there without ambiguity.
 | **The lineage diff** | Print what changed (`node/0#cut 0.31→0.78`) |
 
 Six subsystems, one vocabulary. The alternative is three schemes that drift: a
-UI parameter id, a genome index and a DSP handle, mapped to each other. The
+UI parameter id, a genome index, and a DSP handle, mapped to each other. The
 drift surfaces as a knob that edits the wrong thing after a structural change.
 
 ## Why it cannot drift
@@ -55,10 +55,11 @@ execution is determined by the choices the execution makes. The value at
 `node#leaf` decides whether `node` is a source or a processor, which decides
 whether `node/0` exists at all.
 
-That is what lets fugue's generic trace machinery work unchanged: subtree
-regeneration, subtree-swap crossover, and reversible-jump Metropolis–Hastings
-all operate on traces without knowing anything about synthesizers. Auracle
-contributes a grammar; it does not contribute an inference algorithm.
+That is what lets fugue’s generic trace machinery work unchanged: subtree
+regeneration and reversible-jump Metropolis–Hastings operate on traces without
+knowing anything about synthesizers. Auracle contributes a grammar, not an
+inference algorithm. It uses no crossover: every child grows from one seed
+(`walk.rs`).
 
 ## Live parameter handles
 
@@ -68,9 +69,9 @@ an atomic the audio thread reads. Turning a knob does two things:
 1. Writes the atomic, so **the running voices change without a recompile**.
 2. Writes the genome at the same address, so the edit is real rather than cosmetic.
 
-Both, always. Writing only the atomic gives you a knob whose change disappears
-on the next patch swap; writing only the genome gives you a knob you have to
-recompile to hear.
+Both, always. Writing only the atomic gives a knob whose change disappears on
+the next patch swap; writing only the genome gives a knob that must be
+recompiled to be heard.
 
 Not every address has a live handle. Structural sites do not, and a few
 parameters feed compile-time decisions. `window.__aur.nonLiveAddrs` in the web
