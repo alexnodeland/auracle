@@ -1780,6 +1780,58 @@ mod tests {
         );
     }
 
+    /// **`may_replace` while the pool fills, and beside a ⚡ walk.** Short of
+    /// its size, the pool owes a generation fewer retirements, so fewer
+    /// members are marked. A ⚡ seed is out of every eviction while its walk
+    /// is out, so it leaves the marks and the next member up joins them. A
+    /// real generation then retires nothing outside the marks but its own
+    /// children, and never the ⚡ seed.
+    #[test]
+    fn may_replace_counts_a_filling_pool_and_passes_over_a_seed_evolving() {
+        let mut engine = taught(0xF111);
+        let walks = engine.cfg.refine_seeds;
+        engine.cfg.pool_size = engine.pool.len() + 2;
+        let ranked = engine.ranked();
+        let lowest = engine.pool[ranked[ranked.len() - 1].0].id;
+        let before = engine.may_replace();
+        assert_eq!(before.len(), walks - 2, "two empty places owe two fewer");
+        assert_eq!(before[0], lowest);
+
+        engine
+            .refine_from_job(&mut StdRng::seed_from_u64(1), lowest, &[])
+            .expect("in the pool");
+        let may = engine.may_replace();
+        assert_eq!(engine.belief().may_replace, may);
+        assert!(!may.contains(&lowest), "a ⚡ seed was marked");
+        assert_eq!(may.len(), before.len());
+        assert_eq!(may[..may.len() - 1], before[1..], "not the next member up");
+
+        let (ctx, jobs) = engine
+            .refine_jobs(&mut StdRng::seed_from_u64(0xF111))
+            .expect("taught");
+        let order: Vec<usize> = (0..jobs.len()).collect();
+        for r in farm_walks(&ctx, &jobs, &order) {
+            engine.refine_absorb(r);
+        }
+        let children: std::collections::HashSet<u64> = engine
+            .lineage
+            .iter()
+            .filter(|ev| ev.generation == engine.generation)
+            .map(|ev| ev.child_id)
+            .collect();
+        let retired = engine.retired().to_vec();
+        assert!(!retired.is_empty(), "the generation retired nothing");
+        assert!(retired.len() <= may.len());
+        assert!(
+            retired
+                .iter()
+                .all(|id| may.contains(id) || children.contains(id)),
+            "the generation retired {retired:?}, outside {may:?}"
+        );
+        assert!(engine.find(lowest).is_some(), "the ⚡ seed was retired");
+        assert!(engine.refine_from_cancel(lowest));
+    }
+
     /// Locked refinement never touches a locked address: run `refine_from`
     /// with every continuous amp-envelope site locked and assert the child's
     /// amp env is bit-identical to the seed's while *something* else moved.
