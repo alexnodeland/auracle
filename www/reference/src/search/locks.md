@@ -28,6 +28,12 @@ A proposal $x \to x'$ is rejected if it **changes, deletes, or creates** any
 address in $\mathcal{L}$. Rejection happens outside the kernel: the move is
 simply not taken.
 
+Every walk adds one set of locks of its own: the `#input` of each
+[AUDIO IN](../genome/grammar.md#audio-in-the-players-input) in its seed. The
+input a node reads is the player’s, so a walk conditions on it as on a
+player’s lock, and the node stays where it was with the input it had. A node
+the walk grows reads the first input (the grammar never chooses one).
+
 ## Why all three, and why both directions
 
 The third, *creates*, is the one that gets omitted, and omitting it breaks the

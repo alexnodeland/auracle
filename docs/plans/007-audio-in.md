@@ -44,12 +44,35 @@ measured with audition clips, from quiver to the PATCH plate.
    - The same release carries quiver's half of tasks 5 and 6: `PitchTracker`
      (the Track module: pitch by YIN, gate and level) and `Capture`.
 2. **The AUDIO IN term:** knobs (`input`, `gain`, `channel`), `describe`, rare
-   in the prior. Walks never change `input`.
+   in the prior. Walks never change `input`. *Done* (engine):
+   - `AudioNode::AudioIn`, source index 7, compiled to quiver's `AudioInput`
+     on the stream `compile_with_input` binds (`compile` leaves it silent);
+   - `input` a slot (1 to 8) the prior never chooses (`PlayerInput`: drawn
+     nodes read slot 0, every slot scores alike), `gain` −24 to +12 dB and
+     live, `channel` left, right or both;
+   - described as `audio_in`, "audio in", with `NodeKind::AudioIn` in the
+     edit vocabulary;
+   - Silence's 0.5% prior weight, untilted by taste;
+   - every walk locks each `#input` its seed holds, so the node and its input
+     stay;
+   - φ keeps its shape: a display counter, `n_audio_in`, and no column.
+   - Open: the node bank entry, the device list and the face are task 4's;
+     `make revalidate` for the prior change is paired with this branch.
 3. **Audition clips:**
-   - a built-in reference signal;
-   - capturing a few seconds on first listen;
-   - storing clips with the session;
-   - `featurize`, the vet, and walks rendering with them.
+   - a built-in reference signal; *done*: a plucked figure (A2 to E4, a noise
+     pick on every note, a quiet tail), deterministic, mono;
+   - capturing a few seconds on first listen; *open*, the web half (task 4).
+     The engine takes a capture through `WasmEngine::set_audition_clip` and
+     the worker's `set_audition_clip` message;
+   - storing clips with the session; *done*: one session clip, saved as 16-bit
+     base64 and bounded like quiver's `Capture`; an unreadable one restores as
+     the reference and says so;
+   - `featurize`, the vet, and walks rendering with them; *done*: the clip
+     rides in `PhraseSpec`, a listening patch renders on a host-clock stream,
+     its render key (and so the farm's stored key, and PERFORM's wiring key)
+     carries the clip, and `LivePoly` binds a cursor-mode input stream.
+     Open: re-sending the farm's phrase after a capture, and a clip per
+     input.
 4. **Web capture:**
    - the permission flow, only when a node is added;
    - `enumerateDevices`, and one capture stream per input fanned out to every
@@ -64,7 +87,9 @@ measured with audition clips, from quiver to the PATCH plate.
    buffer is saved with the sound. quiver's half is done (`Capture`, 0.4.0,
    which saves its take with the patch).
 7. **The guide and the reference:** a guide page on playing through Auracle,
-   and a reference section on audition clips (ADR-004).
+   and a reference section on audition clips (ADR-004). The reference section
+   is *done* (*Audition clips*, with the AUDIO IN term on the grammar page);
+   the guide page waits for task 4.
 
 ## Done when
 
