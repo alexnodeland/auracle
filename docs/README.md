@@ -70,6 +70,7 @@ plugins work on it.
 | [004](proposals/004-design-direction.md) | accepted | Design direction: one system for words, marks, picture, interaction, sound and explanation |
 | 005 | reserved | The sonic floor: where the measurement lives, what it costs, and the first deals (named by RFC-004; not yet written) |
 | [006](proposals/006-the-sound-at-the-centre.md) | accepted | The sound at the centre: one space, shown as it works |
+| [007](proposals/007-the-sound-of-the-films.md) | in-review | The sound of the films: one key, one room, the instrument on top |
 
 ## Plans
 
@@ -94,6 +95,9 @@ plugins work on it.
   view by view, at rest and on request (measured; informed RFC-004)
 - [`plugin-lab/`](notes/plugin-lab/README.md): named controls measured on a
   third-party synth, a feasibility study for a plugin
+- [`sound-2026-09/`](notes/sound-2026-09/README.md): the films' sound audited
+  and auditioned over six rounds; the spec, the scores, the two marks and the
+  final reel (informed RFC-007)
 - [`vision-2026-09/`](notes/vision-2026-09/README.md): prototype v2 (the
   sound at the centre), the maintainer's decisions round by round, and the
   review of it on desktop and phones (informed RFC-006)
