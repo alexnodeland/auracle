@@ -1,16 +1,20 @@
 //! User-driven structural edits: create, delete, replace, and rewire nodes
-//! in a patch tree — the "reconnect anything" surface of the workbench.
+//! in a patch tree. This is the "reconnect anything" surface of the workbench.
 //!
 //! Because the genome is a *typed tree*, rewiring is expressed as a small
 //! vocabulary of operations that are type-safe by construction (an LFO can
 //! never end up in an audio slot; a filter always has exactly one audio
 //! input): replace a node, insert a node into a wire, delete/splice a node,
-//! change a modulation source, swap a mixer's inputs. These are the same
-//! moves evolution's structural proposals make — hand edits and MH walk the
-//! same lattice.
+//! change a modulation source, swap a mixer's inputs.
+//!
+//! Hand edits and the search share one lattice: the same terms, the same
+//! addresses, and ceilings that end where the prior's support does. The
+//! search reaches it another way. A walk's structural move is single-site MH
+//! on the trace, which redraws one site and regenerates what it needs from
+//! the prior; it never calls these operations.
 //!
 //! Nodes are addressed by their trace **key** (`node`, `node/0`, `node/0/1`,
-//! `node/0/m` for mod slots — see [`crate::genome`]).
+//! and `node/0/m` for mod slots; see [`crate::genome`]).
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -354,12 +358,13 @@ pub fn default_steps() -> ModNode {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum StructOp {
-    /// Replace the node at `key` with a `kind` (subtrees preserved where the
-    /// sorts allow; replacing a source with a processor wraps the source).
+    /// Replace the node at `key` with a `kind`.
     ///
     /// A processor keeps the old node's primary input as its own `/0` (the
-    /// source itself, when it replaces one), seated by the same splice as
-    /// [`StructOp::InsertTree`]; only the old node and its `/1` go.
+    /// source itself, when it replaces one, so replacing a source with a
+    /// processor wraps it), seated by the same splice as
+    /// [`StructOp::InsertTree`]; only the old node and its `/1` go. A source
+    /// takes the whole subtree's place.
     Replace {
         /// Node key.
         key: String,
