@@ -127,8 +127,8 @@ surrogate exist to solve.
 true-peak audio level.* → K-weighting, 400 ms gated blocks, the two gates.
 [Implemented here](./audition/loudness.md)
 
-**EBU R 128 (2020).** *Loudness normalisation and permitted maximum level of
-audio signals.* → The practice around BS.1770 that makes −18 LUFS a sensible
+**EBU R 128 (2020).** *<!-- voice: quote -->Loudness normalisation and permitted maximum level of
+audio signals.<!-- /voice -->* → The practice around BS.1770 that makes −18 LUFS a sensible
 target.
 
 **Peeters, G. (2004).** *A large set of audio features for sound description.*
