@@ -14,8 +14,8 @@
 //
 // - After a click on the wave chip or the filter-mode chip, focus is not on
 //   the chip, Space plays (the output sounds) and the chip keeps what it says,
-//   and Space again stops it (quiet while the phrase's first note would still
-//   be sounding).
+//   and Space again stops it (quiet within 400 ms of its keydown, timed in
+//   the page, while the phrase still sounded).
 // - A chip reached with the keyboard follows ARIA's button pattern: Space and
 //   Enter cycle it, and with Shift they go back. Neither plays. Its name
 //   carries its value ("VCO wave, sin"), and each cycle is said on the rack's
@@ -93,22 +93,38 @@ async function quiet(page) {
 }
 
 /** Space, and the output sounds within a few seconds; Space again, and it
- *  stops. The phrase opens on a C4 held 1.8 s, so quiet within 1.5 s of the
- *  sound starting is the second Space, not the phrase ending. `where` names
- *  the moment for the failure message. */
+ *  stops. The second press is timed in the page, not across round trips to
+ *  it (a loaded machine stretches those): the phrase is still sounding when
+ *  its keydown lands, and the output is quiet within 400 ms of it. The stop
+ *  fades in 20 ms, and the analyser's window is 43 ms; a phrase that ended
+ *  by itself would have to do so in that same 400 ms. `where` names the
+ *  moment for the failure message. */
 async function spacePlays(page, where) {
   await quiet(page);
   await page.keyboard.press(" ");
   await expect
     .poll(() => peakDb(page), { timeout: 10_000, intervals: [100], message: `Space plays ${where}` })
     .toBeGreaterThan(-50);
-  const on = Date.now();
-  expect(await peakDb(page), `still sounding before the second Space, ${where}`).toBeGreaterThan(-50);
+  await page.evaluate(() => {
+    const s = (window.__pwStop = { at: null, peak: null, quietAt: null });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== " " || s.at != null) return;
+      s.at = performance.now();
+      s.peak = window.__pwPeakDb();
+      const tick = () => {
+        if (window.__pwPeakDb() < -80) s.quietAt = performance.now();
+        else if (performance.now() - s.at < 5_000) setTimeout(tick, 10);
+      };
+      setTimeout(tick, 0);
+    }, { capture: true });
+  });
   await page.keyboard.press(" ");
   await expect
-    .poll(() => peakDb(page), { timeout: 1_500, intervals: [50], message: `the second Space stops it, ${where}` })
-    .toBeLessThan(-80);
-  expect(Date.now() - on, `stopped inside the phrase's first note, ${where}`).toBeLessThan(1_500);
+    .poll(() => page.evaluate(() => window.__pwStop.quietAt), { timeout: 10_000, message: `the second Space stops it, ${where}` })
+    .not.toBeNull();
+  const stop = await page.evaluate(() => window.__pwStop);
+  expect(stop.peak, `still sounding when the second Space landed, ${where}`).toBeGreaterThan(-50);
+  expect(stop.quietAt - stop.at, `quiet within 400 ms of the second Space, ${where}`).toBeLessThan(400);
 }
 
 /** The rack's chip for the first knob whose address ends in `#site`. */

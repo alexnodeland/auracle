@@ -35,8 +35,8 @@ and a click leaves no focus on it.
   rest of RFC-003's pad keymap (Enter, B, ⇧Enter, ⇧Space) is decided then,
   against what the app does by that time.
 - **A setting focused from the keyboard** (a chip on the rack) cycles on
-  Space or Enter, and ⇧Enter goes back. A pointer click leaves no focus, so
-  Space then plays.
+  Space or Enter, and ⇧Space or ⇧Enter goes back. A pointer click leaves no
+  focus, so Space then plays.
 
 ## Options Considered
 
